@@ -965,7 +965,7 @@ NUL. Two additions keep the length:
 | Read as prose | Blanked |
 |---|---|
 | the body, `\begin{document}` to `\end{document}`, and the files input from it | the preamble of `main.tex` and the files input from it, except what the next row reads |
-| in the preamble, `\title`'s argument, read as the title in Markdown's front matter is and compared with paper.yaml's (`two-titles`); `\thanks`'s outside `\author`, read as a footnote is; the arguments of `\AtBeginDocument`, `\AtEndDocument`, `\AddToHook` and `\AfterEndPreamble`, read as the body is, or as the package is in an author's package | the author block, `\author` with what it holds, which is what authors.yaml holds for a Markdown project and G2 does not read; `\date`, which a Markdown build never prints (a known gap) |
+| in the preamble, `\title`'s argument, read as the title in Markdown's front matter is and compared with paper.yaml's (`two-titles`); an abstract, read under Abstract; `\thanks`'s outside `\author`, read as a footnote is; the arguments of `\AtBeginDocument`, `\AtEndDocument`, `\AddToHook` and `\AfterEndPreamble`, read as the body is, or as the package is in an author's package | the author block, `\author` with what it holds, which is what authors.yaml holds for a Markdown project and G2 does not read; `\date`, which a Markdown build never prints (a known gap) |
 | the arguments of text commands: `\emph`, `\textbf`, `\footnote`, `\caption` and its short form, `\section` and its kin, `\href`'s text | command names and braces; `\label`, `\ref` and its kin, `\url`, `\href`'s address, `\includegraphics` |
 | a citation's notes, as Markdown's prefix and suffix are read | citation keys |
 | the letters, digits and signs in maths, in subscripts and superscripts too, as Markdown's `mask` keeps them in `$x_1 = 10^{-8}$` | maths' commands, braces and delimiters |
@@ -1031,8 +1031,11 @@ order is `printed_order`.
 - `equation`, `align`, `gather` and `multline`, their starred forms, `\[`, `$$` and `\(` are
   maths.
 - `abstract`, or `\abstract{…}`, opens a section titled Abstract for every reader, so the
-  counts, G4 and G5 find it as they find `# Abstract`. One in the preamble is refused, as an
-  `abstract:` in Markdown's front matter is.
+  counts, G4 and G5 find it as they find `# Abstract`. One in the preamble is read as prose
+  there, as `\title`'s argument is, since a class such as PNAS's prints it from there. This
+  design first refused it, as an `abstract:` in Markdown's front matter is refused. Round 2
+  of #385 found that this failed such a class, and failed `\let\oldabstract\abstract`, which
+  only names the command. Where a class does not print it, the compile fails (step 9).
 - An environment not in the table is read as an unknown command is, and so is its body.
 
 **Definitions.** A `\newcommand`, `\renewcommand`, `\providecommand`,
@@ -1048,7 +1051,9 @@ expanded, because an expansion is text at a place the file does not hold, with n
 give a finding.
 
 Refused:
-- a definition, in a file of the author's, of any command the reader reads, `\mg` among them;
+- a definition, in a file of the author's, of any command the reader reads, `\mg` among them,
+  but `\abstract`, which the reader read as an unknown command before it opened a section and
+  which an author restyles;
 - `\def` with delimited parameters;
 - anything that changes how characters are read: `\catcode`, `\makeatletter` in the body,
   `\csname`, `\expandafter`, and `babel` with a language whose shorthands make a character
@@ -1305,9 +1310,13 @@ The result is compiled and packed by the code above, and checked three times:
   `\AtBeginDocument{\input{x}}` is not followed. It is warned of as `tex-not-input`, whose
   message says no `\input` the reader follows names it, and is read under no heading (round 1
   of #385).
-- An author's file input from the preamble without braces, `\input macros`, is taken for the
-  distribution's and not read, so its definitions are not known where they are used (round 1
-  of #385).
+- An `\input` from the preamble without braces, `\input macros`, is not followed, so an
+  author's `macros.tex` is read as a file nothing inputs, warned of, and its definitions are
+  not known where they are used. A file input from the preamble by a path with no folder that
+  `manuscript/` lacks, `\input{settings.tex}` too, is taken for the distribution's and passes;
+  the compile finds it missing (step 9) (rounds 1 and 2 of #385).
+- After `\renewcommand{\abstract}` or `\let\abstract\relax`, `\abstract{…}` still opens a
+  section titled Abstract, though LaTeX prints what the author defined (round 2 of #385).
 - A class or package that changes how a character is read, beyond those refused, is not seen.
 - A package not in the refused list that prints a table or text from a data file is not seen:
   what it prints is read by no gate.

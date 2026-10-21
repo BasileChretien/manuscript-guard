@@ -440,6 +440,10 @@ LATEX_PREAMBLE_PLACES = (
     ("\\newcommand{{\\ci}}[1][{}]{{#1 CI}}\n", (True,)),
     ("\\usepackage[opt{}]{{x}}\n", (False,)),
     ("\\author{{A {}}}\n", (False,)),
+    # An abstract a class prints from the preamble, and a restyling that names the command
+    # (round 2 of #385: the first was refused, and so was the second).
+    ("\\let\\oldabstract\\abstract\n\\abstract{{Of {}}}\n", (True,)),
+    ("\\begin{{abstract}}Of {}\\end{{abstract}}\n", (True,)),
 )  # fmt: skip
 
 
@@ -476,31 +480,40 @@ def latex_planted(draw: st.DrawFn) -> tuple[str, list[tuple[int, str, bool]]]:
     return text, planted
 
 
-_SECTIONING = {1: "section", 2: "subsection", 3: "subsubsection"}
+_SECTIONING = {-1: "part", 0: "chapter", 1: "section", 2: "subsection", 3: "subsubsection"}
 
 
 @st.composite
-def latex_trees(draw: st.DrawFn) -> tuple[dict[str, str], dict[str, list[str]]]:
+def latex_trees(
+    draw: st.DrawFn,
+) -> tuple[dict[str, str], dict[str, list[str]], dict[str, list[str]]]:
     """A LaTeX manuscript of a few files that input one another, with no file inputting
-    itself, and the titles each file starts under, worked out apart from the reader: a
-    heading of a file input reaches the text after its `\\input`, as LaTeX prints it. The
-    entry file opens under a heading and inputs a file after it, so that every manuscript has a
-    file that starts under one, and inputs the rest after, so that one starts after another's
-    headings."""
+    itself; the titles each file starts under; and the titles in force at a word written
+    after each heading. Both are worked out apart from the reader: a heading of a file input
+    reaches the text after its `\\input`, as LaTeX prints it.
+
+    The entry file opens under a part, a chapter and a section, inputs a file that opens a
+    subsection, writes a subsubsection right after that `\\input`, and inputs another file.
+    So every manuscript has a file that starts under a heading, a part a chapter does not
+    close, and a heading where an `\\input` ends, which stands over the text after it (round
+    2 of #385). Nothing but a heading's word follows a line break, so an `\\input` stands
+    against what comes next."""
     count = draw(st.integers(min_value=3, max_value=5))
     names = ["main.tex", *(f"part{index}.tex" for index in range(1, count))]
     items: dict[str, list[tuple[str, object]]] = {}
     for index, name in enumerate(names):
         drawn = draw(st.lists(st.one_of(
-            st.tuples(st.just("heading"), st.integers(min_value=1, max_value=3)),
+            st.tuples(st.just("heading"), st.integers(min_value=-1, max_value=3)),
             st.tuples(st.just("input"), st.integers(min_value=index + 1, max_value=count)),
             st.tuples(st.just("words"), st.sampled_from(FILLER)),
         ), max_size=8))  # fmt: skip
         inputs = [("input", child) for kind, child in drawn if kind == "input" and child < count]
         rest = [item for item in drawn if item[0] != "input"]
-        planted = {0: [("heading", 1), ("input", 1), ("input", 2)], 1: [("heading", 2)]}
+        opening = [("heading", -1), ("heading", 0), ("heading", 1), ("input", 1),
+                   ("heading", 3), ("input", 2)]  # fmt: skip
+        planted = {0: opening, 1: [("heading", 2)]}
         items[name] = planted.get(index, []) + rest + inputs
-    files, under, seen, counter = {}, {}, {"main.tex"}, [0]
+    files, under, marks, seen, counter = {}, {}, {}, {"main.tex"}, [0]
 
     def visit(name: str, chain: list[tuple[int, str]]) -> list[tuple[int, str]]:
         under[name] = [title for _, title in chain]
@@ -509,23 +522,24 @@ def latex_trees(draw: st.DrawFn) -> tuple[dict[str, str], dict[str, list[str]]]:
             if kind == "heading":
                 counter[0] += 1
                 title = f"Part {counter[0]}"
-                text += f"\\{_SECTIONING[value]}{{{title}}}\n"
                 chain = [kept for kept in chain if kept[0] < value] + [(value, title)]
+                marks[f"mark{counter[0]}"] = [title for _, title in chain]
+                text += f"\\{_SECTIONING[value]}{{{title}}}\nmark{counter[0]} "
             elif kind == "input":
                 child = names[value]
-                text += f"\\input{{{child[:-4]}}}\n"
+                text += f"\\input{{{child[:-4]}}}"
                 if child not in seen:
                     seen.add(child)
                     chain = visit(child, chain)
             else:
                 text += f"{value} "
-        files[name] = text + ("\\end{document}\n" if name == "main.tex" else "")
+        files[name] = text + ("\n\\end{document}\n" if name == "main.tex" else "")
         return chain
 
     visit("main.tex", [])
     for name in names:
         files.setdefault(name, "")
-    return files, under
+    return files, under, marks
 
 
 #: The headings of the parts of a paper, each written more than one way, and bindings to

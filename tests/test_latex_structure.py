@@ -112,21 +112,25 @@ def test_a_file_nothing_inputs_is_read_loose_and_accepts_what_a_preamble_does() 
     "abstract",
     ["\\abstract{Of 4100 reports, 12 were fatal.}", "\\begin{abstract}12\\end{abstract}"],
 )
-def test_an_abstract_in_the_preamble_is_refused_and_one_in_a_definition_is_not(
+def test_an_abstract_in_the_preamble_is_read_under_abstract_and_naming_it_is_no_abstract(
     abstract: str,
 ) -> None:
-    """Round 1 of #385: the design refused it and the reader did not, so its numbers went
-    unread."""
+    """Round 1 of #385 found it blanked unread; round 2 found the refusal that followed fail
+    a class that prints it from the preamble, as PNAS's does, and a restyling that only names
+    the command. It is read as prose under Abstract."""
     from manuscript_guard.text.latex.mask import read
 
     text = "\\documentclass{article}\n" + abstract + "\n\\begin{document}\nx\n" + END
-    (refusal,) = read(text).refusals
-    assert refusal.code == "tex-refused" and refusal.offset == text.index("\\", 5)
-    assert "preamble" in refusal.message
-    defined = ("\\documentclass{article}\n\\renewcommand{\\abstract}[1]{\\textbf{#1}}\n"
-               "\\newcommand{\\summary}{\\abstract{12}}\n\\let\\abstract\\relax\n"
-               "\\begin{document}\n\\abstract{We found 12.}\n" + END)  # fmt: skip
-    assert read(defined).refusals == ()
+    reading = read(text)
+    assert reading.refusals == () and "12" in reading.masked
+    assert [(h.start, h.title) for h in reading.headings] == [(text.index("\\", 5), "Abstract")]
+    restyled = ("\\documentclass{article}\n\\let\\oldabstract\\abstract\n"
+                "\\let\\endoldabstract\\endabstract\n"
+                "\\renewenvironment{abstract}{\\begin{oldabstract}}{\\end{oldabstract}}\n"
+                "\\renewcommand{\\abstract}[1]{\\textbf{#1}}\n"
+                "\\newcommand{\\summary}{\\abstract{12}}\n\\let\\abstract\\relax\n"
+                "\\begin{document}\n\\begin{abstract}12\\end{abstract}\n" + END)  # fmt: skip
+    assert read(restyled).refusals == ()
 
 
 def test_a_bare_name_input_from_the_preamble_is_the_distributions() -> None:

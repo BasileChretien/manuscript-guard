@@ -36,11 +36,13 @@ NUL = "\x00"
 PROSE, BLANK, MATHS_READ, PREAMBLE = "prose", "blank", "maths", "preamble"
 #: Commands whose prose argument LaTeX prints though it stands in the preamble: the title, its
 #: note, and a definition's default argument, printed at each use that omits it (round 1 of
-#: #380: `\\newcommand{\\ci}[1][95]{...}` hid the 95).
+#: #380: `\\newcommand{\\ci}[1][95]{...}` hid the 95). The abstract, as a command or an
+#: environment, which a class such as PNAS's prints from the preamble (round 2 of #385: it
+#: was refused, and so was `\\let\\oldabstract\\abstract`, which only names it).
 PRINTED_IN_PREAMBLE = frozenset(
     {"title", "thanks", "newcommand", "renewcommand", "providecommand", "newenvironment",
      "renewenvironment", "DeclareRobustCommand", "NewDocumentCommand", "RenewDocumentCommand",
-     "ProvideDocumentCommand", "DeclareDocumentCommand"}
+     "ProvideDocumentCommand", "DeclareDocumentCommand", "abstract"}
 )  # fmt: skip
 #: Names that open no conditional though they start with `if`: a symbol and a command whose
 #: branches are its arguments, both read.
@@ -112,8 +114,6 @@ _BRACED_PATH = re.compile(r"[ \t]*(?:\r?\n[ \t]*)?\{([^{}\n]*)\}")
 #: Commands the reader knows that an author may define again, which it then reads as before:
 #: `\abstract` was an unknown command, its arguments read, until it was given a heading.
 _REDEFINABLE = frozenset({"abstract"})
-_PREAMBLE_ABSTRACT = ("an abstract in the preamble is not read, as no prose there is: write it "
-                      "after \\begin{document}")  # fmt: skip
 _PACKAGES = re.compile(r"\s*(?:\[[^\]]{0,300}\])?\s*\{([^{}]{0,300})\}")
 
 
@@ -235,7 +235,6 @@ class _Reader:
         self.command = ""
         self.refused: Refusal | None = None
         self.letters = _LETTERS_AT if package else _LETTERS
-        self.package = package
         self.definitions = 0
         self.environments: list[str] = []
         self.inputs: list[Input] = []
@@ -575,8 +574,6 @@ class _Reader:
             if name in COMMANDS:
                 self.command, self.pending = name, COMMANDS[name]
         elif name in COMMANDS:
-            if name == "abstract" and self._in_preamble():
-                self._refuse("tex-refused", at, _PREAMBLE_ABSTRACT)
             if name in LEVELS or name == "abstract":
                 self.heading_at = at
             self.command, self.pending = name, COMMANDS[name]
@@ -675,11 +672,6 @@ class _Reader:
         self.command = name
         self._open("arg", "d", parameters, "}")
 
-    def _in_preamble(self) -> bool:
-        """In a preamble's own text: not the body, a package, or a definition's body, where an
-        abstract is text to be expanded where the definition is used."""
-        return not self.body and not self.package and not self.definitions
-
     def _defines(self, name: str, at: int) -> None:
         if name in _REDEFINABLE:
             return
@@ -716,10 +708,10 @@ class _Reader:
                 return
             self._blank(at, closing.end())
             self.pos = closing.end()
-        elif name == "abstract" and self._in_preamble():
-            self._refuse("tex-refused", at, _PREAMBLE_ABSTRACT)
         else:
             role = self._role()
+            if role == PREAMBLE and name in PRINTED_IN_PREAMBLE:
+                role = PROSE
             maths = name in MATHS and role in (PROSE, MATHS_READ)
             self.stack.append(_Frame("env", MATHS_READ if maths else role, at, name,
                                      table=name in TABLES))  # fmt: skip

@@ -97,3 +97,38 @@ def reader_for(project) -> Reader:
 def manuscript_files(project, *, main_text_only: bool = False) -> list[Path]:
     """Every source of a project's manuscript, in its format."""
     return reader_for(project).files(main_text_only=main_text_only)
+
+
+@dataclass(frozen=True)
+class Bound:
+    """One manuscript file with its bindings, the `Placeholder` records of
+    `placeholders.parse`: its text as typed, and as Markdown writes it, which for a LaTeX file
+    is its Markdown view (`text/latex/views.py`), `\\mg{results.key}` as `{{results.key}}` at
+    the same offsets, and for a Markdown file the text itself."""
+
+    path: Path
+    text: str
+    view: str
+    placeholders: list
+    latex: bool = False
+
+
+def bound_files(project) -> list[Bound]:
+    """Each manuscript file with its bindings, in its format. A Markdown file that cannot be
+    read raises `Unreadable`, as `read_text` does; a LaTeX one is passed over by the include
+    tree, and named by the check that reads every file first."""
+    folder = project.path("manuscript")
+    if manuscript_format(folder) == LATEX:
+        from manuscript_guard.text.latex.views import files
+
+        return [Bound(found.path, found.text, found.view, list(found.placeholders), latex=True)
+                for found in files(folder)]  # fmt: skip
+    from manuscript_guard.contracts._schema import read_text
+    from manuscript_guard.gates.numbers import source_files
+    from manuscript_guard.text.placeholders import parse
+
+    bound = []
+    for path in source_files(folder):
+        text = read_text(path)
+        bound.append(Bound(path, text, text, parse(text)[0]))
+    return bound

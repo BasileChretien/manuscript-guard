@@ -14,7 +14,6 @@ import contextlib
 import hashlib
 import re
 import sys
-import unicodedata
 from collections.abc import Collection
 from datetime import date
 from pathlib import Path
@@ -98,6 +97,7 @@ from manuscript_guard.text.masking import mask
 from manuscript_guard.text.placeholders import parse, substitute
 from manuscript_guard.text.reader import LATEX, manuscript_files, manuscript_format
 from manuscript_guard.text.sections import chains_at, footnote_index, heading_index
+from manuscript_guard.text.shown import printable
 from manuscript_guard.text.tokens import find_atoms
 
 
@@ -206,9 +206,8 @@ def _run_gates(
 _NOT_READ_IN_LATEX = frozenset(
     {
         "check_statement_sources", "check_related",
-        "check_numbers", "check_bound_units", "check_small_cells", "check_citations",
-        "check_prose_quotations", "check_journal", "check_reporting", "check_writing",
-        "check_methods", "check_synthetic_inputs", "check_reported", "check_recomputed",
+        "check_citations", "check_prose_quotations", "check_journal", "check_reporting",
+        "check_writing", "check_methods", "check_reported", "check_recomputed",
         "check_revision", "check_language", "check_models", "check_shapes", "check_tex",
         "check_passages",
     }
@@ -769,6 +768,14 @@ def _which_document(project, known: dict, returned, name: str) -> bool | None:
     read from the source files: read from the identifiers, a supplement of headings and tables,
     which has none, was taken for no supplement, and compared with the paper.
     """
+    supplementary, refusal = _document_kind(project, known, returned, name)
+    if refusal:
+        print(refusal)
+    return supplementary
+
+
+def _document_kind(project, known: dict, returned, name: str) -> tuple[bool | None, str]:
+    """`_which_document`'s answer, and what it says when there is none."""
     from manuscript_guard.gates.numbers import is_supplementary, source_files
 
     manuscript_dir = project.path("manuscript")
@@ -780,23 +787,21 @@ def _which_document(project, known: dict, returned, name: str) -> bool | None:
     }
     has_supplement = any(is_supplementary(manuscript_dir, p) for p in source_files(manuscript_dir))
     if not kinds and has_supplement:
-        print(
+        return None, (
             f"{name} carries no paragraph identifier this manuscript knows, so there is no "
             f"telling whether it is the manuscript or its supplement, and import compares "
             f"paragraphs only through those identifiers. Nothing was imported. A supplement of "
             f"headings, tables and figures carries none, and holds nothing import compares; "
             f"otherwise, import the document the co-author was sent, edited in place."
         )
-        return None
     if kinds == {True, False}:
-        print(
+        return None, (
             f"{name} carries paragraphs of both the manuscript and its supplement. They are "
             f"built as two documents and imported one at a time, and a paragraph pasted from "
             f"one into the other is not something import can apply. Nothing was imported: "
             f"make the move in the .md yourself, and import each document on its own."
         )
-        return None
-    return kinds == {True}
+    return kinds == {True}, ""
 
 
 def _refused_inserted(plan, inserted: dict[str, list], returned: list, project):
@@ -942,7 +947,6 @@ def cmd_import(args: argparse.Namespace) -> int:
         OFFLINE_CITATIONS,
         RoundTripError,
         cited_of,
-        comments_in,
         inserted_citations,
         named_now,
         numbering,
@@ -1005,6 +1009,7 @@ def cmd_import(args: argparse.Namespace) -> int:
         return 2
     if numbered.refusal:
         print(numbering_refusal(edited.name, numbered.refusal))
+        _comments_all_the_same(project, edited, carried, numbered, offered, applying=args.apply)
         return 1
     if stale and not args.force:
         print(
@@ -1015,11 +1020,11 @@ def cmd_import(args: argparse.Namespace) -> int:
             f"  --force imports anyway: an edit is merged only where the paragraph it was "
             f"made in reads as it did at the build, and every hunk still has to be read."
         )
+        _comments_all_the_same(project, edited, carried, numbered, offered, applying=args.apply)
         return 1
 
     try:
         returned = read_blocks(edited)
-        comments = comments_in(edited)
     except RoundTripError as exc:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
@@ -1033,14 +1038,20 @@ def cmd_import(args: argparse.Namespace) -> int:
             print(f"manuscript-guard: {exc}", file=sys.stderr)
             return 2
         # The panel's own comments are its findings, which are in the records, and a reply
-        # to one is an answer, said with the suggestions.
-        comments = [c for c in comments if (c.author, c.text) not in told]
+        # to one is an answer, said with the suggestions: neither is filed (`_threads`).
     known = tagged_paragraphs(project)
     supplementary = _which_document(project, known, returned, edited.name)
     if supplementary is None:
         # The comments need no identifier to be read, and are the most useful thing in the
-        # document: refusing the edits is no reason to drop them.
-        _report_comments(comments)
+        # document: refusing the edits is no reason to drop them. With no telling which
+        # document it is they have no record to go in, so they are printed and not filed.
+        threads = _threads(project, edited, {}, offered) or []
+        _report_comments(threads)
+        if threads:
+            print(f"\nThe comments are not filed: each is filed with the document it was made "
+                  f"in, and there is no telling which one {edited.name} is. Import the "
+                  f"document the co-author was sent, edited in place, and they are filed "
+                  f"with it.")  # fmt: skip
         return 1
     try:
         # Its record is the one written for the document it is, the paper or the supplement:
@@ -1265,7 +1276,12 @@ def cmd_import(args: argparse.Namespace) -> int:
     unexamined = "\n  ".join(part for part in (unexamined, *said) if part)
     unaccounted += values
 
-    if plan.empty and not comments and not strangers and not unaccounted:
+    # Each comment, anchored where the import vouches for the paragraph it was made on, with
+    # the identifier that paragraph has now, as `respond --open` anchors a point.
+    threads = _threads(project, edited, {name: name for name in trusted} | dict(followed), offered)
+    unread = threads is None
+    threads = threads or []
+    if plan.empty and not threads and not strangers and not unaccounted and not unread:
         what = "supplement" if supplementary else "manuscript"
         print(f"nothing came back: the document matches the {what} on disk.")
         if unexamined:
@@ -1288,7 +1304,9 @@ def cmd_import(args: argparse.Namespace) -> int:
         if plan.merged:
             print(f"merged {len(plan.merged)} reworded paragraph(s), bindings intact.")
 
-    _report_comments(comments)
+    filed = _file_comments(
+        project, edited, threads, stamp=carried, supplementary=supplementary, applying=args.apply
+    )
     _answer_suggestions(project, decided, plan.merged, applying=args.apply, named=now_named)
 
     if unexamined:
@@ -1315,8 +1333,8 @@ def cmd_import(args: argparse.Namespace) -> int:
         or plan.reordered
         or plan.held_back
     ) or (not args.apply and bool(plan.moved or plan.merged))
-    # A paragraph not compared is not applied either.
-    return 1 if outstanding or strangers or unaccounted else 0
+    # A paragraph not compared is not applied either, nor a comment that could not be filed.
+    return 1 if outstanding or strangers or unaccounted or not filed or unread else 0
 
 
 def _answer_suggestions(project, decided, merged, *, applying: bool, named) -> None:
@@ -1399,33 +1417,131 @@ def quoted(text: str, limit: int = COMMENT_SHOWN) -> str:
     return "\n".join(f"    > {line}" for line in printable(shown).split("\n"))
 
 
-#: The bidirectional controls, which reorder what follows them on screen.
-_BIDI = frozenset(map(chr, (0x061C, 0x200E, 0x200F, *range(0x202A, 0x202F),
-                            *range(0x2066, 0x206A))))  # fmt: skip
-
-
-def printable(text: str) -> str:
-    """`text` with every character a terminal would act on, rather than show, as `?`: a
-    control character (an escape, a carriage return) and a bidirectional control. A line
-    break is kept, and so is a no-break space, which Word puts in "5 mg" and before a
-    French colon."""
-    return "".join(
-        "?" if c in _BIDI or (unicodedata.category(c) == "Cc" and c != "\n") else c for c in text
-    )
-
-
 def _report_comments(comments) -> None:
-    """Each co-author comment, and where to record them so G11 can see they were answered.
-    The comment is the co-author's text, quoted, never the tool's words."""
+    """Each co-author comment, with what it was made on and the replies to it. The comment
+    is the co-author's text, quoted, never the tool's words."""
+    from manuscript_guard.filed_comments import made_on
+    from manuscript_guard.gates.comments import NO_WORDS
+
     for comment in comments:
         author = printable(f"{comment.author} ({comment.date})").replace("\n", " ")
-        print(f"\ncomment from {author}, quoted:")
-        print(quoted(comment.text))
-    if comments:
-        print(
-            f"\n{len(comments)} comment(s). Record them in a review file so G11 can see they "
-            f"were answered: write them into review/round-<n>/<reviewer>.yaml."
-        )
+        block = getattr(comment, "block", "")
+        on = f", {made_on(block)}" if block else ""
+        print(f"\ncomment from {author}{on}, quoted:")
+        print(quoted(comment.text) if comment.text else f"    {NO_WORDS}")
+        for reply in getattr(comment, "replies", ()):
+            by = printable(f"{reply.by} ({reply.date})").replace("\n", " ")
+            print(f"  reply from {by}, quoted:")
+            print(quoted(reply.text) if reply.text else f"    {NO_WORDS}")
+
+
+def _threads(project, edited: Path, vouched: dict[str, str], offered) -> list | None:
+    """The comment threads of a returned document (`filed_comments.threads_of`), less a
+    review panel's own (`offered`), or None once it has said why they cannot be read."""
+    from manuscript_guard.filed_comments import FilingError, threads_of
+    from manuscript_guard.roundtrip import tagged_paragraphs
+
+    sources = {name: entry[1] for name, entry in tagged_paragraphs(project).items()}
+    try:
+        return threads_of(edited, vouched=vouched, sources=sources, panel=offered)
+    except FilingError as exc:
+        print(f"manuscript-guard: {exc}. Its comments are not filed.", file=sys.stderr)
+        return None
+
+
+def _comments_all_the_same(
+    project, edited: Path, stamp: str, numbered, offered, *, applying: bool
+) -> None:
+    """File the comments of a document whose edits were refused whole: a comment nobody
+    transcribed is lost to the checks, whatever became of the edits. Only where the
+    identifiers say which document it is, and anchored only to a paragraph whose identifier
+    the import vouches for, as an edit is merged only there."""
+    from manuscript_guard.roundtrip import RoundTripError, read_blocks, tagged_paragraphs
+
+    try:
+        returned = read_blocks(edited)
+    except RoundTripError as exc:
+        print(f"\nThe comments in {edited.name} are not filed: {exc}")
+        return
+    present = {n for b in returned if not b.table for n in b.names}
+    trusted = numbered.trusted | (numbered.unsure & present)
+    threads = _threads(project, edited, {n: n for n in trusted} | dict(numbered.followed), offered)
+    if not threads:
+        return
+    supplementary, _refusal = _document_kind(
+        project, tagged_paragraphs(project), returned, edited.name
+    )
+    if supplementary is None:
+        _report_comments(threads)
+        print(f"\nThe comments are not filed: each is filed with the document it was made in, "
+              f"and there is no telling which one {edited.name} is.")  # fmt: skip
+        return
+    if _file_comments(project, edited, threads, stamp=stamp, supplementary=supplementary,
+                      applying=applying) and applying:  # fmt: skip
+        print("The edits were not imported; the comments are filed all the same.")
+
+
+def _file_comments(
+    project, edited: Path, threads, *, stamp: str, supplementary: bool, applying: bool
+) -> bool:
+    """Print each comment, and with `--apply` file it as a finding the author answers
+    (`filed_comments`); without, say what would be filed. False where some could not be."""
+    from manuscript_guard.filed_comments import (
+        FilingError,
+        not_seeded,
+        plan_filing,
+        seeded,
+        write_filing,
+    )
+    from manuscript_guard.roundtrip import printed_of
+
+    if not threads:
+        return True
+    _report_comments(threads)
+    threads, answered_there = not_seeded(threads, seeded(project))
+    for thread, number in answered_there:
+        print(f"\n{printable(thread.commenter)}'s comment of {thread.date or 'no date'} is a "
+              f"point of revision round {number} already, answered in the response, and is "
+              f"not filed again.")  # fmt: skip
+    filings = plan_filing(
+        project, threads, stamp=stamp, printed=printed_of(edited), supplementary=supplementary,
+        today=date.today().isoformat(),
+    )  # fmt: skip
+    ok = True
+    if filings:
+        print()
+    for filing in filings:
+        where = filing.path.relative_to(project.root).as_posix()
+        if filing.refused:
+            ok = False
+            print(f"not filed in {where}: {filing.refused}.")
+            continue
+        said = []
+        if filing.added:
+            said.append(f"{len(filing.added)} new ({', '.join(filing.added)})")
+        if filing.extended:
+            said.append(f"replies or Word's Resolve added to {', '.join(filing.extended)}")
+        if filing.kept:
+            said.append(f"{filing.kept} filed already")
+        if filing.document is None:
+            print(f"{where}: {'; '.join(said)}, nothing new.")
+        elif not applying:
+            print(f"--apply files in {where}: {'; '.join(said)}.")
+        else:
+            try:
+                write_filing(filing)
+            except (FilingError, OSError) as exc:
+                ok = False
+                print(f"not filed in {where}: {exc}")
+                continue
+            print(f"filed in {where}: {'; '.join(said)}.")
+        for identifier in filing.reworded:
+            print(f"  {identifier} reads differently in {edited.name}; the record keeps the "
+                  f"words it was filed with.")  # fmt: skip
+    if filings and ok:
+        print("G11 reports each comment until it is answered in its record: what was done in "
+              "`resolution`, or why it is left in `overridden`.")  # fmt: skip
+    return ok
 
 
 def _report_plan(project, known: dict, plan, *, applying: bool, followed=frozenset()) -> None:

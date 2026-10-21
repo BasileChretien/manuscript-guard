@@ -70,6 +70,7 @@ from generated import (
     generated,
     holds,
     laid_out,
+    latex_bound,
     latex_planted,
     latex_texts,
     latex_trees,
@@ -146,6 +147,7 @@ from manuscript_guard.reworded import (
 from manuscript_guard.text import placeholders, tokens
 from manuscript_guard.text.latex import mask as latex_mask
 from manuscript_guard.text.latex import structure as latex_structure
+from manuscript_guard.text.latex import views as latex_views
 from manuscript_guard.text.masking import NUL, mask
 from manuscript_guard.text.placeholders import parse as parse_bindings
 from manuscript_guard.text.sections import chains_at, footnote_index, heading_index
@@ -599,6 +601,85 @@ def _a_chapter_closes_its_part(patch: pytest.MonkeyPatch) -> None:
 
 def _an_abstract_in_the_preamble_is_blanked(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(latex_mask, "PRINTED_IN_PREAMBLE", latex_mask.PRINTED_IN_PREAMBLE - {"abstract"})
+
+
+@holds(100, latex_bound())
+def test_a_latex_binding_is_read_where_it_prints_as_one_and_nowhere_else(
+    drawn: tuple[str, list[tuple[str, str]]],
+) -> None:
+    """A `\\mg{namespace.key}` planted in every place it stands, among whole pieces, is a
+    binding where LaTeX prints it, in prose, a note, a caption, a cell, maths, a definition's
+    body and the title, and nothing in a comment, an `\\iffalse` block or the `comment`
+    environment. A near spelling, a Markdown binding and a `\\mg` that names no key are each
+    something meant for one, and siunitx's milligram is nothing (step 4). The Markdown view
+    holds each binding where its command stands, the line breaks where they stand, a binding
+    in a typed table is in it and no other is, and a listing names its language (round 1 of
+    #400)."""
+    text, planted = drawn
+    reading = latex_mask.read(text)
+    assert reading.refusals == (), (reading.refusals, text)
+    source = latex_structure.Source("main.tex", text, reading)
+    good, malformed = latex_views.bindings(source)
+    expected = {kind: sorted(key for key, was in planted if was == kind)
+                for kind in ("bound", "table", "malformed", "listing")}  # fmt: skip
+    found = {placeholder.key.rsplit(".", 1)[-1]: placeholder for placeholder in good}
+    assert sorted(found) == sorted(expected["bound"] + expected["table"]), text
+    keys = sorted("".join(re.findall(r"k\d+", raw)) for raw, _at, _line in malformed)
+    assert keys == expected["malformed"], (malformed, text)
+    view = latex_views.markdown_view(source, good)
+    assert [i for i, c in enumerate(view) if c == "\n"] == [
+        i for i, c in enumerate(text) if c == "\n"
+    ], text
+    assert [(p.ref, p.start, p.end) for p in parse_bindings(view)[0]] == [
+        (p.ref, p.start, p.end) for p in good
+    ], (view, text)
+    tables = latex_views.Tables(reading.tables)
+    assert sorted(key for key, p in found.items() if p.start in tables) == expected["table"]
+    ((key,),) = [expected["listing"]]
+    (listing,) = [found for found in reading.listings if key in text[found.start : found.end]]
+    assert listing.language == "r", text
+
+
+def _a_latex_binding_is_read_wherever_it_is_typed(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_views, "_uses", lambda source: latex_views._by_shape(source.text, 0))
+
+
+def _a_near_spelling_of_the_binding_is_taken_for_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_near_binding", lambda name: False)
+
+
+def _a_markdown_binding_in_latex_is_taken_for_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_MARKDOWN_BINDING", re.compile("(?!)"))
+
+
+def _siunitx_s_milligram_is_taken_for_a_binding(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "SIUNITX", frozenset())
+
+
+def _a_bindings_view_is_not_padded_to_its_command(patch: pytest.MonkeyPatch) -> None:
+    view = latex_views.markdown_view
+
+    def broken(source, placeholders, blank=" "):
+        out = list(view(source, [], blank))
+        for p in placeholders:
+            written = ("{{" + p.ref + "}}").ljust(p.end - p.start)
+            out[p.start : p.end] = written[: p.end - p.start]
+        return "".join(out)
+
+    patch.setattr(latex_views, "markdown_view", broken)
+
+
+def _a_typed_table_is_not_recorded(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "TYPED_TABLES", frozenset())
+
+
+def _a_listings_language_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_LANGUAGE", re.compile("(?!)"))
+
+
+def _a_line_break_before_a_bindings_brace_makes_it_malformed(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_BINDING",
+                  re.compile(r"[ \t]*(?:\[[^\]\n]*\])?[ \t]*\{(?P<inner>[^{}\n]*)\}"))  # fmt: skip
 
 
 def _iffalse_hides_its_else(patch: pytest.MonkeyPatch) -> None:
@@ -6376,6 +6457,25 @@ def _the_supplement_s_displays_are_numbered_with_the_paper_s(patch: pytest.Monke
     patch.setattr(pointers, "is_supplementary", lambda root, path: False)
 
 
+def _a_caption_is_not_held_to_its_display(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.findings import Report
+    from manuscript_guard.gates import pointers
+
+    patch.setattr(pointers, "_captions", lambda *given: Report())
+
+
+def _a_table_s_caption_is_read_only_under_it(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import pointers
+
+    patch.setattr(pointers, "_BESIDE", {pointers.FIGURE: (1,), pointers.TABLE: (1,)})
+
+
+def _a_caption_between_two_tables_is_held_to_both(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import pointers
+
+    patch.setattr(pointers, "_NAMES_ONE", all)
+
+
 def _the_methods_are_read_by_their_old_name(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.text import section_names
 
@@ -7300,6 +7400,38 @@ BROKEN = {
     "in LaTeX, an abstract in the preamble is blanked": (
         _an_abstract_in_the_preamble_is_blanked,
         test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a binding is read wherever it is typed, in a comment too": (
+        _a_latex_binding_is_read_wherever_it_is_typed,
+        test_a_latex_binding_is_read_where_it_prints_as_one_and_nowhere_else,
+    ),
+    "in LaTeX, a near spelling of \\mg is taken for nothing": (
+        _a_near_spelling_of_the_binding_is_taken_for_nothing,
+        test_a_latex_binding_is_read_where_it_prints_as_one_and_nowhere_else,
+    ),
+    "in LaTeX, a Markdown binding left in a .tex is taken for nothing": (
+        _a_markdown_binding_in_latex_is_taken_for_nothing,
+        test_a_latex_binding_is_read_where_it_prints_as_one_and_nowhere_else,
+    ),
+    "in LaTeX, siunitx's milligram is taken for a binding": (
+        _siunitx_s_milligram_is_taken_for_a_binding,
+        test_a_latex_binding_is_read_where_it_prints_as_one_and_nowhere_else,
+    ),
+    "in LaTeX, a binding's Markdown view is not padded to its command": (
+        _a_bindings_view_is_not_padded_to_its_command,
+        test_a_latex_binding_is_read_where_it_prints_as_one_and_nowhere_else,
+    ),
+    "in LaTeX, a typed table is not recorded": (
+        _a_typed_table_is_not_recorded,
+        test_a_latex_binding_is_read_where_it_prints_as_one_and_nowhere_else,
+    ),
+    "in LaTeX, a listing's language is not read": (
+        _a_listings_language_is_not_read,
+        test_a_latex_binding_is_read_where_it_prints_as_one_and_nowhere_else,
+    ),
+    "in LaTeX, a line break before a binding's brace makes it malformed": (
+        _a_line_break_before_a_bindings_brace_makes_it_malformed,
+        test_a_latex_binding_is_read_where_it_prints_as_one_and_nowhere_else,
     ),
     "in LaTeX, a command the table lacks hides its arguments": (
         _an_unknown_command_hides_its_arguments,
@@ -8310,6 +8442,18 @@ BROKEN = {
     ),
     "the supplement's tables are numbered with the paper's": (
         _the_supplement_s_displays_are_numbered_with_the_paper_s,
+        test_a_ref_prints_the_number_its_display_has_or_is_said,
+    ),
+    "a caption is not held to the display it stands beside": (
+        _a_caption_is_not_held_to_its_display,
+        test_a_ref_prints_the_number_its_display_has_or_is_said,
+    ),
+    "a table's caption is read only under it": (
+        _a_table_s_caption_is_read_only_under_it,
+        test_a_ref_prints_the_number_its_display_has_or_is_said,
+    ),
+    "a caption between two tables is held to both": (
+        _a_caption_between_two_tables_is_held_to_both,
         test_a_ref_prints_the_number_its_display_has_or_is_said,
     ),
     "the Methods are read by the name G9 had for them": (

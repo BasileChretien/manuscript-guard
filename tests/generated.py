@@ -1459,8 +1459,10 @@ def mean_tables(draw: st.DrawFn) -> tuple[str, list[str], list[Meant]]:
 
 #: The ways a paper prints one number that this one prints otherwise: as it is, its
 #: thousands grouped, a middle dot for the point, a percent sign after it, a minus sign
-#: before it, and to fewer or more places than this paper.
-PRINTINGS = ("as it is", "grouped", "middle dot", "percent", "minus", "coarser", "finer")
+#: before it, to fewer or more places than this paper, and below one with no zero before its
+#: point (".45").
+PRINTINGS = ("as it is", "grouped", "middle dot", "percent", "minus", "coarser", "finer",
+             "no leading zero")  # fmt: skip
 #: What a paper groups thousands with: a comma, a space, a thin space, a no-break space and
 #: a narrow no-break one, by code point since each looks like a space.
 GROUPS = (",", " ", chr(0x2009), chr(0x00A0), chr(0x202F))
@@ -1484,6 +1486,8 @@ def _printed_as(text: str, kind: str, by: str) -> str:
         return text + "%"
     if kind == "minus":
         return text.replace("-", chr(0x2212))
+    if kind == "no leading zero" and text.lstrip("-").startswith("0."):
+        return text.replace("0.", ".", 1)
     return text
 
 
@@ -1501,8 +1505,10 @@ def printings(draw: st.DrawFn) -> list[dict[str, Any]]:
         elif kind == "finer":
             there = draw(st.integers(here + 1, 4))
         else:
-            there = draw(st.integers(0, 3))
-        low, high = (1000.0, 1e7) if kind == "grouped" else (0.001, 999.0)
+            there = draw(st.integers(1 if kind == "no leading zero" else 0, 3))
+        low, high = {"grouped": (1000.0, 1e7), "no leading zero": (0.001, 0.94)}.get(
+            kind, (0.001, 999.0)
+        )
         value = draw(st.floats(low, high, allow_nan=False, allow_infinity=False))
         if kind == "minus" or (kind != "grouped" and draw(st.booleans())):
             value = -value

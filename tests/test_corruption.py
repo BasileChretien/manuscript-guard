@@ -1835,6 +1835,19 @@ def test_a_count_changed_since_the_abstract_fails_at_submission(project: Path, k
     assert _submitted(project) == [("related-number-differs", "fail")]
 
 
+def test_a_count_printed_only_in_the_supplement_is_held_to_the_abstract(project: Path) -> None:
+    main_md = project / "manuscript" / "main.md"
+    text = main_md.read_text(encoding="utf-8")
+    main_md.write_bytes(
+        text.replace("{{results.case.n_serious}} were flagged", "some were flagged").encode()
+    )
+    supplement = project / "manuscript" / "supplementary" / "s1.md"
+    supplement.parent.mkdir(exist_ok=True)
+    supplement.write_bytes(b"# eTable 1\n\n{{results.case.n_serious}} were serious.\n")
+    _earlier_output(project, set_to=("case.n_serious", 3))
+    assert _submitted(project) == [("related-number-differs", "fail")]
+
+
 def test_a_definition_changed_since_the_abstract_is_said_and_does_not_fail(project: Path) -> None:
     _earlier_output(project, set_to=("param.signal.min_cases", 5))
     assert _submitted(project) == [("related-method-differs", "warn")]
@@ -5071,6 +5084,7 @@ def test_a_gate_not_taught_latex_reads_nothing_and_fails_at_submission(project: 
 
 #: The checks that read the manuscript only as Markdown, and those that do not read it.
 _MARKDOWN_ONLY = (
+    "check_related",
     "check_numbers", "check_bound_units", "check_small_cells", "check_citations",
     "check_prose_quotations", "check_journal", "check_reporting", "check_writing",
     "check_methods", "check_synthetic_inputs", "check_reported", "check_recomputed",

@@ -174,8 +174,10 @@ def _files(project: Project, related: Related, output: Output) -> Report:
                     hint="copy the earlier analysis's output there, or take it off `files`",
                 )
             )
+    # An earlier paper of the same authors on other data has nothing to compare: its files
+    # are asked for only where it shares the data or the study as well.
     if (
-        "authors" in output.shares
+        output.overlaps
         and output.project is None
         and not output.files
         and output.files_unavailable is None
@@ -184,7 +186,8 @@ def _files(project: Project, related: Related, output: Output) -> Report:
             _finding(
                 related,
                 "related-files-missing",
-                f"{output.name}: an author of this paper is one of its authors, and neither "
+                f"{output.name}: it shares {' and '.join(output.shares)} with this paper, and "
+                f"neither "
                 f"its project nor its outputs are given, so it can be compared only with "
                 f"what it printed",
                 severity=WARN,
@@ -292,8 +295,8 @@ def _against_copy(
                 "related-taken-elsewhere",
                 f"{output.name}: its copy was taken from {manifest['project']}"
                 + (f" at {manifest['revision']}" if manifest.get("revision") else "")
-                + ", which the entry no longer names",
-                severity=WARN,
+                + ", which the entry no longer names, so another output was compared",
+                severity=strict,
                 line=output.line,
                 hint=f"take it again: `manuscript-guard related --take {output.id}`",
             )
@@ -422,7 +425,7 @@ def _judged(
                     line=line,
                     context=says,
                     hint="give in `manuscript_says` the manuscript's sentence that says why, "
-                    "as it prints it",
+                    "as the manuscript writes it (a binding may be filled in)",
                 ),
             )
         )
@@ -558,8 +561,11 @@ def _recorded(
 _SPACES = str.maketrans({chr(0x00A0): " ", chr(0x2009): " ", chr(0x202F): " ", chr(0x2212): "-"})
 _MIDDLE_DOT = chr(0x00B7)
 #: A number as a paper prints it: a sign, digits that may be grouped by commas or spaces, a
-#: decimal point or a middle dot, and a percent sign.
-_PRINTED = re.compile(r"^([-+]?)(\d{1,3}(?:[, ]\d{3})+|\d+)(?:[." + _MIDDLE_DOT + r"](\d+))?\s?%?$")
+#: decimal point or a middle dot, and a percent sign. The digits before the point may be left
+#: out, as a style that drops the leading zero writes ".45".
+_PRINTED = re.compile(
+    r"^([-+]?)(\d{1,3}(?:[, ]\d{3})+|\d+)?(?:[." + _MIDDLE_DOT + r"](\d+))?\s?%?$"
+)
 
 
 def _printed(text: str) -> tuple[Decimal, int] | None:
@@ -568,8 +574,10 @@ def _printed(text: str) -> tuple[Decimal, int] | None:
     if found is None:
         return None
     sign, whole, fraction = found.groups()
+    if whole is None and fraction is None:
+        return None  # a sign alone, or a percent sign
     try:
-        number = Decimal(sign + re.sub(r"[, ]", "", whole) + "." + (fraction or "0"))
+        number = Decimal(sign + re.sub(r"[, ]", "", whole or "0") + "." + (fraction or "0"))
     except InvalidOperation:
         return None
     return number, len(fraction or "")

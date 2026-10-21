@@ -3803,10 +3803,20 @@ never the project, so CI and a co-author's machine, where the earlier project is
 the author's answer: the lookup's pattern of asking once and keeping what came back. A
 copied file whose digest changed, or a file added beside them, fails from drafting
 (`related-snapshot-edited`), as an edited lookup record does: a result edited in the copy
-compares an invented number. `--take` writes over nothing it did not write. Until one of
-the three is there, an output that shares authors warns (`related-files-missing`), unless
+compares an invented number. Each digest is taken as an analysis's input's is
+(`input_digest`), its line endings folded for `.json`, `.yaml` and `.md`: a plan saved with
+CRLF and committed under the `eol=lf` that `init` writes is checked out with LF everywhere
+else, and was read as an edit on every machine but the author's (round 1 of #391). A file
+whose name begins with a dot, the `.DS_Store` a system leaves, is neither copied nor counted,
+and the fragments' `.sha256` beside them are not copied, since nothing reads them there.
+`--take` writes over nothing it did not write. Until one of
+the three is there, an output that shares the data or the study with authors warns
+(`related-files-missing`); one of the same authors on other data (`shares: [authors]`) is
+listed for what other checks read of it and has nothing to compare (round 1 of #391), unless
 `files_unavailable` says why they cannot be had. A project named and never copied warns, and
-fails at submission (`related-not-taken`): nothing was compared.
+fails at submission (`related-not-taken`): nothing was compared. A copy of another project or revision
+than the entry now names warns, and fails at submission (`related-taken-elsewhere`): it
+compared another output than the one named.
 
 **Numbers: every key both emit, and the pairs the author declares.** Through a copy, each
 results key that both projects emit and both papers print (`quoted`) is compared. A key
@@ -3825,7 +3835,10 @@ value to the sentence by the ledger's own functions (`related-quote-not-in-sourc
 `related-value-not-in-quote`, `related-source-missing`, failing from drafting as the
 ledger's do). The printed value is compared with this paper's as a number, to within half a
 unit of the coarser of the two printings, where both read as one (grouped by commas or
-spaces, a middle dot for the point, a sign, a percent sign), and as text otherwise.
+spaces, a middle dot for the point, a sign, a percent sign, and no zero before the point
+in a style that drops it, ".45"), and as text otherwise. A value YAML would read as a number,
+`1.50` or `0.00005`, is read as typed, and so is a revision that is a short commit of
+digits: read as numbers, `1.50` was `1.5`, which its quote's "1.50" does not state (round 1).
 
 **A difference is explained when the manuscript says why.** The pair or the value records
 the reason (`because`) and the manuscript's sentence that tells the reader
@@ -3850,6 +3863,16 @@ out), or where `disclosed_by` gives the manuscript's sentence that says so, foun
 for an abstract a journal does not want cited. Undisclosed, it warns and fails at submission
 (`related-undisclosed`). No file holds the covering letter, so `submit` lists the outputs to
 declare there.
+
+**The supplement is held as the main text is** (Basile, 2026-10-21): cohort counts and
+definitions often stand in an eTable or the eMethods. On this paper's side, values are
+compared by results key wherever they are printed, so a count bound only in
+`manuscript/supplementary/` is compared like any other, and a sentence that explains a
+difference or discloses the overlap, or a citation of the earlier output, counts in the
+supplement as in the main text: G8 reads the manuscript's files as every gate that reads prose
+does. On the earlier output's side, a copy holds every result its project emitted, those its
+supplement printed among them, and a value read from its text may be quoted from its
+supplement stored beside it (`sources/<citekey>-supplement.pdf`).
 
 `manuscript-guard related` prints every value compared, both printings and what came of it,
 and `--json` the same with the findings: what the author and a panel read, beside what
@@ -9368,6 +9391,11 @@ Open, recorded as each change landed:
   and counts its custodian may forbid outside the team, are committed with this paper. The
   review panel's route B sends nothing under `literature/`; a public repository publishes
   the copy. Which values a project may copy is not yet decided here.
+- **A sentence that explains or discloses is looked for as text, not as a sentence.**
+  `manuscript_says` and `disclosed_by` are found where their words stand together anywhere
+  in the manuscript, as G13 finds a quoted change, so `manuscript_says: "2026"` or
+  `disclosed_by: "abstract"` passes wherever those words are printed (round 1 of #391). A
+  citation in the sentence is matched as the source writes it (`[@key]`), not as printed.
 - **A disclosure is a citation or a sentence, and the covering letter is not read.** An
   overlap counts as disclosed where the earlier output is cited anywhere in the manuscript
   or the declared sentence is printed anywhere: neither is checked to say that the two share

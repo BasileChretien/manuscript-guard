@@ -2586,9 +2586,12 @@ def _take(project, related, wanted: list[str], take, failed) -> int:
             print(f"manuscript-guard: {exc}", file=sys.stderr)
             code = 2
             continue
-        print(f"{output.id}: copied {output.project}"
-              + (f" at {output.revision}" if output.revision else "")
-              + f" into {record.parent.relative_to(project.root).as_posix()}/")  # fmt: skip
+        try:
+            into = record.parent.relative_to(project.root).as_posix()
+        except ValueError:  # `paths:` can put the literature folder outside the project
+            into = str(record.parent)
+        at = f" at {output.revision}" if output.revision else ""
+        print(f"{output.id}: copied {output.project}{at} into {into}/")
     return code
 
 

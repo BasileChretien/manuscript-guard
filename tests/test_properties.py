@@ -5813,6 +5813,9 @@ def _printed_by(pattern: str):
     return lambda patch: patch.setattr(related_gate, "_PRINTED", re.compile(pattern))
 
 
+_a_digit_before_the_point = _printed_by(
+    r"^([-+]?)(\d{1,3}(?:[, ]\d{3})+|\d+)(?:[." + chr(0x00B7) + r"](\d+))?\s?%?$"
+)
 _no_groups_of_thousands = _printed_by(r"^([-+]?)(\d+)(?:[." + chr(0x00B7) + r"](\d+))?\s?%?$")
 _no_middle_dot = _printed_by(r"^([-+]?)(\d{1,3}(?:[, ]\d{3})+|\d+)(?:[.](\d+))?\s?%?$")
 _no_percent_sign = _printed_by(r"^([-+]?)(\d{1,3}(?:[, ]\d{3})+|\d+)(?:[." + chr(0x00B7)
@@ -6248,6 +6251,10 @@ BROKEN = {
     ),
     "a printed value is compared as text only": (
         _a_printed_value_is_text,
+        test_a_value_an_earlier_output_printed_is_this_one_however_it_was_printed,
+    ),
+    "a number with no digit before its point is text": (
+        _a_digit_before_the_point,
         test_a_value_an_earlier_output_printed_is_this_one_however_it_was_printed,
     ),
     "groups of thousands are not read": (

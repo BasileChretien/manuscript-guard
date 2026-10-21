@@ -259,18 +259,73 @@ def test_data_shared_without_authors_needs_no_disclosure(project: Path) -> None:
     assert _found(_check(project, submission=True)) == []
 
 
+# ---------------------------------------------------------------------- the supplement
+
+
+def _supplement(root: Path, text: str) -> None:
+    path = root / "manuscript" / "supplementary" / "s1.md"
+    path.parent.mkdir(exist_ok=True)
+    path.write_bytes(text.encode("utf-8"))
+
+
+def test_the_supplement_is_held_as_the_main_text_is(project: Path, earlier: Path) -> None:
+    """A count printed only in an eTable is compared, and the sentence that explains it and
+    the citation that discloses the overlap count where they stand in the supplement."""
+    main_md = project / "manuscript" / "main.md"
+    text = main_md.read_text(encoding="utf-8")
+    text = text.replace("{{results.case.n_serious}} were flagged", "some were flagged")
+    main_md.write_bytes(text.replace("@fictionalClassSignal2019", f"@{CITED}").encode("utf-8"))
+    _supplement(project, "# eTable 1\n\nOf the cases, {{results.case.n_serious}} were serious.\n")
+    _set(earlier, "case.n_serious", 30, "30")
+    entry = _entry(project="../earlier", citekey="fictionalClassSignal2019",
+                   shares=["data", "authors"])  # fmt: skip
+    _declare(project, entry)
+    _take(project)
+    assert _found(_check(project, submission=True)) == [
+        ("related-undisclosed", FAIL), ("related-number-differs", FAIL),
+    ]  # fmt: skip
+    pair = {"earlier": "case.n_serious", "here": "case.n_serious",
+            "because": "a later cut-off", "manuscript_says": SENTENCE}  # fmt: skip
+    _declare(project, {**entry, "pairs": [pair]})
+    _supplement(project, f"# eTable 1\n\nOf the cases, {{{{results.case.n_serious}}}} were "
+                f"serious [@fictionalClassSignal2019].\n\n{SENTENCE}\n")  # fmt: skip
+    assert _found(_check(project, submission=True)) == [("related-number-explained", INFO)]
+
+
+def test_a_value_may_be_quoted_from_the_earlier_output_s_supplement(project: Path) -> None:
+    path = project / "literature" / "sources" / "abstract2025-supplement.txt"
+    path.write_bytes(b"eTable 2. Of 28 serious reports, most were of older patients.")
+    value = {"here": "case.n_serious", "value": "28",
+             "source_file": "sources/abstract2025-supplement.txt",
+             "quote": "Of 28 serious reports, most were of older patients."}  # fmt: skip
+    _declare(project, _entry(values=[value]))
+    assert _found(_check(project)) == []
+    path.write_bytes(b"eTable 2. Of 30 serious reports, most were of older patients.")
+    _declare(project, _entry(values=[{**value, "value": "30", "quote": value["quote"].replace(
+        "28", "30")}]))  # fmt: skip
+    assert _found(_check(project)) == [("related-number-differs", WARN)]
+
+
 # ---------------------------------------------------------------------- asking for files
 
 
 def test_an_output_of_our_own_authors_asks_for_its_files(project: Path) -> None:
-    _declare(project, _entry(citekey=CITED, shares=["authors"]))
+    _declare(project, _entry(citekey=CITED, shares=["data", "authors"]))
     assert _found(_check(project, submission=True)) == [("related-files-missing", WARN)]
-    _declare(project, _entry(citekey=CITED, shares=["authors"], files_unavailable="the sponsor"))
+    _declare(project, _entry(citekey=CITED, shares=["data", "authors"],
+                             files_unavailable="the sponsor"))  # fmt: skip
     assert _found(_check(project)) == []
 
 
+def test_a_paper_of_our_own_authors_on_other_data_asks_for_nothing(project: Path) -> None:
+    """Listed for the text it may share, it has no numbers to compare (round 1 of #391)."""
+    _declare(project, _entry(citekey="ours2023", shares=["authors"]))
+    assert _found(_check(project, submission=True)) == []
+
+
 def test_a_named_output_file_must_be_there(project: Path) -> None:
-    _declare(project, _entry(shares=["authors"], files=["related/abstract/files/counts.csv"]))
+    _declare(project, _entry(shares=["data", "authors"], citekey=CITED,
+                             files=["related/abstract/files/counts.csv"]))  # fmt: skip
     assert _found(_check(project)) == [("related-file-missing", WARN)]
 
 
@@ -309,6 +364,8 @@ def test_a_copy_of_another_revision_is_said(project: Path, earlier: Path) -> Non
     _take(project)
     _declare(project, _entry(project="../earlier", revision="v1"))
     assert _found(_check(project)) == [("related-taken-elsewhere", WARN)]
+    # Round 1: compared with another output than the one named, it does not go out so.
+    assert _found(_check(project, submission=True)) == [("related-taken-elsewhere", FAIL)]
 
 
 def _git(root: Path, *args: str) -> None:
@@ -337,6 +394,71 @@ def test_a_revision_is_copied_as_it_was_committed(project: Path, earlier: Path) 
     record = _take(project)
     assert yaml.safe_load(record.read_text(encoding="utf-8"))["uncommitted"] is True
     assert _found(_check(project)) == [("related-number-differs", WARN)]
+
+
+def test_a_copy_checked_out_with_other_line_endings_is_not_edited(
+    project: Path, earlier: Path
+) -> None:
+    """Round 1: a plan saved with CRLF and committed under `eol=lf` is checked out with LF on
+    every other machine, and that is no edit of the copy."""
+    plan = earlier / "design" / "plan.md"
+    plan.write_bytes(plan.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
+    _declare(project, _entry(project="../earlier"))
+    record = _take(project)
+    copied = record.parent / "design" / "plan.md"
+    assert b"\r\n" in copied.read_bytes()
+    copied.write_bytes(copied.read_bytes().replace(b"\r\n", b"\n"))
+    assert _found(_check(project)) == []
+
+
+def test_files_a_system_leaves_in_a_copy_are_not_edits(project: Path, earlier: Path) -> None:
+    _declare(project, _entry(project="../earlier"))
+    record = _take(project)
+    (record.parent / "results" / ".DS_Store").write_bytes(b"\0\0\0\1Bud1")
+    assert _found(_check(project)) == []
+    _take(project)
+    assert (record.parent / "results" / ".DS_Store").is_file()
+
+
+def test_a_revision_or_a_value_typed_as_a_number_is_read_as_typed(project: Path) -> None:
+    """Round 1: YAML reads `1.50` as 1.5 and a short commit of digits as an integer."""
+    quote = "an odds ratio of 1.50 (95% CI 1.20 to 1.90) in the abstract"
+    _source(project, quote)
+    (project / "literature" / "related.yaml").write_bytes(
+        b"schema: manuscript-guard/related/1\n"
+        b"outputs:\n"
+        b"  - id: abstract\n"
+        b"    kind: abstract\n"
+        b"    title: An abstract\n"
+        b"    shares: [data]\n"
+        b"    project: ../earlier\n"
+        b"    revision: 4127830\n"
+        b"    values:\n"
+        b"      - here: ror.point\n"
+        b"        value: 1.50\n"
+        b"        source_file: sources/abstract2025.txt\n"
+        b"        quote: " + quote.encode() + b"\n"
+    )
+    loaded, _ = load_related(load_project(project)[0])
+    (output,) = loaded.outputs
+    assert (output.revision, output.values[0].value) == ("4127830", "1.50")
+    found = [f for f in _check(project).findings if f.code != "related-not-taken"]
+    assert [f.code for f in found] == ["related-number-differs"]
+    assert "ror.point is 1.50 there" in found[0].message
+
+
+def test_take_names_a_copy_outside_the_project_by_its_path(
+    project: Path, earlier: Path, capsys
+) -> None:
+    shutil.move(project / "literature", project.parent / "lit")
+    paper = project / "paper.yaml"
+    # An absolute path: one relative to the project, `../lit`, is still printed from it.
+    outside = (project.parent / "lit").as_posix()
+    paper.write_bytes(paper.read_bytes() + f"\npaths:\n  literature: '{outside}'\n".encode())
+    record = {"schema": "manuscript-guard/related/1", "outputs": [_entry(project="../earlier")]}
+    (project.parent / "lit" / "related.yaml").write_bytes(yaml.safe_dump(record).encode())
+    assert main(["related", str(project), "--take"]) == 0
+    assert str(project.parent / "lit" / "related" / "abstract") in capsys.readouterr().out
 
 
 def test_take_writes_over_nothing_it_did_not_write(project: Path, earlier: Path) -> None:
@@ -434,6 +556,9 @@ def test_a_value_from_the_text_of_a_key_this_paper_lacks_says_so(project: Path) 
         ("3" + chr(0x00B7) + "84", "3.84", 3.843972469205093, True),
         ("36.4%", "36.4", 36.36363636363637, True),
         (chr(0x2212) + "0.4", "-0.4", -0.4, True),
+        (".45", "0.45", 0.45, True),
+        ("-.45", "-0.45", -0.45, True),
+        (".46", "0.45", 0.45, False),
         ("met", "met", "met", True),
         ("not met", "met", "met", False),
     ],
@@ -447,6 +572,7 @@ def test_a_printed_value_is_read_as_the_number_it_prints(
 
 def test_a_printed_value_that_is_no_number_is_text() -> None:
     assert _printed("2.3 (1.9 to 2.8)") is None and _printed("1,23") is None
+    assert _printed("-") is None and _printed("%") is None and _printed(".") is None
 
 
 # ---------------------------------------------------------------------- the record
@@ -476,8 +602,7 @@ def test_two_outputs_of_one_id_are_refused(project: Path) -> None:
 
 
 def test_a_finding_points_at_its_entry(project: Path) -> None:
-    path = _declare(project, _entry(citekey="x", shares=["authors"]), _entry(id="second",
-                    shares=["authors"]))  # fmt: skip
+    path = _declare(project, _entry(project="../a"), _entry(id="second", project="../b"))
     lines = path.read_text(encoding="utf-8").splitlines()
     found = _check(project).findings
     assert [lines[f.line - 1].strip() for f in found] == ["- id: abstract", "- id: second"]

@@ -43,7 +43,8 @@ is an overlap the journal must be told of (section 4).
 
 ## 2. Ask for the earlier work's own files
 
-Where an author of this paper is an author of the earlier output, ask for that work's files,
+Where an author of this paper is an author of the earlier output and it used the same data
+or the same study, ask for that work's files,
 in these words or near them: "You wrote the earlier output. Its own files make the comparison
 exact rather than read from a PDF: where is its manuscript-guard project, and which commit or
 tag was it submitted from? If it had none, where are its analysis outputs?"
@@ -105,6 +106,11 @@ one of the entry's `files`). The literature-verify skill says how to get and sto
 ```
 
 A value printed to fewer places ("2.3" there, "2.31" here) is the same value.
+
+The supplement counts as the paper does, on both sides. Cohort counts and definitions often
+stand in an eTable or the eMethods: store the earlier output's supplement beside its main text
+(`sources/<citekey>-supplement.pdf`) and quote values from it the same way. In this paper, a
+sentence or a citation in `manuscript/supplementary/` counts as one in the main text.
 
 ## 4. Each difference, and the overlap
 

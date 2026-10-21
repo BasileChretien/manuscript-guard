@@ -137,7 +137,7 @@ a revision.
    Where a finding asks the authors for something, say what with "ask": "disclosure" to \
 report what they already have, "computation" for a new number, "new-data" for data they do \
 not have. A computation ask says why the numbers and tables already reported cannot answer it.
-5. Give one verdict on the paper as seen from your remit: pass, minor-revision, \
+{edits}5. Give one verdict on the paper as seen from your remit: pass, minor-revision, \
 major-revision or reject.
 6. Judge only what you are shown. Do not assume content you were not given, and do not \
 invent a quotation, a number or a reference.
@@ -165,11 +165,12 @@ remit reaches",
   ],
   "findings": [
     {{"severity": "major" | "minor" | "comment", "where": "the section or sentence", \
-"ask": "disclosure" | "computation" | "new-data", "finding": "what is wrong and why it matters"}}
+"ask": "disclosure" | "computation" | "new-data", "finding": "what is wrong and why it matters"\
+{edit_shape}}}
   ]
 }}
 
-"where" and "ask" may be left out of a finding. "findings" is an empty list if you found \
+{left_out} may be left out of a finding. "findings" is an empty list if you found \
 nothing. Add no other keys. An answer that is not exactly this object is discarded unread.
 """
 
@@ -226,6 +227,23 @@ def _rewritten(text: str, changes: tuple[tuple[str, str], ...]) -> str:
 
 DESIGN_SYSTEM = _rewritten(SYSTEM, _DESIGN_CHANGES)
 
+#: What a reader of the manuscript is told of suggesting edits (`suggestions`), and the
+#: shape of one in the answer. A design round reads the plan, whose words are not the
+#: manuscript's, and is told nothing of them.
+EDITS = """\
+   Where the fix for a finding is a matter of wording, the finding may carry "edits": each \
+the manuscript's words to replace, copied exactly as they stand ("old"), and the words to \
+put in their place ("new"). Quote enough words for "old" to appear only once in the \
+manuscript. An edit changes words only: never a number, a citation, a table or a figure, \
+nothing across two paragraphs, and no markup. Give at most 10 edits in all. The authors see \
+each edit as a tracked change under your name in their document, and accept or refuse it.
+"""
+_EDIT_SHAPE = ', "edits": [{"old": "the words as they stand", "new": "the words in their place"}]'
+_TOLD = {
+    False: {"edits": EDITS, "edit_shape": _EDIT_SHAPE, "left_out": '"where", "ask" and "edits"'},
+    True: {"edits": "", "edit_shape": "", "left_out": '"where" and "ask"'},
+}
+
 
 def system_text(reviewer: dict, *, design: bool = False) -> str:
     """The instructions for one reviewer. Its panel entry is the only thing that varies,
@@ -236,7 +254,7 @@ def system_text(reviewer: dict, *, design: bool = False) -> str:
     lines.append(f"Your remit: {str(reviewer['remit']).strip()}")
     if str(reviewer.get("why") or "").strip():
         lines.append(f"Why you were asked: {reviewer['why'].strip()}")
-    return (DESIGN_SYSTEM if design else SYSTEM).format(who="\n".join(lines))
+    return (DESIGN_SYSTEM if design else SYSTEM).format(who="\n".join(lines), **_TOLD[design])
 
 
 def _block(label: str, text: str) -> str:

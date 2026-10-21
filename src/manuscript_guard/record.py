@@ -596,3 +596,94 @@ def write_figure_review(
         newline="\n",
     )
     return Written(path=path, panel=None)
+
+
+def answer_finding(path: Path, finding: str, answer: dict[str, object]) -> None:
+    """Add `answer` (`resolution`, `resolved_on`, `overridden`, `overridden_by`) to the
+    finding `finding` of the review record at `path`, and change nothing else in the file.
+
+    What the reader wrote is sealed and an answer is outside the seal, so the lines are put
+    in after the finding's last line, at its keys' indentation, and the rest of the file,
+    its comments and wrapping, stays as it was. The file is read again with the lines in,
+    and if it does not then say what it said with the answer added to that finding,
+    nothing is written: the author answers it by hand.
+    """
+    import yaml
+
+    data = path.read_bytes()
+    try:
+        text = data.decode("utf-8")
+        before = yaml.safe_load(text)
+        root = yaml.compose(text)
+    except (UnicodeDecodeError, yaml.YAMLError) as exc:
+        raise RecordError(f"{path.name} cannot be read: {exc}") from None
+    newline = "\r\n" if "\r\n" in text else "\n"
+    target = _finding_node(root, finding)
+    if target is None or target.flow_style or not target.value:
+        raise RecordError(f"{path.name} has no finding {finding} written as a block of keys")
+    indent = target.value[0][0].start_mark.column
+    # After the line the finding's last value ends on: its last scalar's, since a block's
+    # end is where the next thing starts, which may be the next finding's dash or a comment.
+    last = target.value[-1][1]
+    while isinstance(last, (yaml.MappingNode, yaml.SequenceNode)) and last.value:
+        last = last.value[-1][1] if isinstance(last, yaml.MappingNode) else last.value[-1]
+    at = last.end_mark.index
+    while at > 0 and text[at - 1] in " \t\r\n":
+        at -= 1
+    line_end = text.find("\n", at)
+    at = len(text) if line_end < 0 else line_end + 1
+    lines = "".join(
+        " " * indent
+        + yaml.safe_dump({key: value}, allow_unicode=True, width=10**6, sort_keys=False)
+        .rstrip("\n")
+        .replace("\n", newline + " " * indent)
+        + newline
+        for key, value in answer.items()
+    )
+    head = text[:at]
+    if head and not head.endswith("\n"):
+        head += newline
+    written = head + lines + text[at:]
+    expected = _answered_copy(before, finding, answer)
+    try:
+        same = expected is not None and yaml.safe_load(written) == expected
+    except yaml.YAMLError:
+        same = False
+    if not same:
+        raise RecordError(
+            f"{path.name}: the answer to {finding} could not be added without changing "
+            "anything else in the file"
+        )
+    path.write_bytes(written.encode("utf-8"))
+
+
+def _finding_node(root, finding: str):
+    import yaml
+
+    if not isinstance(root, yaml.MappingNode):
+        return None
+    for key, value in root.value:
+        if key.value == "findings" and isinstance(value, yaml.SequenceNode):
+            for item in value.value:
+                if isinstance(item, yaml.MappingNode) and any(
+                    k.value == "id" and isinstance(v, yaml.ScalarNode) and v.value == finding
+                    for k, v in item.value
+                ):
+                    return item
+    return None
+
+
+def _answered_copy(document: object, finding: str, answer: dict[str, object]) -> dict | None:
+    """The record as it should read with the answer added, or None where the finding is
+    not there once, or has an answer already."""
+    if not isinstance(document, dict) or not isinstance(document.get("findings"), list):
+        return None
+    hits = [f for f in document["findings"] if isinstance(f, dict) and f.get("id") == finding]
+    if len(hits) != 1 or any(key in hits[0] for key in answer):
+        return None
+    return {
+        **document,
+        "findings": [
+            {**f, **answer} if f is hits[0] else f for f in document["findings"]
+        ],
+    }

@@ -935,6 +935,19 @@ def _g6_looks_for_a_placeholder_in_the_prose_only(patch: pytest.MonkeyPatch) -> 
     patch.setattr(writing_gate, "_latex_typed", writing_gate._latex_prose)
 
 
+def _g6_reads_a_latex_file_whole_as_typed(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(writing_gate, "_latex_typed", lambda source: source.text)
+
+
+def _g6_reads_a_typed_reference_list(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "REFERENCES", "nothing")
+
+
+def _g6_takes_nocite_for_a_claims_support(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(writing_gate, "_cited_at",
+                  lambda source: [found.start for found in source.reading.cited])  # fmt: skip
+
+
 def _a_floats_words_are_printed(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(latex_mask, "FLOATS", frozenset())
 
@@ -7668,6 +7681,18 @@ BROKEN = {
     ),
     "in LaTeX, G6 takes no citation command for a claim's support": (
         _g6_takes_no_latex_citation,
+        test_g6_judges_a_latex_document_where_it_prints_and_by_its_citations,
+    ),
+    "in LaTeX, G6 reads a file whole as typed, its preamble too": (
+        _g6_reads_a_latex_file_whole_as_typed,
+        test_g6_judges_a_latex_document_where_it_prints_and_by_its_citations,
+    ),
+    "in LaTeX, G6 reads a typed reference list": (
+        _g6_reads_a_typed_reference_list,
+        test_g6_judges_a_latex_document_where_it_prints_and_by_its_citations,
+    ),
+    "in LaTeX, G6 takes \\nocite for a claim's support": (
+        _g6_takes_nocite_for_a_claims_support,
         test_g6_judges_a_latex_document_where_it_prints_and_by_its_citations,
     ),
     "in LaTeX, G6 reads a comment as prose": (

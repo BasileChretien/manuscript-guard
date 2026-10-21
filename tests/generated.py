@@ -892,6 +892,11 @@ LATEX_WRITING_PLACES = (
     ("% We delve into {} here.\n", "none"),
     ("% TODO {}\n", "artefact"),
     ("Studies have shown that {} rose.\n", "vague"),
+    # `\\nocite` prints nothing beside a claim, and a typed reference list is no text of the
+    # paper (round 1 of step 7b).
+    ("Studies have shown that {} rose \\nocite{{c}}.\n", "vague"),
+    ("\\begin{{thebibliography}}{{9}}\\bibitem{{g}} Garcia J. Todo lo que {} hay. 2020.\n"
+     "\\end{{thebibliography}}\n", "none"),
 )  # fmt: skip
 #: Words between two places, more than G6's citation window, so that a claim stands near a
 #: citation only where one is planted beside it.
@@ -905,7 +910,8 @@ def latex_writing(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
     place is in every document, so that a rule broken for one is seen in each."""
     order = draw(st.permutations(range(len(LATEX_WRITING_PLACES))))
     planted: list[tuple[str, str]] = []
-    text = "\\documentclass{article}\n\\begin{document}\n"
+    # A package named for a note is no note (round 1 of step 7b).
+    text = "\\documentclass{article}\n\\usepackage[final]{fixme}\n\\begin{document}\n"
     for index in order:
         template, kind = LATEX_WRITING_PLACES[index]
         key = f"k{4101 + len(planted)}"

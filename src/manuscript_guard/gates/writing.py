@@ -209,21 +209,44 @@ def _read_latex(
 
 def _latex_typed(source) -> str:
     """A LaTeX file as typed, where an artefact or a placeholder is looked for, in a comment
-    too, as in a Markdown file's comment."""
-    return source.text
+    too, as in a Markdown file's comment. Its preamble is as the reader reads it, the title
+    and an abstract: a package's name is no text, `\\usepackage{fixme}` none. A reference list
+    typed in `thebibliography` is blanked, its titles held as `references.bib`'s are (round 1
+    of step 7b)."""
+    from manuscript_guard.text.latex.mask import NUL
+
+    reading = source.reading
+    body = reading.body_start if reading.body_start >= 0 else len(source.text)
+    typed = reading.masked[:body].replace(NUL, " ") + source.text[body:]
+    return _blank(typed, reading.references)
 
 
 def _latex_prose(source) -> str:
-    """A LaTeX file's prose, the phrases' and the residue's: what the reader keeps, at the
-    same offsets, a space where it blanks."""
+    """A LaTeX file's prose, the phrases', the residue's and the rates': what the reader
+    keeps, at the same offsets, a space where it blanks; but a typed table's cells and a
+    reference list, as a Markdown table's rows count no words and its references are none of
+    the source (round 1 of step 7b)."""
     from manuscript_guard.text.latex.mask import NUL
 
-    return source.reading.masked.replace(NUL, " ")
+    reading = source.reading
+    return _blank(reading.masked.replace(NUL, " "), (*reading.tables, *reading.references))
+
+
+def _blank(text: str, spans) -> str:
+    """`text` with each span a space, its line breaks kept."""
+    chars = list(text)
+    for start, end in spans:
+        for index in range(start, end):
+            if chars[index] != "\n":
+                chars[index] = " "
+    return "".join(chars)
 
 
 def _cited_at(source) -> list[int]:
-    """Where each citation command of a LaTeX file stands, as `[@...]` stands in Markdown."""
-    return [found.start for found in source.reading.cited]
+    """Where each citation command of a LaTeX file stands, as `[@...]` stands in Markdown;
+    not `\\nocite`, which prints nothing beside a claim (round 1 of step 7b)."""
+    return [found.start for found in source.reading.cited
+            if not source.text.startswith("\\nocite", found.start)]  # fmt: skip
 
 
 def rates(corpus: list[tuple[Path, str]], rules: Rules | None = None) -> dict[str, float]:

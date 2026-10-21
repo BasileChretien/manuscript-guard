@@ -79,6 +79,15 @@ class Apart:
 
 
 @dataclass(frozen=True)
+class Changed:
+    """Why a model or a section of the plan rightly differs from the earlier output's."""
+
+    model: str | None
+    plan_section: str | None
+    because: str
+
+
+@dataclass(frozen=True)
 class Output:
     id: str
     kind: str
@@ -94,6 +103,7 @@ class Output:
     values: tuple[Recorded, ...]
     disclosed_by: str | None
     line: int | None
+    methods: tuple[Changed, ...] = ()
 
     @property
     def name(self) -> str:
@@ -205,6 +215,10 @@ def _output(entry: dict, where: tuple[int | None, dict, int]) -> Output:
         ),
         disclosed_by=text("disclosed_by"),
         line=line,
+        methods=tuple(
+            Changed(text("model", changed), text("plan_section", changed), str(changed["because"]))
+            for changed in entry.get("methods", ())
+        ),
     )
 
 

@@ -4164,10 +4164,11 @@ _RESULTS_STATEMENT_HEADINGS = ("Data sharing", "Consent", "Funding and conflicts
 _PART_PLANTED = {
     "statement": "statement", "results statement": "results", "discussion": "discussion",
 }  # fmt: skip
-#: Titles that open with a statement's words and are the paper's own matter.
+#: Titles that open with a statement's words, or a supplement's prefix, and are the paper's
+#: own matter.
 _LIKE_A_STATEMENT = (
     "Funding sources of the included trials", "Data sharing in pharmacovigilance",
-    "Ethical issues in prescribing",
+    "Ethical issues in prescribing", "Online discussion forums", "Online consent",
 )  # fmt: skip
 #: Words of its own the earlier paper has between two runs: more than a passage may differ
 #: by, so that no two runs are one passage.
@@ -6676,7 +6677,13 @@ def _the_conclusions_are_a_part_of_their_own(patch: pytest.MonkeyPatch) -> None:
 
 def _a_supplement_s_heading_names_no_part(patch: pytest.MonkeyPatch) -> None:
     # Before round 7 of the review: "Supplementary discussion" named no part.
-    patch.setattr(recycling_gate, "_SUPPLEMENT_PREFIX", re.compile(r"(?!)"))
+    patch.setattr(recycling_gate, "_SUPPLEMENT_PART", re.compile(r"(?!)"))
+
+
+def _a_supplement_s_prefix_comes_off_any_heading(patch: pytest.MonkeyPatch) -> None:
+    # Round 7's fix, which round 8 found read "Online discussion forums" as the Discussion.
+    patch.setattr(recycling_gate, "_SUPPLEMENT_PART", re.compile(
+        r"(?:(?i:supplement(?:ary|al)|online)\s+|e(?=[A-Z][a-z]))(?P<part>.*)"))  # fmt: skip
 
 
 def _sic_is_a_word_of_the_source(patch: pytest.MonkeyPatch) -> None:
@@ -7358,6 +7365,10 @@ BROKEN = {
     ),
     "a supplement's heading names no part": (
         _a_supplement_s_heading_names_no_part,
+        test_a_passage_of_an_earlier_paper_is_found_where_it_stands_however_it_is_set,
+    ),
+    "a supplement's prefix comes off any heading": (
+        _a_supplement_s_prefix_comes_off_any_heading,
         test_a_passage_of_an_earlier_paper_is_found_where_it_stands_however_it_is_set,
     ),
     "a heading that opens with a statement's words is a statement": (

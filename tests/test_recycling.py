@@ -185,6 +185,18 @@ def test_the_supplement_is_held_to_the_norms_the_main_text_is(
     assert finding.line == written_as.count("\n") + 1  # the passage is the file's last line
 
 
+def test_a_heading_that_only_opens_like_a_supplement_s_part_names_none() -> None:
+    """Round 8 of the review: "Online discussion forums" under the Methods was read as the
+    Discussion, which unnamed the Methods, and a cited description warned."""
+    text = (
+        f"## Methods\n\n### Data source\n\n{DESCRIPTION} As before [@{KEY}].\n\n"
+        f"### Online discussion forums\n\nWords.\n\n### Online consent\n\n{CAVEAT}\n\n"
+        "### Statistical methods\n\nWords.\n"
+    )
+    found = [(p.kind, p.cited) for p in recycling_gate.recycled_in(text, EARLIER, KEY)]
+    assert found == [("methods", True), ("methods", False)]
+
+
 def test_a_citation_in_another_paragraph_does_not_cite_the_passage(project: Path) -> None:
     """The norms ask for the citation where the words are reused: the paragraph."""
     stored(project)

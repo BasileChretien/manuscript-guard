@@ -2067,9 +2067,11 @@ fallback, as it is for the chain.
 material is held to the same rules). Every Markdown file under `manuscript/supplementary/`
 is read with the rest, as every gate that reads the manuscript reads it; a LaTeX manuscript
 is not read by this check yet, and G7 says so (`not-read-in-latex`). The supplement's
-headings name its parts as the main text's do, a prefix read through: "Supplementary
-discussion", "Supplemental results" and JAMA's "eResults" are the Discussion and the Results
-(round 7 of the review: they named none). Its Supplementary Methods are the Methods: a
+headings name its parts as the main text's do: a title that is a supplement's name for a part
+and nothing else, "Supplementary discussion", "Supplemental results", JAMA's "eResults", is
+that part (round 7 of the review: they named none). Only the whole title: "Online discussion
+forums" or "eConsent" names no part (round 8: a prefix taken off any heading read "Online
+discussion forums" under the Methods as the Discussion, which unnamed the Methods). Its Supplementary Methods are the Methods: a
 description reused there with its source cited in the paragraph is a note, and one that does
 not cite it warns from internal-review. A similarity check reads the supplement as it reads
 the paper.

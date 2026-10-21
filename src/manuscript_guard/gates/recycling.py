@@ -149,10 +149,15 @@ _REFERENCES = re.compile(r"(?:references|bibliography|(?:literature|works)\s+cit
                          re.IGNORECASE)  # fmt: skip
 #: A footnote's mark in a heading, which is no part of its title.
 _FOOTNOTE_MARK = re.compile(r"\[\^[^\]\n]*\]")
-#: What a supplement's heading opens with before the part it names: "Supplementary
-#: discussion", "Online methods", and JAMA's "eResults", whose "e" is a small letter before a
-#: capital ("Ethics" and "eGFR" keep theirs).
-_SUPPLEMENT_PREFIX = re.compile(r"(?i:supplement(?:ary|al)|online)\s+(?=\w)|e(?=[A-Z][a-z])")
+#: A supplement's heading that names a part and nothing else: "Supplementary discussion",
+#: "Online methods", JAMA's "eResults", whose "e" is a small letter before a capital. The
+#: whole title, so that "Online discussion forums" or "eConsent" names no part (round 8 of
+#: the review: a prefix taken off any heading read "Online discussion forums" under the
+#: Methods as the Discussion).
+_SUPPLEMENT_PART = re.compile(
+    r"(?:(?i:supplement(?:ary|al)|online)\s+|e(?=[A-Z]))"
+    r"(?P<part>(?i:introduction|background|methods|results|discussion|conclusions?))\W*$"
+)
 
 METHODS = "methods"
 INTRODUCTION = "introduction"
@@ -286,7 +291,9 @@ def _kind_of(title: str, is_methods: bool, abstract_title: str | None) -> str | 
     Results (round 7 of the review: they named none, and a passage there was given the
     advice for text under no heading)."""
     shown = _FOOTNOTE_MARK.sub("", plain(title)).strip()
-    shown = _SUPPLEMENT_PREFIX.sub("", shown, count=1)
+    supplement = _SUPPLEMENT_PART.match(shown)
+    if supplement:
+        shown = supplement["part"]
     if names_abstract(shown, abstract_title):
         return ABSTRACT
     if names_results(shown):

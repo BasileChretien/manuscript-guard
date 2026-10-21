@@ -130,6 +130,21 @@ def document_digest(project: Project) -> str:
         if path.exists():
             digest.update(name.encode("utf-8"))
             digest.update(hashlib.sha256(path.read_bytes()).hexdigest().encode("ascii"))
+
+    # Each figure's alternative text, which the build writes into its picture from the
+    # figure's guard file (`gates/figure_alt.py`). Only where there is one, so a project
+    # without keeps the stamp it had. A manuscript file that cannot be read places no
+    # figure here: G0 says why.
+    from manuscript_guard.contracts import ContractError
+    from manuscript_guard.gates.figure_alt import alt_texts
+
+    try:
+        alts = alt_texts(project)
+    except ContractError:
+        alts = []
+    for name, _sidecar, raw in alts:
+        digest.update(f"alt:{name}".encode())
+        digest.update(hashlib.sha256(raw.encode("utf-8")).hexdigest().encode("ascii"))
     return digest.hexdigest()
 
 
@@ -138,6 +153,9 @@ def document_digest(project: Project) -> str:
 #: (`resolution`, `resolved_on`, `overridden`, `overridden_by`), and those stay out of the
 #: seal.
 READER_FINDING_FIELDS = ("id", "severity", "where", "finding")
+#: The reader's fields a finding may leave out, sealed only where it has them, so that a
+#: record sealed before a finding could have one keeps its seal.
+SEALED_WHERE_GIVEN = ("ask", "edits")
 
 
 def reading_digest(document: dict) -> str:
@@ -160,8 +178,10 @@ def reading_digest(document: dict) -> str:
         "findings": [
             # What a finding asks is the reader's too, and sealed where it is said: only
             # there, so that every record sealed before findings could ask keeps its seal.
+            # So are the edits it suggests, which become tracked changes in the author's
+            # document under the reader's name.
             {field: finding.get(field) for field in READER_FINDING_FIELDS}
-            | ({"ask": finding["ask"]} if "ask" in finding else {})
+            | {field: finding[field] for field in SEALED_WHERE_GIVEN if field in finding}
             for finding in document.get("findings") or []
         ],
     }
@@ -902,6 +922,25 @@ def round_summaries(project: Project) -> list[RoundSummary]:
                 )
         summaries.append(RoundSummary(number, path, tuple(readings)))
     return summaries
+
+
+def filed_readings(
+    project: Project, number: int
+) -> list[tuple[str, str | None, Path, dict]]:
+    """Each reading of round `number` the gate counts, as (reviewer, reader, path,
+    document), in the panel's order: what `review --suggestions` takes edits from. A reading
+    the gate refuses, or a panel that does not fit its schema, gives none."""
+    path = panel_path(project, number)
+    if not path.exists():
+        return []
+    document = read_structured(path)
+    if not validate(document, "panel", path, gate=GATE).ok or not isinstance(document, dict):
+        return []
+    found = []
+    for reviewer in document["reviewers"]:
+        filed, _problems, _incomplete = _readings(project, number, reviewer, WARN)
+        found += [(reviewer["id"], r.reader, r.path, r.document) for r in filed]
+    return found
 
 
 def overrides(project: Project) -> list[dict]:

@@ -1646,6 +1646,8 @@ def test_a_synthetic_run_nothing_quotes_is_not_said(project: Path) -> None:
         if other != main:
             other.write_text(re.sub(r"\{\{\s*(?:results|table)\.[^}]*\}\}", "[elided]",
                                     other.read_text(encoding="utf-8")), encoding="utf-8")
+    # The figure's alternative text quotes results too, which the build prints.
+    _alt(project, None)
     assert _synthetic_said(project) == []
 
 
@@ -1952,6 +1954,103 @@ def test_a_quotation_is_looked_for_in_every_stored_file_of_its_work(project: Pat
     (sources / "fictionalAgencyReport.txt").write_text(
         "It was acceptable in all but the frailest patients, the agency said.\n", "utf-8")
     assert said() == []
+
+
+# --------------------------------------------- a cited statement's supporting passage
+
+#: The example's passage, as `literature/passages.yaml` records it.
+_SIGNAL = "A signal was detected for the class as a whole"
+
+
+def _passage_findings(project: Path) -> list[tuple[str, str]]:
+    from manuscript_guard.gates import check_passages
+
+    found = check_passages(load_project(project)[0], "internal-review").findings
+    return [(f.code, f.severity) for f in found if f.code != "statements-without-passage"]
+
+
+def _recorded(project: Path, old: str, new: str) -> None:
+    path = project / "literature" / "passages.yaml"
+    text = path.read_text(encoding="utf-8")
+    assert old in text, old
+    path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "said"),
+    [
+        pytest.param(_SIGNAL, "A signal was found for the class as a whole",
+                     [("passage-not-in-source", "fail")], id="a word retyped"),
+        pytest.param(_SIGNAL, "Incidence rose with age and did not differ meaningfully by sex",
+                     [("passage-not-in-source", "fail")], id="another work's words"),
+        pytest.param(_SIGNAL, "as a whole [...] A signal was detected",
+                     [("passage-not-in-source", "fail")], id="pieces out of order"),
+        pytest.param(_SIGNAL, "A signal was detected [...] lass as a whole",
+                     [("passage-not-in-source", "fail")], id="a piece inside a longer word"),
+        pytest.param(_SIGNAL, "detected for the", [("passage-too-short", "warn")],
+                     id="three words"),
+        # Round 1 of #374: a passage that is all elision leaves no word to look for, and was
+        # verified.
+        pytest.param(f'"{_SIGNAL}"', '"[...]"',
+                     [("passage-not-in-source", "fail"), ("passage-too-short", "warn")],
+                     id="nothing but an elision"),
+        # Round 2 of #374: a passage of no letter but in its source was said to hold no word.
+        pytest.param(f'"{_SIGNAL}"', '"2.6, 95%"', [("passage-too-short", "warn")],
+                     id="no letter but the source's"),
+        # The post-budget round of #374: as words of their own, not inside a longer number.
+        pytest.param(f'"{_SIGNAL}"', '"6, 95%"',
+                     [("passage-not-in-source", "fail"), ("passage-too-short", "warn")],
+                     id="a number inside a longer one"),
+        pytest.param('    locator: "Abstract, Results"\n',
+                     '    locator: "Abstract, Results"\n    support: supports\n'
+                     '    judged_by: "Codex"\n    judged_on: 2026-10-20\n',
+                     [("judgement-not-human", "fail")], id="judged by an agent tool"),
+        pytest.param("citekey: fictionalClassSignal2019",
+                     "citekey: fictionalHepaticCohort2021",
+                     [("passage-not-in-source", "fail")], id="recorded for the other work"),
+        pytest.param('    locator: "Abstract, Results"\n',
+                     '    locator: "Abstract, Results"\n    support: supports\n'
+                     '    judged_by: "Claude"\n    judged_on: 2026-10-20\n',
+                     [("judgement-not-human", "fail")], id="judged by a model"),
+        pytest.param('    locator: "Abstract, Results"\n',
+                     '    locator: "Abstract, Results"\n    support: does-not\n'
+                     '    judged_by: "Ada Example"\n    judged_on: 2026-10-20\n',
+                     [("passage-does-not-support", "fail")], id="judged not to support"),
+        pytest.param(_SIGNAL, _SIGNAL, [], id="as recorded"),
+    ],
+)  # fmt: skip
+def test_a_supporting_passage_that_is_not_what_its_work_says_is_caught(
+    project: Path, old: str, new: str, said: list
+) -> None:
+    """Each way a passage recorded for a cited sentence can be wrong, at internal-review:
+    words that are not the work's, a judgement a model signed, and one that says the passage
+    does not support the sentence."""
+    _recorded(project, old, new)
+    assert _passage_findings(project) == said
+
+
+@pytest.mark.parametrize(
+    ("change", "said"),
+    [
+        pytest.param(("has been reported", "was reported"), [("passage-stale", "info")],
+                     id="the sentence reworded"),
+        pytest.param(("[@fictionalClassSignal2019]. The", "The"), [("passage-stale", "info")],
+                     id="the work no longer cited"),
+    ],
+)  # fmt: skip
+def test_a_passage_whose_sentence_changed_is_stale(
+    project: Path, change: tuple[str, str], said: list
+) -> None:
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    assert change[0] in text
+    path.write_text(text.replace(*change, 1), encoding="utf-8")
+    assert _passage_findings(project) == said
+
+
+def test_a_passage_of_a_work_with_no_stored_copy_is_unchecked(project: Path) -> None:
+    (project / "literature" / "sources" / "fictionalClassSignal2019.txt").unlink()
+    assert _passage_findings(project) == [("passage-unchecked", "warn")]
 
 
 # ------------------------------------------------------------- what a change makes stale
@@ -5561,11 +5660,15 @@ _MARKDOWN_ONLY = (
     "check_prose_quotations", "check_journal", "check_reporting", "check_writing",
     "check_methods", "check_synthetic_inputs", "check_reported", "check_recomputed",
     "check_revision", "check_language", "check_models", "check_shapes", "check_tex",
+    "check_passages",
 )  # fmt: skip
 _NOT_THE_MANUSCRIPT = (
     "check_review", "check_freshness", "check_figures", "check_figure_reviews",
     "check_literature_chain", "check_shortlist", "check_design", "check_design_rounds",
     "check_consistency", "check_restricted_inputs", "check_relations",
+    # It finds the figures placed in the Markdown sources, so it reads nothing of a LaTeX
+    # manuscript and says nothing of one; it runs, as G3's other check does (round 1 of #387).
+    "check_figure_alt",
 )  # fmt: skip
 #: The checks that read LaTeX: they run on a LaTeX manuscript as on any. G12's
 #: registration looks for an identifier and a sentence, which a `.tex` file holds
@@ -8037,6 +8140,202 @@ def test_a_structured_abstract_heading_in_a_comment_is_missing(project: Path) ->
     assert "abstract-headings-missing" in codes(_journal(project))
 
 
+# ------------------------------------------------------ a figure's alternative text
+
+
+def _alt(root: Path, alt: object = None, **rules) -> None:
+    """The example's figure given this alternative text (None takes it away), and its
+    journal these artwork rules."""
+    if rules:
+        profile = root / "profiles" / "journals" / "demo-journal.yaml"
+        document = yaml.safe_load(profile.read_text(encoding="utf-8"))
+        document["figures"] = {"source_url": "https://journal.example/artwork",
+                               "read_on": "2026-10-21", "confirmed": True, **rules}  # fmt: skip
+        profile.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    sidecar = root / "figures" / "forest.guard.yaml"
+    guard = yaml.safe_load(sidecar.read_text(encoding="utf-8"))
+    guard.pop("alt", None)
+    if alt is not None:
+        guard["alt"] = alt
+    sidecar.write_text(yaml.safe_dump(guard, sort_keys=False, allow_unicode=True),
+                       encoding="utf-8")  # fmt: skip
+
+
+def _alt_said(root: Path, stage: str = "drafting") -> list[tuple[str, str]]:
+    """What `check` says of the figure's alternative text at `stage`, the stage's policy
+    applied."""
+    from manuscript_guard.cli import _run_gates
+
+    report, _project, _chosen, _deferred = _run_gates(root, stage=stage)
+    return [(f.code, f.severity) for f in report.findings if f.code.startswith("figure-alt-")]
+
+
+def test_the_examples_alternative_text_passes_at_every_stage(project: Path) -> None:
+    for stage in ("drafting", "internal-review", "submission"):
+        assert _alt_said(project, stage) == [], stage
+
+
+@pytest.mark.parametrize(
+    ("stage", "rules", "said"),
+    [
+        ("drafting", {}, "info"),
+        ("internal-review", {}, "warn"),
+        ("submission", {}, "warn"),
+        ("submission", {"alt_text": "requested"}, "warn"),
+        ("drafting", {"alt_text": "required"}, "info"),
+        ("internal-review", {"alt_text": "required"}, "warn"),
+        ("submission", {"alt_text": "required"}, "fail"),
+        # Round 1 of #387: where the journal applies its artwork rules from acceptance, G4
+        # notes what does not meet them, and so does this.
+        ("submission", {"alt_text": "required", "applies_from": "acceptance"}, "info"),
+    ],
+)
+def test_a_figure_with_no_alternative_text_fails_only_where_the_journal_requires_one(
+    project: Path, stage: str, rules: dict, said: str
+) -> None:
+    """Basile, 2026-10-21: a note while drafting, a warning from internal review, and a
+    failure at submission where the journal's profile requires alternative text. The build
+    placed every figure as `![](path)`, so every document went out with none."""
+    _alt(project, None, **rules)
+    assert _alt_said(project, stage) == [("figure-alt-missing", said)]
+
+
+@pytest.mark.parametrize("alt", ["", "   \n", ["a list"], 3.84, {"text": "a mapping"}])
+def test_alternative_text_that_is_no_text_is_none(project: Path, alt: object) -> None:
+    _alt(project, alt, alt_text="required")
+    assert _alt_said(project, "submission") == [("figure-alt-missing", "fail")]
+
+
+def test_a_supplementary_figure_is_held_to_the_supplements_rule(project: Path) -> None:
+    """A rule under `supplementary:` replaces the main one for a figure only the supplement
+    places, as every other artwork rule does."""
+    main = main_md(project)
+    main.write_text(main.read_text(encoding="utf-8").replace("{{figure.forest}}\n", ""),
+                    encoding="utf-8")  # fmt: skip
+    (project / "manuscript" / "supplementary" / "figures.md").write_text(
+        "# Supplementary figure\n\n{{figure.forest}}\n", encoding="utf-8"
+    )
+    _alt(project, None, alt_text="requested", supplementary={"alt_text": "required"})
+    assert ("figure-alt-missing", "fail") in _alt_said(project, "submission")
+
+
+def test_each_binding_in_the_alternative_text_typed_as_its_value_fails(project: Path) -> None:
+    """The headline corruption, in the alternative text: each binding replaced by the value
+    it prints is correct today and stale in waiting, and fails as it would in the prose."""
+    sidecar = project / "figures" / "forest.guard.yaml"
+    raw = yaml.safe_load(sidecar.read_text(encoding="utf-8"))["alt"]
+    namespace = load_namespace(load_project(project)[0])[0]
+    found = bindings_in(raw)
+    assert len(found) == 3, raw
+    for binding in found:
+        display = namespace[binding.strip("{}")].display
+        _alt(project, raw.replace(binding, display))
+        assert _alt_said(project) == [("figure-alt-number", "fail")], binding
+
+
+def test_a_number_in_the_alternative_text_that_prose_would_pass_passes(project: Path) -> None:
+    """Held as prose is, and no harder: a convention ("95% CI") is no result."""
+    _alt(project, "The estimate is drawn with its 95% CI, {{results.ror.ci_low}} to "
+                  "{{results.ror.ci_high}}.")  # fmt: skip
+    assert _alt_said(project) == []
+
+
+@pytest.mark.parametrize(
+    "binding",
+    ["{{results.no_such_key}}", "{{table.two_by_two}}", "{{figure.forest}}",
+     "{{method.no_such_step}}", "{{results.ror.point}"],
+)  # fmt: skip
+def test_a_binding_in_the_alternative_text_that_prints_no_value_fails(
+    project: Path, binding: str
+) -> None:
+    _alt(project, f"The reporting odds ratio, {binding}, drawn on a log scale.")
+    assert _alt_said(project) == [("figure-alt-binding", "fail")]
+
+
+def test_alternative_text_longer_than_the_journal_takes_is_a_warning(project: Path) -> None:
+    """Counted as printed: each binding its display, so "{{results.ror.point}}" is four
+    characters ("3.84") and not twenty-two."""
+    from manuscript_guard.gates.figure_alt import printed_alt, raw_alt
+
+    loaded = load_project(project)[0]
+    printed = printed_alt(raw_alt(loaded, "forest"), load_namespace(loaded)[0])
+    _alt(project, yaml.safe_load(
+        (project / "figures" / "forest.guard.yaml").read_text(encoding="utf-8"))["alt"],
+        alt_text_max_chars=len(printed))  # fmt: skip
+    assert _alt_said(project, "internal-review") == []
+    _alt(project, yaml.safe_load(
+        (project / "figures" / "forest.guard.yaml").read_text(encoding="utf-8"))["alt"],
+        alt_text_max_chars=len(printed) - 1)  # fmt: skip
+    assert _alt_said(project, "drafting") == [("figure-alt-long", "info")]
+    assert _alt_said(project, "submission") == [("figure-alt-long", "warn")]
+
+
+def test_a_comment_in_the_alternative_text_is_read_as_it_is_printed(project: Path) -> None:
+    """Round 1 of #387: the build prints the text as written, an HTML comment and all, and
+    the checks read it as Markdown, which hides a comment: a number typed into one went out
+    with nothing said, and a binding in one was printed as written."""
+    from manuscript_guard.gates.figure_alt import printed_alt, raw_alt
+
+    _alt(project, "Odds ratio <!-- was {{results.ror.point}}, 3.84 -->.")
+    assert _alt_said(project) == [("figure-alt-number", "fail")]
+    loaded = load_project(project)[0]
+    assert printed_alt(raw_alt(loaded, "forest"), load_namespace(loaded)[0]) == (
+        "Odds ratio <!-- was 3.84, 3.84 -->."
+    )
+    _alt(project, "Odds ratio <!-- {{results.no_such_key}} -->.")
+    assert _alt_said(project) == [("figure-alt-binding", "fail")]
+
+
+def test_a_declared_parameter_typed_into_the_alternative_text_fails(project: Path) -> None:
+    """Round 1 of #387: G2 fails a threshold typed in the prose once the analysis declares
+    it, and the alternative text passed it as the convention it reads as."""
+    from manuscript_guard.cli import _run_gates
+
+    _alt(project, "The estimate, {{results.ror.point}}, is significant at p < 0.05.")
+    report, _project, _chosen, _deferred = _run_gates(project)
+    [found] = [f for f in report.findings if f.code.startswith("figure-alt-")]
+    assert (found.code, found.severity) == ("figure-alt-number", "fail")
+    assert "'0.05'" in found.message and "which the analysis declares" in found.message
+
+
+def test_a_count_bound_in_the_alternative_text_is_held_to_the_custodians_minimum(
+    project: Path,
+) -> None:
+    """Round 1 of #387: the build prints a count bound in the alternative text into the
+    picture and the pack, and G2 read the manuscript's bindings alone."""
+    _custodian(project, 5)
+    _value_has(project, "case.n_serious", value=3, display="3")
+    main = main_md(project)
+    main.write_text(main.read_text(encoding="utf-8").replace(
+        "{{results.case.n_serious}}", "a few"), encoding="utf-8")  # fmt: skip
+    assert _small(project) == []
+    _alt(project, "Of the cases, {{results.case.n_serious}} were serious.")
+    assert _small(project) == [("results.case.n_serious", None)]
+
+
+def test_a_result_quoted_in_the_alternative_text_alone_is_quoted_from_synthetic_data(
+    project: Path,
+) -> None:
+    """Round 1 of #387: the build prints it, so a result from a synthetic run quoted there
+    is a number from synthetic data in the paper."""
+    import re
+
+    _not_a_demonstration(project)
+    for path in (project / "manuscript").rglob("*.md"):
+        path.write_text(re.sub(r"\{\{\s*(?:results|table)\.[^}]*\}\}", "[elided]",
+                               path.read_text(encoding="utf-8")), encoding="utf-8")  # fmt: skip
+    _alt(project, None)
+    assert _synthetic_said(project) == []
+    _alt(project, "Forest plot of the reporting odds ratio, {{results.ror.point}}.")
+    [(severity, _message)] = _synthetic_said(project)
+    assert severity == "warn"
+
+
+def test_a_journal_profile_with_an_alt_text_rule_out_of_shape_is_refused(project: Path) -> None:
+    _alt(project, "Text.", alt_text="mandatory")
+    assert "schema-violation" in codes(_journal(project))
+
+
 # ------------------------------------------------- the journal's citation style (item 51)
 
 
@@ -9406,6 +9705,16 @@ _CORE_NS = (
                  "Graduate School of Medicine</Company></Properties>"},
             [("Example University Graduate School of Medicine",
               "the document's company (Company)")], id="Word's company field",
+        ),
+        # The alternative text the build writes from a figure's guard file, or Word lets a
+        # co-author type: read aloud, printed nowhere.
+        pytest.param(
+            "<w:p><w:r><w:drawing><wp:inline xmlns:wp='http://schemas.openxmlformats.org/"
+            "drawingml/2006/wordprocessingDrawing'><wp:docPr id='1' name='Picture' "
+            "descr='The estimate, as Example and Sample drew it' title='By Ada Example'/>"
+            "</wp:inline></w:drawing></w:r></w:p>", {},
+            [("Ada Example", "the alternative text of a picture")],
+            id="a picture's alternative text",
         ),
     ],
 )  # fmt: skip
@@ -15578,6 +15887,167 @@ def test_a_supplementary_file_s_own_title_is_compared_with_the_paper_s(tmp_path:
     assert "agree" not in found.hint
     assert paper.path == main_md(tmp_path / "paper")
     assert "make them agree" in paper.hint, "the paper's own file keeps the hint it had"
+
+
+# --------------------------------------------------------------------------------------
+# A suggested edit is placed exactly, and decided before it is imported. A finding may carry
+# the wording it asks for (`edits`); `review --suggestions` writes each as a tracked change
+# under its reader's name, and `import` brings back what the author accepted. An edit that
+# changed after it was filed would be shown in Word as the reader's; one placed anywhere but
+# exactly would change other words; and one nobody decided would be imported as accepted.
+# --------------------------------------------------------------------------------------
+
+_A_MODEL_SUGGESTED = [
+    {
+        "severity": "minor",
+        "where": "Introduction",
+        "finding": "Say plainly that nobody has looked.",
+        "edits": [{"old": "has not been examined", "new": "remains unexamined"}],
+    },
+]
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda d: d["findings"][0]["edits"][0].update(new="was never examined by anyone"),
+        lambda d: d["findings"][0]["edits"].append({"old": "specifically", "new": "alone"}),
+        lambda d: d["findings"][0].pop("edits"),
+    ],
+    ids=["new-words-changed", "an-edit-added", "the-edits-deleted"],
+)
+def test_a_model_s_suggested_edit_changed_after_it_was_filed_fails(
+    project: Path, monkeypatch, mutate
+) -> None:
+    """The edit is the reader's, and Word shows it under the reader's name: changed after
+    the reading was filed, the reading is altered."""
+    from test_review_run import Providers, answer, configure, reply_text
+
+    from manuscript_guard.cli import main
+    from manuscript_guard.panel import client
+
+    transport = Providers()
+    transport.default = lambda request: answer(reply_text("minor-revision", _A_MODEL_SUGGESTED))
+    monkeypatch.setattr(client, "default_transport", transport)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-openai-0123456789SECRETA")
+    shutil.rmtree(project / "review")
+    configure(project, "openai/model-a")
+    assert main(["review", str(project), "--run", "--yes"]) == 0
+    path = sorted((project / "review" / "round-1").glob("*.*.yaml"))[0]
+    filed = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert filed["findings"][0]["edits"] == _A_MODEL_SUGGESTED[0]["edits"]
+    assert "reading-altered" not in _review_failures(project)
+    _edit(path, mutate)
+    assert "reading-altered" in _review_failures(project)
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_an_edit_that_changes_a_number_a_binding_or_a_citation_is_not_written(
+    project: Path,
+) -> None:
+    """By the rule `reworded` applies: a typed number changed, words that are only in the
+    text with a value printed into them, words inside a citation, and new words that would
+    open a binding or a citation. Each stays a finding to answer, and no document is made
+    for edits none of which could be placed."""
+    from suggesting import document, finding, suggest, with_edits
+
+    path = project / "manuscript" / "main.md"
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(
+            "Whether the signal extends to example-drug specifically has not been examined.",
+            "Whether the signal extends to example-drug specifically has not been examined, "
+            "as the agency said [see @fictionalClassSignal2019, p. 4].",
+        ),
+        encoding="utf-8",
+    )
+    with_edits(
+        project,
+        finding(
+            "r8-pe-02",
+            ("computed from a 2 x 2 table", "computed from a 3 x 2 table"),
+            ("a period of 10 years", "ten years"),
+            ("as the agency said", "as {{results.ror.point}} said"),
+            ("has not been examined", "has not been examined @fictionalClassSignal2019"),
+        ),
+        finding("r8-pe-03", ("p. 4", "p. 5")),
+    )
+    code, said = suggest(project)
+    assert code == 0, said
+    reasons = {
+        "computed from a 2 x 2 table": "more than a change of words",
+        "a period of 10 years": "only with a value",
+        "as the agency said": "Markdown reads as markup",
+        "has not been examined": "Markdown reads as markup",
+        "p. 4": "inside a citation",
+    }
+    for old, why in reasons.items():
+        line = next((ln for ln in said.splitlines() if f"'{old}" in ln), "")
+        assert why in line, (old, said)
+    assert "written as tracked changes" not in said
+    assert not document(project).exists()
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_an_edit_whose_words_are_not_found_exactly_once_is_not_written(project: Path) -> None:
+    """Words in the manuscript more than once, nowhere, across two paragraphs, beside
+    emphasis that a merge from Word's text would drop, and two edits of the same words: none
+    is placed by guessing which was meant."""
+    from suggesting import finding, suggest, with_edits
+
+    path = project / "manuscript" / "main.md"
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(
+            "Whether the signal extends to example-drug specifically",
+            "Whether the signal extends to *example-drug* specifically",
+        ),
+        encoding="utf-8",
+    )
+    with_edits(
+        project,
+        finding(
+            "r8-pe-02",
+            ("the", "THE"),
+            ("words that are nowhere", "other words"),
+            ("has not been examined.\n\nWhether", "x"),
+            ("specifically has not", "has not"),
+            ("Reports were included without", "Reports were taken without"),
+            ("were included without restriction", "were included with no restriction"),
+        ),
+    )
+    code, said = suggest(project)
+    assert code == 0, said
+    reasons = {
+        "the": "in the manuscript",
+        "words that are nowhere": "not in the manuscript as it stands",
+        "has not been examined. Whether": "two paragraphs",
+        "specifically has not": "would not come back into the source as written",
+        "Reports were included without": "same words",
+        "were included without restriction": "same words",
+    }
+    for old, why in reasons.items():
+        line = next((ln for ln in said.splitlines() if f"'{old}" in ln), "")
+        assert why in line, (old, said)
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_suggestion_nobody_decided_is_not_imported(project: Path, tmp_path: Path) -> None:
+    """Read as accepted, as `import` reads every tracked change, a suggestion the author
+    never looked at would merge. Nothing is imported while one is left, whichever."""
+    from suggesting import offered_round, run
+    from word_edits import decide
+
+    document = offered_round(project)
+    before = (project / "manuscript" / "main.md").read_bytes()
+    record = (project / "review" / "round-8" / "pharmacoepidemiologist.yaml").read_bytes()
+    for choices in ({}, {1: "accept"}, {1: "accept", 2: "reject"}, {2: "reject", 3: "accept"}):
+        returned = decide(document, tmp_path / "back.docx", choices)
+        code, said = run("import", str(returned), str(project), "--apply")
+        assert code == 1, said
+        assert "Accept or reject each one in Word first" in said
+        assert (project / "manuscript" / "main.md").read_bytes() == before
+        assert (project / "review" / "round-8" / "pharmacoepidemiologist.yaml").read_bytes() == (
+            record
+        )
 
 
 # --------------------------------------------------------------------------------------

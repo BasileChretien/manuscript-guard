@@ -39,8 +39,11 @@ from generated import (
     AGREED,
     CLAIMED,
     DATA_IDENTIFIERS,
+    EDIT_GAPS,
+    EDIT_WORDS,
     FILLER,
     FIXED_LINKS,
+    FOLDED,
     HELD,
     INPUTS,
     LOOKALIKES,
@@ -53,6 +56,7 @@ from generated import (
     TERMS,
     TYPOGRAPHY,
     UNCLAIMED,
+    alt_texts,
     bindings,
     claim_edits,
     commented,
@@ -63,6 +67,7 @@ from generated import (
     latex_trees,
     lines,
     mean_tables,
+    passage_files,
     pdf_figures,
     planned_plans,
     quotations,
@@ -106,6 +111,7 @@ from manuscript_guard.gates.vocabulary import (
     judge_vocabulary,
     own_words,
 )
+from manuscript_guard.literature import passages as passages_module
 from manuscript_guard.literature import sources as literature_sources
 from manuscript_guard.literature.sources import contains, normalise, states_value
 from manuscript_guard.reworded import (
@@ -2870,6 +2876,27 @@ def test_a_quotation_with_words_left_out_is_found_piece_by_piece(
         assert quotations_gate.quoted_in(source, quote) is there, (source, quote)
 
 
+@holds(60, passage_files())
+def test_a_passage_belongs_to_its_sentence_by_its_words_and_its_work(
+    drawn: tuple[dict[str, Any], list[tuple[int, str]]],
+) -> None:
+    """Basile, 2026-10-20: an entry of `passages.yaml` belongs to the sentences whose words it
+    gives and which cite its work, however it is typed and wherever the sentence stands. One
+    with a word changed or added belongs to none, and is said to be of a sentence reworded;
+    one naming a work the sentence does not cite belongs to none, and is said to be of a
+    sentence that no longer cites it (`literature/passages.py`)."""
+    given, written = drawn
+    found = READINGS["passages"]()(given)
+    for (belongs, stale), (n, how) in zip(found, written, strict=True):
+        if how in FOLDED:
+            assert belongs, (how, given)
+            assert all(f"Claim {n}:" in text for _line, text in belongs), (how, belongs)
+            assert stale is None, (how, stale)
+        else:
+            assert belongs == [], (how, belongs)
+            assert stale == ("uncited" if how == "work not cited" else "changed"), (how, stale)
+
+
 # ------------------------------------------------------------ pointers to tables and figures
 
 #: How a table or a figure is placed: by its binding, or written into the text.
@@ -3507,6 +3534,73 @@ def _a_rule_or_a_table_s_dashes_are_em_dashes(patch: pytest.MonkeyPatch) -> None
 
 def _any_run_of_hyphens_is_an_em_dash(patch: pytest.MonkeyPatch) -> None:
     _em_dash_rule(patch, pattern="\N{EM DASH}|-{2,}")
+
+
+# ------------------------------------------------------------------- a suggested edit
+
+
+@st.composite
+def _edit_words_planted(
+    draw: st.DrawFn,
+) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+    """Every word of `EDIT_WORDS` and every gap of `EDIT_GAPS` at least once, in an order
+    drawn each time, with some words drawn again so that a run of them stands twice."""
+    words = [*EDIT_WORDS, *draw(st.lists(st.sampled_from(EDIT_WORDS), min_size=2, max_size=6))]
+    words = list(draw(st.permutations(words)))
+    gaps = [*EDIT_GAPS, *draw(st.lists(st.sampled_from(EDIT_GAPS), min_size=len(words),
+                                         max_size=len(words)))]  # fmt: skip
+    return words, list(draw(st.permutations(gaps)))[: len(words) - 1]
+
+
+@holds(100, _edit_words_planted())
+def test_an_edit_s_words_are_found_where_they_stand_typed_or_printed_and_nowhere_else(
+    planted: tuple[list[tuple[str, str]], list[tuple[str, str]]],
+) -> None:
+    """`review --suggestions` places an edit where its words are found once, in the source
+    as typed and in the document as pandoc printed it. Every run of up to three words is
+    looked for, in both, and has to be found at each place that run stands and at no other:
+    across a line break, beside a no-break space, typeset, and never inside a longer word."""
+    from manuscript_guard.suggestions import found_in
+
+    words, gaps = planted
+    for side in (0, 1):
+        text, starts, ends = "", [], []
+        for index, word in enumerate(words):
+            text += gaps[index - 1][side] if index else ""
+            starts.append(len(text))
+            text += word[side]
+            ends.append(len(text))
+        for length in (1, 2, 3):
+            for first in range(len(words) - length + 1):
+                run = [typed for typed, _printed in words[first : first + length]]
+                expected = [
+                    (starts[at], ends[at + length - 1])
+                    for at in range(len(words) - length + 1)
+                    if [typed for typed, _printed in words[at : at + length]] == run
+                ]
+                assert found_in(text, " ".join(run)) == expected, (" ".join(run), text)
+
+
+def _an_edit_is_found_only_as_typed(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import suggestions
+
+    patch.setattr(suggestions, "_TYPESET", ())
+
+
+def _an_edit_is_found_inside_longer_words(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import suggestions
+
+    real = suggestions.pattern_of
+    edges = ("(?<![^\\W_])", "(?![^\\W_])")
+    patch.setattr(suggestions, "pattern_of", lambda old: re.compile(
+        real(old).pattern.replace(edges[0], "").replace(edges[1], "")
+    ))  # fmt: skip
+
+
+def _a_line_break_between_an_edit_s_words_is_no_space(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import suggestions
+
+    patch.setattr(suggestions, "_SPACE", "[ \\t\\u00a0]+")
 
 
 # ------------------------------------------------------------------------- a rewording
@@ -4174,6 +4268,58 @@ def _a_font_s_first_number_is_its_size(patch: pytest.MonkeyPatch) -> None:
     pattern = figure_svg._FONT_SIZE.pattern.replace("|rem|%)|", "|rem|%)?|")
     assert pattern != figure_svg._FONT_SIZE.pattern
     patch.setattr(figure_svg, "_FONT_SIZE", re.compile(pattern, re.IGNORECASE))
+
+
+# ------------------------------------------------------------- a figure's alternative text
+
+
+def _descriptions_pandoc_reads(markdown: str) -> list[str]:
+    """The description of the one image in each paragraph pandoc reads in `markdown`, its
+    words as pandoc reads them, a space between two, and any other inline by its name; a
+    paragraph that is not one span holding one image by what it is."""
+    pandoc = shutil.which("pandoc")
+    if pandoc is None:
+        pytest.skip("pandoc is not installed, and the description is the one it reads")
+    read = subprocess.run(
+        [pandoc, "-f", "markdown", "-t", "json"],
+        input=markdown.encode("utf-8"),
+        capture_output=True,
+        check=True,
+        timeout=120,
+    )
+
+    def said(inline: dict) -> str:
+        kind = inline["t"]
+        return inline["c"] if kind == "Str" else " " if kind == "Space" else f"<{kind}>"
+
+    found = []
+    for block in json.loads(read.stdout)["blocks"]:
+        inlines = block["c"] if block["t"] == "Para" else []
+        if len(inlines) == 1 and inlines[0]["t"] == "Span":
+            inlines = inlines[0]["c"][1]
+        if len(inlines) == 1 and inlines[0]["t"] == "Image":
+            found.append("".join(said(inline) for inline in inlines[0]["c"][1]))
+        else:
+            found.append(f"<{block['t']} of {[inline['t'] for inline in inlines]}>")
+    return found
+
+
+@holds(12, st.lists(alt_texts(), min_size=1, max_size=4))
+def test_an_alternative_text_is_the_pictures_description_as_it_was_written(
+    written: list[str],
+) -> None:
+    """What the build writes for a figure's alternative text pandoc reads back as exactly
+    that text, its ASCII white space folded to single spaces: no mark in it read as markup,
+    no line in it ending the paragraph, and a no-break space kept (round 1 of #387). Several
+    figures in one document, as a manuscript places them."""
+    from manuscript_guard.build.assemble import FIGURE_SPAN
+    from manuscript_guard.gates.figure_alt import as_markdown
+
+    markdown = "\n\n".join(
+        f"[![{as_markdown(text)}](figures/f.png)]{{.{FIGURE_SPAN}}}" for text in written
+    )
+    folded = [re.sub(r"[ \t\r\n\f\v]+", " ", text).strip(" \t\r\n\f\v") for text in written]
+    assert _descriptions_pandoc_reads(markdown) == folded
 
 
 # ------------------------------------------------------- a quote its source nearly holds
@@ -6144,6 +6290,56 @@ def _each_anchors_line_is_its_own_run(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(methods_gate, "_runs", lambda numbers: [(number, number) for number in numbers])
 
 
+def _an_alternative_text_escapes_only_its_brackets(patch: pytest.MonkeyPatch) -> None:
+    """Escaped only where a mark would end the description: emphasis, a citation, maths and
+    raw HTML in it are read as markup."""
+    from manuscript_guard.gates import figure_alt
+
+    patch.setattr(figure_alt, "_PUNCTUATION", re.compile(r"([\[\]\\])"))
+
+
+def _an_alternative_text_keeps_its_line_breaks(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_alt
+
+    escaped = figure_alt._PUNCTUATION
+    patch.setattr(figure_alt, "as_markdown", lambda text: escaped.sub(r"\\\1", text))
+
+
+def _a_passage_is_matched_as_it_is_typed(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(passages_module, "statement_words", lambda sentence: sentence)
+
+
+def _a_citation_group_is_words_of_the_sentence(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(passages_module, "bracketed", lambda text: iter(()))
+
+
+def _a_space_before_a_comma_is_a_difference(patch: pytest.MonkeyPatch) -> None:
+    # Matches nothing, with the group the substitution puts back.
+    patch.setattr(passages_module, "_BEFORE_MARK", re.compile("(?!)( )"))
+
+
+def _a_binding_spaced_otherwise_is_a_difference(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(passages_module, "PLACEHOLDER", re.compile("(?!)"))
+
+
+def _a_sentence_is_matched_on_its_opening_words(patch: pytest.MonkeyPatch) -> None:
+    folded = passages_module.statement_words
+    patch.setattr(passages_module, "statement_words",
+                  lambda sentence: " ".join(folded(sentence).split()[:8]))  # fmt: skip
+
+
+def _a_passage_is_matched_whatever_work_it_names(patch: pytest.MonkeyPatch) -> None:
+    def of(self, cited, key, words=None):  # noqa: ANN001, ANN202 - the method it stands for
+        found = passages_module.statement_words(cited.text) if words is None else words
+        return list(self._by_words.get(found, []))
+
+    patch.setattr(passages_module.Belonging, "of", of)
+
+
+def _no_reworded_sentence_is_near(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(passages_module, "NEAR", 1.1)
+
+
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
@@ -6174,6 +6370,34 @@ BROKEN = {
     "every stop ends a sentence, after et al. and Suppl. too": (
         _every_stop_ends_a_sentence,
         test_every_citation_lies_in_the_sentence_of_its_own_clause,
+    ),
+    "a passage is matched on its sentence as it is typed": (
+        _a_passage_is_matched_as_it_is_typed,
+        test_a_passage_belongs_to_its_sentence_by_its_words_and_its_work,
+    ),
+    "a citation group is words of the sentence": (
+        _a_citation_group_is_words_of_the_sentence,
+        test_a_passage_belongs_to_its_sentence_by_its_words_and_its_work,
+    ),
+    "a binding spaced otherwise is a difference": (
+        _a_binding_spaced_otherwise_is_a_difference,
+        test_a_passage_belongs_to_its_sentence_by_its_words_and_its_work,
+    ),
+    "a space before a comma is a difference": (
+        _a_space_before_a_comma_is_a_difference,
+        test_a_passage_belongs_to_its_sentence_by_its_words_and_its_work,
+    ),
+    "a sentence is matched on its opening words": (
+        _a_sentence_is_matched_on_its_opening_words,
+        test_a_passage_belongs_to_its_sentence_by_its_words_and_its_work,
+    ),
+    "a passage is matched whatever work it names": (
+        _a_passage_is_matched_whatever_work_it_names,
+        test_a_passage_belongs_to_its_sentence_by_its_words_and_its_work,
+    ),
+    "no reworded sentence is near its passage's": (
+        _no_reworded_sentence_is_near,
+        test_a_passage_belongs_to_its_sentence_by_its_words_and_its_work,
     ),
     "no stop ends a sentence": (
         _no_stop_ends_a_sentence,
@@ -6246,6 +6470,14 @@ BROKEN = {
     "in LaTeX, a command the table lacks hides its arguments": (
         _an_unknown_command_hides_its_arguments,
         test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "an alternative text escapes only its brackets": (
+        _an_alternative_text_escapes_only_its_brackets,
+        test_an_alternative_text_is_the_pictures_description_as_it_was_written,
+    ),
+    "an alternative text keeps its line breaks": (
+        _an_alternative_text_keeps_its_line_breaks,
+        test_an_alternative_text_is_the_pictures_description_as_it_was_written,
     ),
     "a piece with no word of its own is left alone": (
         _a_wordless_piece_is_left_alone,
@@ -6962,6 +7194,18 @@ BROKEN = {
     "an em dash typed as three hyphens is not counted": (
         _an_em_dash_typed_is_not_counted,
         test_an_em_dash_is_counted_however_it_is_typed,
+    ),
+    "an edit's words are found only as they are typed": (
+        _an_edit_is_found_only_as_typed,
+        test_an_edit_s_words_are_found_where_they_stand_typed_or_printed_and_nowhere_else,
+    ),
+    "an edit's words are found inside longer words": (
+        _an_edit_is_found_inside_longer_words,
+        test_an_edit_s_words_are_found_where_they_stand_typed_or_printed_and_nowhere_else,
+    ),
+    "a line break between an edit's words is no space": (
+        _a_line_break_between_an_edit_s_words_is_no_space,
+        test_an_edit_s_words_are_found_where_they_stand_typed_or_printed_and_nowhere_else,
     ),
     "a rule's or a table's dashes are em dashes": (
         _a_rule_or_a_table_s_dashes_are_em_dashes,

@@ -34,9 +34,21 @@ local function ignorable(inline)
     or (inline.t == 'Span' and #inline.content == 0)
 end
 
+-- A figure binding with alternative text expands to its image inside a span of this class,
+-- so that pandoc does not print the text as a caption (`build/assemble.py`).
+local FIGURE_SPAN = 'mg-figure'
+
+local function figure_span(inline)
+  return inline.t == 'Span'
+    and inline.classes:includes(FIGURE_SPAN)
+    and #inline.content == 1
+    and inline.content[1].t == 'Image'
+end
+
 local function is_figure(block)
   -- pandoc 3 reads an image with a caption as a Figure; an image alone in a paragraph,
-  -- which is what a figure binding expands to, stays a Para holding one Image.
+  -- which is what a figure binding expands to, stays a Para holding one Image, or one span
+  -- holding it.
   if block.t == 'Figure' then
     return true
   end
@@ -45,7 +57,7 @@ local function is_figure(block)
   end
   local images = 0
   for _, inline in ipairs(block.content) do
-    if inline.t == 'Image' then
+    if inline.t == 'Image' or figure_span(inline) then
       images = images + 1
     elseif not ignorable(inline) then
       return false

@@ -783,6 +783,76 @@ def quotations(draw: st.DrawFn) -> tuple[str, str]:
     return source, " ".join(words[first : last + 1])
 
 
+# ------------------------------------------------------------ passages of cited works
+
+#: How a person writes a cited sentence into `passages.yaml` and means the same sentence:
+#: each is no difference to a reader, and none may be one to G7.
+FOLDED = (
+    "citations dropped", "citations added", "capitals", "wrapped", "no final stop", "typed",
+    "no-break space", "space before a comma", "binding spaced",
+)  # fmt: skip
+#: The binding a planted claim holds, as the manuscript writes it.
+_CLAIMED = "{{results.cohort.n}}"
+#: How it is written and means another sentence, or another work, and belongs to none.
+UNFOLDED = ("last word changed", "word added", "work not cited")
+
+
+_EN_DASH = "\N{EN DASH}"
+
+
+def _written(sentence: str, group: str, how: str) -> str:
+    """`sentence`, whose citation group is `group`, written into `passages.yaml` as `how`."""
+    return {
+        "citations dropped": lambda: sentence.replace(f" {group}", ""),
+        "citations added": lambda: sentence.replace(group, "[@z9, p. 4] " + group),
+        "capitals": sentence.upper,
+        "wrapped": lambda: sentence.replace(" ", "\n    ", 3),
+        "no final stop": lambda: sentence.rstrip("."),
+        "typed": lambda: typed(sentence),
+        "no-break space": lambda: sentence.replace(" ", "\N{NO-BREAK SPACE}", 2),
+        "space before a comma": lambda: sentence.replace(",", " ,", 1),
+        "binding spaced": lambda: sentence.replace(_CLAIMED, "{{ results.cohort.n }}"),
+        "last word changed": lambda: sentence.replace(" age ", " sex "),
+        "word added": lambda: sentence.replace(" rate ", " rate never "),
+        "work not cited": lambda: sentence,
+    }[how]()
+
+
+@st.composite
+def passage_files(draw: st.DrawFn) -> tuple[dict[str, Any], list[tuple[int, str]]]:
+    """A manuscript of cited claims, each its own paragraph among drawn text, and the entries
+    of a `passages.yaml` for them: for each claim, its sentence written each way of `FOLDED`
+    and of `UNFOLDED`, in an order drawn each time. With each entry, the claim it belongs
+    to and how it was written; an `UNFOLDED` one belongs to none.
+
+    Every way in each example, so that a rule broken for one of them fails under any seed. A
+    claim's last word before its citation is the one changed, so that a rule matching on a
+    sentence's opening words is wrong in every example. Drawn text opens no comment, which
+    would hide the claims after it: what is held here is how a passage finds its sentence."""
+    claims = draw(st.integers(1, 3))
+    noise = texts().map(lambda text: text.replace("<!--", "<!-"))
+    pieces, entries = [], []
+    for n in range(1, claims + 1):
+        verb = draw(st.sampled_from(("rose", "fell", "doubled", "persisted")))
+        group = draw(st.sampled_from((f"[@k{n}]", f"[@k{n}; @shared]", f"[see @k{n}, p. 3]")))
+        sentence = (
+            f"Claim {n}: in the {_OPEN}older{_CLOSE} cohort of {_CLAIMED}, the "
+            f"drug{_EN_DASH}induced injury rate {verb} with age {group}."
+        )
+        pieces.append(sentence)
+        for how in FOLDED + UNFOLDED:
+            key = f"k{n}x" if how == "work not cited" else f"k{n}"
+            entries.append((
+                {"sentence": _written(sentence, group, how), "citekey": key,
+                 "passage": "words of the work", "locator": "p. 1"},
+                (n, how),
+            ))  # fmt: skip
+    pieces = draw(st.permutations(pieces))
+    text = "".join(f"{draw(noise)}\n\n{piece}\n\n" for piece in pieces) + draw(noise)
+    entries = draw(st.permutations(entries))
+    return {"text": text, "entries": [entry for entry, _n in entries]}, [n for _e, n in entries]
+
+
 # ---------------------------------------------------------------------- a vector figure
 
 #: Each kind of text a vector figure holds: what G4 reads the size of.
@@ -1043,6 +1113,42 @@ def pdf_figures(draw: st.DrawFn) -> tuple[bytes, list[float], list[float]]:
     return document, sorted(texts + form_texts), sorted(lines + form_lines)
 
 
+# ------------------------------------------------------------- a figure's alternative text
+
+#: What pandoc's Markdown reads as markup in a picture's description unless each mark in it
+#: is escaped: emphasis, a link, a citation, maths, code, raw HTML and a comment, quotation
+#: marks and dashes it would curl and join, a sub- and superscript, a struck word, a
+#: backslash that would escape the bracket closing the description, and a binding left as
+#: written. Every alternative text drawn holds each, so that one mark left unescaped is read
+#: as markup under every seed.
+ALT_MARKUP = (
+    "*emphasis*", "**strong**", "_under_", "[a link](x.png)", "![a picture](y.png)",
+    "@citekey", "[@citekey]", "$x^2$", "`code`", "<b>bold</b>", "<!-- comment -->", "&amp;",
+    '"quoted"', "'single'", "--", "...", "^up^", "~down~", "~~struck~~", "\\", "\\*",
+    "{{results.key}}", "#", "|", "50%",
+)  # fmt: skip
+#: Words with no markup, some beyond ASCII.
+ALT_WORDS = (*FILLER[:12], "\N{PLUS-MINUS SIGN}2", "caf\N{LATIN SMALL LETTER E WITH ACUTE}",
+             "\N{GREATER-THAN OR EQUAL TO}", "0.5\N{EN DASH}2")  # fmt: skip
+#: What may stand between two pieces: nothing, a space, a run of them, a line break, a
+#: blank line, a tab, a no-break space. Each is drawn once in every text.
+ALT_SPACES = ("", " ", "   ", "\n", "\n \n", "\t", "\N{NO-BREAK SPACE}")
+
+
+@st.composite
+def alt_texts(draw: st.DrawFn) -> str:
+    """An alternative text as an author may write it in a figure's guard file: every piece
+    of `ALT_MARKUP` and some words, in an order drawn, each kind of `ALT_SPACES` between two
+    of them at least once."""
+    words = draw(st.lists(st.sampled_from(ALT_WORDS), max_size=6))
+    pieces = draw(st.permutations([*ALT_MARKUP, *words]))
+    extra = draw(st.lists(st.sampled_from(ALT_SPACES), min_size=len(pieces) - 1 - len(ALT_SPACES),
+                          max_size=len(pieces) - 1 - len(ALT_SPACES)))  # fmt: skip
+    spaces = draw(st.permutations([*ALT_SPACES, *extra]))
+    joined = zip(spaces, pieces[1:], strict=True)
+    return pieces[0] + "".join(space + piece for space, piece in joined)
+
+
 # -------------------------------------------------------------- the results a plan promises
 
 _STEMS = ("ror", "case", "cohort", "hr", "events")
@@ -1218,6 +1324,44 @@ def nearly_quoted(draw: st.DrawFn) -> dict[str, str]:
     at = draw(st.integers(0, len(source)))
     put = draw(st.sampled_from(INTERRUPTIONS))
     return {"source": source[:at] + put + source[at:], "quote": quote}
+
+
+# ----------------------------------------------------------------------- suggested edits
+
+#: Words a reviewer's edit is made of, each as an edit types it and as pandoc prints it: a
+#: plain word, one that stands inside a longer one ("the" in "other", "port" in "reports"),
+#: and each thing pandoc typesets, an apostrophe, quotation marks, dashes and an ellipsis.
+EDIT_WORDS = (
+    ("the", "the"), ("other", "other"), ("reports", "reports"), ("port", "port"),
+    ("week", "week"), ("weeks", "weeks"), ("cohort", "cohort"),
+    ("drug's", "drug\N{RIGHT SINGLE QUOTATION MARK}s"),
+    ("'probable'", "\N{LEFT SINGLE QUOTATION MARK}probable\N{RIGHT SINGLE QUOTATION MARK}"),
+    ('"serious"', "\N{LEFT DOUBLE QUOTATION MARK}serious\N{RIGHT DOUBLE QUOTATION MARK}"),
+    ("1990--2000", "1990\N{EN DASH}2000"), ("so---it", "so\N{EM DASH}it"),
+    ("and...", "and\N{HORIZONTAL ELLIPSIS}"),
+)  # fmt: skip
+#: What stands between two of those words, as typed and as printed: Markdown reads a run of
+#: spaces with one line break in it as one space, and pandoc puts a no-break space after
+#: an abbreviation it knows.
+EDIT_GAPS = (
+    (" ", " "), ("  ", " "), ("\n", " "), (" \n  ", " "), ("\t", " "),
+    (" ", "\N{NO-BREAK SPACE}"),
+)  # fmt: skip
+
+
+@st.composite
+def suggested_edits(draw: st.DrawFn) -> dict[str, str]:
+    """A manuscript file and an edit: a few of its words, or words it may not hold, and
+    words to put in their place, some of them markup or two lines."""
+    text = draw(texts(tuple(typed for typed, _printed in EDIT_WORDS)))
+    words = text.split()
+    if words and draw(st.booleans()):
+        start = draw(st.integers(0, len(words) - 1))
+        old = " ".join(words[start : start + draw(st.integers(1, 3))])
+    else:
+        old = draw(st.sampled_from(tuple(typed for typed, _printed in EDIT_WORDS) + FILLER))
+    new = draw(st.sampled_from((*FILLER[:6], "*held*", "two\nlines", "{{results.x}}", " ")))
+    return {"text": text, "old": old, "new": new}
 
 
 # ---------------------------------------------------------------------------- spellings
@@ -2069,6 +2213,7 @@ def _quotation_asked(drawn: tuple[tuple[str, str], str, str]) -> dict[str, str]:
 INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "checker sentences": texts(),
     "prose quotations": texts(QUOTED),
+    "passages": passage_files().map(lambda drawn: drawn[0]),
     "mask": texts(TERMS),
     "latex mask": latex_texts(),
     "latex refusals": latex_texts(),
@@ -2114,6 +2259,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         {"quote": texts(), "value": st.sampled_from(("2.6", "14", "1 in 4", "0.05", "IgG4"))}
     ),
     "quote placement": nearly_quoted(),
+    "suggested edit": suggested_edits(),
     "spelling": st.fixed_dictionaries(
         {
             "text": texts(SPELT),

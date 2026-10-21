@@ -8,9 +8,10 @@ custodian's minimum, each fragment is read for a count from one to below it:
 
 - a value that is a count as G2 reads one (`is_count`: a whole number with no unit that is
   neither a parameter, a software version nor a label), whatever its display says;
-- a table cell, past the first column, that is a whole number alone, or one followed by a
-  share in brackets, "3 (0.7)" or "3 (0.7%)", or one over another, "3/412" (`count_in_cell`).
-  The first column names the rows, and a row named "2" is a category;
+- a table cell, past the first column, that is a whole number alone, over its denominator,
+  with its share in brackets, or both: "3", "3/412", "3 (0.7%)", "3/412 (0.7%)", the share
+  with a middle dot or a decimal comma or behind a bound, "3 (<1%)" (`count_in_cell`). The
+  first column names the rows, and a row named "2" is a category;
 - in a model card, the rows it read, used and dropped, its events, and its events at each
   level of each variable;
 - in a variable card, the rows it is missing from.
@@ -36,10 +37,17 @@ GATE = "PACKAGE"
 SMALL_COUNTS = f"{GATE}/custodian/small-counts"
 ROLE = "data_custodian"
 
-#: A cell that states one count: the count alone, the count and its share in brackets, or
-#: the count over its denominator. Whole numbers only, with no sign and no point.
+#: A share as a cell writes it in brackets: a number with a point, a middle dot or a decimal
+#: comma, a percent sign or none, behind a bound or not ("0.7", "0·7%", "<1%", "≤0,7").
+_SHARE = (
+    r"[<>\N{LESS-THAN OR EQUAL TO}\N{GREATER-THAN OR EQUAL TO}]?\s*"
+    r"\d+(?:[.,\N{MIDDLE DOT}]\d+)?\s*%?"
+)
+#: A cell that states one count: the count alone, over its denominator, with its share in
+#: brackets, or both ("3/412 (0.7%)", round 1 of #388). The count is a whole number with no
+#: sign and no point.
 _COUNT_CELL = re.compile(
-    r"\s*(?P<count>\d+)\s*(?:\(\s*\d+(?:\.\d+)?\s*%?\s*\)|/\s*\d+)?\s*"
+    rf"\s*(?P<count>\d+)\s*(?:/\s*\d+\s*)?(?:\(\s*{_SHARE}\s*\))?\s*"
 )
 
 #: The fields of a model card that count rows or events.

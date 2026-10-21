@@ -67,6 +67,11 @@ JUNK_DIRECTORIES = frozenset({"__pycache__", ".ipynb_checkpoints", ".Rproj.user"
 JUNK_FILES = frozenset({".Rhistory", ".RData", ".DS_Store", "Thumbs.db", "desktop.ini"})
 JUNK_SUFFIXES = (".pyc", ".pyo")
 REVIEW_RECORD = ".review.yaml"
+#: Why an input that is itself a results file of the project goes in: as the results it is.
+RESULTS_INPUT = "a results file of this project, deposited with the rest"
+#: The files a package writes of its own, at its root.
+WRITTEN = ("README.md", "CITATION.cff", "BOUND.md", "INPUTS.md", "paper.yaml", "MANIFEST.yaml",
+           "SHA256SUMS")  # fmt: skip
 GIT_SECONDS = 30
 
 
@@ -153,12 +158,23 @@ def _git(root: Path, *args: str) -> str | None:
 
 
 def tracked_files(root: Path) -> set[str] | None:
-    """The files git tracks under `root`, relative to it, or None where it is no repository
-    or git could not be asked: then every file of the named folders is taken."""
+    """The files git tracks under `root`, relative to it and in the case the system compares
+    names in, or None where it is no repository or git could not be asked: then every file of
+    the named folders is taken."""
     if _git(root, "rev-parse", "--is-inside-work-tree") is None:
         return None
     listed = _git(root, "ls-files", "-z")
-    return None if listed is None else {name for name in listed.split("\0") if name}
+    return None if listed is None else {os.path.normcase(n) for n in listed.split("\0") if n}
+
+
+def _identity(path: Path) -> tuple[int, int] | None:
+    """The file a path leads to, as the system tells files apart, or None where it cannot say:
+    a file system that gives every file the number 0, as FAT does, tells none apart."""
+    try:
+        found = os.stat(path)
+    except OSError:
+        return None
+    return (found.st_dev, found.st_ino) if found.st_ino else None
 
 
 def licence_file(project: Project) -> Path | None:
@@ -208,7 +224,12 @@ class _Collector:
     def __init__(self, project: Project, tracked: set[str] | None, skip: set[str]) -> None:
         self.root = project.root
         self.tracked = tracked
-        self.skip = skip
+        # A declared input is held out by its name, in the case the system compares names
+        # in, and by the file it is: another name for it, a hard link or the name in another
+        # case where the system ignores case, is the input all the same (round 1 of #388).
+        self.skip = {os.path.normcase(path) for path in skip}
+        self.skip_files = {found for path in skip if inside(path)
+                           and (found := _identity(project.root / path))}  # fmt: skip
         self.entries: dict[str, Entry] = {}
         self.withheld: list[Withheld] = []
         self.refused: list[Finding] = []
@@ -224,19 +245,38 @@ class _Collector:
                                         "where they are in it", path=path))  # fmt: skip
             return None
 
+    def held_out(self, path: Path, at: str) -> bool:
+        """Whether the file is a declared input, which goes by the input's rule only."""
+        return os.path.normcase(at) in self.skip or _identity(path) in self.skip_files
+
+    def walkable(self, folder: Path, setting: str) -> bool:
+        """Whether a folder `paths:` names may be walked: one that is the project itself
+        would take every file of it (round 1 of #388), and one outside it none of its own."""
+        here = Path(os.path.normpath(folder))
+        if here == Path(os.path.normpath(self.root)):
+            self.refused.append(Finding(GATE, "package-folder-is-root", f"paths.{setting} "
+                                        "is the project itself, and a package takes the "
+                                        "files of that folder whole", path=self.root /
+                                        "paper.yaml", hint=f"keep the {setting} in a folder "
+                                        "of its own"))  # fmt: skip
+            return False
+        return self.at(here) is not None
+
     def take(self, path: Path, why: str, *, if_tracked: bool = True) -> None:
         at = self.at(path)
-        if at is None or at in self.skip or at in self.entries:
+        if at is None or at in self.entries or self.held_out(path, at):
             return
-        if if_tracked and self.tracked is not None and at not in self.tracked:
+        if if_tracked and self.tracked is not None and os.path.normcase(at) not in self.tracked:
             self.withheld.append(Withheld(at, "git does not track it"))
             return
         self.entries[at] = copied(path, at, why)
 
-    def folder(self, folder: Path, why: str, *, notes: bool = False) -> None:
+    def folder(self, folder: Path, why: str, setting: str, *, notes: bool = False) -> None:
+        if not folder.is_dir() or not self.walkable(folder, setting):
+            return
         for path, linked in _walk(folder):
             at = self.at(path)
-            if at is None or at in self.skip:
+            if at is None or self.held_out(path, at):
                 continue
             if linked:
                 self.withheld.append(Withheld(at, linked))
@@ -301,13 +341,16 @@ def _inputs(project: Project, results: Results) -> tuple[list[Input], list[Findi
     shared = [str(path) for path in settings(project).get("share") or []]
     refused = _share_findings(project, declared, shared)
     out = []
+    produced = {f.path.relative_to(project.root).as_posix() for f in results.fragments}
     for path, seen in sorted(declared.items()):
         record = seen["record"]
         digest = str(record.get("raw_sha256") or record.get("sha256") or "")
         size = record.get("bytes") if isinstance(record.get("bytes"), int) else None
         read_by = tuple(sorted(set(seen["read_by"])))
         file = project.root / path
-        if not inside(path):
+        if path in produced:
+            included, why = True, RESULTS_INPUT
+        elif not inside(path):
             # A fragment is a file anyone can write: a path out of the project would be read
             # from outside it and written outside the package.
             included, why = False, "a path outside the project"
@@ -377,12 +420,15 @@ def plan_package(project: Project, results: Results, *, with_manuscript: bool = 
         raise PackageError(f"no results in {project.path('results')}: there is nothing to "
                            "package; run the analysis first")  # fmt: skip
     inputs, refused = _inputs(project, results)
-    collect = _Collector(project, tracked_files(project.root), {i.path for i in inputs})
+    tracked = tracked_files(project.root)
+    collect = _Collector(project, tracked, {i.path for i in inputs if i.why != RESULTS_INPUT})
     licence = _collect(collect, project, results, inputs, with_manuscript)
     findings = refused + collect.refused + _licence_findings(project, licence)
     findings += _notes(project, inputs)
     entries = sorted(collect.entries.values(), key=lambda entry: entry.path)
-    entries += generated_entries(project, results, inputs, entries, with_manuscript)
+    findings += _names_taken(project, entries)
+    entries += generated_entries(project, results, inputs, entries, with_manuscript,
+                                 in_git=tracked is not None)
     entries.sort(key=lambda entry: entry.path)
     signables: list[Signable] = []
     small, settled = settled_small_counts(project, results)
@@ -405,7 +451,7 @@ def _collect(collect: _Collector, project: Project, results: Results, inputs: li
              with_manuscript: bool) -> Path | None:  # fmt: skip
     """Every file the rules let go, into `collect`; the licence file, where there is one."""
     for found in inputs:
-        if found.included:
+        if found.included and found.why != RESULTS_INPUT:
             collect.entries[found.path] = copied(project.root / found.path, found.path,
                                                  f"an input the analysis read, {found.why}")
     for fragment in sorted(results.fragments, key=lambda f: f.path.name):
@@ -413,8 +459,8 @@ def _collect(collect: _Collector, project: Project, results: Results, inputs: li
         sidecar = fragment.path.with_name(fragment.path.name + ".sha256")
         if sidecar.is_file():
             collect.take(sidecar, "the digest of a results file", if_tracked=False)
-    collect.folder(project.path("analysis"), "an analysis script")
-    collect.folder(project.path("figures"), "a figure, its script or its records")
+    collect.folder(project.path("analysis"), "an analysis script", "analysis")
+    collect.folder(project.path("figures"), "a figure, its script or its records", "figures")
     for name in DESIGN_FILES:
         if (project.root / "design" / name).is_file():
             collect.take(project.root / "design" / name, "the analysis plan or its record")
@@ -433,8 +479,26 @@ def _collect(collect: _Collector, project: Project, results: Results, inputs: li
     if licence is not None:
         collect.entries[licence.name] = copied(licence, licence.name, "the licence")
     if with_manuscript:
-        collect.folder(project.path("manuscript"), "the manuscript", notes=True)
+        collect.folder(project.path("manuscript"), "the manuscript", "manuscript",
+                       notes=True)
     return licence
+
+
+def _names_taken(project: Project, entries: list[Entry]) -> list[Finding]:
+    """A file collected at a name the package writes of its own, or two at one name in the
+    case a system that ignores case reads them: one would be written over the other, and
+    SHA256SUMS would name both."""
+    seen: dict[str, str] = {os.path.normcase(name).casefold(): name for name in WRITTEN}
+    found = []
+    for entry in entries:
+        key = entry.path.casefold()
+        if key in seen:
+            found.append(Finding(GATE, "package-name-taken", f"{entry.path} ({entry.why}) "
+                                 f"would be written at {seen[key]}, which the package holds "
+                                 "already", path=project.root / entry.path, hint="move or "
+                                 "rename the file in the project"))  # fmt: skip
+        seen.setdefault(key, entry.path)
+    return found
 
 
 def _notes(project: Project, inputs: list[Input]) -> list[Finding]:

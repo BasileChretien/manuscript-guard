@@ -5880,6 +5880,18 @@ def _a_cell_counts_by_its_first_digits(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(deposit_counts, "count_in_cell", first)
 
 
+def _a_share_is_digits_and_a_point(patch: pytest.MonkeyPatch) -> None:
+    """The rule as it stood at 45348fe9 (round 1 of #388): a share or a denominator, never
+    both, and the share plain digits with a point."""
+    old = r"\s*(?P<count>\d+)\s*(?:\(\s*\d+(?:\.\d+)?\s*%?\s*\)|/\s*\d+)?\s*"
+    patch.setattr(deposit_counts, "_COUNT_CELL", re.compile(old))
+
+
+def _a_doi_begins_only_after_a_word_boundary(patch: pytest.MonkeyPatch) -> None:
+    """The reading as it stood at 45348fe9 (round 1 of #388): the DOIs `_DOI` finds."""
+    patch.setattr(data_statement, "_NAMED_DOI", data_statement._DOI)
+
+
 def _a_cell_counts_before_any_brackets(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(deposit_counts, "_COUNT_CELL",
                   re.compile(r"\s*(?P<count>\d+)\s*(?:\(.*\)|/\s*\d+)?\s*"))  # fmt: skip
@@ -6075,6 +6087,14 @@ BROKEN = {
     "a cell counts by the digits it begins with": (
         _a_cell_counts_by_its_first_digits,
         test_a_cell_is_read_as_a_count_only_where_it_states_one,
+    ),
+    "a cell's share is plain digits and a point, and goes with no denominator": (
+        _a_share_is_digits_and_a_point,
+        test_a_cell_is_read_as_a_count_only_where_it_states_one,
+    ),
+    "a deposit's DOI begins only after a word boundary": (
+        _a_doi_begins_only_after_a_word_boundary,
+        test_a_deposit_is_named_by_its_doi_however_written_and_by_no_other,
     ),
     "a cell counts before whatever its brackets hold": (
         _a_cell_counts_before_any_brackets,

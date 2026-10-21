@@ -106,7 +106,9 @@ VERIFY = [
 ]
 
 
-def _withheld(project: Project, inputs: list[Input], with_manuscript: bool) -> list[str]:
+def _withheld(
+    project: Project, inputs: list[Input], with_manuscript: bool, in_git: bool
+) -> list[str]:
     out = ["## What is not here, and why", ""]
     away = [found for found in inputs if not found.included]
     if away:
@@ -127,14 +129,19 @@ def _withheld(project: Project, inputs: list[Input], with_manuscript: bool) -> l
         "- The review records, the authors' details, the approvals and sign-offs, and the "
         "built documents: they name people, or are made again from what is here.",
         "- Any file git did not track, and any link: MANIFEST.yaml lists each file left out, "
-        "with the reason.",
+        "with the reason." if in_git else
+        "- Any link: MANIFEST.yaml lists each file left out, with the reason. The project is "
+        "not a git repository, so every other file of the folders above was taken as it was "
+        "on the disk.",
     ]
     return out
 
 
 def readme_text(project: Project, results: Results, inputs: list[Input], entries: list[Entry],
                 with_manuscript: bool, *, contents: list[str], sessions: list[str],
-                versions: list[str]) -> str:  # fmt: skip
+                versions: list[str], in_git: bool) -> str:  # fmt: skip
+    from .texts import _licence_name
+
     found = settings(project).get("licence")
     named = found if isinstance(found, str) else " and ".join(str(one) for one in found or [])
     out = [
@@ -142,9 +149,9 @@ def readme_text(project: Project, results: Results, inputs: list[Input], entries
         "## What is here", "", *contents, "",
         *_rerun(results, entries, sessions, versions), "",
         *VERIFY, "",
-        *_withheld(project, inputs, with_manuscript), "",
+        *_withheld(project, inputs, with_manuscript, in_git), "",
         "## Licence and citation", "",
-        f"The package is under {named or 'the licence in LICENSE'} (see LICENSE). "
+        f"The package is under {named or 'its licence'} (see {_licence_name(entries)}). "
         "CITATION.cff says how to cite it; cite the paper too.",
     ]
     return "\n".join(out) + "\n"

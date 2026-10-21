@@ -192,14 +192,32 @@ def cited_in(statement: str, project: Project) -> str:
     )
 
 
+#: A DOI as a statement may name the deposit by: as `_DOI` reads one, and after an
+#: underscore too, which `\b` does not let it begin after, "_10.5281/zenodo.1_" in emphasis;
+#: without a backtick or a quotation mark round it (round 1 of #388).
+_NAMED_DOI = re.compile(
+    r"(?<![0-9A-Za-z.])10\.\d{4,9}/"
+    r"(?:[^\s,;()<>\[\]\"\N{RIGHT DOUBLE QUOTATION MARK}*`]|\([^\s()]*\))+"
+)
+
+#: Where a deposit of code may be named besides the data availability statement: "Code
+#: availability", "Software availability", "Code and data availability", "Data and software
+#: availability" (round 1 of #388).
+CODE_HEADING = (
+    r"(?i)^[\W\d]*(?:(?:code|software)(?: and (?:data|materials))? availability"
+    r"|data and software availability|availability of (?:code|software))\b"
+)
+
+
 def names_doi(text: str, doi: str) -> bool:
     """Whether a statement names this DOI: as one of the DOIs it writes, bare or in a link,
-    in any case, and not as the start of a longer one ("10.5281/zenodo.12345678" does not
-    name 10.5281/zenodo.1234567)."""
+    in any case, in emphasis, a code span or quotation marks, and not as the start of a longer
+    one ("10.5281/zenodo.12345678" does not name 10.5281/zenodo.1234567)."""
     from manuscript_guard.gates.identifiers import normal_doi
 
     wanted = _plain_doi(normal_doi(doi))
-    return any(_plain_doi(found.group(0)) == wanted for found in _DOI.finditer(text))
+    return any(_plain_doi(found.group(0).rstrip("._:'`")) == wanted
+               for found in _NAMED_DOI.finditer(text))  # fmt: skip
 
 
 def _cited_dois(statement: str, project: Project) -> str:
@@ -232,39 +250,64 @@ def _profile_heading(project: Project) -> str | None:
     return policy.get("heading") if isinstance(policy, dict) else None
 
 
+def _file_of(project: Project, heading: str) -> Path:
+    """The main-text file the outermost heading of this kind is in."""
+    from manuscript_guard.contracts._schema import read_text
+    from manuscript_guard.gates.numbers import source_files
+
+    wanted, best = re.compile(heading, re.IGNORECASE), None
+    for path in source_files(project.path("manuscript"), main_text_only=True):
+        for section in split_sections(scannable(read_text(path))):
+            if section.title and wanted.search(section.title) and \
+                    (best is None or section.level < best[0]):  # fmt: skip
+                best = (section.level, path)
+    return best[1] if best else project.path("manuscript")
+
+
+def _statements(project: Project, headings: list[str]) -> list[tuple[str, Path]]:
+    """Each statement under one of these headings, read in the main text as G4 reads it, one
+    string across its files (round 1 of #388), with the file its heading is in."""
+    from manuscript_guard.gates.journal import main_text
+
+    text = main_text(project)
+    found = []
+    for heading in headings:
+        statement = statement_text(text, heading)
+        if statement is not None:
+            found.append((statement, _file_of(project, heading)))
+    return found
+
+
 def check_package_doi(project: Project, *, submission: bool = False) -> Report:
     """Where `paper.yaml` names the DOI of the deposited package (`package.doi`), the Data
-    availability statement names it: a warning while the paper is written, a failure at
-    submission."""
-    from manuscript_guard.contracts._schema import read_text
+    availability statement or the Code availability statement names it: a warning while the
+    paper is written, a failure at submission."""
     from manuscript_guard.findings import FAIL
-    from manuscript_guard.gates.numbers import source_files
 
     package = project.setting("package")
     doi = package.get("doi") if isinstance(package, dict) else None
     if not doi:
         return Report()
     severity = FAIL if submission else WARN
-    heading = _profile_heading(project)
-    folder = project.path("manuscript")
-    for path in source_files(folder, main_text_only=True) if folder.is_dir() else ():
-        statement = statement_text(read_text(path), heading)
-        if statement is None:
-            continue
+    found = _statements(project, [_profile_heading(project) or HEADING, CODE_HEADING])
+    for statement, _path in found:
         if names_doi(f"{statement}\n{_cited_dois(statement, project)}", str(doi)):
             return Report()
+    if found:
+        statement, path = found[0]
         return Report().with_findings(Finding(
             gate=GATE, code="package-doi-not-named", severity=severity, path=path,
-            message=f"the data availability statement does not name {doi}, the DOI paper.yaml "
-            "gives the deposited package",
+            message=f"neither the data nor the code availability statement names {doi}, the "
+            "DOI paper.yaml gives the deposited package",
             context=" ".join(statement.split())[:160],
             hint="name the deposit and its DOI in the statement, and cite it in the reference "
             "list; or put package.doi right if the deposit has another",
         ))  # fmt: skip
     return Report().with_findings(Finding(
-        gate=GATE, code="package-doi-not-named", severity=severity, path=folder,
-        message=f"the manuscript has no data availability statement, and paper.yaml gives the "
-        f"deposited package the DOI {doi}",
+        gate=GATE, code="package-doi-not-named", severity=severity,
+        path=project.path("manuscript"),
+        message=f"the manuscript has no data or code availability statement, and paper.yaml "
+        f"gives the deposited package the DOI {doi}",
         hint="add the statement, under a heading such as `# Data availability`, and name the "
         "deposit and its DOI in it",
     ))  # fmt: skip

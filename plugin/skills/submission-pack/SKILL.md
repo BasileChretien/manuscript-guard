@@ -78,8 +78,8 @@ itself (`manuscript-guard sign --as <them> --finding PACKAGE/custodian/...`). Ne
 The tool uploads nothing, and neither should you: depositing is the author's act. Tell them
 to reserve the DOI at their repository where it allows that, write it in `paper.yaml` as
 `package.doi`, run `package` again so that the README and CITATION.cff carry it, and upload
-the .zip. `check` then says where the Data availability statement does not name that DOI
-(`package-doi-not-named`), and it fails at submission.
+the .zip. `check` then says where neither the Data availability statement nor a Code
+availability statement names that DOI (`package-doi-not-named`), and it fails at submission.
 
 ## The covering letter
 

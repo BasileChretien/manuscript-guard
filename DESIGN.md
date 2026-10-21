@@ -5025,7 +5025,13 @@ is never looked in (`deposit/plan.py`): `analysis/` and `figures/` file by file,
 fragments with their digests, the plan, its frozen copy, the data dictionary and the record
 of the data sources by name, the literature ledger and `references.bib`, the lockfiles, and
 the licence. In a repository, a file git does not track is withheld and said, since it may be
-data kept out of git on purpose, and so is a link. An input goes in only when the analysis
+data kept out of git on purpose, and so is a link. A folder `paths:` sets to the project
+itself is refused, since it would take every file of the project (round 1 of #388), and so is
+a file collected at a name the package writes of its own, `paper.yaml` or `README.md`. A
+declared input is held out of the folders by its name and by the file it is: another name for
+the same file, a hard link, or its name in another case where the system ignores case, is the
+input all the same (round 1). An input that is itself a results file of the project, one
+script reading what another wrote, goes in as results. An input goes in only when the analysis
 declared it synthetic or `paper.yaml` lists it in `package.share`; one declared restricted
 never goes, and listing it is refused. Every other input is withheld and listed in INPUTS.md,
 with its size, the SHA-256 of its bytes and how to obtain it (`package.request`, required
@@ -5037,8 +5043,10 @@ the review records, `authors.yaml`, the approvals and sign-offs, or the build.
 reads the counts the manuscript prints, and "<5" in the paper holds nothing back when the
 file beside it says 3. Where `custodian.minimum_cell_count` is declared, the package refuses
 while a fragment holds a count from one to below it: a value that is a count as G2 reads one,
-whatever its display; a table cell past the first column that states one count alone, with a
-share in brackets or over a denominator (`count_in_cell`); a model card's rows read, used
+whatever its display; a table cell past the first column that states one count alone, over a
+denominator, with a share in brackets, or both, the share with a point, a middle dot or a
+decimal comma and behind a bound or not, "3/412 (0.7%)" or "3 (<1%)" (`count_in_cell`, round
+1 of #388); a model card's rows read, used
 and dropped, its events and its events at each level; a variable card's rows missing
 (`deposit/counts.py`). The data custodian `authors.yaml` names may sign the list off
 (`PACKAGE/custodian/small-counts`), and a list that changes is another statement. Where the
@@ -5053,10 +5061,12 @@ adds the source.
 
 **The tool uploads nothing.** It prints the steps: reserve the DOI where the repository
 allows it, write it as `package.doi`, package again so that README.md and CITATION.cff carry
-it, upload. Once `package.doi` is declared, G4 warns while the Data availability statement
-does not name it, and fails at submission (`package-doi-not-named`): a DOI is named when the
-statement writes it, bare or in a link, in any case, or cites by key an entry that has it, and
-not when it writes a longer one that begins the same way.
+it, upload. Once `package.doi` is declared, G4 warns while neither the Data availability
+statement nor a Code (or Software) availability statement names it, and fails at submission
+(`package-doi-not-named`). The statements are read in the main text as one, across its files,
+as G4 reads it (round 1 of #388). A DOI is named when a statement writes it, bare or in a
+link, in any case, in emphasis, a code span or quotation marks, or cites by key an entry that
+has it, and not when it writes a longer one that begins the same way.
 
 The package refuses while G1 fails, as `submit` does while the submission check fails, and
 `--skip-checks` writes it with MANIFEST.yaml saying so. No file it writes holds a date or a
@@ -12006,17 +12016,21 @@ Open, recorded as each change landed:
   `package.doi`, and left this out.
 - **The custodian's minimum is read in the fragments, not in the figures.** A figure drawn
   from a small count shows it in the package as it does in the paper. A table cell is read for
-  a count only where it states one in a shape `count_in_cell` knows: "3 (0.7)", "3/412", "3";
-  "3 of 412", a count with thousands separators, and a cell in the first column, which names
-  the rows, are not. A reference ratio typed as a bare "1" is read as a count, and the
+  a count only where it states one in a shape `count_in_cell` knows: "3", "3/412", "3 (0.7%)",
+  "3/412 (0.7%)", "3 (<1%)"; "3 of 412", "3 (0.7% to 1.2%)", a count with thousands
+  separators, and a cell in the first column, which names the rows, are not. A reference
+  ratio typed as a bare "1" is read as a count, and the
   custodian signs it off. A dataset's own file deposited by `package.share` is the author's
   declaration, and nothing reads it for small cells.
 - **What a file is, the package takes from its folder and its name.** A file of `analysis/`
   that is data, committed beside the scripts, goes in as a script would; only a declared
-  input is held to the declaration. A data dictionary goes in whole, the wording of a
+  input is held to the declaration. Outside a git repository there is no record of what the
+  author meant to keep, so every file of `analysis/` and `figures/` is taken, an extract left
+  there among them; the README says so. A data dictionary goes in whole, the wording of a
   licensed instrument's items with it, and nothing reads `instrument.licence` to withhold it.
-  A file git tracks under another case than the disk's, on a system that ignores case, is
-  taken for one git does not track and withheld.
+  A file git tracks under another case than the disk's is compared in the case the system
+  compares names in, which on macOS is the case as written: there it is taken for one git
+  does not track and withheld.
 - **The package names the versions the results were written with, and installs nothing.**
   A project with no lockfile is warned of, and the README names only the language versions,
   the R packages the R emitter recorded and the versions the analysis declared as software.

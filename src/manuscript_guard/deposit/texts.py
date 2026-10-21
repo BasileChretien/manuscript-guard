@@ -206,6 +206,11 @@ def _session_line(fragment: Fragment, document: dict, results: Results) -> str:
     return line + "."
 
 
+def _licence_name(entries: list[Entry]) -> str:
+    """The name of the licence file the package holds, as the project calls it."""
+    return next((entry.path for entry in entries if entry.why == "the licence"), "LICENSE")
+
+
 def _contents(entries: list[Entry]) -> list[str]:
     out = ["| Folder or file | What it holds |", "|---|---|"]
     for prefix, said in FOLDERS:
@@ -222,13 +227,14 @@ def _contents(entries: list[Entry]) -> list[str]:
         "the rest |",
         "| `paper.yaml` | the project file `manuscript-guard verify` reads |",
         "| `MANIFEST.yaml`, `SHA256SUMS` | every file and its SHA-256 |",
-        "| `LICENSE`, `CITATION.cff` | the terms of reuse, and how to cite this package |",
+        f"| `{_licence_name(entries)}`, `CITATION.cff` | the terms of reuse, and how to "
+        "cite this package |",
     ]
     return out
 
 
 def readme(project: Project, results: Results, inputs: list[Input], entries: list[Entry],
-           with_manuscript: bool) -> str:  # fmt: skip
+           with_manuscript: bool, in_git: bool) -> str:  # fmt: skip
     from .readme import readme_text
 
     documents = _documents(results)
@@ -237,14 +243,16 @@ def readme(project: Project, results: Results, inputs: list[Input], entries: lis
     tools = [(d.get("provenance") or {}).get("tool") or {} for d in documents.values()]
     versions = sorted({str(tool["version"]) for tool in tools if tool.get("version")})
     return readme_text(project, results, inputs, entries, with_manuscript,
-                       contents=_contents(entries), sessions=sessions, versions=versions)
+                       contents=_contents(entries), sessions=sessions, versions=versions,
+                       in_git=in_git)
 
 
 def generated_entries(project: Project, results: Results, inputs: list[Input],
-                      entries: list[Entry], with_manuscript: bool) -> list[Entry]:  # fmt: skip
+                      entries: list[Entry], with_manuscript: bool, *,
+                      in_git: bool) -> list[Entry]:  # fmt: skip
+    told = readme(project, results, inputs, entries, with_manuscript, in_git)
     return [
-        generated("README.md", readme(project, results, inputs, entries, with_manuscript),
-                  "how to run it again"),
+        generated("README.md", told, "how to run it again"),
         generated("CITATION.cff", citation(project), "how to cite it"),
         generated("BOUND.md", bound(project, results), "the results the paper prints"),
         generated("INPUTS.md", inputs_text(project, inputs), "the inputs, and where they are"),

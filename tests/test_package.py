@@ -539,11 +539,41 @@ def test_a_statement_that_does_not_name_the_deposit_is_said(project: Path) -> No
         "https://doi.org/10.5281/zenodo.1234567.",
         "doi:10.5281/ZENODO.1234567",
         "<https://doi.org/10.5281/zenodo.1234567>",
+        # Round 1: emphasis by underscores, a code span and quotation marks.
+        "_10.5281/zenodo.1234567_",
+        "`10.5281/zenodo.1234567`",
+        "'10.5281/zenodo.1234567'",
     ],
 )
 def test_a_statement_that_names_the_deposit_passes(project: Path, written: str) -> None:
     with_package(project, doi="10.5281/zenodo.1234567")
     _statement(project, f"The code and results are deposited at Zenodo ({written})")
+    assert _doi_codes(project, submission=True) == {}
+
+
+def test_a_statement_in_another_file_than_a_heading_like_it_is_read(project: Path) -> None:
+    """Round 1: the statement in one file and a "Data sharing" subsection in another; the
+    main text is read as one, as G4 reads it."""
+    with_package(project, doi="10.5281/zenodo.1234567")
+    main_md = project / "manuscript" / "main.md"
+    source = main_md.read_text(encoding="utf-8")
+    start = source.index("# Data availability")
+    end = source.index("\n# ", start + 1)
+    methods = source.index("# Methods")
+    moved = source[:methods] + "# Methods\n\n### Data sharing between sites\n\nNone.\n" + \
+        source[methods + len("# Methods"):start] + source[end + 1:]  # fmt: skip
+    main_md.write_text(moved, encoding="utf-8")
+    (project / "manuscript" / "zz-declarations.md").write_text(
+        "# Data availability\n\nDeposited as 10.5281/zenodo.1234567.\n", encoding="utf-8"
+    )
+    assert _doi_codes(project, submission=True) == {}
+
+
+def test_a_code_availability_statement_that_names_the_deposit_passes(project: Path) -> None:
+    """Round 1: the deposit is code, and many journals ask for its own statement."""
+    with_package(project, doi="10.5281/zenodo.1234567")
+    _statement(project, "The data are held by the custodian.\n\n## Code availability\n\n"
+               "The code is deposited as 10.5281/zenodo.1234567.")  # fmt: skip
     assert _doi_codes(project, submission=True) == {}
 
 
@@ -556,6 +586,151 @@ def test_another_doi_that_begins_with_the_deposits_is_not_it(project: Path) -> N
 def test_no_doi_declared_asks_nothing(project: Path) -> None:
     _statement(project, "The code is available from the corresponding author.")
     assert _doi_codes(project, submission=True) == {}
+
+
+# ------------------------------------------------------------ round 1 of the review
+
+
+@pytest.mark.parametrize(
+    "cell", ["3/412 (0.7%)", "3 / 412 (0.7 %)", "3 (<1%)", "3 (0\N{MIDDLE DOT}7)", "3 (0,7)",
+             "3 (\N{LESS-THAN OR EQUAL TO}0.7%)"],
+)  # fmt: skip
+def test_a_count_with_its_denominator_and_share_is_a_count(cell: str) -> None:
+    """Round 1: n/N (%), a share held behind a bound, a middle dot or a decimal comma."""
+    from manuscript_guard.deposit.counts import count_in_cell
+
+    assert count_in_cell(cell) == 3
+
+
+def _mini(tmp_path: Path, scripts: dict[str, str], package: str) -> Path:
+    """A project whose analysis is `scripts`, each run once in order, and a synthetic input."""
+    root = tmp_path / "mini"
+    for sub in ("analysis", "data", "manuscript", "results"):
+        (root / sub).mkdir(parents=True)
+    (root / "paper.yaml").write_text(
+        f'schema: manuscript-guard/paper/1\ntitle: "Mini"\nenglish_variant: en-GB\n{package}',
+        encoding="utf-8",
+    )
+    (root / "LICENSE").write_text(MIT, encoding="utf-8")
+    (root / "data" / "x.csv").write_text("a\n1\n", encoding="utf-8")
+    for name, body in scripts.items():
+        (root / "analysis" / name).write_text(
+            "from manuscript_guard.emit import Emitter\n"
+            "em = Emitter(__file__)\n" + body + "em.write()\n", encoding="utf-8"
+        )
+        ran = subprocess.run([sys.executable, f"analysis/{name}"], cwd=root,
+                             capture_output=True, text=True)  # fmt: skip
+        assert ran.returncode == 0, ran.stderr
+    return root
+
+
+def test_a_results_file_another_script_read_is_deposited_as_results(tmp_path: Path) -> None:
+    """Session's own: `02` declares `01`'s results as its input, and the fragment was
+    withheld as an input nobody declared shareable."""
+    root = _mini(tmp_path, {
+        "01_first.py": 'em.add_input("data/x.csv", synthetic=True)\nem.value("n.a", 40)\n',
+        "02_next.py": 'em.add_input("results/01_first.json")\nem.value("n.b", 41)\n',
+    }, "package:\n  licence: MIT\n")  # fmt: skip
+    assert main(["package", str(root)]) == 0
+    held = contents(built(root))
+    assert {"results/01_first.json", "results/02_next.json"} <= held
+    listed = (built(root) / "INPUTS.md").read_text(encoding="utf-8")
+    assert "| `results/01_first.json` |" in listed and "yes: a results file" in listed
+
+
+@pytest.mark.parametrize("name", ["paper.yaml", "README.md", "MANIFEST.yaml"])
+def test_an_input_at_a_name_the_package_writes_is_refused(tmp_path: Path, name: str) -> None:
+    """Session's own: two files would be written at one path, and SHA256SUMS name both."""
+    root = _mini(tmp_path, {}, "")
+    if name != "paper.yaml":
+        (root / name).write_text("shared: true\n", encoding="utf-8")
+    (root / "analysis" / "01_first.py").write_text(
+        "from manuscript_guard.emit import Emitter\nem = Emitter(__file__)\n"
+        f'em.add_input("{name}")\nem.value("n.a", 40)\nem.write()\n', encoding="utf-8"
+    )
+    ran = subprocess.run([sys.executable, "analysis/01_first.py"], cwd=root,
+                         capture_output=True, text=True)  # fmt: skip
+    assert ran.returncode == 0, ran.stderr
+    document = paper(root)
+    document["package"] = {"licence": "MIT", "share": [name]}
+    set_paper(root, document)
+    # paper.yaml has changed since the run read it: only the package's own refusal is asked.
+    assert "package-name-taken" in refused(root)
+
+
+def test_a_folder_that_is_the_project_itself_is_refused(project: Path) -> None:
+    """Round 1: `paths.analysis: "."` walked the whole project, review records and stored
+    copies of cited works with it."""
+    ready(project)
+    document = paper(project)
+    document["paths"] = {"analysis": "."}
+    set_paper(project, document)
+    assert "package-folder-is-root" in refused(project)
+
+
+def test_a_restricted_input_under_another_name_for_the_same_file_stays_out(
+    project: Path,
+) -> None:
+    """Round 1: a declared input was held out of the walk by its name, so another name for the
+    same file, a hard link here, or the path in another case where the file system ignores
+    case, went in."""
+    ready(project)
+    with_package(project, request="Apply to the custodian.")
+    raw = project / "analysis" / "data" / "raw.csv"
+    raw.parent.mkdir()
+    raw.write_text("id,age\n1,40\n", encoding="utf-8")
+    os.link(raw, project / "analysis" / "data" / "copy.csv")
+
+    def declare(document: dict) -> None:
+        document["provenance"]["inputs"].append(
+            {"path": "analysis/data/raw.csv", "sha256": "0" * 64, "bytes": 13,
+             "restricted": True}
+        )  # fmt: skip
+
+    edit_fragment(project, declare)
+    assert main(["package", str(project), "--skip-checks"]) == 0
+    held = contents(built(project))
+    assert "analysis/data/raw.csv" not in held and "analysis/data/copy.csv" not in held
+    with zipfile.ZipFile(built(project).with_suffix(".zip")) as opened:
+        assert not [n for n in opened.namelist() if n.lower().endswith(("raw.csv", "copy.csv"))]
+
+
+def test_a_restricted_input_named_in_another_case_stays_out(project: Path) -> None:
+    ready(project)
+    with_package(project, request="Apply to the custodian.")
+    raw = project / "analysis" / "data" / "raw.csv"
+    raw.parent.mkdir()
+    raw.write_text("id,age\n1,40\n", encoding="utf-8")
+    if not (project / "Analysis" / "Data" / "raw.csv").exists():
+        pytest.skip("this file system tells the two names apart")
+
+    def declare(document: dict) -> None:
+        document["provenance"]["inputs"].append(
+            {"path": "Analysis/Data/raw.csv", "sha256": "0" * 64, "bytes": 13,
+             "restricted": True}
+        )  # fmt: skip
+
+    edit_fragment(project, declare)
+    assert main(["package", str(project), "--skip-checks"]) == 0
+    with zipfile.ZipFile(built(project).with_suffix(".zip")) as opened:
+        assert not [n for n in opened.namelist() if n.lower().endswith("raw.csv")]
+
+
+def test_the_readme_says_what_was_taken_outside_a_repository(project: Path) -> None:
+    """Round 1: the README said files git did not track were listed, of a project git does
+    not hold, where every file of the folders was taken."""
+    assert main(["package", str(ready(project))]) == 0
+    readme = (built(project) / "README.md").read_text(encoding="utf-8")
+    assert "git did not track" not in readme
+    assert "not a git repository" in readme
+
+
+def test_the_readme_names_the_licence_file_copied(project: Path) -> None:
+    (project / "COPYING").write_text(MIT, encoding="utf-8")
+    assert main(["package", str(project)]) == 0
+    folder = built(project)
+    assert "COPYING" in contents(folder)
+    assert "(see COPYING)" in (folder / "README.md").read_text(encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------- R

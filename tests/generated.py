@@ -696,6 +696,22 @@ LATEX_BINDING_PLACES = (
 LATEX_PREAMBLE_BINDINGS = (("\\title{{T \\mg{{results.{}}}}}\n", "bound"),)
 
 
+#: What a display is written in: digits and the signs a number is written with, each of TeX's
+#: specials, and each character the values file writes another way (`build/latex_values.py`).
+LATEX_DISPLAY_CHARACTERS = (
+    *"0123456789.,-+()[]/ <>|'", "--", *"\\{}$&#%_~^", "\N{EN DASH}", "\N{EM DASH}",
+    "\N{MINUS SIGN}", "\N{PLUS-MINUS SIGN}", "\N{MULTIPLICATION SIGN}",
+    "\N{LESS-THAN OR EQUAL TO}", "\N{GREATER-THAN OR EQUAL TO}", "\N{NO-BREAK SPACE}",
+    "\N{THIN SPACE}", "\N{GREEK SMALL LETTER BETA}",
+)  # fmt: skip
+
+
+def latex_displays() -> st.SearchStrategy[str]:
+    """A display holding every character of `LATEX_DISPLAY_CHARACTERS` once, in an order
+    drawn, so that an escape broken for one is seen in each."""
+    return st.permutations(LATEX_DISPLAY_CHARACTERS).map("".join)
+
+
 @st.composite
 def latex_bound(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
     """A LaTeX document with a binding in every place of `LATEX_BINDING_PLACES`, in an order
@@ -3416,6 +3432,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "latex refusals": latex_texts(),
     "latex sections": latex_texts(),
     "latex bindings": latex_texts(),
+    "latex escaped": latex_texts(),
     "hidden": texts(TERMS),
     "own words": texts(TERMS),
     "spans": texts(),

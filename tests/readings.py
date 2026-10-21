@@ -169,6 +169,19 @@ def _latex_sections() -> Reading:
     return sections
 
 
+@reading("latex escaped")
+def _latex_escaped() -> Reading:
+    from manuscript_guard.build.latex_values import NotPrintable, escaped
+
+    def written(text: str) -> dict[str, Any]:
+        try:
+            return {"written": escaped(text, "results.x")}
+        except NotPrintable as found:
+            return {"refused": found.character}
+
+    return written
+
+
 @reading("latex bindings")
 def _latex_bindings() -> Reading:
     from manuscript_guard.text.latex.mask import read

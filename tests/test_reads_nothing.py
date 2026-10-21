@@ -117,6 +117,8 @@ COMMANDS = {
     "related": Zero("the earlier outputs in literature/related.yaml", exits=2,
                     argv=("related", "{project}")),
     "render": Zero("the manuscript", why="it says how many files it rendered, 0 included"),
+    "values": Zero("the results, for a LaTeX manuscript's values file", exits=2,
+                   argv=("values", "{project}")),
     "respond": Zero("the rounds of revision", exits=1, argv=("respond", "{project}")),
     "review": Zero("the review panels", why="it says there are none, and G11 says `no-review`"),
     "reworded": Zero("the manuscript now and as it was",

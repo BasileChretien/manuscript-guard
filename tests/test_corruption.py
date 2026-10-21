@@ -9249,7 +9249,7 @@ def _record_of(path: Path) -> dict:
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
-def _rewrite(path: Path, record: dict) -> None:
+def _rewrite_comments(path: Path, record: dict) -> None:
     path.write_text(yaml.safe_dump(record, sort_keys=False, allow_unicode=True), "utf-8")
 
 
@@ -9266,7 +9266,7 @@ def test_a_comment_lowered_to_the_least_severity_still_binds(project: Path) -> N
     path = _filed(project, "Rename the heading.")
     record = _record_of(path)
     record["findings"][0]["severity"] = "comment"
-    _rewrite(path, record)
+    _rewrite_comments(path, record)
     assert "comment-unanswered" in {f.code for f in _g11(project, submission=True).failures}
 
 
@@ -9276,7 +9276,7 @@ def test_an_empty_answer_answers_nothing(project: Path, answer: str) -> None:
     record = _record_of(path)
     record["findings"][0]["resolution"] = answer
     record["findings"][0]["overridden"] = answer
-    _rewrite(path, record)
+    _rewrite_comments(path, record)
     assert "comment-unanswered" in {f.code for f in _g11(project, submission=True).failures}
 
 
@@ -9296,7 +9296,7 @@ def test_a_filed_comment_changed_by_hand_is_caught(project: Path, change) -> Non
     path = _filed(project, "Is there a newer reference?", "Rename the heading.")
     record = _record_of(path)
     change(record)
-    _rewrite(path, record)
+    _rewrite_comments(path, record)
     codes_found = {f.code for f in _g11(project, submission=True).failures}
     assert "comments-altered" in codes_found or "schema-violation" in codes_found
 
@@ -9307,7 +9307,7 @@ def test_answering_a_filed_comment_is_not_an_alteration(project: Path) -> None:
     record["findings"][0].update(
         severity="major", overridden="The 2019 review is the latest.", overridden_by="Ana Author"
     )
-    _rewrite(path, record)
+    _rewrite_comments(path, record)
     report = _g11(project, submission=True)
     assert not [f for f in report.findings if f.code.startswith("comment")]
 
@@ -9329,7 +9329,7 @@ def test_a_comments_record_with_no_list_of_findings_is_reported_and_not_a_crash(
     path = _filed(project, "Is there a newer reference?")
     record = _record_of(path)
     record["findings"] = 3
-    _rewrite(path, record)
+    _rewrite_comments(path, record)
     assert main(["check", str(project)]) == 1
     assert "schema-violation" in {f.code for f in _g11(project, submission=False).failures}
 
@@ -9354,7 +9354,7 @@ def test_import_adds_nothing_to_a_record_changed_by_hand(project: Path) -> None:
     path = _filed(project, "Is there a newer reference?")
     record = _record_of(path)
     record["findings"][0]["finding"] = "Fine as it is."
-    _rewrite(path, record)
+    _rewrite_comments(path, record)
     new = Thread(key="durable:0000FFFF", author="Ann Coauthor", date="2026-10-20",
                  text="And this one.", block="heading", anchored="Methods")  # fmt: skip
     (filing,) = plan_filing(load_project(project)[0], [new], stamp=_STAMP, printed=None,
@@ -9413,7 +9413,7 @@ def test_a_record_import_could_not_add_to_makes_import_exit_one(
     path = project / "review" / "comments" / name
     record = _record_of(path)
     record["findings"][0]["finding"] = "Fine as it is."
-    _rewrite(path, record)
+    _rewrite_comments(path, record)
     again = commented(built(project), tmp_path / "again.docx", [
         {"on": "Whether the signal extends", "text": "First."},
         {"on": "Drug-induced hepatic injury", "text": "Second."},

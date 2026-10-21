@@ -81,6 +81,7 @@ from generated import (
     numbered_displays,
     passage_files,
     pdf_figures,
+    plan_pairs,
     planned_plans,
     printings,
     quotations,
@@ -116,6 +117,7 @@ from manuscript_guard.gates import models as models_gate
 from manuscript_guard.gates import numbers as numbers_gate
 from manuscript_guard.gates import quotations as quotations_gate
 from manuscript_guard.gates import related as related_gate
+from manuscript_guard.gates import related_methods as related_methods_gate
 from manuscript_guard.gates import reported as reported_gate
 from manuscript_guard.gates import spelling as spelling_gate
 from manuscript_guard.gates import vocabulary as vocabulary_gate
@@ -4308,6 +4310,18 @@ def test_a_value_an_earlier_output_printed_is_this_one_however_it_was_printed(
     ]
 
 
+@holds(150, plan_pairs())
+def test_a_section_of_two_plans_differs_only_where_its_words_do(
+    drawn: tuple[dict[str, str], list[str]],
+) -> None:
+    """G8 says which sections an earlier plan and this one both have whose words differ. A
+    section re-wrapped, put in emphasis, given a comment, written in capitals or numbered is
+    the same section saying the same; one with a word added is not; and the plan's own
+    Deviations are each paper's and never compared. Each example holds every edit."""
+    given, changed = drawn
+    assert READINGS["plan sections"]()(given) == changed, given
+
+
 # ------------------------------------------------------------- scripts the gates do not read
 
 #: Characters of each script the gates do not read, from the blocks of Unicode that hold it,
@@ -7083,6 +7097,45 @@ def _a_claim_keeps_its_line_breaks(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(methods_gate, "_collapsed", lambda text: text.strip(" "))
 
 
+def _comments_are_compared(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(related_methods_gate, "_words", lambda text: text.replace("*", "").casefold()
+                  .split())  # fmt: skip
+
+
+def _case_is_compared(patch: pytest.MonkeyPatch) -> None:
+    real = related_methods_gate.as_quoted
+    patch.setattr(related_methods_gate, "_words", lambda text: real(text).split())
+
+
+def _a_number_makes_another_heading(patch: pytest.MonkeyPatch) -> None:
+    real = related_methods_gate.as_quoted
+    patch.setattr(related_methods_gate, "folded_title", lambda title: real(title).casefold())
+
+
+def _the_deviations_are_compared(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(related_methods_gate, "_OWN", ())
+
+
+def _a_heading_that_stands_twice_is_compared_first(patch: pytest.MonkeyPatch) -> None:
+    real = related_methods_gate._by_title
+
+    def first_wins(text: str):
+        read = real(text)
+        read.twice = set()
+        return read
+
+    patch.setattr(related_methods_gate, "_by_title", first_wins)
+
+
+def _what_the_deviations_hold_is_compared(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(related_methods_gate, "subsections", lambda sections, index: [sections[index]])
+
+
+def _only_the_first_words_are_compared(patch: pytest.MonkeyPatch) -> None:
+    real = related_methods_gate._words
+    patch.setattr(related_methods_gate, "_words", lambda text: real(text)[:3])
+
+
 def _a_printed_value_is_text(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(related_gate, "_printed", lambda text: None)
 
@@ -7738,6 +7791,34 @@ BROKEN = {
     "the value is left in the quote": (
         _the_value_is_left_in_the_quote,
         test_the_words_beside_a_quoted_value_are_its_words_and_no_more,
+    ),
+    "a comment in a plan's section is compared": (
+        _comments_are_compared,
+        test_a_section_of_two_plans_differs_only_where_its_words_do,
+    ),
+    "a plan's section is compared in its case": (
+        _case_is_compared,
+        test_a_section_of_two_plans_differs_only_where_its_words_do,
+    ),
+    "a numbered heading names another section": (
+        _a_number_makes_another_heading,
+        test_a_section_of_two_plans_differs_only_where_its_words_do,
+    ),
+    "the plans' own Deviations are compared": (
+        _the_deviations_are_compared,
+        test_a_section_of_two_plans_differs_only_where_its_words_do,
+    ),
+    "a heading that stands twice is compared by its first": (
+        _a_heading_that_stands_twice_is_compared_first,
+        test_a_section_of_two_plans_differs_only_where_its_words_do,
+    ),
+    "what the plans' Deviations hold is compared": (
+        _what_the_deviations_hold_is_compared,
+        test_a_section_of_two_plans_differs_only_where_its_words_do,
+    ),
+    "only a section's first words are compared": (
+        _only_the_first_words_are_compared,
+        test_a_section_of_two_plans_differs_only_where_its_words_do,
     ),
     "a printed value is compared as text only": (
         _a_printed_value_is_text,

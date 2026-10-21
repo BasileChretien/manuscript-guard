@@ -230,6 +230,22 @@ def _sections() -> Reading:
     return sections
 
 
+@reading("supplementary methods")
+def _supplementary_methods() -> Reading:
+    """What G9 reads as the Methods of a file of the supplement, and each model G15 finds
+    named in its Methods. Where G2 holds its Methods-only rules is the `numbers` reading's."""
+    from manuscript_guard.gates.methods import supplement_methods_in
+    from manuscript_guard.gates.models import named_in_methods
+
+    def supplementary(text: str) -> dict[str, Any]:
+        return {
+            "read": supplement_methods_in(text),
+            "models": [list(found) for found in named_in_methods(text)],
+        }
+
+    return supplementary
+
+
 @reading("summaries")
 def _summaries() -> Reading:
     """The results keys a file gives in its Abstract or a conclusion, and those it binds where

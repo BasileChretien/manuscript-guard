@@ -2502,6 +2502,48 @@ take numbered headings and
 through under its results. They read fewer headings than G4 counts, and a Methods they miss
 makes them report a number, not pass one.
 
+**The supplement's Methods are read with the paper's.** Every gate read
+`manuscript/supplementary/`, and G9 read the Methods of the main text alone, because G4's
+required section is the main text's. A parameter of the lock that eMethods stated was
+reported absent, and in a paper whose Methods are all in its supplement, as a research
+letter's often are, the lock's parameters were compared with no text: a wrong one was told
+only as `methods-not-found`. Since 2026-10-21 (Basile's choice) G9 keeps one ledger. It reads
+the main text's Methods as before, then, in each file of the supplement, every section that
+the main text's Methods would be found as: a heading holding "methods", "Supplementary
+methods", "eMethods 1. Data source", "S1 Methods" or "Appendix 1: Methods", with no Results
+heading over it, each with what is under it, and each once. Every one and not the first,
+since a supplement numbers its Methods and puts its tables between them. A parameter of the
+lock is stated where either states it. The rest of the supplement is not read for one: an
+eTable holds numbers of every kind, and a parameter matched in one would be no check. G4's
+required Methods are still the main text's. The anchors were read in every file already, so
+a claim in the supplement was held to its step, and a step pointed at from there was one
+some text describes. The paragraphs of the supplement's Methods that point at no step are
+now listed by `methods --explain` with the main text's.
+
+G2 and G15 found the Methods by names of their own (`classify.METHODS_SECTIONS`), none of
+them a supplement's. Under "eMethods 1" a threshold typed as a convention was a number
+nothing classified, with the wrong advice, and the kind of the fitted model typed there was
+never read. `classify.SUPPLEMENT_METHODS` holds the supplement's names: "Supplementary",
+"Supplemental" or "Online methods", "eMethods" and "S1 Methods", each with a number or the
+title of its part after it, and "Methods" under the label of an appendix or a supplement
+("Appendix 1: Methods", "Appendix S1. Supplementary methods", "Supplement 1. eMethods 2").
+`is_methods` takes either list, so G9's paragraphs that point at no step are found under the
+same headings. A name G9 reads and these do not, "Supplementary methods and results", is
+read as the main text's "Methods and results" is. No supplement's name puts a heading first
+among the main text's Methods: in a main text with "Laboratory methods" and then
+"Supplementary methods", the first is still the one read.
+
+**A lock read against the main text alone stays valid, and is said of.** The lock holds no
+digest of the Methods: the analysis files' digests, the parameters, and each pair's words and
+its code's digest. Reading the supplement makes no lock wrong and needs no migration. But a
+lock written when G9 read the main text's Methods alone may vouch for eMethods nobody read
+against the code. `methods --reconcile` now writes `manuscript-guard/methods-lock/2`. A lock
+of `/1`, or of no schema, that records the files, in a project whose supplement has Methods,
+is said of once, `methods-supplement-unreconciled`, a warning at every stage that names the
+supplement's files, and its files and pairs are held as before. `methods --reconcile <step>`
+leaves the files and their schema as they were, since nobody read the files again. A lock of
+pairs alone claims no reading of the files and is written `/2`.
+
 The abstract is found the same way for G4's limit and its headings, G14's regions and the
 word count: "Abstract" or "Structured abstract", numbered or not, or the title the
 journal's profile gives it (`structure.abstract_title: Summary` for The Lancet). With a
@@ -2973,8 +3015,9 @@ warning.
 - A step no text points at is a warning.
 - A line of nothing but anchors inside a paragraph is a warning at every stage,
   `method-anchor-line`: the document ends the paragraph there.
-- A Methods paragraph that points at no step is counted, and listed by
-  `manuscript-guard methods --explain`, not reported as a finding. A paragraph on ethics
+- A Methods paragraph that points at no step, in the main text's Methods or the
+  supplement's, is counted, and listed by `manuscript-guard methods --explain`, not reported
+  as a finding. A paragraph on ethics
   approval or on the data source has no step to point at, and a warning nobody can clear is
   one that gets ignored.
 
@@ -11949,6 +11992,17 @@ Open, recorded as each change landed:
   contrived). A DOI that `references.bib` writes with a TeX escape, `10.1000/abc\_def`, is
   looked for under `10.1000_abc__def` and not found, as G7 reads the same DOI with its
   backslash (round 1).
+- **A supplement's Methods are what their headings say.** G9 reads, in a file of the
+  supplement, a section whose heading holds "methods", and G2 and G15 the names of
+  `classify.SUPPLEMENT_METHODS`. Methods headed otherwise, "eAppendix 1. Data source",
+  "Supplementary text", or "Statistical analysis" alone at the top of the file, are no
+  Methods to G9, and the lock's parameters are not compared with them; "Detailed methods"
+  and "Additional methods" are G9's and not G2's or G15's. A file whose first heading is
+  "Supplementary methods" over all of it, its tables of results included, is Methods to all
+  three, as the example's is. `methods-supplement-unreconciled` says of a lock written before
+  2026-10-21 only where the supplement has Methods when `check` runs: eMethods added after a
+  lock was written are no more noticed than a paragraph added to the main text's Methods,
+  which only an anchor holds to the code.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

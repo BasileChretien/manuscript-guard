@@ -318,10 +318,11 @@ _SIGNS = (
 
 
 @cache
-def _pool(terms: tuple[str, ...]) -> tuple[str, ...]:
+def _pool(terms: tuple[str, ...], blocks: tuple[str, ...] = ()) -> tuple[str, ...]:
     """Everything a manuscript is drawn from, each piece as often as it should come up:
     words most of all, then what ends a sentence, then numbers, citations, bindings and
-    code, then what opens a block, and the bare signs once each."""
+    code, then what opens a block, and the bare signs once each. `blocks` are whole blocks
+    a reading is to meet as often as `_WHOLE`'s."""
     return (
         *_spaced(FILLER) * 2,
         *FILLER,
@@ -336,11 +337,13 @@ def _pool(terms: tuple[str, ...]) -> tuple[str, ...]:
         *_WHOLE * 3,
         *SPACES,
         *_SIGNS,
+        *blocks * 3,
     )
 
 
-def texts(terms: tuple[str, ...] = ()) -> st.SearchStrategy[str]:
-    """A manuscript file, with `terms` written into it in every way a term is written.
+def texts(terms: tuple[str, ...] = (), blocks: tuple[str, ...] = ()) -> st.SearchStrategy[str]:
+    """A manuscript file, with `terms` written into it in every way a term is written, and
+    `blocks` among its whole blocks.
 
     Drawn piece by piece from one pool, as the reviews drew their lines from an alphabet,
     and not block by block from a grammar of Markdown. A grammar writes only what its
@@ -358,7 +361,7 @@ def texts(terms: tuple[str, ...] = ()) -> st.SearchStrategy[str]:
 
     return st.tuples(
         st.sampled_from(("", "", "", "", *_HEADERS)),
-        _in_a_row(_pool(terms), few=20, many=70),
+        _in_a_row(_pool(terms, blocks), few=20, many=70),
         st.sampled_from(("\n", "\n", "\n", "\r\n")),
     ).map(file)
 
@@ -497,6 +500,60 @@ def summaries() -> st.SearchStrategy[str]:
             lambda gaps: "".join(gap + piece for gap, piece in zip(gaps, order, strict=True))
         )
     )
+
+
+#: What a supplement calls its Methods, each a way `classify.SUPPLEMENT_METHODS` takes: with
+#: a number before or after it, with the title of its part after a stop or a colon, under the
+#: label of an appendix. G9 reads each with the main text's Methods, and G2 and G15 hold their
+#: Methods-only rules under each.
+SUPPLEMENT_METHODS = (
+    "Supplementary methods", "Supplemental Methods 2", "Online methods", "eMethods",
+    "eMethods 1. Data source", "eMethods 3: Sensitivity", "S1 Methods", "Appendix 1: Methods",
+    "Appendix S1. Supplementary methods", "eAppendix 2. Methods", "Supplement 1. eMethods 4",
+    "2. Supplementary methods", "Supplementary Methods S3",
+)  # fmt: skip
+#: What else a supplement's headings say. The last two hold "methods", so G9 reads them, as G4
+#: would count them, and they name results, so G2 and G15 do not, as of the main text's
+#: "Methods and results".
+SUPPLEMENT_OTHERS = (
+    "eTable 1. Counts by year", "eFigure 2", "Supplementary results", "eAppendix 3. Data",
+    "Supplementary material", "Supplementary methods and results", "eMethods 5. Results by site",
+)  # fmt: skip
+
+
+@st.composite
+def supplements(draw: st.DrawFn) -> tuple[str, list[tuple[int, bool, bool]]]:
+    """A file of the supplement holding every heading of `SUPPLEMENT_METHODS` and
+    `SUPPLEMENT_OTHERS`, in an order and a case drawn each time and with words drawn under
+    each, and where each section starts and what it is: Methods to G9 (its heading holds
+    "methods" and stands under no Results) and to G2 and G15 (its heading is a supplement's
+    name of the Methods, under no Results). A section of the Methods under one and a section
+    under the Results are among them. Each section says "p < 0.05" and names a logistic
+    regression, and those G9 reads say "Coriander" where the rest say "Basil". Every heading
+    is in every example: a rule broken for one way of naming the Methods is seen whatever
+    the seed."""
+    blocks = [
+        *([(1, heading, True, True)] for heading in SUPPLEMENT_METHODS),
+        *([(1, heading, "methods" in heading.lower(), False)] for heading in SUPPLEMENT_OTHERS),
+        [(1, "Supplemental methods", True, True), (2, "eMethods 7. Linkage", True, True)],
+        [(1, "Results", False, False), (2, "eMethods 6. Linkage", False, False)],
+    ]
+    text, sections = "", []
+    for block in draw(st.permutations(blocks)):
+        for level, heading, read, held in block:
+            written = draw(st.sampled_from((heading, heading.lower(), heading.upper())))
+            words = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
+            text += "\n" if text else ""
+            sections.append((len(text), read, held))
+            text += (
+                f"{'#' * level} {written}\n\n{'Coriander' if read else 'Basil'} {words}, "
+                f"p < 0.05 by logistic regression {words}.\n"
+            )
+    return text, sections
+
+
+#: The supplement's names of the Methods as headings in a manuscript drawn from the pool.
+SUPPLEMENT_HEADINGS = tuple(f"\n\n# {heading}\n\n" for heading in SUPPLEMENT_METHODS)
 
 
 #: Quotations as a sentence writes them, with the citation that says whose words they are.
@@ -1909,7 +1966,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     ),
     "numbers": st.fixed_dictionaries(
         {
-            "text": texts(POINTED),
+            "text": texts(POINTED, SUPPLEMENT_HEADINGS),
             "terms": st.lists(
                 st.sampled_from(("CYP3A4", "COVID-19", "CO2", "HbA1c", "1,3-BDG")), max_size=2
             ),
@@ -1973,5 +2030,6 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         }
     ),
     "import": sessions(),
+    "supplementary methods": supplements().map(lambda drawn: drawn[0]),
     "reworded": edits(),
 }

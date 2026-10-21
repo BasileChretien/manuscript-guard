@@ -240,9 +240,27 @@ parameters:
   estimator: "reporting odds ratio"
 ```
 
-Each is checked against the Methods text. It is a small check — presence, not correctness —
-but the significance threshold and the software version are exactly what a reviewer queries
-and exactly what gets left behind when an analysis is redone.
+Each is checked against the Methods text, the main text's and the supplement's. It is a small
+check — presence, not correctness — but the significance threshold and the software version
+are exactly what a reviewer queries and exactly what gets left behind when an analysis is
+redone.
+
+## Methods in the supplement
+
+Supplementary Methods are held to the code as the main text's are. In a file under
+`manuscript/supplementary/`, a section whose heading holds "methods" is read with the
+Methods: "Supplementary methods", "eMethods 1. Data source", "S1 Methods", "Appendix 1:
+Methods". A parameter in `methods.lock` is found stated there, an anchor there points at its
+step like one in the main text, and `methods --explain` lists the paragraphs there that point
+at no step. Under those names G2 lets a pre-set threshold through as it does in the Methods,
+and fails a declared parameter typed instead of bound, and G15 reads a model's kind typed
+there. Give the supplement's Methods such a heading: a section called only "eAppendix 2" or
+"Statistical analysis" is not read as Methods, and nothing there is compared with the code.
+
+A lock written before G9 read the supplement was read against the main text's Methods only.
+Where the supplement has Methods, `check` warns once (`methods-supplement-unreconciled`).
+Read the supplement's Methods against the code, then run `manuscript-guard methods
+--reconcile`. As everywhere in this skill, do not run it only to clear the warning.
 
 ## What this cannot do
 

@@ -47,9 +47,10 @@ expected:
       is 0 in a project that declares none
   - reading: numbers
     why: >-
-      a step, a panel or a box takes a number up to 20 and an item up to 99, so a count
-      after one of them is unbound; a list after a plural pointer, "Tables 1 and 2", is read
-      whole
+      a supplement's name of the Methods, "Supplementary methods", "eMethods 1. Data
+      source", "S1 Methods" or "Appendix 1: Methods", is a place the Methods are, so a
+      Methods-only convention under one, "p < 0.05", is the convention it is there and no
+      longer a number nothing classifies; the inputs now hold such headings
   - reading: reported tests
     why: >-
       a P above 1, "P = 4.1 x 10^5", is not judged; a number with a middle dot or a comma

@@ -6723,7 +6723,8 @@ structure: each element of it, the values of its own properties and its text, it
 formatting left out, so that `x^2` made `x_2`, or an accent or a root taken off, is a change
 (round 1 of #396: compared by its letters, it was none, and the check, which reads no inline
 maths, passed the copy). A switch set as OMML reads it left out, off but for a phantom's
-`show` and a delimiter's `grow`, is the switch left out. A short unchanged stretch between two
+`show` and a delimiter's `grow`, is the switch left out; a box's `noBreak` is compared as
+written (Known gaps). A short unchanged stretch between two
 changes is taken into them, as diff-match-patch's clean-up does, where it holds no word or is
 shorter than the change on each side; two numbers apart stay two changes.
 
@@ -6734,8 +6735,9 @@ in `w:del`, and what it points at is carried into the copy's package under names
 a picture, the numbering of its list (a copy, so that a deleted item joins none of the
 revision's lists), a style the revision lacks, a footnote. A link deleted is written as its
 words. A word whose formatting alone changed keeps the revision's and records the old in
-`w:rPrChange`, once for each part whose old runs differ in look or language, and Word's
-proofing mark and script hint are the first run's; a paragraph whose style or numbering changed records the old in `w:pPrChange`,
+`w:rPrChange`, once for each part whose old runs differ in look, language or being hidden,
+and Word's proofing mark and script hint are the first run's; a paragraph whose style or
+numbering changed records the old in `w:pPrChange`,
 a list's numbering compared by what it draws, since two builds number their lists in their
 own order. A table of the same columns is merged row by row and cell by cell, a row added or
 removed tracked as a row; a table of other columns, or whose cells span or merge, is replaced
@@ -11570,6 +11572,9 @@ Open, recorded as each change landed:
   - *How a word looks is its run's properties less its language, proofing, Word's script
     hint and revision ids.* A document sent after Word saved it, with properties Word adds
     of its own, can show a change of formatting nobody made.
+  - *A box's `noBreak` is compared as written*, unlike an equation's other switches:
+    ISO/IEC 29500-1 reads it off where it is left out and gives its default as on, so a box
+    one build writes with it and the other without shows as changed (#410, pinned).
   - *A citation of a live build is compared by what it cites and the words it shows*, so
     a document sent after Zotero refreshed it shows every citation changed against a fresh
     live build, and its reference list, a field across paragraphs, deleted whole beside the

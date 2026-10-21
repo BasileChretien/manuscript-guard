@@ -644,8 +644,8 @@ def _segments(
     for cut in cuts:
         was = old[next(i for i, end in enumerate(old_ends) if end >= cut)][0]
         now = new[next(i for i, end in enumerate(new_ends) if end >= cut)][0]
-        # Merged only where the old runs look alike in one language: the part's old
-        # properties are the first run's, and Reject All gives them back (round 4).
+        # Merged only where the old runs look alike in one language, hidden alike: the
+        # part's old properties are the first run's, and Reject All gives them back (round 4).
         if out and out[-1][1] is now and _given_back(out[-1][2]) == _given_back(was):
             out[-1] = (out[-1][0] + text[start:cut], now, out[-1][2])
         else:
@@ -656,11 +656,15 @@ def _segments(
 
 def _given_back(run: ET.Element) -> tuple:
     """What a reformatted word's old run gives back at Reject All that two runs may not
-    share: how it looks, and its language. Not the order of its properties, an empty
-    `w:rPr`, Word's proofing mark or its script hint, which made one word two Formatted
-    marks (the last round of #396)."""
-    language = run.find(f"{W}rPr/{W}lang")
-    return look(run), () if language is None else tuple(sorted(language.attrib.items()))
+    share: how it looks, its language, and its being hidden on the web or always (#410).
+    Not the order of its properties, an empty `w:rPr`, Word's proofing mark or its script
+    hint, which made one word two Formatted marks (the last round of #396)."""
+    kept = [c for c in run.findall(f"{W}rPr/*") if c.tag in _GIVEN_BACK]
+    return look(run), sorted((c.tag, sorted(c.attrib.items())) for c in kept)
+
+
+#: What `atoms.look` leaves out that a part of a word keeps apart all the same.
+_GIVEN_BACK = frozenset(W + tag for tag in ("lang", "webHidden", "specVanish"))
 
 
 class _Emitter:

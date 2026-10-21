@@ -818,10 +818,10 @@ def test_a_switch_set_as_it_reads_left_out_is_the_switch_left_out() -> None:
 
 def test_a_word_reformatted_keeps_each_part_s_own_properties() -> None:
     """A word set in italics whose old letters lay in two runs is one part where the two
-    runs look alike in the same language, and two where they differ in either, so that
-    Reject All gives each part its own (#396). Not where they differ only in the order of
-    their properties, an empty `w:rPr` against none, Word's proofing mark or its script
-    hint: one word, one Formatted mark."""
+    runs look alike in the same language, hidden alike, and two where they differ in any of
+    these, so that Reject All gives each part its own (#396). Not where they differ only in
+    the order of their properties, an empty `w:rPr` against none, Word's proofing mark or
+    its script hint: one word, one Formatted mark (#410)."""
     from xml.etree import ElementTree as ET
 
     from manuscript_guard.markedup.writer import _segments
@@ -837,9 +837,11 @@ def test_a_word_reformatted_keeps_each_part_s_own_properties() -> None:
     alike = _segments(((plain_a, "exp"), (plain_b, "osed")), ((italic, "exposed"),))
     assert [text for text, _now, _was in alike] == ["exposed"]
     proofed = run('<w:noProof/><w:lang w:val="fr-FR"/><w:rFonts w:hint="eastAsia"/><w:b/>')
-    pairs = ((run(""), ET.Element(f"{{{w}}}r")), (run('<w:b/><w:lang w:val="fr-FR"/>'), proofed))
+    pairs = ((run(""), ET.Element(f"{{{w}}}r")), (run('<w:b/><w:lang w:val="fr-FR"/>'), proofed),
+             (run("<w:b/><w:i/>"), run("<w:i/><w:b/>")))  # fmt: skip
     for one, other in pairs:
         merged = _segments(((one, "exp"), (other, "osed")), ((italic, "exposed"),))
         assert [text for text, _now, _was in merged] == ["exposed"]
-    parts = _segments(((french, "exp"), (english, "osed")), ((italic, "exposed"),))
-    assert [(text, was) for text, _now, was in parts] == [("exp", french), ("osed", english)]
+    for one, other in ((french, english), (run("<w:webHidden/>"), run(""))):
+        parts = _segments(((one, "exp"), (other, "osed")), ((italic, "exposed"),))
+        assert [(text, was) for text, _now, was in parts] == [("exp", one), ("osed", other)]

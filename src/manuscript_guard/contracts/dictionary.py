@@ -195,10 +195,11 @@ def load_dictionary(project: Any) -> tuple[Dictionary | None, Report]:
         return None, _invalid(path, [(f"cannot be read: {exc}", None)])
     misread = _misread(root)
     problems = misread + _schema_problems(document, root, misread)
+    problems += _raw_faults(document, root) if not problems else []
     if problems:
         return None, _invalid(path, problems)
     dictionary = _build(path, document, root)
-    problems = _problems(dictionary)
+    problems = _problems(dictionary, root)
     if problems:
         return None, _invalid(path, problems)
     return dictionary, Report(counts={"dictionary_variables": len(dictionary.variables)})
@@ -218,23 +219,28 @@ def _invalid(path: Path, problems: list[tuple[str, int | None]]) -> Report:
 _INT = "tag:yaml.org,2002:int"
 _FLOAT = "tag:yaml.org,2002:float"
 _BOOL = "tag:yaml.org,2002:bool"
-#: A number YAML reads as the number it looks like.
+#: A number YAML reads as the number it looks like. An integer with a plus sign is not one:
+#: a code `+1` would be "1".
 _AS_WRITTEN = {
-    _INT: re.compile(r"[-+]?(?:0|[1-9][0-9]*)"),
+    _INT: re.compile(r"-?(?:0|[1-9][0-9]*)"),
     _FLOAT: re.compile(r"[-+]?[0-9]*\.[0-9]*(?:[eE][-+]?[0-9]+)?"),
 }
+#: The keys whose value is true or false, where `yes` means what it says.
+_YES_OR_NO = frozenset({"required", "within_study_period", "computed"})
 
 
 def _misread(root: yaml.Node | None) -> list[tuple[str, int | None]]:
     """Each plain value YAML turned into a number other than the one written, `010` (8),
     `8:30` (510), `1_000` (1000), or into true or false from a word other than true or
-    false, `No`, `off`.
+    false, `No`, `off`, where the value is not a yes or a no; and each key given twice in
+    one mapping, of which YAML keeps the last and says nothing.
 
     A code `010` compared with the data's "010" would never match, and a time bound of 510
-    is no time at all. Written in quotes, each is the text it looks like.
+    is no time at all. Written in quotes, each is the text it looks like. A code list given
+    twice under one name is read as the second, and a variable naming it gets its codes.
     """
     found = []
-    for node in _scalars(root):
+    for key, node in _scalars(root, None):
         if node.style is not None:
             continue
         text = node.value
@@ -244,36 +250,60 @@ def _misread(root: yaml.Node | None) -> list[tuple[str, int | None]]:
             found.append((f"{text} is read by YAML as the number {read!r}; write it in "
                           f"quotes, '{text}', where it is a code, a time or an identifier, "
                           f"and as plain digits where it is a number", line))  # fmt: skip
-        elif node.tag == _BOOL and text.lower() not in ("true", "false"):
+        elif node.tag == _BOOL and text.lower() not in ("true", "false") and \
+                key not in _YES_OR_NO:  # fmt: skip
             found.append((f"{text} is read by YAML as {yaml.safe_load(text)!r}; write it in "
                           f"quotes, '{text}', where it is a word or a code", line))  # fmt: skip
+    return _twice(root, []) + found
+
+
+def _scalars(node: yaml.Node | None, key: str | None):
+    """Each scalar value, with the key it is the value of, or the key of the list it is in."""
+    if isinstance(node, yaml.ScalarNode):
+        yield key, node
+    elif isinstance(node, yaml.SequenceNode):
+        for item in node.value:
+            yield from _scalars(item, key)
+    elif isinstance(node, yaml.MappingNode):
+        for name, value in node.value:
+            yield from _scalars(value, name.value if isinstance(name, yaml.ScalarNode) else None)
+
+
+def _twice(node: yaml.Node | None, where: list) -> list[tuple[str, int | None]]:
+    """Each key given a second time in one mapping, at the second."""
+    found = []
+    if isinstance(node, yaml.SequenceNode):
+        for index, item in enumerate(node.value):
+            found += _twice(item, where + [index])
+    elif isinstance(node, yaml.MappingNode):
+        seen = set()
+        shown = "/".join(str(part) for part in where) or "the file"
+        for name, value in node.value:
+            said = name.value if isinstance(name, yaml.ScalarNode) else None
+            if said in seen and said != "<<":
+                found.append((f"{said} is given twice in {shown}; YAML reads the second and "
+                              f"drops the first", name.start_mark.line + 1))  # fmt: skip
+            seen.add(said)
+            found += _twice(value, where + [said])
     return found
 
 
-def _scalars(node: yaml.Node | None):
-    if isinstance(node, yaml.ScalarNode):
-        yield node
-    elif isinstance(node, yaml.SequenceNode):
-        for item in node.value:
-            yield from _scalars(item)
-    elif isinstance(node, yaml.MappingNode):
-        for _key, value in node.value:
-            yield from _scalars(value)
-
-
 def _line(root: yaml.Node | None, where: list) -> int | None:
-    """The line of the value at `where`, or of the deepest part of it that is there."""
+    """The line of the value at `where`, or of the deepest part of it that is there: of its
+    key, where it is the value of one, so that a list under a name is placed at the name."""
     node, line = root, None
     for part in where:
         if isinstance(node, yaml.MappingNode):
-            node = next((v for k, v in node.value if k.value == str(part)), None)
+            pair = next(((k, v) for k, v in node.value if k.value == str(part)), None)
+            node, at = (pair[1], pair[0]) if pair else (None, None)
         elif isinstance(node, yaml.SequenceNode) and isinstance(part, int):
             node = node.value[part] if part < len(node.value) else None
+            at = node
         else:
             node = None
         if node is None:
             break
-        line = node.start_mark.line + 1
+        line = at.start_mark.line + 1
     return line if line is not None else (root.start_mark.line + 1 if root else None)
 
 
@@ -292,34 +322,40 @@ def _schema_problems(
             continue
         shown = "/".join(str(part) for part in where) or "(root)"
         message = f"{shown}: {error.message}"
-        if error.validator == "type" and isinstance(error.instance, float):
+        wanted = error.validator_value if error.validator == "type" else ()
+        number = isinstance(error.instance, (int, float)) and not isinstance(error.instance, bool)
+        if number and "string" in wanted:
             message += "; write it in quotes, as the text it is"
         found.append((message, line))
-    return found + _decimal_codes(document, root)
+    return found
 
 
-def _decimal_codes(document: Any, root: yaml.Node | None) -> list[tuple[str, int | None]]:
-    """A code written `1.0`. The schema takes it for an integer, and as text it is "1.0",
-    which no "1" in the data matches."""
-    if not isinstance(document, dict) or not isinstance(document.get("variables"), list):
-        return []
+def _mapping(value: Any) -> dict:
+    return value if isinstance(value, dict) else {}
+
+
+def _raw_faults(document: dict, root: yaml.Node | None) -> list[tuple[str, int | None]]:
+    """What is wrong with codes as written, which the file's objects no longer show: a code
+    written `1.0`, which the schema takes for an integer and which is "1.0" as text, and a
+    variable that gives its codes twice over, which would be read from its list alone."""
     places = [(["code_lists", name], codes, "code")
-              for name, codes in (document.get("code_lists") or {}).items()]  # fmt: skip
-    for index, entry in enumerate(document["variables"]):
-        if not isinstance(entry, dict):
-            continue
-        at = ["variables", index]
-        places += [(at + [key], entry.get(key), "code") for key in ("values", "missing")]
-        places.append((at + ["applies_if", "in"], (entry.get("applies_if") or {}).get("in"), None))
-        places.append((at, [entry], "item"))
-        places.append((at + ["standard"], [entry.get("standard") or {}], "code"))
-        reporting = entry.get("reporting")
-        for guideline, items in (reporting.items() if isinstance(reporting, dict) else ()):
-            places.append((at + ["reporting", guideline], items, None))
+              for name, codes in _mapping(document.get("code_lists")).items()]  # fmt: skip
     found = []
+    for index, entry in enumerate(document["variables"]):
+        at = ["variables", index]
+        if "values" in entry and "code_list" in entry:
+            found.append((f"variable {entry['name']}: gives both values and a code_list; give "
+                          "one", _line(root, at)))  # fmt: skip
+        places += [(at + [key], entry.get(key), "code") for key in ("values", "missing")]
+        places.append((at + ["applies_if", "in"], _mapping(entry.get("applies_if")).get("in"),
+                       None))  # fmt: skip
+        places.append((at, [entry], "item"))
+        places.append((at + ["standard"], [_mapping(entry.get("standard"))], "code"))
+        for guideline, items in _mapping(entry.get("reporting")).items():
+            places.append((at + ["reporting", guideline], items, None))
     for where, items, key in places:
         for number, item in enumerate(items if isinstance(items, list) else ()):
-            value = item.get(key) if key and isinstance(item, dict) else item
+            value = _mapping(item).get(key) if key else item
             if isinstance(value, float) and value.is_integer():
                 shown = "/".join(str(part) for part in where)
                 found.append((f"{shown}: {value!r} is a code with a decimal point; write it "
@@ -417,32 +453,52 @@ def _variable(entry: dict, lists: dict[str, tuple[Code, ...]], line: int | None)
 # -- what the schema cannot say ----------------------------------------------------------------
 
 
-def _problems(dictionary: Dictionary) -> list[tuple[str, int | None]]:
-    found = _repeated(dictionary)
+def _problems(dictionary: Dictionary, root: yaml.Node | None) -> list[tuple[str, int | None]]:
+    found = _repeated(dictionary, root)
     for name, codes in dictionary.code_lists:
-        found += [(f"code list {name}: {said}", None) for said in _code_faults(codes)]
-    if dictionary.study_period and dictionary.study_period[0] > dictionary.study_period[1]:
-        found.append(("study_period: start is after end", None))
+        found += [(f"code list {name}: {said}", _line(root, ["code_lists", name]))
+                  for said in _code_faults(codes)]  # fmt: skip
+    found += _period_faults(dictionary, root)
     for variable in dictionary.variables:
         found += [(f"variable {variable.name}: {said}", variable.line)
                   for said in _variable_faults(variable, dictionary)]  # fmt: skip
-    for rule in dictionary.rules:
-        found += [(f"rule {rule.id}: {said}", None) for said in _rule_faults(rule, dictionary)]
+    for index, rule in enumerate(dictionary.rules):
+        found += [(f"rule {rule.id}: {said}", _line(root, ["rules", index]))
+                  for said in _rule_faults(rule, dictionary)]  # fmt: skip
     return found
 
 
-def _repeated(dictionary: Dictionary) -> list[tuple[str, int | None]]:
-    """A name or an id given twice: whichever was meant, the other is read in its place."""
+def _period_faults(dictionary: Dictionary, root: yaml.Node | None) -> list[tuple[str, int | None]]:
+    """A study period whose bounds are not dates, `'2026-02-30'` in quotes, which the schema's
+    pattern lets by, or whose start is after its end."""
+    if dictionary.study_period is None:
+        return []
+    line = _line(root, ["study_period"])
+    for bound in dictionary.study_period:
+        try:
+            date.fromisoformat(bound)
+        except ValueError:
+            return [(f"study_period: {bound!r} is not a date", line)]
+    if dictionary.study_period[0] > dictionary.study_period[1]:
+        return [("study_period: start is after end", line)]
+    return []
+
+
+def _repeated(dictionary: Dictionary, root: yaml.Node | None) -> list[tuple[str, int | None]]:
+    """A name or an id given twice, at the second: whichever was meant, the other is read in
+    its place."""
     found = []
-    for kind, ids in (
-        ("variable", dictionary.names),
-        ("dataset", [d.id for d in dictionary.datasets]),
-        ("form", [f.id for f in dictionary.forms]),
-        ("instrument", [i.id for i in dictionary.instruments]),
-        ("rule", [r.id for r in dictionary.rules]),
+    for kind, part, ids in (
+        ("variable", "variables", dictionary.names),
+        ("dataset", "datasets", [d.id for d in dictionary.datasets]),
+        ("form", "forms", [f.id for f in dictionary.forms]),
+        ("instrument", "instruments", [i.id for i in dictionary.instruments]),
+        ("rule", "rules", [r.id for r in dictionary.rules]),
     ):
         for repeated in sorted({i for i in ids if ids.count(i) > 1}):
-            found.append((f"{kind} {repeated} is given more than once", None))
+            second = [index for index, i in enumerate(ids) if i == repeated][1]
+            found.append((f"{kind} {repeated} is given more than once",
+                          _line(root, [part, second])))  # fmt: skip
     return found
 
 
@@ -481,7 +537,9 @@ def _value_faults(variable: Variable) -> list[str]:
     if variable.type not in CODED and (variable.values or variable.code_list):
         return [f"a {variable.type} variable has no codes; values and code_list are for "
                 f"{', '.join(CODED)} variables"]  # fmt: skip
-    found = _code_faults(variable.values) + [f"missing {said}"
+    # A list's own faults are said once, at the list.
+    own = () if variable.code_list else variable.values
+    found = _code_faults(own) + [f"missing {said}"
                                              for said in _code_faults(variable.missing)]
     if variable.type == "binary" and variable.values and len(variable.values) != 2:
         found.append(f"a binary variable has two codes, and this one has "
@@ -491,13 +549,18 @@ def _value_faults(variable: Variable) -> list[str]:
     return found
 
 
+def _zoned(reader):
+    """`fromisoformat` as Python 3.11 has it: 3.10 refuses a zone written `Z`."""
+    return lambda bound: reader(bound[:-1] + "+00:00" if bound.endswith("Z") else bound)
+
+
 #: How each type's bounds are read; None where a type has none.
 _BOUNDS = {
     "continuous": float,
     "count": float,
     "date": date.fromisoformat,
-    "datetime": datetime.fromisoformat,
-    "time": time.fromisoformat,
+    "datetime": _zoned(datetime.fromisoformat),
+    "time": _zoned(time.fromisoformat),
 }
 
 
@@ -550,7 +613,7 @@ def _text_faults(variable: Variable, dictionary: Dictionary) -> list[str]:
         else:
             try:
                 re.compile(variable.pattern)
-            except re.error as exc:
+            except (re.error, OverflowError, RecursionError) as exc:
                 found.append(f"its pattern does not compile: {exc}")
     if variable.within_study_period:
         if variable.type not in ("date", "datetime"):

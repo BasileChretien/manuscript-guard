@@ -3967,9 +3967,13 @@ number 8, `8:30` as 510, `1_000` as 1000, an unquoted `No` or `off` as false. A 
 read as 8 would never match the data's "010", and `label: No` would fail the schema with
 "False is not of type 'string'". Each is refused at its line with the words to write
 instead, in quotes, and the schema's own finding on that line is left out as the same
-fault said less usefully. A code written `1.0` is refused too: JSON Schema takes it for an
-integer, and as text it is "1.0". A number written as it reads, `200.0` or `-0.5`, is left
-alone.
+fault said less usefully. Where the value is a yes or a no, `required: yes`, the word means
+what it says and is read (round 1 of #382). A code written `1.0` or `+1` is refused too:
+JSON Schema takes the first for an integer, and as text the two are "1.0" and "1". A number
+written as it reads, `200.0` or `-0.5`, is left alone. And a key given twice in one mapping
+is refused at the second: YAML keeps the last without a word, so a code list given twice
+under one name handed its second codes to every variable that named it (round 1 of #382).
+A variable that gives both `values` and a `code_list` is refused for the same reason.
 
 ## Stages: not every gate binds on day one
 
@@ -7226,7 +7230,9 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   said, and is written without the condition. A `count`'s bounds are held to be numbers, not
   whole ones. A datetime's bounds are compared only where both or neither carry a time zone.
   What YAML reads as another value is found only where it is written plain; a value YAML
-  reads as written but the author meant otherwise, `1.5` for the item "1.50", is not.
+  reads as written but the author meant otherwise, `1.5` for the item "1.50", is not. A
+  rule's `order` takes dates and datetimes as one family, so its reader compares a date
+  with a datetime by the date, and it refuses an order between two times (round 1 of #382).
 - **A statistic is held to what it belongs to by which bindings share its sentence, and by
   nothing else.** An estimate with intervals at two levels is asked to be quoted whole at
   each, though a paper quotes the one it means. An interval quoted whole only in a table the

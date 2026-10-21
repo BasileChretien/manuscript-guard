@@ -289,6 +289,11 @@ def test_what_the_schema_cannot_say_is_refused(
         assert any(said in message for message in messages), messages
 
 
+def test_a_list_s_fault_is_said_once_at_the_list(tmp_path: Path) -> None:
+    text = edited('{code: 0, label: "No"}', '{code: 1, label: "No"}')
+    assert refused(tmp_path, text) == ["code list yes_no: code 1 is given more than once"]
+
+
 def test_a_dataset_id_given_twice_is_refused(tmp_path: Path) -> None:
     text = edited("datasets:\n", "datasets:\n  - {id: reports, label: Other}\n")
     assert refused(tmp_path, text) == ["dataset reports is given more than once"]
@@ -385,12 +390,115 @@ def test_a_decimal_item_number_is_told_to_be_quoted(tmp_path: Path) -> None:
         "schema: manuscript-guard/data-dictionary/1\nvariables: []\n---\nsecond: document\n",
         "schema: manuscript-guard/data-dictionary/1\nstudy_period: {start: 2026-02-30, "
         "end: 2026-03-01}\nvariables: []\n",
+        "schema: manuscript-guard/data-dictionary/1\nstudy_period: {start: '2026-02-30', "
+        "end: '2026-03-01'}\nvariables: []\n",
+        # Round 1 of #382: each raised from the check for codes written with a point.
+        edited("code_lists:\n  yes_no:\n    - {code: 1, label: \"Yes\"}\n"
+               "    - {code: 0, label: \"No\"}\n", "code_lists: [yes_no]\n"),
+        edited("code_lists:\n  yes_no:\n    - {code: 1, label: \"Yes\"}\n"
+               "    - {code: 0, label: \"No\"}\n", "code_lists: yes_no\n"),
+        edited("applies_if: {variable: sex, in: [2]}", "applies_if: sex"),
+        edited("    values: [{code: 1, label: Male}, {code: 2, label: Female}]",
+               "    values: [1, 2]"),
+        edited('reporting: {STROBE: ["14a", 6]}', "reporting: STROBE"),
+        edited('pattern: "^[0-9]{6}$"', "pattern: 'a{4294967296}'"),
     ],
 )
 def test_a_file_that_is_not_a_dictionary_is_refused_without_a_crash(
     tmp_path: Path, text: str
 ) -> None:
     assert refused(tmp_path, text)
+
+
+def test_codes_given_twice_over_are_refused(tmp_path: Path) -> None:
+    """Round 1 of #382: with both, the list's codes were read and the entry's own dropped."""
+    text = edited("    code_list: yes_no", "    code_list: yes_no\n"
+                  "    values: [{code: 1, label: Present}, {code: 2, label: Absent}]")
+    assert refused(tmp_path, text) == [
+        "variable pregnant: gives both values and a code_list; give one"
+    ]
+
+
+@pytest.mark.parametrize(
+    "old, new, said",
+    [
+        ("code_lists:\n", "code_lists:\n  yes_no:\n    - {code: 2, label: \"Yes\"}\n",
+         "yes_no is given twice in code_lists"),
+        ("    type: categorical\n    values: [{code: 1",
+         "    type: categorical\n    type: ordinal\n    values: [{code: 1",
+         "type is given twice in variables/1"),
+        ("{code: 1, label: Male}", "{code: 1, label: Male, label: Man}",
+         "label is given twice in variables/1/values/0"),
+    ],
+)  # fmt: skip
+def test_a_key_given_twice_is_refused_at_the_second(
+    tmp_path: Path, old: str, new: str, said: str
+) -> None:
+    """Round 1 of #382: YAML keeps the last of two equal keys, so a variable naming the code
+    list read the second list's codes and nothing was said."""
+    path = write(tmp_path, edited(old, new))
+    _dictionary, report = load_dictionary(tmp_path)
+    [finding] = report.failures
+    assert finding.message.startswith(said), finding.message
+    lines = path.read_text(encoding="utf-8").splitlines()
+    assert said.split()[0] in lines[finding.line - 1]
+
+
+@pytest.mark.parametrize(
+    "old, new",
+    [
+        ("    required: true", "    required: yes"),
+        ("    required: true", "    required: Yes"),
+        ("    within_study_period: true", "    within_study_period: on"),
+        ("computed: true}", "computed: yes}"),
+    ],
+)
+def test_a_yes_where_a_yes_or_no_is_asked_reads(tmp_path: Path, old: str, new: str) -> None:
+    """Round 1 of #382: `required: yes` means what it says, and was refused."""
+    write(tmp_path, edited(old, new))
+    dictionary, report = load_dictionary(tmp_path)
+    assert report.findings == ()
+    assert dictionary.variable("sex").required
+
+
+def test_a_number_where_text_is_due_is_told_to_be_quoted(tmp_path: Path) -> None:
+    [message] = refused(tmp_path, edited('version: "5.0"', "version: 5"))
+    assert "write it in quotes" in message
+
+
+def test_a_plus_sign_is_a_misreading(tmp_path: Path) -> None:
+    """`+1` is the number 1 to YAML, and a code "+1" would never be matched."""
+    [message] = refused(tmp_path, edited("{code: 9, label: not reported}",
+                                         "{code: +1, label: not reported}"))  # fmt: skip
+    assert message.startswith("+1 is read by YAML as the number 1")
+
+
+def test_a_zone_written_z_reads_on_every_python(tmp_path: Path) -> None:
+    """Python 3.10's `fromisoformat` refuses `Z`, which 3.11 reads."""
+    write(tmp_path, "schema: manuscript-guard/data-dictionary/1\nvariables:\n"
+          "  - {name: seen, label: Seen, definition: When seen., type: datetime, "
+          "range: {min: '2020-01-01T00:00:00Z', max: '2020-01-02T00:00:00+00:00'}}\n")
+    assert load_dictionary(tmp_path)[1].findings == ()
+
+
+def test_faults_of_the_whole_file_are_said_at_their_line(tmp_path: Path) -> None:
+    """Round 1 of #382: a repeated name, a code list's fault, the study period's and a
+    rule's were said with no line."""
+    for old, new, at in (
+        ("  - name: pregnant\n", "  - name: sex\n", "  - name: sex"),
+        ('{code: 0, label: "No"}', '{code: 1, label: "No"}', "  yes_no:"),
+        ("study_period: {start: 2015-01-01, end: 2024-12-31}",
+         "study_period: {start: 2025-01-01, end: 2024-12-31}", "study_period:"),
+        ("order: [drug_start, onset_date]", "order: [drug_start, onset]", "  - id: onset_after"),
+    ):  # fmt: skip
+        path = write(tmp_path, edited(old, new))
+        # A second name `sex` also makes the condition on `sex` the variable's own.
+        finding = load_dictionary(tmp_path)[1].failures[0]
+        lines = path.read_text(encoding="utf-8").splitlines()
+        assert finding.line is not None, finding.message
+        assert lines[finding.line - 1].startswith(at), (finding.message, lines[finding.line - 1])
+        if at == "  - name: sex":
+            assert finding.line == [i for i, x in enumerate(lines, 1) if x == at][1]
 
 
 def test_a_file_that_is_not_utf8_is_refused_in_a_sentence(tmp_path: Path) -> None:

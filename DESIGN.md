@@ -1526,6 +1526,9 @@ The result is compiled and packed by the code above, and checked three times:
   fails on the refusal already (round 1 of step 7).
 - `\~{}` before a number, written for "about", is taken for an accent on the word after it,
   which is then not read (round 1 of step 7).
+- G6 looks for a placeholder in a LaTeX file as typed, as in a Markdown file: `\todo{...}`, a
+  `% TODO` comment and a definition of `\todo` in the preamble each fail as a TODO in the text
+  does. A phrase G6 reports is not read in a comment (step 7).
 - G4 does not hold a LaTeX figure's legend, its float's caption, to the profile's
   `legend_words`, and says so (`not-read-in-latex`) where a figure is placed (round 1 of
   step 6).
@@ -1664,7 +1667,14 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
    tree the environments a file is input inside (`Source.environments`). Tests:
    `tests/test_latex_words.py`, G14 on the twin, `latex words`, `latex_words()` with seven
    `BROKEN` rules, and the order G14 reads a document of several files in over
-   `latex_trees()` with one. The second: G6, with its citation positions. The plan as
+   `latex_trees()` with one. The second: G6 reads each LaTeX file of both documents, the
+   author's packages aside: as typed for the artefacts and placeholders, in a comment too,
+   as in a Markdown comment; as the reader masks it for the phrases, the residue and the
+   rates; a vague attribution against where its citation commands stand (`Reading.cited`);
+   and the words as G4 counts them in the printed view. `\nocite{*}` cites every entry whose
+   printed fields G6 reads. That takes `check_writing` out of `_NOT_READ_IN_LATEX`. Tests: G6
+   on the twin, its cases on the twin, `latex writing`, `latex_writing()` with three
+   `BROKEN` rules. The plan as
    written: `words`, accents, both gates moved. Tests: `latex words`, planted terms and
    spellings.
 8. `substituted`, with TeX's specials escaped; G5, G8, G9, G13 and G15 moved. Tests:

@@ -880,6 +880,40 @@ def latex_words(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
     return text, planted
 
 
+#: What G6 finds in a LaTeX document (`gates/writing.py`), each `{}` a word on a line of its
+#: own: a claim with a citation command beside it is supported, and one in a comment is no
+#: claim; a phrase G6 reports is found in prose and not in a comment; and a placeholder is found
+#: as typed, in a comment too.
+LATEX_WRITING_PLACES = (
+    ("Studies have shown that {} rose \\citep{{a}}.\n", "cited"),
+    ("Studies have shown that {} fell \\textcite{{b}}.\n", "cited"),
+    ("% Studies have shown that {} rose.\n", "none"),
+    ("We delve into {} here.\n", "phrase"),
+    ("% We delve into {} here.\n", "none"),
+    ("% TODO {}\n", "artefact"),
+    ("Studies have shown that {} rose.\n", "vague"),
+)  # fmt: skip
+#: Words between two places, more than G6's citation window, so that a claim stands near a
+#: citation only where one is planted beside it.
+_FAR = "word " * 60 + "\n"
+
+
+@st.composite
+def latex_writing(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
+    """A LaTeX document with every place of `LATEX_WRITING_PLACES`, in an order drawn, each
+    apart from the next; and each word planted, with what G6 makes of the line it is on. Every
+    place is in every document, so that a rule broken for one is seen in each."""
+    order = draw(st.permutations(range(len(LATEX_WRITING_PLACES))))
+    planted: list[tuple[str, str]] = []
+    text = "\\documentclass{article}\n\\begin{document}\n"
+    for index in order:
+        template, kind = LATEX_WRITING_PLACES[index]
+        key = f"k{4101 + len(planted)}"
+        planted.append((key, kind))
+        text += _FAR + template.replace("{{", "{").replace("}}", "}").replace("{}", key)
+    return text + _FAR + "\\end{document}\n", planted
+
+
 @st.composite
 def latex_bound(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
     """A LaTeX document with a binding in every place of `LATEX_BINDING_PLACES`, in an order
@@ -3075,6 +3109,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "latex citations": latex_texts(),
     "latex printed": latex_texts(),
     "latex words": latex_texts(),
+    "latex writing": latex_texts(),
     "hidden": texts(TERMS),
     "own words": texts(TERMS),
     "spans": texts(),

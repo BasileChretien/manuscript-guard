@@ -78,6 +78,7 @@ from generated import (
     latex_texts,
     latex_trees,
     latex_words,
+    latex_writing,
     lines,
     mean_tables,
     numbered_displays,
@@ -901,6 +902,37 @@ def test_g14_reads_a_latex_document_in_the_order_it_prints(
 
 def _a_file_input_is_read_after_its_parent(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate, "_input_ends", lambda source: [])
+
+
+@holds(60, latex_writing())
+def test_g6_judges_a_latex_document_where_it_prints_and_by_its_citations(
+    drawn: tuple[str, list[tuple[str, str]]],
+) -> None:
+    """A claim with no citation, a phrase and a placeholder planted in a LaTeX document are each
+    found on their line, and nothing else is: a claim beside a citation command is supported, a
+    claim or a phrase in a comment is no text of the paper, and a placeholder in a comment is
+    found as typed, as one in a Markdown comment is (step 7)."""
+    text, planted = drawn
+    sources = latex_structure.read_tree({"main.tex": text}).sources
+    read, words, cited = writing_gate._read_latex(Path("m"), [sources])
+    report, _totals = writing_gate._judged(read, words, writing_gate.load_rules(), cited=cited)
+    lines = {key: text.count("\n", 0, text.index(key)) + 1 for key, _kind in planted}
+    for code, kind in (("vague-attribution", "vague"), ("ai-phrasing", "phrase"),
+                       ("model-artefact", "artefact")):  # fmt: skip
+        found = sorted(finding.line for finding in report.findings if finding.code == code)
+        assert found == sorted(lines[key] for key, was in planted if was == kind), (code, text)
+
+
+def _g6_takes_no_latex_citation(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(writing_gate, "_cited_at", lambda source: [])
+
+
+def _g6_reads_a_latex_comment_as_prose(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(writing_gate, "_latex_prose", lambda source: source.text)
+
+
+def _g6_looks_for_a_placeholder_in_the_prose_only(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(writing_gate, "_latex_typed", writing_gate._latex_prose)
 
 
 def _a_floats_words_are_printed(patch: pytest.MonkeyPatch) -> None:
@@ -7633,6 +7665,18 @@ BROKEN = {
     "in LaTeX's words, a subscript's count is maths": (
         _a_subscripts_count_is_maths,
         test_latex_s_words_hold_each_word_where_latex_prints_it,
+    ),
+    "in LaTeX, G6 takes no citation command for a claim's support": (
+        _g6_takes_no_latex_citation,
+        test_g6_judges_a_latex_document_where_it_prints_and_by_its_citations,
+    ),
+    "in LaTeX, G6 reads a comment as prose": (
+        _g6_reads_a_latex_comment_as_prose,
+        test_g6_judges_a_latex_document_where_it_prints_and_by_its_citations,
+    ),
+    "in LaTeX, G6 looks for a placeholder in the prose only": (
+        _g6_looks_for_a_placeholder_in_the_prose_only,
+        test_g6_judges_a_latex_document_where_it_prints_and_by_its_citations,
     ),
     "in LaTeX, G14 reads a file input after the file that inputs it": (
         _a_file_input_is_read_after_its_parent,

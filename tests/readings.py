@@ -217,6 +217,21 @@ def _latex_printed() -> Reading:
     return printed
 
 
+@reading("latex writing")
+def _latex_writing() -> Reading:
+    from manuscript_guard.gates.writing import _read_latex
+    from manuscript_guard.text.latex.mask import read
+    from manuscript_guard.text.latex.structure import Source
+
+    def judged(text: str) -> dict[str, Any]:
+        texts, words, cited = _read_latex(Path("m"), [[Source("main.tex", text, read(text))]])
+        ((_path, typed, prose),) = texts
+        return {"typed": typed == text, "prose": prose, "words": words,
+                "cited": [list(cited[Path("m") / "main.tex"])]}  # fmt: skip
+
+    return judged
+
+
 @reading("latex words")
 def _latex_words() -> Reading:
     from manuscript_guard.text.latex.mask import read

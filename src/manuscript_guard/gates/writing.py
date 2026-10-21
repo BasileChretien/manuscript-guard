@@ -53,7 +53,6 @@ from manuscript_guard.gates.numbers import source_files
 from manuscript_guard.literature.bibfile import read_entries
 from manuscript_guard.text.masking import mask
 from manuscript_guard.text.sections import count_words
-from manuscript_guard.zotero import find_citations
 from manuscript_guard.zotero.citations import NARRATIVE, bracketed
 
 GATE = "G6"
@@ -112,10 +111,17 @@ def check_writing(
 ) -> Report:
     """`submission` makes a failure of each residue that answers one reviewer or points at
     this manuscript, which warns before it."""
+    from manuscript_guard.text.reader import LATEX, manuscript_format
+
     rules = load_rules()
-    corpus = [(path, read_text(path)) for path in source_files(project.path("manuscript"))]
-    report, totals = judge_texts(corpus, rules, submission=submission)
-    elsewhere = _elsewhere(project, results, [text for _path, text in corpus])
+    folder = project.path("manuscript")
+    if manuscript_format(folder) == LATEX:
+        read, words, cited = _latex_texts(folder)
+        report, totals = _judged(read, words, rules, submission=submission, cited=cited)
+    else:
+        corpus = [(path, read_text(path)) for path in source_files(folder)]
+        report, totals = judge_texts(corpus, rules, submission=submission)
+    elsewhere = _elsewhere(project, results)
     for where in elsewhere:
         report = report.merge(_artefacts_elsewhere(rules, where, totals))
 
@@ -141,17 +147,83 @@ def judge_texts(
     residue, vague attributions and rates of `check_writing`, without the figures, captions
     and cited fields it also reads. `tools/g6_baseline.py` judges papers written by people
     with it."""
-    rules = rules or load_rules()
-    report = Report()
-    totals = {"words": 0, "artefacts": 0, "phrases": 0, "vague": 0, "residue": 0}
     read = _prose(corpus)
-    totals["words"] = sum(count_words(text) for _path, text, _prose in read)
+    words = sum(count_words(text) for _path, text, _prose in read)
+    return _judged(read, words, rules or load_rules(), submission=submission)
+
+
+def _judged(
+    read: list[tuple[Path, str, str]],
+    words: int,
+    rules: Rules,
+    *,
+    submission: bool = False,
+    cited: dict[Path, list[int]] | None = None,
+) -> tuple[Report, dict[str, int]]:
+    """What G6 says of texts read: each as typed and its prose, with the words a journal
+    counts in them, and, for a LaTeX file, where its citation commands stand."""
+    report = Report()
+    totals = {"words": words, "artefacts": 0, "phrases": 0, "vague": 0, "residue": 0}
     for path, text, prose in read:
         report = report.merge(_artefacts(rules, path, text, totals))
         report = report.merge(_phrases(rules, path, text, prose, totals))
         report = report.merge(_residue(rules, path, text, prose, totals, submission))
-        report = report.merge(_vague(rules, path, text, prose, totals))
+        report = report.merge(_vague(rules, path, text, prose, totals,
+                                     None if cited is None else cited.get(path, [])))  # fmt: skip
     return report.merge(_density(rules, read, totals["words"])), totals
+
+
+def _latex_texts(folder: Path) -> tuple[list[tuple[Path, str, str]], int, dict[Path, list[int]]]:
+    """A LaTeX manuscript as G6 reads it (DESIGN.md, "LaTeX manuscripts", step 7): each file
+    of its documents as typed, where the artefacts are looked for as in a Markdown file; its
+    prose as the reader masks it, where the phrases and the residue are; where each of its
+    citation commands stands, which a vague attribution is judged against; and the words a
+    journal would count, as G4 counts them in the document's printed view. The author's
+    packages are no text of the paper."""
+    from manuscript_guard.text.latex.structure import read_document
+
+    documents = [read_document(folder, supplementary=supplementary).sources
+                 for supplementary in (False, True)]  # fmt: skip
+    return _read_latex(folder, documents)
+
+
+def _read_latex(
+    folder: Path, documents: list
+) -> tuple[list[tuple[Path, str, str]], int, dict[Path, list[int]]]:
+    """`_latex_texts` of documents read, each the include tree's sources."""
+    from manuscript_guard.text.latex.printed import printed_view
+
+    read: list[tuple[Path, str, str]] = []
+    cited: dict[Path, list[int]] = {}
+    words = 0
+    for document in documents:
+        sources = [source for source in document if not source.path.lower().endswith(".sty")]
+        for source in sources:
+            path = folder / source.path
+            read.append((path, _latex_typed(source), _latex_prose(source)))
+            cited[path] = _cited_at(source)
+        words += count_words(printed_view([source for source in sources if not source.loose]))
+        words += sum(count_words(printed_view([source])) for source in sources if source.loose)
+    return read, words, cited
+
+
+def _latex_typed(source) -> str:
+    """A LaTeX file as typed, where an artefact or a placeholder is looked for, in a comment
+    too, as in a Markdown file's comment."""
+    return source.text
+
+
+def _latex_prose(source) -> str:
+    """A LaTeX file's prose, the phrases' and the residue's: what the reader keeps, at the
+    same offsets, a space where it blanks."""
+    from manuscript_guard.text.latex.mask import NUL
+
+    return source.reading.masked.replace(NUL, " ")
+
+
+def _cited_at(source) -> list[int]:
+    """Where each citation command of a LaTeX file stands, as `[@...]` stands in Markdown."""
+    return [found.start for found in source.reading.cited]
 
 
 def rates(corpus: list[tuple[Path, str]], rules: Rules | None = None) -> dict[str, float]:
@@ -236,7 +308,7 @@ class Elsewhere:
     line: int | None = None
 
 
-def _elsewhere(project: Project, results: Results | None, sources: list[str]) -> list[Elsewhere]:
+def _elsewhere(project: Project, results: Results | None) -> list[Elsewhere]:
     """The text of every figure, the caption of every table, and the printed fields of every
     cited reference, each as one text."""
     found: list[Elsewhere] = []
@@ -250,14 +322,17 @@ def _elsewhere(project: Project, results: Results | None, sources: list[str]) ->
     for key, table in sorted((results.tables if results else {}).items()):
         if table.caption:
             found.append(Elsewhere(table.source, table.caption, f"the caption of table {key!r}"))
-    return found + _cited_fields(project, sources)
+    return found + _cited_fields(project)
 
 
-def _cited_fields(project: Project, sources: list[str]) -> list[Elsewhere]:
+def _cited_fields(project: Project) -> list[Elsewhere]:
     path = project.path("literature") / BIB_FILE
     if not path.is_file():
         return []
-    cited = {use.citekey for text in sources for use in find_citations(text, path)}
+    from manuscript_guard.text.reader import citation_uses
+
+    # The keys the manuscript cites, in its format: a LaTeX file's `\\nocite{*}` cites each.
+    cited = {use.citekey for use in citation_uses(project)}
     written = path.read_text(encoding="utf-8", errors="replace")
     found = []
     for key, fields in read_entries(path).items():
@@ -395,11 +470,15 @@ def _residue(
     return report
 
 
-def _vague(rules: Rules, path: Path, text: str, prose: str, totals: dict) -> Report:
-    """Unsupported appeals to authority, judged against where the citations actually are."""
+def _vague(
+    rules: Rules, path: Path, text: str, prose: str, totals: dict, cited: list[int] | None = None
+) -> Report:
+    """Unsupported appeals to authority, judged against where the citations actually are:
+    `cited` where a LaTeX file's citation commands stand, a Markdown file's found here."""
     report = Report()
-    cited = [m.start() for m in bracketed(text)]
-    cited += [m.start() for m in NARRATIVE.finditer(text)]
+    if cited is None:
+        cited = [m.start() for m in bracketed(text)]
+        cited += [m.start() for m in NARRATIVE.finditer(text)]
 
     for rule in rules.vague:
         for match in re.finditer(rule["pattern"], prose):

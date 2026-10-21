@@ -148,3 +148,20 @@ def test_g14_reads_the_twins_words_as_the_examples(project: Path, tmp_path: Path
     assert [(f.code, f.message) for f in latex.findings] == [
         (f.code, f.message) for f in example.findings
     ]
+
+
+def test_g6_reads_the_twins_prose_as_the_examples(project: Path, tmp_path: Path) -> None:
+    """Step 7: G6 counts the twin's words, phrases, artefacts and vague attributions as the
+    example's, and says of it what it says of the example."""
+    from manuscript_guard.gates import check_writing
+
+    example = check_writing(load_project(project)[0])
+    root = tmp_path / "twin"
+    shutil.copytree(project, root)
+    shutil.rmtree(root / "manuscript")
+    shutil.copytree(TWIN, root / "manuscript")
+    latex = check_writing(load_project(root)[0])
+    assert latex.counts == example.counts and example.counts["prose_words"] > 1000
+    assert [(f.code, f.message) for f in latex.findings] == [
+        (f.code, f.message) for f in example.findings
+    ]

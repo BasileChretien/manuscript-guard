@@ -5819,8 +5819,8 @@ def test_a_gate_not_taught_latex_reads_nothing_and_fails_at_submission(project: 
     drafting, _project, _stage, _deferred = _run_gates(project, stage="drafting")
     unread = sorted(f.gate for f in drafting.findings if f.code == "not-read-in-latex")
     # G2 reads LaTeX but for its pointers to tables and figures, and says so (step 4). G4
-    # reads it from step 6, G14 from step 7.
-    expected = ["BUILD", "G13", "G15", "G2", "G6", "G7", "G8", "G8r", "G9"]
+    # reads it from step 6, G14 and G6 from step 7.
+    expected = ["BUILD", "G13", "G15", "G2", "G7", "G8", "G8r", "G9"]
     assert unread == expected, drafting.render(project)
     assert "not-read-in-latex" not in codes(drafting)
     said = {f.code for f in drafting.findings}
@@ -5835,7 +5835,7 @@ def test_a_gate_not_taught_latex_reads_nothing_and_fails_at_submission(project: 
 #: The checks that read the manuscript only as Markdown, and those that do not read it.
 _MARKDOWN_ONLY = (
     "check_related", "check_prose_quotations", "check_reporting",
-    "check_writing", "check_methods", "check_reported", "check_recomputed", "check_revision",
+    "check_methods", "check_reported", "check_recomputed", "check_revision",
     "check_models", "check_shapes", "check_tex", "check_passages",
 )  # fmt: skip
 _NOT_THE_MANUSCRIPT = (
@@ -5850,6 +5850,7 @@ _NOT_THE_MANUSCRIPT = (
 _READS_LATEX = (
     "check_latex", "check_numbers", "check_bound_units", "check_small_cells",
     "check_synthetic_inputs", "check_citations", "check_journal", "check_language",
+    "check_writing",
 )  # fmt: skip
 
 
@@ -6176,6 +6177,49 @@ def test_g14_finds_in_the_twin_what_it_finds_in_the_example(
     assert found and found[0].path == entry, [(f.code, f.message) for f in _g14(project)]
     text = entry.read_text(encoding="utf-8")
     assert found[0].line == text.count("\n", 0, text.index(snippet)) + 1
+
+
+def _g6(root: Path) -> list:
+    from manuscript_guard.gates import check_writing
+
+    return list(check_writing(load_project(root)[0]).findings)
+
+
+@pytest.mark.parametrize(
+    ("snippet", "code"),
+    [
+        ("Studies have shown that reporting is low.", "vague-attribution"),
+        ("We delve into the reports here.", "ai-phrasing"),
+        ("% TODO check the counts", "model-artefact"),
+        ("As requested by Reviewer 2, we added the counts.", "revision-residue"),
+    ],
+)
+def test_g6_finds_in_the_twin_what_it_finds_in_the_example(
+    project: Path, snippet: str, code: str
+) -> None:
+    """A claim with no citation near it, a phrase G6 reports, a placeholder left in a
+    comment and words to a reviewer, each written into the twin's Results, are found there,
+    on the line they are written on (step 7). A comment's placeholder is found as typed, as
+    one in a Markdown comment is."""
+    entry = _twin(project)
+    assert not [f for f in _g6(project) if f.code == code]
+    # At the head of the Results, which no citation stands within reach of.
+    text = entry.read_text(encoding="utf-8")
+    heading = "\\section{Results}\n"
+    entry.write_text(text.replace(heading, heading + snippet + "\n", 1), encoding="utf-8")
+    found = [f for f in _g6(project) if f.code == code]
+    assert found and found[0].path == entry, [(f.code, f.message) for f in _g6(project)]
+    text = entry.read_text(encoding="utf-8")
+    assert found[0].line == text.count("\n", 0, text.index(snippet)) + 1
+
+
+def test_g6_takes_a_latex_citation_beside_a_claim_for_its_support(project: Path) -> None:
+    """Judged against where the twin's citation commands stand, as `[@...]` in Markdown; and
+    a claim in a comment is no claim of the paper's (step 7)."""
+    entry = _twin(project)
+    claim = "Studies have shown that reporting is low \\citep{fictionalHepaticCohort2021}."
+    _into_results(entry, claim + "\n% Studies have shown it is high.")
+    assert not [f for f in _g6(project) if f.code == "vague-attribution"]
 
 
 @pytest.mark.parametrize("encoding", ["cp1252", "utf-16", "utf-32"])

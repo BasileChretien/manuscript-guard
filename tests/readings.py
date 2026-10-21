@@ -433,6 +433,44 @@ def _data_statement() -> Reading:
     return read
 
 
+#: Two chosen sources, one anyone may download and one a committee decides on, as the record
+#: of data sources gives them.
+DATA_SOURCES = (
+    {"id": "ora", "name": "Open Reports Archive", "also_known_as": ["ORA"],
+     "access": {"route": "open-download"}},
+    {"id": "encd", "name": "Example National Claims Database", "also_known_as": ["ENCD"],
+     "access": {"route": "application"}},
+)  # fmt: skip
+
+
+@reading("data sources statement")
+def _data_sources_statement() -> Reading:
+    from manuscript_guard.data_sources import (
+        ON_REQUEST,
+        OPENLY,
+        named,
+        route_differs,
+        says,
+        sentences,
+    )
+
+    sources = [dict(source) for source in DATA_SOURCES]
+
+    def read(text: str) -> dict[str, Any]:
+        """What the statement says of each source, and what each sentence says: asked for,
+        openly had, and which sources it names."""
+        return {
+            "differs": route_differs(text, sources),
+            "sentences": [
+                [says(sentence, ON_REQUEST), says(sentence, OPENLY),
+                 [source["id"] for source in sources if named(sentence, source)]]
+                for sentence in sentences(text)
+            ],  # fmt: skip
+        }
+
+    return read
+
+
 def whole_namespace() -> dict[str, Any]:
     """Results that say what they belong to: two p values of one estimate, its interval, and
     two shares of one denominator."""
@@ -826,6 +864,19 @@ def _printed_value() -> Reading:
             now = Value(key="k", value=case["value"], display=case["display"], origin="results")
             found.append([_same_printed(case["printed"], now), _same_printed(case["moved"], now)])
         return found
+
+    return compared
+
+
+@reading("plan sections")
+def _plan_sections_compared() -> Reading:
+    """The headings of the sections two plans both have whose words differ, as G8 compares
+    an earlier output's plan with this paper's."""
+    from manuscript_guard.gates.related_methods import sections_compared
+
+    def compared(given: dict[str, str]) -> list[str]:
+        found = sections_compared(given["then"], given["now"])
+        return [title for title, _key, _there, _here in found]
 
     return compared
 

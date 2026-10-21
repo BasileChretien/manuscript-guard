@@ -266,6 +266,11 @@ reporting_guidelines:
 #   min_text_pt: 5
 #   min_line_pt: 0.25
 #   legend_words: 250
+#   # Whether each figure must carry alternative text, for a reader who cannot see it:
+#   # required (G3 fails a figure with none at submission) or requested (a warning). A
+#   # figure's own is in its guard file (alt:). And the most characters it may hold.
+#   alt_text: required
+#   alt_text_max_chars: 250
 #   # Rules of their own for supplementary figures: each replaces the same rule above
 #   # for them, and the rest above still hold.
 #   # supplementary: {max_dpi: 300, max_file_mb: 10}

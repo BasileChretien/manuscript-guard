@@ -95,7 +95,7 @@ def escaped(text: str, ref: str) -> str:
     """`text` as LaTeX prints it under pdfLaTeX, or `NotPrintable`."""
     out = []
     for index, character in enumerate(text):
-        if character == "-" and text[index + 1 : index + 2] == "-":
+        if character == "-" and _joins(text, index):
             # Two hyphens are TeX's en dash, and a sign after them lost (round 2 of step 4b).
             out.append("-{}")
         elif character in _SPECIALS:
@@ -111,6 +111,11 @@ def escaped(text: str, ref: str) -> str:
         else:
             raise NotPrintable(ref, character)
     return "".join(out)
+
+
+def _joins(text: str, index: int) -> bool:
+    """Whether the hyphen at `index` and the next character are TeX's en dash."""
+    return text[index + 1 : index + 2] == "-"
 
 
 def tabular(table: Table, ref: str) -> str:

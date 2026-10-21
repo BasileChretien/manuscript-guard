@@ -698,7 +698,7 @@ LATEX_PREAMBLE_BINDINGS = (("\\title{{T \\mg{{results.{}}}}}\n", "bound"),)
 #: What a display is written in: digits and the signs a number is written with, each of TeX's
 #: specials, and each character the values file writes another way (`build/latex_values.py`).
 LATEX_DISPLAY_CHARACTERS = (
-    *"0123456789.,-+()[]/ <>|'-", *"\\{}$&#%_~^", "\N{EN DASH}", "\N{EM DASH}",
+    *"0123456789.,-+()[]/ <>|'", "--", *"\\{}$&#%_~^", "\N{EN DASH}", "\N{EM DASH}",
     "\N{MINUS SIGN}", "\N{PLUS-MINUS SIGN}", "\N{MULTIPLICATION SIGN}",
     "\N{LESS-THAN OR EQUAL TO}", "\N{GREATER-THAN OR EQUAL TO}", "\N{NO-BREAK SPACE}",
     "\N{THIN SPACE}", "\N{GREEK SMALL LETTER BETA}",

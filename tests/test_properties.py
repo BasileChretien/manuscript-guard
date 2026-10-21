@@ -699,6 +699,10 @@ def _a_percent_is_written_bare(patch: pytest.MonkeyPatch) -> None:
     patch.setitem(latex_values._SPECIALS, "%", "%")
 
 
+def _two_hyphens_are_written_as_typed(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_values, "_joins", lambda text, index: False)
+
+
 def _an_en_dash_is_written_as_a_ligature(patch: pytest.MonkeyPatch) -> None:
     patch.setitem(latex_values._TEXT, "\N{EN DASH}", "--")
 
@@ -7317,6 +7321,10 @@ BROKEN = {
     ),
     "in a LaTeX values file, a percent sign is written bare": (
         _a_percent_is_written_bare,
+        test_a_display_written_for_latex_holds_no_bare_special_and_no_ligature,
+    ),
+    "in a LaTeX values file, two hyphens are written as typed": (
+        _two_hyphens_are_written_as_typed,
         test_a_display_written_for_latex_holds_no_bare_special_and_no_ligature,
     ),
     "in a LaTeX values file, an en dash is written as a ligature": (

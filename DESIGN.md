@@ -1517,6 +1517,10 @@ The result is compiled and packed by the code above, and checked three times:
 - How `\mg` prints beside siunitx's own `\mg`, its milligram, is not measured: MiKTeX's
   siunitx 3.6.4 fails on its own against LaTeX 2024-06 on the author's machine. Step 9
   measures it under CI's TeX Live (step 4).
+- The values file writes no other pair TeX joins apart: `''`, two backticks, `!` or `?` and a
+  backtick, and under T1 `,,` print as the mark TeX joins them into, `12' 30''` with a
+  closing quote. Nor is a value's last hyphen kept from one the text types after `\mg`, so
+  "5-" before `-3` prints an en dash (round 3 of step 4b).
 - A dash a display holds is `\textendash{}`, which LaTeX warns of in maths, where `\mg`
   inside `$...$` prints it all the same (round 1 of step 4b).
 - The values file takes a figure's file by a lower-case suffix, and the PDF before a PNG,

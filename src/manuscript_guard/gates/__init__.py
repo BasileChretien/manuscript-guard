@@ -22,6 +22,7 @@ from manuscript_guard.gates.numbers import check_numbers, source_files
 from manuscript_guard.gates.passages import check_passages
 from manuscript_guard.gates.quotations import check_prose_quotations
 from manuscript_guard.gates.recomputed import check_recomputed
+from manuscript_guard.gates.recycling import check_recycling
 from manuscript_guard.gates.relations import check_relations
 from manuscript_guard.gates.reported import check_reported
 from manuscript_guard.gates.reporting import (
@@ -62,6 +63,7 @@ GATES = {
 __all__ = [
     "check_models",
     "check_recomputed",
+    "check_recycling",
     "check_revision",
     "rounds",
     "GATES",

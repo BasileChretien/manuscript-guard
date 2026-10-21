@@ -1408,6 +1408,47 @@ def passage_files(draw: st.DrawFn) -> tuple[dict[str, Any], list[tuple[int, str]
     return {"text": text, "entries": [entry for entry, _n in entries]}, [n for _e, n in entries]
 
 
+# ------------------------------------------------------------ the authors' earlier paper
+
+#: Passages of an earlier paper of the authors that a manuscript may repeat: two long enough
+#: to be reported, and one a word short.
+RECYCLED = (
+    "spontaneous reports are subject to under-reporting and to stimulated reporting after "
+    "regulatory communications",
+    "the reporting odds ratio contrasted the odds of reporting the event for the drug of "
+    "interest with all other drugs",
+    "every narrative was read twice by two pharmacists working apart from",
+)
+
+#: What a page sets in place of a word or between two: a ligature, a word broken at the end
+#: of a line, a reference's number, a page's end.
+_SET_IN_TYPE = (
+    ("fi", "\N{LATIN SMALL LIGATURE FI}"), ("ff", "\N{LATIN SMALL LIGATURE FF}"),
+    ("fl", "\N{LATIN SMALL LIGATURE FL}"),
+)  # fmt: skip
+_TYPESET_GAPS = (*SOURCE_GAPS, ".12 ", "\N{SUPERSCRIPT TWO} ", "\f", "-\n")
+
+
+@st.composite
+def earlier_papers(draw: st.DrawFn) -> str:
+    """The text of an earlier paper as it is read out of a PDF: the passages of `RECYCLED`
+    in an order drawn, set in type, among words of its own."""
+    parts: list[str] = []
+    for passage in draw(st.permutations(RECYCLED)):
+        parts.append(" ".join(draw(st.lists(st.sampled_from(SOURCE_WORDS), max_size=6))) + "\n")
+        for word in passage.split():
+            for letters, ligature in _SET_IN_TYPE:
+                if letters in word and draw(st.booleans()):
+                    word = word.replace(letters, ligature)
+            gap = draw(st.sampled_from(_TYPESET_GAPS))
+            # Broken at the end of a line inside the word, as a PDF hyphenates.
+            if gap == "-\n" and len(word) > 3:
+                at = draw(st.integers(1, len(word) - 1))
+                word, gap = f"{word[:at]}-\n{word[at:]}", " "
+            parts.append(word + (" " if gap == "-\n" else gap))
+    return "".join(parts)
+
+
 # ---------------------------------------------------------------------- a vector figure
 
 #: Each kind of text a vector figure holds: what G4 reads the size of.
@@ -1686,6 +1727,8 @@ PROOF_CORRECTIONS = (
     ("36.4%", "36,4%", "decimal mark"),
     ("\N{MINUS SIGN}0.51", "0.51", "sign"),
     ("12 mg", "12 \N{GREEK SMALL LETTER MU}g", "unit or symbol"),
+    ("12 days", "12 years", "unit or symbol"),
+    ("3-day", "3-month", "unit or symbol"),
     ("[4]", "[5]", "citation"),
 )
 #: The same values set otherwise: shown, and not counted.
@@ -1694,10 +1737,12 @@ PROOF_TYPOGRAPHY = (
 )  # fmt: skip
 #: A word copy-edited, as sent and as printed: no other part holds either.
 PROOF_EDIT = ("remained", "stayed")
+#: A unit of time abbreviated as the AMA sets it, a copy-edit and not a unit changed.
+PROOF_ABBREVIATED = ("6 months", "6 mo")
 #: What each part starts with, so that no two parts read alike.
 _PROOF_LEADS = (
     "Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel", "India",
-    "Juliet", "Kilo", "Lima", "Mike", "November",
+    "Juliet", "Kilo", "Lima", "Mike", "November", "Oscar", "Papa", "Quebec",
 )  # fmt: skip
 
 
@@ -1707,8 +1752,9 @@ def proofs(draw: st.DrawFn, *, planted: bool = True) -> dict[str, Any]:
     them: each part wrapped to a width drawn, a running head over each page and its number
     under it, and the line numbers some proofs print, or not. A long word and a compound are
     broken at a line's end. With `planted`, one of every change of `PROOF_CORRECTIONS` and
-    `PROOF_TYPOGRAPHY`, and `PROOF_EDIT`, each in a part of its own, and one part the proof
-    leaves out; the dictionary says which part holds which, and how the proof prints it.
+    `PROOF_TYPOGRAPHY`, `PROOF_EDIT` and `PROOF_ABBREVIATED`, each in a part of its own,
+    and one part the proof leaves out; the dictionary says which part holds which, and how
+    the proof prints it.
 
     The text reads as text does: each part draws its words from a share of `FILLER` of its
     own and ends with a word of its own, so that no line stands at the foot of half the
@@ -1725,6 +1771,7 @@ def proofs(draw: st.DrawFn, *, planted: bool = True) -> dict[str, Any]:
         held += [(sent, printed, what) for sent, printed, what in PROOF_CORRECTIONS]
         held += [(sent, printed, "typography") for sent, printed in PROOF_TYPOGRAPHY]
         held += [(PROOF_EDIT[0], PROOF_EDIT[1], "copy-edit"), ("", "", "missing")]
+        held += [(*PROOF_ABBREVIATED, "abbreviated")]
     held += [("pharmacovigilance and example-drug", "pharmacovigilance and example-drug",
               "broken")]  # fmt: skip
     held += [("", "", "plain")] * draw(st.integers(0 if planted else 3, 3 if planted else 6))
@@ -1744,8 +1791,7 @@ def proofs(draw: st.DrawFn, *, planted: bool = True) -> dict[str, Any]:
         printed_parts.append(" ".join(p for p in (lead, before, kept, after, lead.lower())
                                       if p) + ".")  # fmt: skip
         if what not in ("plain", "broken"):
-            planted_at[what if what != "typography" else f"typography {printed}"] = (label,
-                                                                                  printed)
+            planted_at[f"{what} {printed}"] = (label, printed)
     width = draw(st.integers(28, 70))
     while True:
         lines = [line for text in printed_parts
@@ -3594,6 +3640,9 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "quote placement": nearly_quoted(),
     "suggested edit": suggested_edits(),
     "suggestion written": suggestion_writes(),
+    "recycled passages": st.fixed_dictionaries(
+        {"text": texts(RECYCLED), "source": earlier_papers()}
+    ),
     "spelling": st.fixed_dictionaries(
         {
             "text": texts(SPELT),

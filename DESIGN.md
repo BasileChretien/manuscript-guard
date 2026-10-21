@@ -853,6 +853,68 @@ its own, makes of four colours. Okabe and Ito's eight have no pair any deficienc
 and matplotlib's default red and green, 72 apart, are under 5 apart with deuteranopia: the
 model says what the literature says of both.
 
+## Palettes are other people's, and each says what the check makes of it
+
+A figure's colours are its author's choice, and the toolkit never draws the figure. What it
+can do is hand the author palettes by name and say, for each, what the colour check makes
+of it (decided 2026-10-21: every palette of the collections asked for, derived, with Python
+and R helpers, a `palettes` command and a `figure-design` skill).
+
+**The palettes.** MetBrewer, MoMAColors, NatParksPalettes, PNWColors and wesanderson, the
+artists' and photographers' palettes Basile asked for; Okabe and Ito's eight; ColorBrewer's
+schemes, each for every number of classes it offers; viridis, magma, inferno and plasma;
+cividis; and Crameri's scientific colour maps, version 8: 260 palettes. Each collection's
+licence was read at its source before any colour was copied (CC0, MIT, Apache 2.0 and
+Battelle's BSD-style licence all allow it with their notices), and each is credited in
+ATTRIBUTION.md with its notice beside the data, `data/palettes_LICENSES.txt`.
+
+**Derived, never typed.** `tools/derive_palettes.py` reads each collection's colours from its
+own file at a pinned commit, refusing a file whose SHA-256 is not the one written beside it,
+as the spelling list is derived from VarCon: the R lists of MetBrewer, MoMAColors,
+NatParksPalettes, PNWColors and wesanderson, ColorBrewer's JSON export, the CC0 source of
+viridis, PNNL's cividis table and cmcrameri's copy of Crameri's tables. It writes the licence
+file from the collections' own licence files the same way. Only Okabe and Ito's eight colours
+are typed, as the numbers their page publishes. With the files in a folder named by
+`MANUSCRIPT_GUARD_PALETTE_SOURCES`, a test derives both files again and compares them byte for
+byte. The R package carries the same two files, held equal by a test.
+
+**What the check makes of each** (`palettes.assess`), written into the file when it is
+derived and recomputed by a test, so a change to the check that changes a verdict has the
+file derived again: for a set of colours, how many of them, taken as its collection takes
+them for that many, stay at least 10 apart (CIEDE2000) to normal vision, for every reader
+with protanopia, deuteranopia or tritanopia, and in grey; for every palette, whether its
+lightness runs one way, turns once or neither, judged at eleven points along a continuous
+map (its 256 colours, rounded to 8 bits, step back and forth by a fraction of a unit), and
+whether each deficiency keeps that. Beside it, what the collection claims where it claims
+anything. MetBrewer calls Archambault colour-blind friendly; three of its colours stay 10
+apart for every reader. Both are shown, and the skill says both.
+
+**Taking n colours** follows each collection's own rule, so a palette here gives what its
+own package gives: ColorBrewer's scheme of n, and for fewer than its smallest scheme of
+three, n evenly spaced along that one, its two ends for two, where `scale_colour_brewer`
+takes the first two, one arm and the middle of a diverging scheme; MetBrewer's, MoMAColors', NatParksPalettes' and
+PNWColors' colours whose rank in the palette's order is at most n, in the palette's
+sequence (`met.brewer`'s `palette[[1]][which(palette[[2]] %in% c(1:n))]`); otherwise the first
+n; and n evenly spaced along a continuous map. More than a set has is refused, and `ramp`
+interpolates, in a straight line through sRGB as R's `colorRampPalette` does (a channel that
+falls on a half may round the other way). Python: `palettes.colours`, `cycle`, `use`,
+`cmap`, and `figure_style`, matplotlib settings sized to the target journal: its width, its
+smallest text and thinnest line or more (7 pt and 0.5 pt where the journal's least is less),
+and fonts kept as text in an SVG and embedded in a PDF, as G3 and G4 read them. R:
+`mg_palette`, `mg_palettes`, `scale_colour_mg`, `scale_fill_mg`, `mg_theme` and
+`mg_figure_size`, from the same file.
+
+**Choosing** is the author's, with the `figure-design` skill: it proposes two or three
+layouts for the figure's kind and two or three palettes for the number of colours it needs,
+says which every reader can read, offers an artist's palette the check does not pass only
+with that said, and applies the choice to the author's script. `manuscript-guard palettes`
+lists and filters (`--kind`, `--colours`, `--safe`, `--collection`) and shows one with its
+licence (`--show`). With `--colours n`, `--safe` holds the n colours the palette gives, a
+continuous map's evenly spaced along it, apart for every reader, as G3 holds a figure of n
+classes (rounds 2 and 3 of #406: PuOr's seven and viridis's seven do not stay apart, though
+PuOr's ten do and viridis runs one way). The check that counts is still G3's, on the
+rendered figure, the supplement's figures as the paper's.
+
 ## The journal's citation style is used by every build
 
 A profile names the journal's citation style as the CSL style repository and Zotero name it
@@ -2494,6 +2556,150 @@ saw, and the item is outstanding again. Neither what G7 found of it nor the auth
 judgement is shown or digested. The first depends on the PDF reader of the machine that
 built the page, which a digest must not; the second would tell a co-author the answer before
 they read.
+
+## Text from the authors' earlier papers is found before the journal finds it
+
+A journal puts each submission through a similarity check (Crossref Similarity Check, which
+iThenticate runs), and the editor reads a report of every run of words the manuscript shares
+with a published paper, the authors' own papers among them. Reusing one's own words in a new
+paper is text recycling, and its norms are published:
+
+- The Text Recycling Research Project, *Text Recycling: Best Practices for Researchers*,
+  version 1.1, April 2021 (textrecycling.org, CC BY 4.0). Recycling is most defensible in the
+  Methods, where a standard description kept as it was lets a reader see where two studies
+  differ. It is disclosed, to the editor in the covering letter and to readers in the paper. A
+  synonym put in to hide it is no rewriting. The venue's policy and the publisher's contract
+  decide what is allowed, and the guide sets no number of words.
+- COPE's text recycling guidelines for editors, written with BioMed Central's editors.
+  Overlap in the Methods may be appropriate when the earlier article is cited; undisclosed
+  overlap, or overlap in the results, discussion or conclusions, is unlikely to be acceptable;
+  the editor judges each case by how much is reused, where, and whether its source is
+  acknowledged. Harriman and Patel give the same reasons in *BMC Medicine* 2014;12:148
+  (doi:10.1186/s12916-014-0148-8).
+
+So G7 runs that check before the journal does, on this machine and on the authors' own
+copies. Basile chose its four parts on 2026-10-21.
+
+**Which papers.** The earlier outputs `literature/related.yaml` lists, the one list G8 holds
+the paper's numbers to ("An earlier output of the same data is held to this paper"), each that shares authors with this paper (`shares:
+[authors]`); text recycling is the reuse of one's own words, and an output of the same data
+by others is not compared here. Its citation key names the stored copy,
+`literature/sources/<citekey>.*`, kept and read as a cited work's source is, out of git by
+default; an earlier paper the manuscript does not cite still has a key and a copy. Basile
+chose a shared list over a second one in `paper.yaml`, which this check first proposed.
+Nothing is looked up. An author's ORCID iD could list their works, but this makes no registry
+call, and the list is the record. A copy is read here and sent nowhere, to a model provider
+least of all.
+
+A preprint, an abstract or a protocol of this same study (`kind: preprint`, `abstract` or
+`protocol`, with `study` among what it shares) is an earlier form of this paper, and the
+manuscript repeats much of it. The TRRP counts reuse of one's own preprint or poster as
+commonly accepted where it is disclosed, the journal's preprint policy decides, and a results
+paper is expected to repeat its own protocol's methods. So it is compared like any other, and
+reported once, however much the manuscript repeats: `recycled-earlier-version`, a note at the
+output's line of the list, with the number of passages and words and where the first stands
+(Basile, 2026-10-21; the protocol in round 1 of the review, where it warned once for each
+paragraph of the Methods that did not cite it).
+
+**How it compares.** By words. A word is a run of letters and digits in lower case. A hyphen,
+an en dash or an apostrophe inside it joins its parts, and so does a hyphen at the end of a
+line, so that "drug-induced" set as "drug-\ninduced" in a PDF, and "pharmaco-\nvigilance"
+broken by the PDF's hyphenation, are one word each. A number is no word, and neither are the
+digits at the end of a word, which is where a PDF leaves a reference's number ("risk12",
+"risk²"); so a binding, a reference's number and a count the new paper updated are no
+difference. A ligature is its letters. A run of eight words that the earlier paper has in the
+same order marks its words shared. Shared words that stand together are one passage, and so
+are two runs at most three words apart here whose places in the earlier paper are at most four
+apart, so that a word changed for another does not cut the sentence in two. A passage of
+twelve shared words or more is reported. "Adjusted for age and sex" is five words and never a
+run; a sentence of the Discussion repeated with one word changed, eight words or more from
+either end, is a passage of every other word in it. A word changed nearer an end leaves the
+words beyond it in no run, so they are not counted (round 1 of the review).
+
+A PDF is read in reading order, `pdftotext` without `-layout`, where the literature chain
+reads it laid out to find a quote. Laid out, each line of a page of two columns holds a line
+of each column, and every sentence of the left column is cut by the right one. pypdf is the
+fallback, as it is for the chain.
+
+**The supplement is compared as the main text is** (Basile, 2026-10-21: supplementary
+material is held to the same rules). Every Markdown file under `manuscript/supplementary/`
+is read with the rest, as every gate that reads the manuscript reads it; a LaTeX manuscript
+is not read by this check yet, and G7 says so (`not-read-in-latex`). The supplement's
+headings name its parts as the main text's do: a title that is a supplement's name for a part
+and nothing else, "Supplementary discussion", "Supplemental results", JAMA's "eResults", is
+that part (round 7 of the review: they named none). Only the whole title: "Online discussion
+forums" or "eConsent" names no part (round 8: a prefix taken off any heading read "Online
+discussion forums" under the Methods as the Discussion, which unnamed the Methods). Its Supplementary Methods are the Methods: a
+description reused there with its source cited in the paragraph is a note, and one that does
+not cite it warns from internal-review. A similarity check reads the supplement as it reads
+the paper.
+
+**What is not compared.** The front matter, where an abstract already fails
+(`front-matter-abstract`) and the build prints nothing; the headings, which are also a bound
+no passage crosses; listings, tables and comments; and the reference list, which a similarity
+check is asked to leave out.
+
+**The statements a journal asks for are compared, and noted.** Funding and the funder's role,
+competing interests, acknowledgements, data and code availability, ethics and consent, patient
+and public involvement, the authors' contributions (CRediT), transparency, the use of
+generative AI, the abbreviations: these are the same from one paper to the next, a journal
+expects them to be, and a warning of each would bury the ones that matter. A passage under a
+statement's heading is `recycled-statement`, a note at every stage. A statement's heading is
+known by its whole title, which names one statement or several and nothing else: "Funding",
+"Data availability statement", "Ethics approval and consent to participate", "Conflicts of
+interest/Competing interests", "Funding, competing interests, and data availability",
+"CRediT author statement" (the heading the submission pack writes). It is a statement's
+wherever it stands, at the end, under the Methods, the Discussion or the abstract, except
+under the Results, whose themes may be named so ("Data sharing", "Consent") and are the
+Results' own. A title that only opens with such words is the paper's own matter: "Funding
+sources of the included trials", "Data sharing in pharmacovigilance".
+
+Four rounds of the review went into this, and Basile chose the note on 2026-10-21. Read by
+the part of the paper over it, "Ethics approval" under the Methods was the Methods', and its
+standard words warned (round 1). The statements were then set apart, not compared, and every
+heading read wrong hid recycled text: a heading of the Results read by its first words (round
+2), a commentary's title (round 3), a theme of the Results named as a statement is (round 4);
+and every statement title missing from the list warned (rounds 3 and 4). Compared and noted,
+a heading read wrong turns a warning into a note at worst, and hides nothing. A statement's
+heading is not counted as a part of the paper when a heading over several parts is taken for
+a title over the paper, so that the Methods over "Statistical methods" and "Ethics approval"
+stay the Methods (round 2), and the conclusions are counted with the Discussion, so that the
+Discussion over "Interpretation" and "Conclusions" stays the Discussion (round 4).
+
+Words in quotation marks, straight or curly, double or single, or in a block
+quotation, are quoted and not recycled. A passage is recycled text where twelve of its words
+or more stand outside quotation marks, and a quotation (`recycled-quotation`, a note) where as
+many stand inside them.
+
+**What a passage is told.** Its part of the paper is the one the outermost heading over it
+names: the Introduction, the Methods, the Results, the Discussion, the conclusions or the
+abstract, named as the other gates name them, the Methods being the sections
+`methods_sections` takes for them. A heading over headings that name two parts or more is a
+title over the paper and names none.
+
+- In the Methods, where the passage's paragraph cites the earlier paper:
+  `recycled-methods-cited`, a note at every stage, which says to mention it in the covering
+  letter.
+- In a statement the journal asks for: `recycled-statement`, a note at every stage.
+- Anywhere else: `recycled-text`, a note while drafting and a warning from internal-review,
+  never a failure. In the Methods with no citation in the paragraph, it says to cite the paper
+  there or write the passage afresh; in the Results, the Discussion, the conclusions or the
+  abstract, to write it afresh; in the Introduction or under no heading that names a part,
+  that the journal decides.
+- An earlier output with no citation key, or no copy that can be read:
+  `earlier-output-not-compared`, a note at its line of the list.
+
+Never a failure, because the journal's policy decides and neither guide forbids anything
+outright. A journal profile may state that policy as `text_recycling:`, with the page's words
+under `quotes.text_recycling`, which G4 holds to the stored page as it holds every rule's
+quote; each `recycled-text` and `recycled-methods-cited` finding then gives those words. The
+notes of a quotation, of an earlier form of the study and of an output not compared do not,
+since none of them asks the author to change the text.
+
+Each finding gives the manuscript's lines, how many words are shared, the part of the paper,
+and where the earlier paper has the passage: the page of a PDF, which is the PDF's own count
+and not the number printed on it, or the line of a text file or of a page saved as HTML.
+`check` counts `earlier_outputs_compared` and `recycled_passages`.
 
 ## Only a person can sign an attestation
 
@@ -8521,8 +8727,10 @@ Each difference is then one of these:
 
 - **A correction** (exit 1, and the list `--out` writes): a number's digits, sign or decimal
   mark changed, or a number gone or come within a part; a unit, a percent or degree sign or a
-  comparator changed beside a number (a unit's case is kept, so "mM" is not "mm"; the two
-  spellings of a litre and of a microgram are one); any change inside a citation
+  comparator changed beside a number, or after a number and a hyphen, "5-mg" (a unit's case is
+  kept, so "mM" is not "mm"; the two spellings of a litre and of a microgram are one); a
+  unit of time spelt out and printed as another there, "12 weeks" as "12 months" or
+  "12-week" as "12-month" ("12 wk" and "12 week" are copy-edits); any change inside a citation
   (brackets, parentheses that hold a year, a short number set against a word as a superscript
   is) or an entry of the reference list; a part the proof does not print at all, or a
   paragraph, a caption or a reference of six tokens or more none of which it prints in place,
@@ -8562,9 +8770,10 @@ comparison over proofs `tests/generated.py` draws (`proofs`): the parts' words, 
 the width the proof wraps to, the length of its pages and whether it numbers its lines, with a
 long word and a compound broken at a line's end. A proof of the parts as sent reads as them;
 one with one of every change of `PROOF_CORRECTIONS`, every setting of `PROOF_TYPOGRAPHY`, a
-word copy-edited and a part left out, each in a part of its own, reports each once, in its
-part, on its page and its line. Eight rules broken in place each fail one of the two, under a
-dozen seeds. The two rules above that choose between readings were found by them.
+word copy-edited, a unit of time abbreviated and a part left out, each in a part of its own,
+reports each once, in its part, on its page and its line. Eleven rules broken in place each
+fail one of the two, under a dozen seeds. The two rules above that choose between
+readings were found by them.
 
 ## Known gaps
 
@@ -9286,6 +9495,18 @@ Added by the adversarial review, verified and **not** fixed:
   only, the dichromacies; the anomalous trichromacies, commoner and milder, are not, and
   Machado's model is less sure of tritanopia than of the other two. The threshold of 10 is a
   convention, not a standard. A LaTeX manuscript's figures are not read.
+- **A palette's verdict is the check's, at its threshold, on its colours as written.** The
+  number of a set's colours that stay apart is counted in the collection's order for that
+  many, so a set whose first colours are close is rated low though a figure could take
+  others of it. A continuous map's lightness is judged at eleven points, so a wiggle between
+  them is not seen. What a collection claims is copied as its file states it (MetBrewer,
+  MoMAColors and NatParksPalettes) or as its makers' documentation states it (viridis,
+  cividis, Crameri, Okabe and Ito), not tested. `figure_style` and `mg_theme` size text and
+  lines to the journal's least or 7 pt and 0.5 pt, sizes many artwork guides give, which the
+  journal's own guide may set otherwise; `size` overrides. `mg_theme` sets ggplot2's `line`
+  and `rect`, and an element a base theme draws at a multiple of them keeps it: `theme_bw`'s
+  minor grid is drawn at half the journal's least. A palette's colours are not
+  checked against the figure that uses them: G3 reads the rendered figure.
 - **`stage:` is declared, not detected.** Writing `stage: analysis` demotes every G2 finding
   to INFO. It is printed, counted and summarised — never hidden — but CI reading the exit
   code sees green.
@@ -14070,7 +14291,12 @@ Open, recorded as each change landed:
   none is. An affiliation the journal rewords, a country moved or a department dropped, is
   reported as printed otherwise, a correction the author may find is not one. A name printed
   in capitals is found; a particle the journal sets otherwise ("van der" for "Van der") is
-  found, case aside, but one it drops is reported.
+  found, case aside, but one it drops is reported. A word broken at a line's end keeps its
+  hyphen where the word before or after holds the "@", as "nagoya-" and "u.ac.jp" need; an
+  address with no hyphen that the typesetter breaks with one, "jean-" and
+  "pierre.example@uni.example" for jeanpierre.example@uni.example, is then read with a
+  hyphen it never had, and its e-mail address is reported printed otherwise. The text does
+  not tell the two apart (review of 6104326, #397).
 - **A supplement is compared in its own run.** The supplement is held to the same rules as the
   paper: `proof --supplementary` compares a supplement the journal typesets as a document of
   its own with the pack's `supplementary.docx`, part by part and cell by cell, and names the
@@ -14089,9 +14315,14 @@ Open, recorded as each change landed:
 - **A case change and a style's synonym are not seen.** Words are compared case aside, so a
   heading set in capitals is no change, and neither is a name whose case changed in the body.
   Of units, only a litre's and a microgram's two spellings are read as one: "hours" printed "h"
-  beside a number is a correction. A unit of time spelt out is a word, so "12 weeks" printed
-  "12 months" is a copy-edit, shown and not counted: taken for units, the AMA's "12 wk" for
-  "12 weeks" was a correction (round 2 of #397).
+  beside a number is a correction. A unit of time spelt out is read as a unit only against
+  another spelt out: "12 weeks" printed "12 months" is a correction, and "12 wk", as the AMA
+  sets it, a copy-edit. An abbreviation G14 does not know is a word, so "12 weeks" printed
+  "12 mo" or "12 d" is a copy-edit too, though it names another unit (round 2 of #397). A
+  unit is read only beside its number or after it and a hyphen, so "12 consecutive weeks"
+  printed "12 consecutive months", "two weeks" printed "two months", and "day-28" printed
+  "month-28" are copy-edits. A stretch that starts after a number and a hyphen is read as a
+  unit's change if a unit stands anywhere in it (review of #408).
 - **What a proof adds between two parts is shown, not counted, in a table too.** Every cell is
   a part, so a value the proof adds between two cells, or a row it prints twice, is added
   text. Counted as a correction, "Table 1 (continued)" over a table broken across a page, and a
@@ -14247,6 +14478,62 @@ Open, recorded as each change landed:
   of no words finds one match at every character of the manuscript, a list that is then
   thrown away; and an edit to be dropped in a supplement paragraph has the supplement built,
   then deleted. Both come out right.
+- **Text recycled from an earlier paper is found as runs of words, and a paraphrase is not.**
+  A sentence rewritten with its words in another order, or with one word in three changed,
+  shares no run of eight and is not reported, though a reader of both papers would know it.
+  What is found is what the journal's similarity check finds, and no more.
+- **A PDF's columns, running heads and footnotes are its reader's.** In reading order
+  `pdftotext` reads one column after the other on most pages; a page whose columns it does not
+  see, a caption set inside a column, a running head or a footnote puts words of its own into
+  a sentence, and a passage across them is cut in two, each half reported only where it has
+  twelve shared words. pypdf, where `pdftotext` is not installed, reads a page in the order
+  its content draws it.
+- **A reference the earlier paper cites by author and year cuts a passage there.** "(Smith et
+  al., 2019)" is three words the manuscript does not have beside its citation key. A number,
+  "[12]" or "12", is no word and cuts nothing.
+- **A Methods passage counts as cited only where its own paragraph cites the earlier paper.**
+  "As described previously [@key]" heading a subsection, with the description two paragraphs
+  on, is reported as uncited, a warning from internal-review.
+- **Digits at a word's end are dropped on both sides,** so that a reference's number glued to
+  a word in a PDF is no difference. "CYP3A4" and "CYP3A5", or "phase2" and "phase3", are then
+  one word to this check, and a passage that differs only there is reported whole.
+- **An earlier form of the study is a preprint, an abstract or a protocol, and nothing
+  else.** A thesis chapter or a report of this study (`kind: report` or `other`) is compared
+  as an earlier paper is, and each paragraph it shares outside a cited Methods description
+  warns from internal-review, though its reuse is disclosed and accepted as a preprint's is.
+- **A statement is known by its heading's whole title, from a list.** A funding statement
+  under a title the list does not hold ("Grant support", "Funding and support of the
+  registry") is reported as the part the heading stands in reports it, a warning from
+  internal-review where a note is due. So is a statement written as a bold label inside a
+  paragraph, as a structured abstract's "**Funding:**", which has no heading. The other way,
+  a theme of the Discussion named as a statement is ("Data sharing") is noted where a
+  warning is due; under the Results it is the Results'. So is a subsection of the Methods
+  that happens to bear a back-matter title, "Article information" in a review's data
+  extraction (round 6 of the review; rare).
+- **The Methods are the sections whose title holds "methods", in the supplement as in the
+  main text.** A supplement's "eAppendix 1. Data source" or "Appendix S1: Definitions"
+  names no part, so a description reused there, cited or not, warns from internal-review as
+  under no heading. And a section titled "Methods and results", or "Supplementary methods
+  and results", is the Methods throughout, so Results reused there with the earlier paper
+  cited in the paragraph are noted where a warning is due (round 7 of the review). A
+  supplement's title names a part only where it is a supplement's name for one and nothing
+  more, numbered or not ("eResults 1", "Supplementary results and discussion"): one that says
+  more, "Supplementary results of the sensitivity analyses", names none, and a passage under
+  it is given the advice for text under no heading (round 9).
+- **A title over the Discussion and its conclusions alone is not taken for a title over the
+  paper.** The conclusions count as the Discussion's when the parts under a heading are
+  counted, so that the Discussion over "Interpretation" and "Conclusions" stays the
+  Discussion. A file whose only top heading names a part, over a Discussion and Conclusions
+  and nothing else ("# Background to hepatic injury" over them), therefore names its
+  passages by that heading: the Introduction's advice, or a statement's note under "# Data
+  sharing", where the Discussion's warning is due (round 5 of the review; rare).
+- **In single curly marks, a closing mark before a letter is an apostrophe.** An apostrophe at
+  a word's end inside such a quotation ("the patients' notes", typed curly) closes it early,
+  and the rest of it is read as recycled text.
+- **The earlier outputs are those the author lists.** No ORCID iD is looked up; an earlier
+  paper left off `literature/related.yaml` is not compared, and the journal's check still
+  finds it. An output of the same data by other authors is not compared either: overlap with
+  it is not text recycling, and nothing here reports it.
 - **A journal template's instruction is found only in the words of the templates read on
   2026-10-21.** G6 holds the opening of each instruction in the manuscript templates of
   MDPI, Frontiers, PLOS, BMC, Springer Nature, Elsevier and Wiley, and Word's prompt in an

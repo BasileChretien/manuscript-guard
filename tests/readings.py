@@ -960,6 +960,22 @@ def _passages() -> Reading:
     return passages
 
 
+@reading("recycled passages")
+def _recycled_passages() -> Reading:
+    """The passages of a manuscript file an earlier paper of its authors has too, with their
+    lines, how many words are shared and how many of them quoted, the part of the paper they
+    stand in and whether they cite it: what G7 reports before a similarity check does."""
+    from manuscript_guard.gates.recycling import recycled_in
+
+    def recycled(given: dict[str, str]) -> list[list[Any]]:
+        return [
+            [p.first_line, p.last_line, p.shared, p.quoted, p.kind, p.cited, p.excerpt]
+            for p in recycled_in(given["text"], given["source"], "earlier")
+        ]
+
+    return recycled
+
+
 @reading("checker sentences")
 def _checker_sentences() -> Reading:
     """How a co-author's items are cut out of a manuscript: the sentences of each paragraph.

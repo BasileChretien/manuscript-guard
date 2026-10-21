@@ -1979,6 +1979,66 @@ def test_a_misquotation_names_only_the_works_looked_in(project: Path) -> None:
     assert found.message.endswith("is not in the stored source of @fictionalHepaticCohort2021")
 
 
+# ----------------------------- a passage repeated from the authors' own earlier paper
+
+
+@pytest.mark.parametrize(
+    ("before", "paragraph"),
+    [
+        pytest.param("Data availability", "{caveat}", id="a sentence of the Discussion"),
+        pytest.param("Data availability", "{caveat} [@{key}]",
+                     id="cited, in the Discussion"),
+        pytest.param("Methods", "{caveat}", id="in the Introduction"),
+        pytest.param("Results", "{description}", id="a description in the Methods, uncited"),
+        pytest.param("Discussion", "{counted}", id="the Results with other numbers"),
+        pytest.param("Data availability", "{swapped}", id="a word changed"),
+        pytest.param("Data availability", "{marked}", id="emphasis and a binding inside"),
+        pytest.param("Data availability", "{wrapped}", id="wrapped, a word broken at a hyphen"),
+        pytest.param("Data availability", "{cited_inside}", id="a citation inside it"),
+        pytest.param(None, "{caveat}", id="in the supplement"),
+    ],
+)  # fmt: skip
+def test_a_passage_of_an_earlier_paper_warns_however_it_is_written(
+    project: Path, before: str | None, paragraph: str
+) -> None:
+    """The norms for text recycling hold a passage of the authors' earlier paper outside a
+    cited Methods description unlikely to be acceptable, and the journal's similarity check
+    shows it whatever was done to it short of rewriting: a word changed for another, numbers
+    updated, marks of emphasis, a citation inside it, the lines wrapped. Each is a warning
+    from internal-review."""
+    from test_recycling import CAVEAT, COUNTED, DESCRIPTION, KEY, found, stored, written
+
+    stored(project)
+    paragraph = paragraph.format(
+        caveat=CAVEAT, key=KEY, description=DESCRIPTION,
+        counted=COUNTED.replace("1,234", "{{results.cohort.n_reports}}").replace("56", "61"),
+        swapped=CAVEAT.replace("subject", "prone").replace("measure", "gauge"),
+        marked=CAVEAT.replace("disproportionality", "*disproportionality*").replace(
+            "risk", "risk {{results.signal.ror}}"),
+        wrapped=CAVEAT.replace("under-reporting", "under-\nreporting").replace(" so ", "\nso "),
+        cited_inside=CAVEAT.replace("communications,", f"communications [@{KEY}],"),
+    )  # fmt: skip
+    if before is None:
+        supplement = project / "manuscript" / "supplementary" / "recycled.md"
+        supplement.write_text(f"# Supplementary discussion\n\n{paragraph}\n", encoding="utf-8")
+    else:
+        written(project, paragraph, before=before)
+    findings = found(project, "internal-review")
+    assert [(f.code, f.severity) for f in findings] == [("recycled-text", "warn")], findings
+    assert found(project, "drafting")[0].severity == "info"
+
+
+def test_a_cited_methods_description_is_never_more_than_a_note(project: Path) -> None:
+    """The one place the norms accept recycled text, with its source cited (COPE)."""
+    from test_recycling import DESCRIPTION, KEY, found, stored, written
+
+    stored(project)
+    written(project, f"{DESCRIPTION} We used it as before [@{KEY}].", before="Results")
+    assert [(f.code, f.severity) for f in found(project, "submission")] == [
+        ("recycled-methods-cited", "info")
+    ]
+
+
 def test_an_elided_quotation_reads_points_as_a_reader_does(  # and a dash, as pinned
 ) -> None:
     """The review of #282: a reference number after a full stop joined the word before it,
@@ -5984,6 +6044,7 @@ _MARKDOWN_ONLY = (
     "check_prose_quotations", "check_reporting",
     "check_methods", "check_reported", "check_recomputed", "check_revision",
     "check_models", "check_shapes", "check_tex", "check_passages",
+    "check_recycling",
 )  # fmt: skip
 _NOT_THE_MANUSCRIPT = (
     "check_review", "check_freshness", "check_figures", "check_figure_reviews",

@@ -7,7 +7,8 @@ lines up with the one it was, and then each stretch is read:
 - a number whose digits, sign or decimal mark changed, or a number gone or come, is a
   correction, named as a citation's where it stands in brackets or is set as a superscript,
   and as a reference's in the reference list;
-- a unit, a percent sign or a comparator changed beside a number is a correction;
+- a unit, a percent sign or a comparator changed beside a number is a correction, and so is
+  a unit of time spelt out as another ("weeks" as "months", not as "wk");
 - any change in an entry of the reference list, or inside a citation, is a correction;
 - a part of what was sent that the proof does not print at all is a correction;
 - the same number set otherwise (grouped, a true minus, the leading zero) is typography,
@@ -41,6 +42,7 @@ from manuscript_guard.proof.tokens import (
     key,
     prepared,
     spelled,
+    time_units,
     tokens,
 )
 
@@ -283,10 +285,10 @@ class _Reader:
             self._say(CORRECTION, what, part, sent, printed, op.j1, note=_gone_or_come(said, shown),
                       source=self._source(part, first) if first else "")  # fmt: skip
             return
-        if self._unit_beside(op, said, shown):
-            self._say(CORRECTION, "unit or symbol", part, sent, printed, op.j1)
-        elif part.kind == REFERENCE:
+        if part.kind == REFERENCE:
             self._say(CORRECTION, "reference", part, sent, printed, op.j1)
+        elif self._unit_beside(op, said, shown):
+            self._say(CORRECTION, "unit or symbol", part, sent, printed, op.j1)
         elif self._in_citation(op.i1, op.i2):
             self._say(CORRECTION, "citation", part, sent, printed, op.j1)
         else:
@@ -348,11 +350,13 @@ class _Reader:
         return False
 
     def _unit_beside(self, op: Op, said: list[Token], shown: list[Token]) -> bool:
-        if not any(is_unit(t.raw) for t in (*said, *shown)):
+        before, after = time_units(said), time_units(shown)
+        retimed = bool(before) and bool(after) and before != after
+        if not retimed and not any(is_unit(t.raw) for t in (*said, *shown)):
             return False
         near = [*said, *shown]
-        near += [self.a[k] for k in (op.i1 - 1, op.i2) if 0 <= k < len(self.a)]
-        near += [self.b[k] for k in (op.j1 - 1, op.j2) if 0 <= k < len(self.b)]
+        near += [found[k] for found, lo, hi in ((self.a, op.i1, op.i2), (self.b, op.j1, op.j2))
+                 for k in (lo - 1, hi, *_past_hyphen(found, lo)) if 0 <= k < len(found)]
         return any(t.kind == NUMBER for t in near)
 
     # -- saying it
@@ -436,6 +440,12 @@ def _quoted(found: list[Token], lo: int, i1: int, i2: int, hi: int) -> str:
 def _short(text: str, words: int = 12) -> str:
     said = text.split()
     return " ".join(said[:words]) + ("\N{HORIZONTAL ELLIPSIS}" if len(said) > words else "")
+
+
+def _past_hyphen(found: list[Token], lo: int) -> tuple[int, ...]:
+    """The token before a hyphen that joins it to a stretch, as "12" is joined to "week"."""
+    joined = 0 < lo < len(found) and found[lo - 1].key == "-" and found[lo - 1].glued
+    return (lo - 2,) if joined and found[lo].glued else ()
 
 
 def _rest(found: list[Token]) -> list[str]:

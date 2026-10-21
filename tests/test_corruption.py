@@ -5023,6 +5023,8 @@ _NOT_THE_MANUSCRIPT = (
     "check_literature_chain", "check_shortlist", "check_design", "check_design_rounds",
     "check_consistency", "check_restricted_inputs", "check_relations",
 )  # fmt: skip
+#: The checks that read LaTeX: they run on a LaTeX manuscript as on any.
+_READS_LATEX = ("check_latex",)
 
 
 def test_each_check_not_taught_latex_is_not_run_and_the_others_are(
@@ -5038,13 +5040,13 @@ def test_each_check_not_taught_latex_is_not_run_and_the_others_are(
     def recorder(name: str):
         return lambda *_args, **_kwargs: called.append(name) or Report()
 
-    for name in _MARKDOWN_ONLY + _NOT_THE_MANUSCRIPT:
+    for name in _MARKDOWN_ONLY + _NOT_THE_MANUSCRIPT + _READS_LATEX:
         monkeypatch.setattr(cli, name, recorder(name))
     _as_latex(project)
     cli._run_gates(project, stage="drafting")
-    assert sorted(called) == sorted(_NOT_THE_MANUSCRIPT)
+    assert sorted(called) == sorted(_NOT_THE_MANUSCRIPT + _READS_LATEX)
     # One entry calls two checks, so the set is pinned name by name as well (round 2). A
-    # check an entry of the runner's table gains must be put in one of the two tuples, and
+    # check an entry of the runner's table gains must be put in one of the tuples, and
     # the one the runner calls in its own body is `check_format` (round 3).
     assert set(_MARKDOWN_ONLY) == cli._NOT_READ_IN_LATEX
     body = {name for name in cli._run_gates.__code__.co_names if name.startswith("check_")}
@@ -5056,7 +5058,7 @@ def test_each_check_not_taught_latex_is_not_run_and_the_others_are(
         for name in code.co_names
         if name.startswith("check_")
     }
-    assert runner == set(_MARKDOWN_ONLY + _NOT_THE_MANUSCRIPT)
+    assert runner == set(_MARKDOWN_ONLY + _NOT_THE_MANUSCRIPT + _READS_LATEX)
 
 
 def test_a_main_tex_without_a_class_leaves_a_markdown_manuscript_markdown(project: Path) -> None:
@@ -5069,6 +5071,29 @@ def test_a_main_tex_without_a_class_leaves_a_markdown_manuscript_markdown(projec
     report, _project, _stage, _deferred = _run_gates(project, stage="submission")
     said = {f.code for f in report.findings}
     assert not {"two-formats", "other-format-file", "not-read-in-latex"} & said
+
+
+def test_what_the_latex_reader_refuses_fails_build_at_its_file_and_line(project: Path) -> None:
+    """A brace left open in an input file, and an `\\input` of a file that is not there, each
+    fail BUILD at every stage where they stand; a file nothing inputs is a warning."""
+    from manuscript_guard.cli import _run_gates
+
+    entry = _as_latex(project)
+    folder = entry.parent
+    entry.write_text(
+        "\\documentclass{article}\n\\begin{document}\n\\input{methods}\n\\input{gone}\n"
+        "\\end{document}\n",
+        encoding="utf-8",
+    )
+    (folder / "methods.tex").write_text("Of 4100.\nAn {open brace\n", encoding="utf-8")
+    (folder / "notes.tex").write_text("Nobody inputs this.\n", encoding="utf-8")
+    report, _project, _stage, _deferred = _run_gates(project, stage="design")
+    found = {(f.code, f.path.name, f.line) for f in report.failures if f.gate == "BUILD"}
+    assert ("tex-unbalanced", "methods.tex", 2) in found, report.render(project)
+    assert ("tex-refused", "main.tex", 4) in found, report.render(project)
+    warned = [f for f in report.findings if f.code == "tex-not-input"]
+    assert [f.path.name for f in warned] == ["notes.tex"]
+    assert "tex-not-input" not in codes(report)
 
 
 @pytest.mark.parametrize("encoding", ["cp1252", "utf-16", "utf-32"])

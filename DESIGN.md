@@ -846,8 +846,9 @@ duplicated key, where both keep the last.
 ## LaTeX manuscripts
 
 Status: designed 2026-10-20. Built: the first half of step 1, the format, the reader's file
-list, `two-formats`, `other-format-file` and `not-read-in-latex`; and step 2, the scanner
-and its mask, which no gate reads yet. Where the design depends on
+list, `two-formats`, `other-format-file` and `not-read-in-latex`; step 2, the scanner and
+its mask; and step 3, the include tree and its refusals under BUILD. No gate reads the
+manuscript's prose through them yet. Where the design depends on
 what LaTeX does, the pull request that relies on it checks the statement against TeX Live and
 MiKTeX and records the measurement. On the author's machine, 2026-10-20: MiKTeX 24.4 and
 latexmk 4.88, with pdfLaTeX, LuaLaTeX, XeLaTeX, BibTeX and Biber on PATH.
@@ -1328,8 +1329,14 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
    `tests/test_latex_mask.py`. It passed 600 lines and was not split: comments, the preamble,
    maths and listings share one scanner. The refusals reach BUILD with the reader in step 3,
    which finds the files they are refused in.
-3. Structure. Includes, `printed_order`, inherited headings, sections, the abstract. Tests:
-   `latex sections`.
+3. Structure, built: `structure.py` reads the include tree over a mapping of paths to
+   texts, with `read_document` reading it from the folder; each file starts in the state
+   its `\input` stands in, and a heading of a file input reaches the text after its
+   `\input`, as LaTeX prints it (`Source.chain_at`). `Reader.printed_order` takes the
+   tree's order. The scanner records each `\input`, heading, abstract and package as it
+   reads. `build/latex_check.py` puts each refusal under BUILD at its file and line, and
+   warns of a file nothing inputs. Tests: `tests/test_latex_structure.py`, the corruption
+   cases, `latex sections`, and `latex_trees()` with two `BROKEN` rules.
 4. Bindings and G2. `bindings`, `uncommented`, `table_at`, `mgvalues.sty` and its escape
    table, `values` and its README row, `values-file-stale`; G2 and the custodian's counts
    moved, and G1's synthetic-input check. Tests: the twin, G2's corruption cases on it,

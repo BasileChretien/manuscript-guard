@@ -71,9 +71,43 @@ class Refusal:
 
 
 @dataclass(frozen=True)
+class Input:
+    """An `\\input` or `\\include` where the reader met it, with the state it stands in: the
+    file it names starts in that state."""
+
+    offset: int
+    end: int
+    path: str
+    body: bool
+    environments: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class Heading:
+    """A heading where its command stands, its level as Markdown counts `#`, and its title."""
+
+    start: int
+    level: int
+    title: str
+
+
+@dataclass(frozen=True)
 class Reading:
     masked: str
     refusals: tuple[Refusal, ...]
+    inputs: tuple[Input, ...] = ()
+    headings: tuple[Heading, ...] = ()
+    #: Where each abstract runs, `\\begin{abstract}` to its `\\end`, or `\\abstract{...}`.
+    abstracts: tuple[tuple[int, int], ...] = ()
+    #: Each package loaded, where its `\\usepackage` stands.
+    packages: tuple[tuple[int, str], ...] = ()
+
+
+#: The level of each sectioning command, as Markdown's `#` counts it.
+LEVELS = {"part": 0, "chapter": 0, "section": 1, "subsection": 2, "subsubsection": 3,
+          "paragraph": 4, "subparagraph": 5}  # fmt: skip
+_BRACED_PATH = re.compile(r"[ \t]*\{([^{}\n]*)\}")
+_PACKAGES = re.compile(r"\s*(?:\[[^\]]{0,300}\])?\s*\{([^{}]{0,300})\}")
 
 
 @dataclass
@@ -86,6 +120,11 @@ class _Frame:
     command: str = ""
     definition: bool = False
     table: bool = False
+    #: A heading's level and where its command stands, for the argument that is its title.
+    heading: int = -1
+    origin: int = -1
+    #: An environment the file was input inside, which it may close and need not.
+    inherited: bool = False
 
 
 def mask(text: str, *, body: bool | None = None) -> str:
@@ -94,17 +133,27 @@ def mask(text: str, *, body: bool | None = None) -> str:
     return read(text, body=body).masked
 
 
-def read(text: str, *, body: bool | None = None) -> Reading:
-    """The masked text and the first refusal. With `body` None, a file with a
-    `\\begin{document}` outside a comment opens in the preamble, and one without opens in the
-    body, so that none of it is hidden as preamble (round 1 of #380). One read to its end
-    without reaching its `\\begin{document}`, which stood in a listing say, is read again as
-    body; one refused in its preamble keeps that refusal (round 2)."""
+def read(
+    text: str,
+    *,
+    body: bool | None = None,
+    environments: tuple[str, ...] = (),
+    loose: bool = False,
+    package: bool = False,
+) -> Reading:
+    """The masked text, the first refusal, and what the file inputs, heads and loads. With
+    `body` None, a file with a `\\begin{document}` outside a comment opens in the preamble,
+    and one without opens in the body, so that none of it is hidden as preamble (round 1 of
+    #380). One read to its end without reaching its `\\begin{document}`, which stood in a
+    listing say, is read again as body; one refused in its preamble keeps that refusal (round
+    2). A file input from another opens inside the `environments` its `\\input` stood in. A
+    `loose` file, which nothing inputs, is body that accepts what a preamble accepts. A
+    `package` of the author's is read as LaTeX reads a package, with `@` a letter."""
     opens_in_body = not _has_document(text) if body is None else body
-    reader = _Reader(text, opens_in_body)
+    reader = _Reader(text, opens_in_body, environments, loose, package)
     reading = reader.run()
     if body is None and not reader.body and reader.refused is None:
-        return _Reader(text, True).run()
+        return _Reader(text, True, environments, loose, package).run()
     return reading
 
 
@@ -160,19 +209,36 @@ def _note_role(kind: str) -> str:
 
 
 class _Reader:
-    def __init__(self, text: str, body: bool) -> None:
+    def __init__(
+        self,
+        text: str,
+        body: bool,
+        environments: tuple[str, ...] = (),
+        loose: bool = False,
+        package: bool = False,
+    ) -> None:
         self.text = text
         self.n = len(text)
         self.out = list(text)
         self.pos = 0
         self.body = body
+        self.loose = loose
         self.stack: list[_Frame] = []
         self.pending: tuple[str, ...] = ()
         self.command = ""
         self.refused: Refusal | None = None
-        self.letters = _LETTERS
+        self.letters = _LETTERS_AT if package else _LETTERS
         self.definitions = 0
         self.environments: list[str] = []
+        self.inputs: list[Input] = []
+        self.headings: list[Heading] = []
+        self.abstracts: list[tuple[int, int]] = []
+        self.packages: list[tuple[int, str]] = []
+        self.heading_at = -1
+        for name in environments:
+            role = MATHS_READ if name in MATHS else self._role()
+            self.stack.append(_Frame("env", role, 0, name, table=name in TABLES, inherited=True))
+            self.environments.append(name)
 
     # -- running -----------------------------------------------------------------------
     def run(self) -> Reading:
@@ -180,14 +246,16 @@ class _Reader:
             if self.pending and self._argument():
                 continue
             self._step()
-        if self.refused is None and self.stack:
-            first = self.stack[0]
-            self._refuse("tex-unbalanced", first.start, f"{_opened(first)} is not closed")
+        opened = [frame for frame in self.stack if not frame.inherited]
+        if self.refused is None and opened:
+            self._refuse("tex-unbalanced", opened[0].start, f"{_opened(opened[0])} is not closed")
         masked = "".join(self.out)
+        found = (tuple(self.inputs), tuple(self.headings), tuple(self.abstracts),
+                 tuple(self.packages))  # fmt: skip
         if self.refused is None:
-            return Reading(masked, ())
+            return Reading(masked, (), *found)
         at = self.refused.offset
-        return Reading(masked[:at] + self.text[at:], (self.refused,))
+        return Reading(masked[:at] + self.text[at:], (self.refused,), *found)
 
     def _refuse(self, code: str, at: int, message: str) -> None:
         if self.refused is None:
@@ -305,6 +373,10 @@ class _Reader:
         else:
             chosen = _note_role(spec)
         frame = _Frame(kind, chosen, at, closer, self.pending[1:], self.command, spec == "d")
+        heads = self.command in LEVELS or self.command == "abstract"
+        if kind == "arg" and spec == "p" and heads and not self.definitions:
+            frame.heading = LEVELS.get(self.command, 1)
+            frame.origin = self.heading_at
         self.definitions += frame.definition
         self.stack.append(frame)
         self._blank(at, at + 1)
@@ -392,6 +464,13 @@ class _Reader:
         self.pos = at + width
         if frame.kind in ("arg", "opt"):
             self.pending, self.command = frame.rest, frame.command
+        if frame.heading >= 0:
+            if frame.command == "abstract":
+                self.headings.append(Heading(frame.origin, 1, "Abstract"))
+                self.abstracts.append((frame.origin, at + width))
+            else:
+                title = " ".join("".join(self.out[frame.start + 1 : at]).replace(NUL, "").split())
+                self.headings.append(Heading(frame.origin, frame.heading, title))
 
     def _dollar(self, at: int) -> None:
         top = self.stack[-1] if self.stack else None
@@ -460,16 +539,18 @@ class _Reader:
         if name in REFUSED:
             self._refuse("tex-refused", at, f"\\{name} is not read: {REFUSED[name]}")
         elif name in ("makeatletter", "makeatother"):
-            if name == "makeatletter" and self.body:
+            if name == "makeatletter" and self.body and not self.loose:
                 self._refuse("tex-refused", at, "\\makeatletter in the body changes how "
                              "characters are read")  # fmt: skip
             self.letters = _LETTERS_AT if name == "makeatletter" else _LETTERS
         elif name == "iffalse":
             self._skip_false(at)
         elif name.startswith("if") and name not in COMMANDS and name not in NOT_CONDITIONALS:
-            if self.body:
+            if self.body and not self.loose:
                 said = "a conditional in the body prints one branch, and which is not read"
                 self._refuse("tex-refused", at, f"\\{name} is not read: {said}")
+        elif name in ("input", "include") and not self.definitions:
+            self._input(at, end)
         elif name == "verb":
             self._verb(at, end)
         elif name in ("begin", "end"):
@@ -481,10 +562,31 @@ class _Reader:
                 self.out[at] = " "
         elif name in ("usepackage", "RequirePackage", "inputencoding"):
             self._encoding(at)
+            if name != "inputencoding":
+                self._packages(at, end)
             if name in COMMANDS:
                 self.command, self.pending = name, COMMANDS[name]
         elif name in COMMANDS:
+            if name in LEVELS or name == "abstract":
+                self.heading_at = at
             self.command, self.pending = name, COMMANDS[name]
+
+    def _input(self, at: int, end: int) -> None:
+        """Record an `\\input` with the state it stands in. Its path is read raw; one not
+        written in braces, or holding a command, is refused where the tree is read."""
+        braced = _BRACED_PATH.match(self.text, end)
+        path = braced.group(1) if braced else ""
+        stop = braced.end() if braced else end
+        self.inputs.append(Input(at, stop, path, self.body, tuple(self.environments)))
+        self._blank(at, stop)
+        self.pos = stop
+
+    def _packages(self, at: int, end: int) -> None:
+        listed = _PACKAGES.match(self.text, end)
+        if listed and not self.definitions:
+            for name in listed.group(1).split(","):
+                if name.strip():
+                    self.packages.append((at, name.strip()))
 
     def _encoding(self, at: int) -> None:
         """Refuse an input encoding other than UTF-8, set by a package's option or by
@@ -602,12 +704,15 @@ class _Reader:
             self.stack.append(_Frame("env", MATHS_READ if maths else role, at, name,
                                      table=name in TABLES))  # fmt: skip
             self.environments.append(name)
+            if name == "abstract":
+                self.headings.append(Heading(at, 1, "Abstract"))
             self.command, self.pending = "begin", ENVIRONMENTS.get(name, ())
 
     def _end(self, name: str, at: int) -> None:
+        opened = [frame for frame in self.stack if not frame.inherited]
         if name == "document":
-            if self.stack:
-                first = self.stack[0]
+            if opened:
+                first = opened[0]
                 self._refuse("tex-unbalanced", first.start, f"{_opened(first)} is not closed")
                 return
             self._blank(at, self.n)
@@ -620,6 +725,8 @@ class _Reader:
         self.stack.pop()
         self.environments.pop()
         self.pending = ()
+        if name == "abstract":
+            self.abstracts.append((top.start, self.pos))
 
 
 def _opened(frame: _Frame) -> str:

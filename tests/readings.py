@@ -153,6 +153,21 @@ def _latex_refusals() -> Reading:
     return lambda text: [[r.code, r.offset] for r in read(text).refusals]
 
 
+@reading("latex sections")
+def _latex_sections() -> Reading:
+    from manuscript_guard.text.latex.mask import read
+
+    def sections(text: str) -> dict[str, Any]:
+        reading = read(text)
+        return {
+            "headings": [[h.start, h.level, h.title] for h in reading.headings],
+            "abstracts": [list(span) for span in reading.abstracts],
+            "inputs": [[i.offset, i.path, i.body, list(i.environments)] for i in reading.inputs],
+        }
+
+    return sections
+
+
 @reading("hidden")
 def _hidden() -> Reading:
     from manuscript_guard.gates.language import _hidden as hidden

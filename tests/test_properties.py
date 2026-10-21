@@ -60,6 +60,7 @@ from generated import (
     holds,
     latex_planted,
     latex_texts,
+    latex_trees,
     lines,
     mean_tables,
     pdf_figures,
@@ -120,6 +121,7 @@ from manuscript_guard.reworded import (
 )
 from manuscript_guard.text import placeholders, tokens
 from manuscript_guard.text.latex import mask as latex_mask
+from manuscript_guard.text.latex import structure as latex_structure
 from manuscript_guard.text.masking import NUL, mask
 from manuscript_guard.text.placeholders import parse as parse_bindings
 from manuscript_guard.text.sections import chains_at, footnote_index, heading_index
@@ -519,6 +521,29 @@ def _the_preamble_ends_at_the_first_begin(patch: pytest.MonkeyPatch) -> None:
         environment(self, which, at, end)
 
     patch.setattr(latex_mask._Reader, "_environment", broken)
+
+
+@holds(60, latex_trees())
+def test_each_latex_file_starts_under_the_headings_in_force_where_it_is_input(
+    drawn: tuple[dict[str, str], dict[str, list[str]]],
+) -> None:
+    """A file input under `\\section{Methods}` is read under Methods, and one input after a
+    file that opened a section is read under that section, as LaTeX prints them: worked out
+    apart from the reader, over manuscripts of a few files that input one another."""
+    files, expected = drawn
+    document = latex_structure.read_tree(files)
+    found = {source.path: [h.title for h in source.under] for source in document.sources}
+    for path, titles in expected.items():
+        assert found.get(path) == titles, (path, found, files)
+    assert document.refusals == (), document.refusals
+
+
+def _an_input_file_starts_under_no_heading(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_structure, "_starts_under", lambda chain: ())
+
+
+def _a_heading_of_an_input_file_stays_in_it(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_structure, "_resumed", lambda before, after: before)
 
 
 def _iffalse_hides_its_else(patch: pytest.MonkeyPatch) -> None:
@@ -6008,6 +6033,14 @@ BROKEN = {
     "in LaTeX, \\\\ takes a bracket that opens the next line": (
         _a_line_break_takes_a_bracket_on_the_next_line,
         test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, an input file starts under no heading": (
+        _an_input_file_starts_under_no_heading,
+        test_each_latex_file_starts_under_the_headings_in_force_where_it_is_input,
+    ),
+    "in LaTeX, a heading of an input file does not reach the text after its \\input": (
+        _a_heading_of_an_input_file_stays_in_it,
+        test_each_latex_file_starts_under_the_headings_in_force_where_it_is_input,
     ),
     "in LaTeX, a command the table lacks hides its arguments": (
         _an_unknown_command_hides_its_arguments,

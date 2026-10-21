@@ -12281,12 +12281,15 @@ Open, recorded as each change landed:
   `classify.SUPPLEMENT_METHODS`; under either, only the sections whose own titles name a
   method too. Methods headed otherwise, "eAppendix 1. Data source" or "Supplementary text",
   are no Methods to G9, and the lock's parameters are not compared with them. G2 and G15
-  read "Statistical analysis" anywhere, by the main text's names, and G9 reads it only under
-  a heading it reads. "Detailed methods" and "Additional methods" are G9's and not G2's or
-  G15's. Under "eMethods 1", a section titled "Record linkage" is no Methods to any of the
-  three: G2 reports a number there that it would pass in the Methods, and G15 and G9 read
-  nothing there. The example's "Supplementary methods" heads its tables alone and no text of
-  its own, so the example's supplement has no Methods. `methods-supplement-unreconciled`
+  read "Statistical analysis" anywhere, by the main text's names, with everything under it,
+  and G9 reads it, with everything under it, only under a heading it reads: under
+  "Supplementary methods > Table S2" it is G2's and G15's and not G9's. "Detailed methods"
+  and "Additional methods" are G9's and not G2's or G15's. Under "eMethods 1", a section
+  titled "Record linkage" is no Methods to any of the three: G2 reports a number there that
+  it would pass in the Methods, and G15 and G9 read nothing there. The example's
+  "Supplementary methods" heads its tables, a paragraph of results and its reporting
+  statement, and no text of its own nor a section that names a method, so the example's
+  supplement has no Methods. `methods-supplement-unreconciled`
   says of a lock written before 2026-10-21 only where the supplement has Methods when `check`
   runs: eMethods added after a lock was written are no more noticed than a paragraph added to
   the main text's Methods, which only an anchor holds to the code.

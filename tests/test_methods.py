@@ -180,6 +180,21 @@ def test_every_methods_section_of_a_supplement_file_is_read_once() -> None:
     assert supplement_methods_in("# Supplementary methods\n\n## Table S1\n\nBasil.\n") is None
 
 
+def test_under_a_main_text_name_g9_reads_all_as_g2_holds_it() -> None:
+    """The fix-only round of #395: under "Statistical analysis", one of the main text's names,
+    G2 holds everything as the Methods, and G9 read one step down only, so a parameter
+    stated under "Software" there was reported absent. A line pandoc prints as text under a
+    supplement's name is inside its section, as it is under the main text's."""
+    from manuscript_guard.classify import is_methods
+    from manuscript_guard.text.blocks import Unprinted
+
+    text = "# Supplementary methods\n\n## Statistical analysis\n\nA.\n\n### Software\n\nR 4.6.\n"
+    assert "R 4.6." in (supplement_methods_in(text) or "")
+    assert is_methods(("Supplementary methods", "Statistical analysis", "Software"))
+    assert is_methods(("eMethods 1", Unprinted("Software")))
+    assert not is_methods(("eMethods 1", "Table S2", Unprinted("Software")))
+
+
 def test_the_methods_are_the_main_text_s_and_the_supplement_s(project: Path) -> None:
     folder = project / "manuscript" / "supplementary"
     (folder / "S0_methods.md").write_text("# eMethods 1\n\nRun in R 4.6.0.\n", encoding="utf-8")

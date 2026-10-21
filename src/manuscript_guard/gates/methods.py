@@ -47,7 +47,7 @@ from pathlib import Path
 
 import yaml
 
-from manuscript_guard.classify import is_methods, names_methods_place
+from manuscript_guard.classify import METHODS_SECTIONS, is_methods, names_methods_place
 from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import Results, Step
@@ -389,17 +389,23 @@ def supplement_methods_in(text: str, abstract_title: str | None = None) -> str |
     Not everything under such a heading, as the main text's Methods are read: a supplement
     often has "Supplementary methods" over all of it, its tables and its results among them,
     and a locked parameter matched by a number of theirs would be no check (round 1 of
-    #395). G2 and G15 read the same sections as the Methods."""
+    #395). Under one of the main text's names (`classify.METHODS_SECTIONS`, "Statistical
+    analysis") everything is read, as G2 holds it. G2 and G15 read those names wherever they
+    stand, and G9 only under a section it reads (Known gaps)."""
     sections = split_sections(text)
     found = {id(section) for section in methods_sections(sections, abstract_title)}
     read: list[str] = []
-    open_: list[tuple[int, bool]] = []
+    #: Each open section's level, whether it is read, and whether all under it is.
+    open_: list[tuple[int, bool, bool]] = []
     for section in sections:
         while open_ and open_[-1][0] >= section.level:
             open_.pop()
-        under_read = bool(open_) and open_[-1][1]
-        reading = id(section) in found or (under_read and names_methods_place(section.title))
-        open_.append((section.level, reading))
+        _level, under_read, under_all = open_[-1] if open_ else (0, False, False)
+        reading = id(section) in found or (
+            under_read and (under_all or names_methods_place(section.title))
+        )
+        whole = reading and (under_all or METHODS_SECTIONS.match(section.title) is not None)
+        open_.append((section.level, reading, whole))
         if reading:
             read.append(section.body)
     return "\n\n".join(read) if any(part.strip() for part in read) else None

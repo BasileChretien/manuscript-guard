@@ -309,7 +309,9 @@ def _opened_by_the_supplement(section: Sequence[str]) -> bool:
     reported passed as the threshold chosen in advance, which main failed as unbound (round 1
     of #395). The main text's names hold everything under them, as they always have."""
     for title in reversed(section):
-        if isinstance(title, Unprinted) or not names_methods_place(title):
+        if isinstance(title, Unprinted):
+            continue  # a line pandoc prints as text, inside the section above, as for main's
+        if not names_methods_place(title):
             return False
         if names_supplement_methods(title):
             return True

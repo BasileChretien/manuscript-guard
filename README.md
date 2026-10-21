@@ -92,6 +92,10 @@ The database contained {{results.cohort.n_reports}} reports, of which
 {{results.ror.point}} (95% CI {{results.ror.ci_low}} to {{results.ror.ci_high}}).
 ```
 
+A table or a figure is placed by its key, `{{table.baseline}}`, and pointed at by it:
+`{{ref.table.baseline}}` prints "Table 2" if it is the second table the main text places,
+and the number follows the table when it moves.
+
 Your analysis publishes those values through an emitter, which records where they came
 from. There is one for Python and one for R, and anything that can write JSON can take part:
 
@@ -128,12 +132,12 @@ that Word's plugin adopts. Without it, `--offline` formats the citations from a 
 |---|---|
 | G0 | the manuscript can be read: each source is UTF-8, and it is written in one format, Markdown or LaTeX (`main.md` or a `main.tex` that declares its class), with no Markdown file in a LaTeX manuscript; on a LaTeX manuscript, each gate not yet taught LaTeX says it read nothing, a note that fails at submission |
 | G1 | results are as the analysis wrote them, and the script that wrote them and the inputs it declared have not changed since, an input Git LFS or git-annex keeps judged by its pointer where it is not fetched; an input the data custodian keeps is not in git; no result quoted from synthetic data at submission, unless the paper is a demonstration; a warning where a lockfile pinning its packages has |
-| G2 | every number is classified, in the manuscript and in the replies to the reviewers, every declared value is quoted, every pointer to a table or figure placed by its binding names one the document places, and a p value, a share or an interval is quoted with what it belongs to; the level written beside an interval and the label beside a standard deviation or error are the ones emitted (warnings); a unit written after a binding is the one emitted; no bound count is printed below the data custodian's minimum |
+| G2 | every number is classified, in the manuscript and in the replies to the reviewers, every declared value is quoted, every pointer to a table or figure placed by its binding names one the document places, and one the build numbers (`{{ref.table.<key>}}`) a display it can number, and a p value, a share or an interval is quoted with what it belongs to; the level written beside an interval and the label beside a standard deviation or error are the ones emitted (warnings); a unit written after a binding is the one emitted; no bound count is printed below the data custodian's minimum |
 | G3 | numbers in a figure's output *and in its source* trace back to results, and a script that estimates, samples or draws at random while it plots says why (a warning); each figure placed has alternative text, its numbers bound as prose's are (a warning, and a failure at submission where the journal requires it) |
 | G4 | word counts, required sections and required statements match the target journal, and each rule of its profile is quoted from the journal's stored page, its rules no gate checks signed off by the corresponding author, the Data availability statement says what the journal's data policy asks, and the figure files meet its artwork rules, an SVG's or a PDF's smallest text and thinnest line at the width it prints and a PDF's fonts among them, and the journal chosen from `journals/shortlist.yaml` is indexed for MEDLINE and, if open access, listed in DOAJ, as `lookup --journals` recorded, and the citation style it names is kept unchanged for the offline build and numbers citations as the profile says (warnings) |
 | G5 | every reporting-checklist item is addressed, or excluded with a reason, and a declared study design has one of its guidelines; a guideline its authors have replaced is pointed out |
 | G6 | model artefacts and unfilled placeholders, in the prose, the figures, the tables' captions and the cited references; words to the reviewers or to a model left in the manuscript; AI phrasing; and unsupported appeals to authority |
-| G7 | citations resolve and are pinned; every literature quote is in its source, and every value in its quote (with fewer than four words beside it, a warning); a quotation of four words or more in a sentence that cites a work is looked for in its stored source (a warning where it is not there, a note where no source can be read); a passage `literature/passages.yaml` records as supporting a cited sentence is in the cited work's stored source, and belongs to a sentence the manuscript still has (a note where it does not), a person's judgement that it does not support its sentence fails from internal-review, and the cited sentences with no passage are counted (a warning from internal-review); each method `design/methods_review.yaml` records from a similar study is in that study's stored copy (failing from the analysis stage); each reference's DOI, PMID, PMCID, ISBN and arXiv identifier is well formed and its required fields are there; from the records `lookup` keeps, no cited work is retracted and each DOI and PMID names the work cited, and no work is cited under two keys; a value the ledger says is a mean of whole numbers can be one of its n (a warning) |
+| G7 | citations resolve and are pinned; every literature quote is in its source, and every value in its quote (with fewer than four words beside it, a warning); a quotation of four words or more in a sentence that cites a work is looked for in its stored source (a warning where it is not there, a note where no source can be read); a passage `literature/passages.yaml` records as supporting a cited sentence is in the cited work's stored source, and belongs to a sentence the manuscript still has (a note where it does not), a person's judgement that it does not support its sentence fails from internal-review, and the cited sentences with no passage are counted (a warning from internal-review); each method `design/methods_review.yaml` records from a similar study is in that study's stored copy (failing from the analysis stage); each reference's DOI, PMID, PMCID, ISBN and arXiv identifier is well formed and its required fields are there; from the records `lookup` keeps, no cited work is retracted, each DOI and PMID names the work cited, a reference with neither is found by its title in PubMed, Crossref or OpenAlex (its identifiers then offered in a note), and the people a reference names are those the registries list for the work (some of them missing, or the first not first, a warning), and no work is cited under two keys; a value the ledger says is a mean of whole numbers can be one of its n (a warning) |
 | G8 | one quantity is not emitted twice under two names, a family of p values says how it is corrected, a number the abstract or a conclusion gives is one the paper reports, and the arithmetic the analysis declares between its results holds: a sum, a difference, a ratio, an order, and each stage of a flow less its exclusions; a P printed after a t, F, chi-squared or z follows from it, an estimate stands inside its confidence interval and a ratio at its middle on the log scale, and an interval and its P agree about the null (warnings); a number an earlier output of the same data printed otherwise, with no reason the manuscript gives, and an overlap of data and authors not disclosed (warnings, failures at submission) |
 | G9 | the analysis has not changed since the Methods were last read against it, and, step by step, neither a marked step nor the text pointing at it has |
 | G10 | every figure has a current review by someone who looked at it |
@@ -254,7 +258,7 @@ number in the file and the rule that classified it.
 |---|---|
 | `init` | scaffold a new manuscript project |
 | `check` | run every gate; `--submission` holds the manuscript to submission standards |
-| `bind` | show every unbound number and how to give it a source |
+| `bind` | show every unbound number and how to give it a source; `--pointers` offers the `{{ref.…}}` binding that prints each typed "Table 2" |
 | `explain` | show how each number in a file was classified |
 | `passages` | list each sentence that cites a work, with the passage of that work recorded as supporting it and what G7 found of it; `--missing` lists those with none |
 | `impact` | list what depends on a file, or on each file changed since a commit: results, the sentences that bind them, figures, Methods paragraphs, panel readings and co-author answers |
@@ -270,7 +274,7 @@ number in the file and the rule that classified it.
 | `checklist` | write the completion file for a checklist |
 | `sync-bib` | rewrite `references.bib` from Zotero |
 | `sync-sources` | copy each cited work's PDF or saved page from Zotero into `literature/sources/`, or Zotero's text of it where the file is not on this computer or is an EPUB, and list the works with no copy; `--from` takes the PDFs of a folder named by DOI instead, as a downloader such as auto-paper-harvester saves them |
-| `lookup` | look up each cited DOI and PMID once, and keep what the registries said in `literature/lookups/`; `--journals` asks the NLM Catalog and DOAJ about each shortlisted journal's ISSN |
+| `lookup` | look up each cited DOI and PMID once, search PubMed, Crossref and OpenAlex by its title for a reference with neither, and keep what the registries said in `literature/lookups/`; `--journals` asks the NLM Catalog and DOAJ about each shortlisted journal's ISSN |
 | `search` | ask PubMed, Europe PMC and OpenAlex for works a claim could cite, each with its identifiers, kind, retraction status, later version and open copy; it proposes, the author chooses, and nothing is written |
 | `style` | fetch the journal's citation style from the CSL style repository once, and keep it in `profiles/journals/styles/` for the offline build |
 | `methods` | check or record that the Methods were read against the code; `--explain` lists each claim beside the step that backs it |
@@ -382,7 +386,12 @@ everywhere.
 Alpha. No real manuscript has been through it yet, its author's or anyone else's: `check`,
 `build`, `import` and `review --run` have run on the worked example and the test suite's
 inputs only. `audit`, which reads a paper written some other way, has been pointed at one
-submitted paper, and what it found is recorded in DESIGN.md. What it claims rests on its
+submitted paper, and what it found is recorded in DESIGN.md. G7's reference checks were
+measured on 2026-10-21 against the 740 references of 16 published open-access pharmacology
+and epidemiology papers: as published, 1.49 false alarms per 100 references in all,
+of which 0.68 from the search by title and the comparison of authors; 1.08
+from those two with every DOI and PMID taken out, so that each reference was searched for
+(DESIGN.md, "Measured on real papers"). What it claims rests on its
 tests and on the measurements recorded in [DESIGN.md](DESIGN.md), under "What a claim rests
 on". The gates still change from week to week: interfaces, file formats and what a gate
 reports can change without a migration path. Every round of review so far has found

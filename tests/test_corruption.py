@@ -4054,6 +4054,322 @@ def test_a_table_cited_nowhere_is_said(project: Path) -> None:
     assert said[0][1].startswith("Table 2 ")
 
 
+# ------------------------------------------------------------ a pointer the build numbers
+# `{{ref.table.<key>}}` prints the number the document gives the table placed by
+# `{{table.<key>}}`, and `{{num.table.<key>}}` the number alone, for a list the author writes
+# (Basile's choices of 2026-10-20). Typed, "Table 2" went on naming the second table after
+# the first moved, and only G2 said so.
+
+#: Every finding about a pointer, typed or printed by a binding.
+_REF_CODES = (
+    "pointer-to-nothing", "cited-out-of-order", "display-not-cited", "unresolved-binding",
+    "ref-number-unknown", "pointer-word-mismatch", "pointer-form-unread",
+)  # fmt: skip
+
+
+def _ref_findings(root: Path) -> list[tuple[str, str]]:
+    return [(f.code, f.message) for f in gate_report(root).findings if f.code in _REF_CODES]
+
+
+def _rewrite(root: Path, *changes: tuple[str, str], file: Path | None = None) -> None:
+    path = file or main_md(root)
+    text = path.read_text(encoding="utf-8")
+    for was, now in changes:
+        assert was in text, was
+        text = text.replace(was, now, 1)
+    path.write_text(text, encoding="utf-8")
+
+
+def _assembled_main(root: Path) -> str:
+    """The main text as the build assembles it, every binding substituted."""
+    from manuscript_guard.build.assemble import assemble
+
+    project, _ = load_project(root)
+    namespace, results, _literature, _ = load_namespace(project)
+    assembled, report = assemble(project, namespace, results)
+    assert report.ok, report.findings
+    return next(item.text for item in assembled if item.path.name == "main.md")
+
+
+#: The example's two typed pointers to its main text's tables, as refs.
+_BY_REF = (
+    ("shown in Table 1.", "shown in {{ref.table.baseline}}."),
+    ("in Table 2, so", "in {{ref.table.two_by_two}}, so"),
+)
+
+
+def test_a_ref_prints_the_number_the_document_gives(project: Path) -> None:
+    _rewrite(project, *_BY_REF)
+    assert _ref_findings(project) == []
+    printed = _assembled_main(project)
+    assert "shown in Table 1." in printed
+    assert "in Table 2, so" in printed
+
+
+def test_a_moved_table_renumbers_every_ref_and_its_order_is_said(project: Path) -> None:
+    """The two tables swapped: each ref prints its table's new number, where the typed
+    pointers would go on naming the old one with nothing said. The first citation is now of
+    Table 2, which ICMJE's order refuses."""
+    _rewrite(project, *_BY_REF)
+    _rewrite(
+        project,
+        ("{{table.baseline}}", "{{table.swapped}}"),
+        ("{{table.two_by_two}}", "{{table.baseline}}"),
+        ("{{table.swapped}}", "{{table.two_by_two}}"),
+    )
+    printed = _assembled_main(project)
+    assert "shown in Table 2." in printed
+    assert "in Table 1, so" in printed
+    assert [code for code, _ in _ref_findings(project)] == ["cited-out-of-order"]
+
+
+def test_a_ref_counts_as_a_citation(project: Path) -> None:
+    """Table 2 cited nowhere, then cited by its ref."""
+    _rewrite(project, ("in Table 2, so", "below, so"))
+    assert [code for code, _ in _ref_findings(project)] == ["display-not-cited"]
+    _rewrite(project, ("below, so", "in {{ref.table.two_by_two}}, so"))
+    assert _ref_findings(project) == []
+
+
+@pytest.mark.parametrize(
+    ("ref", "named"),
+    [
+        ("{{ref.table.nothing}}", "names a table nothing places"),
+        ("{{num.figure.nothing}}", "names a figure nothing places"),
+        ("{{ref.baseline}}", "names no table and no figure"),
+        ("{{ref.model.baseline}}", "names no table and no figure"),
+    ],
+)
+def test_a_ref_to_a_key_nothing_places_is_unresolved(
+    project: Path, ref: str, named: str
+) -> None:
+    """In `check` and in the build: printed, it would be the binding's own text."""
+    from manuscript_guard.build.assemble import assemble
+
+    _rewrite(project, ("shown in Table 1.", f"shown in Table 1 and {ref}."))
+    said = _ref_findings(project)
+    assert [code for code, _ in said] == ["unresolved-binding"], said
+    assert named in said[0][1]
+    projekt, _ = load_project(project)
+    namespace, results, _literature, _ = load_namespace(projekt)
+    _assembled, report = assemble(projekt, namespace, results)
+    assert [f.code for f in report.failures] == ["unresolved-binding"]
+
+
+def _journal_forms(root: Path, forms: str) -> None:
+    profile = root / "profiles" / "journals" / "demo-journal.yaml"
+    profile.write_text(
+        profile.read_text(encoding="utf-8") + f"\npointers: {forms}\n", encoding="utf-8"
+    )
+
+
+@pytest.mark.parametrize(
+    ("forms", "whole", "alone"),
+    [
+        (None, "Table S1", "S1"),
+        ('{supplementary_table: "eTable {n}"}', "eTable 1", "1"),
+        ('{supplementary_table: "Supplementary Table {n}"}', "Supplementary Table 1", "1"),
+        ('{supplementary_table: "Table {n} in the Supplement"}', "Table 1 in the Supplement",
+         "1"),
+    ],
+)  # fmt: skip
+def test_a_ref_to_the_supplement_prints_the_journal_s_form(
+    project: Path, forms: str | None, whole: str, alone: str
+) -> None:
+    if forms:
+        _journal_forms(project, forms)
+    _rewrite(project, ("shown in Table 1.", "shown in Table 1 and {{ref.table.outcome_codes}}."))
+    assert _ref_findings(project) == []
+    assert f"shown in Table 1 and {whole}." in _assembled_main(project)
+    _rewrite(project, ("{{ref.table.outcome_codes}}", "{{num.table.outcome_codes}}"))
+    printed = _assembled_main(project)
+    assert f"shown in Table 1 and {alone}." in printed
+
+
+def test_a_form_g2_does_not_read_is_refused(project: Path) -> None:
+    """"Tab. 2" is no pointer G2 reads, so a ref printed in it could not be held to anything."""
+    _journal_forms(project, '{table: "Tab. {n}"}')
+    said = _ref_findings(project)
+    assert [code for code, _ in said] == ["pointer-form-unread"], said
+    assert "'Tab. {n}'" in said[0][1]
+
+
+def test_a_form_without_its_number_breaks_the_profile(project: Path) -> None:
+    _journal_forms(project, '{figure: "Figure"}')
+    from manuscript_guard.cli import _run_gates
+
+    assert "schema-violation" in codes(_run_gates(project)[0])
+
+
+def test_a_list_of_nums_is_read_whole(project: Path) -> None:
+    _rewrite(
+        project,
+        ("shown in Table 1.", "shown in Tables {{num.table.baseline}} and "
+         "{{num.table.two_by_two}}."),
+        ("in Table 2, so", "below, so"),
+    )  # fmt: skip
+    assert _ref_findings(project) == []
+    assert "shown in Tables 1 and 2." in _assembled_main(project)
+
+
+@pytest.mark.parametrize(
+    ("written", "read_as"),
+    [
+        # the word names a figure
+        ("Figure {{num.table.baseline}}", "a figure of the main text"),
+        # the words name the supplement
+        ("Supplementary Table {{num.table.baseline}}", "a table of the supplement"),
+        ("{{ref.table.baseline}} in the Supplement", "a table of the supplement"),
+        ("Supplementary {{ref.table.baseline}}", "a table of the supplement"),
+        # no word at all
+        ("number {{num.table.baseline}}", "no word before it"),
+    ],
+)
+def test_words_around_a_bound_pointer_that_point_elsewhere_are_said(
+    project: Path, written: str, read_as: str
+) -> None:
+    _rewrite(project, ("shown in Table 1.", f"shown in {written}."))
+    # Read as pointing elsewhere, it cites nothing, so Table 1 is cited nowhere, and Table 2
+    # first.
+    consequences = ("display-not-cited", "cited-out-of-order")
+    said = [s for s in _ref_findings(project) if s[0] not in consequences]
+    assert [code for code, _ in said] == ["pointer-word-mismatch"], said
+    assert read_as in said[0][1], said
+
+
+def test_a_word_mismatch_fails_from_the_internal_review(project: Path) -> None:
+    """Like a typed pointer that names the wrong table: the words go stale as tables move."""
+    from manuscript_guard.cli import _run_gates
+
+    _rewrite(project, ("shown in Table 1.", "shown in Figure {{num.table.baseline}}."))
+    drafting, *_ = _run_gates(project, stage="drafting")
+    assert [f.severity for f in drafting.findings if f.code == "pointer-word-mismatch"] == [
+        "info"
+    ]
+    reviewing, *_ = _run_gates(project, stage="internal-review")
+    assert "pointer-word-mismatch" in codes(reviewing)
+
+
+def _assembled_all(root: Path) -> dict[str, str]:
+    from manuscript_guard.build.assemble import assemble
+
+    project, _ = load_project(root)
+    namespace, results, _literature, _ = load_namespace(project)
+    assembled, _report = assemble(project, namespace, results)
+    # Spaces as pandoc reads them: "Table\nS2" bound is "{{ref...}}" on one line.
+    return {item.path.name: " ".join(item.text.split()) for item in assembled}
+
+
+def test_bind_pointers_binds_each_typed_pointer_and_prints_the_same(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`bind --pointers --apply` on the example: every typed pointer becomes the binding that
+    prints it, a list's numbers each a num, and the build prints what it printed before,
+    word for word, with nothing for G2 to say."""
+    from manuscript_guard.cli import main
+
+    _rewrite(project, ("in Table 2, so", "in Tables 1 and 2, so"))
+    before = _assembled_all(project)
+    assert main(["bind", str(project), "--pointers"]) == 0
+    assert "{{ref.table.baseline}}" in capsys.readouterr().out
+    assert main(["bind", str(project), "--pointers", "--apply"]) == 0
+    text = main_md(project).read_text(encoding="utf-8")
+    for bound in ("shown in {{ref.table.baseline}}.", "{{ref.figure.forest}}",
+                  "Tables {{num.table.baseline}} and {{num.table.two_by_two}}, so",
+                  "published in\n{{ref.table.outcome_codes}},", "{{ref.table.model_adjusted}}"):
+        assert bound in text, bound
+    supplement = project / "manuscript" / "supplementary" / "S1_code_lists.md"
+    assert "## {{ref.table.outcome_codes}}. Code lists" in supplement.read_text(encoding="utf-8")
+    assert _assembled_all(project) == before
+    assert _ref_findings(project) == []
+    capsys.readouterr()
+    assert main(["bind", str(project), "--pointers"]) == 0
+    assert "no typed pointer" in capsys.readouterr().out
+
+
+def test_bind_pointers_offers_nothing_that_would_print_otherwise(project: Path) -> None:
+    """"Supplementary Table 1" under the default form would print "Table S1": not offered.
+    Nor is a range that names a table it does not write, "Tables 1-3", nor a figure sent as
+    a file. The supplement's headings, "## Table S1. Code lists", are."""
+    from manuscript_guard.binding import typed_pointers
+
+    _rewrite(
+        project,
+        ("Table S1, emitted", "Supplementary Table 1, emitted"),
+        ("in Table 2, so", "in Tables 1\N{EN DASH}3, so"),
+    )
+    _declare(project, "displays: {figures_as_files: 1}")
+    offered = sorted(item.text for item in typed_pointers(load_project(project)[0]))
+    assert offered == sorted(["Table 1", "Table S1", "Table S2", "Table\nS2"]), offered
+
+
+def test_a_ref_in_the_response_to_the_reviewers_reads_as_printed(project: Path) -> None:
+    """Round 1 of #378: the response round read the manuscript with its values filled in and
+    its refs as written. A sentence quoted as the paper prints it, "Table 2", was absent from
+    it; the copy kept as submitted held `{{ref.`; a ref in a reply printed as written."""
+    from manuscript_guard.build.submission import response_letter
+
+    _in_the_discussion(project, "The counts are given again in {{ref.table.two_by_two}}.")
+    _round_with(project, [_point(
+        response="We now say so, in {{ref.table.baseline}}.",
+        changed=[{"kind": "text", "quote": "The counts are in Table 2.",
+                  "section": "Discussion"}],
+    )])  # fmt: skip
+    submitted = (project / "revision" / "round-1" / "submitted").rglob("*.md")
+    kept = "".join(path.read_text(encoding="utf-8") for path in submitted)
+    assert "given again in Table 2." in kept and "{{ref." not in kept
+    # Now "The counts are in {{ref.table.two_by_two}}.", which prints as quoted.
+    _rewrite(project, ("given again in {{ref.table.two_by_two}}", "in {{ref.table.two_by_two}}"))
+    assert _said(_g13(project), "quoted-text-absent") == []
+    letter = response_letter(load_project(project)[0])
+    assert "We now say so, in Table 1." in letter and "{{" not in letter
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_ref_in_the_abstract_is_printed_in_the_pack(project: Path) -> None:
+    from manuscript_guard.build.submission import assemble_pack
+
+    _rewrite(project, ("The reporting odds ratio was", "In {{ref.figure.forest}}, the reporting "
+                       "odds ratio was"))  # fmt: skip
+    projekt, _ = load_project(project)
+    document = project / "build" / "manuscript.docx"
+    document.parent.mkdir(parents=True, exist_ok=True)
+    document.write_bytes(b"PK\x03\x04 placeholder")
+    text = (assemble_pack(projekt, document).directory / "abstract.txt").read_text("utf-8")
+    assert "In Figure 1, the reporting odds ratio was" in text and "{{" not in text
+
+
+@pytest.mark.parametrize(
+    ("change", "ref", "why"),
+    [
+        # a figure sent as a file: where the bound one falls among the two is not known
+        (None, "{{ref.figure.forest}}", "sends 1 of the main text's figures as files"),
+        # a table placed by hand beside the bound ones
+        (("{{table.baseline}}", "{{table.baseline}}\n\n| A | B |\n|:--|--:|\n| x | y |"),
+         "{{ref.table.two_by_two}}", "also places a table by hand"),
+        # one table placed twice has two numbers
+        (("{{table.two_by_two}}", "{{table.two_by_two}}\n\n{{table.baseline}}"),
+         "{{ref.table.baseline}}", "placed 2 times"),
+    ],
+)  # fmt: skip
+def test_a_ref_the_count_cannot_number_is_refused_from_the_start(
+    project: Path, change: tuple[str, str] | None, ref: str, why: str
+) -> None:
+    """Exact numbers only, Basile's choice on 2026-10-20: refused, and from the drafting
+    stage on, since the build would have nothing to print."""
+    from manuscript_guard.cli import _run_gates
+
+    if change is None:
+        _declare(project, "displays: {figures_as_files: 1}")
+    else:
+        _rewrite(project, change)
+    _rewrite(project, ("can reconstruct it.", f"can reconstruct it. See {ref}."))
+    said = [s for s in _ref_findings(project) if s[0] == "ref-number-unknown"]
+    assert len(said) == 1 and why in said[0][1], _ref_findings(project)
+    drafting, *_ = _run_gates(project, stage="drafting")
+    assert "ref-number-unknown" in codes(drafting)
+
+
 @pytest.mark.parametrize(
     "sentence",
     ["In step 1204 reports were excluded.", "Box 47 lists the reports.",
@@ -6004,6 +6320,523 @@ def test_a_volume_or_first_page_that_differs_is_a_warning(
     _looked_up(project, crossref={k: v for k, v in crossref.items() if v is not None})
     findings = [f for f in _g7(project).findings if f.code == "reference-details-differ"]
     assert len(findings) == 1 and findings[0].severity == "warn" and said in findings[0].message
+
+
+# A reference with no DOI and no PMID, searched for by its title (`gates/searched`), and the
+# authors of a cited work against those the registries list (`gates/authors`). Each record is
+# written as `lookup` writes one, by `_searched`.
+
+_SEARCHED_PMID = "31000001"
+#: The example's first reference, as PubMed's search would find it.
+_PUBMED_HIT = {
+    "pmid": _SEARCHED_PMID,
+    "title": "Hepatic injury in a fictional national cohort, 2010-2019.",
+    "year": 2021,
+    "doi": _LOOKED_DOI,
+    "pubtypes": ["Journal Article"],
+    "authors": [{"family": "Fictional", "given": "A"}, {"family": "Fictional", "given": "B"}],
+}
+#: And as Crossref's would.
+_CROSSREF_HIT = {
+    **{k: v for k, v in _CROSSREF.items() if k != "status"},
+    "authors": [{"family": "Fictional", "given": "Anne"},
+                {"family": "Fictional", "given": "Bernard"}],
+}  # fmt: skip
+_ASKED = ["hepatic[ti] AND injury[ti]"]
+
+
+def _hits(*works: dict) -> dict:
+    return {"status": "found" if works else "absent", "asked": _ASKED,
+            **({"candidates": list(works)} if works else {})}  # fmt: skip
+
+
+def _unexcused(root: Path) -> None:
+    """The example without the line of paper.yaml that says its first reference is in no
+    registry: the second is still said to be in none."""
+    paper = root / "paper.yaml"
+    lines = paper.read_text(encoding="utf-8").splitlines(keepends=True)
+    kept = [line for line in lines if not line.strip().startswith(f"{_LOOKED_KEY}:")]
+    assert len(kept) >= len(lines) - 1
+    paper.write_text("".join(kept), encoding="utf-8")
+
+
+def _searched(root: Path, *, on: str = "2026-10-01", **sources) -> None:
+    """Write the search record of the example's first reference, which has no identifier:
+    PubMed and Crossref find the work it cites unless told otherwise."""
+    from manuscript_guard.literature.bibfile import read_entries
+    from manuscript_guard.literature.lookups import (
+        SCHEMA,
+        answers_digest,
+        entry_digest,
+        write_record,
+    )
+
+    _unexcused(root)
+    fields = read_entries(root / "literature" / "references.bib")[_LOOKED_KEY]
+    answers = {
+        "pubmed_search": _hits(_PUBMED_HIT),
+        "crossref_search": _hits(_CROSSREF_HIT),
+        **sources,
+    }
+    record = {
+        "schema": SCHEMA,
+        "citekey": _LOOKED_KEY,
+        "looked_up_on": on,
+        "entry_sha256": entry_digest(fields),
+        "identifiers": {},
+        "sources": {k: v for k, v in answers.items() if v is not None},
+    }
+    record["answers_sha256"] = answers_digest(record)
+    write_record(load_project(root)[0], record)
+
+
+def _finding_of(root: Path, code: str):
+    found = [f for f in _g7(root).findings if f.code == code]
+    assert len(found) == 1, [(f.code, f.message) for f in _g7(root).findings]
+    return found[0]
+
+
+def test_a_reference_found_by_its_title_is_offered_its_identifiers(project: Path) -> None:
+    _searched(project)
+    found = _g7_codes(project)
+    assert found.pop("reference-found") == "info"
+    assert not {c for c, s in found.items() if s != "info"}, found
+    said = _finding_of(project, "reference-found").message
+    assert f"DOI {_LOOKED_DOI}" in said and f"PMID {_SEARCHED_PMID}" in said
+    assert "PubMed and Crossref have the work cited" in said
+
+
+def test_a_reference_no_registry_has_fails_from_internal_review(project: Path) -> None:
+    from manuscript_guard.policy import DRAFTING, INTERNAL_REVIEW, apply_stage
+
+    other = {**_CROSSREF_HIT, "doi": "10.5555/other", "title": "Hepatic injury in a cohort"}
+    _searched(project, pubmed_search=_hits(), crossref_search=_hits(other))
+    report = _g7(project)
+    assert "reference-not-found" in {f.code for f in report.failures}
+    assert "the nearest, doi:10.5555/other" in _finding_of(project, "reference-not-found").message
+    drafting, _ = apply_stage(report, DRAFTING)
+    assert "reference-not-found" not in {f.code for f in drafting.failures}
+    reviewed, _ = apply_stage(report, INTERNAL_REVIEW)
+    assert "reference-not-found" in {f.code for f in reviewed.failures}
+
+
+def _cited_only_in_the_supplement(root: Path) -> None:
+    """The example's first reference cited by its supplement alone, the main text citing
+    the second in its place."""
+    main = root / "manuscript" / "main.md"
+    text = main.read_text(encoding="utf-8")
+    assert f"[@{_LOOKED_KEY}]" in text
+    main.write_text(text.replace(f"[@{_LOOKED_KEY}]", "[@fictionalClassSignal2019]"),
+                    encoding="utf-8")  # fmt: skip
+    supplement = root / "manuscript" / "supplementary" / "S1_code_lists.md"
+    supplement.write_text(supplement.read_text(encoding="utf-8")
+                          + f"\nThe codes follow an earlier cohort [@{_LOOKED_KEY}].\n",
+                          encoding="utf-8")  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("author", "answers", "code"),
+    [
+        (None, {"pubmed_search": _hits(), "crossref_search": _hits()}, "reference-not-found"),
+        ("Dupont, Marie and Leclerc, Paul", {}, "reference-authors-disjoint"),
+    ],
+)  # fmt: skip
+def test_a_reference_the_supplement_alone_cites_is_judged_as_one_in_the_text(
+    project: Path, author: str | None, answers: dict, code: str
+) -> None:
+    """Basile's rule of 2026-10-21: the supplement is held to the main text's rules."""
+    _cited_only_in_the_supplement(project)
+    if author:
+        _bib_field(project, "author", author)
+    _searched(project, **answers)
+    assert code in {f.code for f in _g7(project).failures}
+
+
+@pytest.mark.parametrize(
+    ("change", "said"),
+    [
+        # An outage is never a negative.
+        ({"pubmed_search": {"status": "unresolvable", "why": "HTTP 500", "asked": _ASKED}},
+         "a registry did not answer"),
+        ({"openalex_search": {"status": "unresolvable", "why": "HTTP 429", "asked": _ASKED}},
+         "a registry did not answer"),
+        ({"crossref_search": None}, "PubMed and Crossref were not both asked"),
+        # A book, a work older than MEDLINE, one dated after the lookup: real and in no
+        # registry, perhaps.
+        ({"type": "book"}, "a book entry"),
+        ({"year": "1950"}, "of 1950, before MEDLINE begins in 1966"),
+        ({"year": "2027"}, "of 2027, after it was looked up"),
+    ],
+)  # fmt: skip
+def test_no_registry_has_it_is_said_only_where_it_can_be(
+    project: Path, change: dict, said: str
+) -> None:
+    sources = {"pubmed_search": _hits(), "crossref_search": _hits()}
+    for name in ("pubmed_search", "crossref_search", "openalex_search"):
+        if name in change:
+            sources[name] = change[name]
+    if "year" in change:
+        _bib_field(project, "year", change["year"])
+    if "type" in change:
+        _bib_field(project, "publisher", "Imaginary Press")
+        bib = project / "literature" / "references.bib"
+        text = bib.read_text(encoding="utf-8")
+        bib.write_text(text.replace(f"@article{{{_LOOKED_KEY},", f"@book{{{_LOOKED_KEY},", 1),
+                       encoding="utf-8")  # fmt: skip
+    _searched(project, **sources)
+    found = _g7_codes(project)
+    assert "reference-not-found" not in found, found
+    assert said in _finding_of(project, "reference-unchecked").message
+
+
+def test_a_search_for_an_entry_changed_since_is_not_judged(project: Path) -> None:
+    """A search was made by the title, the author and the year as they were: held to a
+    title corrected since, its works would say the reference is in no registry."""
+    _searched(project)
+    _bib_field(project, "title", "A corrected title nobody has searched for yet")
+    found = _g7_codes(project)
+    assert found.get("lookup-entry-changed") == "warn"
+    said = [f for f in _g7(project).findings if f.code.startswith("reference-")
+            and f"@{_LOOKED_KEY}" in f.message]  # fmt: skip
+    assert not said, [(f.code, f.message) for f in said]
+
+
+def test_a_work_of_the_title_in_another_year_is_not_the_one_cited(project: Path) -> None:
+    _searched(project, pubmed_search=_hits({**_PUBMED_HIT, "year": 2015}),
+              crossref_search=_hits())  # fmt: skip
+    message = _finding_of(project, "reference-not-found").message
+    assert f"PubMed has a work of this title of 2015 (PMID {_SEARCHED_PMID}" in message
+
+
+@pytest.mark.parametrize(
+    ("cited", "code", "severity"),
+    [
+        # None of them: the shape of an invented reference, a real title with names made up.
+        ("Dupont, Marie and Leclerc, Paul", "reference-authors-disjoint", "fail"),
+        # The first cited is not first on the work's list.
+        ("Dupont, Marie and Fictional, Anne", "reference-authors-differ", "warn"),
+        # The first is, and another is on no list.
+        ("Fictional, Anne and Dupont, Marie", "reference-authors-differ", "warn"),
+    ],
+)  # fmt: skip
+def test_a_work_of_the_title_by_other_people_is_said(
+    project: Path, cited: str, code: str, severity: str
+) -> None:
+    _bib_field(project, "author", cited)
+    _searched(project)
+    found = _g7_codes(project)
+    assert found.get(code) == severity, found
+    assert "reference-not-found" not in found
+
+
+def test_none_of_the_authors_fails_from_internal_review(project: Path) -> None:
+    from manuscript_guard.policy import DRAFTING, apply_stage
+
+    _bib_field(project, "author", "Dupont, Marie and Leclerc, Paul")
+    _searched(project)
+    drafting, _ = apply_stage(_g7(project), DRAFTING)
+    assert "reference-authors-disjoint" not in {f.code for f in drafting.failures}
+
+
+def test_openalex_alone_never_fails_a_reference_on_its_authors(project: Path) -> None:
+    """Its records can carry another work's details (paper-preflight's ADR-0003)."""
+    alex = {"pmid": _SEARCHED_PMID, "title": _PUBMED_HIT["title"], "year": 2021,
+            "authors": [{"family": "Naranjo", "given": "C. A."}]}  # fmt: skip
+    _bib_field(project, "author", "Dupont, Marie and Leclerc, Paul")
+    _searched(project, pubmed_search=_hits(), crossref_search=_hits(),
+              openalex_search=_hits(alex))  # fmt: skip
+    found = _g7_codes(project)
+    assert found.get("reference-authors-differ") == "warn", found
+    assert "reference-authors-disjoint" not in found and "reference-not-found" not in found
+
+
+@pytest.mark.parametrize(
+    ("pubmed", "crossref"),
+    [
+        # A comment and a correction repeat the title, by other people, in the same year.
+        ({**_PUBMED_HIT, "title": "Comment on: Hepatic injury in a fictional national cohort, "
+          "2010-2019", "authors": [{"family": "Naranjo"}]},
+         {**_CROSSREF_HIT, "doi": "10.5555/erratum", "title": "Correction: Hepatic injury in a "
+          "fictional national cohort, 2010-2019", "authors": [{"family": "Naranjo"}]}),
+        # A copy under the prefix of fabricated ones, and a longer title holding every word.
+        ({**_PUBMED_HIT, "title": "Renal and hepatic injury in a fictional national cohort, "
+          "2010-2019, of people on a fictional drug class, by sex and age group",
+          "authors": [{"family": "Naranjo"}]},
+         {**_CROSSREF_HIT, "doi": "10.65215/abcd1234", "type": "posted-content",
+          "authors": [{"family": "Naranjo"}]}),
+    ],
+)  # fmt: skip
+def test_a_notice_a_copy_or_a_longer_title_is_not_the_work(
+    project: Path, pubmed: dict, crossref: dict
+) -> None:
+    _searched(project, pubmed_search=_hits(pubmed),
+              crossref_search=_hits(crossref))  # fmt: skip
+    found = _g7_codes(project)
+    assert "reference-authors-disjoint" not in found and "reference-authors-differ" not in found
+    assert found.get("reference-not-found") == "fail", found
+
+
+def test_a_list_of_only_a_group_says_nothing_of_the_people_cited(project: Path) -> None:
+    """Crossref lists only "The RECOVERY Collaborative Group" for a trial whose people PubMed
+    lists: the people cited are compared with neither."""
+    group = [{"group": "The Fictional Study Group"}]
+    _bib_field(project, "author", "Dupont, Marie and Leclerc, Paul")
+    _searched(project, pubmed_search=_hits(),
+              crossref_search=_hits({**_CROSSREF_HIT, "authors": group}))  # fmt: skip
+    found = _g7_codes(project)
+    assert found.get("reference-found") == "info", found
+    assert not {c for c in found if c.startswith("reference-authors")}
+
+
+def test_a_retracted_work_found_by_its_title_is_said(project: Path) -> None:
+    notice = {"type": "retraction", "doi": "10.5555/notice.1", "date": "2023-02-06"}
+    _searched(project, crossref_search=_hits({**_CROSSREF_HIT,
+                                                         "updated_by": [notice]}))  # fmt: skip
+    assert _g7_codes(project).get("reference-retracted") == "fail"
+
+
+def test_a_book_reviewed_under_its_own_title_fails_nothing(project: Path) -> None:
+    """Round 1 of #379: Crossref holds a journal's review of a book under the book's title,
+    by the reviewer ("Causal Inference: What If. By Miguel A. Hernán and James M.
+    Robins"). A book is never said missing, nor written by other people."""
+    _bib_field(project, "author", "Dupont, Marie and Leclerc, Paul")
+    _bib_field(project, "publisher", "Imaginary Press")
+    # Searchable words beside PubMed's stopwords ("what", "if"), which are never searched.
+    _bib_field(project, "title", "Fictional cohorts: what if the exposure changes")
+    bib = project / "literature" / "references.bib"
+    text = bib.read_text(encoding="utf-8")
+    bib.write_text(text.replace(f"@article{{{_LOOKED_KEY},", f"@book{{{_LOOKED_KEY},", 1),
+                   encoding="utf-8")  # fmt: skip
+    review = {**_CROSSREF_HIT, "doi": "10.5555/review", "authors": [{"family": "Naranjo"}],
+              "title": "Fictional cohorts: what if the exposure changes. By Marie Dupont "
+                       "and Paul Leclerc. Imaginary Press, 2021"}  # fmt: skip
+    _searched(project, pubmed_search=_hits(), crossref_search=_hits(review))
+    found = _g7_codes(project)
+    assert not {c for c, s in found.items() if s == "fail"}, found
+    assert "a book entry" in _finding_of(project, "reference-unchecked").message
+
+
+@pytest.mark.parametrize(
+    "listed",
+    [
+        # Crossref keeps the names of a Russian journal's article as the journal printed them.
+        [{"family": "\N{CYRILLIC CAPITAL LETTER DE}\N{CYRILLIC SMALL LETTER IE}"
+                    "\N{CYRILLIC SMALL LETTER EL}\N{CYRILLIC SMALL LETTER O}"
+                    "\N{CYRILLIC SMALL LETTER EN}", "given": "\N{CYRILLIC CAPITAL LETTER EM}"
+                    "\N{CYRILLIC SMALL LETTER A}\N{CYRILLIC SMALL LETTER ER}"
+                    "\N{CYRILLIC SMALL LETTER I}\N{CYRILLIC SMALL LETTER YA}"}],
+        [{"family": "\N{CJK UNIFIED IDEOGRAPH-738B}", "given": "\N{CJK UNIFIED IDEOGRAPH-4F1F}"}],
+    ],
+)  # fmt: skip
+def test_a_list_in_another_script_is_not_compared(project: Path, listed: list) -> None:
+    """Round 1 of #379: a title mostly in another script is not compared, and nor now is a
+    list of names in one, which a romanised entry never matches."""
+    _bib_field(project, "author", "Dupont, Marie")
+    _looked_up(project, crossref={**_CROSSREF, "authors": listed})
+    assert not {c for c in _g7_codes(project) if c.startswith("reference-authors")}
+
+
+def _co_published(journal: str) -> dict:
+    return {**_PUBMED_HIT, "pmid": "31000002", "doi": "10.5555/copy.in." + journal.lower(),
+            "journal": f"Journal of {journal}", "journal_abbreviation": f"J {journal}"}  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("cited_journal", "offered"),
+    [
+        # A statement co-published in two journals: the one the entry names is offered.
+        ("Journal of Imaginary Pharmacoepidemiology", f"DOI {_LOOKED_DOI}"),
+        ("J Elsewhere", "DOI 10.5555/copy.in.elsewhere"),
+        # The entry names neither: no identifier is offered, the works are listed.
+        ("Journal of Nowhere at All", None),
+    ],
+)  # fmt: skip
+def test_a_work_published_twice_offers_the_cited_copy_or_none(
+    project: Path, cited_journal: str, offered: str | None
+) -> None:
+    """Round 1 of #379: PRISMA 2020 is the same title, year and first author in BMJ and in
+    J Clin Epidemiol, and the identifiers offered were the first PubMed gave."""
+    _bib_field(project, "journal", cited_journal)
+    own = {**_PUBMED_HIT, "journal": "Journal of Imaginary Pharmacoepidemiology",
+           "journal_abbreviation": "J Imag Pharmacoepidemiol"}  # fmt: skip
+    _searched(project, pubmed_search=_hits(_co_published("Elsewhere"), own),
+              crossref_search=_hits())  # fmt: skip
+    said = _finding_of(project, "reference-found").message
+    if offered:
+        assert f"with {offered} and PMID" in said and "several" not in said, said
+    else:
+        assert "with DOI" not in said and "several works" in said, said
+
+
+def test_a_record_that_names_nobody_gives_way_to_one_that_names_the_first_author(
+    project: Path,
+) -> None:
+    """The measurement of 2026-10-21: NEJM files the letters about an article under the
+    article's own title, and Crossref's record of them lists nobody; it was offered for
+    the article. A work found without its people is taken only where none is found with
+    the cited first author first."""
+    letter = {**_CROSSREF_HIT, "doi": "10.5555/letters.about.it", "authors": []}
+    _searched(project, crossref_search=_hits(letter))
+    said = _finding_of(project, "reference-found").message
+    assert f"with DOI {_LOOKED_DOI} and PMID {_SEARCHED_PMID}" in said, said
+    # Without the PubMed record, the record that names nobody is all there is.
+    _searched(project, pubmed_search=_hits(), crossref_search=_hits(letter))
+    assert "with DOI 10.5555/letters.about.it" in _finding_of(project, "reference-found").message
+
+
+def test_one_work_in_two_registries_is_one_work(project: Path) -> None:
+    """A PubMed record with no DOI and Crossref's record of the same work share no
+    identifier, and are one work: nothing in them differs."""
+    pubmed = {k: v for k, v in _PUBMED_HIT.items() if k != "doi"}
+    _searched(project, pubmed_search=_hits(pubmed))
+    said = _finding_of(project, "reference-found").message
+    assert f"with DOI {_LOOKED_DOI} and PMID {_SEARCHED_PMID}" in said, said
+
+
+def test_records_in_two_journals_are_two_works(project: Path) -> None:
+    """Round 2 of #379: a PubMed record with no DOI and Crossref's record of a congress
+    abstract of the same title and first author share no identifier, and were taken for one
+    work, the abstract's DOI offered beside the article's PMID. Their journals differ."""
+    pubmed = {**{k: v for k, v in _PUBMED_HIT.items() if k != "doi"},
+              "journal": "Journal of Imaginary Pharmacoepidemiology"}  # fmt: skip
+    abstract = {**_CROSSREF_HIT, "doi": "10.5555/abstract", "container": "Journal of Elsewhere"}
+    _searched(project, pubmed_search=_hits(pubmed), crossref_search=_hits(abstract))
+    said = _finding_of(project, "reference-found").message
+    assert "10.5555/abstract" not in said and f"PMID {_SEARCHED_PMID}" in said, said
+
+
+def test_one_work_whose_registries_write_its_journal_otherwise_is_one_work(project: Path) -> None:
+    """The round after the budget of #379: PubMed writes "Pharmacotherapy", Crossref
+    "Pharmacotherapy: The Journal of Human Pharmacology and Drug Therapy"; the records share
+    their DOI, and were split into two works, Crossref's retraction lost with it."""
+    notice = {"type": "retraction", "doi": "10.5555/notice.1", "date": "2023-02-06"}
+    pubmed = {**_PUBMED_HIT, "journal": "Pharmacotherapy",
+              "journal_abbreviation": "Pharmacotherapy"}  # fmt: skip
+    crossref = {**_CROSSREF_HIT, "updated_by": [notice], "container":
+                "Pharmacotherapy: The Journal of Human Pharmacology and Drug Therapy"}  # fmt: skip
+    _bib_field(project, "journal", None)
+    _searched(project, pubmed_search=_hits(pubmed), crossref_search=_hits(crossref))
+    found = _g7_codes(project)
+    assert found.get("reference-retracted") == "fail", found
+    said = _finding_of(project, "reference-found").message
+    assert "several works" not in said and f"with DOI {_LOOKED_DOI}" in said, said
+
+
+def test_a_record_naming_nobody_keeps_the_notices_of_the_work_it_shares(project: Path) -> None:
+    """Round 2 of #379: Crossref's record of a work can name nobody where PubMed's names
+    the people, and it is Crossref's that carries the retraction."""
+    notice = {"type": "retraction", "doi": "10.5555/notice.1", "date": "2023-02-06"}
+    nameless = {**_CROSSREF_HIT, "authors": [], "updated_by": [notice]}
+    _searched(project, crossref_search=_hits(nameless))
+    assert _g7_codes(project).get("reference-retracted") == "fail"
+
+
+def test_a_withdrawn_review_is_the_work_not_a_notice(project: Path) -> None:
+    """Round 1 of #379: Cochrane prints a review it withdrew as "WITHDRAWN: <title>", the
+    flag a registry puts on the work itself, as "RETRACTED:"."""
+    withdrawn = {**_PUBMED_HIT, "title": "WITHDRAWN: " + _PUBMED_HIT["title"]}
+    _searched(project, pubmed_search=_hits(withdrawn), crossref_search=_hits())
+    found = _g7_codes(project)
+    assert "reference-not-found" not in found and found.get("reference-found") == "info"
+
+
+def test_a_cited_subtitle_the_registry_left_out_is_no_other_title(project: Path) -> None:
+    """A guideline is printed with its task force in its title, and Crossref and PubMed
+    keep it without (two in the measurement of 2026-10-21; Basile, the same day: the DOI
+    check takes the rule the search takes)."""
+    _bib_field(project, "title", "Hepatic injury in a fictional national cohort, 2010-2019: "
+               "the task force for fictional cohorts of the Imaginary Society of Hepatology "
+               "and the Society of Invented Registries")  # fmt: skip
+    _looked_up(project)
+    assert "reference-title-mismatch" not in _g7_codes(project)
+    # A main title of fewer than four words is no title to take another's by.
+    _bib_field(project, "title", "Hepatic injury: a cohort from the Imaginary Society of "
+               "Hepatology and the Society of Invented Registries, with renal outcomes")
+    _looked_up(project, crossref={**_CROSSREF, "title": "Hepatic injury"})
+    assert "reference-title-mismatch" in _g7_codes(project)
+
+
+def test_a_real_work_no_registry_indexes_is_said_so_in_paper_yaml(project: Path) -> None:
+    """The example says it of both its references, which are invented."""
+    found = _g7_codes(project)
+    assert "reference-not-found" not in found and "lookup-missing" not in found
+    said = _finding_of(project, "reference-unchecked").message
+    assert f"@{_LOOKED_KEY} (paper.yaml: invented for this worked example" in said
+
+
+def test_a_reference_with_no_identifier_and_no_record_is_said_unlooked(project: Path) -> None:
+    _unexcused(project)
+    said = _finding_of(project, "lookup-missing")
+    assert said.severity == "warn" and f"@{_LOOKED_KEY}" in said.message
+
+
+@pytest.mark.parametrize(
+    ("cited", "listed", "code"),
+    [
+        ("Dupont, Marie and Leclerc, Paul", [{"family": "Fictional", "given": "Anne"}],
+         "reference-authors-disjoint"),
+        ("Fictional, Anne and Dupont, Marie",
+         [{"family": "Fictional", "given": "Anne"}, {"family": "Leclerc"}],
+         "reference-authors-differ"),
+        # Crossref's list stops short of the entry's, and each name on it is cited: an
+        # older record's list, not a name made up (the measurement of 2026-10-20).
+        ("Fictional, Anne and Dupont, Marie", [{"family": "Fictional", "given": "Anne"}], None),
+        # Particles, accents, TeX and case: one person.
+        ("van der M{\\\"u}ller, Anne and O'Brien, Bernard",
+         [{"family": "M\N{LATIN SMALL LETTER U WITH DIAERESIS}ller"}, {"family": "OBrien"}],
+         None),
+        ("{Fictional Study Group} and Fictional, Anne",
+         [{"family": "Fictional"}, {"family": "Leclerc"}], None),
+        # A list cut short, the registry's longer: never a finding.
+        ("Fictional, Anne and others",
+         [{"family": "Fictional"}, {"family": "Leclerc"}, {"family": "Dupont"}], None),
+    ],
+)  # fmt: skip
+def test_the_identifiers_work_is_held_to_the_cited_authors(
+    project: Path, cited: str, listed: list, code: str | None
+) -> None:
+    _bib_field(project, "author", cited)
+    _looked_up(project, crossref={**_CROSSREF, "authors": listed})
+    found = {c for c in _g7_codes(project) if c.startswith("reference-authors")}
+    assert found == ({code} if code else set()), found
+
+
+def test_a_person_one_registry_lists_is_listed(project: Path) -> None:
+    """Crossref's list stops short where PubMed's does not."""
+    _bib_field(project, "author", "Fictional, Anne and Dupont, Marie")
+    pubmed = {"status": "found", "doi": _LOOKED_DOI, "pubtypes": ["Journal Article"],
+              "authors": [{"family": "Fictional", "given": "A"},
+                          {"family": "Dupont", "given": "M"}]}  # fmt: skip
+    _looked_up(project, pmid=_SEARCHED_PMID, pubmed=pubmed,
+               crossref={**_CROSSREF, "authors": [{"family": "Fictional", "given": "Anne"}]})
+    assert not {c for c in _g7_codes(project) if c.startswith("reference-authors")}
+
+
+def test_the_authors_of_another_work_are_not_compared(project: Path) -> None:
+    """Where the identifier names another title, the work is another's, and so are its
+    people: the title is what is said."""
+    _bib_field(project, "author", "Dupont, Marie")
+    _looked_up(project, crossref={**_CROSSREF, "title": "A study of something else entirely",
+                                  "authors": [{"family": "Naranjo"}]})  # fmt: skip
+    found = _g7_codes(project)
+    assert "reference-title-mismatch" in found
+    assert not {c for c in found if c.startswith("reference-authors")}
+
+
+def test_a_record_kept_before_the_authors_compares_none(project: Path) -> None:
+    from manuscript_guard.literature.lookups import record_path
+
+    _bib_field(project, "author", "Dupont, Marie")
+    _looked_up(project, crossref={**_CROSSREF, "authors": [{"family": "Naranjo"}]})
+    path = record_path(load_project(project)[0], _LOOKED_KEY)
+    record = yaml.safe_load(path.read_text(encoding="utf-8"))
+    record["schema"] = "manuscript-guard/lookup/1"
+    del record["sources"]["crossref"]["authors"]
+    from manuscript_guard.literature.lookups import answers_digest
+
+    record["answers_sha256"] = answers_digest(record)
+    path.write_text(yaml.safe_dump(record, sort_keys=False), encoding="utf-8")
+    assert not {c for c in _g7_codes(project) if c.startswith("reference-authors")}
 
 
 @pytest.mark.parametrize(

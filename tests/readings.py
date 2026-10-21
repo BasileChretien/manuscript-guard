@@ -300,6 +300,40 @@ def _numbers() -> Reading:
     return numbers
 
 
+@reading("pointers")
+def _pointers() -> Reading:
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.gates.pointers import check_pointers, display_numbers
+    from manuscript_guard.text.placeholders import parse
+
+    def pointers(given: dict[str, Any]) -> dict[str, Any]:
+        """What G2 says of the pointers of a project with these files under `manuscript/`,
+        and what each ref and num binding in them prints, by file and offset."""
+        folder = Path(tempfile.mkdtemp(prefix="mg-pointers-"))
+        try:
+            root = folder / "paper"
+            (root / "manuscript").mkdir(parents=True)
+            (root / PAPER).write_text("title: A paper\n", encoding="utf-8")
+            for relative, text in given["files"].items():
+                path = root / "manuscript" / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(text, encoding="utf-8", newline="")
+            project = load_project(root)[0]
+            numbers = display_numbers(project)
+            printed = [
+                [relative, found.start, numbers.printed(found)]
+                for relative, text in sorted(given["files"].items())
+                for found in parse(text)[0]
+                if found.is_ref
+            ]
+            said = _from_root(_told(check_pointers(project)), root)
+            return {"report": said, "printed": printed}
+        finally:
+            shutil.rmtree(folder, ignore_errors=True)
+
+    return pointers
+
+
 #: The coding dictionaries a generated text may type the release of.
 DICTIONARIES = {"meddra": "26.1", "whodrug": "Global B3 March 2025", "icd_10": "2019"}
 
@@ -532,6 +566,46 @@ def _title_held() -> Reading:
         return None if found is None else round(found, 6)
 
     return held
+
+
+@reading("title alike")
+def _title_alike() -> Reading:
+    """How alike a cited title is to a registered one, each way, by which G7 takes a work a
+    search found for the one cited (`gates/searched`)."""
+    from manuscript_guard.gates.searched import alike
+
+    def held(given: dict[str, str]) -> float:
+        return round(alike(given["cited"], [given["registered"]]), 6)
+
+    return held
+
+
+@reading("search words")
+def _search_words() -> Reading:
+    """The words of a title `lookup` searches the registries for."""
+    from manuscript_guard.gates.searched import search_words
+
+    return search_words
+
+
+@reading("authors cited")
+def _authors_cited() -> Reading:
+    """A .bib entry's author field, read into people and groups."""
+    from manuscript_guard.literature.names import cited
+
+    def read(field: str) -> list[Any]:
+        found = cited(field)
+        return [[[n.family, n.given, n.group] for n in found.names], found.truncated]
+
+    return read
+
+
+@reading("same family name")
+def _same_family_name() -> Reading:
+    """Whether two family names are one person's, by G7's folding (`gates/authors`)."""
+    from manuscript_guard.gates.authors import same
+
+    return lambda given: same(given["cited"], given["registered"])
 
 
 @reading("units after")

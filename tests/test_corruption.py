@@ -10645,6 +10645,106 @@ def test_submit_does_not_delete_a_document_inside_the_pack(project: Path) -> Non
     assert inside.read_bytes() == written
 
 
+# ------------------------------------------------ the marked-up copy is never the manuscript
+
+
+def _marked_up_copy(project: Path) -> Path:
+    """The example built, its round opened, a sentence reworded and the copy made."""
+    from manuscript_guard.cli import main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    assert main(["respond", str(project), "--open"]) == 0
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    source.write_text(text.replace("has not been examined", "has not yet been examined", 1),
+                      encoding="utf-8")  # fmt: skip
+    assert main(["build", str(project), "--offline", "--skip-checks", "--marked-up"]) == 0
+    return next((project / "build" / "marked-up").glob("manuscript*.docx"))
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_marked_up_copy_is_refused_wherever_a_manuscript_is_asked_for(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The copy shows what changed and holds every word deleted since the submission. Taken
+    for the manuscript it would be packed as the paper, imported as a co-author's edits, or
+    read for a reviewer's comments, and its deletions read as accepted. Each refuses it."""
+    from manuscript_guard.cli import main
+
+    copy = _marked_up_copy(project)
+    capsys.readouterr()
+    assert main(["submit", str(project), "--document", str(copy), "--skip-checks"]) == 1
+    assert "is a marked-up copy" in capsys.readouterr().out
+    assert not (project / "build" / "submission" / copy.name).exists()
+    assert main(["import", str(copy), str(project)]) == 1
+    assert "is a marked-up copy" in capsys.readouterr().out
+    assert main(["respond", str(project), "--open", "--from", str(copy)]) == 1
+    assert "is a marked-up copy" in capsys.readouterr().out
+    assert not (project / "revision" / "round-2.yaml").exists()
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_marked_up_copy_that_deleted_an_author_s_name_is_not_to_be_sent_blind(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Deleted text is still in the copy, struck through. A sentence that named an author
+    and was taken out of the revision passes the revision's blind check and is in the
+    copy: the copy is checked as the document it is, and the build says not to send it."""
+    from manuscript_guard.cli import main
+
+    _blind(project)
+    authors = project / "authors.yaml"
+    authors.write_text(authors.read_text(encoding="utf-8").replace(
+        "given: Ada\n    family: Example", "given: Anne\n    family: Fictional"),
+        encoding="utf-8")  # fmt: skip
+    source = main_md(project)
+    text = source.read_text(encoding="utf-8")
+    named = text.replace("# Discussion\n\n", "# Discussion\n\nAs Anne Fictional showed.\n\n", 1)
+    source.write_text(named, encoding="utf-8")
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 1
+    sent = project / "sent.docx"
+    shutil.copy2(project / "build" / "manuscript.UNCHECKED.docx"
+                 if (project / "build" / "manuscript.UNCHECKED.docx").exists()
+                 else project / "build" / "manuscript.docx", sent)  # fmt: skip
+    source.write_text(text, encoding="utf-8")
+    capsys.readouterr()
+    assert main(["build", str(project), "--offline", "--skip-checks", "--marked-up",
+                 "--since", str(sent)]) == 1  # fmt: skip
+    said = capsys.readouterr().out
+    assert "'Anne Fictional'" in said and "marked-up" in said, said
+    assert "do not send it" in said
+
+
+def test_a_copy_that_would_not_read_as_both_documents_is_not_kept(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The writer checks every copy before it keeps it: accepted, the revision; rejected,
+    the document sent. A writer that lost a deletion, or wrote an insertion as text kept,
+    made a copy that hid a change; neither copy is written."""
+    from readings import document_of
+
+    from manuscript_guard.markedup import MarkedUpError, write, writer
+
+    before = document_of([{"kind": "p", "runs": [["The ratio was 3.84 here.", ""]]}],
+                         tmp_path / "before.docx")  # fmt: skip
+    after = document_of([{"kind": "p", "runs": [["The ratio was 3.91 here.", ""]]}],
+                        tmp_path / "after.docx")  # fmt: skip
+    target = tmp_path / "copy.docx"
+    with monkeypatch.context() as patch:
+        patch.setattr(writer._Emitter, "deleted", lambda self, atoms: None)
+        with pytest.raises(MarkedUpError, match="rejected.*does not read as the document sent"):
+            write(before, after, target, date="2026-10-21")
+    assert not target.exists()
+    with monkeypatch.context() as patch:
+        original = writer.Writer.change
+        patch.setattr(writer.Writer, "change", lambda self, kind: original(
+            self, "del" if kind == "ins" else kind))  # fmt: skip
+        with pytest.raises(MarkedUpError, match="accepted.*does not read as the revision"):
+            write(before, after, target, date="2026-10-21")
+    assert not target.exists()
+    assert write(before, after, target, date="2026-10-21").counts["words inserted"] == 1
+
+
 @pytest.mark.skipif(
     __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
 )

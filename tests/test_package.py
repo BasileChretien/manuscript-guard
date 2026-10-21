@@ -501,6 +501,75 @@ def test_the_bound_results_are_listed_and_the_prose_is_not(project: Path) -> Non
     assert "manuscript/main.md" in contents(built(project))
 
 
+def _supplement(root: Path) -> None:
+    """A second script whose results only the supplement prints, a table and a value, and a
+    figure of the supplement's own."""
+    script = root / "analysis" / "02_supplement.py"
+    script.write_text(
+        "from manuscript_guard.emit import Emitter\n"
+        "em = Emitter(__file__)\n"
+        'em.add_input("data/reports.csv", synthetic=True)\n'
+        'em.value("supplement.n_sites", 3)\n'
+        'em.table("sites", ["Site", "Reports"], [["North", 2], ["South", 40]],\n'
+        '         caption="Reports by site.")\n'
+        "em.write()\n",
+        encoding="utf-8",
+    )
+    ran = subprocess.run([sys.executable, "analysis/02_supplement.py"], cwd=root,
+                         capture_output=True, text=True)  # fmt: skip
+    assert ran.returncode == 0, ran.stderr
+    page = root / "manuscript" / "supplementary" / "S1_code_lists.md"
+    page.write_text(page.read_text(encoding="utf-8") + "\n## Table S3. Reports by site\n\n"
+                    "The reports came from {{results.supplement.n_sites}} sites.\n\n"
+                    "{{table.sites}}\n", encoding="utf-8")  # fmt: skip
+    (root / "figures" / "s1_sites.py").write_text("# draws figures/s1_sites.svg\n",
+                                                  encoding="utf-8")  # fmt: skip
+    (root / "figures" / "s1_sites.svg").write_text("<svg/>\n", encoding="utf-8")
+
+
+def test_the_supplement_is_packaged_as_the_main_text_is(project: Path) -> None:
+    """Basile's rule of 2026-10-21: the supplement is held to the main text's rules. Its
+    tables and figures, their scripts and results go in as the main text's do, BOUND.md lists
+    what it prints, `--with-manuscript` takes its source, and its counts are held to the
+    custodian's minimum; no built document goes, the supplement's no more than the paper's."""
+    ready(project)
+    _supplement(project)
+    (project / "build").mkdir(exist_ok=True)
+    for built_document in ("manuscript.docx", "supplementary.docx"):
+        (project / "build" / built_document).write_bytes(b"PK")
+    assert main(["package", str(project)]) == 0
+    folder = built(project)
+    held = contents(folder)
+    for wanted in ("analysis/02_supplement.py", "results/02_supplement.json",
+                   "results/02_supplement.json.sha256", "figures/s1_sites.py",
+                   "figures/s1_sites.svg"):  # fmt: skip
+        assert wanted in held, wanted
+    assert not [path for path in held if path.endswith(".docx")]
+    assert not [path for path in held if path.startswith("manuscript/")]
+    supplement = "manuscript/supplementary/S1_code_lists.md"
+    rows = (folder / "BOUND.md").read_text(encoding="utf-8").splitlines()
+    for key in ("`supplement.n_sites`", "`table.sites`", "`table.outcome_codes`"):
+        (row,) = [row for row in rows if row.startswith(f"| {key} |")]
+        assert supplement in row, row
+    assert "supplement" in (folder / "README.md").read_text(encoding="utf-8")
+
+    shutil.rmtree(project / "build" / "package")
+    assert main(["package", str(project), "--with-manuscript"]) == 0
+    assert supplement in contents(built(project))
+
+    document = paper(project)
+    document["custodian"] = {"minimum_cell_count": 5}
+    set_paper(project, document)
+    assert refused(project) == {"package-small-count"}
+    from manuscript_guard.deposit import small_counts
+
+    loaded, _ = load_project(project)
+    _namespace, results, _literature, _ = load_namespace(loaded)
+    named = {(small.fragment, small.where) for small in small_counts(loaded, results)}
+    assert ("results/02_supplement.json", "supplement.n_sites") in named
+    assert ("results/02_supplement.json", "table sites, row 1, column 2") in named
+
+
 def test_the_package_tells_the_author_the_steps_and_uploads_nothing(project: Path, capsys) -> None:
     assert main(["package", str(ready(project))]) == 0
     said = capsys.readouterr().out

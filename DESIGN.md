@@ -5501,6 +5501,17 @@ journal's and the author's to say, so BOUND.md lists instead each value, table a
 manuscript binds, what it prints and the file and section that print it; `--with-manuscript`
 adds the source.
 
+**The supplement is packaged as the main text is** (Basile, 2026-10-21: supplementary material
+is held to the same rules). Its tables and figures come from the same folders, so their
+scripts, their results and their renders go in with the paper's, are run again by `verify`
+in the same way, and their counts are held to the custodian's minimum. BOUND.md lists what
+`manuscript/supplementary/` prints beside what the main text prints, each row with its file,
+and `--with-manuscript` takes the supplement's source with the paper's. No built document
+goes, `supplementary.docx` no more than `manuscript.docx`. The one reading that stays with
+the main text is the Data availability statement's: a journal asks for it in the paper, and
+`package-doi-not-named` looks for the DOI there (`tests/test_package.py`,
+`test_the_supplement_is_packaged_as_the_main_text_is`).
+
 **The tool uploads nothing.** It prints the steps: reserve the DOI where the repository
 allows it, write it as `package.doi`, package again so that README.md and CITATION.cff carry
 it, upload. Once `package.doi` is declared, G4 warns while neither the Data availability

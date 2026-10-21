@@ -86,6 +86,14 @@ def _rerun(
     return out
 
 
+#: The supplement is held to the paper's rules (Basile, 2026-10-21), and the package says so.
+SUPPLEMENT = (
+    "The supplement's tables and figures are made by the same kind of scripts as the paper's "
+    "and are kept in the same folders, `analysis/`, `results/` and `figures/`, and are run "
+    "again and checked in the same way. BOUND.md lists what the supplement prints beside what "
+    "the main text prints, each with its file."
+)
+
 VERIFY = [
     "## What `manuscript-guard verify` checks",
     "",
@@ -120,14 +128,15 @@ def _withheld(
         out.append("  The scripts that read them cannot be run again from this package "
                    "alone: " + ", ".join(f"`{script}`" for script in readers) + ".")  # fmt: skip
     if not with_manuscript:
-        out.append("- The manuscript's text. BOUND.md lists every result it prints, and "
-                   "where.")  # fmt: skip
+        out.append("- The manuscript's text, the supplement's with it. BOUND.md lists every "
+                   "result each prints, and where.")  # fmt: skip
     out += [
         "- Stored copies of the works the paper cites: they are their publishers' to "
         "distribute. `literature/ledger.yaml` quotes the passage each value is taken from, "
         "and `literature/references.bib` names each work.",
         "- The review records, the authors' details, the approvals and sign-offs, and the "
-        "built documents: they name people, or are made again from what is here.",
+        "built documents, the paper's and the supplement's: they name people, or are made "
+        "again from what is here.",
         "- Any file git did not track, and any link: MANIFEST.yaml lists each file left out, "
         "with the reason." if in_git else
         "- Any link: MANIFEST.yaml lists each file left out, with the reason. The project is "
@@ -146,7 +155,7 @@ def readme_text(project: Project, results: Results, inputs: list[Input], entries
     named = found if isinstance(found, str) else " and ".join(str(one) for one in found or [])
     out = [
         *_top(project), "",
-        "## What is here", "", *contents, "",
+        "## What is here", "", *contents, "", SUPPLEMENT, "",
         *_rerun(results, entries, sessions, versions), "",
         *VERIFY, "",
         *_withheld(project, inputs, with_manuscript, in_git), "",

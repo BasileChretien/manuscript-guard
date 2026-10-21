@@ -168,7 +168,11 @@ place, because a clause that moved and two values that changed places look the s
 number is compared as it is typed, so "3" spelt out as "three" is reported too; the space
 before a unit or around a sign is free. A minus sign is part of its number where the dash
 can be nothing else; where it may be the dash of a range, after a mark of emphasis or a
-raised figure, one that came or went is shown with a warning.
+raised figure, one that came or went is shown with a warning. And each sentence the edit
+changed is compared with what it was for the words that set how strongly it claims: a
+"may" or a "did not" dropped, or "was associated with" made "increased", passes with a
+warning that names the words, because a list of words cannot know whether the move was
+meant.
 
 **Exemptions are small, explicit and reviewable.** Conventions live in a narrow shipped
 list pinned to specific values — `p < 0.05` is allowed, `p < 0.37` is not, because a p-value

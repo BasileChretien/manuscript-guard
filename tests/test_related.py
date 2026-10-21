@@ -20,7 +20,12 @@ from manuscript_guard.contracts import load_namespace, load_project
 from manuscript_guard.contracts.values import Value
 from manuscript_guard.findings import FAIL, INFO, WARN
 from manuscript_guard.gates.related import _printed, _same_printed, check_related
-from manuscript_guard.gates.related_methods import folded_title, sections_compared
+from manuscript_guard.gates.related_methods import (
+    ambiguous_headings,
+    folded_title,
+    section_keys,
+    sections_compared,
+)
 from manuscript_guard.literature.related import (
     SNAPSHOT_FILE,
     TakeError,
@@ -483,11 +488,22 @@ def test_what_a_plan_s_planned_results_and_deviations_hold_is_not_compared() -> 
     assert sections_compared(then, now) == []
 
 
-def test_a_heading_is_matched_with_the_headings_above_it() -> None:
+def test_a_heading_that_stands_twice_is_said_and_not_guessed() -> None:
     then = ("# Plan\n\n## Exposure\n\n### Definition\n\nA drug.\n\n"
             "## Outcome\n\n### Definition\n\nAn event.\n")
     now = then.replace("An event.", "A serious event.")
-    assert [found[0] for found in sections_compared(then, now)] == ["Outcome / Definition"]
+    assert sections_compared(then, now) == []
+    assert ambiguous_headings(then, now) == ["Definition"]
+    assert "definition" not in section_keys(then)
+
+
+def test_a_plan_with_no_title_has_its_first_section_compared() -> None:
+    """The post-budget round of #402: a first section with a subsection is no title."""
+    then = ("## Exposure\n\nUsers of drug A.\n\n### Definition\n\nA dispensing.\n\n"
+            "## Outcome\n\nAn event.\n")
+    now = then.replace("drug A", "drug B")
+    assert [found[0] for found in sections_compared(then, now)] == ["Exposure"]
+    assert {"exposure", "definition", "outcome"} <= section_keys(then)
     assert folded_title("2.1 Definition") == folded_title("Definition")
     assert folded_title("2 Exposure") == folded_title("3 Exposure")
     assert folded_title("2019 cohort") != folded_title("2020 cohort")

@@ -1847,9 +1847,10 @@ def printings(draw: st.DrawFn) -> list[dict[str, Any]]:
 #: What an edit of a plan's section may be: none, its lines re-wrapped, a word put in
 #: emphasis, a comment added, its case changed, a word added, a word added under a heading
 #: now numbered, a section the plan keeps of itself (its Deviations) changed, and one
-#: heading under two parents with a word added under the second. The three with a word
-#: added are sections that read otherwise. This plan also ends in an appendix, a second
-#: top-level heading, which the earlier one does not have.
+#: heading under two parents with a word added under the first. The two with a word added
+#: and one heading are sections that read otherwise; the heading that stands twice is not
+#: compared. This plan also ends in an appendix, a second top-level heading, which the
+#: earlier one does not have.
 SECTION_EDITS = ("as it is", "rewrapped", "emphasis", "comment", "case", "numbered",
                  "word added", "own section", "one heading twice")  # fmt: skip
 TOPICS = ("Exposure", "Outcome", "Population", "Comparator", "Case definition",
@@ -1868,13 +1869,12 @@ def plan_pairs(draw: st.DrawFn) -> tuple[dict[str, str], list[str]]:
         if kind == "own section":
             title = f"Deviations {tag}"
         if kind == "one heading twice":
-            # The second Definition differs, the first does not: matched by its own words
-            # alone, the second would be taken for the first.
+            # The first Definition differs, the second does not: which answers which is not
+            # guessed, and neither is compared. Taken in order, the first would be said.
             words = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=4, max_size=12)))
-            for parent, after in ((f"Exposure {tag}", words), (f"Outcome {tag}", words + " more")):
-                then += [f"## {parent}", "", "### Definition", "", words, ""]
-                now += [f"## {parent}", "", "### Definition", "", after, ""]
-            changed.append(f"Outcome {tag} / Definition")
+            for parent, after in ((f"Exposure {tag}", words + " more"), (f"Outcome {tag}", words)):
+                then += [f"## {parent}", "", f"### Definition {tag}", "", words, ""]
+                now += [f"## {parent}", "", f"### Definition {tag}", "", after, ""]
             continue
         words = draw(st.lists(st.sampled_from(FILLER), min_size=4, max_size=12))
         body = " ".join(words)

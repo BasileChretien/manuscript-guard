@@ -4142,16 +4142,18 @@ one heading is compared word by word: the earlier plan as it stood when its firs
 were written (the copy's `plan.frozen.yaml`, or its `plan.md` where it kept none), this
 paper's plan as it stands, each read as G12 reads a plan (its line endings made `\n`, a
 byte-order mark left out, and one not in UTF-8 read with what cannot be decoded replaced,
-not refused). A heading is matched with the headings above it, the plan's title left out (its first
-heading, where the next is deeper), so a `### Definition` under the Exposure is not the one
-under the Outcome, each without its number ("2.", "2.1" or "2", not "2019"), emphasis or
-case; words without comments, emphasis or line breaks and in either case,
+not refused). The sections are read as G12 reads a plan's, and a heading is matched by its own words,
+without its number ("2.", "2.1" or "2", not "2019"), emphasis or case. A heading that stands
+twice in either plan, a `### Definition` under the Exposure and another under the Outcome, is
+not compared, since which answers which would be a guess, and a note says so
+(`related-section-ambiguous`): matching by the headings above needed the plan's title told
+from its first section, and two rules for that each broke an ordinary plan (rounds 2 and 3 of
+#402); words without comments, emphasis or line breaks and in either case,
 as G13 reads a quotation (`as_quoted`); and the plans' Deviations and Planned results, which
 are each paper's own, are not compared, nor anything under them. A section that reads
 otherwise is said with a few words of each side from where they part. Each is
 `related-method-differs`, a note with a reason under `methods:` (`model:` or
-`plan_section:`, its headings from the outermost parted by `/`, and `because:`), and never a
-failure. A reason that names no model both fitted, or no section both plans have, explains
+`plan_section:`, a heading both plans have once, and `because:`), and never a failure. A reason that names no model both fitted, or no section both plans have, explains
 nothing and is said (`related-pair-unmatched`). What the words mean is
 not compared: two sections that say one thing in other words differ, and the panel's
 earlier-outputs remit reads them.
@@ -9755,11 +9757,10 @@ Open, recorded as each change landed:
   alike). Markup that G13's reading keeps counts as wording: a list marked `*` there and
   `-` here differs, and a heading given an attribute (`{#id}`) is another heading. A reason
   under `methods:` answers for its model or section, not for one difference, so a later
-  change to a model already explained is explained by the old reason. Two sections with one
-  heading under one parent are one: the first is compared (round 1 of #402). A `/` in a
-  heading reads as a level, so `Exposure/outcome` and `Exposure` over `outcome` are one key,
-  and a heading that opens with a number of one or two digits loses it, so `12 months` and
-  `24 months` are one heading (round 2).
+  change to a model already explained is explained by the old reason. A heading that stands
+  twice in a plan is not compared at all, though one of the two may have changed. A heading
+  that opens with a number of one or two digits loses it, so `12 months` and `24 months` are
+  one heading, and both are then left uncompared as standing twice (round 2 of #402).
 - **What a comparison read from a PDF cannot see.** A published value is read as printed: an
   estimate rounded to one place is the same as any value within half a unit of it, so a
   change smaller than the earlier rounding is not seen. A printed value that is not one

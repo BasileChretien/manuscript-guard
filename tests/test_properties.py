@@ -6175,15 +6175,15 @@ def _the_deviations_are_compared(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(related_methods_gate, "_OWN", ())
 
 
-def _the_title_is_left_out_only_over_everything(patch: pytest.MonkeyPatch) -> None:
-    from manuscript_guard.gates.design import _plan_sections
+def _a_heading_that_stands_twice_is_compared_first(patch: pytest.MonkeyPatch) -> None:
+    real = related_methods_gate._by_title
 
-    patch.setattr(related_methods_gate, "_sections", _plan_sections)
+    def first_wins(text: str):
+        read = real(text)
+        read.twice = set()
+        return read
 
-
-def _a_heading_is_matched_by_its_own_words(patch: pytest.MonkeyPatch) -> None:
-    real = related_methods_gate.folded_title
-    patch.setattr(related_methods_gate, "section_key", lambda written: real(written.split("/")[-1]))
+    patch.setattr(related_methods_gate, "_by_title", first_wins)
 
 
 def _what_the_deviations_hold_is_compared(patch: pytest.MonkeyPatch) -> None:
@@ -6801,12 +6801,8 @@ BROKEN = {
         _the_deviations_are_compared,
         test_a_section_of_two_plans_differs_only_where_its_words_do,
     ),
-    "a plan's title is left out only where every heading is under it": (
-        _the_title_is_left_out_only_over_everything,
-        test_a_section_of_two_plans_differs_only_where_its_words_do,
-    ),
-    "a heading is matched by its own words, not with those above it": (
-        _a_heading_is_matched_by_its_own_words,
+    "a heading that stands twice is compared by its first": (
+        _a_heading_that_stands_twice_is_compared_first,
         test_a_section_of_two_plans_differs_only_where_its_words_do,
     ),
     "what the plans' Deviations hold is compared": (

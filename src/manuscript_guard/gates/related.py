@@ -36,9 +36,10 @@ from manuscript_guard.findings import FAIL, INFO, WARN, Finding, Report
 from manuscript_guard.gates.design import plan_path
 from manuscript_guard.gates.numbers import source_files
 from manuscript_guard.gates.related_methods import (
+    ambiguous_headings,
     earlier_plan,
+    folded_title,
     models_compared,
-    section_key,
     section_keys,
     sections_compared,
     this_plan,
@@ -384,11 +385,19 @@ def _methods(
     plans = (then_plan, this_plan(plan)) if then_plan is not None and plan.is_file() else None
     for title, key, there, here in sections_compared(*plans) if plans else ():
         because = next((c.because for c in output.methods
-                        if c.plan_section is not None and section_key(c.plan_section) == key),
+                        if c.plan_section is not None and folded_title(c.plan_section) == key),
                        None)  # fmt: skip
         said = f"it reads '{there}' there and '{here}' here"
         report = report.merge(
             _method(related, output, f"the plan's {title}", said, because, (there, here), seen)
+        )
+    for title in ambiguous_headings(*plans) if plans else ():
+        report = report.with_findings(
+            _finding(related, "related-section-ambiguous",
+                     f"{output.name}: the plan's {title} stands twice in one of the two plans, "
+                     f"so which answers which is not guessed and it is not compared",
+                     severity=INFO, line=output.line,
+                     hint="give each section a heading of its own in both plans")  # fmt: skip
         )
     # A reason that names no model both fitted, or no section both plans have, explains
     # nothing, as a pair naming a key nobody emits compares nothing (round 1 of #402).
@@ -397,16 +406,17 @@ def _methods(
         if changed.model is not None:
             named = changed.model in earlier.models and changed.model in results.models
         else:
-            named = section_key(str(changed.plan_section)) in keys
+            named = folded_title(str(changed.plan_section)) in keys
         if not named:
             what = f"model {changed.model}" if changed.model else f"section {changed.plan_section}"
             report = report.with_findings(
                 _finding(related, "related-pair-unmatched",
-                         f"{output.name}: `methods:` names the {what}, which the two projects "
-                         f"do not both have, so its reason explains nothing",
+                         f"{output.name}: `methods:` names the {what}, which is not compared "
+                         f"in both projects (missing from one, or standing twice), so its "
+                         f"reason explains nothing",
                          severity=strict, line=output.line,
-                         hint="name a model both fitted, or a section of both plans by its "
-                         "headings from the outermost, parted by `/`")  # fmt: skip
+                         hint="name a model both fitted, or a heading both plans have "
+                         "once")  # fmt: skip
             )
     return report
 

@@ -13,9 +13,9 @@ from pathlib import Path
 
 from manuscript_guard.contracts._schema import ContractError, read_structured
 from manuscript_guard.contracts.models import Model
-from manuscript_guard.gates.design import PLANNED, REQUIRED, _read_plan
+from manuscript_guard.gates.design import PLANNED, REQUIRED, _plan_sections, _read_plan
 from manuscript_guard.gates.revision import as_quoted
-from manuscript_guard.text.sections import Section, split_sections, subsections
+from manuscript_guard.text.sections import subsections
 
 #: The plan's sections that belong to one paper and are not its methods, with all they hold:
 #: what it changed from its own plan, and the results it promised.
@@ -124,57 +124,65 @@ def sections_compared(then: str, now: str) -> list[tuple[str, str, str, str]]:
     """Each section both plans have under one heading whose words differ: its heading as
     this plan writes it, the key it is matched by, and a few words of each side from where
     they part. Words are compared as a quotation of the manuscript is, without comments,
-    emphasis or line breaks, and in either case."""
-    earlier = _by_title(then)
+    emphasis or line breaks, and in either case. A heading that stands twice in either plan
+    is not compared (`ambiguous_headings`)."""
+    earlier, here = _by_title(then), _by_title(now)
+    twice = earlier.twice | here.twice
     found = []
-    for key, (title, words) in _by_title(now).items():
-        if key not in earlier or earlier[key][1] == words:
+    for key, (title, words) in here.sections.items():
+        if key in twice or key not in earlier.sections or earlier.sections[key][1] == words:
             continue
-        parted = _parting(earlier[key][1], words)
-        found.append((title, key, " ".join(earlier[key][1][parted:parted + SHOWN]),
+        then_words = earlier.sections[key][1]
+        parted = _parting(then_words, words)
+        found.append((title, key, " ".join(then_words[parted:parted + SHOWN]),
                       " ".join(words[parted:parted + SHOWN])))  # fmt: skip
     return found
 
 
+def ambiguous_headings(then: str, now: str) -> list[str]:
+    """The headings both plans have that stand twice in either, as this plan writes them.
+    Which of the two in one plan answers which in the other is not guessed: a `###
+    Definition` under the Exposure and one under the Outcome are each compared with
+    nothing, and said (round 1 and the post-budget round of #402, where matching by the
+    headings above needed the plan's title told from its first section, and could not)."""
+    earlier, here = _by_title(then), _by_title(now)
+    shared = set(earlier.sections) & set(here.sections)
+    return sorted(here.sections[key][0] for key in shared & (earlier.twice | here.twice))
+
+
 def section_keys(text: str) -> set[str]:
-    """The keys of a plan's sections that are compared."""
-    return set(_by_title(text))
+    """The keys of a plan's sections that can be compared: those that stand once."""
+    read = _by_title(text)
+    return set(read.sections) - read.twice
 
 
-def _by_title(text: str) -> dict[str, tuple[str, list[str]]]:
-    """Each section's heading as written and its words, by its heading folded with those
-    above it: a `### Definition` under the Exposure is not the one under the Outcome. The
-    plan's own Deviations and Planned results are left out with everything under them."""
-    found: dict[str, tuple[str, list[str]]] = {}
-    sections = _sections(text)
+class _Read:
+    def __init__(self) -> None:
+        self.sections: dict[str, tuple[str, list[str]]] = {}
+        self.twice: set[str] = set()
+
+
+def _by_title(text: str) -> _Read:
+    """Each section's heading as written and its words, by its heading folded, as G12 reads
+    a plan's sections; and the folded headings that stand more than once. The plan's own
+    Deviations and Planned results are left out with everything under them."""
+    read = _Read()
+    sections = _plan_sections(text)
     left_out: set[int] = set()
-    above: list[tuple[int, str]] = []
     for index, section in enumerate(sections):
-        while above and above[-1][0] >= section.level:
-            above.pop()
-        title = as_quoted(section.title).strip()
-        above.append((section.level, title))
         if index in left_out:
             continue
+        title = as_quoted(section.title).strip()
         if any(own.search(title) for own in _OWN):
             left_out.update(range(index, index + len(subsections(sections, index))))
             continue
         if not title:
             continue
-        written = " / ".join(written for _level, written in above)
-        found.setdefault(section_key(written), (written, _words(section.body)))
-    return found
-
-
-def _sections(text: str) -> list[Section]:
-    """The plan's sections without its title: the first heading, where the one after it is
-    deeper or there is none. G12's reading keeps the title of a plan with a second top-level
-    heading (an appendix), and then every path began with it in one plan and not in the
-    other, and no section of the two was compared (round 2 of #402)."""
-    sections = [section for section in split_sections(text) if section.level > 0]
-    if sections and (len(sections) == 1 or sections[0].level < sections[1].level):
-        return sections[1:]
-    return sections
+        key = folded_title(title)
+        if key in read.sections:
+            read.twice.add(key)
+        read.sections.setdefault(key, (title, _words(section.body)))
+    return read
 
 
 def _words(text: str) -> list[str]:
@@ -187,12 +195,6 @@ def folded_title(title: str) -> str:
     """A heading as one section of two plans is matched by: without its number, emphasis
     or case."""
     return _NUMBERED.sub("", as_quoted(title)).strip().casefold()
-
-
-def section_key(written: str) -> str:
-    """How a section is named in `methods:`, its headings from the outermost parted by `/`,
-    as a key: each heading folded."""
-    return " / ".join(folded_title(part) for part in written.split("/"))
 
 
 def _parting(a: list[str], b: list[str]) -> int:

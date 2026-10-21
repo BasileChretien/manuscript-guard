@@ -3651,15 +3651,19 @@ binding, citation, code, link, footnote or other inline construct; and the parag
 and after it gives `reworded.compare` nothing to say of a binding, a citation or a typed
 number. An edit that changes "2 x 2" to "3 x 2" is a finding, not a tracked change.
 
-**What is accepted comes back as written, or is not offered.** `import` merges an accepted
-edit as it merges any rewording from Word, and that merge rebuilds the edited stretch
-between two tokens from Word's text, which holds no markup. So each edit is put through the
-same merge before it is written (`roundtrip.align`, with the paragraph as Word would return
-it and the token extents of the marked build), and it is dropped unless the result is the
-source with `old` replaced by `new`, line wrapping aside. An edit beside emphasis in its
-stretch would flatten the emphasis on import, and is dropped here instead. Two edits of the
-same words are both dropped; one whose paragraph would not come back with the edits before
-it accepted too is dropped. Each dropped edit is listed with its reason and stays a finding.
+**What is accepted is written where its words were, or is not offered.** `import` merges a
+rewording from Word by rebuilding each edited stretch between two values or citations from
+Word's text, which holds no markup: emphasis, code or a link in that stretch is flattened,
+or the paragraph refused. An accepted suggestion is not merged so. Its words are known, from
+the sealed record, and so is where they were found, so `import` writes the new words there
+and touches nothing else (`suggestions.write_in`); see "An accepted suggestion is written,
+then the rest is merged" below. `review --suggestions` offers an edit only where that write
+holds: written into the source, the paragraph reads as Word shows it with the edit accepted
+(`roundtrip._reads_as`, the reading the merge holds its own result to), and the file still
+marks it as a paragraph of its own under its identifier (`_stays_marked`, by `tag`'s own
+reading of blocks). Two edits of the same words are both dropped; one that would not hold
+with the edits before it in its paragraph written too is dropped. Each dropped edit is listed
+with its reason and stays a finding.
 
 **The document is the build, with the changes in it.** `review --suggestions --round N` builds
 the document offline, as `build --offline` does, into `build/suggestions/round-N.docx` (and
@@ -3711,6 +3715,54 @@ last and changes nothing else in the file):
   to the author, with the reason.
 
 The answers are outside the seal, so the reading stays sealed.
+
+## An accepted suggestion is written, then the rest is merged
+
+The first version offered an edit only where `import`'s merge would bring it back exactly,
+and that merge rebuilds an edited stretch from Word's text. So an edit in a stretch that
+also held emphasis, code or a link was dropped: in a Results paragraph with an italic *P*,
+or an Introduction paragraph with no value in it and *E. coli* anywhere, that was every
+edit. Basile chose on 2026-10-20, from the options put to him, how an accepted suggestion
+and the author's own edits in the same paragraph come back together, and that an edit
+inside emphasis is offered.
+
+**The suggestion first, exactly.** For each paragraph holding a suggestion the author
+accepted (its bookmark `mg-s-<n>` holds the new words, `tracked.decided`), `import` takes the
+words from the sealed record, held to the document's digests of the new words and the
+comment, as the answer to the finding is. It finds the old words once in the paragraph's
+source and once in what the build printed, and the printed ones are the ones the document
+recorded a digest of. They lie outside every binding, citation and inline construct, and
+across no hard line break, which writing them would delete. The new words go into the
+source there, and into the printed text, and each value's place in that is moved along by
+the difference. Written, the paragraph has to be a change of words to `reworded` and read as
+Word shows it. Emphasis beside the words stays as the source has it, and emphasis around
+them goes round the new words: Word gives an insertion the formatting of the run it
+replaces, so the author saw them so when accepting.
+
+**Then the rest, by the usual rules.** Whatever else the author changed in that paragraph is
+merged by `roundtrip.align` against the source and the printed text with the suggestions
+already in them (`merge.plan_import`, `accepted`). A stretch the author left alone is kept
+from that source, markup and all, as for any rewording; a stretch the author edited is
+rebuilt from Word's text, as for any rewording. So the suggestion never costs markup, and the
+author's own edits cost what they cost on main. Where the author changed nothing else, the
+merge gives back the written source exactly. Every check `import` makes of a merge is made of
+this one too, the identifier test of `_identified` among them.
+
+**Where the words cannot be written, the paragraph is refused.** Old words no longer found
+once (the source changed since the document was made, imported with `--force`), printed
+words that are not the document's (the record's old words changed and sealed again), a
+record that is gone, values and citations with no place (the marked build could not be
+read), or a write that would not read as Word shows it: the whole paragraph is
+refused, with the reason, and the finding stays open. Merging it from Word's text instead
+would be the merge this design exists to avoid, and could flatten the markup the edit was
+offered beside. A suggestion refused in Word, or whose bookmark holds other words, writes
+nothing: Word's text there is merged as the author's own, and the finding is left to them as
+before.
+
+Considered and not built: refusing any paragraph that holds an accepted suggestion and
+anything else changed, so that nothing is ever composed. It costs the author's other edits
+in that paragraph, which would have to be made again in the .md, and it protects nothing the
+composed merge does not: what the author's edit flattens there, it flattens on main.
 
 ## A panel read by several providers
 
@@ -12541,25 +12593,43 @@ Open, recorded as each change landed:
   work's stored files once for the passages and once for the quotations in the prose, so a
   PDF goes through `pdftotext` twice a `check`.
 
-- **A suggested edit is placed only where nothing else is in its way.** `review
-  --suggestions` writes an edit only where its words are found once and its acceptance
-  comes back into the source exactly (see "A reading may suggest the wording"). What that
-  leaves out:
-  - *Words beside markup.* An accepted edit is merged by `import`, which rebuilds the
-    edited stretch between two tokens from Word's text, so an edit in a stretch that also
-    holds emphasis, code or a link is dropped rather than offered. In a Results paragraph
-    with an italic *P* that is most of the paragraph. Writing the accepted words into the
-    source directly, at the range the edit was found at, would keep the markup; it would
-    also be a second way of merging Word's text beside `import`'s, and was not built.
+- **A suggested edit is placed only where it can be written exactly.** `review
+  --suggestions` writes an edit only where its words are found once and, written into the
+  source where they are, the paragraph reads as Word shows it (see "An accepted suggestion
+  is written, then the rest is merged"). What that leaves out:
+  - *Words across markup.* Words that cross the edge of emphasis, as "P value" quoting
+    `*P* value`, or lie inside code, a link's text, a span, struck-through, raised or
+    lowered text, or run across a hard line break, take no edit: written, they would change
+    the markup, which an edit does not. The reader is sent the text as printed and cannot
+    see where the markup is.
+  - *The author's own edit beside an accepted suggestion.* The suggestion is written
+    exactly, and an edit of the author's in the same stretch between two values or
+    citations is then merged from Word's text, as any rewording is: the emphasis or code in
+    that stretch is flattened, the suggestion's included
+    (`test_an_accepted_edit_and_the_author_s_own_edit_in_its_paragraph_both_come_back`).
+    A paragraph with no value or citation is one stretch. That is main's merge, unchanged;
+    only the suggestion's own write is exact.
+  - *A write that cannot be made refuses the paragraph.* At import, an accepted
+    suggestion whose words cannot be written exactly has its whole paragraph refused, the
+    author's other edits there with it, since merging it from Word's text could flatten the
+    markup it was offered beside. A source changed since the document was made (imported
+    with `--force`), a record changed or gone since, a mix of three or more edits accepted
+    in Word that was not tried (below), and a marked build `import` could not read, which
+    leaves no value or citation placed, each reach it. The last refuses such a paragraph on
+    main too, as unaligned.
+  - *The write is held to this package's reading of Markdown.* "Reads as Word shows it" is
+    `roundtrip._reads_as`, which the merge holds its own result to; where that reading and
+    pandoc's disagree, written words could print otherwise than Word showed them. New words
+    that make the paragraph a list item or a heading are caught by `tag`'s own reading of
+    blocks (`_stays_marked`), which `_reads_as` does not see.
   - *A heading, a caption, a list item, a quotation or a table cell* carries no identifier
     and so takes no edit, as `import` brings back none of them.
   - *Several edits in one paragraph* are tried alone and each with the ones before it
-    accepted. With three or more, a mix accepted in Word that was not tried could come
-    back otherwise; `import` then refuses or merges that paragraph by its own rules, and
-    the findings stay open where it refuses.
+    written. With three or more, a mix accepted in Word that was not tried is written by
+    `import` only if it holds; otherwise the paragraph is refused and the findings stay open.
   - *The inserted words are shown as typed*, a straight apostrophe in a paragraph pandoc
-    curled, because the merge keeps Word's quotes and the source should get what the reader
-    wrote. The next build prints them curled.
+    curled: the source gets what the reader wrote, and Word shows the same words. The next
+    build prints them curled.
   - *The source as it stands.* Edits are placed in the manuscript when the command runs;
     a reading of an earlier version has its edits placed where its words still stand once,
     and dropped where they do not.
@@ -12621,6 +12691,14 @@ Open, recorded as each change landed:
 
 Closed since, and why each mattered (an open gap goes above this line):
 
+- **A suggested edit beside emphasis, code or a link was not offered.** `import` merged an
+  accepted suggestion as any rewording, rebuilding its stretch from Word's text, so an edit
+  in a stretch that also held markup was dropped by `review --suggestions` rather than
+  flattened at import. In a paragraph with an italic *P*, or one with no value and *E. coli*
+  anywhere, that was every edit. An accepted suggestion is now written into the source where
+  its words were, and only the rest of the paragraph is merged (Basile, 2026-10-20; "An
+  accepted suggestion is written, then the rest is merged"). An edit inside emphasis is
+  offered too, and the new words keep it.
 - **The header's title was read by line, and the warning of two titles was wrong on any
   header but the plainest.** Nobody saw the warning until #165. Shown, it took what stands
   after the first `title:` in the block, at any depth and on that line alone, less every

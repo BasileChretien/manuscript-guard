@@ -15632,16 +15632,16 @@ def test_an_edit_that_changes_a_number_a_binding_or_a_citation_is_not_written(
 
 @pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
 def test_an_edit_whose_words_are_not_found_exactly_once_is_not_written(project: Path) -> None:
-    """Words in the manuscript more than once, nowhere, across two paragraphs, beside
-    emphasis that a merge from Word's text would drop, and two edits of the same words: none
-    is placed by guessing which was meant."""
+    """Words in the manuscript more than once, nowhere, across two paragraphs, across a hard
+    line break that writing them would delete, and two edits of the same words: none is
+    placed by guessing which was meant."""
     from suggesting import finding, suggest, with_edits
 
     path = project / "manuscript" / "main.md"
     path.write_text(
         path.read_text(encoding="utf-8").replace(
-            "Whether the signal extends to example-drug specifically",
-            "Whether the signal extends to *example-drug* specifically",
+            "Whether the signal extends to example-drug specifically has not",
+            "Whether the signal extends to *example-drug* specifically  \nhas not",
         ),
         encoding="utf-8",
     )
@@ -15655,6 +15655,7 @@ def test_an_edit_whose_words_are_not_found_exactly_once_is_not_written(project: 
             ("specifically has not", "has not"),
             ("Reports were included without", "Reports were taken without"),
             ("were included without restriction", "were included with no restriction"),
+            ("example-drug specifically", "the drug specifically"),
         ),
     )
     code, said = suggest(project)
@@ -15662,8 +15663,10 @@ def test_an_edit_whose_words_are_not_found_exactly_once_is_not_written(project: 
     reasons = {
         "the": "in the manuscript",
         "words that are nowhere": "not in the manuscript as it stands",
+        # Quoted as the reader was sent it, across the emphasis the source holds.
+        "example-drug specifically": "only as the build prints them, across markup",
         "has not been examined. Whether": "two paragraphs",
-        "specifically has not": "would not come back into the source as written",
+        "specifically has not": "across a line break",
         "Reports were included without": "same words",
         "were included without restriction": "same words",
     }
@@ -15691,6 +15694,78 @@ def test_a_suggestion_nobody_decided_is_not_imported(project: Path, tmp_path: Pa
         assert (project / "review" / "round-8" / "pharmacoepidemiologist.yaml").read_bytes() == (
             record
         )
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_an_edit_that_written_in_would_be_more_than_its_words_is_not_written(
+    project: Path,
+) -> None:
+    """An accepted suggestion is written into the source where its words are, not merged
+    from Word's text, so what the source then says is asked before it is offered. New words
+    that open the paragraph as a list item would take it out of the paragraphs the build
+    marks, and new words against a closing underscore would end the emphasis there: written
+    so, neither reads as Word shows it accepted."""
+    from suggesting import document, finding, suggest, with_edits
+
+    path = project / "manuscript" / "main.md"
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(
+            "Whether the signal extends to example-drug specifically",
+            "Whether the signal extends to _example-drug_, specifically",
+        ),
+        encoding="utf-8",
+    )
+    with_edits(
+        project,
+        finding("r8-pe-02", ("Whether the signal", "+ Whether the signal"),
+                (", specifically", "s specifically")),
+    )  # fmt: skip
+    code, said = suggest(project)
+    assert code == 0, said
+    reasons = {
+        "Whether the signal": "no longer be a paragraph of its own",
+        ", specifically": "would not read as Word shows it",
+    }
+    for old, why in reasons.items():
+        line = next((ln for ln in said.splitlines() if f"'{old}'" in ln), "")
+        assert why in line, (old, said)
+    assert not document(project).exists()
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize("how", ["old-words-changed", "record-gone"])
+def test_an_accepted_suggestion_whose_words_are_not_the_document_s_is_not_merged(
+    project: Path, tmp_path: Path, how: str
+) -> None:
+    """`import` writes an accepted suggestion's words from its sealed record, where the old
+    words are found once and are the ones the document showed. A record sealed again with
+    other old words, which are in the paragraph too, would put the new words in the wrong
+    place; a record that is gone gives no words. Either way the paragraph is refused whole:
+    merged from Word's text instead, it could lose the markup the edit was offered beside."""
+    from suggesting import READING, offered_round, reading, run
+    from word_edits import decide
+
+    from manuscript_guard.gates.review import reading_digest
+
+    main = project / "manuscript" / "main.md"
+    document = offered_round(project)
+    returned = decide(document, tmp_path / "back.docx", {1: "accept", 2: "accept", 3: "accept"})
+    if how == "record-gone":
+        (project / READING).unlink()
+    else:
+        record = reading(project)
+        edit = next(f for f in record["findings"] if f["id"] == "r8-pe-03")["edits"][0]
+        edit["old"] = "example-drug"
+        record["reading_sha256"] = reading_digest(record)
+        (project / READING).write_text(yaml.safe_dump(record, sort_keys=False), encoding="utf-8")
+    code, said = run("import", str(returned), str(project), "--apply")
+    assert code == 1, said
+    assert "cannot be written into the source where its words were" in said, said
+    text = main.read_text(encoding="utf-8")
+    assert "Whether the signal extends to example-drug specifically has not been examined." in (
+        text
+    )
+    assert "in particular" not in text
 
 
 # --------------------------------------------------------------------------------------

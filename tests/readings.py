@@ -934,6 +934,28 @@ def _suggested_edit() -> Reading:
     return placed
 
 
+@reading("suggestion written")
+def _suggestion_written() -> Reading:
+    """A suggestion accepted in Word, written into its paragraph's source where its words
+    are, as `import` writes it before it merges anything else the author changed there; or
+    why it is not."""
+    from manuscript_guard.suggestions import Words, write_in
+
+    def written(given: dict[str, Any]) -> dict[str, Any]:
+        tokens = [tuple(token) for token in given["tokens"]]
+        result = write_in(given["source"], given["printed"], tokens,
+                          [Words(given["old"], given["new"])])  # fmt: skip
+        if isinstance(result, str):
+            return {"refused": result}
+        return {
+            "source": result.source,
+            "shown": result.shown,
+            "tokens": [list(token) for token in result.tokens or ()],
+        }
+
+    return written
+
+
 # -------------------------------------------------------------------- a whole project
 
 

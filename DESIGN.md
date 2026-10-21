@@ -985,9 +985,9 @@ duplicated key, where both keep the last.
 
 Status: designed 2026-10-20. Built: the first half of step 1, the format, the reader's file
 list, `two-formats`, `other-format-file` and `not-read-in-latex`; step 2, the scanner and
-its mask; step 3, the include tree and its refusals under BUILD; and the first half of step
-4, the bindings, G2 but for its pointers to tables and figures, the custodian's counts and
-G1's synthetic inputs, held to the example by its LaTeX twin. Where the design depends on
+its mask; step 3, the include tree and its refusals under BUILD; and step 4, the bindings,
+G2 but for its pointers to tables and figures, the custodian's counts and G1's synthetic
+inputs, held to the example by its LaTeX twin, and the values file with G1's hold on it. Where the design depends on
 what LaTeX does, the pull request that relies on it checks the statement against TeX Live and
 MiKTeX and records the measurement. On the author's machine, 2026-10-20: MiKTeX 24.4 and
 latexmk 4.88, with pdfLaTeX, LuaLaTeX, XeLaTeX, BibTeX and Biber on PATH.
@@ -999,7 +999,9 @@ design's reviews named them, Basile chose to settle them there):
   (step 9);
 - the commands pandoc writes under `link-citations`, and whether it still wraps a section in
   `\hypertarget` (step 11);
-- how Overleaf resolves `\input` and figure paths (step 4, for the values file);
+- how Overleaf resolves `\input` and figure paths (step 10, for the submission folder: no
+  Overleaf project could be had to measure it in step 4, whose values file writes a figure's
+  path from the entry file's folder, `../figures/forest.pdf`, as pdfLaTeX finds it);
 - whether `check` writes nothing in a LaTeX project as it writes nothing in a Markdown one
   (each step that moves a gate).
 
@@ -1509,6 +1511,17 @@ The result is compiled and packed by the code above, and checked three times:
 - `\appendix` sections count as main text.
 - Only numbered headings are compared with LaTeX's own.
 - How Overleaf resolves `\input` and figure paths has not been measured.
+- How `\mg` prints beside siunitx's own `\mg`, its milligram, is not measured: MiKTeX's
+  siunitx 3.6.4 fails on its own against LaTeX 2024-06 on the author's machine. Step 9
+  measures it under CI's TeX Live (step 4).
+- A dash a display holds is `\textendash{}`, which LaTeX warns of in maths, where `\mg`
+  inside `$...$` prints it all the same (round 1 of step 4b).
+- The values file takes a figure's file by a lower-case suffix, and the PDF before a PNG,
+  which G3 orders otherwise: a stale `forest.pdf` beside a fresh `forest.png` is the one
+  included (round 1 of step 4b).
+- The results' digest in the values file is of their bytes, so results checked out with CRLF
+  line ends, where `.gitattributes` does not hold them to LF, read as other results and the
+  file as stale (round 1 of step 4b).
 - MiKTeX's limits on reading files are not set by the build.
 
 ### Order of work
@@ -1556,10 +1569,23 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
    `\enlargethispage` are in the table. `\qty` and `\unit` read what their brackets hold
    where it is no option list, since physics and the units package give those names other
    meanings (`[o]`, round 2). `uncommented` waits
-   for G7's quotations and G9, which read it. The second: `mgvalues.sty` and its escape table,
-   `values` and its README row, `values-file-stale` and `values-file-missing`. The escape
-   table's compile test needs LaTeX, so it skips on CI until step 9 installs TeX Live, and its
-   first measurement is recorded in the pull request.
+   for G7's quotations and G9, which read it. The second, built: `values` writes
+   `mgvalues.sty` beside each entry file (`build/latex_values.py`), one definition for each
+   value, table, figure and anchor the results hold, in the order of their keys, under a
+   first line that names the results' digest; `\mg` prints the one its key names, and `??`
+   with LaTeX's warning for one it lacks. A display is written with TeX's ten specials
+   escaped, the signs pdfLaTeX prints only in maths in `\ensuremath`, Greek in maths, a dash
+   as `\textendash{}` and never a ligature, so a minus after it stays one; a character outside
+   the table is refused and left out, and G1 says so (`value-not-printable`) only where a
+   document binds it. A table is a `tabular`, a row that opens with `[` or `*` guarded; a
+   figure is the file pdfLaTeX includes, PDF first, then PNG and JPEG. G1 says
+   `values-file-missing` where a document loads the file, in its entry file or a file its
+   preamble inputs, and none is written, and `values-file-stale` where it differs from what
+   `values` writes. Tests: `tests/test_latex_values.py`, G1's cases on the twin,
+   `latex escaped`, and a display holding each character the table writes over
+   `latex_displays()` with two `BROKEN` rules. The escape table's compile test needs LaTeX,
+   so it skips on CI until step 9 installs TeX Live; it was run under MiKTeX 24.4 on
+   2026-10-21, under OT1 and T1, and the pull request records what pdftotext read.
 5. Citations and G7. `cite.py`; G7, `lookup` and G6's citation positions moved; the twin's
    comparison with the example takes in the citations. Tests: `latex citations`, G7's cases on
    the twin.

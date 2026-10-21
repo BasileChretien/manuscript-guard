@@ -5950,6 +5950,41 @@ def _into_results(entry: Path, snippet: str) -> None:
                      encoding="utf-8")  # fmt: skip
 
 
+def test_g1_holds_the_twins_values_file_to_the_results(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The twin loads `mgvalues.sty`: missing, it is said; written by `values`, nothing is;
+    edited, it is stale; and a value it binds that the file cannot print is said (step 4b)."""
+    from manuscript_guard.build import latex_values
+    from manuscript_guard.cli import main
+
+    entry = _twin(project)
+
+    def codes() -> list[str]:
+        projekt = load_project(project)[0]
+        namespace, results, _literature, _rest = load_namespace(projekt)
+        return [f.code for f in latex_values.check_values(projekt, namespace, results).findings]
+
+    assert codes() == ["values-file-missing"]
+    assert main(["values", str(project)]) == 0
+    assert codes() == []
+    written = entry.parent / "mgvalues.sty"
+    text = written.read_text(encoding="utf-8")
+    written.write_text(text.replace("mg@results.cohort.n_reports\\endcsname#1{",
+                                    "mg@results.cohort.n_reports\\endcsname#1{9", 1),
+                       encoding="utf-8")  # fmt: skip
+    assert codes() == ["values-file-stale"]
+    escaped = latex_values.escaped
+
+    def refusing(display: str, ref: str) -> str:
+        if ref == "results.cohort.n_reports":
+            raise latex_values.NotPrintable(ref, "\N{ALMOST EQUAL TO}")
+        return escaped(display, ref)
+
+    monkeypatch.setattr(latex_values, "escaped", refusing)
+    assert "value-not-printable" in codes()
+
+
 def test_every_binding_of_the_twin_when_inlined_is_caught(project: Path) -> None:
     """The headline on the twin: each `\\mg` replaced by its own value, as an author types it,
     fails G2 (step 4). A value with no digit, the model's kind, is G15's to hold, which reads

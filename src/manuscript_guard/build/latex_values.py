@@ -117,7 +117,12 @@ def tabular(table: Table, ref: str) -> str:
     columns = columns or "l" * len(table.columns)
 
     def row(cells: tuple[str, ...]) -> str:
-        return " & ".join(escaped(cell, ref) for cell in cells) + r" \\"
+        written = [escaped(cell, ref) for cell in cells]
+        # A row after `\\\\` that opens with `[` or `*` would be read as its argument
+        # (round 1 of step 4b).
+        if written and written[0][:1] in ("[", "*"):
+            written[0] = "{}" + written[0]
+        return " & ".join(written) + r" \\"
 
     lines = [rf"\begin{{tabular}}{{{columns}}}", row(table.columns), r"\hline"]
     lines += [row(cells) for cells in table.rows]
@@ -211,8 +216,11 @@ def check_values(project: Project, namespace: dict[str, Value], results: Results
     PDF compiled from it shows the numbers it was written with, and a value it cannot print is
     said. A Markdown manuscript has none."""
     report = Report()
+    written_files = values_files(project, namespace, results)
+    if not written_files:
+        return report  # a Markdown manuscript, whose files are not read here
     bound = bound_refs(project)
-    for written in values_files(project, namespace, results):
+    for written in written_files:
         shown = _shown(project, written.path)
         # Only a value the document binds is said: one nothing binds is printed nowhere
         # (round 1 of step 4b).
@@ -256,11 +264,15 @@ def bound_refs(project: Project) -> dict[Path, set[str]]:
 
 
 def _loads_values(folder: Path) -> bool:
-    """Whether the entry file in `folder` loads the values file, outside a comment."""
-    from manuscript_guard.text.latex.mask import read
+    """Whether the document whose entry file is in `folder` loads the values file, outside a
+    comment, in the entry file or a file its preamble inputs (round 1 of step 4b)."""
+    from manuscript_guard.text.latex.structure import read_document
 
-    text = (folder / "main.tex").read_bytes().decode("utf-8", "replace")
-    return any(name == NAME.removesuffix(".sty") for _at, name in read(text).packages)
+    supplementary = folder.name == "supplementary"
+    manuscript = folder.parent if supplementary else folder
+    sources = read_document(manuscript, supplementary=supplementary).sources
+    return any(name == NAME.removesuffix(".sty") for source in sources if not source.loose
+               for _at, name in source.reading.packages)  # fmt: skip
 
 
 def _shown(project: Project, path: Path) -> str:

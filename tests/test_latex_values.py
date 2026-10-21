@@ -198,6 +198,26 @@ def test_a_value_it_cannot_print_is_said_only_where_a_document_binds_it(
     assert _values_findings(project) == ["value-not-printable"]
 
 
+def test_a_row_that_opens_with_a_bracket_is_read_as_a_cell() -> None:
+    """After a row's `\\\\`, `[ref]` would be read as its argument (round 1 of step 4b)."""
+    table = Table("t", ("Group", "n"), (("A", "1"), ("[ref]", "2"), ("*", "3")), "", (),
+                  True, Path("r.json"))  # fmt: skip
+    written = tabular(table, "table.t")
+    assert "{}[ref] & 2" in written and "{}* & 3" in written and "{}A" not in written
+
+
+def test_a_values_file_loaded_from_an_input_preamble_is_missed_when_missing(
+    project: Path,
+) -> None:
+    """The document loads it from `\\input{preamble}` (round 1 of step 4b)."""
+    entry = _as_latex_with_values(project)
+    text = entry.read_text(encoding="utf-8").replace("\\usepackage{mgvalues}",
+                                                     "\\input{preamble}")  # fmt: skip
+    entry.write_text(text, encoding="utf-8")
+    (entry.parent / "preamble.tex").write_text("\\usepackage{mgvalues}\n", encoding="utf-8")
+    assert _values_findings(project) == ["values-file-missing"]
+
+
 def test_values_refuses_a_markdown_manuscript(project: Path) -> None:
     from manuscript_guard.cli import main
 

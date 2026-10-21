@@ -4361,14 +4361,22 @@ _MARKDOWN_COMMANDS: dict[str, Callable[[argparse.Namespace], bool]] = {
 _READ_AS_MARKDOWN = frozenset({"explain", "reworded"})
 
 
+def _named_paths(args: argparse.Namespace) -> list[Path]:
+    """The files a command was given, by whichever of these names it takes them. A flag
+    that shares the name, `review --files`, gives none (a list of `True` was read as one)."""
+    found: list[Path] = []
+    for name in ("file", "files", "paths", "paper"):
+        value = getattr(args, name, None)
+        values = value if isinstance(value, (list, tuple)) else [value]
+        found += [Path(path) for path in values if isinstance(path, (str, Path))]
+    return found
+
+
 def _refused_for_latex(args: argparse.Namespace) -> str | None:
     """Why this command does not run here, where the manuscript, or a file it is given, is
     LaTeX; None where it runs."""
     command = args.command
-    named = [Path(path) for path in (
-        [getattr(args, "file", None)] + list(getattr(args, "files", None) or [])
-        + list(getattr(args, "paths", None) or []) + list(getattr(args, "paper", None) or [])
-    ) if path is not None]  # fmt: skip
+    named = _named_paths(args)
     if command == "audit":
         typed = [path for path in named if path.suffix.lower() == ".tex"]
         return f"audit does not read LaTeX yet: {typed[0]} is not read" if typed else None

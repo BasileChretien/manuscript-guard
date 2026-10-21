@@ -316,5 +316,7 @@ def test_the_refusal_is_for_a_latex_manuscript_only(empty: Path) -> None:
         ("sign", "{project}", "--as", "A", "--finding", "G12/design-override/1/x"),
         # Taking an earlier output's copy reads no manuscript.
         ("related", "{project}", "--take"),
+        # `--files` is a flag here, no list of files (main's `review --files`).
+        ("review", "{project}", "--files"),
     ):  # fmt: skip
         assert cli._refused_for_latex(_parsed(argv, empty)) is None, argv

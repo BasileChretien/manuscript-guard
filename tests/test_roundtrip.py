@@ -186,6 +186,77 @@ def test_an_edited_number_is_refused_and_named(
     assert "'3.84' comes from results.ror.point" in out, out
 
 
+def _with_refs(project: Path) -> Path:
+    """The example citing its contingency table by its key, once in a paragraph and once as
+    a paragraph of its own."""
+    path = project / "manuscript" / "main.md"
+    text = path.read_text(encoding="utf-8")
+    text = text.replace("in Table 2, so", "in {{ref.table.two_by_two}}, so", 1)
+    text = text.replace("{{table.two_by_two}}", "{{ref.table.two_by_two}}\n\n{{table.two_by_two}}")
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def _word_edited(document: Path, target: Path, pattern: str, now: str) -> Path:
+    """`document` with the first run text matching `pattern` changed, as Word writes it."""
+    with zipfile.ZipFile(document) as zin, zipfile.ZipFile(target, "w") as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if item.filename == "word/document.xml":
+                xml, count = re.subn(pattern, now, data.decode("utf-8"), count=1)
+                assert count == 1, pattern
+                data = xml.encode("utf-8")
+            zout.writestr(item, data)
+    return target
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    ("pattern", "now"),
+    [
+        # in a paragraph
+        (r"(<w:t[^>]*>[^<]*?)Table 2(, so)", r"\g<1>Table 3\g<2>"),
+        # a paragraph of its own
+        (r"(<w:t[^>]*>)Table 2(</w:t>)", r"\g<1>Table 3\g<2>"),
+    ],
+)
+def test_an_edited_ref_is_refused_and_named(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], pattern: str, now: str
+) -> None:
+    """"Table 2" printed by `{{ref.table.two_by_two}}` and changed to "Table 3" in Word is
+    an edit to a binding, refused as one: the source keeps the ref, and the refusal says the
+    number is the build's."""
+    from manuscript_guard.cli import main
+
+    path = _with_refs(project)
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = _word_edited(project / "build" / "manuscript.docx", tmp_path / "back.docx",
+                            pattern, now)  # fmt: skip
+    before = path.read_text(encoding="utf-8")
+    capsys.readouterr()
+    assert main(["import", str(returned), str(project), "--apply"]) == 1
+    assert path.read_text(encoding="utf-8") == before
+    out = capsys.readouterr().out
+    assert "'Table 2' comes from ref.table.two_by_two, numbered where the build places it" in out
+
+
+@needs_pandoc
+def test_a_prose_edit_beside_a_ref_merges_and_keeps_it(project: Path, tmp_path: Path) -> None:
+    from manuscript_guard.cli import main
+
+    path = _with_refs(project)
+    assert main(["build", str(project), "--offline"]) == 0
+    returned = _word_edited(
+        project / "build" / "manuscript.docx",
+        tmp_path / "back.docx",
+        r"the counts it was computed from in ",
+        "the counts it was drawn from in ",
+    )
+    assert main(["import", str(returned), str(project), "--apply"]) == 0
+    text = path.read_text(encoding="utf-8")
+    assert "it was drawn from in {{ref.table.two_by_two}}, so" in text, text
+
+
 @needs_pandoc
 def test_a_prose_edit_merges(project: Path, tmp_path: Path) -> None:
     from manuscript_guard.cli import main

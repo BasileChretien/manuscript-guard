@@ -6255,6 +6255,15 @@ def _glyphs_are_marks(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(figure_svg, "_drawn_text", lambda node_id: False)
 
 
+def _a_colour_space_is_not_looked_up(patch: pytest.MonkeyPatch) -> None:
+    """A space named in the page's resources taken as unread, as R's pdf() names its ICC
+    profile `/sRGB`: every colour of such a figure is lost."""
+    from manuscript_guard.gates import figure_pdf
+
+    patch.setattr(figure_pdf, "_readable", lambda resources, name, objects: isinstance(
+        name, figure_pdf.Name) and name.name in figure_pdf._READ_SPACES)  # fmt: skip
+
+
 def _a_graphics_states_opacity_is_not_read(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import figure_pdf
 
@@ -6426,6 +6435,10 @@ BROKEN = {
     ),
     "a graphics state's opacity is not read": (
         _a_graphics_states_opacity_is_not_read,
+        test_each_colour_a_pdf_figure_paints_is_read_and_its_texts_kept_apart,
+    ),
+    "a colour space the page's resources name is not looked up": (
+        _a_colour_space_is_not_looked_up,
         test_each_colour_a_pdf_figure_paints_is_read_and_its_texts_kept_apart,
     ),
     "Q gives back no colour": (

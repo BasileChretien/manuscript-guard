@@ -206,9 +206,30 @@ def test_a_continuous_scale_drawn_densely_raises_nothing() -> None:
 
 
 def test_two_series_beside_a_scale_are_still_compared() -> None:
+    """The series are compared with each other and with the scale's shades (green with the
+    blues, which tritanopia brings together), and no two shades with each other."""
     red, green = colour.parse("#d62728")[0], colour.parse("#2ca02c")[0]
-    found = colour.confusions([*_ramp("#132b43", "#56b1f7", 64), red, green],
+    ramp = _ramp("#132b43", "#56b1f7", 64)
+    found = colour.confusions([*ramp, red, green], seen=colour.DEFICIENCIES)
+    pairs = {(c.first, c.second, c.seen) for c in found}
+    assert ("#2ca02c", "#d62728", "deuteranopia") in pairs
+    shades = {colour.hex_of(rgb) for rgb in ramp}
+    assert not any(c.first in shades and c.second in shades for c in found)
+
+
+def test_a_series_near_a_shade_of_a_scale_is_still_compared() -> None:
+    """Round 2 of #398: a scale was compared with nothing, and a series within the threshold
+    of one of its shades was taken into it: tab:red beside a heat map in reds, and tab:green
+    with it, went unsaid, the pair the check is for."""
+    red, green = colour.parse("#d62728")[0], colour.parse("#2ca02c")[0]
+    found = colour.confusions([*_ramp("#fcbba1", "#d62728", 64), red, green],
                               seen=colour.DEFICIENCIES)  # fmt: skip
-    assert [(c.first, c.second, c.seen) for c in found] == [
-        ("#2ca02c", "#d62728", "deuteranopia")
-    ]
+    assert ("#2ca02c", "#d62728", "deuteranopia") in {(c.first, c.second, c.seen) for c in found}
+
+
+def test_a_scale_beside_black_white_and_a_grid_raises_nothing() -> None:
+    """A scale's dark end beside black, its light end beside white, a grey grid: no series."""
+    matplotlib = pytest.importorskip("matplotlib")
+    viridis = [tuple(rgba[:3]) for rgba in matplotlib.colormaps["viridis"](range(256))]
+    greys = [colour.parse(code)[0] for code in ("#000000", "#ffffff", "#b0b0b0")]
+    assert colour.confusions([*viridis, *greys]) == []

@@ -7988,8 +7988,10 @@ def test_points_coloured_by_a_continuous_scale_raise_nothing(project: Path) -> N
     warned. Beside the scale, two series are still compared."""
     _painted(project, *_ramp_codes(64))
     assert _colours_said(project) == []
+    # Red and green are one colour with deuteranopia; beside the scale, each is also the
+    # grey of one of its shades, which is a note (round 2 of #398).
     _painted(project, *_ramp_codes(64), _RED, _GREEN)
-    assert _colours_said(project) == [("figure-colours-confused", "warn")]
+    assert ("figure-colours-confused", "warn") in _colours_said(project)
 
 
 def test_a_figure_of_more_colours_than_are_compared_is_said_to_be_a_scale(project: Path) -> None:
@@ -8012,6 +8014,31 @@ def test_a_pair_is_found_however_the_guard_writes_its_colours(project: Path, val
     _painted(project, _RED, _GREEN)
     _guarded(project, allow_colours=[{"value": value, "why": "they differ by line style"}])
     assert _colours_said(project) == [("figure-colours-confused", "info")]
+
+
+def _heat_codes() -> list[str]:
+    """A heat map's shades, black to red to yellow to white, three hundred and more of them
+    distinct, as a map drawn as vectors paints them."""
+    stops = ((0, 0, 0), (255, 0, 0), (255, 255, 0), (255, 255, 255))
+    out = []
+    for (a, b) in zip(stops, stops[1:], strict=False):
+        for i in range(150):
+            out.append("#" + "".join(f"{round(x + (y - x) * i / 150):02x}"
+                                     for x, y in zip(a, b, strict=True)))  # fmt: skip
+    return list(dict.fromkeys(out))
+
+
+def test_two_series_beside_a_heat_map_of_many_colours_are_still_compared(project: Path) -> None:
+    """Round 2 of #398: past three hundred colours nothing was compared, so a panel of red
+    and green lines beside a heat map drawn as vectors went unsaid. The shades are read to
+    five bits a channel first, and fall together."""
+    from manuscript_guard.gates.figure_colours import MANY
+
+    assert len(_heat_codes()) > MANY
+    _painted(project, *_heat_codes(), _RED, _GREEN)
+    said = _colours_said(project)
+    assert ("figure-colours-confused", "warn") in said
+    assert ("figure-colours-many", "info") not in said
 
 
 def test_an_svg_that_cannot_be_read_gives_way_to_the_pdf_beside_it(project: Path) -> None:

@@ -19,8 +19,10 @@ deficiency makes of it and through grey (`colour.py`: Machado et al. 2009, CIEDE
 A text's colour is left out: text rarely tells one series from another, and black text
 beside a dark mark is no confusion of data. So is a pair already close to normal vision,
 which no deficiency made so, and the shades of a continuous scale, colours chained within
-the threshold of one another (`colour.scales`). A figure of more than `MANY` colours is
-said to be read as a scale (`figure-colours-many`, a note) and its colours are not compared.
+the threshold of one another (`colour.scales`), which are compared neither with one
+another nor with a grey. A figure of more than `MANY` colours is read to `BITS` bits a
+channel; more than `MANY` even then, it is said (`figure-colours-many`, a note) and its
+colours are not compared.
 """
 
 from __future__ import annotations
@@ -44,10 +46,11 @@ from manuscript_guard.findings import INFO, WARN, Finding, Report
 GATE = "G3"
 #: How many pairs a finding names before it counts the rest.
 NAMED = 3
-#: More distinct colours than this, and a figure is read as drawn in a continuous scale (a
-#: heat map drawn as vectors, a scatter coloured by a variable): its colours are not
-#: compared, which takes time in their square (round 1 of #398).
+#: More distinct colours than this, and a figure's colours are read to `BITS` bits a channel,
+#: as the shades of a heat map drawn as vectors fall together; more than this even then, and
+#: they are not compared, which takes time in their square (rounds 1 and 2 of #398).
 MANY = 300
+BITS = 5
 #: A colour as `allow_colours` may write one: a hex code, `rgb()`, `hsl()` or a name.
 _WRITTEN = re.compile(r"#[0-9A-Fa-f]{3,8}\b|(?:rgb|hsl)a?\([^)]*\)|[A-Za-z]+", re.IGNORECASE)
 
@@ -63,6 +66,16 @@ def painted(path: Path) -> list[str] | None:
     if figure is None:
         return None
     return list(dict.fromkeys(paint.colour for paint in figure.paints if not paint.text))
+
+
+def coarser(colours: list[str]) -> list[str]:
+    """Each colour to `BITS` bits a channel, once each: a shift of at most half a step, about
+    1.5 in CIEDE2000, well under the threshold."""
+    top = 2**BITS - 1
+    return list(dict.fromkeys(
+        hex_of(tuple(round(channel * top) / top for channel in parse(code)[0]))
+        for code in colours
+    ))  # fmt: skip
 
 
 def check_figure_colours(project: Project) -> Report:
@@ -90,6 +103,8 @@ def check_figure_colours(project: Project) -> Report:
                 findings.append(_unread(name, files[0], vector))
             continue
         checked += 1
+        if len(colours) > MANY:
+            colours = coarser(colours)
         if len(colours) > MANY:
             findings.append(_many(name, vector, len(colours)))
             continue
@@ -174,8 +189,8 @@ def _many(name: str, path: Path, count: int) -> Finding:
         gate=GATE,
         code="figure-colours-many",
         severity=INFO,
-        message=f"figure {name!r} paints {count} colours, and is read as drawn in a continuous "
-        "scale: its colours were not compared",
+        message=f"figure {name!r} paints {count} colours even read to {BITS} bits a channel: "
+        "its colours were not compared",
         path=path,
         hint="whether a scale reads for a reader with a colour-vision deficiency is whether its "
         "lightness runs one way: look at it under `readable-and-accessible`, or draw it with "

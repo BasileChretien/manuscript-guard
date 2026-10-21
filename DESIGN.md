@@ -724,11 +724,15 @@ Nor are the shades of a continuous scale, a colormap or points coloured by a var
 (round 1 of #398): its neighbours sit just over 10 apart, and grey, which keeps lightness
 alone, or a deficiency, which takes chroma away, brings them under it, so every such
 figure warned. Colours chained within 10 of one another, three or more, are taken as one
-scale and compared with nothing; two series beside the scale still are. A figure of more
-than 300 colours is said to be read as a scale and not compared (`figure-colours-many`, a
-note), since the comparison takes time in the square of the colours. Whether a scale reads
-for a reader with a deficiency is whether its lightness runs one way, which is the figure
-review's to look at.
+scale: two of its shades are not compared, nor a shade with a grey (a colour of chroma
+under 5: black, white, a grid, a background), which tells no series from another. Every
+other pair is, a series with a shade among them, so a series near one shade is not taken
+into the scale (round 2 of #398: tab:red beside a heat map in reds went unsaid, and tab:green
+with it). A figure of more than 300 distinct colours is read to five bits a channel, a shift
+of about 1.5 in CIEDE2000, as a heat map's shades fall together; more than 300 even then, it
+is said (`figure-colours-many`, a note) and its colours are not compared, since the
+comparison takes time in their square. Whether a scale reads for a reader with a deficiency
+is whether its lightness runs one way, which is the figure review's to look at.
 
 Where two series are told apart by more than colour, a line style or a label on each line,
 the figure's guard file says so under `allow_colours`, the pair (or one colour of it) and
@@ -7887,9 +7891,12 @@ Added by the adversarial review, verified and **not** fixed:
 - **A figure's colours are read from its SVG or PDF, and compared all with all.** A raster
   figure's are not, nor an image inside an SVG or a PDF (a heat map matplotlib embeds as one),
   nor a gradient, a pattern, a shading, or a PDF colour in a separation, an indexed or a Lab
-  colour space. A continuous scale's shades are compared with nothing, so a rainbow colormap
-  a deficiency scrambles is not said; nor is a scale drawn with neighbours more than 10 apart,
-  whose shades are compared as series. A text drawn as glyphs is known for one where
+  colour space. A continuous scale's shades are not compared with one another, so a rainbow
+  colormap a deficiency scrambles is not said, and a scale drawn with neighbours more than 10
+  apart has its shades compared as series. A shade is not compared with a grey, so a grey
+  line over a heat map that prints as one of its shades is not said. A figure of more than
+  300 colours even at five bits a channel, a bivariate map drawn as vectors, is not compared
+  at all. A text drawn as glyphs is known for one where
   matplotlib (`text_` groups) or Cairo (`glyph` symbols) draws it so, and is a mark where
   another program does. A text's colour is left out, so data told apart only
   by coloured labels is not checked. Every colour painted is compared with every other, the

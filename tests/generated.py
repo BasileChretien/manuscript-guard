@@ -975,6 +975,7 @@ def pdf_document(
     forms: dict[str, tuple[bytes, str]] | None = None,
     *,
     gstates: dict[str, float] | None = None,
+    spaces: dict[str, bytes] | None = None,
     width: float = 216,
     compress: bool = True,
     packed: bool = False,
@@ -983,7 +984,8 @@ def pdf_document(
     """A PDF of one page that draws `content`, with `fonts` (a name and the font's own
     dictionary, which may refer to the objects after it as `{n}`) and `forms` (a name, and
     the form's content and `/Matrix`) and `gstates` (a name, and the opacity its graphics
-    state sets, filling and stroking). Its fonts are packed in an object stream where
+    state sets, filling and stroking) and `spaces` (a name, and the colour space it names, as
+    written). Its fonts are packed in an object stream where
     `packed` is set, and its content in a stream for each line where `split` is. No
     cross-reference table: what reads it reads its objects."""
     fonts = fonts or {"F1": b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"}
@@ -1035,6 +1037,8 @@ def pdf_document(
                   + b" >> /ExtGState << " + b" ".join(
                       b"/%s << /ca %g /CA %g >>" % (name.encode(), alpha, alpha)
                       for name, alpha in (gstates or {}).items()
+                  ) + b" >> /ColorSpace << " + b" ".join(
+                      b"/%s %s" % (name.encode(), space) for name, space in (spaces or {}).items()
                   ) + b" >> >> >>")  # fmt: skip
     out = b"%PDF-1.5\n"
     for number, body in enumerate(objects, 1):
@@ -1169,7 +1173,7 @@ HIDDEN, FORMED, BETWEEN = "#a0522d", "#ff1493", "#4b0082"
 #: Each way an SVG sets the colour a mark is painted in, and each way it paints none.
 PAINT_KINDS = ("attribute", "style", "class", "inherited", "current", "use", "opacity",
                "fill-opacity", "named", "function", "text", "hidden", "none", "unused",
-               "inherit", "invisible", "glyphs", "hsl")  # fmt: skip
+               "inherit", "invisible", "glyphs", "hsl", "stroke-inherit", "cairo")  # fmt: skip
 #: `hsl()` as CSS writes it, and the colour it is.
 _HSL = {"hsl(0, 100%, 50%)": "#ff0000", "hsl(120, 100%, 25%)": "#008000",
         "hsla(240, 100%, 50%, 1)": "#0000ff"}  # fmt: skip
@@ -1261,6 +1265,16 @@ def painted_svgs(draw: st.DrawFn) -> tuple[str, set[str], set[str]]:
             written, code = draw(st.sampled_from(sorted(_HSL.items())))
             body.append(f'<path {shape} fill="none" stroke="{written}"/>')
             marks.add(code)
+        elif kind == "stroke-inherit":
+            body.append(f'<g stroke="{colour}"><path {shape} fill="none" stroke="inherit"/></g>')
+            marks.add(colour)
+        elif kind == "cairo":
+            # A text drawn as glyphs, as Cairo draws one for R's svg(), in either spelling.
+            colour = draw(st.sampled_from(TEXT_COLOURS))
+            glyph = draw(st.sampled_from((f"glyph0-{number}", f"glyph-0-{number}")))
+            defs.append(f'<symbol overflow="visible" id="{glyph}"><path d="M0 0L1 1"/></symbol>')
+            body.append(f'<g style="fill: {colour}"><use xlink:href="#{glyph}" x="1" y="1"/></g>')
+            texts.add(colour)
     document = (
         '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" '
         'width="100pt" height="100pt" viewBox="0 0 100 100">'
@@ -1271,7 +1285,10 @@ def painted_svgs(draw: st.DrawFn) -> tuple[str, set[str], set[str]]:
 
 #: Each way a PDF sets the colour it fills or strokes in, or shows text in.
 PDF_PAINT_KINDS = ("rg", "RG", "g", "G", "k", "K", "scn", "SCN", "sc", "SC", "alpha",
-                   "restored", "text", "form", "pattern")  # fmt: skip
+                   "restored", "text", "form", "pattern", "icc", "indexed")  # fmt: skip
+#: What a colour space named in the page's resources paints in, one only it paints in: as R's
+#: pdf() names an ICC profile's RGB `/sRGB`.
+PROFILED = "#00ced1"
 
 
 @st.composite
@@ -1280,7 +1297,7 @@ def painted_pdfs(draw: st.DrawFn) -> tuple[bytes, set[str], set[str]]:
     colour drawn; with the colours it paints marks in, as they show over white, and those
     it shows text in."""
     marks, texts = set(), set()
-    ops, forms, states = [], {}, {}
+    ops, forms, states, spaces = [], {}, {}, {}
     # The stroking colour as it stands between operations: what a Q goes back to.
     stroking = "#000000"
 
@@ -1342,11 +1359,19 @@ def painted_pdfs(draw: st.DrawFn) -> tuple[bytes, set[str], set[str]]:
         elif kind == "pattern":
             # A pattern's colours are not read: it paints nothing that is said.
             ops.append(b"q /Pattern cs /P0 scn %s f Q" % path)
+        elif kind == "icc":
+            spaces[f"CS{number}"] = b"[/ICCBased 999 0 R]"
+            ops.append(b"q /CS%d cs %g %g %g scn %s f Q" % (number, *rgb(PROFILED), path))
+            marks.add(hexed(rgb(PROFILED)))
+        elif kind == "indexed":
+            # An index into a table of colours is not read either.
+            spaces[f"IX{number}"] = b"[/Indexed /DeviceRGB 1 <ff000000ff00>]"
+            ops.append(b"q /IX%d cs 1 scn %s f Q" % (number, path))
         if kind in ("rg", "RG", "g", "G", "k", "K", "scn", "SCN", "sc", "SC"):
             marks.add(painted)
             if kind.isupper():
                 stroking = painted
-    return pdf_document(b"\n".join(ops), forms=forms, gstates=states), marks, texts
+    return pdf_document(b"\n".join(ops), forms=forms, gstates=states, spaces=spaces), marks, texts
 
 
 # -------------------------------------------------------------- the results a plan promises

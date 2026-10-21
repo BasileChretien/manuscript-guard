@@ -287,7 +287,7 @@ def _own(said: dict[str, str], key: str, state: dict) -> str:
 
 
 #: The group matplotlib draws a text's glyphs in, and the glyph Cairo draws one through.
-_GLYPHS = re.compile(r"text_\d+|glyph\d")
+_GLYPHS = re.compile(r"text_\d+|glyph-?\d")
 
 
 def _drawn_text(node_id: str | None) -> bool:
@@ -302,7 +302,7 @@ def _inherit(state: dict, said: dict[str, str], node_id: str | None = None) -> d
     return {
         **state,
         "font": _font_size(said, state["font"]),
-        "stroke": said.get("stroke", state["stroke"]).strip().lower(),
+        "stroke": _own(said, "stroke", state),
         "stroke-width": state["stroke-width"] if width is None else width,
         "fill": _own(said, "fill", state),
         "color": _own(said, "color", state),

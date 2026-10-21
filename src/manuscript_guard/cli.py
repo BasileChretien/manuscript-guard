@@ -60,6 +60,7 @@ from manuscript_guard.gates import (
     check_passages,
     check_prose_quotations,
     check_recomputed,
+    check_recycling,
     check_relations,
     check_reported,
     check_reporting,
@@ -155,6 +156,7 @@ def _run_gates(
         ("G7", lambda: check_literature_chain(project, literature)),
         ("G7", lambda: check_prose_quotations(project)),
         ("G7", lambda: check_passages(project, chosen)),
+        ("G7", lambda: check_recycling(project, chosen)),
         ("G4", lambda: check_journal(project)),
         ("G4", lambda: check_shortlist(project)),
         ("G8r", lambda: check_reporting(project)),
@@ -208,6 +210,7 @@ _NOT_READ_IN_LATEX = frozenset(
         "check_methods", "check_synthetic_inputs", "check_reported", "check_recomputed",
         "check_revision", "check_language", "check_models", "check_shapes", "check_tex",
         "check_passages",
+        "check_recycling",
     }
 )  # fmt: skip
 

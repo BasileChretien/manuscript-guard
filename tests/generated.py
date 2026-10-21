@@ -853,6 +853,47 @@ def passage_files(draw: st.DrawFn) -> tuple[dict[str, Any], list[tuple[int, str]
     return {"text": text, "entries": [entry for entry, _n in entries]}, [n for _e, n in entries]
 
 
+# ------------------------------------------------------------ the authors' earlier paper
+
+#: Passages of an earlier paper of the authors that a manuscript may repeat: two long enough
+#: to be reported, and one a word short.
+RECYCLED = (
+    "spontaneous reports are subject to under-reporting and to stimulated reporting after "
+    "regulatory communications",
+    "the reporting odds ratio contrasted the odds of reporting the event for the drug of "
+    "interest with all other drugs",
+    "every narrative was read twice by two pharmacists working apart from",
+)
+
+#: What a page sets in place of a word or between two: a ligature, a word broken at the end
+#: of a line, a reference's number, a page's end.
+_SET_IN_TYPE = (
+    ("fi", "\N{LATIN SMALL LIGATURE FI}"), ("ff", "\N{LATIN SMALL LIGATURE FF}"),
+    ("fl", "\N{LATIN SMALL LIGATURE FL}"),
+)  # fmt: skip
+_TYPESET_GAPS = (*SOURCE_GAPS, ".12 ", "\N{SUPERSCRIPT TWO} ", "\f", "-\n")
+
+
+@st.composite
+def earlier_papers(draw: st.DrawFn) -> str:
+    """The text of an earlier paper as it is read out of a PDF: the passages of `RECYCLED`
+    in an order drawn, set in type, among words of its own."""
+    parts: list[str] = []
+    for passage in draw(st.permutations(RECYCLED)):
+        parts.append(" ".join(draw(st.lists(st.sampled_from(SOURCE_WORDS), max_size=6))) + "\n")
+        for word in passage.split():
+            for letters, ligature in _SET_IN_TYPE:
+                if letters in word and draw(st.booleans()):
+                    word = word.replace(letters, ligature)
+            gap = draw(st.sampled_from(_TYPESET_GAPS))
+            # Broken at the end of a line inside the word, as a PDF hyphenates.
+            if gap == "-\n" and len(word) > 3:
+                at = draw(st.integers(1, len(word) - 1))
+                word, gap = f"{word[:at]}-\n{word[at:]}", " "
+            parts.append(word + (" " if gap == "-\n" else gap))
+    return "".join(parts)
+
+
 # ---------------------------------------------------------------------- a vector figure
 
 #: Each kind of text a vector figure holds: what G4 reads the size of.
@@ -2472,6 +2513,9 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "quote placement": nearly_quoted(),
     "suggested edit": suggested_edits(),
     "suggestion written": suggestion_writes(),
+    "recycled passages": st.fixed_dictionaries(
+        {"text": texts(RECYCLED), "source": earlier_papers()}
+    ),
     "spelling": st.fixed_dictionaries(
         {
             "text": texts(SPELT),

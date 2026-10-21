@@ -1,6 +1,6 @@
 ---
 name: manuscript-writing
-description: Draft or revise manuscript prose that reads as though a person wrote it. Use when writing any section, when check reports ai-phrasing, ai-cadence, vague-attribution, revision-residue, an abbreviation finding (used before defined, redefined, unused, undefined), term-avoided, vocabulary-conflict, a spelling finding (spelling-variant, spelling-mixed, spelling-not-as-declared) or a notation finding (notation-p-symbol, notation-sign-spacing, notation-interval, notation-percent, notation-unit), when a claim needs a citation it does not have, or when revising text that was drafted quickly. Not for the Methods against the code (use methods-writer), nor for putting a result into the text (use results-binding).
+description: Draft or revise manuscript prose that reads as though a person wrote it. Use when writing any section, when check reports ai-phrasing, ai-cadence, vague-attribution, revision-residue, an abbreviation finding (used before defined, redefined, unused, undefined), term-avoided, vocabulary-conflict, a spelling finding (spelling-variant, spelling-mixed, spelling-not-as-declared) or a notation finding (notation-p-symbol, notation-sign-spacing, notation-interval, notation-percent, notation-unit), a passage repeated from an earlier paper (recycled-text, recycled-methods-cited, recycled-statement, recycled-quotation, recycled-earlier-version, earlier-output-not-compared), when a claim needs a citation it does not have, or when revising text that was drafted quickly. Not for the Methods against the code (use methods-writer), nor for putting a result into the text (use results-binding).
 ---
 
 # Writing prose that reads as written
@@ -136,6 +136,13 @@ Those that answer one reviewer or the editor, or point at this manuscript, warn 
 revise and fail at submission. Those a paper about peer review writes of the papers it
 studied, "the reviewers' comments", only warn: keep one only if the paper is about peer
 review and means it. The acknowledgements may still thank the reviewers.
+
+## Words from your own earlier papers
+
+Where `check` reports a passage the manuscript repeats from the authors' earlier papers
+(`recycled-*`, `earlier-output-not-compared`), read
+[references/text-recycling.md](references/text-recycling.md): what the norms for text
+recycling allow in each part of the paper, and what to do with each finding.
 
 ## Abbreviations
 

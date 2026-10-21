@@ -93,6 +93,9 @@ class Numbers:
     by_hand: frozenset[tuple[bool, str]]
     as_files: Mapping[tuple[bool, str], int]
     forms: Mapping[tuple[bool, str], str]
+    #: The keys of the tables a caption is typed beside, whose emitted caption the build
+    #: prints without a number (`gates.pointers.caption_label`).
+    captioned: frozenset[str] = frozenset()
 
     def uncounted(self, supplementary: bool, kind: str) -> str | None:
         """Why a bound display of this kind of this document has no known number, or None."""

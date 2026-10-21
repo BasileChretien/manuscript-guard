@@ -12910,7 +12910,9 @@ Open, recorded as each change landed:
   internal-review where a note is due. So is a statement written as a bold label inside a
   paragraph, as a structured abstract's "**Funding:**", which has no heading. The other way,
   a theme of the Discussion named as a statement is ("Data sharing") is noted where a
-  warning is due; under the Results it is the Results'.
+  warning is due; under the Results it is the Results'. So is a subsection of the Methods
+  that happens to bear a back-matter title, "Article information" in a review's data
+  extraction (round 6 of the review; rare).
 - **A title over the Discussion and its conclusions alone is not taken for a title over the
   paper.** The conclusions count as the Discussion's when the parts under a heading are
   counted, so that the Discussion over "Interpretation" and "Conclusions" stays the

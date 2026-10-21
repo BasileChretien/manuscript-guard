@@ -2037,8 +2037,10 @@ def test_a_supplement_s_methods_are_the_methods_to_each_gate_that_reads_them(
     under "eMethods 1" was a number nothing classified, and a model's kind typed there was
     never read. Each section of a file of the supplement is the Methods to each gate exactly
     where it should be: G9 reads every section whose heading holds "methods" and stands
-    under no Results, each once; G2's threshold holds and G15 reads a model named only under
-    a supplement's name of the Methods, under no Results."""
+    under no Results, and each one under it that names a method, each once; G2's threshold
+    holds and G15 reads a model named only under a supplement's name of the Methods, or a
+    name of a method under one, under no Results. A table under "Supplementary methods" is
+    none of theirs (round 1 of #395)."""
     text, sections = drawn
     read = methods_gate.supplement_methods_in(text) or ""
     assert read.count("Coriander") == sum(g9 for _at, g9, _held in sections), (text, read)
@@ -5449,6 +5451,41 @@ def _a_section_under_one_read_is_read_again(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(methods_gate, "supplement_methods_in", every)
 
 
+def _a_supplement_s_name_holds_every_section_under_it(patch: pytest.MonkeyPatch) -> None:
+    # As first written in #395: under "Supplementary methods", a table was the Methods.
+    from manuscript_guard import classify
+
+    def any_title(section) -> bool:
+        return any(
+            classify.names_supplement_methods(title)
+            for title in section
+            if not isinstance(title, classify.Unprinted)
+        )
+
+    patch.setattr(classify, "_opened_by_the_supplement", any_title)
+
+
+def _g9_reads_all_under_a_supplement_s_methods(patch: pytest.MonkeyPatch) -> None:
+    # As first written in #395: each section found, with everything under it, once.
+    from manuscript_guard.text.sections import split_sections
+
+    def enclosed(text: str, abstract_title: str | None = None) -> str | None:
+        sections = split_sections(text)
+        found = {id(section) for section in methods_gate.methods_sections(sections, abstract_title)}
+        read: list[str] = []
+        under: int | None = None
+        for section in sections:
+            if under is not None and section.level > under:
+                continue
+            under = None
+            if id(section) in found:
+                read.append(section.enclosed)
+                under = section.level
+        return "\n\n".join(read) if read else None
+
+    patch.setattr(methods_gate, "supplement_methods_in", enclosed)
+
+
 def _the_abstract_s_methods_are_the_paper_s(patch: pytest.MonkeyPatch) -> None:
     _methods_found_without_the_paper_s_structure(patch, "below")
 
@@ -6919,6 +6956,14 @@ BROKEN = {
     ),
     "a section of a supplement's Methods under one read is read again": (
         _a_section_under_one_read_is_read_again,
+        test_a_supplement_s_methods_are_the_methods_to_each_gate_that_reads_them,
+    ),
+    "a supplement's name of the Methods holds every section under it": (
+        _a_supplement_s_name_holds_every_section_under_it,
+        test_a_supplement_s_methods_are_the_methods_to_each_gate_that_reads_them,
+    ),
+    "G9 reads everything under a supplement's Methods heading": (
+        _g9_reads_all_under_a_supplement_s_methods,
         test_a_supplement_s_methods_are_the_methods_to_each_gate_that_reads_them,
     ),
     "a number's sign is no part of it": (

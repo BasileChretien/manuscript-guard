@@ -25,10 +25,12 @@ text changed since it was read. An anchor in a paragraph that names no step the 
 fails, which is how a claim about a branch the analysis never took is caught. One on a
 heading's line is in no paragraph and is not judged.
 
-The Methods are the main text's and the supplement's, one ledger. A section of the supplement
-whose heading holds "methods", "Supplementary methods" or "eMethods 1. Data source", is read
-with the main text's Methods for the parameters below, and its paragraphs that point at no
-step are listed with theirs; an anchor is read wherever it stands.
+The Methods are the main text's and the supplement's, one ledger. In the supplement, the own
+text of a section whose heading holds "methods", "Supplementary methods" or "eMethods 1.
+Data source", and of a section under it that names a method too, is read with the main
+text's Methods for the parameters below. Its paragraphs that point at no step are listed
+where G2 reads them as the Methods, under a supplement's name of them ("Supplementary
+methods", "eMethods 1", not "Detailed methods"); an anchor is read wherever it stands.
 
 Two additions make the prompt useful rather than annoying. The report names *which* files
 changed, so the reconciliation is targeted. And a handful of parameters that must agree —
@@ -45,7 +47,7 @@ from pathlib import Path
 
 import yaml
 
-from manuscript_guard.classify import is_methods
+from manuscript_guard.classify import is_methods, names_methods_place
 from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import Results, Step
@@ -377,23 +379,30 @@ def methods_in(text: str, abstract_title: str | None = None) -> str | None:
 
 
 def supplement_methods_in(text: str, abstract_title: str | None = None) -> str | None:
-    """The Methods of one file of the supplement, or None: every section that the main
-    text's Methods would be found as (`methods_sections`), each with what is under it, in the
-    order they stand. Every one, not the first: a supplement numbers its Methods, "eMethods
-    1" to "eMethods 4", with its tables between them. A section under one already read is in
-    that one's text, and is not read twice."""
+    """The Methods of one file of the supplement, or None where they hold no text: the own
+    text of every section that the main text's Methods would be found as
+    (`methods_sections`), and of each section under one read that names a method too
+    (`classify.names_methods_place`: "Statistical analysis", "eMethods 2"), in the order
+    they stand. Every one, not the first: a supplement numbers its Methods, "eMethods 1" to
+    "eMethods 4", with its tables between them.
+
+    Not everything under such a heading, as the main text's Methods are read: a supplement
+    often has "Supplementary methods" over all of it, its tables and its results among them,
+    and a locked parameter matched by a number of theirs would be no check (round 1 of
+    #395). G2 and G15 read the same sections as the Methods."""
     sections = split_sections(text)
     found = {id(section) for section in methods_sections(sections, abstract_title)}
     read: list[str] = []
-    under: int | None = None
+    open_: list[tuple[int, bool]] = []
     for section in sections:
-        if under is not None and section.level > under:
-            continue
-        under = None
-        if id(section) in found:
-            read.append(section.enclosed)
-            under = section.level
-    return "\n\n".join(read) if read else None
+        while open_ and open_[-1][0] >= section.level:
+            open_.pop()
+        under_read = bool(open_) and open_[-1][1]
+        reading = id(section) in found or (under_read and names_methods_place(section.title))
+        open_.append((section.level, reading))
+        if reading:
+            read.append(section.body)
+    return "\n\n".join(read) if any(part.strip() for part in read) else None
 
 
 def _no_methods(project: Project) -> Report:
@@ -424,7 +433,8 @@ def _supplement_unreconciled(
     """A lock written before G9 read the supplement's Methods, in a project whose supplement
     has some: said once, and nothing else changes. Its files and its pairs are held as they
     always were, and `methods --reconcile` writes the lock that clears it."""
-    if not supplement or lock.get("schema", SCHEMA_MAIN_TEXT_ONLY) != SCHEMA_MAIN_TEXT_ONLY:
+    # A `schema:` left empty is no schema, as one left out is.
+    if not supplement or (lock.get("schema") or SCHEMA_MAIN_TEXT_ONLY) != SCHEMA_MAIN_TEXT_ONLY:
         return Report()
 
     def shown(path: Path) -> str:
@@ -871,7 +881,7 @@ def reconcile(
     # Files read against the main text's Methods alone stay so: the lock of a step's pairs
     # keeps the files, and the day, that the lock had.
     keeps_files = steps is not None and analysis
-    schema = existing.get("schema", SCHEMA_MAIN_TEXT_ONLY) if keeps_files else SCHEMA
+    schema = (existing.get("schema") or SCHEMA_MAIN_TEXT_ONLY) if keeps_files else SCHEMA
     document = {
         "schema": schema,
         # The day the files were read against the Methods: of a lock that holds only pairs,

@@ -7329,19 +7329,10 @@ def test_a_paper_s_title_written_as_a_heading_is_not_its_methods(
     ), report.render(project)
 
 
-def _supplement_retitled(root: Path, heading: str) -> None:
-    """The example's supplement under another first heading than "Supplementary methods"."""
-    path = root / "manuscript" / "supplementary" / "S1_code_lists.md"
-    text = path.read_text(encoding="utf-8")
-    text = text.replace("# Supplementary methods\n", f"# {heading}\n", 1)
-    path.write_text(text, encoding="utf-8")
-
-
 def test_no_heading_that_names_the_methods_is_said(project: Path) -> None:
     from manuscript_guard.gates import check_methods
 
     _methods_retitled(project, "Approach")
-    _supplement_retitled(project, "Supplementary material")
     _wrong_alpha_in_the_lock(project)
     report = check_methods(load_project(project)[0])
     assert [f.code for f in report.warnings if f.code.startswith("methods-")] == [
@@ -7389,7 +7380,6 @@ def test_a_wrong_parameter_is_found_where_only_the_supplement_has_methods(
     from manuscript_guard.gates import reconcile
 
     _methods_retitled(project, "Approach")
-    _supplement_retitled(project, "Supplementary material")
     _supplement(project, f"# {heading}\n\nTests were two-sided at an alpha of "
                          "{{results.param.alpha}}.\n")  # fmt: skip
     _wrong_alpha_in_the_lock(project)
@@ -7405,14 +7395,20 @@ def test_a_parameter_the_supplement_states_outside_its_methods_is_still_absent(
     project: Path,
 ) -> None:
     """One ledger of the Methods, not the whole supplement. An eTable holds numbers of every
-    kind, and a locked parameter matched by one of them would be no check at all."""
+    kind, and a locked parameter matched by one of them would be no check at all: beside the
+    Methods, or under "Supplementary methods" with a title of its own (round 1 of #395). A
+    section under them that names a method is theirs."""
     from manuscript_guard.gates import reconcile
 
-    _supplement(project, "# eMethods 1. Software\n\nRun with R 4.6.0.\n\n"
+    _supplement(project, "# Supplementary methods\n\n## Statistical analysis\n\nRun with R "
+                         "4.6.0.\n\n## eTable 2. Rows by site\n\nStata 18 read them.\n\n"
                          "# eTable 3. Rows by year\n\nPython 3.99 read them.\n")  # fmt: skip
-    reconcile(load_project(project)[0], parameters={"r": "R 4.6.0", "software": "Python 3.99"})
+    reconcile(load_project(project)[0], parameters={
+        "r": "R 4.6.0", "stata": "Stata 18", "software": "Python 3.99"
+    })  # fmt: skip
     assert _methods_warnings(project) == [
-        "methods-parameter-absent: the Methods do not mention software = Python 3.99"
+        "methods-parameter-absent: the Methods do not mention stata = Stata 18",
+        "methods-parameter-absent: the Methods do not mention software = Python 3.99",
     ]
 
 
@@ -7510,18 +7506,45 @@ def test_a_declared_parameter_typed_in_the_supplement_s_methods_fails_as_a_typed
     assert "{{results.param.signal.min_cases}}" in typed.hint
 
 
-def _lock_of_the_main_text_only(root: Path, schema: str | None) -> None:
+def test_a_p_value_reported_under_a_supplement_s_methods_heading_is_still_bound(
+    project: Path,
+) -> None:
+    """Round 1 of #395: the example's supplement has "Supplementary methods" over all of it,
+    its tables and a paragraph of results among them, as supplements often have. Read as the
+    Methods there, a reported P passed as the threshold chosen in advance, which main
+    reported as unbound, and a model's kind typed in such a paragraph failed."""
+    path = project / "manuscript" / "supplementary" / "S1_code_lists.md"
+    said = "the conclusion does not turn on which is\nquoted."
+    text = path.read_text(encoding="utf-8")
+    assert said in text
+    path.write_text(
+        text.replace(said, f"{said} The two differed (p < 0.001), as estimated by logistic "
+                           "regression.", 1),  # fmt: skip
+        encoding="utf-8",
+    )
+    report = gate_report(project)
+    assert any(
+        f.code == "unclassified-number" and "0.001" in f.message for f in report.failures
+    ), report.render(project)
+    assert "typed-model-kind" not in codes(report), report.render(project)
+
+
+def _lock_of_the_main_text_only(root: Path, schema: str) -> None:
+    """The example's lock, written by main, with its schema as `schema` says: as main wrote
+    it, left out, or left empty."""
     path = root / "methods.lock"
     lock = yaml.safe_load(path.read_text(encoding="utf-8"))
-    lock.pop("schema")
-    if schema is not None:
-        lock = {"schema": schema, **lock}
+    assert lock["schema"] == "manuscript-guard/methods-lock/1"
+    if schema == "absent":
+        lock.pop("schema")
+    elif schema == "empty":
+        lock["schema"] = None
     path.write_text(yaml.safe_dump(lock, sort_keys=False), encoding="utf-8")
 
 
-@pytest.mark.parametrize("schema", ["manuscript-guard/methods-lock/1", None])
+@pytest.mark.parametrize("schema", ["as written", "absent", "empty"])
 def test_a_lock_written_before_the_supplement_was_read_is_said_of_and_holds(
-    project: Path, schema: str | None
+    project: Path, schema: str
 ) -> None:
     """The lock holds no digest of the Methods, so reading the supplement's makes no record
     wrong. One written when G9 read the main text's alone may still vouch for eMethods
@@ -7531,10 +7554,11 @@ def test_a_lock_written_before_the_supplement_was_read_is_said_of_and_holds(
     from manuscript_guard.gates import check_methods, reconcile
 
     _lock_of_the_main_text_only(project, schema)
+    _supplement(project, "# eMethods 1. Data source\n\nReports came from one database.\n")
     report = check_methods(load_project(project)[0])
     said = [f for f in report.findings if f.code == "methods-supplement-unreconciled"]
     assert [(f.severity, f.context) for f in said] == [
-        (WARN, "manuscript/supplementary/S1_code_lists.md")
+        (WARN, "manuscript/supplementary/S0_methods.md")
     ], report.render(project)
     assert not report.failures and len(report.findings) == 1, report.render(project)
     reconcile(load_project(project)[0], steps=["ror"])
@@ -7549,8 +7573,11 @@ def test_a_lock_written_before_the_supplement_was_read_is_said_of_and_holds(
 def test_a_lock_of_the_main_text_only_is_not_said_of_where_the_supplement_has_no_methods(
     project: Path,
 ) -> None:
-    _supplement_retitled(project, "Supplementary material")
-    _lock_of_the_main_text_only(project, "manuscript-guard/methods-lock/1")
+    """The example's supplement has "Supplementary methods" over its tables, and no text of
+    its own under it nor a section that names a method: it has no Methods to read."""
+    from manuscript_guard.gates.methods import supplementary_methods
+
+    assert supplementary_methods(load_project(project)[0]) == []
     assert _methods_warnings(project) == []
 
 

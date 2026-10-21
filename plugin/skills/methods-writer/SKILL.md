@@ -247,15 +247,18 @@ redone.
 
 ## Methods in the supplement
 
-Supplementary Methods are held to the code as the main text's are. In a file under
-`manuscript/supplementary/`, a section whose heading holds "methods" is read with the
-Methods: "Supplementary methods", "eMethods 1. Data source", "S1 Methods", "Appendix 1:
-Methods". A parameter in `methods.lock` is found stated there, an anchor there points at its
-step like one in the main text, and `methods --explain` lists the paragraphs there that point
-at no step. Under those names G2 lets a pre-set threshold through as it does in the Methods,
-and fails a declared parameter typed instead of bound, and G15 reads a model's kind typed
-there. Give the supplement's Methods such a heading: a section called only "eAppendix 2" or
-"Statistical analysis" is not read as Methods, and nothing there is compared with the code.
+Supplementary Methods are held to the code as the main text's are. Name them so, in a file
+under `manuscript/supplementary/`: "Supplementary methods", "eMethods 1. Data source", "S1
+Methods", "Appendix 1: Methods". The text under such a heading is read with the Methods, and
+so is a section under it whose own title names a method too ("Statistical analysis",
+"eMethods 2"). A table or a paragraph of results under it, "Table S2. The adjusted model", is
+not, as the results under the main text's Results are not. A parameter in `methods.lock` is
+found stated in the supplement's Methods, and G2 lets a pre-set threshold through there as it
+does in the Methods, fails a declared parameter typed instead of bound, and G15 reads a
+model's kind typed there. `methods --explain` lists their paragraphs that point at no step.
+An anchor points at its step wherever it stands. A section called only "eAppendix 2" is not
+the Methods, and nothing in it is compared with the code. "Detailed methods" is read for the
+lock's parameters and not by G2, G15 or `methods --explain`: use one of the names above.
 
 A lock written before G9 read the supplement was read against the main text's Methods only.
 Where the supplement has Methods, `check` warns once (`methods-supplement-unreconciled`).

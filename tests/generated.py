@@ -526,16 +526,24 @@ def supplements(draw: st.DrawFn) -> tuple[str, list[tuple[int, bool, bool]]]:
     """A file of the supplement holding every heading of `SUPPLEMENT_METHODS` and
     `SUPPLEMENT_OTHERS`, in an order and a case drawn each time and with words drawn under
     each, and where each section starts and what it is: Methods to G9 (its heading holds
-    "methods" and stands under no Results) and to G2 and G15 (its heading is a supplement's
-    name of the Methods, under no Results). A section of the Methods under one and a section
-    under the Results are among them. Each section says "p < 0.05" and names a logistic
-    regression, and those G9 reads say "Coriander" where the rest say "Basil". Every heading
-    is in every example: a rule broken for one way of naming the Methods is seen whatever
-    the seed."""
+    "methods" and stands under no Results, or it names a method under one G9 reads) and to G2
+    and G15 (its heading is a supplement's name of the Methods, or a name of a method under
+    one, under no Results). Among them are a section of the Methods under one, a table under
+    one, which neither reads (round 1 of #395), a heading G9 reads and G2 does not over a
+    section of each kind, and a section under the Results. Each section says "p < 0.05" and
+    names a logistic regression, and those G9 reads say "Coriander" where the rest say
+    "Basil". Every heading is in every example: a rule broken for one way of naming the
+    Methods is seen whatever the seed."""
     blocks = [
         *([(1, heading, True, True)] for heading in SUPPLEMENT_METHODS),
         *([(1, heading, "methods" in heading.lower(), False)] for heading in SUPPLEMENT_OTHERS),
         [(1, "Supplemental methods", True, True), (2, "eMethods 7. Linkage", True, True)],
+        [(1, "eMethods 8. Signals", True, True), (2, "Table S2. The adjusted model", False, False)],
+        [
+            (1, "Detailed methods", True, False),
+            (2, "Record linkage", False, False),
+            (2, "Statistical analysis", True, True),
+        ],
         [(1, "Results", False, False), (2, "eMethods 6. Linkage", False, False)],
     ]
     text, sections = "", []

@@ -163,17 +163,21 @@ def test_a_parameter_stated_in_a_methods_subsection_is_found(project: Path) -> N
 
 def test_every_methods_section_of_a_supplement_file_is_read_once() -> None:
     """A supplement numbers its Methods and puts its tables between them: each section that
-    holds "methods" is read, with what is under it, and one inside another once. The tables
-    and a heading under the results are not the Methods."""
+    holds "methods" is read, with each section under it that names a method, and each once.
+    A table under them, a table beside them and a heading under the results are not the
+    Methods, and a heading over tables alone has none."""
     text = (
         "# Supplementary methods\n\nOne.\n\n## eMethods 1. Data source\n\nTwo.\n\n"
+        "### Statistical analysis\n\nFour.\n\n## Table S1. Code lists\n\nBasil.\n\n"
         "# eTable 1. Counts\n\nBasil.\n\n# eMethods 2. Sensitivity\n\nThree.\n\n"
         "# Results\n\n## Methods of the subgroups\n\nBasil.\n"
     )
     read = supplement_methods_in(text)
     assert read is not None
-    assert [read.count(word) for word in ("One", "Two", "Three", "Basil")] == [1, 1, 1, 0]
+    words = ("One", "Two", "Three", "Four", "Basil")
+    assert [read.count(word) for word in words] == [1, 1, 1, 1, 0]
     assert supplement_methods_in("# eTable 1\n\nBasil.\n") is None
+    assert supplement_methods_in("# Supplementary methods\n\n## Table S1\n\nBasil.\n") is None
 
 
 def test_the_methods_are_the_main_text_s_and_the_supplement_s(project: Path) -> None:
@@ -183,10 +187,8 @@ def test_the_methods_are_the_main_text_s_and_the_supplement_s(project: Path) -> 
     text = methods_text(projekt)
     assert text.index("reporting odds ratio") < text.index("Run in R 4.6.0.")
     assert "Run in R 4.6.0." not in main_methods(projekt)
-    assert [path.name for path, _ in supplementary_methods(projekt)] == [
-        "S0_methods.md",
-        "S1_code_lists.md",
-    ]
+    # The example's own supplement has "Supplementary methods" over its tables alone.
+    assert [path.name for path, _ in supplementary_methods(projekt)] == ["S0_methods.md"]
 
 
 def test_reconcile_writes_a_lock_read_with_the_supplement(project: Path) -> None:

@@ -1,7 +1,8 @@
 # Arithmetic between results, and flows
 
-Part of the results-binding skill, read when a paper adds, subtracts or divides its results,
-or draws a CONSORT or PRISMA flow.
+Part of the results-binding skill, read when a paper declares how its results relate (a sum,
+a difference, a ratio, an upper bound or an order), draws a CONSORT or PRISMA flow, or
+`check` warns under G8.
 
 G8 checks the arithmetic the analysis declares between results, and only that. It does not
 search the text for numbers that might add up:

@@ -90,8 +90,9 @@ What the emitter holds you to:
 ### Arithmetic between results, and flows
 
 G8 checks the arithmetic the analysis declares between results, with `em.relation()`, and
-the counts of a flow diagram, with `em.flow()`, and only that. When a paper adds, subtracts
-or divides its results, or draws a CONSORT or PRISMA flow, read
+the counts of a flow diagram, with `em.flow()`, and only that. When a paper declares how its
+results relate (a sum, a difference, a ratio, an upper bound or an order), draws a CONSORT or
+PRISMA flow, or `check` warns under G8, read
 [references/arithmetic-and-flows.md](references/arithmetic-and-flows.md).
 
 **Never edit `results/`.** The fragments are machine-written and digested. An edited one is

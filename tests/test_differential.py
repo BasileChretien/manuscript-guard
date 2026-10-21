@@ -273,6 +273,12 @@ CHANGED = {
         "    elif MOVED in ways:\n",
         "reworded",
     ),
+    "a denial read in the two words before a phrase": (
+        "data_sources.py",
+        "NEGATION_WORDS = 6\n",
+        "NEGATION_WORDS = 2\n",
+        "data sources statement",
+    ),
     "a finding that points at another file": (
         "gates/vocabulary.py",
         "                path=passage.path,\n",

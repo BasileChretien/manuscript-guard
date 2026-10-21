@@ -989,6 +989,21 @@ FIXED_LINKS = (
     "https://github.com/someone/study/tree/4f2a9c1",
 )
 
+#: How a Data availability statement says the data are had: each way of saying they are asked
+#: for, each way of saying anyone may have them, and the words before the second that deny it
+#: in its clause. With the names of two sources, one anyone may download and one a committee
+#: decides on: what the data sources reading must tell apart.
+ASKED_FOR = (
+    "available on request", "available upon reasonable request", "available on a justified request",
+    "available from the corresponding author", "available by contacting the lead author",
+)  # fmt: skip
+OPENLY_HAD = (
+    "publicly available", "openly accessible", "freely downloadable", "available for download",
+    "available to the public", "in the public domain", "publicly and freely available",
+)  # fmt: skip
+DENIALS = ("are not", "cannot be made", "aren't", "are no longer", "will never be")
+SOURCE_NAMES = ("Open Reports Archive", "ORA", "Example National Claims Database", "ENCD")
+
 
 #: A placeholder of each kind G6 reads, as it is typed and as the rule finds it; the words
 #: that are one in the manuscript only, in lower case; and what looks like one and is prose:
@@ -1829,6 +1844,10 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "reply numbers": texts(NOTATED),
     "quoted": texts(),
     "data statement": texts(DATA_IDENTIFIERS + TEMPORARY_LINKS + FIXED_LINKS),
+    "data sources statement": texts(
+        ASKED_FOR + OPENLY_HAD + tuple(f"{d} {o}" for d in DENIALS[:2] for o in OPENLY_HAD[:2])
+        + SOURCE_NAMES
+    ),
     "placeholders": texts(
         tuple(written for written, _found in PLACEHOLDERS + LOWERED) + LOOKALIKES
     ),

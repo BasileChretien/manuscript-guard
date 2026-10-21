@@ -744,6 +744,88 @@ def test_each_identifier_names_data_and_each_temporary_link_is_found(
     assert temporary == sorted(drawn_links + list(TEMPORARY_LINKS)), (temporary, linked)
 
 
+# ------------------------------------------------- the data sources a statement names and says
+
+
+def _written_as(name: str) -> tuple[str, ...]:
+    """A source's name as a statement may write it: in capitals, in small letters, its words
+    broken across a line, spaced twice or with a space that does not break, in emphasis, and
+    followed by a stop."""
+    return (
+        name.upper(), name.lower(), name.replace(" ", "\n"), name.replace(" ", "  "),
+        name.replace(" ", "\N{NO-BREAK SPACE}"), f"*{name}*", f"{name}.",
+    )  # fmt: skip
+
+
+@st.composite
+def _placed(draw: st.DrawFn) -> tuple[str, int]:
+    text = draw(texts())
+    return text, draw(st.integers(0, len(text.split(" "))))
+
+
+@holds(100, _placed())
+def test_a_source_is_named_in_any_writing_of_its_names_and_never_inside_a_word(
+    drawn: tuple[str, int],
+) -> None:
+    """Whatever the words around it, each name of a source, each other name and each way of
+    writing them names it, and the same name glued to a longer word does not."""
+    from generated import SOURCE_NAMES
+    from readings import DATA_SOURCES
+
+    from manuscript_guard.data_sources import named
+
+    text, at = drawn
+    pieces = text.split(" ")
+
+    def put(word: str) -> str:
+        return " ".join(pieces[:at] + [word] + pieces[at:])
+
+    for source in DATA_SOURCES:
+        alone = named(text, source)
+        own = [name for name in SOURCE_NAMES if name in (source["name"], *source["also_known_as"])]
+        assert own
+        for name in own:
+            for written in _written_as(name):
+                assert named(put(written), source), (written, source["id"])
+            for glued in (f"x{name}", f"{name}x", f"{name}2", f"9{name}"):
+                assert named(put(glued), source) is alone, (glued, source["id"])
+
+
+@holds(60, texts(), texts())
+def test_a_statement_is_held_to_each_source_s_route_whatever_surrounds_it(
+    before: str, after: str
+) -> None:
+    """Whatever paragraphs come before and after, a sentence that names a source and says the
+    data are asked for warns of the source anyone may download and not of the one a committee
+    decides on; one that says anyone may have them warns of the second and not the first,
+    unless its clause denies it, and a denial in a clause before does not."""
+    from generated import ASKED_FOR, DENIALS, OPENLY_HAD
+    from readings import DATA_SOURCES
+
+    from manuscript_guard.data_sources import route_differs
+
+    sources = [dict(source) for source in DATA_SOURCES]
+    surrounding = route_differs(f"{before}\n\n{after}", sources)
+
+    def differs(sentence: str) -> set[tuple[str, str]]:
+        found = route_differs(f"{before}\n\n{sentence}\n\n{after}", sources)
+        return set(found) - set(surrounding)
+
+    for asked in ASKED_FOR:
+        assert differs(f"Data of the ORA are {asked}.") == {("ora", "on request")}, asked
+        assert differs(f"Data of the ENCD are {asked}.") == set(), asked
+        # Said openly elsewhere, the open archive's "on request" asks for something else.
+        said = f"The ORA is publicly available. Data derived from the ORA are {asked}."
+        assert ("ora", "on request") not in differs(said), asked
+    for openly in OPENLY_HAD:
+        assert differs(f"ENCD data are {openly}.") == {("encd", "publicly")}, openly
+        assert differs(f"ORA data are {openly}.") == set(), openly
+        for denial in DENIALS:
+            assert differs(f"ENCD data {denial} {openly}.") == set(), (denial, openly)
+        denied_before = f"ENCD data cannot be shared, but are {openly} in summary."
+        assert differs(denied_before) == {("encd", "publicly")}, openly
+
+
 # ------------------------------------------------------------- what the plan's deviations say
 
 
@@ -5032,6 +5114,45 @@ def _a_release_is_temporary(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(data_statement, "TEMPORARY", re.compile(loose, re.IGNORECASE))
 
 
+def _a_denial_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import data_sources
+
+    patch.setattr(data_sources, "NEGATION", re.compile(r"(?!)"))
+
+
+def _a_denial_reaches_past_its_clause(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import data_sources
+
+    patch.setattr(data_sources, "CLAUSE", re.compile(r"(?!)"))
+
+
+def _one_way_of_asking_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    """"From the corresponding author" and "by contacting" left out."""
+    from manuscript_guard import data_sources
+
+    asked = r"\b(?:up)?on\s+(?:an?\s+)?(?:(?:reasonable|justified)\s+)?requests?\b"
+    patch.setattr(data_sources, "ON_REQUEST", re.compile(asked, re.IGNORECASE))
+
+
+def _a_name_is_found_inside_a_word(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import data_sources
+    from manuscript_guard.literature.sources import normalise
+
+    patch.setattr(data_sources, "_on_page",
+                  lambda page, name: normalise(name).lower()
+                  in normalise(page).lower())  # fmt: skip
+
+
+def _a_name_is_read_as_typed(patch: pytest.MonkeyPatch) -> None:
+    """Its words as the record writes them, not folded for spacing or a line break."""
+    from manuscript_guard import data_sources
+
+    def found(page: str, name: str) -> bool:
+        return re.search(rf"(?<!\w){re.escape(name.lower())}(?!\w)", page.lower()) is not None
+
+    patch.setattr(data_sources, "_on_page", found)
+
+
 def _placeholder_rule(patch: pytest.MonkeyPatch, rule_id: str, change) -> None:
     from dataclasses import replace
 
@@ -6537,6 +6658,26 @@ BROKEN = {
     "a link to a release is temporary": (
         _a_release_is_temporary,
         test_each_identifier_names_data_and_each_temporary_link_is_found,
+    ),
+    "a denial of openly had is not read": (
+        _a_denial_is_not_read,
+        test_a_statement_is_held_to_each_source_s_route_whatever_surrounds_it,
+    ),
+    "a denial reaches past its clause": (
+        _a_denial_reaches_past_its_clause,
+        test_a_statement_is_held_to_each_source_s_route_whatever_surrounds_it,
+    ),
+    "asking the corresponding author is not asking": (
+        _one_way_of_asking_is_not_read,
+        test_a_statement_is_held_to_each_source_s_route_whatever_surrounds_it,
+    ),
+    "a source is named inside a longer word": (
+        _a_name_is_found_inside_a_word,
+        test_a_source_is_named_in_any_writing_of_its_names_and_never_inside_a_word,
+    ),
+    "a source's name is read as typed": (
+        _a_name_is_read_as_typed,
+        test_a_source_is_named_in_any_writing_of_its_names_and_never_inside_a_word,
     ),
     "a karyotype is read as a placeholder": (
         _a_karyotype_is_a_placeholder,

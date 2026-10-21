@@ -73,6 +73,7 @@ from manuscript_guard.gates import (
     sync_bib,
 )
 from manuscript_guard.gates.custodian import check_restricted_inputs, check_small_cells
+from manuscript_guard.gates.data_sources import check_data_sources, check_statement_sources
 from manuscript_guard.gates.design_review import check_design_rounds
 from manuscript_guard.gates.formats import check_format, not_read_in_latex
 from manuscript_guard.gates.numbers import chosen_rules, typed_choice, why_no_manuscript
@@ -151,11 +152,13 @@ def _run_gates(
         ("G7", lambda: check_prose_quotations(project)),
         ("G4", lambda: check_journal(project)),
         ("G4", lambda: check_shortlist(project)),
+        ("G4", lambda: check_statement_sources(project)),
         ("G8r", lambda: check_reporting(project)),
         ("G6", lambda: check_writing(project, results)),
         ("G9", lambda: check_methods(project, namespace, results)),
         ("G12", lambda: check_design(project, results, chosen).merge(
             check_design_rounds(project, submission=at_submission))),
+        ("G12", lambda: check_data_sources(project, chosen)),
         ("G8", lambda: check_consistency(results)),
         ("G2", lambda: check_small_cells(project, results)),
         ("G1", lambda: check_restricted_inputs(project, results)),
@@ -198,6 +201,7 @@ _NOT_READ_IN_LATEX = frozenset(
         "check_prose_quotations", "check_journal", "check_reporting", "check_writing",
         "check_methods", "check_synthetic_inputs", "check_reported", "check_recomputed",
         "check_revision", "check_language", "check_models", "check_shapes", "check_tex",
+        "check_statement_sources",
     }
 )  # fmt: skip
 

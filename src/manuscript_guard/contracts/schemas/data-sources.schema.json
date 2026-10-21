@@ -1,0 +1,223 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://manuscript-guard.org/schemas/data-sources/1",
+  "title": "manuscript-guard data sources",
+  "description": "design/data_sources.yaml: the research question and what the data must hold, as the author states them; the datasets considered, each with its custodian, what it covers, how it is reached and on what terms, every access claim with the words of the stored page it was read from or the person who said it; the ranking, the decision and who made it, and what came of each request for access.",
+  "type": "object",
+  "required": ["schema", "question", "candidates"],
+  "additionalProperties": false,
+  "$defs": {
+    "text": { "type": "string", "minLength": 1 },
+    "date": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+    "url": { "type": "string", "pattern": "^https?://\\S+$" },
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+    "page": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*\\.txt$",
+      "description": "A page stored as text in design/data_sources/pages/, by its file name."
+    },
+    "field": {
+      "enum": [
+        "custodian", "population", "period", "countries", "variables",
+        "route", "steps", "cost", "delay",
+        "licence", "redistribution", "minimum_cell_count", "restricts_sending", "citation"
+      ]
+    },
+    "claim": {
+      "type": "object",
+      "description": "One thing said of the source: read from a page, with its words, the page stored and the date; or said by a person, with their name and the date.",
+      "required": ["about", "claim"],
+      "additionalProperties": false,
+      "properties": {
+        "about": {
+          "description": "The field or fields of the candidate the claim is the evidence for.",
+          "oneOf": [
+            { "$ref": "#/$defs/field" },
+            { "type": "array", "items": { "$ref": "#/$defs/field" }, "minItems": 1, "uniqueItems": true }
+          ]
+        },
+        "claim": { "$ref": "#/$defs/text" },
+        "source_url": { "$ref": "#/$defs/url" },
+        "read_on": { "$ref": "#/$defs/date" },
+        "quote": { "$ref": "#/$defs/text", "description": "The page's own words, as it writes them." },
+        "page": { "$ref": "#/$defs/page" },
+        "stated_by": { "$ref": "#/$defs/text", "description": "Who said it, from a call, a meeting or a letter: a person, never a model." },
+        "stated_on": { "$ref": "#/$defs/date" }
+      },
+      "oneOf": [
+        { "required": ["source_url", "read_on", "quote", "page"], "not": { "anyOf": [{ "required": ["stated_by"] }, { "required": ["stated_on"] }] } },
+        { "required": ["stated_by", "stated_on"], "not": { "anyOf": [{ "required": ["quote"] }, { "required": ["page"] }] } }
+      ]
+    },
+    "variable": {
+      "type": "object",
+      "required": ["name", "provided"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "$ref": "#/$defs/text", "description": "As design/data_dictionary.yaml names it, where the project keeps one." },
+        "provided": { "enum": ["yes", "partly", "no", "unknown"] },
+        "note": { "$ref": "#/$defs/text" }
+      }
+    },
+    "identifier": {
+      "type": "object",
+      "required": ["scheme", "id"],
+      "additionalProperties": false,
+      "properties": {
+        "scheme": { "enum": ["doi", "re3data", "fairsharing", "registry", "accession", "other"] },
+        "id": { "$ref": "#/$defs/text" }
+      }
+    }
+  },
+  "properties": {
+    "schema": { "const": "manuscript-guard/data-sources/1" },
+    "question": {
+      "type": "object",
+      "description": "Asked of the author first, and written down before any dataset is proposed.",
+      "required": ["stated_by", "stated_on", "question"],
+      "additionalProperties": false,
+      "properties": {
+        "stated_by": { "$ref": "#/$defs/text" },
+        "stated_on": { "$ref": "#/$defs/date" },
+        "question": { "$ref": "#/$defs/text", "description": "The research question, in the author's words." },
+        "needs": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "population": { "$ref": "#/$defs/text" },
+            "period": { "$ref": "#/$defs/text" },
+            "countries": { "type": "array", "items": { "$ref": "#/$defs/text" } },
+            "variables": { "type": "array", "items": { "$ref": "#/$defs/text" } }
+          }
+        },
+        "constraints": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "budget": { "$ref": "#/$defs/text" },
+            "needed_by": { "$ref": "#/$defs/date" },
+            "notes": { "$ref": "#/$defs/text" }
+          }
+        }
+      }
+    },
+    "candidates": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "name"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "$ref": "#/$defs/id" },
+          "name": { "$ref": "#/$defs/text" },
+          "also_known_as": { "type": "array", "items": { "$ref": "#/$defs/text" }, "uniqueItems": true },
+          "custodian": { "$ref": "#/$defs/text" },
+          "landing_page": { "$ref": "#/$defs/url" },
+          "identifiers": { "type": "array", "items": { "$ref": "#/$defs/identifier" } },
+          "covers": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "population": { "$ref": "#/$defs/text" },
+              "period": { "$ref": "#/$defs/text" },
+              "countries": { "type": "array", "items": { "$ref": "#/$defs/text" } },
+              "variables": { "type": "array", "items": { "$ref": "#/$defs/variable" } }
+            }
+          },
+          "access": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "route": {
+                "enum": ["open-download", "registration", "application", "data-use-agreement", "authors", "commercial-licence"],
+                "description": "open-download: anyone may download; registration: a free account, then a download; application: a committee or the custodian decides; data-use-agreement: a signed agreement; authors: the authors of a study are asked; commercial-licence: bought."
+              },
+              "steps": { "$ref": "#/$defs/text" },
+              "cost": { "$ref": "#/$defs/text" },
+              "delay": { "$ref": "#/$defs/text" }
+            }
+          },
+          "terms": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "licence": { "$ref": "#/$defs/text" },
+              "redistribution": { "$ref": "#/$defs/text" },
+              "minimum_cell_count": { "type": "integer", "minimum": 2, "description": "The smallest count the custodian allows to be published." },
+              "restricts_sending": { "type": "boolean", "description": "The custodian forbids sending the data, or results drawn from them, to anyone they have not agreed to, a model provider among them." },
+              "citation": { "$ref": "#/$defs/text" }
+            }
+          },
+          "claims": { "type": "array", "items": { "$ref": "#/$defs/claim" } },
+          "messages": {
+            "type": "array",
+            "description": "Messages drafted for the author to send to the custodian or to a study's authors. The author sends them, and records when.",
+            "items": {
+              "type": "object",
+              "required": ["to", "file", "drafted_on"],
+              "additionalProperties": false,
+              "properties": {
+                "to": { "$ref": "#/$defs/text" },
+                "file": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*\\.(?:md|txt)$", "description": "In design/data_sources/messages/." },
+                "drafted_on": { "$ref": "#/$defs/date" },
+                "sent_on": { "$ref": "#/$defs/date" },
+                "sent_by": { "$ref": "#/$defs/text" }
+              }
+            }
+          },
+          "risk": { "$ref": "#/$defs/text" }
+        }
+      }
+    },
+    "ranking": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["source", "why"],
+        "additionalProperties": false,
+        "properties": {
+          "source": { "$ref": "#/$defs/id" },
+          "why": { "$ref": "#/$defs/text" }
+        }
+      }
+    },
+    "decision": {
+      "type": "object",
+      "required": ["chosen", "decided_by", "decided_on"],
+      "additionalProperties": false,
+      "properties": {
+        "chosen": { "type": "array", "items": { "$ref": "#/$defs/id" }, "minItems": 1, "uniqueItems": true },
+        "decided_by": { "$ref": "#/$defs/text" },
+        "decided_on": { "$ref": "#/$defs/date" },
+        "why": { "$ref": "#/$defs/text" },
+        "rejected": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["source", "why"],
+            "additionalProperties": false,
+            "properties": {
+              "source": { "$ref": "#/$defs/id" },
+              "why": { "$ref": "#/$defs/text" }
+            }
+          }
+        }
+      }
+    },
+    "history": {
+      "type": "array",
+      "description": "What came of each request for access, newest last: applied, approved, refused, data received.",
+      "items": {
+        "type": "object",
+        "required": ["source", "event", "on"],
+        "additionalProperties": false,
+        "properties": {
+          "source": { "$ref": "#/$defs/id" },
+          "event": { "$ref": "#/$defs/text" },
+          "on": { "$ref": "#/$defs/date" }
+        }
+      }
+    }
+  }
+}

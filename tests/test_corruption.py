@@ -5017,11 +5017,12 @@ _MARKDOWN_ONLY = (
     "check_prose_quotations", "check_journal", "check_reporting", "check_writing",
     "check_methods", "check_synthetic_inputs", "check_reported", "check_recomputed",
     "check_revision", "check_language", "check_models", "check_shapes", "check_tex",
+    "check_statement_sources",
 )  # fmt: skip
 _NOT_THE_MANUSCRIPT = (
     "check_review", "check_freshness", "check_figures", "check_figure_reviews",
     "check_literature_chain", "check_shortlist", "check_design", "check_design_rounds",
-    "check_consistency", "check_restricted_inputs", "check_relations",
+    "check_consistency", "check_restricted_inputs", "check_relations", "check_data_sources",
 )  # fmt: skip
 
 
@@ -6986,6 +6987,251 @@ def test_the_warning_says_what_a_listing_is_evidence_of(project: Path) -> None:
                if f.code == "journal-not-in-medline"]  # fmt: skip
     assert "the target journal" in found.message and "chosen" not in found.message
     assert "never" not in found.hint and "evidence" in found.hint
+
+
+# ---------------------------------------------- the datasets considered, and the one chosen
+
+
+def _sources_said(root: Path, document=None, *, stage: str = "drafting", pages: bool = True):
+    """What G12 and G4 say of the record of data sources, by code and severity, with the
+    record written as `document` (the whole one of tests/test_data_sources.py by default)."""
+    from test_data_sources import write_record
+
+    from manuscript_guard.gates.data_sources import check_data_sources, check_statement_sources
+
+    write_record(root, document, pages=pages)
+    project, _ = load_project(root)
+    said = check_data_sources(project, stage).merge(check_statement_sources(project))
+    return [(f.code, f.severity) for f in said.findings]
+
+
+def _named_everywhere(root: Path, name: str = "Open Reports Archive") -> None:
+    from test_data_sources import name_in_plan, set_statement
+
+    name_in_plan(root, f"All reports in the {name}, quarterly extracts 2015 to 2025.")
+    set_statement(root, f"The {name} is publicly available at https://ora.invalid/ "
+                        "(doi:10.5555/ora.2026).")  # fmt: skip
+
+
+def test_a_record_whole_sourced_and_followed_says_nothing(project: Path) -> None:
+    """The baseline: every claim sourced and on its page, the chosen source named in the plan
+    and the statement, paper.yaml asked nothing of it. And no record, nothing at all."""
+    from manuscript_guard.gates.data_sources import check_data_sources, check_statement_sources
+
+    loaded, _ = load_project(project)
+    assert not check_data_sources(loaded, "submission").findings
+    assert not check_statement_sources(loaded).findings
+    _named_everywhere(project)
+    assert _sources_said(project) == []
+    assert _sources_said(project, stage="submission") == []
+
+
+def test_a_record_out_of_shape_is_a_warning(project: Path) -> None:
+    from test_data_sources import record
+
+    document = record()
+    document["candidates"][0]["access"]["route"] = "ask nicely"
+    assert set(_sources_said(project, document)) == {("data-sources-schema", "warn")}
+    (project / "design" / "data_sources.yaml").write_bytes(b"candidates: [\n")
+    loaded, _ = load_project(project)
+    from manuscript_guard.gates.data_sources import check_data_sources
+
+    said = [(f.code, f.severity) for f in check_data_sources(loaded, "drafting").findings]
+    assert said == [("data-sources-schema", "warn")]
+
+
+def test_a_source_the_record_names_and_does_not_consider_is_said(project: Path) -> None:
+    from test_data_sources import record
+
+    _named_everywhere(project)
+    for where in ("ranking", "rejected", "history", "chosen"):
+        document = record()
+        if where == "ranking":
+            document["ranking"][1]["source"] = "faers"
+        elif where == "rejected":
+            document["decision"]["rejected"] = [{"source": "faers", "why": "too slow"}]
+        elif where == "history":
+            document["history"] = [{"source": "faers", "event": "applied", "on": "2026-10-22"}]
+        else:
+            document["decision"]["chosen"] = ["ora", "faers"]
+        assert _sources_said(project, document) == [("data-source-unknown", "warn")], where
+    document = record()
+    document["candidates"][1]["id"] = "ora"
+    assert ("data-source-id-repeated", "warn") in _sources_said(project, document)
+
+
+def test_a_model_named_where_a_person_states_chooses_or_sends_is_said(project: Path) -> None:
+    from test_data_sources import record
+
+    _named_everywhere(project)
+    for change in (
+        lambda d: d["question"].update(stated_by="Claude"),
+        lambda d: d["decision"].update(decided_by="GPT-5 assistant"),
+        lambda d: d["candidates"][1]["claims"][4].update(stated_by="an AI"),
+        lambda d: d["candidates"][1].update(messages=[{
+            "to": "the committee", "file": "encd.md", "drafted_on": "2026-10-21",
+            "sent_on": "2026-10-22", "sent_by": "Copilot"}]),
+    ):  # fmt: skip
+        document = record()
+        change(document)
+        assert _sources_said(project, document) == [("data-source-not-a-person", "warn")]
+    document = record()
+    document["decision"]["decided_by"] = "Ai Tanaka"  # a name, not a machine
+    assert _sources_said(project, document) == []
+
+
+def test_an_access_claim_with_nothing_behind_it_is_said(project: Path) -> None:
+    from test_data_sources import record
+
+    _named_everywhere(project)
+    document = record()
+    del document["candidates"][1]["claims"][2]  # the minimum cell count's
+    document["candidates"][0]["access"]["steps"] = "download the zip files"
+    said = _sources_said(project, document)
+    assert said == [("data-source-unsourced", "warn")] * 2
+    loaded, _ = load_project(project)
+    from manuscript_guard.gates.data_sources import check_data_sources
+
+    messages = sorted(f.message for f in check_data_sources(loaded, "drafting").findings)
+    assert messages == ["Example National Claims Database: no claim backs minimum_cell_count",
+                        "Open Reports Archive: no claim backs steps"]  # fmt: skip
+
+
+def test_a_quote_not_on_its_stored_page_is_said(project: Path) -> None:
+    from test_data_sources import record
+
+    _named_everywhere(project)
+    document = record()
+    # "fewer than 11" read as "fewer than 10": the quote is not what the page says.
+    claim = document["candidates"][1]["claims"][2]
+    claim["quote"] = claim["quote"].replace("11", "10")
+    assert _sources_said(project, document) == [("data-source-quote-not-on-page", "warn")]
+    # A quote is folded for case, spacing, a line break and curly quotes, as G7 folds one.
+    document = record()
+    document["candidates"][0]["claims"][2]["quote"] = (
+        "new extracts appear  within three months of each quarter’s end"
+    )
+    assert _sources_said(project, document) == []
+    # A quote that is the end of a longer number on the page is not on it.
+    document = record()
+    document["candidates"][1]["claims"][1]["quote"] = "00 EUR is charged"
+    assert _sources_said(project, document) == [("data-source-quote-not-on-page", "warn")]
+
+
+def test_a_page_not_stored_is_said_once_and_its_quotes_are_not_checked(project: Path) -> None:
+    _named_everywhere(project)
+    said = _sources_said(project, pages=False)
+    assert said == [("data-source-page-not-stored", "warn")] * 2
+
+
+def test_a_chosen_source_reached_nobody_knows_how_is_said(project: Path) -> None:
+    from test_data_sources import record
+
+    _named_everywhere(project)
+    document = record()
+    del document["candidates"][0]["access"]["route"]
+    document["candidates"][0]["claims"][0]["about"] = "cost"
+    assert _sources_said(project, document) == [("data-source-route-unknown", "warn")]
+    # A source not chosen may wait.
+    document = record()
+    del document["candidates"][1]["access"]["route"]
+    document["candidates"][1]["claims"][0]["about"] = "steps"
+    document["candidates"][1]["access"]["steps"] = "apply to the committee"
+    assert _sources_said(project, document) == []
+
+
+def test_a_record_with_no_decision_says_so_in_a_note(project: Path) -> None:
+    from test_data_sources import record
+
+    document = record()
+    del document["decision"]
+    assert _sources_said(project, document) == [("data-source-undecided", "info")]
+
+
+def test_a_custodian_rule_paper_yaml_lacks_warns_then_fails_from_internal_review(
+    project: Path,
+) -> None:
+    """Basile, 2026-10-21: G2's small-count check and `review --run`'s refusal read paper.yaml
+    only, so a rule the record holds and paper.yaml lacks is a check that never runs."""
+    from test_data_sources import record, set_statement
+
+    from manuscript_guard.cli import _run_gates
+
+    _named_everywhere(project, "Example National Claims Database")
+    set_statement(project, "The Example National Claims Database is available on application "
+                           "to its scientific committee.")  # fmt: skip
+    document = record()
+    document["decision"]["chosen"] = ["encd"]
+    said = _sources_said(project, document)
+    assert said == [("custodian-rule-undeclared", "warn")] * 2
+    for stage in ("internal-review", "submission"):
+        said = _sources_said(project, document, stage=stage)
+        assert said == [("custodian-rule-undeclared", "fail")] * 2
+    report, _project, _stage, _deferred = _run_gates(project, stage="internal-review")
+    assert {f.code for f in report.failures} >= {"custodian-rule-undeclared"}
+    paper = project / "paper.yaml"
+    text = paper.read_bytes().decode("utf-8")
+    # A smaller minimum than the custodian's is not theirs.
+    paper.write_bytes((text + "custodian:\n  minimum_cell_count: 5\n").encode())
+    assert _sources_said(project, document, stage="submission") == [
+        ("custodian-rule-undeclared", "fail")] * 2  # fmt: skip
+    paper.write_bytes((text + "custodian:\n  minimum_cell_count: 11\n").encode())
+    assert _sources_said(project, document, stage="submission") == [
+        ("custodian-rule-undeclared", "fail")]  # fmt: skip
+    paper.write_bytes((text + "custodian:\n  minimum_cell_count: 20\n"
+                              "  restricts_sending: true\n").encode())  # fmt: skip
+    assert _sources_said(project, document, stage="submission") == []
+
+
+def test_a_plan_that_does_not_name_the_chosen_source_is_said(project: Path) -> None:
+    from test_data_sources import set_statement
+
+    set_statement(project, "The Open Reports Archive is publicly available.")
+    assert _sources_said(project) == [("plan-source-unnamed", "warn")]
+    # Named in a subsection of the section, it is named.
+    plan = project / "design" / "plan.md"
+    text = plan.read_bytes().decode("utf-8")
+    heading = "## Exposure\n"
+    plan.write_bytes(text.replace(heading, f"### Source\n\nThe ORA.\n\n{heading}").encode())
+    assert _sources_said(project) == []
+    # A plan with no such section is plan-section-missing's, not this.
+    plan.write_bytes(text.replace("## Population and data source", "## Cohort").encode())
+    assert _sources_said(project) == []
+
+
+def test_a_statement_that_does_not_name_the_chosen_source_is_said(project: Path) -> None:
+    from test_data_sources import name_in_plan, set_statement
+
+    name_in_plan(project, "All reports in the Open Reports Archive.")
+    set_statement(project, "The data are publicly available from the agency.")
+    assert _sources_said(project) == [("data-statement-source-unnamed", "warn")]
+    # Cited by key as a dataset, it is named by the DOI the reference list gives it.
+    bib = project / "literature" / "references.bib"
+    bib.write_bytes(bib.read_bytes() + b"\n@misc{ora2026,\n  title = {Open extracts},\n"
+                    b"  type = {dataset},\n  doi = {10.5555/ora.2026},\n  year = {2026}\n}\n")
+    set_statement(project, "The data are publicly available [@ora2026].")
+    assert _sources_said(project) == []
+
+
+def test_a_statement_that_says_otherwise_than_the_route_is_said(project: Path) -> None:
+    from test_data_sources import name_in_plan, record, set_statement
+
+    name_in_plan(project, "All reports in the Open Reports Archive.")
+    set_statement(project, "Data from the Open Reports Archive are available from the "
+                           "corresponding author on reasonable request.")  # fmt: skip
+    assert _sources_said(project) == [("data-statement-route-differs", "warn")]
+    document = record()
+    document["decision"]["chosen"] = ["encd"]
+    document["candidates"][1]["terms"] = {}
+    for claim in document["candidates"][1]["claims"]:
+        if claim["about"] in ("minimum_cell_count", "restricts_sending"):
+            claim["about"] = "route"
+    name_in_plan(project, "Claims of the ENCD.")
+    set_statement(project, "The ENCD data are publicly available.")
+    assert _sources_said(project, document) == [("data-statement-route-differs", "warn")]
+    set_statement(project, "The ENCD data are not publicly available; they can be had on "
+                           "application to its committee.")  # fmt: skip
+    assert _sources_said(project, document) == []
 
 
 #: What G4 says of the figure files.

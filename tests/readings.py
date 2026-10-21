@@ -332,6 +332,44 @@ def _data_statement() -> Reading:
     return read
 
 
+#: Two chosen sources, one anyone may download and one a committee decides on, as the record
+#: of data sources gives them.
+DATA_SOURCES = (
+    {"id": "ora", "name": "Open Reports Archive", "also_known_as": ["ORA"],
+     "access": {"route": "open-download"}},
+    {"id": "encd", "name": "Example National Claims Database", "also_known_as": ["ENCD"],
+     "access": {"route": "application"}},
+)  # fmt: skip
+
+
+@reading("data sources statement")
+def _data_sources_statement() -> Reading:
+    from manuscript_guard.data_sources import (
+        ON_REQUEST,
+        OPENLY,
+        named,
+        route_differs,
+        says,
+        sentences,
+    )
+
+    sources = [dict(source) for source in DATA_SOURCES]
+
+    def read(text: str) -> dict[str, Any]:
+        """What the statement says of each source, and what each sentence says: asked for,
+        openly had, and which sources it names."""
+        return {
+            "differs": route_differs(text, sources),
+            "sentences": [
+                [says(sentence, ON_REQUEST), says(sentence, OPENLY),
+                 [source["id"] for source in sources if named(sentence, source)]]
+                for sentence in sentences(text)
+            ],  # fmt: skip
+        }
+
+    return read
+
+
 def whole_namespace() -> dict[str, Any]:
     """Results that say what they belong to: two p values of one estimate, its interval, and
     two shares of one denominator."""

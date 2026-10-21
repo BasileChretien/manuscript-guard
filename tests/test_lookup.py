@@ -640,6 +640,22 @@ def test_a_reference_with_no_identifier_is_searched_by_its_title(searched: Path)
     assert not any('"' in v for r in table.sent for v in r.params.values())
 
 
+def test_a_reference_the_supplement_alone_cites_is_searched_for(searched: Path) -> None:
+    """Basile's rule of 2026-10-21: the supplement is held to the main text's rules."""
+    key = "fictionalHepaticCohort2021"
+    main = searched / "manuscript" / "main.md"
+    main.write_text(main.read_text(encoding="utf-8").replace(
+        f"[@{key}]", "[@fictionalClassSignal2019]"), encoding="utf-8")  # fmt: skip
+    supplement = searched / "manuscript" / "supplementary" / "S1_code_lists.md"
+    supplement.write_text(supplement.read_text(encoding="utf-8")
+                          + f"\nThe codes follow an earlier cohort [@{key}].\n",
+                          encoding="utf-8")  # fmt: skip
+    assert lookup.cited_keys(_loaded(searched)) == ["fictionalClassSignal2019", key]
+    _run(searched, _searches())
+    record = read_record(_loaded(searched), key)
+    assert record["sources"]["pubmed_search"]["candidates"][0]["pmid"] == PMID
+
+
 def test_pubmed_is_asked_by_the_first_author_only_where_the_title_found_no_work(
     searched: Path,
 ) -> None:

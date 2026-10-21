@@ -5867,6 +5867,38 @@ def test_a_reference_no_registry_has_fails_from_internal_review(project: Path) -
     assert "reference-not-found" in {f.code for f in reviewed.failures}
 
 
+def _cited_only_in_the_supplement(root: Path) -> None:
+    """The example's first reference cited by its supplement alone, the main text citing
+    the second in its place."""
+    main = root / "manuscript" / "main.md"
+    text = main.read_text(encoding="utf-8")
+    assert f"[@{_LOOKED_KEY}]" in text
+    main.write_text(text.replace(f"[@{_LOOKED_KEY}]", "[@fictionalClassSignal2019]"),
+                    encoding="utf-8")  # fmt: skip
+    supplement = root / "manuscript" / "supplementary" / "S1_code_lists.md"
+    supplement.write_text(supplement.read_text(encoding="utf-8")
+                          + f"\nThe codes follow an earlier cohort [@{_LOOKED_KEY}].\n",
+                          encoding="utf-8")  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("author", "answers", "code"),
+    [
+        (None, {"pubmed_search": _hits(), "crossref_search": _hits()}, "reference-not-found"),
+        ("Dupont, Marie and Leclerc, Paul", {}, "reference-authors-disjoint"),
+    ],
+)  # fmt: skip
+def test_a_reference_the_supplement_alone_cites_is_judged_as_one_in_the_text(
+    project: Path, author: str | None, answers: dict, code: str
+) -> None:
+    """Basile's rule of 2026-10-21: the supplement is held to the main text's rules."""
+    _cited_only_in_the_supplement(project)
+    if author:
+        _bib_field(project, "author", author)
+    _searched(project, **answers)
+    assert code in {f.code for f in _g7(project).failures}
+
+
 @pytest.mark.parametrize(
     ("change", "said"),
     [

@@ -828,6 +828,22 @@ def test_a_rerun_analysis_makes_the_built_document_stale(project: Path) -> None:
     assert "document-stale" in {f.code for f in _findings(project)}
 
 
+@needs_pandoc
+def test_an_edited_alternative_text_makes_the_built_document_stale(project: Path) -> None:
+    """Round 1 of #387: the build writes a figure's alternative text into its picture from
+    the figure's guard file, which the document's stamp did not cover, so a number put
+    right there left a document that still printed the old one, and called current."""
+    import yaml
+
+    assert run("build", str(project), "--offline") == 0
+    assert "document-stale" not in {f.code for f in _findings(project)}
+    sidecar = project / "figures" / "forest.guard.yaml"
+    guard = yaml.safe_load(sidecar.read_text(encoding="utf-8"))
+    guard["alt"] = guard["alt"].replace("Forest plot", "A forest plot")
+    sidecar.write_text(yaml.safe_dump(guard, sort_keys=False), encoding="utf-8")
+    assert "document-stale" in {f.code for f in _findings(project)}
+
+
 def _findings(project: Path):
     from manuscript_guard.cli import _run_gates
 

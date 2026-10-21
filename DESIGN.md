@@ -7901,9 +7901,11 @@ Added by the adversarial review, verified and **not** fixed:
   colour space. A figure that draws a continuous scale is not compared at all, its series
   beside the scale included, and neither is one of more than 300 colours: both are said in a
   note, and left to the figure's review. A scale drawn with neighbours more than 10 apart, or
-  through less than 10 of lightness (a colormap's narrow slice), is no scale to the check,
-  and its shades are compared as series; a rainbow colormap a deficiency scrambles is not
-  said. A text drawn as glyphs is known for one where
+  through less than 10 of lightness (a colormap's narrow slice, a correlation map's pale
+  middle under fixed limits), is no scale to the check, and its shades are compared as
+  series; a rainbow colormap a deficiency scrambles is not said. The bands of one series at
+  three opacities or more chain through lightness and are taken for a scale, so such a
+  figure is not compared. A text drawn as glyphs is known for one where
   matplotlib (`text_` groups) or Cairo (`glyph` symbols) draws it so, and is a mark where
   another program does. A text's colour is left out, so data told apart only
   by coloured labels is not checked. Every colour painted is compared with every other, the

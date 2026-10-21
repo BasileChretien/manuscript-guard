@@ -23,7 +23,7 @@ asks nobody. It goes by rules, never by a registry's score of relevance (paper-p
   in Zotero; nothing is written into the .bib. The authors are compared, and a retraction
   of the work is said as for a reference with an identifier. A work found in several
   journals, as a reporting statement is co-published, is offered by the copy in the
-  journal the entry names, or not at all.
+  journal the entry names, or not at all, and then no retraction of a copy is said.
 * **An article of the title and the year by other people**: none of the cited people on the
   lists PubMed and Crossref keep for it fails from internal-review
   (`reference-authors-disjoint`), the shape of an invented reference; some of them is a
@@ -298,7 +298,12 @@ def same_journal(cited: str, registered: str) -> bool:
     mine, theirs = _journal_words(cited), _journal_words(registered)
     if not mine or len(mine) != len(theirs):
         return False
-    return all(a.startswith(b) or b.startswith(a) for a, b in zip(mine, theirs, strict=True))
+    return all(_abbreviates(a, b) or _abbreviates(b, a) for a, b in zip(mine, theirs, strict=True))
+
+
+def _abbreviates(short: str, word: str) -> bool:
+    """"clin" for "clinical"; not "cell" for "cells", another journal (round 2 of #379)."""
+    return word.startswith(short) and word not in (short + "s", short + "es")
 
 
 def _dated(work: Work, year: int | None) -> bool:
@@ -332,7 +337,12 @@ def judge(
     # A work found with the cited first author first outweighs one whose record names
     # nobody: NEJM files the letters about an article under its title, and Crossref's
     # record of them lists no one (the measurement of 2026-10-21).
-    lead = [w for w in lead if authors.compare(cited, [w.people]).compared] or lead
+    named = [w for w in lead if authors.compare(cited, [w.people]).compared]
+    if named:
+        # A record of the same work that names nobody stays: Crossref's can, where PubMed's
+        # names the people, and it is Crossref's that carries a retraction (round 2 of #379).
+        ids = {x for w in named for x in (w.doi, w.pmid) if x}
+        lead = named + [w for w in lead if w not in named and {w.doi, w.pmid} & ids]
     if lead:
         return Verdict(tuple(_found(citekey, fields, cited, lead, path, excuse)))
     # A book reviewed under its own title, by the reviewer, is no book by other people
@@ -352,11 +362,15 @@ def _leads(cited: Authors, work: Work) -> bool:
 
 
 def _one(works: list[Work]) -> bool:
-    """Whether the records are of one work: no two DOIs and no two PMIDs among them. A
-    PubMed record with no DOI and Crossref's of the same work share no identifier, and
-    nothing in them differs."""
+    """Whether the records are of one work: no two DOIs and no two PMIDs among them, and no
+    two journals. A PubMed record with no DOI and Crossref's of the same work share no
+    identifier, and nothing in them differs; a congress abstract of the same title and
+    first author is in another journal (round 2 of #379)."""
+    placed = [w.journals for w in works if w.journals]
+    one_place = all(any(same_journal(a, b) for a in names for b in placed[0])
+                    for names in placed[1:])  # fmt: skip
     return (len({w.doi for w in works if w.doi}) <= 1
-            and len({w.pmid for w in works if w.pmid}) <= 1)  # fmt: skip
+            and len({w.pmid for w in works if w.pmid}) <= 1 and one_place)  # fmt: skip
 
 
 def _cited_copy(fields: dict[str, str], lead: list[Work]) -> list[Work] | None:

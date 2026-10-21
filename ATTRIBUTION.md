@@ -121,7 +121,7 @@ a snapshot of one afternoon's reading, and none of them replaces the guideline's
 Two files in the package are made from somebody else's work and **are** redistributed. The
 first is `src/manuscript_guard/data/spelling_variants.tsv`, the list G14 reads to tell
 British spelling from American. The second, `src/manuscript_guard/data/claim_strength.yaml`,
-is under [The claim-strength ladder](#the-claim-strength-ladder) at the end of this file.
+is under [The claim-strength ladder](#the-claim-strength-ladder) below.
 
 It is derived from **VarCon** (Variant Conversion Info) by Kevin Atkinson and Benjamin
 Titze, which is published with the SCOWL word lists at <http://wordlist.aspell.net/> and

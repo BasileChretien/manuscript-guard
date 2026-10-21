@@ -5923,6 +5923,27 @@ def test_one_work_in_two_registries_is_one_work(project: Path) -> None:
     assert f"with DOI {_LOOKED_DOI} and PMID {_SEARCHED_PMID}" in said, said
 
 
+def test_records_in_two_journals_are_two_works(project: Path) -> None:
+    """Round 2 of #379: a PubMed record with no DOI and Crossref's record of a congress
+    abstract of the same title and first author share no identifier, and were taken for one
+    work, the abstract's DOI offered beside the article's PMID. Their journals differ."""
+    pubmed = {**{k: v for k, v in _PUBMED_HIT.items() if k != "doi"},
+              "journal": "Journal of Imaginary Pharmacoepidemiology"}  # fmt: skip
+    abstract = {**_CROSSREF_HIT, "doi": "10.5555/abstract", "container": "Journal of Elsewhere"}
+    _searched(project, pubmed_search=_hits(pubmed), crossref_search=_hits(abstract))
+    said = _finding_of(project, "reference-found").message
+    assert "10.5555/abstract" not in said and f"PMID {_SEARCHED_PMID}" in said, said
+
+
+def test_a_record_naming_nobody_keeps_the_notices_of_the_work_it_shares(project: Path) -> None:
+    """Round 2 of #379: Crossref's record of a work can name nobody where PubMed's names
+    the people, and it is Crossref's that carries the retraction."""
+    notice = {"type": "retraction", "doi": "10.5555/notice.1", "date": "2023-02-06"}
+    nameless = {**_CROSSREF_HIT, "authors": [], "updated_by": [notice]}
+    _searched(project, crossref_search=_hits(nameless))
+    assert _g7_codes(project).get("reference-retracted") == "fail"
+
+
 def test_a_withdrawn_review_is_the_work_not_a_notice(project: Path) -> None:
     """Round 1 of #379: Cochrane prints a review it withdrew as "WITHDRAWN: <title>", the
     flag a registry puts on the work itself, as "RETRACTED:"."""

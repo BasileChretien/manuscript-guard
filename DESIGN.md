@@ -8244,7 +8244,10 @@ Open, recorded as each change landed:
   order. A notice a publisher deposited as a journal article, with no `update-to`, is read
   as the work, and a DOI only doi.org knows has no title to compare. Volumes, pages and
   article numbers are compared with Crossref's only. A title in another script than Latin
-  is not compared.
+  is not compared. A cited title that adds a subtitle of its own to the registered one, of
+  a main title of four words or more, passes: so does a real DOI cited with an invented
+  subtitle ("…without diabetes: five-year follow-up of a prespecified subgroup"), which
+  failed before 2026-10-21 (Basile's choice that day, for the guidelines it let through).
 - **A reference with no identifier is found, or said missing, by three registries'
   searches.** A real article that neither PubMed nor Crossref holds, in a journal neither
   indexes, fails as not found until `lookup.not_indexed` says why; so does one cited by a
@@ -8270,7 +8273,9 @@ Open, recorded as each change landed:
   A work published in several journals (a reporting statement) is offered by the copy in
   the journal the entry names, matched by its name or its abbreviation word by word; where
   the entry names none of them, or OpenAlex alone has the copies, which keeps no journal,
-  no identifier is offered and no retraction of any copy is said. A made-up subtitle after
+  no identifier is offered and no retraction of any copy is said; so too for an article
+  and its own congress abstract in the same journal (an ASCO abstract in J Clin Oncol, then
+  the article there), whose identifiers then differ (round 2 of #379). A made-up subtitle after
   a real main title of four words or more is read as one the registry left out, by the
   search and by the DOI check alike. Crossref's search is filtered by the date Crossref
   publishes, which is the earlier of print and online, so a paper online two years or more
@@ -8293,7 +8298,8 @@ Open, recorded as each change landed:
   given names the other way round, is tried only where the first finds nobody, and not for
   a given name of initials. A name in another script than Latin, as Crossref keeps a
   Russian or a Chinese journal's authors, is not compared, so a list of such names
-  compares nothing (round 1 of #379). A name written "Smith J A", family name first and
+  compares nothing (round 1 of #379); in a list that mixes scripts, the first name in Latin
+  letters is read as the first author. A name written "Smith J A", family name first and
   initials spaced with no comma, which Zotero never writes, is read by BibTeX's rule as
   family name "A". DataCite's creators are not kept, so a dataset's authors are not
   compared. A record of version 1 has no authors and compares none until `lookup` asks

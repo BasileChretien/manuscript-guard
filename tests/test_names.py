@@ -94,6 +94,18 @@ def _people(*families: str) -> list[Name]:
     return [Name(family=f) for f in families]
 
 
+def test_a_journal_s_abbreviation_is_its_name_and_its_plural_is_another() -> None:
+    """Round 2 of #379: "Cell" and "Cells" are two journals, as are "Cancer" and "Cancers"."""
+    from manuscript_guard.gates.searched import same_journal
+
+    assert same_journal("J Clin Epidemiol", "Journal of Clinical Epidemiology")
+    assert same_journal("BMJ", "BMJ (Clinical research ed.)")
+    assert same_journal("N. Engl. J. Med.", "The New England journal of medicine")
+    for one, other in (("Cell", "Cells"), ("Cancer", "Cancers (Basel)"), ("Vaccine", "Vaccines"),
+                       ("Lancet", "Lancet Oncol"), ("J Clin Epidemiol", "J Clin Endocrinol")):
+        assert not same_journal(one, other), (one, other)
+
+
 def test_a_double_surname_filed_among_the_given_names_is_one_person_s() -> None:
     """Crossref files George Davey Smith as given "George Davey", family "Smith"; a paper of
     the measurement of 2026-10-20 cites him as "Davey, SG"."""

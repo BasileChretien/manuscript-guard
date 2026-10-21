@@ -24,13 +24,17 @@ from manuscript_guard.text.latex.commands import (
     AMSMATH,
     COMMANDS,
     ENVIRONMENTS,
+    LISTINGS,
     MATHS,
     RAW,
     REFUSED,
     REFUSED_ENVIRONMENTS,
+    SIUNITX,
     SPACES,
     TABLES,
+    TYPED_TABLES,
 )
+from manuscript_guard.text.placeholders import NAMESPACES
 
 NUL = "\x00"
 PROSE, BLANK, MATHS_READ, PREAMBLE = "prose", "blank", "maths", "preamble"
@@ -94,6 +98,26 @@ class Heading:
 
 
 @dataclass(frozen=True)
+class BindingUse:
+    """A `\\mg` where it stands, to the brace that closes it, and what its braces hold: None
+    where it is followed by none. Whether that is a binding is `views.py`'s to say."""
+
+    start: int
+    end: int
+    inner: str | None
+
+
+@dataclass(frozen=True)
+class Listing:
+    """What a listing holds, between its `\\begin` and its `\\end`, and the language an
+    `lstlisting` names, or "" where it names none."""
+
+    start: int
+    end: int
+    language: str
+
+
+@dataclass(frozen=True)
 class Reading:
     masked: str
     refusals: tuple[Refusal, ...]
@@ -103,6 +127,15 @@ class Reading:
     abstracts: tuple[tuple[int, int], ...] = ()
     #: Each package loaded, where its `\\usepackage` stands.
     packages: tuple[tuple[int, str], ...] = ()
+    #: Each `\\mg` read, outside a comment, a listing and siunitx's commands.
+    bindings: tuple[BindingUse, ...] = ()
+    #: What looks meant for a binding and is none: a near spelling of `\\mg`, `\\Mg{results.x}`,
+    #: and a Markdown binding left in a `.tex`, `{{results.x}}`.
+    suspects: tuple[tuple[int, int], ...] = ()
+    #: Where each table the author typed runs, `\\begin{tabular}` to its `\\end`.
+    tables: tuple[tuple[int, int], ...] = ()
+    #: Each listing, read by G2's code check as a fenced block is.
+    listings: tuple[Listing, ...] = ()
 
 
 #: The level of each sectioning command, as Markdown's `#` counts it; a part stands over a
@@ -115,6 +148,34 @@ _BRACED_PATH = re.compile(r"[ \t]*(?:\r?\n[ \t]*)?\{([^{}\n]*)\}")
 #: `\abstract` was an unknown command, its arguments read, until it was given a heading.
 _REDEFINABLE = frozenset({"abstract"})
 _PACKAGES = re.compile(r"\s*(?:\[[^\]]{0,300}\])?\s*\{([^{}]{0,300})\}")
+_NAMESPACE = "(?:" + "|".join(NAMESPACES) + r")\."
+#: What follows a `\\mg`: its options, and its braces with what they hold, on its line.
+_BINDING = re.compile(r"[ \t]*(?:\[[^\]\n]*\])?[ \t]*\{(?P<inner>[^{}\n]*)\}")
+#: What makes a command, or a Markdown binding, look meant for one.
+_LOOKS_BOUND = re.compile(r"[ \t]*(?:\[[^\]\n]*\])?[ \t]*\{[ \t]*" + _NAMESPACE)
+_MARKDOWN_BINDING = re.compile(r"\{\{[ \t]*" + _NAMESPACE)
+_KEYED = re.compile(r"[ \t]*" + _NAMESPACE)
+#: The word after a `\\mg` that no braces follow, shown with it: `\\mg results.x`.
+_BARE = re.compile(r"[ \t]*[^\s{}\\%]*")
+_MG_USE = re.compile(r"\\mg(?![A-Za-z@])")
+_LISTING_OPTIONS = re.compile(r"[ \t]*\[([^\]\n]*)\]")
+_LANGUAGE = re.compile(r"language\s*=\s*\{?\s*(?:\[[^\]]*\])?\s*([A-Za-z][A-Za-z0-9+#]*)")
+_BOUND_IN_SIUNITX = ("a binding in a siunitx command is not read: siunitx parses its number, "
+                     "and a value prints as text; write \\mg{...} outside it")  # fmt: skip
+
+
+def _near_binding(name: str) -> bool:
+    """Whether a command's name is `mg` mistyped: another case, or one letter added, taken
+    out, changed or swapped with its neighbour."""
+    low = name.lower()
+    if low == "mg":
+        return name != "mg"
+    if len(low) == 2:
+        return low == "gm" or sum(a != b for a, b in zip(low, "mg", strict=True)) == 1
+    if len(low) not in (1, 3):
+        return False
+    longer, shorter = (low, "mg") if len(low) == 3 else ("mg", low)
+    return any(longer[:i] + longer[i + 1 :] == shorter for i in range(len(longer)))
 
 
 @dataclass
@@ -132,6 +193,8 @@ class _Frame:
     origin: int = -1
     #: An environment the file was input inside, which it may close and need not.
     inherited: bool = False
+    #: An argument of a siunitx command.
+    siunitx: bool = False
 
 
 def mask(text: str, *, body: bool | None = None) -> str:
@@ -241,6 +304,11 @@ class _Reader:
         self.headings: list[Heading] = []
         self.abstracts: list[tuple[int, int]] = []
         self.packages: list[tuple[int, str]] = []
+        self.bindings: list[BindingUse] = []
+        self.suspects: list[tuple[int, int]] = []
+        self.tables: list[tuple[int, int]] = []
+        self.listings: list[Listing] = []
+        self.siunitx = 0
         self.heading_at = -1
         for name in environments:
             role = MATHS_READ if name in MATHS else self._role()
@@ -257,8 +325,12 @@ class _Reader:
         if self.refused is None and opened:
             self._refuse("tex-unbalanced", opened[0].start, f"{_opened(opened[0])} is not closed")
         masked = "".join(self.out)
+        # A table the file was input inside and does not close runs to its end.
+        tables = self.tables + [(0, self.n) for frame in self.stack
+                                if frame.inherited and frame.closer in TYPED_TABLES]  # fmt: skip
         found = (tuple(self.inputs), tuple(self.headings), tuple(self.abstracts),
-                 tuple(self.packages))  # fmt: skip
+                 tuple(self.packages), tuple(self.bindings), tuple(self.suspects),
+                 tuple(sorted(tables)), tuple(self.listings))  # fmt: skip
         if self.refused is None:
             return Reading(masked, (), *found)
         at = self.refused.offset
@@ -379,7 +451,9 @@ class _Reader:
             chosen = PROSE if self._printed_from_preamble(self.command) else PREAMBLE
         else:
             chosen = _note_role(spec)
-        frame = _Frame(kind, chosen, at, closer, self.pending[1:], self.command, spec == "d")
+        frame = _Frame(kind, chosen, at, closer, self.pending[1:], self.command, spec == "d",
+                       siunitx=self.command in SIUNITX)  # fmt: skip
+        self.siunitx += frame.siunitx
         heads = self.command in LEVELS or self.command == "abstract"
         if kind == "arg" and spec == "p" and heads and not self.definitions and chosen == PROSE:
             frame.heading = LEVELS.get(self.command, 1)
@@ -414,6 +488,8 @@ class _Reader:
             self._blank(at, end)
             self.pos = end
         elif character == "{":
+            if _MARKDOWN_BINDING.match(self.text, at):
+                self.suspects.append((at, self._suspect_end(at)))
             self.stack.append(_Frame("group", self._role(), at))
             self._blank(at, at + 1)
             self.pos = at + 1
@@ -467,6 +543,7 @@ class _Reader:
     def _close(self, at: int, width: int) -> None:
         frame = self.stack.pop()
         self.definitions -= frame.definition
+        self.siunitx -= frame.siunitx
         self._blank(at, at + width)
         self.pos = at + width
         if frame.kind in ("arg", "opt"):
@@ -573,10 +650,39 @@ class _Reader:
                 self._packages(at, end)
             if name in COMMANDS:
                 self.command, self.pending = name, COMMANDS[name]
+        elif name == "mg":
+            self._binding(at, end)
+            self.command, self.pending = name, COMMANDS[name]
         elif name in COMMANDS:
             if name in LEVELS or name == "abstract":
                 self.heading_at = at
             self.command, self.pending = name, COMMANDS[name]
+        elif _near_binding(name) and _LOOKS_BOUND.match(self.text, end):
+            self.suspects.append((at, self._suspect_end(at)))
+
+    def _binding(self, at: int, end: int) -> None:
+        """Record a `\\mg` where it stands, with what its braces hold. In a siunitx command
+        `\\mg` is the milligram siunitx defines, `\\qty{5}{\\mg}`, and one that names a key is
+        refused, since siunitx parses what it holds and a value's display is formatted text."""
+        written = _BINDING.match(self.text, end)
+        if self.siunitx:
+            if written and _KEYED.match(written.group("inner")):
+                self._refuse("tex-refused", at, _BOUND_IN_SIUNITX)
+            return
+        stop = written.end() if written else _BARE.match(self.text, end).end()
+        self.bindings.append(BindingUse(at, stop, written.group("inner") if written else None))
+
+    def _suspect_end(self, at: int) -> int:
+        """Where something that looks meant for a binding ends: at the braces that close it,
+        on its line."""
+        line_end = self.text.find("\n", at)
+        line_end = self.n if line_end < 0 else line_end
+        close = self.text.find("}", at, line_end)
+        if close < 0:
+            return line_end
+        while close < line_end and self.text[close] == "}":
+            close += 1
+        return close
 
     def _input(self, at: int, end: int) -> None:
         """Record an `\\input` with the state it stands in. Its path is read raw; one not
@@ -653,6 +759,9 @@ class _Reader:
         self._keep_or_blank(start + 1, close)
         self._blank(close, close + 1)
         self.pos = close + 1
+        bound = _MG_USE.search(self.text, start + 1, close)
+        if bound is not None:
+            self._refuse("tex-refused", bound.start(), _bound_as_typed("\\verb"))
 
     def _definition(self, name: str, at: int, end: int) -> None:
         start = self._after_space(end)
@@ -714,8 +823,13 @@ class _Reader:
             if closing is None:
                 self._refuse("tex-unbalanced", at, f"\\begin{{{name}}} is not closed")
                 return
+            if name in LISTINGS:
+                self._listing(name, closing.start())
             self._blank(at, closing.end())
             self.pos = closing.end()
+            bound = _MG_USE.search(self.text, at, closing.start()) if name in LISTINGS else None
+            if bound is not None:
+                self._refuse("tex-refused", bound.start(), _bound_as_typed(name))
         else:
             role = self._role()
             if role == PREAMBLE and self._printed_from_preamble(name):
@@ -747,6 +861,23 @@ class _Reader:
         self.pending = ()
         if name == "abstract" and top.role == PROSE:
             self.abstracts.append((top.start, self.pos))
+        if name in TYPED_TABLES:
+            self.tables.append((0 if top.inherited else top.start, at))
+
+    def _listing(self, name: str, end: int) -> None:
+        """Record what a listing holds, and the language an `lstlisting`'s options name."""
+        start, language = self.pos, ""
+        options = _LISTING_OPTIONS.match(self.text, start) if name == "lstlisting" else None
+        if options is not None:
+            start = options.end()
+            named = _LANGUAGE.search(options.group(1))
+            language = named.group(1).lower() if named else ""
+        self.listings.append(Listing(start, end, language))
+
+
+def _bound_as_typed(where: str) -> str:
+    return (f"a binding in {where} is printed as typed, not as its value: bind the number "
+            "outside it")  # fmt: skip
 
 
 def _opened(frame: _Frame) -> str:

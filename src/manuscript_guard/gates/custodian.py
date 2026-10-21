@@ -28,13 +28,11 @@ import subprocess
 from decimal import Decimal
 from pathlib import Path
 
-from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import Results
 from manuscript_guard.contracts.values import number_in
 from manuscript_guard.findings import FAIL, WARN, Finding, Report
-from manuscript_guard.gates.numbers import source_files
-from manuscript_guard.text.placeholders import parse
+from manuscript_guard.text.reader import bound_files
 
 #: How long `git ls-files` may take before the check says it could not ask.
 GIT_SECONDS = 10
@@ -67,8 +65,9 @@ def check_small_cells(project: Project, results: Results) -> Report:
         return Report()
     report = Report()
     said: set[str] = set()
-    for path in source_files(project.path("manuscript")):
-        for placeholder in parse(read_text(path))[0]:
+    for bound in bound_files(project):
+        path = bound.path
+        for placeholder in bound.placeholders:
             if placeholder.namespace != "results" or placeholder.key in said:
                 continue
             value = results.values.get(placeholder.key)

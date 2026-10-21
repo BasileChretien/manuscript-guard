@@ -847,8 +847,9 @@ duplicated key, where both keep the last.
 
 Status: designed 2026-10-20. Built: the first half of step 1, the format, the reader's file
 list, `two-formats`, `other-format-file` and `not-read-in-latex`; step 2, the scanner and
-its mask; and step 3, the include tree and its refusals under BUILD. No gate reads the
-manuscript's prose through them yet. Where the design depends on
+its mask; step 3, the include tree and its refusals under BUILD; and the first half of step
+4, the bindings, G2 but for its pointers to tables and figures, the custodian's counts and
+G1's synthetic inputs, held to the example by its LaTeX twin. Where the design depends on
 what LaTeX does, the pull request that relies on it checks the statement against TeX Live and
 MiKTeX and records the measurement. On the author's machine, 2026-10-20: MiKTeX 24.4 and
 latexmk 4.88, with pdfLaTeX, LuaLaTeX, XeLaTeX, BibTeX and Biber on PATH.
@@ -1324,6 +1325,23 @@ The result is compiled and packed by the code above, and checked three times:
 - In the preamble, `\g@addto@macro\abstract{…}` or `\pretocmd\abstract{…}` reads the group
   after `\abstract` as an abstract, and so is one in the branch of a conditional that is not
   taken, both read there (round 3 of #385).
+- G2 does not read a LaTeX manuscript's pointers to tables and figures: "Table~2" passes as
+  a cross-reference, as in Markdown, and is not held to the tables placed. It says so
+  (`not-read-in-latex`), which fails at submission. LaTeX numbers its floats itself, and a
+  `\ref` to a label nobody defined is the compile's to refuse (step 9).
+- A number typed as a LaTeX heading's or list item's numbering, `\section*{2.1 Methods}`, is
+  a number like any other: LaTeX numbers them, so the rules that pass Markdown's typed
+  numbering hold nowhere in a `.tex`.
+- A unit after a LaTeX binding is compared only where nothing but spaces stands between them
+  and inside it no command or maths: `\mg{results.dose}~$\mu$g`, `\textmu g` and siunitx's
+  `\si{\micro\gram}` are not compared with the unit emitted.
+- `\mg` is also siunitx's milligram, inside its commands. There it is not read as a binding,
+  and `\mg{results.key}` there is refused. The values file of the second half of step 4 must
+  define `\mg` so that siunitx's stays its own inside its commands.
+- A `verbatim` names no language, so its numbers are said once to be unread, as an untagged
+  fenced block's are; an `lstlisting`'s `language=` is read.
+- Past a refusal a file's bindings are found by their shape, in a comment too, so that a
+  result quoted there is not said to be quoted nowhere.
 - A class or package that changes how a character is read, beyond those refused, is not seen.
 - A package not in the refused list that prints a table or text from a data file is not seen:
   what it prints is read by no gate.
@@ -1369,11 +1387,23 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
    reads. `build/latex_check.py` puts each refusal under BUILD at its file and line, and
    warns of a file nothing inputs. Tests: `tests/test_latex_structure.py`, the corruption
    cases, `latex sections`, and `latex_trees()` with two `BROKEN` rules.
-4. Bindings and G2. `bindings`, `uncommented`, `table_at`, `mgvalues.sty` and its escape
-   table, `values` and its README row, `values-file-stale`; G2 and the custodian's counts
-   moved, and G1's synthetic-input check. Tests: the twin, G2's corruption cases on it,
-   `latex bindings`. The escape table's compile test needs LaTeX, so it skips on CI until step
-   9 installs TeX Live, and its first measurement is recorded in the pull request.
+4. Bindings and G2, in two pull requests. The first, built: the scanner records each `\mg`,
+   what looks meant for one, the tables an author types and the listings; `views.py` gives
+   the bindings as `Placeholder` records, the heading chain as a `Chain`, `in_table` (the
+   design's `table_at`), and the file as Markdown writes it, at the same offsets, where
+   sentences, labels and units are read; the classifier's rules read it with the reader's
+   NUL taken out and no heading or list numbering. G2 reads every file of both documents
+   through them, its pointers to tables and figures apart, which it says it does not read;
+   the bound units, the custodian's counts and G1's synthetic inputs read `bound_files`.
+   siunitx's commands are in the table: their number is prose and their units are blanked,
+   `\mg` in one is siunitx's milligram, and a binding there is refused, as is one in a
+   listing or a `\verb`. Tests: the twin, `tests/test_latex_twin.py`, which binds the
+   example's keys under the same headings and gets G2's counts and findings; G2's corruption
+   cases on it; `latex bindings`; `latex_bound()` with four `BROKEN` rules. `uncommented` waits
+   for G7's quotations and G9, which read it. The second: `mgvalues.sty` and its escape table,
+   `values` and its README row, `values-file-stale` and `values-file-missing`. The escape
+   table's compile test needs LaTeX, so it skips on CI until step 9 installs TeX Live, and its
+   first measurement is recorded in the pull request.
 5. Citations and G7. `cite.py`; G7, `lookup` and G6's citation positions moved; the twin's
    comparison with the example takes in the citations. Tests: `latex citations`, G7's cases on
    the twin.

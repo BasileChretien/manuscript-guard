@@ -167,7 +167,7 @@ class Classifier:
         )
         return cls(conventions + project_rules, structural, merged_terms, project_terms)
 
-    def scan(self, text: str, *, lines_are_blocks: bool = False) -> Scan:
+    def scan(self, text: str, *, lines_are_blocks: bool = False, blocks: bool = True) -> Scan:
         """Find every rule's matches in one document, so `classify` is a lookup.
 
         `text` is read as Markdown, where a heading or a list item starts only where pandoc
@@ -176,9 +176,17 @@ class Classifier:
         text one element per line. Read as Markdown, every line after the first would be a
         wrapped line of one long paragraph, and typed numbering there would stop counting.
         Every line then starts a list item where one is typed, and none is a heading.
+
+        `blocks` False is for a LaTeX file's view (`text/latex/views.py`), whose headings and
+        list items are commands: LaTeX numbers them, so no number typed there is their
+        numbering, and the rules that read a heading's or an item's numbering hold nowhere in
+        it. The NUL the reader writes for what does not print is taken out before the rules
+        read it (`_printed`).
         """
         rules = (*self.structural, *self.conventions)
-        return _scan(rules, text, lines_are_blocks=lines_are_blocks)
+        if not blocks:
+            rules = tuple(rule for rule in rules if not (rule.heading_only or rule.list_only))
+        return _scan(rules, text, lines_are_blocks=lines_are_blocks, blanked=not blocks)
 
     def classify(
         self, atom: Atom, section: Sequence[str] | None = None, scan: Scan | None = None
@@ -386,23 +394,34 @@ class Scan:
         return index >= 0 and self.reach[rule_id][index] >= end
 
 
-def _printed(text: str) -> tuple[str, list[int] | None]:
+def _printed(text: str, *, blanked: bool = False) -> tuple[str, list[int] | None]:
     """`text` without the backslashes that escape a comparison, and where each character of
     that came from; see `comparison_escapes`. `ROR \\> 2` prints as `ROR > 2`, and a rule
     reads what prints.
 
     Removed, not blanked. A space kept every offset and satisfied any rule that wants one
     there: `412)\\>ULOQ` at the start of a line read as a list marker, and 412 passed.
+
+    `blanked` is for a LaTeX file's view, where the reader writes NUL for what does not
+    print: those go too, so that `per 100\\,000 person-years`, a space and a NUL there, reads
+    as it prints.
     """
     gone = set(comparison_escapes(text))
+    if blanked:
+        gone.update(found.start() for found in _BLANK.finditer(text))
     if not gone:
         return text, None
     origin = [index for index in range(len(text) + 1) if index not in gone]
     return "".join(text[index] for index in origin[:-1]), origin
 
 
-def _scan(rules: Iterable[Rule], text: str, *, lines_are_blocks: bool = False) -> Scan:
-    printed, origin = _printed(text)
+_BLANK = re.compile("\x00")
+
+
+def _scan(
+    rules: Iterable[Rule], text: str, *, lines_are_blocks: bool = False, blanked: bool = False
+) -> Scan:
+    printed, origin = _printed(text, blanked=blanked)
     starts: dict[str, list[int]] = {}
     reach: dict[str, list[int]] = {}
     ends: dict[str, list[int]] = {}

@@ -58,6 +58,7 @@ from generated import (
     commented,
     generated,
     holds,
+    latex_bound,
     latex_planted,
     latex_texts,
     latex_trees,
@@ -122,6 +123,7 @@ from manuscript_guard.reworded import (
 from manuscript_guard.text import placeholders, tokens
 from manuscript_guard.text.latex import mask as latex_mask
 from manuscript_guard.text.latex import structure as latex_structure
+from manuscript_guard.text.latex import views as latex_views
 from manuscript_guard.text.masking import NUL, mask
 from manuscript_guard.text.placeholders import parse as parse_bindings
 from manuscript_guard.text.sections import chains_at, footnote_index, heading_index
@@ -575,6 +577,44 @@ def _a_chapter_closes_its_part(patch: pytest.MonkeyPatch) -> None:
 
 def _an_abstract_in_the_preamble_is_blanked(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(latex_mask, "PRINTED_IN_PREAMBLE", latex_mask.PRINTED_IN_PREAMBLE - {"abstract"})
+
+
+@holds(100, latex_bound())
+def test_a_latex_binding_is_read_where_it_prints_as_one_and_nowhere_else(
+    drawn: tuple[str, list[tuple[str, str]]],
+) -> None:
+    """A `\\mg{namespace.key}` planted in every place it stands, among whole pieces, is a
+    binding where LaTeX prints it, in prose, a note, a caption, a cell, maths, a definition's
+    body and the title, and nothing in a comment, an `\\iffalse` block or the `comment`
+    environment. A near spelling, a Markdown binding and a `\\mg` that names no key are each
+    something meant for one, and siunitx's milligram is nothing (step 4)."""
+    text, planted = drawn
+    reading = latex_mask.read(text)
+    assert reading.refusals == (), (reading.refusals, text)
+    good, malformed = latex_views.bindings(latex_structure.Source("main.tex", text, reading))
+    expected = {kind: sorted(key for key, was in planted if was == kind)
+                for kind in ("bound", "malformed")}  # fmt: skip
+    assert sorted(placeholder.key.rsplit(".", 1)[-1] for placeholder in good) == expected[
+        "bound"
+    ], text
+    keys = sorted("".join(re.findall(r"k\d+", raw)) for raw, _at, _line in malformed)
+    assert keys == expected["malformed"], (malformed, text)
+
+
+def _a_latex_binding_is_read_wherever_it_is_typed(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_views, "_uses", lambda source: latex_views._by_shape(source.text, 0))
+
+
+def _a_near_spelling_of_the_binding_is_taken_for_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_near_binding", lambda name: False)
+
+
+def _a_markdown_binding_in_latex_is_taken_for_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_MARKDOWN_BINDING", re.compile("(?!)"))
+
+
+def _siunitx_s_milligram_is_taken_for_a_binding(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "SIUNITX", frozenset())
 
 
 def _iffalse_hides_its_else(patch: pytest.MonkeyPatch) -> None:
@@ -6084,6 +6124,22 @@ BROKEN = {
     "in LaTeX, an abstract in the preamble is blanked": (
         _an_abstract_in_the_preamble_is_blanked,
         test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a binding is read wherever it is typed, in a comment too": (
+        _a_latex_binding_is_read_wherever_it_is_typed,
+        test_a_latex_binding_is_read_where_it_prints_as_one_and_nowhere_else,
+    ),
+    "in LaTeX, a near spelling of \\mg is taken for nothing": (
+        _a_near_spelling_of_the_binding_is_taken_for_nothing,
+        test_a_latex_binding_is_read_where_it_prints_as_one_and_nowhere_else,
+    ),
+    "in LaTeX, a Markdown binding left in a .tex is taken for nothing": (
+        _a_markdown_binding_in_latex_is_taken_for_nothing,
+        test_a_latex_binding_is_read_where_it_prints_as_one_and_nowhere_else,
+    ),
+    "in LaTeX, siunitx's milligram is taken for a binding": (
+        _siunitx_s_milligram_is_taken_for_a_binding,
+        test_a_latex_binding_is_read_where_it_prints_as_one_and_nowhere_else,
     ),
     "in LaTeX, a command the table lacks hides its arguments": (
         _an_unknown_command_hides_its_arguments,

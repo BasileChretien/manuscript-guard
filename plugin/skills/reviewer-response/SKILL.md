@@ -202,6 +202,12 @@ the journal's form or the author's letter template.
 
 ## 5. The rest of the resubmission
 
+- **The answer goes in the letter, not in the paper.** "As requested by Reviewer 2, we
+  added", "in the original submission", "we have now clarified" and "page 4, lines 120-125"
+  are the letter's words. Left in the manuscript, G6 reports them as `revision-residue`:
+  those that answer one reviewer or point at this manuscript fail at submission. In the
+  paper, say what it now reports; the [manuscript-writing](../manuscript-writing/SKILL.md)
+  skill has the rest. G6 never reads the round file or the letter.
 - **The internal review panel goes stale.** Revising changes files the panel read, and
   `review-stale` fails at submission. Each reviewer whose files changed has to read them
   again and have the record updated, as the

@@ -85,6 +85,8 @@
         "volume": { "$ref": "#/$defs/text" },
         "pages": { "$ref": "#/$defs/text" },
         "elocation": { "$ref": "#/$defs/text" },
+        "journal": { "$ref": "#/$defs/text" },
+        "journal_abbreviation": { "$ref": "#/$defs/text" },
         "authors": { "$ref": "#/$defs/authors" }
       }
     },
@@ -237,6 +239,8 @@
             "volume": { "$ref": "#/$defs/text" },
             "pages": { "$ref": "#/$defs/text" },
             "elocation": { "$ref": "#/$defs/text" },
+            "journal": { "$ref": "#/$defs/text" },
+            "journal_abbreviation": { "$ref": "#/$defs/text" },
             "authors": { "$ref": "#/$defs/authors" }
           }
         },

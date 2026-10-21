@@ -507,7 +507,13 @@ def _identity(citekey, fields, answers, path, excuse) -> list[Finding]:
     if registered is not pubmed and pubmed.get("doi") and pubmed.get("doi") == doi_of(fields):
         candidates.append(pubmed.get("title", ""))
     best = _best(title, candidates) if title and registered else None
-    if best and best[0] < TITLE_HELD:
+    # A guideline cited with its task force in its title, which the registries leave out,
+    # is the registered title still (Basile, 2026-10-21; `gates/searched`).
+    from manuscript_guard.gates.searched import subtitle_left_out
+
+    if best and best[0] < TITLE_HELD and not any(
+        subtitle_left_out(title, c) for c in candidates if c
+    ):
         found.append(_finding(
             "reference-title-mismatch",
             f"@{citekey}: the identifier names {best[1]!r}, which holds {best[0]:.0%} of the "

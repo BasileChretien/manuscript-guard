@@ -1577,7 +1577,11 @@ host it was meant for or nowhere, and nothing is sent unencrypted off this machi
   cite one, and a PMID PubMed types as a notice (`reference-not-the-work`). A registered title that holds less than 85% of the cited
   title's words (`reference-title-mismatch`): the cited title is held to the registered
   one with its subtitle and to its original-language title, so a subtitle the entry left
-  out costs nothing, and to PubMed's where PubMed gives the work the entry's own DOI, the
+  out costs nothing, and a subtitle the registry left out costs nothing either where the
+  cited title holds 85% of the registered one's words and the registered one 85% of the
+  cited main title's, of four words or more (two ESC guidelines cited with their task force
+  in their title, as the journal prints it, failed here in the measurement below; Basile,
+  2026-10-21: the DOI check takes the search's rule), and to PubMed's where PubMed gives the work the entry's own DOI, the
   English title of a paper Crossref registered in another language (round 1 of #253),
   once Crossref or DataCite has found the DOI: with neither, no title is compared; of
   Crossref's titles only the first is kept, so a further one is not compared; markup, TeX, case, accents and punctuation are folded (a tag or a
@@ -8188,10 +8192,15 @@ Open, recorded as each change landed:
   cited one is real and in no registry; `lookup.not_indexed` then says so. An article and
   its own conference abstract can share title, year and first author: the identifiers
   offered are PubMed's, then a journal article's, which is the article where PubMed has it.
-  A made-up subtitle after a real main title of four words or more is read as one the
-  registry left out. A reference with an identifier is still held to the one-way rule, so
-  a guideline cited with its task force in its title, which the registries leave out, fails
-  as `reference-title-mismatch` once its DOI is added, as it did before.
+  A work published in several journals (a reporting statement) is offered by the copy in
+  the journal the entry names, matched by its name or its abbreviation word by word; where
+  the entry names none of them, or OpenAlex alone has the copies, which keeps no journal,
+  no identifier is offered and no retraction of any copy is said. A made-up subtitle after
+  a real main title of four words or more is read as one the registry left out, by the
+  search and by the DOI check alike. Crossref's search is filtered by the date Crossref
+  publishes, which is the earlier of print and online, so a paper online two years or more
+  before the print year it is cited by is kept out of it, and rests on PubMed (round 1 of
+  #379; not measured).
 - **Authors are compared by family name, and leniently.** Two people of one family name
   are one person to G7, so a list that swaps a cited Wang for another Wang passes, and given
   names, initials and order after the first are not compared. The folding that reads
@@ -8203,12 +8212,17 @@ Open, recorded as each change landed:
   found among a listed person's given names counts as that person, so a made-up "Thomas"
   passes beside a listed Anne Thomas Smith. A name with ü before an e that a registry
   prints without its dots ("Brüel" as "Bruel") is read as another person's, since "ue" is
-  also how ü is transcribed. A name made up and
-  added to a real list is not seen where PubMed keeps no list of the work and the list
-  Crossref or OpenAlex keeps holds every other cited person: it reads as a list cut short. The second reading, with family and given names
-  the other way round, is tried only where the first finds nobody. DataCite's creators are
-  not kept, so a dataset's authors are not compared. A record of version 1 has no authors
-  and compares none until `lookup` asks again.
+  also how ü is transcribed. A name made up and added to a real list is not seen where
+  PubMed keeps no list of the work and the list Crossref or OpenAlex keeps holds every
+  other cited person: it reads as a list cut short. The second reading, with family and
+  given names the other way round, is tried only where the first finds nobody, and not for
+  a given name of initials. A name in another script than Latin, as Crossref keeps a
+  Russian or a Chinese journal's authors, is not compared, so a list of such names
+  compares nothing (round 1 of #379). A name written "Smith J A", family name first and
+  initials spaced with no comma, which Zotero never writes, is read by BibTeX's rule as
+  family name "A". DataCite's creators are not kept, so a dataset's authors are not
+  compared. A record of version 1 has no authors and compares none until `lookup` asks
+  again.
 - **No test reads a skill for the user's language or for a reference added to the paper.**
   A skill that tells the agent which language to speak to the user in, or to add a
   reference to the paper itself, is caught by whoever reviews the skill, not by

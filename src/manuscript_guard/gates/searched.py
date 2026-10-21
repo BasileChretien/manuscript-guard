@@ -21,8 +21,10 @@ asks nobody. It goes by rules, never by a registry's score of relevance (paper-p
   which Crossref's search puts first once the authors' names are in the query.
 * **Found** (`reference-found`, a note): the work's DOI and PMID are offered, to be added
   in Zotero; nothing is written into the .bib. The authors are compared, and a retraction
-  of the work is said as for a reference with an identifier.
-* **A work of the title and the year by other people**: none of the cited people on the
+  of the work is said as for a reference with an identifier. A work found in several
+  journals, as a reporting statement is co-published, is offered by the copy in the
+  journal the entry names, or not at all.
+* **An article of the title and the year by other people**: none of the cited people on the
   lists PubMed and Crossref keep for it fails from internal-review
   (`reference-authors-disjoint`), the shape of an invented reference; some of them is a
   warning (`reference-authors-differ`). A list only OpenAlex keeps never fails: its
@@ -137,6 +139,8 @@ class Work:
     pmid: str | None
     answer: dict[str, Any]
     notice: bool = False
+    #: The journal's names, full and abbreviated, as the registry gives them.
+    journals: tuple[str, ...] = ()
 
     @property
     def named(self) -> str:
@@ -149,6 +153,7 @@ def _pubmed(item: dict[str, Any]) -> Work:
         tuple(y for y in (item.get("year"),) if y), names.recorded(item.get("authors", [])),
         item.get("doi"), item["pmid"], item,
         notice=bool(lookups.PUBMED_NOTICES & set(item.get("pubtypes", []))),
+        journals=tuple(j for j in (item.get("journal"), item.get("journal_abbreviation")) if j),
     )  # fmt: skip
 
 
@@ -161,6 +166,7 @@ def _crossref(item: dict[str, Any]) -> Work:
         item["doi"], None, item,
         notice=bool(notices) or item.get("type") in NOT_WORKS
         or item["doi"].startswith(DENIED_PREFIXES),
+        journals=tuple(j for j in (item.get("container"),) if j),
     )  # fmt: skip
 
 
@@ -192,8 +198,10 @@ def _first_word(title: str) -> str:
 
 
 def _a_work(work: Work, cited_title: str) -> bool:
-    """Not a notice, a comment or a reply that repeats the cited title."""
-    first = _first_word(work.title)
+    """Not a notice, a comment or a reply that repeats the cited title. "WITHDRAWN:" in
+    front is the flag a registry puts on the work itself, as Cochrane prints a review it
+    withdrew (round 1 of #379), and is no notice."""
+    first = _first_word(_FLAG.sub("", work.title))
     return not work.notice and not (first in NOTICE_WORDS and first != _first_word(cited_title))
 
 
@@ -242,8 +250,41 @@ def alike(cited_title: str, titles: list[str]) -> float:
     return best
 
 
+def subtitle_left_out(cited_title: str, registered: str) -> bool:
+    """Whether the entry cites a subtitle the registry left out: the registered title held
+    by the cited one, and the cited main title, of four words or more, by the registered
+    one. The DOI check takes this from the search (Basile, 2026-10-21)."""
+    cited_main = main_title(cited_title)
+    if len(lookups.title_words(cited_main) or []) < _MAIN_WORDS:
+        return False
+    there = lookups.title_held(cited_main, registered) or 0.0
+    whole = lookups.title_held(_FLAG.sub("", registered), cited_title) or 0.0
+    return min(there, whole) >= lookups.TITLE_HELD
+
+
 def held(cited_title: str, work: Work) -> float:
     return alike(cited_title, list(work.titles))
+
+
+#: Words a journal's name holds that tell no journal from another.
+_JOURNAL_FILLER = frozenset({"of", "the", "and", "for", "in", "on", "de", "la", "und", "et"})
+
+
+def _journal_words(name: str) -> list[str]:
+    """A journal's name folded, without what it has in brackets: "BMJ (Clinical research
+    ed.)" is "bmj"."""
+    text = unicodedata.normalize("NFKD", re.sub(r"\([^)]*\)", " ", name).casefold())
+    text = "".join(c for c in text if not unicodedata.combining(c))
+    return [w for w in re.findall(r"[a-z0-9]+", text) if w not in _JOURNAL_FILLER]
+
+
+def same_journal(cited: str, registered: str) -> bool:
+    """One journal's name, written whole or as its abbreviation: "J Clin Epidemiol" is the
+    Journal of Clinical Epidemiology, word for word by its first letters."""
+    mine, theirs = _journal_words(cited), _journal_words(registered)
+    if not mine or len(mine) != len(theirs):
+        return False
+    return all(a.startswith(b) or b.startswith(a) for a, b in zip(mine, theirs, strict=True))
 
 
 def _dated(work: Work, year: int | None) -> bool:
@@ -276,7 +317,9 @@ def judge(
     lead = [w for w in dated if _leads(cited, w)]
     if lead:
         return Verdict(tuple(_found(citekey, fields, cited, lead, path, excuse)))
-    if dated:
+    # A book reviewed under its own title, by the reviewer, is no book by other people
+    # (round 1 of #379): only an article is held to the people a registry lists for it.
+    if dated and fields.get("type", "").lower() in JUDGED_KINDS:
         return Verdict(tuple(_by_others(citekey, title, cited, dated, path)))
     why = _open(fields, record, year)
     if why:
@@ -290,10 +333,55 @@ def _leads(cited: Authors, work: Work) -> bool:
     return not said.compared or said.first
 
 
+def _one_work(lead: list[Work]) -> list[list[Work]]:
+    """The works found, the records of one work together: a PubMed and a Crossref record
+    that share a DOI, or two that share a PMID, are one work."""
+    groups: list[list[Work]] = []
+    for work in lead:
+        ids = {x for x in (work.doi and f"doi:{work.doi}", work.pmid and f"pmid:{work.pmid}") if x}
+        home = [g for g in groups if ids & {x for w in g for x in (
+            w.doi and f"doi:{w.doi}", w.pmid and f"pmid:{w.pmid}") if x}]  # fmt: skip
+        merged = [work] + [w for g in home for w in g]
+        groups = [g for g in groups if g not in home] + [merged]
+    return groups
+
+
+def _cited_copy(fields: dict[str, str], lead: list[Work]) -> list[Work] | None:
+    """Of a work found more than once, the copy in the journal the entry names, or None
+    where that cannot be told: a statement co-published by several journals has one title,
+    year and first author in each (PRISMA 2020 in BMJ and in J Clin Epidemiol; round 1 of
+    #379)."""
+    groups = _one_work(lead)
+    if len(groups) == 1:
+        return groups[0]
+    journal = fields.get("journal") or fields.get("journaltitle") or ""
+    named = [
+        g for g in groups
+        if journal and any(same_journal(journal, j) for w in g for j in w.journals)
+    ]  # fmt: skip
+    return named[0] if len(named) == 1 else None
+
+
 def _found(citekey, fields, cited, lead: list[Work], path, excuse) -> list[Finding]:
+    by = joined([w.source for w in lead])
+    verb = "has" if " and " not in by else "have"
+    copy = _cited_copy(fields, lead)
+    if copy is None:
+        found = [lookups._finding(
+            "reference-found",
+            f"@{citekey} has no DOI and no PMID; {by} {verb} several works of this title, "
+            f"year and first author ({_named(lead) or 'no identifier'}), and the cited "
+            "journal does not say which is cited",
+            path,
+            "give the entry the identifier of the copy it cites, from the journal it names",
+            INFO,
+        )]  # fmt: skip
+        lists = [(w.source, w.people) for w in lead]
+        about = f"the works of this title ({_named(lead) or 'no identifier'})"
+        return found + authors.judged(citekey, cited, lists, path, about)
     # An article and its own conference abstract can share title, year and first author:
     # PubMed's article, then a journal article, is the one whose identifiers are offered.
-    lead = sorted(lead, key=lambda w: (w.source != "PubMed",
+    lead = sorted(copy, key=lambda w: (w.source != "PubMed",
                                        w.answer.get("type") not in (None, "journal-article")))
     offered = []
     for kind, value in (("DOI", next((w.doi for w in lead if w.doi), None)),
@@ -395,7 +483,9 @@ __all__ = [
     "Work",
     "first_family",
     "judge",
+    "same_journal",
     "search_words",
+    "subtitle_left_out",
     "unsearchable",
     "works",
 ]

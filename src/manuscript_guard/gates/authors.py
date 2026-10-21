@@ -33,7 +33,7 @@ from pathlib import Path
 
 from manuscript_guard.findings import WARN, Finding
 from manuscript_guard.gates import lookups
-from manuscript_guard.literature.names import SUFFIXES, Authors, Name
+from manuscript_guard.literature.names import INITIALS, SUFFIXES, Authors, Name
 
 #: Words a family name may start with that say nothing of whose it is.
 PARTICLES = frozenset({
@@ -99,15 +99,24 @@ def same(cited: str, registered: str, given: str = "") -> bool:
 
 
 def _people(names: Sequence[Name]) -> list[Name]:
-    return [n for n in names if n.family and not n.group]
+    """The persons of a list whose family names are written in Latin letters: a name in
+    another script, as Crossref keeps a Russian or a Chinese journal's authors, is never
+    found in a romanised entry, and is not compared (round 1 of #379), as a title mostly
+    in another script is not."""
+    return [n for n in names if n.family and not n.group and _latin(n.family)]
+
+
+def _latin(family: str) -> bool:
+    letters = [c for c in family if c.isalpha()]
+    return bool(letters) and sum(map(lookups._latin, letters)) * 2 >= len(letters)
 
 
 def _swapped(people: list[Name]) -> list[Name]:
     """The list read with family and given names the other way round, where the given name
     is a word and not initials."""
     return [
-        Name(family=p.given, given=p.family) if len(p.given.replace(".", "").replace(" ", "")) > 2
-        else p
+        Name(family=p.given, given=p.family)
+        if p.given and not INITIALS.fullmatch(p.given.replace(" ", "")) else p
         for p in people
     ]  # fmt: skip
 

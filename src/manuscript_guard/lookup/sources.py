@@ -356,6 +356,8 @@ def _summary(pmid: str, item: Any) -> dict[str, Any]:
                 "volume": _text(item.get("volume")),
                 "pages": _text(item.get("pages")),
                 "elocation": _text(item.get("elocationid")),
+                "journal": _text(item.get("fulljournalname")),
+                "journal_abbreviation": _text(item.get("source")),
                 "authors": _authors([
                     names.pubmed(a["name"], a.get("authtype") == "CollectiveName")
                     for a in people if isinstance(a.get("name"), str)

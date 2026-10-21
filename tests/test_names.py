@@ -160,3 +160,7 @@ def test_a_list_filed_the_other_way_round_is_read_once_more() -> None:
     # Initials are not a family name.
     said = authors.compare(Authors(tuple(_people("Wang"))), [[Name(family="Li", given="W.")]])
     assert said.disjoint
+    # Round 1 of #379: a family name of two letters is one (Xu, Li, Wu, Ma).
+    said = authors.compare(Authors((Name(family="Xu", given="Jun"),)),
+                           [[Name(family="Jun", given="Xu")]])  # fmt: skip
+    assert not said.disjoint and said.first

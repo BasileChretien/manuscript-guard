@@ -38,7 +38,7 @@ SUFFIXES = frozenset({"jr", "sr", "ii", "iii", "iv", "2nd", "3rd"})
 _AND = re.compile(r"\s+and\s+", re.IGNORECASE)
 _ET_AL = re.compile(r",?\s*\bet\.?\s+al\.?\s*$", re.IGNORECASE)
 #: Initials as PubMed prints them after a family name, "CA", or as a .bib may, "C.A.".
-_INITIALS = re.compile(r"(?:[A-Z]\.?){1,4}")
+INITIALS = re.compile(r"(?:[A-Z]\.?){1,4}")
 
 
 @dataclass(frozen=True)
@@ -137,8 +137,8 @@ def _person(text: str) -> Name:
         family, given = " ".join(words[start:]), " ".join(words[:start])
     family, given = _plain(family), _plain(given)
     # "Naranjo CA" with no comma: BibTeX's given name "Naranjo", family name "CA".
-    one_word = bool(given) and " " not in given and not _INITIALS.fullmatch(given)
-    if _INITIALS.fullmatch(family) and one_word:
+    one_word = bool(given) and " " not in given and not INITIALS.fullmatch(given)
+    if INITIALS.fullmatch(family) and one_word:
         family, given = given, family
     return Name(family=family, given=given)
 
@@ -175,7 +175,7 @@ def pubmed(name: str, collective: bool = False) -> Name:
     words = text.split()
     while len(words) > 1 and words[-1].lower().rstrip(".") in SUFFIXES:
         words.pop()
-    if len(words) > 1 and _INITIALS.fullmatch(words[-1]):
+    if len(words) > 1 and INITIALS.fullmatch(words[-1]):
         return Name(family=" ".join(words[:-1]), given=words[-1])
     return Name(family=" ".join(words))
 
@@ -217,5 +217,5 @@ def recorded(entries: list[dict]) -> tuple[Name, ...]:
     )
 
 
-__all__ = ["GROUP_WORDS", "Authors", "Name", "cited", "crossref", "displayed", "pubmed",
+__all__ = ["GROUP_WORDS", "INITIALS", "Authors", "Name", "cited", "crossref", "displayed", "pubmed",
            "recorded"]  # fmt: skip

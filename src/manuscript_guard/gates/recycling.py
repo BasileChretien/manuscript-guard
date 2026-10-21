@@ -131,7 +131,8 @@ _STATEMENT_NAMES = (
     r"|patient\s+and\s+public\s+involvement|provenance\s+and\s+peer\s+review"
     r"|authors?['\N{RIGHT SINGLE QUOTATION MARK}]?\s+contributions?|contributors(?:hip)?"
     r"|credit(?:\s+author(?:ship)?)?(?:\s+contributions?)?|transparency"
-    r"|(?:list\s+of\s+)?abbreviations"
+    r"|(?:list\s+of\s+)?abbreviations|statements?\s+and\s+declarations?"
+    r"|additional\s+contributions|article\s+information"
     r")(?:\s+(?:statements?|declarations?|disclosures?|section))?"
 )
 #: A statement's heading: its whole title names one or several, "Funding", "Data
@@ -161,6 +162,9 @@ STATEMENT = "statement"
 UNNAMED = ""
 #: The reference list: not compared.
 SET_APART = "set apart"
+#: Parts counted as another when a heading over several is taken for a title over the
+#: paper: the conclusions are the Discussion's (round 4 of the review).
+_COUNTED_AS = {CONCLUSION: DISCUSSION}
 
 _SHOWN = {
     METHODS: "the Methods",
@@ -332,7 +336,7 @@ def _parts(text: str, abstract_title: str | None) -> list[tuple[int, int, str]]:
         for later, kind in zip(headings[index + 1 :], named[index + 1 :], strict=True):
             if later.level <= heading.level:
                 break
-            under.add(DISCUSSION if kind == CONCLUSION else kind)
+            under.add(_COUNTED_AS.get(kind, kind))
         if len(under - {None, SET_APART, STATEMENT}) >= 2:
             named[index] = None
     parts: list[tuple[int, int, str]] = []

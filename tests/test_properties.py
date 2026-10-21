@@ -4124,7 +4124,7 @@ def test_a_value_an_earlier_output_printed_is_this_one_however_it_was_printed(
 _EARLIER_WORDS = tuple(
     f"{start}{end}"
     for start in ("zor", "vel", "quan", "mib", "tesh", "dov", "ral", "kup", "nar", "gim", "sav",
-                  "pel", "bru", "hok")  # fmt: skip
+                  "pel", "bru", "hok", "lom", "wib", "fen")  # fmt: skip
     for end in ("ade", "ine", "ost", "eth", "ond", "ix", "um", "orb", "ask", "elp", "aunt")
 )  # fmt: skip
 #: Words a page sets with a ligature.
@@ -4134,12 +4134,16 @@ _ITS_OWN = ("plok", "trab", "snarp", "wugle", "blick", "fendo", "crisk")
 #: What a manuscript holds of a passage, in the order drawn, each in every example.
 _REPEATED_KINDS = (
     "recycled", "short", "quoted", "changed", "listing", "comment", "heading", "statement",
-    "results statement", "like a statement",
+    "results statement", "like a statement", "reference list", "discussion",
 )  # fmt: skip
 #: The statements a journal asks for, as headings the Methods may hold.
 _STATEMENT_HEADINGS = ("Ethics approval", "Funding", "Patient and public involvement")
 #: Themes of the Results named as a statement is: the Results' own.
 _RESULTS_STATEMENT_HEADINGS = ("Data sharing", "Consent", "Funding and conflicts of interest")
+#: The part of the paper each kind's run stands in, where it stands in one.
+_PART_PLANTED = {
+    "statement": "statement", "results statement": "results", "discussion": "discussion",
+}  # fmt: skip
 #: Titles that open with a statement's words and are the paper's own matter.
 _LIKE_A_STATEMENT = (
     "Funding sources of the included trials", "Data sharing in pharmacovigilance",
@@ -4154,16 +4158,17 @@ _APART_BY = recycling_gate.GAP + 2
 def _planted_recycling(draw: st.DrawFn) -> tuple[str, str, set[tuple[int, ...]]]:
     """A manuscript of filler words and an earlier paper that share runs of words, one of
     each kind, and what the reading must report of them: by its first and last line, the
-    words shared, how many of those are quoted, and whether it stands in a statement.
+    words shared, how many of those are quoted, and the part of the paper it stands in.
 
     Repeated and reported: a run of twelve words or more, with a citation, a binding, a
     number and a mark of emphasis among its words and its lines wrapped; one in quotation
     marks, all quoted; one with a word changed, all but that word; one in a statement under
     the Methods, as a statement's; one under a theme of the Results named as a statement is,
-    and one under a title that opens with a statement's words, as the paper's own. Not
-    reported: a run of eleven, and runs in a listing, a comment and a heading. The earlier
-    paper sets each run in type: a word broken at the end of a line, a ligature, a
-    reference's number."""
+    as the Results'; one under a title that opens with a statement's words, as no part's;
+    one under the Discussion's principal findings, beside its interpretation and its
+    conclusions, as the Discussion's. Not reported: a run of eleven, and runs in a listing, a
+    comment, a heading and the reference list. The earlier paper sets each run in type: a
+    word broken at the end of a line, a ligature, a reference's number."""
     pool = list(draw(st.permutations(_EARLIER_WORDS)))
     text, source, expected = "", "", set()
 
@@ -4211,6 +4216,9 @@ def _planted_recycling(draw: st.DrawFn) -> tuple[str, str, set[tuple[int, ...]]]
                 (('"', '"'), ("\N{LEFT DOUBLE QUOTATION MARK}", "\N{RIGHT DOUBLE QUOTATION MARK}"))
             ))  # fmt: skip
             written = f"{opened}{written}{closed}"
+        sentence = f"{filler().capitalize()} {written} {filler()}."
+        # A part of the paper is closed by a heading that names none, so that the runs after
+        # it stand under no part.
         if kind == "listing":
             paragraph = f"```\n{written}\n```"
         elif kind == "comment":
@@ -4218,29 +4226,29 @@ def _planted_recycling(draw: st.DrawFn) -> tuple[str, str, set[tuple[int, ...]]]
         elif kind == "heading":
             paragraph = "## " + " ".join(shown)
         elif kind == "statement":
-            # Closed by the Results, so that the runs after it are under no statement.
-            paragraph = (
-                f"## Methods\n\n### {draw(st.sampled_from(_STATEMENT_HEADINGS))}\n\n"
-                f"{filler().capitalize()} {written} {filler()}.\n\n## Results"
-            )
+            heading = draw(st.sampled_from(_STATEMENT_HEADINGS))
+            paragraph = f"## Methods\n\n### {heading}\n\n{sentence}\n\n## Afterword"
         elif kind == "results statement":
-            paragraph = (
-                f"## Results\n\n### {draw(st.sampled_from(_RESULTS_STATEMENT_HEADINGS))}\n\n"
-                f"{filler().capitalize()} {written} {filler()}."
-            )
+            heading = draw(st.sampled_from(_RESULTS_STATEMENT_HEADINGS))
+            paragraph = f"## Results\n\n### {heading}\n\n{sentence}\n\n## Afterword"
         elif kind == "like a statement":
+            paragraph = f"## {draw(st.sampled_from(_LIKE_A_STATEMENT))}\n\n{sentence}"
+        elif kind == "discussion":
             paragraph = (
-                f"## {draw(st.sampled_from(_LIKE_A_STATEMENT))}\n\n"
-                f"{filler().capitalize()} {written} {filler()}."
+                f"## Discussion\n\n### Principal findings\n\n{sentence}\n\n### Interpretation\n\n"
+                f"{filler().capitalize()}.\n\n### Conclusions\n\n{filler().capitalize()}.\n\n"
+                "## Afterword"
             )
+        elif kind == "reference list":
+            paragraph = f"## References\n\n1. {written}\n\n## Afterword"
         else:
-            paragraph = f"{filler().capitalize()} {written} {filler()}."
-        if kind not in ("short", "listing", "comment", "heading"):
+            paragraph = sentence
+        if kind not in ("short", "listing", "comment", "heading", "reference list"):
             first = text.count("\n") + paragraph.count("\n", 0, paragraph.index(written)) + 1
             last = first + written.count("\n")
             shared = size - (kind == "changed")
             quoted = shared if kind == "quoted" else 0
-            expected.add((first, last, shared, quoted, kind == "statement"))
+            expected.add((first, last, shared, quoted, _PART_PLANTED.get(kind, "")))
         text += paragraph + "\n\n"
     return text, source, expected
 
@@ -4253,11 +4261,12 @@ def test_a_passage_of_an_earlier_paper_is_found_where_it_stands_however_it_is_se
     and whatever the manuscript put between its words that is no word; a word changed does
     not end it; a quotation is counted as quoted; a statement's is a statement's, under the
     Methods too, and a theme of the Results named as a statement is, or a title that opens
-    with a statement's words, is not; and eleven words, a listing, a comment and a heading
-    are not reported."""
+    with a statement's words, is not; the Discussion over its conclusions is the Discussion;
+    and eleven words, a listing, a comment, a heading and the reference list are not
+    reported."""
     text, source, expected = planted
     found = {
-        (p.first_line, p.last_line, p.shared, p.quoted, p.kind == recycling_gate.STATEMENT)
+        (p.first_line, p.last_line, p.shared, p.quoted, p.kind)
         for p in recycling_gate.recycled_in(text, source, "earlier")
     }
     assert found == expected, (text, source)
@@ -6597,6 +6606,15 @@ def _a_statement_is_set_apart(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(recycling_gate, "_part_of", set_apart)
 
 
+def _the_reference_list_is_compared(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(recycling_gate, "_REFERENCES", re.compile(r"(?!)"))
+
+
+def _the_conclusions_are_a_part_of_their_own(patch: pytest.MonkeyPatch) -> None:
+    # Before round 4 of the review: the Discussion over its conclusions was a title.
+    patch.setattr(recycling_gate, "_COUNTED_AS", {})
+
+
 def _sic_is_a_word_of_the_source(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(quotations_gate, "_SIC", re.compile(r"(?!)"))
 
@@ -7264,6 +7282,14 @@ BROKEN = {
     ),
     "a statement is set apart and not compared": (
         _a_statement_is_set_apart,
+        test_a_passage_of_an_earlier_paper_is_found_where_it_stands_however_it_is_set,
+    ),
+    "the reference list is compared with an earlier paper": (
+        _the_reference_list_is_compared,
+        test_a_passage_of_an_earlier_paper_is_found_where_it_stands_however_it_is_set,
+    ),
+    "the conclusions are a part of their own beside the Discussion": (
+        _the_conclusions_are_a_part_of_their_own,
         test_a_passage_of_an_earlier_paper_is_found_where_it_stands_however_it_is_set,
     ),
     "a heading that opens with a statement's words is a statement": (

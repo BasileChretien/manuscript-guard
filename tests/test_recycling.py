@@ -287,6 +287,9 @@ def test_what_a_similarity_check_is_not_asked_about_is_not_compared(
         pytest.param("# Funding, competing interests, and data availability",
                      "Competing interests", id="a serial comma"),
         pytest.param("# Acknowledgements[^1]", "Competing interests", id="a footnote's mark"),
+        pytest.param("# Statements and Declarations", "Competing interests", id="Springer's"),
+        pytest.param("# Additional Contributions", "Competing interests", id="JAMA's thanks"),
+        pytest.param("# Article Information", "Competing interests", id="JAMA's back matter"),
     ],
 )  # fmt: skip
 def test_a_statement_is_compared_and_noted_wherever_its_heading_stands(

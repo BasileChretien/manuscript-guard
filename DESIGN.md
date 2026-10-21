@@ -12911,6 +12911,13 @@ Open, recorded as each change landed:
   paragraph, as a structured abstract's "**Funding:**", which has no heading. The other way,
   a theme of the Discussion named as a statement is ("Data sharing") is noted where a
   warning is due; under the Results it is the Results'.
+- **A title over the Discussion and its conclusions alone is not taken for a title over the
+  paper.** The conclusions count as the Discussion's when the parts under a heading are
+  counted, so that the Discussion over "Interpretation" and "Conclusions" stays the
+  Discussion. A file whose only top heading names a part, over a Discussion and Conclusions
+  and nothing else ("# Background to hepatic injury" over them), therefore names its
+  passages by that heading: the Introduction's advice, or a statement's note under "# Data
+  sharing", where the Discussion's warning is due (round 5 of the review; rare).
 - **In single curly marks, a closing mark before a letter is an apostrophe.** An apostrophe at
   a word's end inside such a quotation ("the patients' notes", typed curly) closes it early,
   and the rest of it is read as recycled text.

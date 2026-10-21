@@ -8082,35 +8082,6 @@ Open, recorded as each change landed:
   checked in them. Reading those languages is weeks of work, for word splitting, their
   conventions and numerals, and counting characters against a limit, and waits until
   somebody writing in one of them asks.
-- **An earlier output is compared value by value, and never as prose.** G8 compares results
-  keys and recorded values. Two Methods sections that define the case, the exposure, the
-  outcome, the exclusions or the model in other words are not compared: the frozen plans are
-  copied in for that, and are not yet read by any gate; until they are, the skill gives the
-  panel an earlier-outputs remit read with both texts side by side. Nor are tables, model
-  cards or the data dictionary compared, though the copy holds them. A count printed only in
-  a table of either paper is compared with nothing. A value printed by only one of the two
-  papers (`quoted: false` on one side) is not compared, though it may show the data
-  changed.
-- **What a comparison read from a PDF cannot see.** A published value is read as printed: an
-  estimate rounded to one place is the same as any value within half a unit of it, so a
-  change smaller than the earlier rounding is not seen. A printed value that is not one
-  number ("2.3 (1.9 to 2.8)") is compared as text. A percentage there against a proportion
-  here (`12.5%` and `0.125`) is reported as a difference. Whether two printed numbers are
-  of the same quantity is the author's pairing, never checked; a pair of two different
-  quantities that happen to be equal passes. Which earlier outputs exist is the author's
-  word: an abstract nobody records is compared with nothing and its overlap is not asked
-  about.
-- **The copy holds the earlier project's results as they were, unprinted ones included.**
-  `related --take` copies every results fragment, so values the earlier paper did not print,
-  and counts its custodian may forbid outside the team, are committed with this paper. The
-  review panel's route B sends nothing under `literature/`; a public repository publishes
-  the copy. Which values a project may copy is not yet decided here.
-- **A disclosure is a citation or a sentence, and the covering letter is not read.** An
-  overlap counts as disclosed where the earlier output is cited anywhere in the manuscript
-  or the declared sentence is printed anywhere: neither is checked to say that the two share
-  data, and a citation in the Introduction to the abstract as a finding passes. The covering
-  letter is in no file, so what it declares is not checked; `submit` only lists what to put
-  there.
 - **A pointer is held to the number of a placement, not to its key, and only where every
   placement is a binding.** "Table 2" passes wherever the main text places two tables,
   whichever two they are: the check sees the numbering, not which table a sentence means.
@@ -9374,6 +9345,35 @@ Open, recorded as each change landed:
   an encoding the XML parser cannot read. Each used to crash the reader that met it, the
   import or the audit, on the body, the comments, the styles or the font parts; a part that
   could not be decompressed crashed the import on the build's record as well.
+- **An earlier output is compared value by value, and never as prose.** G8 compares results
+  keys and recorded values. Two Methods sections that define the case, the exposure, the
+  outcome, the exclusions or the model in other words are not compared: the frozen plans are
+  copied in for that, and are not yet read by any gate; until they are, the skill gives the
+  panel an earlier-outputs remit read with both texts side by side. Nor are tables, model
+  cards or the data dictionary compared, though the copy holds them. A count printed only in
+  a table of either paper is compared with nothing. A value printed by only one of the two
+  papers (`quoted: false` on one side) is not compared, though it may show the data
+  changed.
+- **What a comparison read from a PDF cannot see.** A published value is read as printed: an
+  estimate rounded to one place is the same as any value within half a unit of it, so a
+  change smaller than the earlier rounding is not seen. A printed value that is not one
+  number ("2.3 (1.9 to 2.8)") is compared as text. A percentage there against a proportion
+  here (`12.5%` and `0.125`) is reported as a difference. Whether two printed numbers are
+  of the same quantity is the author's pairing, never checked; a pair of two different
+  quantities that happen to be equal passes. Which earlier outputs exist is the author's
+  word: an abstract nobody records is compared with nothing and its overlap is not asked
+  about.
+- **The copy holds the earlier project's results as they were, unprinted ones included.**
+  `related --take` copies every results fragment, so values the earlier paper did not print,
+  and counts its custodian may forbid outside the team, are committed with this paper. The
+  review panel's route B sends nothing under `literature/`; a public repository publishes
+  the copy. Which values a project may copy is not yet decided here.
+- **A disclosure is a citation or a sentence, and the covering letter is not read.** An
+  overlap counts as disclosed where the earlier output is cited anywhere in the manuscript
+  or the declared sentence is printed anywhere: neither is checked to say that the two share
+  data, and a citation in the Introduction to the abstract as a finding passes. The covering
+  letter is in no file, so what it declares is not checked; `submit` only lists what to put
+  there.
 - **A table cell styled as a heading ends a reference list.** A cell never starts one,
   since "References" there is a column header, but a heading-styled cell after the list's
   heading ends it, as it would anywhere: Word lists such a cell as a heading in its

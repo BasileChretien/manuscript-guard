@@ -623,8 +623,11 @@ def _runs_of(atom: Atom) -> list[ET.Element]:
 def _segments(
     old: tuple[tuple[ET.Element, str], ...], new: tuple[tuple[ET.Element, str], ...]
 ) -> list[tuple[str, ET.Element, ET.Element]]:
-    """One word's text cut where either side's runs are cut: each part, and the run it is in
-    on each side. The two sides hold the same text."""
+    """One word's text cut where the revision's runs are cut or the sent document's looked
+    otherwise: each part, and the run it is in on each side. Not where the sent document's
+    runs alone were cut, as Word cuts them, so that a word set in italics whose old letters
+    lay in two plain runs is one change of formatting and not two. The two sides hold the
+    same text."""
 
     def ends(pieces: tuple[tuple[ET.Element, str], ...]) -> list[int]:
         out, at = [], 0
@@ -636,11 +639,15 @@ def _segments(
     text = "".join(piece for _run, piece in new)
     old_ends, new_ends = ends(old), ends(new)
     cuts = sorted(set(old_ends) | set(new_ends))
-    out, start = [], 0
+    out: list[tuple[str, ET.Element, ET.Element]] = []
+    start = 0
     for cut in cuts:
         was = old[next(i for i, end in enumerate(old_ends) if end >= cut)][0]
         now = new[next(i for i, end in enumerate(new_ends) if end >= cut)][0]
-        out.append((text[start:cut], now, was))
+        if out and out[-1][1] is now and look(out[-1][2]) == look(was):
+            out[-1] = (out[-1][0] + text[start:cut], now, out[-1][2])
+        else:
+            out.append((text[start:cut], now, was))
         start = cut
     return out
 

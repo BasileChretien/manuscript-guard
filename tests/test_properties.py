@@ -51,18 +51,23 @@ from generated import (
     LOWERED,
     NOTATED,
     PLACEHOLDERS,
+    RESIDUE,
+    RESIDUE_LOOKALIKES,
     SOURCE_GAPS,
     SOURCE_WORDS,
+    STRETCHES,
     TEMPORARY_LINKS,
     TERMS,
     TYPOGRAPHY,
     UNCLAIMED,
+    WRITTEN_WORDS,
     alt_texts,
     bindings,
     claim_edits,
     commented,
     generated,
     holds,
+    laid_out,
     latex_planted,
     latex_texts,
     latex_trees,
@@ -76,6 +81,7 @@ from generated import (
     share_tables,
     signs,
     sources,
+    suggestion_paragraphs,
     texts,
     typed,
     vector_figures,
@@ -3345,6 +3351,45 @@ def test_every_placeholder_is_found_and_nothing_that_looks_like_one(
         assert alone == [match], (written, alone)
 
 
+# ------------------------------------------------------- words to the reviewers, left in
+
+
+@st.composite
+def _planted_residue(draw: st.DrawFn) -> tuple[str, str]:
+    """A text, and the same with every residue G6 reads and everything that reads like one
+    and is prose, each put in at a place drawn. Every kind in every example."""
+    text = draw(texts())
+    pieces = text.split(" ")
+    for planted in [written for written, _rule, _found in RESIDUE] + list(RESIDUE_LOOKALIKES):
+        pieces.insert(draw(st.integers(0, len(pieces))), planted)
+    return text, " ".join(pieces)
+
+
+@holds(200, _planted_residue())
+def test_every_residue_is_found_by_its_rule_and_nothing_that_reads_like_one(
+    drawn: tuple[str, str],
+) -> None:
+    """Whatever the text, each residue put into it is found once, by its rule and with its
+    words, a hard wrap read as a space; and nothing that only reads like one is: not a name,
+    the contributions, the acknowledgements, a dossier, a retrotransposon, an invitation,
+    nor a phrase that a blank line cuts in two."""
+    from collections import Counter
+
+    from manuscript_guard.gates.writing import load_rules, residue_in
+
+    text, planted = drawn
+    rules = load_rules()
+
+    def found(written: str) -> Counter[tuple[str, str]]:
+        return Counter(
+            (rule["id"], " ".join(match.group(0).split()))
+            for rule, match in residue_in(rules, written)
+        )
+
+    added = Counter((rule, words) for _written, rule, words in RESIDUE)
+    assert found(planted) == found(text) + added, planted
+
+
 # ------------------------------------------------------------------------ an em dash typed
 
 #: What G6 counts as an em dash, the character and three hyphens, spaced or not; and what it
@@ -3470,6 +3515,121 @@ def _a_line_break_between_an_edit_s_words_is_no_space(patch: pytest.MonkeyPatch)
     from manuscript_guard import suggestions
 
     patch.setattr(suggestions, "_SPACE", "[ \\t\\u00a0]+")
+
+
+#: The kinds of stretch the merge refuses to rebuild from Word's text once edited: a link's
+#: address, a hard line break and a comment are not in Word's text.
+_NOT_MERGED = frozenset({"link", "lines", "comment"})
+
+
+@holds(60, suggestion_paragraphs())
+def test_a_suggestion_is_written_where_its_words_are_and_nothing_else_changes(
+    paragraph: dict[str, Any],
+) -> None:
+    """`import` writes a suggestion accepted in Word into the source where its old words
+    are (`suggestions.write_in`), then merges against that whatever else the author changed
+    in the paragraph. Every run of one or two words of every stretch is written over in
+    turn. In prose, in any emphasis, and beside a hard line break it is written, and only
+    those words change, in the source and in what Word shows: a comment repeating them is
+    not counted. Each value and citation prints where it did, moved along; the merge brings
+    the paragraph back as written, and when the author also retyped a word between other
+    values, it keeps the stretch the suggestion was written in, markup and all. Inside code,
+    a link's text or a comment, or across a hard line break, it is not written: Word shows
+    those without their markup, or the write would delete it."""
+    from manuscript_guard.roundtrip import align, segments
+    from manuscript_guard.suggestions import Words, write_in
+
+    source, printed, words, tokens, renderings = laid_out(paragraph)
+    runs = [
+        words[at : at + length]
+        for length in (1, 2)
+        for at in range(len(words) - length + 1)
+        if words[at][2] == words[at + length - 1][2]
+    ]
+    for count, run in enumerate(runs):
+        new = WRITTEN_WORDS[count % len(WRITTEN_WORDS)]
+        old = " ".join(word for word, *_rest in run)
+        written = write_in(source, printed, tokens, [Words(old, new)])
+        kind = run[0][1]
+        if not STRETCHES[kind][2] or (kind == "lines" and len(run) > 1):
+            assert isinstance(written, str), (old, source)
+            continue
+        assert not isinstance(written, str), (old, written, source)
+        (start, _), (shown_start, _) = run[0][3], run[0][4]
+        (_, end), (_, shown_end) = run[-1][3], run[-1][4]
+        shown_new = " ".join(new.split())
+        assert written.source == source[:start] + new + source[end:], (old, source)
+        assert written.shown == printed[:shown_start] + shown_new + printed[shown_end:]
+        assert [written.shown[a:b] for a, b in written.tokens] == renderings, (old, source)
+        alone = align(written.bare, written.shown, written.shown, written.tokens)
+        assert alone.rebuilt == written.bare, (old, source)
+        # The author retypes a word between other values, in a stretch the merge can rebuild.
+        here = run[0][5]
+        refused = {word[5] for word in words if word[1] in _NOT_MERGED}
+        other = next(
+            (word for word in words
+             if word[5] not in {here, *refused} and STRETCHES[word[1]][2]),
+            None,
+        )  # fmt: skip
+        if other is None:
+            continue
+        at, to = other[4]
+        if at >= shown_end:
+            at, to = (at + len(shown_new) - (shown_end - shown_start),
+                      to + len(shown_new) - (shown_end - shown_start))  # fmt: skip
+        returned = written.shown[:at] + "zebra" + written.shown[to:]
+        merged = align(written.bare, written.shown, returned, written.tokens).rebuilt
+        assert merged is not None and "zebra" in merged, (old, other[0], source)
+        assert segments(written.bare)[0][here].strip() in merged, (old, other[0], source)
+
+
+def _a_value_is_not_moved_along_by_the_words_written_before_it(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import suggestions
+
+    patch.setattr(suggestions, "_shifted", lambda spans, after, by: spans)
+
+
+def _a_suggestion_is_written_inside_code_or_a_link(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import suggestions
+    from manuscript_guard.roundtrip import _tokens
+
+    def tokens_only(paragraph: str, start: int, end: int) -> str:
+        found = any(token.at < end and start < token.to for token in _tokens(paragraph))
+        return "inside a binding or a citation" if found else ""
+
+    patch.setattr(suggestions, "_in_the_way", tokens_only)
+
+
+def _a_suggestion_is_written_across_a_line_break(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import suggestions
+
+    real = suggestions._in_the_way
+
+    def over_breaks(paragraph: str, start: int, end: int) -> str:
+        why = real(paragraph, start, end)
+        return "" if "line break" in why else why
+
+    patch.setattr(suggestions, "_in_the_way", over_breaks)
+
+
+def _words_in_a_comment_are_counted(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import suggestions
+
+    patch.setattr(suggestions, "_uncommented", lambda text: text)
+
+
+def _emphasis_is_in_the_way_of_a_suggestion(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import suggestions
+    from manuscript_guard.roundtrip import _emphasis
+
+    real = suggestions._in_the_way
+
+    def with_emphasis(paragraph: str, start: int, end: int) -> str:
+        if any(a < end and start < b for a, b, _width in _emphasis(paragraph)):
+            return "inside emphasis"
+        return real(paragraph, start, end)
+
+    patch.setattr(suggestions, "_in_the_way", with_emphasis)
 
 
 # ------------------------------------------------------------------------- a rewording
@@ -5430,6 +5590,74 @@ def _an_instruction_marked_or_linked_is_a_link_s_text(patch: pytest.MonkeyPatch)
     _placeholder_rule(patch, "placeholder", lambda p: p + r"(?![(\[{])")
 
 
+def _residue_rule(patch: pytest.MonkeyPatch, rule_id: str, change) -> None:
+    """The residue rule `rule_id` as `change` makes it, given the rule and returning it."""
+    from dataclasses import replace
+
+    from manuscript_guard.gates import writing
+
+    rules = writing.load_rules()
+    residue = tuple(change(rule) if rule["id"] == rule_id else rule for rule in rules.residue)
+    assert residue != rules.residue, f"{rule_id} is not a residue rule"
+    patch.setattr(writing, "load_rules", lambda: replace(rules, residue=residue))
+
+
+def _the_reviewers_are_one_reviewer(patch: pytest.MonkeyPatch) -> None:
+    # The end of a word after "the reviewer", which keeps "the reviewers" out of it.
+    def plural_too(rule: dict) -> dict:
+        one = r"(?:reviewer|referee|editor(?:-in-chief)?)\b(?!"
+        assert one in rule["pattern"], "the rule no longer ends one reviewer this way"
+        return {**rule, "pattern": rule["pattern"].replace(one, one[:-5] + "(?!")}
+
+    _residue_rule(patch, "reviewer-answered", plural_too)
+
+
+def _a_blank_line_ends_no_phrase(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import writing
+
+    patch.setattr(writing, "_paragraphs", lambda text: [(0, len(text))])
+
+
+def _the_acknowledgements_are_read(patch: pytest.MonkeyPatch) -> None:
+    def without_thanks(rule: dict) -> dict:
+        return {**rule, "exempt": [e for e in rule["exempt"] if "grateful" not in e]}
+
+    _residue_rule(patch, "earlier-version-unnamed", without_thanks)
+
+
+def _the_contributions_are_read(patch: pytest.MonkeyPatch) -> None:
+    def without_contributions(rule: dict) -> dict:
+        return {**rule, "exempt": [e for e in rule["exempt"] if "approv" not in e]}
+
+    _residue_rule(patch, "earlier-version-unnamed", without_contributions)
+
+
+def _a_dossier_is_a_submission(patch: pytest.MonkeyPatch) -> None:
+    def without_its_end(rule: dict) -> dict:
+        end = r"(?!\s+(?:to|of|for)\b)"
+        assert end in rule["pattern"], "the rule no longer ends a submission this way"
+        return {**rule, "pattern": rule["pattern"].replace(end, "")}
+
+    _residue_rule(patch, "earlier-version-unnamed", without_its_end)
+
+
+def _a_change_is_named_mid_clause(patch: pytest.MonkeyPatch) -> None:
+    # The end of a clause the rule waits for, which keeps "included in the SmPC" out.
+    def without_the_end(rule: dict) -> dict:
+        end = r"(?=\s*(?:[.;:!?)]|$))"
+        assert end in rule["pattern"], "the rule no longer waits for the end of a clause"
+        return {**rule, "pattern": rule["pattern"].replace(end, "")}
+
+    _residue_rule(patch, "text-edited-unnamed", without_the_end)
+
+
+def _lines_in_capitals_are_lines(patch: pytest.MonkeyPatch) -> None:
+    def in_any_case(rule: dict) -> dict:
+        return {**rule, "pattern": "(?i)" + rule["pattern"]}
+
+    _residue_rule(patch, "lines-cited-alone", in_any_case)
+
+
 def _a_field_wholly_in_brackets_is_read_without_them(patch: pytest.MonkeyPatch) -> None:
     # As `_untranslated` read a cited entry's field, until round 2 of #262.
     from manuscript_guard.gates import writing
@@ -7136,6 +7364,26 @@ BROKEN = {
         _a_line_break_between_an_edit_s_words_is_no_space,
         test_an_edit_s_words_are_found_where_they_stand_typed_or_printed_and_nowhere_else,
     ),
+    "a value is not moved along by the words written before it": (
+        _a_value_is_not_moved_along_by_the_words_written_before_it,
+        test_a_suggestion_is_written_where_its_words_are_and_nothing_else_changes,
+    ),
+    "a suggestion is written inside code or a link": (
+        _a_suggestion_is_written_inside_code_or_a_link,
+        test_a_suggestion_is_written_where_its_words_are_and_nothing_else_changes,
+    ),
+    "emphasis is in the way of a suggestion": (
+        _emphasis_is_in_the_way_of_a_suggestion,
+        test_a_suggestion_is_written_where_its_words_are_and_nothing_else_changes,
+    ),
+    "a suggestion is written across a line break": (
+        _a_suggestion_is_written_across_a_line_break,
+        test_a_suggestion_is_written_where_its_words_are_and_nothing_else_changes,
+    ),
+    "words in a comment are counted with the paragraph's": (
+        _words_in_a_comment_are_counted,
+        test_a_suggestion_is_written_where_its_words_are_and_nothing_else_changes,
+    ),
     "a rule's or a table's dashes are em dashes": (
         _a_rule_or_a_table_s_dashes_are_em_dashes,
         test_an_em_dash_is_counted_however_it_is_typed,
@@ -7155,6 +7403,34 @@ BROKEN = {
     "a cited entry's field wholly in brackets is read without them": (
         _a_field_wholly_in_brackets_is_read_without_them,
         test_every_placeholder_is_found_and_nothing_that_looks_like_one,
+    ),
+    "the reviewers are read as one reviewer": (
+        _the_reviewers_are_one_reviewer,
+        test_every_residue_is_found_by_its_rule_and_nothing_that_reads_like_one,
+    ),
+    "a blank line ends no residue": (
+        _a_blank_line_ends_no_phrase,
+        test_every_residue_is_found_by_its_rule_and_nothing_that_reads_like_one,
+    ),
+    "the acknowledgements are read for residue": (
+        _the_acknowledgements_are_read,
+        test_every_residue_is_found_by_its_rule_and_nothing_that_reads_like_one,
+    ),
+    "the contributions are read for residue": (
+        _the_contributions_are_read,
+        test_every_residue_is_found_by_its_rule_and_nothing_that_reads_like_one,
+    ),
+    "a dossier sent to an agency is a submission": (
+        _a_dossier_is_a_submission,
+        test_every_residue_is_found_by_its_rule_and_nothing_that_reads_like_one,
+    ),
+    "lines in capitals are lines": (
+        _lines_in_capitals_are_lines,
+        test_every_residue_is_found_by_its_rule_and_nothing_that_reads_like_one,
+    ),
+    "a change is named mid-clause": (
+        _a_change_is_named_mid_clause,
+        test_every_residue_is_found_by_its_rule_and_nothing_that_reads_like_one,
     ),
     "an argument that turns a figure's estimate off is not read": (
         _an_argument_that_turns_an_estimate_off_is_not_read,

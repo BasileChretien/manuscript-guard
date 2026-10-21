@@ -65,6 +65,7 @@ from generated import (
     alt_texts,
     bindings,
     claim_edits,
+    collection_plans,
     commented,
     credited_plans,
     generated,
@@ -1005,6 +1006,28 @@ def test_a_planned_result_is_read_from_its_own_item_and_nowhere_else(
     read = planned_results(plan)
     assert read is not None, plan
     assert [(found.key, found.group) for found in read] == listed, plan
+
+
+# ------------------------------------------------------------ the variables a plan names
+
+
+@holds(100, collection_plans())
+def test_a_variable_is_read_from_the_plan_outside_its_deviations_and_nowhere_else(
+    drawn: tuple[str, list[str], list[tuple[str, int]], list[tuple[str, int]], int],
+) -> None:
+    """Each variable the dictionary has, dotted or not, is read where the plan names it in
+    backticks, its subsections and a list headed "Planned results and amendments" included,
+    at its first mention; each name that reads as a variable's and that the dictionary lacks
+    is read the same way, one written in another case among them; and nothing is read from
+    the Deviations or the sections under them, from "Changes to the planned results", from
+    code, values, a fence or a comment. Of the text drawn after the plan, nothing is
+    compared: only that it changes nothing before it."""
+    from manuscript_guard.gates.collection import variables_named
+
+    plan, names, used, undefined, last = drawn
+    read_used, read_undefined = variables_named(plan, names)
+    assert [(n.name, n.line) for n in read_used if n.line <= last] == used, plan
+    assert [(n.name, n.line) for n in read_undefined if n.line <= last] == undefined, plan
 
 
 # ------------------------------------------------------------------------------ parameters
@@ -5738,6 +5761,112 @@ def _the_planned_results_subsections_are_not_read(patch: pytest.MonkeyPatch) -> 
     patch.setattr(design, "subsections", lambda sections, index: [sections[index]])
 
 
+def _the_deviations_name_variables(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import collection
+
+    patch.setattr(collection, "_deviations", lambda text: [])
+
+
+def _the_deviations_end_at_their_first_subsection(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import collection
+
+    def own_text_only(text: str) -> list[tuple[int, int]]:
+        headings = collection.find_headings(text)
+        return [(h.start, headings[i + 1].start if i + 1 < len(headings) else len(text))
+                for i, h in enumerate(headings) if collection.is_deviations(h.title)]  # fmt: skip
+
+    patch.setattr(collection, "_deviations", own_text_only)
+
+
+def _the_plan_s_title_may_be_its_deviations(patch: pytest.MonkeyPatch) -> None:
+    """The rule as it stood before round 1: the title was a heading like any other."""
+    from manuscript_guard.gates import collection
+
+    def every_heading(text: str) -> list[tuple[int, int]]:
+        headings = collection.find_headings(text)
+        return [(h.start, next((later.start for later in headings[i + 1:]
+                                if later.level <= h.level), len(text)))
+                for i, h in enumerate(headings) if collection.is_deviations(h.title)]  # fmt: skip
+
+    patch.setattr(collection, "_deviations", every_heading)
+
+
+def _the_deviations_run_to_the_next_section(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import collection
+
+    def to_a_section(text: str) -> list[tuple[int, int]]:
+        headings = collection.find_headings(text)
+        return [(h.start, next((later.start for later in headings[i + 1:]
+                                if later.level <= 2), len(text)))
+                for i, h in enumerate(headings[1:], 1)
+                if collection.is_deviations(h.title)]  # fmt: skip
+
+    patch.setattr(collection, "_deviations", to_a_section)
+
+
+def _any_heading_with_a_change_s_word_is_the_deviations(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import collection
+
+    patch.setattr(collection, "is_deviations",
+                  lambda title: bool(re.search(collection._DEVIATIONS, title)))  # fmt: skip
+
+
+def _a_heading_that_names_the_planned_results_is_never_the_deviations(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    from manuscript_guard.gates import collection
+    from manuscript_guard.gates.design import PLANNED
+
+    patch.setattr(collection, "is_deviations",
+                  lambda title: bool(re.search(collection._DEVIATIONS, title))
+                  and not re.search(PLANNED, title))  # fmt: skip
+
+
+def _code_in_brackets_is_a_variable(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import collection
+
+    patch.setattr(collection, "VARIABLE", re.compile(r"[A-Za-z][A-Za-z0-9_():]*"))
+
+
+def _a_value_in_backticks_is_a_variable(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import collection
+
+    patch.setattr(collection, "LITERALS", frozenset())
+
+
+def _a_dotted_name_is_never_a_variable(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import collection
+
+    reads_as = collection._reads_as
+    patch.setattr(collection, "_reads_as",
+                  lambda said, known: None if "." in said else reads_as(said, known))  # fmt: skip
+
+
+def _a_variable_is_matched_without_its_case(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import collection
+
+    reads_as = collection._reads_as
+
+    def folded(said: str, known) -> str | None:
+        if said.casefold() in {name.casefold() for name in known}:
+            return "used"
+        return reads_as(said, known)
+
+    patch.setattr(collection, "_reads_as", folded)
+
+
+def _a_variable_is_said_at_its_last_mention(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import collection
+
+    patch.setattr(collection, "_first", lambda found, named: found.update({named.name: named}))
+
+
+def _fences_and_comments_name_variables(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import collection
+
+    patch.setattr(collection, "mask", lambda text: text)
+
+
 def _a_variables_name_is_a_word(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(spelling_gate, "_in_an_identifier", lambda text, start, end: False)
 
@@ -7535,6 +7664,29 @@ BROKEN = {
         _the_planned_results_subsections_are_not_read,
         test_a_planned_result_is_read_from_its_own_item_and_nowhere_else,
     ),
+    **{
+        f"in a plan, {said}": (
+            broken,
+            test_a_variable_is_read_from_the_plan_outside_its_deviations_and_nowhere_else,
+        )
+        for said, broken in (
+            ("the Deviations name variables", _the_deviations_name_variables),
+            ("the Deviations end at their first subsection",
+             _the_deviations_end_at_their_first_subsection),
+            ("the plan's title may be its Deviations", _the_plan_s_title_may_be_its_deviations),
+            ("the Deviations run to the next section", _the_deviations_run_to_the_next_section),
+            ("any heading with a change's word is the Deviations",
+             _any_heading_with_a_change_s_word_is_the_deviations),
+            ("a heading naming the planned results is never the Deviations",
+             _a_heading_that_names_the_planned_results_is_never_the_deviations),
+            ("code in brackets is a variable", _code_in_brackets_is_a_variable),
+            ("a value in backticks is a variable", _a_value_in_backticks_is_a_variable),
+            ("a dotted name is never a variable", _a_dotted_name_is_never_a_variable),
+            ("a variable is matched without its case", _a_variable_is_matched_without_its_case),
+            ("a variable is said at its last mention", _a_variable_is_said_at_its_last_mention),
+            ("fences and comments name variables", _fences_and_comments_name_variables),
+        )
+    },
     "a variable's name is read as a word": (
         _a_variables_name_is_a_word,
         test_a_word_in_the_other_english_is_found_where_it_stands_and_a_name_is_not,

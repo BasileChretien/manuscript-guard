@@ -4421,6 +4421,39 @@ def test_a_dictionary_that_does_not_read_fails_the_check_at_every_stage(
     assert failed and set(failed) == {"G12 dictionary-invalid"}, failed
 
 
+def _collection_said(root: Path, text: str, stage: str) -> tuple[list[str], list[str]]:
+    """What the whole check fails on and what G12 warns of the collection plan, at a stage."""
+    from manuscript_guard.cli import _run_gates
+
+    (root / "design" / "data_dictionary.yaml").write_bytes(text.encode("utf-8"))
+    report, _project, _chosen, _deferred = _run_gates(root, stage=stage)
+    warned = [f.code for f in report.warnings
+              if f.code.startswith(("plan-variable", "dictionary-"))]  # fmt: skip
+    return [f.code for f in report.failures], warned
+
+
+@pytest.mark.parametrize("stage", ["design", "submission"])
+def test_a_variable_the_plan_uses_and_nobody_collects_is_warned_of(
+    project: Path, stage: str
+) -> None:
+    """A covariate the analysis adjusts for and the dictionary does not define is found
+    when the data come in: G12 says so while the plan is written, and warns at every stage."""
+    _plan_edited(project, "No stratification by", "Adjusted for `age_years`. No stratification by")
+    failed, warned = _collection_said(project, _EXAMPLE_DICTIONARY, stage)
+    assert failed == [] and warned == ["plan-variable-undefined"]
+
+
+@pytest.mark.parametrize("stage", ["design", "submission"])
+def test_an_entry_nothing_needs_is_warned_of(project: Path, stage: str) -> None:
+    unneeded = _EXAMPLE_DICTIONARY.replace(
+        "    reason: the proportion of the cases that were serious\n", ""
+    )
+    failed, warned = _collection_said(project, unneeded, stage)
+    assert failed == [] and warned == ["dictionary-entry-unused"]
+    _plan_edited(project, "Seriousness is reported", "Seriousness, `serious`, is reported")
+    assert _collection_said(project, unneeded, stage) == ([], [])
+
+
 # ------------------------------------------------- the unit of analysis
 
 

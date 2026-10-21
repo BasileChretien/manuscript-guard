@@ -61,6 +61,8 @@ from generated import (
     commented,
     generated,
     holds,
+    latex_planted,
+    latex_texts,
     lines,
     mean_tables,
     pdf_figures,
@@ -121,6 +123,7 @@ from manuscript_guard.reworded import (
     facts,
 )
 from manuscript_guard.text import placeholders, tokens
+from manuscript_guard.text.latex import mask as latex_mask
 from manuscript_guard.text.masking import NUL, mask
 from manuscript_guard.text.placeholders import parse as parse_bindings
 from manuscript_guard.text.sections import chains_at, footnote_index, heading_index
@@ -137,6 +140,9 @@ pytestmark = pytest.mark.usefixtures("stopped_if_stuck")
 #: seconds; its sessions have a file of their own, `tests/test_generated_sessions.py`, and
 #: here it is only asked twice for the same one.
 PAIRS = dict.fromkeys(READINGS, 75) | {"check": 6, "import": 1}
+
+#: The quotation marks the LaTeX reader writes for ``` `` ``` and `''`.
+LEFT_QUOTE, RIGHT_QUOTE = "\N{LEFT DOUBLE QUOTATION MARK}", "\N{RIGHT DOUBLE QUOTATION MARK}"
 
 
 # ---------------------------------------------------------------- the generators themselves
@@ -417,6 +423,135 @@ def _found_in_order(text: str) -> None:
         assert before < heading.start < max(len(text), 1), (text, heading)
         assert heading.start == 0 or text[heading.start - 1] == "\n", (text, heading)
         before = heading.start
+
+
+# ------------------------------------------------------------------------- the LaTeX reader
+
+
+@holds(200, latex_texts())
+def test_the_latex_mask_keeps_every_character_in_its_place(text: str) -> None:
+    """The LaTeX reader keeps the Markdown mask's contract: the same length, every line break
+    where it was, and each character itself, a NUL, or what TeX prints for it there (a space,
+    a quotation mark, or at an escape's backslash the character it stands for). Past a refusal
+    the text is as it was typed, so that nothing the reader did not understand is hidden."""
+    reading = latex_mask.read(text)
+    masked = reading.masked
+    assert len(masked) == len(text), text
+    for at, (was, now) in enumerate(zip(text, masked, strict=True)):
+        assert (now in "\r\n") == (was in "\r\n"), (at, text)
+        # A space only where TeX prints one: a tie, a cell's `&`, or a command's backslash
+        # (round 1 of #380: any character could become one, and `4100` read as `41 00`).
+        allowed = {was, NUL} | ({" "} if was in " \t~&\\" else set())
+        if was == "\\" and at + 1 < len(text):
+            allowed.add(text[at + 1])
+        allowed |= {"`": {LEFT_QUOTE}, "'": {RIGHT_QUOTE}}.get(was, set())
+        assert now in allowed, (at, was, now, text)
+    for refusal in reading.refusals:
+        assert masked[refusal.offset :] == text[refusal.offset :], (refusal, text)
+
+
+@holds(100, latex_planted())
+def test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else(
+    drawn: tuple[str, list[tuple[int, str, bool]]],
+) -> None:
+    """A number planted in every place LaTeX puts one, among whole pieces, is found where it
+    prints and blanked where it does not: in prose, a footnote, a caption, a citation's note,
+    maths, a `\\verb` and the title it is read; in a comment, a label, a key, a binding, a URL,
+    a listing, an `\\iffalse`, a length, the preamble and after the document it is not."""
+    text, planted = drawn
+    reading = latex_mask.read(text)
+    assert reading.refusals == (), (reading.refusals, text)
+    for at, number, read in planted:
+        seen = reading.masked[at : at + len(number)]
+        if read:
+            assert seen == number, (number, seen, text)
+        else:
+            assert set(seen) == {NUL}, (number, seen, text)
+
+
+def _an_escaped_percent_opens_a_comment(patch: pytest.MonkeyPatch) -> None:
+    symbol = latex_mask._Reader._symbol
+
+    def broken(self, character: str, at: int) -> None:
+        if character != "%":
+            symbol(self, character, at)
+            return
+        end = latex_mask._comment_end(self.text, at)
+        self._blank(at, end)
+        self.pos = end
+
+    patch.setattr(latex_mask._Reader, "_symbol", broken)
+
+
+def _a_latex_comment_runs_past_its_line(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_comment_end", lambda text, at: len(text))
+
+
+def _latex_maths_is_blanked_whole(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_maths_keeps", lambda character: False)
+
+
+def _a_citations_notes_are_blanked(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_note_role", lambda kind: latex_mask.BLANK)
+
+
+def _a_latex_group_closes_at_the_first_brace(patch: pytest.MonkeyPatch) -> None:
+    step = latex_mask._Reader._step
+
+    def broken(self) -> None:
+        nested = self.stack and self.stack[-1].kind in ("arg", "opt")
+        if self.text[self.pos] == "{" and nested:
+            self._keep_or_blank(self.pos, self.pos + 1)
+            self.pos += 1
+            return
+        step(self)
+
+    patch.setattr(latex_mask._Reader, "_step", broken)
+
+
+def _verb_takes_only_a_bar(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(
+        latex_mask, "_verb_delimiter", lambda text, at: "|" if text[at : at + 1] == "|" else ""
+    )
+
+
+def _the_preamble_ends_at_the_first_begin(patch: pytest.MonkeyPatch) -> None:
+    environment = latex_mask._Reader._environment
+
+    def broken(self, which: str, at: int, end: int) -> None:
+        self.body = True
+        environment(self, which, at, end)
+
+    patch.setattr(latex_mask._Reader, "_environment", broken)
+
+
+def _iffalse_hides_its_else(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_CONDITIONALS", re.compile(r"\\(?:if[A-Za-z]*|fi)(?![A-Za-z])"))
+
+
+def _a_line_break_takes_a_bracket_on_the_next_line(patch: pytest.MonkeyPatch) -> None:
+    argument = latex_mask._Reader._argument
+
+    def broken(self) -> bool:
+        command, self.command = self.command, "" if self.command == "\\" else self.command
+        try:
+            return argument(self)
+        finally:
+            if self.command == "":
+                self.command = command
+
+    patch.setattr(latex_mask._Reader, "_argument", broken)
+
+
+def _an_unknown_command_hides_its_arguments(patch: pytest.MonkeyPatch) -> None:
+    word = latex_mask._Reader._word
+
+    def broken(self, name: str, at: int, end: int) -> None:
+        word(self, name, at, end)
+        if name not in latex_mask.COMMANDS and not self.pending and self.refused is None:
+            self.command, self.pending = name, ("{b}",)
+
+    patch.setattr(latex_mask._Reader, "_word", broken)
 
 
 # ------------------------------------------------------- the sentences a co-author is shown
@@ -5966,6 +6101,46 @@ BROKEN = {
     "no abbreviation is known": (
         _no_abbreviation_is_known,
         test_every_citation_lies_in_the_sentence_of_its_own_clause,
+    ),
+    "in LaTeX, an escaped percent opens a comment": (
+        _an_escaped_percent_opens_a_comment,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a comment runs past its line": (
+        _a_latex_comment_runs_past_its_line,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, maths is blanked whole": (
+        _latex_maths_is_blanked_whole,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a citation's notes are blanked": (
+        _a_citations_notes_are_blanked,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a group closes at the first brace": (
+        _a_latex_group_closes_at_the_first_brace,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, \\verb takes only | as its delimiter": (
+        _verb_takes_only_a_bar,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, the preamble ends at the first \\begin": (
+        _the_preamble_ends_at_the_first_begin,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, \\iffalse hides its \\else branch": (
+        _iffalse_hides_its_else,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, \\\\ takes a bracket that opens the next line": (
+        _a_line_break_takes_a_bracket_on_the_next_line,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a command the table lacks hides its arguments": (
+        _an_unknown_command_hides_its_arguments,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
     ),
     "a piece with no word of its own is left alone": (
         _a_wordless_piece_is_left_alone,

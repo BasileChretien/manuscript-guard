@@ -39,7 +39,7 @@ _CITATIONS = {
     "footcite": False, "footcitetext": False, "smartcite": False, "supercite": False,
     "fullcite": False, "citetitle": False, "citetalias": True, "citepalias": False,
     "citefullauthor": True, "footfullcite": False, "citeurl": False, "citedate": False,
-    "citeurldate": False,
+    "citeurldate": False, "notecite": False, "pnotecite": False, "fnotecite": False,
 }  # fmt: skip
 _MULTI_CITATIONS = {
     "cites": False, "parencites": False, "textcites": True, "autocites": False,
@@ -66,7 +66,7 @@ COMMANDS = _specs(
             (
                 "emph", "textbf", "textit", "textsc", "textsf", "texttt", "textrm", "textup",
                 "textmd", "textsl", "textnormal", "underline", "mbox", "fbox", "textsuperscript",
-                "textsubscript", "enquote", "text", "intertext",
+                "textsubscript", "enquote", "text", "intertext", "citetext",
             ),
             "{p}",
         ),
@@ -104,7 +104,7 @@ COMMANDS = _specs(
         **dict.fromkeys(
             ("label", "ref", "eqref", "pageref", "autoref", "nameref", "cref", "Cref", "vref",
              "cpageref", "labelcref", "input", "include", "includeonly", "bibliography",
-             "setcitestyle",
+             "setcitestyle", "citereset", "defcitealias",
              "bibliographystyle", "graphicspath", "linespread", "hypersetup", "geometry",
              "newgeometry", "pagestyle", "thispagestyle", "pagenumbering", "nocite", "cline",
              "newlength", "date"),

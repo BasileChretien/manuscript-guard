@@ -74,6 +74,16 @@ def test_natbib_and_biblatex_commands_that_cite_or_set_the_style_are_read() -> N
 def test_a_multi_citations_global_note_may_be_a_phrase() -> None:
     text = DOC + "\\textcites(see the reviews of this question in)()[p.~2]{ghost}{b}.\n" + END
     assert _cited(text) == [("ghost", 3, True), ("b", 3, True)]
+    # One not closed within reach is refused, not read past (round 2 of step 5).
+    (refusal,) = read(DOC + "\\cites(" + "x" * 301 + ")(){a}{b}.\n" + END).refusals
+    assert "global note" in refusal.message
+
+
+def test_natbibs_and_biblatexs_other_commands_are_read_in_the_body() -> None:
+    text = DOC + ("\\citetext{see \\citealp{a}} \\defcitealias{a}{Paper I} \\citereset\n"
+                  "\\notecite[p.~2]{b} \\pnotecite{b} \\fnotecite{b}.\n") + END  # fmt: skip
+    assert read(text).refusals == ()
+    assert [key for key, _line, _narrative in _cited(text)] == ["a", "b", "b", "b"]
 
 
 def test_sync_bib_refuses_a_manuscript_its_reader_refuses(

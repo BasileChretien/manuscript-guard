@@ -1492,13 +1492,17 @@ The result is compiled and packed by the code above, and checked three times:
   read as prose words; it holds no number (round 3).
 - A multi-citation's global notes, `\cites(see)(p.~5)[...]{a}{b}`, are blanked, so a number in
   one is read by no gate; its per-group notes are read (step 5). A global note is looked for
-  up to 300 characters on, and not past a blank line; one longer is read as prose, and the
-  keys after it are not recorded (round 1 of step 5).
+  up to 300 characters on, and not past a blank line; one longer is refused (round 2 of step
+  5). A `)` in a comment inside a global note is taken for its end. A comment in the middle of
+  a key, `\cite{smi%` with `th}` on the next line, leaves a space in the key, where TeX joins
+  it, and `\\%` in a key list is taken for an escaped `%`.
 - apacite's `\citeA` and `\citeNP`, and an author's own command whose name holds `cite`, are
   refused where they are used, as the design asks: the reader knows natbib's and biblatex's
   (step 5). In the preamble such a command is not refused, since natbib's and biblatex's
   settings stand there, `\setcitestyle` and `\DeclareCiteCommand` among them, and nothing of
   it prints; biblatex's `\volcite` family is refused in the body (round 1 of step 5).
+  natbib's `\citetext`, `\defcitealias` and biblatex's `\citereset` and `\notecite` family
+  are read (round 2).
 - A citation in a hook's body, `\AtBeginDocument{\nocite{smith2019}}`, is not recorded, as one
   in a definition's body is not, and G7 warns that its key is cited nowhere (round 1 of
   step 5).

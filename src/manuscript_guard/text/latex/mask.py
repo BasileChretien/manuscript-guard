@@ -450,6 +450,11 @@ class _Reader:
                     self.pos = end + 1
                     self.pending = self.pending[1:]
                     return True
+                if here == "(" and self.command in CITATIONS:
+                    # Read past, the note would hide the keys after it (round 2 of step 5).
+                    said = f"its global note is not closed within {_NOTE_REACH} characters"
+                    self._refuse("tex-refused", at, f"\\{self.command} is not read: {said}")
+                    return True
                 self.pending = self.pending[1:]
                 continue
             return self._mandatory(spec[1], at, here)

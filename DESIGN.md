@@ -1232,8 +1232,9 @@ The result is compiled and packed by the code above, and checked three times:
   the twin and the example to the same bindings and headings, and to equal G2 counts, so the
   twin has no `\thanks`; the citations join the comparison when the citation reader does.
 - **Corruption cases.** Each manuscript case in `tests/test_corruption.py` is to run on the twin
-  too, with each `\mg` replaced by its value. G2's run on it from step 4, and each gate's join
-  it as the gate moves; until then a gate's Markdown cases stand for it. Further cases:
+  too, with each `\mg` replaced by its value. G2's cases run on it from step 4, and each other
+  gate's join them as the gate moves; until then a gate's Markdown cases stand for it. Further
+  cases:
   - a key mistyped, and a binding cut short;
   - a number in a `tabular`, a `\footnote`, a caption, a postnote, a `\newcommand` body and an
     input file;
@@ -1345,7 +1346,11 @@ The result is compiled and packed by the code above, and checked three times:
   a dialect, `language=[Sharp]C`, and `\lstset{language=R}` leave the language unread.
 - A command not in the table has its arguments read, by design, so layout the table lacks,
   `\titlespacing` in the body, or a primitive with a size and no braces, `\vskip 6pt`, gives
-  an unclassified number now that G2 reads LaTeX. Each found goes into the table.
+  an unclassified number now that G2 reads LaTeX. Each found goes into the table. A
+  definition whose body follows a comment, `\renewcommand{\arraystretch}%` with `{1.5}` on
+  the next line, has its body read as a group, so a parameter's size there is a number too.
+- physics' `\qty[a = b]` holds an `=`, so it is taken for siunitx's option list and blanked
+  (round 2 of #400).
 - Past a refusal a file's bindings are found by their shape, in a comment too, so that a
   result quoted there is not said to be quoted nowhere.
 - A class or package that changes how a character is read, beyond those refused, is not seen.
@@ -1408,9 +1413,10 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
    cases on it; `latex bindings`; `latex_bound()` with eight `BROKEN` rules. Round 1 found a
    layout parameter defined again, `\renewcommand{\arraystretch}{1.5}`, a font's size and
    columns failing G2 once it read LaTeX: the parameters' bodies are blanked (`PARAMETERS`),
-   and `\fontsize`, `multicols` and booktabs' `\addlinespace` are in the table. `\qty` and
-   `\unit` read what their brackets hold, since physics and the units package give those
-   names other meanings. `uncommented` waits
+   and `\fontsize`, `multicols`, booktabs' `\addlinespace`, `\setstretch` and
+   `\enlargethispage` are in the table. `\qty` and `\unit` read what their brackets hold
+   where it is no option list, since physics and the units package give those names other
+   meanings (`[o]`, round 2). `uncommented` waits
    for G7's quotations and G9, which read it. The second: `mgvalues.sty` and its escape table,
    `values` and its README row, `values-file-stale` and `values-file-missing`. The escape
    table's compile test needs LaTeX, so it skips on CI until step 9 installs TeX Live, and its

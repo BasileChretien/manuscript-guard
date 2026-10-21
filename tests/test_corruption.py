@@ -5289,12 +5289,16 @@ def _into_results(entry: Path, snippet: str) -> None:
 
 def test_every_binding_of_the_twin_when_inlined_is_caught(project: Path) -> None:
     """The headline on the twin: each `\\mg` replaced by its own value, as an author types it,
-    fails G2 (step 4)."""
+    fails G2 (step 4). A value with no digit, the model's kind, is G15's to hold, which reads
+    Markdown only until step 8: in the example it fails there, and G2 cannot see words."""
     entry = _twin(project)
     assert _twin_failures(project) == [], gate_report(project).render(project)
     text = entry.read_text(encoding="utf-8")
     namespace = load_namespace(load_project(project)[0])[0]
-    targets = sorted(set(re.findall(r"\\mg\{((?:results|lit)\.[a-z0-9_.]+)\}", text)))
+    targets = sorted(
+        ref for ref in set(re.findall(r"\\mg\{((?:results|lit)\.[a-z0-9_.]+)\}", text))
+        if any(character.isdigit() for character in namespace[ref].display)
+    )
     assert len(targets) >= 12, targets
     escaped = []
     for ref in targets:
@@ -5388,9 +5392,12 @@ def test_a_binding_the_twin_would_print_as_typed_is_refused_where_it_stands(
 
 
 def test_siunitx_s_milligram_in_the_twin_is_no_binding(project: Path) -> None:
+    """`\\mg` in siunitx's units is its milligram: no binding and nothing malformed. The dose
+    typed before it is a number like any other."""
     entry = _twin(project)
     _into_results(entry, "A dose of \\qty{5}{\\mg} was given.")
-    assert _twin_failures(project) == [], gate_report(project).render(project)
+    found = [(f.code, f.message) for f in _twin_failures(project)]
+    assert found == [("unclassified-number", "'5' is not bound to any source")], found
 
 
 def test_layout_in_the_twin_is_no_number_g2_reads(project: Path) -> None:

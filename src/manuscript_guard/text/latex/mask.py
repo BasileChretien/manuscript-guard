@@ -402,6 +402,12 @@ class _Reader:
                     return True
                 continue
             if spec[0] == "[":
+                if here == "[" and spec[1] == "o":
+                    # An option list is blanked, a value read (`commands.py`, `[o]`).
+                    close = self.text.find("]", at, at + 300)
+                    listed = "=" in self.text[at : close if close >= 0 else at + 300]
+                    self._open("opt", "b" if listed else "p", at, "]", siunitx=listed)
+                    return True
                 if here == "[":
                     self._open("opt", spec[1], at, "]")
                     return True
@@ -434,6 +440,8 @@ class _Reader:
             return True
         if here != "{":
             self.pending = ()
+            # A definition whose body is not there defines nothing a later body is of.
+            self.defining = ""
             return False
         if kind == "r":
             end = self._group_end(at)
@@ -448,20 +456,26 @@ class _Reader:
         self._open("arg", kind, at, "}")
         return True
 
-    def _open(self, kind: str, spec: str, at: int, closer: str) -> None:
+    def _open(
+        self, kind: str, spec: str, at: int, closer: str, *, siunitx: bool | None = None
+    ) -> None:
         role = self._role()
+        # A body prints where it is used, but a LaTeX parameter's is a size. What is being
+        # defined is spent on the body that opens, whatever its role (round 2 of #400: left
+        # set, it blanked the next body that defined nothing, `\AtBeginDocument`'s).
+        parameter = spec == "d" and self.defining in PARAMETERS
+        if spec == "d":
+            self.defining = ""
         if role == BLANK or spec in "bc":
             chosen = BLANK
         elif spec == "d":
-            # A body prints where it is used, but a LaTeX parameter's is a size.
-            chosen = BLANK if self.defining in PARAMETERS else PROSE
-            self.defining = ""
+            chosen = BLANK if parameter else PROSE
         elif role == PREAMBLE:
             chosen = PROSE if self._printed_from_preamble(self.command) else PREAMBLE
         else:
             chosen = _note_role(spec)
         frame = _Frame(kind, chosen, at, closer, self.pending[1:], self.command, spec == "d",
-                       siunitx=self.command in SIUNITX)  # fmt: skip
+                       siunitx=self.command in SIUNITX if siunitx is None else siunitx)  # fmt: skip
         self.siunitx += frame.siunitx
         heads = self.command in LEVELS or self.command == "abstract"
         if kind == "arg" and spec == "p" and heads and not self.definitions and chosen == PROSE:
@@ -471,7 +485,8 @@ class _Reader:
         self.stack.append(frame)
         # A Markdown binding as a command's argument, `\\emph{{results.x}}` (round 1 of #400:
         # only one opening a group of its own was seen).
-        if closer == "}" and _MARKDOWN_BINDING.match(self.text, at):
+        # `\\mg{{results.x}}` is `\\mg`'s own, said once there (round 2 of #400).
+        if closer == "}" and self.command != "mg" and _MARKDOWN_BINDING.match(self.text, at):
             self.suspects.append((at, self._suspect_end(at)))
         self._blank(at, at + 1)
         self.pos = at + 1

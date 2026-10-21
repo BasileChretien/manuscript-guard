@@ -4,6 +4,9 @@ An argument is written as its delimiters around one letter:
 
 - `*` a star, taken where it follows;
 - `[p]` an optional argument read as prose, `[b]` one blanked;
+- `[o]` one that is an option list, `key=value`, and blanked, or that holds no `=` and is
+  read as prose: a name two packages give, siunitx's `\\qty[round-precision=1]` and the
+  units package's `\\unit[250]{mg}` (round 2 of #400);
 - `(b)` an optional argument in parentheses, blanked (booktabs' `\\cmidrule(lr)`);
 - `{p}` a mandatory argument read as prose, `{b}` one blanked;
 - `{r}` one blanked and read raw, with `%` and `#` as characters (a URL);
@@ -18,7 +21,7 @@ from __future__ import annotations
 
 import re
 
-_ITEM = re.compile(r"\*|\[[pb]\]|\(b\)|\{[pbrdc]\}")
+_ITEM = re.compile(r"\*|\[[pbo]\]|\(b\)|\{[pbrdc]\}")
 
 
 def _specs(table: dict[str, str]) -> dict[str, tuple[str, ...]]:
@@ -107,16 +110,17 @@ COMMANDS = _specs(
         # is refused, since siunitx parses what it holds, and `\\mg` in one is the milligram
         # siunitx defines there (`mask.py`). `\\qty` and `\\unit` are other packages' too,
         # physics' brackets and units' `\\unit[250]{mg}`, so what their brackets hold is read
-        # (round 1 of #400: it was blanked, and 250 passed).
+        # where it is no option list (round 1 of #400: it was blanked, and 250 passed; round
+        # 2: read whole, siunitx's `round-precision=1` failed G2).
         **dict.fromkeys(("num", "numlist", "numproduct", "ang", "tablenum", "complexnum"),
                         "[b]{p}"),
         "numrange": "[b]{p}{p}",
         "SI": "[b]{p}[b]{b}",
-        "qty": "[p]{p}[b]{b}",
+        "qty": "[o]{p}[b]{b}",
         **dict.fromkeys(("qtylist", "SIlist", "qtyproduct", "complexqty"), "[b]{p}{b}"),
         **dict.fromkeys(("qtyrange", "SIrange"), "[b]{p}{p}{b}"),
         "si": "[b]{b}",
-        "unit": "[p]{b}",
+        "unit": "[o]{b}",
         # Citations: the notes are read, the keys are not.
         **dict.fromkeys(
             ("cite", "citep", "citet", "citealt", "citealp", "citeauthor", "citeyear",

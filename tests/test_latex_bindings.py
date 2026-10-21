@@ -50,6 +50,27 @@ def test_round_1_of_400_a_markdown_binding_as_an_argument_and_a_brace_on_the_nex
     assert read(DOC + "The command \\verb|\\mg| binds.\n" + END).refusals == ()
 
 
+def test_round_2_of_400_an_option_list_is_blanked_and_a_value_in_brackets_is_read() -> None:
+    """siunitx's `\\qty[round-precision=2]` holds options; the units package's `\\unit[250]`
+    holds the value, and a binding there is no siunitx's."""
+    masked = read(DOC + "\\qty[round-precision=2]{3.5}{\\mm} and \\unit[250]{mg}.\n" + END).masked
+    assert "2" not in masked.replace("250", "") and "3.5" in masked and "250" in masked
+    text = DOC + "A dose of \\unit[\\mg{results.dose}]{mg}.\n" + END
+    source = _source(text)
+    assert source.reading.refusals == ()
+    assert [p.ref for p in bindings(source)[0]] == ["results.dose"]
+
+
+def test_round_2_of_400_a_binding_s_own_markdown_braces_are_said_once() -> None:
+    assert len(bindings(_source(DOC + "Of \\mg{{results.x}} reports.\n" + END))[1]) == 1
+
+
+def test_round_2_of_400_a_definition_left_without_its_body_blanks_no_later_body() -> None:
+    text = (DOC + "\\renewcommand{\\arraystretch}%\n{1.5}\n"
+            "\\AtBeginDocument{4123 patients}\n" + END)  # fmt: skip
+    assert "4123" in read(text).masked
+
+
 def test_a_binding_after_a_refusal_raised_behind_it_is_counted_once() -> None:
     """Round 1 of #400: an environment left open is refused at its `\\begin`, behind the
     bindings the scan had read, which were counted again by their shape."""

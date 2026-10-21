@@ -26,7 +26,7 @@ from dataclasses import dataclass, field, replace
 from manuscript_guard.proof.align import Op, align
 from manuscript_guard.proof.origin import Origin
 from manuscript_guard.proof.reading import Reading
-from manuscript_guard.proof.sent import CELL, REFERENCE, Part, Sent
+from manuscript_guard.proof.sent import CAPTION, CELL, PARAGRAPH, REFERENCE, Part, Sent
 from manuscript_guard.proof.tokens import (
     DECIMAL_MARK,
     DIGITS,
@@ -49,6 +49,9 @@ CORRECTION, COPY_EDIT, MOVED, ADDED = "correction", "copy-edit", "moved", "added
 CONTEXT = 4
 #: Copy-edits of one part this few tokens apart are one copy-edit.
 NEAR = 3
+#: The fewest tokens of a paragraph, a caption or a reference that, none printed in place,
+#: is left out whatever the proof prints there (`_Reader._missing`).
+WHOLE = 6
 
 
 @dataclass(frozen=True)
@@ -93,8 +96,10 @@ def compare(
     document sent does not have, and is not reported as added."""
     a = [t for index, part in enumerate(sent.parts) for t in tokens(prepared(part.text), index)]
     b = proof_tokens(reading, a)
+    # Where each part starts, and where the last ends: what follows the document's last
+    # token, a supplement typeset after it, is after its last part and not inside it.
     starts = frozenset(k for k in range(len(a)) if k == 0 or a[k].where != a[k - 1].where)
-    ops = align([t.key for t in a], [t.key for t in b], starts)
+    ops = align([t.key for t in a], [t.key for t in b], starts | {len(a)})
     found = sum(op.i2 - op.i1 for op in ops if op.tag == "equal")
     extra = len(b) - sum(op.j2 - op.j1 for op in ops if op.tag == "equal")
     changes = _Reader(sent, reading, a, b, origin, quiet).read(ops)
@@ -113,6 +118,10 @@ def best(sent: Sent, readings: list[Reading], origin: Origin | None = None) -> C
 
 
 # ---------------------------------------------------------------- the proof's tokens
+
+#: What breaks a word at a line's end: a hyphen, a hyphen proper, or the soft hyphen read as
+#: one (`proof_tokens`).
+_HYPHENS = frozenset({"-", "\N{HYPHEN}", "\N{NON-BREAKING HYPHEN}"})
 
 
 def proof_tokens(reading: Reading, sent: list[Token]) -> list[Token]:
@@ -133,8 +142,10 @@ def proof_tokens(reading: Reading, sent: list[Token]) -> list[Token]:
         found = _split_compounds(tokens(prepared(text), index), rejoined)
         if text.endswith("\N{SOFT HYPHEN}") and found and found[-1].kind == WORD:
             found.append(Token("-", "-", "mark", True, index))
+        # A hyphen, not a dash: "5 mg" and an em dash at a line's end, then "twice", are no
+        # word broken in two (round 1 of #397).
         if (out and found and found[0].kind == WORD and found[0].raw[:1].islower()
-                and len(out) >= 2 and out[-1].key == "-" and out[-1].glued
+                and len(out) >= 2 and out[-1].raw in _HYPHENS and out[-1].glued
                 and out[-2].kind == WORD):  # fmt: skip
             first, half = out[-2], found[0]
             if (first.key, half.key) in hyphened:
@@ -185,25 +196,34 @@ class _Reader:
         for op in ops:
             if op.tag == "equal":
                 self._equal(op)
-            elif not (op.i2 > op.i1 and all(self.a[k].where in gone for k in range(op.i1, op.i2))):
-                self._differ(op)
+            else:
+                self._differ(op, gone)
         self._moved(ops)
         return _ordered(_swapped(_merged(self.changes)))
 
     def _missing(self, ops: list[Op]) -> dict[int, int]:
-        """The parts no token of which the proof prints, with where in the proof they would
-        have stood."""
+        """The parts the proof does not print, with where in the proof they would have
+        stood: a part none of whose tokens the proof prints, or prints anything in place of;
+        or a paragraph, a caption or a reference of `WHOLE` tokens or more none of which it
+        prints in place, whatever it prints there (round 1 of #397: a paragraph left out
+        where a running head stood was a copy-edit of the head). A heading the journal
+        renames prints none of its words in place and is no part left out."""
+        printed = [False] * len(self.a)
         deleted = [False] * len(self.a)
         at = [0] * len(self.a)
         for op in ops:
-            if op.tag == "delete":
-                for k in range(op.i1, op.i2):
-                    deleted[k], at[k] = True, op.j1
-        return {
-            part: at[self.first[part]]
-            for part in self.first
-            if all(deleted[k] for k in range(self.first[part], self.last[part] + 1))
-        }
+            for k in range(op.i1, op.i2):
+                printed[k] = op.tag == "equal"
+                deleted[k], at[k] = op.tag == "delete", op.j1
+        gone = {}
+        for part, first in self.first.items():
+            span = range(first, self.last[part] + 1)
+            if any(printed[k] for k in span):
+                continue
+            whole = self.sent.parts[part].kind in (PARAGRAPH, CAPTION, REFERENCE)
+            if all(deleted[k] for k in span) or whole and len(span) >= WHOLE:
+                gone[part] = at[first]
+        return gone
 
     # -- one stretch
 
@@ -233,12 +253,24 @@ class _Reader:
             elif verdict == TYPOGRAPHY:
                 self._say(TYPOGRAPHY, "number", part, sent, printed, op.j1 + k, note=note)
 
-    def _differ(self, op: Op) -> None:
-        said, shown = self.a[op.i1 : op.i2], self.b[op.j1 : op.j2]
+    def _differ(self, op: Op, gone: dict[int, int]) -> None:
+        # A part left out is said once, as missing; what the proof prints in its place is
+        # added text, or what is left of the stretch.
+        said = [t for t in self.a[op.i1 : op.i2] if t.where not in gone]
+        shown = self.b[op.j1 : op.j2]
         if not said and shown and all(t.where in self.quiet for t in shown):
             return
-        if not said and not self._inside(op.i1):
+        if not said and op.i2 > op.i1:
             if shown:
+                self._say(ADDED, "text", None, "", spelled(shown), op.j1)
+            return
+        if not said and not self._inside(op.i1):
+            if shown and self._between_cells(op.i1) and any(t.kind == NUMBER for t in shown):
+                # A value, or a row, the proof adds to a table (round 1 of #397).
+                part = self.sent.parts[self.a[op.i1 - 1].where]
+                self._say(CORRECTION, "number", part, "", spelled(shown), op.j1,
+                          note=_gone_or_come(said, shown))  # fmt: skip
+            elif shown:
                 self._say(ADDED, "text", None, "", spelled(shown), op.j1)
             return
         part = self.sent.parts[(said[0] if said else self.a[op.i1 - 1]).where]
@@ -290,6 +322,13 @@ class _Reader:
     def _inside(self, i: int) -> bool:
         """Whether position `i` of what was sent falls inside a part, not between two."""
         return 0 < i < len(self.a) and self.a[i - 1].where == self.a[i].where
+
+    def _between_cells(self, i: int) -> bool:
+        """Whether position `i` falls between two cells of one table."""
+        if not 0 < i < len(self.a):
+            return False
+        before, after = self.sent.parts[self.a[i - 1].where], self.sent.parts[self.a[i].where]
+        return before.kind == CELL == after.kind and before.table == after.table
 
     def _kind_of_number(self, i1: int, i2: int, part: Part, shown: tuple = ()) -> str:
         if part.kind == REFERENCE:

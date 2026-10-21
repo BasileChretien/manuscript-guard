@@ -11,6 +11,7 @@ The last tests run the command on the example's own submission pack.
 
 from __future__ import annotations
 
+import itertools
 import json
 import shutil
 import sys
@@ -344,11 +345,20 @@ def test_years_in_a_table_are_not_line_numbers(tmp_path: Path) -> None:
     assert changes_of(tmp_path, sent=sent, text=text).changes == ()
 
 
-def _passages(count: int, words: int, *, seed: int = 0) -> tuple[Sent, list[str]]:
-    """`count` paragraphs of `words` words each, and their lines as a proof sets them."""
+def _passages(count: int, words: int) -> tuple[Sent, list[str]]:
+    """`count` paragraphs of `words` words each, as text reads: words of letters drawn from a
+    vocabulary of 1728, a number every seventh word; and their lines as a proof sets them.
+    Words with digits in them, "w123x7", stood for "w # x #" in the alignment, the same keys
+    from end to end, which no text is (round 1 of #397, on CI)."""
+    import random
+
+    syllables = ("ka", "lo", "mi", "ne", "ru", "sa", "ti", "vo", "pe", "du", "ga", "ho")
+    vocabulary = ["".join(s) for s in itertools.product(syllables, repeat=3)]
+    drawn = random.Random(7)
     parts = tuple(
-        Part(PARAGRAPH, " ".join(f"w{(seed + k * words + n) % 997}x{n}" for n in range(words))
-             + ".", f"paragraph {k}")
+        Part(PARAGRAPH, " ".join(drawn.choice(vocabulary) if n % 7 else
+                                 f"{drawn.randrange(1, 100)}.{drawn.randrange(10)}"
+                                 for n in range(words)) + ".", f"paragraph {k}")
         for k in range(count)
     )  # fmt: skip
     return Sent(Path("m.docx"), parts, (), None), typeset_lines(parts, width=60)
@@ -380,12 +390,73 @@ def test_lining_up_a_proof_takes_time_in_proportion_to_its_length(assert_linear)
 
     def build(count: int):
         sent, lines = _passages(count, 30)
-        lines = [line.replace("x7 ", "y7 ", 1) if k % 9 == 0 else line
+        # A word copy-edited on every ninth line.
+        lines = [f"changed {line.split(' ', 1)[1]}" if k % 9 == 0 and " " in line else line
                  for k, line in enumerate(lines)]  # fmt: skip
         return sent, Reading("text", tuple(Line(line, 1 + k // 50) for k, line in
                                            enumerate(lines)), 1)  # fmt: skip
 
     assert_linear(build, lambda given: compare(*given), 4, "the proof's comparison")
+
+
+def test_a_proof_unlike_what_was_sent_is_compared_in_time_near_its_length() -> None:
+    """Where nothing anchors, a text of the same keys from end to end, the comparison
+    gives up on the stretch rather than trying every run against every other: it took
+    minutes at 128 paragraphs (round 1 of #397, on CI)."""
+    import time
+
+    from manuscript_guard.proof.reading import Line, Reading
+
+    parts = tuple(Part(PARAGRAPH, " ".join(f"w{n}x{k}" for n in range(30)) + ".", f"p{k}")
+                  for k in range(128))  # fmt: skip
+    lines = [line.replace("x1", "y1", 1) if k % 9 == 0 else line
+             for k, line in enumerate(typeset_lines(parts, width=60))]  # fmt: skip
+    reading = Reading("text", tuple(Line(line, 1 + k // 50) for k, line in enumerate(lines)), 1)
+    started = time.perf_counter()
+    compare(Sent(Path("m.docx"), parts, (), None), reading)
+    assert time.perf_counter() - started < 20
+
+
+def test_a_number_the_proof_adds_between_two_cells_is_a_correction(tmp_path: Path) -> None:
+    # Review of #397, round 1: every cell is a part, and text between two parts was added
+    # text, shown and not counted, so a value or a row the proof repeats passed.
+    (change,) = corrections(changes_of(tmp_path, ("226 (53.1)   1737", "226 (53.1)   99   1737")))
+    assert (change.what, change.note) == ("number", "the proof prints a number that was not sent")
+    rows = corrections(changes_of(tmp_path, ("Female   226 (53.1)   1737 (48.6)",
+                                             "Female   226 (53.1)   1737 (48.6)\n"
+                                             "Female   226 (53.1)   1737 (48.6)")))  # fmt: skip
+    assert rows and all(c.what == "number" for c in rows)
+
+
+def test_a_paragraph_the_proof_prints_other_text_in_place_of_is_missing(tmp_path: Path) -> None:
+    # Review of #397, round 1: left out where the proof prints a running head it does not
+    # repeat, a paragraph was a copy-edit of that head.
+    result = changes_of(tmp_path, (PARTS[16].text, "Journal of Imaginary Pharmacology 2026"))
+    (change,) = corrections(result)
+    assert (change.what, change.part) == ("missing", PARTS[16].label)
+
+
+def test_a_heading_the_journal_renames_is_a_copy_edit(tmp_path: Path) -> None:
+    result = changes_of(tmp_path, ("Funding\n", "Financial support\n"))
+    assert corrections(result) == []
+    assert [(c.sent, c.printed) for c in kinds(result, COPY_EDIT)] == [
+        ("Funding", "Financial support")]
+
+
+def test_a_unit_of_time_changed_beside_a_number_is_a_correction(tmp_path: Path) -> None:
+    (change,) = corrections(changes_of(tmp_path, ("over 12 weeks", "over 12 months")))
+    assert change.what == "unit or symbol"
+
+
+def test_a_dash_at_a_line_end_joins_no_word(tmp_path: Path) -> None:
+    # Review of #397, round 1: an em dash the proof sets at a line's end, folded to a hyphen,
+    # joined "mg" and "twice", and "mgtwice" for "mg" was a unit changed.
+    text = "The dose was 5 mg, twice daily, for a week of treatment."
+    sent = Sent(Path("m.docx"), (Part(PARAGRAPH, text, "p"),), (), None)
+    proof = "The dose was 5 mg\N{EM DASH}\ntwice daily\N{EM DASH}for a week of treatment."
+    result = changes_of(tmp_path, sent=sent, text=proof)
+    assert corrections(result) == []
+    assert {c.kind for c in result.changes} == {COPY_EDIT}
 
 
 # ---------------------------------------------------------------- reading a proof
@@ -470,6 +541,25 @@ def test_a_jats_proof_is_read_as_text(tmp_path: Path) -> None:
     assert not any("passwd" in text for text in texts)
 
 
+def test_a_jats_reference_keeps_its_names_as_printed(tmp_path: Path) -> None:
+    # Review of #397, round 1: the given-names-first rewrite ran over the reference list, and
+    # each Vancouver reference "Smith A" read "A Smith", a correction of every reference.
+    proof = tmp_path / "proof.xml"
+    proof.write_text(
+        "<article><front><contrib><name><surname>Example</surname><given-names>Ada"
+        "</given-names></name></contrib></front><back><ref-list><ref><mixed-citation>"
+        "<string-name><surname>Smith</surname> <given-names>A</given-names></string-name>, "
+        "<string-name><surname>Jones</surname> <given-names>B</given-names></string-name>. "
+        "Hepatic injury in a national cohort.</mixed-citation></ref></ref-list></back>"
+        "</article>",
+        encoding="utf-8",
+    )
+    (reading,) = readings(proof)
+    texts = [line.text for line in reading.lines]
+    assert "Ada Example" in texts
+    assert "Smith A, Jones B. Hepatic injury in a national cohort." in texts
+
+
 def test_an_html_proof_is_read_as_text(tmp_path: Path) -> None:
     proof = tmp_path / "proof.html"
     proof.write_text("<html><head><style>p{}</style><script>var a=1;</script></head><body>"
@@ -523,6 +613,34 @@ def test_a_title_page_changed_is_a_correction(built_example: Path, tmp_path: Pat
                                               ) -> None:  # fmt: skip
     (change,) = _front(built_example, tmp_path, edited(FRONT, edit))
     assert (change.kind, change.what, change.note) == (CORRECTION, what, note)
+
+
+@pytest.mark.parametrize("marks", ["1,2", "1-3", "1,2,*", "1\N{DAGGER}"])
+def test_a_name_with_its_affiliation_marks_set_against_it_is_found(
+    built_example: Path, tmp_path: Path, marks: str
+) -> None:
+    # Review of #397, round 1: "Example1,2" was not "Example".
+    assert _front(built_example, tmp_path, edited(FRONT, ("Ada Example1,*", f"Ada Example{marks}"))
+                  ) == []  # fmt: skip
+
+
+def _authors_edited(project: Path, *edits: tuple[str, str]) -> None:
+    path = project / "authors.yaml"
+    path.write_text(edited(path.read_text(encoding="utf-8"), *edits), encoding="utf-8")
+
+
+def test_an_orcid_ending_in_x_is_found(project: Path, tmp_path: Path) -> None:
+    # Review of #397, round 1: the words were casefolded before the pattern read them.
+    _authors_edited(project, ("0000-0001-5109-3700", "0000-0002-1694-233X"))
+    text = FRONT + "ORCID: 0000-0002-1825-0097; 0000-0002-1694-233X\n"
+    assert _front(project, tmp_path, text) == []
+
+
+def test_an_address_broken_at_its_hyphen_is_found(project: Path, tmp_path: Path) -> None:
+    # Review of #397, round 1: the hyphen of "nagoya-u" was taken for a line end's.
+    _authors_edited(project, ("ada.example@invalid.example", "ada.example@s.mail.nagoya-u.ac.jp"))
+    text = edited(FRONT, ("ada.example@invalid.example", "ada.example@s.mail.nagoya-\nu.ac.jp"))
+    assert _front(project, tmp_path, text) == []
 
 
 def test_a_name_printed_with_initials_is_typography(built_example: Path, tmp_path: Path) -> None:
@@ -659,6 +777,31 @@ def test_a_supplement_typeset_on_its_own_is_held_to_the_packs(
     assert "interval of 2.98 to 5.12" in out
     # The title page is the paper's: a supplement's proof is not held to it.
     assert "author's name:" not in out and "affiliation:" not in out
+
+
+@needs_pandoc
+@needs_a_pdf_reader
+def test_a_proof_of_the_paper_and_its_supplement_in_one_file_is_compared_once_with_each(
+    packed: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """DESIGN.md, Known gaps: the supplement's text is added text to the paper's run, and its
+    change is the supplement's run's to find."""
+    from manuscript_guard.proof.sent import read_sent
+
+    supplement = read_sent(packed / "build" / "submission" / "supplementary.docx")
+    changed = edited(unwrapped(supplement.parts), ("interval of 2.89 to", "interval of 2.98 to"))
+    lines = [*_proof_lines(packed), *wrapped(changed)]
+    proof = packed / "both-proof.pdf"
+    proof.write_bytes(typeset(lines, per_column=56, head="Example et al. J Imag Pharmacoepidemiol "
+                              "2026", first_page=101))  # fmt: skip
+    assert main(["proof", str(proof), str(packed)]) == 0
+    paper = capsys.readouterr().out
+    assert "Corrections to ask for (0)" in paper
+    assert "Text the proof adds" in paper
+    assert main(["proof", str(proof), str(packed), "--supplementary"]) == 1
+    supplement_run = capsys.readouterr().out
+    assert "Corrections to ask for (1)" in supplement_run
+    assert "interval of 2.98 to 5.12" in supplement_run
 
 
 def test_no_pack_is_no_comparison(built_example: Path, tmp_path: Path,

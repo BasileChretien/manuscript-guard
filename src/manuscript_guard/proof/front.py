@@ -22,7 +22,11 @@ from manuscript_guard.proof.compare import CORRECTION, Change
 from manuscript_guard.proof.reading import Reading
 from manuscript_guard.proof.tokens import TYPOGRAPHY, key, prepared
 
-_ORCID = re.compile(r"\b\d{4}-\d{4}-\d{4}-\d{3}[\dX]\b")
+#: Read in words already folded to lower case: an iD that ends in X is "...x" by then.
+_ORCID = re.compile(r"\b\d{4}-\d{4}-\d{4}-\d{3}[\dX]\b", re.IGNORECASE)
+#: The marks set against a name: affiliations by number, "1,2" or "1-3", and the signs of a
+#: corresponding author or of equal contribution.
+_MARKS = re.compile(r"[\d,;*#†‡§¶‖\-–]*")
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 _WORDS = re.compile(r"\S+")
 #: How alike a stretch of the proof must be to a name or an affiliation to be it, changed.
@@ -72,8 +76,10 @@ def _flat(reading: Reading) -> _Flat:
         for word in _WORDS.findall(prepared(line.text)):
             bare = _EDGES.sub("", word)
             if broken and bare[:1].islower() and words:
-                words[-1] += key(bare)
-                shown[-1] += bare
+                # In an address the hyphen is the domain's: "nagoya-" and "u.ac.jp".
+                joint = "-" if "@" in shown[-1] else ""
+                words[-1] += joint + key(bare)
+                shown[-1] += joint + bare
                 broken = False
                 continue
             broken = False
@@ -130,9 +136,8 @@ def _find(flat: _Flat, said: str) -> int | None:
         if flat.words[at] != wanted[0] or flat.words[at : at + len(wanted) - 1] != wanted[:-1]:
             continue
         last = flat.words[at + len(wanted) - 1]
-        # A name with a superscript after it, set against it: "example1".
-        if last == wanted[-1] or (last.startswith(wanted[-1])
-                                  and last[len(wanted[-1]):].isdigit()):  # fmt: skip
+        # A name with its marks set against it: "example1", "example1,2", "example1-3,*".
+        if last.startswith(wanted[-1]) and _MARKS.fullmatch(last[len(wanted[-1]) :]):
             return at
     return None
 

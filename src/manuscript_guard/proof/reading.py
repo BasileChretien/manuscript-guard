@@ -402,8 +402,21 @@ _NAME = re.compile(
 )
 
 
+_CONTRIB = re.compile(r"<contrib\b.*?</contrib\s*>", re.DOTALL)
+
+
 def _jats(text: str) -> str:
-    return _NAME.sub(r"<given-names>\g<given></given-names> <surname>\g<family></surname>", text)
+    """An author's name as the title page prints it, given names first. Only an author's: a
+    reference list prints its names as the style sets them, "Smith A" in Vancouver, and the
+    XML holds them in that order (round 1 of #397: rewritten there too, each reference with
+    an author was a correction)."""
+    return _CONTRIB.sub(
+        lambda found: _NAME.sub(
+            r"<given-names>\g<given></given-names> <surname>\g<family></surname>",
+            found.group(0),
+        ),
+        text,
+    )
 
 
 def _untagged(markup: str) -> str:

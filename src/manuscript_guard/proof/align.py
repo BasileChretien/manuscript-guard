@@ -16,7 +16,8 @@ unmatched among the runs of the proof it left unmatched.
 from __future__ import annotations
 
 import difflib
-from bisect import bisect_left
+from bisect import bisect_left, bisect_right
+from collections import Counter
 from dataclasses import dataclass
 
 #: Up to this many pairs, a gap is lined up by difflib.
@@ -31,6 +32,11 @@ REPEATS = 8
 MOVE_LEAST = 6
 #: How much of such a run has to be found together elsewhere for it to have moved there.
 MOVE_SHARE = 0.6
+#: The runs of keys a moved run is looked for by.
+GRAM = 4
+#: The longest stretch, and the longest part, `whole_parts` weighs: a part left out beside a
+#: part changed shares a few words with it, and a stretch longer than this is no such case.
+WINDOW = 400
 
 Block = tuple[int, int, int]
 
@@ -215,30 +221,39 @@ def whole_parts(ops: list[Op], a: list[str], b: list[str], starts: frozenset[int
     Juliet … ." printed "stayed … .", the words the two parts end with were lined up with the
     second's end, and the part left out read as part of a copy-edit of the first."""
     edges = sorted(starts | {len(a)})
-    bounds = list(zip(edges, edges[1:], strict=False))
     out = list(ops)
     k = 0
     while k < len(out):
         op = out[k]
-        if op.tag == "replace" and not op.moved:
+        if op.tag == "replace" and not op.moved and op.i2 - op.i1 <= WINDOW:
             after = out[k + 1] if k + 1 < len(out) else None
             before = out[k - 1] if k else None
-            done = _left_out_after(out, k, op, after, a, b, bounds) or _left_out_before(
-                out, k, op, before, a, b, bounds)  # fmt: skip
+            done = _left_out_after(out, k, op, after, a, b, edges) or _left_out_before(
+                out, k, op, before, a, b, edges)  # fmt: skip
             if done:
                 continue
         k += 1
     return out
 
 
-def _left_out_after(out, k, op, after, a, b, bounds) -> bool:
+def _parts_from(edges: list[int], lo: int, hi: int) -> list[tuple[int, int]]:
+    """The parts, (first, end), that start from `lo` to `hi`, both included."""
+    at = bisect_left(edges, lo)
+    out = []
+    while at + 1 < len(edges) and edges[at] <= hi:
+        out.append((edges[at], edges[at + 1]))
+        at += 1
+    return out
+
+
+def _left_out_after(out, k, op, after, a, b, edges) -> bool:
     """A part that starts inside a stretch changed and ends inside the stretch alike after
     it, left out whole if that lines up as many: what it shares with the end of the part
     before it is then that part's."""
     if after is None or after.tag != "equal" or after.moved:
         return False
-    for first, end in bounds:
-        if not (op.i1 < first < op.i2 < end <= after.i2):
+    for first, end in _parts_from(edges, op.i1 + 1, op.i2 - 1):
+        if not (op.i2 < end <= after.i2) or end - op.i2 > WINDOW:
             continue
         alike = end - op.i2
         kept = matching_blocks(a[op.i1 : first], b[op.j1 : after.j1 + alike])
@@ -254,12 +269,12 @@ def _left_out_after(out, k, op, after, a, b, bounds) -> bool:
     return False
 
 
-def _left_out_before(out, k, op, before, a, b, bounds) -> bool:
+def _left_out_before(out, k, op, before, a, b, edges) -> bool:
     """The same, a part that starts inside the stretch alike before a stretch changed and
     ends inside it."""
     if before is None or before.tag != "equal" or before.moved:
         return False
-    for first, end in bounds:
+    for first, end in _parts_from(edges, max(before.i1, op.i1 - WINDOW), op.i1 - 1):
         if not (before.i1 <= first < op.i1 < end < op.i2):
             continue
         alike = op.i1 - first
@@ -283,30 +298,7 @@ def align(a: list[str], b: list[str], starts: frozenset[int] = frozenset()) -> l
     ops = slid(opcodes(a, b), a, b, starts)
     if starts:
         ops = whole_parts(ops, a, b, starts)
-    gone = sorted(
-        (op for op in ops if op.tag in ("delete", "replace") and op.i2 - op.i1 >= MOVE_LEAST),
-        key=lambda op: op.i1 - op.i2,
-    )
-    free = [(op.j1, op.j2) for op in ops if op.tag in ("insert", "replace") and op.j2 > op.j1]
-    found: dict[tuple[int, int], tuple[int, int]] = {}
-    for op in gone:
-        best: tuple[int, int, int, int] | None = None
-        for at, (j1, j2) in enumerate(free):
-            blocks = matching_blocks(a[op.i1 : op.i2], b[j1:j2])
-            matched = sum(n for _i, _j, n in blocks)
-            if matched >= MOVE_SHARE * (op.i2 - op.i1) and (best is None or matched > best[0]):
-                lo = j1 + min(j for _i, j, _n in blocks)
-                hi = j1 + max(j + n for _i, j, n in blocks)
-                best = (matched, at, lo, hi)
-        if best is None:
-            continue
-        _matched, at, lo, hi = best
-        # Not the place it stood: a run lined up with a part of its own stretch is no move.
-        if op.tag == "replace" and op.j1 <= lo and hi <= op.j2:
-            continue
-        j1, j2 = free.pop(at)
-        free += [span for span in ((j1, lo), (hi, j2)) if span[1] > span[0]]
-        found[(op.i1, op.i2)] = (lo, hi)
+    found = _moves(ops, a, b)
     if not found:
         return ops
     taken = sorted(found.values())
@@ -326,6 +318,53 @@ def align(a: list[str], b: list[str], starts: frozenset[int] = frozenset()) -> l
     for (i1, i2), (lo, hi) in found.items():
         out += opcodes(a[i1:i2], b[lo:hi], i0=i1, j0=lo, moved=True)
     return sorted(out, key=lambda op: (op.i1, op.i2, op.j1))
+
+
+def _moves(ops: list[Op], a: list[str], b: list[str]) -> dict[tuple[int, int], tuple[int, int]]:
+    """Each run of `a` the alignment left unmatched, of `MOVE_LEAST` tokens or more, found
+    among the runs of `b` it left unmatched: where it is, (lo, hi), by its (i1, i2).
+
+    One run of `b` is tried for each, the one that holds most of its runs of `GRAM` keys,
+    a key that stands more than `REPEATS` times among them left out. Every run of `b` tried
+    against every run of `a` was quadratic: on a proof that differs from what was sent a
+    long way, a few hundred of each took minutes (round 1 of #397, on CI)."""
+    gone = sorted(
+        (op for op in ops if op.tag in ("delete", "replace") and op.i2 - op.i1 >= MOVE_LEAST),
+        key=lambda op: op.i1 - op.i2,
+    )
+    free = sorted((op.j1, op.j2) for op in ops if op.tag in ("insert", "replace")
+                  and op.j2 > op.j1)  # fmt: skip
+    if not gone or not free:
+        return {}
+    where: dict[tuple[str, ...], list[int]] = {}
+    for j1, j2 in free:
+        for j in range(j1, j2 - GRAM + 1):
+            where.setdefault(tuple(b[j : j + GRAM]), []).append(j)
+    found: dict[tuple[int, int], tuple[int, int]] = {}
+    for op in gone:
+        votes: Counter[int] = Counter()
+        for i in range(op.i1, op.i2 - GRAM + 1):
+            hits = where.get(tuple(a[i : i + GRAM]), ())
+            if len(hits) <= REPEATS:
+                for j in hits:
+                    at = bisect_right(free, (j, len(b) + 1)) - 1
+                    if at >= 0 and free[at][0] <= j < free[at][1]:
+                        votes[at] += 1
+        if not votes:
+            continue
+        at = votes.most_common(1)[0][0]
+        j1, j2 = free[at]
+        blocks = matching_blocks(a[op.i1 : op.i2], b[j1:j2])
+        if sum(n for _i, _j, n in blocks) < MOVE_SHARE * (op.i2 - op.i1):
+            continue
+        lo = j1 + min(j for _i, j, _n in blocks)
+        hi = j1 + max(j + n for _i, j, n in blocks)
+        # Not the place it stood: a run lined up with a part of its own stretch is no move.
+        if op.tag == "replace" and op.j1 <= lo and hi <= op.j2:
+            continue
+        free[at : at + 1] = [span for span in ((j1, lo), (hi, j2)) if span[1] > span[0]]
+        found[(op.i1, op.i2)] = (lo, hi)
+    return found
 
 
 def _overlaps(j1: int, j2: int, taken: list[tuple[int, int]]) -> bool:

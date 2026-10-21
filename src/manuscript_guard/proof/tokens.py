@@ -48,11 +48,16 @@ _FOLDED = str.maketrans({
 
 NUMBER, WORD, MARK = "number", "word", "mark"
 
-#: The units G14 knows, as words in their compatibility form: "\N{MICRO SIGN}g" is "μg".
+#: The units G14 knows, as words in their compatibility form: "\N{MICRO SIGN}g" is "μg";
+#: and the units of time a paper spells out, "12 weeks" not being "12 months" (round 1 of
+#: #397). Not "second", which is as often an ordinal.
 _UNIT_WORDS = frozenset(
     unicodedata.normalize("NFKC", unit) for unit in UNITS
     if unicodedata.normalize("NFKC", unit).isalpha()
-)  # fmt: skip
+) | frozenset({
+    "minute", "minutes", "hour", "hours", "day", "days", "week", "weeks", "month", "months",
+    "year", "years",
+})  # fmt: skip
 #: The symbols beside a number that change what it says.
 SYMBOLS = frozenset("%‰‱°")
 COMPARATORS = frozenset("<>=≤≥≦≧±≈~≠")

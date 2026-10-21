@@ -6955,8 +6955,9 @@ read, and the comparison keeps the one that lines up most of what was sent, less
 that was not sent: a reading with the line numbers among the words finds every word and adds a
 number between each line. Without `pdftotext`, pypdf reads the drawing order. A proof sent as
 JATS XML or HTML is read by pattern, one line to a paragraph, cell or heading, and not parsed,
-so an entity it declares is not expanded and nothing it names is fetched; a JATS name is turned
-given name first, as a page prints it. A proof saved as text is read with its pages parted by
+so an entity it declares is not expanded and nothing it names is fetched; an author's JATS
+name, in `<contrib>`, is turned given name first, as a title page prints it, and a
+reference's is left as its style prints it, "Smith A". A proof saved as text is read with its pages parted by
 form feeds, as `pdftotext` writes them. A proof with no text, a scan, is refused (exit 2).
 
 What every page repeats is taken out first, from the top and the bottom of each page (its first
@@ -6998,13 +6999,16 @@ page had room or a statement the journal's template moves, is found there and co
 Each difference is then one of these:
 
 - **A correction** (exit 1, and the list `--out` writes): a number's digits, sign or decimal
-  mark changed, or a number gone or come within a part; a unit, a percent or degree sign or a
-  comparator changed beside a number (a unit's case is kept, so "mM" is not "mm"; the two
-  spellings of a litre and of a microgram are one); any change inside a citation (brackets,
-  parentheses that hold a year, a short number set against a word as a superscript is) or an
-  entry of the reference list; a part the proof does not print at all; on the title page, an
-  author's name, the authors' order, an affiliation, an ORCID iD or the corresponding author's
-  e-mail address. A correction of a number names the binding that printed it and the line of
+  mark changed, or a number gone or come within a part or between two cells of a table (a value
+  or a row the proof repeats); a unit, a percent or degree sign or a comparator changed beside a
+  number (a unit's case is kept, so "mM" is not "mm"; the two spellings of a litre and of a
+  microgram are one; a unit of time spelt out is a unit); any change inside a citation
+  (brackets, parentheses that hold a year, a short number set against a word as a superscript
+  is) or an entry of the reference list; a part the proof does not print at all, or a
+  paragraph, a caption or a reference of six tokens or more none of which it prints in place,
+  whatever stands there instead; on the title page, an author's name (with its affiliation
+  marks set against it, "Example1,2", it is the name), the authors' order, an affiliation, an
+  ORCID iD or the corresponding author's e-mail address. A correction of a number names the binding that printed it and the line of
   the source, or says it was typed (`proof.origin`); a cell names its table's binding. Two
   corrections that trade what they print are said to be swapped.
 - **Typography**, shown and not counted: the same number set otherwise, grouped ("19 950"), a
@@ -12144,7 +12148,9 @@ Open, recorded as each change landed:
   citation number set against a word is told from a number by its shape (three digits at most,
   set against a letter or a stop), so a change in "ICD10" or "H2O" is called a citation's, and
   "10" with a raised minus and "3", an exponent, is read as "10-3" and shown as typography. A
-  minus left at the end of a line, apart from its number, is reported as the sign lost.
+  minus left at the end of a line, apart from its number, is reported as the sign lost. A
+  range's dash a reader spaces on one side only, "0.71 –0.89", reads as a minus,
+  and the bound is reported as a sign changed (round 1 of #397).
 - **The document's footnotes are not compared.** The document is read as `docxtext.blocks`
   reads its body, so a note's text is not among the parts, and the proof's notes are shown as
   added text.
@@ -12170,6 +12176,21 @@ Open, recorded as each change landed:
   reported as printed otherwise, a correction the author may find is not one. A name printed
   in capitals is found; a particle the journal sets otherwise ("van der" for "Van der") is
   found, case aside, but one it drops is reported.
+- **A supplement is compared in its own run.** The supplement is held to the same rules as the
+  paper: `proof --supplementary` compares a supplement the journal typesets as a document of
+  its own with the pack's `supplementary.docx`, part by part and cell by cell, and names the
+  bindings of `manuscript/supplementary/`. Its proof is not held to the title page, which is
+  the paper's. A proof that holds the paper and its supplement in one file is compared with
+  one of them at a time: the other's text is shown as added, and its changes go unseen until
+  the same file is compared again with `--supplementary` (or without it). Where a journal
+  typesets the supplement as it was sent, a PDF made from the .docx, the comparison holds it
+  like any proof.
+- **A citation is compared as the document printed it.** The build prints citations in the
+  journal's style where `manuscript-guard style` keeps it, and the proof is then held to the
+  same style. A pack built in another style, author-year where the journal numbers its
+  references, or "and" where it sets "&", has every citation and every reference entry
+  reported as a correction; the report does not tell a style apart from a fault. Build the
+  pack in the journal's style, and compare again.
 - **A case change and a style's synonym are not seen.** Words are compared case aside, so a
   heading set in capitals is no change, and neither is a name whose case changed in the body.
   Of units, only a litre's and a microgram's two spellings are read as one: "hours" printed "h"

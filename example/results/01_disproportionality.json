@@ -2,16 +2,16 @@
   "schema": "manuscript-guard/results/1",
   "provenance": {
     "generated_by": "analysis/01_disproportionality.py",
-    "generated_by_sha256": "926c05a7e95aeba33afc975e069d3ef4b019ba121ea91b1673df6b1b86bcda1a",
-    "generated_at": "2026-10-19T05:18:44+00:00",
+    "generated_by_sha256": "c4a3717650e99b33861e8c60c3710c23cfdff8b3d1ecf3ed6868701d51b2383a",
+    "generated_at": "2026-10-21T06:38:01+00:00",
     "tool": {
       "name": "manuscript-guard",
-      "version": "0.2.448"
+      "version": "0.2.454"
     },
     "vcs": {
-      "sha": "99775a43d2245beab03dc896a46270719f9b1684",
+      "sha": "e6ade8297d48f84a5ae6a0d8c9f7ed9f4ad53e31",
       "dirty": true,
-      "branch": "fix/example-table1-percentages"
+      "branch": "claude/goofy-swanson-8680f2"
     },
     "inputs": [
       {
@@ -20,6 +20,12 @@
         "raw_sha256": "55aa913a7f8cbc6c432e263e04fa12f3e148809dbd4ddc6fc8fd5b10c916886c",
         "bytes": 172822,
         "synthetic": true
+      },
+      {
+        "path": "design/data_dictionary.yaml",
+        "sha256": "96368afbf18cd5459bb9e983be3d4989476100aebd5155bc8b0bd5e001cdafbb",
+        "raw_sha256": "96368afbf18cd5459bb9e983be3d4989476100aebd5155bc8b0bd5e001cdafbb",
+        "bytes": 2350
       },
       {
         "path": "data/event_terms.txt",
@@ -36,6 +42,101 @@
     }
   },
   "values": {
+    "quality.rows": {
+      "value": 4000,
+      "display": "4000",
+      "quoted": false
+    },
+    "quality.report_id.missing": {
+      "value": 0,
+      "display": "0",
+      "quoted": false
+    },
+    "quality.report_id.not_matching": {
+      "value": 0,
+      "display": "0",
+      "quoted": false
+    },
+    "quality.year.missing": {
+      "value": 0,
+      "display": "0",
+      "quoted": false
+    },
+    "quality.year.wrong_type": {
+      "value": 0,
+      "display": "0",
+      "quoted": false
+    },
+    "quality.year.out_of_range": {
+      "value": 0,
+      "display": "0",
+      "quoted": false
+    },
+    "quality.drug.missing": {
+      "value": 0,
+      "display": "0",
+      "quoted": false
+    },
+    "quality.event.missing": {
+      "value": 0,
+      "display": "0",
+      "quoted": false
+    },
+    "quality.serious.missing": {
+      "value": 0,
+      "display": "0",
+      "quoted": false
+    },
+    "quality.serious.not_allowed": {
+      "value": 0,
+      "display": "0",
+      "quoted": false
+    },
+    "quality.sex.missing": {
+      "value": 0,
+      "display": "0",
+      "quoted": false
+    },
+    "quality.sex.not_allowed": {
+      "value": 0,
+      "display": "0",
+      "quoted": false
+    },
+    "quality.age_group.missing": {
+      "value": 0,
+      "display": "0",
+      "quoted": false
+    },
+    "quality.age_group.not_allowed": {
+      "value": 0,
+      "display": "0",
+      "quoted": false
+    },
+    "quality.hepatic.missing": {
+      "value": 0,
+      "display": "0",
+      "quoted": false
+    },
+    "quality.hepatic.not_allowed": {
+      "value": 0,
+      "display": "0",
+      "quoted": false
+    },
+    "quality.exposed.missing": {
+      "value": 0,
+      "display": "0",
+      "quoted": false
+    },
+    "quality.exposed.not_allowed": {
+      "value": 0,
+      "display": "0",
+      "quoted": false
+    },
+    "quality.rule.one_row_per_report": {
+      "value": 0,
+      "display": "0",
+      "quoted": false
+    },
     "param.alpha": {
       "value": 0.05,
       "display": "0.05",
@@ -682,29 +783,29 @@
   "steps": {
     "ror": {
       "lines": [
-        56,
-        60
+        64,
+        68
       ],
       "digest": "43994ea0f861fd9c11dd95e974d11a8092dac8245846d047087c06a0e4464051"
     },
     "ci": {
       "lines": [
-        64,
-        69
+        72,
+        77
       ],
       "digest": "341304bd156666d20b98966338e40a99de96809c7d95a808720cc8043ee94978"
     },
     "signal": {
       "lines": [
-        81,
-        83
+        89,
+        91
       ],
       "digest": "d2537ffaa2c3277dcd94b7608b1cc89116a4e9ad3860b5712e804e73052db159"
     },
     "adjusted": {
       "lines": [
-        92,
-        120
+        100,
+        128
       ],
       "digest": "ffe9e3b0807b5cd1744bf856bd5ad0b90a3081b0f3f2bc256583f4b4c43aa2cf"
     }

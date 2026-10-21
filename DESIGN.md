@@ -4055,6 +4055,11 @@ submission (Basile, 2026-10-21). A fault the checks find in the data is never a 
 it is a count, which the paper reports and the author decides about. A dictionary that does
 not read is G12's `dictionary-invalid`, and G16 says nothing of it.
 
+The example checks its simulated reports against a dictionary of its nine variables,
+the two the model reads derived first, and its Methods bind three of the counts: the rows
+checked, the duplicates and the missing age groups, the last two nought, since the data
+were simulated whole.
+
 **At the design stage the counts are feasibility counts.** Checking the extract against the
 dictionary counts each planned variable's missing values and the duplicates, which is what
 the feasibility script counts. A result under `quality.` quiets `feasibility-not-run` as
@@ -12122,9 +12127,6 @@ Open, recorded as each change landed:
   found and what was done with it is the reader's to judge.
 - **A name is compared as written.** `Age` in the analysis and `age` in the dictionary are
   two names, and `not-in-dictionary` says so; nothing suggests the near one.
-- **The example does not check its data.** It keeps no dictionary, so G16 says nothing of
-  it; a dictionary and a `check_data` run in the example wait until the collection plan's
-  checks of the dictionary against the plan have merged, since both read the same file.
 - **`quality-not-reported` is not read in a LaTeX manuscript.** It reads the Methods as
   Markdown, and on a LaTeX manuscript G16 says `not-read-in-latex`, as the other checks not
   yet taught LaTeX do.

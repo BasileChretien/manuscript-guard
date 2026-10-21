@@ -35,6 +35,10 @@ Each record carries a unique report identifier and the generator emits no duplic
 de-duplication step was applied; a real database would require one, and its absence here is
 a property of the synthetic data rather than a design choice.
 
+Each report was checked against the data dictionary: of the {{results.quality.rows}}
+reports, {{results.quality.rule.one_row_per_report}} repeated another's identifier and
+{{results.quality.age_group.missing}} gave no age group.
+
 Hepatic injury is the single event term used by the data generator. Real work would need a
 case definition — a MedDRA Standardised Query or an explicit preferred-term list — and the
 choice of definition would change the counts. The terms actually used are published in

@@ -4089,23 +4089,20 @@ variables:
 
 
 def _dictionary_failures(root: Path, text: str, stage: str) -> list[str]:
-    """What the whole check fails on at a stage, with this dictionary in the example."""
+    """What the whole check fails on at a stage, with this dictionary in the example in
+    place of its own: less G1's `input-changed`, since the example's analysis read the one
+    replaced."""
     from manuscript_guard.cli import _run_gates
 
     path = root / "design" / "data_dictionary.yaml"
     path.write_bytes(text.encode("utf-8"))
     report, _project, _chosen, _deferred = _run_gates(root, stage=stage)
-    return [f"{f.gate} {f.code}" for f in report.failures]
+    return [f"{f.gate} {f.code}" for f in report.failures if f.code != "input-changed"]
 
 
-@pytest.mark.parametrize(
-    "stage, failed", [("design", []), ("submission", ["G16 quality-not-run"])]
-)
-def test_a_dictionary_that_reads_leaves_the_example_as_it_was(
-    project: Path, stage: str, failed: list[str]
-) -> None:
-    """Nothing but that the data were never held to it, which G16 says at submission."""
-    assert _dictionary_failures(project, _EXAMPLE_DICTIONARY, stage) == failed
+@pytest.mark.parametrize("stage", ["design", "submission"])
+def test_a_dictionary_that_reads_leaves_the_example_as_it_was(project: Path, stage: str) -> None:
+    assert _dictionary_failures(project, _EXAMPLE_DICTIONARY, stage) == []
 
 
 @pytest.mark.parametrize(
@@ -4132,112 +4129,39 @@ def test_a_dictionary_that_does_not_read_fails_the_check_at_every_stage(
 
 # ------------------------------------------------- the data held to the dictionary (G16)
 
-#: The example's reports as a data dictionary describes them, with the two variables the
-#: analysis derives from them and the rule a file of reports keeps.
-_CHECKED_DICTIONARY = """\
-schema: manuscript-guard/data-dictionary/1
-variables:
-  - name: report_id
-    label: Report
-    definition: The report's identifier in the database.
-    type: identifier
-    pattern: "R[0-9]{5}"
-  - name: year
-    label: Year
-    definition: The year the report was received.
-    type: count
-    range: {min: 2015, max: 2024}
-  - name: drug
-    label: Drug
-    definition: The suspect drug, as reported.
-    type: text
-  - name: event
-    label: Event
-    definition: The reaction, as reported.
-    type: text
-  - name: serious
-    label: Serious
-    definition: The report was classed as serious.
-    type: binary
-    values:
-      - {code: "Y", label: "Yes"}
-      - {code: "N", label: "No"}
-  - name: sex
-    label: Sex
-    definition: Sex as reported.
-    type: binary
-    values:
-      - {code: "F", label: Female}
-      - {code: "M", label: Male}
-  - name: age_group
-    label: Age group
-    definition: Age at the reaction, in the database's four groups.
-    type: categorical
-    values:
-      - {code: "18-44", label: 18 to 44 years}
-      - {code: "45-64", label: 45 to 64 years}
-      - {code: "65-74", label: 65 to 74 years}
-      - {code: "75+", label: 75 years or more}
-  - name: hepatic
-    label: Hepatic injury
-    definition: The reported event is hepatic injury.
-    type: binary
-    values:
-      - {code: 1, label: "Yes"}
-      - {code: 0, label: "No"}
-    derived_from: [event]
-    derivation: 1 where the event is hepatic injury, else 0.
-  - name: exposed
-    label: Exposed
-    definition: The suspect drug is example-drug.
-    type: binary
-    values:
-      - {code: 1, label: "Yes"}
-      - {code: 0, label: "No"}
-    derived_from: [drug]
-    derivation: 1 where the drug is example-drug, else 0.
-rules:
-  - id: one_row_per_report
-    says: Each report is one row.
-    unique: [report_id]
-"""
-
-#: The script that holds the example's reports to it, after deriving the two variables.
-_QUALITY_SCRIPT = """\
-import csv
-from pathlib import Path
-
-from manuscript_guard.emit import Emitter
-
-DATA = Path(__file__).resolve().parent.parent / "data" / "reports.csv"
-with DATA.open(encoding="utf-8") as handle:
-    rows = list(csv.DictReader(handle))
-for row in rows:
-    row["hepatic"] = int(row["event"] == "hepatic injury")
-    row["exposed"] = int(row["drug"] == "example-drug")
-em = Emitter(__file__)
-em.add_input(DATA, synthetic=True)
-em.check_data(rows)
-em.write()
-"""
-
-#: What the Methods say of it.
+#: What the example's Methods say of its data checks.
 _CHECKED_SAID = (
-    "Of the {{results.quality.rows}} reports, {{results.quality.age_group.missing}} had no "
-    "age group and {{results.quality.rule.one_row_per_report}} repeated another."
+    "Each report was checked against the data dictionary: of the {{results.quality.rows}} "
+    "reports, {{results.quality.rule.one_row_per_report}} repeated another's identifier and "
+    "{{results.quality.age_group.missing}} gave no age group."
 )
 
 
-def _checked(root: Path, dictionary: str = _CHECKED_DICTIONARY, *, run: bool = True) -> Path:
-    """The example with its data dictionary, and its reports checked against it."""
-    import runpy
+def _without_counts(root: Path) -> None:
+    """The example as its analysis left it before it checked its data: no result under
+    `quality.`."""
+    fragment = root / "results" / "01_disproportionality.json"
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"] = {
+        key: spec for key, spec in document["values"].items() if not key.startswith("quality.")
+    }
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
 
-    (root / "design" / "data_dictionary.yaml").write_text(dictionary, encoding="utf-8")
-    script = root / "analysis" / "00_quality.py"
-    script.write_text(_QUALITY_SCRIPT, encoding="utf-8")
-    if run:
-        runpy.run_path(str(script), run_name="__main__")
-    return root
+
+def _dictionary_edited(root: Path, old: str, new: str) -> None:
+    path = root / "design" / "data_dictionary.yaml"
+    text = path.read_text(encoding="utf-8")
+    assert old in text
+    path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+
+def _unsaid(root: Path) -> str:
+    """Take the example's sentence on its data checks out of the Methods, and return it."""
+    text = main_md(root).read_text(encoding="utf-8")
+    assert _CHECKED_SAID in text
+    main_md(root).write_text(text.replace(_CHECKED_SAID + "\n\n", "", 1), encoding="utf-8")
+    return _CHECKED_SAID
 
 
 def _say_in(root: Path, heading: str, said: str = _CHECKED_SAID) -> None:
@@ -4263,24 +4187,26 @@ def _g16(root: Path, stage: str) -> list[tuple[str, str]]:
 
 
 @pytest.mark.parametrize("stage", ["design", "analysis", "drafting", "submission"])
-def test_data_held_to_the_dictionary_and_reported_leave_g16_quiet(
+def test_the_example_holds_its_data_to_the_dictionary_and_says_so(
     project: Path, stage: str
 ) -> None:
-    _say_in(_checked(project), "Methods")
     assert _g16(project, stage) == []
 
 
 def test_no_dictionary_leaves_g16_quiet(project: Path) -> None:
+    (project / "design" / "data_dictionary.yaml").unlink()
+    _without_counts(project)
     assert _g16(project, "submission") == []
 
 
 def test_the_counts_are_results_and_bound_as_any_result(project: Path) -> None:
-    """The counts are there, unquoted, and the Methods sentence binds three of them."""
-    _say_in(_checked(project), "Methods")
+    """The counts are there, none of them a result that must be quoted, and the Methods bind
+    three of them."""
     _namespace, results, _literature, _report = load_namespace(load_project(project)[0])
     counted = {key: value for key, value in results.values.items() if key.startswith("quality.")}
     assert counted["quality.rows"].value == 4000
     assert counted["quality.rule.one_row_per_report"].value == 0
+    assert counted["quality.hepatic.not_allowed"].value == 0
     assert not any(value.quoted for value in counted.values())
     assert "unresolved-binding" not in codes(gate_report(project))
 
@@ -4296,44 +4222,36 @@ def test_the_counts_are_results_and_bound_as_any_result(project: Path) -> None:
 def test_a_dictionary_nothing_checked_the_data_against(
     project: Path, stage: str, said: list
 ) -> None:
-    _checked(project, run=False)
+    _unsaid(project)
+    _without_counts(project)
     assert _g16(project, stage) == said
 
 
-def _without_entry(name: str) -> str:
-    """The checked dictionary less one variable's entry."""
-    start = _CHECKED_DICTIONARY.index(f"  - name: {name}\n")
-    end = _CHECKED_DICTIONARY.find("  - name: ", start + 1)
-    end = _CHECKED_DICTIONARY.index("rules:") if end < 0 else end
-    return _CHECKED_DICTIONARY[:start] + _CHECKED_DICTIONARY[end:]
+def _without_entry(root: Path, name: str) -> None:
+    """The example's dictionary less one variable's entry."""
+    path = root / "design" / "data_dictionary.yaml"
+    text = path.read_text(encoding="utf-8")
+    start = text.index(f"  - name: {name}\n")
+    end = text.find("  - name: ", start + 1)
+    end = text.index("rules:") if end < 0 else end
+    path.write_text(text[:start] + text[end:], encoding="utf-8")
 
 
 @pytest.mark.parametrize("name", ["exposed", "sex"])
 def test_a_variable_the_analysis_uses_with_no_entry_warns(project: Path, name: str) -> None:
     """`exposed` the analysis derives, `sex` it reads: the model reads both, and the
     analysis declares both. Neither is defined anywhere once its entry is gone."""
-    _say_in(_checked(project, _without_entry(name)), "Methods")
-    for stage in ("analysis", "submission"):
-        assert _g16(project, stage) == [("not-in-dictionary", "warn")]
     from manuscript_guard.gates.data_quality import check_data_quality
 
+    _without_entry(project, name)
+    for stage in ("analysis", "submission"):
+        assert _g16(project, stage) == [("not-in-dictionary", "warn")]
     project_, _ = load_project(project)
-    results = load_namespace(project_)[1]
-    (finding,) = check_data_quality(project_, results, "analysis").findings
+    (finding,) = check_data_quality(project_, load_namespace(project_)[1], "analysis").findings
     assert finding.message == (
         f"{name} is declared in results/01_disproportionality.json and has no entry in the "
         "data dictionary"
     )
-
-
-_WEIGHT = """\
-  - name: weight
-    label: Weight
-    definition: Body weight in kilograms, as reported.
-    type: continuous
-    unit: kg
-rules:
-"""
 
 
 @pytest.mark.parametrize(
@@ -4348,17 +4266,23 @@ def test_an_entry_no_count_covers_warns_and_fails_at_submission(
     project: Path, stage: str, said: list
 ) -> None:
     """The dictionary lists a weight the reports do not hold: nothing was counted of it."""
-    dictionary = _CHECKED_DICTIONARY.replace("rules:\n", _WEIGHT)
-    _say_in(_checked(project, dictionary), "Methods")
+    _dictionary_edited(
+        project,
+        "rules:\n",
+        "  - name: weight\n    label: Weight\n    definition: Body weight in kilograms.\n"
+        "    type: continuous\n    unit: kg\nrules:\n",
+    )
     assert _g16(project, stage) == said
 
 
 def test_a_rule_no_count_covers_warns_and_fails_at_submission(project: Path) -> None:
     """A computed rule the script never handed check_data."""
-    dictionary = _CHECKED_DICTIONARY + (
-        "  - id: no_fatal_rash\n    says: No rash is fatal.\n    computed: true\n"
+    path = project / "design" / "data_dictionary.yaml"
+    path.write_text(
+        path.read_text(encoding="utf-8")
+        + "  - id: no_fatal_rash\n    says: No rash is fatal.\n    computed: true\n",
+        encoding="utf-8",
     )
-    _say_in(_checked(project, dictionary), "Methods")
     assert _g16(project, "drafting") == [("rule-unchecked", "warn")]
     assert _g16(project, "submission") == [("rule-unchecked", "fail")]
 
@@ -4369,7 +4293,6 @@ def test_a_rule_no_count_covers_warns_and_fails_at_submission(project: Path) -> 
         (None, [("quality-not-reported", "fail")]),
         ("Results", [("quality-not-reported", "fail")]),
         ("Discussion", [("quality-not-reported", "fail")]),
-        ("Methods", []),
     ],
 )
 def test_counts_the_methods_do_not_bind_fail_at_submission(
@@ -4377,59 +4300,59 @@ def test_counts_the_methods_do_not_bind_fail_at_submission(
 ) -> None:
     """The counts bound outside the Methods, or nowhere, tell the reader of the Methods
     nothing about what the data held."""
-    _checked(project)
+    sentence = _unsaid(project)
     if heading:
-        _say_in(project, heading)
+        _say_in(project, heading, sentence)
     assert _g16(project, "submission") == said
     assert _g16(project, "analysis") == []
-    expected = [(code, "warn") for code, _severity in said]
-    assert _g16(project, "drafting") == expected
+    assert _g16(project, "drafting") == [(code, "warn") for code, _severity in said]
 
 
 def test_counts_the_supplement_binds_are_reported(project: Path) -> None:
-    _checked(project)
+    sentence = _unsaid(project)
     supplement = project / "manuscript" / "supplementary"
     supplement.mkdir(exist_ok=True)
     (supplement / "data_checks.md").write_text(
-        f"# Data checks\n\n{_CHECKED_SAID}\n", encoding="utf-8"
+        f"# Data checks\n\n{sentence}\n", encoding="utf-8"
     )
     assert _g16(project, "submission") == []
 
 
 def test_a_dictionary_edited_after_the_counts_is_an_input_changed(project: Path) -> None:
     """The dictionary is an input of the run that counted: G1 says the counts are stale."""
-    _say_in(_checked(project), "Methods")
     assert "input-changed" not in codes(gate_report(project))
-    path = project / "design" / "data_dictionary.yaml"
-    path.write_text(
-        path.read_text(encoding="utf-8").replace("{min: 2015, max: 2024}", "{min: 2016}"),
-        encoding="utf-8",
-    )
+    _dictionary_edited(project, "{min: 2015, max: 2024}", "{min: 2016}")
     stale = [f for f in gate_report(project).failures if f.code == "input-changed"]
     assert [(f.path.name, f.message) for f in stale] == [
-        ("00_quality.json", "input design/data_dictionary.yaml changed since these results "
-                            "were written")
+        ("01_disproportionality.json", "input design/data_dictionary.yaml changed since "
+                                       "these results were written")
     ]  # fmt: skip
 
 
 def test_a_small_count_is_held_back_and_g2_passes_it(project: Path) -> None:
     """One report breaks the pattern, R04000, under a custodian's minimum of five: the
     count prints "<5", which the Methods bind and G2 does not fail."""
+    import subprocess
+    import sys
+
     from manuscript_guard.gates.custodian import check_small_cells
 
     paper = project / "paper.yaml"
     paper.write_text(
-        paper.read_text(encoding="utf-8") + "custodian:\n  minimum_cell_count: 5\n",
+        paper.read_text(encoding="utf-8") + "\ncustodian:\n  minimum_cell_count: 5\n",
         encoding="utf-8",
     )
-    dictionary = _CHECKED_DICTIONARY.replace('"R[0-9]{5}"', '"R0[0-3][0-9]{3}"')
-    _checked(project, dictionary)
+    _dictionary_edited(project, '"R[0-9]{5}"', '"R0[0-3][0-9]{3}"')
+    script = project / "analysis" / "01_disproportionality.py"
+    ran = subprocess.run([sys.executable, str(script)], capture_output=True, text=True, cwd=project)
+    assert ran.returncode == 0, ran.stderr
     _say_in(project, "Methods", "{{results.quality.report_id.not_matching}} were misnumbered.")
     project_, _ = load_project(project)
     results = load_namespace(project_)[1]
     held = results.values["quality.report_id.not_matching"]
     assert (held.value, held.display) == (1, "<5")
-    assert check_small_cells(project_, results).findings == ()
+    said = [f.message for f in check_small_cells(project_, results).findings]
+    assert not [m for m in said if "quality." in m], said
 
 
 # ------------------------------------------------- the unit of analysis
@@ -15671,7 +15594,9 @@ def _feasibility_said(root: Path, stage: str, **values: int) -> list[str]:
 
 def test_a_plan_written_before_the_data_were_looked_at_is_a_warning(project: Path) -> None:
     """Item 47: a plan could set out an analysis of data nobody had counted, and nothing
-    said so while it was written."""
+    said so while it was written. The example counts its data against its dictionary, so
+    those counts are taken out first."""
+    _without_counts(project)
     assert _feasibility_said(project, "design") == ["feasibility-not-run"]
     assert _feasibility_said(project, "drafting") == []
 
@@ -15683,6 +15608,7 @@ def test_a_plan_with_feasibility_results_says_nothing(project: Path) -> None:
 def test_a_plan_with_the_data_checked_against_the_dictionary_says_nothing(project: Path) -> None:
     """The counts of the data checks say what the data hold, as the feasibility ones do
     (Basile, 2026-10-21)."""
+    _without_counts(project)
     assert _feasibility_said(project, "design", quality__rows=4000) == []
 
 

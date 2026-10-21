@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 import yaml
-from test_corruption import _feasibility_said, _plan_edited
+from test_corruption import _feasibility_said, _plan_edited, _without_counts
 from test_review_run import KEY_A, KEY_B, MODEL_A, MODEL_B, Providers, answer, configure, reply_text
 
 from manuscript_guard.cli import main
@@ -163,6 +163,7 @@ def test_counts_the_analysis_makes_later_leave_a_design_reading_current(
 ) -> None:
     """Round 1 of #389: the analysis checks its data after the design round, and the plan
     has not changed. The counts are none the round read, so its readings stay current."""
+    _without_counts(planned)
     assert design_run(planned, "--yes") == 0
     capsys.readouterr()
     assert _stale(planned) == []

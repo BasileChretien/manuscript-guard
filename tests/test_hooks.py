@@ -337,6 +337,10 @@ def test_no_standard_input_at_all_is_an_empty_event(monkeypatch) -> None:
         ("checks/decisions.csv", "a decision nobody made"),
         # Item 26: the plan as it stood when the first results were written.
         ("design/plan.frozen.yaml", "first results were written"),
+        # The copy of an earlier output's project, which G8 holds to its digests.
+        ("literature/related/abstract/results/01_disproportionality.json", "related --take"),
+        ("literature/related/abstract/design/plan.md", "related --take"),
+        ("literature/related/abstract/snapshot.yaml", "related --take"),
     ],
 )
 def test_generated_files_cannot_be_edited(
@@ -368,6 +372,9 @@ def test_generated_files_cannot_be_edited(
         # sentence about the record of who checked what.
         "checks/evidence/table3.csv",
         "checks/qc_ranges.csv",
+        # The record of earlier outputs, and their outputs an author copies in.
+        "literature/related.yaml",
+        "literature/related/abstract/files/counts.csv",
     ],
 )
 def test_files_a_person_writes_are_allowed(project: Path, relative: str, capsys) -> None:

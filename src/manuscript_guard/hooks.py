@@ -72,6 +72,15 @@ FORBIDDEN = (
     ),
 )
 
+# The copy `related --take` keeps of an earlier output's project, under any output's id: its
+# results, its design files and the record of their digests. The rest of the output's folder,
+# the outputs an author copies in under `files/`, is the author's.
+COPIED = (
+    re.compile(r"^literature/related/[^/]+/(?:results/|design/|snapshot\.yaml$)"),
+    "it is a file of an earlier project, copied with its digest by `manuscript-guard related "
+    "--take`; change it there and take it again",
+)
+
 # Exempt from the rule above. Without this, the guard denies edits to
 # `profiles/reporting/recipes/*.recipe.yaml` — the exact file its own denial message tells
 # you to go and edit.
@@ -770,6 +779,9 @@ def _refusal(path: Path, projects: dict[Path, dict[str, str]]) -> str | None:
     for prefix, suffix, why in FORBIDDEN:
         if relative.startswith(prefix) and relative.endswith(suffix):
             return f"{relative} is generated, not written. {why}."
+    pattern, why = COPIED
+    if pattern.match(relative):
+        return f"{relative} is generated, not written. {why}."
     return None
 
 

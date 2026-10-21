@@ -573,6 +573,19 @@ def appendix(marks: list[Mark]) -> str:
     )
 
 
+def _alt_line(project, name: str) -> str:
+    """What a reader who cannot see the figure is told, as the document carries it, or that
+    it is told nothing (`gates/figure_alt.py`)."""
+    from manuscript_guard.contracts import load_namespace
+    from manuscript_guard.gates.figure_alt import as_markdown, printed_alt, raw_alt
+
+    raw = raw_alt(project, name)
+    if raw is None:
+        return f"\n**No alternative text**: write it in `{name}.guard.yaml` under `alt:`.\n"
+    printed = printed_alt(raw, load_namespace(project)[0])
+    return f"\nAlternative text, as the document carries it: {as_markdown(printed)}\n"
+
+
 def figure_sheet(project, results) -> str:
     """One page per figure: the picture, what the gate read out of it, and who reviewed it.
 
@@ -620,6 +633,7 @@ def figure_sheet(project, results) -> str:
         raster = (figure.with_suffix(ext) for ext in (".png", ".jpg"))
         shown = next((path for path in raster if path.exists()), figure)
         out.append(f"![]({relative_to_root(project, shown)})\n")
+        out.append(_alt_line(project, figure.stem))
 
         declared = figure.with_name(f"{figure.stem}.guard.yaml")
         review = figure.with_name(f"{figure.stem}.review.yaml")

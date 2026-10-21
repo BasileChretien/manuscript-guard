@@ -40,7 +40,7 @@ from manuscript_guard.gates.writing import check_writing
 GATES = {
     "G1": "results freshness",
     "G2": "number classification and coverage",
-    "G3": "figure sources and rendered figures",
+    "G3": "figure sources, rendered figures and their alternative text",
     "G4": "journal guidelines",
     "G5": "reporting checklist completeness",
     "G6": "signs of machine-written prose",

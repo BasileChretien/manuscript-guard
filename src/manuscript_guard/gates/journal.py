@@ -155,6 +155,15 @@ def blinding(project: Project) -> str | None:
     return None if document is None else document.get("blinding")
 
 
+def figure_rules(project: Project) -> dict:
+    """The target journal's artwork rules (`figures:`), for the checks of G3 that read them.
+    Empty where there is no profile, none that can be read, or it says nothing of figures:
+    G4 says why."""
+    document = _profile(project)
+    rules = None if document is None else document.get("figures")
+    return rules if isinstance(rules, dict) else {}
+
+
 def _profile(project: Project) -> dict | None:
     """The target journal's profile, where there is one that can be read and is valid."""
     slug = project.target_journal

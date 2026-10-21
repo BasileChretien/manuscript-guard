@@ -157,6 +157,28 @@ def test_the_pack_gathers_every_part(project: Path) -> None:
     assert any(p.suffix == ".png" for p in pack.files)
 
 
+def test_the_pack_lists_each_figures_alternative_text_for_the_portal(project: Path) -> None:
+    """A submission system that asks for each figure's alternative text in a box of its own
+    gets it as the document carries it: each binding its display, and a figure with none
+    said to have none."""
+    projekt, _ = load_project(project)
+    document = project / "build" / "manuscript.docx"
+    document.parent.mkdir(parents=True, exist_ok=True)
+    document.write_bytes(b"PK\x03\x04 placeholder")
+
+    pack = assemble_pack(projekt, document)
+    listed = (pack.directory / "alt-text.md").read_text(encoding="utf-8")
+    assert "## forest" in listed and "Files: forest.png, forest.svg" in listed
+    assert "on a log scale: 3.84 (95% CI 2.89 to 5.12)" in listed and "{{" not in listed
+
+    sidecar = project / "figures" / "forest.guard.yaml"
+    guard = yaml.safe_load(sidecar.read_text(encoding="utf-8"))
+    del guard["alt"]
+    sidecar.write_text(yaml.safe_dump(guard), encoding="utf-8")
+    listed = (assemble_pack(projekt, document).directory / "alt-text.md").read_text("utf-8")
+    assert "None: write it in figures/forest.guard.yaml under `alt:`." in listed
+
+
 def test_the_manifest_records_what_was_sent(project: Path) -> None:
     projekt, _ = load_project(project)
     document = project / "build" / "manuscript.docx"

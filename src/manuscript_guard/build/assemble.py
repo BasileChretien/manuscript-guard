@@ -4,7 +4,8 @@ Three substitutions, all of which resolve to something machine-written, and one 
 
 * `{{results.key}}` and `{{lit.key}}` become the value's display string;
 * `{{table.key}}` becomes a pipe table built from the emitted table;
-* `{{figure.key}}` becomes an image reference to the rendered figure;
+* `{{figure.key}}` becomes an image reference to the rendered figure, its description the
+  alternative text its `<key>.guard.yaml` gives (`gates/figure_alt.py`);
 * `{{method.key}}`, an anchor pointing Methods text at a step of the code, prints nothing.
 
 Citations are left exactly as they are. `[@key]` has to survive into pandoc untouched, so
@@ -45,6 +46,9 @@ GATE = "BUILD"
 # For a Word document, a raster or PDF beats SVG: Word's SVG support is uneven and a
 # journal's production system is worse.
 FIGURE_PREFERENCE = (".png", ".pdf", ".tif", ".tiff", ".jpg", ".jpeg", ".eps", ".svg")
+#: The class of the span a figure with alternative text is placed in; `figure_caption.lua`
+#: names it too.
+FIGURE_SPAN = "mg-figure"
 
 
 @dataclass(frozen=True)
@@ -349,8 +353,17 @@ def assemble(
                 # pandoc records an image's path as the picture's description - so every
                 # document sent to a co-author carried the builder's home directory.
                 from manuscript_guard.build.document import relative_to_root
+                from manuscript_guard.gates.figure_alt import alt_markdown
 
-                replacement = f"![]({relative_to_root(project, figure)})"
+                image = relative_to_root(project, figure)
+                alt = alt_markdown(project, placeholder.key, namespace)
+                # Pandoc writes an image's description as its alternative text in Word, and
+                # makes an image alone in its paragraph a figure whose caption is that
+                # description. In a span it is not alone, and no caption is printed; the
+                # class is how `figure_caption.lua` still knows the paragraph for a figure.
+                replacement = (
+                    f"[![{alt}]({image})]{{.{FIGURE_SPAN}}}" if alt else f"![]({image})"
+                )
 
             if replacement is not None:
                 rendered = (

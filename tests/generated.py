@@ -977,6 +977,42 @@ def pdf_figures(draw: st.DrawFn) -> tuple[bytes, list[float], list[float]]:
     return document, sorted(texts + form_texts), sorted(lines + form_lines)
 
 
+# ------------------------------------------------------------- a figure's alternative text
+
+#: What pandoc's Markdown reads as markup in a picture's description unless each mark in it
+#: is escaped: emphasis, a link, a citation, maths, code, raw HTML and a comment, quotation
+#: marks and dashes it would curl and join, a sub- and superscript, a struck word, a
+#: backslash that would escape the bracket closing the description, and a binding left as
+#: written. Every alternative text drawn holds each, so that one mark left unescaped is read
+#: as markup under every seed.
+ALT_MARKUP = (
+    "*emphasis*", "**strong**", "_under_", "[a link](x.png)", "![a picture](y.png)",
+    "@citekey", "[@citekey]", "$x^2$", "`code`", "<b>bold</b>", "<!-- comment -->", "&amp;",
+    '"quoted"', "'single'", "--", "...", "^up^", "~down~", "~~struck~~", "\\", "\\*",
+    "{{results.key}}", "#", "|", "50%",
+)  # fmt: skip
+#: Words with no markup, some beyond ASCII.
+ALT_WORDS = (*FILLER[:12], "\N{PLUS-MINUS SIGN}2", "caf\N{LATIN SMALL LETTER E WITH ACUTE}",
+             "\N{GREATER-THAN OR EQUAL TO}", "0.5\N{EN DASH}2")  # fmt: skip
+#: What may stand between two pieces: nothing, a space, a run of them, a line break, a
+#: blank line, a tab, a no-break space. Each is drawn once in every text.
+ALT_SPACES = ("", " ", "   ", "\n", "\n \n", "\t", "\N{NO-BREAK SPACE}")
+
+
+@st.composite
+def alt_texts(draw: st.DrawFn) -> str:
+    """An alternative text as an author may write it in a figure's guard file: every piece
+    of `ALT_MARKUP` and some words, in an order drawn, each kind of `ALT_SPACES` between two
+    of them at least once."""
+    words = draw(st.lists(st.sampled_from(ALT_WORDS), max_size=6))
+    pieces = draw(st.permutations([*ALT_MARKUP, *words]))
+    extra = draw(st.lists(st.sampled_from(ALT_SPACES), min_size=len(pieces) - 1 - len(ALT_SPACES),
+                          max_size=len(pieces) - 1 - len(ALT_SPACES)))  # fmt: skip
+    spaces = draw(st.permutations([*ALT_SPACES, *extra]))
+    joined = zip(spaces, pieces[1:], strict=True)
+    return pieces[0] + "".join(space + piece for space, piece in joined)
+
+
 # -------------------------------------------------------------- the results a plan promises
 
 _STEMS = ("ror", "case", "cohort", "hr", "events")

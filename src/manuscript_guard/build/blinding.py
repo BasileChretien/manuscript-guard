@@ -57,6 +57,8 @@ _TEXT_PART = re.compile(r"word/(?:document|footnotes|endnotes|comments|header\d*
 _RELS_PART = re.compile(r"word/_rels/[^/]+\.xml\.rels")
 _RELATIONSHIP = "{http://schemas.openxmlformats.org/package/2006/relationships}Relationship"
 _COMPANY = "{http://schemas.openxmlformats.org/officeDocument/2006/extended-properties}Company"
+#: A picture's properties in Word, whose `descr` and `title` are its alternative text.
+_DOC_PR = "{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}docPr"
 _R = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
 #: The fields whose code holds an address or a path: a link, a picture or a text taken in,
 #: a table pasted as a link to its file (`LINK`, `DDE`, `DDEAUTO`, round 2 of #349). Not a
@@ -193,6 +195,8 @@ _HINTS = {
     "the text": "take it out of the manuscript, or write the authors' own work in the third "
     "person, and build again",
     "a figure": "draw the figure again without it",
+    "the alternative text of a picture": "take it out of the figure's `alt:` in its guard "
+    "file and build again, or out of the picture's alternative text in Word",
     "the document's author": "build the document again, or clear the author fields in Word "
     "(File, Info, Check for Issues, Inspect Document) before it is sent",
     "the document's last editor": "build the document again, or clear the author fields in "
@@ -225,6 +229,12 @@ def _places(document: Path) -> list[tuple[str, str]]:
                 places.append(("the text", "\n".join(_paragraphs(root, listed))))
                 authors = {node.get(f"{_W}author") for node in root.iter()} - {None}
                 places += [("the author of a tracked change or a comment", a) for a in authors]
+                # A picture's alternative text, which the build writes from its figure's
+                # guard file and Word lets anyone type: read aloud, and printed nowhere.
+                described = [node.get(key) for node in root.iter() if node.tag == _DOC_PR
+                             for key in ("descr", "title") if node.get(key)]  # fmt: skip
+                if described:
+                    places.append(("the alternative text of a picture", "\n".join(described)))
                 # A field's code holding an address is not printed and is in the file (round
                 # 1 of #273); the reference list's are its own, as its text is.
                 found, cited[name] = _addresses(root, listed)

@@ -7466,6 +7466,138 @@ def test_a_structured_abstract_heading_in_a_comment_is_missing(project: Path) ->
     assert "abstract-headings-missing" in codes(_journal(project))
 
 
+# ------------------------------------------------------ a figure's alternative text
+
+
+def _alt(root: Path, alt: object = None, **rules) -> None:
+    """The example's figure given this alternative text (None takes it away), and its
+    journal these artwork rules."""
+    if rules:
+        profile = root / "profiles" / "journals" / "demo-journal.yaml"
+        document = yaml.safe_load(profile.read_text(encoding="utf-8"))
+        document["figures"] = {"source_url": "https://journal.example/artwork",
+                               "read_on": "2026-10-21", "confirmed": True, **rules}  # fmt: skip
+        profile.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    sidecar = root / "figures" / "forest.guard.yaml"
+    guard = yaml.safe_load(sidecar.read_text(encoding="utf-8"))
+    guard.pop("alt", None)
+    if alt is not None:
+        guard["alt"] = alt
+    sidecar.write_text(yaml.safe_dump(guard, sort_keys=False, allow_unicode=True),
+                       encoding="utf-8")  # fmt: skip
+
+
+def _alt_said(root: Path, stage: str = "drafting") -> list[tuple[str, str]]:
+    """What `check` says of the figure's alternative text at `stage`, the stage's policy
+    applied."""
+    from manuscript_guard.cli import _run_gates
+
+    report, _project, _chosen, _deferred = _run_gates(root, stage=stage)
+    return [(f.code, f.severity) for f in report.findings if f.code.startswith("figure-alt-")]
+
+
+def test_the_examples_alternative_text_passes_at_every_stage(project: Path) -> None:
+    for stage in ("drafting", "internal-review", "submission"):
+        assert _alt_said(project, stage) == [], stage
+
+
+@pytest.mark.parametrize(
+    ("stage", "rules", "said"),
+    [
+        ("drafting", {}, "info"),
+        ("internal-review", {}, "warn"),
+        ("submission", {}, "warn"),
+        ("submission", {"alt_text": "requested"}, "warn"),
+        ("drafting", {"alt_text": "required"}, "info"),
+        ("internal-review", {"alt_text": "required"}, "warn"),
+        ("submission", {"alt_text": "required"}, "fail"),
+    ],
+)
+def test_a_figure_with_no_alternative_text_fails_only_where_the_journal_requires_one(
+    project: Path, stage: str, rules: dict, said: str
+) -> None:
+    """Basile, 2026-10-21: a note while drafting, a warning from internal review, and a
+    failure at submission where the journal's profile requires alternative text. The build
+    placed every figure as `![](path)`, so every document went out with none."""
+    _alt(project, None, **rules)
+    assert _alt_said(project, stage) == [("figure-alt-missing", said)]
+
+
+@pytest.mark.parametrize("alt", ["", "   \n", ["a list"], 3.84, {"text": "a mapping"}])
+def test_alternative_text_that_is_no_text_is_none(project: Path, alt: object) -> None:
+    _alt(project, alt, alt_text="required")
+    assert _alt_said(project, "submission") == [("figure-alt-missing", "fail")]
+
+
+def test_a_supplementary_figure_is_held_to_the_supplements_rule(project: Path) -> None:
+    """A rule under `supplementary:` replaces the main one for a figure only the supplement
+    places, as every other artwork rule does."""
+    main = main_md(project)
+    main.write_text(main.read_text(encoding="utf-8").replace("{{figure.forest}}\n", ""),
+                    encoding="utf-8")  # fmt: skip
+    (project / "manuscript" / "supplementary" / "figures.md").write_text(
+        "# Supplementary figure\n\n{{figure.forest}}\n", encoding="utf-8"
+    )
+    _alt(project, None, alt_text="requested", supplementary={"alt_text": "required"})
+    assert ("figure-alt-missing", "fail") in _alt_said(project, "submission")
+
+
+def test_each_binding_in_the_alternative_text_typed_as_its_value_fails(project: Path) -> None:
+    """The headline corruption, in the alternative text: each binding replaced by the value
+    it prints is correct today and stale in waiting, and fails as it would in the prose."""
+    sidecar = project / "figures" / "forest.guard.yaml"
+    raw = yaml.safe_load(sidecar.read_text(encoding="utf-8"))["alt"]
+    namespace = load_namespace(load_project(project)[0])[0]
+    found = bindings_in(raw)
+    assert len(found) == 3, raw
+    for binding in found:
+        display = namespace[binding.strip("{}")].display
+        _alt(project, raw.replace(binding, display))
+        assert _alt_said(project) == [("figure-alt-number", "fail")], binding
+
+
+def test_a_number_in_the_alternative_text_that_prose_would_pass_passes(project: Path) -> None:
+    """Held as prose is, and no harder: a convention ("95% CI") is no result."""
+    _alt(project, "The estimate is drawn with its 95% CI, {{results.ror.ci_low}} to "
+                  "{{results.ror.ci_high}}.")  # fmt: skip
+    assert _alt_said(project) == []
+
+
+@pytest.mark.parametrize(
+    "binding",
+    ["{{results.no_such_key}}", "{{table.two_by_two}}", "{{figure.forest}}",
+     "{{method.no_such_step}}", "{{results.ror.point}"],
+)  # fmt: skip
+def test_a_binding_in_the_alternative_text_that_prints_no_value_fails(
+    project: Path, binding: str
+) -> None:
+    _alt(project, f"The reporting odds ratio, {binding}, drawn on a log scale.")
+    assert _alt_said(project) == [("figure-alt-binding", "fail")]
+
+
+def test_alternative_text_longer_than_the_journal_takes_is_a_warning(project: Path) -> None:
+    """Counted as printed: each binding its display, so "{{results.ror.point}}" is four
+    characters ("3.84") and not twenty-two."""
+    from manuscript_guard.gates.figure_alt import printed_alt, raw_alt
+
+    loaded = load_project(project)[0]
+    printed = printed_alt(raw_alt(loaded, "forest"), load_namespace(loaded)[0])
+    _alt(project, yaml.safe_load(
+        (project / "figures" / "forest.guard.yaml").read_text(encoding="utf-8"))["alt"],
+        alt_text_max_chars=len(printed))  # fmt: skip
+    assert _alt_said(project, "internal-review") == []
+    _alt(project, yaml.safe_load(
+        (project / "figures" / "forest.guard.yaml").read_text(encoding="utf-8"))["alt"],
+        alt_text_max_chars=len(printed) - 1)  # fmt: skip
+    assert _alt_said(project, "drafting") == [("figure-alt-long", "info")]
+    assert _alt_said(project, "submission") == [("figure-alt-long", "warn")]
+
+
+def test_a_journal_profile_with_an_alt_text_rule_out_of_shape_is_refused(project: Path) -> None:
+    _alt(project, "Text.", alt_text="mandatory")
+    assert "schema-violation" in codes(_journal(project))
+
+
 # ------------------------------------------------- the journal's citation style (item 51)
 
 
@@ -8835,6 +8967,16 @@ _CORE_NS = (
                  "Graduate School of Medicine</Company></Properties>"},
             [("Example University Graduate School of Medicine",
               "the document's company (Company)")], id="Word's company field",
+        ),
+        # The alternative text the build writes from a figure's guard file, or Word lets a
+        # co-author type: read aloud, printed nowhere.
+        pytest.param(
+            "<w:p><w:r><w:drawing><wp:inline xmlns:wp='http://schemas.openxmlformats.org/"
+            "drawingml/2006/wordprocessingDrawing'><wp:docPr id='1' name='Picture' "
+            "descr='The estimate, as Example and Sample drew it' title='By Ada Example'/>"
+            "</wp:inline></w:drawing></w:r></w:p>", {},
+            [("Ada Example", "the alternative text of a picture")],
+            id="a picture's alternative text",
         ),
     ],
 )  # fmt: skip

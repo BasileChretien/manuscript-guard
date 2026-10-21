@@ -108,7 +108,9 @@ def test_assembly_substitutes_values_tables_and_figures(project: Path) -> None:
     assert "{{" not in text, "every binding must be resolved"
     assert namespace["results.ror.point"].display in text
     assert "| Characteristic" in text, "the table should be rendered inline"
-    assert "![](" in text, "the figure should become an image reference"
+    # With its alternative text as the image's description, in the span that keeps pandoc
+    # from printing that as a caption.
+    assert "[![Forest plot of" in text and "]{.mg-figure}" in text, "the figure's image"
 
 
 def test_assembly_leaves_citations_untouched(project: Path) -> None:
@@ -390,6 +392,81 @@ def test_a_fold_change_under_a_figure_is_not_a_caption(project: Path) -> None:
     ]
     assert len(found) == 1
     assert 'w:val="FigureCaption"' not in found[0]
+
+
+def _pictures(path: Path) -> list[str]:
+    """The alternative text of each picture in a built document, as Word reads it."""
+    import xml.etree.ElementTree as ET
+
+    root = ET.fromstring(zipfile.ZipFile(path).read("word/document.xml"))
+    wp = "{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}"
+    return [node.get("descr", "") for node in root.iter(f"{wp}docPr")]
+
+
+def _with_alt(project: Path, alt: str | None) -> Path:
+    import yaml
+
+    sidecar = project / "figures" / "forest.guard.yaml"
+    guard = yaml.safe_load(sidecar.read_text(encoding="utf-8"))
+    guard.pop("alt", None)
+    if alt is not None:
+        guard["alt"] = alt
+    sidecar.write_text(yaml.safe_dump(guard, allow_unicode=True), encoding="utf-8")
+    proj, namespace, results, _lit = loaded(project)
+    assembled, report = assemble(proj, namespace, results)
+    assert report.ok, report.render(project)
+    return build_document(proj, assembled, mode=OFFLINE).output
+
+
+@needs_pandoc
+def test_a_figures_alternative_text_is_its_pictures_and_printed_nowhere(project: Path) -> None:
+    """Pandoc makes an image alone in its paragraph a figure, and prints its description
+    under it as a caption. The build places the image in a span, so that the description is
+    the picture's alternative text and nothing more: each binding its display."""
+    from manuscript_guard.gates.figure_alt import printed_alt, raw_alt
+
+    proj, namespace, _results, _lit = loaded(project)
+    expected = printed_alt(raw_alt(proj, "forest"), namespace)
+    assert namespace["results.ror.point"].display in expected and "{{" not in expected
+    output = _with_alt(project, raw_alt(proj, "forest"))
+    assert _pictures(output) == [expected]
+    assert "Forest plot of" not in docx_text(output)
+
+
+@needs_pandoc
+def test_alternative_text_is_written_as_typed_whatever_markup_it_holds(project: Path) -> None:
+    """Each ASCII punctuation mark is escaped, so pandoc reads none as markup: not emphasis,
+    a link, a citation, maths, a quotation mark to curl, raw HTML or a comment. Its line
+    breaks are one space, since a description is one line."""
+    typed = (
+        'Odds *rose* [twice](x.png) for @citekey and $x^2$ with `code`, <b>bold</b> &amp; '
+        '"quoted" -- 50% ... ^up^ ~down~ \\ a <!-- comment --> end.'
+    )
+    output = _with_alt(project, typed.replace(" for ", "\nfor "))
+    assert _pictures(output) == [typed]
+
+
+@needs_pandoc
+def test_a_figure_with_no_alternative_text_is_placed_as_before(project: Path) -> None:
+    output = _with_alt(project, None)
+    assert _pictures(output) == [""]
+
+
+@needs_pandoc
+def test_the_caption_after_a_figure_with_alternative_text_or_none_is_styled(
+    project: Path,
+) -> None:
+    """`figure_caption.lua` knows a figure's paragraph by its one image, and with
+    alternative text the image is inside the build's span: the caption under it went on
+    being set in the body font until the filter was taught the span."""
+    import re
+
+    for alt in ("A dot and its interval on a log scale.", None):
+        _with_alt(project, alt)
+        output = _captioned(project)
+        styled = [p for p in _paragraphs(output) if 'w:val="FigureCaption"' in p]
+        assert len(styled) == 1, alt
+        assert "What the figure shows" in "".join(re.findall(r"<w:t[^>]*>(.*?)</w:t>", styled[0]))
 
 
 @needs_pandoc

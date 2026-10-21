@@ -485,6 +485,12 @@ def test_a_month_or_a_day_is_a_date_and_no_number(value: str) -> None:
         ("2024-03-02", "01/03/2024", "is 2024-03-01, and the value is 2024-03-02"),
         ("2023-12-31", "12/31/2023", None),
         ("2023-12-31", "31/12/23", "is not a date"),
+        # Round 2 of #392: strftime's %d-%b-%Y and SAS's DATE9, which loaded on main.
+        ("2023-12-31", "31-Dec-2023", None),
+        ("2023-12-31", "31DEC2023", None),
+        # And a month or a day of 0, which was read as 1 and then raised.
+        ("2024-01-03", "3/0/2024", "is not a date"),
+        ("2024-03-15", "0/3/2024", "is not a date"),
     ],
 )
 def test_a_date_in_figures_is_read_as_its_date(value: str, display: str, says) -> None:
@@ -525,9 +531,12 @@ def test_every_value_a_dataset_writes_is_its_record_s(scratch: Path) -> None:
     assert not check_datasets(project, results).findings
 
 
-def test_a_file_named_twice_is_one_file_of_the_data(scratch: Path) -> None:
+@pytest.mark.parametrize("again", ["data/extract.csv", "./data/extract.csv",
+                                   "data/../data/extract.csv"])  # fmt: skip
+def test_a_file_named_twice_is_one_file_of_the_data(scratch: Path, again: str) -> None:
+    """However it is spelt the second time (round 2 of #392)."""
     em = emitter(scratch)
-    em.dataset("vigibase", ["data/extract.csv", "data/extract.csv"], extracted="2024-03-01",
+    em.dataset("vigibase", ["data/extract.csv", again], extracted="2024-03-01",
                fingerprint=pin(scratch))  # fmt: skip
     document = em.document()
     assert document["datasets"]["vigibase"]["inputs"] == ["data/extract.csv"]
@@ -553,6 +562,13 @@ def test_a_release_named_by_a_year_is_no_date_typed(role: str) -> None:
 )
 def test_the_words_of_another_binding_or_a_citation_say_nothing(text: str) -> None:
     assert _said(text) == []
+
+
+def test_the_words_around_a_citation_s_key_are_the_sentence_s() -> None:
+    """Round 2 of #392: the whole bracket was blanked, and the words in it with the key."""
+    assert _said("Reports [extracted on {{results.old.extracted}}; see @who2020] were kept.") == [
+        "{{results.old.extracted}}"
+    ]
 
 
 @pytest.mark.parametrize(

@@ -40,11 +40,13 @@ _MONTH = r"([A-Za-z]{3,9})\.?"
 _DAY = r"([0-9]{1,2})(?:st|nd|rd|th)?"
 _YEAR = r"([0-9]{4})"
 #: The ways a display writes a date, each read whole: "1 March 2024", "March 1, 2024", "Mar.
-#: 1 2024", "1st March 2024", "March 2024", and the ISO forms.
+#: 1 2024", "1st March 2024", "March 2024", "31-Dec-2023", "31DEC2023", and the ISO forms.
 _WRITTEN = (
     ("dmy", re.compile(rf"{_DAY} {_MONTH},? {_YEAR}")),
     ("mdy", re.compile(rf"{_MONTH} {_DAY},? {_YEAR}")),
     ("my", re.compile(rf"{_MONTH},? {_YEAR}")),
+    # strftime's "%d-%b-%Y" and SAS's DATE9 (round 2 of #392): "31-Dec-2023", "31DEC2023".
+    ("dmy", re.compile(rf"([0-9]{{1,2}})-?([A-Za-z]{{3,9}})-?{_YEAR}")),
 )
 
 #: A date in figures: two groups of one or two digits and one of four, the year first or
@@ -91,7 +93,10 @@ class Dated:
 
 
 def _dated(year: int, month: int | None, day: int | None) -> Dated | None:
-    """The date, or None where there is no such day: 2023-02-30, or month 13."""
+    """The date, or None where there is no such day: 2023-02-30, month 13, or a month or a
+    day of 0, which `date` would be asked as 1 (round 2 of #392, where `last` then raised)."""
+    if (month is not None and not 1 <= month <= 12) or (day is not None and day < 1):
+        return None
     try:
         date(year, month or 1, day or 1)
     except ValueError:

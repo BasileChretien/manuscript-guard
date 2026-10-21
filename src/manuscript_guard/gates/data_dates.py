@@ -44,8 +44,9 @@ _SAYS = re.compile(
 )
 
 #: What else a sentence holds that is no word of it: another binding, a table's, a figure's
-#: or a step's, and a citation, whose keys are names ("extracted2020").
-_NOT_WORDS = re.compile(r"\{\{[^{}]*\}\}|\[[^\[\]]*@[^\[\]]*\]|(?<![\w.])@[\w:.#$%&+?<>~/-]+")
+#: or a step's, and a citation's key, which is a name ("extracted2020"). The words around the
+#: key in its brackets are the sentence's (round 2 of #392).
+_NOT_WORDS = re.compile(r"\{\{[^{}]*\}\}|(?<![\w.])@[\w:.#$%&+?<>~/-]+")
 
 #: The roles a date is emitted under by a call that declares what it is: the data's date
 #: (`dataset`), a choice the analysis made (`parameter`), the version of software it ran on

@@ -5355,7 +5355,7 @@ short, so a year or a month is held only to a display that reads as a date, and 
 2012" passes as it did. The Python emitter refuses a display that breaks the rule as it
 runs, and so does R's; the loader reads every fragment with the same rule and reports
 `no-display` for one that breaks it. An ISO date is no longer refused as a string carrying a
-number, a month or a day: four digits alone are still a number until a label says otherwise,
+number, a month or a day: four digits alone outside 1900 to 2099, the years `_LABELLIKE` takes for a label, are still a number until a label says otherwise,
 since "1520" read from a CSV is a count as often as a year (round 1 of #392). So
 `em.parameter("period.start", "2015-01-01", display="1 January 2015")`, a study period the
 analysis chose, can be written as G2's hint now says.
@@ -12444,8 +12444,10 @@ Open, recorded as each change landed:
   computed. The sentence is the one `in_sentences` gives the binding, with its limit: a stop
   typed against a binding with no space after it ends no sentence.
 - **A display is read in English, in three orders, or in figures.** "1 March 2024", "March
-  1, 2024", "March 2024", the ISO forms, three-letter months, "Sept", an ordinal day, and
-  figures with a four-digit year first or last, the day and the month taken either way. A
+  1, 2024", "March 2024", the ISO forms, three-letter months, "Sept", an ordinal day, a day
+  as strftime's `%d-%b-%Y` and SAS's DATE9 write it ("31-Dec-2023", "31DEC2023"), and
+  figures with a four-digit year first or last, the day and the month taken either way, and
+  neither a month nor a day of 0. A
   two-digit year, a day of the week, a month in another language and a date with words
   around it are no dates to it: as the display of an ISO day they are refused, and as the
   display of a year or a month they pass unread, since "2010-12" is also a period written

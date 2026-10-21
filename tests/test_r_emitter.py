@@ -1271,9 +1271,11 @@ em <- mg_emitter("%(script)s")
         # Round 1 of #392: an impossible day stopped R inside as.Date, not with the refusal.
         ('em$dataset("vigibase", "data/extract.csv", extracted = "2024-02-30", '
          'fingerprint = "%(pin)s")', "extracted 2024-02-30 is not a date written as ISO 8601"),
+        # Round 2 of #392: a month of nought, refused in both languages.
+        ('em$value("period.end", "2024-03-15", display = "0/3/2024")', "is not a date"),
     ],
     ids=["unpinned", "other data", "outside the period", "a number", "another date",
-         "no such day"],
+         "no such day", "a month of nought"],
 )
 def test_r_refuses_what_python_refuses_of_a_dataset(tmp_path: Path, call: str, says: str) -> None:
     root, pins = _dataset_project(tmp_path)
@@ -1297,6 +1299,7 @@ def test_r_reads_a_blank_date_as_missing_and_a_date_in_figures_as_python_does(
         'fingerprint = "%(pin)s", dates = c("2023-01-05", "  ", NA))',
         'em$value("day.a", "2024-01-03", display = "01/03/2024")',
         'em$value("day.b", "2023-12-31", display = "31.12.2023")',
+        'em$value("day.c", "2023-12-31", display = "31-Dec-2023")',
         "em$write()",
     )) % pins  # fmt: skip
     script.write_text(REFUSED_R % {"emit": EMIT_R.as_posix(), "script": script.as_posix(),

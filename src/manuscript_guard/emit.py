@@ -21,6 +21,7 @@ import hashlib
 import importlib.metadata
 import json
 import numbers
+import os
 import platform
 import re
 import subprocess
@@ -1499,8 +1500,6 @@ class Emitter:
                 f"{self.script}, under the same keys"
             )
         given = [path] if isinstance(path, (str, Path)) else list(path)
-        # A file named twice is one file of the data (round 1 of #392).
-        given = list({str(raw): raw for raw in given}.values())
         if not given:
             raise ValueError(f"dataset {name!r}: name the file or files the data are in")
         assert self.root is not None
@@ -1509,7 +1508,11 @@ class Emitter:
             full = Path(raw) if Path(raw).is_absolute() else self.root / raw
             if not full.is_file():
                 raise FileNotFoundError(f"dataset {name!r}: no file {full}")
-            files.append((str(full.relative_to(self.root)).replace("\\", "/"), full))
+            rel = os.path.normpath(full.relative_to(self.root)).replace("\\", "/")
+            # A file named twice, however it is spelt, is one file of the data (rounds 1
+            # and 2 of #392).
+            if rel not in {done for done, _full in files}:
+                files.append((rel, full))
         whole = dataset_digest([(rel, input_digest(full)) for rel, full in files])
         # One file is also known by its bytes as they are, which `sha256sum` prints.
         accepted = {whole} | ({sha256_of(files[0][1])} if len(files) == 1 else set())
@@ -1517,8 +1520,8 @@ class Emitter:
         stated = declare(name, extracted=extracted, covers=covers, version=version,
                          dates=dates)  # fmt: skip
         pin = pin_of(name, fingerprint, whole, accepted, what, stated.extracted.iso)
-        for raw in given:
-            self.add_input(raw, restricted=restricted, synthetic=synthetic)
+        for rel, _full in files:
+            self.add_input(rel, restricted=restricted, synthetic=synthetic)
         english = self._english()
         for part, value, display in stated.values(english):
             key = f"dataset.{slug(name)}.{part}"

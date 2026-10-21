@@ -804,10 +804,13 @@ mg_read_words <- function(plain) {
   forms <- list(
     dmy = paste0("^", day, " ", month, ",? ", year, "$"),
     mdy = paste0("^", month, " ", day, ",? ", year, "$"),
-    my = paste0("^", month, ",? ", year, "$")
+    my = paste0("^", month, ",? ", year, "$"),
+    # strftime's "%d-%b-%Y" and SAS's DATE9 (round 2 of #392): "31-Dec-2023", "31DEC2023".
+    dmy = paste0("^([0-9]{1,2})-?([A-Za-z]{3,9})-?", year, "$")
   )
-  for (order in names(forms)) {
-    parts <- regmatches(plain, regexec(forms[[order]], plain, perl = TRUE))[[1]]
+  for (at in seq_along(forms)) {
+    order <- names(forms)[at]
+    parts <- regmatches(plain, regexec(forms[[at]], plain, perl = TRUE))[[1]]
     if (length(parts) == 0) next
     stated <- switch(order,
       dmy = list(day = parts[2], name = parts[3], year = parts[4]),
@@ -1339,8 +1342,6 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
     if (!is.character(path) || length(path) == 0) {
       stop("dataset ", name, ": name the file or files the data are in", call. = FALSE)
     }
-    # A file named twice is one file of the data, as in Python (round 1 of #392).
-    path <- unique(path)
     full <- vapply(path, function(p) if (file.exists(p)) p else file.path(project_root, p),
                    character(1), USE.NAMES = FALSE)
     for (i in seq_along(full)) {
@@ -1349,6 +1350,12 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
       }
     }
     rel <- vapply(full, relative, character(1), USE.NAMES = FALSE)
+    # A file named twice, however it is spelt, is one file of the data, as in Python
+    # (rounds 1 and 2 of #392).
+    once <- !duplicated(rel)
+    path <- path[once]
+    full <- full[once]
+    rel <- rel[once]
     whole <- mg_dataset_digest(rel, vapply(full, mg_input_digest, character(1),
                                            USE.NAMES = FALSE))
     # One file is also known by its bytes as they are, which `sha256sum` prints.

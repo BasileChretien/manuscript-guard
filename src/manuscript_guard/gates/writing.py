@@ -115,13 +115,15 @@ def check_writing(
 
     rules = load_rules()
     folder = project.path("manuscript")
+    typed_lists: list[Elsewhere] = []
     if manuscript_format(folder) == LATEX:
         read, words, cited = _latex_texts(folder)
         report, totals = _judged(read, words, rules, submission=submission, cited=cited)
+        typed_lists = _typed_lists(folder)
     else:
         corpus = [(path, read_text(path)) for path in source_files(folder)]
         report, totals = judge_texts(corpus, rules, submission=submission)
-    elsewhere = _elsewhere(project, results)
+    elsewhere = _elsewhere(project, results) + typed_lists
     for where in elsewhere:
         report = report.merge(_artefacts_elsewhere(rules, where, totals))
 
@@ -209,16 +211,42 @@ def _read_latex(
 
 def _latex_typed(source) -> str:
     """A LaTeX file as typed, where an artefact or a placeholder is looked for, in a comment
-    too, as in a Markdown file's comment. Its preamble is as the reader reads it, the title
-    and an abstract: a package's name is no text, `\\usepackage{fixme}` none. A reference list
-    typed in `thebibliography` is blanked, its titles held as `references.bib`'s are (round 1
-    of step 7b)."""
+    too, as in a Markdown file's comment: its body, to `\\end{document}`, past which LaTeX
+    prints nothing. Its preamble is as the reader reads it, the title and an abstract, without
+    a definition's body, which prints where it is used: a package's name is no text,
+    `\\usepackage{fixme}` none, and nor is `\\newcommand{\\todo}` (rounds 1 and 2 of step 7b). A
+    reference list typed in `thebibliography` is read as `references.bib`'s fields are
+    (`_typed_lists`)."""
     from manuscript_guard.text.latex.mask import NUL
 
     reading = source.reading
     body = reading.body_start if reading.body_start >= 0 else len(source.text)
-    typed = reading.masked[:body].replace(NUL, " ") + source.text[body:]
+    end = reading.body_end if reading.body_end >= 0 else len(source.text)
+    preamble = _blank(reading.masked[:body].replace(NUL, " "), reading.bodies)
+    typed = preamble + source.text[body:end] + _blank(source.text[end:], [(0, len(source.text))])
     return _blank(typed, reading.references)
+
+
+def _typed_lists(folder: Path) -> list[Elsewhere]:
+    """Each reference list a LaTeX file types in `thebibliography`, as a cited entry's fields
+    in `references.bib` are read: only a placeholder there no title holds, `TODO` in capitals
+    and not "Todo lo que" (round 2 of step 7b)."""
+    from manuscript_guard.text.latex.structure import read_document
+
+    return _typed_lists_of(folder, [read_document(folder, supplementary=supplementary).sources
+                                    for supplementary in (False, True)])  # fmt: skip
+
+
+def _typed_lists_of(folder: Path, documents: list) -> list[Elsewhere]:
+    """`_typed_lists` of documents read, each the include tree's sources."""
+    found = []
+    for document in documents:
+        for source in document:
+            for start, end in source.reading.references:
+                found.append(Elsewhere(folder / source.path, source.text[start:end],
+                                       "the reference list typed in thebibliography",
+                                       source.text.count("\n", 0, start) + 1))  # fmt: skip
+    return found
 
 
 def _latex_prose(source) -> str:
@@ -236,7 +264,7 @@ def _blank(text: str, spans) -> str:
     """`text` with each span a space, its line breaks kept."""
     chars = list(text)
     for start, end in spans:
-        for index in range(start, end):
+        for index in range(start, min(end, len(chars))):
             if chars[index] != "\n":
                 chars[index] = " "
     return "".join(chars)

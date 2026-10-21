@@ -897,6 +897,9 @@ LATEX_WRITING_PLACES = (
     ("Studies have shown that {} rose \\nocite{{c}}.\n", "vague"),
     ("\\begin{{thebibliography}}{{9}}\\bibitem{{g}} Garcia J. Todo lo que {} hay. 2020.\n"
      "\\end{{thebibliography}}\n", "none"),
+    # A typed reference list is read as a cited entry's fields are (round 2 of step 7b).
+    ("\\begin{{thebibliography}}{{9}}\\bibitem{{h}} TODO find the journal {}.\n"
+     "\\end{{thebibliography}}\n", "artefact"),
 )  # fmt: skip
 #: Words between two places, more than G6's citation window, so that a claim stands near a
 #: citation only where one is planted beside it.
@@ -910,14 +913,16 @@ def latex_writing(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
     place is in every document, so that a rule broken for one is seen in each."""
     order = draw(st.permutations(range(len(LATEX_WRITING_PLACES))))
     planted: list[tuple[str, str]] = []
-    # A package named for a note is no note (round 1 of step 7b).
-    text = "\\documentclass{article}\n\\usepackage[final]{fixme}\n\\begin{document}\n"
+    # A package or a definition named for a note is no note, and nothing past the document's
+    # end prints (rounds 1 and 2 of step 7b).
+    text = ("\\documentclass{article}\n\\usepackage[final]{fixme}\n"
+            "\\newcommand{\\todo}[1]{\\textcolor{red}{TODO: #1}}\n\\begin{document}\n")  # fmt: skip
     for index in order:
         template, kind = LATEX_WRITING_PLACES[index]
         key = f"k{4101 + len(planted)}"
         planted.append((key, kind))
         text += _FAR + template.replace("{{", "{").replace("}}", "}").replace("{}", key)
-    return text + _FAR + "\\end{document}\n", planted
+    return text + _FAR + "\\end{document}\n% TODO cut\nXXX patients\n", planted
 
 
 @st.composite

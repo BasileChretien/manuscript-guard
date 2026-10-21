@@ -911,11 +911,16 @@ def test_g6_judges_a_latex_document_where_it_prints_and_by_its_citations(
     """A claim with no citation, a phrase and a placeholder planted in a LaTeX document are each
     found on their line, and nothing else is: a claim beside a citation command is supported, a
     claim or a phrase in a comment is no text of the paper, and a placeholder in a comment is
-    found as typed, as one in a Markdown comment is (step 7)."""
+    found as typed, as one in a Markdown comment is, and one in a typed reference list as one in
+    a cited entry's field is; nothing past the document's end is read, nor a package's name or
+    a definition's body in the preamble (step 7)."""
     text, planted = drawn
     sources = latex_structure.read_tree({"main.tex": text}).sources
     read, words, cited = writing_gate._read_latex(Path("m"), [sources])
-    report, _totals = writing_gate._judged(read, words, writing_gate.load_rules(), cited=cited)
+    rules = writing_gate.load_rules()
+    report, totals = writing_gate._judged(read, words, rules, cited=cited)
+    for where in writing_gate._typed_lists_of(Path("m"), [sources]):
+        report = report.merge(writing_gate._artefacts_elsewhere(rules, where, totals))
     lines = {key: text.count("\n", 0, text.index(key)) + 1 for key, _kind in planted}
     for code, kind in (("vague-attribution", "vague"), ("ai-phrasing", "phrase"),
                        ("model-artefact", "artefact")):  # fmt: skip
@@ -946,6 +951,28 @@ def _g6_reads_a_typed_reference_list(patch: pytest.MonkeyPatch) -> None:
 def _g6_takes_nocite_for_a_claims_support(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(writing_gate, "_cited_at",
                   lambda source: [found.start for found in source.reading.cited])  # fmt: skip
+
+
+def _g6_reads_no_typed_reference_list(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(writing_gate, "_typed_lists_of", lambda folder, documents: [])
+
+
+def _g6_reads_a_definitions_body_in_the_preamble(patch: pytest.MonkeyPatch) -> None:
+    class Every:
+        def __contains__(self, name: object) -> bool:
+            return True
+
+    patch.setattr(latex_mask, "HOOKS", Every())
+
+
+def _g6_reads_past_the_documents_end(patch: pytest.MonkeyPatch) -> None:
+    ended = latex_mask._Reader._end
+
+    def broken(self, name: str, at: int) -> None:
+        ended(self, name, at)
+        self.body_end = -1
+
+    patch.setattr(latex_mask._Reader, "_end", broken)
 
 
 def _a_floats_words_are_printed(patch: pytest.MonkeyPatch) -> None:
@@ -7693,6 +7720,18 @@ BROKEN = {
     ),
     "in LaTeX, G6 takes \\nocite for a claim's support": (
         _g6_takes_nocite_for_a_claims_support,
+        test_g6_judges_a_latex_document_where_it_prints_and_by_its_citations,
+    ),
+    "in LaTeX, G6 reads no typed reference list": (
+        _g6_reads_no_typed_reference_list,
+        test_g6_judges_a_latex_document_where_it_prints_and_by_its_citations,
+    ),
+    "in LaTeX, G6 reads a definition's body in the preamble": (
+        _g6_reads_a_definitions_body_in_the_preamble,
+        test_g6_judges_a_latex_document_where_it_prints_and_by_its_citations,
+    ),
+    "in LaTeX, G6 reads past the document's end": (
+        _g6_reads_past_the_documents_end,
         test_g6_judges_a_latex_document_where_it_prints_and_by_its_citations,
     ),
     "in LaTeX, G6 reads a comment as prose": (

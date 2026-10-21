@@ -43,6 +43,8 @@ from manuscript_guard.text.placeholders import NAMESPACES
 NUL = "\x00"
 #: The environment a reference list is typed in.
 REFERENCES = "thebibliography"
+#: The hooks whose body LaTeX runs where it stands, unlike a definition's.
+HOOKS = frozenset({"AtBeginDocument", "AtEndDocument", "AfterEndPreamble", "AddToHook"})
 PROSE, BLANK, MATHS_READ, PREAMBLE = "prose", "blank", "maths", "preamble"
 #: Commands whose prose argument LaTeX prints though it stands in the preamble: the title, its
 #: note, and a definition's default argument, printed at each use that omits it (round 1 of
@@ -175,6 +177,11 @@ class Reading:
     figures: tuple[tuple[int, int], ...] = ()
     #: Where each reference list typed in `thebibliography` runs.
     references: tuple[tuple[int, int], ...] = ()
+    #: Where `\\end{document}` stands, or -1 in a file that does not end the document.
+    body_end: int = -1
+    #: Where each definition's body runs, which prints only where the definition is used; not
+    #: a hook's, which LaTeX runs where it stands.
+    bodies: tuple[tuple[int, int], ...] = ()
 
 
 #: The level of each sectioning command, as Markdown's `#` counts it; a part stands over a
@@ -367,6 +374,8 @@ class _Reader:
         self.floats: list[tuple[int, int]] = []
         self.figures: list[tuple[int, int]] = []
         self.references: list[tuple[int, int]] = []
+        self.body_end = -1
+        self.bodies: list[tuple[int, int]] = []
         self.code: list[tuple[int, int]] = []
         self.declared: list[tuple[str, str]] = []
         self.body_start = 0 if body else -1
@@ -406,7 +415,7 @@ class _Reader:
                  tuple(sorted(tables)), tuple(self.listings), tuple(self.cited),
                  tuple(sorted(maths)), tuple(sorted(floats)), self.body_start,
                  tuple(self.code), tuple(self.declared), tuple(sorted(figures)),
-                 tuple(sorted(references)))  # fmt: skip
+                 tuple(sorted(references)), self.body_end, tuple(self.bodies))  # fmt: skip
         if self.refused is None:
             return Reading(masked, (), *found)
         at = self.refused.offset
@@ -670,6 +679,8 @@ class _Reader:
     def _close(self, at: int, width: int) -> None:
         frame = self.stack.pop()
         self.definitions -= frame.definition
+        if frame.definition and frame.command not in HOOKS:
+            self.bodies.append((frame.start, at + width))
         self.siunitx -= frame.siunitx
         self._blank(at, at + width)
         self.pos = at + width
@@ -1018,6 +1029,7 @@ class _Reader:
                 first = opened[0]
                 self._refuse("tex-unbalanced", first.start, f"{_opened(first)} is not closed")
                 return
+            self.body_end = at
             self._blank(at, self.n)
             self.pos = self.n
             return

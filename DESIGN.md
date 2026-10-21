@@ -1528,14 +1528,17 @@ The result is compiled and packed by the code above, and checked three times:
   which is then not read (round 1 of step 7).
 - G6 looks for a placeholder in a LaTeX file's body as typed, as in a Markdown file:
   `\todo{...}` and a `% TODO` comment each fail as a TODO in the text does. Its preamble is
-  read as the reader reads it, so a package or a definition named for a note does not. A
-  phrase G6 reports is not read in a comment, but past a refusal, where the file is read as
-  typed (round 1 of step 7b).
+  read as the reader reads it, without a definition's body, so a package or a definition
+  named for a note does not; nor do `\author`, `\date` or a comment in the preamble, which
+  the reader blanks, though Markdown's front matter is read as typed. Past `\end{document}`
+  nothing is read. A phrase G6 reports is not read in a comment, but past a refusal, where
+  the file is read as typed (rounds 1 and 2 of step 7b).
 - In a LaTeX body as typed, an optional argument that reads as a placeholder fails as one in
   a Markdown raw block does: TikZ's `\draw[fill]`, a description list's `\item[Repository]`
   (round 1 of step 7b).
 - G6's boldface rate counts `**...**` and so never counts LaTeX's `\textbf{...}`, which the
-  reader blanks; nor is a table's cell read for the rates (round 1 of step 7b).
+  reader blanks. A typed table's cells are not read by G6's rates, phrases, residue or vague
+  attributions (round 1 of step 7b).
 - G4 does not hold a LaTeX figure's legend, its float's caption, to the profile's
   `legend_words`, and says so (`not-read-in-latex`) where a figure is placed (round 1 of
   step 6).
@@ -1681,7 +1684,7 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
    and the words as G4 counts them in the printed view. `\nocite{*}` cites every entry whose
    printed fields G6 reads, and supports no claim beside it. Its preamble is read as the reader
    reads it, and a reference list typed in `thebibliography` and a table's cells are no prose
-   of the paper. That takes `check_writing` out of `_NOT_READ_IN_LATEX`. Tests: G6
+   of the paper: the list is read as a cited entry's fields in `references.bib` are. That takes `check_writing` out of `_NOT_READ_IN_LATEX`. Tests: G6
    on the twin, its cases on the twin, `latex writing`, `latex_writing()` with three
    `BROKEN` rules. The plan as
    written: `words`, accents, both gates moved. Tests: `latex words`, planted terms and

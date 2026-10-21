@@ -5007,6 +5007,19 @@ variables:
     type: binary
     code_list: yes_no
     reason: the proportion of the cases that were serious
+  - {name: drug, label: Drug, definition: The suspected drug the report names., type: text}
+  - {name: event, label: Event, definition: The event term the report names., type: text}
+  # The corruptions below replace `    type: binary` and `    code_list: yes_no` wherever
+  # they stand, so these entries keep both off the start of a line: one entry is broken.
+  - {name: exposed, type: binary, code_list: yes_no, label: Exposed, derived_from: [drug],
+     definition: The report names example-drug., derivation: drug is example-drug}
+  - {name: hepatic, type: binary, code_list: yes_no, label: Hepatic injury,
+     definition: The event is hepatic injury., derived_from: [event], derivation: by its term}
+  - {name: sex, label: Sex, definition: Sex as reported., type: categorical,
+     values: [{code: F, label: Female}, {code: M, label: Male}]}
+  - {name: age_group, label: Age group, definition: The age group as reported.,
+     type: categorical, values: [{code: 18-44, label: 18 to 44}, {code: 45-64, label: 45 to 64},
+     {code: 65-74, label: 65 to 74}, {code: 75+, label: 75 and over}]}
 """
 
 
@@ -5071,12 +5084,15 @@ def test_a_variable_the_plan_uses_and_nobody_collects_is_warned_of(
 
 @pytest.mark.parametrize("stage", ["design", "submission"])
 def test_an_entry_nothing_needs_is_warned_of(project: Path, stage: str) -> None:
+    """The example's plan names `serious`, so its entry needs no reason; one for the year,
+    which the plan does not name, does."""
     unneeded = _EXAMPLE_DICTIONARY.replace(
         "    reason: the proportion of the cases that were serious\n", ""
-    )
+    ) + "  - {name: year, label: Year, definition: The year of the report., type: continuous}\n"
     failed, warned = _collection_said(project, unneeded, stage)
     assert failed == [] and warned == ["dictionary-entry-unused"]
-    _plan_edited(project, "Seriousness is reported", "Seriousness, `serious`, is reported")
+    _plan_edited(project, "carry unique identifiers",
+                 "carry their year (`year`) and unique identifiers")
     assert _collection_said(project, unneeded, stage) == ([], [])
 
 
@@ -6045,6 +6061,8 @@ _NOT_THE_MANUSCRIPT = (
     # It finds the figures placed in the Markdown sources, so it reads nothing of a LaTeX
     # manuscript and says nothing of one; it runs, as G3's other check does (round 1 of #387).
     "check_figure_alt",
+    # The same, for the colours each figure paints.
+    "check_figure_colours",
 )  # fmt: skip
 #: The checks that read LaTeX: they run on a LaTeX manuscript as on any.
 _READS_LATEX = (
@@ -9636,6 +9654,262 @@ def test_a_result_quoted_in_the_alternative_text_alone_is_quoted_from_synthetic_
 
 def test_a_journal_profile_with_an_alt_text_rule_out_of_shape_is_refused(project: Path) -> None:
     _alt(project, "Text.", alt_text="mandatory")
+    assert "schema-violation" in codes(_journal(project))
+
+
+# ------------------------------------------------------------ a figure's colours, as seen
+
+#: matplotlib's red and green, which deuteranopia makes one colour; Okabe and Ito's orange
+#: and sky blue, which stay apart for every deficiency and are one grey.
+_RED, _GREEN, _ORANGE, _SKY = "#d62728", "#2ca02c", "#e69f00", "#56b4e9"
+
+
+def _painted(root: Path, *marks: str, svg: bool = True) -> None:
+    """The example's figure redrawn as lines in `marks`, each a colour or `text:<colour>`
+    for a text in that colour; as an SVG, or as a PDF in its place."""
+    figures = root / "figures"
+    for stale in ("forest.svg", "forest.pdf"):
+        (figures / stale).unlink(missing_ok=True)
+    if svg:
+        body = "".join(
+            f'<text x="5" y="{10 + 12 * n}" fill="{m[5:]}">label</text>' if m.startswith("text:")
+            else f'<path d="M0 {10 * n}L90 {10 * n}" style="fill: none; stroke: {m}"/>'
+            for n, m in enumerate(marks)
+        )
+        (figures / "forest.svg").write_text(
+            '<svg xmlns="http://www.w3.org/2000/svg" width="100pt" height="80pt" '
+            f'viewBox="0 0 100 80"><rect width="100" height="80" fill="#ffffff"/>{body}</svg>',
+            encoding="utf-8",
+        )
+        return
+    from generated import pdf_document
+
+    def rgb(code: str) -> bytes:
+        return b" ".join(b"%.4f" % (int(code[i : i + 2], 16) / 255) for i in (1, 3, 5))
+
+    ops = []
+    for n, m in enumerate(marks):
+        if m.startswith("text:"):
+            ops.append(b"%s rg BT /F1 9 Tf 5 %d Td (label) Tj ET" % (rgb(m[5:]), 10 + 12 * n))
+        else:
+            ops.append(b"%s RG 0 %d m 90 %d l S" % (rgb(m), 10 * n, 10 * n))
+    (figures / "forest.pdf").write_bytes(pdf_document(b"\n".join(ops)))
+
+
+def _colours_said(root: Path) -> list[tuple[str, str]]:
+    from manuscript_guard.gates.figure_colours import check_figure_colours
+
+    report = check_figure_colours(load_project(root)[0])
+    return [(f.code, f.severity) for f in report.findings]
+
+
+def _guarded(root: Path, **fields) -> None:
+    sidecar = root / "figures" / "forest.guard.yaml"
+    guard = yaml.safe_load(sidecar.read_text(encoding="utf-8"))
+    sidecar.write_text(yaml.safe_dump({**guard, **fields}, sort_keys=False, allow_unicode=True),
+                       encoding="utf-8")  # fmt: skip
+
+
+def test_the_examples_figure_keeps_its_colours_apart(project: Path) -> None:
+    """Black, grey and white: no deficiency moves a grey, and grey keeps them apart."""
+    from manuscript_guard.gates.figure_colours import check_figure_colours
+
+    report = check_figure_colours(load_project(project)[0])
+    assert report.findings == () and report.counts["figures_colour_checked"] == 1
+
+
+@pytest.mark.parametrize("svg", [True, False], ids=["svg", "pdf"])
+def test_two_colours_a_deficiency_makes_one_are_a_warning(project: Path, svg: bool) -> None:
+    """Basile, 2026-10-21: read from the figure itself, simulated with Machado et al. (2009)
+    and compared by CIEDE2000; a warning, never a failure. matplotlib's default red and
+    green are 72 apart to normal vision and under 5 apart with deuteranopia."""
+    _painted(project, _RED, _GREEN, svg=svg)
+    assert _colours_said(project) == [("figure-colours-confused", "warn")]
+    from manuscript_guard.gates.figure_colours import check_figure_colours
+
+    [found] = check_figure_colours(load_project(project)[0]).findings
+    assert "deuteranopia" in found.message and _GREEN in found.message and _RED in found.message
+
+
+def test_a_palette_drawn_for_deficiencies_is_said_only_of_grey(project: Path) -> None:
+    """Okabe and Ito's orange and sky blue are one grey: a note, and a warning where the
+    journal prints its figures in grey or the figure's guard file asks."""
+    _painted(project, _ORANGE, _SKY)
+    assert _colours_said(project) == [("figure-greyscale-confused", "info")]
+    _guarded(project, greyscale=True)
+    assert _colours_said(project) == [("figure-greyscale-confused", "warn")]
+    _guarded(project, greyscale=False)
+    profile = project / "profiles" / "journals" / "demo-journal.yaml"
+    document = yaml.safe_load(profile.read_text(encoding="utf-8"))
+    document["figures"] = {"source_url": "https://journal.example/artwork",
+                           "read_on": "2026-10-21", "confirmed": True, "print": "greyscale"}
+    profile.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    assert _colours_said(project) == [("figure-greyscale-confused", "warn")]
+
+
+def test_a_supplementary_figure_s_colours_are_checked_as_the_paper_s(project: Path) -> None:
+    """Basile, 2026-10-21: the supplement is held to the main text's rules. A figure only the
+    supplement places is read and warned of as one the paper places, and a `print` under the
+    journal's `supplementary:` replaces the main one for it, and for no figure the paper
+    places."""
+    main = main_md(project)
+    placed = main.read_text(encoding="utf-8")
+    main.write_text(placed.replace("{{figure.forest}}\n", ""), encoding="utf-8")
+    (project / "manuscript" / "supplementary" / "figures.md").write_text(
+        "# Supplementary figure\n\n{{figure.forest}}\n", encoding="utf-8"
+    )
+    _painted(project, _RED, _GREEN)
+    assert _colours_said(project) == [("figure-colours-confused", "warn")]
+    _painted(project, _ORANGE, _SKY)
+    assert _colours_said(project) == [("figure-greyscale-confused", "info")]
+    profile = project / "profiles" / "journals" / "demo-journal.yaml"
+    document = yaml.safe_load(profile.read_text(encoding="utf-8"))
+    document["figures"] = {"source_url": "https://journal.example/artwork",
+                           "read_on": "2026-10-21", "confirmed": True, "print": "colour",
+                           "supplementary": {"print": "greyscale"}}  # fmt: skip
+    profile.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    assert _colours_said(project) == [("figure-greyscale-confused", "warn")]
+    main.write_text(placed, encoding="utf-8")
+    assert _colours_said(project) == [("figure-greyscale-confused", "info")]
+
+
+@pytest.mark.parametrize(
+    ("value", "why", "said"),
+    [
+        (f"{_RED} {_GREEN}", "the two series also differ by line style", "info"),
+        (_GREEN, "the treated group is also drawn dashed", "info"),
+        (f"{_RED} {_GREEN}", "", "warn"),
+        (f"{_RED} #000000", "another pair", "warn"),
+    ],
+)
+def test_a_pair_the_guard_gives_a_reason_for_is_a_note(
+    project: Path, value: str, why: str, said: str
+) -> None:
+    """With a reason for the pair, or for one colour of it, the warning is a note that
+    quotes it; with none, or for another pair, it stays a warning."""
+    _painted(project, _RED, _GREEN)
+    _guarded(project, allow_colours=[{"value": value, "why": why}])
+    assert _colours_said(project) == [("figure-colours-confused", said)]
+    if said == "info":
+        from manuscript_guard.gates.figure_colours import check_figure_colours
+
+        [found] = check_figure_colours(load_project(project)[0]).findings
+        assert why in found.hint
+
+
+@pytest.mark.parametrize("svg", [True, False], ids=["svg", "pdf"])
+def test_a_texts_colour_is_not_a_series(project: Path, svg: bool) -> None:
+    """A label in red beside a green line confuses no data."""
+    _painted(project, f"text:{_RED}", _GREEN, svg=svg)
+    assert _colours_said(project) == []
+
+
+def _ramp_codes(steps: int) -> list[str]:
+    """`steps` shades from ggplot2's dark blue to its light one, as a continuous colour scale
+    draws its points."""
+    start, end = (0x13, 0x2B, 0x43), (0x56, 0xB1, 0xF7)
+    return ["#" + "".join(f"{round(a + (b - a) * i / (steps - 1)):02x}" for a, b in
+                          zip(start, end, strict=True)) for i in range(steps)]  # fmt: skip
+
+
+def test_a_figure_that_draws_a_scale_is_said_not_to_be_compared(project: Path) -> None:
+    """Rounds 1 to 3 of #398: a scale's shades sit just over the threshold apart and grey
+    brought every pair under it, and each rule for telling its shades from series failed one
+    way or the other. Basile, 2026-10-21: such a figure is not compared, and is said not to
+    be, the series beside the scale with it."""
+    _painted(project, *_ramp_codes(64))
+    assert _colours_said(project) == [("figure-colours-scale", "info")]
+    _painted(project, *_ramp_codes(64), _RED, _GREEN)
+    assert _colours_said(project) == [("figure-colours-scale", "info")]
+
+
+def test_a_line_plot_with_light_bands_is_compared(project: Path) -> None:
+    """The review of #398: three series' bands at an opacity of 0.1 chain by hue at one
+    lightness; taken for a scale, they switched the check off, and red and green, one colour
+    with deuteranopia, went unsaid."""
+    _painted(project, _RED, "#ff7f0e", "#bcbd22", _GREEN, "#fbe9e9", "#fff2e7", "#f8f8e9")
+    assert ("figure-colours-confused", "warn") in _colours_said(project)
+
+
+def test_a_default_figures_greys_make_no_scale(project: Path) -> None:
+    """matplotlib's black, its grid's grey, a legend's frame and white chain within the
+    threshold; they make no scale, and the figure's red and green are compared."""
+    _painted(project, "#000000", "#b0b0b0", "#cccccc", "#d6d6d6", "#ffffff", _RED, _GREEN)
+    assert ("figure-colours-confused", "warn") in _colours_said(project)
+    assert ("figure-colours-scale", "info") not in _colours_said(project)
+
+
+def test_a_figure_of_more_colours_than_are_compared_is_said_so(project: Path) -> None:
+    from manuscript_guard.gates.figure_colours import MANY
+
+    # A grid of reds and greens, as a heat map drawn as vectors paints one.
+    side = int(MANY**0.5) + 2
+    _painted(project, *(f"#{i * 11:02x}{j * 11:02x}80" for i in range(side) for j in range(side)))
+    assert _colours_said(project) == [("figure-colours-many", "info")]
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["rgb(214, 39, 40) and rgb(44, 160, 44)", f"{_RED}, {_GREEN}, #000000",
+     "tab red: #d62728; tab green: #2ca02c"],
+)  # fmt: skip
+def test_a_pair_is_found_however_the_guard_writes_its_colours(project: Path, value: str) -> None:
+    """Round 1 of #398: `rgb(214, 39, 40)` was cut at its commas and matched nothing, and a
+    value of three colours matched no pair."""
+    _painted(project, _RED, _GREEN)
+    _guarded(project, allow_colours=[{"value": value, "why": "they differ by line style"}])
+    assert _colours_said(project) == [("figure-colours-confused", "info")]
+
+
+def _heat_codes() -> list[str]:
+    """A heat map's shades, black to red to yellow to white, three hundred and more of them
+    distinct, as a map drawn as vectors paints them."""
+    stops = ((0, 0, 0), (255, 0, 0), (255, 255, 0), (255, 255, 255))
+    out = []
+    for (a, b) in zip(stops, stops[1:], strict=False):
+        for i in range(150):
+            out.append("#" + "".join(f"{round(x + (y - x) * i / 150):02x}"
+                                     for x, y in zip(a, b, strict=True)))  # fmt: skip
+    return list(dict.fromkeys(out))
+
+
+def test_a_heat_map_of_many_colours_is_said_not_to_be_compared(project: Path) -> None:
+    """Past three hundred colours nothing is compared, the series beside the heat map with
+    it, and the note says so (a known gap, in DESIGN.md)."""
+    from manuscript_guard.gates.figure_colours import MANY
+
+    assert len(_heat_codes()) > MANY
+    _painted(project, *_heat_codes(), _RED, _GREEN)
+    assert _colours_said(project) == [("figure-colours-many", "info")]
+
+
+def test_an_svg_that_cannot_be_read_gives_way_to_the_pdf_beside_it(project: Path) -> None:
+    _painted(project, _RED, _GREEN, svg=False)
+    (project / "figures" / "forest.svg").write_text("<svg><unclosed", encoding="utf-8")
+    assert _colours_said(project) == [("figure-colours-confused", "warn")]
+
+
+def test_a_figure_with_only_a_raster_is_said_to_be_unread(project: Path) -> None:
+    _painted(project)
+    (project / "figures" / "forest.svg").unlink()
+    assert _colours_said(project) == [("figure-colours-unread", "info")]
+
+
+def test_confused_colours_warn_and_never_fail(project: Path) -> None:
+    from manuscript_guard.cli import _run_gates
+
+    _painted(project, _RED, _GREEN)
+    report, _project, _chosen, _deferred = _run_gates(project, submission=True)
+    said = [(f.code, f.severity) for f in report.findings if f.code.startswith("figure-colours")]
+    assert said == [("figure-colours-confused", "warn")]
+
+
+def test_a_journal_profile_with_a_print_rule_out_of_shape_is_refused(project: Path) -> None:
+    profile = project / "profiles" / "journals" / "demo-journal.yaml"
+    document = yaml.safe_load(profile.read_text(encoding="utf-8"))
+    document["figures"] = {"source_url": "https://journal.example/artwork",
+                           "read_on": "2026-10-21", "confirmed": True, "print": "sepia"}
+    profile.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
     assert "schema-violation" in codes(_journal(project))
 
 

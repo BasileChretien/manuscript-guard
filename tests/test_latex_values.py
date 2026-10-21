@@ -78,10 +78,12 @@ def test_the_file_defines_each_value_table_figure_and_anchor_in_the_order_of_the
     assert again.text == text
 
 
-def test_a_value_it_cannot_print_refuses_the_file(tmp_path: Path) -> None:
-    written = contents(tmp_path, {"results.x": _value("\N{ALMOST EQUAL TO}5")}, _results(), {},
-                       "ab")  # fmt: skip
-    assert written.text is None and [found.ref for found in written.refused] == ["results.x"]
+def test_a_value_it_cannot_print_is_left_out_and_the_rest_written(tmp_path: Path) -> None:
+    """Round 1 of step 4b: one value no file binds stopped the whole file."""
+    namespace = {"results.x": _value("\N{ALMOST EQUAL TO}5"), "results.y": _value("2")}
+    written = contents(tmp_path, namespace, _results(), {}, "ab")
+    assert [found.ref for found in written.refused] == ["results.x"]
+    assert "mg@results.y" in written.text and "mg@results.x" not in written.text
 
 
 _PDFLATEX = shutil.which("pdflatex")
@@ -171,6 +173,29 @@ def test_the_values_file_is_missing_then_written_then_stale(
     written.write_text(edited, encoding="utf-8")
     assert _values_findings(project) == ["values-file-stale"]
     assert "wrote" in capsys.readouterr().out
+
+
+def test_a_value_it_cannot_print_is_said_only_where_a_document_binds_it(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """G1 says `value-not-printable` of a key the document binds, and not of one it does not;
+    `values` writes the file all the same (round 1 of step 4b)."""
+    from manuscript_guard.build import latex_values
+    from manuscript_guard.cli import main
+
+    _as_latex_with_values(project)
+    escaped = latex_values.escaped
+
+    def refusing(text: str, ref: str) -> str:
+        if ref in ("results.cohort.n_reports", "results.case.n_cases"):
+            raise latex_values.NotPrintable(ref, "\N{ALMOST EQUAL TO}")
+        return escaped(text, ref)
+
+    monkeypatch.setattr(latex_values, "escaped", refusing)
+    assert main(["values", str(project)]) == 1
+    assert "results.cohort.n_reports" in capsys.readouterr().err
+    assert (project / "manuscript" / "mgvalues.sty").is_file()
+    assert _values_findings(project) == ["value-not-printable"]
 
 
 def test_values_refuses_a_markdown_manuscript(project: Path) -> None:

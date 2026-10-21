@@ -127,10 +127,11 @@ def tabular(table: Table, ref: str) -> str:
 
 @dataclass(frozen=True)
 class Written:
-    """What `values` writes for one entry file's folder, or why it cannot."""
+    """What `values` writes for one entry file's folder, and what of the results it has no way
+    to print, which it leaves out: `\\mg` prints `??` for it, and LaTeX warns."""
 
     path: Path
-    text: str | None
+    text: str
     refused: tuple[NotPrintable, ...] = ()
 
 
@@ -142,9 +143,10 @@ def contents(
     digest: str,
 ) -> Written:
     """The values file for the entry file in `folder`: every value, table, figure and anchor
-    the results hold, in the order of their keys, so that the same results write the same
-    file. `figures` are the rendered figures by key, None where none is in a format pdfLaTeX
-    includes."""
+    the results hold that it can print, in the order of their keys, so that the same results
+    write the same file. One it cannot print is left out and given as refused, and the rest
+    are written: a value no file binds stops nothing (round 1 of step 4b). `figures` are the
+    rendered figures by key, None where none is in a format pdfLaTeX includes."""
     entries: list[tuple[str, str]] = []
     refused: list[NotPrintable] = []
     for ref, value in sorted(namespace.items()):
@@ -172,11 +174,9 @@ def contents(
         entries.append((f"figure.{key}", r"\includegraphics[#1]{" + relative + "}"))
     for step in sorted(results.steps):
         entries.append((f"method.{step}", ""))
-    if refused:
-        return Written(folder / NAME, None, tuple(refused))
     return Written(folder / NAME, _HEAD.format(digest=digest) + "".join(
         rf"\expandafter\def\csname mg@{ref}\endcsname#1{{{body}}}" + "\n" for ref, body in entries
-    ))  # fmt: skip
+    ), tuple(refused))  # fmt: skip
 
 
 def rendered_figures(project: Project) -> dict[str, Path | None]:
@@ -211,15 +211,17 @@ def check_values(project: Project, namespace: dict[str, Value], results: Results
     PDF compiled from it shows the numbers it was written with, and a value it cannot print is
     said. A Markdown manuscript has none."""
     report = Report()
+    bound = bound_refs(project)
     for written in values_files(project, namespace, results):
         shown = _shown(project, written.path)
-        if written.text is None:
-            report = report.with_findings(*(Finding(
-                gate="G1", code="value-not-printable", message=str(found), path=written.path,
-                hint="emit the value with characters the values file prints, or write the "
-                "symbol in the .tex beside the binding",
-            ) for found in written.refused))  # fmt: skip
-            continue
+        # Only a value the document binds is said: one nothing binds is printed nowhere
+        # (round 1 of step 4b).
+        binds = bound.get(written.path.parent, set())
+        report = report.with_findings(*(Finding(
+            gate="G1", code="value-not-printable", message=str(found), path=written.path,
+            hint="emit the value with characters the values file prints, or write the "
+            "symbol in the .tex beside the binding",
+        ) for found in written.refused if found.ref in binds))  # fmt: skip
         if not written.path.is_file():
             if _loads_values(written.path.parent):
                 report = report.with_findings(Finding(
@@ -237,6 +239,20 @@ def check_values(project: Project, namespace: dict[str, Value], results: Results
                 path=written.path, hint="run `manuscript-guard values`, and commit the file",
             ))  # fmt: skip
     return report
+
+
+def bound_refs(project: Project) -> dict[Path, set[str]]:
+    """The keys each LaTeX document binds, by the folder of its entry file."""
+    from manuscript_guard.gates.numbers import is_supplementary
+    from manuscript_guard.text.reader import bound_files
+
+    manuscript = project.path("manuscript")
+    found: dict[Path, set[str]] = {}
+    for bound in bound_files(project):
+        folder = manuscript / "supplementary" if is_supplementary(manuscript, bound.path) \
+            else manuscript  # fmt: skip
+        found.setdefault(folder, set()).update(p.ref for p in bound.placeholders)
+    return found
 
 
 def _loads_values(folder: Path) -> bool:

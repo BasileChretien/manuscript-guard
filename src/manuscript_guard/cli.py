@@ -2457,7 +2457,7 @@ def cmd_render(args: argparse.Namespace) -> int:
 def cmd_values(args: argparse.Namespace) -> int:
     """Write each LaTeX document's values file, `mgvalues.sty`, beside its entry file, from the
     results as they stand (DESIGN.md, "LaTeX manuscripts", "The values file")."""
-    from manuscript_guard.build.latex_values import values_files
+    from manuscript_guard.build.latex_values import bound_refs, values_files
 
     project, _ = load_project(args.path)
     namespace, results, _literature, load_report = load_namespace(project)
@@ -2470,17 +2470,17 @@ def cmd_values(args: argparse.Namespace) -> int:
         print("manuscript-guard: values writes a LaTeX manuscript's values file, and "
               f"{folder} holds no LaTeX entry file", file=sys.stderr)  # fmt: skip
         return 2
-    refused = [found for each in written for found in each.refused]
-    if refused:
-        for found in refused:
-            print(f"manuscript-guard: {found}", file=sys.stderr)
-        print("nothing was written", file=sys.stderr)
-        return 2
+    bound = bound_refs(project)
     for each in written:
         each.path.write_text(each.text, encoding="utf-8", newline="\n")
         entries = each.text.count(r"\expandafter\def")
         print(f"wrote {each.path} ({entries} entr{'y' if entries == 1 else 'ies'})")
-    return 0
+    # A value it has no way to print is left out; one a document binds prints `??` there.
+    refused = [found for each in written for found in each.refused
+               if found.ref in bound.get(each.path.parent, set())]  # fmt: skip
+    for found in refused:
+        print(f"manuscript-guard: {found}; the document prints ?? for it", file=sys.stderr)
+    return 1 if refused else 0
 
 
 

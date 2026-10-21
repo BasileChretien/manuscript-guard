@@ -44,7 +44,7 @@
           "description": "The earlier output's manuscript-guard project, as a path from this project's root, given by the author. Read by `related --take`, never by `check`."
         },
         "revision": {
-          "$ref": "#/$defs/text",
+          "anyOf": [{ "$ref": "#/$defs/text" }, { "type": "number" }],
           "description": "The git revision of `project` the earlier output was made from: a tag or a commit. Without one, the project's files as they stand."
         },
         "files": {
@@ -132,7 +132,7 @@
         },
         "manuscript_says": {
           "$ref": "#/$defs/text",
-          "description": "The manuscript's sentence that tells the reader so, as it prints it; a binding in it is read filled in."
+          "description": "The manuscript's sentence that tells the reader so, as the manuscript writes it: a binding in it is read filled in, and a citation is written as the source has it (`[@key]`)."
         }
       },
       "dependentRequired": { "manuscript_says": ["because"] }

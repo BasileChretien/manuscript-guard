@@ -60,6 +60,13 @@ that work's stored source under `literature/sources/`, and report:
 - a claim stronger than the source: a hedge dropped, an association stated as a cause;
 - a review cited for a finding that belongs to a primary study.
 
+Where `literature/passages.yaml` records a passage for a sentence, G7 has checked that its
+words are in the source: read the sentence against that passage first, then against the
+source around it, since a passage can be the source's words and still not say what the
+sentence says. Where a sentence has none, give in the finding the words of the source that
+do support it, if any, with where they stand, to be recorded with the literature-verify
+skill. Never record a judgement of a passage yourself; that is the author's.
+
 Numbers in the ledger are left to G7, which checks them better. A citation whose work has no
 stored source, or one nothing can read, is unchecked, never supported: list those citations
 in one `comment` finding, so that a reading with few findings is not taken for one that
@@ -111,6 +118,25 @@ The seal is a digest of what the reader wrote: the verdict, the summary, the rej
 and each finding. Answering a finding later is not covered by it; changing what the reader
 wrote is, and `check` reports that as `reading-altered`. Seal what the reader wrote, not a
 version you have tidied. A reading is sealed once.
+
+Where the fix for a finding is a matter of wording, the finding can carry the wording, before
+the seal:
+
+```yaml
+- id: r2-03
+  severity: minor
+  finding: The aim is stated as a gap rather than a question.
+  edits:
+    - old: has not been examined
+      new: remains unexamined
+```
+
+`old` is the manuscript's words exactly as the `.md` has them, enough of them to appear only
+once in the manuscript's prose. An edit is words only: no number, binding, citation, table or
+figure changes, no markup, nothing across two paragraphs, and at most ten in a reading. The
+author sees each one as a Word tracked change under the reader's name (step 3), so write
+only the edits the reader would sign. One that cannot be placed exactly is not written, and
+the finding still stands.
 
 If the manuscript is split across several files and this
 reviewer read only some of them, delete the other files' lines under `file_sha256`, so that a
@@ -215,6 +241,17 @@ reason is what makes it a decision rather than an oversight, and it is the thing
 want when a real reviewer asks the same question. Put the name of the person who decided in
 `overridden_by`: the submission pack's manifest lists every override with it. An agent
 drafts the reason; the author decides, and the name is the author's.
+
+Findings that carry edits can be answered in Word. `manuscript-guard review --suggestions
+--round <n>` writes `build/suggestions/round-<n>.docx`, with each edit the round's readings
+suggest as a tracked change under its reader's name and its finding as a comment, and lists
+each edit it could not place and why. The author opens it, accepts or rejects each change,
+and replies to a finding's comment to say why one was refused; then `manuscript-guard import
+build/suggestions/round-<n>.docx --apply` merges the accepted words, refuses the document
+while any of the panel's changes is undecided, and writes each answer into its record: an
+accepted edit as the finding's `resolution`, a refused one with a reply as its `overridden`,
+the reply's author as `overridden_by`. A refused edit with no reply leaves the finding open.
+The accepting and refusing are the author's; an agent does not do them in the document.
 
 With several readers, every major finding from any of them has to be answered, in the
 record that raised it. One reader's clean reading does not answer another's finding, and

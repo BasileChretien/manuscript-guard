@@ -15,7 +15,6 @@ lookup's: asked once, recorded, read as data.
 
 from __future__ import annotations
 
-import hashlib
 import re
 import subprocess
 from dataclasses import dataclass
@@ -26,6 +25,7 @@ import yaml
 
 from manuscript_guard.contracts._schema import ContractError, read_structured, read_text, validate
 from manuscript_guard.contracts.project import PAPER_FILE, Project
+from manuscript_guard.emit import input_digest, input_digest_matches
 from manuscript_guard.findings import Finding, Report
 
 GATE = "G8"
@@ -144,7 +144,7 @@ def load_related(project: Project) -> tuple[Related | None, Report]:
     report = validate(document, "related", path, gate=GATE)
     if not report.ok:
         return None, report
-    lines = _lines(read_text(path))
+    lines = _located(read_text(path))
     outputs = tuple(
         _output(entry, (lines.get(("outputs", at)), lines, at))
         for at, entry in enumerate(document["outputs"])
@@ -168,6 +168,9 @@ def load_related(project: Project) -> tuple[Related | None, Report]:
 
 def _output(entry: dict, where: tuple[int | None, dict, int]) -> Output:
     line, lines, at = where
+    # A revision or a value YAML read as a number is taken as it was typed: `1.50` is not
+    # `1.5`, nor `0.00005` `5e-05`, and a short commit of digits is no integer.
+    typed = {key: raw for key, raw in lines.items() if isinstance(raw, str)}
 
     def text(key: str, item: dict = entry) -> str | None:
         value = item.get(key)
@@ -180,7 +183,7 @@ def _output(entry: dict, where: tuple[int | None, dict, int]) -> Output:
         title=text("title"),
         shares=tuple(entry["shares"]),
         project=text("project"),
-        revision=text("revision"),
+        revision=typed.get(("outputs", at, "revision"), text("revision")),
         files=tuple(str(f) for f in entry.get("files", ())),
         files_unavailable=text("files_unavailable"),
         pairs=tuple(
@@ -200,7 +203,7 @@ def _output(entry: dict, where: tuple[int | None, dict, int]) -> Output:
         values=tuple(
             Recorded(
                 here=unbound(value["here"]),
-                value=str(value["value"]),
+                value=typed.get(("outputs", at, "values", number, "value"), str(value["value"])),
                 source_file=str(value["source_file"]),
                 locator=text("locator", value),
                 quote=str(value["quote"]),
@@ -219,13 +222,14 @@ def _output(entry: dict, where: tuple[int | None, dict, int]) -> Output:
     )
 
 
-def _lines(text: str) -> dict[tuple, int]:
-    """The line each output, pair and value starts on, for a finding to point at."""
+def _located(text: str) -> dict[tuple, int | str]:
+    """The line each output, pair and value starts on, for a finding to point at, and the
+    text of a revision and of a value as typed."""
     try:
         root = yaml.compose(text, Loader=yaml.SafeLoader)
     except yaml.YAMLError:
         return {}
-    found: dict[tuple, int] = {}
+    found: dict[tuple, int | str] = {}
     if not isinstance(root, yaml.MappingNode):
         return found
     for key, value in root.value:
@@ -236,9 +240,14 @@ def _lines(text: str) -> dict[tuple, int]:
             if not isinstance(item, yaml.MappingNode):
                 continue
             for name, listed in item.value:
+                if name.value == "revision" and isinstance(listed, yaml.ScalarNode):
+                    found[("outputs", at, "revision")] = listed.value
                 if name.value in ("pairs", "values") and isinstance(listed, yaml.SequenceNode):
                     for number, node in enumerate(listed.value):
                         found[("outputs", at, name.value, number)] = node.start_mark.line + 1
+                        for field, scalar in getattr(node, "value", ()):
+                            if field.value == "value" and isinstance(scalar, yaml.ScalarNode):
+                                found[("outputs", at, name.value, number, "value")] = scalar.value
     return found
 
 
@@ -275,10 +284,11 @@ def read_snapshot(project: Project, output_id: str) -> tuple[Snapshot | None, st
     edited = []
     for name, digest in sorted(manifest["files"].items()):
         copied = folder / name
-        if not copied.is_file() or _sha256(copied.read_bytes()) != digest:
+        # Held as an analysis's input is: a line ending git rewrote on checkout is no edit.
+        if not copied.is_file() or not input_digest_matches(copied, digest):
             edited.append(name)
     for part in ("results", "design"):
-        for copied in sorted((folder / part).glob("*")):
+        for copied in _visible((folder / part).glob("*")):
             if f"{part}/{copied.name}" not in manifest["files"]:
                 edited.append(f"{part}/{copied.name}")
     return Snapshot(folder, manifest, tuple(edited)), None
@@ -305,7 +315,7 @@ def take(project: Project, output: Output, *, today: date | None = None) -> Path
     wanted = {
         f"results/{name}": f"{results_dir}/{name}"
         for name in read.listed(results_dir)
-        if name.endswith(".json") or name.endswith(".json.sha256")
+        if name.endswith(".json")
     }
     if not any(name.endswith(".json") for name in wanted):
         raise TakeError(
@@ -348,7 +358,7 @@ def _write(
     # deletes nothing.
     ours = {name for name in listed or () if _COPIED.match(str(name))}
     for part in ("results", "design"):
-        for found in sorted((folder / part).glob("*")):
+        for found in _visible((folder / part).glob("*")):
             name = f"{part}/{found.name}"
             if name not in ours:
                 raise TakeError(
@@ -372,7 +382,7 @@ def _write(
     if output.revision is None and uncommitted:
         manifest["uncommitted"] = True
     manifest["taken_on"] = today.isoformat()
-    manifest["files"] = {name: _sha256(data) for name, data in sorted(copied.items())}
+    manifest["files"] = {name: input_digest(folder / name) for name in sorted(copied)}
     text = yaml.safe_dump(manifest, sort_keys=False, allow_unicode=True, width=100)
     record.write_bytes(text.encode("utf-8"))
     return record
@@ -385,6 +395,9 @@ class _Reader:
         self.source = source
         self.revision = revision
         if revision is not None:
+            if revision.startswith("-"):
+                # Given to git as it is, it would be read as an option.
+                raise TakeError(f"{source}: {revision!r} is not a revision")
             found = _git(source, "rev-parse", "--verify", "--quiet", f"{revision}^{{commit}}")
             if found is None:
                 raise TakeError(f"{source}: git knows no revision {revision!r} there")
@@ -410,11 +423,14 @@ class _Reader:
         """The names of the files directly in `folder`."""
         if self.revision is None:
             path = self.source / folder
-            return sorted(p.name for p in path.glob("*") if p.is_file()) if path.is_dir() else []
+            if not path.is_dir():
+                return []
+            return [p.name for p in _visible(path.glob("*")) if p.is_file()]
         found = _git(self.source, "ls-tree", "--name-only", "-z", f"{self.commit}:./{folder}")
         if found is None:
             return []
-        return sorted(name for name in found.decode("utf-8").split("\0") if name)
+        names = found.decode("utf-8").split("\0")
+        return sorted(name for name in names if name and not name.startswith("."))
 
 
 def _git(source: Path, *args: str) -> bytes | None:
@@ -431,5 +447,7 @@ def _git(source: Path, *args: str) -> bytes | None:
     return done.stdout if done.returncode == 0 else None
 
 
-def _sha256(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
+def _visible(paths) -> list[Path]:
+    """The files a person put there, without those a system leaves (`.DS_Store`). A fragment
+    is read whatever its name, `.extra.json` included, so it is never left out."""
+    return sorted(p for p in paths if not p.name.startswith(".") or p.suffix == ".json")

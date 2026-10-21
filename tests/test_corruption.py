@@ -5714,7 +5714,7 @@ _MARKDOWN_ONLY = (
     "check_prose_quotations", "check_journal", "check_reporting", "check_writing",
     "check_methods", "check_synthetic_inputs", "check_reported", "check_recomputed",
     "check_revision", "check_language", "check_models", "check_shapes", "check_tex",
-    "check_passages",
+    "check_passages", "check_recycling",
 )  # fmt: skip
 _NOT_THE_MANUSCRIPT = (
     "check_review", "check_freshness", "check_figures", "check_figure_reviews",

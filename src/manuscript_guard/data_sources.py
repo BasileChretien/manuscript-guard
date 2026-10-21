@@ -65,7 +65,9 @@ OPENLY = re.compile(
 #: patient-level data are publicly available", "none of the claims, prescriptions, and
 #: records are publicly available".
 NEGATION = re.compile(
-    r"\b(?:not|cannot|never|neither|nor|no|none|unable|without)\b|n't\b", re.IGNORECASE
+    r"\b(?:not|cannot|never|neither|nor|no|none|nothing|nowhere|nobody|unable|without)\b"
+    "|n['\N{RIGHT SINGLE QUOTATION MARK}]t\\b",  # "aren’t" as Word types it
+    re.IGNORECASE,
 )
 #: What says "free" with a "no" in it, and denies nothing: "at no cost", "for no fee",
 #: "no-cost".
@@ -134,7 +136,8 @@ def says(sentence: str, phrase: re.Pattern[str]) -> bool:
     found a denial a clause or a window of words cut off ("are not, however, publicly
     available", "None of the claims, prescriptions, and records are publicly available"), and
     each was a warning given wrongly. Read this way a denial of something else silences the
-    phrase too: a warning missed, never one given wrongly (Known gaps)."""
+    phrase too, a warning missed; a denial in other words, or after the phrase, still warns
+    (Known gaps)."""
     found = phrase.search(sentence)
     if found is None:
         return False

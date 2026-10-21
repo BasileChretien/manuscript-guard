@@ -249,6 +249,8 @@ def test_a_statement_is_read_sentence_by_sentence() -> None:
         ("No cost or claims data from ENCD are publicly available.", OPENLY, False),
         ("Not one of the files that we drew from the archive is publicly available.", OPENLY,
          False),
+        ("The data aren\N{RIGHT SINGLE QUOTATION MARK}t publicly available.", OPENLY, False),
+        ("Nothing from the ENCD is publicly available.", OPENLY, False),
         # So a denial of something else silences the phrase too: a warning missed, never one
         # given wrongly (Known gaps).
         ("The data cannot be shared, but summaries are publicly available.", OPENLY, False),

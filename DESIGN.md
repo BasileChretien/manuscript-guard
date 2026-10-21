@@ -5071,13 +5071,13 @@ first pull request as Basile chose:
   by sentence for "on request" and "from the corresponding author", and for "publicly",
   "openly" or "freely" available and their like. A warning rests on a strict reading: the
   phrase, with no denial anywhere before it in its sentence ("not", "cannot", "never",
-  "neither", "nor", "no", "none", "without", "-n't"; "at no cost" and "no-cost" deny
+  "neither", "nor", "no", "none", "nothing", "without", "-n't"; "at no cost" and "no-cost" deny
   nothing). Three rounds of review each found a denial that a clause boundary or a window of
   words cut off, "are not, however, publicly available" (round 1), "generated no new data,
   and the archive is publicly available" (round 2), "None of the claims, prescriptions, and
   records are publicly available" (round 3), and each was a warning given wrongly; read
-  strictly, a denial of something else silences the phrase too, a warning missed and never
-  one given wrongly. A sentence is said of the sources it names; one that names none and
+  strictly, a denial of something else silences the phrase too, a warning missed; a denial
+  in other words, or after the phrase, still warns (Known gaps). A sentence is said of the sources it names; one that names none and
   speaks of data is said of every chosen source, where all are reached one way. A statement
   that speaks of an open source as openly available at all, denied or not, is taken to ask
   for something else, the analysis files or the code, when it also says "on request": that
@@ -10005,7 +10005,7 @@ Open, recorded as each change landed:
   sentence that uses the word. The statement is read for "on request" and "from the
   corresponding author", and for "publicly", "openly" or "freely" available and their
   like, and a warning is given only where no "not", "cannot", "never", "neither", "nor",
-  "no", "none", "without" or "-n't" stands anywhere before the phrase in its sentence ("at
+  "no", "none", "nothing", "without" or "-n't" (either apostrophe) stands anywhere before the phrase in its sentence ("at
   no cost", "for no fee" and "no-cost" aside); another way of saying either is not read.
   So a denial of something else silences the phrase: "The data cannot be shared, but
   summaries are publicly available" beside a claims database, "This study generated no new
@@ -10015,9 +10015,13 @@ Open, recorded as each change landed:
   the data is available on request" is read as said of an open source, and warns, and a
   sentence of the statement about summary data or analysis files that names no source warns
   too, "Aggregated data underlying the figures are publicly available" beside a claims
-  database (round 1 of #384). A statement that says an open source is openly available
-  anywhere is taken to ask for something else when it says "on request", even in the same
-  sentence: "Summaries of the ORA are publicly available; ORA data are available on request"
+  database (round 1 of #384), and so does a denial in other words or after the phrase:
+  "held by the custodian rather than publicly available", "Publicly available datasets
+  could not answer the question, so the claims were obtained under an agreement". A
+  statement that speaks of an open source as openly available anywhere, denied or not, is
+  taken to ask for something else when it says "on request": "The ORA data are not
+  publicly available. They are available on request" says nothing, and so, in one
+  sentence, "Summaries of the ORA are publicly available; ORA data are available on request"
   says nothing. Sentences are split at a stop and a space before
   anything but a small letter, so an abbreviation followed by a capital ends one. A custodian
   rule is held to `paper.yaml` only for the sources chosen, by the largest minimum among

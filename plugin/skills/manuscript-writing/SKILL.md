@@ -313,7 +313,9 @@ change a sentence merely to satisfy the lint: if the rewrite is worse, keep the 
 and say so.
 
 Two things do block: model output artefacts (`oaicite`, `[cite: 1]`, "as of my last
-training data") and unfilled placeholders. Those have no defensible use in a submission.
+training data") and unfilled placeholders, a journal template's instructions to its
+authors among them ("In this section you can acknowledge ..."). Those have no defensible
+use in a submission.
 
 ## If you are a model reading this
 

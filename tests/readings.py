@@ -814,6 +814,19 @@ def _printed_value() -> Reading:
     return compared
 
 
+@reading("plan sections")
+def _plan_sections_compared() -> Reading:
+    """The headings of the sections two plans both have whose words differ, as G8 compares
+    an earlier output's plan with this paper's."""
+    from manuscript_guard.gates.related_methods import sections_compared
+
+    def compared(given: dict[str, str]) -> list[str]:
+        found = sections_compared(given["then"], given["now"])
+        return [title for title, _key, _there, _here in found]
+
+    return compared
+
+
 @reading("abbreviations")
 def _abbreviations() -> Reading:
     from manuscript_guard.gates.language import _judge, _Known, _shipped

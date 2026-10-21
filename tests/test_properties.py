@@ -53,6 +53,9 @@ from generated import (
     LOWERED,
     NOTATED,
     PLACEHOLDERS,
+    PROOF_CORRECTIONS,
+    PROOF_EDIT,
+    PROOF_TYPOGRAPHY,
     RESIDUE,
     RESIDUE_LOOKALIKES,
     SOURCE_GAPS,
@@ -80,10 +83,14 @@ from generated import (
     lines,
     mean_tables,
     numbered_displays,
+    painted_pdfs,
+    painted_svgs,
     passage_files,
     pdf_figures,
+    plan_pairs,
     planned_plans,
     printings,
+    proofs,
     quotations,
     revisions,
     share_tables,
@@ -118,6 +125,7 @@ from manuscript_guard.gates import models as models_gate
 from manuscript_guard.gates import numbers as numbers_gate
 from manuscript_guard.gates import quotations as quotations_gate
 from manuscript_guard.gates import related as related_gate
+from manuscript_guard.gates import related_methods as related_methods_gate
 from manuscript_guard.gates import reported as reported_gate
 from manuscript_guard.gates import spelling as spelling_gate
 from manuscript_guard.gates import vocabulary as vocabulary_gate
@@ -4332,6 +4340,18 @@ def test_a_value_an_earlier_output_printed_is_this_one_however_it_was_printed(
     ]
 
 
+@holds(150, plan_pairs())
+def test_a_section_of_two_plans_differs_only_where_its_words_do(
+    drawn: tuple[dict[str, str], list[str]],
+) -> None:
+    """G8 says which sections an earlier plan and this one both have whose words differ. A
+    section re-wrapped, put in emphasis, given a comment, written in capitals or numbered is
+    the same section saying the same; one with a word added is not; and the plan's own
+    Deviations are each paper's and never compared. Each example holds every edit."""
+    given, changed = drawn
+    assert READINGS["plan sections"]()(given) == changed, given
+
+
 # ------------------------------------------------------------- scripts the gates do not read
 
 #: Characters of each script the gates do not read, from the blocks of Unicode that hold it,
@@ -4606,6 +4626,44 @@ def test_an_alternative_text_is_the_pictures_description_as_it_was_written(
     assert _descriptions_pandoc_reads(markdown) == folded
 
 
+# ------------------------------------------------------------------ the colours a figure paints
+
+
+@holds(25, painted_svgs())
+def test_each_colour_an_svg_figure_paints_is_read_and_its_texts_kept_apart(
+    drawn: tuple[str, set[str], set[str]],
+) -> None:
+    """Each mark's colour as it shows over white, however the figure sets it: an attribute,
+    a style, a class, a group's, `inherit`, `currentColor`, through `<use>`, under a group's
+    opacity or a fill-opacity, by name, as `rgb()` or `hsl()`; and none for a mark not
+    displayed, hidden, painted nothing, or defined and never used. A text's colour is read,
+    and kept apart from the marks', a text drawn as glyphs too (round 1 of #398)."""
+    from manuscript_guard.gates.figure_svg import parse_svg
+
+    document, marks, texts = drawn
+    svg = parse_svg(document)
+    assert svg is not None
+    assert {paint.colour for paint in svg.paints if not paint.text} == marks, document
+    assert {paint.colour for paint in svg.paints if paint.text} == texts, document
+
+
+@holds(25, painted_pdfs())
+def test_each_colour_a_pdf_figure_paints_is_read_and_its_texts_kept_apart(
+    drawn: tuple[bytes, set[str], set[str]],
+) -> None:
+    """Each path filled or stroked in a colour set by `rg`, `g`, `k`, their stroking twins,
+    or `sc` and `scn` in a colour space, under a graphics state's opacity, inside `q` and
+    `Q`, or by a form drawn in its drawer's colour; nothing for a pattern; a text's colour
+    kept apart."""
+    from manuscript_guard.gates.figure_pdf import parse_pdf
+
+    data, marks, texts = drawn
+    figure = parse_pdf(data)
+    assert figure is not None
+    assert {paint.colour for paint in figure.paints if not paint.text} == marks, data
+    assert {paint.colour for paint in figure.paints if paint.text} == texts, data
+
+
 # ------------------------------------------------------- a quote its source nearly holds
 
 #: The words a quote is drawn from: none of them is a word of the filler around it, so the
@@ -4796,6 +4854,131 @@ def _what_differs_is_looked_for_at_the_ends_only(patch: pytest.MonkeyPatch) -> N
     from manuscript_guard.literature import placement
 
     patch.setattr(placement, "_within", lambda *drawn: None)
+
+
+# ------------------------------------------------------------------- a publisher's proof
+
+
+def _compared(drawn: dict[str, Any]):
+    """What `proof` says of a proof drawn by `proofs`."""
+    from manuscript_guard.proof import reading as proof_reading
+    from manuscript_guard.proof.compare import compare
+    from manuscript_guard.proof.sent import PARAGRAPH, Part, Sent
+
+    parts = tuple(Part(PARAGRAPH, text, label) for label, text in drawn["parts"])
+    read = proof_reading._paged("the text as saved", drawn["pages"])
+    return compare(Sent(Path("manuscript.docx"), parts, (), None), read)
+
+
+@holds(60, proofs(planted=False))
+def test_a_proof_that_prints_what_was_sent_reads_as_it(drawn: dict[str, Any]) -> None:
+    """However the proof wraps and pages the parts, with its running heads, its page
+    numbers, its line numbers or none, and words broken at a line's end, it prints what was
+    sent: nothing to correct, nothing shown."""
+    result = _compared(drawn)
+    assert result.changes == ()
+    assert result.found == result.total
+
+
+@holds(60, proofs())
+def test_each_change_a_typesetter_makes_is_reported_once_where_it_is(
+    drawn: dict[str, Any],
+) -> None:
+    """One of every change of `PROOF_CORRECTIONS` is a correction of its part, and the part
+    the proof leaves out is reported missing, each once and nothing else; the same value set
+    otherwise is typography and the word changed a copy-edit, each in its part. A change is
+    said to be on the page its line is on, and on that line where the proof numbers them."""
+    from manuscript_guard.proof.compare import ADDED, COPY_EDIT, CORRECTION, MOVED
+    from manuscript_guard.proof.tokens import TYPOGRAPHY as SET_OTHERWISE
+
+    result = _compared(drawn)
+    planted = drawn["planted"]
+    wanted = {(what, planted[what][0]) for _s, _p, what in PROOF_CORRECTIONS}
+    wanted.add(("missing", planted["missing"][0]))
+    found = [(c.what, c.part) for c in result.changes if c.kind == CORRECTION]
+    assert sorted(found) == sorted(wanted)
+    edits = [(c.part, c.sent, c.printed) for c in result.changes if c.kind == COPY_EDIT]
+    assert edits == [(planted["copy-edit"][0], *PROOF_EDIT)]
+    shown = sorted(c.part for c in result.changes if c.kind == SET_OTHERWISE)
+    assert shown == sorted(planted[f"typography {printed}"][0] for _s, printed in
+                           PROOF_TYPOGRAPHY)  # fmt: skip
+    assert not [c for c in result.changes if c.kind in (ADDED, MOVED)]
+    for change in result.changes:
+        if change.kind != CORRECTION or change.what == "missing":
+            continue
+        printed = planted[change.what][1].split()[-1]
+        number, (page, line) = next((n, at) for n, at in drawn["lines"].items()
+                                    if printed in at[1].replace("\N{NO-BREAK SPACE}", " "))
+        assert change.page == page, (change, page)
+        assert change.line == (number if drawn["numbered"] else None), (change, number)
+
+
+def _a_decimal_comma_is_the_same_number(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.proof import compare as module
+    from manuscript_guard.proof import tokens
+
+    def compared(sent, printed):
+        verdict, note = tokens.compare_numbers(sent, printed)
+        return (tokens.TYPOGRAPHY, "") if verdict == tokens.DECIMAL_MARK else (verdict, note)
+
+    patch.setattr(module, "compare_numbers", compared)
+
+
+def _a_sign_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.proof import compare as module
+    from manuscript_guard.proof import tokens
+
+    def compared(sent, printed):
+        verdict, note = tokens.compare_numbers(sent, printed)
+        return (tokens.SAME, "") if verdict == tokens.SIGN else (verdict, note)
+
+    patch.setattr(module, "compare_numbers", compared)
+
+
+def _a_unit_is_a_word(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.proof import compare as module
+
+    patch.setattr(module, "is_unit", lambda raw: raw in "%<>=")
+
+
+def _running_heads_are_kept(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.proof import reading
+
+    patch.setattr(reading, "_without_running_lines", lambda pages, taken: pages)
+
+
+def _a_stretch_is_not_slid_to_a_part(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.proof import align
+
+    patch.setattr(align, "slid", lambda ops, a, b, starts: ops)
+
+
+def _a_word_broken_at_a_line_end_stays_two(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.proof import compare as module
+    from manuscript_guard.proof.tokens import prepared, tokens
+
+    def unjoined(reading, sent):
+        return [t for at, line in enumerate(reading.lines)
+                for t in tokens(prepared(line.text), at)]  # fmt: skip
+
+    patch.setattr(module, "proof_tokens", unjoined)
+
+
+def _a_compound_broken_at_a_line_end_loses_its_hyphen(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.proof import compare as module
+
+    real = module.proof_tokens
+
+    def joined(reading, sent):
+        return real(reading, [t for t in sent if t.key != "-"])
+
+    patch.setattr(module, "proof_tokens", joined)
+
+
+def _a_number_split_in_two_is_two(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.proof import compare as module
+
+    patch.setattr(module, "_regrouped", lambda ops, a, b: ops)
 
 
 # ------------------------------------------------------------- a unit written after a binding
@@ -6038,6 +6221,32 @@ def _an_instruction_marked_or_linked_is_a_link_s_text(patch: pytest.MonkeyPatch)
     _placeholder_rule(patch, "placeholder", lambda p: p + r"(?![(\[{])")
 
 
+def _in_the_template_rule(patch: pytest.MonkeyPatch, written: str, broken: str) -> None:
+    def change(pattern: str) -> str:
+        assert written in pattern, "the template rule no longer reads this way"
+        return pattern.replace(written, broken)
+
+    _placeholder_rule(patch, "placeholder-template", change)
+
+
+def _words_prompt_is_read_without_what_it_asks_for(patch: pytest.MonkeyPatch) -> None:
+    # "Click here" alone heads each file PLOS lists under a paper.
+    _in_the_template_rule(patch, r"(?:here\s+)?to\s+enter\s+(?:text|a\s+date)\.", r"here\b")
+
+
+def _any_request_after_in_this_section_is_a_template_s(patch: pytest.MonkeyPatch) -> None:
+    # As the rule read it before round 1, and with any verb: a questionnaire asks so too.
+    _in_the_template_rule(
+        patch,
+        r"(?:you\s+can\s+acknowledge\s+any\s+support",
+        r"(?:(?:you\s+\w+|please)\s+\w+|you\s+can\s+acknowledge\s+any\s+support",
+    )
+
+
+def _any_quoted_word_after_please_state_is_a_statement(patch: pytest.MonkeyPatch) -> None:
+    _in_the_template_rule(patch, r"(?:this\s+research|", r"(?:\w+|this\s+research|")
+
+
 def _residue_rule(patch: pytest.MonkeyPatch, rule_id: str, change) -> None:
     """The residue rule `rule_id` as `change` makes it, given the rule and returning it."""
     from dataclasses import replace
@@ -7081,6 +7290,45 @@ def _a_claim_keeps_its_line_breaks(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(methods_gate, "_collapsed", lambda text: text.strip(" "))
 
 
+def _comments_are_compared(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(related_methods_gate, "_words", lambda text: text.replace("*", "").casefold()
+                  .split())  # fmt: skip
+
+
+def _case_is_compared(patch: pytest.MonkeyPatch) -> None:
+    real = related_methods_gate.as_quoted
+    patch.setattr(related_methods_gate, "_words", lambda text: real(text).split())
+
+
+def _a_number_makes_another_heading(patch: pytest.MonkeyPatch) -> None:
+    real = related_methods_gate.as_quoted
+    patch.setattr(related_methods_gate, "folded_title", lambda title: real(title).casefold())
+
+
+def _the_deviations_are_compared(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(related_methods_gate, "_OWN", ())
+
+
+def _a_heading_that_stands_twice_is_compared_first(patch: pytest.MonkeyPatch) -> None:
+    real = related_methods_gate._by_title
+
+    def first_wins(text: str):
+        read = real(text)
+        read.twice = set()
+        return read
+
+    patch.setattr(related_methods_gate, "_by_title", first_wins)
+
+
+def _what_the_deviations_hold_is_compared(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(related_methods_gate, "subsections", lambda sections, index: [sections[index]])
+
+
+def _only_the_first_words_are_compared(patch: pytest.MonkeyPatch) -> None:
+    real = related_methods_gate._words
+    patch.setattr(related_methods_gate, "_words", lambda text: real(text)[:3])
+
+
 def _a_printed_value_is_text(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(related_gate, "_printed", lambda text: None)
 
@@ -7208,6 +7456,66 @@ def _an_alternative_text_keeps_its_line_breaks(patch: pytest.MonkeyPatch) -> Non
 
     escaped = figure_alt._PUNCTUATION
     patch.setattr(figure_alt, "as_markdown", lambda text: escaped.sub(r"\\\1", text))
+
+
+def _a_groups_opacity_is_not_carried_down(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_svg
+
+    patch.setattr(figure_svg, "_opacity", lambda value, otherwise: otherwise)
+
+
+def _an_svg_texts_colour_is_a_marks(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_svg
+
+    real = figure_svg._paint
+    patch.setattr(figure_svg, "_paint", lambda figure, state, which, *, text: real(
+        figure, state, which, text=False))  # fmt: skip
+
+
+def _cmyk_is_read_as_no_colour(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_pdf
+
+    real = figure_pdf._colour
+    patch.setattr(figure_pdf, "_colour", lambda operands: None if len(
+        [x for x in operands if isinstance(x, (int, float))]) == 4 else real(operands))  # fmt: skip
+
+
+def _q_restores_no_colour(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_pdf
+
+    real = figure_pdf._operations
+    patch.setattr(figure_pdf, "_operations",
+                  lambda data: ((ops, op) for ops, op in real(data) if op != b"Q"))  # fmt: skip
+
+
+def _a_hidden_mark_is_painted(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_svg
+
+    real = figure_svg._paint
+    patch.setattr(figure_svg, "_paint", lambda figure, state, which, *, text: real(
+        figure, {**state, "hidden": False}, which, text=text))  # fmt: skip
+
+
+def _glyphs_are_marks(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_svg
+
+    patch.setattr(figure_svg, "_drawn_text", lambda node_id: False)
+
+
+def _a_colour_space_is_not_looked_up(patch: pytest.MonkeyPatch) -> None:
+    """A space named in the page's resources taken as unread, as R's pdf() names its ICC
+    profile `/sRGB`: every colour of such a figure is lost."""
+    from manuscript_guard.gates import figure_pdf
+
+    patch.setattr(figure_pdf, "_readable", lambda resources, name, objects: isinstance(
+        name, figure_pdf.Name) and name.name in figure_pdf._READ_SPACES)  # fmt: skip
+
+
+def _a_graphics_states_opacity_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_pdf
+
+    patch.setattr(figure_pdf, "_opacities",
+                  lambda resources, name, objects, fill, stroke: (fill, stroke))  # fmt: skip
 
 
 def _a_passage_is_matched_as_it_is_typed(patch: pytest.MonkeyPatch) -> None:
@@ -7391,6 +7699,42 @@ BROKEN = {
     "an alternative text keeps its line breaks": (
         _an_alternative_text_keeps_its_line_breaks,
         test_an_alternative_text_is_the_pictures_description_as_it_was_written,
+    ),
+    "a group's opacity is not carried down to what it holds": (
+        _a_groups_opacity_is_not_carried_down,
+        test_each_colour_an_svg_figure_paints_is_read_and_its_texts_kept_apart,
+    ),
+    "an SVG text's colour is read as a mark's": (
+        _an_svg_texts_colour_is_a_marks,
+        test_each_colour_an_svg_figure_paints_is_read_and_its_texts_kept_apart,
+    ),
+    "a CMYK colour is read as no colour": (
+        _cmyk_is_read_as_no_colour,
+        test_each_colour_a_pdf_figure_paints_is_read_and_its_texts_kept_apart,
+    ),
+    "a graphics state's opacity is not read": (
+        _a_graphics_states_opacity_is_not_read,
+        test_each_colour_a_pdf_figure_paints_is_read_and_its_texts_kept_apart,
+    ),
+    "a colour space the page's resources name is not looked up": (
+        _a_colour_space_is_not_looked_up,
+        test_each_colour_a_pdf_figure_paints_is_read_and_its_texts_kept_apart,
+    ),
+    "Q gives back no colour": (
+        _q_restores_no_colour,
+        test_each_colour_a_pdf_figure_paints_is_read_and_its_texts_kept_apart,
+    ),
+    "a form paints in its own colour, not its drawer's": (
+        _a_form_draws_with_a_state_of_its_own,
+        test_each_colour_a_pdf_figure_paints_is_read_and_its_texts_kept_apart,
+    ),
+    "a mark a hidden group hides is painted": (
+        _a_hidden_mark_is_painted,
+        test_each_colour_an_svg_figure_paints_is_read_and_its_texts_kept_apart,
+    ),
+    "a text drawn as glyphs is a mark": (
+        _glyphs_are_marks,
+        test_each_colour_an_svg_figure_paints_is_read_and_its_texts_kept_apart,
     ),
     "a piece with no word of its own is left alone": (
         _a_wordless_piece_is_left_alone,
@@ -7640,6 +7984,38 @@ BROKEN = {
         _a_footnote_marker_is_not_seen,
         test_an_n_percent_in_a_table_is_read_where_it_stands_and_held_to_its_denominator,
     ),
+    "a proof's decimal comma is the same number": (
+        _a_decimal_comma_is_the_same_number,
+        test_each_change_a_typesetter_makes_is_reported_once_where_it_is,
+    ),
+    "a proof's sign is not read": (
+        _a_sign_is_not_read,
+        test_each_change_a_typesetter_makes_is_reported_once_where_it_is,
+    ),
+    "a unit beside a number in a proof is a word": (
+        _a_unit_is_a_word,
+        test_each_change_a_typesetter_makes_is_reported_once_where_it_is,
+    ),
+    "a stretch the proof leaves out is not slid to a part's start": (
+        _a_stretch_is_not_slid_to_a_part,
+        test_each_change_a_typesetter_makes_is_reported_once_where_it_is,
+    ),
+    "a number a proof splits in two is two": (
+        _a_number_split_in_two_is_two,
+        test_each_change_a_typesetter_makes_is_reported_once_where_it_is,
+    ),
+    "a proof's running heads are kept": (
+        _running_heads_are_kept,
+        test_a_proof_that_prints_what_was_sent_reads_as_it,
+    ),
+    "a word a proof breaks at a line's end stays two": (
+        _a_word_broken_at_a_line_end_stays_two,
+        test_a_proof_that_prints_what_was_sent_reads_as_it,
+    ),
+    "a compound a proof breaks at a line's end loses its hyphen": (
+        _a_compound_broken_at_a_line_end_loses_its_hyphen,
+        test_a_proof_that_prints_what_was_sent_reads_as_it,
+    ),
     "a column header's n is not read as its denominator": (
         _a_header_names_no_denominator,
         test_an_n_percent_in_a_table_is_read_where_it_stands_and_held_to_its_denominator,
@@ -7775,6 +8151,34 @@ BROKEN = {
     "the value is left in the quote": (
         _the_value_is_left_in_the_quote,
         test_the_words_beside_a_quoted_value_are_its_words_and_no_more,
+    ),
+    "a comment in a plan's section is compared": (
+        _comments_are_compared,
+        test_a_section_of_two_plans_differs_only_where_its_words_do,
+    ),
+    "a plan's section is compared in its case": (
+        _case_is_compared,
+        test_a_section_of_two_plans_differs_only_where_its_words_do,
+    ),
+    "a numbered heading names another section": (
+        _a_number_makes_another_heading,
+        test_a_section_of_two_plans_differs_only_where_its_words_do,
+    ),
+    "the plans' own Deviations are compared": (
+        _the_deviations_are_compared,
+        test_a_section_of_two_plans_differs_only_where_its_words_do,
+    ),
+    "a heading that stands twice is compared by its first": (
+        _a_heading_that_stands_twice_is_compared_first,
+        test_a_section_of_two_plans_differs_only_where_its_words_do,
+    ),
+    "what the plans' Deviations hold is compared": (
+        _what_the_deviations_hold_is_compared,
+        test_a_section_of_two_plans_differs_only_where_its_words_do,
+    ),
+    "only a section's first words are compared": (
+        _only_the_first_words_are_compared,
+        test_a_section_of_two_plans_differs_only_where_its_words_do,
     ),
     "a printed value is compared as text only": (
         _a_printed_value_is_text,
@@ -8250,6 +8654,18 @@ BROKEN = {
     ),
     "an instruction marked or linked is not read": (
         _an_instruction_marked_or_linked_is_a_link_s_text,
+        test_every_placeholder_is_found_and_nothing_that_looks_like_one,
+    ),
+    "Word's prompt is read without what it asks for": (
+        _words_prompt_is_read_without_what_it_asks_for,
+        test_every_placeholder_is_found_and_nothing_that_looks_like_one,
+    ),
+    "any request after 'in this section' is a template's": (
+        _any_request_after_in_this_section_is_a_template_s,
+        test_every_placeholder_is_found_and_nothing_that_looks_like_one,
+    ),
+    "any quoted word after 'please state' is a statement offered": (
+        _any_quoted_word_after_please_state_is_a_statement,
         test_every_placeholder_is_found_and_nothing_that_looks_like_one,
     ),
     "a cited entry's field wholly in brackets is read without them": (

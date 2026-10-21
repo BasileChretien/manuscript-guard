@@ -1,6 +1,6 @@
 ---
 name: submission-pack
-description: Assemble everything a journal asks for and write the covering letter. Use when a manuscript is ready to submit, or when check --submission is close to clean and you want to see what remains.
+description: Assemble everything a journal asks for and write the covering letter, and later check the publisher's proof against what was sent. Use when a manuscript is ready to submit, when check --submission is close to clean and you want to see what remains, or when the journal's proof comes back.
 ---
 
 # Assembling a submission
@@ -115,3 +115,19 @@ Do not summarise the abstract. The editor has it.
 - Check the journal profile's `notes` field. That is where the requirements no build can
   check were recorded — suggested reviewers, portal quirks, figure formats — and it exists
   because otherwise you rediscover them at 23:00 on the deadline.
+
+## When the proof comes back
+
+The journal typesets the document in the pack, and typesetting changes digits, signs,
+decimal marks, table cells, references and affiliations. Hold the proof to what was sent:
+
+```bash
+manuscript-guard proof proof.pdf --out corrections.md
+```
+
+It lists each correction with its page and line, and names the binding a changed number
+came from; then the copy-editor's changes, for you to accept or query; then what it could
+not compare, a figure's picture and an equation, which still need reading by eye.
+`corrections.md` is a numbered list to paste into your reply to the production office. The
+tool sends nothing: the reply is the author's. A proof of a revision is compared with the
+pack, so assemble the version the journal accepted first.

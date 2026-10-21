@@ -13,7 +13,15 @@ import yaml
 
 from manuscript_guard.contracts import load_project
 from manuscript_guard.gates import check_methods, reconcile
-from manuscript_guard.gates.methods import analysis_digests, compare, lock_path, methods_text
+from manuscript_guard.gates.methods import (
+    analysis_digests,
+    compare,
+    lock_path,
+    main_methods,
+    methods_text,
+    supplement_methods_in,
+    supplementary_methods,
+)
 
 SCRIPT = Path("analysis") / "01_disproportionality.py"
 
@@ -148,6 +156,66 @@ def test_a_parameter_stated_in_a_methods_subsection_is_found(project: Path) -> N
     reconcile(projekt, parameters={"software": "Python 3.99"})
     assert "Python 3.99" in methods_text(projekt)
     assert "methods-parameter-absent" not in codes(report_for(project))
+
+
+# ---------------------------------------------------------------- the supplement's Methods
+
+
+def test_every_methods_section_of_a_supplement_file_is_read_once() -> None:
+    """A supplement numbers its Methods and puts its tables between them: each section that
+    holds "methods" is read, with each section under it that names a method, and each once.
+    A table under them, a table beside them and a heading under the results are not the
+    Methods, and a heading over tables alone has none."""
+    text = (
+        "# Supplementary methods\n\nOne.\n\n## eMethods 1. Data source\n\nTwo.\n\n"
+        "### Statistical analysis\n\nFour.\n\n## Table S1. Code lists\n\nBasil.\n\n"
+        "# eTable 1. Counts\n\nBasil.\n\n# eMethods 2. Sensitivity\n\nThree.\n\n"
+        "# Results\n\n## Methods of the subgroups\n\nBasil.\n"
+    )
+    read = supplement_methods_in(text)
+    assert read is not None
+    words = ("One", "Two", "Three", "Four", "Basil")
+    assert [read.count(word) for word in words] == [1, 1, 1, 1, 0]
+    assert supplement_methods_in("# eTable 1\n\nBasil.\n") is None
+    assert supplement_methods_in("# Supplementary methods\n\n## Table S1\n\nBasil.\n") is None
+
+
+def test_under_a_main_text_name_g9_reads_all_as_g2_holds_it() -> None:
+    """The fix-only round of #395: under "Statistical analysis", one of the main text's names,
+    G2 holds everything as the Methods, and G9 read one step down only, so a parameter
+    stated under "Software" there was reported absent. A line pandoc prints as text under a
+    supplement's name is inside its section, as it is under the main text's."""
+    from manuscript_guard.classify import is_methods
+    from manuscript_guard.text.blocks import Unprinted
+
+    text = "# Supplementary methods\n\n## Statistical analysis\n\nA.\n\n### Software\n\nR 4.6.\n"
+    assert "R 4.6." in (supplement_methods_in(text) or "")
+    assert is_methods(("Supplementary methods", "Statistical analysis", "Software"))
+    assert is_methods(("eMethods 1", Unprinted("Software")))
+    assert not is_methods(("eMethods 1", "Table S2", Unprinted("Software")))
+    # As the gates reach it, through the chain of a file: `####### ` is no heading to pandoc.
+    from manuscript_guard.text.sections import chain_at, heading_index
+
+    printed = "# eMethods 1\n\n####### Software\n\nR 4.6.\n"
+    assert is_methods(chain_at(heading_index(printed), printed.index("R 4.6")))
+
+
+def test_the_methods_are_the_main_text_s_and_the_supplement_s(project: Path) -> None:
+    folder = project / "manuscript" / "supplementary"
+    (folder / "S0_methods.md").write_text("# eMethods 1\n\nRun in R 4.6.0.\n", encoding="utf-8")
+    projekt, _ = load_project(project)
+    text = methods_text(projekt)
+    assert text.index("reporting odds ratio") < text.index("Run in R 4.6.0.")
+    assert "Run in R 4.6.0." not in main_methods(projekt)
+    # The example's own supplement has "Supplementary methods" over its tables alone.
+    assert [path.name for path, _ in supplementary_methods(projekt)] == ["S0_methods.md"]
+
+
+def test_reconcile_writes_a_lock_read_with_the_supplement(project: Path) -> None:
+    projekt, _ = load_project(project)
+    reconcile(projekt)
+    lock = yaml.safe_load(lock_path(projekt).read_text(encoding="utf-8"))
+    assert lock["schema"] == "manuscript-guard/methods-lock/2"
 
 
 # ---------------------------------------------------------------- comparison helper

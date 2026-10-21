@@ -442,10 +442,11 @@ _SIGNS = (
 
 
 @cache
-def _pool(terms: tuple[str, ...]) -> tuple[str, ...]:
+def _pool(terms: tuple[str, ...], blocks: tuple[str, ...] = ()) -> tuple[str, ...]:
     """Everything a manuscript is drawn from, each piece as often as it should come up:
     words most of all, then what ends a sentence, then numbers, citations, bindings and
-    code, then what opens a block, and the bare signs once each."""
+    code, then what opens a block, and the bare signs once each. `blocks` are whole blocks
+    a reading is to meet as often as `_WHOLE`'s."""
     return (
         *_spaced(FILLER) * 2,
         *FILLER,
@@ -460,11 +461,13 @@ def _pool(terms: tuple[str, ...]) -> tuple[str, ...]:
         *_WHOLE * 3,
         *SPACES,
         *_SIGNS,
+        *blocks * 3,
     )
 
 
-def texts(terms: tuple[str, ...] = ()) -> st.SearchStrategy[str]:
-    """A manuscript file, with `terms` written into it in every way a term is written.
+def texts(terms: tuple[str, ...] = (), blocks: tuple[str, ...] = ()) -> st.SearchStrategy[str]:
+    """A manuscript file, with `terms` written into it in every way a term is written, and
+    `blocks` among its whole blocks.
 
     Drawn piece by piece from one pool, as the reviews drew their lines from an alphabet,
     and not block by block from a grammar of Markdown. A grammar writes only what its
@@ -482,7 +485,7 @@ def texts(terms: tuple[str, ...] = ()) -> st.SearchStrategy[str]:
 
     return st.tuples(
         st.sampled_from(("", "", "", "", *_HEADERS)),
-        _in_a_row(_pool(terms), few=20, many=70),
+        _in_a_row(_pool(terms, blocks), few=20, many=70),
         st.sampled_from(("\n", "\n", "\n", "\r\n")),
     ).map(file)
 
@@ -687,6 +690,68 @@ def summaries() -> st.SearchStrategy[str]:
             lambda gaps: "".join(gap + piece for gap, piece in zip(gaps, order, strict=True))
         )
     )
+
+
+#: What a supplement calls its Methods, each a way `classify.SUPPLEMENT_METHODS` takes: with
+#: a number before or after it, with the title of its part after a stop or a colon, under the
+#: label of an appendix. G9 reads each with the main text's Methods, and G2 and G15 hold their
+#: Methods-only rules under each.
+SUPPLEMENT_METHODS = (
+    "Supplementary methods", "Supplemental Methods 2", "Online methods", "eMethods",
+    "eMethods 1. Data source", "eMethods 3: Sensitivity", "S1 Methods", "Appendix 1: Methods",
+    "Appendix S1. Supplementary methods", "eAppendix 2. Methods", "Supplement 1. eMethods 4",
+    "2. Supplementary methods", "Supplementary Methods S3",
+)  # fmt: skip
+#: What else a supplement's headings say. The last two hold "methods", so G9 reads them, as G4
+#: would count them, and they name results, so G2 and G15 do not, as of the main text's
+#: "Methods and results".
+SUPPLEMENT_OTHERS = (
+    "eTable 1. Counts by year", "eFigure 2", "Supplementary results", "eAppendix 3. Data",
+    "Supplementary material", "Supplementary methods and results", "eMethods 5. Results by site",
+)  # fmt: skip
+
+
+@st.composite
+def supplements(draw: st.DrawFn) -> tuple[str, list[tuple[int, bool, bool]]]:
+    """A file of the supplement holding every heading of `SUPPLEMENT_METHODS` and
+    `SUPPLEMENT_OTHERS`, in an order and a case drawn each time and with words drawn under
+    each, and where each section starts and what it is: Methods to G9 (its heading holds
+    "methods" and stands under no Results, or it names a method under one G9 reads) and to G2
+    and G15 (its heading is a supplement's name of the Methods, or a name of a method under
+    one, under no Results). Among them are a section of the Methods under one, a table under
+    one, which neither reads (round 1 of #395), a heading G9 reads and G2 does not over a
+    section of each kind, and a section under the Results. Each section says "p < 0.05" and
+    names a logistic regression, and those G9 reads say "Coriander" where the rest say
+    "Basil". Every heading is in every example: a rule broken for one way of naming the
+    Methods is seen whatever the seed."""
+    blocks = [
+        *([(1, heading, True, True)] for heading in SUPPLEMENT_METHODS),
+        *([(1, heading, "methods" in heading.lower(), False)] for heading in SUPPLEMENT_OTHERS),
+        [(1, "Supplemental methods", True, True), (2, "eMethods 7. Linkage", True, True)],
+        [(1, "eMethods 8. Signals", True, True), (2, "Table S2. The adjusted model", False, False)],
+        [
+            (1, "Detailed methods", True, False),
+            (2, "Record linkage", False, False),
+            (2, "Statistical analysis", True, True),
+        ],
+        [(1, "Results", False, False), (2, "eMethods 6. Linkage", False, False)],
+    ]
+    text, sections = "", []
+    for block in draw(st.permutations(blocks)):
+        for level, heading, read, held in block:
+            written = draw(st.sampled_from((heading, heading.lower(), heading.upper())))
+            words = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
+            text += "\n" if text else ""
+            sections.append((len(text), read, held))
+            text += (
+                f"{'#' * level} {written}\n\n{'Coriander' if read else 'Basil'} {words}, "
+                f"p < 0.05 by logistic regression {words}.\n"
+            )
+    return text, sections
+
+
+#: The supplement's names of the Methods as headings in a manuscript drawn from the pool.
+SUPPLEMENT_HEADINGS = tuple(f"\n\n# {heading}\n\n" for heading in SUPPLEMENT_METHODS)
 
 
 #: Quotations as a sentence writes them, with the citation that says whose words they are.
@@ -2557,6 +2622,144 @@ def settings_typed() -> st.SearchStrategy[str]:
 # ----------------------------------------------------------------------------- sessions
 
 
+#: The word each paragraph of a generated revision opens with, which no other block has.
+MARKED_TAGS = ("amber", "basil", "cedar", "dune", "ember", "fern", "grove", "heath", "iris")
+#: Words no generated paragraph holds until an edit puts them in: what a reworded word
+#: becomes, and what a paragraph inserted says.
+MARKED_NEW = ("altered", "amended", "corrected", "replaced", "updated", "revised")
+#: Every edit a generated revision makes, each in every example: to the paragraph its kind
+#: is given, to the table, the figure and the note.
+MARKED_EDITS = (
+    "reworded", "number re-run", "set in italics", "moved", "list item deleted",
+    "restyled", "note reworded", "inserted", "cell re-run", "row added", "figure replaced",
+)  # fmt: skip
+#: The paragraph each `MARKED_TAGS` word is given, in the order they stand in the document
+#: sent; "deleted" is the first item of its list, and two are kept as they were.
+_MARKED_ROLES = (
+    "reworded", "number re-run", "kept", "note reworded", "set in italics", "moved",
+    "restyled", "kept too", "deleted",
+)  # fmt: skip
+
+
+@st.composite
+def revisions(draw: st.DrawFn) -> tuple[dict[str, list], list[tuple[str, str]]]:
+    """A document sent and its revision, as `readings.document_of` writes them, and what
+    the marked-up copy must show: for each edit, a word of the line it is on, and what the
+    line holds. Every edit of `MARKED_EDITS` is in every example, each in a paragraph of its
+    own, the paragraphs in an order drawn each time, so that a rule broken for one kind is
+    seen under any seed; two paragraphs are left as they were, and must show no change. A
+    paragraph's words are drawn into runs, cut where drawn as pandoc cuts them at a line's
+    end, and its number is a count or a decimal."""
+
+    def number() -> str:
+        whole = draw(st.integers(10, 9999))
+        return draw(st.sampled_from((str(whole), f"{whole // 100}.{whole % 100:02d}")))
+
+    def words() -> list[str]:
+        return draw(st.lists(st.sampled_from(_PLAIN), min_size=4, max_size=8))
+
+    def runs(tokens: list[str]) -> list[list[str]]:
+        text = " ".join(tokens) + "."
+        cuts = sorted(set(draw(st.lists(st.integers(1, len(text) - 1), max_size=3))))
+        bounds = zip([0, *cuts], [*cuts, len(text)], strict=True)
+        return [[text[a:b], ""] for a, b in bounds]
+
+    def paragraph(tokens: list[str], **more: Any) -> dict[str, Any]:
+        return {"kind": "p", "runs": runs(tokens), **more}
+
+    tags = list(draw(st.permutations(MARKED_TAGS)))
+    roles = dict(zip(_MARKED_ROLES, tags, strict=True))
+    said = {tag: [tag, *words(), number(), *words()] for tag in tags}
+    note = [*words(), "first"]
+    before: list[dict[str, Any]] = [{"kind": "p", "runs": [["Methods", ""]], "style": "Heading1"}]
+    at: dict[str, int] = {}
+    for role in _MARKED_ROLES:
+        if role in ("deleted", "kept too"):
+            continue
+        at[role] = len(before)
+        before.append(paragraph(said[roles[role]]))
+        if role == "note reworded":
+            before[-1]["note"] = [[" ".join(note), ""]]
+    items = [roles["deleted"], *draw(st.permutations(("item", "entry")))]
+    for word in items:
+        if word == roles["deleted"]:
+            at["deleted"] = len(before)
+        before.append(paragraph(said.get(word) or [word, *words()], list=True))
+    cells = [[f"row{n}", number(), number()] for n in range(draw(st.integers(2, 4)))]
+    at["table"] = len(before)
+    before.append({"kind": "table", "rows": cells})
+    at["figure"] = len(before)
+    before.append({"kind": "figure", "picture": "red"})
+    at["kept too"] = len(before)
+    before.append(paragraph(said[roles["kept too"]]))
+
+    after = [dict(block) for block in before]
+    expected: list[tuple[str, str]] = []
+
+    # A word reworded, into one no paragraph holds.
+    tokens = said[roles["reworded"]]
+    where = draw(st.sampled_from([i for i, token in enumerate(tokens) if i and token.isalpha()]))
+    new = draw(st.sampled_from(MARKED_NEW))
+    after[at["reworded"]] = paragraph([*tokens[:where], new, *tokens[where + 1 :]])
+    expected.append((roles["reworded"], f"[-{tokens[where]}-]{{+{new}+}}"))
+
+    # A number re-run.
+    tokens = said[roles["number re-run"]]
+    where = next(i for i, token in enumerate(tokens) if token[0].isdigit())
+    now = draw(st.sampled_from([n for n in (number(), "77777") if n != tokens[where]]))
+    after[at["number re-run"]] = paragraph([*tokens[:where], now, *tokens[where + 1 :]])
+    expected.append((roles["number re-run"], f"[-{tokens[where]}-]{{+{now}+}}"))
+
+    # A word set in italics, a run of its own.
+    tokens = said[roles["set in italics"]]
+    where = draw(st.integers(1, len(tokens) - 2))
+    after[at["set in italics"]] = {"kind": "p", "runs": [
+        [" ".join(tokens[:where]) + " ", ""], [tokens[where], "i"],
+        [" " + " ".join(tokens[where + 1 :]) + ".", ""],
+    ]}  # fmt: skip
+    expected.append((roles["set in italics"], f"~{tokens[where]}~"))
+
+    # A paragraph made a heading.
+    after[at["restyled"]] = {**before[at["restyled"]], "style": "Heading1"}
+    expected.append((roles["restyled"], "style "))
+
+    # The note's last word reworded.
+    new = draw(st.sampled_from(MARKED_NEW))
+    after[at["note reworded"]] = {**before[at["note reworded"]],
+                                  "note": [[" ".join([*note[:-1], new]), ""]]}  # fmt: skip
+    expected.append(("note:", f"[-first-]{{+{new}+}}"))
+
+    # A cell re-run, and a row added.
+    row = draw(st.integers(0, len(cells) - 1))
+    column = draw(st.sampled_from((1, 2)))
+    rows = [list(one) for one in cells]
+    was = rows[row][column]
+    rows[row][column] = draw(st.sampled_from([n for n in ("88888", "0.01") if n != was]))
+    rows.append(["rowadded", "1", "2"])
+    after[at["table"]] = {"kind": "table", "rows": rows}
+    expected.append((f"row{row} ", f"[-{was}-]{{+{rows[row][column]}+}}"))
+    expected.append(("rowadded", "row+ "))
+
+    # The figure's picture replaced.
+    after[at["figure"]] = {"kind": "figure", "picture": "blue"}
+    expected.append(("(picture red)", "\N{PILCROW SIGN}- [-(picture red)-]"))
+    expected.append(("(picture blue)", "\N{PILCROW SIGN}+ {+(picture blue)+}"))
+
+    # A list item deleted; a paragraph moved past five blocks or more; and one inserted, of
+    # new words. The later place first, so that each leaves the other's where it was.
+    del after[at["deleted"]]
+    expected.append((roles["deleted"], "\N{PILCROW SIGN}- [-"))
+    moved = after.pop(at["moved"])
+    after.insert(len(after) - 1, moved)
+    expected.append((roles["moved"], "moved"))
+    # Not last: the document's last paragraph keeps its mark untracked (`writer._last_mark_kept`).
+    after.insert(draw(st.integers(1, len(after) - 1)), paragraph(["newly", *words()]))
+    expected.append(("newly", "\N{PILCROW SIGN}+ {+"))
+    for role in ("kept", "kept too"):
+        expected.append((roles[role], "unchanged"))
+    return {"before": before, "after": after}, expected
+
+
 @st.composite
 def sessions(draw: st.DrawFn) -> dict[str, Any]:
     """A paper, what a co-author did to it in Word, and what its author did meanwhile.
@@ -2614,7 +2817,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     ),
     "numbers": st.fixed_dictionaries(
         {
-            "text": texts(POINTED),
+            "text": texts(POINTED, SUPPLEMENT_HEADINGS),
             "terms": st.lists(
                 st.sampled_from(("CYP3A4", "COVID-19", "CO2", "HbA1c", "1,3-BDG")), max_size=2
             ),
@@ -2692,5 +2895,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         }
     ),
     "import": sessions(),
+    "supplementary methods": supplements().map(lambda drawn: drawn[0]),
     "reworded": edits(),
+    "marked up": revisions().map(lambda drawn: drawn[0]),
 }

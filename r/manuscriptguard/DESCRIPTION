@@ -12,5 +12,5 @@ Description: Writes the results fragment that a manuscript-guard project reads, 
 License: MIT + file LICENSE
 Encoding: UTF-8
 Imports: jsonlite, digest
-Suggests: testthat (>= 3.0.0)
+Suggests: testthat (>= 3.0.0), yaml
 RoxygenNote: 7.3.2

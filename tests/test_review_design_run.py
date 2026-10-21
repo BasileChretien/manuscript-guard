@@ -68,7 +68,7 @@ def test_a_design_dry_run_sends_the_plan_and_the_feasibility_results(
     out = capsys.readouterr().out
     assert "Design round 1: 2 reviewers x 2 models = 4 calls" in out
     assert "There is no review/design/panel-1.yaml" in out
-    assert "Not sent: the manuscript, results other than feasibility.*" in out
+    assert "Not sent: the manuscript, results other than feasibility.* and quality.*" in out
     folder = planned / "build" / "review" / "design" / "round-1" / "dry-run"
     assert sorted(path.name for path in folder.glob("*.json")) == sorted(
         f"{reviewer}.{model}.json" for reviewer in ("design-methods", "statistics")
@@ -131,6 +131,26 @@ def test_a_table_the_plan_binds_is_sent_as_written(planned: Path, capsys) -> Non
     text = (folder / "as-text.txt").read_text(encoding="utf-8")
     assert "Table 1 will be {{table.baseline}}." in text
     assert "SECRET-ROW-426" not in text
+
+
+def test_a_design_round_is_sent_the_data_checks_and_reads_them(planned: Path, capsys) -> None:
+    """The counts of the data checks say what the data hold, as the feasibility results do
+    (Basile, 2026-10-21): they are sent under a heading of their own, a binding in the plan
+    to one is printed, and a reading made before they changed is of another plan."""
+    before = plan_digest(load_project(planned)[0])
+    _feasibility_said(planned, "design", quality__rows=4000, quality__age__missing=12)
+    assert plan_digest(load_project(planned)[0]) != before
+    _plan_edited(
+        planned, "## Outcome",
+        "## Outcome\n\n{{results.quality.age.missing}} reports give no age.\n",
+    )  # fmt: skip
+    assert design_run(planned, "--dry-run") == 0
+    capsys.readouterr()
+    folder = planned / "build" / "review" / "design" / "round-1" / "dry-run"
+    text = (folder / "as-text.txt").read_text(encoding="utf-8")
+    assert "# The data, checked against the data dictionary" in text
+    assert "quality.age.missing: 12" in text and "quality.rows: 4000" in text
+    assert "12 reports give no age." in text
 
 
 def test_the_design_instructions_name_no_manuscript() -> None:

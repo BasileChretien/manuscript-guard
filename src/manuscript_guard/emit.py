@@ -25,6 +25,7 @@ import platform
 import re
 import subprocess
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -1484,6 +1485,51 @@ class Emitter:
         if values is not None:
             entry["observed"] = _observed(values, kind)
         self._variables[name] = entry
+
+    def check_data(
+        self,
+        data: object,
+        *,
+        dataset: str | None = None,
+        computed: Mapping[str, object] | None = None,
+    ) -> dict[str, list[int]]:
+        """Check a table the analysis read against the data dictionary, and emit each count.
+
+            reports = pandas.read_csv("data/reports.csv")
+            flags = em.check_data(reports, computed={"no_pregnant_men": pregnant & male})
+            reports = reports.drop(reports.index[flags["age.out_of_range"]])
+
+        Each variable of `design/data_dictionary.yaml` the table has a column for is checked
+        as its entry says, and each count is emitted under `quality.`: `quality.rows`, then
+        `quality.<variable>.<check>` (missing, wrong_type, out_of_range, not_allowed,
+        not_matching, outside_period, not_applicable, the ones its entry asks for), and
+        `quality.rule.<rule>` for each rule over variables of this table and each computed
+        rule given, with the rows that break it as one truth value for each row. A dictionary
+        that lists datasets is checked one dataset at a time (`dataset="reports"`, counting
+        rows under `quality.rows.reports`). Counts only: no value leaves the script.
+
+        The Methods bind them: "{{results.quality.age.out_of_range}} reports gave an
+        impossible age and were left out". A count below the data custodian's minimum
+        (`paper.yaml`, `custodian.minimum_cell_count`) is printed "<5", and none is a result
+        the manuscript must quote. The dictionary is an input of the run, so G1 says when it
+        changed after the counts were made.
+
+        Returns, for each count but the rows', the places of the rows it counted, from
+        nought, for the script to leave out the ones it means to.
+        """
+        from manuscript_guard import quality
+
+        assert self.root is not None
+        spec = quality.read_dictionary(self.root)
+        rows, counts = quality.check(spec, data, dataset=dataset, computed=computed)
+        minimum = quality.minimum_cell_count(self.root)
+        self.add_input(quality.DICTIONARY)
+        whole = quality.PREFIX + quality.rows_key(dataset)
+        self.value(whole, rows, display=quality.held_back(rows, minimum), quoted=False)
+        for count in counts:
+            shown = quality.held_back(count.value, minimum)
+            self.value(quality.PREFIX + count.key, count.value, display=shown, quoted=False)
+        return {count.key: list(count.rows) for count in counts}
 
     def model(
         self,

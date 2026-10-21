@@ -50,6 +50,9 @@ DESIGN_DIR = "design"
 SCHEMA = "manuscript-guard/design-review/1"
 #: What every key a feasibility script emits opens with, as G12 asks for them.
 FEASIBILITY = "feasibility."
+#: What every count of the data checks opens with (G16): what the data hold, as the
+#: feasibility counts say it, read and sent with them.
+QUALITY = "quality."
 
 
 def design_root(project: Project) -> Path:
@@ -80,8 +83,9 @@ def design_panels(project: Project) -> list[tuple[int, Path]]:
 
 
 def plan_digest(project: Project) -> str:
-    """What a design round reads: the plan's bytes, and each feasibility result's value and
-    display, by key. A plan edited, or the data counted again, is another plan to read."""
+    """What a design round reads: the plan's bytes, and each feasibility result's and each
+    data check's value and display, by key. A plan edited, or the data counted again, is
+    another plan to read."""
     from manuscript_guard.gates.design import plan_path
 
     digest = hashlib.sha256()
@@ -96,7 +100,7 @@ def plan_digest(project: Project) -> str:
             continue
         values = document.get("values") if isinstance(document, dict) else None
         for key, spec in (values or {}).items() if isinstance(values, dict) else ():
-            if key.startswith(FEASIBILITY) and isinstance(spec, dict):
+            if key.startswith((FEASIBILITY, QUALITY)) and isinstance(spec, dict):
                 counted[key] = [spec.get("value"), spec.get("display")]
     digest.update(json.dumps(counted, sort_keys=True, ensure_ascii=False).encode("utf-8"))
     return digest.hexdigest()

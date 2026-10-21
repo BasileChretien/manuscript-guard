@@ -1,6 +1,6 @@
 ---
 name: analysis-plan
-description: Write the analysis plan in design/plan.md before the analysis exists, and record every deviation from it as it happens. Use at the start of a paper project, when check reports no-analysis-plan, plan-section-missing, plan-section-empty, feasibility-not-run, planned-result-missing, planned-result-unquoted, planned-results-unkeyed or plan-changed-after-results, or when the analysis is about to do something the plan did not say.
+description: Write the analysis plan in design/plan.md before the analysis exists, and record every deviation from it as it happens. Use at the start of a paper project, when check reports no-analysis-plan, plan-section-missing, plan-section-empty, feasibility-not-run, planned-result-missing, planned-result-unquoted, planned-results-unkeyed, plan-changed-after-results or not-in-dictionary, or when the analysis is about to do something the plan did not say.
 ---
 
 # Writing down what you meant to do, before you do it
@@ -92,6 +92,20 @@ its bindings, so a key misspelt there is never reported; G1 holds the result its
 script and the data that made it. A count too small to publish is small in the plan too.
 At the `design` stage, G12 warns (`feasibility-not-run`) where the plan sets out an analysis
 and nothing is emitted under `feasibility.`.
+
+Where the project keeps a data dictionary (`design/data_dictionary.yaml`) and the data exist,
+hand the extract to `check_data` in the same script (the
+[results-binding](../results-binding/SKILL.md) skill): it counts, under `quality.`, each
+variable's missing values and the values its entry does not allow, and the rows that break
+each rule. Those counts say what the data hold as the feasibility ones do: G12 takes them in
+their place, and a design round is sent them with the plan. Bind them in the plan where it
+settles what to do with a fault: "{{results.quality.age.missing}} reports give no age; age
+group is entered with a category for the missing".
+
+A variable the analysis declares or a model reads has an entry in the dictionary. G16 says
+`not-in-dictionary` where one has none: write its entry, with its definition and the codes
+or range its values may take, and, for a variable the analysis derives, what it is derived
+from.
 
 ## What the paper will report
 

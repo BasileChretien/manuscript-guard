@@ -991,6 +991,36 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
     invisible(NULL)
   }
 
+  # Check a table the analysis read against the data dictionary and emit each count,
+  # mirroring the Python `check_data()`: quality.rows (quality.rows.<dataset> where the
+  # dictionary lists datasets), quality.<variable>.<check> and quality.rule.<rule>, none a
+  # result the manuscript must quote, a count below the custodian's minimum printed "<5".
+  # `computed` holds, for each `computed: true` rule, TRUE for each row that breaks it.
+  # Returns, for each count but the rows', TRUE for each row it counted, for the script to
+  # leave out the ones it means to: `reports[!flags[["age.out_of_range"]], ]`.
+  check_data <- function(data, dataset = NULL, computed = NULL) {
+    path <- file.path(project_root, "design", "data_dictionary.yaml")
+    spec <- mg_read_dictionary(path)
+    checked <- mg_check_table(spec, data, dataset, computed)
+    minimum <- mg_minimum_cell_count(project_root)
+    rows_key <- if (is.null(dataset)) "quality.rows" else paste0("quality.rows.", dataset)
+    for (key in c(rows_key, paste0("quality.", names(checked$found)))) {
+      if (!is.null(state$values[[key]])) {
+        stop(key, " emitted twice by ", script_path, ": check_data checks a table once",
+             call. = FALSE)
+      }
+    }
+    add_input(path)
+    rows <- as.integer(checked$rows)
+    value(rows_key, rows, display = mg_held_back(rows, minimum), quoted = FALSE)
+    for (key in names(checked$found)) {
+      count <- as.integer(sum(checked$found[[key]]))
+      value(paste0("quality.", key), count, display = mg_held_back(count, minimum),
+            quoted = FALSE)
+    }
+    invisible(checked$found)
+  }
+
   # Record a fitted model as the fit describes it, mirroring the Python `model()`.
   # `unit` names the column of the data whose values the rows belong to, mirroring the
   # Python `model()`: G15 warns where there are more rows than units and the fit is neither
@@ -1492,6 +1522,7 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
     software = software,
     dictionary = dictionary,
     variable = variable,
+    check_data = check_data,
     model = model,
     step = step,
     interval = interval,

@@ -276,6 +276,7 @@ All deterministic, all runnable in CI without Claude.
 | G13 | Response to reviewers | a point unanswered, or a claimed revision that did not happen |
 | G14 | Abbreviations, terms, spelling and notation | never: it warns when an abbreviation is used before it is defined, defined twice, defined for nothing or never defined, when the manuscript uses a term its author gave up for another, when a word is in the spelling of the English the paper does not declare, when a P value, an interval or a percentage is written in two ways, and when a number runs into its unit |
 | G15 | Models and their variables | a model of an outcome its kind is not for, a variable entered as another kind than it was declared, a reference or a level other than the declared one, an undeclared variable, a fit that did not converge or has a level without events, rows dropped and never stated (warnings: few events for each coefficient, an ordinal variable entered as a trend, a model the Methods name and the analysis did not fit) |
+| G16 | The data and their dictionary | at submission: a dictionary nothing was checked against, an entry or a rule no count covers, counts neither the Methods nor the supplement bind (warnings before; a variable the analysis uses with no entry warns, from the analysis stage) |
 
 Plus one code that belongs to no gate: `gate-errored`, raised when a gate itself throws. It
 is in no stage's deferral list and so fails everywhere, because a checker that could not
@@ -3827,9 +3828,10 @@ plans it from `review/design/`, says what would be sent where, asks, and files e
 as a design reading, `round-<n>/<reviewer>.<model>.yaml`, sealed and carrying the digest of
 the plan it read (`plan_sha256`). What is sent is a list of its own (`prompt.gather_design`):
 the paper's facts from `paper.yaml`, `design/plan.md` without its front matter and comments
-and with its feasibility results printed into it, and the feasibility results, each under its
-key. Not the manuscript, and no result but a feasibility one: a binding in the plan to any
-other result, a value or a table, is sent as written, since a design round reads the plan
+and with its feasibility results printed into it, and the feasibility results and the counts
+of the data checks (`quality.*`, "The data are held to the dictionary"), each under its key.
+Not the manuscript, and no result but those: a binding in the plan to any other result, a
+value or a table, is sent as written, since a design round reads the plan
 before there are results (round 1 of #316: a table the plan bound was printed whole).
 Where `paper.yaml` declares a study design (`study_type`), what a plan for that design has
 to settle is sent too, under "What this study design needs": each section
@@ -3975,6 +3977,72 @@ is refused at the second: YAML keeps the last without a word, so a code list giv
 under one name handed its second codes to every variable that named it (round 1 of #382).
 A variable that gives both `values` and a `code_list` is refused for the same reason.
 
+## The data are held to the dictionary, and what they held is a result
+
+Every number in a paper traced back to the analysis, and nothing said what the data the
+analysis read held: an age of 150, a code the dictionary does not list, a reaction dated
+before the drug, the same report twice. A reader of the Methods could not tell whether
+anyone had looked, and RECORD asks for the data cleaning methods (item 12.2). The principle
+of the feasibility counts holds here: the author's script reads the data, never the tool.
+The tool supplies the checks and holds the counts to the text.
+
+**The checks run in the author's script, and publish counts.** `em.check_data(table)` in
+Python, `em$check_data(table)` in R, reads `design/data_dictionary.yaml` through the loader
+`check` uses (`contracts/dictionary.py`), runs the checks each entry asks for on the
+variables the table has a column for, and emits each count under `quality.`:
+`quality.rows`, then `quality.<variable>.missing` for every variable and, as its entry
+asks, `wrong_type`, `out_of_range`, `not_allowed`, `not_matching`, `outside_period` and
+`not_applicable`, then `quality.rule.<rule>` for each rule. No value of a row leaves the
+script. A table is a data frame, a mapping of columns, or a list of rows as `csv.DictReader`
+gives them; a dictionary that lists datasets is checked one table at a time, and the rows
+are `quality.rows.<dataset>`. A variable with no column is not checked, and G16 names it.
+A name a key cannot hold, a capital or a dot, is written in lower case with an underscore,
+and two names that would share a key are refused. The function returns the rows each count
+counted, so that the script leaves out the ones it means to and the count the Methods bind
+is the count of what it left out.
+
+**A rule is built in, or the script's own.** An `order` rule (each date no later than the
+next, or each number no greater) and a `unique` rule (no two rows with the same values of
+these) are checked by the emitter over the variables of one table. Anything else, a man
+recorded as pregnant, a death before the first prescription, is declared by name with what
+it says (`computed: true`) and found by the script, which hands the emitter one truth value
+for each row. There is no expression language in the dictionary (Basile, 2026-10-21): two
+parsers, one for each emitter, would have to agree on every expression, and the script
+already has a language both sides of the comparison can read.
+
+**A value is read one way in both languages.** What missing is (blank, NA, or one of the
+variable's `missing` codes), what a number is (a number, or a text in decimal notation),
+what a date is (a day of the calendar written `YYYY-MM-DD`, or a date), how a value is
+written as text to be compared with a code (a whole number as its digits, any other to
+fifteen significant digits, a truth value as "true" or "false"): each is written once, in
+`quality.py`, and the R emitter's `quality.R` follows it. `tests/data/quality` holds a
+dictionary, a table that breaks every check at least once and the rows each count must
+find, and both emitters are held to it, reading the table as text and as their own reader
+types it; each way of reading a value is compared between the two languages text by text.
+
+**None is a result the manuscript must quote,** since a dictionary of forty variables gives
+two hundred counts. A count from one to below the data custodian's minimum
+(`custodian.minimum_cell_count`) is printed "<5", so that the Methods can bind it and G2
+passes it (Basile, 2026-10-21); the value itself stays in the results, as every count's
+does. The dictionary is an input of the run: edited, it makes the counts `input-changed`,
+and G1 already says so.
+
+**G16 names what is missing from the chain.** It is silent where the project keeps no
+dictionary. From the analysis stage it warns of a variable the analysis declares or a model
+reads that has no entry (`not-in-dictionary`); of a dictionary nothing was checked against
+(`quality-not-run`); and of an entry or a rule no count covers (`entry-unchecked`,
+`rule-unchecked`). From drafting it warns where there are counts and neither the Methods
+nor the supplement binds one (`quality-not-reported`). All but the first fail at
+submission (Basile, 2026-10-21). A fault the checks find in the data is never a finding:
+it is a count, which the paper reports and the author decides about. A dictionary that does
+not read is G12's `dictionary-invalid`, and G16 says nothing of it.
+
+**At the design stage the counts are feasibility counts.** Checking the extract against the
+dictionary counts each planned variable's missing values and the duplicates, which is what
+the feasibility script counts. A result under `quality.` quiets `feasibility-not-run` as
+one under `feasibility.` does, and a design round reads and is sent both: the digest of
+what it read covers them, and the request lists them under their own heading.
+
 ## Stages: not every gate binds on day one
 
 The first version of `check` ran all twelve gates unconditionally, which meant that someone
@@ -4015,8 +4083,9 @@ and the same items fail from `drafting` onwards.
 A run with no failure read as "the paper is right", and it says much less. So `check` ends
 with what was checked, grouped by what it is about (`assurance.py`): computational
 reproducibility (G1), numerical provenance (G2, G3, G7, G8), reporting completeness (G4, G5,
-G13), methodological validity (G9, G12, G15), the literature (G7), the review (G10, G11), and
-the language and writing (G6, G14), the last added so that every gate is under one. For each
+G13), methodological validity (G9, G12, G15), the data (G16), the literature (G7), the
+review (G10, G11), and the language and writing (G6, G14), the last added so that every gate
+is under one. For each
 it prints three kinds of line, which are the three kinds of evidence the toolkit has:
 `checked`, the gates that ran and what they found, with any that did not run or read
 nothing; `recorded`, what somebody recorded, by whom and when (the last run of `verify`, the
@@ -11994,6 +12063,37 @@ Open, recorded as each change landed:
   contrived). A DOI that `references.bib` writes with a TeX escape, `10.1000/abc\_def`, is
   looked for under `10.1000_abc__def` and not found, as G7 reads the same DOI with its
   backslash (round 1).
+
+- **`check_data` reads a table one value at a time in Python.** A table of tens of millions
+  of rows, a claims extract among them, takes minutes there; the R emitter's checks are
+  vectorised and do not.
+- **A date and time is compared as the clock it was written with.** An offset after it,
+  `Z` or `+02:00`, is read and not applied, and an object that carries a time zone is read
+  as its own local time: two values from two time zones compare as their clocks do, not as
+  the instants they are.
+- **A pattern is read by Python's `re` and by R's PCRE.** Both are told to read `\d` and
+  `\w` as ASCII, and they agree on what a pattern for a code usually holds; a construct
+  only one of them knows (a possessive quantifier before Python 3.11, `\h`) is refused by
+  the other or read otherwise, and the two emitters then count differently.
+- **The R emitter does not run the dictionary's loader.** It reads the file with the yaml
+  package and takes what that reads. A dictionary the loader refuses (`010`, an unquoted
+  `No`) is G12's `dictionary-invalid` at every stage, so counts made from a misread file are
+  never taken in silence, but `em$check_data()` itself makes them.
+- **A table is checked once in a project.** A key has one owner, so the same table checked
+  before and after cleaning, by one script or two, is `duplicate-key`. Check the table as
+  read; what was dropped after is the script's to count.
+- **A computed rule counts what the script says.** Nothing holds the rows the script hands
+  over to what the rule `says`.
+- **One count bound satisfies `quality-not-reported`.** Whether the Methods say what was
+  found and what was done with it is the reader's to judge.
+- **A name is compared as written.** `Age` in the analysis and `age` in the dictionary are
+  two names, and `not-in-dictionary` says so; nothing suggests the near one.
+- **The example does not check its data.** It keeps no dictionary, so G16 says nothing of
+  it; a dictionary and a `check_data` run in the example wait until the collection plan's
+  checks of the dictionary against the plan have merged, since both read the same file.
+- **`quality-not-reported` is not read in a LaTeX manuscript.** It reads the Methods as
+  Markdown, and on a LaTeX manuscript G16 says `not-read-in-latex`, as the other checks not
+  yet taught LaTeX do.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

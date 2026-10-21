@@ -73,6 +73,7 @@ from manuscript_guard.gates import (
     sync_bib,
 )
 from manuscript_guard.gates.custodian import check_restricted_inputs, check_small_cells
+from manuscript_guard.gates.data_quality import check_data_quality, check_quality_reported
 from manuscript_guard.gates.design_review import check_design_rounds
 from manuscript_guard.gates.formats import check_format, not_read_in_latex
 from manuscript_guard.gates.numbers import chosen_rules, typed_choice, why_no_manuscript
@@ -166,6 +167,9 @@ def _run_gates(
         ("G13", lambda: check_revision(project, submission=at_submission)),
         ("G14", lambda: check_language(project)),
         ("G15", lambda: check_models(project, results)),
+        ("G16", lambda: check_data_quality(project, results, chosen, submission=at_submission)),
+        ("G16", lambda: check_quality_reported(
+            project, results, chosen, submission=at_submission)),
         ("BUILD", lambda: check_shapes(project).merge(check_tex(project, namespace, results))),
     ):
         if latex and _NOT_READ_IN_LATEX & set(gate.__code__.co_names):
@@ -198,6 +202,7 @@ _NOT_READ_IN_LATEX = frozenset(
         "check_prose_quotations", "check_journal", "check_reporting", "check_writing",
         "check_methods", "check_synthetic_inputs", "check_reported", "check_recomputed",
         "check_revision", "check_language", "check_models", "check_shapes", "check_tex",
+        "check_quality_reported",
     }
 )  # fmt: skip
 

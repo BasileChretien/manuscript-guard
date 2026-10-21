@@ -1,6 +1,6 @@
 ---
 name: results-binding
-description: Publish values from the analysis through the Python or R emitter, write them into the manuscript as bindings, and get an unbound number out of the red. Use when writing or changing an analysis script in a manuscript-guard project, when putting a result, table or figure into the text, or when check reports unclassified-number, unresolved-binding, value-splits-paragraph, unquoted-result, typed-parameter, typed-software-version, typed-dictionary-release, parameter-unread, hand-authored-table, results-edited, script-newer, input-changed or duplicate-quantity. Not for prose style (use manuscript-writing), the Methods against the code (use methods-writer), or a paper written outside manuscript-guard (use paper-audit).
+description: Publish values from the analysis through the Python or R emitter, write them into the manuscript as bindings, and get an unbound number out of the red. Use when writing or changing an analysis script in a manuscript-guard project, when putting a result, table or figure into the text, or when check reports unclassified-number, unresolved-binding, value-splits-paragraph, unquoted-result, typed-parameter, typed-software-version, typed-dictionary-release, parameter-unread, hand-authored-table, results-edited, script-newer, input-changed, duplicate-quantity, quality-not-run, entry-unchecked or rule-unchecked. Not for prose style (use manuscript-writing), the Methods against the code (use methods-writer), or a paper written outside manuscript-guard (use paper-audit).
 ---
 
 # Binding the numbers
@@ -120,6 +120,15 @@ reasons and arms are named vectors there: `stages = c("Randomised" = 300, ...)`.
   the reports included.
 - **A 2x2 table.** Declare each margin as a sum of its cells, and the total as the sum of all
   four.
+
+### The data, held to the data dictionary
+
+Where the project keeps `design/data_dictionary.yaml`, hand each table the analysis reads to
+`em.check_data(table)` (`em$check_data(table)` in R), after any step that derives a variable
+the dictionary lists and before any row is dropped. It counts, under `quality.`, what each
+entry and each rule finds, and returns the rows it counted. Counts only, none of them a
+result that has to be quoted. [references/data-quality.md](references/data-quality.md) has
+the calls, each count, the rules and what a table checked once means.
 
 **Never edit `results/`.** The fragments are machine-written and digested. An edited one is
 `results-edited`, the write guard refuses the edit where the hooks run, and
@@ -272,6 +281,8 @@ checked like any other.
 | `interval-level-differs`, `spread-label-differs` | a warning: the level written beside an interval ("90% CI"), or the label beside a dispersion ("SE"), is not the one the analysis emitted. Write the one emitted, or bind what the text means |
 | `interval-level-undeclared` | a warning: an interval is quoted and its level was not emitted. Say it once: `Emitter(__file__, ci_level="95%")`, `mg_emitter(..., ci_level = "95%")` |
 | `family-uncorrected` | a warning: a family of more than one p value, and no `correction()` declared for it. "none" with a reason is a declaration |
+| `quality-not-run` | the project keeps a data dictionary and nothing was checked against it: hand each table to `check_data`. A warning from the analysis stage, a failure at submission |
+| `entry-unchecked`, `rule-unchecked` | no count covers this entry or rule: the table that holds it was not checked, its column has another name, or the variable is derived after the check. A computed rule needs its rows in `computed=`. A warning, a failure at submission |
 
 ## If you are a model doing this
 

@@ -17,3 +17,12 @@ allow:
     why: x-axis tick
   - value: "10"
     why: x-axis tick
+
+# What a reader who cannot see the figure is told: what it shows and its main message, in a
+# sentence or two. The build writes it into the picture in Word, and `submit` lists it for a
+# portal that asks for it apart. The values are bindings, so it cannot fall behind the
+# analysis; a number typed here is held as a number typed into the prose is.
+alt: >-
+  Forest plot of the reporting odds ratio of hepatic injury for example-drug on a log
+  scale: {{results.ror.point}} (95% CI {{results.ror.ci_low}} to {{results.ror.ci_high}}),
+  with the whole interval to the right of the dashed line of no association.

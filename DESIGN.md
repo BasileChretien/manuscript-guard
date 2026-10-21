@@ -641,6 +641,52 @@ supplement is held to the profile's `supplementary:` rules where it has them. Al
 warning, and a note where the journal applies the rules only once the paper is accepted
 (`applies_from: acceptance`).
 
+## A figure says what it shows to a reader who cannot see it
+
+A screen reader reads a picture's alternative text and nothing else of it, and more
+journals ask for one with each figure, in the manuscript's file or in a box of the portal.
+The build placed every figure as `![](path)`, so every document it made went out with none.
+
+A figure's alternative text is written once, in its `<name>.guard.yaml` under `alt:`, beside
+its print width and kind (decided 2026-10-21, against a line in the manuscript and a field of
+the figure review: the first is a convention the round trip would have to learn, the second
+the reviewer's words and not the author's). It may quote values by binding, as prose does,
+and G3 holds it as G2 holds prose (`gates/figure_alt.py`): a number in it bound to nothing
+that is not a convention, a label or a declared term fails from drafting
+(`figure-alt-number`), so a value typed into it is stale in waiting as it would be in a
+sentence, and a binding that prints no value fails with it (`figure-alt-binding`). A figure
+with none is a note while drafting, a warning from internal review, and a failure at
+submission where the journal's profile requires one (`figures.alt_text: required`); a text
+longer than the profile's `alt_text_max_chars`, counted as printed, warns. The check reads
+the stage itself, since the policy table gives a code one stage to fail from and this one
+warns before it fails.
+
+The build writes it as the picture's description. Pandoc makes an image alone in its
+paragraph a figure and prints its description under it as a caption, so the image is placed
+in a span of the class `mg-figure`, `[![text](path)]{.mg-figure}`, where it is not alone and
+no caption is printed (pandoc 3.9.0.2: a span holding the image, with its description, is
+written with `descr` set and nothing printed; `![](path){alt="..."}` leaves `descr`
+empty). The text is written with every ASCII punctuation mark escaped and its white space
+folded to single spaces, so that pandoc reads none of it as markup: a property in
+`tests/test_properties.py` holds that pandoc reads back each text drawn, with every mark of
+emphasis, a link, a citation, maths, raw HTML and a comment in it, as exactly the text, and
+two broken rules fail it. `figure_caption.lua` knows a figure's paragraph by that span as
+well as by a bare image. `submit` writes every figure's text, as printed, into
+`alt-text.md`, and a double-blind build looks for the authors in each picture's
+description and title as it does in the text.
+
+Since the build prints it, an HTML comment in the text is read like the rest of it, not
+hidden as in prose (round 1 of #387), and only ASCII white space is
+folded, so a no-break space typed in it stays. It is held as the prose is in more than its
+numbers: a parameter or a release the analysis declares, typed into it, fails as G2 fails it;
+the document's stamp covers it, so editing it makes a built document stale; a count bound in
+it is held to the data custodian's minimum; and a result it quotes from a synthetic run is
+said. A journal that applies its artwork rules from acceptance gets a note for a missing one,
+as G4 gives, and so does a text too long.
+
+Whether the text says what the figure shows is not checked by any gate. The figure review
+reads it under `readable-and-accessible`, and the figure-review skill says how to write one.
+
 ## The journal's citation style is used by every build
 
 A profile names the journal's citation style as the CSL style repository and Zotero name it
@@ -7770,6 +7816,19 @@ Added by the adversarial review, verified and **not** fixed:
   a `stroke-width` in percent is taken of the font size and not of the figure, and a text's
   `dx`, `dy` and `text-anchor` do not move its anchor. A `<use>` that refers to itself is
   followed sixteen deep.
+- **A figure's alternative text is checked for being there, not for being right.** That
+  it says what is drawn is the figure review's and a person's to read. It is read from the
+  figure's guard file only: alternative text set in Word by a co-author, or in a PDF figure's
+  own structure, is not read, and `import` does not bring Word's back into the guard file. A
+  LaTeX manuscript's build writes none, and the check reads nothing there, since it finds
+  the figures placed in the Markdown sources alone. A link's target, a URL, a citation key or
+  attributes in the text are hidden by the prose's mask and printed by the build, so a number
+  in one is not read, and a release typed across two numbers is said twice. The pack's `alt-text.md` names each figure by its
+  key, not by the number the document prints. A figure the manuscript places twice is held to
+  the main text's rule if either place is in the main text. The text's bindings are read by
+  the document's stamp, the custodian's minimum and the synthetic-data check, as the
+  manuscript's are; G2's other readings of bindings do not see it, so a value quoted there
+  alone is still one the manuscript does not quote.
 - **`stage:` is declared, not detected.** Writing `stage: analysis` demotes every G2 finding
   to INFO. It is printed, counted and summarised — never hidden — but CI reading the exit
   code sees green.

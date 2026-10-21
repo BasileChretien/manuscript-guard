@@ -65,10 +65,16 @@ def check_small_cells(project: Project, results: Results) -> Report:
     minimum = minimum_cell_count(project)
     if minimum is None:
         return Report()
+    from manuscript_guard.gates.figure_alt import alt_texts, literal
+
     report = Report()
     said: set[str] = set()
-    for path in source_files(project.path("manuscript")):
-        for placeholder in parse(read_text(path))[0]:
+    # The manuscript's sources, and each figure's alternative text, which the build prints
+    # into its picture (`gates/figure_alt.py`).
+    texts = [(path, read_text(path), True) for path in source_files(project.path("manuscript"))]
+    texts += [(sidecar, literal(raw), False) for _name, sidecar, raw in alt_texts(project)]
+    for path, text, lined in texts:
+        for placeholder in parse(text)[0]:
             if placeholder.namespace != "results" or placeholder.key in said:
                 continue
             value = results.values.get(placeholder.key)
@@ -83,7 +89,7 @@ def check_small_cells(project: Project, results: Results) -> Report:
                     message=f"results.{placeholder.key} is {value.display}, {wrong} the data "
                     f"custodian's minimum of {minimum}",
                     path=path,
-                    line=placeholder.line,
+                    line=placeholder.line if lined else None,
                     hint=f"report it as fewer than the minimum, \"<{minimum}\", or merge the "
                     "category with another, in the analysis; a number that is no count of "
                     "people is emitted with its unit",

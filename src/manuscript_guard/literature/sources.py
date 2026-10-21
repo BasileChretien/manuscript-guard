@@ -12,6 +12,7 @@ abstract — into text that check can run against.
 
 from __future__ import annotations
 
+import html
 import re
 import shutil
 import subprocess
@@ -88,13 +89,40 @@ def read_source(path: Path) -> str:
     )
 
 
-def _read_pdf(path: Path) -> str:
+def read_in_reading_order(path: Path) -> str:
+    """The text of a stored source as a reader reads it, a PDF's pages parted by a form feed,
+    nothing folded: for comparing runs of words with a manuscript, not for finding a quote.
+
+    `pdftotext` is asked for the reading order, without `-layout`. Laid out, each line of a
+    page of two columns holds a line of each, and a sentence of the left column is cut by
+    every line of the right; in reading order one column is read after the other. An HTML
+    page loses its tags and keeps its lines, so that a line it gives is the page's."""
+    suffix = path.suffix.lower()
+    if suffix in TEXT_SUFFIXES or suffix == "":
+        return path.read_text(encoding="utf-8", errors="replace")
+    if suffix in HTML_SUFFIXES:
+        raw = path.read_text(encoding="utf-8", errors="replace")
+
+        def kept(found: re.Match[str]) -> str:
+            return " " + "\n" * found.group().count("\n")
+
+        return html.unescape(_TAG.sub(kept, _SCRIPT.sub(kept, raw)))
+    if suffix in PDF_SUFFIXES:
+        return _read_pdf(path, layout=False)
+    raise UnreadableSource(
+        f"{path.name}: no reader for {suffix or 'a file with no extension'}; "
+        f"save its text as .txt alongside it"
+    )
+
+
+def _read_pdf(path: Path, *, layout: bool = True) -> str:
     """Poppler first, pypdf second, an honest failure third.
 
     Neither is a hard dependency. A toolkit that refuses to install without a PDF stack is
-    a toolkit people do not install.
+    a toolkit people do not install. Out of layout, pypdf's pages are parted by a form feed,
+    as pdftotext parts them.
     """
-    text = _pdftotext(path)
+    text = _pdftotext(path, layout=layout)
     if text is not None:
         return text
 
@@ -108,13 +136,15 @@ def _read_pdf(path: Path) -> str:
 
     try:
         reader = pypdf.PdfReader(str(path))
-        return "\n".join(page.extract_text() or "" for page in reader.pages)
+        between = "\n" if layout else "\f"
+        return between.join(page.extract_text() or "" for page in reader.pages)
     except Exception as exc:  # noqa: BLE001 - pypdf raises a wide variety
         raise UnreadableSource(f"{path.name}: pypdf could not read it: {exc}") from exc
 
 
-def _pdftotext(path: Path) -> str | None:
-    """What `pdftotext` reads from the PDF, or None when it gave nothing to use.
+def _pdftotext(path: Path, *, layout: bool = True) -> str | None:
+    """What `pdftotext` reads from the PDF, or None when it gave nothing to use: laid out as
+    the page is, or in reading order where `layout` is false.
 
     The encoding is stated at both ends. Left unstated, poppler writes UTF-8, the pdftotext
     of Xpdf writes Latin-1, and Python decodes with the locale, which on Windows is cp1252.
@@ -131,7 +161,7 @@ def _pdftotext(path: Path) -> str | None:
         return None
     try:
         finished = subprocess.run(
-            ["pdftotext", "-layout", "-enc", "UTF-8", str(path), "-"],
+            ["pdftotext", *(["-layout"] if layout else []), "-enc", "UTF-8", str(path), "-"],
             capture_output=True,
             text=True,
             encoding="utf-8",

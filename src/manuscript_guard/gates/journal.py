@@ -164,6 +164,16 @@ def figure_rules(project: Project) -> dict:
     return rules if isinstance(rules, dict) else {}
 
 
+def text_recycling(project: Project) -> str | None:
+    """What the target journal says of text reused from its authors' earlier papers, in its
+    page's words where the profile quotes them (`quotes.text_recycling`), else as the
+    profile states it. None where the profile says nothing, or cannot be read."""
+    document = _profile(project)
+    if document is None or not document.get("text_recycling"):
+        return None
+    return (document.get("quotes") or {}).get("text_recycling") or document["text_recycling"]
+
+
 def _profile(project: Project) -> dict | None:
     """The target journal's profile, where there is one that can be read and is valid."""
     slug = project.target_journal

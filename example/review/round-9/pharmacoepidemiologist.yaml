@@ -5,22 +5,24 @@ round: 9
 reviewer: pharmacoepidemiologist
 reviewed_by: Claude Code
 reviewed_on: '2026-10-21'
-manuscript_sha256: c3f81d6fc0d88fdd72f93720684b6eda06c1987e6126d3b6835e1453d06ad433
+manuscript_sha256: e036f05e1f73adef5996cc8b82d25c04f68b04e1823e276dbb87c5505d49c977
 file_sha256:
-  main.md: c11b422a632e8b4bed1dcf4b30c04792d26b51c4df2a67729e14fa817d0e9f52
+  main.md: 00a5583ac8e6aa01a34c7bdeb36d0993468dd52983be2841a9932e3f9ebfe2cf
   supplementary/S1_code_lists.md: 8c462c203bf3c08ac5ced6eaf25d38b56f2239502952f8d8e6b3d23cbb05b9b3
 verdict: pass
-summary: 'The Methods now say that each report was checked against the data dictionary, and
-  bind what the checks found: the reports checked, those that repeated another''s identifier
-  and those with no age group. Duplicate reports are the bias a reader of a disproportionality
-  analysis asks about first, and the sentence answers it from the analysis rather than from
-  the generator''s description. Nothing from the earlier rounds is reopened.'
+summary: 'The Methods now give, beside the statement that the generator emits no duplicate
+  cases, what the checks against the data dictionary found: the reports checked, those that
+  repeated another''s identifier and those with no age group. The count of repeated identifiers
+  is not offered as evidence of no duplicate cases, so round 1''s r1-pe-02 stands as it was
+  answered: no de-duplication step was applied because the data are synthetic, and a real
+  database would need one.'
 findings:
 - id: r9-pe-01
   severity: comment
   where: Methods
-  finding: The sentence now says no de-duplication step was applied because the count of
-    repeated identifiers is nought, where it used to say so because the generator was said to
-    emit none. In a real database the count would be above nought, and the sentence would then
-    have to say what was done with the duplicates, which the count alone does not.
-reading_sha256: 5b8575578ec562cec9768dbfc75c7d6f4b7a3545d6e19076f189c4505aeb2dbf
+  finding: The count of repeated identifiers finds a report entered twice, not the same case
+    sent by two reporters, which carries two identifiers. The sentence does not ask it to;
+    it keeps the generator as the reason no de-duplication step was applied, and a real
+    database as needing one, as round 1's r1-pe-02 was answered. A real study would report
+    its case-level de-duplication beside this count.
+reading_sha256: 0c13748c53f07650f2e061a35c97f74c3b14fd100375d7ebdb89a5394694ac37

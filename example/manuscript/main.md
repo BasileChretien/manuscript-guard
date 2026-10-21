@@ -31,9 +31,9 @@ Whether the signal extends to example-drug specifically has not been examined.
 We analysed a synthetic spontaneous reporting database covering
 {{results.cohort.period_start}} to {{results.cohort.period_end}}, a period of
 {{results.cohort.n_years}} years. Reports were included without restriction on age or sex.
-Each of the {{results.quality.rows}} reports was checked against the data dictionary:
-{{results.quality.rule.one_row_per_report}} repeated another's identifier, so no
-de-duplication step was applied, and {{results.quality.age_group.missing}} gave no age group.
+Of the {{results.quality.rows}} reports checked against the data dictionary, {{results.quality.rule.one_row_per_report}} repeated
+another's identifier and {{results.quality.age_group.missing}} gave no age group. The generator emits no duplicate cases, so no
+de-duplication step was applied; a real database would require one, and its absence here is a property of the synthetic data.
 
 Hepatic injury is the single event term used by the data generator. Real work would need a
 case definition — a MedDRA Standardised Query or an explicit preferred-term list — and the

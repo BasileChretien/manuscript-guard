@@ -1,7 +1,7 @@
 schema: manuscript-guard/panel/1
 round: 9
 opened_on: 2026-10-21
-manuscript_sha256: c3f81d6fc0d88fdd72f93720684b6eda06c1987e6126d3b6835e1453d06ad433
+manuscript_sha256: e036f05e1f73adef5996cc8b82d25c04f68b04e1823e276dbb87c5505d49c977
 blinded: false
 rationale: 'A revision round for one sentence. The Methods now say what the reports held when
   they were checked against the data dictionary: the rows checked, the duplicates and the

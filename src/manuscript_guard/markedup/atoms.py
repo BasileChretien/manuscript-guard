@@ -144,22 +144,36 @@ _MATHS_FORMAT = frozenset((W + "rPr", M + "ctrlPr"))
 def _maths_values(node: ET.Element | None) -> tuple:
     """What a property element of an equation sets: each value under it, by name, in order;
     nothing where it sets none. A switch written bare, `<m:nor/>` or `<m:degHide/>`, is on,
-    as OMML reads it (round 3 of #396); a property element holding nothing sets nothing."""
+    as OMML reads it (round 3 of #396), and so is one written "1" or "true"; "0" and
+    "false" are off. A property element holding nothing sets nothing, and formatting is
+    nothing the equation sets, the Word run properties of a control (`m:ctrlPr`) included:
+    their subtrees are not read (round 4)."""
     if node is None:
         return ()
     found = []
-    for inner in node.iter():
-        if inner is node or inner.tag in _MATHS_FORMAT:
-            continue
-        name = inner.tag.rsplit("}", 1)[-1]
-        values = sorted(
-            (k.rsplit("}", 1)[-1], v) for k, v in inner.attrib.items() if k.startswith(M)
-        )
-        if not values and not len(inner) and not name.endswith("Pr"):
-            values = [("val", "on")]
-        if values:
-            found.append((name, tuple(values)))
+
+    def walk(inner: ET.Element) -> None:
+        for child in inner:
+            if child.tag in _MATHS_FORMAT or not child.tag.startswith(M):
+                continue
+            name = child.tag.rsplit("}", 1)[-1]
+            values = sorted(
+                (k.rsplit("}", 1)[-1], _SWITCH.get(v, v))
+                for k, v in child.attrib.items()
+                if k.startswith(M)
+            )
+            if not values and not len(child) and not name.endswith("Pr"):
+                values = [("val", "on")]
+            if values:
+                found.append((name, tuple(values)))
+            walk(child)
+
+    walk(node)
     return tuple(found)
+
+
+#: How OMML spells a switch on or off, as one word each.
+_SWITCH = {"1": "on", "true": "on", "0": "off", "false": "off"}
 
 
 def _maths_key(equation: ET.Element) -> str:

@@ -453,7 +453,13 @@ def test_an_equation_word_saved_unchanged_is_no_change(tmp_path: Path) -> None:
     def as_word_saves(xml: str) -> str:
         assert pandoc_wrote in xml, xml
         xml = xml.replace(pandoc_wrote, letter.format("dose"), 1)
-        return xml.replace("<m:sSup>", "<m:sSup><m:sSupPr><m:ctrlPr /></m:sSupPr>", 1)
+        # As Word writes a control's properties: its own run formatting inside `m:ctrlPr`,
+        # which counted as switches set when the bare-switch rule read into it (#396).
+        control = (
+            '<m:sSupPr><m:ctrlPr><w:rPr><w:rFonts w:ascii="Cambria Math" '
+            'w:hAnsi="Cambria Math" /><w:i /></w:rPr></m:ctrlPr></m:sSupPr>'
+        )
+        return xml.replace("<m:sSup>", "<m:sSup>" + control, 1)
 
     _rewrite(old, "word/document.xml", as_word_saves)
     made = write(old, new, tmp_path / "copy.docx", date=DAY)
@@ -760,3 +766,48 @@ def test_the_marked_up_options_go_with_marked_up_and_not_with_annotated(
         assert "go with --marked-up" in capsys.readouterr().err
     assert main(["build", str(tmp_path), "--marked-up", "--annotated"]) == 2
     assert "one at a time" in capsys.readouterr().err
+
+
+def test_a_switch_is_on_however_it_is_spelt() -> None:
+    """OMML writes a switch on bare, or as `m:val` "1", "true" or "on", and off as "0",
+    "false" or "off": the same equation however each side spelt it (#396)."""
+    from xml.etree import ElementTree as ET
+
+    from manuscript_guard.markedup.atoms import _maths_key
+
+    m = "http://schemas.openxmlformats.org/officeDocument/2006/math"
+
+    def radical(switch: str) -> ET.Element:
+        return ET.fromstring(
+            f'<m:oMath xmlns:m="{m}"><m:rad><m:radPr>{switch}</m:radPr><m:deg/><m:e><m:r>'
+            "<m:t>x</m:t></m:r></m:e></m:rad></m:oMath>"
+        )
+
+    def written(value: str | None) -> str:
+        return "<m:degHide/>" if value is None else f'<m:degHide m:val="{value}"/>'
+
+    on = {_maths_key(radical(written(v))) for v in (None, "1", "true", "on")}
+    off = {_maths_key(radical(written(v))) for v in ("0", "false", "off")}
+    assert len(on) == 1 and len(off) == 1 and on != off
+
+
+def test_a_word_reformatted_keeps_each_part_s_own_properties() -> None:
+    """A word set in italics whose old letters lay in two runs is one part where the two
+    runs' properties are the same, and two where they differ in anything, a language
+    included, so that Reject All gives each part its own (#396)."""
+    from xml.etree import ElementTree as ET
+
+    from manuscript_guard.markedup.writer import _segments
+
+    w = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+
+    def run(properties: str) -> ET.Element:
+        return ET.fromstring(f'<w:r xmlns:w="{w}"><w:rPr>{properties}</w:rPr></w:r>')
+
+    italic = run("<w:i/>")
+    french, english = run('<w:lang w:val="fr-FR"/>'), run('<w:lang w:val="en-GB"/>')
+    plain_a, plain_b = run(""), run("")
+    alike = _segments(((plain_a, "exp"), (plain_b, "osed")), ((italic, "exposed"),))
+    assert [text for text, _now, _was in alike] == ["exposed"]
+    parts = _segments(((french, "exp"), (english, "osed")), ((italic, "exposed"),))
+    assert [(text, was) for text, _now, was in parts] == [("exp", french), ("osed", english)]

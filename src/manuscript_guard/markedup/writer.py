@@ -623,11 +623,11 @@ def _runs_of(atom: Atom) -> list[ET.Element]:
 def _segments(
     old: tuple[tuple[ET.Element, str], ...], new: tuple[tuple[ET.Element, str], ...]
 ) -> list[tuple[str, ET.Element, ET.Element]]:
-    """One word's text cut where the revision's runs are cut or the sent document's looked
-    otherwise: each part, and the run it is in on each side. Not where the sent document's
-    runs alone were cut, as Word cuts them, so that a word set in italics whose old letters
-    lay in two plain runs is one change of formatting and not two. The two sides hold the
-    same text."""
+    """One word's text cut where the revision's runs are cut or the sent document's runs'
+    properties differ: each part, and the run it is in on each side. Not where the sent
+    document's runs alone were cut, as Word cuts them, so that a word set in italics whose
+    old letters lay in two plain runs is one change of formatting and not two. The two
+    sides hold the same text."""
 
     def ends(pieces: tuple[tuple[ET.Element, str], ...]) -> list[int]:
         out, at = [], 0
@@ -644,7 +644,9 @@ def _segments(
     for cut in cuts:
         was = old[next(i for i, end in enumerate(old_ends) if end >= cut)][0]
         now = new[next(i for i, end in enumerate(new_ends) if end >= cut)][0]
-        if out and out[-1][1] is now and look(out[-1][2]) == look(was):
+        # Merged only where the old runs' properties are the same, all of them: the part's
+        # old properties are the first run's, and Reject All gives them back (round 4).
+        if out and out[-1][1] is now and _properties(out[-1][2]) == _properties(was):
             out[-1] = (out[-1][0] + text[start:cut], now, out[-1][2])
         else:
             out.append((text[start:cut], now, was))

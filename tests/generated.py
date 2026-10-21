@@ -783,6 +783,76 @@ def quotations(draw: st.DrawFn) -> tuple[str, str]:
     return source, " ".join(words[first : last + 1])
 
 
+# ------------------------------------------------------------ passages of cited works
+
+#: How a person writes a cited sentence into `passages.yaml` and means the same sentence:
+#: each is no difference to a reader, and none may be one to G7.
+FOLDED = (
+    "citations dropped", "citations added", "capitals", "wrapped", "no final stop", "typed",
+    "no-break space", "space before a comma", "binding spaced",
+)  # fmt: skip
+#: The binding a planted claim holds, as the manuscript writes it.
+_CLAIMED = "{{results.cohort.n}}"
+#: How it is written and means another sentence, or another work, and belongs to none.
+UNFOLDED = ("last word changed", "word added", "work not cited")
+
+
+_EN_DASH = "\N{EN DASH}"
+
+
+def _written(sentence: str, group: str, how: str) -> str:
+    """`sentence`, whose citation group is `group`, written into `passages.yaml` as `how`."""
+    return {
+        "citations dropped": lambda: sentence.replace(f" {group}", ""),
+        "citations added": lambda: sentence.replace(group, "[@z9, p. 4] " + group),
+        "capitals": sentence.upper,
+        "wrapped": lambda: sentence.replace(" ", "\n    ", 3),
+        "no final stop": lambda: sentence.rstrip("."),
+        "typed": lambda: typed(sentence),
+        "no-break space": lambda: sentence.replace(" ", "\N{NO-BREAK SPACE}", 2),
+        "space before a comma": lambda: sentence.replace(",", " ,", 1),
+        "binding spaced": lambda: sentence.replace(_CLAIMED, "{{ results.cohort.n }}"),
+        "last word changed": lambda: sentence.replace(" age ", " sex "),
+        "word added": lambda: sentence.replace(" rate ", " rate never "),
+        "work not cited": lambda: sentence,
+    }[how]()
+
+
+@st.composite
+def passage_files(draw: st.DrawFn) -> tuple[dict[str, Any], list[tuple[int, str]]]:
+    """A manuscript of cited claims, each its own paragraph among drawn text, and the entries
+    of a `passages.yaml` for them: for each claim, its sentence written each way of `FOLDED`
+    and of `UNFOLDED`, in an order drawn each time. With each entry, the claim it belongs
+    to and how it was written; an `UNFOLDED` one belongs to none.
+
+    Every way in each example, so that a rule broken for one of them fails under any seed. A
+    claim's last word before its citation is the one changed, so that a rule matching on a
+    sentence's opening words is wrong in every example. Drawn text opens no comment, which
+    would hide the claims after it: what is held here is how a passage finds its sentence."""
+    claims = draw(st.integers(1, 3))
+    noise = texts().map(lambda text: text.replace("<!--", "<!-"))
+    pieces, entries = [], []
+    for n in range(1, claims + 1):
+        verb = draw(st.sampled_from(("rose", "fell", "doubled", "persisted")))
+        group = draw(st.sampled_from((f"[@k{n}]", f"[@k{n}; @shared]", f"[see @k{n}, p. 3]")))
+        sentence = (
+            f"Claim {n}: in the {_OPEN}older{_CLOSE} cohort of {_CLAIMED}, the "
+            f"drug{_EN_DASH}induced injury rate {verb} with age {group}."
+        )
+        pieces.append(sentence)
+        for how in FOLDED + UNFOLDED:
+            key = f"k{n}x" if how == "work not cited" else f"k{n}"
+            entries.append((
+                {"sentence": _written(sentence, group, how), "citekey": key,
+                 "passage": "words of the work", "locator": "p. 1"},
+                (n, how),
+            ))  # fmt: skip
+    pieces = draw(st.permutations(pieces))
+    text = "".join(f"{draw(noise)}\n\n{piece}\n\n" for piece in pieces) + draw(noise)
+    entries = draw(st.permutations(entries))
+    return {"text": text, "entries": [entry for entry, _n in entries]}, [n for _e, n in entries]
+
+
 # ---------------------------------------------------------------------- a vector figure
 
 #: Each kind of text a vector figure holds: what G4 reads the size of.
@@ -1963,6 +2033,7 @@ def _quotation_asked(drawn: tuple[tuple[str, str], str, str]) -> dict[str, str]:
 INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "checker sentences": texts(),
     "prose quotations": texts(QUOTED),
+    "passages": passage_files().map(lambda drawn: drawn[0]),
     "mask": texts(TERMS),
     "latex mask": latex_texts(),
     "latex refusals": latex_texts(),

@@ -673,6 +673,32 @@ def _prose_quotations() -> Reading:
     return quotations
 
 
+@reading("passages")
+def _passages() -> Reading:
+    """The sentences each entry of a `passages.yaml` belongs to, with the line of each one's
+    paragraph, and why an entry belongs to none: what G7 holds a supporting passage to, and
+    what the co-author checker shows it beside. No source is stored, so none is read."""
+    from manuscript_guard.checking.produce import cited_sentences, citing_document
+    from manuscript_guard.literature.passages import Passage, survey
+
+    nowhere = Path(__file__).resolve().parent / "no stored sources"
+
+    def passages(given: dict[str, Any]) -> list[list[Any]]:
+        sentences = cited_sentences([citing_document(MAIN, given["text"])])
+        entries = tuple(
+            Passage(number, entry["sentence"], entry["citekey"], entry["passage"],
+                    entry["locator"])
+            for number, entry in enumerate(given["entries"], start=1)
+        )  # fmt: skip
+        found = survey(nowhere, sentences, entries)
+        return [
+            [[[cited.line, cited.text] for cited in one.sentences], one.stale]
+            for one in found.passages
+        ]
+
+    return passages
+
+
 @reading("checker sentences")
 def _checker_sentences() -> Reading:
     """How a co-author's items are cut out of a manuscript: the sentences of each paragraph.

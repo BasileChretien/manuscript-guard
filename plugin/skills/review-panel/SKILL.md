@@ -294,9 +294,7 @@ Give it one or two reviewers whose remits ask whether the design supports the in
 plan intends, naming the risks of the study type: confounding, selection, immortal time,
 missing data, multiplicity, leakage. Where `paper.yaml` declares the `study_type`, each
 reviewer is also sent what a plan for that design has to settle, with its sources; declare
-it before the round. A methods review, `design/methods_review.yaml`, is sent too: a remit can
-ask that each appraisal be checked against its standard (the
-[methods-review](../methods-review/SKILL.md) skill). The models in `review.models` can read it, as they
+it before the round. The models in `review.models` can read it, as they
 read the manuscript: `manuscript-guard review --design --run --dry-run` shows what would be
 sent (the plan and the feasibility results, never the manuscript), and the author runs
 `review --design --run` and answers yes. Never add `--yes` for them. Or file each reading by

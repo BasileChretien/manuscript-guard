@@ -151,6 +151,32 @@ def test_a_description_in_the_methods_that_does_not_cite_its_paper_warns_from_in
     assert f"cite @{KEY} in this paragraph" in finding.hint
 
 
+@pytest.mark.parametrize(
+    ("written_as", "said_of_it"),
+    [
+        pytest.param(f"# Supplementary methods\n\n{DESCRIPTION} As before [@{KEY}].",
+                     ("recycled-methods-cited", INFO), id="cited Supplementary Methods"),
+        pytest.param(f"# Supplementary Methods\n\n## S1. Data source\n\n{DESCRIPTION}",
+                     ("recycled-text", WARN), id="uncited Supplementary Methods"),
+        pytest.param(f"# Supplementary discussion\n\n{CAVEAT}",
+                     ("recycled-text", WARN), id="a supplementary discussion"),
+    ],
+)  # fmt: skip
+def test_the_supplement_is_held_to_the_norms_the_main_text_is(
+    project: Path, written_as: str, said_of_it: tuple[str, str]
+) -> None:
+    """Basile, 2026-10-21: the supplement is held to the rules of the main text. Its
+    Methods are the Methods, a description reused with its source cited there is a note,
+    and one that does not cite it warns from internal-review, as in the main text."""
+    stored(project)
+    path = project / "manuscript" / "supplementary" / "S2_recycled.md"
+    path.write_text(written_as + "\n", encoding="utf-8")
+    (finding,) = found(project, "internal-review")
+    assert (finding.code, finding.severity) == said_of_it
+    assert finding.path.name == "S2_recycled.md"
+    assert finding.line == written_as.count("\n") + 1  # the passage is the file's last line
+
+
 def test_a_citation_in_another_paragraph_does_not_cite_the_passage(project: Path) -> None:
     """The norms ask for the citation where the words are reused: the paragraph."""
     stored(project)

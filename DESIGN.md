@@ -1997,6 +1997,13 @@ reads it laid out to find a quote. Laid out, each line of a page of two columns 
 of each column, and every sentence of the left column is cut by the right one. pypdf is the
 fallback, as it is for the chain.
 
+**The supplement is compared as the main text is** (Basile, 2026-10-21: supplementary
+material is held to the same rules). Every file under `manuscript/supplementary/` is read
+with the rest, its headings name its parts as the main text's do, and its Supplementary
+Methods are the Methods: a description reused there with its source cited in the paragraph is
+a note, and one that does not cite it warns from internal-review. A similarity check reads
+the supplement as it reads the paper.
+
 **What is not compared.** The front matter, where an abstract already fails
 (`front-matter-abstract`) and the build prints nothing; the headings, which are also a bound
 no passage crosses; listings, tables and comments; and the reference list, which a similarity

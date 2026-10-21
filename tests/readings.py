@@ -418,8 +418,8 @@ def _data_dates() -> Reading:
 
 def data_dates_namespace() -> dict[str, Any]:
     """Results that hold dates: two typed into the analysis, one an ISO date and one a date
-    only its display writes; one a dataset declared, one a parameter, a year computed from
-    the data as a number, and a count."""
+    only its display writes; one a dataset declared, one a parameter, a dictionary's release
+    named by a year, a year computed from the data as a number, and a count."""
     from manuscript_guard.contracts.values import RESULTS, Value
 
     def value(key: str, held: object, display: str, role: str | None = None) -> tuple[str, Any]:
@@ -432,6 +432,7 @@ def data_dates_namespace() -> dict[str, Any]:
             value("old.label", "1 March 2024", "1 March 2024"),
             value("dataset.vb.extracted", "2024-03-01", "1 March 2024", "dataset"),
             value("param.start", "2010-01-01", "1 January 2010", "parameter"),
+            value("dictionary.icd_10", "2019", "2019", "dictionary"),
             value("cohort.first_year", 2010, "2010"),
             value("n", 12, "12"),
         ]

@@ -725,16 +725,32 @@ _DATED_RIGHT = (
     "Approval came on {{results.old.label}}. The data were extracted later.",
     "Approval came on {{results.old.extracted}} <!-- extracted -->.",
     "Data were extracted on {{results.none.such}}.",
+    # Round 1 of #392: a dictionary's release named by a year, and the words of another
+    # binding and of a citation.
+    "Codes were obtained from ICD-10 {{results.dictionary.icd_10}}.",
+    "Approval came on {{results.old.extracted}} ({{method.extraction}}).",
+    "Approval came on {{results.old.label}} [@extracted2020].",
 )
 #: Sentences that date the data with a date typed into the analysis, and the binding G2
 #: names in each.
 _DATED_WRONG = (
     ("Data were extracted on {{results.old.extracted}}.", "{{results.old.extracted}}"),
     ("We downloaded the files on {{results.old.label}}.", "{{results.old.label}}"),
-    ("Reports up to {{results.old.extracted}} were covered.", "{{results.old.extracted}}"),
+    ("Reports up to {{results.old.extracted}} were kept.", "{{results.old.extracted}}"),
     ("The snapshot of {{results.old.label}} held {{results.n}} reports.",
      "{{results.old.label}}"),
     ("Data were\nretrieved on {{results.old.extracted}}.", "{{results.old.extracted}}"),
+    # Round 1 of #392: one sentence for each word, so that a rule which drops one fails.
+    ("Reports covering {{results.old.label}} were kept.", "{{results.old.label}}"),
+    ("The database was locked on {{results.old.extracted}}.", "{{results.old.extracted}}"),
+    ("Reports until {{results.old.label}} were read.", "{{results.old.label}}"),
+    ("The reports span {{results.old.extracted}} onwards.", "{{results.old.extracted}}"),
+    ("Reports through {{results.old.label}} were read.", "{{results.old.label}}"),
+    ("A cut-off of {{results.old.extracted}} applied.", "{{results.old.extracted}}"),
+    ("A frozen copy of {{results.old.label}} was read.", "{{results.old.label}}"),
+    ("Records were accessed on {{results.old.extracted}}.", "{{results.old.extracted}}"),
+    ("Records were obtained on {{results.old.label}}.", "{{results.old.label}}"),
+    ("Queries run on {{results.old.extracted}} found them.", "{{results.old.extracted}}"),
 )  # fmt: skip
 
 
@@ -5104,6 +5120,36 @@ def _a_comment_s_words_are_read(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(data_dates, "blank_comments", lambda text: text)
 
 
+def _a_dictionary_s_release_is_taken_for_a_typed_date(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import data_dates
+
+    patch.setattr(data_dates, "_DECLARED", frozenset({"dataset", "parameter", "software"}))
+
+
+def _other_bindings_and_citations_are_read_as_words(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import data_dates
+
+    patch.setattr(data_dates, "_NOT_WORDS", re.compile(r"(?!)"))
+
+
+def _the_words_of_a_period_covered_are_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import data_dates
+
+    patch.setattr(data_dates, "_SAYS", re.compile(
+        r"(?i)\b(?:extract\w*|download\w*|retriev\w*|snapshots?|quer\w*|access\w*|"
+        r"obtain\w*|lock\w*|cut[- ]?offs?|froze\w*|freez\w*)\b"))
+
+
+def _only_the_forms_first_written_are_read(patch: pytest.MonkeyPatch) -> None:
+    """The rule as round 1 of #392 found it: `queries`, `obtaining`, `retrieving` unread."""
+    from manuscript_guard.gates import data_dates
+
+    patch.setattr(data_dates, "_SAYS", re.compile(
+        r"(?i)\b(?:extract(?:s|ed|ing|ion|ions)?|download(?:s|ed|ing)?|retriev(?:e|ed|al)|"
+        r"snapshots?|quer(?:y|ied)|accessed|obtained|locked|lock|cut[- ]?off|frozen|freeze|"
+        r"cover(?:s|ed|ing|age)?|span(?:s|ned|ning)?|until|through|up\s+to)\b"))
+
+
 def _every_stop_is_in_one_sentence(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import numbers
 
@@ -6636,6 +6682,22 @@ BROKEN = {
     ),
     "a comment's words date the data": (
         _a_comment_s_words_are_read,
+        test_a_date_typed_into_the_analysis_is_warned_where_its_sentence_dates_the_data,
+    ),
+    "a dictionary's release is taken for a typed date": (
+        _a_dictionary_s_release_is_taken_for_a_typed_date,
+        test_a_date_typed_into_the_analysis_is_warned_where_its_sentence_dates_the_data,
+    ),
+    "other bindings and citations are read as words": (
+        _other_bindings_and_citations_are_read_as_words,
+        test_a_date_typed_into_the_analysis_is_warned_where_its_sentence_dates_the_data,
+    ),
+    "the words of a period covered are not read": (
+        _the_words_of_a_period_covered_are_not_read,
+        test_a_date_typed_into_the_analysis_is_warned_where_its_sentence_dates_the_data,
+    ),
+    "only the forms first written are read": (
+        _only_the_forms_first_written_are_read,
         test_a_date_typed_into_the_analysis_is_warned_where_its_sentence_dates_the_data,
     ),
     "the first level in a sentence is read": (

@@ -10,7 +10,11 @@ and in a co-author's clone of a project on restricted data:
   check, cannot date other data;
 - every fragment that read one of those files read the same file (`dataset-read-differs`):
   a model fitted on the new extraction, beside Methods that date the old one, is told
-  where the files are missing as well as where they are there.
+  where the files are missing as well as where they are there;
+- every value under the role `dataset` is the date or the version its fragment's record
+  holds (`dataset-value-unrecorded`): G2 does not warn of a dataset's date as typed, and a
+  value that says it is one, with no record or another date, would be tied to nothing
+  (round 1 of #392).
 
 That the file at the path is still the file read is G1's `input-changed`, which names the
 dataset whose date it makes stale.
@@ -20,7 +24,8 @@ from __future__ import annotations
 
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import Fragment, Results
-from manuscript_guard.datasets import dataset_digest, slug
+from manuscript_guard.contracts.values import Value
+from manuscript_guard.datasets import DATE_PARTS, dataset_digest, slug
 from manuscript_guard.findings import Finding, Report
 
 GATE = "G1"
@@ -48,7 +53,40 @@ def check_datasets(project: Project, results: Results) -> Report:
                         report = report.with_findings(
                             _read_differs(name, record, path, fragment, other)
                         )
+    by_path = {fragment.path: fragment for fragment in results.fragments}
+    for value in results.values.values():
+        if value.role == "dataset":
+            problem = _unrecorded(value, by_path.get(value.source))
+            if problem is not None:
+                report = report.with_findings(problem)
     return report.with_counts(datasets_checked=sum(len(f.datasets) for f in results.fragments))
+
+
+def _unrecorded(value: Value, fragment: Fragment | None) -> Finding | None:
+    """The finding for a dataset's value that its fragment's record does not hold, or None."""
+    parts = value.key.split(".")
+    datasets = fragment.datasets if fragment else {}
+    records = {slug(name): record for name, record in datasets.items()}
+    record = records.get(parts[1]) if len(parts) == 3 and parts[0] == "dataset" else None
+    held = None
+    if record is not None:
+        covers = record.get("covers") or {}
+        held = {"extracted": record.get("extracted"), "covers_from": covers.get("from"),
+                "covers_to": covers.get("to"),
+                "version": record.get("version")}.get(parts[2])  # fmt: skip
+    if held is not None and held == value.value:
+        return None
+    what = ("no dataset record of its fragment holds it" if record is None
+            else f"its dataset's record holds {held!r}" if held is not None
+            else "its dataset's record holds no such part")  # fmt: skip
+    return Finding(
+        gate=GATE,
+        code="dataset-value-unrecorded",
+        message=f"results.{value.key} says it identifies a dataset, {value.value!r}, and {what}",
+        path=value.source,
+        hint="emit it with dataset(), which records the date beside the files it is pinned to; "
+        f"a {' or '.join(DATE_PARTS)} date or a version is no value to type into a fragment",
+    )
 
 
 def _pinned_inputs(fragment: Fragment, name: str, record: dict) -> dict[str, str] | Finding:

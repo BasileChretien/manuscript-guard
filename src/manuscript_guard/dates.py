@@ -47,6 +47,10 @@ _WRITTEN = (
     ("my", re.compile(rf"{_MONTH},? {_YEAR}")),
 )
 
+#: A date in figures: two groups of one or two digits and one of four, the year first or
+#: last, with one separator written twice.
+_FIGURES = re.compile(r"([0-9]{1,4})([/.-])([0-9]{1,2})\2([0-9]{1,4})")
+
 
 @dataclass(frozen=True)
 class Dated:
@@ -121,13 +125,16 @@ def written(dated: Dated, english: str | None = None) -> str:
     return f"{dated.day} {month} {dated.year}"
 
 
-def read_written(text: str) -> Dated | None:
-    """The date a display writes, in any of the forms `written` and an author write, or None
-    where the display is no date. Read whole: "1 March 2024 onwards" is not a date."""
+def readings(text: str) -> tuple[Dated, ...]:
+    """Every date a display can be read as, in any of the forms `written` and an author
+    write, or none where the display is no date. Read whole: "1 March 2024 onwards" is not a
+    date. A date in figures with the day and the month apart, "01/03/2024", is read both ways,
+    the first of March and the third of January, and the year first, "2024/03/01", one way;
+    the separator is a slash, a full stop or a hyphen, the same twice."""
     plain = " ".join(text.replace("\N{NO-BREAK SPACE}", " ").split())
     iso = parse_iso(plain)
     if iso is not None:
-        return iso
+        return (iso,)
     for order, pattern in _WRITTEN:
         found = pattern.fullmatch(plain)
         if found is None:
@@ -140,18 +147,36 @@ def read_written(text: str) -> Dated | None:
         else:
             name, year = found.groups()
         month = _MONTHS.get(name.lower())
-        if month is None:
-            return None
-        return _dated(int(year), month, int(day) if day else None)
-    return None
+        dated = None if month is None else _dated(int(year), month, int(day) if day else None)
+        return () if dated is None else (dated,)
+    found = _FIGURES.fullmatch(plain)
+    if found is None:
+        return ()
+    first, _separator, middle, last = found.groups()
+    if len(first) == 4:
+        orders = ((int(first), int(middle), int(last)),)
+    elif len(last) == 4:
+        orders = ((int(last), int(middle), int(first)), (int(last), int(first), int(middle)))
+    else:
+        return ()
+    read = (_dated(year, month, day) for year, month, day in orders)
+    return tuple(dict.fromkeys(dated for dated in read if dated is not None))
+
+
+def read_written(text: str) -> Dated | None:
+    """The date a display writes, or None where it is no date or not one date alone: the
+    first of `readings`, where there is one."""
+    found = readings(text)
+    return found[0] if found else None
 
 
 def display_problem(value: str, display: str) -> str | None:
     """What is wrong with `display` as the display of the ISO date `value`, or None.
 
     A display is the date itself or a coarser statement of it, as a rounding is of a number:
-    2015-03-01 may be printed "1 March 2015", "March 2015" or "2015", and not "1 March 2016"
-    nor "the spring of 2015".
+    2015-03-01 may be printed "1 March 2015", "March 2015", "2015" or "01/03/2015", and not
+    "1 March 2016" nor "the spring of 2015". A display read two ways passes where either is
+    the date.
 
     Only a day is a date beyond doubt. "2010-12" is also the period 2010 to 2012 written
     short, and "2015" a label, as they were before dates were read: a year or a month is held
@@ -159,23 +184,25 @@ def display_problem(value: str, display: str) -> str | None:
     dated = parse_iso(value)
     if dated is None or display == value:
         return None
-    shown = read_written(display)
-    if shown is None and dated.precision != "day":
+    shown = readings(display)
+    if not shown and dated.precision != "day":
         return None
-    if shown is None:
+    if not shown:
         return (
             f"display {display!r} is not a date, and the value is the date {dated.iso}. Write "
             f"the date alone, \"{written(dated)}\" or \"{written(dated, 'en-US')}\", and the "
             f"words around it in the text"
         )
-    if PRECISIONS.index(shown.precision) > PRECISIONS.index(dated.precision):
+    coarse = [s for s in shown
+              if PRECISIONS.index(s.precision) <= PRECISIONS.index(dated.precision)]  # fmt: skip
+    if not coarse:
         return (
-            f"display {display!r} names a {shown.precision}, and the value is the "
+            f"display {display!r} names a {shown[0].precision}, and the value is the "
             f"{dated.precision} {dated.iso}: a display may state a date less precisely, "
             f"never more"
         )
-    if not dated.within(shown):
-        return f"display {display!r} is {shown.iso}, and the value is {dated.iso}"
+    if not any(dated.within(s) for s in coarse):
+        return f"display {display!r} is {coarse[0].iso}, and the value is {dated.iso}"
     return None
 
 

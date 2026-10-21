@@ -58,6 +58,7 @@ BINDS_AT = {
     # A dataset dated as extracted on one day, and the results computed from other data.
     "dataset-pin-mismatch": ANALYSIS,
     "dataset-read-differs": ANALYSIS,
+    "dataset-value-unrecorded": ANALYSIS,
     "no-digest": ANALYSIS,
     # A parameter the analysis declares and never reads is wrong as soon as it is written.
     "parameter-unread": ANALYSIS,

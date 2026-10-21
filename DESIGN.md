@@ -5013,11 +5013,11 @@ data, hashed as before.
 "Data were extracted from VigiBase on 1 March 2024, covering reports to 31 December 2023" is
 a claim like any number. A date typed in the Methods already failed G2, each of its digits
 unbound, and the way out G2's hint gave was a string emitted with its display,
-`em.value("period.start", "2015-01-01", display="1 January 2015")`. That route had two holes.
-Nothing compared a string value with its display, so the display could be another year; and
-the call raised, the digits of an ISO date being taken for a measurement. Neither tied the
-date to the data: the extract could be replaced and the analysis run again, and the old date
-went out with every gate green.
+`em.value("period.start", "2015-01-01", display="1 January 2015")`. That route had two
+holes. Nothing compared a string value with its display, so the display could be another
+year; and the call raised, the digits of an ISO date being taken for a measurement. Neither
+tied the date to the data: the extract could be replaced and the analysis run again, and the
+old date went out with every gate green.
 
 Many databases have one version, or none a user can name (Basile, 2026-10-21), so a version
 cannot be what identifies the data. The date of the extraction can, with the file. The
@@ -5028,31 +5028,35 @@ analysis declares both where it reads the file, in either emitter:
                fingerprint="3f9a1c2b7e4d5a60", dates=frame["received"])
 
 It declares the files as inputs and emits `dataset.<name>.extracted`, `.covers_from`,
-`.covers_to`, and `.version` only where the source has one, each with the role `dataset`. The
-fragment carries a `datasets` record: the files, the pin, the dates and what the data's own
-dates were found to span. Dates are ISO 8601 to a year, a month or a day, and each is a span
-of days: data covering "2023" end on 31 December 2023. They are printed in the English
+`.covers_to`, and `.version` only where the source has one, each with the role `dataset`.
+The fragment carries a `datasets` record: the files, the pin, the dates and what the data's
+own dates were found to span. Dates are ISO 8601 to a year, a month or a day, and each is a
+span of days: data covering "2023" end on 31 December 2023. They are printed in the English
 `paper.yaml` declares, "1 March 2024" or "March 1, 2024", a month as "March 2024" in both.
 Direction two holds the Methods to binding each one, as it holds every value.
 
 **The date is pinned to the file** (Basile's choice of four, 2026-10-21). `fingerprint` is
 twelve or more characters from the start of the file's digest, the one G1 records with line
-endings left out or the one `sha256sum` prints; for several files it is the SHA-256 of a line
-`<digest>  <path>` for each, in the order of their paths (`datasets.dataset_digest`), so
-that a FAERS quarter in seven files is one dataset. A call without a pin is refused, and the
-refusal prints the pin to paste. A run on other files is refused and prints the new digest:
-data extracted again need the date of the new extraction. The other choices were a pin that
-only warned while it was missing, a ledger the tool would write and the author commit, and
-no pin. A ledger is state, and deleted it accepts anything again. A missing pin left the date
-free for as long as nobody pinned it.
+endings left out or the one `sha256sum` prints; for several files it is the SHA-256 of a
+line `<digest>  <path>` for each, in the order of their paths (`datasets.dataset_digest`),
+so that a FAERS quarter in seven files is one dataset. A call without a pin is refused, and
+the refusal prints the pin to paste. A run on other files is refused and prints the new
+digest: data extracted again need the date of the new extraction. The other choices were a
+pin that only warned while it was missing, a ledger the tool would write and the author
+commit, and no pin. A ledger is state, and deleted it accepts anything again. A missing pin
+left the date free for as long as nobody pinned it.
 
 **What is on disk is held to it, whoever wrote it.** G1 fails a dataset whose pin is not the
 start of the digest its own fragment recorded for its files, or that names a file the run
 did not record reading (`dataset-pin-mismatch`). And it fails any other fragment that read
 one of those files with another digest (`dataset-read-differs`): a model fitted on the new
-extract beside a script that dates the old one. Both read the records alone, so they hold
-in CI and in a co-author's clone, where restricted data are not. An input that changed since
-the results were written was `input-changed` already, and now names the date it makes stale.
+extract beside a script that dates the old one. And it fails a value under the role
+`dataset` that its fragment's record does not hold, there or with that date
+(`dataset-value-unrecorded`, round 1 of #392): G2 does not warn of a dataset's date, so a
+value that says it is one, typed into a fragment, would be tied to nothing. All three read
+the records alone, so they hold in CI and in a co-author's clone, where restricted data are
+not. An input that changed since the results were written was `input-changed` already, and
+now names the date it makes stale.
 
 **The data's own dates are held to what the call states.** `dates` is a column of them:
 dates, date-times, pandas and NumPy values, ISO text with a time after the day, or whole
@@ -5063,38 +5067,46 @@ refused where it runs backwards or ends after the extraction, and the extraction
 after today.
 
 **A date's display is the date.** A string value that is an ISO date may be printed as that
-date or a coarser statement of it, "1 March 2015", "March 2015" or "2015", and never another
-date nor a finer one (`dates.display_problem`). Only a day is a date beyond doubt: "2010-12"
-is also the period 2010 to 2012 written short, so a year or a month is held only to a display
-that reads as a date, and "2010 to 2012" passes as it did. The Python emitter refuses a
-display that breaks the rule as it runs, and so does R's; the loader reads every fragment with
-the same rule and reports `no-display` for one that breaks it. An ISO date is no longer
-refused as a string carrying a number, so
+date or a coarser statement of it, "1 March 2015", "March 2015" or "2015", or in figures,
+"01/03/2015", "01.03.2015" or "2015/03/01", and never another date nor a finer one
+(`dates.display_problem`). Figures with the day and the month apart are read both ways, and
+pass where either reading is the date (round 1 of #392: a display in figures loaded on
+main). Only a day is a date beyond doubt: "2010-12" is also the period 2010 to 2012 written
+short, so a year or a month is held only to a display that reads as a date, and "2010 to
+2012" passes as it did. The Python emitter refuses a display that breaks the rule as it
+runs, and so does R's; the loader reads every fragment with the same rule and reports
+`no-display` for one that breaks it. An ISO date is no longer refused as a string carrying a
+number, a month or a day: four digits alone are still a number until a label says otherwise,
+since "1520" read from a CSV is a count as often as a year (round 1 of #392). So
 `em.parameter("period.start", "2015-01-01", display="1 January 2015")`, a study period the
 analysis chose, can be written as G2's hint now says.
 
 **G2 warns where a sentence dates the data with a date the analysis typed**
 (`data-date-not-declared`, Basile, 2026-10-21). The sentence says the data were extracted,
-downloaded, retrieved, queried, obtained, locked, snapshotted or frozen, or what period they
-cover, span, run until or through, and binds a string value that is a date, as its value or
-its display, under no role. A dataset's date and a parameter's are not warned of, nor a
-number, which the analysis may have computed from the data as the example computes its first
-and last year. The words are read in the binding's sentence, as `labels` reads one, with each
-binding and each comment in it blanked: a key named `extracted` says nothing. The property is
+downloaded, retrieved, queried, accessed, obtained, locked, snapshotted or frozen, or given
+a cut-off, or what period they cover, span, run until or through, in any form of those
+words, and binds a string value that is a date, as its value or its display, under none of
+the roles that say what a value is. A dataset's date, a parameter's, a software version and
+a dictionary's release are not warned of (round 1 of #392: ICD-10's release is "2019"), nor
+a number, which the analysis may have computed from the data as the example computes its
+first and last year. The words are read in the binding's sentence, as `labels` reads one,
+with every binding, comment and citation in it blanked: a key named `extracted`, a step
+named `extraction` and a citekey `extracted2020` say nothing. The property is
 `test_a_date_typed_into_the_analysis_is_warned_where_its_sentence_dates_the_data`, over the
-reading `data dates`, with eight broken rules each caught under seeds 1 to 12. The
-supplement is held to the rules of the main text (Basile, 2026-10-21), and G2 reads it as it
-reads the main text (`source_files`): an extraction date typed in Supplementary Methods
-fails, one typed into the script is warned of there, at that file, and a dataset's date bound
-only there is quoted. One more
-warning reads no text: a dataset's date printed in another English than `paper.yaml` declares
-now (`dataset-date-english`), since the emitter reads it when the analysis runs.
+reading `data dates`, with a planted sentence for each word, and twelve broken rules each
+caught under seeds 1 to 12. The supplement is held to the rules of the main text (Basile,
+2026-10-21), and G2 reads it as it reads the main text (`source_files`): an extraction date
+typed in Supplementary Methods fails, one typed into the script is warned of there, at that
+file, and a dataset's date bound only there is quoted. One more warning reads no text: a
+dataset's date printed in another English than `paper.yaml` declares now
+(`dataset-date-english`), since the emitter reads it when the analysis runs.
 
 The name is the source's id in `design/data_sources.yaml` where the project keeps one, so
-that the record of how the data were found and reached, and the analysis that read them, name
-one source alike. Nothing reads the record yet (Known gaps). The example declares its
-simulated reports as a dataset generated on 3 August 2026 to cover 2015 to 2024, its reports'
-years held to them, and its Methods print both that and the years the reports run over.
+that the record of how the data were found and reached, and the analysis that read them,
+name one source alike. Nothing reads the record yet (Known gaps). The example declares its
+simulated reports as a dataset generated on 3 August 2026 to cover 2015 to 2024, its
+reports' years held to them, and its Methods print both that and the years the reports run
+over.
 
 ## What a change makes stale
 
@@ -12030,29 +12042,35 @@ Open, recorded as each change landed:
   checked for nothing but being text.
 - **A file derived from the extract is another input.** A script that cleans the extract and
   writes `data/cohort.parquet` for the next to read hands on a file with its own digest, and
-  G1 records no outputs, so nothing ties the derived file to the extraction dated. Declare the
-  dataset in the script that reads the extract. `dataset-read-differs` compares fragments that
-  record the same path, and data copied to another path are another file to it.
-- **The words that date the data are a list.** `data-date-not-declared` reads extract,
-  download, retrieve, query, access, obtain, lock, cut-off, snapshot, freeze, cover, span,
-  until, through and "up to" in the binding's sentence. A sentence that dates the data in
-  other words, "as of", "received by", "data cut", is not read, and one that uses those words
-  of something else and binds a typed date is warned of. A year typed into the script as a
-  number is never warned of, since it cannot be told from one the analysis computed. The
-  sentence is the one `in_sentences` gives the binding, with its limit: a stop typed against a
-  binding with no space after it ends no sentence.
-- **A display is read in English, in three orders.** "1 March 2024", "March 1, 2024", "March
-  2024", the ISO forms, three-letter months, "Sept" and an ordinal day. "1/3/2024", a day of
-  the week, a month in another language and a date with words around it are no dates to it,
-  and as the display of an ISO value they are refused. Years are of four digits, 0001 to 9999,
-  in the Gregorian calendar.
+  G1 records no outputs, so nothing ties the derived file to the extraction dated. Declare
+  the dataset in the script that reads the extract. `dataset-read-differs` compares
+  fragments that record the same path, and data copied to another path are another file to
+  it.
+- **The words that date the data are a list.** `data-date-not-declared` reads the forms of
+  extract, download, retrieve, query, access, obtain, lock, cut-off, snapshot, freeze, cover
+  and span, and until, through and "up to", in the binding's sentence. A sentence that dates
+  the data in other words, "as of", "received by", "data cut", is not read, and one that
+  uses those words of something else and binds a typed date is warned of. A year typed into
+  the script as a number is never warned of, since it cannot be told from one the analysis
+  computed. The sentence is the one `in_sentences` gives the binding, with its limit: a stop
+  typed against a binding with no space after it ends no sentence.
+- **A display is read in English, in three orders, or in figures.** "1 March 2024", "March
+  1, 2024", "March 2024", the ISO forms, three-letter months, "Sept", an ordinal day, and
+  figures with a four-digit year first or last, the day and the month taken either way. A
+  two-digit year, a day of the week, a month in another language and a date with words
+  around it are no dates to it: as the display of an ISO day they are refused, and as the
+  display of a year or a month they pass unread, since "2010-12" is also a period written
+  short. "Spring 2025" for the value "2024" passes so. Years are of four digits, 0001 to
+  9999, in the Gregorian calendar.
+- **R counts the data's dates from one.** A refusal of `dates` names the first entries that
+  lie outside as `dates[1]` in R and `dates[0]` in Python, each its language's way.
 - **The English a dataset's date is printed in is read when the analysis runs.** A
   `paper.yaml` changed afterwards is warned of (`dataset-date-english`), not failed. R reads
-  `english_variant` from its own line of `paper.yaml`, not as YAML, and takes British English
-  where it finds none there: a value in a flow mapping is not seen.
-- **`design/data_sources.yaml` is not read.** A dataset whose name is not a source the record
-  chose is not said, and the record's coverage is not compared with the declared one. That
-  waits for the record to be on main (Basile, 2026-10-21).
+  `english_variant` from its own line of `paper.yaml`, not as YAML, and takes British
+  English where it finds none there: a value in a flow mapping is not seen.
+- **`design/data_sources.yaml` is not read.** A dataset whose name is not a source the
+  record chose is not said, and the record's coverage is not compared with the declared one.
+  That waits for the record to be on main (Basile, 2026-10-21).
 - **"After today" is the machine's today.** An extraction dated today in one timezone may be
   tomorrow on the machine that runs the analysis, and is refused there.
 

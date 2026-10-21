@@ -5023,7 +5023,7 @@ _MARKDOWN_ONLY = (
 _NOT_THE_MANUSCRIPT = (
     "check_review", "check_freshness", "check_figures", "check_figure_reviews",
     "check_literature_chain", "check_shortlist", "check_design", "check_design_rounds",
-    "check_consistency", "check_restricted_inputs", "check_relations",
+    "check_consistency", "check_restricted_inputs", "check_relations", "check_datasets",
 )  # fmt: skip
 
 
@@ -14249,18 +14249,19 @@ def test_every_way_of_losing_a_reading_fails_a_submission(project: Path, name: s
 
 def test_the_example_s_own_rounds_are_read_as_they_were(project: Path) -> None:
     """One record a reviewer, no readers named: nothing about them changed. Rounds three to
-    eight read revisions with the earlier rounds in front of them, so the eighth supersedes
-    the seven before it and each says it was not blinded."""
+    nine read revisions with the earlier rounds in front of them, so the ninth supersedes
+    the eight before it and each says it was not blinded."""
     from manuscript_guard.gates import check_review
 
     report = check_review(load_project(project)[0], submission=True)
     assert report.ok, report.render(project)
     said = sorted((f.code, f.path.parent.name) for f in report.findings)
     superseded = [("review-superseded", f"round-{n}")
-                  for n, many in ((1, 3), (2, 2), (3, 2), (4, 2), (5, 2), (6, 2), (7, 1))
+                  for n, many in ((1, 3), (2, 2), (3, 2), (4, 2), (5, 2), (6, 2), (7, 1),
+                                  (8, 1))
                   for _ in range(many)]  # fmt: skip
-    assert said == superseded + [("round-not-blinded", "review")] * 6, report.render(project)
-    assert report.counts["review_rounds_complete"] == 8
+    assert said == superseded + [("round-not-blinded", "review")] * 7, report.render(project)
+    assert report.counts["review_rounds_complete"] == 9
 
 
 def test_a_reading_that_stops_parsing_fails_with_no_readers_named_either(project: Path) -> None:

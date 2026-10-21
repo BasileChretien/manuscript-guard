@@ -1499,6 +1499,8 @@ class Emitter:
                 f"{self.script}, under the same keys"
             )
         given = [path] if isinstance(path, (str, Path)) else list(path)
+        # A file named twice is one file of the data (round 1 of #392).
+        given = list({str(raw): raw for raw in given}.values())
         if not given:
             raise ValueError(f"dataset {name!r}: name the file or files the data are in")
         assert self.root is not None

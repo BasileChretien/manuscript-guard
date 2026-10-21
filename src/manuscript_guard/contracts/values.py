@@ -153,9 +153,12 @@ def check_string_value(key: str, value: str, *, label: bool) -> None:
         return
     if _LABELLIKE.match(value):
         return
-    # A date written as ISO 8601, which its display is held to (`_check_display_matches`).
-    # Refused here, the call G2's own hint for a typed date proposed raised.
-    if parse_iso(value) is not None:
+    # A date written as ISO 8601 to a month or a day, which its display is held to
+    # (`_check_display_matches`). Refused here, the call G2's own hint for a typed date
+    # proposed raised. Not a year alone: "1520" read from a CSV is a count as often as a
+    # year, and the years a label is (`_LABELLIKE`) are let through above (round 1 of #392).
+    dated = parse_iso(value)
+    if dated is not None and dated.precision != "year":
         return
 
     from manuscript_guard.classify import UNCLASSIFIED, Classifier

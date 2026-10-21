@@ -1,7 +1,7 @@
 schema: manuscript-guard/panel/1
 round: 9
 opened_on: 2026-10-21
-manuscript_sha256: 4c8bab6f9c65576eee1e69eb9c792589d9fa49689e566f287bd6a0a1c3f30951
+manuscript_sha256: 69852257b065e3c846ca59f703582153b48aba71cb06de58908483355c56a105
 blinded: false
 rationale: 'A revision round for one sentence. The Methods now say when the data were made and
   what years they were made to cover, values the analysis declares with the data and pins to

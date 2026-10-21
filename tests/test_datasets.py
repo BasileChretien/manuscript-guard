@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 from manuscript_guard.contracts import load_namespace, load_project
-from manuscript_guard.contracts.values import RESULTS, DisplayError, Value
+from manuscript_guard.contracts.values import RESULTS, DisplayError, Value, check_string_value
 from manuscript_guard.datasets import dataset_digest, declare
 from manuscript_guard.dates import (
     Dated,
@@ -454,6 +454,115 @@ def test_a_dataset_date_printed_in_another_english_is_warned() -> None:
     assert not dates_in_english(namespace, "en-GB").findings
     (found,) = dates_in_english(namespace, "en-US").findings
     assert found.code == "dataset-date-english" and "'March 1, 2024'" in found.message
+
+
+# ------------------------------------------------------------------- round 1 of #392
+
+
+@pytest.mark.parametrize("value", ["1520", "9999", "0042"])
+def test_a_string_of_four_digits_is_still_a_number_no_gate_can_trace(value: str) -> None:
+    """Round 1 of #392: an ISO year let any four digits through, where main refused them.
+    A count read from a CSV as text is not a year."""
+    with pytest.raises(DisplayError, match="no gate can trace"):
+        check_string_value("cases.n", value, label=False)
+
+
+@pytest.mark.parametrize("value", ["2015-01-01", "1850-03"])
+def test_a_month_or_a_day_is_a_date_and_no_number(value: str) -> None:
+    check_string_value("period.start", value, label=False)
+
+
+@pytest.mark.parametrize(
+    ("value", "display", "says"),
+    [
+        ("2023-12-31", "31/12/2023", None),
+        ("2023-12-31", "31.12.2023", None),
+        ("2023-12-31", "31-12-2023", None),
+        ("2023-12-31", "2023/12/31", None),
+        # The day and the month apart, read both ways: either is the date.
+        ("2024-03-01", "01/03/2024", None),
+        ("2024-01-03", "01/03/2024", None),
+        ("2024-03-02", "01/03/2024", "is 2024-03-01, and the value is 2024-03-02"),
+        ("2023-12-31", "12/31/2023", None),
+        ("2023-12-31", "31/12/23", "is not a date"),
+    ],
+)
+def test_a_date_in_figures_is_read_as_its_date(value: str, display: str, says) -> None:
+    """Round 1 of #392: a display in figures, which loaded on main, was no date to the
+    reader, and its value was dropped."""
+    problem = display_problem(value, display)
+    assert (problem is None) if says is None else (says in (problem or "")), problem
+
+
+def test_a_role_dataset_value_no_record_holds_is_caught(scratch: Path) -> None:
+    """Round 1 of #392: G2 does not warn of a dataset's date, so a value that says it is one
+    with no record, or another date than the record's, was tied to nothing."""
+    declared(scratch, version="2024 Q1").write()
+    fragment = scratch / "results" / "run.json"
+
+    def change(document: dict) -> None:
+        document["values"]["dataset.vigibase.extracted"]["value"] = "2023-01-01"
+        document["values"]["dataset.vigibase.extracted"]["display"] = "1 January 2023"
+        document["values"]["dataset.other.extracted"] = {
+            "value": "2024-03-01", "display": "1 March 2024", "label": True, "role": "dataset",
+        }  # fmt: skip
+
+    _edit(fragment, change)
+    project, _ = load_project(scratch)
+    _ns, results, _lit, _load = load_namespace(project)
+    found = sorted(f.message for f in check_datasets(project, results).failures
+                   if f.code == "dataset-value-unrecorded")  # fmt: skip
+    assert found == [
+        "results.dataset.other.extracted says it identifies a dataset, '2024-03-01', and no "
+        "dataset record of its fragment holds it",
+        "results.dataset.vigibase.extracted says it identifies a dataset, '2023-01-01', and its "
+        "dataset's record holds '2024-03-01'",
+    ]
+
+
+def test_every_value_a_dataset_writes_is_its_record_s(scratch: Path) -> None:
+    project, results = _written(scratch, declared(scratch, version="2024 Q1"))
+    assert not check_datasets(project, results).findings
+
+
+def test_a_file_named_twice_is_one_file_of_the_data(scratch: Path) -> None:
+    em = emitter(scratch)
+    em.dataset("vigibase", ["data/extract.csv", "data/extract.csv"], extracted="2024-03-01",
+               fingerprint=pin(scratch))  # fmt: skip
+    document = em.document()
+    assert document["datasets"]["vigibase"]["inputs"] == ["data/extract.csv"]
+    assert [i["path"] for i in document["provenance"]["inputs"]] == ["data/extract.csv"]
+
+
+@pytest.mark.parametrize("role", ["software", "dictionary"])
+def test_a_release_named_by_a_year_is_no_date_typed(role: str) -> None:
+    """Round 1 of #392: ICD-10's release is "2019", and declared with `dictionary()` it is no
+    date the analysis typed."""
+    _key, value = _value(f"{role}.icd_10", "2019", "2019", role=role)
+    assert not is_typed_date(value)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Approval came on {{results.old.extracted}} ({{method.extraction}}).",
+        "Approval came on {{results.old.extracted}} [@extracted2020].",
+        "Approval came on {{results.old.extracted}}, as @extracted2020 did.",
+        "Approval came on {{results.old.extracted}} (see {{table.extracted_cases}}).",
+    ],
+)
+def test_the_words_of_another_binding_or_a_citation_say_nothing(text: str) -> None:
+    assert _said(text) == []
+
+
+@pytest.mark.parametrize(
+    "word", ["queries run", "obtaining", "accessing", "retrieving", "retrieves", "cut-offs",
+             "locking", "freezing"],
+)  # fmt: skip
+def test_each_form_of_the_words_that_date_the_data_is_read(word: str) -> None:
+    assert _said(f"With {word} the data, {{{{results.old.extracted}}}} was the date.") == [
+        "{{results.old.extracted}}"
+    ]
 
 
 def test_iso_dates_are_dates_at_their_precision() -> None:

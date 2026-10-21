@@ -703,7 +703,8 @@ mg_dated <- function(year, month, day) {
   if (!is.na(month) && (month < 1L || month > 12L)) return(NULL)
   if (!is.na(day)) {
     if (is.na(month)) return(NULL)
-    on <- suppressWarnings(as.Date(sprintf("%04d-%02d-%02d", year, month, day)))
+    # With its format, an impossible day is NA; without one, as.Date stops.
+    on <- as.Date(sprintf("%04d-%02d-%02d", year, month, day), format = "%Y-%m-%d")
     if (is.na(on) || as.integer(format(on, "%d")) != day) return(NULL)
   }
   list(year = as.integer(year), month = as.integer(month), day = as.integer(day))
@@ -753,11 +754,45 @@ mg_date_written <- function(dated, english) {
   paste(dated$day, month, dated$year)
 }
 
-# The date a display writes, or NULL, as Python's `read_written`: read whole.
-mg_read_written <- function(text) {
-  plain <- gsub("[[:space:]]+", " ", trimws(gsub(" ", " ", text, fixed = TRUE)))
+# Every date a display can be read as, as Python's `readings`: read whole; a date in
+# figures with the day and the month apart is read both ways, the year first one way.
+mg_readings <- function(text) {
+  plain <- gsub("[[:space:]]+", " ", trimws(gsub("\u00a0", " ", text, fixed = TRUE)))
   iso <- mg_iso_date(plain)
-  if (!is.null(iso)) return(iso)
+  if (!is.null(iso)) return(list(iso))
+  words <- mg_read_words(plain)
+  if (!is.null(words)) return(if (isFALSE(words)) list() else list(words))
+  parts <- regmatches(plain, regexec("^([0-9]{1,4})([/.-])([0-9]{1,2})\\2([0-9]{1,4})$",
+                                     plain, perl = TRUE))[[1]]
+  if (length(parts) == 0) return(list())
+  first <- parts[2]
+  middle <- parts[4]
+  last <- parts[5]
+  orders <- list()
+  if (nchar(first) == 4) {
+    orders <- list(c(first, middle, last))
+  } else if (nchar(last) == 4) {
+    orders <- list(c(last, middle, first), c(last, first, middle))
+  }
+  found <- list()
+  for (order in orders) {
+    dated <- mg_dated(as.integer(order[1]), as.integer(order[2]), as.integer(order[3]))
+    if (!is.null(dated) && !any(vapply(found, identical, logical(1), dated))) {
+      found[[length(found) + 1]] <- dated
+    }
+  }
+  found
+}
+
+# The first date a display can be read as, or NULL, as Python's `read_written`.
+mg_read_written <- function(text) {
+  found <- mg_readings(text)
+  if (length(found) == 0) NULL else found[[1]]
+}
+
+# A display written in words, "1 March 2024", "March 1, 2024" or "March 2024": its date,
+# FALSE where it is written so and is no date ("31 April 2024"), NULL where it is not.
+mg_read_words <- function(plain) {
   names_ <- tolower(MG_MONTHS)
   month_of <- function(name) {
     hit <- match(tolower(name), c(names_, substr(names_, 1, 3), "sept"))
@@ -780,8 +815,9 @@ mg_read_written <- function(text) {
       my = list(day = NA, name = parts[2], year = parts[3])
     )
     number <- month_of(stated$name)
-    if (is.na(number)) return(NULL)
-    return(mg_dated(as.integer(stated$year), number, as.integer(stated$day)))
+    if (is.na(number)) return(FALSE)
+    dated <- mg_dated(as.integer(stated$year), number, as.integer(stated$day))
+    return(if (is.null(dated)) FALSE else dated)
   }
   NULL
 }
@@ -791,24 +827,30 @@ mg_read_written <- function(text) {
 mg_date_display_problem <- function(value, display) {
   dated <- mg_iso_date(value)
   if (is.null(dated) || identical(display, value)) return(NULL)
-  shown <- mg_read_written(display)
+  shown <- mg_readings(display)
   # Only a day is a date beyond doubt: "2010-12" is also a period written short.
-  if (is.null(shown) && mg_date_precision(dated) != "day") return(NULL)
-  if (is.null(shown)) {
+  if (length(shown) == 0 && mg_date_precision(dated) != "day") return(NULL)
+  if (length(shown) == 0) {
     return(paste0("display '", display, "' is not a date, and the value is the date ",
                   mg_date_iso(dated), ". Write the date alone, \"",
                   mg_date_written(dated, "en-GB"), "\" or \"",
                   mg_date_written(dated, "en-US"), "\", and the words around it in the text"))
   }
   levels <- c("year", "month", "day")
-  if (match(mg_date_precision(shown), levels) > match(mg_date_precision(dated), levels)) {
-    return(paste0("display '", display, "' names a ", mg_date_precision(shown),
+  coarse <- Filter(function(s) {
+    match(mg_date_precision(s), levels) <= match(mg_date_precision(dated), levels)
+  }, shown)
+  if (length(coarse) == 0) {
+    return(paste0("display '", display, "' names a ", mg_date_precision(shown[[1]]),
                   ", and the value is the ", mg_date_precision(dated), " ", mg_date_iso(dated),
                   ": a display may state a date less precisely, never more"))
   }
-  if (mg_date_first(dated) < mg_date_first(shown) || mg_date_last(dated) > mg_date_last(shown)) {
-    return(paste0("display '", display, "' is ", mg_date_iso(shown), ", and the value is ",
-                  mg_date_iso(dated)))
+  within <- vapply(coarse, function(s) {
+    mg_date_first(s) <= mg_date_first(dated) && mg_date_last(dated) <= mg_date_last(s)
+  }, logical(1))
+  if (!any(within)) {
+    return(paste0("display '", display, "' is ", mg_date_iso(coarse[[1]]),
+                  ", and the value is ", mg_date_iso(dated)))
   }
   NULL
 }
@@ -893,7 +935,7 @@ mg_spans <- function(name, dates) {
   iso <- rep(NA_character_, length(distinct))
   for (i in seq_along(distinct)) {
     item <- distinct[i]
-    if (is.na(item) || (is.character(item) && !nzchar(item))) next
+    if (is.na(item) || (is.character(item) && !nzchar(trimws(item)))) next
     dated <- NULL
     if (is.character(item)) {
       dated <- mg_iso_date(strsplit(trimws(item), "[T ]")[[1]][1])
@@ -1297,6 +1339,8 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
     if (!is.character(path) || length(path) == 0) {
       stop("dataset ", name, ": name the file or files the data are in", call. = FALSE)
     }
+    # A file named twice is one file of the data, as in Python (round 1 of #392).
+    path <- unique(path)
     full <- vapply(path, function(p) if (file.exists(p)) p else file.path(project_root, p),
                    character(1), USE.NAMES = FALSE)
     for (i in seq_along(full)) {

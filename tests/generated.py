@@ -977,6 +977,8 @@ DATED = (
     "{{results.old.extracted}}", "{{results.old.label}}", "{{results.dataset.vb.extracted}}",
     "{{results.param.start}}", "{{results.cohort.first_year}}", "{{results.n}}", "extracted",
     "downloaded", "covering", "up to", "until", "retrieved", "snapshot", "<!-- extracted -->",
+    "{{results.dictionary.icd_10}}", "{{method.extraction}}", "[@extracted2020]", "queries",
+    "obtaining", "locked", "through",
 )  # fmt: skip
 
 

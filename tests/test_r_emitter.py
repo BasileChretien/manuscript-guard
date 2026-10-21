@@ -1268,8 +1268,12 @@ em <- mg_emitter("%(script)s")
          'fingerprint = "%(pin)s", version = 5)', "give the version as text"),
         ('em$value("period.end", "2015-01-01", display = "1 January 2016")',
          "is 2016-01-01, and the value is 2015-01-01"),
+        # Round 1 of #392: an impossible day stopped R inside as.Date, not with the refusal.
+        ('em$dataset("vigibase", "data/extract.csv", extracted = "2024-02-30", '
+         'fingerprint = "%(pin)s")', "extracted 2024-02-30 is not a date written as ISO 8601"),
     ],
-    ids=["unpinned", "other data", "outside the period", "a number", "another date"],
+    ids=["unpinned", "other data", "outside the period", "a number", "another date",
+         "no such day"],
 )
 def test_r_refuses_what_python_refuses_of_a_dataset(tmp_path: Path, call: str, says: str) -> None:
     root, pins = _dataset_project(tmp_path)
@@ -1279,6 +1283,28 @@ def test_r_refuses_what_python_refuses_of_a_dataset(tmp_path: Path, call: str, s
     out = _run_r(script, root)
     assert out.returncode != 0
     assert (says % pins) in " ".join(out.stderr.split()), out.stderr
+
+
+def test_r_reads_a_blank_date_as_missing_and_a_date_in_figures_as_python_does(
+    tmp_path: Path,
+) -> None:
+    """Round 1 of #392: a date of blanks was refused in R and missing in Python; a display
+    in figures, "01/03/2024", is read both ways in both."""
+    root, pins = _dataset_project(tmp_path)
+    script = root / "analysis" / "blank.R"
+    call = "\n".join((
+        'em$dataset("vigibase", "data/extract.csv", extracted = "2024-03-01", '
+        'fingerprint = "%(pin)s", dates = c("2023-01-05", "  ", NA))',
+        'em$value("day.a", "2024-01-03", display = "01/03/2024")',
+        'em$value("day.b", "2023-12-31", display = "31.12.2023")',
+        "em$write()",
+    )) % pins  # fmt: skip
+    script.write_text(REFUSED_R % {"emit": EMIT_R.as_posix(), "script": script.as_posix(),
+                                   "call": call}, encoding="utf-8")  # fmt: skip
+    out = _run_r(script, root)
+    assert out.returncode == 0, out.stderr
+    document = json.loads((root / "results" / "blank.json").read_text(encoding="utf-8"))
+    assert document["datasets"]["vigibase"]["observed"]["count"] == 1
 
 
 MODEL_R = """

@@ -37,13 +37,20 @@ GATE = "G2"
 #: What a sentence about the data says of them: that they were taken from their source on
 #: a date, or what period they cover.
 _SAYS = re.compile(
-    r"(?i)\b(?:extract(?:s|ed|ing|ion|ions)?|download(?:s|ed|ing)?|retriev(?:e|ed|al)|"
-    r"snapshots?|quer(?:y|ied)|accessed|obtained|locked|lock|cut[- ]?off|frozen|freeze|"
+    r"(?i)\b(?:extract(?:s|ed|ing|ion|ions)?|download(?:s|ed|ing)?|"
+    r"retriev(?:e|es|ed|ing|al)|snapshots?|quer(?:y|ies|ied|ying)|access(?:es|ed|ing)?|"
+    r"obtain(?:s|ed|ing)?|lock(?:s|ed|ing)?|cut[- ]?offs?|frozen|froze|freez(?:e|es|ing)|"
     r"cover(?:s|ed|ing|age)?|span(?:s|ned|ning)?|until|through|up\s+to)\b"
 )
 
-#: The roles a date may be emitted under without `dataset()`: a choice the analysis made.
-_DECLARED = frozenset({"dataset", "parameter"})
+#: What else a sentence holds that is no word of it: another binding, a table's, a figure's
+#: or a step's, and a citation, whose keys are names ("extracted2020").
+_NOT_WORDS = re.compile(r"\{\{[^{}]*\}\}|\[[^\[\]]*@[^\[\]]*\]|(?<![\w.])@[\w:.#$%&+?<>~/-]+")
+
+#: The roles a date is emitted under by a call that declares what it is: the data's date
+#: (`dataset`), a choice the analysis made (`parameter`), the version of software it ran on
+#: and the release of a dictionary it coded with, which a year can be ("ICD-10 2019").
+_DECLARED = frozenset({"dataset", "parameter", "software", "dictionary"})
 
 
 def is_typed_date(value: Value) -> bool:
@@ -74,7 +81,8 @@ def data_dates(files: list[tuple[Path, str, list]], namespace: dict[str, Value])
 
 
 def _words(read: str, stops: list[int], placeholders: list) -> str:
-    """The words of the sentence the bindings stand in, with each binding blanked."""
+    """The words of the sentence the bindings stand in, with each binding blanked, and every
+    other binding and citation in it."""
     first = min(p.start for p in placeholders)
     last = max(p.end for p in placeholders)
     before = bisect_left(stops, first)
@@ -86,7 +94,7 @@ def _words(read: str, stops: list[int], placeholders: list) -> str:
         pieces.append(read[at : placeholder.start])
         at = placeholder.end
     pieces.append(read[at:closes])
-    return " ".join(pieces)
+    return _NOT_WORDS.sub(" ", " ".join(pieces))
 
 
 def _typed(placeholder, value: Value, path: Path) -> Finding:

@@ -534,7 +534,9 @@ class _Reader:
         start = end + (self.text[end : end + 1] == "*")
         delimiter = _verb_delimiter(self.text, start)
         close = self.text.find(delimiter, start + 1) if delimiter else -1
-        if close < 0 or close > _comment_end(self.text, start + 1):
+        # A line break looked for between the delimiters only: looked for to the line's end,
+        # a line of `\verb|x|` was read again for each (CI on #380, macOS and Windows).
+        if close < 0 or self.text.find("\n", start + 1, close) >= 0:
             self._refuse("tex-unbalanced", at, "\\verb is not closed on its line")
             return
         self._blank(at, start + 1)

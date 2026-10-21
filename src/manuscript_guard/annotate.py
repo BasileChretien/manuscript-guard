@@ -213,7 +213,7 @@ def annotate(
     pieces = [
         *_value_pieces(placeholders, namespace, counter, unmarkable),
         *_ref_pieces(placeholders, numbers, counter, unmarkable),
-        *_block_pieces(placeholders, results, project, counter),
+        *_block_pieces(placeholders, results, project, counter, numbers),
         # An anchor prints nothing, here as in the build.
         *(_Piece(p.start, p.end, "") for p in placeholders if p.is_anchor),
         *_number_pieces(text, masked, classifier, counter, unmarkable),
@@ -307,7 +307,7 @@ def _ref_pieces(placeholders, numbers, counter, unmarkable) -> list[_Piece]:
     return pieces
 
 
-def _block_pieces(placeholders, results, project, counter) -> list[_Piece]:
+def _block_pieces(placeholders, results, project, counter, numbers=None) -> list[_Piece]:
     """Each table, its numbers marked, and each figure."""
     pieces = []
     for placeholder in placeholders:
@@ -318,7 +318,12 @@ def _block_pieces(placeholders, results, project, counter) -> list[_Piece]:
             if table is None:
                 continue
             counter[0] += 1
-            parts = _annotated_table(table, placeholder.key, counter)
+            label = None
+            if numbers is not None:
+                from manuscript_guard.gates.pointers import caption_label
+
+                label = caption_label(numbers, placeholder.key, table.caption)
+            parts = _annotated_table(table, placeholder.key, counter, label)
             plain = "".join(part for part, _mark in parts)
             pieces.append(_Piece(placeholder.start, placeholder.end, plain, table=parts))
         elif placeholder.namespace == "figure" and project is not None:
@@ -391,7 +396,9 @@ def _render(text: str, pieces: list[_Piece], showing: set[str]) -> str:
     return "".join(out)
 
 
-def _annotated_table(table, key: str, counter: list[int]) -> list[tuple[str, Mark | None]]:
+def _annotated_table(
+    table, key: str, counter: list[int], label: str | None = None
+) -> list[tuple[str, Mark | None]]:
     """Render an emitted table in parts, each number in it a part with its mark.
 
     A table's numbers are traced by construction: the analysis emitted the table, and G2
@@ -401,7 +408,7 @@ def _annotated_table(table, key: str, counter: list[int]) -> list[tuple[str, Mar
     """
     from manuscript_guard.build.assemble import render_table
 
-    rendered = render_table(table)
+    rendered = render_table(table, label)
     source = table.source.name if table.source else "an analysis"
     parts: list[tuple[str, Mark | None]] = []
     for number, line in enumerate(rendered.split("\n")):

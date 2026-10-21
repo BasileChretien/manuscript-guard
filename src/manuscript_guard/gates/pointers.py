@@ -80,6 +80,8 @@ _REST = re.compile(r"(?P<join>" + _JOIN + r")(?P<s>S)?(?P<n>\d+)[A-Za-z]?\b", re
 _PLURAL = re.compile(r"(?:tables|figures|figs\.?)$", re.IGNORECASE)
 #: What may stand before a caption's pointer on its line: nothing, or the marks of bold.
 _CAPTION = re.compile(r"[^\S\n]*(?:\*\*|__)?")
+#: What may stand before a pointer that opens its line as a caption or a heading does.
+_OPENING = re.compile(r"[^\S\n]*(?:#{1,6}[^\S\n]+)?(?:\*\*|__)?")
 _PLACED = re.compile(r"\{\{\s*(?P<kind>table|figure)\.(?P<key>[A-Za-z0-9_.]+)\s*\}\}")
 #: What says a document places a table by hand, in any of the forms pandoc reads: a pipe
 #: table's rule, a grid table's border, a simple table's dashes, a multiline table's rule, a
@@ -110,6 +112,8 @@ class Pointer:
     cites: bool
     #: The ref or num binding that printed the number, where one did.
     binding: Placeholder | None = None
+    #: The pointer opens its line, after a heading's hashes or the marks of bold at most.
+    opens: bool = False
 
 
 def _kind(word: str) -> str:
@@ -210,6 +214,8 @@ def pointers_in(text: str, path: Path, numbers: Numbers | None = None) -> list[P
         line = bisect.bisect_right(starts, read.origin(match.start()))
         caption = _is_caption(shown, match)
         elsewhere = bool(match["supp"] or match["e"] or match["after"])
+        opening = shown[shown.rfind("\n", 0, match.start()) + 1 : match.start()]
+        opens = _OPENING.fullmatch(opening) is not None
         for s, number, at in _numbers(match):
             found.append(
                 Pointer(
@@ -221,6 +227,7 @@ def pointers_in(text: str, path: Path, numbers: Numbers | None = None) -> list[P
                     shown=" ".join(match.group().split()),
                     cites=line not in heads and not caption,
                     binding=read.binding_at(at),
+                    opens=opens,
                 )
             )
     return found
@@ -326,7 +333,9 @@ def display_numbers(project: Project) -> Numbers:
     return _count(project)[0]
 
 
-def check_pointers(project: Project) -> Report:
+def check_pointers(project: Project, results=None) -> Report:
+    """G2's pointers, as the module says. Given the `results`, an emitted table's caption that
+    opens with a pointer is held to the table's number too."""
     root = project.path("manuscript")
     numbers, files = _count(project)
     as_files = numbers.as_files
@@ -337,6 +346,7 @@ def check_pointers(project: Project) -> Report:
     for path, text in files:
         found = pointers_in(text, path, numbers)
         report = report.merge(_bound(text, path, numbers, found))
+        report = report.merge(_captions(text, path, numbers, found, results))
         # A binding read with words that point elsewhere is said above, and cites nothing.
         pointers += [pointer for pointer in found if _reads_as_named(pointer, numbers)]
 
@@ -448,6 +458,124 @@ def _bound(text: str, path: Path, numbers: Numbers, found: list[Pointer]) -> Rep
             )
         )
     return report
+
+
+def _blocks(shown: str) -> list[tuple[int, int]]:
+    """Each run of lines that are not blank, as its first and last line, counted from 1."""
+    blocks: list[tuple[int, int]] = []
+    first = None
+    lines = shown.split("\n")
+    for number, line in enumerate(lines, 1):
+        if line.strip() and first is None:
+            first = number
+        elif not line.strip() and first is not None:
+            blocks.append((first, number - 1))
+            first = None
+    if first is not None:
+        blocks.append((first, len(lines)))
+    return blocks
+
+
+def opening_pointer(caption: str) -> re.Match | None:
+    """The pointer an emitted caption opens with, followed by a stop or a colon: "Table 2." in
+    "Table 2. Baseline characteristics". The build prints such a caption as it is, and numbers
+    any other."""
+    found = _POINTER.match(caption.lstrip())
+    rest = caption.lstrip()[found.end() :] if found else ""
+    return found if found and rest[:1] in (".", ":") and not found["rest"] else None
+
+
+#: Where a caption stands beside each kind, in blocks from its binding: a figure's under it, a
+#: table's under it or above it.
+_BESIDE = {FIGURE: (1,), TABLE: (1, -1)}
+
+
+def caption_label(numbers: Numbers, key: str, caption: str) -> str | None:
+    """What the build prints before the caption of the table placed by `{{table.<key>}}`:
+    its pointer, "Table 2" or "eTable 1" (Basile's choice of 2026-10-20). None where the count
+    cannot number the table, or where the emitted caption opens with a pointer already, which
+    is printed as it is and held to the table's number by G2."""
+    displays = numbers.placed.get((TABLE, key), ())
+    if len(displays) != 1 or numbers.uncounted(displays[0].supplementary, TABLE):
+        return None
+    if caption and opening_pointer(caption) is not None:
+        return None
+    form = numbers.forms[displays[0].supplementary, TABLE]
+    return form.replace(NUMBER, str(displays[0].number))
+
+
+def _captions(
+    text: str, path: Path, numbers: Numbers, found: list[Pointer], results
+) -> Report:
+    """A caption that names another display than the one it stands beside: a pointer that
+    opens the block directly after a figure placed by its binding, or directly before or
+    after a table, and cites nothing there (a caption or a heading); and, given the results,
+    an emitted table's caption that opens with a pointer. A ref in a caption is read as the
+    number it prints, so `{{ref.figure.flow}}.` under the forest plot is said too."""
+    report = Report()
+    shown = _scanned(text)
+    blocks = _blocks(shown)
+    opening: dict[int, Pointer] = {}
+    for pointer in found:
+        if pointer.opens and not pointer.cites:
+            opening.setdefault(pointer.line, pointer)
+    for placed in _PLACED.finditer(shown):
+        kind, key = placed["kind"], placed["key"]
+        displays = numbers.placed.get((kind, key), ())
+        if len(displays) != 1 or numbers.uncounted(displays[0].supplementary, kind):
+            continue
+        display = displays[0]
+        named = numbers.forms[display.supplementary, kind].replace(NUMBER, str(display.number))
+        line = shown.count("\n", 0, placed.start()) + 1
+        here = next(index for index, (a, b) in enumerate(blocks) if a <= line <= b)
+        beside = [here + step for step in _BESIDE[kind]]
+        captions = [
+            opening[blocks[index][0]]
+            for index in beside
+            if 0 <= index < len(blocks) and blocks[index][0] in opening
+        ]
+        wrong = [
+            caption
+            for caption in captions
+            if caption.kind == kind
+            and (caption.supplementary, caption.number) != (display.supplementary, display.number)
+        ]
+        emitted = results.tables.get(key) if results is not None and kind == TABLE else None
+        typed = opening_pointer(emitted.caption) if emitted and emitted.caption else None
+        if typed is not None and _kind(typed["kind"]) == TABLE:
+            elsewhere = bool(typed["supp"] or typed["e"] or typed["after"] or typed["s0"])
+            if (elsewhere, int(typed["n0"])) != (display.supplementary, display.number):
+                report = report.with_findings(
+                    _caption_finding(
+                        f"the caption emitted for {display.binding} opens with "
+                        f"{' '.join(typed.group().split())!r}",
+                        named, display, path, line,
+                        "emit the caption without its number: the build prints the number "
+                        "the table has before it",
+                    )  # fmt: skip
+                )
+        for caption in wrong:
+            report = report.with_findings(
+                _caption_finding(
+                    f"{caption.shown!r} captions {display.binding}",
+                    named, display, path, caption.line,
+                    f"write {{{{ref.{kind}.{key}}}}} for the number, which prints {named!r}",
+                )  # fmt: skip
+            )
+    return report
+
+
+def _caption_finding(
+    said: str, named: str, display: Display, path: Path, line: int, hint: str
+) -> Finding:
+    return Finding(
+        gate=GATE,
+        code="caption-names-another",
+        message=f"{said}, which is {named} in {_where(display.supplementary)}",
+        path=path,
+        line=line,
+        hint=hint,
+    )
 
 
 def _where(supplementary: bool) -> str:
@@ -582,4 +710,12 @@ def _in_order(
     return report
 
 
-__all__ = ["Placed", "check_pointers", "display_numbers", "placed_in", "pointers_in"]
+__all__ = [
+    "Placed",
+    "caption_label",
+    "check_pointers",
+    "display_numbers",
+    "opening_pointer",
+    "placed_in",
+    "pointers_in",
+]

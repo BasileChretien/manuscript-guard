@@ -55,8 +55,11 @@ class Assembled:
     text: str
 
 
-def render_table(table: Table) -> str:
-    """A pandoc pipe table. Column widths are padded only so the source stays readable."""
+def render_table(table: Table, label: str | None = None) -> str:
+    """A pandoc pipe table. Column widths are padded only so the source stays readable.
+
+    `label` is the table's pointer, "Table 2", printed before its caption ("Table 2. Reports
+    by drug group."), or as the caption of a table that emits none (`caption_label`)."""
     columns = list(table.columns)
     widths = [len(c) for c in columns]
     for row in table.rows:
@@ -78,9 +81,12 @@ def render_table(table: Table) -> str:
 
     out = [line(columns), "| " + " | ".join(rule) + " |"]
     out.extend(line(row) for row in table.rows)
-    if table.caption:
+    caption = table.caption
+    if label:
+        caption = f"{label}. {caption}" if caption else label
+    if caption:
         out.append("")
-        out.append(f": {table.caption}")
+        out.append(f": {caption}")
     return "\n".join(out)
 
 
@@ -282,7 +288,7 @@ def assemble(
     compares with and for nothing else; see `roundtrip.tag`.
     """
     from manuscript_guard.crossref import Refused
-    from manuscript_guard.gates.pointers import display_numbers
+    from manuscript_guard.gates.pointers import caption_label, display_numbers
 
     report = Report()
     out: list[Assembled] = []
@@ -355,7 +361,8 @@ def assemble(
                         )
                     )
                     continue
-                replacement = render_table(table)
+                label = caption_label(numbers, placeholder.key, table.caption)
+                replacement = render_table(table, label)
             elif placeholder.namespace == "figure":
                 figure = find_figure(project, placeholder.key)
                 if figure is None:

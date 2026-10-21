@@ -199,16 +199,20 @@ def numbered_displays(
     each place one of the main text's tables, so that numbering them in the order of their
     paths would give the two the other's number, and the supplement places a table.
 
+    Some displays have a caption beside them, typed or opened by their ref: under a figure,
+    above or under a table. Two are planted wrong in every example, naming another display
+    of the main text: one under a figure and one above a table.
+
     Returns each file's text by its path under `manuscript/`; what each ref and num binding
     prints, by its file and the offset it starts at; and the findings the planted pointers
-    make, by code, file and line."""
+    and captions make, by code, file and line."""
 
     def words() -> str:
         return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
 
     counts = {
         (False, "table"): draw(st.integers(2, 4)),
-        (False, "figure"): draw(st.integers(0, 2)),
+        (False, "figure"): draw(st.integers(2, 3)),
         (True, "table"): draw(st.integers(1, 2)),
         (True, "figure"): draw(st.integers(0, 2)),
     }
@@ -238,6 +242,32 @@ def numbered_displays(
     def whole(kind: str, key: str) -> str:
         return f"{kind.capitalize()} {alone(kind, key)}"
 
+    # The two displays whose caption is planted wrong, and the number it names instead: that
+    # of another display of their kind in the main text.
+    wrong: dict[tuple[str, str], int] = {}
+    for kind in ("figure", "table"):
+        mine = [key for (k, key), (s, _n) in numbers.items() if k == kind and not s]
+        chosen, other = draw(st.permutations(mine))[:2]
+        wrong[kind, chosen] = numbers[kind, other][1]
+
+    def line_of(parts: list[tuple[str, str | None, str | None]]) -> int:
+        return "".join(part[0] + (part[1] or "") for part in parts).count("\n") + 1
+
+    def caption(file: str, kind: str, key: str, parts: list, where: str) -> None:
+        """A caption beside the display, standing `where` says, or none."""
+        if (kind, key) in wrong and where == ("under" if kind == "figure" else "above"):
+            planted.add(("caption-names-another", file, line_of(parts)))
+            bold = "**" if where == "above" else ""
+            text = f"{bold}{kind.capitalize()} {wrong[kind, key]}.{bold} {words()}\n\n"
+            parts.append((text, None, None))
+            return
+        how = draw(st.sampled_from(("none", "typed", "ref")))
+        if how == "typed":
+            parts.append((f"{whole(kind, key)}. {words()}\n\n", None, None))
+        elif how == "ref":
+            parts.append(("", f"{{{{ref.{kind}.{key}}}}}", whole(kind, key)))
+            parts.append((f". {words()}\n\n", None, None))
+
     texts: dict[str, str] = {}
     prints: dict[tuple[str, int], str] = {}
     planted: set[tuple[str, str, int]] = set()
@@ -263,7 +293,11 @@ def numbered_displays(
                 else:
                     word = draw(st.sampled_from(_NUM_WORDS[supplementary, kind]))
                     parts.append((f"{lead}{word} ", f"{{{{num.{kind}.{key}}}}}", alone(kind, key)))
-                parts.append((f".\n\n{{{{{kind}.{key}}}}}\n\n", None, None))
+                parts.append((".\n\n", None, None))
+                if kind == "table":
+                    caption(file, kind, key, parts, "above")
+                parts.append((f"{{{{{kind}.{key}}}}}\n\n", None, None))
+                caption(file, kind, key, parts, "under")
             if file == "main.md":
                 listed = sorted(
                     (key for kind, key in numbers if kind == "table" and not numbers[kind, key][0]),
@@ -284,8 +318,7 @@ def numbered_displays(
                      f"{{{{num.table.{table}}}}}", alone("table", table)),
                 ]  # fmt: skip
                 for code, word, binding, printed in draw(st.permutations(plants)):
-                    line = "".join(part[0] + (part[1] or "") for part in parts).count("\n") + 1
-                    planted.add((code, file, line))
+                    planted.add((code, file, line_of(parts)))
                     lead = f"{words().capitalize()} in {word}"
                     printing = (lead, binding, printed)
                     parts.append(printing if printed else (lead + binding, None, None))

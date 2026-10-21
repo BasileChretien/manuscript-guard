@@ -641,6 +641,52 @@ supplement is held to the profile's `supplementary:` rules where it has them. Al
 warning, and a note where the journal applies the rules only once the paper is accepted
 (`applies_from: acceptance`).
 
+## A figure says what it shows to a reader who cannot see it
+
+A screen reader reads a picture's alternative text and nothing else of it, and more
+journals ask for one with each figure, in the manuscript's file or in a box of the portal.
+The build placed every figure as `![](path)`, so every document it made went out with none.
+
+A figure's alternative text is written once, in its `<name>.guard.yaml` under `alt:`, beside
+its print width and kind (decided 2026-10-21, against a line in the manuscript and a field of
+the figure review: the first is a convention the round trip would have to learn, the second
+the reviewer's words and not the author's). It may quote values by binding, as prose does,
+and G3 holds it as G2 holds prose (`gates/figure_alt.py`): a number in it bound to nothing
+that is not a convention, a label or a declared term fails from drafting
+(`figure-alt-number`), so a value typed into it is stale in waiting as it would be in a
+sentence, and a binding that prints no value fails with it (`figure-alt-binding`). A figure
+with none is a note while drafting, a warning from internal review, and a failure at
+submission where the journal's profile requires one (`figures.alt_text: required`); a text
+longer than the profile's `alt_text_max_chars`, counted as printed, warns. The check reads
+the stage itself, since the policy table gives a code one stage to fail from and this one
+warns before it fails.
+
+The build writes it as the picture's description. Pandoc makes an image alone in its
+paragraph a figure and prints its description under it as a caption, so the image is placed
+in a span of the class `mg-figure`, `[![text](path)]{.mg-figure}`, where it is not alone and
+no caption is printed (pandoc 3.9.0.2: a span holding the image, with its description, is
+written with `descr` set and nothing printed; `![](path){alt="..."}` leaves `descr`
+empty). The text is written with every ASCII punctuation mark escaped and its white space
+folded to single spaces, so that pandoc reads none of it as markup: a property in
+`tests/test_properties.py` holds that pandoc reads back each text drawn, with every mark of
+emphasis, a link, a citation, maths, raw HTML and a comment in it, as exactly the text, and
+two broken rules fail it. `figure_caption.lua` knows a figure's paragraph by that span as
+well as by a bare image. `submit` writes every figure's text, as printed, into
+`alt-text.md`, and a double-blind build looks for the authors in each picture's
+description and title as it does in the text.
+
+Since the build prints it, an HTML comment in the text is read like the rest of it, not
+hidden as in prose (round 1 of #387), and only ASCII white space is
+folded, so a no-break space typed in it stays. It is held as the prose is in more than its
+numbers: a parameter or a release the analysis declares, typed into it, fails as G2 fails it;
+the document's stamp covers it, so editing it makes a built document stale; a count bound in
+it is held to the data custodian's minimum; and a result it quotes from a synthetic run is
+said. A journal that applies its artwork rules from acceptance gets a note for a missing one,
+as G4 gives, and so does a text too long.
+
+Whether the text says what the figure shows is not checked by any gate. The figure review
+reads it under `readable-and-accessible`, and the figure-review skill says how to write one.
+
 ## The journal's citation style is used by every build
 
 A profile names the journal's citation style as the CSL style repository and Zotero name it
@@ -4004,6 +4050,108 @@ names no part. The headings are carried from one file of the paper into the next
 carries them.
 
 It is a warning: a new rule starts as one, until what it says of real papers is known.
+
+## An earlier output of the same data is held to this paper
+
+Several papers come out of one database extraction or one cohort: a conference abstract, a
+preprint, a protocol paper, the article, a second article on another outcome. A cohort of
+1,204 in the abstract and 1,187 in the article, with nothing said, is a number nobody can
+account for, and an article that does not say the abstract exists is an undeclared
+overlapping publication, which ICMJE asks authors to declare and journals treat as
+misconduct. Nothing compared this paper with anything outside it.
+
+`literature/related.yaml` names each earlier output, what it is, and what this paper shares
+with it (`data`, `study`, `authors`), as the author says it (Basile, 2026-10-21, the seven
+answers below all his). G8 reads it; without it G8 says nothing new, and no count is added,
+so a project that keeps none reads as before.
+
+**The earlier work's own files, where an author of this paper made it.** A comparison read
+from a PDF is a comparison of what was printed, rounded, with the reader's eye between. Where
+an author of this paper is an author of the earlier output, the skill asks for that work's
+files: its manuscript-guard project, at the revision the output was made from, or, with no
+project, its analysis outputs copied in. The path is the author's answer and is never
+looked for. `manuscript-guard related --take <id>` copies the project's results fragments,
+its frozen plan, its plan and its data dictionary, as git holds them at that revision (or as
+they stand, with HEAD recorded and whether they differ from it), into
+`literature/related/<id>/`, with a record of each file's digest. `check` reads the copy and
+never the project, so CI and a co-author's machine, where the earlier project is not, give
+the author's answer: the lookup's pattern of asking once and keeping what came back. A
+copied file whose digest changed, or a file added beside them, fails from drafting
+(`related-snapshot-edited`), as an edited lookup record does: a result edited in the copy
+compares an invented number. Each digest is taken as an analysis's input's is
+(`input_digest`), its line endings folded for `.json`, `.yaml` and `.md`: a plan saved with
+CRLF and committed under the `eol=lf` that `init` writes is checked out with LF everywhere
+else, and was read as an edit on every machine but the author's (round 1 of #391). A file
+whose name begins with a dot, the `.DS_Store` a system leaves, is neither copied nor counted,
+and the fragments' `.sha256` beside them are not copied, since nothing reads them there.
+`--take` writes over nothing it did not write. Until one of
+the three is there, or `files_unavailable` says why they cannot be had, an output that
+shares the data or the study with authors warns (`related-files-missing`); one of the same
+authors on other data (`shares: [authors]`) is listed for what other checks read of it and
+has nothing to compare (round 1 of #391). A project named and never copied warns, and
+fails at submission (`related-not-taken`): nothing was compared. A copy of another project or revision
+than the entry now names warns, and fails at submission (`related-taken-elsewhere`): it
+compared another output than the one named.
+
+**Numbers: every key both emit, and the pairs the author declares.** Through a copy, each
+results key that both projects emit and both papers print (`quoted`) is compared. A key
+renamed since is paired (`earlier: n_cases`, `here: cohort.n`); keys that share a name and
+not a meaning are set apart by pattern with a reason (`not_compared: ror.*`). Comparing only
+declared pairs would be quieter, and would never show the difference the author did not
+think of. Two values are the same where they print alike, or where both are numbers equal to
+nine significant digits, as `verify` holds a re-run: "2.3" and "2.31" of one estimate are
+one value printed to other places. A pair naming a key one side does not emit compares
+nothing, and warns and fails at submission (`related-pair-unmatched`).
+
+From a published text, or from outputs copied in, the author records each value as the
+ledger does: as the earlier output prints it, with the sentence that states it and the
+stored copy under `literature/` it is quoted from. The sentence is held to the copy and the
+value to the sentence by the ledger's own functions (`related-quote-not-in-source`,
+`related-value-not-in-quote`, `related-source-missing`, failing from drafting as the
+ledger's do). The printed value is compared with this paper's as a number, to within half a
+unit of the coarser of the two printings, where both read as one (grouped by commas or
+spaces, a middle dot for the point, a sign, a percent sign, and no zero before the point
+in a style that drops it, ".45"), and as text otherwise. A value YAML would read as a number,
+`1.50` or `0.00005`, is read as typed, and so is a revision that is a short commit of
+digits: read as numbers, `1.50` was `1.5`, which its quote's "1.50" does not state (round 1).
+
+**A difference is explained when the manuscript says why.** The pair or the value records
+the reason (`because`) and the manuscript's sentence that tells the reader
+(`manuscript_says`), and the sentence is looked for as G13 looks for a quoted change: in
+the manuscript with its bindings filled in, without comments, emphasis or line breaks, and
+with a binding in the sentence filled in too. A reason the reader is never given explains
+nothing to the reader. Explained, it is a note (`related-number-explained`); with a reason
+and no sentence found, `related-reason-not-in-text`; with neither, `related-number-differs`.
+Both warn and fail at submission. No new reading of text is made: the rule is G13's
+`as_quoted` and `rendered_manuscript`, held by the generated inputs already ("as quoted").
+
+**A choice of the analysis that changed is a change of method.** A value the analysis
+declared as a parameter or a coding dictionary's release, or a label (a period, a verdict
+in words), that differs is `related-method-differs`: a warning at every stage, a note with
+a reason (`related-method-explained`), and never a failure, since a method may rightly
+change between two papers and the review panel, not a gate, weighs whether it was said and
+justified. A software version is not compared: every later paper runs later software.
+
+**An overlap of data or study with authors is disclosed.** It is disclosed where the
+manuscript cites the earlier output (its citekey, in a citation a reader sees, comments left
+out), or where `disclosed_by` gives the manuscript's sentence that says so, found as above,
+for an abstract a journal does not want cited. Undisclosed, it warns and fails at submission
+(`related-undisclosed`). No file holds the covering letter, so `submit` lists the outputs to
+declare there.
+
+**The supplement is held as the main text is** (Basile, 2026-10-21): cohort counts and
+definitions often stand in an eTable or the eMethods. On this paper's side, values are
+compared by results key wherever they are printed, so a count bound only in
+`manuscript/supplementary/` is compared like any other, and a sentence that explains a
+difference or discloses the overlap, or a citation of the earlier output, counts in the
+supplement as in the main text: G8 reads the manuscript's files as every gate that reads prose
+does. On the earlier output's side, a copy holds every result its project emitted, those its
+supplement printed among them, and a value read from its text may be quoted from its
+supplement stored beside it (`sources/<citekey>-supplement.pdf`).
+
+`manuscript-guard related` prints every value compared, both printings and what came of it,
+and `--json` the same with the findings: what the author and a panel read, beside what
+`check` decides.
 
 ## The design gate warns and never blocks
 
@@ -7870,6 +8018,19 @@ Added by the adversarial review, verified and **not** fixed:
   a `stroke-width` in percent is taken of the font size and not of the figure, and a text's
   `dx`, `dy` and `text-anchor` do not move its anchor. A `<use>` that refers to itself is
   followed sixteen deep.
+- **A figure's alternative text is checked for being there, not for being right.** That
+  it says what is drawn is the figure review's and a person's to read. It is read from the
+  figure's guard file only: alternative text set in Word by a co-author, or in a PDF figure's
+  own structure, is not read, and `import` does not bring Word's back into the guard file. A
+  LaTeX manuscript's build writes none, and the check reads nothing there, since it finds
+  the figures placed in the Markdown sources alone. A link's target, a URL, a citation key or
+  attributes in the text are hidden by the prose's mask and printed by the build, so a number
+  in one is not read, and a release typed across two numbers is said twice. The pack's `alt-text.md` names each figure by its
+  key, not by the number the document prints. A figure the manuscript places twice is held to
+  the main text's rule if either place is in the main text. The text's bindings are read by
+  the document's stamp, the custodian's minimum and the synthetic-data check, as the
+  manuscript's are; G2's other readings of bindings do not see it, so a value quoted there
+  alone is still one the manuscript does not quote.
 - **`stage:` is declared, not detected.** Writing `stage: analysis` demotes every G2 finding
   to INFO. It is printed, counted and summarised — never hidden — but CI reading the exit
   code sees green.
@@ -9656,6 +9817,42 @@ Open, recorded as each change landed:
   an encoding the XML parser cannot read. Each used to crash the reader that met it, the
   import or the audit, on the body, the comments, the styles or the font parts; a part that
   could not be decompressed crashed the import on the build's record as well.
+- **An earlier output is compared value by value, and never as prose.** G8 compares results
+  keys and recorded values. Two Methods sections that define the case, the exposure, the
+  outcome, the exclusions or the model in other words are not compared: the frozen plans are
+  copied in for that, and are not yet read by any gate; until they are, the skill gives the
+  panel an earlier-outputs remit read with both texts side by side. Nor are tables, model
+  cards or the data dictionary compared, though the copy holds them. A count printed only in
+  a table of either paper is compared with nothing. A value printed by only one of the two
+  papers (`quoted: false` on one side) is not compared, though it may show the data
+  changed.
+- **What a comparison read from a PDF cannot see.** A published value is read as printed: an
+  estimate rounded to one place is the same as any value within half a unit of it, so a
+  change smaller than the earlier rounding is not seen. A printed value that is not one
+  number ("2.3 (1.9 to 2.8)") is compared as text. A percentage there against a proportion
+  here (`12.5%` and `0.125`) is reported as a difference. Whether two printed numbers are
+  of the same quantity is the author's pairing, never checked; a pair of two different
+  quantities that happen to be equal passes. Which earlier outputs exist is the author's
+  word: an abstract nobody records is compared with nothing and its overlap is not asked
+  about.
+- **The copy holds the earlier project's results as they were, unprinted ones included.**
+  `related --take` copies every results fragment, so values the earlier paper did not print,
+  and counts its custodian may forbid outside the team, are committed with this paper. The
+  review panel's route B sends nothing under `literature/`; a public repository publishes
+  the copy. Which values a project may copy is not yet decided here.
+- **A sentence that explains or discloses is looked for as text, not as a sentence.**
+  `manuscript_says` and `disclosed_by` are found where their words stand together anywhere
+  in the manuscript, as G13 finds a quoted change, so `manuscript_says: "2026"` or
+  `disclosed_by: "abstract"` passes wherever those words are printed (round 1 of #391). A
+  citation in the sentence is matched as the source writes it (`[@key]`), not as printed.
+  A value brought into an entry by a YAML merge key (`<<: *common`) is read as YAML reads it,
+  `1.50` as `1.5`, not as typed (round 2 of #391; contrived).
+- **A disclosure is a citation or a sentence, and the covering letter is not read.** An
+  overlap counts as disclosed where the earlier output is cited anywhere in the manuscript
+  or the declared sentence is printed anywhere: neither is checked to say that the two share
+  data, and a citation in the Introduction to the abstract as a finding passes. The covering
+  letter is in no file, so what it declares is not checked; `submit` only lists what to put
+  there.
 - **A table cell styled as a heading ends a reference list.** A cell never starts one,
   since "References" there is a column header, but a heading-styled cell after the list's
   heading ends it, as it would anywhere: Word lists such a cell as a heading in its

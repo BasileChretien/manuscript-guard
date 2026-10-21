@@ -13028,7 +13028,11 @@ Open, recorded as each change landed:
   names no part, so a description reused there, cited or not, warns from internal-review as
   under no heading. And a section titled "Methods and results", or "Supplementary methods
   and results", is the Methods throughout, so Results reused there with the earlier paper
-  cited in the paragraph are noted where a warning is due (round 7 of the review).
+  cited in the paragraph are noted where a warning is due (round 7 of the review). A
+  supplement's title names a part only where it is a supplement's name for one and nothing
+  more, numbered or not ("eResults 1", "Supplementary results and discussion"): one that says
+  more, "Supplementary results of the sensitivity analyses", names none, and a passage under
+  it is given the advice for text under no heading (round 9).
 - **A title over the Discussion and its conclusions alone is not taken for a title over the
   paper.** The conclusions count as the Discussion's when the parts under a heading are
   counted, so that the Discussion over "Interpretation" and "Conclusions" stays the

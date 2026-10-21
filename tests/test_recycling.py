@@ -164,6 +164,12 @@ def test_a_description_in_the_methods_that_does_not_cite_its_paper_warns_from_in
                      id="a supplementary discussion"),
         pytest.param(f"# eResults\n\n{COUNTED}", ("recycled-text", WARN, "in the Results"),
                      id="JAMA's eResults"),
+        pytest.param(f"# eResults 1\n\n{COUNTED}", ("recycled-text", WARN, "in the Results"),
+                     id="numbered"),
+        pytest.param(f"# Supplementary Results and Discussion\n\n{COUNTED}",
+                     ("recycled-text", WARN, "in the Results"), id="two parts"),
+        pytest.param(f"# Supplementary findings\n\n{COUNTED}",
+                     ("recycled-text", WARN, "in the Results"), id="findings"),
     ],
 )  # fmt: skip
 def test_the_supplement_is_held_to_the_norms_the_main_text_is(

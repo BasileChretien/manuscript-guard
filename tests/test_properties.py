@@ -4255,8 +4255,8 @@ def _planted_recycling(draw: st.DrawFn) -> tuple[str, str, set[tuple[int, ...]]]
         elif kind == "like a statement":
             paragraph = f"## {draw(st.sampled_from(_LIKE_A_STATEMENT))}\n\n{sentence}"
         elif kind == "discussion":
-            discussion = draw(st.sampled_from(("Supplementary discussion", "eDiscussion",
-                                               "Discussion")))  # fmt: skip
+            discussion = draw(st.sampled_from(("Supplementary discussion", "eDiscussion 2",
+                                               "eDiscussion", "Discussion")))  # fmt: skip
             paragraph = (
                 f"## {discussion}\n\n### Principal findings\n\n{sentence}\n\n### Interpretation\n\n"
                 f"{filler().capitalize()}.\n\n### Conclusions\n\n{filler().capitalize()}.\n\n"

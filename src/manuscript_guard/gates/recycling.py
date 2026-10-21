@@ -155,8 +155,10 @@ _FOOTNOTE_MARK = re.compile(r"\[\^[^\]\n]*\]")
 #: the review: a prefix taken off any heading read "Online discussion forums" under the
 #: Methods as the Discussion).
 _SUPPLEMENT_PART = re.compile(
-    r"(?:(?i:supplement(?:ary|al)|online)\s+|e(?=[A-Z]))"
-    r"(?P<part>(?i:introduction|background|methods|results|discussion|conclusions?))\W*$"
+    r"(?:(?i:supplement(?:ary|al)|online)\s+|e(?=[A-Z]))(?P<part>(?i:introduction|background"
+    r"|rationale|methods|results(?:\s+and\s+discussion)?|findings|interpretation"
+    r"|discussion(?:\s+and\s+conclusions?)?|conclusions?|concluding\s+remarks))"
+    r"(?:\s+[0-9]+[A-Za-z]?)?\W*$"  # JAMA numbers them: "eResults 1" (round 9)
 )
 
 METHODS = "methods"

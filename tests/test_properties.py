@@ -30,6 +30,7 @@ import subprocess
 import sys
 from bisect import bisect_left
 from collections import Counter
+from decimal import Decimal
 from functools import cache, partial
 from pathlib import Path
 from typing import Any
@@ -70,6 +71,7 @@ from generated import (
     passage_files,
     pdf_figures,
     planned_plans,
+    printings,
     quotations,
     share_tables,
     signs,
@@ -98,6 +100,7 @@ from manuscript_guard.gates import methods as methods_gate
 from manuscript_guard.gates import models as models_gate
 from manuscript_guard.gates import numbers as numbers_gate
 from manuscript_guard.gates import quotations as quotations_gate
+from manuscript_guard.gates import related as related_gate
 from manuscript_guard.gates import reported as reported_gate
 from manuscript_guard.gates import spelling as spelling_gate
 from manuscript_guard.gates import vocabulary as vocabulary_gate
@@ -3914,6 +3917,22 @@ def test_a_value_is_stated_whole_or_not_at_all(drawn: tuple[str, str]) -> None:
             assert contains(quote, value), (quote, value)
 
 
+@holds(150, printings())
+def test_a_value_an_earlier_output_printed_is_this_one_however_it_was_printed(
+    cases: list[dict[str, Any]],
+) -> None:
+    """G8 holds a value read from an earlier output's text to this paper's. The same number
+    is the same however the earlier output printed it, grouped, with a middle dot, a percent
+    sign or a minus sign, or to other places; one a unit and a half of the coarser printing
+    away is another, printed the same way. Each example holds every way."""
+    found = READINGS["printed value"]()(cases)
+    assert found == [[True, False]] * len(cases), [
+        (case["kind"], case["printed"], case["moved"], case["display"], said)
+        for case, said in zip(cases, found, strict=True)
+        if said != [True, False]
+    ]
+
+
 # ------------------------------------------------------------- scripts the gates do not read
 
 #: Characters of each script the gates do not read, from the blocks of Unicode that hold it,
@@ -6123,6 +6142,42 @@ def _a_claim_keeps_its_line_breaks(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(methods_gate, "_collapsed", lambda text: text.strip(" "))
 
 
+def _a_printed_value_is_text(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(related_gate, "_printed", lambda text: None)
+
+
+def _printed_by(pattern: str):
+    return lambda patch: patch.setattr(related_gate, "_PRINTED", re.compile(pattern))
+
+
+_a_digit_before_the_point = _printed_by(
+    r"^([-+]?)(\d{1,3}(?:[, ]\d{3})+|\d+)(?:[." + chr(0x00B7) + r"](\d+))?\s?%?$"
+)
+_no_groups_of_thousands = _printed_by(r"^([-+]?)(\d+)(?:[." + chr(0x00B7) + r"](\d+))?\s?%?$")
+_no_middle_dot = _printed_by(r"^([-+]?)(\d{1,3}(?:[, ]\d{3})+|\d+)(?:[.](\d+))?\s?%?$")
+_no_percent_sign = _printed_by(r"^([-+]?)(\d{1,3}(?:[, ]\d{3})+|\d+)(?:[." + chr(0x00B7)
+                               + r"](\d+))?$")  # fmt: skip
+
+
+def _no_minus_sign(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(related_gate, "_SPACES", str.maketrans({chr(0x00A0): " ", chr(0x2009): " ",
+                                                          chr(0x202F): " "}))  # fmt: skip
+
+
+def _a_whole_unit_is_the_same(patch: pytest.MonkeyPatch) -> None:
+    def within(then, here) -> bool:
+        return abs(then[0] - here[0]) <= Decimal(1) / Decimal(10) ** min(then[1], here[1])
+
+    patch.setattr(related_gate, "_within", within)
+
+
+def _the_finer_printing_decides(patch: pytest.MonkeyPatch) -> None:
+    def within(then, here) -> bool:
+        return abs(then[0] - here[0]) <= Decimal(5) / Decimal(10) ** (max(then[1], here[1]) + 1)
+
+    patch.setattr(related_gate, "_within", within)
+
+
 def _a_word_with_a_digit_is_no_word(patch: pytest.MonkeyPatch) -> None:
     real = literature_sources.words_beside
     patch.setattr(
@@ -6676,6 +6731,38 @@ BROKEN = {
     "the value is left in the quote": (
         _the_value_is_left_in_the_quote,
         test_the_words_beside_a_quoted_value_are_its_words_and_no_more,
+    ),
+    "a printed value is compared as text only": (
+        _a_printed_value_is_text,
+        test_a_value_an_earlier_output_printed_is_this_one_however_it_was_printed,
+    ),
+    "a number with no digit before its point is text": (
+        _a_digit_before_the_point,
+        test_a_value_an_earlier_output_printed_is_this_one_however_it_was_printed,
+    ),
+    "groups of thousands are not read": (
+        _no_groups_of_thousands,
+        test_a_value_an_earlier_output_printed_is_this_one_however_it_was_printed,
+    ),
+    "a middle dot is not a point": (
+        _no_middle_dot,
+        test_a_value_an_earlier_output_printed_is_this_one_however_it_was_printed,
+    ),
+    "a percent sign is not read": (
+        _no_percent_sign,
+        test_a_value_an_earlier_output_printed_is_this_one_however_it_was_printed,
+    ),
+    "a minus sign is not a minus": (
+        _no_minus_sign,
+        test_a_value_an_earlier_output_printed_is_this_one_however_it_was_printed,
+    ),
+    "a whole unit of the coarser printing is the same value": (
+        _a_whole_unit_is_the_same,
+        test_a_value_an_earlier_output_printed_is_this_one_however_it_was_printed,
+    ),
+    "the finer printing decides the places": (
+        _the_finer_printing_decides,
+        test_a_value_an_earlier_output_printed_is_this_one_however_it_was_printed,
     ),
     "an anchor in a comment is an anchor": (
         _an_anchor_in_a_comment_is_an_anchor,

@@ -214,6 +214,8 @@ figures:                        # from the journal's artwork guide, not its gene
   max_file_mb: 10
   min_text_pt: 5
   legend_words: 250
+  alt_text: required            # or requested; leave out where the guide says nothing
+  alt_text_max_chars: 250
   # applies_from: acceptance    # where the rules are waived until the paper is accepted
   # supplementary: {max_dpi: 300, max_file_mb: 10}
 
@@ -236,7 +238,10 @@ notes:
 only what it states, with the kind of figure each resolution is for. Where the guide gives
 one resolution for every figure, give it for each kind. A figure's own width and kind go in
 its `figures/<name>.guard.yaml` (`print_width_mm: 89`, `kind: line_art`); without them G4
-assumes the narrowest width and a halftone.
+assumes the narrowest width and a halftone. Where the guide asks for each figure's
+alternative text, say whether it is required or requested (`alt_text`) and how many
+characters it may hold (`alt_text_max_chars`): G3 then fails a figure with none at
+submission where it is required. The figure's own text goes in its guard file (`alt:`).
 
 Where the journal's data policy says what the statement must hold, fill `data_availability`
 from that page, with its address and the day you read it: the phrasings it does not accept

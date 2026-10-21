@@ -591,6 +591,39 @@ def _until_keywords(blocks: list) -> list:
     return blocks
 
 
+def alt_texts(project: Project) -> str | None:
+    """Each figure's alternative text, for a submission system that asks for it in a box of
+    its own: as the build writes it into the picture, each binding its display. None where
+    the manuscript places no figure."""
+    from manuscript_guard.contracts import load_namespace
+    from manuscript_guard.gates.figure_alt import printed_alt, raw_alt
+    from manuscript_guard.gates.figure_files import _files_of, _placed
+
+    placed = _placed(project)
+    if not placed:
+        return None
+    namespace = load_namespace(project)[0]
+    lines = [
+        "# Alternative text",
+        "",
+        "Each figure's alternative text, for a submission system that asks for it apart. The "
+        "document carries the same text in each picture.",
+    ]
+    for name, supplementary in placed:
+        files = ", ".join(path.name for path in _files_of(project.path("figures"), name))
+        raw = raw_alt(project, name)
+        lines += [
+            "",
+            f"## {name}{' (supplementary)' if supplementary else ''}",
+            "",
+            f"Files: {files or 'none rendered'}",
+            "",
+            printed_alt(raw, namespace) if raw is not None
+            else f"None: write it in figures/{name}.guard.yaml under `alt:`.",
+        ]
+    return "\n".join(lines) + "\n"
+
+
 _LEFT_OUT = "abstract.txt is not written: "
 
 
@@ -692,6 +725,8 @@ def assemble_pack(project: Project, document: Path, *, checked: bool = True) -> 
         ("abstract.txt", abstract),
         # The journal's rules no gate checks, for the corresponding author to tick and sign.
         ("journal-checklist.md", journal_checklist(project)),
+        # For the portal's box for each figure's alternative text, where it has one.
+        ("alt-text.md", alt_texts(project)),
     ]
     for name, text in generated:
         if text is None:

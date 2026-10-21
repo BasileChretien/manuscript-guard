@@ -8420,6 +8420,32 @@ def test_a_palette_drawn_for_deficiencies_is_said_only_of_grey(project: Path) ->
     assert _colours_said(project) == [("figure-greyscale-confused", "warn")]
 
 
+def test_a_supplementary_figure_s_colours_are_checked_as_the_paper_s(project: Path) -> None:
+    """Basile, 2026-10-21: the supplement is held to the main text's rules. A figure only the
+    supplement places is read and warned of as one the paper places, and a `print` under the
+    journal's `supplementary:` replaces the main one for it, and for no figure the paper
+    places."""
+    main = main_md(project)
+    placed = main.read_text(encoding="utf-8")
+    main.write_text(placed.replace("{{figure.forest}}\n", ""), encoding="utf-8")
+    (project / "manuscript" / "supplementary" / "figures.md").write_text(
+        "# Supplementary figure\n\n{{figure.forest}}\n", encoding="utf-8"
+    )
+    _painted(project, _RED, _GREEN)
+    assert _colours_said(project) == [("figure-colours-confused", "warn")]
+    _painted(project, _ORANGE, _SKY)
+    assert _colours_said(project) == [("figure-greyscale-confused", "info")]
+    profile = project / "profiles" / "journals" / "demo-journal.yaml"
+    document = yaml.safe_load(profile.read_text(encoding="utf-8"))
+    document["figures"] = {"source_url": "https://journal.example/artwork",
+                           "read_on": "2026-10-21", "confirmed": True, "print": "colour",
+                           "supplementary": {"print": "greyscale"}}  # fmt: skip
+    profile.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    assert _colours_said(project) == [("figure-greyscale-confused", "warn")]
+    main.write_text(placed, encoding="utf-8")
+    assert _colours_said(project) == [("figure-greyscale-confused", "info")]
+
+
 @pytest.mark.parametrize(
     ("value", "why", "said"),
     [

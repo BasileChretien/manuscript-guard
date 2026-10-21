@@ -725,7 +725,10 @@ with none is a note while drafting, a warning from internal review, and a failur
 submission where the journal's profile requires one (`figures.alt_text: required`); a text
 longer than the profile's `alt_text_max_chars`, counted as printed, warns. The check reads
 the stage itself, since the policy table gives a code one stage to fail from and this one
-warns before it fails.
+warns before it fails. A figure the supplement places is held to the same, and written
+into `supplementary.docx` as the paper's are into `manuscript.docx`; a rule under the
+profile's `figures.supplementary` replaces the main one for a figure only the supplement
+places, as every artwork rule of G4 does.
 
 The build writes it as the picture's description. Pandoc makes an image alone in its
 paragraph a figure and prints its description under it as a caption, so the image is placed
@@ -810,6 +813,11 @@ narrowing: tab:red, tab:orange and tab:olive at 0.1 are 6.6 and 7.1 apart).
 Where two series are told apart by more than colour, a line style or a label on each line,
 the figure's guard file says so under `allow_colours`, the pair (or one colour of it) and
 the reason, and the warning is a note that quotes it.
+
+A figure the supplement places is read and compared as the paper's are (Basile, 2026-10-21:
+the supplement is held to the main text's rules). A `print` under the profile's
+`figures.supplementary` replaces the main one for a figure only the supplement places, so a
+journal that prints the paper in grey and puts its supplement online in colour is said so.
 
 The implementation is the standard library's (`colour.py`): sRGB's transfer function and
 matrix, CIELAB under D65, CIEDE2000 as Sharma, Wu and Dalal write it out, and the three

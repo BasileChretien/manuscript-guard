@@ -5094,14 +5094,15 @@ def test_an_entry_nothing_needs_is_warned_of(project: Path, stage: str) -> None:
 #: count of repeated identifiers is no count of duplicate cases (a case two reporters sent
 #: carries two identifiers), so the generator stays the reason no de-duplication step was
 #: applied, as round 1's r1-pe-02 was answered (round 4 of #389). Its opening words are the
-#: ones tools/panel_measure.py plants a defect in, and stay as they were.
+#: ones tools/panel_measure.py plants a defect in, and its closing words the ones
+#: test_suggestions.py emphasises (METHODS_EMPHASIS): both stay as they were.
 _CHECKED_SAID = (
     "Each record carries a unique report identifier; checked against the data dictionary, "
-    "{{results.quality.rule.one_row_per_report}} of the\n"
-    "{{results.quality.rows}} reports repeated another's and "
-    "{{results.quality.age_group.missing}} gave no age group. The generator emits no duplicate\n"
-    "cases, so no de-duplication step was applied; a real database would require one, and its "
-    "absence here is a property of the synthetic data."
+    "{{results.quality.rule.one_row_per_report}} of the {{results.quality.rows}}\n"
+    "reports repeated another's and {{results.quality.age_group.missing}} gave no age group. "
+    "The generator emits no duplicate cases, so no de-duplication\n"
+    "step was applied; a real database would require one, and its absence here is a property "
+    "of the synthetic data rather than a design choice."
 )
 
 

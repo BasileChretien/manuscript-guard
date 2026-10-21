@@ -2487,6 +2487,10 @@ def cmd_submit(args: argparse.Namespace) -> int:
     report, project, _stage, _deferred = _run_gates(args.path, submission=True)
     from manuscript_guard.gates.revision import rounds
 
+    # A marked-up copy given as the document is refused by name before the copies are
+    # cleared: in build/marked-up/, it would be taken away first and reported missing.
+    if args.document is not None and _refused_marked_up(args.document, "packed as the manuscript"):
+        return 1
     if rounds(project):
         # Before anything can stop the pack, as `build` does: a copy left by an earlier run
         # is of an older source (round 3 of #396).
@@ -2508,8 +2512,6 @@ def cmd_submit(args: argparse.Namespace) -> int:
     _print_assembly_warnings(assemble_report, project)
 
     document = args.document
-    if document is not None and _refused_marked_up(document, "packed as the manuscript"):
-        return 1
     if document is None:
         mode = OFFLINE if args.offline else LIVE
         style = _journal_style(project, args)

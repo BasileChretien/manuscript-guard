@@ -6301,11 +6301,14 @@ def test_a_gate_not_taught_latex_reads_nothing_and_fails_at_submission(project: 
     _as_latex(project)
     drafting, _project, _stage, _deferred = _run_gates(project, stage="drafting")
     unread = sorted(f.gate for f in drafting.findings if f.code == "not-read-in-latex")
-    expected = ["BUILD", "G1", "G13", "G14", "G15", "G2", "G4", "G6", "G7", "G8", "G8r", "G9"]
+    # G2 reads LaTeX but for its pointers to tables and figures, and says so (step 4).
+    expected = ["BUILD", "G13", "G14", "G15", "G2", "G4", "G6", "G7", "G8", "G8r", "G9"]
     assert unread == expected, drafting.render(project)
     assert "not-read-in-latex" not in codes(drafting)
     said = {f.code for f in drafting.findings}
-    assert not {"manuscript-empty", "unquoted-result"} & said, drafting.render(project)
+    assert "manuscript-empty" not in said, drafting.render(project)
+    typed = {f.context for f in drafting.findings if f.code == "unclassified-number"}
+    assert typed == {"Of 4100 reports, 12 were fatal."}, drafting.render(project)
     submission, _project, _stage, _deferred = _run_gates(project, stage="submission")
     failing = sorted(f.gate for f in submission.failures if f.code == "not-read-in-latex")
     assert failing == expected, submission.render(project)
@@ -6314,11 +6317,9 @@ def test_a_gate_not_taught_latex_reads_nothing_and_fails_at_submission(project: 
 #: The checks that read the manuscript only as Markdown, and those that do not read it.
 _MARKDOWN_ONLY = (
     "check_related",
-    "check_numbers", "check_bound_units", "check_small_cells", "check_citations",
-    "check_prose_quotations", "check_journal", "check_reporting", "check_writing",
-    "check_methods", "check_synthetic_inputs", "check_reported", "check_recomputed",
-    "check_revision", "check_language", "check_models", "check_shapes", "check_tex",
-    "check_passages",
+    "check_citations", "check_prose_quotations", "check_journal", "check_reporting",
+    "check_writing", "check_methods", "check_reported", "check_recomputed", "check_revision",
+    "check_language", "check_models", "check_shapes", "check_tex", "check_passages",
 )  # fmt: skip
 _NOT_THE_MANUSCRIPT = (
     "check_review", "check_freshness", "check_figures", "check_figure_reviews",
@@ -6331,7 +6332,10 @@ _NOT_THE_MANUSCRIPT = (
 #: The checks that read LaTeX: they run on a LaTeX manuscript as on any. G12's
 #: registration looks for an identifier and a sentence, which a `.tex` file holds
 #: as plainly as a Markdown one.
-_READS_LATEX = ("check_latex", "check_registration")
+_READS_LATEX = (
+    "check_latex", "check_numbers", "check_bound_units", "check_small_cells",
+    "check_synthetic_inputs", "check_registration",
+)  # fmt: skip
 
 
 def test_each_check_not_taught_latex_is_not_run_and_the_others_are(
@@ -6401,6 +6405,175 @@ def test_what_the_latex_reader_refuses_fails_build_at_its_file_and_line(project:
     warned = [f for f in report.findings if f.code == "tex-not-input"]
     assert [f.path.name for f in warned] == ["notes.tex"]
     assert "tex-not-input" not in codes(report)
+
+
+# --------------------------------------------------------------- G2 on the LaTeX twin
+
+TWIN = Path(__file__).parent / "data" / "latex" / "manuscript"
+#: TeX's specials a value's display may hold, escaped as an author types them.
+_ESCAPED = str.maketrans({sign: "\\" + sign for sign in "%&#$_"})
+
+
+def _twin(root: Path) -> Path:
+    """The example's manuscript in LaTeX in place of its own (`tests/test_latex_twin.py`):
+    the path of its `main.tex`."""
+    folder = root / "manuscript"
+    shutil.rmtree(folder)
+    shutil.copytree(TWIN, folder)
+    return folder / "main.tex"
+
+
+def _twin_failures(root: Path) -> list:
+    """What G2 and the gates beside it fail of the twin, but that G2 does not read its
+    pointers to tables and figures yet."""
+    return [f for f in gate_report(root).failures if f.code != "not-read-in-latex"]
+
+
+def _into_results(entry: Path, snippet: str) -> None:
+    text = entry.read_text(encoding="utf-8")
+    entry.write_text(text.replace("\\section{Discussion}", snippet + "\n\n\\section{Discussion}"),
+                     encoding="utf-8")  # fmt: skip
+
+
+def test_every_binding_of_the_twin_when_inlined_is_caught(project: Path) -> None:
+    """The headline on the twin: each `\\mg` replaced by its own value, as an author types it,
+    fails G2 (step 4). A value with no digit, the model's kind, is G15's to hold, which reads
+    Markdown only until step 8: in the example it fails there, and G2 cannot see words."""
+    entry = _twin(project)
+    assert _twin_failures(project) == [], gate_report(project).render(project)
+    text = entry.read_text(encoding="utf-8")
+    namespace = load_namespace(load_project(project)[0])[0]
+    targets = sorted(
+        ref for ref in set(re.findall(r"\\mg\{((?:results|lit)\.[a-z0-9_.]+)\}", text))
+        if any(character.isdigit() for character in namespace[ref].display)
+    )
+    assert len(targets) >= 12, targets
+    escaped = []
+    for ref in targets:
+        typed = namespace[ref].display.translate(_ESCAPED)
+        entry.write_text(text.replace(f"\\mg{{{ref}}}", typed), encoding="utf-8")
+        if not _twin_failures(project):
+            escaped.append(f"{ref} -> {typed!r}")
+    assert not escaped, escaped
+
+
+@pytest.mark.parametrize(
+    ("snippet", "code"),
+    [
+        ("\\begin{tabular}{ll} Cases & 4123 \\\\ \\end{tabular}", "hand-authored-table"),
+        ("Seen in a note.\\footnote{Of 4123 reports.}", "unclassified-number"),
+        ("\\begin{figure}\\caption{Of 4123 reports.}\\end{figure}", "unclassified-number"),
+        ("\\newcommand{\\cases}{4123 cases}", "unclassified-number"),
+        ("The difference was significant ($p<0.05$, n = 4123).", "unclassified-number"),
+        ("Grade 3 events numbered 4123.", "unclassified-number"),
+        # The units package's `\unit[value]{unit}` (round 1 of #400: blanked as siunitx's).
+        ("A dose of \\unit[4123]{mg} was given.", "unclassified-number"),
+        ("In brackets, \\qty[4123 days].", "unclassified-number"),
+    ],
+)
+def test_a_number_typed_into_the_twin_fails_g2_where_it_stands(
+    project: Path, snippet: str, code: str
+) -> None:
+    """In a table, a footnote, a caption, a definition's body and maths under Results: each
+    is printed, and each typed number is a finding there (step 4)."""
+    entry = _twin(project)
+    _into_results(entry, snippet)
+    found = [f for f in _twin_failures(project) if "4123" in f.message]
+    assert [f.code for f in found] == [code], gate_report(project).render(project)
+    assert found[0].path == entry
+
+
+def test_a_number_in_a_file_the_twin_inputs_fails_g2_at_that_files_line(project: Path) -> None:
+    entry = _twin(project)
+    _into_results(entry, "\\input{sections/extra}")
+    (entry.parent / "sections").mkdir()
+    (entry.parent / "sections" / "extra.tex").write_text("Seen.\nOf 4123 reports.\n", "utf-8")
+    found = [f for f in _twin_failures(project) if "4123" in f.message]
+    assert [(f.code, f.path.name, f.line) for f in found] == [
+        ("unclassified-number", "extra.tex", 2)
+    ]
+
+
+@pytest.mark.parametrize(
+    ("before", "after", "code"),
+    [
+        ("\\mg{results.case.n_serious}", "\\mg{results.case.n_seriuos}", "unresolved-binding"),
+        ("\\mg{results.case.n_serious}", "\\Mg{results.case.n_serious}", "malformed-placeholder"),
+        ("\\mg{results.case.n_serious}", "{{results.case.n_serious}}", "malformed-placeholder"),
+        ("\\mg{results.case.n_serious}", "\\mg results.case.n_serious", "malformed-placeholder"),
+        ("\\mg{results.ror.ci_low} to\n\\mg{results.ror.ci_high}",
+         "\\mg{results.ror.ci_high} to\n\\mg{results.ror.ci_low}", "interval-reversed"),
+    ],
+)
+def test_a_binding_of_the_twin_mistyped_or_reversed_fails_g2(
+    project: Path, before: str, after: str, code: str
+) -> None:
+    """A key mistyped, `\\mg` misspelt, left in Markdown's syntax or without its braces, and an
+    interval quoted upper bound first (step 4)."""
+    entry = _twin(project)
+    text = entry.read_text(encoding="utf-8")
+    assert before in text
+    entry.write_text(text.replace(before, after, 1), encoding="utf-8")
+    assert code in {f.code for f in _twin_failures(project)}, gate_report(project).render(project)
+
+
+@pytest.mark.parametrize(
+    "snippet",
+    [
+        "\\begin{verbatim}\n\\mg{results.case.n_serious}\n\\end{verbatim}",
+        "\\verb|\\mg{results.case.n_serious}|",
+        "\\num{\\mg{results.case.n_serious}}",
+    ],
+)
+def test_a_binding_the_twin_would_print_as_typed_is_refused_where_it_stands(
+    project: Path, snippet: str
+) -> None:
+    """A binding in a listing or a `\\verb` prints as typed, and siunitx parses the number it
+    is given: each is refused under BUILD, at every stage (step 4)."""
+    from manuscript_guard.cli import _run_gates
+
+    entry = _twin(project)
+    _into_results(entry, snippet)
+    report, _project, _stage, _deferred = _run_gates(project, stage="design")
+    refused = [f for f in report.failures if f.code == "tex-refused"]
+    assert len(refused) == 1 and "binding" in refused[0].message, report.render(project)
+
+
+def test_siunitx_s_milligram_in_the_twin_is_no_binding(project: Path) -> None:
+    """`\\mg` in siunitx's units is its milligram: no binding and nothing malformed. The dose
+    typed before it is a number like any other."""
+    entry = _twin(project)
+    _into_results(entry, "A dose of \\qty{5}{\\mg} was given.")
+    found = [(f.code, f.message) for f in _twin_failures(project)]
+    assert found == [("unclassified-number", "'5' is not bound to any source")], found
+
+
+def test_layout_in_the_twin_is_no_number_g2_reads(project: Path) -> None:
+    """A LaTeX parameter defined again, a font's size, columns and a table's spacing print no
+    number (round 1 of #400: each failed G2 once G2 read LaTeX)."""
+    entry = _twin(project)
+    text = entry.read_text(encoding="utf-8")
+    entry.write_text(text.replace("\\begin{document}", "\\renewcommand{\\arraystretch}{1.5}\n"
+                                  "\\renewcommand{\\baselinestretch}{1.15}\n\\begin{document}",
+                                  1), encoding="utf-8")  # fmt: skip
+    _into_results(entry, "{\\fontsize{9}{11}\\selectfont Small.}\n\\begin{multicols}{2}\nTwo."
+                  "\n\\end{multicols}\n\\begin{tabular}{l}\\toprule a \\\\ \\addlinespace[2pt] b"
+                  " \\\\ \\end{tabular}")  # fmt: skip
+    assert _twin_failures(project) == [], gate_report(project).render(project)
+
+
+def test_the_custodian_and_g1_read_the_twins_bindings(project: Path) -> None:
+    """A count below the custodian's minimum, and the results of a run on synthetic data,
+    are found in the twin as in the example (step 4)."""
+    from manuscript_guard.gates.synthetic import quoted_refs
+
+    entry = _twin(project)
+    _custodian(project, 5)
+    _value_has(project, "case.n_serious", value=3, display="3")
+    line = next(n for n, text in enumerate(entry.read_text("utf-8").splitlines(), 1)
+                if "\\mg{results.case.n_serious}" in text)  # fmt: skip
+    assert _small(project) == [("results.case.n_serious", line)]
+    assert "results.case.n_serious" in quoted_refs(load_project(project)[0])
 
 
 @pytest.mark.parametrize("encoding", ["cp1252", "utf-16", "utf-32"])

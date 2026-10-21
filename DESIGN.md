@@ -8063,8 +8063,14 @@ Open, recorded as each change landed:
 - **A caption typed "Table 2 Counts" reads as a sentence.** With nothing but a space after
   its number, as Springer sets a caption, a paragraph above a table cannot be told from "Table
   2 shows the counts.", so it is no caption: the build numbers the emitted caption as well,
-  and the number prints twice. Typed with a stop, a colon, in bold or as a heading, it is a
-  caption (round 2 of #381). Two tables placed in one block with no blank line between are
+  and the number prints twice. Typed with a stop, a colon, its bold closed after the number
+  or a dash between spaces, or as a heading, it is a caption (round 2 of #381). So is not a
+  caption bolded whole ("**Table 2 Counts**"), nor one set off by `--`, `---` or a dash with
+  no spaces ("Table 2—Counts"): each prints the number twice. And the set-offs are read in
+  any paragraph: one opening "**Table 2** shows the counts." or "Table 3 - the sensitivity
+  analysis - confirms" is taken for a caption, cites nothing, and can make a table
+  `display-not-cited` or change the order of first citation (the round after the budget of
+  #381). Two tables placed in one block with no blank line between are
   read as the last of them by the caption check, and an emitted caption that opens with a
   pointer's word and digits that are no number of it ("Table 12-month outcomes") is taken
   for numbered: printed without the build's number, and `caption-names-another` says so.

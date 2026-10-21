@@ -174,7 +174,8 @@ def check_figure_files(project: Project, profile: dict, profile_path: Path) -> R
     findings: list[Finding] = []
     manuscript = project.path("manuscript")
     latex = _latex(manuscript)
-    for name, supplementary in _placed(project):
+    placed = _placed(project)
+    for name, supplementary in placed:
         own = rules.get("supplementary") if supplementary else None
         held = {**rules, **own} if isinstance(own, dict) else rules
         files = _files_of(project.path("figures"), name)
@@ -187,8 +188,9 @@ def check_figure_files(project: Project, profile: dict, profile_path: Path) -> R
     if not latex:
         findings += _legends(project, manuscript, rules, profile_path)
     report = Report(tuple(_with(finding, severity) for finding in findings))
-    if latex and isinstance(rules.get("legend_words"), int):
-        # A LaTeX figure's legend is its float's caption, which G4 does not read yet.
+    if latex and placed and severity == WARN and isinstance(rules.get("legend_words"), int):
+        # A LaTeX figure's legend is its float's caption, which G4 does not read yet: said
+        # where a figure is placed and the rule applies before acceptance (round 2 of step 6).
         from manuscript_guard.gates.formats import not_read_in_latex
 
         report = report.with_findings(not_read_in_latex(GATE, "figure legends"))

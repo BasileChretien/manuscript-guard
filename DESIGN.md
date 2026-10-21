@@ -1521,7 +1521,11 @@ The result is compiled and packed by the code above, and checked three times:
 - A title, affiliations and keywords written in the body, as elsarticle's `frontmatter` holds
   them, are counted as main text (round 1 of step 6).
 - G4 does not hold a LaTeX figure's legend, its float's caption, to the profile's
-  `legend_words`, and says so (`not-read-in-latex`) (round 1 of step 6).
+  `legend_words`, and says so (`not-read-in-latex`) where a figure is placed (round 1 of
+  step 6).
+- An abstract input from a file inside the abstract environment in the preamble, as a class
+  that prints a preamble abstract allows, is not counted: the file is read as preamble. In
+  the body the same shape is counted (round 2 of step 6).
 - Past a refusal a file's bindings are found by their shape, in a comment too, so that a
   result quoted there is not said to be quoted nowhere.
 - A class or package that changes how a character is read, beyond those refused, is not seen.

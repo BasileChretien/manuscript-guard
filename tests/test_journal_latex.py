@@ -151,7 +151,8 @@ def test_the_class_and_bibliography_are_read_wherever_the_preamble_states_them(
     of step 6)."""
     _latex(project, "{article}\n\\input{preamble}")
     (project / "manuscript" / "preamble.tex").write_text(
-        "\\usepackage[backend=biber,%\n  style=apa]{biblatex}\n", encoding="utf-8"
+        "\\usepackage[backend=biber,%\n  % style=numeric,\n  style=apa]{biblatex}\n",
+        encoding="utf-8",
     )
     _asks(project, {"class": "article", "bibliography": {"kind": "biblatex", "style": "apa"}})
     assert _said(project) == {}
@@ -166,3 +167,17 @@ def test_an_entry_file_that_cannot_be_read_is_not_said_to_have_another_class(
     entry.write_bytes(entry.read_text(encoding="utf-8").encode("utf-16"))
     _asks(project, {"class": "article"})
     assert _said(project) == {}
+
+
+def test_g4_says_it_does_not_read_a_latex_legend_only_where_a_figure_is_placed(
+    project: Path,
+) -> None:
+    """Round 2 of step 6: said with no figure placed, the note failed a submission over a
+    rule about figures that do not exist."""
+    _latex(project, "{article}")
+    path = project / PROFILE
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["figures"] = {"legend_words": 250}
+    path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    report = check_journal(load_project(project)[0])
+    assert not [f for f in report.findings if f.code == "not-read-in-latex"], report.findings

@@ -56,7 +56,9 @@ def _bibliography(wanted: dict, found: dict, journal: str, entry: Path, path: Pa
     kind = wanted.get("kind")
     if kind is None:
         return []
-    style = _STYLE.search(found.get("biblatex", "")) if "biblatex" in found else None
+    # A commented-out option is none (round 2 of step 6).
+    options = re.sub(r"%[^\n]*", "", found.get("biblatex", ""))
+    style = _STYLE.search(options) if "biblatex" in found else None
     bst, named = wanted.get("bst", "..."), wanted.get("style", "...")
     if kind == "bibtex" and "biblatex" in found:
         return [_differs("latex-bibliography-differs", entry, path,

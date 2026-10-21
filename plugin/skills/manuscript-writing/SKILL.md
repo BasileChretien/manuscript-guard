@@ -1,6 +1,6 @@
 ---
 name: manuscript-writing
-description: Draft or revise manuscript prose that reads as though a person wrote it. Use when writing any section, when check reports ai-phrasing, ai-cadence, vague-attribution, revision-residue, an abbreviation finding (used before defined, redefined, unused, undefined), term-avoided, vocabulary-conflict, a spelling finding (spelling-variant, spelling-mixed, spelling-not-as-declared) or a notation finding (notation-p-symbol, notation-sign-spacing, notation-interval, notation-percent, notation-unit), when a claim needs a citation it does not have, or when revising text that was drafted quickly. Not for the Methods against the code (use methods-writer), nor for putting a result into the text (use results-binding).
+description: Draft or revise manuscript prose that reads as though a person wrote it. Use when writing any section, when check reports ai-phrasing, ai-cadence, vague-attribution, revision-residue, an abbreviation finding (used before defined, redefined, unused, undefined), term-avoided, vocabulary-conflict, a spelling finding (spelling-variant, spelling-mixed, spelling-not-as-declared) or a notation finding (notation-p-symbol, notation-sign-spacing, notation-interval, notation-percent, notation-unit), a passage repeated from an earlier paper (recycled-text, recycled-methods-cited, recycled-statement, recycled-quotation, recycled-earlier-version, earlier-output-not-compared; read references/recycling.md), when a claim needs a citation it does not have, or when revising text that was drafted quickly. Not for the Methods against the code (use methods-writer), nor for putting a result into the text (use results-binding).
 ---
 
 # Writing prose that reads as written
@@ -119,6 +119,13 @@ says something else, or one that does not exist, and the author's name goes on i
    ```
 
    A number taken from it goes through the literature-verify skill.
+
+5. **A reference already cited that G7 cannot find.** `lookup` searches the registries by
+   its title where it has no DOI and no PMID, and G7 says whether one has it and whether the
+   cited people wrote it. [references/unfound-references.md](references/unfound-references.md)
+   says what to do with each finding. Never add a DOI, a PMID or authors you did not read
+   from a registry's record of the work. A real work no registry indexes is the author's to
+   declare under `lookup.not_indexed` in `paper.yaml`: never write that entry yourself.
 
 ## Words to the reviewers stay in the letter
 
@@ -306,7 +313,9 @@ change a sentence merely to satisfy the lint: if the rewrite is worse, keep the 
 and say so.
 
 Two things do block: model output artefacts (`oaicite`, `[cite: 1]`, "as of my last
-training data") and unfilled placeholders. Those have no defensible use in a submission.
+training data") and unfilled placeholders, a journal template's instructions to its
+authors among them ("In this section you can acknowledge ..."). Those have no defensible
+use in a submission.
 
 ## If you are a model reading this
 

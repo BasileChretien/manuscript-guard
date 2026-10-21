@@ -1,6 +1,6 @@
 ---
 name: submission-pack
-description: Assemble everything a journal asks for and write the covering letter. Use when a manuscript is ready to submit, or when check --submission is close to clean and you want to see what remains.
+description: Assemble everything a journal asks for and write the covering letter, and later check the publisher's proof against what was sent. Use when a manuscript is ready to submit, when check --submission is close to clean and you want to see what remains, or when the journal's proof comes back.
 ---
 
 # Assembling a submission
@@ -35,6 +35,7 @@ the check: the pack is the version you send anywhere.
 | `checklist-*.yaml`, `checklist-*.md` — or `scale-*.yaml` and `scale-*.md` where the project adopted an appraisal scale rather than a reporting checklist | the completed reporting checklists, as data and as a table to read |
 | `abstract.txt` | the abstract as plain text, every number filled in, for the submission system's abstract box; not written for an abstract that cites or holds a footnote, a table or a figure |
 | `response-to-reviewers.md` | the point-by-point response, when a revision round has been opened |
+| `manuscript-marked-up.docx`, `supplementary-marked-up.docx` | at a revision: the revision with every change since the document the round kept shown as tracked changes (`-highlighted` with `submit --highlight`); left out, with the reason, where the round kept no document |
 | `figures/` | the `.png`, `.pdf`, `.tif`, `.tiff` and `.eps` files in `figures/`; an `.svg` is not copied |
 | `MANIFEST.yaml` | every file with its sha256; the version of manuscript-guard that checked it, the commit and whether the tree differed from it, when the journal profile and the checklists were read, and every review finding left as it was, with the reason and who decided |
 
@@ -60,7 +61,9 @@ Write it from the project rather than from memory. Four short paragraphs:
    difference immediately.
 3. **What is unusual, if anything.** A preprint, an overlapping submission, a dataset that
    cannot be shared, a conflict that needs declaring. Say it here rather than let it be
-   discovered.
+   discovered. Text reused from the authors' earlier papers is one such thing: each
+   `recycled-methods-cited` note of `check` is a description to name here, with the paper
+   it comes from, before the journal's similarity check shows it.
 4. **The confirmations** the journal asks for: original work, not under consideration
    elsewhere, all authors approved, ethics where applicable. Each author records their own
    approval with `manuscript-guard approve --as <author>`, and `submit` says who has not, or
@@ -79,3 +82,19 @@ Do not summarise the abstract. The editor has it.
 - Check the journal profile's `notes` field. That is where the requirements no build can
   check were recorded — suggested reviewers, portal quirks, figure formats — and it exists
   because otherwise you rediscover them at 23:00 on the deadline.
+
+## When the proof comes back
+
+The journal typesets the document in the pack, and typesetting changes digits, signs,
+decimal marks, table cells, references and affiliations. Hold the proof to what was sent:
+
+```bash
+manuscript-guard proof proof.pdf --out corrections.md
+```
+
+It lists each correction with its page and line, and names the binding a changed number
+came from; then the copy-editor's changes, for you to accept or query; then what it could
+not compare, a figure's picture and an equation, which still need reading by eye.
+`corrections.md` is a numbered list to paste into your reply to the production office. The
+tool sends nothing: the reply is the author's. A proof of a revision is compared with the
+pack, so assemble the version the journal accepted first.

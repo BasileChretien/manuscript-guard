@@ -1,0 +1,51 @@
+\documentclass{article}
+\usepackage{mgvalues}
+
+\begin{document}
+
+\section{Supplementary methods}
+
+\subsection{Table S1. Code lists used to identify the outcome}
+
+Everything under \texttt{manuscript/supplementary/} is read by the same gates as the paper ---
+a number here is a binding or a defect, exactly as in \texttt{main.tex} --- and built as its
+own document, so it does not count against the journal's word limit and can be uploaded to
+the supplementary slot rather than pasted onto the end of the manuscript.
+
+The case definition belongs here rather than in the Methods because it is a list, and because
+a reader checking it wants the whole list rather than a sentence about it. It is emitted from
+the terms the analysis filtered on, so the definition in this table and the definition the
+code applied cannot come apart.
+
+\mg{table.outcome_codes}
+
+Events were coded with the data generator's own list of event terms, release
+\mg{results.dictionary.generator_event_terms}; a real study codes with MedDRA, and names the
+version the events were coded with.
+
+\subsection{Table S2. The adjusted model}
+
+The model as it was fitted: the outcome, and each variable with the kind it was declared and
+how the model entered it. The table is made from the fit and from those declarations, not
+typed, so it cannot describe a model other than the one that produced the estimate.
+
+\mg{table.model_adjusted}
+
+\subsection{Sensitivity of the estimate to the interval quoted}
+
+The primary analysis reports a 95\% confidence interval of \mg{results.ror.ci_low} to
+\mg{results.ror.ci_high}. The narrower 90\% confidence interval, \mg{results.ror.ci90_low} to
+\mg{results.ror.ci90_high}, is given for readers comparing this estimate with signal-detection
+thresholds that use it. Both exclude the null, so the conclusion does not turn on which is
+quoted.
+
+% Each interval is one interval() call and carries its level, so quoting either one upper
+% bound first is refused. A comment, because this paragraph is about the toolkit rather than
+% the study, and its own percentages, 95% and 90%, would otherwise be reported.
+
+\subsection{Reporting}
+
+This supplement is referred to from the Methods and is listed in the submission manifest as
+its own file, alongside the manuscript rather than inside it.
+
+\end{document}

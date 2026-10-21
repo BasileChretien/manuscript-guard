@@ -967,6 +967,38 @@ def test_the_supplement_reaches_the_submission_pack(project: Path) -> None:
     assert "supplementary.docx" in (pack / "MANIFEST.yaml").read_text(encoding="utf-8")
 
 
+@needs_pandoc
+def test_a_supplementary_figure_carries_its_alternative_text_in_the_supplement(
+    project: Path,
+) -> None:
+    """Basile, 2026-10-21: the supplement is held to the main text's rules. A figure the
+    supplement places is a picture of supplementary.docx, described by its alternative text
+    as one of the paper's is, each binding its display."""
+    import xml.etree.ElementTree as ET
+    import zipfile
+
+    from manuscript_guard.contracts import load_namespace, load_project
+    from manuscript_guard.gates.figure_alt import printed_alt, raw_alt
+
+    main = project / "manuscript" / "main.md"
+    main.write_text(main.read_text(encoding="utf-8").replace("{{figure.forest}}\n", ""),
+                    encoding="utf-8")  # fmt: skip
+    (project / "manuscript" / "supplementary" / "S2_figures.md").write_text(
+        "# Supplementary figure\n\n{{figure.forest}}\n", encoding="utf-8"
+    )
+    assert run("build", str(project), "--offline", "--skip-checks") == 0
+
+    def pictures(name: str) -> list[str]:
+        document = zipfile.ZipFile(project / "build" / name).read("word/document.xml")
+        wp = "{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}"
+        return [node.get("descr", "") for node in ET.fromstring(document).iter(f"{wp}docPr")]
+
+    proj = load_project(project)[0]
+    expected = printed_alt(raw_alt(proj, "forest"), load_namespace(proj)[0])
+    assert "{{" not in expected and pictures("supplementary.docx") == [expected]
+    assert pictures("manuscript.docx") == []
+
+
 def test_the_supplement_does_not_count_against_the_word_limit(project: Path) -> None:
     """The concrete harm of having no supplementary concept: a compliant paper reported as
     over-length, with the author's recourse being to cut material the journal never counts.
@@ -1127,6 +1159,22 @@ def test_explain_shows_the_rule_behind_each_number(project: Path, capsys) -> Non
     out = capsys.readouterr().out
     assert "convention" in out
     assert "rate-denominator" in out or "confidence-level" in out
+
+
+def test_explain_shows_what_a_ref_prints_and_why_one_prints_nothing(
+    project: Path, capsys
+) -> None:
+    path = project / "manuscript" / "main.md"
+    text = path.read_text(encoding="utf-8")
+    refs = "shown in {{ref.table.baseline}} and {{ref.table.gone}}."
+    path.write_text(text.replace("shown in Table 1.", refs, 1), encoding="utf-8")
+    assert run("explain", str(path)) == 0
+    lines = capsys.readouterr().out.splitlines()
+    bound = next(line for line in lines if "{{ref.table.baseline}}" in line)
+    assert bound.startswith("ok") and "-> Table 1 " in bound, bound
+    assert "the main text's table 1, placed by {{table.baseline}}" in bound, bound
+    gone = next(line for line in lines if "{{ref.table.gone}}" in line)
+    assert gone.startswith("FAIL") and "unresolved-binding" in gone, gone
 
 
 def test_methods_reports_and_reconciles(project: Path, capsys) -> None:

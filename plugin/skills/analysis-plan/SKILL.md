@@ -1,6 +1,6 @@
 ---
 name: analysis-plan
-description: Write the analysis plan in design/plan.md before the analysis exists, and record every deviation from it as it happens. Use at the start of a paper project, when check reports no-analysis-plan, plan-section-missing, plan-section-empty, feasibility-not-run, planned-result-missing, planned-result-unquoted, planned-results-unkeyed, plan-changed-after-results or not-in-dictionary, or when the analysis is about to do something the plan did not say.
+description: Write the analysis plan in design/plan.md before the analysis exists, and record every deviation from it as it happens. Use at the start of a paper project, when check reports no-analysis-plan, plan-section-missing, plan-section-empty, feasibility-not-run, planned-result-missing, planned-result-unquoted, planned-results-unkeyed, plan-changed-after-results or not-in-dictionary, or when the analysis is about to do something the plan did not say. Not for finding which dataset could answer the question or how it is reached (use data-sources).
 ---
 
 # Writing down what you meant to do, before you do it
@@ -58,7 +58,9 @@ said they would do":
 - Research question: one question, stated as the quantity you will estimate.
 - Design: the design, and why it answers this question rather than a neighbouring one.
 - Population and data source: who or what is included and excluded, over what period,
-  from which version of which source.
+  from which version of which source. The [data-sources](../data-sources/SKILL.md) skill
+  finds the candidate sources with the author and records how each is reached; name the one
+  chosen here, by a name its record gives, or `check` says so (`plan-source-unnamed`).
 - Exposure: the definition as it will be coded, and the comparator.
 - Outcome: the definition as it will be coded. Where two reasonable definitions would
   give different counts, choose here, before you have seen which one gives the answer.
@@ -124,6 +126,14 @@ they are its names. Once the analysis is under way, G12 warns where a listed key
 emitted (`planned-result-missing`) or was emitted with `quoted=False`
 (`planned-result-unquoted`). If a planned result will not be reported, say so under
 Deviations, naming its key; that stands the warning down and is the record a reader needs.
+
+## What will be collected
+
+Where the data do not exist yet, the plan is followed by a second decision: exactly what
+will be collected. The [data-dictionary](../data-dictionary/SKILL.md) skill writes it in
+`design/data_dictionary.yaml`, one entry per variable, and G12 holds the two together. So
+name each variable in the plan in backticks, as the dictionary names it: "adjusted for
+`age` and `sex`". Write code as code, `glm()`, so that it is not taken for a variable.
 
 ## Dating it
 

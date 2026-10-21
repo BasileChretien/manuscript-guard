@@ -243,6 +243,12 @@ CHANGED = {
         '_BLANK_LINE = re.compile(r"(?!)")\n',
         "planned results",
     ),
+    "code in brackets read as a plan's variable": (
+        "gates/collection.py",
+        'VARIABLE = re.compile(r"[A-Za-z][A-Za-z0-9_]*")\n',
+        'VARIABLE = re.compile(r"[A-Za-z][A-Za-z0-9_():]*")\n',
+        "plan variables",
+    ),
     "a stop against a binding that ends no sentence": (
         "gates/numbers.py",
         "    return before + 1 if start and text[start - 1] in _STOPS else before\n",
@@ -290,6 +296,12 @@ CHANGED = {
         "    elif MOVED in ways or len(set(ways)) > 1:\n",
         "    elif MOVED in ways:\n",
         "reworded",
+    ),
+    "a denial before a phrase not read": (
+        "data_sources.py",
+        "    return NEGATION.search(FREE.sub(\" \", sentence[: found.start()])) is None\n",
+        "    return True\n",
+        "data sources statement",
     ),
     "a finding that points at another file": (
         "gates/vocabulary.py",

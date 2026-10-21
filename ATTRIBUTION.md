@@ -162,10 +162,12 @@ SOFTWARE.
 
 # Third-party data
 
-Two files in the package are made from somebody else's work and **are** redistributed. The
+Three files in the package are made from somebody else's work and **are** redistributed. The
 first is `src/manuscript_guard/data/spelling_variants.tsv`, the list G14 reads to tell
 British spelling from American. The second, `src/manuscript_guard/data/claim_strength.yaml`,
-is under [The claim-strength ladder](#the-claim-strength-ladder) at the end of this file.
+is under [The claim-strength ladder](#the-claim-strength-ladder) below. The
+third, `src/manuscript_guard/data/palettes.json`, the palettes, is under
+[The palettes](#the-palettes), after it.
 
 It is derived from **VarCon** (Variant Conversion Info) by Kevin Atkinson and Benjamin
 Titze, which is published with the SCOWL word lists at <http://wordlist.aspell.net/> and
@@ -279,3 +281,72 @@ words the contract does not name ("possibly", "seems", "no", "never", "non-signi
 capital only where a sentence opens, a word in a compound or a participle after an article
 not read). The contract's other parts, on null findings and on asking the author before a
 claim is moved, are not used; the file's own comments say how each word is read.
+
+## The palettes
+
+`src/manuscript_guard/data/palettes.json`, which `manuscript_guard.palettes`, the R package's
+`mg_palette()` and `manuscript-guard palettes` read, holds the colours of other people's
+palettes. `tools/derive_palettes.py` reads each collection's colours from the collection's own
+file, at a commit it names, and refuses a file whose SHA-256 is not the one written beside it;
+it writes the R package's copy (`r/manuscriptguard/inst/extdata/palettes.json`) the same. Each
+collection's licence, in the words of its own files, is beside the data:
+`src/manuscript_guard/data/palettes_LICENSES.txt`, written by the same script from those files.
+
+| Collection | By | Licence | Read from |
+|---|---|---|---|
+| [MetBrewer](https://github.com/BlakeRMills/MetBrewer) | Blake Robert Mills | CC0 1.0 | `R/PaletteCode.R` at `58839e5a` |
+| [MoMAColors](https://github.com/BlakeRMills/MoMAColors) | MoMAColors authors | MIT | `R/Colors.R` at `854a8dae` |
+| [NatParksPalettes](https://github.com/kevinsblake/NatParksPalettes) | Kevin S. Blake | MIT | `R/NatParksPalettes.R` at `21512883` |
+| [PNWColors](https://github.com/jakelawlor/PNWColors) | Jake Lawlor | CC0 1.0 | `R/PNWColors.R` at `f16a14fc` |
+| [wesanderson](https://github.com/karthik/wesanderson) | Karthik Ram | MIT | `R/colors.R` at `02e4129c` |
+| [ColorBrewer](https://colorbrewer2.org) | Cynthia A. Brewer, Mark Harrower and The Pennsylvania State University | Apache 2.0 | `export/colorbrewer.json` of [axismaps/colorbrewer](https://github.com/axismaps/colorbrewer) at `7d135fc4` |
+| [viridis, magma, inferno, plasma](https://github.com/BIDS/colormap) | Nathaniel J. Smith and Stefan van der Walt | CC0 1.0 | `colormaps.py` at `bc549477` |
+| [cividis](https://github.com/pnnl/cmaputil) | Battelle Memorial Institute (Nuñez, Anderton and Renslow, PLoS ONE 2018) | BSD-style, Battelle | `colormaps/cividis.txt` at `a153df50` |
+| [Scientific colour maps 8.0](https://doi.org/10.5281/zenodo.8409685) | Fabio Crameri | MIT | `cmcrameri/cmaps/*.txt` of [cmcrameri](https://github.com/callumrollo/cmcrameri) at `78f02a08` |
+| [Okabe and Ito](https://jfly.uni-koeln.de/color/) | Masataka Okabe and Kei Ito, Color Universal Design (2008) | published values | the eight RGB values their page gives |
+
+ColorBrewer's notice, which its licence asks to be kept: This product includes color
+specifications and designs developed by Cynthia Brewer (http://colorbrewer.org/). Its
+licence, beside the export the colours are read from, is copyright (c) 2002 Cynthia
+Brewer, Mark Harrower, and The Pennsylvania State University; the palettes here are named
+`brewer/<scheme>`, and nothing here is called ColorBrewer, which that licence reserves.
+
+**The derived file changes how the colours are written, not the colours.** ColorBrewer's are
+written as hex codes where its file writes `rgb()`; viridis's, cividis's and Crameri's as hex
+codes where theirs write numbers from 0 to 1, rounded to 8 bits a channel. Beside each palette
+the file records what this project's colour check says of it (`distinct`, `lightness`,
+`lightness_kept`) and whether the collection calls the palette colour-blind friendly
+(`claims_cvd`): as MetBrewer's, MoMAColors' and NatParksPalettes' files mark each palette, and
+as the makers of viridis, cividis, Crameri's maps and Okabe and Ito's colours say of all of
+theirs. Those fields are this project's. Two of MoMAColors'
+palettes write one more position in their order than they have colours; the extra position
+is dropped. MetBrewer's Tsimshian gives rank 1 twice and no rank 2, and is kept as written:
+one colour of it is two, as `met.brewer` gives it. For anything but choosing a palette for a figure here, take the palettes from
+their makers' packages, which also cite them as their makers ask.
+
+# Ideas from other projects
+
+No code of the projects below is in this repository; what is taken is a design, a rule or a
+fact they found first. Each is credited where it is used, and here.
+
+**paper-preflight** (<https://github.com/amos689/paper-preflight>, MIT, read at commit
+`287e407311bbce7f12196a3889318d2f4e4aa65f` of 2026-10-16) checks a manuscript's references
+before submission, with no language model in its verdicts, and measures its false alarms on
+held-out real papers. From its `docs/adr/0002-verdicts-and-abstention.md`,
+`docs/adr/0003-identifier-first-routing.md`, rules REF003 and REF010 to REF016 and
+`docs/false-positives.md`, `lookup` and G7 took, on 2026-10-20 (DESIGN.md, "A reference is
+looked up once, and the answer is kept"):
+
+- that a search's candidate is accepted by rules on the title, the first author and the
+  year, never by the registry's relevance score;
+- that "not found" needs every source asked to have answered, an outage never counting as a
+  negative, and is not said of grey literature, of very old or very new works, or of a
+  title in another script;
+- that Crossref's `query.bibliographic` ranks fabricated posted-content copies of famous
+  papers first once authors' names are in the query, and the prefix they are under,
+  10.65215, which G7 never takes for a work;
+- that OpenAlex's records can carry another work's details, so that it may find a work and
+  never fails one;
+- an author list of which none is on the record as an error and one that differs in part as
+  a warning (REF010, REF011), which Basile chose on 2026-10-20;
+- the folding of a surname: its last word, apostrophes dropped, ü and ue read as one.

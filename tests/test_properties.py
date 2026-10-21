@@ -20,6 +20,7 @@ through this one, which is the third thing the reviews did.
 
 from __future__ import annotations
 
+import bisect
 import hashlib
 import json
 import math
@@ -51,6 +52,10 @@ from generated import (
     LOWERED,
     NOTATED,
     PLACEHOLDERS,
+    PROOF_ABBREVIATED,
+    PROOF_CORRECTIONS,
+    PROOF_EDIT,
+    PROOF_TYPOGRAPHY,
     RESIDUE,
     RESIDUE_LOOKALIKES,
     SOURCE_GAPS,
@@ -64,24 +69,34 @@ from generated import (
     alt_texts,
     bindings,
     claim_edits,
+    collection_plans,
     commented,
     generated,
     holds,
     laid_out,
+    latex_bound,
+    latex_displays,
     latex_planted,
     latex_texts,
     latex_trees,
     lines,
     mean_tables,
+    numbered_displays,
+    painted_pdfs,
+    painted_svgs,
     passage_files,
     pdf_figures,
+    plan_pairs,
     planned_plans,
     printings,
+    proofs,
     quotations,
+    revisions,
     share_tables,
     signs,
     sources,
     suggestion_paragraphs,
+    supplements,
     texts,
     typed,
     vector_figures,
@@ -90,11 +105,11 @@ from generated import (
 from hypothesis import given, settings
 from hypothesis import strategies as st
 from hypothesis.database import InMemoryExampleDatabase
-from readings import MAIN, PAPER, PEOPLE, READINGS, Unavailable, answer
+from readings import MAIN, PAPER, PEOPLE, READINGS, Unavailable, answer, plain_of
 
 from manuscript_guard import claims as claims_module
 from manuscript_guard import reworded as reworded_module
-from manuscript_guard.build import blinding
+from manuscript_guard.build import blinding, latex_values
 from manuscript_guard.build.blinding import names_in, sought
 from manuscript_guard.classify import CONVENTION, STRUCTURAL, TERM, UNCLASSIFIED, Classifier
 from manuscript_guard.contracts.project import outside_maths
@@ -106,7 +121,9 @@ from manuscript_guard.gates import methods as methods_gate
 from manuscript_guard.gates import models as models_gate
 from manuscript_guard.gates import numbers as numbers_gate
 from manuscript_guard.gates import quotations as quotations_gate
+from manuscript_guard.gates import recycling as recycling_gate
 from manuscript_guard.gates import related as related_gate
+from manuscript_guard.gates import related_methods as related_methods_gate
 from manuscript_guard.gates import reported as reported_gate
 from manuscript_guard.gates import spelling as spelling_gate
 from manuscript_guard.gates import vocabulary as vocabulary_gate
@@ -123,6 +140,10 @@ from manuscript_guard.gates.vocabulary import (
 from manuscript_guard.literature import passages as passages_module
 from manuscript_guard.literature import sources as literature_sources
 from manuscript_guard.literature.sources import contains, normalise, states_value
+from manuscript_guard.markedup import align as markedup_align
+from manuscript_guard.markedup import atoms as markedup_atoms
+from manuscript_guard.markedup import package as markedup_package
+from manuscript_guard.markedup import writer as markedup_writer
 from manuscript_guard.reworded import (
     BINDING,
     CITATION,
@@ -137,6 +158,7 @@ from manuscript_guard.reworded import (
 from manuscript_guard.text import placeholders, tokens
 from manuscript_guard.text.latex import mask as latex_mask
 from manuscript_guard.text.latex import structure as latex_structure
+from manuscript_guard.text.latex import views as latex_views
 from manuscript_guard.text.masking import NUL, mask
 from manuscript_guard.text.placeholders import parse as parse_bindings
 from manuscript_guard.text.sections import chains_at, footnote_index, heading_index
@@ -592,6 +614,109 @@ def _an_abstract_in_the_preamble_is_blanked(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(latex_mask, "PRINTED_IN_PREAMBLE", latex_mask.PRINTED_IN_PREAMBLE - {"abstract"})
 
 
+@holds(100, latex_bound())
+def test_a_latex_binding_is_read_where_it_prints_as_one_and_nowhere_else(
+    drawn: tuple[str, list[tuple[str, str]]],
+) -> None:
+    """A `\\mg{namespace.key}` planted in every place it stands, among whole pieces, is a
+    binding where LaTeX prints it, in prose, a note, a caption, a cell, maths, a definition's
+    body and the title, and nothing in a comment, an `\\iffalse` block or the `comment`
+    environment. A near spelling, a Markdown binding and a `\\mg` that names no key are each
+    something meant for one, and siunitx's milligram is nothing (step 4). The Markdown view
+    holds each binding where its command stands, the line breaks where they stand, a binding
+    in a typed table is in it and no other is, and a listing names its language (round 1 of
+    #400)."""
+    text, planted = drawn
+    reading = latex_mask.read(text)
+    assert reading.refusals == (), (reading.refusals, text)
+    source = latex_structure.Source("main.tex", text, reading)
+    good, malformed = latex_views.bindings(source)
+    expected = {kind: sorted(key for key, was in planted if was == kind)
+                for kind in ("bound", "table", "malformed", "listing")}  # fmt: skip
+    found = {placeholder.key.rsplit(".", 1)[-1]: placeholder for placeholder in good}
+    assert sorted(found) == sorted(expected["bound"] + expected["table"]), text
+    keys = sorted("".join(re.findall(r"k\d+", raw)) for raw, _at, _line in malformed)
+    assert keys == expected["malformed"], (malformed, text)
+    view = latex_views.markdown_view(source, good)
+    assert [i for i, c in enumerate(view) if c == "\n"] == [
+        i for i, c in enumerate(text) if c == "\n"
+    ], text
+    assert [(p.ref, p.start, p.end) for p in parse_bindings(view)[0]] == [
+        (p.ref, p.start, p.end) for p in good
+    ], (view, text)
+    tables = latex_views.Tables(reading.tables)
+    assert sorted(key for key, p in found.items() if p.start in tables) == expected["table"]
+    ((key,),) = [expected["listing"]]
+    (listing,) = [found for found in reading.listings if key in text[found.start : found.end]]
+    assert listing.language == "r", text
+
+
+def _a_latex_binding_is_read_wherever_it_is_typed(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_views, "_uses", lambda source: latex_views._by_shape(source.text, 0))
+
+
+def _a_near_spelling_of_the_binding_is_taken_for_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_near_binding", lambda name: False)
+
+
+def _a_markdown_binding_in_latex_is_taken_for_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_MARKDOWN_BINDING", re.compile("(?!)"))
+
+
+def _siunitx_s_milligram_is_taken_for_a_binding(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "SIUNITX", frozenset())
+
+
+def _a_bindings_view_is_not_padded_to_its_command(patch: pytest.MonkeyPatch) -> None:
+    view = latex_views.markdown_view
+
+    def broken(source, placeholders, blank=" "):
+        out = list(view(source, [], blank))
+        for p in placeholders:
+            written = ("{{" + p.ref + "}}").ljust(p.end - p.start)
+            out[p.start : p.end] = written[: p.end - p.start]
+        return "".join(out)
+
+    patch.setattr(latex_views, "markdown_view", broken)
+
+
+def _a_typed_table_is_not_recorded(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "TYPED_TABLES", frozenset())
+
+
+def _a_listings_language_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_LANGUAGE", re.compile("(?!)"))
+
+
+def _a_line_break_before_a_bindings_brace_makes_it_malformed(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_BINDING",
+                  re.compile(r"[ \t]*(?:\[[^\]\n]*\])?[ \t]*\{(?P<inner>[^{}\n]*)\}"))  # fmt: skip
+
+
+@holds(100, latex_displays())
+def test_a_display_written_for_latex_holds_no_bare_special_and_no_ligature(display: str) -> None:
+    """Each of TeX's specials in a display is written escaped, but the no-break space, which is
+    written as a tie; and no dash TeX joins from two characters is written, `--`, which before
+    a minus sign made an em dash of both, from two hyphens too (step 4b)."""
+    written = latex_values.escaped(display, "results.x")
+    bare = re.sub(r"\\(?:[A-Za-z]+(?:\{[^{}]*\})?|[#$%&_{},])|\{\}", "", written)
+    assert sorted(set(bare) & set("\\{}$&#%_^")) == [], (display, written)
+    assert bare.count("~") == display.count("\N{NO-BREAK SPACE}"), (display, written)
+    assert "--" not in written, (display, written)
+
+
+def _a_percent_is_written_bare(patch: pytest.MonkeyPatch) -> None:
+    patch.setitem(latex_values._SPECIALS, "%", "%")
+
+
+def _two_hyphens_are_written_as_typed(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_values, "_joins", lambda text, index: False)
+
+
+def _an_en_dash_is_written_as_a_ligature(patch: pytest.MonkeyPatch) -> None:
+    patch.setitem(latex_values._TEXT, "\N{EN DASH}", "--")
+
+
 def _iffalse_hides_its_else(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(latex_mask, "_CONDITIONALS", re.compile(r"\\(?:if[A-Za-z]*|fi)(?![A-Za-z])"))
 
@@ -950,6 +1075,94 @@ def test_each_identifier_names_data_and_each_temporary_link_is_found(
     assert temporary == sorted(drawn_links + list(TEMPORARY_LINKS)), (temporary, linked)
 
 
+# ------------------------------------------------- the data sources a statement names and says
+
+
+def _written_as(name: str) -> tuple[str, ...]:
+    """A source's name as a statement may write it: in capitals, in small letters, its words
+    broken across a line, spaced twice or with a space that does not break, in emphasis, and
+    followed by a stop."""
+    return (
+        name.upper(), name.lower(), name.replace(" ", "\n"), name.replace(" ", "  "),
+        name.replace(" ", "\N{NO-BREAK SPACE}"), f"*{name}*", f"{name}.",
+    )  # fmt: skip
+
+
+@st.composite
+def _placed(draw: st.DrawFn) -> tuple[str, int]:
+    text = draw(texts())
+    return text, draw(st.integers(0, len(text.split(" "))))
+
+
+@holds(100, _placed())
+def test_a_source_is_named_in_any_writing_of_its_names_and_never_inside_a_word(
+    drawn: tuple[str, int],
+) -> None:
+    """Whatever the words around it, each name of a source, each other name and each way of
+    writing them names it, and the same name glued to a longer word does not."""
+    from generated import SOURCE_NAMES
+    from readings import DATA_SOURCES
+
+    from manuscript_guard.data_sources import named
+
+    text, at = drawn
+    pieces = text.split(" ")
+
+    def put(word: str) -> str:
+        return " ".join(pieces[:at] + [word] + pieces[at:])
+
+    for source in DATA_SOURCES:
+        alone = named(text, source)
+        own = [name for name in SOURCE_NAMES if name in (source["name"], *source["also_known_as"])]
+        assert own
+        for name in own:
+            for written in _written_as(name):
+                assert named(put(written), source), (written, source["id"])
+            for glued in (f"x{name}", f"{name}x", f"{name}2", f"9{name}"):
+                assert named(put(glued), source) is alone, (glued, source["id"])
+
+
+@holds(60, texts(), texts())
+def test_a_statement_is_held_to_each_source_s_route_whatever_surrounds_it(
+    before: str, after: str
+) -> None:
+    """Whatever paragraphs come before and after, a sentence that names a source and says the
+    data are asked for warns of the source anyone may download and not of the one a committee
+    decides on; one that says anyone may have them warns of the second and not the first,
+    unless a denial comes before it in its sentence, however far; and the open source said
+    open after a denial of something else still excuses an "on request" elsewhere."""
+    from generated import ASKED_FOR, DENIALS, OPENLY_HAD
+    from readings import DATA_SOURCES
+
+    from manuscript_guard.data_sources import route_differs
+
+    sources = [dict(source) for source in DATA_SOURCES]
+    surrounding = route_differs(f"{before}\n\n{after}", sources)
+
+    def differs(sentence: str) -> set[tuple[str, str]]:
+        found = route_differs(f"{before}\n\n{sentence}\n\n{after}", sources)
+        return set(found) - set(surrounding)
+
+    for asked in ASKED_FOR:
+        assert differs(f"Data of the ORA are {asked}.") == {("ora", "on request")}, asked
+        assert differs(f"Data of the ENCD are {asked}.") == set(), asked
+        # Said openly elsewhere, the open archive's "on request" asks for something else.
+        said = f"The ORA is publicly available. Data derived from the ORA are {asked}."
+        assert ("ora", "on request") not in differs(said), asked
+    for openly in OPENLY_HAD:
+        assert differs(f"ENCD data are {openly}.") == {("encd", "publicly")}, openly
+        assert differs(f"ORA data are {openly}.") == set(), openly
+        for denial in DENIALS:
+            assert differs(f"ENCD data {denial} {openly}.") == set(), (denial, openly)
+        far = f"None of the ENCD claims, prescriptions, and hospital records are {openly}."
+        assert differs(far) == set(), openly
+        # Said open after a denial of something else, the open archive excuses an "on
+        # request" of its derived data all the same (round 2 of #384).
+        excused = (f"No new data were drawn, and the ORA is {openly}. "
+                   f"Data derived from the ORA are {ASKED_FOR[0]}.")  # fmt: skip
+        assert ("ora", "on request") not in differs(excused), openly
+
+
 # ------------------------------------------------------------- what the plan's deviations say
 
 
@@ -1002,6 +1215,28 @@ def test_a_planned_result_is_read_from_its_own_item_and_nowhere_else(
     read = planned_results(plan)
     assert read is not None, plan
     assert [(found.key, found.group) for found in read] == listed, plan
+
+
+# ------------------------------------------------------------ the variables a plan names
+
+
+@holds(100, collection_plans())
+def test_a_variable_is_read_from_the_plan_outside_its_deviations_and_nowhere_else(
+    drawn: tuple[str, list[str], list[tuple[str, int]], list[tuple[str, int]], int],
+) -> None:
+    """Each variable the dictionary has, dotted or not, is read where the plan names it in
+    backticks, its subsections and a list headed "Planned results and amendments" included,
+    at its first mention; each name that reads as a variable's and that the dictionary lacks
+    is read the same way, one written in another case among them; and nothing is read from
+    the Deviations or the sections under them, from "Changes to the planned results", from
+    code, values, a fence or a comment. Of the text drawn after the plan, nothing is
+    compared: only that it changes nothing before it."""
+    from manuscript_guard.gates.collection import variables_named
+
+    plan, names, used, undefined, last = drawn
+    read_used, read_undefined = variables_named(plan, names)
+    assert [(n.name, n.line) for n in read_used if n.line <= last] == used, plan
+    assert [(n.name, n.line) for n in read_undefined if n.line <= last] == undefined, plan
 
 
 # ------------------------------------------------------------------------------ parameters
@@ -2097,6 +2332,32 @@ def test_the_methods_named_as_such_are_read_before_a_heading_that_only_holds_the
         assert read is not None and "Coriander" in read and "Basil" not in read, (text, read)
 
 
+@holds(40, supplements())
+def test_a_supplement_s_methods_are_the_methods_to_each_gate_that_reads_them(
+    drawn: tuple[str, list[tuple[int, bool, bool]]],
+) -> None:
+    """G9 read the main text's Methods alone, and G2 and G15 knew no supplement's name for
+    them: a parameter the supplement's Methods stated was reported absent, a threshold typed
+    under "eMethods 1" was a number nothing classified, and a model's kind typed there was
+    never read. Each section of a file of the supplement is the Methods to each gate exactly
+    where it should be: G9 reads every section whose heading holds "methods" and stands
+    under no Results, and each one under it that names a method, each once; G2's threshold
+    holds and G15 reads a model named only under a supplement's name of the Methods, or a
+    name of a method under one, under no Results. A table under "Supplementary methods" is
+    none of theirs (round 1 of #395)."""
+    text, sections = drawn
+    read = methods_gate.supplement_methods_in(text) or ""
+    assert read.count("Coriander") == sum(g9 for _at, g9, _held in sections), (text, read)
+    assert "Basil" not in read, (text, read)
+    numbers = READINGS["numbers"]()({"text": text})
+    held = [atom["rule"] == "significance-threshold" for atom in numbers if atom["text"] == "0.05"]
+    assert held == [held for _at, _g9, held in sections], text
+    starts = [at for at, _g9, _held in sections]
+    named = [bisect.bisect_right(starts, start) - 1 for start, _end, _kind in
+             models_gate.named_in_methods(text)]  # fmt: skip
+    assert named == [index for index, (_at, _g9, held) in enumerate(sections) if held], text
+
+
 # ------------------------------------------- a number a summary gives and the paper does not
 
 #: What a paper calls its Results, and what it may call a section that is not them.
@@ -2879,6 +3140,25 @@ def test_a_pointer_names_what_the_document_carries_or_is_said(
         (at["kind"], bool(at["s"]), int(at["n"])) for at in named if at is not None
     }
     assert found == expected, (main, supplement, report.findings)
+
+
+@holds(100, numbered_displays())
+def test_a_ref_prints_the_number_its_display_has_or_is_said(
+    drawn: tuple[dict[str, str], dict[tuple[str, int], str], set[tuple[str, str, int]]],
+) -> None:
+    """Each ref and num binding prints the number the document gives its table or figure:
+    counted in the order the files print, which is not the order of their paths, and the
+    supplement's apart from the main text's. G2 says of the pointers exactly what was
+    planted, a ref to a key nothing places and a num after words that point at another kind
+    or at the other document, and nothing of the rest, which cite each display in order."""
+    files, prints, planted = drawn
+    said = READINGS["pointers"]()({"files": files})
+    printed = {(relative, start): shown for relative, start, shown in said["printed"]}
+    assert {at: shown for at, shown in printed.items() if shown is not None} == prints, files
+    assert sum(shown is None for shown in printed.values()) == 2, (files, printed)
+    findings = said["report"]["findings"]
+    found = {(f["code"], f["path"].split("manuscript/")[-1], f["line"]) for f in findings}
+    assert found == planted, (files, findings)
 
 
 # --------------------------------------------------------------------------------- bindings
@@ -3974,6 +4254,47 @@ def test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands(
     assert report.ok
 
 
+# ------------------------------------------------------------------- the marked-up copy
+
+#: What shows a change in a line of `readings.shown`.
+_CHANGE_MARKS = ("[-", "{+", "~", "\N{PILCROW SIGN}", "style ", "row+ ", "row- ")
+
+
+@holds(20, revisions())
+def test_a_marked_up_copy_shows_each_change_where_it_was_made_and_reads_as_both_documents(
+    drawn: tuple[dict[str, list], list[tuple[str, str]]],
+) -> None:
+    """With every change accepted the copy reads as the revision, and with every one
+    rejected as the document sent, by a reading of its XML that owes nothing to the
+    package's (`readings.read_plainly`): the words, how they look, the table's rows, the
+    figure and the note. And each change shows where it was made, as what it is: a word
+    reworded and a number re-run as the one deleted and the other inserted, a word set in
+    italics as a change of formatting, a paragraph made a heading as one of style, a cell
+    re-run in its cell, a row added as a row, a picture replaced as one paragraph deleted
+    and another inserted, a list item deleted, a paragraph inserted, a paragraph moved as
+    the same words deleted and inserted; and two paragraphs left alone show nothing."""
+    given_, expected = drawn
+    found = answer(READINGS["marked up"](), given_)
+    assert "raised" not in found, found
+    told = found["answer"]
+    assert told["accepted"] == plain_of(given_["after"]), told
+    assert told["rejected"] == plain_of(given_["before"]), told
+    lines = told["shown"]
+    for word, holds_ in expected:
+        mine = [line for line in lines if word in line]
+        assert mine, (word, lines)
+        if holds_ == "unchanged":
+            assert not [line for line in mine if any(m in line for m in _CHANGE_MARKS)], lines
+        elif holds_ == "moved":
+            gone = {line[len("\N{PILCROW SIGN}- [-") : -2] for line in lines
+                    if line.startswith("\N{PILCROW SIGN}- [-") and line.endswith("-]")}
+            came = {line[len("\N{PILCROW SIGN}+ {+") : -2] for line in lines
+                    if line.startswith("\N{PILCROW SIGN}+ {+") and line.endswith("+}")}  # fmt: skip
+            assert gone & came, lines
+        else:
+            assert any(holds_ in line for line in mine), (word, holds_, lines)
+
+
 # ------------------------------------------------------------ the words beside a quoted value
 
 #: A value a ledger records, as its display is written, one of each kind: a decimal, a whole
@@ -4091,6 +4412,176 @@ def test_a_value_an_earlier_output_printed_is_this_one_however_it_was_printed(
         for case, said in zip(cases, found, strict=True)
         if said != [True, False]
     ]
+
+
+# ------------------------------------------------------- a passage of an earlier paper
+
+#: Words of the earlier paper and of nobody else: no filler word, none another reading
+#: plants. A run of them stands once in the earlier paper, so nothing else can match it.
+_EARLIER_WORDS = tuple(
+    f"{start}{end}"
+    for start in ("zor", "vel", "quan", "mib", "tesh", "dov", "ral", "kup", "nar", "gim", "sav",
+                  "pel", "bru", "hok", "lom", "wib", "fen")  # fmt: skip
+    for end in ("ade", "ine", "ost", "eth", "ond", "ix", "um", "orb", "ask", "elp", "aunt")
+)  # fmt: skip
+#: Words a page sets with a ligature.
+_LIGATURED = ("zoruffa", "velifle", "quanflan", "mibaffe", "teshoffin")
+#: Words the earlier paper has between the passages a manuscript repeats.
+_ITS_OWN = ("plok", "trab", "snarp", "wugle", "blick", "fendo", "crisk")
+#: What a manuscript holds of a passage, in the order drawn, each in every example.
+_REPEATED_KINDS = (
+    "recycled", "short", "quoted", "changed", "listing", "comment", "heading", "statement",
+    "results statement", "like a statement", "reference list", "discussion",
+)  # fmt: skip
+#: The statements a journal asks for, as headings the Methods may hold.
+_STATEMENT_HEADINGS = ("Ethics approval", "Funding", "Patient and public involvement")
+#: Themes of the Results named as a statement is: the Results' own.
+_RESULTS_STATEMENT_HEADINGS = ("Data sharing", "Consent", "Funding and conflicts of interest")
+#: The part of the paper each kind's run stands in, where it stands in one.
+_PART_PLANTED = {
+    "statement": "statement", "results statement": "results", "discussion": "discussion",
+}  # fmt: skip
+#: Titles that open with a statement's words, or a supplement's prefix, and are the paper's
+#: own matter.
+_LIKE_A_STATEMENT = (
+    "Funding sources of the included trials", "Data sharing in pharmacovigilance",
+    "Ethical issues in prescribing", "Online discussion forums", "Online consent",
+)  # fmt: skip
+#: Words of its own the earlier paper has between two runs: more than a passage may differ
+#: by, so that no two runs are one passage.
+_APART_BY = recycling_gate.GAP + 2
+
+
+@st.composite
+def _planted_recycling(draw: st.DrawFn) -> tuple[str, str, set[tuple[int, ...]]]:
+    """A manuscript of filler words and an earlier paper that share runs of words, one of
+    each kind, and what the reading must report of them: by its first and last line, the
+    words shared, how many of those are quoted, and the part of the paper it stands in.
+
+    Repeated and reported: a run of twelve words or more, with a citation, a binding, a
+    number and a mark of emphasis among its words and its lines wrapped; one in quotation
+    marks, all quoted; one with a word changed, all but that word; one in a statement under
+    the Methods, as a statement's; one under a theme of the Results named as a statement is,
+    as the Results'; one under a title that opens with a statement's words, as no part's;
+    one under the Discussion's principal findings, beside its interpretation and its
+    conclusions, as the Discussion's. Not reported: a run of eleven, and runs in a listing, a
+    comment, a heading and the reference list. The earlier paper sets each run in type: a
+    word broken at the end of a line, a ligature, a reference's number."""
+    pool = list(draw(st.permutations(_EARLIER_WORDS)))
+    text, source, expected = "", "", set()
+
+    def filler(least: int = 1, most: int = 4) -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=least, max_size=most)))
+
+    for kind in draw(st.permutations(_REPEATED_KINDS)):
+        size = {"recycled": draw(st.integers(12, 20)), "short": 11,
+                "quoted": draw(st.integers(12, 16)), "changed": draw(st.integers(17, 22))
+                }.get(kind, 14)  # fmt: skip
+        run, pool = pool[:size], pool[size:]
+        assert len(run) == size, "too few words of the earlier paper for every kind"
+        if kind == "recycled":
+            run[draw(st.integers(0, size - 1))] = draw(st.sampled_from(_LIGATURED))
+        # The earlier paper: its own words, then the run as a page sets it.
+        typeset = list(run)
+        for letters, ligature in (
+            ("ff", "\N{LATIN SMALL LIGATURE FF}"), ("fi", "\N{LATIN SMALL LIGATURE FI}"),
+            ("fl", "\N{LATIN SMALL LIGATURE FL}"),
+        ):  # fmt: skip
+            typeset = [word.replace(letters, ligature) for word in typeset]
+        broken = draw(st.integers(0, size - 1))
+        cut = draw(st.integers(1, len(typeset[broken]) - 1))
+        typeset[broken] = f"{typeset[broken][:cut]}-\n{typeset[broken][cut:]}"
+        numbered = draw(st.integers(0, size - 2))
+        typeset[numbered] += draw(st.sampled_from((".12", "12", "\N{SUPERSCRIPT TWO}", " [3]")))
+        own = draw(st.lists(st.sampled_from(_ITS_OWN), min_size=_APART_BY, max_size=8))
+        source += " ".join(own) + "\n" + " ".join(typeset) + "\n"
+        # The manuscript.
+        shown = list(run)
+        if kind == "changed":
+            shown[draw(st.integers(8, size - 9))] = draw(st.sampled_from(FILLER))
+        if kind == "recycled":
+            for inserted in ("[@other2019]", "{{results.cohort.n}}", "3.4"):
+                shown.insert(draw(st.integers(1, len(shown) - 1)), inserted)
+            marked = draw(st.integers(0, len(shown) - 1))
+            if shown[marked][0].isalpha():
+                shown[marked] = f"*{shown[marked]}*"
+        joints = [draw(st.sampled_from((" ", " ", "\n"))) for _ in shown[1:]]
+        written = shown[0] + "".join(
+            joint + word for joint, word in zip(joints, shown[1:], strict=True)
+        )
+        if kind == "quoted":
+            opened, closed = draw(st.sampled_from(
+                (('"', '"'), ("\N{LEFT DOUBLE QUOTATION MARK}", "\N{RIGHT DOUBLE QUOTATION MARK}"))
+            ))  # fmt: skip
+            written = f"{opened}{written}{closed}"
+        sentence = f"{filler().capitalize()} {written} {filler()}."
+        # A part of the paper is closed by a heading that names none, so that the runs after
+        # it stand under no part.
+        if kind == "listing":
+            paragraph = f"```\n{written}\n```"
+        elif kind == "comment":
+            paragraph = f"{filler().capitalize()} <!-- {written} --> {filler()}."
+        elif kind == "heading":
+            paragraph = "## " + " ".join(shown)
+        elif kind == "statement":
+            heading = draw(st.sampled_from(_STATEMENT_HEADINGS))
+            paragraph = f"## Methods\n\n### {heading}\n\n{sentence}\n\n## Afterword"
+        elif kind == "results statement":
+            heading = draw(st.sampled_from(_RESULTS_STATEMENT_HEADINGS))
+            paragraph = f"## Results\n\n### {heading}\n\n{sentence}\n\n## Afterword"
+        elif kind == "like a statement":
+            paragraph = f"## {draw(st.sampled_from(_LIKE_A_STATEMENT))}\n\n{sentence}"
+        elif kind == "discussion":
+            discussion = draw(st.sampled_from(("Supplementary discussion", "eDiscussion 2",
+                                               "eDiscussion", "Discussion")))  # fmt: skip
+            paragraph = (
+                f"## {discussion}\n\n### Principal findings\n\n{sentence}\n\n### Interpretation\n\n"
+                f"{filler().capitalize()}.\n\n### Conclusions\n\n{filler().capitalize()}.\n\n"
+                "## Afterword"
+            )
+        elif kind == "reference list":
+            paragraph = f"## References\n\n1. {written}\n\n## Afterword"
+        else:
+            paragraph = sentence
+        if kind not in ("short", "listing", "comment", "heading", "reference list"):
+            first = text.count("\n") + paragraph.count("\n", 0, paragraph.index(written)) + 1
+            last = first + written.count("\n")
+            shared = size - (kind == "changed")
+            quoted = shared if kind == "quoted" else 0
+            expected.add((first, last, shared, quoted, _PART_PLANTED.get(kind, "")))
+        text += paragraph + "\n\n"
+    return text, source, expected
+
+
+@holds(150, _planted_recycling())
+def test_a_passage_of_an_earlier_paper_is_found_where_it_stands_however_it_is_set(
+    planted: tuple[str, str, set[tuple[int, ...]]],
+) -> None:
+    """A run of twelve words the earlier paper has is one passage, however the page set it
+    and whatever the manuscript put between its words that is no word; a word changed does
+    not end it; a quotation is counted as quoted; a statement's is a statement's, under the
+    Methods too, and a theme of the Results named as a statement is, or a title that opens
+    with a statement's words, is not; the Discussion over its conclusions is the Discussion;
+    and eleven words, a listing, a comment, a heading and the reference list are not
+    reported."""
+    text, source, expected = planted
+    found = {
+        (p.first_line, p.last_line, p.shared, p.quoted, p.kind)
+        for p in recycling_gate.recycled_in(text, source, "earlier")
+    }
+    assert found == expected, (text, source)
+
+
+@holds(150, plan_pairs())
+def test_a_section_of_two_plans_differs_only_where_its_words_do(
+    drawn: tuple[dict[str, str], list[str]],
+) -> None:
+    """G8 says which sections an earlier plan and this one both have whose words differ. A
+    section re-wrapped, put in emphasis, given a comment, written in capitals or numbered is
+    the same section saying the same; one with a word added is not; and the plan's own
+    Deviations are each paper's and never compared. Each example holds every edit."""
+    given, changed = drawn
+    assert READINGS["plan sections"]()(given) == changed, given
 
 
 # ------------------------------------------------------------- scripts the gates do not read
@@ -4367,6 +4858,44 @@ def test_an_alternative_text_is_the_pictures_description_as_it_was_written(
     assert _descriptions_pandoc_reads(markdown) == folded
 
 
+# ------------------------------------------------------------------ the colours a figure paints
+
+
+@holds(25, painted_svgs())
+def test_each_colour_an_svg_figure_paints_is_read_and_its_texts_kept_apart(
+    drawn: tuple[str, set[str], set[str]],
+) -> None:
+    """Each mark's colour as it shows over white, however the figure sets it: an attribute,
+    a style, a class, a group's, `inherit`, `currentColor`, through `<use>`, under a group's
+    opacity or a fill-opacity, by name, as `rgb()` or `hsl()`; and none for a mark not
+    displayed, hidden, painted nothing, or defined and never used. A text's colour is read,
+    and kept apart from the marks', a text drawn as glyphs too (round 1 of #398)."""
+    from manuscript_guard.gates.figure_svg import parse_svg
+
+    document, marks, texts = drawn
+    svg = parse_svg(document)
+    assert svg is not None
+    assert {paint.colour for paint in svg.paints if not paint.text} == marks, document
+    assert {paint.colour for paint in svg.paints if paint.text} == texts, document
+
+
+@holds(25, painted_pdfs())
+def test_each_colour_a_pdf_figure_paints_is_read_and_its_texts_kept_apart(
+    drawn: tuple[bytes, set[str], set[str]],
+) -> None:
+    """Each path filled or stroked in a colour set by `rg`, `g`, `k`, their stroking twins,
+    or `sc` and `scn` in a colour space, under a graphics state's opacity, inside `q` and
+    `Q`, or by a form drawn in its drawer's colour; nothing for a pattern; a text's colour
+    kept apart."""
+    from manuscript_guard.gates.figure_pdf import parse_pdf
+
+    data, marks, texts = drawn
+    figure = parse_pdf(data)
+    assert figure is not None
+    assert {paint.colour for paint in figure.paints if not paint.text} == marks, data
+    assert {paint.colour for paint in figure.paints if paint.text} == texts, data
+
+
 # ------------------------------------------------------- a quote its source nearly holds
 
 #: The words a quote is drawn from: none of them is a word of the filler around it, so the
@@ -4557,6 +5086,156 @@ def _what_differs_is_looked_for_at_the_ends_only(patch: pytest.MonkeyPatch) -> N
     from manuscript_guard.literature import placement
 
     patch.setattr(placement, "_within", lambda *drawn: None)
+
+
+# ------------------------------------------------------------------- a publisher's proof
+
+
+def _compared(drawn: dict[str, Any]):
+    """What `proof` says of a proof drawn by `proofs`."""
+    from manuscript_guard.proof import reading as proof_reading
+    from manuscript_guard.proof.compare import compare
+    from manuscript_guard.proof.sent import PARAGRAPH, Part, Sent
+
+    parts = tuple(Part(PARAGRAPH, text, label) for label, text in drawn["parts"])
+    read = proof_reading._paged("the text as saved", drawn["pages"])
+    return compare(Sent(Path("manuscript.docx"), parts, (), None), read)
+
+
+@holds(60, proofs(planted=False))
+def test_a_proof_that_prints_what_was_sent_reads_as_it(drawn: dict[str, Any]) -> None:
+    """However the proof wraps and pages the parts, with its running heads, its page
+    numbers, its line numbers or none, and words broken at a line's end, it prints what was
+    sent: nothing to correct, nothing shown."""
+    result = _compared(drawn)
+    assert result.changes == ()
+    assert result.found == result.total
+
+
+@holds(60, proofs())
+def test_each_change_a_typesetter_makes_is_reported_once_where_it_is(
+    drawn: dict[str, Any],
+) -> None:
+    """One of every change of `PROOF_CORRECTIONS` is a correction of its part, and the part
+    the proof leaves out is reported missing, each once and nothing else; the same value set
+    otherwise is typography and the word changed a copy-edit, each in its part. A change is
+    said to be on the page its line is on, and on that line where the proof numbers them."""
+    from manuscript_guard.proof.compare import ADDED, COPY_EDIT, CORRECTION, MOVED
+    from manuscript_guard.proof.tokens import TYPOGRAPHY as SET_OTHERWISE
+
+    result = _compared(drawn)
+    planted = drawn["planted"]
+    wanted = {(what, planted[f"{what} {printed}"][0]) for _s, printed, what in PROOF_CORRECTIONS}
+    wanted.add(("missing", planted["missing"][0]))
+    found = [(c.what, c.part) for c in result.changes if c.kind == CORRECTION]
+    assert sorted(found) == sorted(wanted)
+    edits = [(c.part, c.sent, c.printed) for c in result.changes if c.kind == COPY_EDIT]
+    abbreviated = [word.split()[-1] for word in PROOF_ABBREVIATED]
+    assert sorted(edits) == sorted([(planted[f"copy-edit {PROOF_EDIT[1]}"][0], *PROOF_EDIT),
+        (planted[f"abbreviated {PROOF_ABBREVIATED[1]}"][0], *abbreviated)])  # fmt: skip
+    shown = sorted(c.part for c in result.changes if c.kind == SET_OTHERWISE)
+    assert shown == sorted(planted[f"typography {printed}"][0] for _s, printed in
+                           PROOF_TYPOGRAPHY)  # fmt: skip
+    assert not [c for c in result.changes if c.kind in (ADDED, MOVED)]
+    for change in result.changes:
+        if change.kind != CORRECTION or change.what == "missing":
+            continue
+        printed = next(shown for part, shown in planted.values()
+                       if part == change.part).split()[-1]
+        number, (page, line) = next((n, at) for n, at in drawn["lines"].items()
+                                    if printed in at[1].replace("\N{NO-BREAK SPACE}", " "))
+        assert change.page == page, (change, page)
+        assert change.line == (number if drawn["numbered"] else None), (change, number)
+
+
+def _a_decimal_comma_is_the_same_number(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.proof import compare as module
+    from manuscript_guard.proof import tokens
+
+    def compared(sent, printed):
+        verdict, note = tokens.compare_numbers(sent, printed)
+        return (tokens.TYPOGRAPHY, "") if verdict == tokens.DECIMAL_MARK else (verdict, note)
+
+    patch.setattr(module, "compare_numbers", compared)
+
+
+def _a_sign_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.proof import compare as module
+    from manuscript_guard.proof import tokens
+
+    def compared(sent, printed):
+        verdict, note = tokens.compare_numbers(sent, printed)
+        return (tokens.SAME, "") if verdict == tokens.SIGN else (verdict, note)
+
+    patch.setattr(module, "compare_numbers", compared)
+
+
+def _a_unit_is_a_word(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.proof import compare as module
+
+    patch.setattr(module, "is_unit", lambda raw: raw in "%<>=")
+
+
+def _a_unit_of_time_spelt_out_is_a_word(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.proof import compare as module
+
+    patch.setattr(module, "time_units", lambda found: set())
+
+
+def _a_unit_past_a_hyphen_is_not_beside_its_number(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.proof import compare as module
+
+    patch.setattr(module, "_past_hyphen", lambda found, lo: ())
+
+
+def _a_unit_of_time_spelt_out_is_a_unit(patch: pytest.MonkeyPatch) -> None:
+    # So read, the AMA's "12 wk" for "12 weeks" was a correction (round 2 of #397).
+    from manuscript_guard.proof import compare as module
+    from manuscript_guard.proof import tokens
+
+    real = module.is_unit
+    patch.setattr(module, "is_unit",
+                  lambda raw: real(raw) or raw.casefold() in tokens._TIME_WORDS)  # fmt: skip
+
+
+def _running_heads_are_kept(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.proof import reading
+
+    patch.setattr(reading, "_without_running_lines", lambda pages, taken: pages)
+
+
+def _a_stretch_is_not_slid_to_a_part(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.proof import align
+
+    patch.setattr(align, "slid", lambda ops, a, b, starts: ops)
+
+
+def _a_word_broken_at_a_line_end_stays_two(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.proof import compare as module
+    from manuscript_guard.proof.tokens import prepared, tokens
+
+    def unjoined(reading, sent):
+        return [t for at, line in enumerate(reading.lines)
+                for t in tokens(prepared(line.text), at)]  # fmt: skip
+
+    patch.setattr(module, "proof_tokens", unjoined)
+
+
+def _a_compound_broken_at_a_line_end_loses_its_hyphen(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.proof import compare as module
+
+    real = module.proof_tokens
+
+    def joined(reading, sent):
+        return real(reading, [t for t in sent if t.key != "-"])
+
+    patch.setattr(module, "proof_tokens", joined)
+
+
+def _a_number_split_in_two_is_two(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.proof import compare as module
+
+    patch.setattr(module, "_regrouped", lambda ops, a, b: ops)
 
 
 # ------------------------------------------------------------- a unit written after a binding
@@ -4883,6 +5562,133 @@ def test_a_cited_title_is_found_in_its_registered_form_and_not_in_another(
             assert held == 1.0, (kind, cited, title, held)
         else:
             assert held is not None and held < lookups.TITLE_HELD, (kind, cited, title, held)
+
+
+# ------------------------------------------------------------- a family name, as registered
+
+#: Family names a property draws: of letters a folding leaves alone.
+_FAMILIES = ("Naranjo", "Busto", "Sellers", "Greenblatt", "Okafor", "Lindqvist", "Tanaka",
+             "Moreau", "Kowalski", "Haddad", "Petrov", "Ndiaye")  # fmt: skip
+#: A vowel, how TeX accents it in a .bib, and the letter a registry prints.
+_ACCENTS = (("e", "{\\'e}", "\N{LATIN SMALL LETTER E WITH ACUTE}"),
+            ("a", "{\\`a}", "\N{LATIN SMALL LETTER A WITH GRAVE}"),
+            ("o", "{\\^o}", "\N{LATIN SMALL LETTER O WITH CIRCUMFLEX}"),
+            ("i", "{\\'i}", "\N{LATIN SMALL LETTER I WITH ACUTE}"))  # fmt: skip
+_PARTICLE_FORMS = ("van der", "de", "von", "da", "van")
+#: What G7 is to find one person in, and what it is to find another person in.
+_SAME_NAME = ("cased", "accented", "particle", "apostrophe", "umlaut", "umlaut without its dots",
+              "hyphen", "suffix", "among the given names")
+_OTHER_NAME = ("a letter off", "another name", "initials are no name")
+_GIVEN = ("George", "Anna", "Maria", "Jose", "Wei", "Amara")
+
+
+@st.composite
+def _renamed(draw: st.DrawFn) -> list[tuple[str, str, str]]:
+    """One family name drawn, written for each way a registry writes the same name and for
+    each way another person's differs: every kind in every example, so that a rule broken
+    for one kind fails whatever the seed."""
+    family, second = draw(st.lists(st.sampled_from(_FAMILIES), min_size=2, max_size=2,
+                                   unique=True))  # fmt: skip
+    vowels = [at for at, c in enumerate(family) if c in "aeio"]
+    at = draw(st.sampled_from(vowels))
+    plain, tex, printed = next(a for a in _ACCENTS if a[0] == family[at])
+    particle = draw(st.sampled_from(_PARTICLE_FORMS))
+    cut = draw(st.integers(1, len(family) - 1))
+    letter = draw(st.sampled_from([c for c in "zqxj" if c not in family.casefold()]))
+    case = draw(st.sampled_from((str.upper, str.lower, str.title)))
+    # Not before an "e": without its dots "Süe" is "Sue", which the folding takes for "Sü"
+    # transcribed, and reads as another name (DESIGN.md, Known gaps).
+    dot = draw(st.sampled_from([i for i in range(1, len(family)) if family[i] != "e"]))
+    umlaut = family[:dot] + "\N{LATIN SMALL LETTER U WITH DIAERESIS}" + family[dot:]
+    return [
+        ("cased", family, case(family)),
+        ("accented", family[:at] + tex + family[at + 1 :],
+         family[:at] + printed + family[at + 1 :]),
+        ("particle", f"{particle} {family}",
+         draw(st.sampled_from((family, f"{particle.title()} {family}")))),
+        ("apostrophe", f"O'{family}",
+         draw(st.sampled_from((f"O{family}", f"O\N{RIGHT SINGLE QUOTATION MARK}{family}")))),
+        ("umlaut", umlaut, family[:dot] + "ue" + family[dot:]),
+        ("umlaut without its dots", umlaut, family[:dot] + "u" + family[dot:]),
+        ("hyphen", f"{family}-{second}", draw(st.sampled_from((f"{family} {second}", second)))),
+        ("suffix", f"{family} Jr.", family),
+        # A double surname a registry splits, its first part among the given names:
+        # Crossref's given "George Davey", family "Smith", for an entry's "Davey, SG".
+        ("among the given names", family, second, f"{draw(st.sampled_from(_GIVEN))} {family}"),
+        ("a letter off", family, family[:cut] + letter + family[cut + 1 :]),
+        ("another name", family, second),
+        ("initials are no name", family, second,
+         f"{family[0]}. {draw(st.sampled_from(_GIVEN))[0]}."),
+    ]  # fmt: skip
+
+
+@holds(150, _renamed())
+def test_a_family_name_is_one_person_s_however_a_registry_writes_it(
+    drawn: list[tuple[str, ...]],
+) -> None:
+    """G7 holds a cited family name to a registry's by Basile's lenient folding (2026-10-20):
+    case, accents written in TeX or in Unicode, a particle, an apostrophe, ü for ue, one part
+    of a double name, a suffix and the first part of a double surname a registry filed among
+    the given names are one person's; a letter that differs, or another name, is another
+    person's."""
+    from manuscript_guard.gates import authors
+
+    for kind, cited, registered, *forenames in drawn:
+        said = authors.same(cited, registered, *forenames)
+        assert said is (kind in _SAME_NAME), (kind, cited, registered, forenames)
+
+
+# ------------------------------------------------------- a title a search found, each way
+
+#: What G7 is to take for the cited title among a search's works, and what it is not.
+_SAME_SEARCHED = ("subtitle left out", "flagged", "typeset", "subtitle cited",
+                  "subtitle the registry left out")  # fmt: skip
+_OTHER_SEARCHED = ("longer title", "other words")
+
+
+@st.composite
+def _searched_titles(draw: st.DrawFn) -> list[tuple[str, str, str]]:
+    """A cited title of drawn words, and for each kind a title a search could return: the
+    same title as a registry writes it, and another work's that a search finds because it
+    holds the words. Every kind in every example."""
+    words = draw(st.lists(st.sampled_from(FILLER), min_size=4, max_size=10))
+    cited = " ".join(words)
+    subtitle = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=3, max_size=6)))
+    before = draw(st.lists(st.sampled_from(FILLER), min_size=len(words),
+                           max_size=len(words) + 3))  # fmt: skip
+    other = list(words)
+    for at in draw(st.permutations(range(len(words))))[: len(words) * 15 // 85 + 1]:
+        other[at] = "zygote" if other[at] != "zygote" else "quorum"
+    separator = draw(st.sampled_from((": ", " - ", "? ", " \N{EM DASH} ")))
+    case = draw(st.sampled_from((str.upper, str.title)))
+    return [
+        ("subtitle left out", cited, f"{cited}{separator}{subtitle}"),
+        ("flagged", cited, f"RETRACTED: {cited}"),
+        ("typeset", cited, case(cited).replace(" ", ", ", 1)),
+        ("subtitle cited", f"{cited}: {subtitle}", f"{cited}: {subtitle}"),
+        # A guideline printed with its task force in its title, which the registry leaves out.
+        ("subtitle the registry left out", f"{cited}: {subtitle}", cited),
+        ("longer title", cited, " ".join(before) + " " + cited),
+        ("other words", cited, " ".join(other)),
+    ]
+
+
+@holds(150, _searched_titles())
+def test_a_searched_title_is_the_cited_one_only_each_way(
+    drawn: list[tuple[str, str, str]],
+) -> None:
+    """For a reference with no identifier, G7 takes a work a search found for the cited one
+    only where each title holds 85% of the other's words: the registered title's main part
+    only, so that a subtitle the entry left out costs nothing; and a longer title that holds
+    every cited word, which a search finds and an identifier never names, is another work."""
+    from manuscript_guard.gates import lookups, searched
+
+    for kind, cited, registered in drawn:
+        alike = searched.alike(cited, [registered])
+        if kind in _SAME_SEARCHED:
+            assert alike >= lookups.TITLE_HELD, (kind, cited, registered, alike)
+        else:
+            assert alike < lookups.TITLE_HELD, (kind, cited, registered, alike)
 
 
 # ------------------------------------------------------------- a figure that estimates itself
@@ -5414,6 +6220,88 @@ def _a_title_is_compared_both_ways(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(lookups, "title_held", held)
 
 
+def _a_family_name_must_agree_whole(patch: pytest.MonkeyPatch) -> None:
+    """The strict option Basile did not take: particles and all."""
+    from manuscript_guard.gates import authors
+
+    def whole(a: str, b: str, given: str = "") -> bool:
+        return authors.name_words(a) == authors.name_words(b)
+
+    patch.setattr(authors, "same", whole)
+
+
+def _a_given_name_holds_no_part_of_a_family_name(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import authors
+
+    same = authors.same
+    patch.setattr(authors, "same", lambda a, b, given="": same(a, b))
+
+
+def _an_accent_is_a_letter_of_its_own(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import authors
+
+    patch.setattr(authors, "name_words", lambda family: tuple(re.findall(
+        r"[^\W\d_]+", family.replace("{", "").replace("}", "").casefold())))  # fmt: skip
+
+
+def _ue_is_not_u_umlaut(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import authors
+
+    patch.setattr(authors, "_TRANSCRIPTIONS", ())
+
+
+def _an_apostrophe_parts_a_name(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import authors
+
+    patch.setattr(authors, "_APOSTROPHES", re.compile(r"(?!)"))
+
+
+def _a_name_a_letter_off_is_the_name(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import authors
+
+    same = authors.same
+
+    def near(a: str, b: str, given: str = "") -> bool:
+        x, y = " ".join(authors.name_words(a)), " ".join(authors.name_words(b))
+        one_off = len(x) == len(y) and sum(i != j for i, j in zip(x, y, strict=True)) <= 1
+        return same(a, b, given) or one_off
+
+    patch.setattr(authors, "same", near)
+
+
+def _a_searched_title_is_held_one_way(patch: pytest.MonkeyPatch) -> None:
+    """The rule G7 holds an identifier's title to."""
+    from manuscript_guard.gates import lookups, searched
+
+    patch.setattr(searched, "alike", lambda cited, titles: max(
+        (lookups.title_held(cited, t) or 0.0 for t in titles), default=0.0))  # fmt: skip
+
+
+def _the_whole_registered_title_is_held_back(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import searched
+
+    patch.setattr(searched, "main_title", lambda title: searched._FLAG.sub("", title))
+
+
+def _a_cited_subtitle_counts_against_it(patch: pytest.MonkeyPatch) -> None:
+    """The rule as it stood before the measurement of 2026-10-20 found two guidelines cited
+    with the task force the registries leave out."""
+    from manuscript_guard.gates import lookups, searched
+
+    def alike(cited: str, titles: list[str]) -> float:
+        best = 0.0
+        for title in titles:
+            there = lookups.title_held(cited, title)
+            back = [b for b in (lookups.title_held(searched._FLAG.sub("", title), cited),
+                                lookups.title_held(searched.main_title(title), cited))
+                    if b is not None]  # fmt: skip
+            if there is not None and back:
+                best = max(best, min(there, max(back)))
+        return best
+
+    patch.setattr(searched, "alike", alike)
+
+
 def _an_isbn_10_is_not_read_as_its_isbn_13(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import duplicates
 
@@ -5548,6 +6436,57 @@ def _a_release_is_temporary(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(data_statement, "TEMPORARY", re.compile(loose, re.IGNORECASE))
 
 
+def _a_denial_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import data_sources
+
+    patch.setattr(data_sources, "NEGATION", re.compile(r"(?!)"))
+
+
+def _a_denial_is_read_only_beside_its_phrase(patch: pytest.MonkeyPatch) -> None:
+    """In the two words before the phrase, as a window of words read it."""
+    from manuscript_guard import data_sources
+
+    def near(sentence: str, phrase: re.Pattern[str]) -> bool:
+        found = phrase.search(sentence)
+        before = " ".join(sentence[: found.start()].split()[-2:]) if found else ""
+        return found is not None and data_sources.NEGATION.search(before) is None
+
+    patch.setattr(data_sources, "says", near)
+
+
+def _an_open_source_said_after_a_denial_excuses_nothing(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import data_sources
+
+    patch.setattr(data_sources, "mentions", data_sources.says)
+
+
+def _one_way_of_asking_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    """"From the corresponding author" and "by contacting" left out."""
+    from manuscript_guard import data_sources
+
+    asked = r"\b(?:up)?on\s+(?:an?\s+)?(?:(?:reasonable|justified)\s+)?requests?\b"
+    patch.setattr(data_sources, "ON_REQUEST", re.compile(asked, re.IGNORECASE))
+
+
+def _a_name_is_found_inside_a_word(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import data_sources
+    from manuscript_guard.literature.sources import normalise
+
+    patch.setattr(data_sources, "_on_page",
+                  lambda page, name: normalise(name).lower()
+                  in normalise(page).lower())  # fmt: skip
+
+
+def _a_name_is_read_as_typed(patch: pytest.MonkeyPatch) -> None:
+    """Its words as the record writes them, not folded for spacing or a line break."""
+    from manuscript_guard import data_sources
+
+    def found(page: str, name: str) -> bool:
+        return re.search(rf"(?<!\w){re.escape(name.lower())}(?!\w)", page.lower()) is not None
+
+    patch.setattr(data_sources, "_on_page", found)
+
+
 def _placeholder_rule(patch: pytest.MonkeyPatch, rule_id: str, change) -> None:
     from dataclasses import replace
 
@@ -5588,6 +6527,32 @@ def _filler_ends_only_at_a_stop_a_blank_line_or_the_end(patch: pytest.MonkeyPatc
 def _an_instruction_marked_or_linked_is_a_link_s_text(patch: pytest.MonkeyPatch) -> None:
     # The lookahead the slot rule ends with, as the instruction rule had it in round 2 of #262.
     _placeholder_rule(patch, "placeholder", lambda p: p + r"(?![(\[{])")
+
+
+def _in_the_template_rule(patch: pytest.MonkeyPatch, written: str, broken: str) -> None:
+    def change(pattern: str) -> str:
+        assert written in pattern, "the template rule no longer reads this way"
+        return pattern.replace(written, broken)
+
+    _placeholder_rule(patch, "placeholder-template", change)
+
+
+def _words_prompt_is_read_without_what_it_asks_for(patch: pytest.MonkeyPatch) -> None:
+    # "Click here" alone heads each file PLOS lists under a paper.
+    _in_the_template_rule(patch, r"(?:here\s+)?to\s+enter\s+(?:text|a\s+date)\.", r"here\b")
+
+
+def _any_request_after_in_this_section_is_a_template_s(patch: pytest.MonkeyPatch) -> None:
+    # As the rule read it before round 1, and with any verb: a questionnaire asks so too.
+    _in_the_template_rule(
+        patch,
+        r"(?:you\s+can\s+acknowledge\s+any\s+support",
+        r"(?:(?:you\s+\w+|please)\s+\w+|you\s+can\s+acknowledge\s+any\s+support",
+    )
+
+
+def _any_quoted_word_after_please_state_is_a_statement(patch: pytest.MonkeyPatch) -> None:
+    _in_the_template_rule(patch, r"(?:this\s+research|", r"(?:\w+|this\s+research|")
 
 
 def _residue_rule(patch: pytest.MonkeyPatch, rule_id: str, change) -> None:
@@ -5721,6 +6686,112 @@ def _the_planned_results_subsections_are_not_read(patch: pytest.MonkeyPatch) -> 
     patch.setattr(design, "subsections", lambda sections, index: [sections[index]])
 
 
+def _the_deviations_name_variables(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import collection
+
+    patch.setattr(collection, "_deviations", lambda text: [])
+
+
+def _the_deviations_end_at_their_first_subsection(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import collection
+
+    def own_text_only(text: str) -> list[tuple[int, int]]:
+        headings = collection.find_headings(text)
+        return [(h.start, headings[i + 1].start if i + 1 < len(headings) else len(text))
+                for i, h in enumerate(headings) if collection.is_deviations(h.title)]  # fmt: skip
+
+    patch.setattr(collection, "_deviations", own_text_only)
+
+
+def _the_plan_s_title_may_be_its_deviations(patch: pytest.MonkeyPatch) -> None:
+    """The rule as it stood before round 1: the title was a heading like any other."""
+    from manuscript_guard.gates import collection
+
+    def every_heading(text: str) -> list[tuple[int, int]]:
+        headings = collection.find_headings(text)
+        return [(h.start, next((later.start for later in headings[i + 1:]
+                                if later.level <= h.level), len(text)))
+                for i, h in enumerate(headings) if collection.is_deviations(h.title)]  # fmt: skip
+
+    patch.setattr(collection, "_deviations", every_heading)
+
+
+def _the_deviations_run_to_the_next_section(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import collection
+
+    def to_a_section(text: str) -> list[tuple[int, int]]:
+        headings = collection.find_headings(text)
+        return [(h.start, next((later.start for later in headings[i + 1:]
+                                if later.level <= 2), len(text)))
+                for i, h in enumerate(headings[1:], 1)
+                if collection.is_deviations(h.title)]  # fmt: skip
+
+    patch.setattr(collection, "_deviations", to_a_section)
+
+
+def _any_heading_with_a_change_s_word_is_the_deviations(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import collection
+
+    patch.setattr(collection, "is_deviations",
+                  lambda title: bool(re.search(collection._DEVIATIONS, title)))  # fmt: skip
+
+
+def _a_heading_that_names_the_planned_results_is_never_the_deviations(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    from manuscript_guard.gates import collection
+    from manuscript_guard.gates.design import PLANNED
+
+    patch.setattr(collection, "is_deviations",
+                  lambda title: bool(re.search(collection._DEVIATIONS, title))
+                  and not re.search(PLANNED, title))  # fmt: skip
+
+
+def _code_in_brackets_is_a_variable(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import collection
+
+    patch.setattr(collection, "VARIABLE", re.compile(r"[A-Za-z][A-Za-z0-9_():]*"))
+
+
+def _a_value_in_backticks_is_a_variable(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import collection
+
+    patch.setattr(collection, "LITERALS", frozenset())
+
+
+def _a_dotted_name_is_never_a_variable(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import collection
+
+    reads_as = collection._reads_as
+    patch.setattr(collection, "_reads_as",
+                  lambda said, known: None if "." in said else reads_as(said, known))  # fmt: skip
+
+
+def _a_variable_is_matched_without_its_case(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import collection
+
+    reads_as = collection._reads_as
+
+    def folded(said: str, known) -> str | None:
+        if said.casefold() in {name.casefold() for name in known}:
+            return "used"
+        return reads_as(said, known)
+
+    patch.setattr(collection, "_reads_as", folded)
+
+
+def _a_variable_is_said_at_its_last_mention(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import collection
+
+    patch.setattr(collection, "_first", lambda found, named: found.update({named.name: named}))
+
+
+def _fences_and_comments_name_variables(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import collection
+
+    patch.setattr(collection, "mask", lambda text: text)
+
+
 def _a_variables_name_is_a_word(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(spelling_gate, "_in_an_identifier", lambda text, start, end: False)
 
@@ -5728,7 +6799,10 @@ def _a_variables_name_is_a_word(patch: pytest.MonkeyPatch) -> None:
 def _a_list_of_pointers_is_its_first(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import pointers
 
-    patch.setattr(pointers, "_numbers", lambda found: [(bool(found["s0"]), int(found["n0"]))])
+    patch.setattr(
+        pointers, "_numbers",
+        lambda found: [(bool(found["s0"]), int(found["n0"]), found.start("n0"))],
+    )  # fmt: skip
 
 
 def _the_supplement_s_tables_are_the_paper_s(patch: pytest.MonkeyPatch) -> None:
@@ -5739,7 +6813,9 @@ def _the_supplement_s_tables_are_the_paper_s(patch: pytest.MonkeyPatch) -> None:
     read = pointers.pointers_in
     patch.setattr(
         pointers, "pointers_in",
-        lambda text, path: [replace(p, supplementary=False) for p in read(text, path)],
+        lambda text, path, *numbers: [
+            replace(p, supplementary=False) for p in read(text, path, *numbers)
+        ],
     )
 
 
@@ -5762,10 +6838,61 @@ def _one_figure_more_is_counted_than_the_supplement_carries(patch: pytest.Monkey
 
     def one_more(text: str):
         found = placed(text)
-        figures = ("figure",) if "figure" in found.bound else ()
+        figures = (("figure", "f0"),) if any(k == "figure" for k, _ in found.bound) else ()
         return type(found)(found.bound + figures, found.by_hand)
 
     patch.setattr(pointers, "placed_in", one_more)
+
+
+def _a_bound_pointer_points_where_its_binding_does(patch: pytest.MonkeyPatch) -> None:
+    from dataclasses import replace
+
+    from manuscript_guard.crossref import Display
+    from manuscript_guard.gates import pointers
+
+    read = pointers.pointers_in
+
+    def as_named(text: str, path: Path, numbers=None):
+        found = []
+        for pointer in read(text, path, numbers):
+            named = numbers.display(pointer.binding) if numbers and pointer.binding else None
+            if isinstance(named, Display):
+                pointer = replace(pointer, kind=named.kind, supplementary=named.supplementary)
+            found.append(pointer)
+        return found
+
+    patch.setattr(pointers, "pointers_in", as_named)
+
+
+def _displays_are_numbered_in_the_order_of_their_paths(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import pointers
+
+    patch.setattr(pointers, "printed_order", lambda paths, supplementary: sorted(paths))
+
+
+def _the_supplement_s_displays_are_numbered_with_the_paper_s(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import pointers
+
+    patch.setattr(pointers, "is_supplementary", lambda root, path: False)
+
+
+def _a_caption_is_not_held_to_its_display(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.findings import Report
+    from manuscript_guard.gates import pointers
+
+    patch.setattr(pointers, "_captions", lambda *given: Report())
+
+
+def _a_table_s_caption_is_read_only_under_it(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import pointers
+
+    patch.setattr(pointers, "_BESIDE", {pointers.FIGURE: (1,), pointers.TABLE: (1,)})
+
+
+def _a_caption_between_two_tables_is_held_to_both(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import pointers
+
+    patch.setattr(pointers, "_NAMES_ONE", all)
 
 
 def _the_methods_are_read_by_their_old_name(patch: pytest.MonkeyPatch) -> None:
@@ -5840,6 +6967,71 @@ def _the_methods_name_is_read_as_typed(patch: pytest.MonkeyPatch) -> None:
 
     patch.setattr(methods_gate, "methods_sections", as_typed)
     patch.setattr(journal, "methods_sections", as_typed)
+
+
+def _no_supplement_names_the_methods(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import classify
+
+    patch.setattr(classify, "SUPPLEMENT_METHODS", re.compile(r"(?!)"))
+
+
+def _a_supplement_s_name_with_words_after_it_is_no_methods(patch: pytest.MonkeyPatch) -> None:
+    # The name and its number alone: "eMethods 1. Data source" is not the Methods.
+    from manuscript_guard import classify
+
+    was = classify.SUPPLEMENT_METHODS.pattern
+    pattern = was.replace(r"(?:[^\w\n][^\n]*)?$", r"\s*$")
+    assert pattern != was
+    patch.setattr(classify, "SUPPLEMENT_METHODS", re.compile(pattern, re.IGNORECASE))
+
+
+def _only_the_first_of_a_supplement_s_methods_is_read(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(methods_gate, "supplement_methods_in", methods_gate.methods_in)
+
+
+def _a_section_under_one_read_is_read_again(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text.sections import split_sections
+
+    def every(text: str, abstract_title: str | None = None) -> str | None:
+        found = methods_gate.methods_sections(split_sections(text), abstract_title)
+        return "\n\n".join(section.enclosed for section in found) or None
+
+    patch.setattr(methods_gate, "supplement_methods_in", every)
+
+
+def _a_supplement_s_name_holds_every_section_under_it(patch: pytest.MonkeyPatch) -> None:
+    # As first written in #395: under "Supplementary methods", a table was the Methods.
+    from manuscript_guard import classify
+
+    def any_title(section) -> bool:
+        return any(
+            classify.names_supplement_methods(title)
+            for title in section
+            if not isinstance(title, classify.Unprinted)
+        )
+
+    patch.setattr(classify, "_opened_by_the_supplement", any_title)
+
+
+def _g9_reads_all_under_a_supplement_s_methods(patch: pytest.MonkeyPatch) -> None:
+    # As first written in #395: each section found, with everything under it, once.
+    from manuscript_guard.text.sections import split_sections
+
+    def enclosed(text: str, abstract_title: str | None = None) -> str | None:
+        sections = split_sections(text)
+        found = {id(section) for section in methods_gate.methods_sections(sections, abstract_title)}
+        read: list[str] = []
+        under: int | None = None
+        for section in sections:
+            if under is not None and section.level > under:
+                continue
+            under = None
+            if id(section) in found:
+                read.append(section.enclosed)
+                under = section.level
+        return "\n\n".join(read) if read else None
+
+    patch.setattr(methods_gate, "supplement_methods_in", enclosed)
 
 
 def _the_abstract_s_methods_are_the_paper_s(patch: pytest.MonkeyPatch) -> None:
@@ -6012,6 +7204,42 @@ def _inline_code_is_read_as_prose(patch: pytest.MonkeyPatch) -> None:
 
 def _a_comment_is_read_as_prose(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(claims_module, "mask", lambda text: text)
+
+
+def _a_deleted_stretch_is_left_out(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(markedup_writer._Emitter, "deleted", lambda self, atoms: None)
+
+
+def _deleted_text_is_written_as_text_kept(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(markedup_writer, "deleted_text", lambda element: element)
+
+
+def _how_a_word_looks_is_not_compared(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(markedup_atoms, "look", lambda run: "")
+
+
+def _a_row_is_not_tracked_as_a_row(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(markedup_writer, "_row_change", lambda row, change: None)
+
+
+def _a_note_is_kept_as_the_revision_has_it(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(markedup_writer.Writer, "_note_merged", lambda self, old, new: None)
+
+
+def _a_table_is_never_merged_cell_by_cell(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(markedup_writer, "_shape", lambda table: None)
+
+
+def _a_deleted_picture_points_where_it_pointed(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(markedup_package.Carried, "_relationship", lambda self, rid, part: rid)
+
+
+def _a_style_is_not_compared(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(markedup_writer, "_properties_key", lambda paragraph, package: ())
+
+
+def _nothing_is_alike_enough_to_be_edited(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(markedup_align, "alike", lambda a, b: 0.0)
 
 
 def _the_texts_are_lined_up_by_place_alone(patch: pytest.MonkeyPatch) -> None:
@@ -6243,6 +7471,104 @@ def _the_pieces_of_a_quotation_are_looked_for_anywhere(patch: pytest.MonkeyPatch
     patch.setattr(quotations_gate, "quoted_in", anywhere)
 
 
+def _a_word_broken_at_a_line_end_is_two(patch: pytest.MonkeyPatch) -> None:
+    joiners = recycling_gate._JOINERS + recycling_gate._APOSTROPHES
+    patch.setattr(recycling_gate, "_WORD", re.compile(rf"[^\W_]+(?:[{joiners}][^\W_]+)*"))
+
+
+def _words_read(fold: Any, *, numbers: bool = False) -> Any:
+    """`recycling.words` with another folding of a word's letters, or keeping its digits."""
+
+    def read(text: str) -> list:
+        found = []
+        for match in recycling_gate._WORD.finditer(text):
+            word = fold(recycling_gate._JOINS.sub("", match.group()))
+            while not numbers and word and word[-1].isdigit():
+                word = word[:-1]
+            if word:
+                found.append(recycling_gate.Word(word, match.start(), match.end()))
+        return found
+
+    return read
+
+
+def _a_ligature_is_a_letter_of_its_own(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(recycling_gate, "words", _words_read(str.lower))
+
+
+def _a_number_is_a_word(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(recycling_gate, "words", _words_read(str.casefold, numbers=True))
+
+
+def _eleven_shared_words_are_reported(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(recycling_gate, "SHARED", 11)
+
+
+def _a_quotation_is_recycled_text(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(recycling_gate, "_quoted_spans", lambda seen: [])
+
+
+def _a_word_changed_ends_the_passage(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(recycling_gate, "GAP", 0)
+
+
+def _a_heading_is_compared(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(recycling_gate, "find_headings", lambda text: [])
+
+
+def _a_statement_under_the_methods_is_the_methods(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(recycling_gate, "_part_of", lambda chain: next(
+        (part for part in chain if part is not None), recycling_gate.UNNAMED))  # fmt: skip
+
+
+def _a_heading_opening_with_a_statement_s_word_is_one(patch: pytest.MonkeyPatch) -> None:
+    # A statement's heading read by its first words, as rounds 2 and 3 of the review found it
+    # read: "Funding sources of the included trials" under the Results was set apart.
+    patch.setattr(recycling_gate, "_STATEMENTS",
+                  re.compile(recycling_gate._STATEMENT_NAMES, re.IGNORECASE))  # fmt: skip
+
+
+def _a_theme_of_the_results_is_a_statement(patch: pytest.MonkeyPatch) -> None:
+    # Round 4 of the review: "Data sharing" under the Results was read as a statement.
+    def part_of(chain: list) -> str:
+        if recycling_gate.STATEMENT in chain:
+            return recycling_gate.STATEMENT
+        return next((part for part in chain if part is not None), recycling_gate.UNNAMED)
+
+    patch.setattr(recycling_gate, "_part_of", part_of)
+
+
+def _a_statement_is_set_apart(patch: pytest.MonkeyPatch) -> None:
+    # What rounds 1 to 4 had, before Basile chose a note: a statement is not compared.
+    part_of = recycling_gate._part_of
+
+    def set_apart(chain: list) -> str:
+        found = part_of(chain)
+        return recycling_gate.SET_APART if found == recycling_gate.STATEMENT else found
+
+    patch.setattr(recycling_gate, "_part_of", set_apart)
+
+
+def _the_reference_list_is_compared(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(recycling_gate, "_REFERENCES", re.compile(r"(?!)"))
+
+
+def _the_conclusions_are_a_part_of_their_own(patch: pytest.MonkeyPatch) -> None:
+    # Before round 4 of the review: the Discussion over its conclusions was a title.
+    patch.setattr(recycling_gate, "_COUNTED_AS", {})
+
+
+def _a_supplement_s_heading_names_no_part(patch: pytest.MonkeyPatch) -> None:
+    # Before round 7 of the review: "Supplementary discussion" named no part.
+    patch.setattr(recycling_gate, "_SUPPLEMENT_PART", re.compile(r"(?!)"))
+
+
+def _a_supplement_s_prefix_comes_off_any_heading(patch: pytest.MonkeyPatch) -> None:
+    # Round 7's fix, which round 8 found read "Online discussion forums" as the Discussion.
+    patch.setattr(recycling_gate, "_SUPPLEMENT_PART", re.compile(
+        r"(?:(?i:supplement(?:ary|al)|online)\s+|e(?=[A-Z][a-z]))(?P<part>.*)"))  # fmt: skip
+
+
 def _sic_is_a_word_of_the_source(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(quotations_gate, "_SIC", re.compile(r"(?!)"))
 
@@ -6370,6 +7696,45 @@ def _a_claim_keeps_its_line_breaks(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(methods_gate, "_collapsed", lambda text: text.strip(" "))
 
 
+def _comments_are_compared(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(related_methods_gate, "_words", lambda text: text.replace("*", "").casefold()
+                  .split())  # fmt: skip
+
+
+def _case_is_compared(patch: pytest.MonkeyPatch) -> None:
+    real = related_methods_gate.as_quoted
+    patch.setattr(related_methods_gate, "_words", lambda text: real(text).split())
+
+
+def _a_number_makes_another_heading(patch: pytest.MonkeyPatch) -> None:
+    real = related_methods_gate.as_quoted
+    patch.setattr(related_methods_gate, "folded_title", lambda title: real(title).casefold())
+
+
+def _the_deviations_are_compared(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(related_methods_gate, "_OWN", ())
+
+
+def _a_heading_that_stands_twice_is_compared_first(patch: pytest.MonkeyPatch) -> None:
+    real = related_methods_gate._by_title
+
+    def first_wins(text: str):
+        read = real(text)
+        read.twice = set()
+        return read
+
+    patch.setattr(related_methods_gate, "_by_title", first_wins)
+
+
+def _what_the_deviations_hold_is_compared(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(related_methods_gate, "subsections", lambda sections, index: [sections[index]])
+
+
+def _only_the_first_words_are_compared(patch: pytest.MonkeyPatch) -> None:
+    real = related_methods_gate._words
+    patch.setattr(related_methods_gate, "_words", lambda text: real(text)[:3])
+
+
 def _a_printed_value_is_text(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(related_gate, "_printed", lambda text: None)
 
@@ -6452,6 +7817,66 @@ def _an_alternative_text_keeps_its_line_breaks(patch: pytest.MonkeyPatch) -> Non
 
     escaped = figure_alt._PUNCTUATION
     patch.setattr(figure_alt, "as_markdown", lambda text: escaped.sub(r"\\\1", text))
+
+
+def _a_groups_opacity_is_not_carried_down(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_svg
+
+    patch.setattr(figure_svg, "_opacity", lambda value, otherwise: otherwise)
+
+
+def _an_svg_texts_colour_is_a_marks(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_svg
+
+    real = figure_svg._paint
+    patch.setattr(figure_svg, "_paint", lambda figure, state, which, *, text: real(
+        figure, state, which, text=False))  # fmt: skip
+
+
+def _cmyk_is_read_as_no_colour(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_pdf
+
+    real = figure_pdf._colour
+    patch.setattr(figure_pdf, "_colour", lambda operands: None if len(
+        [x for x in operands if isinstance(x, (int, float))]) == 4 else real(operands))  # fmt: skip
+
+
+def _q_restores_no_colour(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_pdf
+
+    real = figure_pdf._operations
+    patch.setattr(figure_pdf, "_operations",
+                  lambda data: ((ops, op) for ops, op in real(data) if op != b"Q"))  # fmt: skip
+
+
+def _a_hidden_mark_is_painted(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_svg
+
+    real = figure_svg._paint
+    patch.setattr(figure_svg, "_paint", lambda figure, state, which, *, text: real(
+        figure, {**state, "hidden": False}, which, text=text))  # fmt: skip
+
+
+def _glyphs_are_marks(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_svg
+
+    patch.setattr(figure_svg, "_drawn_text", lambda node_id: False)
+
+
+def _a_colour_space_is_not_looked_up(patch: pytest.MonkeyPatch) -> None:
+    """A space named in the page's resources taken as unread, as R's pdf() names its ICC
+    profile `/sRGB`: every colour of such a figure is lost."""
+    from manuscript_guard.gates import figure_pdf
+
+    patch.setattr(figure_pdf, "_readable", lambda resources, name, objects: isinstance(
+        name, figure_pdf.Name) and name.name in figure_pdf._READ_SPACES)  # fmt: skip
+
+
+def _a_graphics_states_opacity_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_pdf
+
+    patch.setattr(figure_pdf, "_opacities",
+                  lambda resources, name, objects, fill, stroke: (fill, stroke))  # fmt: skip
 
 
 def _a_passage_is_matched_as_it_is_typed(patch: pytest.MonkeyPatch) -> None:
@@ -6592,6 +8017,50 @@ BROKEN = {
         _an_abstract_in_the_preamble_is_blanked,
         test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
     ),
+    "in LaTeX, a binding is read wherever it is typed, in a comment too": (
+        _a_latex_binding_is_read_wherever_it_is_typed,
+        test_a_latex_binding_is_read_where_it_prints_as_one_and_nowhere_else,
+    ),
+    "in LaTeX, a near spelling of \\mg is taken for nothing": (
+        _a_near_spelling_of_the_binding_is_taken_for_nothing,
+        test_a_latex_binding_is_read_where_it_prints_as_one_and_nowhere_else,
+    ),
+    "in LaTeX, a Markdown binding left in a .tex is taken for nothing": (
+        _a_markdown_binding_in_latex_is_taken_for_nothing,
+        test_a_latex_binding_is_read_where_it_prints_as_one_and_nowhere_else,
+    ),
+    "in LaTeX, siunitx's milligram is taken for a binding": (
+        _siunitx_s_milligram_is_taken_for_a_binding,
+        test_a_latex_binding_is_read_where_it_prints_as_one_and_nowhere_else,
+    ),
+    "in LaTeX, a binding's Markdown view is not padded to its command": (
+        _a_bindings_view_is_not_padded_to_its_command,
+        test_a_latex_binding_is_read_where_it_prints_as_one_and_nowhere_else,
+    ),
+    "in LaTeX, a typed table is not recorded": (
+        _a_typed_table_is_not_recorded,
+        test_a_latex_binding_is_read_where_it_prints_as_one_and_nowhere_else,
+    ),
+    "in LaTeX, a listing's language is not read": (
+        _a_listings_language_is_not_read,
+        test_a_latex_binding_is_read_where_it_prints_as_one_and_nowhere_else,
+    ),
+    "in LaTeX, a line break before a binding's brace makes it malformed": (
+        _a_line_break_before_a_bindings_brace_makes_it_malformed,
+        test_a_latex_binding_is_read_where_it_prints_as_one_and_nowhere_else,
+    ),
+    "in a LaTeX values file, a percent sign is written bare": (
+        _a_percent_is_written_bare,
+        test_a_display_written_for_latex_holds_no_bare_special_and_no_ligature,
+    ),
+    "in a LaTeX values file, two hyphens are written as typed": (
+        _two_hyphens_are_written_as_typed,
+        test_a_display_written_for_latex_holds_no_bare_special_and_no_ligature,
+    ),
+    "in a LaTeX values file, an en dash is written as a ligature": (
+        _an_en_dash_is_written_as_a_ligature,
+        test_a_display_written_for_latex_holds_no_bare_special_and_no_ligature,
+    ),
     "in LaTeX, a command the table lacks hides its arguments": (
         _an_unknown_command_hides_its_arguments,
         test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
@@ -6603,6 +8072,42 @@ BROKEN = {
     "an alternative text keeps its line breaks": (
         _an_alternative_text_keeps_its_line_breaks,
         test_an_alternative_text_is_the_pictures_description_as_it_was_written,
+    ),
+    "a group's opacity is not carried down to what it holds": (
+        _a_groups_opacity_is_not_carried_down,
+        test_each_colour_an_svg_figure_paints_is_read_and_its_texts_kept_apart,
+    ),
+    "an SVG text's colour is read as a mark's": (
+        _an_svg_texts_colour_is_a_marks,
+        test_each_colour_an_svg_figure_paints_is_read_and_its_texts_kept_apart,
+    ),
+    "a CMYK colour is read as no colour": (
+        _cmyk_is_read_as_no_colour,
+        test_each_colour_a_pdf_figure_paints_is_read_and_its_texts_kept_apart,
+    ),
+    "a graphics state's opacity is not read": (
+        _a_graphics_states_opacity_is_not_read,
+        test_each_colour_a_pdf_figure_paints_is_read_and_its_texts_kept_apart,
+    ),
+    "a colour space the page's resources name is not looked up": (
+        _a_colour_space_is_not_looked_up,
+        test_each_colour_a_pdf_figure_paints_is_read_and_its_texts_kept_apart,
+    ),
+    "Q gives back no colour": (
+        _q_restores_no_colour,
+        test_each_colour_a_pdf_figure_paints_is_read_and_its_texts_kept_apart,
+    ),
+    "a form paints in its own colour, not its drawer's": (
+        _a_form_draws_with_a_state_of_its_own,
+        test_each_colour_a_pdf_figure_paints_is_read_and_its_texts_kept_apart,
+    ),
+    "a mark a hidden group hides is painted": (
+        _a_hidden_mark_is_painted,
+        test_each_colour_an_svg_figure_paints_is_read_and_its_texts_kept_apart,
+    ),
+    "a text drawn as glyphs is a mark": (
+        _glyphs_are_marks,
+        test_each_colour_an_svg_figure_paints_is_read_and_its_texts_kept_apart,
     ),
     "a piece with no word of its own is left alone": (
         _a_wordless_piece_is_left_alone,
@@ -6824,6 +8329,50 @@ BROKEN = {
         _a_footnote_marker_is_not_seen,
         test_an_n_percent_in_a_table_is_read_where_it_stands_and_held_to_its_denominator,
     ),
+    "a proof's decimal comma is the same number": (
+        _a_decimal_comma_is_the_same_number,
+        test_each_change_a_typesetter_makes_is_reported_once_where_it_is,
+    ),
+    "a proof's sign is not read": (
+        _a_sign_is_not_read,
+        test_each_change_a_typesetter_makes_is_reported_once_where_it_is,
+    ),
+    "a unit beside a number in a proof is a word": (
+        _a_unit_is_a_word,
+        test_each_change_a_typesetter_makes_is_reported_once_where_it_is,
+    ),
+    "a unit of time a proof spells out as another is a word": (
+        _a_unit_of_time_spelt_out_is_a_word,
+        test_each_change_a_typesetter_makes_is_reported_once_where_it_is,
+    ),
+    "a unit a proof joins to its number by a hyphen is not beside it": (
+        _a_unit_past_a_hyphen_is_not_beside_its_number,
+        test_each_change_a_typesetter_makes_is_reported_once_where_it_is,
+    ),
+    "a unit of time spelt out in a proof is a unit, abbreviated or not": (
+        _a_unit_of_time_spelt_out_is_a_unit,
+        test_each_change_a_typesetter_makes_is_reported_once_where_it_is,
+    ),
+    "a stretch the proof leaves out is not slid to a part's start": (
+        _a_stretch_is_not_slid_to_a_part,
+        test_each_change_a_typesetter_makes_is_reported_once_where_it_is,
+    ),
+    "a number a proof splits in two is two": (
+        _a_number_split_in_two_is_two,
+        test_each_change_a_typesetter_makes_is_reported_once_where_it_is,
+    ),
+    "a proof's running heads are kept": (
+        _running_heads_are_kept,
+        test_a_proof_that_prints_what_was_sent_reads_as_it,
+    ),
+    "a word a proof breaks at a line's end stays two": (
+        _a_word_broken_at_a_line_end_stays_two,
+        test_a_proof_that_prints_what_was_sent_reads_as_it,
+    ),
+    "a compound a proof breaks at a line's end loses its hyphen": (
+        _a_compound_broken_at_a_line_end_loses_its_hyphen,
+        test_a_proof_that_prints_what_was_sent_reads_as_it,
+    ),
     "a column header's n is not read as its denominator": (
         _a_header_names_no_denominator,
         test_an_n_percent_in_a_table_is_read_where_it_stands_and_held_to_its_denominator,
@@ -6871,6 +8420,66 @@ BROKEN = {
     "the pieces of a quotation are looked for in any order": (
         _the_pieces_of_a_quotation_are_looked_for_anywhere,
         test_a_quotation_with_words_left_out_is_found_piece_by_piece,
+    ),
+    "a word an earlier paper breaks at the end of a line is two words": (
+        _a_word_broken_at_a_line_end_is_two,
+        test_a_passage_of_an_earlier_paper_is_found_where_it_stands_however_it_is_set,
+    ),
+    "a ligature of an earlier paper is a letter of its own": (
+        _a_ligature_is_a_letter_of_its_own,
+        test_a_passage_of_an_earlier_paper_is_found_where_it_stands_however_it_is_set,
+    ),
+    "a number is a word of a passage": (
+        _a_number_is_a_word,
+        test_a_passage_of_an_earlier_paper_is_found_where_it_stands_however_it_is_set,
+    ),
+    "eleven shared words are a passage": (
+        _eleven_shared_words_are_reported,
+        test_a_passage_of_an_earlier_paper_is_found_where_it_stands_however_it_is_set,
+    ),
+    "a quotation of an earlier paper is recycled text": (
+        _a_quotation_is_recycled_text,
+        test_a_passage_of_an_earlier_paper_is_found_where_it_stands_however_it_is_set,
+    ),
+    "a word changed ends a passage": (
+        _a_word_changed_ends_the_passage,
+        test_a_passage_of_an_earlier_paper_is_found_where_it_stands_however_it_is_set,
+    ),
+    "a heading is compared with an earlier paper": (
+        _a_heading_is_compared,
+        test_a_passage_of_an_earlier_paper_is_found_where_it_stands_however_it_is_set,
+    ),
+    "a statement under the Methods is compared as the Methods": (
+        _a_statement_under_the_methods_is_the_methods,
+        test_a_passage_of_an_earlier_paper_is_found_where_it_stands_however_it_is_set,
+    ),
+    "a theme of the Results named as a statement is, is a statement": (
+        _a_theme_of_the_results_is_a_statement,
+        test_a_passage_of_an_earlier_paper_is_found_where_it_stands_however_it_is_set,
+    ),
+    "a statement is set apart and not compared": (
+        _a_statement_is_set_apart,
+        test_a_passage_of_an_earlier_paper_is_found_where_it_stands_however_it_is_set,
+    ),
+    "the reference list is compared with an earlier paper": (
+        _the_reference_list_is_compared,
+        test_a_passage_of_an_earlier_paper_is_found_where_it_stands_however_it_is_set,
+    ),
+    "the conclusions are a part of their own beside the Discussion": (
+        _the_conclusions_are_a_part_of_their_own,
+        test_a_passage_of_an_earlier_paper_is_found_where_it_stands_however_it_is_set,
+    ),
+    "a supplement's heading names no part": (
+        _a_supplement_s_heading_names_no_part,
+        test_a_passage_of_an_earlier_paper_is_found_where_it_stands_however_it_is_set,
+    ),
+    "a supplement's prefix comes off any heading": (
+        _a_supplement_s_prefix_comes_off_any_heading,
+        test_a_passage_of_an_earlier_paper_is_found_where_it_stands_however_it_is_set,
+    ),
+    "a heading that opens with a statement's words is a statement": (
+        _a_heading_opening_with_a_statement_s_word_is_one,
+        test_a_passage_of_an_earlier_paper_is_found_where_it_stands_however_it_is_set,
     ),
     "[sic] is taken for a word of the source": (
         _sic_is_a_word_of_the_source,
@@ -6959,6 +8568,34 @@ BROKEN = {
     "the value is left in the quote": (
         _the_value_is_left_in_the_quote,
         test_the_words_beside_a_quoted_value_are_its_words_and_no_more,
+    ),
+    "a comment in a plan's section is compared": (
+        _comments_are_compared,
+        test_a_section_of_two_plans_differs_only_where_its_words_do,
+    ),
+    "a plan's section is compared in its case": (
+        _case_is_compared,
+        test_a_section_of_two_plans_differs_only_where_its_words_do,
+    ),
+    "a numbered heading names another section": (
+        _a_number_makes_another_heading,
+        test_a_section_of_two_plans_differs_only_where_its_words_do,
+    ),
+    "the plans' own Deviations are compared": (
+        _the_deviations_are_compared,
+        test_a_section_of_two_plans_differs_only_where_its_words_do,
+    ),
+    "a heading that stands twice is compared by its first": (
+        _a_heading_that_stands_twice_is_compared_first,
+        test_a_section_of_two_plans_differs_only_where_its_words_do,
+    ),
+    "what the plans' Deviations hold is compared": (
+        _what_the_deviations_hold_is_compared,
+        test_a_section_of_two_plans_differs_only_where_its_words_do,
+    ),
+    "only a section's first words are compared": (
+        _only_the_first_words_are_compared,
+        test_a_section_of_two_plans_differs_only_where_its_words_do,
     ),
     "a printed value is compared as text only": (
         _a_printed_value_is_text,
@@ -7272,6 +8909,42 @@ BROKEN = {
         _a_title_is_compared_both_ways,
         test_a_cited_title_is_found_in_its_registered_form_and_not_in_another,
     ),
+    "a family name must agree whole, particles and all": (
+        _a_family_name_must_agree_whole,
+        test_a_family_name_is_one_person_s_however_a_registry_writes_it,
+    ),
+    "an accent is a letter of its own": (
+        _an_accent_is_a_letter_of_its_own,
+        test_a_family_name_is_one_person_s_however_a_registry_writes_it,
+    ),
+    "ue is not u with a diaeresis": (
+        _ue_is_not_u_umlaut,
+        test_a_family_name_is_one_person_s_however_a_registry_writes_it,
+    ),
+    "an apostrophe parts a name": (
+        _an_apostrophe_parts_a_name,
+        test_a_family_name_is_one_person_s_however_a_registry_writes_it,
+    ),
+    "a name a letter off is the name": (
+        _a_name_a_letter_off_is_the_name,
+        test_a_family_name_is_one_person_s_however_a_registry_writes_it,
+    ),
+    "a given name holds no part of a family name": (
+        _a_given_name_holds_no_part_of_a_family_name,
+        test_a_family_name_is_one_person_s_however_a_registry_writes_it,
+    ),
+    "a searched title is held one way": (
+        _a_searched_title_is_held_one_way,
+        test_a_searched_title_is_the_cited_one_only_each_way,
+    ),
+    "the whole registered title is held back to the cited one": (
+        _the_whole_registered_title_is_held_back,
+        test_a_searched_title_is_the_cited_one_only_each_way,
+    ),
+    "a subtitle the registry left out counts against the cited title": (
+        _a_cited_subtitle_counts_against_it,
+        test_a_searched_title_is_the_cited_one_only_each_way,
+    ),
     "an ISBN-10 is not read as its ISBN-13": (
         _an_isbn_10_is_not_read_as_its_isbn_13,
         test_one_work_is_one_work_however_its_identifiers_are_written,
@@ -7336,6 +9009,30 @@ BROKEN = {
         _a_release_is_temporary,
         test_each_identifier_names_data_and_each_temporary_link_is_found,
     ),
+    "a denial of openly had is not read": (
+        _a_denial_is_not_read,
+        test_a_statement_is_held_to_each_source_s_route_whatever_surrounds_it,
+    ),
+    "a denial is read only beside its phrase": (
+        _a_denial_is_read_only_beside_its_phrase,
+        test_a_statement_is_held_to_each_source_s_route_whatever_surrounds_it,
+    ),
+    "an open source said open after a denial excuses nothing": (
+        _an_open_source_said_after_a_denial_excuses_nothing,
+        test_a_statement_is_held_to_each_source_s_route_whatever_surrounds_it,
+    ),
+    "asking the corresponding author is not asking": (
+        _one_way_of_asking_is_not_read,
+        test_a_statement_is_held_to_each_source_s_route_whatever_surrounds_it,
+    ),
+    "a source is named inside a longer word": (
+        _a_name_is_found_inside_a_word,
+        test_a_source_is_named_in_any_writing_of_its_names_and_never_inside_a_word,
+    ),
+    "a source's name is read as typed": (
+        _a_name_is_read_as_typed,
+        test_a_source_is_named_in_any_writing_of_its_names_and_never_inside_a_word,
+    ),
     "a karyotype is read as a placeholder": (
         _a_karyotype_is_a_placeholder,
         test_every_placeholder_is_found_and_nothing_that_looks_like_one,
@@ -7398,6 +9095,18 @@ BROKEN = {
     ),
     "an instruction marked or linked is not read": (
         _an_instruction_marked_or_linked_is_a_link_s_text,
+        test_every_placeholder_is_found_and_nothing_that_looks_like_one,
+    ),
+    "Word's prompt is read without what it asks for": (
+        _words_prompt_is_read_without_what_it_asks_for,
+        test_every_placeholder_is_found_and_nothing_that_looks_like_one,
+    ),
+    "any request after 'in this section' is a template's": (
+        _any_request_after_in_this_section_is_a_template_s,
+        test_every_placeholder_is_found_and_nothing_that_looks_like_one,
+    ),
+    "any quoted word after 'please state' is a statement offered": (
+        _any_quoted_word_after_please_state_is_a_statement,
         test_every_placeholder_is_found_and_nothing_that_looks_like_one,
     ),
     "a cited entry's field wholly in brackets is read without them": (
@@ -7484,6 +9193,29 @@ BROKEN = {
         _the_planned_results_subsections_are_not_read,
         test_a_planned_result_is_read_from_its_own_item_and_nowhere_else,
     ),
+    **{
+        f"in a plan, {said}": (
+            broken,
+            test_a_variable_is_read_from_the_plan_outside_its_deviations_and_nowhere_else,
+        )
+        for said, broken in (
+            ("the Deviations name variables", _the_deviations_name_variables),
+            ("the Deviations end at their first subsection",
+             _the_deviations_end_at_their_first_subsection),
+            ("the plan's title may be its Deviations", _the_plan_s_title_may_be_its_deviations),
+            ("the Deviations run to the next section", _the_deviations_run_to_the_next_section),
+            ("any heading with a change's word is the Deviations",
+             _any_heading_with_a_change_s_word_is_the_deviations),
+            ("a heading naming the planned results is never the Deviations",
+             _a_heading_that_names_the_planned_results_is_never_the_deviations),
+            ("code in brackets is a variable", _code_in_brackets_is_a_variable),
+            ("a value in backticks is a variable", _a_value_in_backticks_is_a_variable),
+            ("a dotted name is never a variable", _a_dotted_name_is_never_a_variable),
+            ("a variable is matched without its case", _a_variable_is_matched_without_its_case),
+            ("a variable is said at its last mention", _a_variable_is_said_at_its_last_mention),
+            ("fences and comments name variables", _fences_and_comments_name_variables),
+        )
+    },
     "a variable's name is read as a word": (
         _a_variables_name_is_a_word,
         test_a_word_in_the_other_english_is_found_where_it_stands_and_a_name_is_not,
@@ -7508,6 +9240,30 @@ BROKEN = {
         _one_figure_more_is_counted_than_the_supplement_carries,
         test_a_pointer_names_what_the_document_carries_or_is_said,
     ),
+    "a bound pointer is read as pointing where its binding does": (
+        _a_bound_pointer_points_where_its_binding_does,
+        test_a_ref_prints_the_number_its_display_has_or_is_said,
+    ),
+    "tables and figures are numbered in the order of their files' paths": (
+        _displays_are_numbered_in_the_order_of_their_paths,
+        test_a_ref_prints_the_number_its_display_has_or_is_said,
+    ),
+    "the supplement's tables are numbered with the paper's": (
+        _the_supplement_s_displays_are_numbered_with_the_paper_s,
+        test_a_ref_prints_the_number_its_display_has_or_is_said,
+    ),
+    "a caption is not held to the display it stands beside": (
+        _a_caption_is_not_held_to_its_display,
+        test_a_ref_prints_the_number_its_display_has_or_is_said,
+    ),
+    "a table's caption is read only under it": (
+        _a_table_s_caption_is_read_only_under_it,
+        test_a_ref_prints_the_number_its_display_has_or_is_said,
+    ),
+    "a caption between two tables is held to both": (
+        _a_caption_between_two_tables_is_held_to_both,
+        test_a_ref_prints_the_number_its_display_has_or_is_said,
+    ),
     "the Methods are read by the name G9 had for them": (
         _the_methods_are_read_by_their_old_name,
         test_a_section_g4_counts_present_is_a_section_the_gates_read,
@@ -7531,6 +9287,30 @@ BROKEN = {
     "the Methods' name is read as typed when they are put first": (
         _the_methods_name_is_read_as_typed,
         test_the_methods_named_as_such_are_read_before_a_heading_that_only_holds_the_word,
+    ),
+    "no supplement's name of the Methods is a place the Methods are": (
+        _no_supplement_names_the_methods,
+        test_a_supplement_s_methods_are_the_methods_to_each_gate_that_reads_them,
+    ),
+    "a supplement's name of the Methods with words after it is not one": (
+        _a_supplement_s_name_with_words_after_it_is_no_methods,
+        test_a_supplement_s_methods_are_the_methods_to_each_gate_that_reads_them,
+    ),
+    "only the first of a supplement's Methods is read": (
+        _only_the_first_of_a_supplement_s_methods_is_read,
+        test_a_supplement_s_methods_are_the_methods_to_each_gate_that_reads_them,
+    ),
+    "a section of a supplement's Methods under one read is read again": (
+        _a_section_under_one_read_is_read_again,
+        test_a_supplement_s_methods_are_the_methods_to_each_gate_that_reads_them,
+    ),
+    "a supplement's name of the Methods holds every section under it": (
+        _a_supplement_s_name_holds_every_section_under_it,
+        test_a_supplement_s_methods_are_the_methods_to_each_gate_that_reads_them,
+    ),
+    "G9 reads everything under a supplement's Methods heading": (
+        _g9_reads_all_under_a_supplement_s_methods,
+        test_a_supplement_s_methods_are_the_methods_to_each_gate_that_reads_them,
     ),
     "a number's sign is no part of it": (
         _a_sign_is_no_part_of_its_number,
@@ -7579,6 +9359,23 @@ BROKEN = {
         _a_comment_is_read_as_prose,
         test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands,
     ),
+    **{
+        what: (
+            breaking,
+            test_a_marked_up_copy_shows_each_change_where_it_was_made_and_reads_as_both_documents,
+        )
+        for what, breaking in (
+            ("a deleted stretch of a paragraph is left out", _a_deleted_stretch_is_left_out),
+            ("deleted text is written as text kept", _deleted_text_is_written_as_text_kept),
+            ("how a word looks is not compared", _how_a_word_looks_is_not_compared),
+            ("a row added is not tracked as a row", _a_row_is_not_tracked_as_a_row),
+            ("a note is kept as the revision has it", _a_note_is_kept_as_the_revision_has_it),
+            ("a table is never merged cell by cell", _a_table_is_never_merged_cell_by_cell),
+            ("a deleted picture points where it did", _a_deleted_picture_points_where_it_pointed),
+            ("a paragraph's style is not compared", _a_style_is_not_compared),
+            ("no paragraph is alike enough to be edited", _nothing_is_alike_enough_to_be_edited),
+        )
+    },
     "the sentences of two texts are lined up by place alone": (
         _the_texts_are_lined_up_by_place_alone,
         test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands,

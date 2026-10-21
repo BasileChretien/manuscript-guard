@@ -76,6 +76,7 @@ from manuscript_guard.gates.custodian import check_restricted_inputs, check_smal
 from manuscript_guard.gates.design_review import check_design_rounds
 from manuscript_guard.gates.formats import check_format, not_read_in_latex
 from manuscript_guard.gates.numbers import chosen_rules, typed_choice, why_no_manuscript
+from manuscript_guard.gates.registration import check_registration
 from manuscript_guard.gates.shortlist import check_shortlist
 from manuscript_guard.gates.synthetic import check_synthetic_inputs
 from manuscript_guard.policy import (
@@ -156,6 +157,9 @@ def _run_gates(
         ("G9", lambda: check_methods(project, namespace, results)),
         ("G12", lambda: check_design(project, results, chosen).merge(
             check_design_rounds(project, submission=at_submission))),
+        # A check of its own, since it reads the manuscript: one that cannot be read stops
+        # it and not the plan's.
+        ("G12", lambda: check_registration(project, results, chosen)),
         ("G8", lambda: check_consistency(results)),
         ("G2", lambda: check_small_cells(project, results)),
         ("G1", lambda: check_restricted_inputs(project, results)),
@@ -2502,8 +2506,13 @@ def cmd_lookup(args: argparse.Namespace) -> int:
     from manuscript_guard.lookup import run as lookup
 
     project, _ = load_project(args.path)
+    if args.journals and args.registrations:
+        print("manuscript-guard: ask for --journals or --registrations, not both", file=sys.stderr)
+        return 2
     if args.journals:
         return _lookup_journals(project, args)
+    if args.registrations:
+        return _lookup_registrations(project, args)
     empty = why_no_manuscript(project)
     bib = project.path("literature") / lookup.BIB_FILE
     if empty or not bib.is_file():
@@ -2740,6 +2749,34 @@ def _lookup_journals(project, args: argparse.Namespace) -> int:
     print(f"{len(written)} looked up, {up_to_date} up to date; records in journals/lookups/")
     if late:
         print(f"{late} had an answer that did not come; `lookup --journals` asks again for those")
+        return 1
+    return 0
+
+
+def _lookup_registrations(project, args: argparse.Namespace) -> int:
+    """`lookup --registrations`: each registration paper.yaml lists asked of its registry."""
+    from manuscript_guard.lookup import registrations
+
+    planned = registrations.plan(project, again=args.again)
+    if not planned:
+        print("paper.yaml lists no registration, so nothing was looked up")
+        return 0
+    due = [p for p in planned if not p.skipped]
+    for one in planned:
+        if one.skipped and one.skipped != "up to date":
+            print(f"{one.id or one.written}: not looked up: {one.skipped}")
+    if args.dry_run:
+        for one in due:
+            print(f"{one.id}: would ask {registrations.NAMES[one.registry]} ({one.why})")
+        print(f"{len(due)} to look up, {len(planned) - len(due)} not; nothing was sent")
+        return 0
+    written = registrations.run(project, planned)
+    late = sum(1 for _one, record, _path in written if record["status"] == "unresolvable")
+    up_to_date = sum(1 for p in planned if p.skipped == "up to date")
+    print(f"{len(written)} looked up, {up_to_date} up to date; records in design/registrations/")
+    if late:
+        print(f"{late} had an answer that did not come; `lookup --registrations` asks again "
+              "for those")  # fmt: skip
         return 1
     return 0
 
@@ -3718,6 +3755,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--journals",
         action="store_true",
         help="ask the NLM Catalog and DOAJ about each journal of journals/shortlist.yaml instead",
+    )
+    lookup.add_argument(
+        "--registrations",
+        action="store_true",
+        help="ask ClinicalTrials.gov, the EU PAS register, OSF or ISRCTN about each registration "
+        "paper.yaml lists instead, and keep the answers in design/registrations/",
     )
     lookup.set_defaults(func=cmd_lookup)
 

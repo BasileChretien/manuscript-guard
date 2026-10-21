@@ -46,6 +46,16 @@ stage: design
 # disproportionality, trial, systematic-review, prediction-model.
 # study_type: cohort
 
+# The study's registrations, once it is registered: `manuscript-guard lookup --registrations`
+# keeps what the registry holds, and the paper is held to it. Quote each registered outcome
+# in the registry's words, with its role there and the planned result that reports it.
+# registration:
+#   - id: NCT01234567
+#     outcomes:
+#       - registered: "words of the registered outcome, as the registry has them"
+#         role: primary
+#         reported_as: ror.*
+
 reporting_guideline: []
 
 # Numbers that are writing conventions rather than findings. Every addition needs a

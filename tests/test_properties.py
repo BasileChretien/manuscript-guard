@@ -798,6 +798,130 @@ def test_a_planned_result_is_read_from_its_own_item_and_nowhere_else(
     assert [(found.key, found.group) for found in read] == listed, plan
 
 
+# ------------------------------------------------- a registration and its outcomes
+
+# Imported here, not at the top, to keep clear of the import block other branches edit.
+from generated import (  # noqa: E402
+    NAMED_LOOKALIKES,
+    registered_quotes,
+    registration_texts,
+    retrospective_texts,
+)
+
+
+@holds(100, registration_texts())
+def test_a_registration_is_found_where_the_manuscript_gives_it_and_no_lookalike_is(
+    drawn: tuple[str, list[tuple[str, str, str | None, str]]],
+) -> None:
+    """G12 finds a registration's identifier in every way a manuscript gives it, in any case
+    and inside a link, and not where the manuscript gives only one with a digit more, a
+    letter before it or a longer OSF name."""
+    from manuscript_guard.gates import registration as gate
+    from manuscript_guard.registrations import Declared, identify
+
+    plain, given = drawn
+    for written, kept, _found, text in given:
+        registry, identifier = identify(kept)
+        entry = Declared(kept, identifier, registry, None, (), False, 0)
+        assert gate.named_in(text, entry), (written, text)
+        assert not gate.named_in(plain, entry), (kept, plain)
+
+
+@holds(100, registration_texts())
+def test_each_identifier_a_manuscript_gives_is_found_as_written_and_nothing_else(
+    drawn: tuple[str, list[tuple[str, str, str | None, str]]],
+) -> None:
+    """Where paper.yaml lists no registration, G12 names each NCT, ISRCTN, EU PAS and
+    PROSPERO number the manuscript gives, as it is written, once for each time; what is one
+    only inside a longer word or number is not one."""
+    from manuscript_guard import registrations
+
+    plain, given = drawn
+    found = registrations.NAMED_IN_TEXT.findall
+    assert sorted(found(plain)) == sorted(NAMED_LOOKALIKES), plain
+    for written, _kept, named, text in given:
+        more = Counter(found(text)) - Counter(found(plain))
+        assert sorted(more.elements()) == ([named] if named else []), (written, text)
+
+
+@holds(150, registered_quotes())
+def test_a_registered_outcome_is_found_however_it_was_copied_and_not_with_a_word_changed(
+    drawn: tuple[str, str, str],
+) -> None:
+    """A quote of a registered outcome is found in the registry's record however the author
+    copied it, typed, in capitals and wrapped by YAML, the page's ligatures, dashes, curly
+    marks and spaces against the keyboard's; with one of its words changed it is not."""
+    from manuscript_guard.gates import registration as gate
+
+    record, copied, changed = drawn
+    assert gate.fold(copied) in gate.fold(record), (copied, record)
+    assert gate.fold(changed) not in gate.fold(record), (changed, record)
+
+
+@holds(100, retrospective_texts())
+def test_a_late_registration_is_said_in_every_way_a_manuscript_says_it_and_no_other(
+    drawn: tuple[str, list[str]],
+) -> None:
+    """A manuscript says the study was registered retrospectively in either order of the
+    words, with a line break between them, in capitals; registered prospectively, analysed
+    retrospectively, or a retrospective cohort does not say it."""
+    from manuscript_guard.gates import registration as gate
+
+    plain, said = drawn
+    assert not gate.says_retrospective(plain), plain
+    for text in said:
+        assert gate.says_retrospective(text), text
+
+
+def _registration_found_inside_another(monkeypatch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import registration as gate
+
+    def anywhere(text: str, entry: Any) -> bool:
+        return entry.id.rsplit("/", 1)[-1].casefold() in text.casefold()
+
+    monkeypatch.setattr(gate, "named_in", anywhere)
+
+
+def _identifier_read_inside_a_word(monkeypatch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import registrations
+
+    loose = re.compile(
+        r"(?i)(?:NCT\d{8}|ISRCTN\d{8}|EU ?PAS ?\d{3,12}|CRD\d{11,12})(?![A-Za-z0-9])"
+    )
+    monkeypatch.setattr(registrations, "NAMED_IN_TEXT", loose)
+
+
+def _fold_keeps_case(monkeypatch: pytest.MonkeyPatch) -> None:
+    import unicodedata
+
+    from manuscript_guard.gates import registration as gate
+
+    def cased(text: str) -> str:
+        text = unicodedata.normalize("NFKC", text).translate(gate._DASHES)
+        return " ".join(text.translate(gate._QUOTES).split())
+
+    monkeypatch.setattr(gate, "fold", cased)
+
+
+def _fold_keeps_dashes(monkeypatch: pytest.MonkeyPatch) -> None:
+    import unicodedata
+
+    from manuscript_guard.gates import registration as gate
+
+    def dashed(text: str) -> str:
+        text = unicodedata.normalize("NFKC", text).translate(gate._QUOTES)
+        return " ".join(text.casefold().split())
+
+    monkeypatch.setattr(gate, "fold", dashed)
+
+
+def _retrospective_on_one_line(monkeypatch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import registration as gate
+
+    one_line = re.compile(r"(?i)\bretrospectiv\w* regist\w*|\bregist\w* retrospectiv\w*")
+    monkeypatch.setattr(gate, "RETROSPECTIVE", one_line)
+
+
 # ------------------------------------------------------------------------------ parameters
 
 #: What an analysis declares in the property below: a threshold, a count, a version, and a
@@ -5822,6 +5946,26 @@ def _each_anchors_line_is_its_own_run(patch: pytest.MonkeyPatch) -> None:
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
+    "a registration is found inside a longer identifier": (
+        _registration_found_inside_another,
+        test_a_registration_is_found_where_the_manuscript_gives_it_and_no_lookalike_is,
+    ),
+    "an identifier is read inside a longer word": (
+        _identifier_read_inside_a_word,
+        test_each_identifier_a_manuscript_gives_is_found_as_written_and_nothing_else,
+    ),
+    "a registered outcome keeps its case": (
+        _fold_keeps_case,
+        test_a_registered_outcome_is_found_however_it_was_copied_and_not_with_a_word_changed,
+    ),
+    "a registered outcome keeps its dashes": (
+        _fold_keeps_dashes,
+        test_a_registered_outcome_is_found_however_it_was_copied_and_not_with_a_word_changed,
+    ),
+    "a late registration is said on one line only": (
+        _retrospective_on_one_line,
+        test_a_late_registration_is_said_in_every_way_a_manuscript_says_it_and_no_other,
+    ),
     "every stop ends a sentence, after et al. and Suppl. too": (
         _every_stop_ends_a_sentence,
         test_every_citation_lies_in_the_sentence_of_its_own_clause,

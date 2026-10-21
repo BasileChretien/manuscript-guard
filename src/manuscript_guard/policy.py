@@ -119,6 +119,8 @@ BINDS_AT = {
     # and a record edited by hand may be hiding one.
     "reference-retracted": DRAFTING,
     "lookup-record-edited": DRAFTING,
+    # What a registry said is not the author's to edit, as a lookup's is not.
+    "registration-record-edited": DRAFTING,
     # -- internal review --------------------------------------------------------
     # The draft is finished; now it is held to the journal's rules and read properly.
     "figure-unreviewed": INTERNAL_REVIEW,
@@ -177,6 +179,32 @@ BINDS_AT = {
     "lookup-date-future": INTERNAL_REVIEW,
     "lookup-record-unreadable": INTERNAL_REVIEW,
     "lookup-record-misfiled": INTERNAL_REVIEW,
+    # A registration the paper cannot be held to: none for a trial, an identifier that names
+    # no registry, one the manuscript does not give, one with no record or one the registry
+    # does not know. A draft may not have its records yet, as with the lookups.
+    "registration-missing": INTERNAL_REVIEW,
+    "registration-id-malformed": INTERNAL_REVIEW,
+    "registration-not-in-manuscript": INTERNAL_REVIEW,
+    "registration-not-looked-up": INTERNAL_REVIEW,
+    "registration-unknown": INTERNAL_REVIEW,
+    "registration-record-unreadable": INTERNAL_REVIEW,
+    "registration-record-misfiled": INTERNAL_REVIEW,
+    "registration-date-future": INTERNAL_REVIEW,
+    # A paper that is not the study registered: G12 warns while it is drafted and fails it
+    # at submission, as the author decided (2026-10-21). Listed so that a run at submission
+    # says when they bind; before it they are warnings, which the stage leaves as they are.
+    "registration-late": SUBMISSION,
+    "registration-retrospective-unsaid": SUBMISSION,
+    "registration-withdrawn": SUBMISSION,
+    "registration-design-differs": SUBMISSION,
+    "registration-outcomes-undeclared": SUBMISSION,
+    "registration-outcome-not-registered": SUBMISSION,
+    "registration-outcome-added-later": SUBMISSION,
+    "registration-outcome-role-changed": SUBMISSION,
+    "registration-outcome-dropped": SUBMISSION,
+    "registration-outcome-unplanned": SUBMISSION,
+    "registration-outcome-unreported": SUBMISSION,
+    "registration-primary-unquoted": SUBMISSION,
     # One work cited under two keys is printed twice in the reference list.
     "reference-duplicate": INTERNAL_REVIEW,
     # -- submission -------------------------------------------------------------

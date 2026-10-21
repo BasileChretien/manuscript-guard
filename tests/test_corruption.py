@@ -4064,6 +4064,431 @@ def test_a_planned_group_of_tables_or_models_is_looked_for_among_them(project: P
                                        "- `model.crude.*`: the crude models")]  # fmt: skip
 
 
+# ------------------------------------------------- the registered protocol
+
+_NCT = "NCT01234567"
+_PRIMARY = "The reporting odds ratio of hepatic injury with example-drug"
+_SECONDARY = "The proportion of the cases that were serious"
+_STATED = f"The study was registered at ClinicalTrials.gov ({_NCT}) before its analysis."
+
+
+def _ctgov_record(**changed) -> dict:
+    """A fictional study's record as `lookup --registrations` writes one, its primary and
+    secondary outcomes apart, registered before anything the example does."""
+    record = {
+        "schema": "manuscript-guard/registration/1",
+        "id": _NCT,
+        "registry": "clinicaltrials.gov",
+        "source": "registry",
+        "asked_on": "2026-10-01",
+        "status": "found",
+        "title": "Hepatic injury with example-drug",
+        "dates": {"registered": "2025-01-10", "study_start": "2025-02"},
+        "study_type": "observational",
+        "sections": [
+            {"label": "Primary outcome 1", "role": "primary",
+             "text": f"{_PRIMARY}\nAt the end of the reporting period"},
+            {"label": "Secondary outcome 1", "role": "secondary", "text": _SECONDARY},
+        ],
+    }  # fmt: skip
+    return {**record, **changed}
+
+
+def _outcome(registered: str = _PRIMARY, role: str = "primary", reported_as="ror.*") -> dict:
+    said = {"registered": registered, "role": role}
+    return {**said, "reported_as": reported_as} if reported_as else said
+
+
+_OUTCOMES = (_outcome(), _outcome(_SECONDARY, "secondary", "case.pct_serious"))
+
+
+def _register(root: Path, *, record: dict | None = None, entry: dict | None = None,
+              stated: str | None = _STATED, digest: bool = True) -> None:  # fmt: skip
+    """Declare a registration in paper.yaml, give it in the manuscript, and keep its
+    record; each as the test changes it."""
+    from manuscript_guard.registrations import answers_digest, file_name
+
+    entry = {"id": _NCT, "outcomes": list(_OUTCOMES), **(entry or {})}
+    entry = {key: value for key, value in entry.items() if value is not None}
+    paper = root / "paper.yaml"
+    text = paper.read_text(encoding="utf-8").rstrip("\n")
+    paper.write_text(text + "\n\n" + yaml.safe_dump({"registration": [entry]},
+                                                    sort_keys=False), encoding="utf-8")  # fmt: skip
+    if stated:
+        main = main_md(root)
+        main.write_text(main.read_text(encoding="utf-8") + f"\n\n{stated}\n", encoding="utf-8")
+    record = _ctgov_record() if record is None else record
+    if record:
+        if digest and record.get("source") != "by-hand":
+            record = {**record, "answers_sha256": answers_digest(record)}
+        folder = root / "design" / "registrations"
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / file_name(str(entry["id"]))
+        path.write_text(yaml.safe_dump(record, sort_keys=False), encoding="utf-8")
+
+
+def _registration(root: Path, stage: str = "drafting") -> dict[str, str]:
+    """G12's word on the registrations at a stage, after the stage policy: code, severity."""
+    from manuscript_guard.gates.registration import check_registration
+    from manuscript_guard.policy import apply_stage
+
+    project, _ = load_project(root)
+    _namespace, results, _literature, _ = load_namespace(project)
+    report, _deferred = apply_stage(check_registration(project, results, stage), stage)
+    return {f.code: f.severity for f in report.findings}
+
+
+def test_a_paper_held_to_its_registration_passes(project: Path) -> None:
+    _register(project)
+    assert _registration(project) == {}
+    assert _registration(project, "submission") == {}
+
+
+def test_a_trial_with_no_registration_fails_from_internal_review(project: Path) -> None:
+    _paper_field(project, "study_type", "trial")
+    assert _registration(project) == {"registration-missing": "info"}
+    assert _registration(project, "internal-review") == {"registration-missing": "fail"}
+
+
+def test_an_identifier_the_manuscript_gives_and_paper_yaml_does_not_is_a_warning(
+    project: Path,
+) -> None:
+    main = main_md(project)
+    main.write_text(main.read_text(encoding="utf-8") + f"\n\n{_STATED}\n", encoding="utf-8")
+    assert _registration(project, "submission") == {"registration-undeclared": "warn"}
+
+
+def test_an_identifier_that_names_no_registry_fails(project: Path) -> None:
+    _register(project, entry={"id": "ABC-123"}, stated="ABC-123", record={})
+    assert _registration(project, "internal-review") == {"registration-id-malformed": "fail"}
+
+
+def test_a_registration_the_manuscript_does_not_give_fails(project: Path) -> None:
+    _register(project, stated=None)
+    assert _registration(project, "internal-review") == {"registration-not-in-manuscript": "fail"}
+    assert _registration(project) == {"registration-not-in-manuscript": "info"}
+
+
+def test_a_registration_with_no_record_fails(project: Path) -> None:
+    _register(project, record={})
+    said = _registration(project, "internal-review")
+    assert said == {"registration-not-looked-up": "fail"}
+
+
+def test_a_record_that_is_not_one_fails(project: Path) -> None:
+    _register(project, record={"schema": "manuscript-guard/registration/1", "id": _NCT})
+    assert _registration(project, "internal-review") == {"registration-record-unreadable": "fail"}
+
+
+def test_a_record_of_another_registration_fails(project: Path) -> None:
+    _register(project, record=_ctgov_record(id="NCT07654321"))
+    assert _registration(project, "internal-review") == {"registration-record-misfiled": "fail"}
+
+
+def test_an_edited_record_fails_from_drafting(project: Path) -> None:
+    """An outcome put into the record by hand, the digest left as `lookup` wrote it."""
+    from manuscript_guard.registrations import answers_digest
+
+    record = _ctgov_record()
+    edited = {**record, "answers_sha256": answers_digest(record)}
+    edited["sections"] = [*record["sections"], {"label": "Primary outcome 2", "role": "primary",
+                                                "text": "Anything at all"}]  # fmt: skip
+    _register(project, record=edited, digest=False)
+    assert _registration(project) == {"registration-record-edited": "fail"}
+
+
+def test_a_registration_record_dated_in_the_future_fails(project: Path) -> None:
+    _register(project, record=_ctgov_record(asked_on="2999-01-01"))
+    assert _registration(project, "internal-review") == {"registration-date-future": "fail"}
+
+
+def test_a_registration_the_registry_does_not_know_fails(project: Path) -> None:
+    absent = {k: v for k, v in _ctgov_record().items() if k not in (
+        "title", "dates", "study_type", "sections")}  # fmt: skip
+    _register(project, record={**absent, "status": "absent", "why": "it knows no such study"})
+    assert _registration(project, "internal-review") == {"registration-unknown": "fail"}
+
+
+def test_a_registry_that_did_not_answer_is_a_warning_and_nothing_more(project: Path) -> None:
+    absent = {k: v for k, v in _ctgov_record().items() if k not in (
+        "title", "dates", "study_type", "sections")}  # fmt: skip
+    _register(project, record={**absent, "status": "unresolvable", "why": "HTTP 503"})
+    assert _registration(project, "submission") == {"registration-unanswered": "warn"}
+
+
+def test_a_record_copied_by_hand_is_noted_and_held_like_another(project: Path) -> None:
+    record = {k: v for k, v in _ctgov_record().items() if k not in ("asked_on",)}
+    record = {**record, "id": "ACTRN12625000123456", "registry": "anzctr", "source": "by-hand",
+              "copied_on": "2026-10-01", "copied_by": "A. Author"}  # fmt: skip
+    entry = {"id": "ACTRN12625000123456", "registry": "anzctr"}
+    _register(project, record=record, entry=entry, stated="Registered as ACTRN12625000123456.")
+    assert _registration(project, "submission") == {"registration-by-hand": "info"}
+    entry = {**entry, "outcomes": [_outcome("Something never registered")]}
+    _register_again(project, record=record, entry=entry)
+    said = _registration(project, "submission")
+    assert said["registration-outcome-not-registered"] == "fail"
+
+
+def _register_again(root: Path, **changed) -> None:
+    """The registration declared anew: paper.yaml's block replaced, the rest as it was."""
+    paper = root / "paper.yaml"
+    text = paper.read_text(encoding="utf-8")
+    paper.write_text(text[: text.index("\n\nregistration:")] + "\n", encoding="utf-8")
+    _register(root, stated=None, **changed)
+
+
+def test_a_withdrawn_registration_warns_then_fails_at_submission(project: Path) -> None:
+    _register(project, record=_ctgov_record(withdrawn=True))
+    assert _registration(project) == {"registration-withdrawn": "warn"}
+    assert _registration(project, "submission") == {"registration-withdrawn": "fail"}
+
+
+def test_a_registered_design_other_than_the_paper_s_warns_then_fails(project: Path) -> None:
+    _paper_field(project, "study_type", "trial")
+    _register(project)
+    assert _registration(project) == {"registration-design-differs": "warn"}
+    assert _registration(project, "submission") == {"registration-design-differs": "fail"}
+
+
+def test_a_registration_after_the_study_started_warns_then_fails(project: Path) -> None:
+    dates = {"registered": "2025-03-02", "study_start": "2025-02-14"}
+    _register(project, record=_ctgov_record(dates=dates))
+    assert _registration(project) == {"registration-late": "warn"}
+    assert _registration(project, "submission") == {"registration-late": "fail"}
+
+
+def test_a_start_known_to_the_month_is_compared_to_the_month(project: Path) -> None:
+    _register(project, record=_ctgov_record(dates={"registered": "2025-02-27",
+                                                   "study_start": "2025-02"}))  # fmt: skip
+    assert _registration(project, "submission") == {}
+
+
+def _days_on(days: int) -> str:
+    """A day this many days from today: the fixture wrote its first results today."""
+    from datetime import date, timedelta
+
+    return (date.today() + timedelta(days=days)).isoformat()
+
+
+def test_a_planned_start_after_the_day_asked_is_not_a_start(project: Path) -> None:
+    dates = {"registered": _days_on(30), "study_start": _days_on(29)}
+    _register(project, record=_ctgov_record(dates=dates, asked_on=_days_on(-20)))
+    said = _registration(project, "submission")
+    # Registered after the first results, which the fixture wrote today: that is said.
+    assert said == {"registration-late": "fail"}
+    assert "the study's start" not in _registration_messages(project)
+
+
+def test_a_registration_after_the_first_results_warns_then_fails(project: Path) -> None:
+    _register(project, record=_ctgov_record(dates={"registered": _days_on(30)}))
+    assert _registration(project) == {"registration-late": "warn"}
+    assert "the first results" in _registration_messages(project)
+
+
+def _registration_messages(root: Path) -> str:
+    from manuscript_guard.gates.registration import check_registration
+
+    project, _ = load_project(root)
+    return " ".join(f.message for f in check_registration(project).findings)
+
+
+def test_a_retrospective_registration_said_in_paper_and_manuscript_is_a_note(
+    project: Path,
+) -> None:
+    dates = {"registered": "2025-03-02", "study_start": "2025-02-14"}
+    stated = (f"The study was retrospectively\nregistered ({_NCT}), as the protocol was agreed "
+              "with the data custodian first.")  # fmt: skip
+    _register(project, record=_ctgov_record(dates=dates), stated=stated,
+              entry={"retrospective": "the custodian agreed the protocol first"})
+    assert _registration(project, "submission") == {"registration-retrospective": "info"}
+
+
+def test_a_retrospective_registration_the_manuscript_does_not_say_fails(project: Path) -> None:
+    dates = {"registered": "2025-03-02", "study_start": "2025-02-14"}
+    _register(project, record=_ctgov_record(dates=dates),
+              entry={"retrospective": "the custodian agreed the protocol first"})  # fmt: skip
+    said = _registration(project, "submission")
+    assert said == {"registration-retrospective-unsaid": "fail"}
+
+
+def test_no_outcome_quoted_warns_then_fails(project: Path) -> None:
+    _register(project, entry={"outcomes": None})
+    said = _registration(project, "submission")
+    assert said == {"registration-outcomes-undeclared": "fail"}
+
+
+def test_a_quoted_outcome_the_registry_does_not_hold_warns_then_fails(project: Path) -> None:
+    _register(project, entry={"outcomes": [_outcome("The incidence of hepatic failure"),
+                                           _OUTCOMES[1]]})  # fmt: skip
+    said = _registration(project, "submission")
+    assert said == {"registration-outcome-not-registered": "fail",
+                    "registration-primary-unquoted": "fail"}  # fmt: skip
+
+
+def test_an_outcome_not_registered_and_named_under_deviations_passes(project: Path) -> None:
+    _deviation(project, "3. The ratio, `ror.*`, replaced the outcome registered.")
+    outcomes = [_outcome("The incidence of hepatic failure"), _OUTCOMES[1],
+                _outcome(_PRIMARY, reported_as=None)]  # fmt: skip
+    _deviation(project, f'4. "{_PRIMARY.lower()}" was not reported.')
+    _register(project, entry={"outcomes": outcomes})
+    assert _registration(project, "submission") == {}
+
+
+def test_case_spacing_and_dashes_are_not_compared(project: Path) -> None:
+    quote = "the  REPORTING odds\nratio of hepatic injury with example\N{EN DASH}drug"
+    _register(project, entry={"outcomes": [_outcome(quote), _OUTCOMES[1]]})
+    assert _registration(project, "submission") == {}
+
+
+def test_a_registered_secondary_outcome_reported_as_primary_warns_then_fails(
+    project: Path,
+) -> None:
+    outcomes = [_outcome(), _outcome(_SECONDARY, "primary", "case.pct_serious")]
+    _register(project, entry={"outcomes": outcomes})
+    assert _registration(project) == {"registration-outcome-role-changed": "warn"}
+    assert _registration(project, "submission") == {"registration-outcome-role-changed": "fail"}
+
+
+def test_a_registered_primary_outcome_reported_as_secondary_warns_then_fails(
+    project: Path,
+) -> None:
+    outcomes = [_outcome(role="secondary"), _OUTCOMES[1]]
+    _register(project, entry={"outcomes": outcomes})
+    said = _registration(project, "submission")
+    assert said == {"registration-outcome-role-changed": "fail"}
+
+
+def test_a_role_changed_and_named_under_deviations_passes(project: Path) -> None:
+    _deviation(project, "3. `case.pct_serious` is reported as the primary outcome.")
+    outcomes = [_outcome(), _outcome(_SECONDARY, "primary", "case.pct_serious")]
+    _register(project, entry={"outcomes": outcomes})
+    assert _registration(project, "submission") == {}
+
+
+def test_a_registered_outcome_not_reported_and_not_said_warns_then_fails(project: Path) -> None:
+    outcomes = [_outcome(), _outcome(_SECONDARY, "secondary", None)]
+    _register(project, entry={"outcomes": outcomes})
+    assert _registration(project, "submission") == {"registration-outcome-dropped": "fail"}
+    _deviation(project, f"3. {_SECONDARY} was not analysed.")
+    assert _registration(project, "submission") == {}
+
+
+def test_an_outcome_reported_under_a_key_the_plan_does_not_list_warns_then_fails(
+    project: Path,
+) -> None:
+    outcomes = [_outcome(reported_as="liver.ror"), _OUTCOMES[1]]
+    _register(project, entry={"outcomes": outcomes})
+    said = _registration(project, "submission")
+    assert said == {"registration-outcome-unplanned": "fail"}
+    _register_again(project, entry={"outcomes": [_outcome(reported_as="ror.point"),
+                                                 _OUTCOMES[1]]})  # fmt: skip
+    assert _registration(project, "submission") == {}, "a key in a planned group is planned"
+
+
+def test_an_outcome_reported_as_a_planned_result_never_emitted_warns_then_fails(
+    project: Path,
+) -> None:
+    _plan_edited(project, "- `case.pct_serious`",
+                 "- `death.n_cases`: deaths among the cases\n- `case.pct_serious`")  # fmt: skip
+    outcomes = [_outcome(), _outcome(_SECONDARY, "secondary", "death.n_cases")]
+    _register(project, entry={"outcomes": outcomes})
+    said = _registration(project, "submission")
+    assert said == {"registration-outcome-unreported": "fail"}
+    assert _registration(project, "design") == {}, "nothing is emitted at the design stage"
+
+
+def test_a_registered_primary_outcome_no_quote_stands_for_warns_then_fails(
+    project: Path,
+) -> None:
+    record = _ctgov_record()
+    failure = "The reporting odds ratio of hepatic failure"
+    record["sections"].insert(1, {"label": "Primary outcome 2", "role": "primary",
+                                  "text": failure})
+    _register(project, record=record)
+    said = _registration(project, "submission")
+    assert said == {"registration-primary-unquoted": "fail"}
+    # One vague quote found in both stands for one of them, not both.
+    outcomes = [_outcome("The reporting odds ratio of hepatic"), _OUTCOMES[1]]
+    _register_again(project, record=record, entry={"outcomes": outcomes})
+    assert _registration(project, "submission") == {"registration-primary-unquoted": "fail"}
+
+
+def test_a_registered_secondary_outcome_no_quote_stands_for_is_a_warning(project: Path) -> None:
+    _register(project, entry={"outcomes": [_outcome()]})
+    said = _registration(project, "submission")
+    assert said == {"registration-secondary-unquoted": "warn"}
+
+
+def test_a_registry_that_gives_its_outcomes_as_text_is_noted(project: Path) -> None:
+    record = _ctgov_record(id="EUPAS1000000999", registry="eu-pas", sections=[
+        {"label": "Outcomes", "role": "outcomes",
+         "text": f"Primary outcome: {_PRIMARY}.\nSecondary outcome: {_SECONDARY}."},
+        {"label": "Data analysis plan", "text": "A reporting odds ratio."},
+    ])  # fmt: skip
+    outcomes = [_outcome(), _outcome(_SECONDARY, "primary", "case.pct_serious")]
+    _register(project, record=record, entry={"id": "EUPAS1000000999", "outcomes": outcomes},
+              stated="Registered in the EU PAS register (EUPAS1000000999).")  # fmt: skip
+    # The role cannot be read where the registry keeps the outcomes as one text: the swap
+    # above is a co-author's to see, and the gate says it did not look.
+    assert _registration(project, "submission") == {"registration-roles-unchecked": "info"}
+    outcomes = [_outcome("A reporting odds ratio"), _OUTCOMES[1]]
+    _register_again(project, record=record, entry={"id": "EUPAS1000000999",
+                                                   "outcomes": outcomes})  # fmt: skip
+    said = _registration(project, "submission")
+    assert said["registration-outcome-not-registered"] == "fail", "only an outcome field counts"
+
+
+def test_an_outcome_added_to_an_updated_registration_warns_then_fails(project: Path) -> None:
+    first = [{"label": "Outcome(s)", "role": "outcomes", "text": _SECONDARY}]
+    record = _ctgov_record(id="osf.io/abcde", registry="osf", sections=[
+        {"label": "Outcome(s)", "role": "outcomes", "text": f"{_PRIMARY}; {_SECONDARY}"}],
+        first_version={"updated": "2025-06-01", "reason": "added an outcome",
+                       "sections": first})  # fmt: skip
+    _register(project, record=record, entry={"id": "osf.io/abcde"},
+              stated="Preregistered at https://osf.io/abcde.")  # fmt: skip
+    said = _registration(project, "submission")
+    assert said["registration-outcome-added-later"] == "fail"
+
+
+def test_check_holds_the_paper_to_its_registration(project: Path) -> None:
+    from manuscript_guard.cli import _run_gates
+
+    _register(project, record={})
+    report, _project, _stage, _deferred = _run_gates(project, stage="internal-review")
+    assert "registration-not-looked-up" in {f.code for f in report.failures}
+    report, *_ = _run_gates(project, stage="drafting")
+    assert "registration-not-looked-up" not in {f.code for f in report.failures}
+
+
+_SHAPES = ["5", "NCT01234567", "{id: 5, registry: 7, outcomes: 3}",
+           "[{id: NCT01234567, outcomes: [{registered: 1}]}]"]  # fmt: skip
+
+
+@pytest.mark.parametrize("written", _SHAPES)
+def test_a_registration_of_another_shape_is_the_contract_s_to_report(
+    project: Path, written: str
+) -> None:
+    paper = project / "paper.yaml"
+    paper.write_text(paper.read_text(encoding="utf-8") + f"\nregistration: {written}\n",
+                     encoding="utf-8")  # fmt: skip
+    project_, contract = load_project(project)
+    assert not contract.ok, "the schema says what is wrong with it"
+    from manuscript_guard.gates.registration import check_registration
+
+    check_registration(project_, None, "submission")  # reads it as nothing, and does not raise
+
+
+def _deviation(root: Path, said: str) -> None:
+    """One more item under the plan's Deviations section."""
+    _plan_edited(root, "No analysis was added", f"{said}\n\nNo analysis was added")
+
+
+def _paper_field(root: Path, key: str, value: str) -> None:
+    paper = root / "paper.yaml"
+    text = paper.read_text(encoding="utf-8").rstrip("\n")
+    paper.write_text(text + f"\n{key}: {value}\n", encoding="utf-8")
+
+
 # ------------------------------------------------- the unit of analysis
 
 

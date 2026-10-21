@@ -26,6 +26,54 @@
       "enum": ["cohort", "case-control", "self-controlled", "disproportionality", "trial", "systematic-review", "prediction-model"],
       "description": "The study's design. G12 asks the analysis plan for the sections this design needs beyond the seven every plan has, and G5 says where none of the reporting guidelines for it is declared. Each design's sections cite the guideline item they come from (src/manuscript_guard/data/study_types.yaml). Absent, the plan is asked for the seven only."
     },
+    "registration": {
+      "type": "array",
+      "description": "The study's registrations. `manuscript-guard lookup --registrations` asks ClinicalTrials.gov, the EU PAS register, OSF and ISRCTN about each one and keeps the answer in design/registrations/; any other registry's record is copied by hand. G12 then holds the paper to it: the identifier is in the manuscript, the registry knows it, it was registered before the study started and before the first results, and each registered outcome quoted here is in the registry's record under the role given and is reported as the planned result named.",
+      "items": {
+        "type": "object",
+        "required": ["id"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "As the registry writes it: NCT04368728, EUPAS1000000417, ISRCTN17072692, osf.io/abcde, CRD42020123456."
+          },
+          "registry": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The registry's name, needed only where the identifier's shape does not say it: anzctr, drks, jrct. Its record is copied by hand into design/registrations/."
+          },
+          "retrospective": {
+            "type": "string",
+            "pattern": "\\S",
+            "description": "Why the study was registered after it started, or after the first results were written. With it, and with the manuscript saying the study was registered retrospectively, G12 notes a late registration rather than failing it at submission."
+          },
+          "outcomes": {
+            "type": "array",
+            "description": "Each outcome the registration holds, quoted in the registry's words, with the role it has there and the planned result that reports it. One the paper does not report has no `reported_as`, and the plan's Deviations section quotes the same words.",
+            "items": {
+              "type": "object",
+              "required": ["registered", "role"],
+              "additionalProperties": false,
+              "properties": {
+                "registered": {
+                  "type": "string",
+                  "pattern": "\\S",
+                  "description": "Words of the registered outcome, as the registry's record has them. Case, spacing and line breaks are not compared."
+                },
+                "role": { "enum": ["primary", "secondary"] },
+                "reported_as": {
+                  "type": "string",
+                  "pattern": "^(?:(?:results\\.)?[A-Za-z_][\\w-]*(?:\\.[\\w-]+)*\\.\\*|results\\.[A-Za-z_][\\w-]*(?:\\.[\\w-]+)*|[A-Za-z_][\\w-]*(?:\\.[\\w-]+)+)$",
+                  "description": "The key of the result that reports it, as the plan's Planned results section lists it: `ror.point`, `results.dose`, or a group, `ror.*`."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "reporting_guideline": {
       "type": "array",
       "description": "Names of checklists under profiles/reporting/. Commonly STROBE, RECORD, RECORD-PE, CONSORT, SPIRIT, PRISMA, TRIPOD or ARRIVE, but deliberately not a closed list: guidelines are revised, extensions appear, and a schema that refuses CHEERS or SQUIRE would be wrong about the world rather than about the project.",

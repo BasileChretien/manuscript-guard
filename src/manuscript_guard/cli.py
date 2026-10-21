@@ -2284,6 +2284,15 @@ def cmd_build(args: argparse.Namespace) -> int:
     document, not a list of unfinished bindings. It is a flag rather than the default,
     so that the version you send anyone has passed.
     """
+    marked_up = getattr(args, "marked_up", False)
+    if marked_up and getattr(args, "annotated", False):
+        print("manuscript-guard: --marked-up and --annotated make different copies; ask for "
+              "one at a time", file=sys.stderr)  # fmt: skip
+        return 2
+    if not marked_up and any(getattr(args, name, None) for name in ("since", "round", "highlight")):
+        print("manuscript-guard: --since, --round and --highlight go with --marked-up",
+              file=sys.stderr)  # fmt: skip
+        return 2
     report, project, _stage, _deferred = _run_gates(
         args.path, submission=args.submission, stage=getattr(args, "stage", None)
     )

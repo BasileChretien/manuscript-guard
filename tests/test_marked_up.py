@@ -483,3 +483,18 @@ def test_word_reads_the_copy_as_the_package_does(tmp_path: Path) -> None:
     assert read_plainly(copy, accept=True) == read_plainly(
         _WORD / "marked-up-accepted-in-word.docx", accept=True
     )
+
+
+def test_the_marked_up_options_go_with_marked_up_and_not_with_annotated(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Given without `--marked-up`, `--since`, `--round` and `--highlight` would be read by
+    nothing and the build would look as if it had made a copy; and the annotated copy is
+    made in place of the build, so the two are not made at once."""
+    from manuscript_guard.cli import main
+
+    for given in (["--since", "sent.docx"], ["--round", "2"], ["--highlight"]):
+        assert main(["build", str(tmp_path), *given]) == 2
+        assert "go with --marked-up" in capsys.readouterr().err
+    assert main(["build", str(tmp_path), "--marked-up", "--annotated"]) == 2
+    assert "one at a time" in capsys.readouterr().err

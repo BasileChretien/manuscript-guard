@@ -719,9 +719,16 @@ to normal vision and less than 10 after is said: `figure-colours-confused` for a
 a warning and never a failure; `figure-greyscale-confused` for grey, a note, and a warning
 where the journal's profile says its figures print in grey (`figures.print: greyscale`) or
 the figure's guard file asks (`greyscale: true`). Basile chose both on 2026-10-21. A pair
-already less than 10 apart to normal vision is not said, since no deficiency made it so:
-the shades of one sequential ramp are close to every reader, and a heat map would otherwise
-warn at every step.
+already less than 10 apart to normal vision is not said, since no deficiency made it so.
+Nor are the shades of a continuous scale, a colormap or points coloured by a variable
+(round 1 of #398): its neighbours sit just over 10 apart, and grey, which keeps lightness
+alone, or a deficiency, which takes chroma away, brings them under it, so every such
+figure warned. Colours chained within 10 of one another, three or more, are taken as one
+scale and compared with nothing; two series beside the scale still are. A figure of more
+than 300 colours is said to be read as a scale and not compared (`figure-colours-many`, a
+note), since the comparison takes time in the square of the colours. Whether a scale reads
+for a reader with a deficiency is whether its lightness runs one way, which is the figure
+review's to look at.
 
 Where two series are told apart by more than colour, a line style or a label on each line,
 the figure's guard file says so under `allow_colours`, the pair (or one colour of it) and
@@ -7605,7 +7612,12 @@ Added by the adversarial review, verified and **not** fixed:
   alone is still one the manuscript does not quote.
 - **A figure's colours are read from its SVG or PDF, and compared all with all.** A raster
   figure's are not, nor an image inside an SVG or a PDF (a heat map matplotlib embeds as one),
-  nor a gradient, a pattern or a shading. A text's colour is left out, so data told apart only
+  nor a gradient, a pattern, a shading, or a PDF colour in a separation, an indexed or a Lab
+  colour space. A continuous scale's shades are compared with nothing, so a rainbow colormap
+  a deficiency scrambles is not said; nor is a scale drawn with neighbours more than 10 apart,
+  whose shades are compared as series. A text drawn as glyphs is known for one where
+  matplotlib (`text_` groups) or Cairo (`glyph` symbols) draws it so, and is a mark where
+  another program does. A text's colour is left out, so data told apart only
   by coloured labels is not checked. Every colour painted is compared with every other, the
   background and the grid's among them: the check does not know which colours encode data, so
   a series and a grid line made one by a deficiency are said, and `allow_colours` is how a

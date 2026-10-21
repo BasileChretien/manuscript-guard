@@ -12,9 +12,10 @@ for:
   the height that takes on the page;
 * the width of each line it strokes (`w`), carried through the same transforms;
 * each colour it fills or strokes a path in, or shows text in (`rg`, `g`, `k` and their
-  stroking twins, `sc` and `scn` by how many numbers they give), laid over white at the
-  opacity its graphics state sets (`gs`, `/ca` and `/CA`), for the colour check
-  (`gates/figure_colours.py`). A pattern, a shading and an image are not read.
+  stroking twins, `sc` and `scn` by how many numbers they give in a device, calibrated or
+  ICC colour space), laid over white at the opacity its graphics state sets (`gs`, `/ca` and
+  `/CA`), for the colour check (`gates/figure_colours.py`). A pattern, a separation, an
+  indexed or Lab colour, a shading and an image are not read.
 
 A PDF's objects are read where they stand and inside object streams, and a stream is
 decoded where it is Flate-compressed, which is how plotting libraries write one. A stream
@@ -337,16 +338,36 @@ def _shown(operands: list) -> str:
 
 #: The graphics state a stream starts with: the line width, the font size, whether the
 #: font is a composite one, whose bytes are glyph numbers and not characters, the colours it
-#: fills and strokes in, black, and the opacity of each.
+#: fills and strokes in, black, the opacity of each, and whether the colour space each is
+#: set in is one read here. A colour not read is None, and paints nothing that is said.
 Colour = tuple[float, float, float]
-State = tuple[float, float, bool, Colour, Colour, float, float]
-START: State = (1.0, 0.0, False, (0.0, 0.0, 0.0), (0.0, 0.0, 0.0), 1.0, 1.0)
+State = tuple[float, float, bool, Colour | None, Colour | None, float, float, bool, bool]
+BLACK: Colour = (0.0, 0.0, 0.0)
+START: State = (1.0, 0.0, False, BLACK, BLACK, 1.0, 1.0, True, True)
+#: The colour spaces whose colours are read by how many numbers they give: the device's,
+#: the calibrated ones, and an ICC profile's (its numbers are those of the space it is the
+#: profile of). A pattern, a separation, an indexed space and Lab are not read.
+_READ_SPACES = {"DeviceGray", "DeviceRGB", "DeviceCMYK", "CalGray", "CalRGB", "ICCBased"}
+
+
+def _readable(resources: dict, name: object, objects: dict) -> bool:
+    """Whether the colour space `cs` or `CS` names is one whose colours are read here."""
+    if not isinstance(name, Name):
+        return False
+    if name.name in _READ_SPACES:
+        return True
+    spaces = _resolved(resources.get("ColorSpace"), objects)
+    held = _resolved(spaces.get(name.name), objects) if isinstance(spaces, dict) else None
+    if isinstance(held, list) and held:
+        held = _resolved(held[0], objects)
+    return isinstance(held, Name) and held.name in _READ_SPACES
 
 
 def _colour(operands: list) -> Colour | None:
     """The colour a colour operator sets, by how many numbers it gives: one a grey, three
     red, green and blue, four cyan, magenta, yellow and black, taken to RGB as a printer's
-    ink is not, but near enough to compare. None for a pattern, named by its operand."""
+    ink is not, but near enough to compare. None for a pattern, named by its operand, and for
+    any other count."""
     if any(isinstance(x, Name) for x in operands):
         return None
     n = [float(x) for x in operands if isinstance(x, (int, float)) and not isinstance(x, bool)]
@@ -399,30 +420,41 @@ def _draw(
     """What one content stream draws, with the transform and the graphics state it is drawn
     under: a form takes over the state of what draws it (round 1 of #303)."""
     stack: list[tuple[Matrix, State]] = []
-    width, size, composite, fill, stroke, fill_alpha, stroke_alpha = state
+    width, size, composite, fill, stroke, fill_alpha, stroke_alpha, fill_read, stroke_read = state
     tm = tlm = IDENTITY
 
-    def paint(rgb: Colour, alpha: float, text: bool) -> None:
-        if alpha > 0:
+    def paint(rgb: Colour | None, alpha: float, text: bool) -> None:
+        if rgb is not None and alpha > 0:
             figure.paints.append(Paint(hex_of(over_white(rgb, alpha)), text))
+
+    def held() -> State:
+        return (width, size, composite, fill, stroke, fill_alpha, stroke_alpha, fill_read,
+                stroke_read)  # fmt: skip
 
     for operands, op in _operations(data):
         if op == b"q":
-            stack.append((ctm, (width, size, composite, fill, stroke, fill_alpha, stroke_alpha)))
+            stack.append((ctm, held()))
         elif op == b"Q" and stack:
-            ctm, (width, size, composite, fill, stroke, fill_alpha, stroke_alpha) = stack.pop()
+            ctm, state = stack.pop()
+            (width, size, composite, fill, stroke, fill_alpha, stroke_alpha, fill_read,
+             stroke_read) = state  # fmt: skip
         elif op in _COLOURS:
-            found = _colour(operands)
-            if found is not None and op.islower():
-                fill = found
-            elif found is not None:
-                stroke = found
-        elif op in (b"cs", b"CS"):
-            # A colour space set starts at its initial colour, black.
-            if op == b"cs":
-                fill = (0.0, 0.0, 0.0)
+            # `rg`, `g` and `k` set the device's space as they set its colour; `sc` and `scn`
+            # give a colour in the space set before them, read where that space is.
+            device = op not in (b"sc", b"scn", b"SC", b"SCN")
+            if op.islower():
+                fill_read = device or fill_read
+                fill = _colour(operands) if fill_read else None
             else:
-                stroke = (0.0, 0.0, 0.0)
+                stroke_read = device or stroke_read
+                stroke = _colour(operands) if stroke_read else None
+        elif op in (b"cs", b"CS") and operands:
+            # A colour space set starts at its initial colour, black where it is read.
+            readable = _readable(resources, operands[-1], objects)
+            if op == b"cs":
+                fill_read, fill = readable, BLACK if readable else None
+            else:
+                stroke_read, stroke = readable, BLACK if readable else None
         elif op == b"gs" and operands:
             fill_alpha, stroke_alpha = _opacities(resources, operands[-1], objects, fill_alpha,
                                                   stroke_alpha)  # fmt: skip
@@ -451,8 +483,7 @@ def _draw(
             figure.texts.append((shown, abs(size) * _height(_multiply(tm, ctm))))
             paint(fill, fill_alpha, True)
         elif op == b"Do" and operands and isinstance(operands[-1], Name) and depth < DEPTH:
-            _form(operands[-1].name, resources, ctm, objects, figure, depth,
-                  (width, size, composite, fill, stroke, fill_alpha, stroke_alpha))  # fmt: skip
+            _form(operands[-1].name, resources, ctm, objects, figure, depth, held())
 
 
 def _form(

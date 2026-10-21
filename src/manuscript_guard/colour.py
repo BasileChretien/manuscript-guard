@@ -16,6 +16,10 @@ is distinct to normal vision and is not after is said.
 * **How far apart two colours are** is CIEDE2000 (CIE 142-2001; as implemented and tested
   by Sharma, Wu and Dalal, Color Research and Application 30(1):21-30, 2005), between their
   CIELAB values under D65.
+* **A scale** is left out: colours chained within the threshold of one another, three or
+  more, are the shades of a colormap, compared with nothing (round 1 of #398). What a
+  deficiency does to a scale is whether its lightness still runs one way, a question for
+  the figure's review, not this.
 * **Distinct** is a difference of at least `THRESHOLD`, 10. No standard sets one. A
   difference of about 2 is the least an observer sees side by side in large patches; marks
   as small as a figure's lines and points need far more (Szafir, IEEE TVCG 24(1):392-401,
@@ -38,6 +42,10 @@ RGB = tuple[float, float, float]
 Lab = tuple[float, float, float]
 
 THRESHOLD = 10.0
+#: Colours chained within the threshold of one another, this many or more, are the shades
+#: of one scale: a colormap, a gradient of points. Their neighbours sit just over the
+#: threshold apart, and anything that takes their chroma away brings them under it.
+SCALE = 3
 DEFICIENCIES = ("protanopia", "deuteranopia", "tritanopia")
 GREYSCALE = "greyscale"
 
@@ -107,6 +115,7 @@ NAMED = dict(pair.split(":") for pair in _NAMES.split())
 
 _HEX = re.compile(r"#([0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})")
 _FUNCTION = re.compile(r"rgba?\(([^)]*)\)", re.IGNORECASE)
+_HSL = re.compile(r"hsla?\(([^)]*)\)", re.IGNORECASE)
 _CHANNEL = re.compile(r"[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?%?")
 #: What paints nothing.
 NOTHING = ("none", "transparent")
@@ -127,6 +136,9 @@ def parse(text: str) -> tuple[RGB, float] | None:
         channels = [int(digits[i : i + 2], 16) / 255 for i in range(0, len(digits), 2)]
         alpha = channels[3] if len(channels) == 4 else 1.0
         return (channels[0], channels[1], channels[2]), alpha
+    found = _HSL.fullmatch(value)
+    if found:
+        return _hsl(found.group(1))
     found = _FUNCTION.fullmatch(value)
     if not found:
         return None
@@ -136,6 +148,24 @@ def parse(text: str) -> tuple[RGB, float] | None:
     rgb = tuple(_channel(part, 255) for part in parts[:3])
     alpha = _channel(parts[3], 1) if len(parts) == 4 else 1.0
     return (rgb[0], rgb[1], rgb[2]), alpha
+
+
+def _hsl(inside: str) -> tuple[RGB, float] | None:
+    """`hsl(h, s%, l%)` or `hsla(...)`, its hue in degrees, as CSS Color Level 4 turns one
+    into RGB."""
+    parts = _CHANNEL.findall(inside)
+    if len(parts) not in (3, 4):
+        return None
+    hue = float(parts[0].rstrip("%")) % 360
+    saturation, lightness = (_channel(part, 100) for part in parts[1:3])
+    alpha = _channel(parts[3], 1) if len(parts) == 4 else 1.0
+
+    def f(n: float) -> float:
+        k = (n + hue / 30) % 12
+        a = saturation * min(lightness, 1 - lightness)
+        return lightness - a * max(-1.0, min(k - 3, 9 - k, 1.0))
+
+    return (f(0), f(8), f(4)), alpha
 
 
 def _channel(text: str, full: float) -> float:
@@ -252,6 +282,36 @@ def difference(first: RGB, second: RGB) -> float:
     return ciede2000(lab(first), lab(second))
 
 
+def scales(colours: Iterable[RGB], threshold: float = THRESHOLD) -> set[str]:
+    """The hex codes of `colours` that are the shades of a scale: chained within `threshold`
+    of one another to normal vision, `SCALE` or more."""
+    distinct = sorted({hex_of(colour) for colour in colours})
+    labs = [lab(parse(code)[0]) for code in distinct]
+    normal = {(i, j): ciede2000(labs[i], labs[j])
+              for i in range(len(labs)) for j in range(i + 1, len(labs))}  # fmt: skip
+    return {distinct[i] for i in _shades(len(labs), normal, threshold)}
+
+
+def _shades(count: int, normal: dict[tuple[int, int], float], threshold: float) -> set[int]:
+    """The indexes in groups of `SCALE` or more, a group being what is chained by pairs
+    less than `threshold` apart."""
+    parent = list(range(count))
+
+    def root(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    for (i, j), apart in normal.items():
+        if apart < threshold:
+            parent[root(i)] = root(j)
+    sizes: dict[int, int] = {}
+    for i in range(count):
+        sizes[root(i)] = sizes.get(root(i), 0) + 1
+    return {i for i in range(count) if sizes[root(i)] >= SCALE}
+
+
 @dataclass(frozen=True)
 class Paint:
     """A colour a figure paints a mark or a text in, as it shows laid over white."""
@@ -278,7 +338,7 @@ def confusions(
 ) -> list[Confusion]:
     """Each pair of `colours` at least `threshold` apart to normal vision and less than it
     as each of `seen` makes them, in the order of `seen` and then of the colours, each pair
-    once, by its hex codes."""
+    once, by its hex codes. The shades of a scale (`scales`) are compared with nothing."""
     distinct = sorted({hex_of(colour) for colour in colours})
     rgbs = [parse(code)[0] for code in distinct]
     labs = [lab(rgb) for rgb in rgbs]
@@ -287,11 +347,12 @@ def confusions(
         for i in range(len(rgbs))
         for j in range(i + 1, len(rgbs))
     }
+    shades = _shades(len(rgbs), normal, threshold)
     found = []
     for way in seen:
         after = [lab(simulate(rgb, way)) for rgb in rgbs]
         for (i, j), apart in normal.items():
-            if apart < threshold:
+            if apart < threshold or i in shades or j in shades:
                 continue
             now = ciede2000(after[i], after[j])
             if now < threshold:

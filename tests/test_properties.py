@@ -4049,9 +4049,10 @@ def test_each_colour_an_svg_figure_paints_is_read_and_its_texts_kept_apart(
     drawn: tuple[str, set[str], set[str]],
 ) -> None:
     """Each mark's colour as it shows over white, however the figure sets it: an attribute,
-    a style, a class, a group's, `currentColor`, through `<use>`, under a group's opacity or
-    a fill-opacity, by name or as `rgb()`; and none for a mark hidden, painted nothing, or
-    defined and never used. A text's colour is read, and kept apart from the marks'."""
+    a style, a class, a group's, `inherit`, `currentColor`, through `<use>`, under a group's
+    opacity or a fill-opacity, by name, as `rgb()` or `hsl()`; and none for a mark not
+    displayed, hidden, painted nothing, or defined and never used. A text's colour is read,
+    and kept apart from the marks', a text drawn as glyphs too (round 1 of #398)."""
     from manuscript_guard.gates.figure_svg import parse_svg
 
     document, marks, texts = drawn
@@ -4065,9 +4066,10 @@ def test_each_colour_an_svg_figure_paints_is_read_and_its_texts_kept_apart(
 def test_each_colour_a_pdf_figure_paints_is_read_and_its_texts_kept_apart(
     drawn: tuple[bytes, set[str], set[str]],
 ) -> None:
-    """Each path filled or stroked in a colour set by `rg`, `g`, `k`, their stroking twins
-    or `scn` in a colour space, under a graphics state's opacity, inside `q` and `Q`, or by a
-    form drawn in its drawer's colour; a text's colour kept apart."""
+    """Each path filled or stroked in a colour set by `rg`, `g`, `k`, their stroking twins,
+    or `sc` and `scn` in a colour space, under a graphics state's opacity, inside `q` and
+    `Q`, or by a form drawn in its drawer's colour; nothing for a pattern; a text's colour
+    kept apart."""
     from manuscript_guard.gates.figure_pdf import parse_pdf
 
     data, marks, texts = drawn
@@ -6082,6 +6084,28 @@ def _cmyk_is_read_as_no_colour(patch: pytest.MonkeyPatch) -> None:
         [x for x in operands if isinstance(x, (int, float))]) == 4 else real(operands))  # fmt: skip
 
 
+def _q_restores_no_colour(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_pdf
+
+    real = figure_pdf._operations
+    patch.setattr(figure_pdf, "_operations",
+                  lambda data: ((ops, op) for ops, op in real(data) if op != b"Q"))  # fmt: skip
+
+
+def _a_hidden_mark_is_painted(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_svg
+
+    real = figure_svg._paint
+    patch.setattr(figure_svg, "_paint", lambda figure, state, which, *, text: real(
+        figure, {**state, "hidden": False}, which, text=text))  # fmt: skip
+
+
+def _glyphs_are_marks(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figure_svg
+
+    patch.setattr(figure_svg, "_drawn_text", lambda node_id: False)
+
+
 def _a_graphics_states_opacity_is_not_read(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import figure_pdf
 
@@ -6171,6 +6195,22 @@ BROKEN = {
     "a graphics state's opacity is not read": (
         _a_graphics_states_opacity_is_not_read,
         test_each_colour_a_pdf_figure_paints_is_read_and_its_texts_kept_apart,
+    ),
+    "Q gives back no colour": (
+        _q_restores_no_colour,
+        test_each_colour_a_pdf_figure_paints_is_read_and_its_texts_kept_apart,
+    ),
+    "a form paints in its own colour, not its drawer's": (
+        _a_form_draws_with_a_state_of_its_own,
+        test_each_colour_a_pdf_figure_paints_is_read_and_its_texts_kept_apart,
+    ),
+    "a mark a hidden group hides is painted": (
+        _a_hidden_mark_is_painted,
+        test_each_colour_an_svg_figure_paints_is_read_and_its_texts_kept_apart,
+    ),
+    "a text drawn as glyphs is a mark": (
+        _glyphs_are_marks,
+        test_each_colour_an_svg_figure_paints_is_read_and_its_texts_kept_apart,
     ),
     "a piece with no word of its own is left alone": (
         _a_wordless_piece_is_left_alone,

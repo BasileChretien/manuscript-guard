@@ -151,7 +151,8 @@ class _Figure:
 #: text's size `DEFAULT_FONT_UNITS`, which `parse_svg` reads when it starts.
 START = {
     "stroke": "none", "stroke-width": 1.0, "fill": "black", "color": "black",
-    "fill-opacity": 1.0, "stroke-opacity": 1.0, "opacity": 1.0,
+    "fill-opacity": 1.0, "stroke-opacity": 1.0, "opacity": 1.0, "text": False,
+    "hidden": False,
 }  # fmt: skip
 
 
@@ -255,7 +256,7 @@ def _walk(
     if said.get("display", "").lower() == "none":
         return
     matrix = _multiply(matrix, _transform(node.get("transform")))
-    state = _inherit(state, said)
+    state = _inherit(state, said, node.get("id"))
     if tag == "use":
         _use(node, matrix, state, figure, texts, lines, depth)
         return
@@ -279,7 +280,21 @@ def _walk(
         _walk(child, matrix, state, figure, texts, lines, depth)
 
 
-def _inherit(state: dict, said: dict[str, str]) -> dict:
+def _own(said: dict[str, str], key: str, state: dict) -> str:
+    """An element's own colour, else its parent's; `inherit` says the parent's too."""
+    value = said.get(key, "inherit").strip().lower()
+    return state[key] if value == "inherit" else value
+
+
+#: The group matplotlib draws a text's glyphs in, and the glyph Cairo draws one through.
+_GLYPHS = re.compile(r"text_\d+|glyph\d")
+
+
+def _drawn_text(node_id: str | None) -> bool:
+    return node_id is not None and _GLYPHS.match(node_id) is not None
+
+
+def _inherit(state: dict, said: dict[str, str], node_id: str | None = None) -> dict:
     """What an element draws with: its own size, stroke, width and colours, else its
     parent's. Its `opacity` is not inherited and lays the whole element over what is under
     it, so it is multiplied into its groups'."""
@@ -289,11 +304,16 @@ def _inherit(state: dict, said: dict[str, str]) -> dict:
         "font": _font_size(said, state["font"]),
         "stroke": said.get("stroke", state["stroke"]).strip().lower(),
         "stroke-width": state["stroke-width"] if width is None else width,
-        "fill": said.get("fill", state["fill"]).strip().lower(),
-        "color": said.get("color", state["color"]).strip().lower(),
+        "fill": _own(said, "fill", state),
+        "color": _own(said, "color", state),
+        # A text drawn as glyphs, as matplotlib draws one by default and Cairo always.
+        "text": state["text"] or _drawn_text(node_id),
         "fill-opacity": _opacity(said.get("fill-opacity"), state["fill-opacity"]),
         "stroke-opacity": _opacity(said.get("stroke-opacity"), state["stroke-opacity"]),
         "opacity": state["opacity"] * _opacity(said.get("opacity"), 1.0),
+        # `visibility` is inherited, and a child may show itself in a hidden group.
+        "hidden": _own(said, "visibility", {"visibility": "hidden" if state["hidden"]
+                                            else "visible"}) in ("hidden", "collapse"),
     }
 
 
@@ -310,6 +330,8 @@ def _opacity(value: str | None, otherwise: float) -> float:
 
 def _paint(figure: _Figure, state: dict, which: str, *, text: bool) -> None:
     """The colour `which`, the fill or the stroke, paints, where it paints one."""
+    if state["hidden"]:
+        return
     written = state[which]
     found = parse(state["color"] if written == "currentcolor" else written)
     if found is None:
@@ -317,7 +339,7 @@ def _paint(figure: _Figure, state: dict, which: str, *, text: bool) -> None:
     rgb, alpha = found
     seen = alpha * state[f"{which}-opacity"] * state["opacity"]
     if seen > 0:
-        figure.paints.append(Paint(hex_of(over_white(rgb, seen)), text))
+        figure.paints.append(Paint(hex_of(over_white(rgb, seen)), text or state["text"]))
 
 
 def _use(
@@ -334,6 +356,7 @@ def _use(
     used = figure.ids.get(href)
     if used is None or depth >= DEPTH:
         return
+    state = {**state, "text": state["text"] or _drawn_text(href)}
     placed = _multiply(matrix, (1.0, 0.0, 0.0, 1.0, _first(node.get("x")), _first(node.get("y"))))
     # A `<symbol>` is drawn where it is used, though not where it is defined.
     for child in list(used) if _tag(used) == "symbol" else [used]:

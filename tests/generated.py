@@ -1026,9 +1026,17 @@ PAINT_COLOURS = ("#d62728", "#2ca02c", "#1f77b4", "#ff7f0e", "#e69f00", "#56b4e9
 #: Colours a text may be painted in, none of them a mark's: a text's colour read as a
 #: mark's is then a colour the marks do not have, under every seed.
 TEXT_COLOURS = ("#3b0f70", "#8c2981", "#5a5a5a")
+#: Colours each painted by one kind of mark and by no other, so that a reading that loses
+#: or moves that kind's colour is seen under every seed: what a hidden mark is painted in,
+#: what a form draws in, what a colour set between `q` and `Q` is.
+HIDDEN, FORMED, BETWEEN = "#a0522d", "#ff1493", "#4b0082"
 #: Each way an SVG sets the colour a mark is painted in, and each way it paints none.
 PAINT_KINDS = ("attribute", "style", "class", "inherited", "current", "use", "opacity",
-               "fill-opacity", "named", "function", "text", "hidden", "none", "unused")  # fmt: skip
+               "fill-opacity", "named", "function", "text", "hidden", "none", "unused",
+               "inherit", "invisible", "glyphs", "hsl")  # fmt: skip
+#: `hsl()` as CSS writes it, and the colour it is.
+_HSL = {"hsl(0, 100%, 50%)": "#ff0000", "hsl(120, 100%, 25%)": "#008000",
+        "hsla(240, 100%, 50%, 1)": "#0000ff"}  # fmt: skip
 _NAMED_COLOURS = {"#ff0000": "red", "#008000": "green", "#0000ff": "blue",
                   "#ffa500": "orange", "#800080": "purple"}  # fmt: skip
 
@@ -1098,6 +1106,25 @@ def painted_svgs(draw: st.DrawFn) -> tuple[str, set[str], set[str]]:
             body.append(f'<path {shape} fill="none" stroke="{colour}" stroke-width="0"/>')
         elif kind == "unused":
             defs.append(f'<path id="u{number}" {shape} fill="{colour}"/>')
+        elif kind == "inherit":
+            body.append(f'<g fill="{colour}"><rect fill="inherit" width="2" height="2"/></g>')
+            marks.add(colour)
+        elif kind == "invisible":
+            # Hidden in a hidden group; shown where it says so itself (round 1 of #398).
+            body.append(f'<g visibility="hidden"><path {shape} fill="{HIDDEN}"/>'
+                        f'<path {shape} fill="{colour}" visibility="visible"/></g>')  # fmt: skip
+            marks.add(colour)
+        elif kind == "glyphs":
+            # A text drawn as glyphs, as matplotlib draws one unless told otherwise.
+            colour = draw(st.sampled_from(TEXT_COLOURS))
+            defs.append(f'<path id="DejaVuSans-{number}" d="M0 0L1 1"/>')
+            body.append(f'<g id="text_{number}" style="fill: {colour}">'
+                        f'<use xlink:href="#DejaVuSans-{number}"/></g>')  # fmt: skip
+            texts.add(colour)
+        elif kind == "hsl":
+            written, code = draw(st.sampled_from(sorted(_HSL.items())))
+            body.append(f'<path {shape} fill="none" stroke="{written}"/>')
+            marks.add(code)
     document = (
         '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" '
         'width="100pt" height="100pt" viewBox="0 0 100 100">'
@@ -1107,8 +1134,8 @@ def painted_svgs(draw: st.DrawFn) -> tuple[str, set[str], set[str]]:
 
 
 #: Each way a PDF sets the colour it fills or strokes in, or shows text in.
-PDF_PAINT_KINDS = ("rg", "RG", "g", "G", "k", "K", "scn", "SCN", "alpha", "restored", "text",
-                   "form")  # fmt: skip
+PDF_PAINT_KINDS = ("rg", "RG", "g", "G", "k", "K", "scn", "SCN", "sc", "SC", "alpha",
+                   "restored", "text", "form", "pattern")  # fmt: skip
 
 
 @st.composite
@@ -1146,6 +1173,13 @@ def painted_pdfs(draw: st.DrawFn) -> tuple[bytes, set[str], set[str]]:
                                                    b"f" if kind == "k" else b"S"))  # fmt: skip
             c, m, y, k = cmyk
             painted = hexed(((1 - c) * (1 - k), (1 - m) * (1 - k), (1 - y) * (1 - k)))
+        elif kind in ("sc", "SC"):
+            # In a space of one number, a grey.
+            grey = round(draw(st.sampled_from((0.2, 0.8))), 4)
+            space, paints = (b"cs", b"f") if kind == "sc" else (b"CS", b"S")
+            ops.append(b"/DeviceGray %s %g %s %s %s" % (space, grey, kind.encode(), path,
+                                                       paints))  # fmt: skip
+            painted = hexed((grey, grey, grey))
         elif kind in ("scn", "SCN"):
             space, paints = (b"cs", b"f") if kind == "scn" else (b"CS", b"S")
             ops.append(b"/DeviceRGB %s %g %g %g %s %s %s" % (space, r, g, b, kind.encode(), path,
@@ -1158,7 +1192,7 @@ def painted_pdfs(draw: st.DrawFn) -> tuple[bytes, set[str], set[str]]:
             marks.add(hexed(tuple(v * alpha + (1 - alpha) for v in colour)))
         elif kind == "restored":
             # A colour set inside q and Q is gone after it: the stroke after is the one before.
-            ops.append(b"q %g %g %g RG Q %s S" % (r, g, b, path))
+            ops.append(b"q %g %g %g RG Q %s S" % (*rgb(BETWEEN), path))
             marks.add(stroking)
         elif kind == "text":
             r, g, b = colour = rgb(draw(st.sampled_from(TEXT_COLOURS)))
@@ -1167,9 +1201,12 @@ def painted_pdfs(draw: st.DrawFn) -> tuple[bytes, set[str], set[str]]:
         elif kind == "form":
             # A form draws in the colour of what draws it.
             forms[f"X{number}"] = (b"%s f" % path, "1 0 0 1 0 0")
-            ops.append(b"q %g %g %g rg /X%d Do Q" % (r, g, b, number))
-            marks.add(hexed(colour))
-        if kind in ("rg", "RG", "g", "G", "k", "K", "scn", "SCN"):
+            ops.append(b"q %g %g %g rg /X%d Do Q" % (*rgb(FORMED), number))
+            marks.add(hexed(rgb(FORMED)))
+        elif kind == "pattern":
+            # A pattern's colours are not read: it paints nothing that is said.
+            ops.append(b"q /Pattern cs /P0 scn %s f Q" % path)
+        if kind in ("rg", "RG", "g", "G", "k", "K", "scn", "SCN", "sc", "SC"):
             marks.add(painted)
             if kind.isupper():
                 stroking = painted

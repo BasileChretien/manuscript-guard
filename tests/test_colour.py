@@ -184,3 +184,31 @@ def test_a_pair_already_close_to_normal_vision_is_not_a_deficiencys_doing() -> N
 def test_the_threshold_is_where_the_design_says() -> None:
     assert colour.THRESHOLD == 10.0
     assert math.isclose(colour.difference((1.0, 1.0, 1.0), (0.0, 0.0, 0.0)), 100.0, abs_tol=1e-3)
+
+
+def _ramp(first: str, last: str, steps: int) -> list[colour.RGB]:
+    start, end = colour.parse(first)[0], colour.parse(last)[0]
+    return [
+        tuple(start[c] + (end[c] - start[c]) * i / (steps - 1) for c in range(3))
+        for i in range(steps)
+    ]
+
+
+def test_a_continuous_scale_drawn_densely_raises_nothing() -> None:
+    """Round 1 of #398: a scale drawn in many shades, as ggplot2 colours points by a
+    continuous variable or matplotlib a scatter by a colormap, has neighbours just over the
+    threshold apart, which grey or a deficiency brings under it: every such figure warned.
+    Colours that chain within the threshold are one scale, and are not compared."""
+    assert colour.confusions(_ramp("#132b43", "#56b1f7", 64)) == []
+    matplotlib = pytest.importorskip("matplotlib")
+    viridis = [tuple(rgba[:3]) for rgba in matplotlib.colormaps["viridis"](range(256))]
+    assert colour.confusions(viridis) == []
+
+
+def test_two_series_beside_a_scale_are_still_compared() -> None:
+    red, green = colour.parse("#d62728")[0], colour.parse("#2ca02c")[0]
+    found = colour.confusions([*_ramp("#132b43", "#56b1f7", 64), red, green],
+                              seen=colour.DEFICIENCIES)  # fmt: skip
+    assert [(c.first, c.second, c.seen) for c in found] == [
+        ("#2ca02c", "#d62728", "deuteranopia")
+    ]

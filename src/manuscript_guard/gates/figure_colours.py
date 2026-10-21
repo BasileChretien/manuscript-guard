@@ -18,11 +18,15 @@ deficiency makes of it and through grey (`colour.py`: Machado et al. 2009, CIEDE
 
 A text's colour is left out: text rarely tells one series from another, and black text
 beside a dark mark is no confusion of data. So is a pair already close to normal vision,
-which no deficiency made so.
+which no deficiency made so, and the shades of a continuous scale, colours chained within
+the threshold of one another (`colour.scales`). A figure of more than `MANY` colours is
+said to be read as a scale (`figure-colours-many`, a note) and its colours are not compared.
 """
 
 from __future__ import annotations
 
+import re
+from itertools import combinations
 from pathlib import Path
 
 from manuscript_guard.colour import (
@@ -40,6 +44,12 @@ from manuscript_guard.findings import INFO, WARN, Finding, Report
 GATE = "G3"
 #: How many pairs a finding names before it counts the rest.
 NAMED = 3
+#: More distinct colours than this, and a figure is read as drawn in a continuous scale (a
+#: heat map drawn as vectors, a scatter coloured by a variable): its colours are not
+#: compared, which takes time in their square (round 1 of #398).
+MANY = 300
+#: A colour as `allow_colours` may write one: a hex code, `rgb()`, `hsl()` or a name.
+_WRITTEN = re.compile(r"#[0-9A-Fa-f]{3,8}\b|(?:rgb|hsl)a?\([^)]*\)|[A-Za-z]+", re.IGNORECASE)
 
 
 def painted(path: Path) -> list[str] | None:
@@ -69,16 +79,20 @@ def check_figure_colours(project: Project) -> Report:
     checked = 0
     for name, supplementary in placed:
         files = _files_of(project.path("figures"), name)
-        # The SVG where there is one, as G3 reads the figure's text from it, else the PDF.
-        vector = next((p for suffix in (".svg", ".pdf") for p in files
-                       if p.suffix.lower() == suffix), None)  # fmt: skip
-        colours = painted(vector) if vector is not None else None
+        # The SVG where there is one, as G3 reads the figure's text from it, else the PDF;
+        # the PDF where the SVG cannot be read (round 1 of #398).
+        vectors = [p for suffix in (".svg", ".pdf") for p in files if p.suffix.lower() == suffix]
+        vector, colours = next(((p, c) for p in vectors if (c := painted(p)) is not None),
+                               (vectors[0] if vectors else None, None))  # fmt: skip
         sidecar = project.path("figures") / f"{name}.guard.yaml"
         if colours is None:
             if files:
                 findings.append(_unread(name, files[0], vector))
             continue
         checked += 1
+        if len(colours) > MANY:
+            findings.append(_many(name, vector, len(colours)))
+            continue
         guard = _sidecar(sidecar)
         own = rules.get("supplementary") if supplementary else None
         held = {**rules, **own} if isinstance(own, dict) else rules
@@ -96,16 +110,17 @@ def check_figure_colours(project: Project) -> Report:
 
 
 def _allowed(declared: list[tuple[str, str]]) -> dict[frozenset[str], str]:
-    """Each declared exemption, a colour or a pair of colours, with its reason."""
+    """Each declared exemption, a colour or the pairs of the colours it names, with its
+    reason. A colour may be written as a hex code, `rgb()`, `hsl()` or a name; a word that
+    is none is passed over."""
     out = {}
     for value, why in declared:
-        codes = []
-        for word in value.replace(",", " ").split():
-            found = parse(word)
-            if found is not None:
-                codes.append(hex_of(found[0]))
-        if codes:
+        codes = sorted({hex_of(found[0]) for word in _WRITTEN.findall(value)
+                        if (found := parse(word)) is not None})  # fmt: skip
+        if len(codes) == 1:
             out[frozenset(codes)] = why
+        for pair in combinations(codes, 2):
+            out[frozenset(pair)] = why
     return out
 
 
@@ -151,6 +166,20 @@ def _confused(
         f"{THRESHOLD:g} is the least taken to tell two apart): {named}{more}",
         path=path,
         hint=hint,
+    )
+
+
+def _many(name: str, path: Path, count: int) -> Finding:
+    return Finding(
+        gate=GATE,
+        code="figure-colours-many",
+        severity=INFO,
+        message=f"figure {name!r} paints {count} colours, and is read as drawn in a continuous "
+        "scale: its colours were not compared",
+        path=path,
+        hint="whether a scale reads for a reader with a colour-vision deficiency is whether its "
+        "lightness runs one way: look at it under `readable-and-accessible`, or draw it with "
+        "a map made to, viridis or one of Crameri's",
     )
 
 

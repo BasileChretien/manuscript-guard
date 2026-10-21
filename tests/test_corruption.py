@@ -7790,6 +7790,52 @@ def test_a_texts_colour_is_not_a_series(project: Path, svg: bool) -> None:
     assert _colours_said(project) == []
 
 
+def _ramp_codes(steps: int) -> list[str]:
+    """`steps` shades from ggplot2's dark blue to its light one, as a continuous colour scale
+    draws its points."""
+    start, end = (0x13, 0x2B, 0x43), (0x56, 0xB1, 0xF7)
+    return ["#" + "".join(f"{round(a + (b - a) * i / (steps - 1)):02x}" for a, b in
+                          zip(start, end, strict=True)) for i in range(steps)]  # fmt: skip
+
+
+def test_points_coloured_by_a_continuous_scale_raise_nothing(project: Path) -> None:
+    """Round 1 of #398: the shades of a scale sit just over the threshold apart, and grey
+    brought every pair of neighbours under it, so every scatter coloured by a variable
+    warned. Beside the scale, two series are still compared."""
+    _painted(project, *_ramp_codes(64))
+    assert _colours_said(project) == []
+    _painted(project, *_ramp_codes(64), _RED, _GREEN)
+    assert _colours_said(project) == [("figure-colours-confused", "warn")]
+
+
+def test_a_figure_of_more_colours_than_are_compared_is_said_to_be_a_scale(project: Path) -> None:
+    from manuscript_guard.gates.figure_colours import MANY
+
+    # A grid of reds and greens, as a heat map drawn as vectors paints one.
+    side = int(MANY**0.5) + 2
+    _painted(project, *(f"#{i * 11:02x}{j * 11:02x}80" for i in range(side) for j in range(side)))
+    assert _colours_said(project) == [("figure-colours-many", "info")]
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["rgb(214, 39, 40) and rgb(44, 160, 44)", f"{_RED}, {_GREEN}, #000000",
+     "tab red: #d62728; tab green: #2ca02c"],
+)  # fmt: skip
+def test_a_pair_is_found_however_the_guard_writes_its_colours(project: Path, value: str) -> None:
+    """Round 1 of #398: `rgb(214, 39, 40)` was cut at its commas and matched nothing, and a
+    value of three colours matched no pair."""
+    _painted(project, _RED, _GREEN)
+    _guarded(project, allow_colours=[{"value": value, "why": "they differ by line style"}])
+    assert _colours_said(project) == [("figure-colours-confused", "info")]
+
+
+def test_an_svg_that_cannot_be_read_gives_way_to_the_pdf_beside_it(project: Path) -> None:
+    _painted(project, _RED, _GREEN, svg=False)
+    (project / "figures" / "forest.svg").write_text("<svg><unclosed", encoding="utf-8")
+    assert _colours_said(project) == [("figure-colours-confused", "warn")]
+
+
 def test_a_figure_with_only_a_raster_is_said_to_be_unread(project: Path) -> None:
     _painted(project)
     (project / "figures" / "forest.svg").unlink()

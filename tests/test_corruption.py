@@ -6311,6 +6311,523 @@ def test_a_volume_or_first_page_that_differs_is_a_warning(
     assert len(findings) == 1 and findings[0].severity == "warn" and said in findings[0].message
 
 
+# A reference with no DOI and no PMID, searched for by its title (`gates/searched`), and the
+# authors of a cited work against those the registries list (`gates/authors`). Each record is
+# written as `lookup` writes one, by `_searched`.
+
+_SEARCHED_PMID = "31000001"
+#: The example's first reference, as PubMed's search would find it.
+_PUBMED_HIT = {
+    "pmid": _SEARCHED_PMID,
+    "title": "Hepatic injury in a fictional national cohort, 2010-2019.",
+    "year": 2021,
+    "doi": _LOOKED_DOI,
+    "pubtypes": ["Journal Article"],
+    "authors": [{"family": "Fictional", "given": "A"}, {"family": "Fictional", "given": "B"}],
+}
+#: And as Crossref's would.
+_CROSSREF_HIT = {
+    **{k: v for k, v in _CROSSREF.items() if k != "status"},
+    "authors": [{"family": "Fictional", "given": "Anne"},
+                {"family": "Fictional", "given": "Bernard"}],
+}  # fmt: skip
+_ASKED = ["hepatic[ti] AND injury[ti]"]
+
+
+def _hits(*works: dict) -> dict:
+    return {"status": "found" if works else "absent", "asked": _ASKED,
+            **({"candidates": list(works)} if works else {})}  # fmt: skip
+
+
+def _unexcused(root: Path) -> None:
+    """The example without the line of paper.yaml that says its first reference is in no
+    registry: the second is still said to be in none."""
+    paper = root / "paper.yaml"
+    lines = paper.read_text(encoding="utf-8").splitlines(keepends=True)
+    kept = [line for line in lines if not line.strip().startswith(f"{_LOOKED_KEY}:")]
+    assert len(kept) >= len(lines) - 1
+    paper.write_text("".join(kept), encoding="utf-8")
+
+
+def _searched(root: Path, *, on: str = "2026-10-01", **sources) -> None:
+    """Write the search record of the example's first reference, which has no identifier:
+    PubMed and Crossref find the work it cites unless told otherwise."""
+    from manuscript_guard.literature.bibfile import read_entries
+    from manuscript_guard.literature.lookups import (
+        SCHEMA,
+        answers_digest,
+        entry_digest,
+        write_record,
+    )
+
+    _unexcused(root)
+    fields = read_entries(root / "literature" / "references.bib")[_LOOKED_KEY]
+    answers = {
+        "pubmed_search": _hits(_PUBMED_HIT),
+        "crossref_search": _hits(_CROSSREF_HIT),
+        **sources,
+    }
+    record = {
+        "schema": SCHEMA,
+        "citekey": _LOOKED_KEY,
+        "looked_up_on": on,
+        "entry_sha256": entry_digest(fields),
+        "identifiers": {},
+        "sources": {k: v for k, v in answers.items() if v is not None},
+    }
+    record["answers_sha256"] = answers_digest(record)
+    write_record(load_project(root)[0], record)
+
+
+def _finding_of(root: Path, code: str):
+    found = [f for f in _g7(root).findings if f.code == code]
+    assert len(found) == 1, [(f.code, f.message) for f in _g7(root).findings]
+    return found[0]
+
+
+def test_a_reference_found_by_its_title_is_offered_its_identifiers(project: Path) -> None:
+    _searched(project)
+    found = _g7_codes(project)
+    assert found.pop("reference-found") == "info"
+    assert not {c for c, s in found.items() if s != "info"}, found
+    said = _finding_of(project, "reference-found").message
+    assert f"DOI {_LOOKED_DOI}" in said and f"PMID {_SEARCHED_PMID}" in said
+    assert "PubMed and Crossref have the work cited" in said
+
+
+def test_a_reference_no_registry_has_fails_from_internal_review(project: Path) -> None:
+    from manuscript_guard.policy import DRAFTING, INTERNAL_REVIEW, apply_stage
+
+    other = {**_CROSSREF_HIT, "doi": "10.5555/other", "title": "Hepatic injury in a cohort"}
+    _searched(project, pubmed_search=_hits(), crossref_search=_hits(other))
+    report = _g7(project)
+    assert "reference-not-found" in {f.code for f in report.failures}
+    assert "the nearest, doi:10.5555/other" in _finding_of(project, "reference-not-found").message
+    drafting, _ = apply_stage(report, DRAFTING)
+    assert "reference-not-found" not in {f.code for f in drafting.failures}
+    reviewed, _ = apply_stage(report, INTERNAL_REVIEW)
+    assert "reference-not-found" in {f.code for f in reviewed.failures}
+
+
+def _cited_only_in_the_supplement(root: Path) -> None:
+    """The example's first reference cited by its supplement alone, the main text citing
+    the second in its place."""
+    main = root / "manuscript" / "main.md"
+    text = main.read_text(encoding="utf-8")
+    assert f"[@{_LOOKED_KEY}]" in text
+    main.write_text(text.replace(f"[@{_LOOKED_KEY}]", "[@fictionalClassSignal2019]"),
+                    encoding="utf-8")  # fmt: skip
+    supplement = root / "manuscript" / "supplementary" / "S1_code_lists.md"
+    supplement.write_text(supplement.read_text(encoding="utf-8")
+                          + f"\nThe codes follow an earlier cohort [@{_LOOKED_KEY}].\n",
+                          encoding="utf-8")  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("author", "answers", "code"),
+    [
+        (None, {"pubmed_search": _hits(), "crossref_search": _hits()}, "reference-not-found"),
+        ("Dupont, Marie and Leclerc, Paul", {}, "reference-authors-disjoint"),
+    ],
+)  # fmt: skip
+def test_a_reference_the_supplement_alone_cites_is_judged_as_one_in_the_text(
+    project: Path, author: str | None, answers: dict, code: str
+) -> None:
+    """Basile's rule of 2026-10-21: the supplement is held to the main text's rules."""
+    _cited_only_in_the_supplement(project)
+    if author:
+        _bib_field(project, "author", author)
+    _searched(project, **answers)
+    assert code in {f.code for f in _g7(project).failures}
+
+
+@pytest.mark.parametrize(
+    ("change", "said"),
+    [
+        # An outage is never a negative.
+        ({"pubmed_search": {"status": "unresolvable", "why": "HTTP 500", "asked": _ASKED}},
+         "a registry did not answer"),
+        ({"openalex_search": {"status": "unresolvable", "why": "HTTP 429", "asked": _ASKED}},
+         "a registry did not answer"),
+        ({"crossref_search": None}, "PubMed and Crossref were not both asked"),
+        # A book, a work older than MEDLINE, one dated after the lookup: real and in no
+        # registry, perhaps.
+        ({"type": "book"}, "a book entry"),
+        ({"year": "1950"}, "of 1950, before MEDLINE begins in 1966"),
+        ({"year": "2027"}, "of 2027, after it was looked up"),
+    ],
+)  # fmt: skip
+def test_no_registry_has_it_is_said_only_where_it_can_be(
+    project: Path, change: dict, said: str
+) -> None:
+    sources = {"pubmed_search": _hits(), "crossref_search": _hits()}
+    for name in ("pubmed_search", "crossref_search", "openalex_search"):
+        if name in change:
+            sources[name] = change[name]
+    if "year" in change:
+        _bib_field(project, "year", change["year"])
+    if "type" in change:
+        _bib_field(project, "publisher", "Imaginary Press")
+        bib = project / "literature" / "references.bib"
+        text = bib.read_text(encoding="utf-8")
+        bib.write_text(text.replace(f"@article{{{_LOOKED_KEY},", f"@book{{{_LOOKED_KEY},", 1),
+                       encoding="utf-8")  # fmt: skip
+    _searched(project, **sources)
+    found = _g7_codes(project)
+    assert "reference-not-found" not in found, found
+    assert said in _finding_of(project, "reference-unchecked").message
+
+
+def test_a_search_for_an_entry_changed_since_is_not_judged(project: Path) -> None:
+    """A search was made by the title, the author and the year as they were: held to a
+    title corrected since, its works would say the reference is in no registry."""
+    _searched(project)
+    _bib_field(project, "title", "A corrected title nobody has searched for yet")
+    found = _g7_codes(project)
+    assert found.get("lookup-entry-changed") == "warn"
+    said = [f for f in _g7(project).findings if f.code.startswith("reference-")
+            and f"@{_LOOKED_KEY}" in f.message]  # fmt: skip
+    assert not said, [(f.code, f.message) for f in said]
+
+
+def test_a_work_of_the_title_in_another_year_is_not_the_one_cited(project: Path) -> None:
+    _searched(project, pubmed_search=_hits({**_PUBMED_HIT, "year": 2015}),
+              crossref_search=_hits())  # fmt: skip
+    message = _finding_of(project, "reference-not-found").message
+    assert f"PubMed has a work of this title of 2015 (PMID {_SEARCHED_PMID}" in message
+
+
+@pytest.mark.parametrize(
+    ("cited", "code", "severity"),
+    [
+        # None of them: the shape of an invented reference, a real title with names made up.
+        ("Dupont, Marie and Leclerc, Paul", "reference-authors-disjoint", "fail"),
+        # The first cited is not first on the work's list.
+        ("Dupont, Marie and Fictional, Anne", "reference-authors-differ", "warn"),
+        # The first is, and another is on no list.
+        ("Fictional, Anne and Dupont, Marie", "reference-authors-differ", "warn"),
+    ],
+)  # fmt: skip
+def test_a_work_of_the_title_by_other_people_is_said(
+    project: Path, cited: str, code: str, severity: str
+) -> None:
+    _bib_field(project, "author", cited)
+    _searched(project)
+    found = _g7_codes(project)
+    assert found.get(code) == severity, found
+    assert "reference-not-found" not in found
+
+
+def test_none_of_the_authors_fails_from_internal_review(project: Path) -> None:
+    from manuscript_guard.policy import DRAFTING, apply_stage
+
+    _bib_field(project, "author", "Dupont, Marie and Leclerc, Paul")
+    _searched(project)
+    drafting, _ = apply_stage(_g7(project), DRAFTING)
+    assert "reference-authors-disjoint" not in {f.code for f in drafting.failures}
+
+
+def test_openalex_alone_never_fails_a_reference_on_its_authors(project: Path) -> None:
+    """Its records can carry another work's details (paper-preflight's ADR-0003)."""
+    alex = {"pmid": _SEARCHED_PMID, "title": _PUBMED_HIT["title"], "year": 2021,
+            "authors": [{"family": "Naranjo", "given": "C. A."}]}  # fmt: skip
+    _bib_field(project, "author", "Dupont, Marie and Leclerc, Paul")
+    _searched(project, pubmed_search=_hits(), crossref_search=_hits(),
+              openalex_search=_hits(alex))  # fmt: skip
+    found = _g7_codes(project)
+    assert found.get("reference-authors-differ") == "warn", found
+    assert "reference-authors-disjoint" not in found and "reference-not-found" not in found
+
+
+@pytest.mark.parametrize(
+    ("pubmed", "crossref"),
+    [
+        # A comment and a correction repeat the title, by other people, in the same year.
+        ({**_PUBMED_HIT, "title": "Comment on: Hepatic injury in a fictional national cohort, "
+          "2010-2019", "authors": [{"family": "Naranjo"}]},
+         {**_CROSSREF_HIT, "doi": "10.5555/erratum", "title": "Correction: Hepatic injury in a "
+          "fictional national cohort, 2010-2019", "authors": [{"family": "Naranjo"}]}),
+        # A copy under the prefix of fabricated ones, and a longer title holding every word.
+        ({**_PUBMED_HIT, "title": "Renal and hepatic injury in a fictional national cohort, "
+          "2010-2019, of people on a fictional drug class, by sex and age group",
+          "authors": [{"family": "Naranjo"}]},
+         {**_CROSSREF_HIT, "doi": "10.65215/abcd1234", "type": "posted-content",
+          "authors": [{"family": "Naranjo"}]}),
+    ],
+)  # fmt: skip
+def test_a_notice_a_copy_or_a_longer_title_is_not_the_work(
+    project: Path, pubmed: dict, crossref: dict
+) -> None:
+    _searched(project, pubmed_search=_hits(pubmed),
+              crossref_search=_hits(crossref))  # fmt: skip
+    found = _g7_codes(project)
+    assert "reference-authors-disjoint" not in found and "reference-authors-differ" not in found
+    assert found.get("reference-not-found") == "fail", found
+
+
+def test_a_list_of_only_a_group_says_nothing_of_the_people_cited(project: Path) -> None:
+    """Crossref lists only "The RECOVERY Collaborative Group" for a trial whose people PubMed
+    lists: the people cited are compared with neither."""
+    group = [{"group": "The Fictional Study Group"}]
+    _bib_field(project, "author", "Dupont, Marie and Leclerc, Paul")
+    _searched(project, pubmed_search=_hits(),
+              crossref_search=_hits({**_CROSSREF_HIT, "authors": group}))  # fmt: skip
+    found = _g7_codes(project)
+    assert found.get("reference-found") == "info", found
+    assert not {c for c in found if c.startswith("reference-authors")}
+
+
+def test_a_retracted_work_found_by_its_title_is_said(project: Path) -> None:
+    notice = {"type": "retraction", "doi": "10.5555/notice.1", "date": "2023-02-06"}
+    _searched(project, crossref_search=_hits({**_CROSSREF_HIT,
+                                                         "updated_by": [notice]}))  # fmt: skip
+    assert _g7_codes(project).get("reference-retracted") == "fail"
+
+
+def test_a_book_reviewed_under_its_own_title_fails_nothing(project: Path) -> None:
+    """Round 1 of #379: Crossref holds a journal's review of a book under the book's title,
+    by the reviewer ("Causal Inference: What If. By Miguel A. Hernán and James M.
+    Robins"). A book is never said missing, nor written by other people."""
+    _bib_field(project, "author", "Dupont, Marie and Leclerc, Paul")
+    _bib_field(project, "publisher", "Imaginary Press")
+    # Searchable words beside PubMed's stopwords ("what", "if"), which are never searched.
+    _bib_field(project, "title", "Fictional cohorts: what if the exposure changes")
+    bib = project / "literature" / "references.bib"
+    text = bib.read_text(encoding="utf-8")
+    bib.write_text(text.replace(f"@article{{{_LOOKED_KEY},", f"@book{{{_LOOKED_KEY},", 1),
+                   encoding="utf-8")  # fmt: skip
+    review = {**_CROSSREF_HIT, "doi": "10.5555/review", "authors": [{"family": "Naranjo"}],
+              "title": "Fictional cohorts: what if the exposure changes. By Marie Dupont "
+                       "and Paul Leclerc. Imaginary Press, 2021"}  # fmt: skip
+    _searched(project, pubmed_search=_hits(), crossref_search=_hits(review))
+    found = _g7_codes(project)
+    assert not {c for c, s in found.items() if s == "fail"}, found
+    assert "a book entry" in _finding_of(project, "reference-unchecked").message
+
+
+@pytest.mark.parametrize(
+    "listed",
+    [
+        # Crossref keeps the names of a Russian journal's article as the journal printed them.
+        [{"family": "\N{CYRILLIC CAPITAL LETTER DE}\N{CYRILLIC SMALL LETTER IE}"
+                    "\N{CYRILLIC SMALL LETTER EL}\N{CYRILLIC SMALL LETTER O}"
+                    "\N{CYRILLIC SMALL LETTER EN}", "given": "\N{CYRILLIC CAPITAL LETTER EM}"
+                    "\N{CYRILLIC SMALL LETTER A}\N{CYRILLIC SMALL LETTER ER}"
+                    "\N{CYRILLIC SMALL LETTER I}\N{CYRILLIC SMALL LETTER YA}"}],
+        [{"family": "\N{CJK UNIFIED IDEOGRAPH-738B}", "given": "\N{CJK UNIFIED IDEOGRAPH-4F1F}"}],
+    ],
+)  # fmt: skip
+def test_a_list_in_another_script_is_not_compared(project: Path, listed: list) -> None:
+    """Round 1 of #379: a title mostly in another script is not compared, and nor now is a
+    list of names in one, which a romanised entry never matches."""
+    _bib_field(project, "author", "Dupont, Marie")
+    _looked_up(project, crossref={**_CROSSREF, "authors": listed})
+    assert not {c for c in _g7_codes(project) if c.startswith("reference-authors")}
+
+
+def _co_published(journal: str) -> dict:
+    return {**_PUBMED_HIT, "pmid": "31000002", "doi": "10.5555/copy.in." + journal.lower(),
+            "journal": f"Journal of {journal}", "journal_abbreviation": f"J {journal}"}  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("cited_journal", "offered"),
+    [
+        # A statement co-published in two journals: the one the entry names is offered.
+        ("Journal of Imaginary Pharmacoepidemiology", f"DOI {_LOOKED_DOI}"),
+        ("J Elsewhere", "DOI 10.5555/copy.in.elsewhere"),
+        # The entry names neither: no identifier is offered, the works are listed.
+        ("Journal of Nowhere at All", None),
+    ],
+)  # fmt: skip
+def test_a_work_published_twice_offers_the_cited_copy_or_none(
+    project: Path, cited_journal: str, offered: str | None
+) -> None:
+    """Round 1 of #379: PRISMA 2020 is the same title, year and first author in BMJ and in
+    J Clin Epidemiol, and the identifiers offered were the first PubMed gave."""
+    _bib_field(project, "journal", cited_journal)
+    own = {**_PUBMED_HIT, "journal": "Journal of Imaginary Pharmacoepidemiology",
+           "journal_abbreviation": "J Imag Pharmacoepidemiol"}  # fmt: skip
+    _searched(project, pubmed_search=_hits(_co_published("Elsewhere"), own),
+              crossref_search=_hits())  # fmt: skip
+    said = _finding_of(project, "reference-found").message
+    if offered:
+        assert f"with {offered} and PMID" in said and "several" not in said, said
+    else:
+        assert "with DOI" not in said and "several works" in said, said
+
+
+def test_a_record_that_names_nobody_gives_way_to_one_that_names_the_first_author(
+    project: Path,
+) -> None:
+    """The measurement of 2026-10-21: NEJM files the letters about an article under the
+    article's own title, and Crossref's record of them lists nobody; it was offered for
+    the article. A work found without its people is taken only where none is found with
+    the cited first author first."""
+    letter = {**_CROSSREF_HIT, "doi": "10.5555/letters.about.it", "authors": []}
+    _searched(project, crossref_search=_hits(letter))
+    said = _finding_of(project, "reference-found").message
+    assert f"with DOI {_LOOKED_DOI} and PMID {_SEARCHED_PMID}" in said, said
+    # Without the PubMed record, the record that names nobody is all there is.
+    _searched(project, pubmed_search=_hits(), crossref_search=_hits(letter))
+    assert "with DOI 10.5555/letters.about.it" in _finding_of(project, "reference-found").message
+
+
+def test_one_work_in_two_registries_is_one_work(project: Path) -> None:
+    """A PubMed record with no DOI and Crossref's record of the same work share no
+    identifier, and are one work: nothing in them differs."""
+    pubmed = {k: v for k, v in _PUBMED_HIT.items() if k != "doi"}
+    _searched(project, pubmed_search=_hits(pubmed))
+    said = _finding_of(project, "reference-found").message
+    assert f"with DOI {_LOOKED_DOI} and PMID {_SEARCHED_PMID}" in said, said
+
+
+def test_records_in_two_journals_are_two_works(project: Path) -> None:
+    """Round 2 of #379: a PubMed record with no DOI and Crossref's record of a congress
+    abstract of the same title and first author share no identifier, and were taken for one
+    work, the abstract's DOI offered beside the article's PMID. Their journals differ."""
+    pubmed = {**{k: v for k, v in _PUBMED_HIT.items() if k != "doi"},
+              "journal": "Journal of Imaginary Pharmacoepidemiology"}  # fmt: skip
+    abstract = {**_CROSSREF_HIT, "doi": "10.5555/abstract", "container": "Journal of Elsewhere"}
+    _searched(project, pubmed_search=_hits(pubmed), crossref_search=_hits(abstract))
+    said = _finding_of(project, "reference-found").message
+    assert "10.5555/abstract" not in said and f"PMID {_SEARCHED_PMID}" in said, said
+
+
+def test_one_work_whose_registries_write_its_journal_otherwise_is_one_work(project: Path) -> None:
+    """The round after the budget of #379: PubMed writes "Pharmacotherapy", Crossref
+    "Pharmacotherapy: The Journal of Human Pharmacology and Drug Therapy"; the records share
+    their DOI, and were split into two works, Crossref's retraction lost with it."""
+    notice = {"type": "retraction", "doi": "10.5555/notice.1", "date": "2023-02-06"}
+    pubmed = {**_PUBMED_HIT, "journal": "Pharmacotherapy",
+              "journal_abbreviation": "Pharmacotherapy"}  # fmt: skip
+    crossref = {**_CROSSREF_HIT, "updated_by": [notice], "container":
+                "Pharmacotherapy: The Journal of Human Pharmacology and Drug Therapy"}  # fmt: skip
+    _bib_field(project, "journal", None)
+    _searched(project, pubmed_search=_hits(pubmed), crossref_search=_hits(crossref))
+    found = _g7_codes(project)
+    assert found.get("reference-retracted") == "fail", found
+    said = _finding_of(project, "reference-found").message
+    assert "several works" not in said and f"with DOI {_LOOKED_DOI}" in said, said
+
+
+def test_a_record_naming_nobody_keeps_the_notices_of_the_work_it_shares(project: Path) -> None:
+    """Round 2 of #379: Crossref's record of a work can name nobody where PubMed's names
+    the people, and it is Crossref's that carries the retraction."""
+    notice = {"type": "retraction", "doi": "10.5555/notice.1", "date": "2023-02-06"}
+    nameless = {**_CROSSREF_HIT, "authors": [], "updated_by": [notice]}
+    _searched(project, crossref_search=_hits(nameless))
+    assert _g7_codes(project).get("reference-retracted") == "fail"
+
+
+def test_a_withdrawn_review_is_the_work_not_a_notice(project: Path) -> None:
+    """Round 1 of #379: Cochrane prints a review it withdrew as "WITHDRAWN: <title>", the
+    flag a registry puts on the work itself, as "RETRACTED:"."""
+    withdrawn = {**_PUBMED_HIT, "title": "WITHDRAWN: " + _PUBMED_HIT["title"]}
+    _searched(project, pubmed_search=_hits(withdrawn), crossref_search=_hits())
+    found = _g7_codes(project)
+    assert "reference-not-found" not in found and found.get("reference-found") == "info"
+
+
+def test_a_cited_subtitle_the_registry_left_out_is_no_other_title(project: Path) -> None:
+    """A guideline is printed with its task force in its title, and Crossref and PubMed
+    keep it without (two in the measurement of 2026-10-21; Basile, the same day: the DOI
+    check takes the rule the search takes)."""
+    _bib_field(project, "title", "Hepatic injury in a fictional national cohort, 2010-2019: "
+               "the task force for fictional cohorts of the Imaginary Society of Hepatology "
+               "and the Society of Invented Registries")  # fmt: skip
+    _looked_up(project)
+    assert "reference-title-mismatch" not in _g7_codes(project)
+    # A main title of fewer than four words is no title to take another's by.
+    _bib_field(project, "title", "Hepatic injury: a cohort from the Imaginary Society of "
+               "Hepatology and the Society of Invented Registries, with renal outcomes")
+    _looked_up(project, crossref={**_CROSSREF, "title": "Hepatic injury"})
+    assert "reference-title-mismatch" in _g7_codes(project)
+
+
+def test_a_real_work_no_registry_indexes_is_said_so_in_paper_yaml(project: Path) -> None:
+    """The example says it of both its references, which are invented."""
+    found = _g7_codes(project)
+    assert "reference-not-found" not in found and "lookup-missing" not in found
+    said = _finding_of(project, "reference-unchecked").message
+    assert f"@{_LOOKED_KEY} (paper.yaml: invented for this worked example" in said
+
+
+def test_a_reference_with_no_identifier_and_no_record_is_said_unlooked(project: Path) -> None:
+    _unexcused(project)
+    said = _finding_of(project, "lookup-missing")
+    assert said.severity == "warn" and f"@{_LOOKED_KEY}" in said.message
+
+
+@pytest.mark.parametrize(
+    ("cited", "listed", "code"),
+    [
+        ("Dupont, Marie and Leclerc, Paul", [{"family": "Fictional", "given": "Anne"}],
+         "reference-authors-disjoint"),
+        ("Fictional, Anne and Dupont, Marie",
+         [{"family": "Fictional", "given": "Anne"}, {"family": "Leclerc"}],
+         "reference-authors-differ"),
+        # Crossref's list stops short of the entry's, and each name on it is cited: an
+        # older record's list, not a name made up (the measurement of 2026-10-20).
+        ("Fictional, Anne and Dupont, Marie", [{"family": "Fictional", "given": "Anne"}], None),
+        # Particles, accents, TeX and case: one person.
+        ("van der M{\\\"u}ller, Anne and O'Brien, Bernard",
+         [{"family": "M\N{LATIN SMALL LETTER U WITH DIAERESIS}ller"}, {"family": "OBrien"}],
+         None),
+        ("{Fictional Study Group} and Fictional, Anne",
+         [{"family": "Fictional"}, {"family": "Leclerc"}], None),
+        # A list cut short, the registry's longer: never a finding.
+        ("Fictional, Anne and others",
+         [{"family": "Fictional"}, {"family": "Leclerc"}, {"family": "Dupont"}], None),
+    ],
+)  # fmt: skip
+def test_the_identifiers_work_is_held_to_the_cited_authors(
+    project: Path, cited: str, listed: list, code: str | None
+) -> None:
+    _bib_field(project, "author", cited)
+    _looked_up(project, crossref={**_CROSSREF, "authors": listed})
+    found = {c for c in _g7_codes(project) if c.startswith("reference-authors")}
+    assert found == ({code} if code else set()), found
+
+
+def test_a_person_one_registry_lists_is_listed(project: Path) -> None:
+    """Crossref's list stops short where PubMed's does not."""
+    _bib_field(project, "author", "Fictional, Anne and Dupont, Marie")
+    pubmed = {"status": "found", "doi": _LOOKED_DOI, "pubtypes": ["Journal Article"],
+              "authors": [{"family": "Fictional", "given": "A"},
+                          {"family": "Dupont", "given": "M"}]}  # fmt: skip
+    _looked_up(project, pmid=_SEARCHED_PMID, pubmed=pubmed,
+               crossref={**_CROSSREF, "authors": [{"family": "Fictional", "given": "Anne"}]})
+    assert not {c for c in _g7_codes(project) if c.startswith("reference-authors")}
+
+
+def test_the_authors_of_another_work_are_not_compared(project: Path) -> None:
+    """Where the identifier names another title, the work is another's, and so are its
+    people: the title is what is said."""
+    _bib_field(project, "author", "Dupont, Marie")
+    _looked_up(project, crossref={**_CROSSREF, "title": "A study of something else entirely",
+                                  "authors": [{"family": "Naranjo"}]})  # fmt: skip
+    found = _g7_codes(project)
+    assert "reference-title-mismatch" in found
+    assert not {c for c in found if c.startswith("reference-authors")}
+
+
+def test_a_record_kept_before_the_authors_compares_none(project: Path) -> None:
+    from manuscript_guard.literature.lookups import record_path
+
+    _bib_field(project, "author", "Dupont, Marie")
+    _looked_up(project, crossref={**_CROSSREF, "authors": [{"family": "Naranjo"}]})
+    path = record_path(load_project(project)[0], _LOOKED_KEY)
+    record = yaml.safe_load(path.read_text(encoding="utf-8"))
+    record["schema"] = "manuscript-guard/lookup/1"
+    del record["sources"]["crossref"]["authors"]
+    from manuscript_guard.literature.lookups import answers_digest
+
+    record["answers_sha256"] = answers_digest(record)
+    path.write_text(yaml.safe_dump(record, sort_keys=False), encoding="utf-8")
+    assert not {c for c in _g7_codes(project) if c.startswith("reference-authors")}
+
+
 @pytest.mark.parametrize(
     "fields",
     [

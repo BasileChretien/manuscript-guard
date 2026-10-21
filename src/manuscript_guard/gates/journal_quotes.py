@@ -87,6 +87,9 @@ def rules_of(document: dict) -> dict[str, object]:
         rules["reporting_guidelines"] = document["reporting_guidelines"]
     for name, form in (document.get("pointers") or {}).items():
         rules[f"pointers.{name}"] = form
+    # How the journal takes a LaTeX source, each part of it a rule of the page.
+    for name, value in (document.get("latex") or {}).items():
+        rules[f"latex.{name}"] = value
     return rules
 
 

@@ -203,6 +203,20 @@ def _latex_citations() -> Reading:
     return cited
 
 
+@reading("latex printed")
+def _latex_printed() -> Reading:
+    from manuscript_guard.text.latex.mask import read
+    from manuscript_guard.text.latex.printed import printed_view
+    from manuscript_guard.text.latex.structure import Source
+
+    def printed(text: str) -> dict[str, Any]:
+        reading = read(text)
+        return {"view": printed_view([Source("main.tex", text, reading)]),
+                "declared": [list(each) for each in reading.declared]}  # fmt: skip
+
+    return printed
+
+
 @reading("hidden")
 def _hidden() -> Reading:
     from manuscript_guard.gates.language import _hidden as hidden

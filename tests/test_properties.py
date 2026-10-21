@@ -72,6 +72,7 @@ from generated import (
     laid_out,
     latex_bound,
     latex_cited,
+    latex_declared,
     latex_planted,
     latex_printed,
     latex_texts,
@@ -803,6 +804,49 @@ def _an_abstract_runs_on_to_the_next_heading(patch: pytest.MonkeyPatch) -> None:
 
 def _a_formula_is_printed_as_typed(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(latex_print, "_formulas", lambda reading: [])
+
+
+@holds(60, latex_declared())
+def test_a_latex_preamble_states_its_class_and_bibliography_as_written(
+    drawn: tuple[str, dict[str, object]],
+) -> None:
+    """The class, each of its options, the bibliography style and biblatex's style a preamble
+    states are what G4 compares with the journal's profile, and what a comment or an
+    `\\iffalse` block names is not (step 6)."""
+    text, stated = drawn
+    reading = latex_mask.read(text)
+    assert reading.refusals == (), (reading.refusals, text)
+    declared = list(reading.declared)
+    assert [value for kind, value in declared if kind == "class"] == [stated["class"]], text
+    assert [value for kind, value in declared if kind == "class_option"] == stated["options"]
+    assert [value for kind, value in declared if kind == "bst"] == [stated["bst"]], text
+    (options,) = [value for kind, value in declared if kind == "biblatex"]
+    assert f"style={stated['style']}" in options, (options, text)
+
+
+def _a_class_named_in_a_comment_is_stated(patch: pytest.MonkeyPatch) -> None:
+    declares = latex_mask._Reader._declares
+
+    def broken(self, name: str, end: int) -> None:
+        declares(self, name, end)
+        for found in re.finditer(r"\\" + name + r"\{([^{}]*)\}", self.text):
+            kind = "class" if name == "documentclass" else "bst"
+            self.declared.append((kind, found.group(1)))
+
+    patch.setattr(latex_mask._Reader, "_declares", broken)
+
+
+def _a_class_s_options_are_one(patch: pytest.MonkeyPatch) -> None:
+    declares = latex_mask._Reader._declares
+
+    def broken(self, name: str, end: int) -> None:
+        declares(self, name, end)
+        options = [value for kind, value in self.declared if kind == "class_option"]
+        self.declared = [d for d in self.declared if d[0] != "class_option"]
+        if options:
+            self.declared.append(("class_option", ",".join(options)))
+
+    patch.setattr(latex_mask._Reader, "_declares", broken)
 
 
 def _iffalse_hides_its_else(patch: pytest.MonkeyPatch) -> None:
@@ -7464,6 +7508,14 @@ BROKEN = {
     "in LaTeX's printed view, a formula is printed as typed": (
         _a_formula_is_printed_as_typed,
         test_latex_s_printed_view_holds_what_it_prints_as_markdown_writes_it,
+    ),
+    "in LaTeX, a class named in a comment is stated": (
+        _a_class_named_in_a_comment_is_stated,
+        test_a_latex_preamble_states_its_class_and_bibliography_as_written,
+    ),
+    "in LaTeX, a class's options are one option": (
+        _a_class_s_options_are_one,
+        test_a_latex_preamble_states_its_class_and_bibliography_as_written,
     ),
     "in LaTeX, a command the table lacks hides its arguments": (
         _an_unknown_command_hides_its_arguments,

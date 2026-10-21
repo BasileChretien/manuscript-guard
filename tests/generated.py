@@ -746,6 +746,30 @@ def latex_cited(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
     return text, planted
 
 
+@st.composite
+def latex_declared(draw: st.DrawFn) -> tuple[str, dict[str, object]]:
+    """A LaTeX preamble that states its class with options drawn, a bibliography style and
+    biblatex's options, among a class, a style and a package named in a comment and in an
+    `\\iffalse` block, in an order drawn; and what it states. Every kind is in every
+    preamble."""
+    name = st.sampled_from(("article", "elsarticle", "revtex4-2", "svjour3"))
+    # Two options at least, so that options not split apart are seen in every preamble.
+    options = draw(st.lists(st.sampled_from(("12pt", "twocolumn", "a4paper", "final")),
+                            unique=True, min_size=2, max_size=3))  # fmt: skip
+    stated = {"class": draw(name), "options": options, "bst": draw(name) + "-num",
+              "style": draw(st.sampled_from(("apa", "numeric", "authoryear")))}  # fmt: skip
+    pieces = [
+        f"\\documentclass[{', '.join(options)}]{{{stated['class']}}}\n",
+        f"\\bibliographystyle{{{stated['bst']}}}\n",
+        f"\\usepackage[backend=biber,style={stated['style']}]{{biblatex}}\n",
+        "% \\documentclass{commented}\n% \\bibliographystyle{commented}\n",
+        "\\iffalse \\usepackage[style=hidden]{biblatex} \\fi\n",
+    ]
+    order = draw(st.permutations(range(1, len(pieces))))
+    text = pieces[0] + "".join(pieces[index] for index in order)
+    return text + "\\begin{document}\nx\n\\end{document}\n", stated
+
+
 #: What a LaTeX document prints, as G4 reads it in Markdown (`text/latex/printed.py`): each
 #: `{}` holds a word, and its kind says what the view makes of it. A heading's title is its
 #: `#` line, of its level; prose is read once; a float's caption, maths and a comment are not
@@ -2990,6 +3014,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "latex sections": latex_texts(),
     "latex bindings": latex_texts(),
     "latex citations": latex_texts(),
+    "latex printed": latex_texts(),
     "hidden": texts(TERMS),
     "own words": texts(TERMS),
     "spans": texts(),

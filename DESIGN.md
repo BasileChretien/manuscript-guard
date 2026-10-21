@@ -1597,7 +1597,7 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
    G7, `lookup` and G6's citation positions moved; the twin's
    comparison with the example takes in the citations. Tests: `latex citations`, G7's cases on
    the twin.
-6. G4, in two pull requests. The first, built: `printed.py` writes the main text's document
+6. G4, built in two parts. The first: `printed.py` writes the main text's document
    as Markdown would print it, the design's `printed_view`: each heading as a `#` line, the
    body only, an abstract closed where it ends, bindings as `{{...}}` and citations as
    `[@...]`, a float as the bindings it places, maths and typed tables as nothing but an
@@ -1607,9 +1607,14 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
    scanner records the spans it needs (`maths`, `floats`, `code`, `body_start`, each
    heading's end). Tests: the twin's counts and findings against the example's, G4's cases on
    the twin, `latex_printed()` with five `BROKEN` rules. The second: the profile's `latex:`
-   block, and G4's warnings where the class or the bibliography's style differs from it.
-   The plan as written: the counts, sections and statements, and the profile's `latex:`
-   block. Tests: G4's cases on the twin.
+   block in the schema, each of its parts a rule quoted as `latex.<part>`; the scanner
+   records the class and its options, `\bibliographystyle` and biblatex's options
+   (`Reading.declared`), outside a comment; G4 warns `latex-class-differs` and
+   `latex-bibliography-differs` (`gates/journal_latex.py`). Tests:
+   `tests/test_journal_latex.py`, `latex printed`, `latex_declared()` with two `BROKEN`
+   rules. The engine and the files the profile names are the build's, steps 9 and 10. The
+   plan as written: the counts, sections and statements, and the profile's `latex:` block.
+   Tests: G4's cases on the twin.
 7. G6 and G14. `words`, accents, both gates moved. Tests: `latex words`, planted terms and
    spellings.
 8. `substituted`, with TeX's specials escaped; G5, G8, G9, G13 and G15 moved. Tests:

@@ -165,6 +165,9 @@ class Reading:
     #: Each code span, `\\verb` or `\\texttt`, from its opening delimiter to past its closing
     #: one: read as prose, and as Markdown's code span is where words are counted.
     code: tuple[tuple[int, int], ...] = ()
+    #: What a journal's profile states of a LaTeX source, as the file states it: ("class",
+    #: name), ("class_option", option), ("bst", style), and ("biblatex", its options).
+    declared: tuple[tuple[str, str], ...] = ()
 
 
 #: The level of each sectioning command, as Markdown's `#` counts it; a part stands over a
@@ -176,7 +179,7 @@ _BRACED_PATH = re.compile(r"[ \t]*(?:\r?\n[ \t]*)?\{([^{}\n]*)\}")
 #: Commands the reader knows that an author may define again, which it then reads as before:
 #: `\abstract` was an unknown command, its arguments read, until it was given a heading.
 _REDEFINABLE = frozenset({"abstract"})
-_PACKAGES = re.compile(r"\s*(?:\[[^\]]{0,300}\])?\s*\{([^{}]{0,300})\}")
+_PACKAGES = re.compile(r"\s*(?:\[([^\]]{0,300})\])?\s*\{([^{}]{0,300})\}")
 _NAMESPACE = "(?:" + "|".join(NAMESPACES) + r")\."
 #: What TeX passes over before an argument: spaces, and one line break (round 1 of #400).
 _GAP = r"[ \t]*(?:\r?\n[ \t]*)?"
@@ -356,6 +359,7 @@ class _Reader:
         self.maths: list[tuple[int, int, bool]] = []
         self.floats: list[tuple[int, int]] = []
         self.code: list[tuple[int, int]] = []
+        self.declared: list[tuple[str, str]] = []
         self.body_start = 0 if body else -1
         self.siunitx = 0
         #: The command a definition being read defines, until its body opens.
@@ -388,7 +392,7 @@ class _Reader:
                  tuple(self.packages), tuple(self.bindings), tuple(self.suspects),
                  tuple(sorted(tables)), tuple(self.listings), tuple(self.cited),
                  tuple(sorted(maths)), tuple(sorted(floats)), self.body_start,
-                 tuple(self.code))  # fmt: skip
+                 tuple(self.code), tuple(self.declared))  # fmt: skip
         if self.refused is None:
             return Reading(masked, (), *found)
         at = self.refused.offset
@@ -771,6 +775,8 @@ class _Reader:
                 self.heading_at = at
             if name in CITATIONS:
                 self.citation_at = at
+            if name in ("documentclass", "bibliographystyle"):
+                self._declares(name, end)
             self.command, self.pending = name, COMMANDS[name]
         elif self._unknown_citation(name):
             # A citation command the reader does not know would hide its keys from G7 (DESIGN.md,
@@ -826,9 +832,25 @@ class _Reader:
     def _packages(self, at: int, end: int) -> None:
         listed = _PACKAGES.match(self.text, end)
         if listed and not self.definitions:
-            for name in listed.group(1).split(","):
+            for name in listed.group(2).split(","):
                 if name.strip():
                     self.packages.append((at, name.strip()))
+                if name.strip() == "biblatex":
+                    self.declared.append(("biblatex", listed.group(1) or ""))
+
+    def _declares(self, name: str, end: int) -> None:
+        """Record the class a `\\documentclass` names and its options, or the style a
+        `\\bibliographystyle` names, as a journal's profile states them (G4)."""
+        found = _PACKAGES.match(self.text, end)
+        if found is None or self.definitions:
+            return
+        if name == "documentclass":
+            self.declared.append(("class", found.group(2).strip()))
+            for option in (found.group(1) or "").split(","):
+                if option.strip():
+                    self.declared.append(("class_option", option.strip()))
+        else:
+            self.declared.append(("bst", found.group(2).strip()))
 
     def _encoding(self, at: int) -> None:
         """Refuse an input encoding other than UTF-8, set by a package's option or by

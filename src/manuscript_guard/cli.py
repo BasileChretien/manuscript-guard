@@ -2022,6 +2022,43 @@ def cmd_stages(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_palettes(args: argparse.Namespace) -> int:
+    """List the palettes shipped with the toolkit, with what the colour check says of each,
+    or show one. Reads nothing of a project."""
+    import json as json_module
+
+    from manuscript_guard import palettes
+
+    if args.show:
+        try:
+            found = palettes.palette(args.show)
+            codes = palettes.colours(args.show, args.colours)
+        except palettes.PaletteError as exc:
+            print(f"manuscript-guard: {exc}", file=sys.stderr)
+            return 2
+        if args.json:
+            print(json_module.dumps({"name": found.name, "colours": codes,
+                                     "collection": found.collection, "kind": found.kind,
+                                     "distinct": found.distinct, "lightness": found.lightness,
+                                     "lightness_kept": found.lightness_kept,
+                                     "claims_cvd": found.claims_cvd}, indent=1))  # fmt: skip
+            return 0
+        for line in palettes.describe(found, codes):
+            print(line)
+        return 0
+    rows = palettes.chosen(kind=args.kind, colours=args.colours, safe=args.safe,
+                           collection=args.collection)  # fmt: skip
+    if args.json:
+        print(json_module.dumps([palettes.row(found) for found in rows], indent=1))
+        return 0
+    if not rows:
+        print("no palette answers that; `manuscript-guard palettes` lists them all")
+        return 1
+    for line in palettes.table(rows, args.colours):
+        print(line)
+    return 0
+
+
 def cmd_impact(args: argparse.Namespace) -> int:
     """Everything that depends on each file named, or on each file changed since a commit.
 
@@ -3569,6 +3606,20 @@ def build_parser() -> argparse.ArgumentParser:
 
     stages = sub.add_parser("stages", help="what each stage means and what binds at it")
     stages.set_defaults(func=cmd_stages)
+
+    palettes_ = sub.add_parser(
+        "palettes",
+        help="list the palettes shipped, with what the colour check says of each, or show one",
+    )
+    palettes_.add_argument("--kind", choices=("qualitative", "sequential", "diverging",
+                                              "multi-sequential", "cyclic"))  # fmt: skip
+    palettes_.add_argument("--colours", type=int, help="how many colours the figure needs")
+    palettes_.add_argument("--safe", action="store_true",
+                           help="only those every reader can read for that use")  # fmt: skip
+    palettes_.add_argument("--collection", help="e.g. MetBrewer, Crameri, ColorBrewer")
+    palettes_.add_argument("--show", metavar="NAME", help="one palette's colours and licence")
+    palettes_.add_argument("--json", action="store_true")
+    palettes_.set_defaults(func=cmd_palettes)
 
     hook = sub.add_parser("hook", help="handle a Claude Code hook event (reads stdin)")
     hook.add_argument(

@@ -753,6 +753,62 @@ its own, makes of four colours. Okabe and Ito's eight have no pair any deficienc
 and matplotlib's default red and green, 72 apart, are under 5 apart with deuteranopia: the
 model says what the literature says of both.
 
+## Palettes are other people's, and each says what the check makes of it
+
+A figure's colours are its author's choice, and the toolkit never draws the figure. What it
+can do is hand the author palettes by name and say, for each, what the colour check makes
+of it (decided 2026-10-21: every palette of the collections asked for, derived, with Python
+and R helpers, a `palettes` command and a `figure-design` skill).
+
+**The palettes.** MetBrewer, MoMAColors, NatParksPalettes, PNWColors and wesanderson, the
+artists' and photographers' palettes Basile asked for; Okabe and Ito's eight; ColorBrewer's
+schemes, each for every number of classes it offers; viridis, magma, inferno and plasma;
+cividis; and Crameri's scientific colour maps, version 8: 260 palettes. Each collection's
+licence was read at its source before any colour was copied (CC0, MIT, Apache 2.0 and
+Battelle's BSD-style licence all allow it with their notices), and each is credited in
+ATTRIBUTION.md with its notice beside the data, `data/palettes_LICENSES.txt`.
+
+**Derived, never typed.** `tools/derive_palettes.py` reads each collection's colours from its
+own file at a pinned commit, refusing a file whose SHA-256 is not the one written beside it,
+as the spelling list is derived from VarCon: the R lists of MetBrewer, MoMAColors,
+NatParksPalettes, PNWColors and wesanderson, ColorBrewer's JSON export, the CC0 source of
+viridis, PNNL's cividis table and cmcrameri's copy of Crameri's tables. It writes the licence
+file from the collections' own licence files the same way. Only Okabe and Ito's eight colours
+are typed, as the numbers their page publishes. With the files in a folder named by
+`MANUSCRIPT_GUARD_PALETTE_SOURCES`, a test derives both files again and compares them byte for
+byte. The R package carries the same two files, held equal by a test.
+
+**What the check makes of each** (`palettes.assess`), written into the file when it is
+derived and recomputed by a test, so a change to the check that changes a verdict has the
+file derived again: for a set of colours, how many of them, taken as its collection takes
+them for that many, stay at least 10 apart (CIEDE2000) to normal vision, for every reader
+with protanopia, deuteranopia or tritanopia, and in grey; for every palette, whether its
+lightness runs one way, turns once or neither, judged at eleven points along a continuous
+map (its 256 colours, rounded to 8 bits, step back and forth by a fraction of a unit), and
+whether each deficiency keeps that. Beside it, what the collection claims where it claims
+anything. MetBrewer calls Archambault colour-blind friendly; three of its colours stay 10
+apart for every reader. Both are shown, and the skill says both.
+
+**Taking n colours** follows each collection's own rule, so a palette here gives what its
+own package gives: ColorBrewer's scheme of n; MetBrewer's, MoMAColors', NatParksPalettes' and
+PNWColors' colours whose rank in the palette's order is at most n, in the palette's
+sequence (`met.brewer`'s `palette[[1]][which(palette[[2]] %in% c(1:n))]`); otherwise the first
+n; and n evenly spaced along a continuous map. More than a set has is refused, and `ramp`
+interpolates, in a straight line through sRGB as R's `colorRampPalette` does (a channel that
+falls on a half may round the other way). Python: `palettes.colours`, `cycle`, `use`,
+`cmap`, and `figure_style`, matplotlib settings sized to the target journal: its width, its
+smallest text and thinnest line or more (7 pt and 0.5 pt where the journal's least is less),
+and fonts kept as text in an SVG and embedded in a PDF, as G3 and G4 read them. R:
+`mg_palette`, `mg_palettes`, `scale_colour_mg`, `scale_fill_mg`, `mg_theme` and
+`mg_figure_size`, from the same file.
+
+**Choosing** is the author's, with the `figure-design` skill: it proposes two or three
+layouts for the figure's kind and two or three palettes for the number of colours it needs,
+says which every reader can read, offers an artist's palette the check does not pass only
+with that said, and applies the choice to the author's script. `manuscript-guard palettes`
+lists and filters (`--kind`, `--colours`, `--safe`, `--collection`) and shows one with its
+licence (`--show`). The check that counts is still G3's, on the rendered figure.
+
 ## The journal's citation style is used by every build
 
 A profile names the journal's citation style as the CSL style repository and Zotero name it
@@ -7915,6 +7971,16 @@ Added by the adversarial review, verified and **not** fixed:
   only, the dichromacies; the anomalous trichromacies, commoner and milder, are not, and
   Machado's model is less sure of tritanopia than of the other two. The threshold of 10 is a
   convention, not a standard. A LaTeX manuscript's figures are not read.
+- **A palette's verdict is the check's, at its threshold, on its colours as written.** The
+  number of a set's colours that stay apart is counted in the collection's order for that
+  many, so a set whose first colours are close is rated low though a figure could take
+  others of it. A continuous map's lightness is judged at eleven points, so a wiggle between
+  them is not seen. What a collection claims is copied as its file states it (MetBrewer,
+  MoMAColors and NatParksPalettes) or as its makers' documentation states it (viridis,
+  cividis, Crameri, Okabe and Ito), not tested. `figure_style` and `mg_theme` size text and
+  lines to the journal's least or 7 pt and 0.5 pt, sizes many artwork guides give, which the
+  journal's own guide may set otherwise; `size` overrides. A palette's colours are not
+  checked against the figure that uses them: G3 reads the rendered figure.
 - **`stage:` is declared, not detected.** Writing `stage: analysis` demotes every G2 finding
   to INFO. It is printed, counted and summarised — never hidden — but CI reading the exit
   code sees green.

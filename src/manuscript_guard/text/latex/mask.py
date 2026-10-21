@@ -39,7 +39,8 @@ PROSE, BLANK, MATHS_READ, PREAMBLE = "prose", "blank", "maths", "preamble"
 #: #380: `\\newcommand{\\ci}[1][95]{...}` hid the 95).
 PRINTED_IN_PREAMBLE = frozenset(
     {"title", "thanks", "newcommand", "renewcommand", "providecommand", "newenvironment",
-     "renewenvironment"}
+     "renewenvironment", "DeclareRobustCommand", "NewDocumentCommand", "RenewDocumentCommand",
+     "ProvideDocumentCommand", "DeclareDocumentCommand"}
 )  # fmt: skip
 #: Names that open no conditional though they start with `if`: a symbol and a command whose
 #: branches are its arguments, both read.
@@ -227,10 +228,11 @@ class _Reader:
 
     def _argument(self) -> bool:
         """Take the next argument the last command expects where it stands. False where
-        there is none, and the text is read on as it comes. In amsmath's environments, `\\\\`
-        takes its length only where it follows at once: a `[0.5, 1.2]` opening the next row
-        prints (round 1 of #380). Elsewhere it skips spaces before it, as the kernel's and
-        array's do, and `\\\\ [2pt]` in a table or an array is a length (rounds 2 and 3)."""
+        there is none, and the text is read on as it comes. In amsmath's environments, its
+        cases and matrices among them, `\\\\` takes its length only where it follows at once:
+        a `[0.5, 1.2]` opening the next row prints (rounds 1 and 4 of #380). Elsewhere it
+        skips spaces before it, as the kernel's and a bare array's do, and `\\\\ [2pt]` in a
+        table or an array is a length (rounds 2 and 3)."""
         amsmath = self.command == "\\" and bool(self.environments) and (
             self.environments[-1] in AMSMATH
         )

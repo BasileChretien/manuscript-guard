@@ -110,9 +110,10 @@ COMMANDS = _specs(
                          "DeclareRobustCommand"), _DEFINE),
         **dict.fromkeys(("newenvironment", "renewenvironment"), "*{b}[b][p]{d}{d}"),
         "DeclareMathOperator": "*{c}{d}",
-        # xparse's: the name, the argument specification, the body.
+        # xparse's: the name, the argument specification, read as its defaults print
+        # (`O{95}`, round 4 of #380), and the body.
         **dict.fromkeys(("NewDocumentCommand", "RenewDocumentCommand", "ProvideDocumentCommand",
-                         "DeclareDocumentCommand"), "{c}{b}{d}"),
+                         "DeclareDocumentCommand"), "{c}{p}{d}"),
     }
 )  # fmt: skip
 
@@ -153,10 +154,12 @@ MATHS = frozenset(
      "alignat*"}
 )  # fmt: skip
 
-#: amsmath's environments, whose `\\\\` takes a length only where it follows at once.
+#: amsmath's environments, whose `\\\\` takes a length only where it follows at once: its
+#: cases and matrices too, which set amsmath's `\\\\` before their array (round 4 of #380).
 AMSMATH = frozenset(
     {"align", "align*", "gather", "gather*", "multline", "multline*", "flalign", "flalign*",
-     "alignat", "alignat*", "split", "aligned", "gathered", "alignedat"}
+     "alignat", "alignat*", "split", "aligned", "gathered", "alignedat", "cases", "matrix",
+     "pmatrix", "bmatrix", "Bmatrix", "vmatrix", "Vmatrix", "smallmatrix"}
 )  # fmt: skip
 
 #: Environments read to their `\\end` as characters and blanked whole: a listing, read by G2's

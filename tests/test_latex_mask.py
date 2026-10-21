@@ -197,6 +197,22 @@ def test_the_reader_is_linear_in_the_file(assert_linear, unit: str) -> None:
                   f"the LaTeX reader on {unit!r}")  # fmt: skip
 
 
+@pytest.mark.parametrize(
+    ("text", "printed"),
+    [
+        # Round 4 of #380: amsmath's cases and matrices, a robust command's default in the
+        # preamble, and an xparse default.
+        ("$\\begin{cases}a \\\\ [0.5, 1.2] b\\end{cases}$", "0.5, 1.2"),
+        ("$\\begin{pmatrix}a \\\\ [0.5, 1.2] b\\end{pmatrix}$", "0.5, 1.2"),
+        ("\\documentclass{a}\n\\DeclareRobustCommand{\\ci}[1][95]{CI #1}\n"
+         "\\begin{document}\\ci\\end{document}", "95"),
+        ("\\NewDocumentCommand{\\ci}{O{95}}{CI #1}", "95"),
+    ],
+)  # fmt: skip
+def test_what_round_four_found_blanked_is_read(text: str, printed: str) -> None:
+    assert printed in mask(text, body=None if text.startswith("\\doc") else True)
+
+
 def test_what_round_three_found_is_read_as_latex_reads_it(assert_linear) -> None:
     """Round 3 of #380: the robust and xparse definers' bodies print; an array's `\\\\` skips
     spaces; `\\)` closes no environment; finding the document is linear."""

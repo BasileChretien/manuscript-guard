@@ -4515,6 +4515,28 @@ drafts the dictionary with the author from the plan, and names a validated instr
 its licence rather than writing its items. The reading is held over generated plans
 (`plan variables` in `tests/readings.py`), one section of every kind in each.
 
+**The dictionary is written out for whoever builds the form, and is not changed by it.**
+`manuscript-guard dictionary` writes three copies of it, each a function of the file alone
+and written again whenever it changes (Basile asked for the export with the rest,
+2026-10-21). `--redcap` is REDCap's data dictionary, the CSV its Online Designer imports:
+the eighteen columns of its template in its order (as REDCap writes them in a dictionary it
+downloads, and as REDCapR and ReproNim's reproschema-py read them, read 2026-10-21), each
+variable on the instrument its `form` names, a coded one as a radio field with its codes
+and its missing codes as choices (`1, Male | 2, Female`), the others as text fields with
+REDCap's validation for their type (`number`, `integer`, `date_ymd`, `datetime_ymd`,
+`time`) and their range as its minimum and maximum, `applies_if` as branching logic, the
+definition as the field annotation and the unit as the field note. REDCap takes the first
+field for each record's identifier, so the first `identifier` variable comes first, and
+its form first. A derived variable is left out and said: the analysis computes it, and
+REDCap's calculated fields are a language of their own. A name REDCap cannot take, one
+with a capital or a dot, is refused rather than changed, since a renamed field would no
+longer be the variable the plan and the data checks name; so is a dictionary with no
+identifier or with a coded variable whose codes are not decided, and nothing is written.
+`--csv` is one row per variable and one column per key of an entry, for any other system;
+`--outline` is the form in Markdown, form by form, each question with its responses, its
+skip and whether it is required, a validated instrument's items marked as the licensed
+instrument's wording, and what is derived and not asked.
+
 ## Stages: not every gate binds on day one
 
 The first version of `check` ran all twelve gates unconditionally, which meant that someone
@@ -7797,6 +7819,15 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   `variable()` declarations agree with the dictionary, or that an instrument's `citation` is
   in `references.bib`. An entry for an existing dataset's column the study does not use
   needs its reason like any other.
+- **The REDCap export writes what a data dictionary can say, and no more.** A missing code
+  of a number is written in the field note, not as one of REDCap's missing data codes,
+  which a project sets for itself, so a value of -99 is refused by the field's range until
+  the project's codes are set. No field is flagged as an identifier, since the dictionary
+  does not say which fields identify a person. A `pattern` is not written as a validation
+  (REDCap's own are a fixed list), and is said. A name over 26 characters, which REDCap
+  advises against and accepts, is written as it is. The REDCap file has not been imported
+  into a REDCap server by these tests: its columns, types, validations, choices and
+  branching logic are held to the template as the packages above read it.
 - **A statistic is held to what it belongs to by which bindings share its sentence, and by
   nothing else.** An estimate with intervals at two levels is asked to be quoted whole at
   each, though a paper quotes the one it means. An interval quoted whole only in a table the

@@ -264,6 +264,7 @@ number in the file and the rule that classified it.
 | `sign` | record a named person's sign-off of a finding only they may close, a G15 warning for the statistician `authors.yaml` names, the journal's rules no gate checks for the corresponding author, a model provider the manuscript may be sent to for the data custodian; that person's own act |
 | `render` | substitute the bindings and stop there |
 | `stages` | what each stage means and what binds at it |
+| `dictionary` | write the data dictionary out for whoever builds the form: REDCap's data dictionary (`--redcap`), one row per variable (`--csv`), or the form's outline in Markdown (`--outline`) |
 | `journal` | list journal profiles, start one from the annotated template, or read a journal's page again against the stored one (`--reread`) |
 | `fetch` | download a reporting guideline's own checklist document |
 | `transcribe` | build checklist profiles from those documents |

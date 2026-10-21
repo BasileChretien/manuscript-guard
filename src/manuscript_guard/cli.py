@@ -2885,6 +2885,41 @@ def cmd_search(args: argparse.Namespace) -> int:
     return 0 if proposals.answered(result) else 1
 
 
+def cmd_dictionary(args: argparse.Namespace) -> int:
+    """Write the data dictionary out for whoever builds the form: REDCap's data dictionary,
+    a plain CSV, or the form's outline. Each is written only where the dictionary reads and
+    the shape can hold it; nothing is written on a refusal."""
+    from manuscript_guard.contracts.dictionary import DICTIONARY, load_dictionary
+    from manuscript_guard.dictionary_export import ExportRefused, outline, plain_csv, redcap
+
+    wanted = [(target, make) for target, make in
+              ((args.redcap, redcap), (args.csv, plain_csv), (args.outline, outline))
+              if target is not None]  # fmt: skip
+    if not wanted:
+        print("say what to write: --redcap, --csv or --outline", file=sys.stderr)
+        return 2
+    project, _ = load_project(args.path)
+    dictionary, report = load_dictionary(project)
+    if dictionary is None:
+        if report.ok:
+            print(f"there is no {DICTIONARY.as_posix()} to write out", file=sys.stderr)
+            return 2
+        print(report.render(project.root))
+        return 1
+    try:
+        written = [(target, make(dictionary)) for target, make in wanted]
+    except ExportRefused as refused:
+        print(f"nothing written: {refused}", file=sys.stderr)
+        return 1
+    for target, made in written:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(made.text.encode("utf-8"))
+        print(f"wrote {target}")
+        for said in made.left_out:
+            print(f"  left out {said}")
+    return 0
+
+
 def cmd_style(args: argparse.Namespace) -> int:
     """Fetch the target journal's citation style from the CSL style repository, and keep it
     in the project for the offline build."""
@@ -4063,6 +4098,17 @@ def build_parser() -> argparse.ArgumentParser:
         "folder is in, if any",
     )
     search.set_defaults(func=cmd_search)
+
+    dictionary = sub.add_parser(
+        "dictionary",
+        help="write the data dictionary out: REDCap's data dictionary, a plain CSV or the "
+        "form's outline",
+    )
+    dictionary.add_argument("path", nargs="?", type=Path, default=Path.cwd())
+    dictionary.add_argument("--redcap", type=Path, help="REDCap's data dictionary, as CSV")
+    dictionary.add_argument("--csv", type=Path, help="one row per variable, as CSV")
+    dictionary.add_argument("--outline", type=Path, help="the form's outline, as Markdown")
+    dictionary.set_defaults(func=cmd_dictionary)
 
     style = sub.add_parser(
         "style",

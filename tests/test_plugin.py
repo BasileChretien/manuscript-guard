@@ -862,6 +862,8 @@ NAMED_NOWHERE = {
     "build/records/": "written by `build`",
     "journals/shortlist.yaml": "written with the author by the journal-profile skill",
     "design/data_dictionary.yaml": "written with the author by the data-dictionary skill",
+    "build/form.md": "written by `dictionary --outline`, an example of where",
+    "build/redcap.csv": "written by `dictionary --redcap`, an example of where",
     "analysis/00_feasibility.py": "the feasibility script a project writes, an example",
     "profiles/reporting/STROBE.yaml": "written by `transcribe`, and kept out of git",
     "profiles/reporting/sources/": "where `fetch` puts the guidelines, kept out of git",

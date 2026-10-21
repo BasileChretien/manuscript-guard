@@ -672,6 +672,23 @@ def _whole_number_means() -> Reading:
     return read
 
 
+@reading("printed value")
+def _printed_value() -> Reading:
+    """Whether a value an earlier output printed is this paper's, as G8 compares one read
+    from the earlier output's text: each printing given, and the same printing moved."""
+    from manuscript_guard.contracts.values import Value
+    from manuscript_guard.gates.related import _same_printed
+
+    def compared(given: list[dict[str, Any]]) -> list[list[bool]]:
+        found = []
+        for case in given:
+            now = Value(key="k", value=case["value"], display=case["display"], origin="results")
+            found.append([_same_printed(case["printed"], now), _same_printed(case["moved"], now)])
+        return found
+
+    return compared
+
+
 @reading("abbreviations")
 def _abbreviations() -> Reading:
     from manuscript_guard.gates.language import _judge, _Known, _shipped

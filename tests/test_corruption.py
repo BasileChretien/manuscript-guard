@@ -1646,6 +1646,8 @@ def test_a_synthetic_run_nothing_quotes_is_not_said(project: Path) -> None:
         if other != main:
             other.write_text(re.sub(r"\{\{\s*(?:results|table)\.[^}]*\}\}", "[elided]",
                                     other.read_text(encoding="utf-8")), encoding="utf-8")
+    # The figure's alternative text quotes results too, which the build prints.
+    _alt(project, None)
     assert _synthetic_said(project) == []
 
 
@@ -1785,6 +1787,77 @@ def test_a_number_the_supplement_reports_is_reported(project: Path) -> None:
     supplement.parent.mkdir(exist_ok=True)
     supplement.write_text("# Table S1\n\n{{results.case.n_serious}} serious.\n", encoding="utf-8")
     assert _unreported(project) == []
+
+
+# --------------------------------------- an earlier output of the same data, and this paper
+#
+# The example stands beside a copy of itself as the abstract it was first presented in. Each
+# defect is planted in the abstract's project as a different run would have left it, and the
+# submission check of the paper has to say so: a count that changed with nothing said, a
+# definition (a parameter of the analysis) that changed, and an overlap nobody disclosed.
+
+
+def _earlier_output(project: Path, *, set_to: tuple[str, int] | None = None, **entry) -> None:
+    """Copy the example as the earlier project, plant a value in it, declare it, copy it in."""
+    from manuscript_guard.literature.related import load_related, take
+
+    earlier = project.parent / "earlier"
+    shutil.copytree(project, earlier)
+    if set_to is not None:
+        key, value = set_to
+        fragment = earlier / "results" / "01_disproportionality.json"
+        document = json.loads(fragment.read_text(encoding="utf-8"))
+        document["values"][key].update(value=value, display=str(value))
+        fragment.write_bytes(json.dumps(document).encode("utf-8"))
+    declared = {"id": "abstract", "kind": "abstract", "title": "First results",
+                "shares": ["data"], "project": "../earlier", **entry}  # fmt: skip
+    record = {"schema": "manuscript-guard/related/1", "outputs": [declared]}
+    (project / "literature" / "related.yaml").write_bytes(yaml.safe_dump(record).encode())
+    loaded, _ = load_project(project)
+    take(loaded, load_related(loaded)[0].outputs[0])
+
+
+def _submitted(project: Path) -> list[tuple[str, str]]:
+    from manuscript_guard.gates.related import check_related
+
+    loaded, _ = load_project(project)
+    namespace, results, _, _ = load_namespace(loaded)
+    report = check_related(loaded, namespace, results, submission=True)
+    return [(f.code, f.severity) for f in report.findings]
+
+
+def test_an_earlier_output_with_the_same_numbers_passes(project: Path) -> None:
+    _earlier_output(project)
+    assert _submitted(project) == []
+
+
+@pytest.mark.parametrize("key", ["cohort.n_reports", "case.n_cases", "case.n_serious"])
+def test_a_count_changed_since_the_abstract_fails_at_submission(project: Path, key: str) -> None:
+    _earlier_output(project, set_to=(key, 3))
+    assert _submitted(project) == [("related-number-differs", "fail")]
+
+
+def test_a_count_printed_only_in_the_supplement_is_held_to_the_abstract(project: Path) -> None:
+    main_md = project / "manuscript" / "main.md"
+    text = main_md.read_text(encoding="utf-8")
+    main_md.write_bytes(
+        text.replace("{{results.case.n_serious}} were flagged", "some were flagged").encode()
+    )
+    supplement = project / "manuscript" / "supplementary" / "s1.md"
+    supplement.parent.mkdir(exist_ok=True)
+    supplement.write_bytes(b"# eTable 1\n\n{{results.case.n_serious}} were serious.\n")
+    _earlier_output(project, set_to=("case.n_serious", 3))
+    assert _submitted(project) == [("related-number-differs", "fail")]
+
+
+def test_a_definition_changed_since_the_abstract_is_said_and_does_not_fail(project: Path) -> None:
+    _earlier_output(project, set_to=("param.signal.min_cases", 5))
+    assert _submitted(project) == [("related-method-differs", "warn")]
+
+
+def test_an_abstract_of_the_same_data_and_authors_not_disclosed_fails(project: Path) -> None:
+    _earlier_output(project, shares=["data", "authors"])
+    assert _submitted(project) == [("related-undisclosed", "fail")]
 
 
 # --------------------------------------------- a quotation in the prose and its source
@@ -5276,6 +5349,7 @@ def test_a_gate_not_taught_latex_reads_nothing_and_fails_at_submission(project: 
 
 #: The checks that read the manuscript only as Markdown, and those that do not read it.
 _MARKDOWN_ONLY = (
+    "check_related",
     "check_numbers", "check_bound_units", "check_small_cells", "check_citations",
     "check_prose_quotations", "check_journal", "check_reporting", "check_writing",
     "check_methods", "check_synthetic_inputs", "check_reported", "check_recomputed",
@@ -5286,6 +5360,9 @@ _NOT_THE_MANUSCRIPT = (
     "check_review", "check_freshness", "check_figures", "check_figure_reviews",
     "check_literature_chain", "check_shortlist", "check_design", "check_design_rounds",
     "check_consistency", "check_restricted_inputs", "check_relations",
+    # It finds the figures placed in the Markdown sources, so it reads nothing of a LaTeX
+    # manuscript and says nothing of one; it runs, as G3's other check does (round 1 of #387).
+    "check_figure_alt",
 )  # fmt: skip
 #: The checks that read LaTeX: they run on a LaTeX manuscript as on any.
 _READS_LATEX = ("check_latex",)
@@ -7755,6 +7832,202 @@ def test_a_structured_abstract_heading_in_a_comment_is_missing(project: Path) ->
     assert "abstract-headings-missing" in codes(_journal(project))
 
 
+# ------------------------------------------------------ a figure's alternative text
+
+
+def _alt(root: Path, alt: object = None, **rules) -> None:
+    """The example's figure given this alternative text (None takes it away), and its
+    journal these artwork rules."""
+    if rules:
+        profile = root / "profiles" / "journals" / "demo-journal.yaml"
+        document = yaml.safe_load(profile.read_text(encoding="utf-8"))
+        document["figures"] = {"source_url": "https://journal.example/artwork",
+                               "read_on": "2026-10-21", "confirmed": True, **rules}  # fmt: skip
+        profile.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    sidecar = root / "figures" / "forest.guard.yaml"
+    guard = yaml.safe_load(sidecar.read_text(encoding="utf-8"))
+    guard.pop("alt", None)
+    if alt is not None:
+        guard["alt"] = alt
+    sidecar.write_text(yaml.safe_dump(guard, sort_keys=False, allow_unicode=True),
+                       encoding="utf-8")  # fmt: skip
+
+
+def _alt_said(root: Path, stage: str = "drafting") -> list[tuple[str, str]]:
+    """What `check` says of the figure's alternative text at `stage`, the stage's policy
+    applied."""
+    from manuscript_guard.cli import _run_gates
+
+    report, _project, _chosen, _deferred = _run_gates(root, stage=stage)
+    return [(f.code, f.severity) for f in report.findings if f.code.startswith("figure-alt-")]
+
+
+def test_the_examples_alternative_text_passes_at_every_stage(project: Path) -> None:
+    for stage in ("drafting", "internal-review", "submission"):
+        assert _alt_said(project, stage) == [], stage
+
+
+@pytest.mark.parametrize(
+    ("stage", "rules", "said"),
+    [
+        ("drafting", {}, "info"),
+        ("internal-review", {}, "warn"),
+        ("submission", {}, "warn"),
+        ("submission", {"alt_text": "requested"}, "warn"),
+        ("drafting", {"alt_text": "required"}, "info"),
+        ("internal-review", {"alt_text": "required"}, "warn"),
+        ("submission", {"alt_text": "required"}, "fail"),
+        # Round 1 of #387: where the journal applies its artwork rules from acceptance, G4
+        # notes what does not meet them, and so does this.
+        ("submission", {"alt_text": "required", "applies_from": "acceptance"}, "info"),
+    ],
+)
+def test_a_figure_with_no_alternative_text_fails_only_where_the_journal_requires_one(
+    project: Path, stage: str, rules: dict, said: str
+) -> None:
+    """Basile, 2026-10-21: a note while drafting, a warning from internal review, and a
+    failure at submission where the journal's profile requires alternative text. The build
+    placed every figure as `![](path)`, so every document went out with none."""
+    _alt(project, None, **rules)
+    assert _alt_said(project, stage) == [("figure-alt-missing", said)]
+
+
+@pytest.mark.parametrize("alt", ["", "   \n", ["a list"], 3.84, {"text": "a mapping"}])
+def test_alternative_text_that_is_no_text_is_none(project: Path, alt: object) -> None:
+    _alt(project, alt, alt_text="required")
+    assert _alt_said(project, "submission") == [("figure-alt-missing", "fail")]
+
+
+def test_a_supplementary_figure_is_held_to_the_supplements_rule(project: Path) -> None:
+    """A rule under `supplementary:` replaces the main one for a figure only the supplement
+    places, as every other artwork rule does."""
+    main = main_md(project)
+    main.write_text(main.read_text(encoding="utf-8").replace("{{figure.forest}}\n", ""),
+                    encoding="utf-8")  # fmt: skip
+    (project / "manuscript" / "supplementary" / "figures.md").write_text(
+        "# Supplementary figure\n\n{{figure.forest}}\n", encoding="utf-8"
+    )
+    _alt(project, None, alt_text="requested", supplementary={"alt_text": "required"})
+    assert ("figure-alt-missing", "fail") in _alt_said(project, "submission")
+
+
+def test_each_binding_in_the_alternative_text_typed_as_its_value_fails(project: Path) -> None:
+    """The headline corruption, in the alternative text: each binding replaced by the value
+    it prints is correct today and stale in waiting, and fails as it would in the prose."""
+    sidecar = project / "figures" / "forest.guard.yaml"
+    raw = yaml.safe_load(sidecar.read_text(encoding="utf-8"))["alt"]
+    namespace = load_namespace(load_project(project)[0])[0]
+    found = bindings_in(raw)
+    assert len(found) == 3, raw
+    for binding in found:
+        display = namespace[binding.strip("{}")].display
+        _alt(project, raw.replace(binding, display))
+        assert _alt_said(project) == [("figure-alt-number", "fail")], binding
+
+
+def test_a_number_in_the_alternative_text_that_prose_would_pass_passes(project: Path) -> None:
+    """Held as prose is, and no harder: a convention ("95% CI") is no result."""
+    _alt(project, "The estimate is drawn with its 95% CI, {{results.ror.ci_low}} to "
+                  "{{results.ror.ci_high}}.")  # fmt: skip
+    assert _alt_said(project) == []
+
+
+@pytest.mark.parametrize(
+    "binding",
+    ["{{results.no_such_key}}", "{{table.two_by_two}}", "{{figure.forest}}",
+     "{{method.no_such_step}}", "{{results.ror.point}"],
+)  # fmt: skip
+def test_a_binding_in_the_alternative_text_that_prints_no_value_fails(
+    project: Path, binding: str
+) -> None:
+    _alt(project, f"The reporting odds ratio, {binding}, drawn on a log scale.")
+    assert _alt_said(project) == [("figure-alt-binding", "fail")]
+
+
+def test_alternative_text_longer_than_the_journal_takes_is_a_warning(project: Path) -> None:
+    """Counted as printed: each binding its display, so "{{results.ror.point}}" is four
+    characters ("3.84") and not twenty-two."""
+    from manuscript_guard.gates.figure_alt import printed_alt, raw_alt
+
+    loaded = load_project(project)[0]
+    printed = printed_alt(raw_alt(loaded, "forest"), load_namespace(loaded)[0])
+    _alt(project, yaml.safe_load(
+        (project / "figures" / "forest.guard.yaml").read_text(encoding="utf-8"))["alt"],
+        alt_text_max_chars=len(printed))  # fmt: skip
+    assert _alt_said(project, "internal-review") == []
+    _alt(project, yaml.safe_load(
+        (project / "figures" / "forest.guard.yaml").read_text(encoding="utf-8"))["alt"],
+        alt_text_max_chars=len(printed) - 1)  # fmt: skip
+    assert _alt_said(project, "drafting") == [("figure-alt-long", "info")]
+    assert _alt_said(project, "submission") == [("figure-alt-long", "warn")]
+
+
+def test_a_comment_in_the_alternative_text_is_read_as_it_is_printed(project: Path) -> None:
+    """Round 1 of #387: the build prints the text as written, an HTML comment and all, and
+    the checks read it as Markdown, which hides a comment: a number typed into one went out
+    with nothing said, and a binding in one was printed as written."""
+    from manuscript_guard.gates.figure_alt import printed_alt, raw_alt
+
+    _alt(project, "Odds ratio <!-- was {{results.ror.point}}, 3.84 -->.")
+    assert _alt_said(project) == [("figure-alt-number", "fail")]
+    loaded = load_project(project)[0]
+    assert printed_alt(raw_alt(loaded, "forest"), load_namespace(loaded)[0]) == (
+        "Odds ratio <!-- was 3.84, 3.84 -->."
+    )
+    _alt(project, "Odds ratio <!-- {{results.no_such_key}} -->.")
+    assert _alt_said(project) == [("figure-alt-binding", "fail")]
+
+
+def test_a_declared_parameter_typed_into_the_alternative_text_fails(project: Path) -> None:
+    """Round 1 of #387: G2 fails a threshold typed in the prose once the analysis declares
+    it, and the alternative text passed it as the convention it reads as."""
+    from manuscript_guard.cli import _run_gates
+
+    _alt(project, "The estimate, {{results.ror.point}}, is significant at p < 0.05.")
+    report, _project, _chosen, _deferred = _run_gates(project)
+    [found] = [f for f in report.findings if f.code.startswith("figure-alt-")]
+    assert (found.code, found.severity) == ("figure-alt-number", "fail")
+    assert "'0.05'" in found.message and "which the analysis declares" in found.message
+
+
+def test_a_count_bound_in_the_alternative_text_is_held_to_the_custodians_minimum(
+    project: Path,
+) -> None:
+    """Round 1 of #387: the build prints a count bound in the alternative text into the
+    picture and the pack, and G2 read the manuscript's bindings alone."""
+    _custodian(project, 5)
+    _value_has(project, "case.n_serious", value=3, display="3")
+    main = main_md(project)
+    main.write_text(main.read_text(encoding="utf-8").replace(
+        "{{results.case.n_serious}}", "a few"), encoding="utf-8")  # fmt: skip
+    assert _small(project) == []
+    _alt(project, "Of the cases, {{results.case.n_serious}} were serious.")
+    assert _small(project) == [("results.case.n_serious", None)]
+
+
+def test_a_result_quoted_in_the_alternative_text_alone_is_quoted_from_synthetic_data(
+    project: Path,
+) -> None:
+    """Round 1 of #387: the build prints it, so a result from a synthetic run quoted there
+    is a number from synthetic data in the paper."""
+    import re
+
+    _not_a_demonstration(project)
+    for path in (project / "manuscript").rglob("*.md"):
+        path.write_text(re.sub(r"\{\{\s*(?:results|table)\.[^}]*\}\}", "[elided]",
+                               path.read_text(encoding="utf-8")), encoding="utf-8")  # fmt: skip
+    _alt(project, None)
+    assert _synthetic_said(project) == []
+    _alt(project, "Forest plot of the reporting odds ratio, {{results.ror.point}}.")
+    [(severity, _message)] = _synthetic_said(project)
+    assert severity == "warn"
+
+
+def test_a_journal_profile_with_an_alt_text_rule_out_of_shape_is_refused(project: Path) -> None:
+    _alt(project, "Text.", alt_text="mandatory")
+    assert "schema-violation" in codes(_journal(project))
+
+
 # ------------------------------------------------- the journal's citation style (item 51)
 
 
@@ -9124,6 +9397,16 @@ _CORE_NS = (
                  "Graduate School of Medicine</Company></Properties>"},
             [("Example University Graduate School of Medicine",
               "the document's company (Company)")], id="Word's company field",
+        ),
+        # The alternative text the build writes from a figure's guard file, or Word lets a
+        # co-author type: read aloud, printed nowhere.
+        pytest.param(
+            "<w:p><w:r><w:drawing><wp:inline xmlns:wp='http://schemas.openxmlformats.org/"
+            "drawingml/2006/wordprocessingDrawing'><wp:docPr id='1' name='Picture' "
+            "descr='The estimate, as Example and Sample drew it' title='By Ada Example'/>"
+            "</wp:inline></w:drawing></w:r></w:p>", {},
+            [("Ada Example", "the alternative text of a picture")],
+            id="a picture's alternative text",
         ),
     ],
 )  # fmt: skip

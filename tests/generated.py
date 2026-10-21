@@ -663,6 +663,69 @@ def latex_planted(draw: st.DrawFn) -> tuple[str, list[tuple[int, str, bool]]]:
     return text, planted
 
 
+#: Where a binding stands in LaTeX, and what it is there: each `{}` holds the key's last part,
+#: and the kind says whether it is a binding, one in a typed table, something meant for one
+#: and none, a word in a listing, or nothing. A binding in a comment, an `\\iffalse` block or
+#: the `comment` environment is nothing, and so is the milligram siunitx defines as `\\mg`,
+#: and a `\\mg` that names no key in a `\\verb`.
+LATEX_BINDING_PLACES = (
+    ("prose \\mg{{results.{}}} ", "bound"),
+    ("\\footnote{{in \\mg{{results.{}}}}} ", "bound"),
+    ("\\caption{{Of \\mg{{results.{}}}}} ", "bound"),
+    ("\\begin{{tabular}}{{l}}\\mg{{results.{}}} \\\\\\end{{tabular}}\n", "table"),
+    ("\\mg\n  {{results.{}}} ", "bound"),
+    ("\\begin{{lstlisting}}[language=R]\nx <- {}\n\\end{{lstlisting}}\n", "listing"),
+    ("\\verb|\\mg| ", "none"),
+    ("\\emph{{{{results.{}}}}} ", "malformed"),
+    ("$x = \\mg{{results.{}}}$ ", "bound"),
+    ("\\newcommand{{\\nn}}{{\\mg{{results.{}}}}} ", "bound"),
+    ("\\mg[width=3cm]{{figure.{}}} ", "bound"),
+    ("\\mg {{ lit.{} }} ", "bound"),
+    ("% \\mg{{results.{}}}\n", "none"),
+    ("\\iffalse \\mg{{results.{}}} \\fi ", "none"),
+    ("\\begin{{comment}}\n\\mg{{results.{}}}\n\\end{{comment}}\n", "none"),
+    ("\\qty{{5}}{{\\mg}} and \\SI{{3}}{{\\mg\\per\\kg}} ", "none"),
+    ("\\Mg{{results.{}}} ", "malformed"),
+    ("\\mgg{{results.{}}} ", "malformed"),
+    ("{{{{results.{}}}}} ", "malformed"),
+    ("\\mg{{Results.{}}} ", "malformed"),
+    ("\\mg results.{} ", "malformed"),
+)  # fmt: skip
+#: Where a binding stands in the preamble: the title prints it.
+LATEX_PREAMBLE_BINDINGS = (("\\title{{T \\mg{{results.{}}}}}\n", "bound"),)
+
+
+@st.composite
+def latex_bound(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
+    """A LaTeX document with a binding in every place of `LATEX_BINDING_PLACES`, in an order
+    drawn, among whole pieces; and the last part of each key planted, with what it is where
+    it stands. Every place is in every document, so that a rule broken for one is seen in
+    each."""
+    filler = (*_spaced(FILLER), *(piece for piece in _LATEX_WHOLE if "\\mg" not in piece))
+    order = draw(st.permutations(range(len(LATEX_BINDING_PLACES))))
+    between = draw(st.lists(st.sampled_from(filler), min_size=len(order) + 1,
+                            max_size=len(order) + 1))  # fmt: skip
+    text, planted = "\\documentclass{article}\n", []
+
+    def plant(template: str, kind: str) -> None:
+        nonlocal text
+        pieces = [piece.replace("{{", "{").replace("}}", "}") for piece in template.split("{}")]
+        for piece in pieces[:-1]:
+            key = f"k{4101 + len(planted)}"
+            planted.append((key, kind))
+            text += piece + key
+        text += pieces[-1]
+
+    for template, kind in LATEX_PREAMBLE_BINDINGS:
+        plant(template, kind)
+    text += "\\begin{document}\n"
+    for piece, index in zip(between, order, strict=False):
+        text += piece
+        plant(*LATEX_BINDING_PLACES[index])
+    text += between[-1] + "\\end{document}\n"
+    return text, planted
+
+
 _SECTIONING = {-1: "part", 0: "chapter", 1: "section", 2: "subsection", 3: "subsubsection"}
 
 
@@ -2834,6 +2897,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "latex mask": latex_texts(),
     "latex refusals": latex_texts(),
     "latex sections": latex_texts(),
+    "latex bindings": latex_texts(),
     "hidden": texts(TERMS),
     "own words": texts(TERMS),
     "spans": texts(),

@@ -59,12 +59,15 @@ def check_format(project: Project) -> Report:
     )
 
 
-def not_read_in_latex(gate: str) -> Finding:
-    """The one finding a gate not yet taught LaTeX reports instead of running."""
+def not_read_in_latex(gate: str, part: str | None = None) -> Finding:
+    """The one finding a gate not yet taught LaTeX reports instead of running, or, with
+    `part`, what a gate taught LaTeX in part does not read yet."""
     return Finding(
         gate=gate,
         code="not-read-in-latex",
-        message=f"{gate} does not read LaTeX yet, so it read nothing of this manuscript",
+        message=f"{gate} does not read LaTeX yet, so it read nothing of this manuscript"
+        if part is None
+        else f"{gate} does not read {part} in LaTeX yet, so it did not check them here",
         hint="a LaTeX manuscript cannot pass submission until every gate reads it",
     )
 

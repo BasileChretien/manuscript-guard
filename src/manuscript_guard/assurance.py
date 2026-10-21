@@ -93,7 +93,7 @@ def assurance(report: Report, project: Project) -> list[str]:
         "computational reproducibility": _verified(project),
         "literature": [*_attested(project), *_passages(report, project)],
         "methodological validity": ["no review of the design"],
-        "review": [*_rounds(project), *_figures(project)],
+        "review": [*_rounds(project), *_comments(project), *_figures(project)],
     }
     for dimension in DIMENSIONS:
         lines.append(f"  {dimension.name}")
@@ -212,6 +212,28 @@ def _rounds(project: Project) -> list[str]:
     return [
         f"{len(rounds)} panel round{'s' if len(rounds) > 1 else ''} read; the last, round "
         f"{last}, by {', '.join(readers)}" + (f" on {dates[-1]}" if dates else "")
+    ]
+
+
+def _comments(project: Project) -> list[str]:
+    """The co-authors' Word comments `import` filed, and how many are still unanswered."""
+    from manuscript_guard.filed_comments import records
+
+    findings = []
+    for path in records(project):
+        listed = _read(path).get("findings")
+        # One the schema refuses is G11's to report, as it is G11's to count.
+        findings += [f for f in listed if isinstance(f, dict)] if isinstance(listed, list) else []
+    if not findings:
+        return []
+    open_ = sum(
+        1
+        for f in findings
+        if not (str(f.get("resolution") or "").strip() or str(f.get("overridden") or "").strip())
+    )
+    return [
+        f"{len(findings)} comment{'s' if len(findings) > 1 else ''} from Word filed, "
+        f"{open_} of them unanswered"
     ]
 
 

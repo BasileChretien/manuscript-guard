@@ -56,6 +56,13 @@ that work's stored source under `literature/sources/`, and report:
 - a claim stronger than the source: a hedge dropped, an association stated as a cause;
 - a review cited for a finding that belongs to a primary study.
 
+Where `literature/passages.yaml` records a passage for a sentence, G7 has checked that its
+words are in the source: read the sentence against that passage first, then against the
+source around it, since a passage can be the source's words and still not say what the
+sentence says. Where a sentence has none, give in the finding the words of the source that
+do support it, if any, with where they stand, to be recorded with the literature-verify
+skill. Never record a judgement of a passage yourself; that is the author's.
+
 Numbers in the ledger are left to G7, which checks them better. A citation whose work has no
 stored source, or one nothing can read, is unchecked, never supported: list those citations
 in one `comment` finding, so that a reading with few findings is not taken for one that

@@ -139,6 +139,36 @@ def _mask() -> Reading:
     return mask
 
 
+@reading("latex mask")
+def _latex_mask() -> Reading:
+    from manuscript_guard.text.latex.mask import mask
+
+    return mask
+
+
+@reading("latex refusals")
+def _latex_refusals() -> Reading:
+    from manuscript_guard.text.latex.mask import read
+
+    return lambda text: [[r.code, r.offset] for r in read(text).refusals]
+
+
+@reading("latex sections")
+def _latex_sections() -> Reading:
+    # `Heading` came with the headings, so that a base without them has no such reading.
+    from manuscript_guard.text.latex.mask import Heading, read  # noqa: F401
+
+    def sections(text: str) -> dict[str, Any]:
+        reading = read(text)
+        return {
+            "headings": [[h.start, h.level, h.title] for h in reading.headings],
+            "abstracts": [list(span) for span in reading.abstracts],
+            "inputs": [[i.offset, i.path, i.body, list(i.environments)] for i in reading.inputs],
+        }
+
+    return sections
+
+
 @reading("hidden")
 def _hidden() -> Reading:
     from manuscript_guard.gates.language import _hidden as hidden
@@ -641,6 +671,32 @@ def _prose_quotations() -> Reading:
         return [[q.line, q.quote, list(q.keys)] for q in quotations_in(text)]
 
     return quotations
+
+
+@reading("passages")
+def _passages() -> Reading:
+    """The sentences each entry of a `passages.yaml` belongs to, with the line of each one's
+    paragraph, and why an entry belongs to none: what G7 holds a supporting passage to, and
+    what the co-author checker shows it beside. No source is stored, so none is read."""
+    from manuscript_guard.checking.produce import cited_sentences, citing_document
+    from manuscript_guard.literature.passages import Passage, survey
+
+    nowhere = Path(__file__).resolve().parent / "no stored sources"
+
+    def passages(given: dict[str, Any]) -> list[list[Any]]:
+        sentences = cited_sentences([citing_document(MAIN, given["text"])])
+        entries = tuple(
+            Passage(number, entry["sentence"], entry["citekey"], entry["passage"],
+                    entry["locator"])
+            for number, entry in enumerate(given["entries"], start=1)
+        )  # fmt: skip
+        found = survey(nowhere, sentences, entries)
+        return [
+            [[[cited.line, cited.text] for cited in one.sentences], one.stale]
+            for one in found.passages
+        ]
+
+    return passages
 
 
 @reading("checker sentences")

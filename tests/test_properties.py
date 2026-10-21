@@ -786,6 +786,29 @@ def test_latex_s_printed_view_holds_what_it_prints_as_markdown_writes_it(
     assert abstract in sections["Abstract"] and after not in sections["Abstract"], view
 
 
+@holds(60, latex_trees())
+def test_latex_s_printed_view_writes_each_file_where_it_is_input(
+    drawn: tuple[dict[str, str], dict[str, list[str]], dict[str, list[str]]],
+) -> None:
+    """A word written after each heading of a manuscript of several files is in the view G4
+    reads in the order LaTeX prints it, under the heading LaTeX prints it under: a file input
+    is printed where its `\\input` stands, and the text of the file that input it goes on
+    after it (step 6)."""
+    files, _under, marks = drawn
+    document = latex_structure.read_tree(files)
+    assert document.refusals == (), document.refusals
+    view = latex_print.printed_view([s for s in document.sources if not s.loose])
+    order = [int(found) for found in re.findall(r"\bmark(\d+)\b", view)]
+    assert order == list(range(1, len(marks) + 1)), view
+    for section in split_sections(view):
+        for found in re.findall(r"\bmark\d+\b", section.body):
+            assert marks[found][-1] == section.title, (found, section.title, view)
+
+
+def _an_input_file_is_printed_after_its_parent(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print, "_cuts", lambda source: [])
+
+
 def _a_floats_words_are_printed(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(latex_mask, "FLOATS", frozenset())
 
@@ -7488,6 +7511,10 @@ BROKEN = {
     "in LaTeX, natbib's and biblatex's settings in the preamble are refused": (
         _a_preamble_cite_setting_is_refused,
         test_a_latex_citation_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX's printed view, a file input is printed after the file that inputs it": (
+        _an_input_file_is_printed_after_its_parent,
+        test_latex_s_printed_view_writes_each_file_where_it_is_input,
     ),
     "in LaTeX's printed view, a float's words are printed": (
         _a_floats_words_are_printed,

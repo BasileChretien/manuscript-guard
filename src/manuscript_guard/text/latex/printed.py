@@ -33,18 +33,30 @@ _MARKDOWN_LINE = re.compile(r"(?m)^([ \t]*)(#|-{3,}[ \t]*$|={3,}[ \t]*$)")
 
 
 def printed_view(sources: list[Source]) -> str:
-    """The document the sources make, in the order the build prints them, as Markdown."""
+    """The document the sources make, as the build prints it, as Markdown. `sources` are in
+    the include tree's order, each file before the files it inputs, and each file input is
+    written where its `\\input` ends, which is where LaTeX prints it."""
     levels = [heading.level for source in sources for heading in source.reading.headings]
     shallowest = min(levels, default=1)
-    return "\n\n".join(_printed(source, shallowest) for source in sources)
+    queue = iter(sources)
+
+    def written(source: Source) -> str:
+        return _printed(source, shallowest, lambda: written(next(queue)))
+
+    return "\n\n".join(written(source) for source in queue)
 
 
-def _printed(source: Source, shallowest: int) -> str:
-    """One source's part of the view: its body, with each event written as Markdown."""
+def _cuts(source: Source) -> list[int]:
+    """Where each file the source inputs ends its `\\input`, in order: the include tree reads
+    each file there, and lists it next."""
+    return [end for end, _after in source.resumes]
+
+
+def _printed(source: Source, shallowest: int, child=lambda: "") -> str:
+    """One source's part of the view: its body, with each event written as Markdown, and
+    `child()` where each file it inputs is printed."""
     reading = source.reading
-    if _body(reading) < 0:
-        return ""
-    events: list[tuple[int, int, str]] = []
+    events: list[tuple[int, int, str | None]] = [(cut, cut, None) for cut in _cuts(source)]
     for heading in reading.headings:
         hashes = "#" * (heading.level - shallowest + 1)
         events.append((heading.start, _title_end(heading),
@@ -64,9 +76,20 @@ def _printed(source: Source, shallowest: int) -> str:
     # A table typed outside a float: its cells are no words of the text, as a Markdown
     # table's rows are none.
     events += [(start, end, " ") for start, end in reading.tables]
-    out, at = [], _body(reading)
-    # The outermost event at each place is written, and those it holds go with its span.
-    for start, end, written in sorted(events, key=lambda event: (event[0], -event[1])):
+    # A file that never reaches the body prints nothing, and the files it inputs are read.
+    body = _body(reading)
+    out, at = [], body if body >= 0 else len(reading.masked)
+    # The outermost event at each place is written, and those it holds go with its span. A
+    # file input is never passed over: where an event holds its `\\input`, as a float may, it
+    # is printed after that event, and before an event that starts where the `\\input` ends.
+    ordered = sorted(events, key=lambda event: (event[0], event[2] is not None, -event[1]))
+    for start, end, written in ordered:
+        if written is None:
+            if start > at:
+                out.append(_prose(reading.masked[at:start]))
+                at = start
+            out.append(child())
+            continue
         if start < at:
             continue
         out.append(_prose(reading.masked[at:start]))

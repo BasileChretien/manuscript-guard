@@ -91,7 +91,7 @@ def assurance(report: Report, project: Project) -> list[str]:
     lines = ["What was checked, by what (no score: none of this says the paper is right):"]
     recorded = {
         "computational reproducibility": _verified(project),
-        "literature": _attested(project),
+        "literature": [*_attested(project), *_passages(report, project)],
         "methodological validity": ["no review of the design"],
         "review": [*_rounds(project), *_figures(project)],
     }
@@ -246,6 +246,31 @@ def _attested(project: Project) -> list[str]:
         f"{len(attested)} value{'s' if len(attested) > 1 else ''} attested as read in a source "
         f"that could not be stored, by {', '.join(people)}"
     ]
+
+
+def _passages(report: Report, project: Project) -> list[str]:
+    """How many cited statements carry a passage of a work they cite, and how many passages a
+    person judged against the sentence the manuscript has, as G7 counted them, and by whom.
+    Neither a judgement a model's name signs, which G7 refuses, nor one of a stale passage is
+    counted, nor named (rounds 1 and 2 of #374: both were said to be recorded)."""
+    from manuscript_guard.gates.passages import current_judges
+
+    total = report.counts.get("cited_statements", 0)
+    if not total:
+        return []
+    carrying = report.counts.get("cited_statements_with_passage", 0)
+    said = f"cited statements with a passage of a work they cite: {carrying} of {total}"
+    judged = report.counts.get("passages_judged", 0)
+    if judged:
+        try:
+            people = current_judges(project)
+        except ContractError:  # a manuscript that cannot be read: `check` has said so
+            people = []
+        said += (
+            f"; passages judged against their sentence by a person: {judged}"
+            + (f", by {', '.join(people)}" if people else "")
+        )
+    return [said]
 
 
 def _read(path: Path) -> dict:

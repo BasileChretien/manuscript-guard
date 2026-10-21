@@ -1847,6 +1847,81 @@ files it; and where the writer left words out, `[...]`, `…` or `...`, or marke
 each piece either side is looked for, in the order quoted (round 1 of #282: the first file
 alone was read, and the whole quotation was looked for, so both were said to be absent).
 
+## A cited statement carries the passage that supports it
+
+The ledger holds the sentence of the source that states each number taken from it, and G7
+holds the two together. A sentence that cites a work for what it says, with no number in it,
+carried nothing a machine could check: the co-author's item showed the sentence and the
+reference, and whether the work says it was answered from memory by whoever was asked.
+CFD-Paper-Agent (github.com/Xiuyiw/CFD-SCIPaper-Agent) keeps claim-specific excerpts with
+locators and support decisions for the same reason; here the excerpt is held to the stored
+source.
+
+`literature/passages.yaml` holds, for a sentence that cites a work and that work, the passage
+of it that supports the sentence, copied from the stored source, and where it stands; and,
+where a person has read it against the sentence, their judgement: `support` (`supports`,
+`partly` or `does-not`), `judged_by` and `judged_on`. A file of its own, not value-less
+entries in the ledger, whose every rule (the value in the quote, a quote too short, the
+`lit.` namespace) would need an exception for them (Basile, 2026-10-20).
+
+**A passage belongs to its sentence by the words.** An entry names its sentence by its words
+and its work by the citation key, never by a file or a line, for the reason the checker's
+digest leaves the line out ("What the digest covers"): a manuscript gains and loses lines
+every day, and a sentence moved to the Discussion, or to the supplement, says what it said.
+The words are compared folded (`statement_words`): each citation group taken out, as
+`zotero/citations.py` reads one, so that a work cited beside it or a page number changed
+leaves the passage where it was; typography and white space as the ledger's quotes are
+folded; case; a space before a closing mark; and a final stop. A narrative citation is a word
+of the sentence and stays. A sentence reworded, or no longer citing the work, leaves its
+passage stale, since a passage chosen for other words need not support these, and a
+co-author must not be shown it as though it did. G7 notes a stale passage (`passage-stale`),
+naming as the sentence it may now be the one citing the same work that shares the most of
+its words, where one shares half or more. That share decides what the note says and nothing
+else.
+
+**Each passage is looked for in its work's stored files** (`stored_files`), each read once a
+run, with `quoted_in`: words left out, `[...]` or an ellipsis, and a word marked `[sic]`,
+read as for a quotation in the prose. One in none of them fails from drafting
+(`passage-not-in-source`), with what `placement.py` says of how near it came where the work
+has one readable file and the passage leaves nothing out. One whose work has no stored copy,
+or none that can be read, is a warning (`passage-unchecked`), and one of fewer than four
+words is a warning (`passage-too-short`), as a ledger quote is.
+
+**What is counted.** A cited statement is a sentence that cites, cut as the co-author's items
+are (`cited_sentences`, which both read), once in a file; it carries a passage where one of
+the works it cites has a passage that belongs to it. G7 counts both (`cited_statements`,
+`cited_statements_with_passage`) and the passages by what it found of them. The statements
+that carry none are one note while drafting and one warning from internal-review, never a
+failure (Basile, 2026-10-20): a citation of the software used, or of where a method comes
+from, needs no passage, and a gate that failed a paper for one would be switched off. `check`
+gives the count under the literature it assures. `manuscript-guard passages` lists each
+statement with the works it cites, their stored files and their passages as G7 finds them,
+`--missing` those with none, for an agent drafting them; it writes nothing.
+
+**Only a person judges a passage.** An agent may draft a passage from the stored source;
+whether it supports the sentence is a reader's judgement, which the checker puts to the
+co-authors and the entry records for the author. A model's name may not sign it
+(`judgement-not-human`, from drafting, as for `attested_by`). `does-not` fails from
+internal-review, since a draft others read should not hold a sentence a person judged its
+source does not support, and `partly` is a warning. A judgement of a stale passage was of
+words the manuscript no longer has: the stale note says so, and nothing else is said of it.
+The plugin's write guard puts to the person an agent's edit after which the judged entries
+are not the ones the file held before, word for word in their sentence, work, passage,
+judgement, judge and date: a judge named, the words under a standing judgement changed, or a
+judgement taken away, which would otherwise clear a `does-not` unasked (round 1 of #374). A
+locator or a note changed beside it is not put to them. A Codex patch holds only the lines it
+changes, so one to a file that holds a judgement outside a comment is put to the person, and
+refused where the tool cannot ask. A passage that is all elision, `[...]`, holds no word to
+look for and is not in its source.
+
+**What a co-author is shown.** The checker's item for a cited sentence shows each passage
+that belongs to it, with its locator in the caption, as evidence whose words are in the
+digest: a passage replaced after a co-author read it leaves their answer about one they never
+saw, and the item is outstanding again. Neither what G7 found of it nor the author's
+judgement is shown or digested. The first depends on the PDF reader of the machine that
+built the page, which a digest must not; the second would tell a co-author the answer before
+they read.
+
 ## Only a person can sign an attestation
 
 `attested.yaml` exists to record that **a named human read something the toolkit could not
@@ -3461,6 +3536,105 @@ reconciliation of the Methods with the code, so the prompt asks a reader to say 
 numbers and tables already reported cannot answer it, and an open major finding that asks
 for one says so. The ask is the reader's, and sealed with the reading where it is given:
 only there, so that every record sealed before findings could ask keeps its seal.
+
+## A reading may suggest the wording, and the author decides it in Word
+
+Basile asked on 2026-10-20 whether the panel's readers could make their changes the way a
+co-author does, as Word tracked changes the author accepts or refuses. They can, for prose,
+and only where the change is placed exactly. Four terms were his, chosen that day from the
+recommendations put to him: the edit is found by its words and not by a paragraph's
+identifier, every model reading is offered edits, the command is `review --suggestions`, and
+a refused edit is answered only by a reply in Word.
+
+**An edit belongs to a finding, and is the reader's.** A finding may carry `edits`, each the
+manuscript's words as they stand (`old`) and the words to put in their place (`new`), and
+ten at most are written from a reading. The reply schema takes them, null and an empty list
+read as left out, as null is for `where` and `ask`. They are optional, so a reply is not
+refused for one that cannot be placed: one that is empty, or past the ten, is dropped when
+the document is made, and said to be (round 1 of #367 found the empty list, which the prompt
+invites, refusing the whole paid reading). A design round's reader is not offered them,
+and a design reply that carries some is refused, since what it read was the plan. They are
+sealed with the reading where a finding has them (`SEALED_WHERE_GIVEN`), so every record
+sealed before edits existed keeps its seal, and an edit changed after filing is
+`reading-altered`: Word shows it under the reader's name. A reading written by hand or by an
+agent in the session carries them the same way, before `review --seal`.
+
+**The words say where, and only once.** A model is sent the manuscript as the build prints
+it, with no identifiers, so an edit cannot name a paragraph; it names its words. They have
+to be found exactly once in the manuscript's prose, front matter and comments left out,
+inside one paragraph that carries an identifier, and exactly once in that paragraph as the
+build printed it. Pandoc's typesetting is read as what it is, a straight quote finding a
+curly one and `--` an en dash, and a space a line break or a no-break space; the words are
+whole words, so "the" is not found in "other". Words found twice are not placed by choosing
+one: the reader is told to quote more of them. A generated property holds the finding to
+every run of words, typed and printed (`test_an_edit_s_words_are_found_where_they_stand_typed_or_printed_and_nowhere_else`).
+
+**Prose only, by the rule `reworded` applies.** An edit holds no character Markdown reads as
+markup, so it can open no binding, citation, emphasis or link; its words lie inside no
+binding, citation, code, link, footnote or other inline construct; and the paragraph before
+and after it gives `reworded.compare` nothing to say of a binding, a citation or a typed
+number. An edit that changes "2 x 2" to "3 x 2" is a finding, not a tracked change.
+
+**What is accepted comes back as written, or is not offered.** `import` merges an accepted
+edit as it merges any rewording from Word, and that merge rebuilds the edited stretch
+between two tokens from Word's text, which holds no markup. So each edit is put through the
+same merge before it is written (`roundtrip.align`, with the paragraph as Word would return
+it and the token extents of the marked build), and it is dropped unless the result is the
+source with `old` replaced by `new`, line wrapping aside. An edit beside emphasis in its
+stretch would flatten the emphasis on import, and is dropped here instead. Two edits of the
+same words are both dropped; one whose paragraph would not come back with the edits before
+it accepted too is dropped. Each dropped edit is listed with its reason and stays a finding.
+
+**The document is the build, with the changes in it.** `review --suggestions --round N` builds
+the document offline, as `build --offline` does, into `build/suggestions/round-N.docx` (and
+`round-N-supplementary.docx` where an edit is in the supplement). Not into `build/` itself:
+`check` holds every document there to the source, and this one is stale the moment an
+accepted edit is imported. The build's own record of what it printed is written as every
+build's is, and the document names it, so `import` reads it as exactly as the document a
+co-author is sent. `tracked.write` then makes each edit in the runs pandoc wrote: the old words
+moved into `w:del`, the new ones in a `w:ins` with the first old run's formatting, both under
+the reader's name, a comment over them holding the finding, and a bookmark `mg-s-<n>` around
+them. Only runs that hold nothing but text are edited: never inside a field, a link or a
+symbol, nor across a bookmark the build placed. The file is kept only if, read with every
+change rejected, it is the build character for character, and read with every change
+accepted, it is the build with each edit made.
+
+What the document records of its suggestions is in its properties, split as the paragraph
+record is: each suggestion's number, round, reviewer, reader, finding and author, and
+digests of its old words, its new words and its comment. Never the words: a document's
+properties stay with it through everything an author deletes before sending it on.
+
+**Word 16, as seen over COM on 2026-10-20.** Each change appears as a revision by the reader's
+name, accepted or rejected one at a time or with Accept All and Reject All. The bookmark and
+the comment stay through either, around what is left: the new words once accepted, the old
+once rejected. Accepting the deletion and rejecting the insertion leaves nothing inside the
+bookmark, and Word removes the bookmark, the comment and its mark. A reply is a comment of
+its own over the same words, which `word/commentsExtended.xml` ties to the comment it
+answers (`w15:paraIdParent`), under the name Word has for the person replying. Word merges
+runs and renumbers comments when it saves; nothing here reads either.
+
+**`import` refuses an undecided suggestion, and answers what was decided.** It reads every
+tracked change as accepted, and read so, a suggestion nobody looked at would merge. So a
+document that records suggestions is refused, with nothing written, while it holds a change
+under one of their authors. Changes by anybody else are read as they always were. Once all
+are decided, the text inside each bookmark is the new words (accepted), the old (refused),
+other words (typed in after deciding), or the bookmark is gone. The panel's own comments are
+its findings, already in the records, and are not listed as a co-author's; nor are the
+replies to them, which are said with the suggestions. With `--apply`, each finding is
+answered in its record (`record.answer_finding`, which adds the lines after the finding's
+last and changes nothing else in the file):
+
+- an accepted edit is the finding's `resolution`, dated, naming the words, once `import` has
+  merged its paragraph with the new words in it; refused beside it in the same finding, the
+  other edits are named as refused;
+- a finding whose edits were all refused is `overridden` by the author's reply in Word,
+  `overridden_by` the reply's author, and with no reply it stays open: turning down a
+  wording does not answer what the finding says, and G11 asks for a reason;
+- a finding with an edit changed in Word or gone, one answered already, or one whose record
+  no longer holds the edit the document was made from or no longer reads as sealed, is left
+  to the author, with the reason.
+
+The answers are outside the seal, so the reading stays sealed.
 
 ## A panel read by several providers
 
@@ -12090,6 +12264,105 @@ Open, recorded as each change landed:
   contrived). A DOI that `references.bib` writes with a TeX escape, `10.1000/abc\_def`, is
   looked for under `10.1000_abc__def` and not found, as G7 reads the same DOI with its
   backslash (round 1).
+- **A supporting passage is in its work, and is not held to what its sentence says.** G7
+  finds the words in the stored source; whether they say what the sentence says is the
+  judgement it leaves to people, the author's in `passages.yaml` and the co-authors' in the
+  checker. A binding in a sentence is a word of it, `{{lit.x}}` by its key and not its
+  value, so a sentence whose bound value changes keeps its passage, as its checker item
+  keeps its answers. A
+  sentence citing several works carries a passage when one of them has one, so `[@a; @b]`
+  cited for two claims counts as carrying one with a's alone. A passage found only in
+  `<key>.abstract.txt` is verified, and nothing says it rests on an abstract, as the
+  ledger's `depth` says of a value. Two entries for one sentence and work judged
+  differently are each reported as they say, and nothing says they disagree. The stale note
+  names as the sentence "it may now read" the one citing the work that shares the most of
+  its words, half or more; a sentence split in two, or two merged, may be named wrongly,
+  and nothing is decided by it. The write guard reads a Write or an Edit whole and a patch
+  by its lines, and not an edit made by a shell command, as for `attested_by`, nor a patch
+  that deletes `passages.yaml`; and a rewording of the manuscript's sentence, which is no
+  edit of the file, leaves a judgement stale and its `does-not` with it, unasked. A model's
+  name is the deny-list G7 reads `attested_by` with, which knows the agent tools and models
+  by the names they are sold under and not every name an agent could sign. G7 reads a
+  work's stored files once for the passages and once for the quotations in the prose, so a
+  PDF goes through `pdftotext` twice a `check`.
+
+- **A suggested edit is placed only where nothing else is in its way.** `review
+  --suggestions` writes an edit only where its words are found once and its acceptance
+  comes back into the source exactly (see "A reading may suggest the wording"). What that
+  leaves out:
+  - *Words beside markup.* An accepted edit is merged by `import`, which rebuilds the
+    edited stretch between two tokens from Word's text, so an edit in a stretch that also
+    holds emphasis, code or a link is dropped rather than offered. In a Results paragraph
+    with an italic *P* that is most of the paragraph. Writing the accepted words into the
+    source directly, at the range the edit was found at, would keep the markup; it would
+    also be a second way of merging Word's text beside `import`'s, and was not built.
+  - *A heading, a caption, a list item, a quotation or a table cell* carries no identifier
+    and so takes no edit, as `import` brings back none of them.
+  - *Several edits in one paragraph* are tried alone and each with the ones before it
+    accepted. With three or more, a mix accepted in Word that was not tried could come
+    back otherwise; `import` then refuses or merges that paragraph by its own rules, and
+    the findings stay open where it refuses.
+  - *The inserted words are shown as typed*, a straight apostrophe in a paragraph pandoc
+    curled, because the merge keeps Word's quotes and the source should get what the reader
+    wrote. The next build prints them curled.
+  - *The source as it stands.* Edits are placed in the manuscript when the command runs;
+    a reading of an earlier version has its edits placed where its words still stand once,
+    and dropped where they do not.
+- **What was decided in Word is read from the bookmark and the comment.** An author who
+  deletes the words of a suggestion whole, or accepts its deletion and rejects its
+  insertion, removes the bookmark, and that finding is left to answer by hand. A comment
+  whose text the author edited is not known as the finding's, so a reply to it is not read,
+  and a refused edit then leaves its finding open. A reply is known only by
+  `word/commentsExtended.xml`, which Word writes; an editor that writes none has no replies
+  here. Nothing of this answers a finding wrongly: each leaves it open.
+- **What round 1 of #367's review recorded and left.** Each is non-blocking under the bar:
+  - *A failure of `tracked.write` is a traceback.* `write_round` turns a build's failure into
+    a message and not the writer's (a document with no comments part, or the check that
+    the written file reads as built and as edited), and the build is then left in
+    `build/suggestions/` without its changes. No plausible document reaches it: pandoc
+    always writes the comments part.
+  - *An accepted edit answers its finding beside a refused one.* In a finding with two
+    edits, one accepted and one refused with no reply, the acceptance is its `resolution`,
+    major or not; the refusal is named in it. Only a finding whose edits were all refused
+    needs a reply to be answered.
+  - *The ten a reading may have written are counted as suggested.* A reading whose first
+    ten edits all fail to place has its eleventh dropped for the cap, though none was
+    written.
+  - *An edit dropped when the document was made goes unmentioned.* A finding with one edit
+    written and accepted and another dropped is resolved by the first, and its resolution
+    does not say the second was never offered.
+  - *A reply in Word with no author is listed again as a co-author's comment*, since the
+    import's comment reader names such a comment "an unnamed reviewer" and the reader of
+    replies does not. Said twice, answered once.
+  - *The refusal of undecided suggestions rests on the document's list of them.* A tool that
+    dropped the `manuscript-guard-suggestions-*` properties and kept the source stamp would
+    have every panel change read as accepted. The `mg-s-` bookmarks would still be there to
+    refuse by; no tool is known to drop the one and keep the other.
+- **A suggested edit that moves a claim says so in Word, edit by edit.** Since #371 an edit
+  that only changes how strongly its sentence claims is written, with the move after its
+  finding in the comment (`suggestions._claim_moved`). The review of 12dffd8e recorded:
+  - *Each note is of its edit alone*, against the paragraph as it stands; two edits in one
+    sentence whose moves add up or cancel each say their own, and nothing says what
+    accepting both does.
+  - *The terminal does not say it.* `review --suggestions` lists the edits it wrote
+    without the move, which is seen only in the document.
+  - *Untested*: a recorded suggestion whose `written` digest is null, which `offered_of`
+    refuses, and a reply to a comment that carries a note, which is matched by that digest.
+- **The document of suggestions is built offline.** Its citations are formatted by the
+  journal's style from `references.bib`, as `build --offline` formats them, whether the
+  author builds live or not. It is for the author, never for a co-author or the journal.
+- **The tests import documents edited the way Word edits them, not ones Word saved.** On
+  2026-10-20 a document of the example's round 8 was decided in Word 16 over COM and saved,
+  and `import --apply` of it merged the accepted words and answered both findings as the
+  tests expect; a copy with eight changes left open was refused. The two documents Word
+  saved are kept (`tests/data/word/`) and their reading is tested, but importing them needs
+  the example as it stood that day, so the import tests use `tests/word_edits.py`, which
+  makes Word's edits to a document built now. Those edits were each seen in Word.
+- **Round 2 of #367 recorded** that the pass choosing which documents to build looks for
+  every edit's words before the placement drops the empty ones and those past ten. An edit
+  of no words finds one match at every character of the manuscript, a list that is then
+  thrown away; and an edit to be dropped in a supplement paragraph has the supplement built,
+  then deleted. Both come out right.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

@@ -39,6 +39,8 @@ from generated import (
     AGREED,
     CLAIMED,
     DATA_IDENTIFIERS,
+    EDIT_GAPS,
+    EDIT_WORDS,
     FILLER,
     FIXED_LINKS,
     FOLDED,
@@ -3397,6 +3399,73 @@ def _a_rule_or_a_table_s_dashes_are_em_dashes(patch: pytest.MonkeyPatch) -> None
 
 def _any_run_of_hyphens_is_an_em_dash(patch: pytest.MonkeyPatch) -> None:
     _em_dash_rule(patch, pattern="\N{EM DASH}|-{2,}")
+
+
+# ------------------------------------------------------------------- a suggested edit
+
+
+@st.composite
+def _edit_words_planted(
+    draw: st.DrawFn,
+) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+    """Every word of `EDIT_WORDS` and every gap of `EDIT_GAPS` at least once, in an order
+    drawn each time, with some words drawn again so that a run of them stands twice."""
+    words = [*EDIT_WORDS, *draw(st.lists(st.sampled_from(EDIT_WORDS), min_size=2, max_size=6))]
+    words = list(draw(st.permutations(words)))
+    gaps = [*EDIT_GAPS, *draw(st.lists(st.sampled_from(EDIT_GAPS), min_size=len(words),
+                                         max_size=len(words)))]  # fmt: skip
+    return words, list(draw(st.permutations(gaps)))[: len(words) - 1]
+
+
+@holds(100, _edit_words_planted())
+def test_an_edit_s_words_are_found_where_they_stand_typed_or_printed_and_nowhere_else(
+    planted: tuple[list[tuple[str, str]], list[tuple[str, str]]],
+) -> None:
+    """`review --suggestions` places an edit where its words are found once, in the source
+    as typed and in the document as pandoc printed it. Every run of up to three words is
+    looked for, in both, and has to be found at each place that run stands and at no other:
+    across a line break, beside a no-break space, typeset, and never inside a longer word."""
+    from manuscript_guard.suggestions import found_in
+
+    words, gaps = planted
+    for side in (0, 1):
+        text, starts, ends = "", [], []
+        for index, word in enumerate(words):
+            text += gaps[index - 1][side] if index else ""
+            starts.append(len(text))
+            text += word[side]
+            ends.append(len(text))
+        for length in (1, 2, 3):
+            for first in range(len(words) - length + 1):
+                run = [typed for typed, _printed in words[first : first + length]]
+                expected = [
+                    (starts[at], ends[at + length - 1])
+                    for at in range(len(words) - length + 1)
+                    if [typed for typed, _printed in words[at : at + length]] == run
+                ]
+                assert found_in(text, " ".join(run)) == expected, (" ".join(run), text)
+
+
+def _an_edit_is_found_only_as_typed(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import suggestions
+
+    patch.setattr(suggestions, "_TYPESET", ())
+
+
+def _an_edit_is_found_inside_longer_words(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import suggestions
+
+    real = suggestions.pattern_of
+    edges = ("(?<![^\\W_])", "(?![^\\W_])")
+    patch.setattr(suggestions, "pattern_of", lambda old: re.compile(
+        real(old).pattern.replace(edges[0], "").replace(edges[1], "")
+    ))  # fmt: skip
+
+
+def _a_line_break_between_an_edit_s_words_is_no_space(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import suggestions
+
+    patch.setattr(suggestions, "_SPACE", "[ \\t\\u00a0]+")
 
 
 # ------------------------------------------------------------------------- a rewording
@@ -6891,6 +6960,18 @@ BROKEN = {
     "an em dash typed as three hyphens is not counted": (
         _an_em_dash_typed_is_not_counted,
         test_an_em_dash_is_counted_however_it_is_typed,
+    ),
+    "an edit's words are found only as they are typed": (
+        _an_edit_is_found_only_as_typed,
+        test_an_edit_s_words_are_found_where_they_stand_typed_or_printed_and_nowhere_else,
+    ),
+    "an edit's words are found inside longer words": (
+        _an_edit_is_found_inside_longer_words,
+        test_an_edit_s_words_are_found_where_they_stand_typed_or_printed_and_nowhere_else,
+    ),
+    "a line break between an edit's words is no space": (
+        _a_line_break_between_an_edit_s_words_is_no_space,
+        test_an_edit_s_words_are_found_where_they_stand_typed_or_printed_and_nowhere_else,
     ),
     "a rule's or a table's dashes are em dashes": (
         _a_rule_or_a_table_s_dashes_are_em_dashes,

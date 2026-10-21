@@ -15194,6 +15194,167 @@ def test_a_supplementary_file_s_own_title_is_compared_with_the_paper_s(tmp_path:
 
 
 # --------------------------------------------------------------------------------------
+# A suggested edit is placed exactly, and decided before it is imported. A finding may carry
+# the wording it asks for (`edits`); `review --suggestions` writes each as a tracked change
+# under its reader's name, and `import` brings back what the author accepted. An edit that
+# changed after it was filed would be shown in Word as the reader's; one placed anywhere but
+# exactly would change other words; and one nobody decided would be imported as accepted.
+# --------------------------------------------------------------------------------------
+
+_A_MODEL_SUGGESTED = [
+    {
+        "severity": "minor",
+        "where": "Introduction",
+        "finding": "Say plainly that nobody has looked.",
+        "edits": [{"old": "has not been examined", "new": "remains unexamined"}],
+    },
+]
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda d: d["findings"][0]["edits"][0].update(new="was never examined by anyone"),
+        lambda d: d["findings"][0]["edits"].append({"old": "specifically", "new": "alone"}),
+        lambda d: d["findings"][0].pop("edits"),
+    ],
+    ids=["new-words-changed", "an-edit-added", "the-edits-deleted"],
+)
+def test_a_model_s_suggested_edit_changed_after_it_was_filed_fails(
+    project: Path, monkeypatch, mutate
+) -> None:
+    """The edit is the reader's, and Word shows it under the reader's name: changed after
+    the reading was filed, the reading is altered."""
+    from test_review_run import Providers, answer, configure, reply_text
+
+    from manuscript_guard.cli import main
+    from manuscript_guard.panel import client
+
+    transport = Providers()
+    transport.default = lambda request: answer(reply_text("minor-revision", _A_MODEL_SUGGESTED))
+    monkeypatch.setattr(client, "default_transport", transport)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-openai-0123456789SECRETA")
+    shutil.rmtree(project / "review")
+    configure(project, "openai/model-a")
+    assert main(["review", str(project), "--run", "--yes"]) == 0
+    path = sorted((project / "review" / "round-1").glob("*.*.yaml"))[0]
+    filed = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert filed["findings"][0]["edits"] == _A_MODEL_SUGGESTED[0]["edits"]
+    assert "reading-altered" not in _review_failures(project)
+    _edit(path, mutate)
+    assert "reading-altered" in _review_failures(project)
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_an_edit_that_changes_a_number_a_binding_or_a_citation_is_not_written(
+    project: Path,
+) -> None:
+    """By the rule `reworded` applies: a typed number changed, words that are only in the
+    text with a value printed into them, words inside a citation, and new words that would
+    open a binding or a citation. Each stays a finding to answer, and no document is made
+    for edits none of which could be placed."""
+    from suggesting import document, finding, suggest, with_edits
+
+    path = project / "manuscript" / "main.md"
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(
+            "Whether the signal extends to example-drug specifically has not been examined.",
+            "Whether the signal extends to example-drug specifically has not been examined, "
+            "as the agency said [see @fictionalClassSignal2019, p. 4].",
+        ),
+        encoding="utf-8",
+    )
+    with_edits(
+        project,
+        finding(
+            "r8-pe-02",
+            ("computed from a 2 x 2 table", "computed from a 3 x 2 table"),
+            ("a period of 10 years", "ten years"),
+            ("as the agency said", "as {{results.ror.point}} said"),
+            ("has not been examined", "has not been examined @fictionalClassSignal2019"),
+        ),
+        finding("r8-pe-03", ("p. 4", "p. 5")),
+    )
+    code, said = suggest(project)
+    assert code == 0, said
+    reasons = {
+        "computed from a 2 x 2 table": "more than a change of words",
+        "a period of 10 years": "only with a value",
+        "as the agency said": "Markdown reads as markup",
+        "has not been examined": "Markdown reads as markup",
+        "p. 4": "inside a citation",
+    }
+    for old, why in reasons.items():
+        line = next((ln for ln in said.splitlines() if f"'{old}" in ln), "")
+        assert why in line, (old, said)
+    assert "written as tracked changes" not in said
+    assert not document(project).exists()
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_an_edit_whose_words_are_not_found_exactly_once_is_not_written(project: Path) -> None:
+    """Words in the manuscript more than once, nowhere, across two paragraphs, beside
+    emphasis that a merge from Word's text would drop, and two edits of the same words: none
+    is placed by guessing which was meant."""
+    from suggesting import finding, suggest, with_edits
+
+    path = project / "manuscript" / "main.md"
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(
+            "Whether the signal extends to example-drug specifically",
+            "Whether the signal extends to *example-drug* specifically",
+        ),
+        encoding="utf-8",
+    )
+    with_edits(
+        project,
+        finding(
+            "r8-pe-02",
+            ("the", "THE"),
+            ("words that are nowhere", "other words"),
+            ("has not been examined.\n\nWhether", "x"),
+            ("specifically has not", "has not"),
+            ("Reports were included without", "Reports were taken without"),
+            ("were included without restriction", "were included with no restriction"),
+        ),
+    )
+    code, said = suggest(project)
+    assert code == 0, said
+    reasons = {
+        "the": "in the manuscript",
+        "words that are nowhere": "not in the manuscript as it stands",
+        "has not been examined. Whether": "two paragraphs",
+        "specifically has not": "would not come back into the source as written",
+        "Reports were included without": "same words",
+        "were included without restriction": "same words",
+    }
+    for old, why in reasons.items():
+        line = next((ln for ln in said.splitlines() if f"'{old}" in ln), "")
+        assert why in line, (old, said)
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_suggestion_nobody_decided_is_not_imported(project: Path, tmp_path: Path) -> None:
+    """Read as accepted, as `import` reads every tracked change, a suggestion the author
+    never looked at would merge. Nothing is imported while one is left, whichever."""
+    from suggesting import offered_round, run
+    from word_edits import decide
+
+    document = offered_round(project)
+    before = (project / "manuscript" / "main.md").read_bytes()
+    record = (project / "review" / "round-8" / "pharmacoepidemiologist.yaml").read_bytes()
+    for choices in ({}, {1: "accept"}, {1: "accept", 2: "reject"}, {2: "reject", 3: "accept"}):
+        returned = decide(document, tmp_path / "back.docx", choices)
+        code, said = run("import", str(returned), str(project), "--apply")
+        assert code == 1, said
+        assert "Accept or reject each one in Word first" in said
+        assert (project / "manuscript" / "main.md").read_bytes() == before
+        assert (project / "review" / "round-8" / "pharmacoepidemiologist.yaml").read_bytes() == (
+            record
+        )
+
+
+# --------------------------------------------------------------------------------------
 # G14: an abbreviation is defined once, before it is used. Each test below makes one of the
 # edits a hurried revision makes, and the gate has to report that edit and no other.
 # --------------------------------------------------------------------------------------

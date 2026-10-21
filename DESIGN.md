@@ -809,7 +809,11 @@ layouts for the figure's kind and two or three palettes for the number of colour
 says which every reader can read, offers an artist's palette the check does not pass only
 with that said, and applies the choice to the author's script. `manuscript-guard palettes`
 lists and filters (`--kind`, `--colours`, `--safe`, `--collection`) and shows one with its
-licence (`--show`). The check that counts is still G3's, on the rendered figure.
+licence (`--show`). With `--colours n`, `--safe` holds the n colours the palette gives, a
+continuous map's evenly spaced along it, apart for every reader, as G3 holds a figure of n
+classes (rounds 2 and 3 of #406: PuOr's seven and viridis's seven do not stay apart, though
+PuOr's ten do and viridis runs one way). The check that counts is still G3's, on the
+rendered figure, the supplement's figures as the paper's.
 
 ## The journal's citation style is used by every build
 
@@ -8270,7 +8274,9 @@ Added by the adversarial review, verified and **not** fixed:
   MoMAColors and NatParksPalettes) or as its makers' documentation states it (viridis,
   cividis, Crameri, Okabe and Ito), not tested. `figure_style` and `mg_theme` size text and
   lines to the journal's least or 7 pt and 0.5 pt, sizes many artwork guides give, which the
-  journal's own guide may set otherwise; `size` overrides. A palette's colours are not
+  journal's own guide may set otherwise; `size` overrides. `mg_theme` sets ggplot2's `line`
+  and `rect`, and an element a base theme draws at a multiple of them keeps it: `theme_bw`'s
+  minor grid is drawn at half the journal's least. A palette's colours are not
   checked against the figure that uses them: G3 reads the rendered figure.
 - **`stage:` is declared, not detected.** Writing `stage: analysis` demotes every G2 finding
   to INFO. It is printed, counted and summarised — never hidden — but CI reading the exit

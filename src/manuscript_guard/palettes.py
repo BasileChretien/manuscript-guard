@@ -380,6 +380,9 @@ def chosen(
     `safe`, only those every reader can read for that use (`readable`). A palette whose
     collection states no kind is offered for a set of colours, and also for an ordered or a
     diverging scale where its lightness runs one way or turns once."""
+    if colours is not None and colours < 1:
+        # Round 3 of #406: no colour of none is near another, and every palette was safe.
+        raise PaletteError(f"a palette of {colours} colours")
     out = []
     for name in names():
         found = palette(name)
@@ -407,20 +410,23 @@ def readable(found: Palette, kind: str | None = None, colours: int | None = None
     `colours` of them it gives for that many (`SAFE_AT` where not given) stay apart for each
     deficiency; as an ordered or a diverging scale, or a continuous map, that its lightness
     runs one way or turns once, and still does for each deficiency, and, where a number of
-    classes is given and the palette is no continuous map, that the colours it gives for
-    that many stay apart for each deficiency as well (round 1 of #406: Blues was offered for
-    five classes, of which no two stay apart with tritanopia). Those very colours are
-    tested, and not how many stay apart at most (round 2: ten of PuOr's do, and its seven
-    do not)."""
+    classes is given, that the colours it gives for that many, a map's evenly spaced along
+    it, stay apart for each deficiency as well, as G3 holds a figure of that many classes
+    (round 1 of #406: Blues was offered for five classes, of which no two stay apart with
+    tritanopia; round 3: viridis for seven, two of which tritanopia brings together). Those
+    very colours are tested, and not how many stay apart at most (round 2: ten of PuOr's
+    do, and its seven do not)."""
     as_scale = found.continuous or kind in ("sequential", "diverging") or (
         kind is None and found.kind in ("sequential", "diverging"))  # fmt: skip
     if as_scale:
         wanted = {"sequential": ("monotone",), "diverging": ("diverging",)}.get(
             kind or found.kind or "", ("monotone", "diverging"))  # fmt: skip
         ordered = found.lightness in wanted and found.lightness_kept
-        if not ordered or found.continuous or not colours:
+        if not ordered or not colours:
             return ordered
     n = colours or SAFE_AT
+    if found.continuous:
+        return _apart(ramp(found.name, n), DEFICIENCIES)
     return n <= len(found.colours) and _apart(_discrete(found, n), DEFICIENCIES)
 
 

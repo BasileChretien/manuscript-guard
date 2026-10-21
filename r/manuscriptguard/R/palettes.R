@@ -95,7 +95,10 @@ scale_fill_mg <- function(name, discrete = TRUE, reverse = FALSE, ...) {
 #' themes draw those at 0.8 of the base): 7 pt where the journal's least is lower, a size
 #' many artwork guides give for a figure's text at print size, or `size` where it is given.
 #' Lines, and the borders of panels and boxes, are drawn at the journal's thinnest line,
-#' or 0.5 pt where it gives none or a thinner one.
+#' or 0.5 pt where it gives none or a thinner one. An element `base` draws at a multiple of
+#' them keeps its multiple: `theme_classic`'s facet strips at twice, `theme_bw`'s minor grid
+#' at half, which is thinner than the journal's least; set it after this theme where it
+#' must hold.
 #'
 #' @param root The project, found upwards from the working directory where NULL.
 #' @param base A ggplot2 theme function, `ggplot2::theme_classic` by default.

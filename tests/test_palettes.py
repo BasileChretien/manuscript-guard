@@ -191,7 +191,7 @@ def test_a_safe_scale_of_n_classes_keeps_n_of_its_colours_apart() -> None:
     assert palettes.palette("brewer/Blues").distinct["cvd"] < 5
     five = {p.name for p in palettes.chosen(kind="sequential", colours=5, safe=True)}
     assert "brewer/Blues" not in five
-    assert "viridis/viridis" in five, "a continuous map is judged by its lightness"
+    assert "viridis/viridis" in five, "five of viridis stay apart for every reader"
     assert "brewer/Blues" in {p.name for p in palettes.chosen(kind="sequential", safe=True)}
 
 
@@ -229,6 +229,29 @@ def test_a_safe_palette_keeps_apart_the_very_colours_asked_for() -> None:
             if not found.continuous:
                 codes = palettes.colours(found.name, 7)
                 assert _most([codes], DEFICIENCIES) == len(codes), found.name
+
+
+def test_a_safe_map_of_n_classes_keeps_its_n_colours_apart() -> None:
+    """Round 3 of #406: with a number of classes a continuous map was judged by its lightness
+    alone, and viridis was offered for seven, two of whose seven colours tritanopia brings
+    under 10 apart, which G3 then warns of in the figure."""
+    assert _most([palettes.colours("viridis/viridis", 7)], DEFICIENCIES) < 7
+    assert "viridis/viridis" not in {
+        p.name for p in palettes.chosen(kind="sequential", colours=7, safe=True)}
+    assert "viridis/viridis" in {p.name for p in palettes.chosen(kind="sequential", safe=True)}
+    for found in palettes.chosen(kind="sequential", colours=5, safe=True):
+        codes = palettes.colours(found.name, 5)
+        assert _most([codes], DEFICIENCIES) == len(codes), found.name
+
+
+def test_a_number_of_colours_below_one_is_refused() -> None:
+    """Round 3 of #406: `--colours -1 --safe` listed every palette, since no colour of none
+    is near another."""
+    from manuscript_guard.cli import main
+
+    with pytest.raises(palettes.PaletteError):
+        palettes.chosen(kind="qualitative", colours=-1, safe=True)
+    assert main(["palettes", "--colours", "0", "--safe"]) == 2
 
 
 def test_a_lightness_that_runs_no_way_is_said_without_a_deficiency() -> None:

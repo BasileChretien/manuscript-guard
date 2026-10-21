@@ -2057,8 +2057,12 @@ def cmd_palettes(args: argparse.Namespace) -> int:
         for line in palettes.describe(found, codes):
             print(line)
         return 0
-    rows = palettes.chosen(kind=args.kind, colours=args.colours, safe=args.safe,
-                           collection=args.collection)  # fmt: skip
+    try:
+        rows = palettes.chosen(kind=args.kind, colours=args.colours, safe=args.safe,
+                               collection=args.collection)  # fmt: skip
+    except palettes.PaletteError as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 2
     if args.json:
         print(json_module.dumps([palettes.row(found) for found in rows], indent=1))
         return 0

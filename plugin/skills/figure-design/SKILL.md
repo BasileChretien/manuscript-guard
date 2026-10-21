@@ -69,7 +69,8 @@ many of them stay at least 10 apart (CIEDE2000) for a reader with protanopia, de
 or tritanopia (`cvd`) and in grey; for a map, whether its lightness runs one way, or turns
 once for a diverging one, and still does for each deficiency. For a scale binned into
 classes, give their number: a scheme whose lightness runs one way can still have two
-classes a deficiency makes one, and `--safe` then holds those very colours apart as well.
+classes a deficiency makes one, and `--safe` then holds those very colours apart as well,
+a continuous map's evenly spaced along it.
 Beside it is what the
 collection itself claims, where it claims anything: MetBrewer, MoMAColors and
 NatParksPalettes mark some palettes colour-blind friendly by their own reading, which is
@@ -87,7 +88,10 @@ Propose two or three, for the number of colours the figure needs:
 
 Let the author choose. Then change their script with the helper, re-render the figure, and
 run `manuscript-guard check`: the colour check reads the rendered SVG or PDF, which is what
-counts, not the palette's name.
+counts, not the palette's name. A supplementary figure (Figure S1 and on) is checked as the
+paper's are, alt text and colours both, so propose for it as for any other; a rule the
+journal's profile gives under `figures.supplementary` (online in colour where the paper
+prints in grey, say) is the one that holds for it.
 
 ## When check reports a colour finding
 

@@ -111,11 +111,18 @@ BINDS_AT = {
     "figure-source-hardcoded-data": DRAFTING,
     "figure-source-unclassified-number": DRAFTING,
     "figure-script-ignores-results": DRAFTING,
+    # Alternative text is read as prose is: a number in it is a result or a convention, and
+    # a binding in it prints a value.
+    "figure-alt-number": DRAFTING,
+    "figure-alt-binding": DRAFTING,
     # A quoted source has to be a real source as soon as it is quoted.
     "quote-not-in-source": DRAFTING,
     "value-not-in-quote": DRAFTING,
     "literature-source-missing": DRAFTING,
     "attestation-not-human": DRAFTING,
+    # So does a passage recorded as a cited work's words, and only a person judges one.
+    "passage-not-in-source": DRAFTING,
+    "judgement-not-human": DRAFTING,
     "citation-unresolved": DRAFTING,
     # Model artefacts are never acceptable in text anyone will read.
     "model-artefact": DRAFTING,
@@ -123,6 +130,12 @@ BINDS_AT = {
     # and a record edited by hand may be hiding one.
     "reference-retracted": DRAFTING,
     "lookup-record-edited": DRAFTING,
+    # An earlier output's numbers are compared as they were copied or quoted: a copy edited
+    # by hand, or a quote not in its source, compares an invented number.
+    "related-snapshot-edited": DRAFTING,
+    "related-source-missing": DRAFTING,
+    "related-quote-not-in-source": DRAFTING,
+    "related-value-not-in-quote": DRAFTING,
     # -- internal review --------------------------------------------------------
     # The draft is finished; now it is held to the journal's rules and read properly.
     "figure-unreviewed": INTERNAL_REVIEW,
@@ -131,6 +144,10 @@ BINDS_AT = {
     "figure-review-check-failed": INTERNAL_REVIEW,
     "figure-review-concerns": INTERNAL_REVIEW,
     "figure-review-finding": INTERNAL_REVIEW,
+    # A figure with no alternative text is a note while drafting and a warning from internal
+    # review (`gates/figure_alt.py` reads the stage); it fails only at submission, and only
+    # where the journal's profile requires one.
+    "figure-alt-missing": SUBMISSION,
     "journal-profile-missing": INTERNAL_REVIEW,
     # How many rows a model lost to missing values is for the finished draft to say.
     "model-rows-dropped": INTERNAL_REVIEW,
@@ -183,6 +200,9 @@ BINDS_AT = {
     "lookup-record-misfiled": INTERNAL_REVIEW,
     # One work cited under two keys is printed twice in the reference list.
     "reference-duplicate": INTERNAL_REVIEW,
+    # A sentence a person judged the cited work does not support: a draft may hold one while
+    # it is reworded, and a draft others read may not (Basile, 2026-10-20).
+    "passage-does-not-support": INTERNAL_REVIEW,
     # -- submission -------------------------------------------------------------
     # The panel's verdict is the last thing to bind, because a panel reviews a draft
     # that is otherwise finished.
@@ -197,6 +217,9 @@ BINDS_AT = {
     # A number typed into a reply to the reviewers: the letter is written while the
     # analysis is still being run again, and goes to the journal only at resubmission.
     "reply-unbound-number": SUBMISSION,
+    # Words to the reviewers left in the manuscript: G6 warns on them until submission, and
+    # fails there on those that answer one reviewer or point at this manuscript.
+    "revision-residue": SUBMISSION,
     "response-claims-nothing": SUBMISSION,
     "claimed-change-did-not-happen": SUBMISSION,
             "review-stale": SUBMISSION,

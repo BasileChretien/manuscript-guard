@@ -1,0 +1,22 @@
+schema: manuscript-guard/passages/1
+
+# For a sentence that cites a work, the words of that work that support it, copied from its
+# stored source under sources/. G7 looks for each passage there, word for word; the co-author
+# checker shows it beside the sentence. A passage belongs to its sentence by the sentence's
+# words and the citation key: the citation groups, the case and the line breaks do not
+# matter, and a reworded sentence leaves its passage stale.
+#
+# The sources are invented, as the ledger says.
+
+passages:
+  - sentence: >-
+      In a national cohort, the crude incidence was {{lit.background.reported_incidence}} per
+      100 000 person-years, and a disproportionality signal has been reported for the drug
+      class as a whole (ROR {{lit.background.class_ror}}).
+    citekey: fictionalClassSignal2019
+    passage: "A signal was detected for the class as a whole"
+    locator: "Abstract, Results"
+    # Whether the passage supports the sentence is a person's judgement, recorded by them:
+    # support: supports        # supports | partly | does-not
+    # judged_by: "A Person"
+    # judged_on: 2026-10-20

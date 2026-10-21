@@ -866,6 +866,7 @@ NAMED_NOWHERE = {
     "analysis/00_feasibility.py": "the feasibility script a project writes, an example",
     "profiles/reporting/STROBE.yaml": "written by `transcribe`, and kept out of git",
     "profiles/reporting/sources/": "where `fetch` puts the guidelines, kept out of git",
+    "literature/related.yaml": "written with the author by the related-outputs skill",
 }
 
 

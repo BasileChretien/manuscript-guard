@@ -153,6 +153,22 @@ def _latex_refusals() -> Reading:
     return lambda text: [[r.code, r.offset] for r in read(text).refusals]
 
 
+@reading("latex sections")
+def _latex_sections() -> Reading:
+    # `Heading` came with the headings, so that a base without them has no such reading.
+    from manuscript_guard.text.latex.mask import Heading, read  # noqa: F401
+
+    def sections(text: str) -> dict[str, Any]:
+        reading = read(text)
+        return {
+            "headings": [[h.start, h.level, h.title] for h in reading.headings],
+            "abstracts": [list(span) for span in reading.abstracts],
+            "inputs": [[i.offset, i.path, i.body, list(i.environments)] for i in reading.inputs],
+        }
+
+    return sections
+
+
 @reading("hidden")
 def _hidden() -> Reading:
     from manuscript_guard.gates.language import _hidden as hidden
@@ -670,6 +686,23 @@ def _whole_number_means() -> Reading:
     return read
 
 
+@reading("printed value")
+def _printed_value() -> Reading:
+    """Whether a value an earlier output printed is this paper's, as G8 compares one read
+    from the earlier output's text: each printing given, and the same printing moved."""
+    from manuscript_guard.contracts.values import Value
+    from manuscript_guard.gates.related import _same_printed
+
+    def compared(given: list[dict[str, Any]]) -> list[list[bool]]:
+        found = []
+        for case in given:
+            now = Value(key="k", value=case["value"], display=case["display"], origin="results")
+            found.append([_same_printed(case["printed"], now), _same_printed(case["moved"], now)])
+        return found
+
+    return compared
+
+
 @reading("abbreviations")
 def _abbreviations() -> Reading:
     from manuscript_guard.gates.language import _judge, _Known, _shipped
@@ -693,6 +726,32 @@ def _prose_quotations() -> Reading:
         return [[q.line, q.quote, list(q.keys)] for q in quotations_in(text)]
 
     return quotations
+
+
+@reading("passages")
+def _passages() -> Reading:
+    """The sentences each entry of a `passages.yaml` belongs to, with the line of each one's
+    paragraph, and why an entry belongs to none: what G7 holds a supporting passage to, and
+    what the co-author checker shows it beside. No source is stored, so none is read."""
+    from manuscript_guard.checking.produce import cited_sentences, citing_document
+    from manuscript_guard.literature.passages import Passage, survey
+
+    nowhere = Path(__file__).resolve().parent / "no stored sources"
+
+    def passages(given: dict[str, Any]) -> list[list[Any]]:
+        sentences = cited_sentences([citing_document(MAIN, given["text"])])
+        entries = tuple(
+            Passage(number, entry["sentence"], entry["citekey"], entry["passage"],
+                    entry["locator"])
+            for number, entry in enumerate(given["entries"], start=1)
+        )  # fmt: skip
+        found = survey(nowhere, sentences, entries)
+        return [
+            [[[cited.line, cited.text] for cited in one.sentences], one.stale]
+            for one in found.passages
+        ]
+
+    return passages
 
 
 @reading("checker sentences")
@@ -836,6 +895,21 @@ def _placeholders() -> Reading:
     return placeholders
 
 
+@reading("residue")
+def _residue() -> Reading:
+    from manuscript_guard.gates.writing import load_rules, residue_in
+
+    def residue(text: str) -> list[list[Any]]:
+        """What G6's residue rules find in a text: each rule, whether it fails at
+        submission, where, and what it matched."""
+        return [
+            [rule["id"], bool(rule.get("self_reference")), match.start(), match.group(0)]
+            for rule, match in residue_in(load_rules(), text)
+        ]
+
+    return residue
+
+
 @reading("vector figure")
 def _vector_figure() -> Reading:
     """The texts and lines of an SVG figure as G4 reads them: each text's height and each
@@ -881,6 +955,43 @@ def _quote_placement() -> Reading:
         return [placement.found, list(placement.lines), said(placement)]
 
     return placed
+
+
+@reading("suggested edit")
+def _suggested_edit() -> Reading:
+    """Where a reviewer's suggested edit is found in a text, as typed or as pandoc printed
+    it, and whether its words are words: what `review --suggestions` places an edit by."""
+    from manuscript_guard.suggestions import found_in, refused_words
+
+    def placed(given: dict[str, str]) -> dict[str, Any]:
+        return {
+            "found": [list(span) for span in found_in(given["text"], given["old"])],
+            "refused": refused_words(given["old"], given["new"]),
+        }
+
+    return placed
+
+
+@reading("suggestion written")
+def _suggestion_written() -> Reading:
+    """A suggestion accepted in Word, written into its paragraph's source where its words
+    are, as `import` writes it before it merges anything else the author changed there; or
+    why it is not."""
+    from manuscript_guard.suggestions import Words, write_in
+
+    def written(given: dict[str, Any]) -> dict[str, Any]:
+        tokens = [tuple(token) for token in given["tokens"]]
+        result = write_in(given["source"], given["printed"], tokens,
+                          [Words(given["old"], given["new"])])  # fmt: skip
+        if isinstance(result, str):
+            return {"refused": result}
+        return {
+            "source": result.source,
+            "shown": result.shown,
+            "tokens": [list(token) for token in result.tokens or ()],
+        }
+
+    return written
 
 
 # -------------------------------------------------------------------- a whole project

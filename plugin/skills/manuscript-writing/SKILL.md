@@ -1,6 +1,6 @@
 ---
 name: manuscript-writing
-description: Draft or revise manuscript prose that reads as though a person wrote it. Use when writing any section, when check reports ai-phrasing, ai-cadence, vague-attribution, an abbreviation finding (used before defined, redefined, unused, undefined), term-avoided, vocabulary-conflict, a spelling finding (spelling-variant, spelling-mixed, spelling-not-as-declared) or a notation finding (notation-p-symbol, notation-sign-spacing, notation-interval, notation-percent, notation-unit), when a claim needs a citation it does not have, or when revising text that was drafted quickly. Not for the Methods against the code (use methods-writer), nor for putting a result into the text (use results-binding).
+description: Draft or revise manuscript prose that reads as though a person wrote it. Use when writing any section, when check reports ai-phrasing, ai-cadence, vague-attribution, revision-residue, an abbreviation finding (used before defined, redefined, unused, undefined), term-avoided, vocabulary-conflict, a spelling finding (spelling-variant, spelling-mixed, spelling-not-as-declared) or a notation finding (notation-p-symbol, notation-sign-spacing, notation-interval, notation-percent, notation-unit), when a claim needs a citation it does not have, or when revising text that was drafted quickly. Not for the Methods against the code (use methods-writer), nor for putting a result into the text (use results-binding).
 ---
 
 # Writing prose that reads as written
@@ -119,6 +119,23 @@ says something else, or one that does not exist, and the author's name goes on i
    ```
 
    A number taken from it goes through the literature-verify skill.
+
+## Words to the reviewers stay in the letter
+
+A revision writes two texts: the paper, and the response to the reviewers. Only the second
+may answer anyone. "As requested by Reviewer 2, we added a sensitivity analysis" is a
+sentence of the letter; in the paper it is "A sensitivity analysis excluded ...". The same
+holds for what a model says to whoever asked it: "as you requested", "I have shortened the
+abstract", "Below is the revised Discussion".
+
+| Code | What happened | What to do |
+|---|---|---|
+| `revision-residue` | the paper answers a reviewer, points at its earlier version ("in the original submission", "the revised manuscript"), at its lines or its marked changes, at the response letter, or holds a model's words to its user | write what the paper now reports, and put the answer in the response (`respond`, the [reviewer-response](../reviewer-response/SKILL.md) skill) |
+
+Those that answer one reviewer or the editor, or point at this manuscript, warn while you
+revise and fail at submission. Those a paper about peer review writes of the papers it
+studied, "the reviewers' comments", only warn: keep one only if the paper is about peer
+review and means it. The acknowledgements may still thank the reviewers.
 
 ## Abbreviations
 

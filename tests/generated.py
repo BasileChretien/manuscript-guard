@@ -440,6 +440,10 @@ LATEX_PREAMBLE_PLACES = (
     ("\\newcommand{{\\ci}}[1][{}]{{#1 CI}}\n", (True,)),
     ("\\usepackage[opt{}]{{x}}\n", (False,)),
     ("\\author{{A {}}}\n", (False,)),
+    # An abstract a class prints from the preamble, and a restyling that names the command
+    # (round 2 of #385: the first was refused, and so was the second).
+    ("\\let\\oldabstract\\abstract\n\\abstract{{Of {}}}\n", (True,)),
+    ("\\begin{{abstract}}Of {}\\end{{abstract}}\n", (True,)),
 )  # fmt: skip
 
 
@@ -474,6 +478,68 @@ def latex_planted(draw: st.DrawFn) -> tuple[str, list[tuple[int, str, bool]]]:
     text += between[-1] + "\\end{document}\n"
     plant("after {}\n", (False,))
     return text, planted
+
+
+_SECTIONING = {-1: "part", 0: "chapter", 1: "section", 2: "subsection", 3: "subsubsection"}
+
+
+@st.composite
+def latex_trees(
+    draw: st.DrawFn,
+) -> tuple[dict[str, str], dict[str, list[str]], dict[str, list[str]]]:
+    """A LaTeX manuscript of a few files that input one another, with no file inputting
+    itself; the titles each file starts under; and the titles in force at a word written
+    after each heading. Both are worked out apart from the reader: a heading of a file input
+    reaches the text after its `\\input`, as LaTeX prints it.
+
+    The entry file opens under a part, a chapter and a section, inputs a file that opens a
+    subsection, writes a subsubsection right after that `\\input`, and inputs another file.
+    So every manuscript has a file that starts under a heading, a part a chapter does not
+    close, and a heading where an `\\input` ends, which stands over the text after it (round
+    2 of #385). Nothing but a heading's word follows a line break, so an `\\input` stands
+    against what comes next."""
+    count = draw(st.integers(min_value=3, max_value=5))
+    names = ["main.tex", *(f"part{index}.tex" for index in range(1, count))]
+    items: dict[str, list[tuple[str, object]]] = {}
+    for index, name in enumerate(names):
+        drawn = draw(st.lists(st.one_of(
+            st.tuples(st.just("heading"), st.integers(min_value=-1, max_value=3)),
+            st.tuples(st.just("input"), st.integers(min_value=index + 1, max_value=count)),
+            st.tuples(st.just("words"), st.sampled_from(FILLER)),
+        ), max_size=8))  # fmt: skip
+        inputs = [("input", child) for kind, child in drawn if kind == "input" and child < count]
+        rest = [item for item in drawn if item[0] != "input"]
+        opening = [("heading", -1), ("heading", 0), ("heading", 1), ("input", 1),
+                   ("heading", 3), ("input", 2)]  # fmt: skip
+        planted = {0: opening, 1: [("heading", 2)]}
+        items[name] = planted.get(index, []) + rest + inputs
+    files, under, marks, seen, counter = {}, {}, {}, {"main.tex"}, [0]
+
+    def visit(name: str, chain: list[tuple[int, str]]) -> list[tuple[int, str]]:
+        under[name] = [title for _, title in chain]
+        text = "\\documentclass{article}\n\\begin{document}\n" if name == "main.tex" else ""
+        for kind, value in items[name]:
+            if kind == "heading":
+                counter[0] += 1
+                title = f"Part {counter[0]}"
+                chain = [kept for kept in chain if kept[0] < value] + [(value, title)]
+                marks[f"mark{counter[0]}"] = [title for _, title in chain]
+                text += f"\\{_SECTIONING[value]}{{{title}}}\nmark{counter[0]} "
+            elif kind == "input":
+                child = names[value]
+                text += f"\\input{{{child[:-4]}}}"
+                if child not in seen:
+                    seen.add(child)
+                    chain = visit(child, chain)
+            else:
+                text += f"{value} "
+        files[name] = text + ("\n\\end{document}\n" if name == "main.tex" else "")
+        return chain
+
+    visit("main.tex", [])
+    for name in names:
+        files.setdefault(name, "")
+    return files, under, marks
 
 
 #: The headings of the parts of a paper, each written more than one way, and bindings to
@@ -715,6 +781,76 @@ def quotations(draw: st.DrawFn) -> tuple[str, str]:
     first = draw(st.integers(0, len(words) - 1))
     last = draw(st.integers(first, len(words) - 1))
     return source, " ".join(words[first : last + 1])
+
+
+# ------------------------------------------------------------ passages of cited works
+
+#: How a person writes a cited sentence into `passages.yaml` and means the same sentence:
+#: each is no difference to a reader, and none may be one to G7.
+FOLDED = (
+    "citations dropped", "citations added", "capitals", "wrapped", "no final stop", "typed",
+    "no-break space", "space before a comma", "binding spaced",
+)  # fmt: skip
+#: The binding a planted claim holds, as the manuscript writes it.
+_CLAIMED = "{{results.cohort.n}}"
+#: How it is written and means another sentence, or another work, and belongs to none.
+UNFOLDED = ("last word changed", "word added", "work not cited")
+
+
+_EN_DASH = "\N{EN DASH}"
+
+
+def _written(sentence: str, group: str, how: str) -> str:
+    """`sentence`, whose citation group is `group`, written into `passages.yaml` as `how`."""
+    return {
+        "citations dropped": lambda: sentence.replace(f" {group}", ""),
+        "citations added": lambda: sentence.replace(group, "[@z9, p. 4] " + group),
+        "capitals": sentence.upper,
+        "wrapped": lambda: sentence.replace(" ", "\n    ", 3),
+        "no final stop": lambda: sentence.rstrip("."),
+        "typed": lambda: typed(sentence),
+        "no-break space": lambda: sentence.replace(" ", "\N{NO-BREAK SPACE}", 2),
+        "space before a comma": lambda: sentence.replace(",", " ,", 1),
+        "binding spaced": lambda: sentence.replace(_CLAIMED, "{{ results.cohort.n }}"),
+        "last word changed": lambda: sentence.replace(" age ", " sex "),
+        "word added": lambda: sentence.replace(" rate ", " rate never "),
+        "work not cited": lambda: sentence,
+    }[how]()
+
+
+@st.composite
+def passage_files(draw: st.DrawFn) -> tuple[dict[str, Any], list[tuple[int, str]]]:
+    """A manuscript of cited claims, each its own paragraph among drawn text, and the entries
+    of a `passages.yaml` for them: for each claim, its sentence written each way of `FOLDED`
+    and of `UNFOLDED`, in an order drawn each time. With each entry, the claim it belongs
+    to and how it was written; an `UNFOLDED` one belongs to none.
+
+    Every way in each example, so that a rule broken for one of them fails under any seed. A
+    claim's last word before its citation is the one changed, so that a rule matching on a
+    sentence's opening words is wrong in every example. Drawn text opens no comment, which
+    would hide the claims after it: what is held here is how a passage finds its sentence."""
+    claims = draw(st.integers(1, 3))
+    noise = texts().map(lambda text: text.replace("<!--", "<!-"))
+    pieces, entries = [], []
+    for n in range(1, claims + 1):
+        verb = draw(st.sampled_from(("rose", "fell", "doubled", "persisted")))
+        group = draw(st.sampled_from((f"[@k{n}]", f"[@k{n}; @shared]", f"[see @k{n}, p. 3]")))
+        sentence = (
+            f"Claim {n}: in the {_OPEN}older{_CLOSE} cohort of {_CLAIMED}, the "
+            f"drug{_EN_DASH}induced injury rate {verb} with age {group}."
+        )
+        pieces.append(sentence)
+        for how in FOLDED + UNFOLDED:
+            key = f"k{n}x" if how == "work not cited" else f"k{n}"
+            entries.append((
+                {"sentence": _written(sentence, group, how), "citekey": key,
+                 "passage": "words of the work", "locator": "p. 1"},
+                (n, how),
+            ))  # fmt: skip
+    pieces = draw(st.permutations(pieces))
+    text = "".join(f"{draw(noise)}\n\n{piece}\n\n" for piece in pieces) + draw(noise)
+    entries = draw(st.permutations(entries))
+    return {"text": text, "entries": [entry for entry, _n in entries]}, [n for _e, n in entries]
 
 
 # ---------------------------------------------------------------------- a vector figure
@@ -977,6 +1113,42 @@ def pdf_figures(draw: st.DrawFn) -> tuple[bytes, list[float], list[float]]:
     return document, sorted(texts + form_texts), sorted(lines + form_lines)
 
 
+# ------------------------------------------------------------- a figure's alternative text
+
+#: What pandoc's Markdown reads as markup in a picture's description unless each mark in it
+#: is escaped: emphasis, a link, a citation, maths, code, raw HTML and a comment, quotation
+#: marks and dashes it would curl and join, a sub- and superscript, a struck word, a
+#: backslash that would escape the bracket closing the description, and a binding left as
+#: written. Every alternative text drawn holds each, so that one mark left unescaped is read
+#: as markup under every seed.
+ALT_MARKUP = (
+    "*emphasis*", "**strong**", "_under_", "[a link](x.png)", "![a picture](y.png)",
+    "@citekey", "[@citekey]", "$x^2$", "`code`", "<b>bold</b>", "<!-- comment -->", "&amp;",
+    '"quoted"', "'single'", "--", "...", "^up^", "~down~", "~~struck~~", "\\", "\\*",
+    "{{results.key}}", "#", "|", "50%",
+)  # fmt: skip
+#: Words with no markup, some beyond ASCII.
+ALT_WORDS = (*FILLER[:12], "\N{PLUS-MINUS SIGN}2", "caf\N{LATIN SMALL LETTER E WITH ACUTE}",
+             "\N{GREATER-THAN OR EQUAL TO}", "0.5\N{EN DASH}2")  # fmt: skip
+#: What may stand between two pieces: nothing, a space, a run of them, a line break, a
+#: blank line, a tab, a no-break space. Each is drawn once in every text.
+ALT_SPACES = ("", " ", "   ", "\n", "\n \n", "\t", "\N{NO-BREAK SPACE}")
+
+
+@st.composite
+def alt_texts(draw: st.DrawFn) -> str:
+    """An alternative text as an author may write it in a figure's guard file: every piece
+    of `ALT_MARKUP` and some words, in an order drawn, each kind of `ALT_SPACES` between two
+    of them at least once."""
+    words = draw(st.lists(st.sampled_from(ALT_WORDS), max_size=6))
+    pieces = draw(st.permutations([*ALT_MARKUP, *words]))
+    extra = draw(st.lists(st.sampled_from(ALT_SPACES), min_size=len(pieces) - 1 - len(ALT_SPACES),
+                          max_size=len(pieces) - 1 - len(ALT_SPACES)))  # fmt: skip
+    spaces = draw(st.permutations([*ALT_SPACES, *extra]))
+    joined = zip(spaces, pieces[1:], strict=True)
+    return pieces[0] + "".join(space + piece for space, piece in joined)
+
+
 # -------------------------------------------------------------- the results a plan promises
 
 _STEMS = ("ror", "case", "cohort", "hr", "events")
@@ -1046,6 +1218,174 @@ def nearly_quoted(draw: st.DrawFn) -> dict[str, str]:
     at = draw(st.integers(0, len(source)))
     put = draw(st.sampled_from(INTERRUPTIONS))
     return {"source": source[:at] + put + source[at:], "quote": quote}
+
+
+# ----------------------------------------------------------------------- suggested edits
+
+#: Words a reviewer's edit is made of, each as an edit types it and as pandoc prints it: a
+#: plain word, one that stands inside a longer one ("the" in "other", "port" in "reports"),
+#: and each thing pandoc typesets, an apostrophe, quotation marks, dashes and an ellipsis.
+EDIT_WORDS = (
+    ("the", "the"), ("other", "other"), ("reports", "reports"), ("port", "port"),
+    ("week", "week"), ("weeks", "weeks"), ("cohort", "cohort"),
+    ("drug's", "drug\N{RIGHT SINGLE QUOTATION MARK}s"),
+    ("'probable'", "\N{LEFT SINGLE QUOTATION MARK}probable\N{RIGHT SINGLE QUOTATION MARK}"),
+    ('"serious"', "\N{LEFT DOUBLE QUOTATION MARK}serious\N{RIGHT DOUBLE QUOTATION MARK}"),
+    ("1990--2000", "1990\N{EN DASH}2000"), ("so---it", "so\N{EM DASH}it"),
+    ("and...", "and\N{HORIZONTAL ELLIPSIS}"),
+)  # fmt: skip
+#: What stands between two of those words, as typed and as printed: Markdown reads a run of
+#: spaces with one line break in it as one space, and pandoc puts a no-break space after
+#: an abbreviation it knows.
+EDIT_GAPS = (
+    (" ", " "), ("  ", " "), ("\n", " "), (" \n  ", " "), ("\t", " "),
+    (" ", "\N{NO-BREAK SPACE}"),
+)  # fmt: skip
+
+
+@st.composite
+def suggested_edits(draw: st.DrawFn) -> dict[str, str]:
+    """A manuscript file and an edit: a few of its words, or words it may not hold, and
+    words to put in their place, some of them markup or two lines."""
+    text = draw(texts(tuple(typed for typed, _printed in EDIT_WORDS)))
+    words = text.split()
+    if words and draw(st.booleans()):
+        start = draw(st.integers(0, len(words) - 1))
+        old = " ".join(words[start : start + draw(st.integers(1, 3))])
+    else:
+        old = draw(st.sampled_from(tuple(typed for typed, _printed in EDIT_WORDS) + FILLER))
+    new = draw(st.sampled_from((*FILLER[:6], "*held*", "two\nlines", "{{results.x}}", " ")))
+    return {"text": text, "old": old, "new": new}
+
+
+#: Words of a paragraph a suggestion is written into, each used once so that a run of them
+#: is found once: letters only, so that none is a number to `reworded`, and none a word of
+#: the link's address.
+PARAGRAPH_WORDS = (
+    "alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel", "india",
+    "juliet", "kilo", "lima", "mike", "november", "oscar", "papa", "quebec", "romeo",
+    "sierra", "tango", "uniform", "victor", "whiskey", "xray", "yankee", "zulu", "amber",
+    "basil", "cedar", "dune", "ember", "fern", "grove", "heath", "iris", "jade", "kelp",
+    "larch", "moss", "nettle",
+)  # fmt: skip
+#: Each kind of stretch a paragraph's words stand in: how it is typed around them, and
+#: whether a suggestion is written inside it. Emphasis is prose with marks around it, and
+#: Word shows the new words in it; "lines" is prose with a hard line break between each two
+#: words, which a suggestion is written beside and not across. Code and a link's text Word
+#: shows without their markup, and a comment not at all: it also holds a copy of the
+#: paragraph's first word, which prints once.
+STRETCHES = {
+    "plain": ("", "", True),
+    "em": ("*", "*", True),
+    "strong": ("**", "**", True),
+    "under": ("_", "_", True),
+    "lines": ("", "", True),
+    "code": ("`", "`", False),
+    "link": ("[", "](https://example.invalid/page)", False),
+    "comment": ("<!-- ", " -->", False),
+}
+#: What each value of the analysis prints, in the order the values stand, and what each
+#: citation prints.
+RENDERED = ("12", "345", "6.7", "89", "1,234")
+CITED = ("(Doe 2019)", "(Roe 2020)", "(Poe 2021)", "(Moe 2022)")
+#: What a hard line break is typed as, and what lies between a stretch's other words.
+HARD_BREAK = "  \n"
+#: The words written in place of a run: shorter, longer, and two with a double space
+#: between them, which Word shows as one.
+WRITTEN_WORDS = ("plainly", "the revised wording here", "kept  apart", "so")
+
+
+@st.composite
+def suggestion_paragraphs(draw: st.DrawFn) -> dict[str, Any]:
+    """A paragraph holding every kind of stretch a suggestion can be written beside or
+    inside, in an order drawn each time: words alone, in each kind of emphasis, across hard
+    line breaks, in code, in a link's text and in a comment, with values of the analysis and
+    citations between them. Each kind is there at least once. The paragraph opens with words,
+    so that no comment opens it as a block, and ends with a value and words after it, so
+    that some words always stand before a value. As its stretches and the spaces between
+    them, for `laid_out` to type and print."""
+    tokens = ("binding", "cite")
+    kinds = [*STRETCHES, *tokens]
+    kinds += draw(st.lists(st.sampled_from([*STRETCHES, *tokens]), max_size=3))
+    # At most five values and four citations, which `RENDERED` and `CITED` print, and
+    # thirteen stretches of words, which forty words fill.
+    kinds = ["plain", *draw(st.permutations(kinds)), "binding", "plain"]
+    words = iter(draw(st.permutations(PARAGRAPH_WORDS)))
+    stretches = []
+    for kind in kinds:
+        # Across a line break needs two words; every other kind takes one to three.
+        count = 0 if kind in tokens else draw(st.integers(2 if kind == "lines" else 1, 3))
+        stretches.append([kind, [next(words) for _ in range(count)]])
+    space = st.sampled_from((" ", "\n"))
+    return {
+        "stretches": stretches,
+        "between": draw(st.lists(space, min_size=len(kinds) - 1, max_size=len(kinds) - 1)),
+        "inside": draw(st.lists(space, min_size=3 * len(kinds), max_size=3 * len(kinds))),
+    }
+
+
+def laid_out(paragraph: dict[str, Any]) -> tuple[str, str, list, list, list]:
+    """A `suggestion_paragraphs` paragraph as typed in the source and as Word shows it:
+    `(source, printed, words, tokens, renderings)`. Each word is `(word, kind, its stretch's
+    place, (start, end) in the source, (start, end) in what Word shows or None, how many
+    values and citations stand before it)`, and `tokens` is where each value and citation
+    prints. Word shows a line break as a space, emphasis, code and a link by their text, and
+    a comment not at all."""
+    source, printed = "", ""
+    words, tokens, renderings = [], [], []
+    inside = iter(paragraph["inside"])
+    first = paragraph["stretches"][0][1][0]
+    values = citations = 0
+    for index, (kind, stretch) in enumerate(paragraph["stretches"]):
+        shows = kind != "comment"
+        if index:
+            # A space before a comment: at the start of a line it opens an HTML block.
+            source += paragraph["between"][index - 1] if shows else " "
+            printed += " " if shows else ""
+        if kind in ("binding", "cite"):
+            if kind == "binding":
+                rendering = RENDERED[values]
+                source += "{{results.value_" + "abcde"[values] + "}}"
+                values += 1
+            else:
+                rendering = CITED[citations]
+                source += "[@key_" + "abcd"[citations] + "]"
+                citations += 1
+            tokens.append((len(printed), len(printed) + len(rendering)))
+            renderings.append(rendering)
+            printed += rendering
+            continue
+        opening, closing, prose = STRETCHES[kind]
+        source += opening
+        for at, word in enumerate(stretch):
+            if at:
+                # A soft line break inside code or a link's text is left out: what it does
+                # there is not what this generator is about.
+                source += HARD_BREAK if kind == "lines" else next(inside) if prose else " "
+                printed += " " if shows else ""
+            typed = (len(source), len(source) + len(word))
+            shown = (len(printed), len(printed) + len(word)) if shows else None
+            words.append((word, kind, index, typed, shown, len(tokens)))
+            source += word
+            printed += word if shows else ""
+        source += f" {first}{closing}" if kind == "comment" else closing
+    return source, printed, words, tokens, renderings
+
+
+@st.composite
+def suggestion_writes(draw: st.DrawFn) -> dict[str, Any]:
+    """One run of a `suggestion_paragraphs` paragraph's words to write over, which may cross
+    from one stretch into the next, and words to write, some of them markup."""
+    source, printed, words, tokens, _renderings = laid_out(draw(suggestion_paragraphs()))
+    first = draw(st.integers(0, len(words) - 1))
+    run = words[first : first + draw(st.integers(1, 2))]
+    return {
+        "source": source,
+        "printed": printed,
+        "tokens": [list(token) for token in tokens],
+        "old": " ".join(word for word, *_rest in run),
+        "new": draw(st.sampled_from((*WRITTEN_WORDS, "*held*", "two\nlines"))),
+    }
 
 
 # ---------------------------------------------------------------------------- spellings
@@ -1134,6 +1474,56 @@ LOOKALIKES = (
     "47,XXX", "XXX syndrome", "[repository](https://example.org)",
     "[Add-on therapy in epilepsy]", "replace later lines", "replace later\nlines",
     "TK inhibitors", "[SJS/TEN]", "[HIV/AIDS]",
+)  # fmt: skip
+
+#: Words to the reviewers or to a model left in a paper, each a sentence, with the rule of
+#: G6 that finds it and the words it finds: one of each rule, a phrase cut by a hard wrap,
+#: and the plural beside the singular. And what reads like them and is prose: a name, the
+#: contributions, the acknowledgements with a title's stop in them, a regulatory dossier, a
+#: retrotransposon, an invitation, and a phrase cut by a blank line. What the residue
+#: reading must tell apart.
+RESIDUE = (
+    ("As requested by Reviewer 2, we added a table.", "reviewer-answered",
+     "As requested by Reviewer 2"),
+    ("In reply to the\nreviewer, we added a table.", "reviewer-answered",
+     "In reply to the reviewer"),
+    ("In response to the reviewers' comments, a table was added.", "reviewers-answered",
+     "In response to the reviewers"),
+    ("Done. As requested, we added the dates.", "as-requested", "As requested,"),
+    ("In our original submission, the cohort was larger.", "earlier-version",
+     "our original submission"),
+    ("The revised manuscript reports the median.", "earlier-version-unnamed",
+     "The revised manuscript"),
+    ("We have now clarified the exposure.", "we-have-now", "We have now clarified"),
+    ("We have expanded the Discussion.", "text-edited", "We have expanded the Discussion"),
+    ("These points have now been discussed.", "text-edited-unnamed",
+     "These points have now been discussed"),
+    ("It is on page 4, lines 120-125.", "lines-cited", "page 4, lines 120"),
+    ("It was moved (lines 120-125).", "lines-cited-alone", "(lines 120-125)"),
+    ("The revised text is highlighted in yellow.", "changes-marked",
+     "The revised text is highlighted"),
+    # After a stop, since "in" before either is the stricter rule's.
+    ("Done. Tracked changes were accepted.", "tracked-changes", "Tracked changes"),
+    ("See the response letter.", "response-letter", "See the response letter"),
+    ("Done. The response letter lists them.", "response-letter-unnamed", "response letter"),
+    ("I have shortened the abstract.", "model-addressed", "I have shortened the abstract"),
+)  # fmt: skip
+RESIDUE_LOOKALIKES = (
+    "Risk was scored with the Revised Cardiac Risk Index.",
+    "All authors approved the revised manuscript.",
+    "The authors are grateful to Dr. Simon and Dr. Sampaio for their critical review in the "
+    "original manuscript.",
+    "The original submission of the dossier to the agency was rejected.",
+    "Methylation of the element (LINE 1) was stable.",
+    "It was written in response to the editor's invitation.",
+    "To address this concern, we used an active comparator.",
+    "Reviewer 1 and Reviewer 2 independently extracted the data.",
+    "as suggested by\n\nReviewer 2 independently, a heading and a paragraph.",
+    # Round 1 of #377: a thanks that names what it is for, a label's history, a Delphi
+    # panel's draft.
+    "We thank the referee for pointing out an error in the estimator.",
+    "This has now been included in the SmPC.",
+    "Our initial draft comprised 45 items.",
 )  # fmt: skip
 
 
@@ -1578,6 +1968,76 @@ def mean_tables(draw: st.DrawFn) -> tuple[str, list[str], list[Meant]]:
     return "\n".join(lines), [label.lower() for label in labels], expected
 
 
+# ------------------------------------------------- a number an earlier output printed
+
+#: The ways a paper prints one number that this one prints otherwise: as it is, its
+#: thousands grouped, a middle dot for the point, a percent sign after it, a minus sign
+#: before it, to fewer or more places than this paper, and below one with no zero before its
+#: point (".45").
+PRINTINGS = ("as it is", "grouped", "middle dot", "percent", "minus", "coarser", "finer",
+             "no leading zero")  # fmt: skip
+#: What a paper groups thousands with: a comma, a space, a thin space, a no-break space and
+#: a narrow no-break one, by code point since each looks like a space.
+GROUPS = (",", " ", chr(0x2009), chr(0x00A0), chr(0x202F))
+
+
+def _grouped(text: str, by: str) -> str:
+    whole, point, fraction = text.partition(".")
+    sign, digits = ("-", whole[1:]) if whole.startswith("-") else ("", whole)
+    parts = []
+    while len(digits) > 3:
+        digits, parts = digits[:-3], [digits[-3:], *parts]
+    return sign + by.join([digits, *parts]) + point + fraction
+
+
+def _printed_as(text: str, kind: str, by: str) -> str:
+    if kind == "grouped":
+        return _grouped(text, by)
+    if kind == "middle dot":
+        return text.replace(".", chr(0x00B7))
+    if kind == "percent":
+        return text + "%"
+    if kind == "minus":
+        return text.replace("-", chr(0x2212))
+    if kind == "no leading zero" and text.lstrip("-").startswith("0."):
+        return text.replace("0.", ".", 1)
+    return text
+
+
+@st.composite
+def printings(draw: st.DrawFn) -> list[dict[str, Any]]:
+    """One number of this paper, printed by an earlier output in each of the ways a paper
+    prints one, and the same printing of a number a unit and a half of the coarser
+    printing away. The first is the value; the second is not, however it was rounded:
+    each side is at most half a unit from what it rounds."""
+    cases = []
+    for kind in PRINTINGS:
+        here = draw(st.integers(1 if kind == "coarser" else 0, 3))
+        if kind == "coarser":
+            there = draw(st.integers(0, here - 1))
+        elif kind == "finer":
+            there = draw(st.integers(here + 1, 4))
+        else:
+            there = draw(st.integers(1 if kind == "no leading zero" else 0, 3))
+        low, high = {"grouped": (1000.0, 1e7), "no leading zero": (0.001, 0.94)}.get(
+            kind, (0.001, 999.0)
+        )
+        value = draw(st.floats(low, high, allow_nan=False, allow_infinity=False))
+        if kind == "minus" or (kind != "grouped" and draw(st.booleans())):
+            value = -value
+        unit = 10.0 ** -min(here, there)
+        moved = value + draw(st.sampled_from((1.5, -1.5))) * unit
+        by = draw(st.sampled_from(GROUPS))
+        cases.append({
+            "kind": kind,
+            "value": value,
+            "display": f"{value:.{here}f}",
+            "printed": _printed_as(f"{value:.{there}f}", kind, by),
+            "moved": _printed_as(f"{moved:.{there}f}", kind, by),
+        })  # fmt: skip
+    return cases
+
+
 # ---------------------------------------------------------------------- what an edit holds
 
 #: A binding, a citation and a number in each of the ways one is written: what `reworded`
@@ -1912,9 +2372,11 @@ def _quotation_asked(drawn: tuple[tuple[str, str], str, str]) -> dict[str, str]:
 INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "checker sentences": texts(),
     "prose quotations": texts(QUOTED),
+    "passages": passage_files().map(lambda drawn: drawn[0]),
     "mask": texts(TERMS),
     "latex mask": latex_texts(),
     "latex refusals": latex_texts(),
+    "latex sections": latex_texts(),
     "hidden": texts(TERMS),
     "own words": texts(TERMS),
     "spans": texts(),
@@ -1943,6 +2405,8 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         {"quote": texts(), "value": st.sampled_from(("2.6", "14", "1 in 4", "0.05", "IgG4"))}
     ),
     "quote placement": nearly_quoted(),
+    "suggested edit": suggested_edits(),
+    "suggestion written": suggestion_writes(),
     "spelling": st.fixed_dictionaries(
         {
             "text": texts(SPELT),
@@ -1961,6 +2425,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "placeholders": texts(
         tuple(written for written, _found in PLACEHOLDERS + LOWERED) + LOOKALIKES
     ),
+    "residue": texts(tuple(written for written, _rule, _found in RESIDUE) + RESIDUE_LOOKALIKES),
     "typed releases": texts(RELEASED),
     "reported tests": texts(REPORTED),
     "reported intervals": texts(ESTIMATES),
@@ -1968,6 +2433,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "whole-number means": mean_tables().map(
         lambda drawn: {"text": drawn[0], "labels": drawn[1]}
     ),
+    "printed value": printings(),
     "units after": texts(BOUND_UNITS),
     "limit stated": st.fixed_dictionaries(
         {"text": texts(QUOTED_LIMITS), "value": st.sampled_from((3500, 4, 14, 35000, 500))}

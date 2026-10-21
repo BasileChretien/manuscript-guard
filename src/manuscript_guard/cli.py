@@ -32,6 +32,7 @@ from manuscript_guard.build import (
 )
 from manuscript_guard.build.assemble import check_shapes
 from manuscript_guard.build.document import abbreviations
+from manuscript_guard.build.latex_check import check_latex
 from manuscript_guard.build.tex_check import check_tex
 from manuscript_guard.classify import UNCLASSIFIED, Classifier
 from manuscript_guard.contracts import (
@@ -56,6 +57,7 @@ from manuscript_guard.gates import (
     check_methods,
     check_models,
     check_numbers,
+    check_passages,
     check_prose_quotations,
     check_recomputed,
     check_relations,
@@ -75,8 +77,10 @@ from manuscript_guard.gates import (
 from manuscript_guard.gates.custodian import check_restricted_inputs, check_small_cells
 from manuscript_guard.gates.data_sources import check_data_sources, check_statement_sources
 from manuscript_guard.gates.design_review import check_design_rounds
+from manuscript_guard.gates.figure_alt import check_figure_alt
 from manuscript_guard.gates.formats import check_format, not_read_in_latex
 from manuscript_guard.gates.numbers import chosen_rules, typed_choice, why_no_manuscript
+from manuscript_guard.gates.related import check_related
 from manuscript_guard.gates.shortlist import check_shortlist
 from manuscript_guard.gates.synthetic import check_synthetic_inputs
 from manuscript_guard.policy import (
@@ -146,15 +150,17 @@ def _run_gates(
         ("G2", lambda: check_numbers(project, namespace, results, literature)),
         ("G2", lambda: check_bound_units(project, results)),
         ("G3", lambda: check_figures(project, results)),
+        ("G3", lambda: check_figure_alt(project, namespace, chosen)),
         ("G10", lambda: check_figure_reviews(project, content_digest)),
         ("G7", lambda: check_citations(project, literature)),
         ("G7", lambda: check_literature_chain(project, literature)),
         ("G7", lambda: check_prose_quotations(project)),
+        ("G7", lambda: check_passages(project, chosen)),
         ("G4", lambda: check_journal(project)),
         ("G4", lambda: check_shortlist(project)),
         ("G4", lambda: check_statement_sources(project)),
         ("G8r", lambda: check_reporting(project)),
-        ("G6", lambda: check_writing(project, results)),
+        ("G6", lambda: check_writing(project, results, submission=at_submission)),
         ("G9", lambda: check_methods(project, namespace, results)),
         ("G12", lambda: check_design(project, results, chosen).merge(
             check_design_rounds(project, submission=at_submission))),
@@ -166,10 +172,12 @@ def _run_gates(
         ("G8", lambda: check_reported(project, results)),
         ("G8", lambda: check_relations(results)),
         ("G8", lambda: check_recomputed(project, namespace, results)),
+        ("G8", lambda: check_related(project, namespace, results, submission=at_submission)),
         ("G13", lambda: check_revision(project, submission=at_submission)),
         ("G14", lambda: check_language(project)),
         ("G15", lambda: check_models(project, results)),
         ("BUILD", lambda: check_shapes(project).merge(check_tex(project, namespace, results))),
+        ("BUILD", lambda: check_latex(project)),
     ):
         if latex and _NOT_READ_IN_LATEX & set(gate.__code__.co_names):
             # A check that reads only Markdown would read nothing here and pass: it is not
@@ -197,11 +205,12 @@ def _run_gates(
 #: "LaTeX manuscripts", Order of work).
 _NOT_READ_IN_LATEX = frozenset(
     {
-        "check_statement_sources",
+        "check_statement_sources", "check_related",
         "check_numbers", "check_bound_units", "check_small_cells", "check_citations",
         "check_prose_quotations", "check_journal", "check_reporting", "check_writing",
         "check_methods", "check_synthetic_inputs", "check_reported", "check_recomputed",
         "check_revision", "check_language", "check_models", "check_shapes", "check_tex",
+        "check_passages",
     }
 )  # fmt: skip
 
@@ -347,8 +356,20 @@ def cmd_review(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
+    if args.suggestions and (
+        args.record or args.record_figure or args.seal or args.providers or args.run
+        or args.dry_run or args.design
+    ):  # fmt: skip
+        print(
+            "manuscript-guard: --suggestions writes the round's suggested edits into a "
+            "document, on its own: `review --suggestions --round <n>`",
+            file=sys.stderr,
+        )
+        return 2
     if args.design:
         return _design_round(args)
+    if args.suggestions:
+        return _write_suggestions(args)
     if args.providers:
         # Before the project is loaded: the list of providers is worth having without one.
         from manuscript_guard.panel.commands import list_providers
@@ -465,6 +486,64 @@ def cmd_review(args: argparse.Namespace) -> int:
     report = check_review(project, submission=args.submission)
     print(report.render(project.root))
     return 0 if report.ok else 1
+
+
+def _write_suggestions(args: argparse.Namespace) -> int:
+    """`review --suggestions`: the round's suggested edits as tracked changes in a copy of
+    the document, for the author to accept or refuse in Word."""
+    from datetime import datetime, timezone
+
+    from manuscript_guard.build.document import relative_to_root
+    from manuscript_guard.suggestions import SuggestionsError, write_round
+
+    project, _ = load_project(args.path)
+    found = panels(project)
+    number = args.round if args.round is not None else (found[-1][0] if found else 1)
+    style = _journal_style(project, argparse.Namespace(csl=None, offline=True))
+    when = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    try:
+        outcome = write_round(project, number, csl=style, date=when)
+    except SuggestionsError as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 2
+    for note in outcome.notes:
+        print(f"round {number}: {note}")
+    if not outcome.placed:
+        print(f"round {number}: no reading the gate counts suggests an edit.")
+        return 0
+    written = [p for p in outcome.placed if not p.dropped]
+    dropped = [p for p in outcome.placed if p.dropped]
+
+    def who(placed) -> str:
+        return printable(f"{placed.edit.author}, {placed.edit.finding}")
+
+    if written:
+        print(f"round {number}: {len(written)} edit(s) written as tracked changes, each with "
+              "its finding as a comment:")  # fmt: skip
+        for placed in written:
+            print(f"  {who(placed)}: {printable(_shown(placed.shown_old))} -> "
+                  f"{printable(_shown(placed.shown_new))}")  # fmt: skip
+    if dropped:
+        print(f"round {number}: {len(dropped)} edit(s) not written; each stays a finding to "
+              "answer in its record:")  # fmt: skip
+        for placed in dropped:
+            print(f"  {who(placed)}: {printable(_shown(placed.edit.old))}: {placed.dropped}")
+    if outcome.report is not None and outcome.report.findings:
+        print(outcome.report.render(project.root))
+    for document in outcome.documents:
+        shown = relative_to_root(project, document)
+        print(
+            f"\nwrote {shown}. Open it in Word and accept or reject each change; to refuse one "
+            f"with a reason, reply to its comment. Then `manuscript-guard import {shown} "
+            f"--apply` brings the accepted words into the source and records each finding's "
+            f"answer. It is for you, not for the journal."
+        )
+    return 0
+
+
+def _shown(text: str, limit: int = 60) -> str:
+    folded = " ".join(text.split())
+    return "'" + (folded if len(folded) <= limit else folded[:limit] + "...") + "'"
 
 
 def _design_round(args: argparse.Namespace) -> int:
@@ -862,6 +941,24 @@ def cmd_import(args: argparse.Namespace) -> int:
             f"tool built can be imported."
         )
         return 1
+    # A document of a review panel's suggested edits (`review --suggestions`): each is a
+    # tracked change, and one still undecided is neither accepted nor refused. Read as
+    # accepted, as every other tracked change is, a suggestion nobody looked at would merge.
+    from manuscript_guard.tracked import TrackedError, offered_of, pending
+
+    try:
+        offered = offered_of(edited) or []
+        undecided = pending(edited, {entry["author"] for entry in offered}) if offered else 0
+    except TrackedError as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 2
+    if undecided:
+        print(
+            f"{edited.name} still holds {undecided} tracked change(s) the review panel "
+            f"suggested. Accept or reject each one in Word first, save, and import it again: "
+            f"an edit nobody decided is neither, and nothing is imported while one is left."
+        )
+        return 1
     # Before the digest, and past --force: under other numbering an edit has no hunk to
     # check by hand, only a paragraph that is not the one it was made in.
     stale = carried != document_digest(project)
@@ -890,6 +987,18 @@ def cmd_import(args: argparse.Namespace) -> int:
     except RoundTripError as exc:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
+    decided = []
+    if offered:
+        from manuscript_guard.suggestions import decisions
+
+        try:
+            decided, told = decisions(edited, offered)
+        except TrackedError as exc:
+            print(f"manuscript-guard: {exc}", file=sys.stderr)
+            return 2
+        # The panel's own comments are its findings, which are in the records, and a reply
+        # to one is an answer, said with the suggestions.
+        comments = [c for c in comments if (c.author, c.text) not in told]
     known = tagged_paragraphs(project)
     supplementary = _which_document(project, known, returned, edited.name)
     if supplementary is None:
@@ -1047,6 +1156,13 @@ def cmd_import(args: argparse.Namespace) -> int:
         )
         for block in returned
     ]
+    # The words of each suggestion accepted in Word, which are written where they were
+    # found rather than merged from Word's text: see `merge.plan_import`.
+    accepted = None
+    if decided:
+        from manuscript_guard.suggestions import accepted_words
+
+        accepted = accepted_words(project, decided, named=now_named)
     plan = plan_import(
         known,
         sent,
@@ -1061,6 +1177,7 @@ def cmd_import(args: argparse.Namespace) -> int:
         same_text={now_named(was): now for was, now in numbered.same_text.items()},
         stale=stale,
         printed=printed,
+        accepted=accepted,
     )
     if inserted:
         # Only the paragraphs compared, `known`, which goes by the names they have now: one
@@ -1117,6 +1234,7 @@ def cmd_import(args: argparse.Namespace) -> int:
         print(f"nothing came back: the document matches the {what} on disk.")
         if unexamined:
             print(f"  {unexamined}")
+        _answer_suggestions(project, decided, {}, applying=args.apply, named=now_named)
         return 0
 
     _report_plan(project, known, plan, applying=args.apply, followed=set(followed.values()))
@@ -1135,6 +1253,7 @@ def cmd_import(args: argparse.Namespace) -> int:
             print(f"merged {len(plan.merged)} reworded paragraph(s), bindings intact.")
 
     _report_comments(comments)
+    _answer_suggestions(project, decided, plan.merged, applying=args.apply, named=now_named)
 
     if unexamined:
         print(f"\n{unexamined}")
@@ -1162,6 +1281,37 @@ def cmd_import(args: argparse.Namespace) -> int:
     ) or (not args.apply and bool(plan.moved or plan.merged))
     # A paragraph not compared is not applied either.
     return 1 if outstanding or strangers or unaccounted else 0
+
+
+def _answer_suggestions(project, decided, merged, *, applying: bool, named) -> None:
+    """What `import` says of a review panel's suggested edits, and with `--apply` the answer
+    each finding's record gets (`suggestions.answers`)."""
+    if not decided:
+        return
+    from manuscript_guard.record import RecordError, answer_finding
+    from manuscript_guard.suggestions import answers
+
+    print(f"\nsuggested edits: {len(decided)}")
+    for decision in decided:
+        entry = decision.offered
+        print(f"  {printable(entry['author'])}, {printable(entry['finding'])}: {decision.state}")
+        for reply in decision.replies:
+            print(f"    reply by {printable(reply.author or 'an unnamed author')}:")
+            print(quoted(reply.text))
+    for answer in answers(project, decided, merged=merged, today=date.today(), named=named):
+        where = answer.record.name
+        if answer.fields is None:
+            print(f"  {where}, {printable(answer.finding)}: left open; {answer.said}")
+            continue
+        if not applying:
+            print(f"  {where}, {printable(answer.finding)}: {answer.said}; --apply records it")
+            continue
+        try:
+            answer_finding(answer.record, answer.finding, answer.fields)
+        except RecordError as exc:
+            print(f"  {where}, {printable(answer.finding)}: not recorded: {exc}")
+            continue
+        print(f"  {where}, {printable(answer.finding)}: {answer.said}; recorded")
 
 
 def _not_compared(
@@ -2014,6 +2164,27 @@ def cmd_models(args: argparse.Namespace) -> int:
     return 0 if report.ok else 1
 
 
+def cmd_passages(args: argparse.Namespace) -> int:
+    """List each cited statement with the passages recorded for the works it cites, as G7
+    finds them. Writes nothing. Exit 2 where `passages.yaml` cannot be used: every statement
+    would be listed as carrying none."""
+    import json
+
+    from manuscript_guard.gates.passages import survey_of
+    from manuscript_guard.literature.passages import listing, rendered
+
+    project, _ = load_project(args.path)
+    found, report = survey_of(project)
+    if report.failures:
+        for finding in report.failures:
+            print(f"manuscript-guard passages: {finding.message}", file=sys.stderr)
+        return 2
+    sources = project.path("literature") / "sources"
+    listed = listing(found, project.root, sources, missing=args.missing)
+    print(json.dumps(listed, indent=2, ensure_ascii=False) if args.json else rendered(listed))
+    return 0
+
+
 def cmd_reworded(args: argparse.Namespace) -> int:
     """Compare the manuscript with what it was, and say what changed besides the wording.
 
@@ -2400,7 +2571,24 @@ def cmd_submit(args: argparse.Namespace) -> int:
         print()
         print(approvals.render(project.root))
     print("\nStill to write by hand: the covering letter. No file in the project holds it.")
+    _declare_in_letter(project)
     return 0
+
+
+def _declare_in_letter(project) -> None:
+    """The earlier outputs the covering letter has to declare: G8 sees whether the manuscript
+    cites them, and no file holds the letter."""
+    from manuscript_guard.literature.related import load_related
+
+    try:
+        related, _ = load_related(project)
+    except ContractError:
+        return
+    overlapping = [o for o in related.outputs if o.overlaps] if related else []
+    if overlapping:
+        print("Declare in it the earlier outputs this paper overlaps with (ICMJE):")
+        for output in overlapping:
+            print(f"  {output.kind}: {output.citekey or output.title}")
 
 
 def cmd_approve(args: argparse.Namespace) -> int:
@@ -2499,6 +2687,84 @@ def cmd_sync_sources(args: argparse.Namespace) -> int:
     for line in copies.report(outcomes, dry_run=args.dry_run, offered=offered):
         print(line)
     return 0
+
+
+def cmd_related(args: argparse.Namespace) -> int:
+    """Copy an earlier output's project in, or list how this paper compares with each."""
+    import json
+
+    from manuscript_guard.gates.related import compare_related
+    from manuscript_guard.literature.related import TakeError, load_related, read_snapshot, take
+
+    project, _ = load_project(args.path)
+    related, report = load_related(project)
+    if related is None:
+        if report.findings:
+            print(report.render(project.root), file=sys.stderr)
+            return 2
+        print("manuscript-guard: there is no literature/related.yaml; the related-outputs "
+              "skill says how to write one", file=sys.stderr)  # fmt: skip
+        return 2
+    if args.take is not None:
+        return _take(project, related, args.take, take, TakeError)
+    namespace, results, _literature, _loaded = load_namespace(project)
+    found, rows = compare_related(project, namespace, results)
+    if args.json:
+        print(json.dumps({
+            "outputs": [
+                {"id": o.id, "kind": o.kind, "citekey": o.citekey, "title": o.title,
+                 "shares": list(o.shares),
+                 "copy": getattr(read_snapshot(project, o.id)[0], "manifest", None),
+                 "compared": [vars(r) for r in rows if r.output == o.id]}
+                for o in related.outputs
+            ],
+            "findings": [f.as_dict() for f in found.findings],
+        }, indent=2, ensure_ascii=False))  # fmt: skip
+        return 0
+    for output in related.outputs:
+        print(f"{output.name}, {output.kind}, shares {' and '.join(output.shares)}")
+        copy = read_snapshot(project, output.id)[0]
+        if copy is not None:
+            m = copy.manifest
+            at = f" at {m['revision']}" if m.get("revision") else ""
+            commit = f" (commit {m['commit'][:12]})" if m.get("commit") else ""
+            print(f"  copy of {m['project']}{at}{commit}, taken {m['taken_on']}")
+        for row in (r for r in rows if r.output == output.id):
+            named = row.earlier if row.earlier == row.here else f"{row.earlier} = {row.here}"
+            print(f"  {named}: {row.then} there, {row.now} here: {row.state}")
+    print()
+    print(found.render(project.root))
+    return 0
+
+
+def _take(project, related, wanted: list[str], take, failed) -> int:
+    """Copy each named output's project in; all those that name one where none is named."""
+    known = {output.id: output for output in related.outputs}
+    unknown = [name for name in wanted if name not in known]
+    if unknown:
+        print(f"manuscript-guard: no earlier output is named {', '.join(unknown)} in "
+              "literature/related.yaml", file=sys.stderr)  # fmt: skip
+        return 2
+    chosen = [known[name] for name in wanted] or [o for o in related.outputs if o.project]
+    if not chosen:
+        print("manuscript-guard: no earlier output names its project (`project:`), so there "
+              "is nothing to copy", file=sys.stderr)  # fmt: skip
+        return 2
+    code = 0
+    for output in chosen:
+        try:
+            record = take(project, output)
+        except failed as exc:
+            print(f"manuscript-guard: {exc}", file=sys.stderr)
+            code = 2
+            continue
+        try:
+            into = record.parent.relative_to(project.root).as_posix()
+        except ValueError:  # `paths:` can put the literature folder outside the project
+            into = str(record.parent)
+        at = f" at {output.revision}" if output.revision else ""
+        print(f"{output.id}: copied {output.project}{at} into {into}/")
+    return code
 
 
 def cmd_lookup(args: argparse.Namespace) -> int:
@@ -3511,6 +3777,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="with --run: send without being asked. For a script the author wrote; an "
         "agent asks the author first. The statement of what is sent where is still printed",
     )
+    review.add_argument(
+        "--suggestions",
+        action="store_true",
+        help="write the edits the round's readings suggest into "
+        "build/suggestions/round-N.docx as Word tracked changes, each under its reader's "
+        "name with its finding as a comment; accept or refuse them in Word, then `import` "
+        "that document to record what was decided. An edit that would change a number, a "
+        "binding or a citation, or whose words are not found exactly once, is not written",
+    )
     review.set_defaults(func=cmd_review)
 
     bind = sub.add_parser(
@@ -3653,6 +3928,23 @@ def build_parser() -> argparse.ArgumentParser:
     reworded.add_argument("--json", action="store_true", help="the report as JSON")
     reworded.set_defaults(func=cmd_reworded)
 
+    passages = sub.add_parser(
+        "passages",
+        help="list each cited statement with the passage of the cited work that supports it",
+        description="Lists each sentence of the manuscript that cites a work, with the "
+        "stored copy of each work it cites and the passages literature/passages.yaml records "
+        "for it, as G7 finds them: in the stored copy, not in it, or not checked. Passages "
+        "whose sentence the manuscript no longer has are listed as stale. Writes nothing.",
+    )
+    passages.add_argument("path", nargs="?", type=Path, default=Path.cwd())
+    passages.add_argument(
+        "--missing",
+        action="store_true",
+        help="only the statements that carry no passage of any work they cite",
+    )
+    passages.add_argument("--json", action="store_true", help="the listing as JSON")
+    passages.set_defaults(func=cmd_passages)
+
     render = sub.add_parser("render", help="substitute bindings into build/rendered")
     render.add_argument("path", nargs="?", type=Path, default=Path.cwd())
     render.set_defaults(func=cmd_render)
@@ -3724,6 +4016,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="ask the NLM Catalog and DOAJ about each journal of journals/shortlist.yaml instead",
     )
     lookup.set_defaults(func=cmd_lookup)
+
+    related = sub.add_parser(
+        "related",
+        help="compare the paper with the earlier outputs of the same data in "
+        "literature/related.yaml, or copy an earlier project in",
+    )
+    related.add_argument("path", nargs="?", type=Path, default=Path.cwd())
+    related.add_argument(
+        "--take",
+        nargs="*",
+        metavar="ID",
+        help="copy the results and plan of each named output's project, at its revision, into "
+        "literature/related/<id>/ (all that name a project, where none is given)",
+    )
+    related.add_argument("--json", action="store_true", help="the comparison as JSON")
+    related.set_defaults(func=cmd_related)
 
     search = sub.add_parser(
         "search",

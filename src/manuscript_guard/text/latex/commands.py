@@ -106,9 +106,13 @@ COMMANDS = _specs(
             _CITE,
         ),
         # Definitions: what they define is checked, their bodies read where they stand.
-        **dict.fromkeys(("newcommand", "renewcommand", "providecommand"), _DEFINE),
+        **dict.fromkeys(("newcommand", "renewcommand", "providecommand",
+                         "DeclareRobustCommand"), _DEFINE),
         **dict.fromkeys(("newenvironment", "renewenvironment"), "*{b}[b][p]{d}{d}"),
         "DeclareMathOperator": "*{c}{d}",
+        # xparse's: the name, the argument specification, the body.
+        **dict.fromkeys(("NewDocumentCommand", "RenewDocumentCommand", "ProvideDocumentCommand",
+                         "DeclareDocumentCommand"), "{c}{b}{d}"),
     }
 )  # fmt: skip
 
@@ -147,6 +151,12 @@ MATHS = frozenset(
     {"equation", "equation*", "align", "align*", "gather", "gather*", "multline", "multline*",
      "eqnarray", "eqnarray*", "displaymath", "math", "flalign", "flalign*", "alignat",
      "alignat*"}
+)  # fmt: skip
+
+#: amsmath's environments, whose `\\\\` takes a length only where it follows at once.
+AMSMATH = frozenset(
+    {"align", "align*", "gather", "gather*", "multline", "multline*", "flalign", "flalign*",
+     "alignat", "alignat*", "split", "aligned", "gathered", "alignedat"}
 )  # fmt: skip
 
 #: Environments read to their `\\end` as characters and blanked whole: a listing, read by G2's

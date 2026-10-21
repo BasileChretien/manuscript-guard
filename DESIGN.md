@@ -1269,6 +1269,8 @@ The result is compiled and packed by the code above, and checked three times:
   numbers G2 reads; a Markdown project's reference list is built and never read.
 - Only the first refusal of a file is reported: past it the file is read as prose, and the
   next is found once the first is put right.
+- A file whose only `\begin{document}` stands in a `\verb`, a listing or an `\iffalse` opens in
+  the preamble; refused, it keeps that reading, and what stands before the refusal is blanked.
 - A `.tex` file in a Markdown manuscript is not refused, as a Markdown file in a LaTeX one is
   (`other-format-file`): a project written before LaTeX was read may keep a `.tex` beside its
   Markdown for pandoc's header, and refusing it would fail a paper that passed. It is read by

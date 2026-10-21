@@ -197,6 +197,18 @@ def test_the_reader_is_linear_in_the_file(assert_linear, unit: str) -> None:
                   f"the LaTeX reader on {unit!r}")  # fmt: skip
 
 
+def test_what_round_three_found_is_read_as_latex_reads_it(assert_linear) -> None:
+    """Round 3 of #380: the robust and xparse definers' bodies print; an array's `\\\\` skips
+    spaces; `\\)` closes no environment; finding the document is linear."""
+    for define in ("\\DeclareRobustCommand{\\n}{4100}", "\\NewDocumentCommand{\\n}{}{4100}"):
+        document = f"\\documentclass{{a}}\n{define}\n\\begin{{document}}x\\end{{document}}"
+        assert "4100" in mask(document)
+    assert "2pt" not in mask("$\\begin{array}{l}a \\\\ [2pt] b\\end{array}$", body=True)
+    assert [r.code for r in read("\\begin{\\)}x\\)", body=True).refusals] == ["tex-unbalanced"]
+    assert_linear(lambda count: "\\%" * count + "%" + "\\begin{document}" * count, read, 500,
+                  "finding the document on a commented line")  # fmt: skip
+
+
 def test_what_round_two_found_is_read_as_latex_reads_it() -> None:
     """Round 2 of #380: a preamble refusal keeps its place; a minipage's width in a definition
     is blanked; the kernel's `\\\\` takes a length after a space; `\\\\else` is no `\\else`."""

@@ -21,6 +21,7 @@ import re
 from dataclasses import dataclass
 
 from manuscript_guard.text.latex.commands import (
+    AMSMATH,
     COMMANDS,
     ENVIRONMENTS,
     MATHS,
@@ -107,11 +108,17 @@ def read(text: str, *, body: bool | None = None) -> Reading:
 
 
 def _has_document(text: str) -> bool:
-    """Whether a `\\begin{document}` stands outside a comment."""
+    """Whether a `\\begin{document}` stands outside a comment, the text read forward once
+    (round 3 of #380)."""
+    scanned, comment = 0, False
     for match in _DOCUMENT.finditer(text):
-        line_start = text.rfind("\n", 0, match.start()) + 1
-        if not _opens_comment(text, line_start, match.start()):
+        newline = text.rfind("\n", scanned, match.start())
+        if newline >= 0:
+            scanned, comment = newline + 1, False
+        comment = comment or _opens_comment(text, scanned, match.start())
+        if not comment:
             return True
+        scanned = match.start()
     return False
 
 
@@ -164,7 +171,7 @@ class _Reader:
         self.refused: Refusal | None = None
         self.letters = _LETTERS
         self.definitions = 0
-        self.tables: list[bool] = []
+        self.environments: list[str] = []
 
     # -- running -----------------------------------------------------------------------
     def run(self) -> Reading:
@@ -220,11 +227,13 @@ class _Reader:
 
     def _argument(self) -> bool:
         """Take the next argument the last command expects where it stands. False where
-        there is none, and the text is read on as it comes. In maths, `\\\\` takes its star
-        and its length only where they follow it at once, as amsmath's does: a `[0.5, 1.2]`
-        opening the next row prints (round 1 of #380). Elsewhere it skips spaces before them,
-        as the kernel's does, and `\\\\ [2pt]` in a table is a length (round 2)."""
-        amsmath = self.command == "\\" and self._role() == MATHS_READ
+        there is none, and the text is read on as it comes. In amsmath's environments, `\\\\`
+        takes its length only where it follows at once: a `[0.5, 1.2]` opening the next row
+        prints (round 1 of #380). Elsewhere it skips spaces before it, as the kernel's and
+        array's do, and `\\\\ [2pt]` in a table or an array is a length (rounds 2 and 3)."""
+        amsmath = self.command == "\\" and bool(self.environments) and (
+            self.environments[-1] in AMSMATH
+        )
         at = self.pos if amsmath else self._after_space(self.pos)
         here = self.text[at : at + 1]
         while self.pending:
@@ -365,7 +374,7 @@ class _Reader:
     def _in_table(self) -> bool:
         """Whether the innermost environment is a table: kept apart from the stack, so that a
         file of braces and `&` is not read again for each `&` (round 1 of #380)."""
-        return bool(self.tables) and self.tables[-1]
+        return bool(self.environments) and self.environments[-1] in TABLES
 
     def _close_group(self, at: int) -> None:
         top = self.stack[-1] if self.stack else None
@@ -588,7 +597,7 @@ class _Reader:
             maths = name in MATHS and role in (PROSE, MATHS_READ)
             self.stack.append(_Frame("env", MATHS_READ if maths else role, at, name,
                                      table=name in TABLES))  # fmt: skip
-            self.tables.append(name in TABLES)
+            self.environments.append(name)
             self.command, self.pending = "begin", ENVIRONMENTS.get(name, ())
 
     def _end(self, name: str, at: int) -> None:
@@ -605,7 +614,7 @@ class _Reader:
             self._refuse("tex-unbalanced", at, f"\\end{{{name}}} closes no \\begin{{{name}}}")
             return
         self.stack.pop()
-        self.tables.pop()
+        self.environments.pop()
         self.pending = ()
 
 

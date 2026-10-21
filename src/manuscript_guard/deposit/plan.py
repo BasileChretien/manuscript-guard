@@ -56,8 +56,11 @@ DEPOSIT = f"{GATE}/custodian/deposit"
 #: results kept, the data dictionary, and the record of where the data come from. Nothing
 #: else of the folder, so the stored copies of the custodians' own pages stay out.
 DESIGN_FILES = ("plan.md", "plan.frozen.yaml", "data_dictionary.yaml", "data_sources.yaml")
-#: The supporting passages (#374) are quotations as the ledger's are, not copies of works.
-LITERATURE_FILES = ("ledger.yaml", "passages.yaml", "references.bib")
+LITERATURE_FILES = ("ledger.yaml", "references.bib")
+#: Withheld by name: the supporting passages (#374) hold the manuscript's own sentences, word
+#: for word, and the names of those who judged them (the last round of #388).
+WITHHELD_LITERATURE = {"passages.yaml": "the manuscript's own sentences, and who judged "
+                                        "their passages"}  # fmt: skip
 #: What a project's licence file is called, in the order they are looked for.
 LICENCE_FILES = ("LICENSE", "LICENSE.md", "LICENSE.txt", "LICENCE", "LICENCE.md", "LICENCE.txt",
                  "COPYING")  # fmt: skip
@@ -558,8 +561,12 @@ def _collect(collect: _Collector, project: Project, results: Results, inputs: li
             collect.take(project.root / "design" / name, "the analysis plan or its record")
     for name in LITERATURE_FILES:
         if (project.path("literature") / name).is_file():
-            collect.take(project.path("literature") / name, "the literature ledger, the "
-                         "supporting passages or the reference list")  # fmt: skip
+            collect.take(project.path("literature") / name, "the literature ledger or the "
+                         "reference list")  # fmt: skip
+    for name, why in WITHHELD_LITERATURE.items():
+        held = project.path("literature") / name
+        if held.is_file() and (at := collect.at(held)):
+            collect.withheld.append(Withheld(at, why))
     sources = project.path("literature") / "sources"
     if sources.is_dir() and any(sources.iterdir()) and (at := collect.at(sources)):
         collect.withheld.append(Withheld(f"{at}/", "stored copies of cited works, their "

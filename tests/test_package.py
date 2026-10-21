@@ -141,7 +141,6 @@ def test_the_package_holds_what_reproduces_the_results_and_nothing_of_the_rest(
         "data/reports.csv",  # synthetic
         "data/event_terms.txt",  # listed in package.share
         "literature/ledger.yaml",
-        "literature/passages.yaml",
         "literature/references.bib",
         "LICENSE",
         "README.md",
@@ -159,6 +158,14 @@ def test_the_package_holds_what_reproduces_the_results_and_nothing_of_the_rest(
         assert not path.endswith(".review.yaml"), path
     assert "authors.yaml" not in held
     assert "methods.lock" not in held
+    # The supporting passages hold the manuscript's sentences and the names of who judged
+    # them (the last round of #388): no packaged file carries a cited sentence.
+    assert "literature/passages.yaml" not in held
+    cited = yaml.safe_load((project / "literature" / "passages.yaml").read_text(
+        encoding="utf-8"))["passages"][0]["sentence"].split("{{")[0].strip()  # fmt: skip
+    for path in held:
+        data = (built(project) / path).read_bytes()
+        assert cited.encode("utf-8") not in data, path
 
 
 def test_a_cited_works_stored_copy_is_never_packaged(project: Path) -> None:

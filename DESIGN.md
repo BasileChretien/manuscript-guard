@@ -5450,8 +5450,9 @@ it. Basile settled four questions on 2026-10-21; each is below.
 from what may go, not from the project less what may not, so a folder the list does not name
 is never looked in (`deposit/plan.py`): `analysis/` and `figures/` file by file, the
 fragments with their digests, the plan, its frozen copy, the data dictionary and the record
-of the data sources by name, the literature ledger, the supporting passages and
-`references.bib`, the lockfiles, and
+of the data sources by name, the literature ledger and `references.bib` (never
+`passages.yaml`, which holds the manuscript's own sentences and the names of those who judged
+them), the lockfiles, and
 the licence. In a repository, a file git does not track is withheld and said, since it may be
 data kept out of git on purpose, and so is a link. A folder `paths:` sets to the project
 itself is refused, since it would take every file of the project (round 1 of #388), and so is

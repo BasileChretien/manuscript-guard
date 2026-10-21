@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://manuscript-guard.org/schemas/passages/1",
+  "title": "manuscript-guard supporting passages",
+  "description": "For a sentence of the manuscript that cites a work, the passage of that work that supports it, verbatim, and where it stands. G7 looks for each passage in the work's stored source under literature/sources/, and the co-author checker shows it beside the sentence. A passage belongs to a sentence by the sentence's words and the citation key, never by a file or a line: a sentence that moves keeps its passage, and one that is reworded leaves it stale.",
+  "type": "object",
+  "required": ["schema", "passages"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "manuscript-guard/passages/1" },
+    "passages": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/passage" }
+    }
+  },
+  "$defs": {
+    "passage": {
+      "type": "object",
+      "required": ["sentence", "citekey", "passage", "locator"],
+      "additionalProperties": false,
+      "dependentRequired": {
+        "support": ["judged_by", "judged_on"],
+        "judged_by": ["support"],
+        "judged_on": ["support"]
+      },
+      "properties": {
+        "sentence": {
+          "type": "string",
+          "pattern": "\\S",
+          "description": "The citing sentence, as the manuscript writes it. Its citations, its case, its line breaks, typographic marks and a final stop may differ: they are folded before it is matched."
+        },
+        "citekey": {
+          "type": "string",
+          "pattern": "\\S",
+          "description": "The cited work, by the key the sentence cites it under."
+        },
+        "passage": {
+          "type": "string",
+          "pattern": "\\S",
+          "description": "The words of the work that support the sentence, copied from its stored source. Words left out are marked [...] or an ellipsis, and each piece is looked for in order."
+        },
+        "locator": {
+          "type": "string",
+          "pattern": "\\S",
+          "description": "Where in the work, e.g. 'Discussion, p. 7, second paragraph': precise enough for a co-author to find it."
+        },
+        "support": {
+          "enum": ["supports", "partly", "does-not"],
+          "description": "A person's judgement of whether the passage supports the sentence. An agent may draft a passage; only a person judges it."
+        },
+        "judged_by": {
+          "type": "string",
+          "pattern": "\\S",
+          "description": "The person who judged it, by name."
+        },
+        "judged_on": { "type": "string", "format": "date" },
+        "note": { "type": "string" }
+      }
+    }
+  }
+}

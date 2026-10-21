@@ -207,6 +207,18 @@ CHANGED = {
         "",
         "quotation",
     ),
+    "a passage's sentence matched in the case it is typed in": (
+        "literature/passages.py",
+        '    folded = _BEFORE_MARK.sub(r"\\1", normalise(text).casefold())\n',
+        '    folded = _BEFORE_MARK.sub(r"\\1", normalise(text))\n',
+        "passages",
+    ),
+    "a passage's sentence matched with its final stop": (
+        "literature/passages.py",
+        '    return folded.rstrip(" .!?")\n',
+        "    return folded\n",
+        "passages",
+    ),
     "a bracket that holds no dollar sign": (
         "text/tex.py",
         '_HOLDS_A_DOLLAR = "`<[@"\n',
@@ -265,6 +277,12 @@ CHANGED = {
         "reworded.py",
         '        relation = _compared(shown, number.start("relation"), typed) if typed else ""\n',
         '        relation = ""\n',
+        "reworded",
+    ),
+    "a claim moved both ways told as the first way": (
+        "claims.py",
+        "    elif MOVED in ways or len(set(ways)) > 1:\n",
+        "    elif MOVED in ways:\n",
         "reworded",
     ),
     "a finding that points at another file": (

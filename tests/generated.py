@@ -492,6 +492,180 @@ def signs() -> st.SearchStrategy[str]:
     return _in_a_row(_SIGNS, few=12, many=50)
 
 
+# ------------------------------------------------------------------------------- LaTeX
+
+#: LaTeX as an author writes it, each piece whole: numbers as LaTeX writes them, the commands
+#: the reader knows and one it does not, citations, a binding, a label, listings, a comment,
+#: maths and a table. Whole, so that one drawn among others reads as it reads alone.
+_LATEX_WHOLE = (
+    "95\\% ", "$p<0.05$ ", "3--5 ", "Table~\\ref{t} ", "\\cite[p.~33]{smith2019} ",
+    "\\citep{a,b} ", "\\mg{results.ror.point} ", "\\label{sec:2} ", "\\verb|x=1| ",
+    "% note 12\n", "\\url{http://a.b/1%2} ", "\\footnote{seen 3} ", "\\emph{7 words} ",
+    "\\section{Results 2}\n", "\\unknown{4 days} ", "``quoted 6'' ", "$\\beta = 0.42$ ",
+    "\\begin{tabular}{lc}a & 7 \\\\ b & 8 \\\\\\end{tabular}\n", "\\iffalse 9 \\fi ",
+    "\\begin{verbatim}\nx <- 55\n\\end{verbatim}\n", "\\[ x = 1 \\] ", "10\\,000 ", "\n\n",
+)  # fmt: skip
+#: The signs of LaTeX bare, opened and closed by nobody: what a scanner mishandles.
+_LATEX_SIGNS = (
+    "\\", "%", "{", "}", "[", "]", "$", "$$", "&", "#", "^", "_", "~", "``", "''",
+    "\\begin{verbatim}", "\\end{equation}", "\\[", "\\]", "\\(", "\\)", "\\iffalse", "\\fi",
+    "\\input{", "\\verb", "\\begin{document}", "\\end{document}", "\\catcode", "\\def\\x",
+    "\\makeatletter", "\\ifx", "\n", "\r\n", " ", "12", "\\begin{comment}", "\\url{",
+)  # fmt: skip
+_PREAMBLE = "\\documentclass{article}\n\\begin{document}\n"
+
+
+def latex_texts() -> st.SearchStrategy[str]:
+    """A LaTeX file, drawn as `texts` draws a Markdown one: whole pieces among words, and the
+    bare signs once each. Some open with a preamble and `\\begin{document}`."""
+    pool = (*_spaced(FILLER) * 2, *_spaced(_NUMBERS), *_LATEX_WHOLE * 3, *_LATEX_SIGNS)
+    return st.tuples(
+        st.sampled_from(("", "", _PREAMBLE)), _in_a_row(pool, few=20, many=70)
+    ).map("".join)
+
+
+#: Where a number stands in LaTeX, and whether the reader reads it there: each `{}` holds a
+#: number, and its flag says whether it is read. A comment's line is followed by a line
+#: that is read, so that a comment that runs past its line is seen.
+LATEX_PLACES = (
+    ("prose {} ", (True,)),
+    ("\\emph{{{} words}} ", (True,)),
+    ("\\footnote{{seen {}}} ", (True,)),
+    ("\\caption{{Cases {}}} ", (True,)),
+    ("\\cite[p.~{}]{{smith2019}} ", (True,)),
+    ("$x = {}$ ", (True,)),
+    ("\\verb+{}+ ", (True,)),
+    ("\\section{{Part {}}}\n", (True,)),
+    ("\\unknown{{{} days}} ", (True,)),
+    ("\\newcommand{{\\cases}}{{{}}} ", (True,)),
+    ("95\\% then {} ", (True,)),
+    ("\\textbf{{a {{b}} {}}} ", (True,)),
+    ("% note {}\n{} ", (False, True)),
+    ("\\label{{s{}}} ", (False,)),
+    ("\\label{{a{{b}}{}}} ", (False,)),
+    ("\\cite{{key{}}} ", (False,)),
+    ("\\mg{{results.r{}}} ", (False,)),
+    ("\\url{{http://a.b/{}}} ", (False,)),
+    ("\\begin{{verbatim}}\n{}\n\\end{{verbatim}}\n", (False,)),
+    ("\\iffalse {} \\fi ", (False,)),
+    ("\\vspace{{{}pt}} ", (False,)),
+    # What round 1 of #380 found blanked though it prints.
+    ("\\iffalse {} \\else {} \\fi ", (False, True)),
+    ("\\begin{{align}}a &= b \\\\\n[{}] &= c\\end{{align}}\n", (True,)),
+    ("\\href{{http://a.b/{}}}{{text {}}} ", (False, True)),
+    ("\\begin{{tabular}}{{ll}}{} & \\multicolumn{{1}}{{c}}{{m {}}} \\\\\\end{{tabular}}\n",
+     (True, True)),
+    ("$x$${}$ ", (True,)),
+)  # fmt: skip
+#: Where a number stands in the preamble, before `\\begin{document}`.
+LATEX_PREAMBLE_PLACES = (
+    ("\\begin{{filecontents}}{{x.bib}}\nkept {}\n\\end{{filecontents}}\n", (False,)),
+    ("\\title{{T {}}}\n", (True,)),
+    ("\\newcommand{{\\ci}}[1][{}]{{#1 CI}}\n", (True,)),
+    ("\\usepackage[opt{}]{{x}}\n", (False,)),
+    ("\\author{{A {}}}\n", (False,)),
+    # An abstract a class prints from the preamble, and a restyling that names the command
+    # (round 2 of #385: the first was refused, and so was the second).
+    ("\\let\\oldabstract\\abstract\n\\abstract{{Of {}}}\n", (True,)),
+    ("\\begin{{abstract}}Of {}\\end{{abstract}}\n", (True,)),
+)  # fmt: skip
+
+
+@st.composite
+def latex_planted(draw: st.DrawFn) -> tuple[str, list[tuple[int, str, bool]]]:
+    """A LaTeX document with a number in every place of `LATEX_PLACES`, in an order drawn,
+    among whole pieces; and where each number stands, and whether it is read there. Every
+    place is in every document, so that a rule broken for one kind is seen in each."""
+    filler = (*_spaced(FILLER), *_LATEX_WHOLE)
+    order = draw(st.permutations(range(len(LATEX_PLACES))))
+    between = draw(st.lists(st.sampled_from(filler), min_size=len(order) + 1,
+                            max_size=len(order) + 1))  # fmt: skip
+    text, planted, count = "\\documentclass{article}\n", [], 0
+
+    def plant(template: str, flags: tuple[bool, ...]) -> None:
+        nonlocal text, count
+        pieces = [piece.replace("{{", "{").replace("}}", "}") for piece in template.split("{}")]
+        for piece, read in zip(pieces, flags, strict=False):
+            number = str(4101 + count)
+            count += 1
+            text += piece
+            planted.append((len(text), number, read))
+            text += number
+        text += pieces[-1]
+
+    for template, flags in LATEX_PREAMBLE_PLACES:
+        plant(template, flags)
+    text += "\\begin{document}\n"
+    for piece, index in zip(between, order, strict=False):
+        text += piece
+        plant(*LATEX_PLACES[index])
+    text += between[-1] + "\\end{document}\n"
+    plant("after {}\n", (False,))
+    return text, planted
+
+
+_SECTIONING = {-1: "part", 0: "chapter", 1: "section", 2: "subsection", 3: "subsubsection"}
+
+
+@st.composite
+def latex_trees(
+    draw: st.DrawFn,
+) -> tuple[dict[str, str], dict[str, list[str]], dict[str, list[str]]]:
+    """A LaTeX manuscript of a few files that input one another, with no file inputting
+    itself; the titles each file starts under; and the titles in force at a word written
+    after each heading. Both are worked out apart from the reader: a heading of a file input
+    reaches the text after its `\\input`, as LaTeX prints it.
+
+    The entry file opens under a part, a chapter and a section, inputs a file that opens a
+    subsection, writes a subsubsection right after that `\\input`, and inputs another file.
+    So every manuscript has a file that starts under a heading, a part a chapter does not
+    close, and a heading where an `\\input` ends, which stands over the text after it (round
+    2 of #385). Nothing but a heading's word follows a line break, so an `\\input` stands
+    against what comes next."""
+    count = draw(st.integers(min_value=3, max_value=5))
+    names = ["main.tex", *(f"part{index}.tex" for index in range(1, count))]
+    items: dict[str, list[tuple[str, object]]] = {}
+    for index, name in enumerate(names):
+        drawn = draw(st.lists(st.one_of(
+            st.tuples(st.just("heading"), st.integers(min_value=-1, max_value=3)),
+            st.tuples(st.just("input"), st.integers(min_value=index + 1, max_value=count)),
+            st.tuples(st.just("words"), st.sampled_from(FILLER)),
+        ), max_size=8))  # fmt: skip
+        inputs = [("input", child) for kind, child in drawn if kind == "input" and child < count]
+        rest = [item for item in drawn if item[0] != "input"]
+        opening = [("heading", -1), ("heading", 0), ("heading", 1), ("input", 1),
+                   ("heading", 3), ("input", 2)]  # fmt: skip
+        planted = {0: opening, 1: [("heading", 2)]}
+        items[name] = planted.get(index, []) + rest + inputs
+    files, under, marks, seen, counter = {}, {}, {}, {"main.tex"}, [0]
+
+    def visit(name: str, chain: list[tuple[int, str]]) -> list[tuple[int, str]]:
+        under[name] = [title for _, title in chain]
+        text = "\\documentclass{article}\n\\begin{document}\n" if name == "main.tex" else ""
+        for kind, value in items[name]:
+            if kind == "heading":
+                counter[0] += 1
+                title = f"Part {counter[0]}"
+                chain = [kept for kept in chain if kept[0] < value] + [(value, title)]
+                marks[f"mark{counter[0]}"] = [title for _, title in chain]
+                text += f"\\{_SECTIONING[value]}{{{title}}}\nmark{counter[0]} "
+            elif kind == "input":
+                child = names[value]
+                text += f"\\input{{{child[:-4]}}}"
+                if child not in seen:
+                    seen.add(child)
+                    chain = visit(child, chain)
+            else:
+                text += f"{value} "
+        files[name] = text + ("\n\\end{document}\n" if name == "main.tex" else "")
+        return chain
+
+    visit("main.tex", [])
+    for name in names:
+        files.setdefault(name, "")
+    return files, under, marks
+
+
 #: The headings of the parts of a paper, each written more than one way, and bindings to
 #: put under them: what G8 reads to find a number a summary gives and the paper does not.
 SUMMARIES = (
@@ -731,6 +905,76 @@ def quotations(draw: st.DrawFn) -> tuple[str, str]:
     first = draw(st.integers(0, len(words) - 1))
     last = draw(st.integers(first, len(words) - 1))
     return source, " ".join(words[first : last + 1])
+
+
+# ------------------------------------------------------------ passages of cited works
+
+#: How a person writes a cited sentence into `passages.yaml` and means the same sentence:
+#: each is no difference to a reader, and none may be one to G7.
+FOLDED = (
+    "citations dropped", "citations added", "capitals", "wrapped", "no final stop", "typed",
+    "no-break space", "space before a comma", "binding spaced",
+)  # fmt: skip
+#: The binding a planted claim holds, as the manuscript writes it.
+_CLAIMED = "{{results.cohort.n}}"
+#: How it is written and means another sentence, or another work, and belongs to none.
+UNFOLDED = ("last word changed", "word added", "work not cited")
+
+
+_EN_DASH = "\N{EN DASH}"
+
+
+def _written(sentence: str, group: str, how: str) -> str:
+    """`sentence`, whose citation group is `group`, written into `passages.yaml` as `how`."""
+    return {
+        "citations dropped": lambda: sentence.replace(f" {group}", ""),
+        "citations added": lambda: sentence.replace(group, "[@z9, p. 4] " + group),
+        "capitals": sentence.upper,
+        "wrapped": lambda: sentence.replace(" ", "\n    ", 3),
+        "no final stop": lambda: sentence.rstrip("."),
+        "typed": lambda: typed(sentence),
+        "no-break space": lambda: sentence.replace(" ", "\N{NO-BREAK SPACE}", 2),
+        "space before a comma": lambda: sentence.replace(",", " ,", 1),
+        "binding spaced": lambda: sentence.replace(_CLAIMED, "{{ results.cohort.n }}"),
+        "last word changed": lambda: sentence.replace(" age ", " sex "),
+        "word added": lambda: sentence.replace(" rate ", " rate never "),
+        "work not cited": lambda: sentence,
+    }[how]()
+
+
+@st.composite
+def passage_files(draw: st.DrawFn) -> tuple[dict[str, Any], list[tuple[int, str]]]:
+    """A manuscript of cited claims, each its own paragraph among drawn text, and the entries
+    of a `passages.yaml` for them: for each claim, its sentence written each way of `FOLDED`
+    and of `UNFOLDED`, in an order drawn each time. With each entry, the claim it belongs
+    to and how it was written; an `UNFOLDED` one belongs to none.
+
+    Every way in each example, so that a rule broken for one of them fails under any seed. A
+    claim's last word before its citation is the one changed, so that a rule matching on a
+    sentence's opening words is wrong in every example. Drawn text opens no comment, which
+    would hide the claims after it: what is held here is how a passage finds its sentence."""
+    claims = draw(st.integers(1, 3))
+    noise = texts().map(lambda text: text.replace("<!--", "<!-"))
+    pieces, entries = [], []
+    for n in range(1, claims + 1):
+        verb = draw(st.sampled_from(("rose", "fell", "doubled", "persisted")))
+        group = draw(st.sampled_from((f"[@k{n}]", f"[@k{n}; @shared]", f"[see @k{n}, p. 3]")))
+        sentence = (
+            f"Claim {n}: in the {_OPEN}older{_CLOSE} cohort of {_CLAIMED}, the "
+            f"drug{_EN_DASH}induced injury rate {verb} with age {group}."
+        )
+        pieces.append(sentence)
+        for how in FOLDED + UNFOLDED:
+            key = f"k{n}x" if how == "work not cited" else f"k{n}"
+            entries.append((
+                {"sentence": _written(sentence, group, how), "citekey": key,
+                 "passage": "words of the work", "locator": "p. 1"},
+                (n, how),
+            ))  # fmt: skip
+    pieces = draw(st.permutations(pieces))
+    text = "".join(f"{draw(noise)}\n\n{piece}\n\n" for piece in pieces) + draw(noise)
+    entries = draw(st.permutations(entries))
+    return {"text": text, "entries": [entry for entry, _n in entries]}, [n for _e, n in entries]
 
 
 # ---------------------------------------------------------------------- a vector figure
@@ -1601,9 +1845,13 @@ NAMED = (
 @st.composite
 def edits(draw: st.DrawFn) -> tuple[str, str]:
     """A manuscript and what an edit made of it: the same text, one of its paragraphs moved
-    to the end, one taken out, or another manuscript altogether."""
+    to the end, one taken out, another manuscript altogether, or sentences whose claim was
+    made stronger, weaker or turned round (`claim_edits`)."""
+    kind = draw(st.sampled_from(("the same", "moved", "cut", "another", "claims")))
+    if kind == "claims":
+        before, after, _told = draw(claim_edits())
+        return before, after
     before = draw(texts(HELD))
-    kind = draw(st.sampled_from(("the same", "moved", "cut", "another")))
     if kind == "the same":
         return before, before
     if kind == "another":
@@ -1615,6 +1863,219 @@ def edits(draw: st.DrawFn) -> tuple[str, str]:
     else:
         del paragraphs[at]
     return before, "\n\n".join(paragraphs)
+
+
+# ------------------------------------------------------------- how strongly a sentence claims
+
+#: Words that set how strongly a sentence claims, by what each is: a class, or the rung of
+#: the ladder counted from consistency. Written here and not read from the data file, so
+#: that a rule broken in reading the file does not draw its own inputs.
+CLAIMED: dict[str | int, tuple[str, ...]] = {
+    "hedge": ("may", "might", "could", "possibly", "appears", "seemed"),
+    "limit": ("only", "in this sample", "under these conditions"),
+    "negation": (
+        "not", "no", "never", "didn't", "didn\N{RIGHT SINGLE QUOTATION MARK}t", "cannot",
+        "non-significant",
+    ),
+    0: ("consistent with", "suggests", "suggestive of"),
+    1: ("associated", "correlated", "related to", "linked to"),
+    2: ("predicts", "predicted", "predictive of"),
+    3: ("contributes to", "contributed to"),
+    4: ("increased", "reduces", "led to", "affects", "resulted in"),
+    5: ("caused", "causes", "causal", "demonstrated that"),
+}  # fmt: skip
+_RUNGS = tuple(kind for kind in CLAIMED if isinstance(kind, int))
+#: What looks like a word of those and is not read as one: a word in a compound, joined
+#: before or after; a participle after an article; a capital that marks a name, of a word
+#: read in lower case only too; a word in code or in a comment.
+UNCLAIMED = (
+    "drug-induced", "all-cause", "cause-specific", "an increased", "the associated",
+    "a reduced", "the predicted", "in May", "the Only", "the Never", "Causes", "`may`",
+    "<!-- not -->",
+)  # fmt: skip
+#: What an edit does to one sentence's claim, and what that is told as: nothing, a claim
+#: made stronger or weaker, moved both ways, or turned round; "" where the code is drawn
+#: with the edit. A sentence added, deleted, moved, split, joined or only rewrapped is told
+#: nothing, nor is a month that opens a sentence. The front matter's abstract and an item
+#: of a list are edited as one of `_SIMPLE`.
+CLAIM_EDITS = {
+    "reworded": None, "synonyms": None, "look-alikes gone": None, "look-alikes new": None,
+    "added": None, "deleted": None, "moved": None, "rewrapped": None, "split": None,
+    "joined": None, "opening month": None,
+    "hedge gone": "claim-stronger", "hedge new": "claim-weaker",
+    "limit gone": "claim-stronger", "limit new": "claim-weaker",
+    "negation gone": "claim-negation", "negation new": "claim-negation",
+    "opening negation gone": "claim-negation",
+    "up": "claim-stronger", "down": "claim-weaker",
+    "lowest up": "claim-stronger", "lowest down": "claim-weaker",
+    "lowest kept": "claim-moved",
+    "rung came": "", "rung left": "", "both ways": "claim-moved", "list item": "",
+}  # fmt: skip
+_SIMPLE = (
+    "hedge gone", "hedge new", "limit gone", "limit new", "negation gone", "negation new",
+)  # fmt: skip
+#: What opens a line that opens a block: an item of a list, unordered or ordered, a heading,
+#: a quotation, a row, and a line that holds only a comment, which is blanked and so a
+#: blank line. "2)" is the ordered item no stop also cuts: "1." is one.
+_BLOCK_OPENERS = ("- ", "* ", "+ ", "1. ", "2) ", "# ", "> ", "| ", "<!-- a note -->\n")
+_PLAIN = tuple(word for word in FILLER if word != "the")
+
+
+@st.composite
+def claim_edits(draw: st.DrawFn) -> tuple[str, str, list[tuple[str, int]]]:
+    """A text, what an edit made of it, and what is to be told: each finding's code and the
+    line of the text after that it stands on.
+
+    Every edit of `CLAIM_EDITS` is in every example, in a paragraph of its own and in an
+    order drawn each time, so that a rule broken for one kind is seen under any seed, and
+    every example opens with front matter whose abstract is edited. Each paragraph is
+    followed by one that does not change, and a sentence that changes stands between two
+    that do not: those line the texts up around what changed. The words around a claim's
+    words are drawn again for the text after. That is the rewording, and it is free."""
+    marks = iter(f"x{''.join(chr(97 + int(d)) for d in str(at))}" for at in range(10_000))
+
+    def word(kind: str | int) -> str:
+        return draw(st.sampled_from(CLAIMED[kind]))
+
+    def stable() -> list[str]:
+        return [word(kind) for kind in draw(st.lists(st.sampled_from(tuple(CLAIMED)), max_size=2))]
+
+    def written(
+        claims: list[str], mark: str, opening: str = "", *, stop: bool = True, wrap: bool = True
+    ) -> str:
+        """A sentence of filler words with `claims` among them, each after a word that is
+        no article, and its mark, which makes it a sentence no other is. Ended by a stop
+        or not, and wrapped over lines or on one."""
+        tokens = [opening] if opening else []
+        tokens += [draw(st.sampled_from(_PLAIN)), mark]
+        for claim in claims:
+            tokens += [draw(st.sampled_from(_PLAIN)), *claim.split(" ")]
+        tokens.append(draw(st.sampled_from(_PLAIN)))
+        breaks = (" ", " ", " ", "\n") if wrap else (" ",)
+        gaps = [draw(st.sampled_from(breaks)) for _ in tokens[1:]]
+        text = tokens[0] + "".join(gap + token for gap, token in zip(gaps, tokens[1:], strict=True))
+        return text[0].upper() + text[1:] + ("." if stop else "")
+
+    def ladder(*rungs: int) -> list[str]:
+        return [word(rung) for rung in rungs]
+
+    def pair(did: str) -> tuple[list[str], list[str], str]:
+        """The claim words of one sentence before and after, and the code it is told with."""
+        kept = stable()
+        told = CLAIM_EDITS[did] or ""
+        if did in ("reworded", "rewrapped", "opening negation gone", "opening month"):
+            return kept, list(draw(st.permutations(kept))), told
+        if did == "synonyms":
+            kinds = ("hedge", "limit", "negation", *_RUNGS)
+            was = [word(kind) for kind in kinds]
+            now = [draw(st.sampled_from([other for other in CLAIMED[kind] if other != one]))
+                   for kind, one in zip(kinds, was, strict=True)]  # fmt: skip
+            return was, now, told
+        if did.startswith("look-alikes"):
+            planted = list(draw(st.permutations(UNCLAIMED)))
+            return (planted, [], told) if did.endswith("gone") else ([], planted, told)
+        kind = did.split()[0]
+        if kind in ("hedge", "limit", "negation"):
+            claim = word(kind)
+            if did.endswith("gone"):
+                return [*kept, claim], kept, told
+            return kept, [*kept, claim], told
+        plain = [one for one in kept if not any(one in CLAIMED[rung] for rung in _RUNGS)]
+        low, high = sorted(draw(st.lists(st.sampled_from(_RUNGS), min_size=2, max_size=2,
+                                         unique=True)))  # fmt: skip
+        rung = draw(st.sampled_from(_RUNGS))
+        if did == "up":
+            return kept + ladder(low), kept + ladder(high), told
+        if did == "down":
+            return kept + ladder(high), kept + ladder(low), told
+        if did == "lowest up":
+            return plain + ladder(low, high), plain + ladder(high), told
+        if did == "lowest down":
+            return plain + ladder(high), plain + ladder(low, high), told
+        if did == "lowest kept":
+            return plain + ladder(low, high), plain + ladder(low), told
+        if did == "rung came":
+            return plain, plain + ladder(rung), "claim-weaker" if rung == 0 else "claim-stronger"
+        if did == "rung left":
+            return plain + ladder(rung), plain, "claim-stronger" if rung == 0 else "claim-weaker"
+        # Both ways: a hedge new, and a word moved up the ladder.
+        return ladder(low), [word("hedge"), *ladder(high)], told
+
+    # The front matter: its title stands, and its abstract is edited. Each value is on one
+    # line, as YAML has a plain value.
+    title = written(stable(), next(marks), wrap=False)
+    was, now, told = pair(draw(st.sampled_from(_SIMPLE)))
+    mark = next(marks)
+    ahead = f"---\ntitle: {title}\nabstract: "
+    before: list[str] = [f"{ahead}{written(was, mark, wrap=False)}\n---"]
+    #: The paragraphs after, each with the code it is told with and the text in front of
+    #: the sentence told, where one is.
+    after: list[tuple[str, str, str]] = [(f"{ahead}{written(now, mark, wrap=False)}\n---",
+                                          told, ahead)]  # fmt: skip
+    unchanged = written(stable(), next(marks))
+    before.append(unchanged)
+    after.append((unchanged, "", ""))
+    moved = ""
+    for did in draw(st.permutations(tuple(CLAIM_EDITS))):
+        first, last = written(stable(), next(marks)), written(stable(), next(marks))
+        gap = draw(st.sampled_from((" ", "\n")))
+        if did in ("added", "deleted", "moved"):
+            claims = [*stable(), word(draw(st.sampled_from(tuple(CLAIMED))))]
+            paragraph = written(claims, next(marks))
+            if did != "added":
+                before.append(paragraph)
+            if did == "added":
+                after.append((paragraph, "", ""))
+            elif did == "moved":
+                moved = paragraph
+        elif did in ("split", "joined"):
+            # One sentence made two, or two made one, with the same words of their claim:
+            # an unequal stretch, read whole.
+            one, other = stable(), [*stable(), word(draw(st.sampled_from(tuple(CLAIMED))))]
+            mark, second = next(marks), next(marks)
+            whole = written([*one, *other], mark)
+            halves = f"{written(one, mark)}{gap}{written(other, second)}"
+            was_, now_ = (whole, halves) if did == "split" else (halves, whole)
+            before.append(f"{first}{gap}{was_}{gap}{last}")
+            after.append((f"{first}{gap}{now_}{gap}{last}", "", ""))
+        elif did == "list item":
+            # Lines that open blocks, with no stop at their ends: only the lines cut them.
+            # One paragraph for each way a line opens one, the edited line opened so, since
+            # a rule broken for one of them is seen only there. The lines around it stand.
+            for opener in draw(st.permutations(_BLOCK_OPENERS)):
+                was, now, told = pair(draw(st.sampled_from(_SIMPLE)))
+                mark = next(marks)
+                top = "- " + written(stable(), next(marks), stop=False)
+                low = "- " + written(stable(), next(marks), stop=False)
+                item_was = opener + written(was, mark, stop=False)
+                item_now = opener + written(now, mark, stop=False)
+                before.append(f"{top}\n{item_was}\n{low}")
+                after.append((f"{top}\n{item_now}\n{low}", told, f"{top}\n{opener}"))
+        else:
+            was, now, told = pair(did)
+            mark = next(marks)
+            opening = {"opening negation gone": "not", "opening month": "May"}.get(did, "")
+            sentence = written(was, mark, opening)
+            # Rewrapped, the sentence is its words on one line.
+            edited = " ".join(sentence.split()) if did == "rewrapped" else written(now, mark)
+            before.append(f"{first}{gap}{sentence}{gap}{last}")
+            after.append((f"{first}{gap}{edited}{gap}{last}", told, f"{first}{gap}"))
+        unchanged = written(stable(), next(marks))
+        before.append(unchanged)
+        after.append((unchanged, "", ""))
+    if moved:
+        after.append((moved, "", ""))
+    expected = []
+    line = 1
+    for paragraph, told, ahead in after:
+        if told:
+            expected.append((told, line + ahead.count("\n")))
+        line += paragraph.count("\n") + 2
+    return (
+        "\n\n".join(before) + "\n",
+        "\n\n".join(paragraph for paragraph, _, _ in after) + "\n",
+        expected,
+    )
 
 
 # ------------------------------------------------------------------- a project's settings
@@ -1696,7 +2157,11 @@ def _quotation_asked(drawn: tuple[tuple[str, str], str, str]) -> dict[str, str]:
 INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "checker sentences": texts(),
     "prose quotations": texts(QUOTED),
+    "passages": passage_files().map(lambda drawn: drawn[0]),
     "mask": texts(TERMS),
+    "latex mask": latex_texts(),
+    "latex refusals": latex_texts(),
+    "latex sections": latex_texts(),
     "hidden": texts(TERMS),
     "own words": texts(TERMS),
     "spans": texts(),

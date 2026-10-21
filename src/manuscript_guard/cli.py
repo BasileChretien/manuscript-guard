@@ -32,6 +32,7 @@ from manuscript_guard.build import (
 )
 from manuscript_guard.build.assemble import check_shapes
 from manuscript_guard.build.document import abbreviations
+from manuscript_guard.build.latex_check import check_latex
 from manuscript_guard.build.tex_check import check_tex
 from manuscript_guard.classify import UNCLASSIFIED, Classifier
 from manuscript_guard.contracts import (
@@ -56,6 +57,7 @@ from manuscript_guard.gates import (
     check_methods,
     check_models,
     check_numbers,
+    check_passages,
     check_prose_quotations,
     check_recomputed,
     check_relations,
@@ -149,6 +151,7 @@ def _run_gates(
         ("G7", lambda: check_citations(project, literature)),
         ("G7", lambda: check_literature_chain(project, literature)),
         ("G7", lambda: check_prose_quotations(project)),
+        ("G7", lambda: check_passages(project, chosen)),
         ("G4", lambda: check_journal(project)),
         ("G4", lambda: check_shortlist(project)),
         ("G8r", lambda: check_reporting(project)),
@@ -167,6 +170,7 @@ def _run_gates(
         ("G14", lambda: check_language(project)),
         ("G15", lambda: check_models(project, results)),
         ("BUILD", lambda: check_shapes(project).merge(check_tex(project, namespace, results))),
+        ("BUILD", lambda: check_latex(project)),
     ):
         if latex and _NOT_READ_IN_LATEX & set(gate.__code__.co_names):
             # A check that reads only Markdown would read nothing here and pass: it is not
@@ -198,6 +202,7 @@ _NOT_READ_IN_LATEX = frozenset(
         "check_prose_quotations", "check_journal", "check_reporting", "check_writing",
         "check_methods", "check_synthetic_inputs", "check_reported", "check_recomputed",
         "check_revision", "check_language", "check_models", "check_shapes", "check_tex",
+        "check_passages",
     }
 )  # fmt: skip
 
@@ -2074,6 +2079,27 @@ def cmd_models(args: argparse.Namespace) -> int:
     return 0 if report.ok else 1
 
 
+def cmd_passages(args: argparse.Namespace) -> int:
+    """List each cited statement with the passages recorded for the works it cites, as G7
+    finds them. Writes nothing. Exit 2 where `passages.yaml` cannot be used: every statement
+    would be listed as carrying none."""
+    import json
+
+    from manuscript_guard.gates.passages import survey_of
+    from manuscript_guard.literature.passages import listing, rendered
+
+    project, _ = load_project(args.path)
+    found, report = survey_of(project)
+    if report.failures:
+        for finding in report.failures:
+            print(f"manuscript-guard passages: {finding.message}", file=sys.stderr)
+        return 2
+    sources = project.path("literature") / "sources"
+    listed = listing(found, project.root, sources, missing=args.missing)
+    print(json.dumps(listed, indent=2, ensure_ascii=False) if args.json else rendered(listed))
+    return 0
+
+
 def cmd_reworded(args: argparse.Namespace) -> int:
     """Compare the manuscript with what it was, and say what changed besides the wording.
 
@@ -3698,9 +3724,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="check that an edit changed the wording and nothing else",
         description="Compares the manuscript with what it was and holds every binding, "
         "citation key and typed number to its place. One that is gone, new or changed "
-        "fails; the same ones in another order pass with a warning for each place. Run it "
-        "after a language edit, by a person, a service or a model, and before committing "
-        "it: the text before is the last commit's unless another is named.",
+        "fails; the same ones in another order pass with a warning for each place. A "
+        "sentence the edit made claim more, less or the opposite, by a hedge, a limit, a "
+        "negation or a word of the claim-strength ladder that came or went, passes with a "
+        "warning. Run it after a language edit, by a person, a service or a model, and "
+        "before committing it: the text before is the last commit's unless another is named.",
     )
     reworded.add_argument(
         "paths",
@@ -3724,6 +3752,23 @@ def build_parser() -> argparse.ArgumentParser:
     )
     reworded.add_argument("--json", action="store_true", help="the report as JSON")
     reworded.set_defaults(func=cmd_reworded)
+
+    passages = sub.add_parser(
+        "passages",
+        help="list each cited statement with the passage of the cited work that supports it",
+        description="Lists each sentence of the manuscript that cites a work, with the "
+        "stored copy of each work it cites and the passages literature/passages.yaml records "
+        "for it, as G7 finds them: in the stored copy, not in it, or not checked. Passages "
+        "whose sentence the manuscript no longer has are listed as stale. Writes nothing.",
+    )
+    passages.add_argument("path", nargs="?", type=Path, default=Path.cwd())
+    passages.add_argument(
+        "--missing",
+        action="store_true",
+        help="only the statements that carry no passage of any work they cite",
+    )
+    passages.add_argument("--json", action="store_true", help="the listing as JSON")
+    passages.set_defaults(func=cmd_passages)
 
     render = sub.add_parser("render", help="substitute bindings into build/rendered")
     render.add_argument("path", nargs="?", type=Path, default=Path.cwd())

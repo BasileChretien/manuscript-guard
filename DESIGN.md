@@ -7825,7 +7825,14 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   the project's codes are set. No field is flagged as an identifier, since the dictionary
   does not say which fields identify a person. A `pattern` is not written as a validation
   (REDCap's own are a fixed list), and is said. A name over 26 characters, which REDCap
-  advises against and accepts, is written as it is. The REDCap file has not been imported
+  advises against and accepts, is written as it is. A code with a comma, a bar, a quotation
+  mark or a space, or a label with a bar or a line break, is refused, since it would not
+  read back from REDCap's choices (round 1); a code REDCap refuses for another reason,
+  `N/A`, is written, and REDCap's import says so. A bound with seconds is written to the
+  minute, which widens it by under a minute, and a `count`'s bound is written as given,
+  `0.5` included. A name REDCap reserves for itself, or `<form>_complete`, which it makes,
+  is not refused, and a definition holding an action tag, `@HIDDEN`, acts as one in the
+  field annotation. The REDCap file has not been imported
   into a REDCap server by these tests: its columns, types, validations, choices and
   branching logic are held to the template as the packages above read it.
 - **A statistic is held to what it belongs to by which bindings share its sentence, and by

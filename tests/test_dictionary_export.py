@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import csv
 import io
+import re
 from pathlib import Path
 
 import pytest
@@ -170,6 +171,65 @@ def test_what_redcap_would_take_otherwise_is_refused(tmp_path: Path, old, new, s
         return
     with pytest.raises(ExportRefused, match=said):
         redcap(dictionary(tmp_path, text))
+
+
+def test_a_bound_is_written_with_every_digit_it_has(tmp_path: Path) -> None:
+    """Round 1: `:g` kept six digits, and REDCap was given 1.23457e+06 for 1234567.5."""
+    text = ENTRIES.replace("range: {min: 30, max: 250.5}",
+                           "range: {min: 0.1234567, max: 1234567.5}")
+    fields = {f["Variable / Field Name"]: f for f in rows(redcap(dictionary(tmp_path, text)).text)}
+    assert (fields["weight"]["Text Validation Min"], fields["weight"]["Text Validation Max"]) \
+        == ("0.1234567", "1234567.5")  # fmt: skip
+
+
+def test_a_bound_is_written_in_the_form_redcap_s_validation_reads(tmp_path: Path) -> None:
+    text = ENTRIES.replace("min: '2026-01-01T08:00:00'", "min: '2026-01-01'")
+    text = text.replace("min: '06:00'", "min: '06:00:00'")
+    fields = {f["Variable / Field Name"]: f for f in rows(redcap(dictionary(tmp_path, text)).text)}
+    assert fields["seen_at"]["Text Validation Min"] == "2026-01-01 00:00"
+    assert fields["dose_time"]["Text Validation Min"] == "06:00"
+
+
+@pytest.mark.parametrize(
+    "old, new, said",
+    [
+        ("{code: 2, label: Female}", "{code: 2, label: Female | other}", "Female | other"),
+        ("{code: 2, label: Female}", "{code: 'a,b', label: Female}", "a,b"),
+        ("{code: 2, label: Female}", "{code: 'it''s', label: Female}", "it's"),
+        ("{code: 2, label: Female}", "{code: 'a b', label: Female}", "a b"),
+    ],
+)  # fmt: skip
+def test_a_code_or_label_that_would_split_redcap_s_choices_is_refused(
+    tmp_path: Path, old: str, new: str, said: str
+) -> None:
+    """Round 1: `1, Weekly | monthly` was three choices to REDCap."""
+    text = ENTRIES.replace(old, new).replace("applies_if: {variable: sex, in: [2]}, ", "")
+    with pytest.raises(ExportRefused, match=re.escape(said)):
+        redcap(dictionary(tmp_path, text))
+
+
+def test_a_condition_on_a_variable_the_file_leaves_out_is_refused(tmp_path: Path) -> None:
+    """A derived variable is not in REDCap's file, so a branching logic naming it names
+    nothing."""
+    text = ENTRIES + ("  - {name: older, label: Older, definition: Aged 65 or over., "
+                      "type: binary, code_list: yes_no, derived_from: [weight], "
+                      "derivation: from the date of birth}\n"
+                      "  - {name: frail, label: Frail, definition: Frail., type: binary, "
+                      "code_list: yes_no, applies_if: {variable: older, in: [1]}}\n")
+    with pytest.raises(ExportRefused, match="frail is asked under older"):
+        redcap(dictionary(tmp_path, text))
+
+
+def test_the_outline_keeps_an_item_as_it_is_numbered(tmp_path: Path) -> None:
+    """Round 1: `capitalize()` printed item A1 as "a1"."""
+    text = outline(dictionary(tmp_path, ENTRIES.replace("item: 1,", "item: A1,"))).text
+    assert "*Item A1 of Patient Health Questionnaire-9:" in text
+
+
+def test_the_outline_shows_one_bound_alone(tmp_path: Path) -> None:
+    text = outline(dictionary(tmp_path, ENTRIES.replace("type: count,\n",
+                                                        "type: count, range: {min: 0},\n")))
+    assert "   ____ (count, from 0)" in text.text
 
 
 def test_the_plain_csv_has_one_row_per_variable_and_a_column_per_key(tmp_path: Path) -> None:

@@ -2898,6 +2898,9 @@ def cmd_dictionary(args: argparse.Namespace) -> int:
     if not wanted:
         print("say what to write: --redcap, --csv or --outline", file=sys.stderr)
         return 2
+    if len({target.resolve() for target, _make in wanted}) < len(wanted):
+        print("each of --redcap, --csv and --outline needs a file of its own", file=sys.stderr)
+        return 2
     project, _ = load_project(args.path)
     dictionary, report = load_dictionary(project)
     if dictionary is None:
@@ -2912,8 +2915,12 @@ def cmd_dictionary(args: argparse.Namespace) -> int:
         print(f"nothing written: {refused}", file=sys.stderr)
         return 1
     for target, made in written:
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(made.text.encode("utf-8"))
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(made.text.encode("utf-8"))
+        except OSError as exc:
+            print(f"cannot write {target}: {exc.strerror or exc}", file=sys.stderr)
+            return 1
         print(f"wrote {target}")
         for said in made.left_out:
             print(f"  left out {said}")

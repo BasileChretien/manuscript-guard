@@ -24,6 +24,7 @@ import csv
 import io
 import re
 from dataclasses import dataclass
+from datetime import date, datetime, time
 
 from manuscript_guard.contracts.dictionary import CODED, Code, Dictionary, Variable
 
@@ -63,6 +64,17 @@ _VALIDATION = {
     "identifier": "",
 }
 
+#: How REDCap's validation writes a bound of each type that is a time.
+_TIMES = {
+    "date": (date.fromisoformat, "%Y-%m-%d"),
+    "datetime": (datetime.fromisoformat, "%Y-%m-%d %H:%M"),
+    "time": (time.fromisoformat, "%H:%M"),
+}
+#: What may not stand in a code or a label of REDCap's choices, `1, Male | 2, Female`, or
+#: in a code between the quotation marks of its branching logic.
+_NOT_IN_A_CODE = re.compile(r"[,|'\"\s]")
+_NOT_IN_A_LABEL = re.compile(r"[|\n\r]")
+
 #: The columns of the plain CSV.
 CSV_COLUMNS = (
     "name", "label", "definition", "type", "question", "unit", "values", "missing", "min",
@@ -93,15 +105,18 @@ def _form(variable: Variable) -> str:
 
 
 def _bound(variable: Variable, bound: object) -> str:
-    """A range bound as REDCap's validation reads it: a datetime with a space and no
-    seconds or zone, a time to the minute."""
+    """A range bound as REDCap's validation reads it: a date as YYYY-MM-DD, a datetime as
+    YYYY-MM-DD HH:MM, a time as HH:MM, each read first as the loader read it; a number with
+    every digit it has (round 1: `:g` kept six)."""
     if bound is None:
         return ""
-    if variable.type == "datetime":
-        return str(bound).replace("T", " ")[:16]
-    if variable.type == "time":
-        return str(bound)[:5]
-    return f"{bound:g}" if isinstance(bound, float) else str(bound)
+    if variable.type in _TIMES:
+        text = str(bound)
+        read = _TIMES[variable.type][0](text[:-1] + "+00:00" if text.endswith("Z") else text)
+        return read.strftime(_TIMES[variable.type][1])
+    if isinstance(bound, float):
+        return str(int(bound)) if bound.is_integer() else repr(bound)
+    return str(bound)
 
 
 def _branching(variable: Variable, dictionary: Dictionary) -> str:
@@ -157,6 +172,8 @@ def redcap(dictionary: Dictionary) -> Written:
     if undecided:
         raise ExportRefused(f"{', '.join(undecided)} has no codes yet, and REDCap needs the "
                             "choices of each coded field")  # fmt: skip
+    _refuse_choices(collected)
+    _refuse_conditions(collected)
     first = identifiers[0]
     forms = list(dict.fromkeys([_form(first)] + [f.id for f in dictionary.forms]
                                + [_form(v) for v in collected]))  # fmt: skip
@@ -173,6 +190,29 @@ def redcap(dictionary: Dictionary) -> Written:
     left_out += tuple(f"{v.name}: its pattern is not a REDCap validation"
                       for v in collected if v.pattern)  # fmt: skip
     return Written(out.getvalue(), left_out)
+
+
+def _refuse_choices(collected: list[Variable]) -> None:
+    """A code or a label that would not read back from REDCap's choices as it was written:
+    `1, Weekly | monthly` is three choices to REDCap (round 1)."""
+    for variable in (v for v in collected if v.type in CODED):
+        for code in variable.values + variable.missing:
+            if _NOT_IN_A_CODE.search(code.code) or _NOT_IN_A_LABEL.search(code.label):
+                shown = code.code if _NOT_IN_A_CODE.search(code.code) else code.label
+                raise ExportRefused(f"{variable.name}: REDCap reads its choices as `code, "
+                                    f"label | code, label`, and {shown!r} would not read "
+                                    "back as written")  # fmt: skip
+
+
+def _refuse_conditions(collected: list[Variable]) -> None:
+    """A condition on a variable the file leaves out, which its branching logic would name
+    and REDCap would not find."""
+    names = {v.name for v in collected}
+    for variable in collected:
+        if variable.applies_if is not None and variable.applies_if.variable not in names:
+            raise ExportRefused(f"{variable.name} is asked under "
+                                f"{variable.applies_if.variable}, which is derived and not "
+                                "in REDCap's file")  # fmt: skip
 
 
 def _row(variable: Variable) -> dict[str, str]:
@@ -227,8 +267,8 @@ def _asked(variable: Variable, dictionary: Dictionary) -> list[str]:
     lines = [f"   {variable.definition}"]
     if variable.instrument:
         instrument = next(i for i in dictionary.instruments if i.id == variable.instrument)
-        item = f"item {variable.item} of " if variable.item else ""
-        lines.append(f"   *{item.capitalize() or 'From '}{instrument.name}: the wording and "
+        item = f"Item {variable.item} of " if variable.item else "From "
+        lines.append(f"   *{item}{instrument.name}: the wording and "
                      "the responses are the licensed instrument's.*")  # fmt: skip
     for code in variable.values:
         lines.append(f"   - [ ] {code.label} ({code.code})")
@@ -236,8 +276,10 @@ def _asked(variable: Variable, dictionary: Dictionary) -> list[str]:
         lines.append(f"   - [ ] {code.label} ({code.code}, missing)")
     if variable.type not in CODED:
         shown = variable.type + (f", {variable.unit}" if variable.unit else "")
-        bounds = [b for b in (variable.minimum, variable.maximum) if b is not None]
-        span = f", {variable.minimum} to {variable.maximum}" if len(bounds) == 2 else ""
+        low, high = variable.minimum, variable.maximum
+        span = (f", {low} to {high}" if low is not None and high is not None else
+                f", from {low}" if low is not None else
+                f", up to {high}" if high is not None else "")  # fmt: skip
         lines.append(f"   ____ ({shown}{span})")
     condition = variable.applies_if
     if condition is not None:

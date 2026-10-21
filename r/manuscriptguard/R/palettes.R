@@ -89,8 +89,10 @@ scale_fill_mg <- function(name, discrete = TRUE, reverse = FALSE, ...) {
 #'
 #' Reads the profile of the journal `paper.yaml` names (`profiles/journals/<name>.yaml`, the
 #' project's own) for the smallest text and the thinnest line it prints, and returns `base`
-#' at a size no smaller: 7 pt where the journal's least is lower, a size many artwork guides
-#' give for a figure's text at print size, or `size` where it is given.
+#' with every text at a size no smaller, its axis, legend and strip text among them (the
+#' themes draw those at 0.8 of the base): 7 pt where the journal's least is lower, a size
+#' many artwork guides give for a figure's text at print size, or `size` where it is given.
+#' Lines are drawn no thinner than the journal's least, or 0.5 pt.
 #'
 #' @param root The project, found upwards from the working directory where NULL.
 #' @param base A ggplot2 theme function, `ggplot2::theme_classic` by default.
@@ -102,8 +104,14 @@ mg_theme <- function(root = NULL, base = ggplot2::theme_classic, size = NULL) {
   least <- if (is.null(rules$min_text_pt)) 0 else rules$min_text_pt
   size <- if (is.null(size)) max(7, least) else size
   line <- max(0.5, if (is.null(rules$min_line_pt)) 0 else rules$min_line_pt)
+  text <- ggplot2::element_text(size = size)
+  # ggplot2's linewidth is in millimetres, drawn at .pt line widths of 1/96 inch each.
   base(base_size = size) +
-    ggplot2::theme(line = ggplot2::element_line(linewidth = line / ggplot2::.pt))
+    ggplot2::theme(
+      line = ggplot2::element_line(linewidth = line * 96 / 72 / ggplot2::.pt),
+      axis.text = text, legend.text = text, legend.title = text, strip.text = text,
+      plot.title = text, plot.subtitle = text, plot.caption = text
+    )
 }
 
 #' The width and height a figure prints at, in inches, for `ggplot2::ggsave`
@@ -166,8 +174,11 @@ mg_discrete <- function(found, colours, n) {
     if (!is.null(own)) {
       return(unlist(own))
     }
-    smallest <- by_n[[as.character(min(as.integer(names(by_n))))]]
-    return(unlist(smallest)[seq_len(n)])
+    smallest <- unlist(by_n[[as.character(min(as.integer(names(by_n))))]])
+    if (n == 1) {
+      return(smallest[1])
+    }
+    return(smallest[round((seq_len(n) - 1) * (length(smallest) - 1) / (n - 1)) + 1])
   }
   if (!is.null(found$order)) {
     return(colours[unlist(found$order) <= n])

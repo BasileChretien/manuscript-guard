@@ -146,8 +146,9 @@ def colours(name: str, n: int | None = None, *, reverse: bool = False) -> list[s
     Of a set of colours, the `n` its collection gives for that many: ColorBrewer's own
     scheme of `n`, or the colours whose rank in the collection's order is at most `n`, in
     the palette's sequence, as MetBrewer, MoMAColors, NatParksPalettes and PNWColors give
-    them, or the first `n`. More than it has is refused: ask `ramp` for that. Of a
-    continuous map, `n` evenly spaced along it."""
+    them, or the first `n`. Fewer than ColorBrewer's smallest scheme are evenly spaced along
+    it. More than it has is refused: ask `ramp` for that. Of a continuous map, `n` evenly
+    spaced along it."""
     found = palette(name)
     if n is None:
         chosen = list(found.colours)
@@ -170,8 +171,7 @@ def _discrete(found: Palette, n: int) -> list[str]:
     if own is not None:
         return list(own)
     if found.by_n:
-        # Fewer than ColorBrewer's smallest scheme: the first of it.
-        return list(found.by_n[min(found.by_n, key=int)][:n])
+        return _fewer(found.by_n[min(found.by_n, key=int)], n)
     if found.order:
         return [code for code, rank in zip(found.colours, found.order, strict=True) if rank <= n]
     return list(found.colours[:n])
@@ -253,12 +253,20 @@ def _samples(codes: list[str]) -> list[str]:
     return [codes[round(i * (len(codes) - 1) / (SAMPLES - 1))] for i in range(SAMPLES)]
 
 
+def _fewer(scheme, n: int) -> list[str]:
+    """Fewer colours than ColorBrewer's smallest scheme: evenly spaced along it, its two ends
+    for two, so a diverging scheme gives both arms and not one arm and its middle."""
+    if n == 1:
+        return [scheme[0]]
+    return [scheme[round(i * (len(scheme) - 1) / (n - 1))] for i in range(n)]
+
+
 def _subset(entry: dict, n: int) -> list[str]:
     by_n = entry.get("by_n") or {}
     if str(n) in by_n:
         return by_n[str(n)]
     if by_n:
-        return by_n[min(by_n, key=int)][:n]
+        return _fewer(by_n[min(by_n, key=int)], n)
     if entry.get("order"):
         return [c for c, rank in zip(entry["colours"], entry["order"], strict=True) if rank <= n]
     return entry["colours"][:n]
@@ -393,13 +401,18 @@ def readable(found: Palette, kind: str | None = None, colours: int | None = None
     """Whether every reader can read the palette for this use: as a set of colours, that
     `colours` of them (`SAFE_AT` where not given) stay apart for each deficiency; as an
     ordered or a diverging scale, or a continuous map, that its lightness runs one way or
-    turns once, and still does for each deficiency."""
+    turns once, and still does for each deficiency, and, where a number of classes is
+    given and the palette is no continuous map, that so many of its colours stay apart for
+    each deficiency as well (round 1 of #406: Blues was offered for five classes, of which
+    no two stay apart with tritanopia)."""
     as_scale = found.continuous or kind in ("sequential", "diverging") or (
         kind is None and found.kind in ("sequential", "diverging"))  # fmt: skip
     if as_scale:
         wanted = {"sequential": ("monotone",), "diverging": ("diverging",)}.get(
             kind or found.kind or "", ("monotone", "diverging"))  # fmt: skip
-        return found.lightness in wanted and found.lightness_kept
+        ordered = found.lightness in wanted and found.lightness_kept
+        if not ordered or found.continuous or not colours:
+            return ordered
     cvd = found.distinct.get("cvd")
     return cvd is not None and cvd >= (colours or SAFE_AT)
 
@@ -444,9 +457,13 @@ def describe(found: Palette, codes: list[str]) -> list[str]:
         kept = "and" if found.lightness_kept else "but not"
         verdict = f"a continuous map; its lightness {runs}, {kept} for each deficiency"
     else:
+        runs = {"monotone": "runs one way", "diverging": "turns once"}.get(
+            found.lightness, "neither runs one way nor turns once")  # fmt: skip
+        kept = "and" if found.lightness_kept else "but not"
         verdict = (f"{found.distinct['normal']} of its colours stay apart to normal vision, "
                    f"{found.distinct['cvd']} for every colour-vision deficiency, "
-                   f"{found.distinct['greyscale']} in grey")
+                   f"{found.distinct['greyscale']} in grey; its lightness {runs}, {kept} for "
+                   "each deficiency")  # fmt: skip
     claims = {True: "calls it colour-blind friendly", False: "does not call it colour-blind "
               "friendly", None: "says nothing of colour-vision deficiency"}[found.claims_cvd]
     return [

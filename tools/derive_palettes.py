@@ -202,6 +202,13 @@ BREWER_NOTICE = Source(
     f"{RAW}/{BREWER}/colorbrewer_schemes.js",
     "52e6a6edbbe4bbb95467cb84fb7db8fcbb1d6d219c975851c4c9d79334f00a41",
 )
+#: The licence beside ColorBrewer's export, which the colours are read from: its copyright
+#: line and conditions, under the Apache licence of the repository.
+BREWER_OWN = Source(
+    "colorbrewer-export-LICENSE.txt",
+    f"{RAW}/{BREWER}/export/LICENSE.txt",
+    "aba881933999be3549b2171832a11a9dfad574243019df95c067ccf3d47b9649",
+)
 OKABE_ITO_CITATION = (
     "Okabe M, Ito K. Color Universal Design (CUD): how to make figures and presentations "
     "that are friendly to colorblind people. 2008. https://jfly.uni-koeln.de/color/ . The "
@@ -449,7 +456,9 @@ def licences(folder: Path) -> str:
             # The comment's words, without the asterisk that opens its second line.
             words = head[head.index("This product"):head.index(")") + 2].split()
             notice = " ".join(word for word in words if word != "*")
-            text = f"{notice}\n\n{text}"
+            own = _text(folder, BREWER_OWN).strip()
+            text = (f"{notice}\n\n{own}\n\nThe Apache License, Version 2.0, as the "
+                    f"repository gives it:\n\n{text}")
         about = COLLECTIONS[name]
         parts.append(f"{'=' * 78}\n{name}: {about['home']}\n{'=' * 78}\n\n{text}")
     parts.append(f"{'=' * 78}\nOkabe-Ito: {COLLECTIONS['Okabe-Ito']['home']}\n{'=' * 78}\n\n"
@@ -518,7 +527,7 @@ def _collection_of(key: str) -> str:
 
 def fetch(folder: Path) -> None:
     folder.mkdir(parents=True, exist_ok=True)
-    for source in [*SOURCES.values(), *LICENCE_FILES.values(), BREWER_NOTICE]:
+    for source in [*SOURCES.values(), *LICENCE_FILES.values(), BREWER_NOTICE, BREWER_OWN]:
         with urllib.request.urlopen(source.url, timeout=60) as answer:  # noqa: S310
             (folder / source.file).write_bytes(answer.read())
 

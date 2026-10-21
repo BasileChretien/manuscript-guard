@@ -92,6 +92,7 @@ def test_each_collections_licence_is_beside_the_data_and_credited() -> None:
         "Copyright (c) 2022 Kevin S. Blake",
         "Copyright (c) 2020 Fabio Crameri",
         "Copyright (c) 2017, Battelle Memorial Institute",
+        "Copyright (c) 2002 Cynthia Brewer, Mark Harrower, and The Pennsylvania State",
         "This product includes color specifications and designs developed by Cynthia Brewer",
         "Apache License",
         "Version 2.0, January 2004",
@@ -137,9 +138,9 @@ def test_n_colours_of_a_palette_are_those_its_collection_gives() -> None:
     archambault = palettes.palette("met/Archambault")
     assert archambault.order == (2, 7, 5, 1, 6, 4, 3)
     assert palettes.colours("met/Archambault", 3) == ["#88a0dc", "#ed968c", "#f9d14a"]
-    # ColorBrewer's own scheme of n, and the first of its smallest below it.
+    # ColorBrewer's own scheme of n, and its smallest's ends below it.
     assert palettes.colours("brewer/Set2", 3) == ["#66c2a5", "#fc8d62", "#8da0cb"]
-    assert palettes.colours("brewer/Set2", 2) == ["#66c2a5", "#fc8d62"]
+    assert palettes.colours("brewer/Set2", 2) == ["#66c2a5", "#8da0cb"]
     # wesanderson's: the first n. A short name is enough where only one palette has it.
     assert palettes.colours("Zissou1", 2) == ["#3b9ab2", "#78b7c5"]
     # A continuous map: n evenly spaced along it, its ends among them.
@@ -178,6 +179,36 @@ def test_matplotlib_gets_a_cycle_and_a_colormap() -> None:
 
 
 # ------------------------------------------------------------------- choosing and saying
+
+
+def test_a_safe_scale_of_n_classes_keeps_n_of_its_colours_apart() -> None:
+    """Round 1 of #406: `--safe` judged a sequential palette by its lightness alone, and
+    offered Blues for five classes, of which no two stay apart for a reader with
+    tritanopia."""
+    assert palettes.palette("brewer/Blues").distinct["cvd"] < 5
+    five = {p.name for p in palettes.chosen(kind="sequential", colours=5, safe=True)}
+    assert "brewer/Blues" not in five
+    assert "viridis/viridis" in five, "a continuous map is judged by its lightness"
+    assert "brewer/Blues" in {p.name for p in palettes.chosen(kind="sequential", safe=True)}
+
+
+def test_show_says_every_palettes_lightness() -> None:
+    said = "\n".join(palettes.describe(palettes.palette("brewer/Blues"), []))
+    assert "its lightness runs one way, and for each deficiency" in said
+
+
+def test_colorbrewer_below_its_smallest_scheme_gives_both_ends() -> None:
+    """Round 1 of #406: two of a diverging scheme were one arm and its pale middle."""
+    smallest = palettes.colours("brewer/RdBu", 3)
+    assert palettes.colours("brewer/RdBu", 2) == [smallest[0], smallest[-1]]
+    assert palettes.colours("brewer/RdBu", 1) == [smallest[0]]
+
+
+def test_a_collections_own_quirk_is_kept() -> None:
+    """MetBrewer's Tsimshian gives rank 1 twice and no rank 2; `met.brewer` gives two
+    colours for one, and so does this."""
+    assert palettes.palette("met/Tsimshian").order == (6, 1, 7, 4, 1, 5, 3)
+    assert len(palettes.colours("met/Tsimshian", 1)) == 2
 
 
 def test_safe_palettes_are_those_every_reader_can_read_for_that_use() -> None:
@@ -259,6 +290,14 @@ def test_r_gives_the_colours_python_gives(tmp_path: Path) -> None:
     rscript = _rscript()
     if rscript is None:
         pytest.skip("R is not installed")
+    # A project whose journal prints text of 8 pt and lines of 0.75 pt at the least, for
+    # mg_theme to read.
+    root = tmp_path / "paper"
+    (root / "profiles" / "journals").mkdir(parents=True)
+    (root / "paper.yaml").write_text("target_journal: demo\n", encoding="utf-8")
+    (root / "profiles" / "journals" / "demo.yaml").write_text(
+        "figures: {min_text_pt: 8, min_line_pt: 0.75, widths_mm: [89, 183]}\n", encoding="utf-8"
+    )
     script = tmp_path / "palettes.R"
     script.write_text(
         'if (!requireNamespace("jsonlite", quietly = TRUE)) quit(status = 3)\n'
@@ -278,6 +317,12 @@ def test_r_gives_the_colours_python_gives(tmp_path: Path) -> None:
         '  d <- data.frame(x = 1:3, y = 1:3, g = c("a", "b", "c"))\n'
         '  p <- ggplot(d, aes(x, y, colour = g)) + geom_point() + scale_colour_mg("okabe-ito")\n'
         '  out$scale <- unique(ggplot_build(p)$data[[1]]$colour)\n'
+        f'  root <- "{root.as_posix()}"\n'
+        '  theme <- mg_theme(root)\n'
+        '  out$axis <- calc_element("axis.text.x", theme)$size\n'
+        '  out$legend <- calc_element("legend.text", theme)$size\n'
+        '  out$line <- calc_element("axis.line.x", theme + theme(axis.line = element_line()))'
+        '$linewidth * .pt * 72 / 96\n'
         '}\n'
         'cat(jsonlite::toJSON(out, auto_unbox = TRUE))\n',
         encoding="utf-8",
@@ -299,3 +344,7 @@ def test_r_gives_the_colours_python_gives(tmp_path: Path) -> None:
                    for i in (1, 3, 5)), (ours, theirs)  # fmt: skip
     if "scale" in said:
         assert said["scale"] == palettes.colours("okabe-ito", 3)
+        # Round 1 of #406: every text at the journal's size, not 0.8 of it, and lines drawn
+        # at the width asked, not three quarters of it.
+        assert said["axis"] == 8 and said["legend"] == 8
+        assert abs(said["line"] - 0.75) < 1e-6

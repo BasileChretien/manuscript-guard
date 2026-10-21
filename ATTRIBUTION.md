@@ -262,7 +262,10 @@ collection's licence, in the words of its own files, is beside the data:
 | [Okabe and Ito](https://jfly.uni-koeln.de/color/) | Masataka Okabe and Kei Ito, Color Universal Design (2008) | published values | the eight RGB values their page gives |
 
 ColorBrewer's notice, which its licence asks to be kept: This product includes color
-specifications and designs developed by Cynthia Brewer (http://colorbrewer.org/).
+specifications and designs developed by Cynthia Brewer (http://colorbrewer.org/). Its
+licence, beside the export the colours are read from, is copyright (c) 2002 Cynthia
+Brewer, Mark Harrower, and The Pennsylvania State University; the palettes here are named
+`brewer/<scheme>`, and nothing here is called ColorBrewer, which that licence reserves.
 
 **The derived file changes how the colours are written, not the colours.** ColorBrewer's are
 written as hex codes where its file writes `rgb()`; viridis's, cividis's and Crameri's as hex
@@ -273,5 +276,6 @@ the file records what this project's colour check says of it (`distinct`, `light
 as the makers of viridis, cividis, Crameri's maps and Okabe and Ito's colours say of all of
 theirs. Those fields are this project's. Two of MoMAColors'
 palettes write one more position in their order than they have colours; the extra position
-is dropped. For anything but choosing a palette for a figure here, take the palettes from
+is dropped. MetBrewer's Tsimshian gives rank 1 twice and no rank 2, and is kept as written:
+one colour of it is two, as `met.brewer` gives it. For anything but choosing a palette for a figure here, take the palettes from
 their makers' packages, which also cite them as their makers ask.

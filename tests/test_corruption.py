@@ -4937,6 +4937,19 @@ variables:
     type: binary
     code_list: yes_no
     reason: the proportion of the cases that were serious
+  - {name: drug, label: Drug, definition: The suspected drug the report names., type: text}
+  - {name: event, label: Event, definition: The event term the report names., type: text}
+  # The corruptions below replace `    type: binary` and `    code_list: yes_no` wherever
+  # they stand, so these entries keep both off the start of a line: one entry is broken.
+  - {name: exposed, type: binary, code_list: yes_no, label: Exposed, derived_from: [drug],
+     definition: The report names example-drug., derivation: drug is example-drug}
+  - {name: hepatic, type: binary, code_list: yes_no, label: Hepatic injury,
+     definition: The event is hepatic injury., derived_from: [event], derivation: by its term}
+  - {name: sex, label: Sex, definition: Sex as reported., type: categorical,
+     values: [{code: F, label: Female}, {code: M, label: Male}]}
+  - {name: age_group, label: Age group, definition: The age group as reported.,
+     type: categorical, values: [{code: 18-44, label: 18 to 44}, {code: 45-64, label: 45 to 64},
+     {code: 65-74, label: 65 to 74}, {code: 75+, label: 75 and over}]}
 """
 
 
@@ -5001,12 +5014,15 @@ def test_a_variable_the_plan_uses_and_nobody_collects_is_warned_of(
 
 @pytest.mark.parametrize("stage", ["design", "submission"])
 def test_an_entry_nothing_needs_is_warned_of(project: Path, stage: str) -> None:
+    """The example's plan names `serious`, so its entry needs no reason; one for the year,
+    which the plan does not name, does."""
     unneeded = _EXAMPLE_DICTIONARY.replace(
         "    reason: the proportion of the cases that were serious\n", ""
-    )
+    ) + "  - {name: year, label: Year, definition: The year of the report., type: continuous}\n"
     failed, warned = _collection_said(project, unneeded, stage)
     assert failed == [] and warned == ["dictionary-entry-unused"]
-    _plan_edited(project, "Seriousness is reported", "Seriousness, `serious`, is reported")
+    _plan_edited(project, "carry unique identifiers",
+                 "carry their year (`year`) and unique identifiers")
     assert _collection_said(project, unneeded, stage) == ([], [])
 
 

@@ -6048,14 +6048,15 @@ def test_a_book_reviewed_under_its_own_title_fails_nothing(project: Path) -> Non
     Robins"). A book is never said missing, nor written by other people."""
     _bib_field(project, "author", "Dupont, Marie and Leclerc, Paul")
     _bib_field(project, "publisher", "Imaginary Press")
-    _bib_field(project, "title", "Fictional cohorts: what if")
+    # Searchable words beside PubMed's stopwords ("what", "if"), which are never searched.
+    _bib_field(project, "title", "Fictional cohorts: what if the exposure changes")
     bib = project / "literature" / "references.bib"
     text = bib.read_text(encoding="utf-8")
     bib.write_text(text.replace(f"@article{{{_LOOKED_KEY},", f"@book{{{_LOOKED_KEY},", 1),
                    encoding="utf-8")  # fmt: skip
     review = {**_CROSSREF_HIT, "doi": "10.5555/review", "authors": [{"family": "Naranjo"}],
-              "title": "Fictional cohorts: what if. By Marie Dupont and Paul Leclerc. "
-                       "Imaginary Press, 2021"}  # fmt: skip
+              "title": "Fictional cohorts: what if the exposure changes. By Marie Dupont "
+                       "and Paul Leclerc. Imaginary Press, 2021"}  # fmt: skip
     _searched(project, pubmed_search=_hits(), crossref_search=_hits(review))
     found = _g7_codes(project)
     assert not {c for c, s in found.items() if s == "fail"}, found

@@ -32,6 +32,7 @@ from manuscript_guard.build import (
 from manuscript_guard.build.assemble import check_shapes
 from manuscript_guard.build.document import abbreviations
 from manuscript_guard.build.latex_check import check_latex
+from manuscript_guard.build.latex_values import check_values
 from manuscript_guard.build.tex_check import check_tex
 from manuscript_guard.classify import UNCLASSIFIED, Classifier
 from manuscript_guard.contracts import (
@@ -59,6 +60,7 @@ from manuscript_guard.gates import (
     check_passages,
     check_prose_quotations,
     check_recomputed,
+    check_recycling,
     check_relations,
     check_reported,
     check_reporting,
@@ -159,6 +161,7 @@ def _run_gates(
         ("G7", lambda: check_literature_chain(project, literature)),
         ("G7", lambda: check_prose_quotations(project)),
         ("G7", lambda: check_passages(project, chosen)),
+        ("G7", lambda: check_recycling(project, chosen)),
         ("G4", lambda: check_journal(project)),
         ("G4", lambda: check_shortlist(project)),
         ("G4", lambda: check_statement_sources(project)),
@@ -174,6 +177,7 @@ def _run_gates(
         ("G2", lambda: check_small_cells(project, results)),
         ("G1", lambda: check_restricted_inputs(project, results)),
         ("G1", lambda: check_synthetic_inputs(project, results, submission=at_submission)),
+        ("G1", lambda: check_values(project, namespace, results)),
         ("G8", lambda: check_reported(project, results)),
         ("G8", lambda: check_relations(results)),
         ("G8", lambda: check_recomputed(project, namespace, results)),
@@ -215,6 +219,7 @@ _NOT_READ_IN_LATEX = frozenset(
         "check_writing", "check_methods", "check_reported", "check_recomputed",
         "check_revision", "check_language", "check_models", "check_shapes", "check_tex",
         "check_passages",
+        "check_recycling",
     }
 )  # fmt: skip
 
@@ -2203,6 +2208,47 @@ def cmd_stages(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_palettes(args: argparse.Namespace) -> int:
+    """List the palettes shipped with the toolkit, with what the colour check says of each,
+    or show one. Reads nothing of a project."""
+    import json as json_module
+
+    from manuscript_guard import palettes
+
+    if args.show:
+        try:
+            found = palettes.palette(args.show)
+            codes = palettes.colours(args.show, args.colours)
+        except palettes.PaletteError as exc:
+            print(f"manuscript-guard: {exc}", file=sys.stderr)
+            return 2
+        if args.json:
+            print(json_module.dumps({"name": found.name, "colours": codes,
+                                     "collection": found.collection, "kind": found.kind,
+                                     "distinct": found.distinct, "lightness": found.lightness,
+                                     "lightness_kept": found.lightness_kept,
+                                     "claims_cvd": found.claims_cvd}, indent=1))  # fmt: skip
+            return 0
+        for line in palettes.describe(found, codes):
+            print(line)
+        return 0
+    try:
+        rows = palettes.chosen(kind=args.kind, colours=args.colours, safe=args.safe,
+                               collection=args.collection)  # fmt: skip
+    except palettes.PaletteError as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json_module.dumps([palettes.row(found) for found in rows], indent=1))
+        return 0
+    if not rows:
+        print("no palette answers that; `manuscript-guard palettes` lists them all")
+        return 1
+    for line in palettes.table(rows, args.colours):
+        print(line)
+    return 0
+
+
 def cmd_impact(args: argparse.Namespace) -> int:
     """Everything that depends on each file named, or on each file changed since a commit.
 
@@ -2485,6 +2531,35 @@ def cmd_render(args: argparse.Namespace) -> int:
         count += 1
     print(f"rendered {count} file{'' if count == 1 else 's'} to {out_dir}")
     return 0
+
+
+def cmd_values(args: argparse.Namespace) -> int:
+    """Write each LaTeX document's values file, `mgvalues.sty`, beside its entry file, from the
+    results as they stand (DESIGN.md, "LaTeX manuscripts", "The values file")."""
+    from manuscript_guard.build.latex_values import bound_refs, values_files
+
+    project, _ = load_project(args.path)
+    namespace, results, _literature, load_report = load_namespace(project)
+    if not load_report.ok:
+        print(load_report.render(project.root))
+        return 2
+    written = values_files(project, namespace, results)
+    if not written:
+        folder = project.path("manuscript")
+        print("manuscript-guard: values writes a LaTeX manuscript's values file, and "
+              f"{folder} holds no LaTeX entry file", file=sys.stderr)  # fmt: skip
+        return 2
+    bound = bound_refs(project)
+    for each in written:
+        each.path.write_text(each.text, encoding="utf-8", newline="\n")
+        entries = each.text.count(r"\expandafter\def")
+        print(f"wrote {each.path} ({entries} entr{'y' if entries == 1 else 'ies'})")
+    # A value it has no way to print is left out; one a document binds prints `??` there.
+    refused = [found for each in written for found in each.refused
+               if found.ref in bound.get(each.path.parent, set())]  # fmt: skip
+    for found in refused:
+        print(f"manuscript-guard: {found}; the document prints ?? for it", file=sys.stderr)
+    return 1 if refused else 0
 
 
 
@@ -4161,6 +4236,20 @@ def build_parser() -> argparse.ArgumentParser:
     stages = sub.add_parser("stages", help="what each stage means and what binds at it")
     stages.set_defaults(func=cmd_stages)
 
+    palettes_ = sub.add_parser(
+        "palettes",
+        help="list the palettes shipped, with what the colour check says of each, or show one",
+    )
+    palettes_.add_argument("--kind", choices=("qualitative", "sequential", "diverging",
+                                              "multi-sequential", "cyclic"))  # fmt: skip
+    palettes_.add_argument("--colours", type=int, help="how many colours the figure needs")
+    palettes_.add_argument("--safe", action="store_true",
+                           help="only those every reader can read for that use")  # fmt: skip
+    palettes_.add_argument("--collection", help="e.g. MetBrewer, Crameri, ColorBrewer")
+    palettes_.add_argument("--show", metavar="NAME", help="one palette's colours and licence")
+    palettes_.add_argument("--json", action="store_true")
+    palettes_.set_defaults(func=cmd_palettes)
+
     hook = sub.add_parser("hook", help="handle a Claude Code hook event (reads stdin)")
     hook.add_argument(
         "event",
@@ -4466,6 +4555,12 @@ def build_parser() -> argparse.ArgumentParser:
     render = sub.add_parser("render", help="substitute bindings into build/rendered")
     render.add_argument("path", nargs="?", type=Path, default=Path.cwd())
     render.set_defaults(func=cmd_render)
+
+    values = sub.add_parser(
+        "values", help="write a LaTeX manuscript's values file, mgvalues.sty, from the results"
+    )
+    values.add_argument("path", nargs="?", type=Path, default=Path.cwd())
+    values.set_defaults(func=cmd_values)
 
     build = sub.add_parser("build", help="produce the .docx")
     build.add_argument("path", nargs="?", type=Path, default=Path.cwd())

@@ -209,9 +209,7 @@ def _one(context: _Context, entry: Declared, paper: Path) -> Report:
         return Report((_finding(
             "registration-id-malformed",
             f"registration {entry.written!r} in paper.yaml {refused(entry.named)}", FAIL, paper,
-            "write the identifier alone, as the registry does: NCT04368728, EUPAS1000000417, "
-            "ISRCTN17072692, osf.io/abcde, CRD42020123456"
-            + ("" if entry.named else "; or name its registry under `registry:`"),
+            _malformed_hint(entry.named),
         ),))  # fmt: skip
     report = Report()
     if not named_in(context.text, entry):
@@ -228,6 +226,17 @@ def _one(context: _Context, entry: Declared, paper: Path) -> Report:
 
 
 _AGAIN = "delete it and run `lookup --registrations` again"
+_SHAPES_SEEN = ("NCT04368728, EUPAS1000000417, ISRCTN17072692, osf.io/abcde, "
+                "CRD42020123456")
+
+
+def _malformed_hint(named: str | None) -> str:
+    if not named:
+        return f"write it as the registry does, {_SHAPES_SEEN}; or name its registry under " \
+            "`registry:`"  # fmt: skip
+    if refused(named).startswith("is not written"):
+        return f"write it as the registry does: {_SHAPES_SEEN}"
+    return "write the registry's identifier alone, on one line, not a link to its page"
 
 
 def _record(project: Project, entry: Declared) -> tuple[dict[str, Any] | None, Finding | None]:

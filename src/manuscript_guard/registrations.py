@@ -136,7 +136,8 @@ def refused(named: str | None) -> str:
     if key in {name for name, _shape, _kept in _SHAPES}:
         return f"is not written as {NAMES.get(key, named)} writes its identifiers"
     if key:
-        return 'is empty, or holds a character a file name cannot: \\ / : * ? " < > |'
+        return ('is empty, or holds a line break or a character a file name cannot: '
+                '\\ / : * ? " < > |')
     return "names no registry by its shape, and no `registry:` is given"
 
 
@@ -246,5 +247,6 @@ __all__ = [
     "identify",
     "read_record",
     "record_path",
+    "refused",
     "write_record",
 ]

@@ -165,7 +165,7 @@ SOFTWARE.
 Two files in the package are made from somebody else's work and **are** redistributed. The
 first is `src/manuscript_guard/data/spelling_variants.tsv`, the list G14 reads to tell
 British spelling from American. The second, `src/manuscript_guard/data/claim_strength.yaml`,
-is under [The claim-strength ladder](#the-claim-strength-ladder) at the end of this file.
+is under [The claim-strength ladder](#the-claim-strength-ladder) below.
 
 It is derived from **VarCon** (Variant Conversion Info) by Kevin Atkinson and Benjamin
 Titze, which is published with the SCOWL word lists at <http://wordlist.aspell.net/> and
@@ -279,3 +279,30 @@ words the contract does not name ("possibly", "seems", "no", "never", "non-signi
 capital only where a sentence opens, a word in a compound or a participle after an article
 not read). The contract's other parts, on null findings and on asking the author before a
 claim is moved, are not used; the file's own comments say how each word is read.
+
+# Ideas from other projects
+
+No code of the projects below is in this repository; what is taken is a design, a rule or a
+fact they found first. Each is credited where it is used, and here.
+
+**paper-preflight** (<https://github.com/amos689/paper-preflight>, MIT, read at commit
+`287e407311bbce7f12196a3889318d2f4e4aa65f` of 2026-10-16) checks a manuscript's references
+before submission, with no language model in its verdicts, and measures its false alarms on
+held-out real papers. From its `docs/adr/0002-verdicts-and-abstention.md`,
+`docs/adr/0003-identifier-first-routing.md`, rules REF003 and REF010 to REF016 and
+`docs/false-positives.md`, `lookup` and G7 took, on 2026-10-20 (DESIGN.md, "A reference is
+looked up once, and the answer is kept"):
+
+- that a search's candidate is accepted by rules on the title, the first author and the
+  year, never by the registry's relevance score;
+- that "not found" needs every source asked to have answered, an outage never counting as a
+  negative, and is not said of grey literature, of very old or very new works, or of a
+  title in another script;
+- that Crossref's `query.bibliographic` ranks fabricated posted-content copies of famous
+  papers first once authors' names are in the query, and the prefix they are under,
+  10.65215, which G7 never takes for a work;
+- that OpenAlex's records can carry another work's details, so that it may find a work and
+  never fails one;
+- an author list of which none is on the record as an error and one that differs in part as
+  a warning (REF010, REF011), which Basile chose on 2026-10-20;
+- the folding of a surname: its last word, apostrophes dropped, ü and ue read as one.

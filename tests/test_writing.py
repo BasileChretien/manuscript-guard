@@ -306,6 +306,9 @@ SAID_TO_ONE = [
      "reviewer-answered"),
     ("We thank the reviewer for this helpful comment.", "reviewer-answered"),
     ("We are grateful to the referee for raising this point.", "reviewer-answered"),
+    # Round 2 of #377: what round 1's narrowing let through.
+    ("We thank the reviewer for bringing this to our attention.", "reviewer-answered"),
+    ("We thank Reviewer 2 for their helpful suggestion.", "reviewer-answered"),
     ("At the request of the editor, the abstract was shortened.", "reviewer-answered"),
     ("As the reviewer rightly pointed out, the cohort was small.", "reviewer-answered"),
     ("Reviewer #3 asked whether the dose was recorded.", "reviewer-answered"),
@@ -331,10 +334,13 @@ SAID_TO_ONE = [
     ("This has now been clarified in the text.", "text-edited"),
     ("The sentence has been amended accordingly.", "text-edited"),
     ("A paragraph has been added to the Limitations.", "text-edited"),
+    ("This has now been addressed in the Discussion.", "text-edited"),
+    ("This limitation has now been acknowledged in the revised manuscript.", "text-edited"),
     ("The definition is on page 4, lines 120\N{EN DASH}125.", "lines-cited"),
     ("See lines 245-250 of the revised manuscript.", "lines-cited"),
     ("The revised text is highlighted in yellow.", "changes-marked"),
     ("New sentences are shown in red.", "changes-marked"),
+    ("The revised text is shown in a different colour.", "changes-marked"),
     ("All changes are shown in track changes.", "changes-marked"),
     ("Details are given in our response to Reviewer 2.", "reviewer-answered"),
     ("Details are given in our response letter.", "response-letter"),
@@ -487,6 +493,10 @@ NOT_SAID_TO_ANYONE = [
     "New sentences were written by two authors.",
     "All authors approve this version of the manuscript.",
     "All authors provided final approval of this version of the manuscript.",
+    # Round 2 of #377: a contribution's other words, and a label's text.
+    "All authors contributed to the writing and revision of this version of the manuscript.",
+    "All authors approved the content of this version of the manuscript.",
+    "A new section has been added to the text of the SmPC.",
 ]  # fmt: skip
 
 

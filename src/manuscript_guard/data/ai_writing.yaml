@@ -121,8 +121,9 @@ artefacts:
 # extracted the data". Not "to address the concern" nor "to avoid confusion", which Writing
 # Guard takes: 38 of 399 papers by people say "to address this issue" or its like.
 #
-# A `{{name}}` in a pattern stands for the words of that name below, in a group of its own.
-# Every pattern that uses them is verbose, `(?x)`, so their spaces and line ends are not read.
+# A `{{name}}` in a pattern stands for the words of that name below, in a group of its own,
+# and may stand in those words once more. Every pattern that uses them is verbose, `(?x)`,
+# so their spaces and line ends are not read.
 residue_words:
   # One reviewer, or the editor: "the reviewer", "the second referee", "Reviewer #2",
   # "Referee B". A reviewer is singular here only with "the" or a number, since "a third
@@ -131,7 +132,10 @@ residue_words:
     the\s+(?:(?:first|second|third|fourth|fifth|other|statistical|clinical|methodological|
       academic|associate|handling|guest|deputy|senior|section)\s+)?
       (?:reviewer|referee|editor(?:-in-chief)?)\b(?!['’]s\s+(?:invitation|call|note|choice))
-    |(?:reviewer|referee)\s*(?:\#\s*|no\.?\s*)?(?:\d{1,2}|(?-i:[IVX]{1,4}|[A-D]))\b
+    |{{numbered}}
+  # A reviewer by number, which a printed acknowledgement never gives.
+  numbered: |-
+    (?:reviewer|referee)\s*(?:\#\s*|no\.?\s*)?(?:\d{1,2}|(?-i:[IVX]{1,4}|[A-D]))\b
     |(?:reviewer|referee)\s+(?:one|two|three|four|five)\b
   # More than one, or one not named: "the reviewers", "one of the reviewers", "an anonymous
   # referee", "reviewer comments".
@@ -207,8 +211,9 @@ residue:
           |pointed\s+out|raised\s+(?:a|an|the|this|that)|wondered|questioned\s+(?:whether|why|the|our))\b
         |(?:thank(?:s|ing)?|grateful|indebted)\s+(?:to\s+)?{{one}}\s+for\s+(?:(?:this|that)\s+(?:\w+\s+)?
           (?:comment|suggestion|point|question|remark|observation|query|concern)\b
-          |(?:raising|pointing\s+out|bringing\s+up|highlighting|noting)\s+(?:this|that|it)\b
+          |(?:raising|pointing\s+out|bringing(?:\s+up)?|highlighting|noting)\s+(?:this|that|it)\b
           |pointing\s+(?:this|that|it)\s+out\b)
+        |(?:thank(?:s|ing)?|grateful|indebted)\s+(?:to\s+)?{{numbered}}\s+for\b
       )
     why: An answer to one reviewer or to the editor, which the paper's reader never saw
   - id: reviewers-answered
@@ -226,7 +231,7 @@ residue:
         |{{one}}['’]s\s+(?:\w+\s+)?{{speech}}\b
         |thank(?:s|ing)?\s+(?:to\s+)?{{many}}\s+for\s+(?:(?:this|that)\s+(?:\w+\s+)?
           (?:comment|suggestion|point|question|remark|observation|query|concern)\b
-          |(?:raising|pointing\s+out|bringing\s+up|highlighting|noting)\s+(?:this|that|it)\b
+          |(?:raising|pointing\s+out|bringing(?:\s+up)?|highlighting|noting)\s+(?:this|that|it)\b
           |pointing\s+(?:this|that|it)\s+out\b)
       )
     why: An answer to the reviewers, unless the paper is about peer review
@@ -256,7 +261,7 @@ residue:
       # of this version of the manuscript". A verb of writing, then only the words a
       # contribution puts before the noun, so that "We revised the Methods because our
       # original submission" is read (round 1 of #377).
-      - '(?i)\b(?:wrote|write|written|writing|draft(?:ed|ing)?|prepar(?:ed|ing)|revis(?:ed|ing)|edit(?:ed|ing)|review(?:ed|ing)|read|approv(?:e|es|ed|ing|al)|agree(?:s|d)?\s+(?:to|with|on)|commented\s+on|contributed\s+to|made\s+(?:\w+\s+)?revisions\s+(?:to|of)|(?:gave|provided|granted)\s+(?:\w+\s+)?approval\s+(?:of|to|for))(?:\s+(?:and|the|a|an|this|that|our|its|their|final|first|initial|original|revised|submitted|resubmitted|earlier|previous|prior|last|current|present|whole|entire|complete|draft|drafts|version|versions|of|to|be|published|critically|substantially|approved|read|edited))*\s+(?:manuscripts?|drafts?|versions?|submissions?|papers?)\b'
+      - '(?i)\b(?:wrote|write|written|writing|draft(?:ed|ing)?|prepar(?:ed|ing)|revis(?:ed|ing)|edit(?:ed|ing)|review(?:ed|ing)|read|approv(?:e|es|ed|ing|al)|agree(?:s|d)?\s+(?:to|with|on)|commented\s+on|contributed\s+to|made\s+(?:\w+\s+)?revisions\s+(?:to|of)|(?:gave|provided|granted)\s+(?:\w+\s+)?approval\s+(?:of|to|for))(?:\s+(?:and|the|a|an|this|that|our|its|their|final|first|initial|original|revised|submitted|resubmitted|earlier|previous|prior|last|current|present|whole|entire|complete|draft|drafts|version|versions|of|to|be|published|critically|substantially|approved|read|edited|writing|drafting|editing|revision|revisions|review|content|preparation))*\s+(?:manuscripts?|drafts?|versions?|submissions?|papers?)\b'
       # The acknowledgements, to the end of their sentence, where the stop of a title or an
       # initial ends none: "grateful to Dr. Sampaio for their critical review in the
       # original manuscript". Not "acknowledge", which opens a limitation as often.
@@ -311,11 +316,15 @@ residue:
         |we\s+have\s+(?:(?:{{adverb}})\s+)?(?:{{edited}}|extended|restructured|reorgani[sz]ed|condensed
           |streamlined|simplified|inserted)\s+(?:(?:{{det}})\s+){0,2}(?:{{part}})\s+accordingly\b
         |(?:this|these|the\s+(?:{{part}}))\s+(?:has|have)\s+(?:now\s+|also\s+)?been\s+(?:{{edited}})\s+
-          (?:accordingly|throughout|in\s+(?:the|this|our)\s+(?:revised\s+)?(?:{{section}}|text))\b
+          (?:accordingly|throughout|in\s+(?:the|this|our)\s+(?:revised\s+)?(?:{{section}}|text(?!\s+of\b)))\b
+        |(?:this|these)\s+(?:(?:points?|issues?|aspects?|limitations?|statements?|concerns?)\s+)?(?:has|have)
+          \s+now\s+been\s+(?:{{edited}}|included|incorporated|specified|mentioned|discussed|acknowledged
+          |addressed|stated|explained|emphasi[sz]ed)\s+(?:in|into|to)\s+(?:the|this|our)\s+(?:revised\s+)?
+          (?:{{section}}|text(?!\s+of\b))\b
         |(?:a|an|one|two|the|new|further|additional|brief|short)\s+(?:\w+\s+)?(?:sentences?|paragraphs?
           |statements?|clarifications?|explanations?|notes?|sections?|subsections?|passages?|caveats?)
           \s+(?:has|have)\s+(?:now\s+|also\s+)?been\s+(?:added|inserted|included)\s+(?:to|in|into)\s+
-          (?:the|this|our)\s+(?:revised\s+)?(?:{{section}}|text)\b
+          (?:the|this|our)\s+(?:revised\s+)?(?:{{section}}|text(?!\s+of\b))\b
       )
     why: A change to this manuscript's text described to whoever asked for it
   - id: text-edited-unnamed
@@ -357,7 +366,7 @@ residue:
       (?ix)\b(?:the\s+)?(?:revised|new|added|amended|changed|edited|inserted)\s+(?:text|passages?
         |sentences?|wording|paragraphs?|parts?\s+of\s+the\s+(?:text|manuscript))\s+(?:is|are|has\s+been
         |have\s+been|was|were)\s+(?:now\s+)?(?:(?:highlighted|underlined|colou?red|tracked)\b
-        |(?:marked|shown|indicated|written|printed)\s+(?:in|with|using|as|by)\s+(?:\w+\s+)?
+        |(?:marked|shown|indicated|written|printed)\s+(?:in|with|using|as|by)\s+(?:\w+\s+){0,2}
         (?:yellow|red|blue|green|grey|gray|bold|italics?|colou?r|underlined|highlighted|track(?:ed)?[-\s]changes?)\b)
       |\b(?:in|with|using|as|via)\s+track(?:ed)?[-\s]changes?\b
     why: Changes marked for the reviewers, which the printed paper does not show

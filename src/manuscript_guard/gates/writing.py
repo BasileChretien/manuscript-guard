@@ -90,6 +90,9 @@ _NAMED = re.compile(r"\{\{(\w+)\}\}")
 def load_rules() -> Rules:
     document = yaml.safe_load(DATA.read_text(encoding="utf-8"))
     words = document.get("residue_words", {})
+    # A name may stand in the words of another, one level down: `one` holds `numbered`.
+    words = {name: _NAMED.sub(lambda m: f"(?:{words[m.group(1)]})", text)
+             for name, text in words.items()}  # fmt: skip
     return Rules(
         artefacts=tuple(document.get("artefacts", ())),
         phrases=tuple(document.get("phrases", ())),

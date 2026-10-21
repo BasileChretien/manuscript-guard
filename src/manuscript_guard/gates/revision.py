@@ -312,10 +312,14 @@ def _passages(project: Project) -> set[str]:
 
 
 def displays(project: Project) -> dict[str, str]:
-    """What each binding prints, as the build fills it in."""
+    """What each binding prints, as the build fills it in: each value, and each ref and num
+    binding as the number its table or figure has (round 1 of #378: a quote of a sentence
+    with a ref in it was looked for in text that still read `{{ref.`)."""
     from manuscript_guard.contracts import load_namespace
+    from manuscript_guard.gates.pointers import display_numbers
 
-    return {ref: value.display for ref, value in load_namespace(project)[0].items()}
+    printed = {ref: value.display for ref, value in load_namespace(project)[0].items()}
+    return printed | display_numbers(project).bindings()
 
 
 def rendered_manuscript(project: Project, rendered: dict[str, str] | None = None) -> str:

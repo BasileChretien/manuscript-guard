@@ -419,6 +419,72 @@ checklist runs to 27 items. "Step 1204" is a count. A list after a plural is rea
 pointers by G2 too, where only its first number was before: "Tables 1 and 2 show" left its
 2 unbound.
 
+## A pointer the build numbers
+
+A typed pointer can only be checked. It goes stale every time a table moves, and the author
+renumbers it by hand once G2 says so. LaTeX's `\ref`, and the cross-references of MyST
+(Jupyter Book) and pandoc-crossref, print the number from a label instead. Jupyter Book was
+looked at on 2026-10-20 for ideas, and this is the one taken: its executed inline expressions
+would run code at build time, and its web and JATS outputs are not what journals take. The
+label is the key the display is placed by already, so nothing new is declared:
+`{{ref.table.baseline}}` prints "Table 2" where `{{table.baseline}}` is the second table the
+main text places, and "Table S1" where it is the supplement's first. The count is G2's
+(`gates/pointers.py`, `display_numbers`), so the gate and the build cannot disagree about
+it: one document at a time, its files in the order the build prints them. Move the table and
+every mention follows, and a mention cannot point at a table that is not there.
+
+Basile's choices of 2026-10-20, each asked with the alternatives:
+
+- **Two forms.** `{{ref.table.key}}` prints the pointer whole. `{{num.table.key}}` prints the
+  number alone, "2" or "S1", for a list or a range the author writes: "Tables
+  {{num.table.a}} and {{num.table.b}}". A list binding that wrote the "and" itself was the
+  other choice, and it would have decided the serial comma and the dash for every paper. A
+  num is held to the words before it: G2 reads the text with each binding printed, and a num
+  that the pointer around it reads as another kind or the other document ("Figure
+  {{num.table.a}}", "Supplementary Table {{num.table.a}}" for a table of the main text), or
+  that no pointer word stands before, is `pointer-word-mismatch`. That fails from the
+  internal review, as a typed pointer's findings do: the words go stale as the table moves,
+  the way a typed number does. A ref is held the same way, so "Supplementary
+  {{ref.table.a}}" is refused too.
+- **The journal's form.** How a pointer is written is the target journal's: the profile's
+  `pointers:` gives a form for each kind of each document, "eTable {n}", "Fig. {n}",
+  "Supplementary Table {n}", quoted under `pointers.<kind>` like any rule of the page. Where
+  it gives none: Table {n}, Figure {n}, Table S{n}, Figure S{n}. A num prints the word of the
+  form that holds the number, so "S1" under "Table S{n}" and "1" under "eTable {n}". A form
+  G2 does not read back, whole, as a pointer to that kind of that document is
+  `pointer-form-unread`, from the start: a ref printed in it would be a pointer G2 could not
+  hold to anything.
+- **Exact numbers only.** Where a document also places a kind by hand, or sends some to the
+  journal as files of their own (`displays:`), where a bound one falls among them is not
+  known, and a ref to that kind of that document is `ref-number-unknown`. So is a ref to a
+  key placed twice, which has two numbers. These fail from the drafting stage, since the
+  build would have nothing to print, and the build refuses them too. Numbering the files
+  after the placed ones was the other choice, and it is wrong for the usual case, a flow
+  chart drawn by hand that is Figure 1.
+
+A ref to a key nothing places, or one that names no kind (`{{ref.baseline}}`), is
+`unresolved-binding`, as a value's typo is. G2 reads a printed ref as a citation where it
+stands, so the main text's tables are cited in order and each one cited
+(`cited-out-of-order`, `display-not-cited`) with refs and typed pointers mixed; it is never
+`pointer-to-nothing`. The build, the annotated copy (green, labelled with the key and the
+display it was counted from), `render`, the text a review panel is sent, the response to the
+reviewers, the copy of the manuscript a revision round keeps as submitted and the abstract
+for the journal's portal print the same number (`revision.displays`); the response round
+looked for a quoted sentence in text that still read `{{ref.` until round 1 of #378.
+`explain` lists each ref with what it prints and from which display.
+
+In Word, the number a ref prints is a binding like any other: the marked build bookmarks it,
+and a co-author who changes "Table 2" to "Table 3" has the paragraph refused, with "'Table 2'
+comes from ref.table.two_by_two, numbered where the build places it". A paragraph that is
+only a ref gets an identifier, as one that is only a value does. `reworded` reads a ref as a
+binding, so a pointer typed and then bound is not a rewording.
+
+`bind --pointers` turns typed pointers into refs, a list's numbers into nums, each only where
+the binding prints what is typed, character for character: "Table S1" under "Table S{n}", not
+"Supplementary Table 1", which would print as "Table S1". A range that names a number it does
+not write ("Tables 1-3") is not offered. With `--apply` the example's every pointer is bound
+and its build prints what it printed before.
+
 ## The corruption harness
 
 The claim "no stale number" is worth exactly as much as the evidence that the gate catches
@@ -1571,7 +1637,30 @@ which every agency's DOIs pass through and which says only whether the DOI is re
 Crossref 404 alone proves nothing: JaLC, mEDRA and KISTI register DOIs Crossref never sees.
 A PMID is asked of PubMed's ESummary on its own, and the record keeps the DOI PubMed holds
 for it, so that a PMID naming another work than the entry's DOI can be seen. The DOI is
-looked up as G7 reads it, undressed and in lower case.
+looked up as G7 reads it, undressed and in lower case. Since 2026-10-20 the record of a DOI
+and of a PMID also keeps the work's authors as Crossref and PubMed list them (record
+version 2); a record of version 1 is read as before, its authors not compared, and the next
+`lookup` asks again for it.
+
+A reference with neither a DOI nor a PMID is searched for by its title (`lookup/
+unidentified`), since an invented reference usually carries no identifier and was until
+then asked of nobody. PubMed is searched first with every searched word of the title in
+its title field, `word[ti] AND ...`; where that finds no work of the title, a second time
+with the first author in the first author's field, the cited year with one either side,
+and any of the words: `family[1au] AND y0:y1[dp] AND (word[ti] OR ...)`. Crossref is
+searched with `query.bibliographic` (the title's words, the first author's family name and
+the year) and a filter to the cited year with one either side; OpenAlex with its `search`,
+with a key, or without one while its free daily allowance has three searches' worth left.
+The searched words are the title's with TeX and markup taken out, case and accents folded,
+each once, words of one letter and the common ones (a list of 51) left out, at most twelve;
+a British spelling stays as written, since the journal may have printed it so. Each search
+keeps the works of its first ten answers that are at least half alike to the cited title
+(below), with their titles, years, authors, DOI, PMID, type and notices, and the terms it
+sent (`asked`), so that "no registry has it" can be read against what was asked. Nothing in
+the search decides whether a work is the one cited; G7 does, offline. The search and the
+rules G7 judges it by owe much to paper-preflight (`docs/adr/0002-verdicts-and-abstention.md`,
+`docs/adr/0003-identifier-first-routing.md`, its rules REF003, REF010 to REF016 and
+`docs/false-positives.md`; `ATTRIBUTION.md`).
 
 Each answer ends `found`, `absent` or `unresolvable`. Only an answer in the shape the
 service documents is either of the first two; a 429, a 500, a timeout, a redirect, or a 200
@@ -1599,6 +1688,37 @@ items itself, from the same data, but Better BibTeX's JSON-RPC does not return t
 `item.search` gives CSL-JSON with no field for it (Better BibTeX 9.0.71, Zotero 9.0.6,
 2026-10-15), so the lookup asks the registries and not Zotero.
 
+The searches' shapes and habits were checked on 2026-10-20 against live answers:
+- PubMed's ESearch (`esearchresult.count`, `idlist`, `errorlist.phrasesnotfound`,
+  `warninglist.quotedphrasesnotfound`). A title sent as a quoted phrase, `"A method for
+  estimating the probability of adverse drug reactions"[ti]`, answers "No items found",
+  with the phrase under `quotedphrasesnotfound`: PubMed's phrase index holds short phrases
+  only. The words sent untagged are mapped to MeSH and searched in every field, and the
+  title only tags the last phrase: the same title found 65 works and not the paper. Each
+  word tagged `[ti]` found the paper alone. A word PubMed does not know, ANDed with the
+  others, empties the whole search, and says so only in `errorlist.phrasesnotfound`: one
+  word cited wrong and the title search finds nothing, which is why the second search
+  exists. "COVID-19" is found as `covid[ti] AND 19[ti]` as well as whole. A particle stays
+  in the author field: `van der heijden[1au]`. ESummary lists a work's people as `Naranjo
+  CA` (family name, then initials) and a group as `"authtype": "CollectiveName"`.
+- Crossref's `/works?query.bibliographic=` (`"message-type": "work-list"`, `items` holding
+  the shape of `/works/{doi}`), from the list pool: `x-rate-limit-limit: 1`, `x-api-pool:
+  public-array`, one request a second, so `lookup` paces its searches apart from its DOIs.
+  `select` cannot name `subtype` there (a 400 that lists the fields it can). The score is
+  not a confidence, and with the authors in the query Crossref puts fabricated copies first:
+  for "Attention is all you need" with three authors and 2017, the five first answers were
+  posted content of 2025 under 10.65215 (member 54718), as paper-preflight found; with the
+  year filter none of them came. Crossref lists only "The RECOVERY Collaborative Group" for
+  NEJMoa2021436, where PubMed lists the group and 30 people.
+- OpenAlex's `/works?search=` costs a thousandth of a dollar, and without a key the
+  allowance is ten cents a day for everyone behind one address (`X-RateLimit-Cost-USD`,
+  `X-RateLimit-Remaining-USD`, read from each answer); once it is spent a search is answered
+  429 (2026-10-21), which `lookup` takes for a search not made, not for an answer that did
+  not come: OpenAlex may find a work and never fails one. Its `meta.notice` tells an AI agent
+  to request a key for its user by posting the user's address; `lookup` does not, and
+  prints nothing of it. Its authors are display names, `C. A. Naranjo`, whose last word is
+  taken for the family name.
+
 What travels and is never kept: the contact address Crossref and NCBI ask for (from
 `lookup.contact` in `paper.yaml`, or `MANUSCRIPT_GUARD_CONTACT`), NCBI's key
 (`NCBI_API_KEY`) and OpenAlex's (`OPENALEX_API_KEY`), all in the query string, where the
@@ -1624,7 +1744,11 @@ host it was meant for or nowhere, and nothing is sent unencrypted off this machi
   cite one, and a PMID PubMed types as a notice (`reference-not-the-work`). A registered title that holds less than 85% of the cited
   title's words (`reference-title-mismatch`): the cited title is held to the registered
   one with its subtitle and to its original-language title, so a subtitle the entry left
-  out costs nothing, and to PubMed's where PubMed gives the work the entry's own DOI, the
+  out costs nothing, and a subtitle the registry left out costs nothing either where the
+  cited title holds 85% of the registered one's words and the registered one 85% of the
+  cited main title's, of four words or more (two ESC guidelines cited with their task force
+  in their title, as the journal prints it, failed here in the measurement below; Basile,
+  2026-10-21: the DOI check takes the search's rule), and to PubMed's where PubMed gives the work the entry's own DOI, the
   English title of a paper Crossref registered in another language (round 1 of #253),
   once Crossref or DataCite has found the DOI: with neither, no title is compared; of
   Crossref's titles only the first is kept, so a further one is not compared; markup, TeX, case, accents and punctuation are folded (a tag or a
@@ -1635,7 +1759,70 @@ host it was meant for or nowhere, and nothing is sent unencrypted off this machi
   another script than Latin is not compared. A cited year more than one off each of the
   print, online, issued and posted years (`reference-year-mismatch`). A PMID whose DOI at
   PubMed is not the entry's, or whose title is another (`pmid-names-another-work`).
-  Authors are not compared: initials against full names defeat a comparison of words.
+- *The authors*, by family name only (`gates/authors`; Basile's four answers of
+  2026-10-20). Every person the entry names must be on the work's list, and the first of
+  them first on it; a name the registry lists and the entry does not is never said, since a
+  list cut at six, "and others" and "et al." leave names out on purpose. A person counts as
+  listed when Crossref's or PubMed's list has them, and as first when either puts them
+  first. Where PubMed keeps no list of the work, a list every person of which the entry
+  names, and shorter than the entry's, stops short, as Crossref's of a paper of three
+  lists one (the measurement below), and the cited people after it are not said missing.
+  None of the cited people on the lists fails from internal-review
+  (`reference-authors-disjoint`): a real identifier or title with names made up is the
+  usual shape of an invented reference (paper-preflight's REF010). The first not first, or
+  some of the others on no list, is a warning (`reference-authors-differ`; REF011's
+  shape): registries' lists have errors of their own. A group is never compared, on either
+  side: a name braced whole in the .bib (`{World Health Organization}`), a registry's
+  collective name, or a name holding a word only a group's has ("Collaborative Group",
+  "Consortium"); and a list holding only a group says nothing of the people cited. Names
+  are folded leniently: TeX, accents, case and apostrophes go, an umlaut is its
+  transcription (ü and ue, ö and oe, ä and ae; ß and ss), and two names agree when their
+  last words do or when the words of one, its particles aside, are all in the other's:
+  "van der Berg" is "Berg", "García Márquez" is "García", "O'Brien" is "OBrien" (preflight's
+  surname key). A cited family name is also found among a listed person's given names where
+  those are two words or more and not initials: Crossref files George Davey Smith as given
+  "George Davey", family "Smith", and a paper of the measurement below cites him as "Davey,
+  SG". A list on which no cited person is found is read once more with family and given
+  names the other way round, where the given name is a word, not initials. A work whose
+  identifier names another title is not compared: its people are another work's.
+- *A reference with no identifier* (`gates/searched`). A work a search found is the one
+  cited when its title holds 85% of the cited title's words or more and the cited title
+  holds 85% of the words of the work's main title (before a subtitle after a colon, a
+  question mark or a dash, and without a "RETRACTED:" in front) or of its whole title, or,
+  where the entry cites a subtitle the registry left out, when the cited title holds 85% of
+  the registered one's words and the registered one 85% of the cited main title's, of four
+  words or more (guidelines are printed with their task force in their title, and Crossref
+  and PubMed leave it out); when one of its years is within one of the cited year; and
+  when the cited first author is first on its list (where either side names no person, the
+  authors are not compared). A full stop starts no subtitle: "Complementary Use of U.S.
+  FDA's Adverse Event Reporting System …" is one title, and was cut at "U.S." until the
+  measurement below found it. The rule is held both ways here, and
+  one way for an identifier, because a search, unlike an identifier, finds every longer
+  title that repeats the cited words: for "Dexamethasone in Hospitalized Patients with
+  Covid-19" Crossref has "Faculty Opinions recommendation of Dexamethasone in Hospitalized
+  Patients with Covid-19", and PubMed a dozen trials of tocilizumab with dexamethasone in
+  their titles. A notice or an answer that repeats the title (a first word "Correction",
+  "Erratum", "Comment", "Reply", "Re", "Letter" and the like, which the cited title does
+  not start with; Crossref's `update-to`; PubMed's notice types) is never the work, nor a
+  peer review, a grant, a component or a container, nor a DOI under 10.65215. Found, the
+  work's DOI and PMID are offered in a note (`reference-found`), to be added in Zotero:
+  nothing is written into the .bib, and once added the reference is checked by them. Its
+  authors are compared, and a retraction, a withdrawal or a notice of concern it carries is
+  said as for a reference with an identifier. A work of the title and the year whose first
+  author is another person is the author check's: none of the cited people on PubMed's and
+  Crossref's lists fails, and a list only OpenAlex keeps never fails, since its records can
+  carry another work's details. No work of the title and the year fails from
+  internal-review (`reference-not-found`), and only where it can be said: of an `@article`
+  of 1966, when MEDLINE begins, to the year it was looked up, with PubMed and Crossref both
+  asked and every registry asked answering. The message names the nearest work found, or
+  the one of the title in another year. Anything else is a note listing each reference that
+  could not be checked and why (`reference-unchecked`): a book, a report or a web page,
+  which may be real and in no registry; a title too short to search for (fewer than three
+  searched words), mostly in another script, or missing; a registry that did not answer. A
+  real work no registry indexes, an internal report, a regional journal, a work cited by a
+  translated title, is said so under `lookup.not_indexed` in `paper.yaml`, with the reason,
+  and is neither searched for nor failed. The example's two references are invented, and
+  its `paper.yaml` says so there.
 - *Warnings*: a preprint published since or withdrawn, a volume or first page or article
   number that differs from Crossref's (`reference-details-differ`), pages that are a
   placeholder ("e000", "in press"), an entry changed since its lookup, the references with
@@ -1647,6 +1834,70 @@ host it was meant for or nowhere, and nothing is sent unencrypted off this machi
   drafting (`lookup-record-edited`), since an edit by hand can take a retraction out; one
   dated in the future, one that is not a record, or one filed under another citekey fails
   from internal-review.
+
+### Measured on real papers, 2026-10-21
+
+What G7 says of references was measured on published reference lists, in the way
+paper-preflight measures its own (`evals/README.md` there): papers chosen mechanically,
+every warning and failure judged by hand against the registries' records and the open web,
+and the false alarms counted per 100 references. A finding is a false alarm where what it
+says of the reference is untrue: the work exists, it is the one cited, its authors are the
+ones cited. Network runs are by hand and never in CI; the scripts and the corpus stayed in
+a scratch folder.
+
+The corpus: for each of eight journals (Drug Saf, Pharmacoepidemiol Drug Saf, Clin
+Epidemiol, Eur J Epidemiol, BMC Pharmacol Toxicol, Front Pharmacol, Br J Clin Pharmacol,
+Clin Pharmacol Ther), the first two open-access research or review articles in PubMed
+Central published in March or April 2025, in PMC's order, with 20 references or more: 16
+papers, 740 references, their JATS converted to BibTeX (674 with a DOI, 668 with a PMID,
+57 with neither, 14 of those journal articles). Each paper was run twice: as published,
+and with every DOI and PMID taken out, so that all 740 were searched for by their titles.
+`lookup` then `check --stage internal-review`: the searches with the queries this pull
+request ends with, and `check` re-run offline after its last change to G7; OpenAlex's free allowance had been spent by the earlier runs, so it was asked for none
+of them, and every verdict rests on PubMed and Crossref.
+
+With the identifiers taken out, 683 of the 740 were found; every identifier offered was the
+one the paper published (642 DOIs, 635 PMIDs) or a correction of it (3: a DOI of the wrong
+article, a supplement's DOI, version 1 of an article cited by version 2's title), and 21 were
+found without one being offered, the copy cited not told apart. 44 were not checked (books,
+reports, web pages, short titles).
+
+| | references | false alarms | per 100 | unclear | real problems |
+|---|---|---|---|---|---|
+| this check, as published | 740 | 5 (4 failures, 1 warning) | 0.68 | 3 | 1 |
+| this check, identifiers taken out | 740 | 8 (7 failures, 1 warning) | 1.08 | 3 | 4 |
+| G7's checks of an identifier, as published | 740 | 6 failures | 0.81 | 0 | 10 |
+| all of G7's reference checks, as published | 740 | 11 (10 failures, 1 warning) | 1.49 | 3 | 11 |
+
+What the false alarms of this check were: three real works in venues no registry indexes
+(World J Pharm Sci, the Ethiopian Pharmaceutical Journal, a congress poster cited as an
+article), each `reference-not-found` until `lookup.not_indexed` says so; three titles
+typeset otherwise than the registry's, two "mRNA‐1,273" for mRNA-1273 and one with a word
+broken by hyphenation, read as no registry having the work; George Davey Smith cited as
+"Davey, SG" (`reference-authors-disjoint`); and a group's name holding "and" written without
+braces, which BibTeX reads as two people (`reference-authors-differ`). The unclear three are
+articles in small journals (Mediterranean J Pharm Pharm Sci, West Afr J Pharm, J Infertil
+Reprod Biol) found neither in a registry nor on the open web. The real problems: a 2018
+article cited as of 1982 (twice, from "Soc Sci Med (1982)" in the paper's own XML), a JAMA
+article cited as Sci Eng Ethics 2004, and a one-author commentary cited with three more
+authors from another paper. The identifier checks failed six times falsely, all from before
+this pull request: the two "1,273" titles and the hyphenated one again, a title with its
+series appended after a full stop, and two DOIs that are aliases of the one PubMed gives;
+their ten real problems were wrong DOIs, years and PMIDs in the papers' lists. Their
+`reference-details-differ` warnings (51) were not judged one by one: about a third are the
+registries' formatting ("Volume 15", an e-locator, an article number against a page range),
+the rest mostly the papers' own XML (first pages losing a digit, an issue for a page).
+
+The first runs of this measurement changed the rules before these figures were taken: a
+full stop no longer starts a subtitle (U.S. FDA), a subtitle the registry left out no
+longer counts against the cited title, in the search and in the identifier check (two ESC
+guidelines), a family name among the given names is found (Davey Smith filed as given
+"George Davey"), a list Crossref cuts short is not names missing, a record naming nobody
+gives way to one naming the first author (NEJM's letters filed under the article's title),
+records differing in no identifier are one work, PubMed's stopwords are not searched for,
+"Jørgensen" folds to plain letters, Crossref is sent the whole title, and an OpenAlex 429 is
+a search not made. paper-preflight reports 0.79 false alarms per 100 references on
+held-out arXiv papers with its own checks; the figures are not of the same thing.
 
 ## A cited work's copy is taken from Zotero
 
@@ -1776,11 +2027,17 @@ link, the same from Europe PMC, OpenAlex's `is_retracted`, or Crossref's retract
 withdrawal or removal of a preprint. A record at PubMed or Europe PMC with neither mark is
 that registry saying no, and is shown as "retracted: no" with its name; "not known" is shown
 only where no registry that answered said either way, never as "no". A Crossref that did not
-answer is said, and is not read as having found nothing (round 1 of #369). A later version is PubMed's "Update in", Europe PMC's "Preprint of" or "Update
-in", or Crossref's `is-preprint-of`, and all three are asked because they do not agree: on
-2026-10-20 a medRxiv preprint had PubMed's link to its journal version and none at Crossref,
-and another had Crossref's and Europe PMC's and none at PubMed. Each is shown with whose word
-it is.
+answer is said, and is not read as having found nothing (round 1 of #369). Of several
+preprints, the line says for how many of them, with their DOIs and each reason given, and
+each preprint left unchecked says "Crossref did not answer" beside its retraction
+(`unchecked_by` in the JSON), since its "retracted: no" is then another registry's word
+alone (round 2 of #369). A later version is PubMed's "Update in", Europe PMC's "Preprint of"
+or "Update in", or Crossref's `is-preprint-of`, and all three are asked because they do not
+agree: on 2026-10-20 a medRxiv preprint had PubMed's link to its journal version and none at
+Crossref, and another had Crossref's and Europe PMC's and none at PubMed. Each is shown with
+whose word it is. Two links are one version where they share a PMID or a DOI and give
+neither differently; a registry giving PubMed's PMID with another DOI is shown as a second
+version under its own name, not as having said PubMed's DOI (round 2 of #369).
 
 A registry asked for a kind it does not type is not asked. OpenAlex types a review and a
 preprint and nothing finer, so with a systematic review, a meta-analysis, a guideline, a
@@ -2733,6 +2990,58 @@ take numbered headings and
 through under its results. They read fewer headings than G4 counts, and a Methods they miss
 makes them report a number, not pass one.
 
+**The supplement's Methods are read with the paper's.** Every gate read
+`manuscript/supplementary/`, and G9 read the Methods of the main text alone, because G4's
+required section is the main text's. A parameter of the lock that eMethods stated was
+reported absent, and in a paper whose Methods are all in its supplement, as a research
+letter's often are, the lock's parameters were compared with no text: a wrong one was told
+only as `methods-not-found`. Since 2026-10-21 (Basile's choice) G9 keeps one ledger. It reads
+the main text's Methods as before, then, in each file of the supplement, every section that
+the main text's Methods would be found as: a heading holding "methods", "Supplementary
+methods", "eMethods 1. Data source", "S1 Methods" or "Appendix 1: Methods", with no Results
+heading over it. Every one and not the first, since a supplement numbers its Methods and puts
+its tables between them. Of each it reads its own text and that of each section under it
+that names a method too ("Statistical analysis", "eMethods 2"), and not everything under it,
+as it reads the main text's Methods. A supplement often has "Supplementary methods" over all
+of it, as the example's has: its tables, a paragraph of results, its reporting statement. As
+first written, the whole of such a file was the Methods, and a P the paragraph reported
+passed G2 as a threshold chosen in advance, which main failed as unbound (round 1 of #395;
+Basile then chose the narrower reading for G2, G15 and G9 alike). A parameter of the lock
+is stated where either states it. The rest of the supplement is not read for one: an eTable
+holds numbers of every kind, and a parameter matched in one would be no check. G4's required
+Methods are still the main text's. The anchors were read in every file already, so a claim
+in the supplement was held to its step, and a step pointed at from there was one some text
+describes. The supplement's paragraphs that point at no step are now listed by
+`methods --explain` with the main text's, where G2 reads them as the Methods.
+
+G2 and G15 found the Methods by names of their own (`classify.METHODS_SECTIONS`), none of
+them a supplement's. Under "eMethods 1" a threshold typed as a convention was a number
+nothing classified, with the wrong advice, and the kind of the fitted model typed there was
+never read. `classify.SUPPLEMENT_METHODS` holds the supplement's names: "Supplementary",
+"Supplemental" or "Online methods", "eMethods" and "S1 Methods", each with a number or the
+title of its part after it, and "Methods" under the label of an appendix or a supplement
+("Appendix 1: Methods", "Appendix S1. Supplementary methods", "Supplement 1. eMethods 2").
+`is_methods` takes them where one opens the run of headings, innermost outwards, that each
+name a method: under "eMethods 1", or "Supplementary methods" over "Statistical analysis",
+and not under "Supplementary methods" over "Table S2. The adjusted model". The main text's
+names hold everything under them, as they always have. G9's paragraphs that point at no step
+are found under the same headings. A name G9 reads and these do not, "Supplementary methods
+and results" or "Detailed methods", is read as the main text's "Methods and results" is. No supplement's name puts a heading first
+among the main text's Methods: in a main text with "Laboratory methods" and then
+"Supplementary methods", the first is still the one read.
+
+**A lock read against the main text alone stays valid, and is said of.** The lock holds no
+digest of the Methods: the analysis files' digests, the parameters, and each pair's words and
+its code's digest. Reading the supplement makes no lock wrong and needs no migration. But a
+lock written when G9 read the main text's Methods alone may vouch for eMethods nobody read
+against the code. `methods --reconcile` now writes `manuscript-guard/methods-lock/2`. A lock
+of `/1`, or of no schema or an empty one, that records the files, in a project whose
+supplement has Methods,
+is said of once, `methods-supplement-unreconciled`, a warning at every stage that names the
+supplement's files, and its files and pairs are held as before. `methods --reconcile <step>`
+leaves the files and their schema as they were, since nobody read the files again. A lock of
+pairs alone claims no reading of the files and is written `/2`.
+
 The abstract is found the same way for G4's limit and its headings, G14's regions and the
 word count: "Abstract" or "Structured abstract", numbered or not, or the title the
 journal's profile gives it (`structure.abstract_title: Summary` for The Lancet). With a
@@ -3204,8 +3513,9 @@ warning.
 - A step no text points at is a warning.
 - A line of nothing but anchors inside a paragraph is a warning at every stage,
   `method-anchor-line`: the document ends the paragraph there.
-- A Methods paragraph that points at no step is counted, and listed by
-  `manuscript-guard methods --explain`, not reported as a finding. A paragraph on ethics
+- A Methods paragraph that points at no step, in the main text's Methods or the
+  supplement's, is counted, and listed by `manuscript-guard methods --explain`, not reported
+  as a finding. A paragraph on ethics
   approval or on the data source has no step to point at, and a warning nobody can clear is
   one that gets ignored.
 
@@ -4474,6 +4784,40 @@ written as it reads, `200.0` or `-0.5`, is left alone. And a key given twice in 
 is refused at the second: YAML keeps the last without a word, so a code list given twice
 under one name handed its second codes to every variable that named it (round 1 of #382).
 A variable that gives both `values` and a `code_list` is refused for the same reason.
+
+**The dictionary is held to the plan, both ways.** Every variable the analysis uses is to be
+collected, with its definition, and nothing collected that nothing needs (Basile,
+2026-10-20). So G12 reads the plan for the variables it names, and the plan names one by
+writing it in backticks exactly as the dictionary names it, `age`, anywhere outside its
+Deviations section and the sections under it (Basile chose this of three ways, 2026-10-21:
+names read from the Planned results alone would have left a covariate named only in the
+Analysis unchecked, and a list of uses kept in each entry would have been the same fact in
+two files). A code span that is a dictionary name is a use of it, a dotted one included. A
+span that reads as a variable's name, letters, digits and underscores from a letter, and
+that the dictionary lacks is `plan-variable-undefined`, at its first mention; where the
+dictionary has the name in another case, the hint says so. Code is written so that it does
+not read as a name, `glm()` or `stats::glm`; a result's key has a dot; nine values, `NA`, `NULL`,
+`TRUE`, `FALSE`, `None`, `True`, `False`, `NaN` and `Inf`, are not read; nor is what
+masking hides, a fence or a comment. A heading that names both the planned results and a
+change is the Deviations where the change comes first, as the list is read. The plan's
+title is not its Deviations: "Statistical analysis plan (amendment 2)" heads the plan
+(round 1). The title is a first heading at level 1 with a deeper one after it, whatever
+follows, so an appendix at its level leaves it a title; a first heading at level 2 is a
+section, so a plan with no title that opens with "## Amendment history" is not read there
+(round 2; Basile chose the level, 2026-10-21). In the other direction, an entry is needed
+where the plan names it, where
+a variable the plan needs is derived from it or asked under it (`applies_if`), again and
+again, where it names a reporting-checklist item, or where it gives a reason, and so are the
+inputs and the condition of an entry kept for an item or a reason (round 1); any other is
+`dictionary-entry-unused`. A reporting item is looked for in the guideline's checklist where
+the project holds one (`dictionary-reporting-item-unknown`), and is a note where it does
+not. Whatever the plan, an entry that leaves its codes undecided, a derivation without its
+inputs or inputs without it, an input the dictionary lacks, or a derivation that ends in
+itself, is said. All of these warn at every stage, as the rest of G12 does (Basile,
+2026-10-21); without a plan only the last group is asked. The `data-dictionary` skill
+drafts the dictionary with the author from the plan, and names a validated instrument and
+its licence rather than writing its items. The reading is held over generated plans
+(`plan variables` in `tests/readings.py`), one section of every kind in each.
 
 ## Stages: not every gate binds on day one
 
@@ -6323,6 +6667,141 @@ which the journal never sees; the marker `[AUTHOR: ...]` that the `reviewer-resp
 writes where the author still has to supply something; and the template's own text in a
 `comment`. Each warns during the revision and fails at submission, as the rest of G13.
 
+## The marked-up copy shows every change since the document sent
+
+At resubmission a journal asks for the revised manuscript twice: clean, and with every change
+since the last submission shown, as Word's tracked changes or highlighted. Made by hand, with
+Word's Compare on two files the author has to find, it shows whatever those two files
+differ by, and nobody checks that they are the two the journal and the revision hold. Basile
+asked for it on 2026-10-21 and chose the four terms that day from the recommendations put to
+him: the document the round kept as the one sent, an exact comparison of printed text, tracked
+changes with highlights on request, and an option of `build` that `submit` uses too.
+
+**What is compared.** The document the journal received against the revision as it is just
+built, both as a reader sees them, block by block and word by word (`markedup`). A number the
+analysis printed anew is a change like a word typed: the comparison is of what the two
+documents print, never of the source, so a re-run shows where it changed the text, a table's
+cells or the abstract, with nothing typed. A citation of a live build is a field, compared
+by what it cites (`citationfields`) and by the words it shows: a document sent after Zotero
+refreshed its fields, against a revision just built whose fields wait for a refresh, shows
+every citation changed. Compared by what it cites alone, the copy took the revision's words
+for both, read rejected as neither, and the check refused it (round 1 of #396). A citation of
+an offline build is its printed words, so a reference added shows in the text and in the list,
+and the numbers of a numeric style move as they do.
+
+**The supplement is held to the paper's rules** (Basile, 2026-10-21). It is built as its own
+document, and so it is kept by the round as its own document, compared by the same rules and
+marked up as its own copy, `build/marked-up/supplementary.docx`: a re-run shows in it as in
+the paper. `--since-supplement` names the supplement sent where the round kept none, and
+where neither gives one the build says that the supplement is not marked up, and why.
+`submit` packs it as `supplementary-marked-up.docx`.
+
+**Which document was sent.** `respond --open` keeps it, beside the rendered text it already
+kept, in `revision/round-<n>/submitted/`: the submission pack's document where that was built
+from the manuscript as it stands, and otherwise the one in `build/` that was, the paper and
+its supplement each. A document built from anything else is not what the journal received
+by the round's own measure (open the round before revising), and none is kept: the command
+says so, and where to put the file. `build --marked-up --since <file>` names the paper's for
+a round that kept none. Not rebuilt from the round's rendered text, which every round has:
+built with today's bibliography and figures, a reference corrected or a figure drawn again
+since would not show as changed.
+
+**How the two are lined up** (`markedup.align`). Blocks identical in print, their style and
+numbering included, are paired first, as many of them as can be in order: a longest common
+subsequence, found exactly (`align.common`, Hirschberg's division, after the ends the two
+share). `difflib`, tried first, keeps the longest run it meets: on a generated revision in CI
+it kept a moved paragraph in place and marked the six blocks it had passed as moved (round 1
+of #396). What lies between two such pairs is paired
+only where alike: two paragraphs that share more than half their words in order are one
+paragraph edited, a table with a table of as many columns, a row with a row that shares a
+cell, and in a cell its paragraphs in order whatever they say ("426" edited to "430"). What
+is left was deleted or inserted, and a paragraph moved is one of each. Within a paragraph the
+atoms are lined up the same way (`markedup.atoms`): a word, with the stops and commas inside
+it, so that "3.84" and "41,200" are one; a space; a mark; a tab; a picture; a note's
+reference; and, whole, a field, a link or an equation. An equation is compared by its
+structure: each element of it, the values of its own properties and its text, its runs' Word
+formatting left out, so that `x^2` made `x_2`, or an accent or a root taken off, is a change
+(round 1 of #396: compared by its letters, it was none, and the check, which reads no inline
+maths, passed the copy). A short unchanged stretch between two
+changes is taken into them, as diff-match-patch's clean-up does, where it holds no word or is
+shorter than the change on each side; two numbers apart stay two changes.
+
+**What is written** (`markedup.writer`). The copy is the revision's document with the changes
+in it, every one by the author "Revision", which names nobody, dated the day it is made. Text
+kept is the revision's runs. Text deleted is the sent document's runs, with their formatting,
+in `w:del`, and what it points at is carried into the copy's package under names of its own:
+a picture, the numbering of its list (a copy, so that a deleted item joins none of the
+revision's lists), a style the revision lacks, a footnote. A link deleted is written as its
+words. A word whose formatting alone changed keeps the revision's and records the old in
+`w:rPrChange`; a paragraph whose style or numbering changed records the old in `w:pPrChange`,
+a list's numbering compared by what it draws, since two builds number their lists in their
+own order. A table of the same columns is merged row by row and cell by cell, a row added or
+removed tracked as a row; a table of other columns, or whose cells span or merge, is replaced
+whole, with an empty paragraph tracked as deleted between the two, because Word runs two
+tables that touch into one. A footnote is merged word by word in its own part.
+
+**Every copy is checked before it is kept** (`markedup.verify`). With every change accepted
+it must read as the revision, and with every one rejected as the document sent, block by
+block as `docxtext` reads any document, roles, tables and figures included, with each
+footnote's text in the order the body refers to them. Rejecting is accepting the inverse
+(every insertion read as a deletion, every deletion as an insertion, every change of
+formatting the other way round), and accepting runs a paragraph whose mark was deleted into
+the one after it, as Word does. A copy that does not read so raises, and nothing is written:
+a copy that hid a change, or showed one never made, would be worse than none.
+
+**Word 16, as seen over COM on 2026-10-21.** Copies were opened in Word of two pandoc
+documents holding a re-run, a reworded sentence, a moved paragraph, a list item deleted, a
+cell re-run and a row added, a footnote reworded, one added and one removed, a figure
+replaced, a reference added, a heading made text and text made a heading, a link's address
+changed, an inline and a display equation changed, a paragraph deleted before a table, a
+table of other columns, a word made italic, and the document's last paragraphs deleted; and
+of the example, after its analysis was run again with another seed (74 revisions). Each
+opened without a repair. Accept All and Reject All, run on every story range as the button
+does (the document's `Revisions` holds the main text only, and a footnote's change stayed),
+left each reading as the revision and as the document sent, by the same reading the check
+uses; the first copy and Word's two are in `tests/data/word/`. Word rewrote an equation
+deleted whole as one deletion inside each of its runs, and read both.
+
+One thing Word cannot do is take away a story's last paragraph mark. Given a document whose
+last paragraph was deleted with its mark tracked as deleted, Accept All never returned, and
+Word had to be stopped. So the last paragraph of a story the writer merges, the document's,
+a cell's or a note's, keeps its mark untracked whatever became of it, and only its words are
+tracked: the
+paragraph is left empty where they go, and an empty paragraph reads as nothing
+(`writer._last_mark_kept`).
+
+**The highlighted copy** (`--highlight`), for a journal that asks for highlights: the tracked
+copy, once checked, with what was inserted highlighted yellow, what was deleted struck
+through, a change of formatting or style highlighted, and nothing tracked. A picture takes
+neither a highlight nor a strike, so the paragraph it stands in is shaded: yellow where it is
+new, red (`FFC7CE`) where it was taken out, and the old picture is kept. Round 1 of #396 found
+the old one left out and the new one unmarked, so that a figure drawn again by a re-run
+showed no change.
+
+**What is written back, and what is not.** A part the writer read and did not change is
+written back byte for byte; one it changed is written with every namespace it declared
+declared again on its root. ElementTree declares only the namespaces an element uses, and a
+part saved by Word, such as the styles of a journal's template, names others in
+`mc:Ignorable`, which Word takes for a corrupt document where they are not declared (round 1
+of #396). A part is compared by its tree, in ElementTree's names, which carry no prefix:
+compared by ElementTree's writing of it, a part left alone read as changed once other
+prefixes had been registered (round 2). And `build --marked-up` takes away the marked-up
+copies an earlier run left in `build/marked-up/`, known by their property, before it checks
+anything, so that a run that stops at the gates or fails leaves none of an older source to be
+sent; a copy named with `--since` is refused before that, since it is the very file a run
+would take away (round 2).
+
+**The copy is never the manuscript.** It carries a property saying what it is and which
+document it was compared with (`manuscript-guard-marked-up`: its form, the SHA-256 of the
+document sent, the round), and none of the build's stamps, so nothing reads it as a build:
+`import`, `respond --from` and `submit --document` refuse it by name, and `check` does not
+hold it to the source, since it is written to `build/marked-up/` and not to `build/`. A blind
+review's check reads it as it reads the document, deleted text included: a sentence that
+named an author, taken out since, is in the copy, and the build says not to send it. `submit`
+at a revision packs it beside the manuscript, `manuscript-marked-up.docx` (or
+`-highlighted`), listed in the manifest with the rest; where no document sent is known, the
+pack is assembled without it and says why.
+
 ## Round five, and what it says about the last two days
 
 Four reviewers, all able to run their reproductions this time. The revision cycle and the
@@ -7863,7 +8342,29 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   rule's `order` takes dates and datetimes as one family, so the data checks that read it
   have to compare a date with a datetime by the date, and it refuses an order between two
   times (round 1 of #382). A bound in the basic ISO form, `20200101`, or with a fraction of
-  a second, reads on Python 3.11 and later and is refused on 3.10 (round 2 of #382).
+  a second of other than three or six digits, reads on Python 3.11 and later and is refused
+  on 3.10 (rounds 2 and 3 of #382). A sign YAML drops is a misreading in a code, an item and
+  a condition's codes, not in a reporting item: `reporting: {STROBE: [+6]}` reads as item 6
+  (round 3 of #382).
+- **The plan names a variable by its backticks, and nothing else.** A covariate the plan
+  writes in words, "adjusted for age", is not read, and an entry for it is said to be
+  unused until the plan writes `age`. A name in backticks that is code and not a variable,
+  `lme4` or `R`, is warned of as an undefined variable until it is written as code, `lme4::`
+  or `R()`, or without the backticks, and so is a value other than the nine left out,
+  `NA_real_` or a code written `M`. A heading with "deviation" in it is the Deviations, as G12
+  reads the plan, so a subsection "Standard deviation of `bmi_kg`" is not read (round 1).
+  A derivation cycle is said once for each group of variables derived from one another,
+  not once for every cycle in it. A plan written in `#` sections with no title, opening
+  with `# Amendment history` over a `## Version 2` that names a dropped variable, takes the
+  history for a title and reads it, so the dropped variable is not said to be unused (round
+  2; `test_a_history_at_the_title_s_level_is_read_as_a_title`). A title followed by a
+  heading at its own level is the Deviations of its text up to that heading, where it
+  names an amendment. The Deviations are left out whole, so a variable named
+  only there is unused even where the change kept it. That an entry is needed is all that
+  is checked: not that the plan uses it as its type says, that the analysis's own
+  `variable()` declarations agree with the dictionary, or that an instrument's `citation` is
+  in `references.bib`. An entry for an existing dataset's column the study does not use
+  needs its reason like any other.
 - **A statistic is held to what it belongs to by which bindings share its sentence, and by
   nothing else.** An estimate with intervals at two levels is asked to be quoted whole at
   each, though a paper quotes the one it means. An interval quoted whole only in a table the
@@ -8706,9 +9207,10 @@ Open, recorded as each change landed:
   checked in them. Reading those languages is weeks of work, for word splitting, their
   conventions and numerals, and counting characters against a limit, and waits until
   somebody writing in one of them asks.
-- **A pointer is held to the number of a placement, not to its key, and only where every
-  placement is a binding.** "Table 2" passes wherever the main text places two tables,
+- **A typed pointer is held to the number of a placement, not to its key, and only where
+  every placement is a binding.** "Table 2" passes wherever the main text places two tables,
   whichever two they are: the check sees the numbering, not which table a sentence means.
+  `{{ref.table.<key>}}` names the table, and is the way out.
   A paper that writes any of its tables or places any of its figures by hand has no
   pointer of that kind checked, only a note; one that sends some as files of their own and
   does not declare them in `paper.yaml` (`displays`) has a pointer past the bound ones
@@ -8717,6 +9219,36 @@ Open, recorded as each change landed:
   target and not counted as the citation that numbers a table. "Table 3 of Smith et al."
   is read as a pointer to the paper's own Table 3. "Box", "Section" and "Equation" point at
   nothing the check counts.
+- **A ref numbers only what is placed by binding, and only one kind of one document at a
+  time.** Where the main text also places a table by hand, or `paper.yaml` sends one of its
+  figures as a file, a ref to that kind of that document is refused (`ref-number-unknown`)
+  and the pointer is typed, as before refs; so is a ref to a key placed twice (Basile's
+  choice, 2026-10-20). A form G2 does not read as a pointer cannot be printed: a journal
+  that letters its appendix tables "Table A1", or writes "Exhibit 2", has its pointers typed
+  (`pointer-form-unread`). So does JAMA's own form, "eTable 1 in Supplement 1": G2 reads "in
+  the Supplement" after a pointer and not "in Supplement 1" (round 1 of #378).
+- **`bind --pointers` offers what G2 reads as a pointer, and some of that is not one.**
+  "Table 3 of Smith et al." is offered as the paper's own Table 3, and "in Tables 1, 2
+  patients were excluded" offers the 2. Either prints as typed when it is applied, and
+  prints another number once the tables move. The list is printed before `--apply`, and
+  `--only FILE:LINE` takes the ones meant (round 1 of #378).
+- **A ref counts no word.** The word count masks every binding, so "Table 2" typed counts two
+  words and `{{ref.table.a}}` none, as a value bound counts none where it typed counted one.
+  A paper binding its pointers near the limit is counted a few words short (round 1 of
+  #378).
+- **A range between two nums covers what the build numbers between them.** "Tables
+  {{num.table.a}}-{{num.table.c}}", written when a and c were Tables 1 and 3, cites Tables 1
+  to 5 once two tables are placed between them, and nothing says the range grew. Each end is
+  right; what the dash takes in is not held to anything. A range written with two refs reads
+  as two pointers and is held like them.
+- **The build numbers no caption.** `{{ref.figure.forest}}` opening a figure's caption prints
+  its number, and a caption typed as "Figure 2." under the first figure is checked only for
+  pointing at a figure the document has, not for being the caption of that one. An emitted
+  table's caption prints with no number at all.
+- **A ref G2 does not see is still printed.** G2 reads the text as the build prints it less
+  its fenced listings, comments and front matter. A ref inside a listing is printed by the
+  build, which refuses one it cannot number, and is no citation to G2: a table cited only in
+  a listing is `display-not-cited`.
 - **The Methods are a heading that holds the word, and two gates read fewer headings than
   G4 counts.** G4 and G9 take for the Methods a heading whose title holds "methods" where
   the paper's structure allows it. In a paper with no heading G2 reads as the Methods, the
@@ -8799,9 +9331,8 @@ Open, recorded as each change landed:
   again.
 - **A lookup record is kept beside what it describes, so it catches an edit, not a
   forger.** `answers_sha256` is in the record it digests: an answer edited by hand is
-  reported, and one edited by someone who computes the digest again is not. A reference
-  with no DOI and no PMID is not looked up and not checked, and `lookup` says so of each.
-  The registries can be wrong, and late: a retraction Crossref and OpenAlex do not yet
+  reported, and one edited by someone who computes the digest again is not. The registries
+  can be wrong, and late: a retraction Crossref and OpenAlex do not yet
   carry is not in the record, and the record is as old as the day it was asked. Requests
   are paced at fixed intervals rather than by the limits each answer states in its
   headers.
@@ -8826,8 +9357,74 @@ Open, recorded as each change landed:
   cited word and many more passes, and so does one whose words are the same in another
   order. A notice a publisher deposited as a journal article, with no `update-to`, is read
   as the work, and a DOI only doi.org knows has no title to compare. Volumes, pages and
-  article numbers are compared with Crossref's only. A title in another script than Latin,
-  and the authors of every reference, are not compared.
+  article numbers are compared with Crossref's only. A title in another script than Latin
+  is not compared. A cited title that adds a subtitle of its own to the registered one, of
+  a main title of four words or more, passes: so does a real DOI cited with an invented
+  subtitle ("…without diabetes: five-year follow-up of a prespecified subgroup"), which
+  failed before 2026-10-21 (Basile's choice that day, for the guidelines it let through).
+- **A reference with no identifier is found, or said missing, by three registries'
+  searches.** A real article that neither PubMed nor Crossref holds, in a journal neither
+  indexes, fails as not found until `lookup.not_indexed` says why; so does one cited by a
+  title translated from another language that PubMed does not carry in brackets, and one
+  whose title is cited with more than one word in seven wrong. A cited year more than one
+  off keeps the work out of Crossref's search, which is filtered to the cited years, and
+  leaves PubMed's title search to find it, and the message then names it as of another
+  year. Only the first ten answers of each search are read, so a short, common title can
+  leave the cited work unread among namesakes; the title rule then finds no work rather
+  than another one, and the reference is said not found. A work cited with a word in
+  another script is searched for without that word. A title of fewer than three searched
+  words is not searched, and a book, a report, a thesis or a web page is never said
+  missing, whatever the search found. OpenAlex is asked only while its free allowance
+  lasts, which other programs behind the same address spend too; without it a "not found"
+  rests on PubMed and Crossref. The year rule takes the same title in the year before or
+  after, so a guideline cited as its 2021 edition is found as the 2020 or the 2022 one
+  where the year is not part of its title. The notice words are read on the registered
+  title's first word only, so "A correction to …" is read as a work. Two works of one title
+  and one year by other people than those cited fail as an invented reference where the
+  cited one is real and in no registry; `lookup.not_indexed` then says so. An article and
+  its own conference abstract can share title, year and first author: the identifiers
+  offered are PubMed's, then a journal article's, which is the article where PubMed has it.
+  A work published in several journals (a reporting statement) is offered by the copy in
+  the journal the entry names, matched by its name or its abbreviation word by word; where
+  the entry names none of them, or OpenAlex alone has the copies, which keeps no journal,
+  no identifier is offered and no retraction of any copy is said; so too for an article
+  and its own congress abstract in the same journal (an ASCO abstract in J Clin Oncol, then
+  the article there), whose identifiers then differ (round 2 of #379). Two records of one
+  work that share no identifier, a PubMed record with no DOI and Crossref's, are two works
+  where the registries write the journal otherwise ("Pharmacotherapy" against Crossref's
+  "Pharmacotherapy: The Journal of Human Pharmacology and Drug Therapy"): where the cited
+  journal names one of them, the other is dropped with its identifier and its notices, so
+  a retraction only Crossref records goes unsaid; where it names neither, nothing is
+  offered. An OpenAlex record holding both the DOI and the PMID does not join the two
+  (the final check of #379). A made-up subtitle after
+  a real main title of four words or more is read as one the registry left out, by the
+  search and by the DOI check alike. Crossref's search is filtered by the date Crossref
+  publishes, which is the earlier of print and online, so a paper online two years or more
+  before the print year it is cited by is kept out of it, and rests on PubMed (round 1 of
+  #379; not measured).
+- **Authors are compared by family name, and leniently.** Two people of one family name
+  are one person to G7, so a list that swaps a cited Wang for another Wang passes, and given
+  names, initials and order after the first are not compared. The folding that reads
+  "García Márquez" as "García" also reads a cited "Smith-Jones" as a listed "Jones". A group
+  is known by its braces in the .bib, by the registry's saying so, or by a word only a
+  group's name has, and a person whose family name is such a word ("Board", "Union") is
+  taken for a group and not compared. OpenAlex's last word is taken for the family name, so
+  a double surname it prints whole is compared by its second part. A cited family name
+  found among a listed person's given names counts as that person, so a made-up "Thomas"
+  passes beside a listed Anne Thomas Smith. A name with ü before an e that a registry
+  prints without its dots ("Brüel" as "Bruel") is read as another person's, since "ue" is
+  also how ü is transcribed. A name made up and added to a real list is not seen where
+  PubMed keeps no list of the work and the list Crossref or OpenAlex keeps holds every
+  other cited person: it reads as a list cut short. The second reading, with family and
+  given names the other way round, is tried only where the first finds nobody, and not for
+  a given name of initials. A name in another script than Latin, as Crossref keeps a
+  Russian or a Chinese journal's authors, is not compared, so a list of such names
+  compares nothing (round 1 of #379); in a list that mixes scripts, the first name in Latin
+  letters is read as the first author. A name written "Smith J A", family name first and
+  initials spaced with no comma, which Zotero never writes, is read by BibTeX's rule as
+  family name "A". DataCite's creators are not kept, so a dataset's authors are not
+  compared. A record of version 1 has no authors and compares none until `lookup` asks
+  again.
 - **No test reads a skill for the user's language or for a reference added to the paper.**
   A skill that tells the agent which language to speak to the user in, or to add a
   reference to the paper itself, is caught by whoever reviews the skill, not by
@@ -11076,6 +11673,59 @@ Open, recorded as each change landed:
   PDF or an email still means typing the points in, which is where a point quietly becomes
   the easier point next to it. So does a document that has lost its build stamp: it is
   refused, `--force` included, because there is no baseline to force past.
+- **The marked-up copy compares what the two documents print, and shows a change only as
+  the writer knows to write it.** See "The marked-up copy shows every change since the
+  document sent". What that leaves:
+  - *A moved paragraph is a deletion and an insertion*, not Word's move, and which of two
+    paragraphs that changed places is shown moved is the one the longest common subsequence
+    does not keep: of two of the same length, the first the division meets.
+  - *The longest common subsequence costs time in the product of the lengths* of what is left
+    once the ends the two share are taken off: a revision that changed the first block and
+    the last of a long paper compares all of it, in a few seconds for a thousand blocks.
+  - *Paragraphs alike only by half their words or fewer* are one deleted and one inserted,
+    not one edited, however close their places; a paragraph rewritten past half its words
+    reads as replaced. A run of changed blocks is paired in time that grows with the
+    product of its lengths on the two sides: hundreds of paragraphs rewritten at once are
+    slow to mark up.
+  - *The last paragraph of a story keeps its mark* (see above), so Accept All leaves an
+    empty paragraph at the end where the last one was deleted, and Reject All where it
+    was inserted. A note inserted or deleted whole is tracked whole, its last mark too,
+    which Word 16 accepted and rejected.
+  - *A table whose columns changed, or whose cells span or merge*, is replaced whole; and
+    the empty paragraph between the old and the new is left by Reject All after the old
+    table, which the check, reading text, does not tell.
+  - *How a word looks is its run's properties less its language, proofing, Word's script
+    hint and revision ids.* A document sent after Word saved it, with properties Word adds
+    of its own, can show a change of formatting nobody made.
+  - *A citation of a live build is compared by what it cites and the words it shows*, so
+    a document sent after Zotero refreshed it shows every citation changed against a fresh
+    live build, and its reference list, a field across paragraphs, deleted whole beside the
+    build's placeholder. The build says so where the two documents made their citations
+    differently (`CITED_PROPERTY`), not where both are live and one was refreshed; building
+    both offline avoids it.
+  - *Formatting inside a whole is the revision's*: a link, a field or an equation the same in
+    both is written as the revision has it, so a link's words made bold show no change; a
+    table's properties and a picture's size are not compared either.
+  - *A footnote or a list the revision's document has no part for* cannot be carried: a
+    deleted one is refused where the revision has no `footnotes.xml` or `numbering.xml`.
+    Pandoc writes both.
+  - *Headers, footers, comments, endnotes and text boxes are the revision's*, not compared.
+    A deleted part that points at anything but a picture (a chart, an embedded object, an
+    endnote) is refused, and the copy is not made.
+  - *A deleted link is its words*, without its address; an inline equation is compared and
+    tracked whole, and the check, which reads text, does not read its text, only a display
+    equation's (Word 16 accepted and rejected both as written, above).
+  - *A round opened once revising had begun keeps no copy*, of the paper or the supplement,
+    by the round's own rule: `--since` and `--since-supplement` name them, and `submit`
+    reads only the round's.
+  - *In the highlighted copy* a picture is marked by shading the paragraph it stands in, so a
+    picture inline in a paragraph of text shades the text with it, and a paragraph that holds
+    both the picture taken out and the one put in, a picture redrawn in a table's cell or
+    inline in text, takes one shading, the new one's: the two cannot be told apart there
+    (round 2 of #396). A change of formatting or style is highlighted as new text is, and
+    the highlighted copy is made from a checked tracked one but not checked itself.
+  - *Word itself is not asked*: CI has no Word, and the three copies above are the evidence
+    that Word reads the copy as the check does.
 - **A paragraph identifier is positional, so `import --apply` can re-point it.** The index
   is the paragraph's position in the file, and applying a reorder moves text between slots,
   so a `where:` anchor recorded before the reorder afterwards names different text. G13 no
@@ -12776,6 +13426,28 @@ Open, recorded as each change landed:
   the pack the report says so, and the binding may be another. A table's binding is named by
   the order of `{{table.…}}` in the source, which a table the build printed otherwise than in
   that order would put out of step.
+- **A supplement's Methods are what their headings say.** G9 reads, in a file of the
+  supplement, a section whose heading holds "methods", and G2 and G15 the names of
+  `classify.SUPPLEMENT_METHODS`; under either, only the sections whose own titles name a
+  method too. Methods headed otherwise, "eAppendix 1. Data source" or "Supplementary text",
+  are no Methods to G9, and the lock's parameters are not compared with them. G2 and G15
+  read "Statistical analysis" anywhere, by the main text's names, with everything under it,
+  and G9 reads it, with everything under it, only under a heading it reads: under
+  "Supplementary methods > Table S2" it is G2's and G15's and not G9's. "Detailed methods"
+  and "Additional methods" are G9's and not G2's or G15's. Under "eMethods 1", a section
+  titled "Record linkage" is no Methods to any of the three: G2 reports a number there that
+  it would pass in the Methods, and G15 and G9 read nothing there. The example's
+  "Supplementary methods" heads its tables, a paragraph of results and its reporting
+  statement, and no text of its own nor a section that names a method, so the example's
+  supplement has no Methods. `methods-supplement-unreconciled`
+  says of a lock written before 2026-10-21 only where the supplement has Methods when `check`
+  runs: eMethods added after a lock was written are no more noticed than a paragraph added to
+  the main text's Methods, which only an anchor holds to the code. Under one of the main
+  text's names in the supplement, "Methods" or "Supplementary materials and methods" over
+  an eTable, everything is the Methods to all three, as G2 holds it: a number in that table
+  then states a locked parameter of the same value, and `methods-parameter-absent` is not
+  said (fix-only round of #395). G9 reads the printed headings, so a line pandoc prints as
+  text that names the Results ends G2's Methods there and not G9's.
 - **A supporting passage is in its work, and is not held to what its sentence says.** G7
   finds the words in the stored source; whether they say what the sentence says is the
   judgement it leaves to people, the author's in `passages.yaml` and the co-authors' in the

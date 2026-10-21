@@ -319,9 +319,11 @@ def _pending(copy: Path) -> Path:
 def test_the_highlighted_copy_tracks_nothing_and_strikes_what_was_deleted(
     tmp_path: Path,
 ) -> None:
-    """New text highlighted yellow, deleted text struck through and still there, a deleted
-    picture left out; no change tracked, and nothing Word would refuse to open: each run's
-    properties in the order Word reads them."""
+    """New text highlighted yellow, deleted text struck through and still there; no change
+    tracked, and nothing Word would refuse to open: each run's properties in the order Word
+    reads them. A picture takes neither mark, so the paragraph it stands in is shaded: yellow
+    where it is new, red where it was taken out, and both are there. Round 1 of #396 found
+    the old one left out and the new one unmarked: a figure drawn again showed no change."""
     from readings import _png
 
     (tmp_path / "red.png").write_bytes(_png((255, 0, 0)))
@@ -336,8 +338,109 @@ def test_the_highlighted_copy_tracks_nothing_and_strikes_what_was_deleted(
     assert _changes(made.path) == []
     assert '<w:highlight w:val="yellow" />' in xml and "<w:strike />" in xml
     assert "<w:delText" not in xml and "3.84" in xml and "3.91" in xml
-    assert xml.count("<w:drawing>") == 1
+    assert xml.count("<w:drawing>") == 2
+    from xml.etree import ElementTree as ET
+
+    shaded = {}
+    for paragraph in ET.fromstring(xml).iter(W + "p"):
+        if paragraph.find(f".//{W}drawing") is not None:
+            fill = paragraph.find(f"{W}pPr/{W}shd")
+            shaded[len(shaded)] = None if fill is None else fill.get(W + "fill")
+    assert shaded == {0: "FFC7CE", 1: "FFFF00"}
     assert marked_up_of(made.path)["form"] == "highlighted"
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    ("was", "now"),
+    [
+        ("$$x^2$$", "$$x_2$$"),
+        ("An estimate $\\hat\\beta$ here.", "An estimate $\\beta$ here."),
+        ("$$\\sqrt{n}$$", "$$n$$"),
+    ],
+)
+def test_an_equation_changed_in_its_form_and_not_its_letters_is_a_change(
+    tmp_path: Path, was: str, now: str
+) -> None:
+    """An equation is compared by its structure, not by its letters alone: a superscript
+    made a subscript, an accent or a root taken off is an equation deleted and another
+    inserted. Round 1 of #396: compared by the text of its runs, each read as unchanged and
+    was written as the revision's, untracked, and the check, which reads no maths, passed."""
+    made, _old, _new = _marked(tmp_path, was + "\n", now + "\n")
+    kinds = [kind for kind, _author, _date in _changes(made.path)]
+    assert "del" in kinds and "ins" in kinds, kinds
+
+
+@needs_pandoc
+def test_a_citation_refreshed_in_the_document_sent_is_shown_changed_and_not_refused(
+    tmp_path: Path,
+) -> None:
+    """A live build's citation is a field. The document sent may show the words Zotero put
+    in it when the author refreshed it in Word, and the revision just built shows the build's
+    own; the two cite the same work. Compared by what it cites alone, the field was written
+    as the revision's, the copy read rejected as the revision's words, and the check refused
+    the copy (round 1 of #396): no marked-up copy for a live build sent after a refresh. The
+    words a field shows are compared too, and the change is shown."""
+    before = _with_citation(tmp_path / "before.docx", "[1]")
+    after = _with_citation(tmp_path / "after.docx", "{Do Zotero Refresh}")
+    made = write(before, after, tmp_path / "copy.docx", date=DAY)
+    assert shown(made.path)[0] == "As shown [-[1]-]{+{Do Zotero Refresh}+}."
+    assert read_plainly(made.path, accept=False) == read_plainly(before, accept=True)
+
+
+_CITATION_CODE = (
+    ' ADDIN ZOTERO_ITEM CSL_CITATION {"citationID":"a","properties":{"formattedCitation":'
+    '"[1]"},"citationItems":[{"uris":["http://zotero.org/users/1/items/ABCD1234"]}]} '
+)
+
+
+def _with_citation(path: Path, shows: str) -> Path:
+    """A generated document whose one paragraph cites a work by a Zotero field showing
+    `shows`."""
+    document_of([{"kind": "p", "runs": [["As shown CITE.", ""]]}], path)
+    field = (
+        '</w:t></w:r><w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText '
+        f'xml:space="preserve">{_CITATION_CODE}</w:instrText></w:r><w:r><w:fldChar '
+        f'w:fldCharType="separate"/></w:r><w:r><w:t>{shows}</w:t></w:r><w:r><w:fldChar '
+        'w:fldCharType="end"/></w:r><w:r><w:t xml:space="preserve">'
+    )
+    _rewrite(path, "word/document.xml", lambda xml: xml.replace("CITE", field))
+    return path
+
+
+def _rewrite(path: Path, part: str, change) -> None:
+    with zipfile.ZipFile(path) as source:
+        parts = [(item, source.read(item.filename)) for item in source.infolist()]
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as out:
+        for item, data in parts:
+            if item.filename == part:
+                data = change(data.decode("utf-8")).encode("utf-8")
+            out.writestr(item, data)
+
+
+def test_a_part_written_again_keeps_every_namespace_it_declared(tmp_path: Path) -> None:
+    """A reference document saved by Word declares namespaces in its styles that no element
+    uses and names them in `mc:Ignorable`; written again by ElementTree, the unused ones
+    were dropped, and Word reads a part that ignores an undeclared prefix as corrupt (round
+    1 of #396). A deleted paragraph whose style the revision lacks has its style carried,
+    and the styles part keeps every declaration it had."""
+    mc = "http://schemas.openxmlformats.org/markup-compatibility/2006"
+    w14 = "http://schemas.microsoft.com/office/word/2010/wordml"
+    before = document_of(
+        [{"kind": "p", "runs": [["Kept.", ""]]},
+         {"kind": "p", "runs": [["Gone.", ""]], "style": "OldStyle"}],
+        tmp_path / "before.docx",
+    )  # fmt: skip
+    after = document_of([{"kind": "p", "runs": [["Kept.", ""]]}], tmp_path / "after.docx")
+    _rewrite(before, "word/styles.xml", lambda xml: xml.replace(
+        "</w:styles>", '<w:style w:type="paragraph" w:styleId="OldStyle"><w:name '
+        'w:val="Old Style"/></w:style></w:styles>'))  # fmt: skip
+    declared = f'<w:styles xmlns:mc="{mc}" xmlns:w14="{w14}" mc:Ignorable="w14" '
+    _rewrite(after, "word/styles.xml", lambda xml: xml.replace("<w:styles ", declared))
+    made = write(before, after, tmp_path / "copy.docx", date=DAY)
+    styles = _xml(made.path, "word/styles.xml")
+    assert 'w:styleId="OldStyle"' in styles
+    assert f'xmlns:w14="{w14}"' in styles and 'mc:Ignorable="w14"' in styles
 
 
 def test_a_generated_document_reads_as_written(tmp_path: Path) -> None:
@@ -409,6 +512,11 @@ def test_a_round_keeps_the_document_sent_and_the_build_marks_up_what_changed_sin
     assert marked_up_of(marked)["round"] == 1
     projekt, _ = load_project(project)
     assert not [f for f in _check_built_document(projekt).findings if "marked" in str(f.path)]
+    # A run that fails takes away the copies it would have written, so that none is left
+    # from an earlier run to be sent (round 1 of #396).
+    assert main(["build", str(project), "--offline", "--skip-checks", "--marked-up",
+                 "--since", str(marked)]) == 1  # fmt: skip
+    assert not marked.exists()
 
 
 @needs_pandoc
@@ -418,6 +526,10 @@ def test_a_round_built_from_other_text_keeps_nothing_and_says_where_the_file_goe
     from manuscript_guard.cli import main
 
     assert main(["build", str(project), "--offline"]) == 0
+    sent = project / "sent.docx"
+    shutil.copy2(project / "build" / "manuscript.docx", sent)
+    supplement = project / "sent-supplementary.docx"
+    shutil.copy2(project / "build" / "supplementary.docx", supplement)
     _reword(project, _WAS, _NOW)
     capsys.readouterr()
     assert main(["respond", str(project), "--open"]) == 0
@@ -427,12 +539,54 @@ def test_a_round_built_from_other_text_keeps_nothing_and_says_where_the_file_goe
     assert not (project / "revision" / "round-1" / "submitted" / "manuscript.docx").exists()
     assert main(["build", str(project), "--offline", "--skip-checks", "--marked-up"]) == 1
     assert "round 1 kept no copy of the document the journal received" in capsys.readouterr().err
-    sent = project / "sent.docx"
-    shutil.copy2(project / "build" / "manuscript.docx", sent)
     assert main(["build", str(project), "--offline", "--skip-checks", "--marked-up",
-                 "--since", str(sent), "--highlight"]) == 0  # fmt: skip
-    marked = next((project / "build" / "marked-up").glob("manuscript*.highlighted.docx"))
+                 "--since", str(sent), "--since-supplement", str(supplement),
+                 "--highlight"]) == 0  # fmt: skip
+    folder = project / "build" / "marked-up"
+    marked = next(folder.glob("manuscript*.highlighted.docx"))
     assert marked_up_of(marked)["form"] == "highlighted"
+    assert marked_up_of(folder / "supplementary.highlighted.docx")["form"] == "highlighted"
+    assert "{+yet +}" in _line(shown(marked), "example-drug specifically")
+
+
+@needs_pandoc
+def test_a_re_run_shows_in_the_marked_up_supplement_as_in_the_paper(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The supplement is held to the paper's rules (Basile, 2026-10-21): kept by the round
+    as the paper is, and marked up beside it by the same comparison. The analysis run again
+    with another seed prints other numbers in both, and each copy shows them as changes,
+    the supplement's interval as the paper's estimate, with nothing typed."""
+    from conftest import restamp_figure_review, run_analysis
+
+    from manuscript_guard.cli import main
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.gates.revision import displays
+
+    assert main(["build", str(project), "--offline"]) == 0
+    assert main(["respond", str(project), "--open"]) == 0
+    was = displays(load_project(project)[0])
+    simulate = project / "analysis" / "00_simulate.py"
+    simulate.write_text(
+        simulate.read_text(encoding="utf-8").replace("Random(20260803)", "Random(20261021)"),
+        encoding="utf-8",
+    )
+    run_analysis(project)
+    restamp_figure_review(project)
+    now = displays(load_project(project)[0])
+    assert was["results.ror.ci_low"] != now["results.ror.ci_low"]
+    capsys.readouterr()
+    assert main(["build", str(project), "--offline", "--skip-checks", "--marked-up"]) == 0
+    said = capsys.readouterr().out
+    assert "against revision/round-1/submitted/supplementary.docx" in said
+    folder = project / "build" / "marked-up"
+    supplement = shown(folder / "supplementary.docx")
+    paper = shown(next(folder.glob("manuscript*.docx")))
+    for key in ("results.ror.ci_low", "results.ror.ci90_high"):
+        change = f"[-{was[key]}-]{{+{now[key]}+}}"
+        assert any(change in line for line in supplement), (key, supplement)
+    point = f"[-{was['results.ror.point']}-]{{+{now['results.ror.point']}+}}"
+    assert any(point in line for line in paper), paper
 
 
 @needs_pandoc
@@ -488,12 +642,13 @@ def test_word_reads_the_copy_as_the_package_does(tmp_path: Path) -> None:
 def test_the_marked_up_options_go_with_marked_up_and_not_with_annotated(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Given without `--marked-up`, `--since`, `--round` and `--highlight` would be read by
+    """Given without `--marked-up`, its options would be read by
     nothing and the build would look as if it had made a copy; and the annotated copy is
     made in place of the build, so the two are not made at once."""
     from manuscript_guard.cli import main
 
-    for given in (["--since", "sent.docx"], ["--round", "2"], ["--highlight"]):
+    for given in (["--since", "sent.docx"], ["--since-supplement", "s.docx"], ["--round", "2"],
+                  ["--highlight"]):  # fmt: skip
         assert main(["build", str(tmp_path), *given]) == 2
         assert "go with --marked-up" in capsys.readouterr().err
     assert main(["build", str(tmp_path), "--marked-up", "--annotated"]) == 2

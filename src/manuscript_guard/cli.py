@@ -2199,11 +2199,14 @@ def _refused_marked_up(document: Path, what: str) -> bool:
 
 def _marked_up(
     project, paper: Path, supplement: Path | None, *, since: Path | None,
-    round_number: int | None, form: str,
+    round_number: int | None, form: str, since_supplement: Path | None = None,
 ) -> tuple[list[tuple[Path, Path]], list[str]]:  # fmt: skip
     """The marked-up copies of a built paper and supplement, each with the document it was
-    compared with; and what to say of any not made. Raises `MarkedUpError` where none can
-    be."""
+    compared with; and what to say of any not made. The supplement is held to the paper's
+    rules: kept by the round as the paper is, or named with `since_supplement`, and marked
+    up by the same comparison. Raises `MarkedUpError` where a copy asked for cannot be made,
+    saying which; the copies this run would write are taken away first, so that none from
+    an earlier run is left to be sent (round 1 of #396)."""
     from manuscript_guard.gates.revision import rounds
     from manuscript_guard.markedup import MarkedUpError
     from manuscript_guard.markedup.rounds import (
@@ -2217,37 +2220,44 @@ def _marked_up(
     )
     from manuscript_guard.roundtrip import RoundTripError, cited_of
 
+    for built in (paper, supplement):
+        if built is not None:
+            target_for(project, built, form).unlink(missing_ok=True)
     numbers = [n for n, _path in rounds(project)]
     if round_number is not None and round_number not in numbers:
         raise MarkedUpError(f"there is no revision round {round_number}")
     number = round_number if round_number is not None else max(numbers, default=None)
-    if since is not None:
-        before = since
-    else:
-        before = sent_copy(project, number, PAPER) if number is not None else None
-    if before is None:
-        where = (
-            "no revision round is open"
-            if number is None
-            else f"round {number} kept no copy of the document the journal received"
-        )
-        raise MarkedUpError(
-            f"{where}; name the document sent with `--since`, or put it at "
-            f"revision/round-<n>/submitted/{PAPER}"
-        )
-    if not before.is_file():
-        raise MarkedUpError(f"{before} does not exist")
-    asked = [(before, paper)]
+
+    def sent(given: Path | None, name: str, option: str) -> Path | None:
+        found = given if given is not None else (
+            sent_copy(project, number, name) if number is not None else None
+        )  # fmt: skip
+        if found is not None and not found.is_file():
+            raise MarkedUpError(f"{found} does not exist")
+        if found is None and name == PAPER:
+            where = (
+                "no revision round is open"
+                if number is None
+                else f"round {number} kept no copy of the document the journal received"
+            )
+            raise MarkedUpError(
+                f"{where}; name the document sent with `{option}`, or put it at "
+                f"revision/round-<n>/submitted/{name}"
+            )
+        return found
+
+    asked = [(sent(since, PAPER, "--since"), paper)]
     notes: list[str] = []
     if supplement is not None:
-        sent = sent_copy(project, number, SUPPLEMENT) if number is not None else None
-        if sent is None:
+        old_supplement = sent(since_supplement, SUPPLEMENT, "--since-supplement")
+        if old_supplement is None:
             notes.append(
                 "the supplement is not marked up: the round kept no copy of the one the "
-                "journal received"
+                "journal received; name it with `--since-supplement`, or put it at "
+                f"revision/round-<n>/submitted/{SUPPLEMENT}"
             )
         else:
-            asked.append((sent, supplement))
+            asked.append((old_supplement, supplement))
     made = []
     for old, new in asked:
         try:
@@ -2261,7 +2271,12 @@ def _marked_up(
                 f"changed that is not; build as the document sent was built"
             )
         target = target_for(project, new, form)
-        result = make(project, Asked(old, new, target, number), form)
+        try:
+            result = make(project, Asked(old, new, target, number), form)
+        except MarkedUpError as exc:
+            which = "the supplement" if new == supplement else "the paper"
+            kept = "".join(f"; {_shown_path(project, done)} was made" for _o, done in made)
+            raise MarkedUpError(f"no marked-up copy of {which}: {exc}{kept}") from exc
         print(
             f"marked up {target.relative_to(project.root).as_posix()} against "
             f"{_shown_path(project, old)}: {describe(result)}"
@@ -2289,9 +2304,10 @@ def cmd_build(args: argparse.Namespace) -> int:
         print("manuscript-guard: --marked-up and --annotated make different copies; ask for "
               "one at a time", file=sys.stderr)  # fmt: skip
         return 2
-    if not marked_up and any(getattr(args, name, None) for name in ("since", "round", "highlight")):
-        print("manuscript-guard: --since, --round and --highlight go with --marked-up",
-              file=sys.stderr)  # fmt: skip
+    marked_options = ("since", "since_supplement", "round", "highlight")
+    if not marked_up and any(getattr(args, name, None) for name in marked_options):
+        print("manuscript-guard: --since, --since-supplement, --round and --highlight go with "
+              "--marked-up", file=sys.stderr)  # fmt: skip
         return 2
     report, project, _stage, _deferred = _run_gates(
         args.path, submission=args.submission, stage=getattr(args, "stage", None)
@@ -2383,10 +2399,13 @@ def cmd_build(args: argparse.Namespace) -> int:
         try:
             made, notes = _marked_up(
                 project, result.output, supplement, since=args.since,
-                round_number=args.round, form=form,
+                round_number=args.round, form=form, since_supplement=args.since_supplement,
             )  # fmt: skip
         except MarkedUpError as exc:
-            print(f"manuscript-guard: no marked-up copy: {exc}", file=sys.stderr)
+            message = str(exc)
+            if not message.startswith("no marked-up copy"):
+                message = f"no marked-up copy: {message}"
+            print(f"manuscript-guard: {message}", file=sys.stderr)
             return 1
         for note in notes:
             print(f"  {note}")
@@ -3849,6 +3868,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--since",
         type=Path,
         help="with --marked-up: the document sent, where the revision round kept none",
+    )
+    build.add_argument(
+        "--since-supplement",
+        type=Path,
+        help="with --marked-up: the supplement sent, where the revision round kept none",
     )
     build.add_argument(
         "--round", type=int, help="with --marked-up: the revision round, the latest by default"

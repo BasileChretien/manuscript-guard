@@ -11,6 +11,7 @@ words, which is all a deletion shows. Anything else a deleted part points at is 
 
 from __future__ import annotations
 
+import contextlib
 import copy
 import hashlib
 import io
@@ -20,6 +21,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from xml.etree import ElementTree as ET
+from xml.sax.saxutils import escape
 
 from manuscript_guard.safexml import UnsafeDocument, open_archive, parse_xml, read_member
 
@@ -74,7 +76,10 @@ def serialised(root: ET.Element, declared: Sequence[tuple[str, str]]) -> bytes:
     default = None
     for prefix, uri in declared:
         if prefix:
-            ET.register_namespace(prefix, uri)
+            # A prefix ElementTree keeps for itself (`ns0`) is refused: it is written under
+            # one of ElementTree's own, and declared again below under the part's.
+            with contextlib.suppress(ValueError):
+                ET.register_namespace(prefix, uri)
         elif root.tag.startswith("{" + uri + "}"):
             default = uri
     if default is None:
@@ -86,7 +91,22 @@ def serialised(root: ET.Element, declared: Sequence[tuple[str, str]]) -> bytes:
         body = ET.tostring(root, encoding="unicode")
         body = body.replace(f"<{_OWN_PREFIX}:", "<").replace(f"</{_OWN_PREFIX}:", "</")
         body = body.replace(f"xmlns:{_OWN_PREFIX}=", "xmlns=")
-    return ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' + body).encode("utf-8")
+    return _with_declarations(body, declared)
+
+
+def _with_declarations(body: str, declared: Sequence[tuple[str, str]]) -> bytes:
+    """The part with every namespace it declared declared again on its root. ElementTree
+    declares only the namespaces an element or attribute uses, and a part saved by Word
+    names others in `mc:Ignorable`, which Word reads as corrupt where they are not declared
+    (round 1 of #396)."""
+    end = body.index(">")
+    closed = body[end - 1] == "/"
+    head, tail = (body[: end - 1], body[end - 1 :]) if closed else (body[:end], body[end:])
+    for prefix, uri in declared:
+        if prefix and f"xmlns:{prefix}=" not in head:
+            head += f' xmlns:{prefix}="{escape(uri, {chr(34): "&quot;"})}"'
+    declaration = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+    return (declaration + head + tail).encode("utf-8")
 
 
 def _rels_name(part: str) -> str:
@@ -103,6 +123,8 @@ class Package:
     parts: dict[str, bytes]
     trees: dict[str, ET.Element] = field(default_factory=dict)
     declared: dict[str, list[tuple[str, str]]] = field(default_factory=dict)
+    #: Each part as parsed, so that one read and not changed is written back as it was.
+    as_read: dict[str, str] = field(default_factory=dict)
 
     @classmethod
     def read(cls, path: Path) -> Package:
@@ -126,6 +148,7 @@ class Package:
             except UnsafeDocument as exc:
                 raise MarkedUpError(f"{self.name} cannot be read: {exc}") from exc
             self.declared[part] = _namespaces(self.parts[part])
+            self.as_read[part] = ET.tostring(self.trees[part], encoding="unicode")
         return self.trees[part]
 
     def body(self) -> ET.Element:
@@ -169,7 +192,8 @@ class Package:
         import zipfile
 
         for part, root in self.trees.items():
-            self.parts[part] = serialised(root, self.declared[part])
+            if ET.tostring(root, encoding="unicode") != self.as_read.get(part):
+                self.parts[part] = serialised(root, self.declared[part])
         with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as out:
             for name in self.names:
                 out.writestr(name, self.parts[name])

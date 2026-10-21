@@ -136,13 +136,43 @@ def _code(nodes: list[ET.Element]) -> str:
     return "".join(n.text or "" for g in nodes for n in g.iter(W + "instrText"))
 
 
+#: What an equation holds that is formatting and not the equation: its runs' Word
+#: properties, and the properties Word keeps for its controls.
+_MATHS_FORMAT = frozenset((W + "rPr", M + "ctrlPr"))
+
+
+def _maths_key(equation: ET.Element) -> str:
+    """An equation as compared: each of its elements in order, with the values of its own
+    properties and its text. A superscript made a subscript, an accent or a root taken off
+    keeps its letters and is another equation (round 1 of #396: compared by its letters, it
+    was none)."""
+    parts: list[str] = []
+
+    def walk(node: ET.Element) -> None:
+        if node.tag in _MATHS_FORMAT:
+            return
+        values = sorted(
+            (k.rsplit("}", 1)[-1], v) for k, v in node.attrib.items() if k.startswith(M)
+        )
+        text = (node.text or "") if node.tag == M + "t" else ""
+        parts.append(f"{node.tag.rsplit('}', 1)[-1]}{values}{text}")
+        for child in node:
+            walk(child)
+
+    walk(equation)
+    return "|".join(parts)
+
+
 def _field_key(nodes: list[ET.Element]) -> tuple:
     from manuscript_guard.citationfields import citation_of
 
     code = _code(nodes)
     found = citation_of(code)
     if found is not None:
-        return ("citation", found.identity)
+        # And by the words it shows: Zotero writes them anew at each refresh, and a copy
+        # that showed the revision's words where the document sent showed others would
+        # read, rejected, as neither (round 1 of #396).
+        return ("citation", found.identity, _shown(nodes))
     return ("field", " ".join(code.split()[:2]), _shown(nodes))
 
 
@@ -287,7 +317,7 @@ def read(paragraph: ET.Element, package: Package, part: str) -> Read:
             reader.atom(Atom(_link_key(child, package, part), "", _shown([child]), nodes=(child,)))
         elif child.tag in MATHS:
             text = "".join(t.text or "" for t in child.iter(M + "t"))
-            reader.atom(Atom(("maths", text), "", text, nodes=(child,)))
+            reader.atom(Atom(("maths", _maths_key(child)), "", text, nodes=(child,)))
         elif child.tag == W + "fldSimple":
             key = ("field", " ".join(child.get(W + "instr", "").split()[:2]), _shown([child]))
             reader.atom(Atom(key, "", _shown([child]), nodes=(child,)))

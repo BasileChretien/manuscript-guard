@@ -1,8 +1,9 @@
 """Which parts of the two documents are the same, which were edited, and which are new or gone.
 
 Two levels, one rule each. Blocks (paragraphs and tables, a table's rows) are paired first by
-being identical, in order (`difflib`, with no heuristic for frequent items, so the pairing
-depends on nothing but the two sequences). Between two identical pairs, what is left on each
+being identical, as many as can be in order (`common`, an exact longest common
+subsequence, so the pairing depends on nothing but the two sequences). Between two identical
+pairs, what is left on each
 side is paired only where it is alike: a paragraph with a paragraph sharing more than half its
 words in order, a table with a table of as many columns, a row with a row that has a cell in
 common. Each pairing keeps the order of both documents. Whatever is not paired was deleted or
@@ -129,30 +130,82 @@ def pairs(n: int, m: int, score: Callable[[int, int], float]) -> list[tuple[int,
 Step = tuple[str, int | None, int | None]
 
 
+def _lengths(a: Sequence, b: Sequence) -> list[int]:
+    """The length of a longest common subsequence of `a` and each prefix of `b`."""
+    row = [0] * (len(b) + 1)
+    for item in a:
+        previous = 0
+        for j, other in enumerate(b, start=1):
+            kept = row[j]
+            row[j] = previous + 1 if item == other else max(row[j], row[j - 1])
+            previous = kept
+    return row
+
+
+def _common(a: Sequence, b: Sequence, i0: int, j0: int) -> list[tuple[int, int]]:
+    """A longest common subsequence of `a` and `b` as pairs of indices, offset by `i0` and
+    `j0`: Hirschberg's division, in space linear in the length of `b`."""
+    if not a or not b:
+        return []
+    if len(a) == 1:
+        j = next((j for j, other in enumerate(b) if other == a[0]), None)
+        return [] if j is None else [(i0, j0 + j)]
+    middle = len(a) // 2
+    forward = _lengths(a[:middle], b)
+    backward = _lengths(a[middle:][::-1], b[::-1])[::-1]
+    cut = max(range(len(b) + 1), key=lambda k: (forward[k] + backward[k], -k))
+    return _common(a[:middle], b[:cut], i0, j0) + _common(
+        a[middle:], b[cut:], i0 + middle, j0 + cut
+    )
+
+
+def common(a: Sequence, b: Sequence) -> list[tuple[int, int]]:
+    """The pairs of identical items of a longest common subsequence of `a` and `b`, in order.
+
+    Exact, where `difflib` is greedy: it keeps the longest run first, and of runs of one
+    the first it meets, so that a paragraph moved past six blocks could be kept in its place
+    and the six marked moved (round 1 of #396's property, on CI). The ends the two have in
+    common are taken first, so that a revision that changed a few blocks costs little."""
+    lo = 0
+    while lo < len(a) and lo < len(b) and a[lo] == b[lo]:
+        lo += 1
+    end_a, end_b = len(a), len(b)
+    while end_a > lo and end_b > lo and a[end_a - 1] == b[end_b - 1]:
+        end_a, end_b = end_a - 1, end_b - 1
+    # Compared as integers: each item once, then whole numbers in the inner loop.
+    names: dict = {}
+    left = [names.setdefault(item, len(names)) for item in a[lo:end_a]]
+    right = [names.get(item, -1) for item in b[lo:end_b]]
+    middle = _common(left, right, lo, lo)
+    tail = [(end_a + k, end_b + k) for k in range(len(a) - end_a)]
+    return [(k, k) for k in range(lo)] + middle + tail
+
+
 def steps(
     old: Sequence, new: Sequence, same: Callable[[object], object],
     score: Callable[[int, int], float],
 ) -> list[Step]:  # fmt: skip
-    """The two sequences merged: items identical by `same`, in order, then those left
-    between them paired by `score` (indices into the whole sequences), and the rest deleted
-    or inserted, a deletion before an insertion."""
+    """The two sequences merged: items identical by `same`, the most of them there can be,
+    in order (`common`); then those left between them paired by `score` (indices into the
+    whole sequences); and the rest deleted or inserted, a deletion before an insertion."""
     a = [same(item) for item in old]
     b = [same(item) for item in new]
     out: list[Step] = []
-    for tag, i1, i2, j1, j2 in SequenceMatcher(None, a, b, autojunk=False).get_opcodes():
-        if tag == "equal":
-            out += [("equal", i1 + k, j1 + k) for k in range(i2 - i1)]
-            continue
-        i, j = i1, j1
+    i, j = 0, 0
+    for ei, ej in [*common(a, b), (len(a), len(b))]:
+        i1, j1 = i, j
 
         def gap(x: int, y: int, i1: int = i1, j1: int = j1) -> float:
             return score(i1 + x, j1 + y)
 
-        for pi, pj in pairs(i2 - i1, j2 - j1, gap):
+        for pi, pj in pairs(ei - i1, ej - j1, gap):
             out += [("delete", k, None) for k in range(i, i1 + pi)]
             out += [("insert", None, k) for k in range(j, j1 + pj)]
             out.append(("edit", i1 + pi, j1 + pj))
             i, j = i1 + pi + 1, j1 + pj + 1
-        out += [("delete", k, None) for k in range(i, i2)]
-        out += [("insert", None, k) for k in range(j, j2)]
+        out += [("delete", k, None) for k in range(i, ei)]
+        out += [("insert", None, k) for k in range(j, ej)]
+        if ei < len(a):
+            out.append(("equal", ei, ej))
+        i, j = ei + 1, ej + 1
     return out

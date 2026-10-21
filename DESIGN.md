@@ -5787,10 +5787,20 @@ changes with highlights on request, and an option of `build` that `submit` uses 
 built, both as a reader sees them, block by block and word by word (`markedup`). A number the
 analysis printed anew is a change like a word typed: the comparison is of what the two
 documents print, never of the source, so a re-run shows where it changed the text, a table's
-cells or the abstract, with nothing typed. A citation of a live build is a field, known by what
-it cites (`citationfields`), so Zotero's refresh of its words is no change; one of an offline
-build is its printed words, so a reference added shows in the text and in the list, and the
-numbers of a numeric style move as they do.
+cells or the abstract, with nothing typed. A citation of a live build is a field, compared
+by what it cites (`citationfields`) and by the words it shows: a document sent after Zotero
+refreshed its fields, against a revision just built whose fields wait for a refresh, shows
+every citation changed. Compared by what it cites alone, the copy took the revision's words
+for both, read rejected as neither, and the check refused it (round 1 of #396). A citation of
+an offline build is its printed words, so a reference added shows in the text and in the list,
+and the numbers of a numeric style move as they do.
+
+**The supplement is held to the paper's rules** (Basile, 2026-10-21). It is built as its own
+document, and so it is kept by the round as its own document, compared by the same rules and
+marked up as its own copy, `build/marked-up/supplementary.docx`: a re-run shows in it as in
+the paper. `--since-supplement` names the supplement sent where the round kept none, and
+where neither gives one the build says that the supplement is not marked up, and why.
+`submit` packs it as `supplementary-marked-up.docx`.
 
 **Which document was sent.** `respond --open` keeps it, beside the rendered text it already
 kept, in `revision/round-<n>/submitted/`: the submission pack's document where that was built
@@ -5803,15 +5813,22 @@ built with today's bibliography and figures, a reference corrected or a figure d
 since would not show as changed.
 
 **How the two are lined up** (`markedup.align`). Blocks identical in print, their style and
-numbering included, are paired first, in order (`difflib`, its heuristic for frequent items
-off, so nothing but the two sequences decides). What lies between two such pairs is paired
+numbering included, are paired first, as many of them as can be in order: a longest common
+subsequence, found exactly (`align.common`, Hirschberg's division, after the ends the two
+share). `difflib`, tried first, keeps the longest run it meets: on a generated revision in CI
+it kept a moved paragraph in place and marked the six blocks it had passed as moved (round 1
+of #396). What lies between two such pairs is paired
 only where alike: two paragraphs that share more than half their words in order are one
 paragraph edited, a table with a table of as many columns, a row with a row that shares a
 cell, and in a cell its paragraphs in order whatever they say ("426" edited to "430"). What
 is left was deleted or inserted, and a paragraph moved is one of each. Within a paragraph the
 atoms are lined up the same way (`markedup.atoms`): a word, with the stops and commas inside
 it, so that "3.84" and "41,200" are one; a space; a mark; a tab; a picture; a note's
-reference; and, whole, a field, a link or an equation. A short unchanged stretch between two
+reference; and, whole, a field, a link or an equation. An equation is compared by its
+structure: each element of it, the values of its own properties and its text, its runs' Word
+formatting left out, so that `x^2` made `x_2`, or an accent or a root taken off, is a change
+(round 1 of #396: compared by its letters, it was none, and the check, which reads no inline
+maths, passed the copy). A short unchanged stretch between two
 changes is taken into them, as diff-match-patch's clean-up does, where it holds no word or is
 shorter than the change on each side; two numbers apart stay two changes.
 
@@ -5861,8 +5878,19 @@ paragraph is left empty where they go, and an empty paragraph reads as nothing
 
 **The highlighted copy** (`--highlight`), for a journal that asks for highlights: the tracked
 copy, once checked, with what was inserted highlighted yellow, what was deleted struck
-through, a change of formatting or style highlighted, and nothing tracked. A deleted picture
-is left out of it.
+through, a change of formatting or style highlighted, and nothing tracked. A picture takes
+neither a highlight nor a strike, so the paragraph it stands in is shaded: yellow where it is
+new, red (`FFC7CE`) where it was taken out, and the old picture is kept. Round 1 of #396 found
+the old one left out and the new one unmarked, so that a figure drawn again by a re-run
+showed no change.
+
+**What is written back, and what is not.** A part the writer read and did not change is
+written back byte for byte; one it changed is written with every namespace it declared
+declared again on its root. ElementTree declares only the namespaces an element uses, and a
+part saved by Word, such as the styles of a journal's template, names others in
+`mc:Ignorable`, which Word takes for a corrupt document where they are not declared (round 1
+of #396). And a run of `build --marked-up` takes away the copies it is to write before it
+makes them, so that a run that fails leaves no copy of an earlier one to be sent.
 
 **The copy is never the manuscript.** It carries a property saying what it is and which
 document it was compared with (`manuscript-guard-marked-up`: its form, the SHA-256 of the
@@ -10415,7 +10443,11 @@ Open, recorded as each change landed:
   the writer knows to write it.** See "The marked-up copy shows every change since the
   document sent". What that leaves:
   - *A moved paragraph is a deletion and an insertion*, not Word's move, and which of two
-    paragraphs that changed places is shown moved is the one `difflib` did not keep.
+    paragraphs that changed places is shown moved is the one the longest common subsequence
+    does not keep: of two of the same length, the first the division meets.
+  - *The longest common subsequence costs time in the product of the lengths* of what is left
+    once the ends the two share are taken off: a revision that changed the first block and
+    the last of a long paper compares all of it, in a few seconds for a thousand blocks.
   - *Paragraphs alike only by half their words or fewer* are one deleted and one inserted,
     not one edited, however close their places; a paragraph rewritten past half its words
     reads as replaced. A run of changed blocks is paired in time that grows with the
@@ -10431,20 +10463,31 @@ Open, recorded as each change landed:
   - *How a word looks is its run's properties less its language, proofing, Word's script
     hint and revision ids.* A document sent after Word saved it, with properties Word adds
     of its own, can show a change of formatting nobody made.
-  - *A citation of a live build is compared by what it cites*, and a reference list Zotero
-    refreshed into the document sent is a field across paragraphs, which shows deleted
-    whole beside the build's placeholder. The build says so where the two documents made
-    their citations differently (`CITED_PROPERTY`); building both offline avoids it.
+  - *A citation of a live build is compared by what it cites and the words it shows*, so
+    a document sent after Zotero refreshed it shows every citation changed against a fresh
+    live build, and its reference list, a field across paragraphs, deleted whole beside the
+    build's placeholder. The build says so where the two documents made their citations
+    differently (`CITED_PROPERTY`), not where both are live and one was refreshed; building
+    both offline avoids it.
+  - *Formatting inside a whole is the revision's*: a link, a field or an equation the same in
+    both is written as the revision has it, so a link's words made bold show no change; a
+    table's properties and a picture's size are not compared either.
+  - *A footnote or a list the revision's document has no part for* cannot be carried: a
+    deleted one is refused where the revision has no `footnotes.xml` or `numbering.xml`.
+    Pandoc writes both.
   - *Headers, footers, comments, endnotes and text boxes are the revision's*, not compared.
     A deleted part that points at anything but a picture (a chart, an embedded object, an
     endnote) is refused, and the copy is not made.
   - *A deleted link is its words*, without its address; an inline equation is compared and
     tracked whole, and the check, which reads text, does not read its text, only a display
     equation's (Word 16 accepted and rejected both as written, above).
-  - *The supplement is marked up only against the round's kept copy*: `--since` names the
-    paper's. A round opened once revising had begun keeps no copy, by the round's own rule.
-  - *In the highlighted copy* a deleted picture is left out, an inserted one is not
-    highlighted, and a change of formatting or style is highlighted as new text is.
+  - *A round opened once revising had begun keeps no copy*, of the paper or the supplement,
+    by the round's own rule: `--since` and `--since-supplement` name them, and `submit`
+    reads only the round's.
+  - *In the highlighted copy* a picture is marked by shading the paragraph it stands in, so a
+    picture inline in a paragraph of text shades the text with it; a change of formatting or
+    style is highlighted as new text is; and the highlighted copy is made from a checked
+    tracked one but not checked itself.
   - *Word itself is not asked*: CI has no Word, and the three copies above are the evidence
     that Word reads the copy as the check does.
 - **A paragraph identifier is positional, so `import --apply` can re-point it.** The index

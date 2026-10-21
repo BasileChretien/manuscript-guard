@@ -223,8 +223,9 @@ the journal's form or the author's letter template.
   Word tracked changes, re-run numbers included. `manuscript-guard build --marked-up` writes
   the same copy to `build/marked-up/` to read first; `--highlight` gives highlights instead,
   for a journal that asks for them, and `--since <file>` names the document sent where the
-  round kept none. Never send the marked-up copy as the manuscript: `submit --document`
-  refuses it.
+  round kept none (`--since-supplement <file>` the supplement). The supplement is marked up
+  beside the paper, by the same rules. Never send the marked-up copy as the manuscript:
+  `submit --document` refuses it.
 - A second round: `respond --open` again, before touching anything. Earlier rounds stay
   checked against the current manuscript, so a round-1 claim can start failing later.
 

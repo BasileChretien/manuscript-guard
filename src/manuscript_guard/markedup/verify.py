@@ -265,6 +265,38 @@ def _runs(node: ET.Element) -> list[ET.Element]:
     return [n for n in node.iter() if n.tag in (W + "r", M + "r")]
 
 
+#: The order of a paragraph's properties (`CT_PPr`) up to its shading, where a picture's
+#: mark goes.
+_PPR_BEFORE_SHADING = [W + t for t in (
+    "pStyle", "keepNext", "keepLines", "pageBreakBefore", "framePr", "widowControl", "numPr",
+    "suppressLineNumbers", "pBdr",
+)]  # fmt: skip
+#: The shading of a paragraph that holds a picture inserted, and one deleted. A picture
+#: takes no highlight and no strike, so its paragraph is marked instead.
+INSERTED_PICTURE, DELETED_PICTURE = "FFFF00", "FFC7CE"
+_PICTURES = (W + "drawing", W + "pict", W + "object")
+
+
+def _shaded(paragraph: ET.Element | None, fill: str) -> None:
+    if paragraph is None:
+        return
+    properties = paragraph.find(W + "pPr")
+    if properties is None:
+        properties = ET.Element(W + "pPr")
+        paragraph.insert(0, properties)
+    for old in properties.findall(W + "shd"):
+        properties.remove(old)
+    place = sum(1 for child in properties if child.tag in _PPR_BEFORE_SHADING)
+    properties.insert(place, ET.Element(W + "shd", {W + "val": "clear", W + "color": "auto",
+                                                    W + "fill": fill}))  # fmt: skip
+
+
+def _paragraph_of(node: ET.Element, parents: dict[int, ET.Element]) -> ET.Element | None:
+    while node is not None and node.tag != W + "p":
+        node = parents.get(id(node))
+    return node
+
+
 def _highlighted(root: ET.Element) -> None:
     parents = _parents(root)
     for node in [n for n in root.iter() if n.tag in (W + "ins", W + "del")]:
@@ -273,6 +305,9 @@ def _highlighted(root: ET.Element) -> None:
         if where in ("row", "mark"):
             parent.remove(node)
             continue
+        if any(inner.tag in _PICTURES for inner in node.iter()):
+            fill = INSERTED_PICTURE if node.tag == W + "ins" else DELETED_PICTURE
+            _shaded(_paragraph_of(parent, parents), fill)
         if node.tag == W + "ins":
             for run in _runs(node):
                 _set(run, W + "highlight", {W + "val": HIGHLIGHT})
@@ -281,10 +316,6 @@ def _highlighted(root: ET.Element) -> None:
                 if inner.tag in _DELETED_TEXT:
                     inner.tag = _DELETED_TEXT[inner.tag]
             for run in _runs(node):
-                for picture in [
-                    c for c in run if c.tag in (W + "drawing", W + "pict", W + "object")
-                ]:
-                    run.remove(picture)
                 _set(run, W + "strike", {})
         index = list(parent).index(node)
         parent.remove(node)

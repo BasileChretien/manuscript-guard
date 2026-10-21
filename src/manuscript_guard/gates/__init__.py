@@ -19,6 +19,7 @@ from manuscript_guard.gates.literature import check_literature_chain
 from manuscript_guard.gates.methods import check_methods, reconcile
 from manuscript_guard.gates.models import check_models
 from manuscript_guard.gates.numbers import check_numbers, source_files
+from manuscript_guard.gates.passages import check_passages
 from manuscript_guard.gates.quotations import check_prose_quotations
 from manuscript_guard.gates.recomputed import check_recomputed
 from manuscript_guard.gates.relations import check_relations
@@ -66,6 +67,7 @@ __all__ = [
     "GATES",
     "check_bound_units",
     "check_citations",
+    "check_passages",
     "check_prose_quotations",
     "check_consistency",
     "check_relations",

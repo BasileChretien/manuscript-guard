@@ -33,9 +33,12 @@ comparison, a hyphen made a true minus sign.
 The text before is the last commit's, or any commit's, or a copy somebody kept. It is a
 command and no gate: `check` has one text and this needs two.
 
-What it does not hold is in DESIGN.md's Known gaps: a unit, a "not", "increased" for
-"decreased", a sign of comparison spelt out. Those are words, and reading them is a
-reviewer's work.
+And each sentence the edit changed is compared with what it was for the words that set how
+strongly it claims (`claims.py`): a "may" or a "not" gone, or "associated" made
+"increased", is shown with a warning, since nothing here can know whether it was meant.
+
+What it does not hold is in DESIGN.md's Known gaps: a unit, "increased" for "decreased", a
+sign of comparison spelt out. Those are words, and reading them is a reviewer's work.
 """
 
 from __future__ import annotations
@@ -48,6 +51,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from manuscript_guard import claims
 from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.contracts.project import load_project
 from manuscript_guard.findings import FAIL, WARN, Finding, Report, merge_all
@@ -65,6 +69,8 @@ from manuscript_guard.text.tokens import _ENCLOSED, _FRACTIONS
 from manuscript_guard.zotero.citations import find_citations
 
 GATE = "REWORDED"
+#: The codes of a finding about how strongly a sentence claims, which only warns.
+CLAIM_CODES = claims.CODES
 
 BINDING = "binding"
 CITATION = "citation"
@@ -653,7 +659,9 @@ def _placer(was: Sequence[Fact], now: Sequence[Fact]) -> Callable[[Sequence[Fact
 
 
 def compare(before: str, after: str, path: Path | None = None) -> Report:
-    """What an edit did to the bindings, the citations and the typed numbers of one file.
+    """What an edit did to the bindings, the citations and the typed numbers of one file,
+    and to how strongly each sentence it changed claims (`claims.moved`), which only warns.
+    A finding of the second kind has a code in `CLAIM_CODES`.
 
     The counts are of the text as it is now."""
     was, now = facts(before), facts(after)
@@ -681,6 +689,7 @@ def compare(before: str, after: str, path: Path | None = None) -> Report:
         both = key[1], stood.get(key, ()), stands.get(key, ()), placed, path
         change = _sign_failure(*both) or _sign_warning(*both)
         findings += [change] if change else []
+    findings += claims.moved(before, after, path)
     kinds = Counter(fact.kind for fact in now)
     return Report(tuple(findings)).with_counts(
         reworded_files=1,

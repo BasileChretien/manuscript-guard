@@ -27,6 +27,8 @@ deferral list and so fails everywhere: a checker that could not check is not a p
 manuscript file that cannot be read as UTF-8, one saved in a code page or as UTF-16, is
 reported once as `manuscript-unreadable`, at the file and the line, with the gates that read
 the manuscript and so did not run. It fails everywhere too, and the other gates still report.
+On a LaTeX manuscript, a gate not yet taught LaTeX does not run and reports
+`not-read-in-latex` instead: a note at the earlier stages, a failure at `submission`.
 
 The stage is declared in `paper.yaml`, not detected. Writing `stage: analysis` genuinely
 does demote the drafting findings, so it is an opt-out for anyone who wants one — which is

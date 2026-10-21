@@ -346,6 +346,13 @@ and the report is then of the pass alone.
   or a minus sign that went from one number to the other. Read both places.
 - A number is compared as typed, so "3" spelt out as "three" fails. Leave the figures of a
   manuscript as the author typed them unless you were asked to change them.
+- A warning that a sentence "claims more" or "claims less" than it did, or "may now say
+  the opposite", is a word that sets how strongly it claims that came or went in a
+  sentence the edit changed: a hedge ("may", "appears"), a limit ("only", "in this
+  sample"), a negation ("not", "no") or a word of the ladder from "consistent with"
+  through "associated", "predicts", "contributes to" and "increased" to "caused". A
+  language pass keeps what a sentence claims: put the words back, unless the author, the
+  evidence or a reviewer asked for the move, and then say so to the author.
 
 For a text that is not in git, keep a copy before the edit and name it:
 `manuscript-guard reworded manuscript/main.md --before copy-of-main.md`.

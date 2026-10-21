@@ -178,6 +178,13 @@
             "minimum": 1,
             "description": "The most characters a figure's alternative text may hold."
           },
+          "print": {
+            "enum": [
+              "colour",
+              "greyscale"
+            ],
+            "description": "How the journal prints figures. Greyscale: G3 warns of two colours that print as one grey, which it otherwise only notes."
+          },
           "supplementary": {
             "type": "object",
             "additionalProperties": false,
@@ -262,6 +269,13 @@
                 "type": "integer",
                 "minimum": 1,
                 "description": "The most characters a figure's alternative text may hold."
+              },
+              "print": {
+                "enum": [
+                  "colour",
+                  "greyscale"
+                ],
+                "description": "How the journal prints supplementary figures."
               }
             }
           }

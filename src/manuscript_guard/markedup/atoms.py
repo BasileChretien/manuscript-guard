@@ -145,7 +145,8 @@ def _maths_values(node: ET.Element | None) -> tuple:
     """What a property element of an equation sets: each value under it, by name, in order;
     nothing where it sets none. A switch written bare, `<m:nor/>` or `<m:degHide/>`, is on,
     as OMML reads it (round 3 of #396), and so is one written "1" or "true"; "0" and
-    "false" are off. A property element holding nothing sets nothing, and formatting is
+    "false" are off. A switch set as it reads left out sets nothing (`_SWITCHES`). A
+    property element holding nothing sets nothing, and formatting is
     nothing the equation sets, the Word run properties of a control (`m:ctrlPr`) included:
     their subtrees are not read (round 4)."""
     if node is None:
@@ -164,6 +165,9 @@ def _maths_values(node: ET.Element | None) -> tuple:
             )
             if not values and not len(child) and not name.endswith("Pr"):
                 values = [("val", "on")]
+            parent = inner.tag.rsplit("}", 1)[-1]
+            if name in _SWITCHES and values == [("val", _UNSAID.get((parent, name), "off"))]:
+                values = []
             if values:
                 found.append((name, tuple(values)))
             walk(child)
@@ -174,6 +178,15 @@ def _maths_values(node: ET.Element | None) -> tuple:
 
 #: How OMML spells a switch on or off, as one word each.
 _SWITCH = {"1": "on", "true": "on", "0": "off", "false": "off"}
+#: The switches of an equation. Each reads off where it is left out (ISO/IEC 29500-1,
+#: 22.1.2), or as `_UNSAID` says, and set so it is read as left out (#396). Not a box's
+#: `noBreak`, which the standard reads both ways: it is compared as written.
+_SWITCHES = frozenset((
+    "lit", "nor", "aln", "opEmu", "diff", "maxDist", "objDist", "plcHide", "transp", "alnScr",
+    "degHide", "subHide", "supHide", "zeroWid", "zeroAsc", "zeroDesc", "hideTop", "hideBot",
+    "hideLeft", "hideRight", "strikeH", "strikeV", "strikeBLTR", "strikeTLBR", "grow", "show",
+))  # fmt: skip
+_UNSAID = {("phantPr", "show"): "on", ("dPr", "grow"): "on"}
 
 
 def _maths_key(equation: ET.Element) -> str:

@@ -129,6 +129,20 @@ question asked only where another coded variable holds one of these codes. One c
 one variable is all it says; a question asked under two conditions is written without one
 and the condition put in its definition.
 
+To hand the form to whoever builds it, write it out:
+
+```bash
+manuscript-guard dictionary --outline build/form.md --redcap build/redcap.csv
+```
+
+`--outline` is the form in Markdown, in its order, with each question's responses, its
+skips and what is derived and not asked: the page to read through with the author and the
+people who will fill it in. `--redcap` is REDCap's data dictionary, which its Online Designer
+imports; `--csv` is one row per variable, for any other system. Each is a copy: change the
+dictionary, not the copy, and write it out again. REDCap needs a variable of type
+`identifier` for each record, and names in lower case; the command refuses, and writes
+nothing, where the dictionary does not give it what it needs.
+
 ## Nothing that nothing needs
 
 Each entry is needed by the plan (it names it, or a variable it names is derived from it or

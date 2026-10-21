@@ -271,6 +271,9 @@ reporting_guidelines:
 #   # figure's own is in its guard file (alt:). And the most characters it may hold.
 #   alt_text: required
 #   alt_text_max_chars: 250
+#   # How the journal prints figures, where its guide says: colour or greyscale. Greyscale,
+#   # and G3 warns of two colours that print as one grey, which it otherwise only notes.
+#   # print: greyscale
 #   # Rules of their own for supplementary figures: each replaces the same rule above
 #   # for them, and the rest above still hold.
 #   # supplementary: {max_dpi: 300, max_file_mb: 10}

@@ -8415,6 +8415,13 @@ Open, recorded as each change landed:
   `frozen_at`, is in no digest: added by hand to the frozen copy of a real first run, it
   turns a late registration into a note (round 2 of #390). The write hook keeps an agent
   from that edit, and a person's is theirs to answer for.
+- **A change to the protocol is read from the plan, not from the paper.** A registered
+  outcome dropped, demoted or replaced is stood down only by the plan's Deviations section, as
+  Basile decided. A "Changes to the protocol" statement in the manuscript does not stand it
+  down, whether in the main text or in a table of the supplement's eMethods; it is the panel's
+  and the co-authors' to hold to the plan. Otherwise the supplement is read as the main text
+  is: an identifier, the words of a late registration and an identifier `paper.yaml` does not
+  list count there as anywhere.
 - **PROSPERO is not asked.** Its records reach its own page through an API that wants a
   header the page makes; a review registered there has a record copied by hand, which G12
   notes as the copier's word and holds like any other.

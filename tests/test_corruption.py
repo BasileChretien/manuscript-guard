@@ -4342,6 +4342,27 @@ def test_a_registration_after_a_dry_run_on_synthetic_data_is_a_note(project: Pat
     assert said == {"registration-late": "fail", "registration-after-dry-run": "info"}
 
 
+def _in_the_supplement(root: Path, said: str) -> None:
+    supplement = root / "manuscript" / "supplementary" / "S1_code_lists.md"
+    supplement.write_text(supplement.read_text(encoding="utf-8") + f"\n\n{said}\n", "utf-8")
+
+
+def test_the_supplement_gives_a_registration_as_the_main_text_does(project: Path) -> None:
+    """Basile's rule (2026-10-21): the supplement is held to the main text's rules. The
+    identifier and the words of a late registration count there, and so does an identifier
+    paper.yaml does not list."""
+    dates = {"registered": "2025-03-02", "study_start": "2025-02-14"}
+    _register(project, stated=None, record=_ctgov_record(dates=dates),
+              entry={"retrospective": "the custodian agreed the protocol first"})  # fmt: skip
+    _in_the_supplement(project, f"The study was retrospectively registered ({_NCT}).")
+    assert _registration(project, "submission") == {"registration-retrospective": "info"}
+
+
+def test_an_identifier_given_only_in_the_supplement_is_read(project: Path) -> None:
+    _in_the_supplement(project, "Its comparator came from trial NCT07654321.")
+    assert _registration(project, "submission") == {"registration-undeclared": "warn"}
+
+
 def test_a_retrospective_registration_the_manuscript_does_not_say_fails(project: Path) -> None:
     dates = {"registered": "2025-03-02", "study_start": "2025-02-14"}
     _register(project, record=_ctgov_record(dates=dates),

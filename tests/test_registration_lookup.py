@@ -596,7 +596,7 @@ def test_a_registry_that_is_not_asked_and_a_record_copied_by_hand_are_left_alone
     assert said[NCT] == lookup.BY_HAND
     assert "names no registry" in said["ABC-123"]
     assert said["ISRCTN 17072692"].endswith("is not written as ISRCTN writes its identifiers")
-    assert "holds a character a file name cannot" in said["https://x.org/ACTRN1"]
+    assert "a character a file name cannot" in said["https://x.org/ACTRN1"]
     table = _everywhere()
     assert _run(project, table) == [] and table.sent == []
 

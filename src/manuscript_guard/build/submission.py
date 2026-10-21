@@ -23,6 +23,7 @@ import hashlib
 import re
 import shutil
 import subprocess
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -180,11 +181,11 @@ def response_letter(project: Project) -> str | None:
     if not found:
         return None
 
-    from manuscript_guard.contracts import load_namespace
+    from manuscript_guard.gates.revision import displays
     from manuscript_guard.text.placeholders import substitute
 
     # The authors' words with every binding filled in, as the manuscript prints them.
-    rendered = {ref: value.display for ref, value in load_namespace(project)[0].items()}
+    rendered = displays(project)
 
     def filled(text: str) -> str:
         return substitute(text, rendered)
@@ -478,8 +479,9 @@ def _refused_script(node: object) -> bool:
         return any(_refused_script(item) for item in node)
     return False
 _PLAIN_BLOCKS = frozenset({"Para", "Plain", "Header"})
-#: A table or a figure placed by its binding, which `substitute` leaves as it is written.
-_DISPLAY = re.compile(r"\{\{\s*(?:table|figure)\.")
+#: A table or a figure placed by its binding, which `substitute` leaves as it is written, and
+#: a ref or num binding the count cannot number.
+_DISPLAY = re.compile(r"\{\{\s*(?:table|figure|ref|num)\.")
 #: The label that opens an abstract's keywords, as a heading or at a paragraph's start.
 _KEYWORDS_HEADING = re.compile(r"\s*key[\s-]?words?\s*:?\s*", re.IGNORECASE)
 _KEYWORDS_LABEL = re.compile(r"\s*key[\s-]?words?\s*:", re.IGNORECASE)
@@ -639,8 +641,8 @@ def abstract_text(project: Project) -> tuple[str | None, str | None]:
     document says it."""
     import json
 
-    from manuscript_guard.contracts import load_namespace
     from manuscript_guard.gates.journal import main_text
+    from manuscript_guard.gates.revision import displays
     from manuscript_guard.text.placeholders import substitute
     from manuscript_guard.text.sections import split_sections
 
@@ -649,8 +651,7 @@ def abstract_text(project: Project) -> tuple[str | None, str | None]:
         return None, None
     if shutil.which("pandoc") is None:
         return None, _LEFT_OUT + "pandoc is not on PATH"
-    namespace = load_namespace(project)[0]
-    filled = substitute(text, {ref: v.display for ref, v in namespace.items()})
+    filled = substitute(text, displays(project))
     document = json.loads(_pandoc("-f", "markdown", "-t", "json", given=filled))
     blocks = _abstract_blocks(document["blocks"])
     if not blocks:
@@ -678,8 +679,17 @@ def abstract_text(project: Project) -> tuple[str | None, str | None]:
     return (plain.strip() + "\n", None) if plain.strip() else (None, None)
 
 
-def assemble_pack(project: Project, document: Path, *, checked: bool = True) -> Pack:
+def assemble_pack(
+    project: Project,
+    document: Path,
+    *,
+    checked: bool = True,
+    extra: Sequence[tuple[Path, str]] = (),
+) -> Pack:
     """Copy or generate every part of the submission into build/submission/.
+
+    `extra` is further documents to pack, each under the name given: at a revision, the
+    marked-up copies that show what changed since the round's document.
 
     `checked=False` records in the manifest that the submission check was overridden. A
     pack assembled with `--skip-checks` was previously byte-indistinguishable from one that
@@ -708,6 +718,10 @@ def assemble_pack(project: Project, document: Path, *, checked: bool = True) -> 
     if document.exists():
         target = directory / document.name
         shutil.copy2(document, target)
+        files.append(target)
+    for path, name in extra:
+        target = directory / name
+        shutil.copy2(path, target)
         files.append(target)
 
     from manuscript_guard.gates.journal_quotes import journal_checklist

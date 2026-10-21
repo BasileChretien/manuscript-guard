@@ -1,6 +1,6 @@
 ---
 name: figure-review
-description: Look at a rendered figure and record whether it is honest, complete and consistent with the results and the manuscript. Use when `manuscript-guard check` reports figure-unreviewed or figure-review-stale, after re-rendering a figure, or before a submission build.
+description: Look at a rendered figure and record whether it is honest, complete and consistent with the results and the manuscript. Use when `manuscript-guard check` reports figure-unreviewed, figure-review-stale, figure-alt-missing, figure-alt-long, figure-alt-number or figure-alt-binding, when writing a figure's alternative text, after re-rendering a figure, or before a submission build.
 ---
 
 # Reviewing a figure
@@ -42,12 +42,45 @@ having done it, so write what you actually saw in each case.
 | `legend-and-marks-explained` | Is every mark, colour, line style and series accounted for? Is anything drawn that nothing names? Does the legend state n, and whether it counts biological or technical replicates; what the error bars or ribbons are (SD, SE or a CI, and its level); any smoothing; what each significance marker means, and whether it was corrected for multiple comparisons? Where intervals are drawn at separate time points, does it say they are not an interval for the change between them? |
 | `no-unexplained-number` | Is anything visible that is neither a result nor part of the scale? |
 | `scale-not-misleading` | Does the visual encoding overstate the finding? Baseline not at zero, area used for a linear quantity, a ratio on a linear axis? |
-| `readable-and-accessible` | Legible at print size? Does any information depend on colour alone? Do the lines, markers and shading that carry meaning stand out from what is beside them, at a contrast of at least 3:1 (WCAG 2.2, success criteria 1.4.1 and 1.4.11)? |
+| `readable-and-accessible` | Legible at print size? Does any information depend on colour alone? Do the lines, markers and shading that carry meaning stand out from what is beside them, at a contrast of at least 3:1 (WCAG 2.2, success criteria 1.4.1 and 1.4.11)? Does its alternative text (`alt:` in its guard file) say what is drawn and its main message, as you see them? |
 
 The check that most often finds something is `caption-agrees`, because the text and the
 figure are edited at different times and drift apart quietly. Read the manuscript sentence
 that refers to the figure and compare it, word by word, against what is drawn. A sentence
 promising "against the comparators" beside a single-row plot is the archetype.
+
+## The alternative text
+
+A reader who cannot see the figure hears its alternative text and nothing else of it. It is
+written once, in `figures/<name>.guard.yaml`, and the build writes it into the picture in
+Word; `submit` lists every figure's in `alt-text.md` for a portal that asks for it apart.
+
+```yaml
+alt: >-
+  Forest plot of the reporting odds ratio of hepatic injury for example-drug on a log
+  scale: {{results.ror.point}} (95% CI {{results.ror.ci_low}} to {{results.ror.ci_high}}),
+  with the whole interval to the right of the dashed line of no association.
+```
+
+Write what the figure shows and what it says, in a sentence or two:
+
+- the kind of figure and what it plots ("Kaplan-Meier curves of time to first event in the
+  two arms", "Forest plot of the odds ratio by subgroup"), and the scale where it matters
+  (a log scale, an axis that starts above zero);
+- the main message a sighted reader takes from it, with the values that carry it, each by
+  binding, `{{results.key}}`: a number typed here is held as one typed into the prose is,
+  and `check` fails it (`figure-alt-number`);
+- not "A figure showing ...", "Image of ...", the file name or the legend copied out. The
+  legend is read to everyone already. Leave the detail to it and to the text: a figure
+  whose every value matters wants a table, in the supplement if need be.
+
+Keep it short. Journals that ask for alternative text usually want a few hundred characters
+at most, and the profile's `alt_text_max_chars` says how many; `check` counts it as printed.
+
+`check` says when a figure has none: a note while drafting, a warning from internal review,
+and a failure at submission where the journal's profile says it requires one
+(`figures.alt_text: required`). Whether the text is right is yours to read against the
+figure, under `readable-and-accessible`.
 
 ## Recording it
 

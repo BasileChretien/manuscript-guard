@@ -51,6 +51,7 @@ from generated import (
     LOWERED,
     NOTATED,
     PLACEHOLDERS,
+    PROOF_ABBREVIATED,
     PROOF_CORRECTIONS,
     PROOF_EDIT,
     PROOF_TYPOGRAPHY,
@@ -4600,12 +4601,14 @@ def test_each_change_a_typesetter_makes_is_reported_once_where_it_is(
 
     result = _compared(drawn)
     planted = drawn["planted"]
-    wanted = {(what, planted[what][0]) for _s, _p, what in PROOF_CORRECTIONS}
+    wanted = {(what, planted[f"{what} {printed}"][0]) for _s, printed, what in PROOF_CORRECTIONS}
     wanted.add(("missing", planted["missing"][0]))
     found = [(c.what, c.part) for c in result.changes if c.kind == CORRECTION]
     assert sorted(found) == sorted(wanted)
     edits = [(c.part, c.sent, c.printed) for c in result.changes if c.kind == COPY_EDIT]
-    assert edits == [(planted["copy-edit"][0], *PROOF_EDIT)]
+    abbreviated = [word.split()[-1] for word in PROOF_ABBREVIATED]
+    assert sorted(edits) == sorted([(planted[f"copy-edit {PROOF_EDIT[1]}"][0], *PROOF_EDIT),
+        (planted[f"abbreviated {PROOF_ABBREVIATED[1]}"][0], *abbreviated)])  # fmt: skip
     shown = sorted(c.part for c in result.changes if c.kind == SET_OTHERWISE)
     assert shown == sorted(planted[f"typography {printed}"][0] for _s, printed in
                            PROOF_TYPOGRAPHY)  # fmt: skip
@@ -4613,7 +4616,8 @@ def test_each_change_a_typesetter_makes_is_reported_once_where_it_is(
     for change in result.changes:
         if change.kind != CORRECTION or change.what == "missing":
             continue
-        printed = planted[change.what][1].split()[-1]
+        printed = next(shown for part, shown in planted.values()
+                       if part == change.part).split()[-1]
         number, (page, line) = next((n, at) for n, at in drawn["lines"].items()
                                     if printed in at[1].replace("\N{NO-BREAK SPACE}", " "))
         assert change.page == page, (change, page)
@@ -4646,6 +4650,22 @@ def _a_unit_is_a_word(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.proof import compare as module
 
     patch.setattr(module, "is_unit", lambda raw: raw in "%<>=")
+
+
+def _a_unit_of_time_spelt_out_is_a_word(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.proof import compare as module
+
+    patch.setattr(module, "time_units", lambda found: set())
+
+
+def _a_unit_of_time_spelt_out_is_a_unit(patch: pytest.MonkeyPatch) -> None:
+    # So read, the AMA's "12 wk" for "12 weeks" was a correction (round 2 of #397).
+    from manuscript_guard.proof import compare as module
+    from manuscript_guard.proof import tokens
+
+    real = module.is_unit
+    patch.setattr(module, "is_unit",
+                  lambda raw: real(raw) or raw.casefold() in tokens._TIME_WORDS)  # fmt: skip
 
 
 def _running_heads_are_kept(patch: pytest.MonkeyPatch) -> None:
@@ -6963,6 +6983,14 @@ BROKEN = {
     ),
     "a unit beside a number in a proof is a word": (
         _a_unit_is_a_word,
+        test_each_change_a_typesetter_makes_is_reported_once_where_it_is,
+    ),
+    "a unit of time a proof spells out as another is a word": (
+        _a_unit_of_time_spelt_out_is_a_word,
+        test_each_change_a_typesetter_makes_is_reported_once_where_it_is,
+    ),
+    "a unit of time spelt out in a proof is a unit, abbreviated or not": (
+        _a_unit_of_time_spelt_out_is_a_unit,
         test_each_change_a_typesetter_makes_is_reported_once_where_it_is,
     ),
     "a stretch the proof leaves out is not slid to a part's start": (

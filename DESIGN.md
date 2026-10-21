@@ -7485,7 +7485,9 @@ Each difference is then one of these:
 - **A correction** (exit 1, and the list `--out` writes): a number's digits, sign or decimal
   mark changed, or a number gone or come within a part; a unit, a percent or degree sign or a
   comparator changed beside a number (a unit's case is kept, so "mM" is not "mm"; the two
-  spellings of a litre and of a microgram are one); any change inside a citation
+  spellings of a litre and of a microgram are one); a unit of time spelt out and printed
+  as another beside a number, "12 weeks" as "12 months" ("12 wk" and "12 week" are
+  copy-edits); any change inside a citation
   (brackets, parentheses that hold a year, a short number set against a word as a superscript
   is) or an entry of the reference list; a part the proof does not print at all, or a
   paragraph, a caption or a reference of six tokens or more none of which it prints in place,
@@ -7525,9 +7527,10 @@ comparison over proofs `tests/generated.py` draws (`proofs`): the parts' words, 
 the width the proof wraps to, the length of its pages and whether it numbers its lines, with a
 long word and a compound broken at a line's end. A proof of the parts as sent reads as them;
 one with one of every change of `PROOF_CORRECTIONS`, every setting of `PROOF_TYPOGRAPHY`, a
-word copy-edited and a part left out, each in a part of its own, reports each once, in its
-part, on its page and its line. Eight rules broken in place each fail one of the two, under a
-dozen seeds. The two rules above that choose between readings were found by them.
+word copy-edited, a unit of time abbreviated and a part left out, each in a part of its own,
+reports each once, in its part, on its page and its line. Ten rules broken in place each
+fail one of the two, under a dozen seeds. The two rules above that choose between
+readings were found by them.
 
 ## Known gaps
 
@@ -12735,7 +12738,12 @@ Open, recorded as each change landed:
   none is. An affiliation the journal rewords, a country moved or a department dropped, is
   reported as printed otherwise, a correction the author may find is not one. A name printed
   in capitals is found; a particle the journal sets otherwise ("van der" for "Van der") is
-  found, case aside, but one it drops is reported.
+  found, case aside, but one it drops is reported. A word broken at a line's end keeps its
+  hyphen where the word before or after holds the "@", as "nagoya-" and "u.ac.jp" need; an
+  address with no hyphen that the typesetter breaks with one, "jean-" and
+  "pierre.example@uni.example" for jeanpierre.example@uni.example, is then read with a
+  hyphen it never had, and its e-mail address is reported printed otherwise. The text does
+  not tell the two apart (review of 6104326, #397).
 - **A supplement is compared in its own run.** The supplement is held to the same rules as the
   paper: `proof --supplementary` compares a supplement the journal typesets as a document of
   its own with the pack's `supplementary.docx`, part by part and cell by cell, and names the
@@ -12754,9 +12762,10 @@ Open, recorded as each change landed:
 - **A case change and a style's synonym are not seen.** Words are compared case aside, so a
   heading set in capitals is no change, and neither is a name whose case changed in the body.
   Of units, only a litre's and a microgram's two spellings are read as one: "hours" printed "h"
-  beside a number is a correction. A unit of time spelt out is a word, so "12 weeks" printed
-  "12 months" is a copy-edit, shown and not counted: taken for units, the AMA's "12 wk" for
-  "12 weeks" was a correction (round 2 of #397).
+  beside a number is a correction. A unit of time spelt out is read as a unit only against
+  another spelt out: "12 weeks" printed "12 months" is a correction, and "12 wk", as the AMA
+  sets it, a copy-edit. An abbreviation G14 does not know is a word, so "12 weeks" printed
+  "12 mo" or "12 d" is a copy-edit too, though it names another unit (round 2 of #397).
 - **What a proof adds between two parts is shown, not counted, in a table too.** Every cell is
   a part, so a value the proof adds between two cells, or a row it prints twice, is added
   text. Counted as a correction, "Table 1 (continued)" over a table broken across a page, and a

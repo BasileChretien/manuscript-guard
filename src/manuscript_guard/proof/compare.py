@@ -7,7 +7,8 @@ lines up with the one it was, and then each stretch is read:
 - a number whose digits, sign or decimal mark changed, or a number gone or come, is a
   correction, named as a citation's where it stands in brackets or is set as a superscript,
   and as a reference's in the reference list;
-- a unit, a percent sign or a comparator changed beside a number is a correction;
+- a unit, a percent sign or a comparator changed beside a number is a correction, and so is
+  a unit of time spelt out as another ("weeks" as "months", not as "wk");
 - any change in an entry of the reference list, or inside a citation, is a correction;
 - a part of what was sent that the proof does not print at all is a correction;
 - the same number set otherwise (grouped, a true minus, the leading zero) is typography,
@@ -41,6 +42,7 @@ from manuscript_guard.proof.tokens import (
     key,
     prepared,
     spelled,
+    time_units,
     tokens,
 )
 
@@ -348,7 +350,9 @@ class _Reader:
         return False
 
     def _unit_beside(self, op: Op, said: list[Token], shown: list[Token]) -> bool:
-        if not any(is_unit(t.raw) for t in (*said, *shown)):
+        before, after = time_units(said), time_units(shown)
+        retimed = bool(before) and bool(after) and before != after
+        if not retimed and not any(is_unit(t.raw) for t in (*said, *shown)):
             return False
         near = [*said, *shown]
         near += [self.a[k] for k in (op.i1 - 1, op.i2) if 0 <= k < len(self.a)]

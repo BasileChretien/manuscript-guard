@@ -55,6 +55,13 @@ _UNIT_WORDS = frozenset(
     unicodedata.normalize("NFKC", unit) for unit in UNITS
     if unicodedata.normalize("NFKC", unit).isalpha()
 )  # fmt: skip
+#: The units of time spelt out, each read as its singular. One printed as another beside a
+#: number, "12 weeks" as "12 months", is a correction; printed as "12 wk" or "12 week", a
+#: copy-edit.
+_TIME_WORDS = {
+    spelling: unit for unit in ("second", "minute", "hour", "day", "week", "month", "year")
+    for spelling in (unit, unit + "s")
+}  # fmt: skip
 #: The symbols beside a number that change what it says.
 SYMBOLS = frozenset("%‰‱°")
 COMPARATORS = frozenset("<>=≤≥≦≧±≈~≠")
@@ -73,6 +80,11 @@ def _unit_key(raw: str) -> str | None:
 def is_unit(raw: str) -> bool:
     """A unit, a percent or degree sign, or a comparator: what changes the number beside it."""
     return raw in SYMBOLS or raw in COMPARATORS or _unit_key(raw) is not None
+
+
+def time_units(found: list[Token]) -> set[str]:
+    """The units of time the tokens spell out."""
+    return {_TIME_WORDS[t.raw.casefold()] for t in found if t.raw.casefold() in _TIME_WORDS}
 
 
 @dataclass(frozen=True)

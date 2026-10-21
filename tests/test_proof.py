@@ -453,14 +453,20 @@ def test_a_heading_the_journal_renames_is_a_copy_edit(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("edit", [("over 12 weeks", "over 12 wk"),
-                                  ("over 12 weeks", "over 12 months")])
-def test_a_unit_of_time_spelt_out_is_a_word(tmp_path: Path, edit) -> None:
+                                  ("over 12 weeks", "over 12 week")])
+def test_a_unit_of_time_abbreviated_is_a_copy_edit(tmp_path: Path, edit) -> None:
     # Review of #397, round 2: spelt-out units of time taken for units made the AMA's "wk"
-    # a correction. A unit of time spelt out is a word, and a change of it a copy-edit,
-    # "months" for "weeks" among them (DESIGN.md, Known gaps).
+    # a correction.
     result = changes_of(tmp_path, edit)
     assert corrections(result) == []
     assert kinds(result, COPY_EDIT)
+
+
+@pytest.mark.parametrize("printed", ["months", "days"])
+def test_a_unit_of_time_spelt_out_as_another_is_a_correction(tmp_path: Path, printed) -> None:
+    (change,) = corrections(changes_of(tmp_path, ("over 12 weeks", f"over 12 {printed}")))
+    assert change.what == "unit or symbol"
+    assert "12 weeks" in change.sent and f"12 {printed}" in change.printed
 
 
 def test_a_dash_at_a_line_end_joins_no_word(tmp_path: Path) -> None:

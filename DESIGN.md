@@ -2495,7 +2495,8 @@ rules name kinds, not spellings:
 - filler, and instructions left for the writer: "lorem ipsum", "fill in later.", "this
   section is a template";
 - the words that mark a gap: TODO, TBD, FIXME, a doubled TKTK, a run of three X or more, a
-  date of Xs and a name such as INSERT_SOURCE_URL.
+  date of Xs and a name such as INSERT_SOURCE_URL;
+- a journal template's instructions to its authors, which are its own spellings (below).
 
 "XXX" was matched only whole, so "n = XXXX patients" passed, and G2 does not see it, since
 it holds no digit. What is no slot: a link's text, a bracketed span, a title translated into
@@ -2509,6 +2510,45 @@ printed fields of each cited entry of `references.bib`: a "TBD" drawn in a figur
 words count in capitals only, since "Todo" opens many a Spanish title; in the manuscript
 they count in any case, as they always did. Each is a failure from drafting, as the other
 artefacts are.
+
+**A journal template's instructions are found by the template's own words.** Papers are
+printed with "In this section you can acknowledge any support given which is not covered by
+the author contribution or funding sections", MDPI's text for the acknowledgements, two of
+them among the 399 papers below, and no rule read it: the instructions G6 knew were this
+project's own, "this section is a template", "delete this section". No kind of sentence
+tells an instruction to the authors from a paper's prose, since "authors should report the
+interval" is both, so the rule `placeholder-template` holds the opening words of each
+instruction in the manuscript templates of MDPI, Frontiers, PLOS, BMC, Springer Nature,
+Elsevier and Wiley, read on 2026-10-21, and Word's "Click or tap here to enter text." in a
+field left empty. MDPI's back matter is found by what follows "in this section" ("you can
+acknowledge any support", "please provide details regarding where data") and by the
+statement it offers for copying after "please add", "please state" or "or state" ('Please
+add: "This research received no external funding"'). The first version took any verb
+after "In this section, please" and any quotation after "please state", and round 1 of its
+review showed what a questionnaire reproduced in a supplement says: "In this section,
+please indicate how often you took each medicine", 'If none, please state "not
+applicable"'. Nor is "Click here for additional data file" a prompt, which PLOS prints
+under each supporting file: "click here" stands in 105 of the 399 papers. BMC's "Text for
+this section." is read with its capital and its stop, since a hard wrap puts "text" at the
+start of a line in prose. It is read wherever the placeholders are: MDPI's template
+captions its sample table with one.
+
+Europe PMC shows how often they are printed. Of the open-access articles its full-text search
+returned for MDPI's "This section may be divided by subheadings" (Results), for its
+instructions for the Discussion, the authors' contributions and the CRediT taxonomy, and for
+Frontiers' "This is a short text to acknowledge the contributions of specific colleagues",
+every one sampled, five to eight of each, was printed with the instruction; some were
+printed with Word's prompt. Its search drops short words, so the counts it gives for a phrase
+are not repeated here.
+
+Basile chose on 2026-10-21 that one fails from drafting, as every placeholder does, rather
+than warning until submission as the words of a revision do. On the corpus of
+`tools/g6_baseline.py` the rule finds the two MDPI papers (PMC7072797, PMC7504530) and
+nothing else, nor anything in the 18,335 works they cite. PMC7072797 is held out, so G6
+measured again would count a failure on a held-out paper, where the budget allows none. It
+is a template's instruction in print, not a false alarm on prose by people;
+`tools/data/g6-corpus.yaml` keeps what was measured before the rule. The rule's words share
+one `\b`: with one each, it took 1.3 s on the longest paper of the corpus, and takes 0.2 s.
 
 The phrasing rules gained what the essay, read again on 2026-10-15, lists as communication
 with the user of a chat ("I hope this helps", "let me know if"), disclaimers about the
@@ -13637,6 +13677,14 @@ Open, recorded as each change landed:
   of no words finds one match at every character of the manuscript, a list that is then
   thrown away; and an edit to be dropped in a supplement paragraph has the supplement built,
   then deleted. Both come out right.
+- **A journal template's instruction is found only in the words of the templates read on
+  2026-10-21.** G6 holds the opening of each instruction in the manuscript templates of
+  MDPI, Frontiers, PLOS, BMC, Springer Nature, Elsevier and Wiley, and Word's prompt in an
+  empty field. Another publisher's template, an instruction a template rewrites later, one an
+  author half rewrote or translated, or one whose opening sentence was deleted and the rest
+  kept, is not found. The Word templates were not opened: their words were read in the LaTeX
+  templates and in the papers printed with them. A Word drop-down's "Choose an item." is not
+  read, since a paper writes that participants "choose an item".
 
 - **What filing a co-author's comments does not do.** Each is non-blocking under the bar,
   and none is reached by a document Word 16 saves from a build:

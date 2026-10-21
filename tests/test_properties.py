@@ -20,6 +20,7 @@ through this one, which is the third thing the reviews did.
 
 from __future__ import annotations
 
+import bisect
 import hashlib
 import json
 import math
@@ -82,10 +83,12 @@ from generated import (
     planned_plans,
     printings,
     quotations,
+    revisions,
     share_tables,
     signs,
     sources,
     suggestion_paragraphs,
+    supplements,
     texts,
     typed,
     vector_figures,
@@ -94,7 +97,7 @@ from generated import (
 from hypothesis import given, settings
 from hypothesis import strategies as st
 from hypothesis.database import InMemoryExampleDatabase
-from readings import MAIN, PAPER, PEOPLE, READINGS, Unavailable, answer
+from readings import MAIN, PAPER, PEOPLE, READINGS, Unavailable, answer, plain_of
 
 from manuscript_guard import claims as claims_module
 from manuscript_guard import reworded as reworded_module
@@ -127,6 +130,10 @@ from manuscript_guard.gates.vocabulary import (
 from manuscript_guard.literature import passages as passages_module
 from manuscript_guard.literature import sources as literature_sources
 from manuscript_guard.literature.sources import contains, normalise, states_value
+from manuscript_guard.markedup import align as markedup_align
+from manuscript_guard.markedup import atoms as markedup_atoms
+from manuscript_guard.markedup import package as markedup_package
+from manuscript_guard.markedup import writer as markedup_writer
 from manuscript_guard.reworded import (
     BINDING,
     CITATION,
@@ -2123,6 +2130,32 @@ def test_the_methods_named_as_such_are_read_before_a_heading_that_only_holds_the
         assert read is not None and "Coriander" in read and "Basil" not in read, (text, read)
 
 
+@holds(40, supplements())
+def test_a_supplement_s_methods_are_the_methods_to_each_gate_that_reads_them(
+    drawn: tuple[str, list[tuple[int, bool, bool]]],
+) -> None:
+    """G9 read the main text's Methods alone, and G2 and G15 knew no supplement's name for
+    them: a parameter the supplement's Methods stated was reported absent, a threshold typed
+    under "eMethods 1" was a number nothing classified, and a model's kind typed there was
+    never read. Each section of a file of the supplement is the Methods to each gate exactly
+    where it should be: G9 reads every section whose heading holds "methods" and stands
+    under no Results, and each one under it that names a method, each once; G2's threshold
+    holds and G15 reads a model named only under a supplement's name of the Methods, or a
+    name of a method under one, under no Results. A table under "Supplementary methods" is
+    none of theirs (round 1 of #395)."""
+    text, sections = drawn
+    read = methods_gate.supplement_methods_in(text) or ""
+    assert read.count("Coriander") == sum(g9 for _at, g9, _held in sections), (text, read)
+    assert "Basil" not in read, (text, read)
+    numbers = READINGS["numbers"]()({"text": text})
+    held = [atom["rule"] == "significance-threshold" for atom in numbers if atom["text"] == "0.05"]
+    assert held == [held for _at, _g9, held in sections], text
+    starts = [at for at, _g9, _held in sections]
+    named = [bisect.bisect_right(starts, start) - 1 for start, _end, _kind in
+             models_gate.named_in_methods(text)]  # fmt: skip
+    assert named == [index for index, (_at, _g9, held) in enumerate(sections) if held], text
+
+
 # ------------------------------------------- a number a summary gives and the paper does not
 
 #: What a paper calls its Results, and what it may call a section that is not them.
@@ -4019,6 +4052,47 @@ def test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands(
     assert report.ok
 
 
+# ------------------------------------------------------------------- the marked-up copy
+
+#: What shows a change in a line of `readings.shown`.
+_CHANGE_MARKS = ("[-", "{+", "~", "\N{PILCROW SIGN}", "style ", "row+ ", "row- ")
+
+
+@holds(20, revisions())
+def test_a_marked_up_copy_shows_each_change_where_it_was_made_and_reads_as_both_documents(
+    drawn: tuple[dict[str, list], list[tuple[str, str]]],
+) -> None:
+    """With every change accepted the copy reads as the revision, and with every one
+    rejected as the document sent, by a reading of its XML that owes nothing to the
+    package's (`readings.read_plainly`): the words, how they look, the table's rows, the
+    figure and the note. And each change shows where it was made, as what it is: a word
+    reworded and a number re-run as the one deleted and the other inserted, a word set in
+    italics as a change of formatting, a paragraph made a heading as one of style, a cell
+    re-run in its cell, a row added as a row, a picture replaced as one paragraph deleted
+    and another inserted, a list item deleted, a paragraph inserted, a paragraph moved as
+    the same words deleted and inserted; and two paragraphs left alone show nothing."""
+    given_, expected = drawn
+    found = answer(READINGS["marked up"](), given_)
+    assert "raised" not in found, found
+    told = found["answer"]
+    assert told["accepted"] == plain_of(given_["after"]), told
+    assert told["rejected"] == plain_of(given_["before"]), told
+    lines = told["shown"]
+    for word, holds_ in expected:
+        mine = [line for line in lines if word in line]
+        assert mine, (word, lines)
+        if holds_ == "unchanged":
+            assert not [line for line in mine if any(m in line for m in _CHANGE_MARKS)], lines
+        elif holds_ == "moved":
+            gone = {line[len("\N{PILCROW SIGN}- [-") : -2] for line in lines
+                    if line.startswith("\N{PILCROW SIGN}- [-") and line.endswith("-]")}
+            came = {line[len("\N{PILCROW SIGN}+ {+") : -2] for line in lines
+                    if line.startswith("\N{PILCROW SIGN}+ {+") and line.endswith("+}")}  # fmt: skip
+            assert gone & came, lines
+        else:
+            assert any(holds_ in line for line in mine), (word, holds_, lines)
+
+
 # ------------------------------------------------------------ the words beside a quoted value
 
 #: A value a ledger records, as its display is written, one of each kind: a decimal, a whole
@@ -4968,6 +5042,133 @@ def test_a_cited_title_is_found_in_its_registered_form_and_not_in_another(
             assert held is not None and held < lookups.TITLE_HELD, (kind, cited, title, held)
 
 
+# ------------------------------------------------------------- a family name, as registered
+
+#: Family names a property draws: of letters a folding leaves alone.
+_FAMILIES = ("Naranjo", "Busto", "Sellers", "Greenblatt", "Okafor", "Lindqvist", "Tanaka",
+             "Moreau", "Kowalski", "Haddad", "Petrov", "Ndiaye")  # fmt: skip
+#: A vowel, how TeX accents it in a .bib, and the letter a registry prints.
+_ACCENTS = (("e", "{\\'e}", "\N{LATIN SMALL LETTER E WITH ACUTE}"),
+            ("a", "{\\`a}", "\N{LATIN SMALL LETTER A WITH GRAVE}"),
+            ("o", "{\\^o}", "\N{LATIN SMALL LETTER O WITH CIRCUMFLEX}"),
+            ("i", "{\\'i}", "\N{LATIN SMALL LETTER I WITH ACUTE}"))  # fmt: skip
+_PARTICLE_FORMS = ("van der", "de", "von", "da", "van")
+#: What G7 is to find one person in, and what it is to find another person in.
+_SAME_NAME = ("cased", "accented", "particle", "apostrophe", "umlaut", "umlaut without its dots",
+              "hyphen", "suffix", "among the given names")
+_OTHER_NAME = ("a letter off", "another name", "initials are no name")
+_GIVEN = ("George", "Anna", "Maria", "Jose", "Wei", "Amara")
+
+
+@st.composite
+def _renamed(draw: st.DrawFn) -> list[tuple[str, str, str]]:
+    """One family name drawn, written for each way a registry writes the same name and for
+    each way another person's differs: every kind in every example, so that a rule broken
+    for one kind fails whatever the seed."""
+    family, second = draw(st.lists(st.sampled_from(_FAMILIES), min_size=2, max_size=2,
+                                   unique=True))  # fmt: skip
+    vowels = [at for at, c in enumerate(family) if c in "aeio"]
+    at = draw(st.sampled_from(vowels))
+    plain, tex, printed = next(a for a in _ACCENTS if a[0] == family[at])
+    particle = draw(st.sampled_from(_PARTICLE_FORMS))
+    cut = draw(st.integers(1, len(family) - 1))
+    letter = draw(st.sampled_from([c for c in "zqxj" if c not in family.casefold()]))
+    case = draw(st.sampled_from((str.upper, str.lower, str.title)))
+    # Not before an "e": without its dots "Süe" is "Sue", which the folding takes for "Sü"
+    # transcribed, and reads as another name (DESIGN.md, Known gaps).
+    dot = draw(st.sampled_from([i for i in range(1, len(family)) if family[i] != "e"]))
+    umlaut = family[:dot] + "\N{LATIN SMALL LETTER U WITH DIAERESIS}" + family[dot:]
+    return [
+        ("cased", family, case(family)),
+        ("accented", family[:at] + tex + family[at + 1 :],
+         family[:at] + printed + family[at + 1 :]),
+        ("particle", f"{particle} {family}",
+         draw(st.sampled_from((family, f"{particle.title()} {family}")))),
+        ("apostrophe", f"O'{family}",
+         draw(st.sampled_from((f"O{family}", f"O\N{RIGHT SINGLE QUOTATION MARK}{family}")))),
+        ("umlaut", umlaut, family[:dot] + "ue" + family[dot:]),
+        ("umlaut without its dots", umlaut, family[:dot] + "u" + family[dot:]),
+        ("hyphen", f"{family}-{second}", draw(st.sampled_from((f"{family} {second}", second)))),
+        ("suffix", f"{family} Jr.", family),
+        # A double surname a registry splits, its first part among the given names:
+        # Crossref's given "George Davey", family "Smith", for an entry's "Davey, SG".
+        ("among the given names", family, second, f"{draw(st.sampled_from(_GIVEN))} {family}"),
+        ("a letter off", family, family[:cut] + letter + family[cut + 1 :]),
+        ("another name", family, second),
+        ("initials are no name", family, second,
+         f"{family[0]}. {draw(st.sampled_from(_GIVEN))[0]}."),
+    ]  # fmt: skip
+
+
+@holds(150, _renamed())
+def test_a_family_name_is_one_person_s_however_a_registry_writes_it(
+    drawn: list[tuple[str, ...]],
+) -> None:
+    """G7 holds a cited family name to a registry's by Basile's lenient folding (2026-10-20):
+    case, accents written in TeX or in Unicode, a particle, an apostrophe, ü for ue, one part
+    of a double name, a suffix and the first part of a double surname a registry filed among
+    the given names are one person's; a letter that differs, or another name, is another
+    person's."""
+    from manuscript_guard.gates import authors
+
+    for kind, cited, registered, *forenames in drawn:
+        said = authors.same(cited, registered, *forenames)
+        assert said is (kind in _SAME_NAME), (kind, cited, registered, forenames)
+
+
+# ------------------------------------------------------- a title a search found, each way
+
+#: What G7 is to take for the cited title among a search's works, and what it is not.
+_SAME_SEARCHED = ("subtitle left out", "flagged", "typeset", "subtitle cited",
+                  "subtitle the registry left out")  # fmt: skip
+_OTHER_SEARCHED = ("longer title", "other words")
+
+
+@st.composite
+def _searched_titles(draw: st.DrawFn) -> list[tuple[str, str, str]]:
+    """A cited title of drawn words, and for each kind a title a search could return: the
+    same title as a registry writes it, and another work's that a search finds because it
+    holds the words. Every kind in every example."""
+    words = draw(st.lists(st.sampled_from(FILLER), min_size=4, max_size=10))
+    cited = " ".join(words)
+    subtitle = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=3, max_size=6)))
+    before = draw(st.lists(st.sampled_from(FILLER), min_size=len(words),
+                           max_size=len(words) + 3))  # fmt: skip
+    other = list(words)
+    for at in draw(st.permutations(range(len(words))))[: len(words) * 15 // 85 + 1]:
+        other[at] = "zygote" if other[at] != "zygote" else "quorum"
+    separator = draw(st.sampled_from((": ", " - ", "? ", " \N{EM DASH} ")))
+    case = draw(st.sampled_from((str.upper, str.title)))
+    return [
+        ("subtitle left out", cited, f"{cited}{separator}{subtitle}"),
+        ("flagged", cited, f"RETRACTED: {cited}"),
+        ("typeset", cited, case(cited).replace(" ", ", ", 1)),
+        ("subtitle cited", f"{cited}: {subtitle}", f"{cited}: {subtitle}"),
+        # A guideline printed with its task force in its title, which the registry leaves out.
+        ("subtitle the registry left out", f"{cited}: {subtitle}", cited),
+        ("longer title", cited, " ".join(before) + " " + cited),
+        ("other words", cited, " ".join(other)),
+    ]
+
+
+@holds(150, _searched_titles())
+def test_a_searched_title_is_the_cited_one_only_each_way(
+    drawn: list[tuple[str, str, str]],
+) -> None:
+    """For a reference with no identifier, G7 takes a work a search found for the cited one
+    only where each title holds 85% of the other's words: the registered title's main part
+    only, so that a subtitle the entry left out costs nothing; and a longer title that holds
+    every cited word, which a search finds and an identifier never names, is another work."""
+    from manuscript_guard.gates import lookups, searched
+
+    for kind, cited, registered in drawn:
+        alike = searched.alike(cited, [registered])
+        if kind in _SAME_SEARCHED:
+            assert alike >= lookups.TITLE_HELD, (kind, cited, registered, alike)
+        else:
+            assert alike < lookups.TITLE_HELD, (kind, cited, registered, alike)
+
+
 # ------------------------------------------------------------- a figure that estimates itself
 
 _FIGURE_FILLER = {
@@ -5497,6 +5698,88 @@ def _a_title_is_compared_both_ways(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(lookups, "title_held", held)
 
 
+def _a_family_name_must_agree_whole(patch: pytest.MonkeyPatch) -> None:
+    """The strict option Basile did not take: particles and all."""
+    from manuscript_guard.gates import authors
+
+    def whole(a: str, b: str, given: str = "") -> bool:
+        return authors.name_words(a) == authors.name_words(b)
+
+    patch.setattr(authors, "same", whole)
+
+
+def _a_given_name_holds_no_part_of_a_family_name(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import authors
+
+    same = authors.same
+    patch.setattr(authors, "same", lambda a, b, given="": same(a, b))
+
+
+def _an_accent_is_a_letter_of_its_own(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import authors
+
+    patch.setattr(authors, "name_words", lambda family: tuple(re.findall(
+        r"[^\W\d_]+", family.replace("{", "").replace("}", "").casefold())))  # fmt: skip
+
+
+def _ue_is_not_u_umlaut(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import authors
+
+    patch.setattr(authors, "_TRANSCRIPTIONS", ())
+
+
+def _an_apostrophe_parts_a_name(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import authors
+
+    patch.setattr(authors, "_APOSTROPHES", re.compile(r"(?!)"))
+
+
+def _a_name_a_letter_off_is_the_name(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import authors
+
+    same = authors.same
+
+    def near(a: str, b: str, given: str = "") -> bool:
+        x, y = " ".join(authors.name_words(a)), " ".join(authors.name_words(b))
+        one_off = len(x) == len(y) and sum(i != j for i, j in zip(x, y, strict=True)) <= 1
+        return same(a, b, given) or one_off
+
+    patch.setattr(authors, "same", near)
+
+
+def _a_searched_title_is_held_one_way(patch: pytest.MonkeyPatch) -> None:
+    """The rule G7 holds an identifier's title to."""
+    from manuscript_guard.gates import lookups, searched
+
+    patch.setattr(searched, "alike", lambda cited, titles: max(
+        (lookups.title_held(cited, t) or 0.0 for t in titles), default=0.0))  # fmt: skip
+
+
+def _the_whole_registered_title_is_held_back(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import searched
+
+    patch.setattr(searched, "main_title", lambda title: searched._FLAG.sub("", title))
+
+
+def _a_cited_subtitle_counts_against_it(patch: pytest.MonkeyPatch) -> None:
+    """The rule as it stood before the measurement of 2026-10-20 found two guidelines cited
+    with the task force the registries leave out."""
+    from manuscript_guard.gates import lookups, searched
+
+    def alike(cited: str, titles: list[str]) -> float:
+        best = 0.0
+        for title in titles:
+            there = lookups.title_held(cited, title)
+            back = [b for b in (lookups.title_held(searched._FLAG.sub("", title), cited),
+                                lookups.title_held(searched.main_title(title), cited))
+                    if b is not None]  # fmt: skip
+            if there is not None and back:
+                best = max(best, min(there, max(back)))
+        return best
+
+    patch.setattr(searched, "alike", alike)
+
+
 def _an_isbn_10_is_not_read_as_its_isbn_13(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import duplicates
 
@@ -5994,6 +6277,25 @@ def _the_supplement_s_displays_are_numbered_with_the_paper_s(patch: pytest.Monke
     patch.setattr(pointers, "is_supplementary", lambda root, path: False)
 
 
+def _a_caption_is_not_held_to_its_display(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.findings import Report
+    from manuscript_guard.gates import pointers
+
+    patch.setattr(pointers, "_captions", lambda *given: Report())
+
+
+def _a_table_s_caption_is_read_only_under_it(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import pointers
+
+    patch.setattr(pointers, "_BESIDE", {pointers.FIGURE: (1,), pointers.TABLE: (1,)})
+
+
+def _a_caption_between_two_tables_is_held_to_both(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import pointers
+
+    patch.setattr(pointers, "_NAMES_ONE", all)
+
+
 def _the_methods_are_read_by_their_old_name(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.text import section_names
 
@@ -6066,6 +6368,71 @@ def _the_methods_name_is_read_as_typed(patch: pytest.MonkeyPatch) -> None:
 
     patch.setattr(methods_gate, "methods_sections", as_typed)
     patch.setattr(journal, "methods_sections", as_typed)
+
+
+def _no_supplement_names_the_methods(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import classify
+
+    patch.setattr(classify, "SUPPLEMENT_METHODS", re.compile(r"(?!)"))
+
+
+def _a_supplement_s_name_with_words_after_it_is_no_methods(patch: pytest.MonkeyPatch) -> None:
+    # The name and its number alone: "eMethods 1. Data source" is not the Methods.
+    from manuscript_guard import classify
+
+    was = classify.SUPPLEMENT_METHODS.pattern
+    pattern = was.replace(r"(?:[^\w\n][^\n]*)?$", r"\s*$")
+    assert pattern != was
+    patch.setattr(classify, "SUPPLEMENT_METHODS", re.compile(pattern, re.IGNORECASE))
+
+
+def _only_the_first_of_a_supplement_s_methods_is_read(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(methods_gate, "supplement_methods_in", methods_gate.methods_in)
+
+
+def _a_section_under_one_read_is_read_again(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text.sections import split_sections
+
+    def every(text: str, abstract_title: str | None = None) -> str | None:
+        found = methods_gate.methods_sections(split_sections(text), abstract_title)
+        return "\n\n".join(section.enclosed for section in found) or None
+
+    patch.setattr(methods_gate, "supplement_methods_in", every)
+
+
+def _a_supplement_s_name_holds_every_section_under_it(patch: pytest.MonkeyPatch) -> None:
+    # As first written in #395: under "Supplementary methods", a table was the Methods.
+    from manuscript_guard import classify
+
+    def any_title(section) -> bool:
+        return any(
+            classify.names_supplement_methods(title)
+            for title in section
+            if not isinstance(title, classify.Unprinted)
+        )
+
+    patch.setattr(classify, "_opened_by_the_supplement", any_title)
+
+
+def _g9_reads_all_under_a_supplement_s_methods(patch: pytest.MonkeyPatch) -> None:
+    # As first written in #395: each section found, with everything under it, once.
+    from manuscript_guard.text.sections import split_sections
+
+    def enclosed(text: str, abstract_title: str | None = None) -> str | None:
+        sections = split_sections(text)
+        found = {id(section) for section in methods_gate.methods_sections(sections, abstract_title)}
+        read: list[str] = []
+        under: int | None = None
+        for section in sections:
+            if under is not None and section.level > under:
+                continue
+            under = None
+            if id(section) in found:
+                read.append(section.enclosed)
+                under = section.level
+        return "\n\n".join(read) if read else None
+
+    patch.setattr(methods_gate, "supplement_methods_in", enclosed)
 
 
 def _the_abstract_s_methods_are_the_paper_s(patch: pytest.MonkeyPatch) -> None:
@@ -6238,6 +6605,42 @@ def _inline_code_is_read_as_prose(patch: pytest.MonkeyPatch) -> None:
 
 def _a_comment_is_read_as_prose(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(claims_module, "mask", lambda text: text)
+
+
+def _a_deleted_stretch_is_left_out(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(markedup_writer._Emitter, "deleted", lambda self, atoms: None)
+
+
+def _deleted_text_is_written_as_text_kept(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(markedup_writer, "deleted_text", lambda element: element)
+
+
+def _how_a_word_looks_is_not_compared(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(markedup_atoms, "look", lambda run: "")
+
+
+def _a_row_is_not_tracked_as_a_row(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(markedup_writer, "_row_change", lambda row, change: None)
+
+
+def _a_note_is_kept_as_the_revision_has_it(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(markedup_writer.Writer, "_note_merged", lambda self, old, new: None)
+
+
+def _a_table_is_never_merged_cell_by_cell(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(markedup_writer, "_shape", lambda table: None)
+
+
+def _a_deleted_picture_points_where_it_pointed(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(markedup_package.Carried, "_relationship", lambda self, rid, part: rid)
+
+
+def _a_style_is_not_compared(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(markedup_writer, "_properties_key", lambda paragraph, package: ())
+
+
+def _nothing_is_alike_enough_to_be_edited(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(markedup_align, "alike", lambda a, b: 0.0)
 
 
 def _the_texts_are_lined_up_by_place_alone(patch: pytest.MonkeyPatch) -> None:
@@ -7594,6 +7997,42 @@ BROKEN = {
         _a_title_is_compared_both_ways,
         test_a_cited_title_is_found_in_its_registered_form_and_not_in_another,
     ),
+    "a family name must agree whole, particles and all": (
+        _a_family_name_must_agree_whole,
+        test_a_family_name_is_one_person_s_however_a_registry_writes_it,
+    ),
+    "an accent is a letter of its own": (
+        _an_accent_is_a_letter_of_its_own,
+        test_a_family_name_is_one_person_s_however_a_registry_writes_it,
+    ),
+    "ue is not u with a diaeresis": (
+        _ue_is_not_u_umlaut,
+        test_a_family_name_is_one_person_s_however_a_registry_writes_it,
+    ),
+    "an apostrophe parts a name": (
+        _an_apostrophe_parts_a_name,
+        test_a_family_name_is_one_person_s_however_a_registry_writes_it,
+    ),
+    "a name a letter off is the name": (
+        _a_name_a_letter_off_is_the_name,
+        test_a_family_name_is_one_person_s_however_a_registry_writes_it,
+    ),
+    "a given name holds no part of a family name": (
+        _a_given_name_holds_no_part_of_a_family_name,
+        test_a_family_name_is_one_person_s_however_a_registry_writes_it,
+    ),
+    "a searched title is held one way": (
+        _a_searched_title_is_held_one_way,
+        test_a_searched_title_is_the_cited_one_only_each_way,
+    ),
+    "the whole registered title is held back to the cited one": (
+        _the_whole_registered_title_is_held_back,
+        test_a_searched_title_is_the_cited_one_only_each_way,
+    ),
+    "a subtitle the registry left out counts against the cited title": (
+        _a_cited_subtitle_counts_against_it,
+        test_a_searched_title_is_the_cited_one_only_each_way,
+    ),
     "an ISBN-10 is not read as its ISBN-13": (
         _an_isbn_10_is_not_read_as_its_isbn_13,
         test_one_work_is_one_work_however_its_identifiers_are_written,
@@ -7865,6 +8304,18 @@ BROKEN = {
         _the_supplement_s_displays_are_numbered_with_the_paper_s,
         test_a_ref_prints_the_number_its_display_has_or_is_said,
     ),
+    "a caption is not held to the display it stands beside": (
+        _a_caption_is_not_held_to_its_display,
+        test_a_ref_prints_the_number_its_display_has_or_is_said,
+    ),
+    "a table's caption is read only under it": (
+        _a_table_s_caption_is_read_only_under_it,
+        test_a_ref_prints_the_number_its_display_has_or_is_said,
+    ),
+    "a caption between two tables is held to both": (
+        _a_caption_between_two_tables_is_held_to_both,
+        test_a_ref_prints_the_number_its_display_has_or_is_said,
+    ),
     "the Methods are read by the name G9 had for them": (
         _the_methods_are_read_by_their_old_name,
         test_a_section_g4_counts_present_is_a_section_the_gates_read,
@@ -7888,6 +8339,30 @@ BROKEN = {
     "the Methods' name is read as typed when they are put first": (
         _the_methods_name_is_read_as_typed,
         test_the_methods_named_as_such_are_read_before_a_heading_that_only_holds_the_word,
+    ),
+    "no supplement's name of the Methods is a place the Methods are": (
+        _no_supplement_names_the_methods,
+        test_a_supplement_s_methods_are_the_methods_to_each_gate_that_reads_them,
+    ),
+    "a supplement's name of the Methods with words after it is not one": (
+        _a_supplement_s_name_with_words_after_it_is_no_methods,
+        test_a_supplement_s_methods_are_the_methods_to_each_gate_that_reads_them,
+    ),
+    "only the first of a supplement's Methods is read": (
+        _only_the_first_of_a_supplement_s_methods_is_read,
+        test_a_supplement_s_methods_are_the_methods_to_each_gate_that_reads_them,
+    ),
+    "a section of a supplement's Methods under one read is read again": (
+        _a_section_under_one_read_is_read_again,
+        test_a_supplement_s_methods_are_the_methods_to_each_gate_that_reads_them,
+    ),
+    "a supplement's name of the Methods holds every section under it": (
+        _a_supplement_s_name_holds_every_section_under_it,
+        test_a_supplement_s_methods_are_the_methods_to_each_gate_that_reads_them,
+    ),
+    "G9 reads everything under a supplement's Methods heading": (
+        _g9_reads_all_under_a_supplement_s_methods,
+        test_a_supplement_s_methods_are_the_methods_to_each_gate_that_reads_them,
     ),
     "a number's sign is no part of it": (
         _a_sign_is_no_part_of_its_number,
@@ -7936,6 +8411,23 @@ BROKEN = {
         _a_comment_is_read_as_prose,
         test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands,
     ),
+    **{
+        what: (
+            breaking,
+            test_a_marked_up_copy_shows_each_change_where_it_was_made_and_reads_as_both_documents,
+        )
+        for what, breaking in (
+            ("a deleted stretch of a paragraph is left out", _a_deleted_stretch_is_left_out),
+            ("deleted text is written as text kept", _deleted_text_is_written_as_text_kept),
+            ("how a word looks is not compared", _how_a_word_looks_is_not_compared),
+            ("a row added is not tracked as a row", _a_row_is_not_tracked_as_a_row),
+            ("a note is kept as the revision has it", _a_note_is_kept_as_the_revision_has_it),
+            ("a table is never merged cell by cell", _a_table_is_never_merged_cell_by_cell),
+            ("a deleted picture points where it did", _a_deleted_picture_points_where_it_pointed),
+            ("a paragraph's style is not compared", _a_style_is_not_compared),
+            ("no paragraph is alike enough to be edited", _nothing_is_alike_enough_to_be_edited),
+        )
+    },
     "the sentences of two texts are lined up by place alone": (
         _the_texts_are_lined_up_by_place_alone,
         test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands,

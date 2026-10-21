@@ -15,8 +15,12 @@ from pathlib import Path
 TYPE_FIELD = "type_field"
 
 
-def read_entries(path: Path) -> dict[str, dict[str, str]]:
+def read_entries(path: Path, *, braces: bool = False) -> dict[str, dict[str, str]]:
     """Every entry of a `.bib` file: the fields as they are written.
+
+    With `braces`, a value keeps the braces inside it, its outer delimiters taken off: a name
+    braced whole in `author`, `{World Health Organization}`, is a group's and not a person's,
+    and G7's comparison of authors has to see that (`literature/names`).
 
     A small reader rather than a dependency: a .bib entry is `@type{key, field = {value},}`, and
     what a co-author checks is the fields as they are written. Nested braces are counted, so a
@@ -60,7 +64,9 @@ def read_entries(path: Path) -> dict[str, dict[str, str]]:
             value = value.strip()
             if (value[:1], value[-1:]) in {("{", "}"), ('"', '"')}:
                 value = value[1:-1]
-            fields[name] = " ".join(value.replace("{", "").replace("}", "").split())
+            if not braces:
+                value = value.replace("{", "").replace("}", "")
+            fields[name] = " ".join(value.split())
         records[key] = fields
     return records
 

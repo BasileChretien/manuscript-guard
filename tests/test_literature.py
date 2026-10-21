@@ -154,7 +154,12 @@ def test_a_real_name_is_not_mistaken_for_a_model(name: str) -> None:
     assert not _MODEL_NAME.search(name)
 
 
-@pytest.mark.parametrize("name", ["AI", "A.I.", "an AI assistant", "a bot", "Claude", "GPT-4"])
+@pytest.mark.parametrize(
+    "name",
+    # Round 1 of #374: the agents the plugin runs in, and the models they run, by name.
+    ["AI", "A.I.", "an AI assistant", "a bot", "Claude", "GPT-4", "Codex", "Claude Sonnet",
+     "Opus 5.5", "Haiku"],
+)  # fmt: skip
 def test_a_model_is_still_recognised(name: str) -> None:
     from manuscript_guard.gates.literature import _MODEL_NAME
 

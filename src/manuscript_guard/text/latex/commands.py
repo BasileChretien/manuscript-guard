@@ -49,6 +49,8 @@ COMMANDS = _specs(
         ),
         "title": "[p]{p}",
         "thanks": "{p}",
+        # A class's `\\abstract{...}`: a section titled Abstract, as the environment is.
+        "abstract": "{p}",
         "caption": "[p]{p}",
         "footnote": "[b]{p}",
         "footnotetext": "[b]{p}",

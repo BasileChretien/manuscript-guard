@@ -1840,7 +1840,9 @@ FIXED_LINKS = (
 #: a karyotype, a syndrome, a link, a title translated into English in brackets, a phrase
 #: that goes on, a kinase. What the placeholder reading must tell apart. With round 2 of
 #: #262's shapes: a phrase before a list item, an instruction marked or linked, a slot that
-#: is a whole field of a cited entry.
+#: is a whole field of a cited entry. And a journal template's instructions, one of each
+#: kind and one hard-wrapped, beside a section the authors describe, a form a paper
+#: reproduces and the caption PLOS prints under a file.
 PLACEHOLDERS = (
     ("XXXX", "XXXX"), ("[TO BE COMPLETED]", "[TO BE COMPLETED]"),
     ("[Repository]", "[Repository]"), ("[describe the cohort]", "[describe the cohort]"),
@@ -1850,12 +1852,22 @@ PLACEHOLDERS = (
     ("Dose: fill in later\n- Route: oral", "fill in later"),
     ("[insert the date]{.mark}", "[insert the date]"), ("[insert link](#)", "[insert link]"),
     ("[DOI]", "[DOI]"),
+    ("In this section you can acknowledge any support given",
+     "In this section you can acknowledge any support"),
+    ('Please add: "This research received no external funding"', 'Please add: "This research'),
+    ("This section may be divided by\nsubheadings.", "This section may be divided by\nsubheadings"),
+    ("Click or tap here to enter text.", "Click or tap here to enter text."),
+    ("This is a short text to acknowledge the contributions",
+     "This is a short text to acknowledge"),
+    ("Sample body text.", "Sample body text"),
 )  # fmt: skip
 LOWERED = (("tbd", "tbd"), ("fixme", "fixme"), ("Todo", "Todo"))
 LOOKALIKES = (
     "47,XXX", "XXX syndrome", "[repository](https://example.org)",
     "[Add-on therapy in epilepsy]", "replace later lines", "replace later\nlines",
-    "TK inhibitors", "[SJS/TEN]", "[HIV/AIDS]",
+    "TK inhibitors", "[SJS/TEN]", "[HIV/AIDS]", "In this section, you can see the code.",
+    "In this section, please indicate how often", 'Please state "yes" or "no".',
+    'If none, please state "not applicable".', "Click here for additional data file.",
 )  # fmt: skip
 
 #: Words to the reviewers or to a model left in a paper, each a sentence, with the rule of
@@ -2419,6 +2431,67 @@ def printings(draw: st.DrawFn) -> list[dict[str, Any]]:
         })  # fmt: skip
     return cases
 
+# ------------------------------------------------------- two plans of one data, section by section
+
+#: What an edit of a plan's section may be: none, its lines re-wrapped, a word put in
+#: emphasis, a comment added, its case changed, a word added, a word added under a heading
+#: now numbered, a section the plan keeps of itself (its Deviations) changed, and one
+#: heading under two parents with a word added under the first. The two with a word added
+#: and one heading are sections that read otherwise; the heading that stands twice is not
+#: compared. This plan also ends in an appendix, a second top-level heading, which the
+#: earlier one does not have.
+SECTION_EDITS = ("as it is", "rewrapped", "emphasis", "comment", "case", "numbered",
+                 "word added", "own section", "one heading twice")  # fmt: skip
+TOPICS = ("Exposure", "Outcome", "Population", "Comparator", "Case definition",
+          "Exclusions", "Model", "Study period")  # fmt: skip
+
+
+@st.composite
+def plan_pairs(draw: st.DrawFn) -> tuple[dict[str, str], list[str]]:
+    """An earlier plan and this one, one section for each kind of edit, in drawn order, and
+    the headings of the sections whose words differ, as this plan writes them."""
+    kinds = draw(st.permutations(SECTION_EDITS))
+    then, now, changed = ["# Analysis plan", ""], ["# Analysis plan", ""], []
+    for at, kind in enumerate(kinds):
+        tag = TAGS[at % len(TAGS)] + "x" * (at // len(TAGS))
+        title = f"{draw(st.sampled_from(TOPICS))} {tag}"
+        if kind == "own section":
+            title = f"Deviations {tag}"
+        if kind == "one heading twice":
+            # The first Definition differs, the second does not: which answers which is not
+            # guessed, and neither is compared. Taken in order, the first would be said.
+            words = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=4, max_size=12)))
+            for parent, after in ((f"Exposure {tag}", words + " more"), (f"Outcome {tag}", words)):
+                then += [f"## {parent}", "", f"### Definition {tag}", "", words, ""]
+                now += [f"## {parent}", "", f"### Definition {tag}", "", after, ""]
+            continue
+        words = draw(st.lists(st.sampled_from(FILLER), min_size=4, max_size=12))
+        body = " ".join(words)
+        heading, edited = title, body
+        if kind == "rewrapped":
+            edited = body.replace(" ", "\n", draw(st.integers(1, 3)))
+        elif kind == "emphasis":
+            edited = " ".join([f"*{words[0]}*", *words[1:]])
+        elif kind == "comment":
+            edited = " ".join([words[0], "<!-- read again -->", *words[1:]])
+        elif kind == "case":
+            edited = body.upper()
+        if kind == "numbered":
+            heading = f"{at + 1}. {title}"
+        if kind in ("word added", "numbered", "own section"):
+            edited = f"{body} {draw(st.sampled_from(('altered', 'restricted', 'widened')))}"
+        if kind in ("word added", "numbered"):
+            changed.append(heading)
+        then += [f"## {title}", "", body, ""]
+        now += [f"## {heading}", "", edited, ""]
+        if kind == "own section":
+            # What the Deviations hold is theirs too, under a heading of its own that names
+            # no deviation ("Amendment" would be left out by its own name).
+            then += [f"### Second reading {tag}", "", body, ""]
+            now += [f"### Second reading {tag}", "", f"{body} later", ""]
+    now += ["# Appendix", "", "Notes kept apart from the plan.", ""]
+    return {"then": "\n".join(then), "now": "\n".join(now)}, changed
+
 
 # ---------------------------------------------------------------------- what an edit holds
 
@@ -2955,6 +3028,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         lambda drawn: {"text": drawn[0], "labels": drawn[1]}
     ),
     "printed value": printings(),
+    "plan sections": plan_pairs().map(lambda drawn: drawn[0]),
     "units after": texts(BOUND_UNITS),
     "limit stated": st.fixed_dictionaries(
         {"text": texts(QUOTED_LIMITS), "value": st.sampled_from((3500, 4, 14, 35000, 500))}

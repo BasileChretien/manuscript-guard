@@ -3844,6 +3844,21 @@ a reason (`related-method-explained`), and never a failure, since a method may r
 change between two papers and the review panel, not a gate, weighs whether it was said and
 justified. A software version is not compared: every later paper runs later software.
 
+The same holds of what both projects record of their methods as data (Basile's answer 5).
+A model both fitted under one key is compared by its card: its family and link, its outcome,
+each variable it enters, how it enters it and its reference ("its family is Poisson/Log there
+and Binomial/Logit here; it enters sex here and not there"). And each section both plans have
+under one heading is compared word by word: the earlier plan as it stood when its first
+results were written (the copy's `plan.frozen.yaml`, or its `plan.md` where it kept none),
+this paper's plan as it stands. A heading is matched without its number, emphasis or case;
+words without comments, emphasis or line breaks and in either case, as G13 reads a quotation
+(`as_quoted`); and the plans' Deviations and Planned results, which are each paper's own,
+are not compared. A section that reads otherwise is said with a few words of each side from
+where they part. Each is `related-method-differs`, a note with a reason under `methods:`
+(`model:` or `plan_section:`, and `because:`), and never a failure. What the words mean is
+not compared: two sections that say one thing in other words differ, and the panel's
+earlier-outputs remit reads them.
+
 **An overlap of data or study with authors is disclosed.** It is disclosed where the
 manuscript cites the earlier output (its citekey, in a citation a reader sees, comments left
 out), or where `disclosed_by` gives the manuscript's sentence that says so, found as above,
@@ -12012,15 +12027,16 @@ Open, recorded as each change landed:
   contrived). A DOI that `references.bib` writes with a TeX escape, `10.1000/abc\_def`, is
   looked for under `10.1000_abc__def` and not found, as G7 reads the same DOI with its
   backslash (round 1).
-- **An earlier output is compared value by value, and never as prose.** G8 compares results
-  keys and recorded values. Two Methods sections that define the case, the exposure, the
-  outcome, the exclusions or the model in other words are not compared: the frozen plans are
-  copied in for that, and are not yet read by any gate; until they are, the skill gives the
-  panel an earlier-outputs remit read with both texts side by side. Nor are tables, model
-  cards or the data dictionary compared, though the copy holds them. A count printed only in
-  a table of either paper is compared with nothing. A value printed by only one of the two
-  papers (`quoted: false` on one side) is not compared, though it may show the data
-  changed.
+- **An earlier output's methods are compared as words and cards, never as meaning.** G8
+  compares results keys, recorded values, model cards and the sections both plans have under
+  one heading. Two Methods sections of the manuscripts are not compared, nor what a plan's
+  section means: a section reworded with nothing changed differs, and one that keeps its
+  words under another heading is compared with nothing. A word in emphasis by underscores
+  (`_case_`) is read with them, as G13 reads a quotation. Tables and the data dictionary are
+  not compared, though the copy holds the dictionary. A count printed only in a table of
+  either paper is compared with nothing. A value printed by only one of the two papers
+  (`quoted: false` on one side) is not compared, though it may show the data changed. A
+  model is compared under its key only, so a model renamed since is compared with nothing.
 - **What a comparison read from a PDF cannot see.** A published value is read as printed: an
   estimate rounded to one place is the same as any value within half a unit of it, so a
   change smaller than the earlier rounding is not seen. A printed value that is not one

@@ -26,13 +26,21 @@ import re
 from dataclasses import dataclass, field, replace
 from decimal import Decimal, InvalidOperation
 from fnmatch import fnmatchcase
+from pathlib import Path
 
 from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import Results, load_results
 from manuscript_guard.contracts.values import Value
 from manuscript_guard.findings import FAIL, INFO, WARN, Finding, Report
+from manuscript_guard.gates.design import plan_path
 from manuscript_guard.gates.numbers import source_files
+from manuscript_guard.gates.related_methods import (
+    earlier_plan,
+    folded_title,
+    models_compared,
+    sections_compared,
+)
 from manuscript_guard.gates.revision import as_quoted, rendered_manuscript
 from manuscript_guard.literature.related import (
     GATE,
@@ -342,7 +350,68 @@ def _against_copy(
             )
             continue
         report = report.merge(_compare(related, output, then, now, pair, strict, seen))
+    return report.merge(_methods(project, related, output, snapshot.folder, earlier, results, seen))
+
+
+def _methods(
+    project: Project,
+    related: Related,
+    output: Output,
+    folder: Path,
+    earlier: Results,
+    results: Results,
+    seen: _Seen,
+) -> Report:
+    """The models both fitted under one key, and the sections both plans have under one
+    heading: each that differs is a change of method, said and never judged."""
+    report = Report()
+    for key, said in models_compared(earlier.models, results.models):
+        because = next((c.because for c in output.methods if c.model == key), None)
+        then, now = earlier.models[key].formula, results.models[key].formula
+        report = report.merge(
+            _method(related, output, f"model {key}", said, because, (then, now), seen)
+        )
+    plan, then_plan = plan_path(project), earlier_plan(folder)
+    if then_plan is None or not plan.is_file():
+        return report
+    for title, there, here in sections_compared(then_plan, read_text(plan)):
+        because = next(
+            (c.because for c in output.methods
+             if c.plan_section is not None and folded_title(c.plan_section) == folded_title(title)),
+            None,
+        )  # fmt: skip
+        said = f"it reads '{there}' there and '{here}' here"
+        report = report.merge(
+            _method(related, output, f"the plan's {title}", said, because, (there, here), seen)
+        )
     return report
+
+
+def _method(
+    related: Related,
+    output: Output,
+    what: str,
+    said: str,
+    because: str | None,
+    printed: tuple[str, str],
+    seen: _Seen,
+) -> Report:
+    message = f"{output.name}: {what}: {said}"
+    if because is not None:
+        found = _finding(related, "related-method-explained", f"{message}: {because}",
+                         severity=INFO, line=output.line)  # fmt: skip
+    else:
+        found = _finding(
+            related,
+            "related-method-differs",
+            message,
+            severity=WARN,
+            line=output.line,
+            hint="say in the Methods why it changed, and record why under `methods:`; the "
+            "review panel weighs it, nothing here judges it",
+        )
+    seen.rows.append(Compared(output.id, what, what, *printed, STATES[found.code]))
+    return Report((found,))
 
 
 def _compare(

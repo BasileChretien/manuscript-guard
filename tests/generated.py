@@ -1518,6 +1518,49 @@ def printings(draw: st.DrawFn) -> list[dict[str, Any]]:
         })  # fmt: skip
     return cases
 
+# ------------------------------------------------------- two plans of one data, section by section
+
+#: What an edit of a plan's section may be: none, its lines re-wrapped, a word put in
+#: emphasis, a comment added, its case changed, a word added, a word added under a heading
+#: now numbered, and a section the plan keeps of itself (its Deviations) changed. The two
+#: with a word added are sections that read otherwise.
+SECTION_EDITS = ("as it is", "rewrapped", "emphasis", "comment", "case", "numbered",
+                 "word added", "own section")  # fmt: skip
+TOPICS = ("Exposure", "Outcome", "Population", "Comparator", "Case definition",
+          "Exclusions", "Model", "Study period")  # fmt: skip
+
+
+@st.composite
+def plan_pairs(draw: st.DrawFn) -> tuple[dict[str, str], list[str]]:
+    """An earlier plan and this one, one section for each kind of edit, in drawn order, and
+    the headings of the sections whose words differ, as this plan writes them."""
+    kinds = draw(st.permutations(SECTION_EDITS))
+    then, now, changed = ["# Analysis plan", ""], ["# Analysis plan", ""], []
+    for at, kind in enumerate(kinds):
+        title = f"{draw(st.sampled_from(TOPICS))} {TAGS[at]}"
+        if kind == "own section":
+            title = f"Deviations {TAGS[at]}"
+        words = draw(st.lists(st.sampled_from(FILLER), min_size=4, max_size=12))
+        body = " ".join(words)
+        heading, edited = title, body
+        if kind == "rewrapped":
+            edited = body.replace(" ", "\n", draw(st.integers(1, 3)))
+        elif kind == "emphasis":
+            edited = " ".join([f"*{words[0]}*", *words[1:]])
+        elif kind == "comment":
+            edited = " ".join([words[0], "<!-- read again -->", *words[1:]])
+        elif kind == "case":
+            edited = body.upper()
+        if kind == "numbered":
+            heading = f"{at + 1}. {title}"
+        if kind in ("word added", "numbered", "own section"):
+            edited = f"{body} {draw(st.sampled_from(('altered', 'restricted', 'widened')))}"
+        if kind in ("word added", "numbered"):
+            changed.append(heading)
+        then += [f"## {title}", "", body, ""]
+        now += [f"## {heading}", "", edited, ""]
+    return {"then": "\n".join(then), "now": "\n".join(now)}, changed
+
 
 # ---------------------------------------------------------------------- what an edit holds
 
@@ -1904,6 +1947,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         lambda drawn: {"text": drawn[0], "labels": drawn[1]}
     ),
     "printed value": printings(),
+    "plan sections": plan_pairs().map(lambda drawn: drawn[0]),
     "units after": texts(BOUND_UNITS),
     "limit stated": st.fixed_dictionaries(
         {"text": texts(QUOTED_LIMITS), "value": st.sampled_from((3500, 4, 14, 35000, 500))}

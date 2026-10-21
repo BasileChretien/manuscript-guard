@@ -134,12 +134,25 @@ manuscript's sentence that says so ("Preliminary results were presented at ...")
 it fails at submission (`related-undisclosed`). Declare it in the covering letter as well:
 `submit` lists the outputs to declare there.
 
-## 5. What no check sees
+## 5. Methods, and what no check sees
 
-`check` compares values and reasons, never what two Methods sections mean. Where the earlier
-output's case definition, exposure, outcome, exclusions, study period or model was worded
-differently, give the review panel an earlier-outputs remit (the review-panel skill): "whether
-each difference from the earlier outputs on the same data is a change of method that the
-paper states and justifies". Read it in the session with both texts side by side, the
-earlier output's Methods from its stored copy or its copied plan under
-`literature/related/<id>/design/`, and this paper's.
+With a copy, `check` also compares each model both projects fitted under one key, by its
+card, and each section both plans have under one heading, word by word: the earlier plan as
+it stood when its results were first written, this paper's as it stands. Each that differs
+is `related-method-differs`. Where the change is right, say so in the Methods and record
+why:
+
+```yaml
+    methods:
+      - plan_section: Case definition
+        because: the later guideline's definition of drug-induced liver injury
+      - model: adjusted
+        because: sex is now recorded for every report
+```
+
+`check` compares words and cards, never what two Methods sections mean. Give the review
+panel an earlier-outputs remit (the review-panel skill): "whether each difference from the
+earlier outputs on the same data is a change of method that the paper states and
+justifies". Read it in the session with both texts side by side, the earlier output's
+Methods from its stored copy or its copied plan under `literature/related/<id>/design/`,
+and this paper's, with what `manuscript-guard related` lists.

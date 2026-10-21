@@ -82,6 +82,28 @@
           "items": { "$ref": "#/$defs/value" },
           "description": "Values read from the earlier output's text or from its copied outputs, each with the sentence that states it."
         },
+        "methods": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["because"],
+            "additionalProperties": false,
+            "properties": {
+              "model": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]*$",
+                "description": "A model both projects fitted under this key."
+              },
+              "plan_section": {
+                "$ref": "#/$defs/text",
+                "description": "A heading both plans have, as either writes it."
+              },
+              "because": { "$ref": "#/$defs/text" }
+            },
+            "oneOf": [{ "required": ["model"] }, { "required": ["plan_section"] }]
+          },
+          "description": "Why a model or a section of the plan differs from the earlier output's, where it rightly does: the difference is then a note."
+        },
         "disclosed_by": {
           "$ref": "#/$defs/text",
           "description": "The manuscript's sentence that discloses the overlap, where the earlier output is not cited: \"Preliminary results were presented at ...\"."
@@ -91,7 +113,8 @@
       "dependentRequired": {
         "revision": ["project"],
         "pairs": ["project"],
-        "not_compared": ["project"]
+        "not_compared": ["project"],
+        "methods": ["project"]
       },
       "not": {
         "anyOf": [

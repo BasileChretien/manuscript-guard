@@ -274,6 +274,107 @@ def test_a_named_output_file_must_be_there(project: Path) -> None:
     assert _found(_check(project)) == [("related-file-missing", WARN)]
 
 
+# ---------------------------------------------------------------------- methods as data
+
+
+def _card(root: Path, change) -> None:
+    """Change the adjusted model's card, as a different fit would have written it."""
+    path = root / FRAGMENT
+    document = json.loads(path.read_text(encoding="utf-8"))
+    change(document["models"]["adjusted"])
+    path.write_bytes(json.dumps(document, indent=2).encode("utf-8"))
+
+
+def _plan(root: Path, old: str, new: str) -> None:
+    """Change the earlier project's plan as it stood when its results were first written."""
+    path = root / "design" / "plan.frozen.yaml"
+    document = json.loads(path.read_text(encoding="utf-8"))
+    assert old in document["plan"], old
+    document["plan"] = document["plan"].replace(old, new)
+    path.write_bytes(json.dumps(document, indent=2).encode("utf-8"))
+
+
+def test_a_model_fitted_otherwise_is_a_method_said_and_never_failed(
+    project: Path, earlier: Path
+) -> None:
+    def changed(card: dict) -> None:
+        card["engine"]["family"] = "Poisson"
+        card["terms"] = [t for t in card["terms"] if t["term"] != "C(sex, Treatment('F'))"]
+
+    _card(earlier, changed)
+    _declare(project, _entry(project="../earlier"))
+    _take(project)
+    (finding,) = _check(project, submission=True).findings
+    assert (finding.code, finding.severity) == ("related-method-differs", WARN)
+    assert "model adjusted: its family is Poisson/Logit there and Binomial/Logit here" in (
+        finding.message
+    )
+    assert "it enters sex here and not there" in finding.message
+    why = [{"model": "adjusted", "because": "the sex of each report is now recorded"}]
+    _declare(project, _entry(project="../earlier", methods=why))
+    assert _found(_check(project)) == [("related-method-explained", INFO)]
+
+
+def test_a_reference_level_changed_is_said(project: Path, earlier: Path) -> None:
+    def changed(card: dict) -> None:
+        for term in card["terms"]:
+            for entered in term["entered"]:
+                if entered.get("reference") == "F":
+                    entered["reference"] = "M"
+
+    _card(earlier, changed)
+    _declare(project, _entry(project="../earlier"))
+    _take(project)
+    (finding,) = _check(project).findings
+    assert "sex has the reference M there and F here" in finding.message
+
+
+def test_a_section_of_the_plan_worded_otherwise_is_a_method(project: Path, earlier: Path) -> None:
+    _plan(earlier, "## Outcome\n\n", "## Outcome\n\nOnly serious reports counted. ")
+    _declare(project, _entry(project="../earlier"))
+    _take(project)
+    (finding,) = _check(project, submission=True).findings
+    assert (finding.code, finding.severity) == ("related-method-differs", WARN)
+    assert "the plan's Outcome: it reads 'only serious reports counted." in finding.message
+    why = [{"plan_section": "2. OUTCOME", "because": "all reports, as the journal asked"}]
+    _declare(project, _entry(project="../earlier", methods=why))
+    assert _found(_check(project)) == [("related-method-explained", INFO)]
+
+
+def test_a_plan_rewrapped_or_its_own_deviations_changed_reads_the_same(
+    project: Path, earlier: Path
+) -> None:
+    path = earlier / "design" / "plan.frozen.yaml"
+    document = json.loads(path.read_text(encoding="utf-8"))
+    plan = document["plan"]
+    outcome = plan.index("## Outcome\n\n") + len("## Outcome\n\n")
+    end = plan.index("\n## ", outcome)
+    body = plan[outcome:end].replace(" ", "\n", 3).replace("hepatic", "*hepatic*", 1)
+    plan = plan[:outcome] + body.replace(" ", " <!-- reread --> ", 1) + plan[end:]
+    document["plan"] = plan + "\nA deviation the abstract recorded.\n"
+    path.write_bytes(json.dumps(document, indent=2).encode("utf-8"))
+    _declare(project, _entry(project="../earlier"))
+    _take(project)
+    assert _found(_check(project)) == []
+
+
+def test_a_copy_with_no_frozen_plan_reads_its_plan(project: Path, earlier: Path) -> None:
+    (earlier / "design" / "plan.frozen.yaml").unlink()
+    plan = earlier / "design" / "plan.md"
+    plan.write_bytes(plan.read_bytes().replace(b"## Outcome\n\n", b"## Outcome\n\nNot so. "))
+    _declare(project, _entry(project="../earlier"))
+    _take(project)
+    assert _found(_check(project)) == [("related-method-differs", WARN)]
+
+
+def test_the_listing_shows_a_method_changed(project: Path, earlier: Path, capsys) -> None:
+    _card(earlier, lambda card: card["engine"].update(link="Probit"))
+    _declare(project, _entry(project="../earlier"))
+    _take(project)
+    assert main(["related", str(project)]) == 0
+    assert "model adjusted: " in capsys.readouterr().out
+
+
 # ---------------------------------------------------------------------- the copy
 
 

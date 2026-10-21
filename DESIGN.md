@@ -5527,7 +5527,7 @@ other than the one run.
     a copy.
 
 **After that run** (Basile's choice, 2026-10-19), a routing case whose prompt speaks of a
-finished project starts in one. 12 of the 15 do: `tools/run_skill_evals.py` puts a copy of
+finished project starts in one. 12 of the 16 do: `tools/run_skill_evals.py` puts a copy of
 the worked example beside the cases in the copy of the suite it runs, as `evals/_project/`.
 Each such case's `case.yaml` names a `scaffold.sh` that copies it into the folder the run
 starts in, and the command is given `--scaffold`. The copy names no skill: it leaves out
@@ -5537,13 +5537,16 @@ this over keeping them and saying so). With them, the arm without the plugin cou
 several criteria ask for. A file whose data would read otherwise without its comments is
 refused. What the project is made of, its bindings and its emitter calls, still shows the
 toolkit in use to either arm, as any project made with it would, so the difference between
-the arms is what a skill adds to a model reading such a project. Three routing cases still
+the arms is what a skill adds to a model reading such a project. Four routing cases still
 start empty, and so do the near misses and the requests no skill is for:
 - project-setup starts a project, and may give the `init` command where it has no shell to
   run it;
 - manuscript-writing carries its own paragraph, and invents no finding, since its prompt
   gives none;
 - analysis-plan is about the plan before any analysis code, and the example has both.
+- data-sources asks which data could answer a question before any are chosen, and the
+  example has its own (added with the skill, 2026-10-21, with a near miss each way against
+  analysis-plan; not yet run).
 
 The example is a finished project, and some prompts ask for what it lacks: paper-audit and
 word-roundtrip speak of a .docx, reviewer-response of reviewers' comments, and review-panel
@@ -6138,6 +6141,85 @@ LFS pointer with an extension (whose oid is of the content after it), or results
 before `raw_sha256`, is a warning that the input is not fetched (`input-not-fetched`), where
 `input-missing` had failed. A file over 1024 bytes, or one that reads as neither, is the
 data, hashed as before.
+
+## The datasets considered are a record, and the one chosen is held to it
+
+A project chose its data before anything in the toolkit spoke: the custodian's rules were
+declared in `paper.yaml` once someone remembered them, the plan named a source in its own
+words, and the Data availability statement was written at the end from memory. What the
+choice rested on, which datasets could answer the question, how each is reached, at what
+cost and delay, on what terms, was nowhere. A source chosen for its variables and found
+afterwards to take nine months and a committee, or to forbid a count below eleven, costs a
+project its schedule or a table, and both were on the custodian's page before the choice.
+
+`design/data_sources.yaml` is that record, written with the author by the data-sources skill
+and modelled on the journal shortlist (Basile, 2026-10-21, question box, every option as
+recommended and the plan check besides). It is held to a schema
+(`contracts/schemas/data-sources.schema.json`): the question and what the data must hold,
+stated by the author first, with their name and the date; the candidates, each with its
+custodian, what it covers (the variables by the names `design/data_dictionary.yaml` gives,
+where the project keeps one; nothing reads the dictionary, so neither depends on the other),
+its route (`open-download`, `registration`, `application`, `data-use-agreement`, `authors`,
+`commercial-licence`), its cost, delay and terms; the ranking, the decision and who made it,
+the reasons for the candidates rejected, the messages drafted for the author to send, and
+what came of each request. The skill searches catalogues and custodians' pages, proposes, and
+drafts; it never chooses, applies, accepts terms or sends.
+
+**Each access claim has its source.** A claim names the fields it is the evidence for
+(`about:`) and carries either the page's words, its URL, the date it was read and the page
+stored as text in `design/data_sources/pages/`, or the person who said it and when, from a
+call or a letter. G12 holds a quote to its stored page as G4 holds a journal profile's
+(`_on_page`: folded for case, spacing and typography, and not part of a longer word or
+number), and says a quote that is not there (`data-source-quote-not-on-page`), a page not
+stored (`data-source-page-not-stored`), and the fields of a candidate's `access:` and
+`terms:` that no claim names (`data-source-unsourced`). A chosen source whose route is not
+known is said (`data-source-route-unknown`): the choice was to be made with it known. An id
+named where no candidate has it (`data-source-unknown`), one given twice
+(`data-source-id-repeated`), a model named where a person states, chooses or sends
+(`data-source-not-a-person`, by G7's list of names) and a record out of shape
+(`data-sources-schema`) are warnings; a record with no decision is a note
+(`data-source-undecided`), since nothing is then held to it.
+
+**The choice is held to the rest of the paper.** Three things read it, each built in the
+first pull request as Basile chose:
+
+* `paper.yaml`'s `custodian:`. G2's small-count check reads the minimum only from there, and
+  `review --run`'s refusal reads `restricts_sending` only from there, so a rule the record
+  holds for a chosen source and `paper.yaml` lacks is a check that never runs.
+  `custodian-rule-undeclared` says so, for the largest minimum among the chosen sources and
+  for any of them that forbids sending; a minimum smaller than the record's is not the
+  custodian's. It is the one finding here that fails: a warning while the paper is written,
+  a failure from `internal-review`, the stage at which `count-below-minimum` fails. The gate
+  is told the stage and gives the severity itself, since a failure demoted before its stage
+  is a note, and this is to be seen from the start.
+* The plan. Its Population or Data source section, subsections included, names a chosen
+  source by its name, another name or an identifier, or G12 warns (`plan-source-unnamed`).
+  A plan without the section is `plan-section-missing`'s.
+* The Data availability statement, in G4: it names each chosen source, or a cited dataset's
+  DOI names it (`data-statement-source-unnamed`), and it does not say the data are had on
+  request where anyone may download them, nor that they are publicly available where
+  somebody decides access (`data-statement-route-differs`). The statement is read sentence
+  by sentence for "on request" and "from the corresponding author", and for "publicly",
+  "openly" or "freely" available and their like. A warning rests on a strict reading: the
+  phrase, with no denial anywhere before it in its sentence ("not", "cannot", "never",
+  "neither", "nor", "no", "none", "nothing", "without", "-n't"; "at no cost" and "no-cost" deny
+  nothing). Three rounds of review each found a denial that a clause boundary or a window of
+  words cut off, "are not, however, publicly available" (round 1), "generated no new data,
+  and the archive is publicly available" (round 2), "None of the claims, prescriptions, and
+  records are publicly available" (round 3), and each was a warning given wrongly; read
+  strictly, a denial of something else silences the phrase too, a warning missed; a denial
+  in other words, or after the phrase, still warns (Known gaps). A sentence is said of the sources it names; one that names none and
+  speaks of data is said of every chosen source, where all are reached one way. A statement
+  that speaks of an open source as openly available at all, denied or not, is taken to ask
+  for something else, the analysis files or the code, when it also says "on request": that
+  reading is lenient, because it excuses a warning. Read wherever a source is chosen, with or
+  without a journal profile's data policy, and not in a LaTeX manuscript until G4 reads one.
+
+All of it but the custodian rule is a warning, as the shortlist's are: what a record says is
+the author's and the custodian's to settle, and a gate that blocked on a quote would block on
+a page that moved. The reading of the statement is held over generated inputs: every
+phrasing, denied and not, under an open and a restricted source, and every rendering of a
+source's name, in drawn text (`tests/test_properties.py`); the limits are in Known gaps.
 
 ## What a change makes stale
 
@@ -11640,6 +11722,47 @@ Open, recorded as each change landed:
   where the statement names its archive too. A dataset's DOI counts as cited when an entry of
   `references.bib` holds it, whether the text cites that entry or not. A regular expression
   in the profile that does not compile stops G4, as one in its required statements does.
+- **The record of data sources is read for what it says, and the statement for a few
+  phrases.** A quote is held to the page stored beside the record, and nothing holds that
+  page to the custodian's site: a page saved wrong, or edited to hold a quote, passes, and a
+  page that has changed since it was read is not noticed (the journal profile records its
+  page's digest; this record does not). A claim said by a person is their word, and a name
+  in `stated_by` or `decided_by` is refused only where G7's list of model names finds it. A
+  field with a claim about it is backed whatever the claim says: "free" backed by a quote
+  about the licence passes. Only the access and terms fields are asked for a claim; what a
+  source covers, its population, period and variables, may be written with none. A source
+  is named in the plan or the statement by its name, another name or an identifier, folded
+  for case, spacing and typography, as the words they are: an abbreviation the record does
+  not list is not found, and a name that is also a common word ("Sentinel") is found in any
+  sentence that uses the word. The statement is read for "on request" and "from the
+  corresponding author", and for "publicly", "openly" or "freely" available and their
+  like, and a warning is given only where no "not", "cannot", "never", "neither", "nor",
+  "no", "none", "nothing", "without" or "-n't" (either apostrophe) stands anywhere before the phrase in its sentence ("at
+  no cost", "for no fee" and "no-cost" aside); another way of saying either is not read.
+  So a denial of something else silences the phrase: "The data cannot be shared, but
+  summaries are publicly available" beside a claims database, "This study generated no new
+  data, and the archive is available on request" beside an open archive, and "No cost or
+  claims data are publicly available" all say nothing, where the first two should warn. A sentence is said of the sources it names, or, naming none and speaking of
+  data, of every chosen source where all are reached one way; so "The code used to analyse
+  the data is available on request" is read as said of an open source, and warns, and a
+  sentence of the statement about summary data or analysis files that names no source warns
+  too, "Aggregated data underlying the figures are publicly available" beside a claims
+  database (round 1 of #384), and so does a denial in other words or after the phrase:
+  "held by the custodian rather than publicly available", "Publicly available datasets
+  could not answer the question, so the claims were obtained under an agreement". A
+  statement that speaks of an open source as openly available anywhere, denied or not, is
+  taken to ask for something else when it says "on request": "The ORA data are not
+  publicly available. They are available on request" says nothing, and so, in one
+  sentence, "Summaries of the ORA are publicly available; ORA data are available on request"
+  says nothing. Sentences are split at a stop and a space before
+  anything but a small letter, so an abbreviation followed by a capital ends one. A custodian
+  rule is held to `paper.yaml` only for the sources chosen, by the largest minimum among
+  them; a rule of a source not chosen is not read. YAML reads a bare `yes`, `no`, `on` or
+  `off` as true or false: the record dates its history with `date:`, not `on:`, and takes a
+  variable's `provided` and a source's `redistribution` either way, but any other field of
+  text answered with a bare `no` breaks the schema, and the record is set aside with a
+  warning (round 1 of #384). The journal shortlist's history is dated with `on:` and breaks
+  in the same way, on `main`.
 - **A placeholder is found by its kind, and only in the text the gate reads.** In the
   manuscript TODO and TBD count in any case, as they always did, so a Spanish "todo" quoted
   in the prose is one. A slot in brackets in a form the rules do not name, "[Name of the

@@ -141,6 +141,7 @@ def test_the_package_holds_what_reproduces_the_results_and_nothing_of_the_rest(
         "data/reports.csv",  # synthetic
         "data/event_terms.txt",  # listed in package.share
         "literature/ledger.yaml",
+        "literature/passages.yaml",
         "literature/references.bib",
         "LICENSE",
         "README.md",

@@ -42,7 +42,8 @@ FOLDERS = (
     ("design/", "the analysis plan, and the copy of it kept when the first results were "
      "written"),
     ("literature/", "the values taken from the literature, each with its quotation "
-     "(`ledger.yaml`), and the reference list"),
+     "(`ledger.yaml`), the passages that support cited statements (`passages.yaml`), and "
+     "the reference list"),
     ("manuscript/", "the manuscript's source"),
 )
 

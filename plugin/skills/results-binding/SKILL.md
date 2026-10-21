@@ -1,6 +1,6 @@
 ---
 name: results-binding
-description: Publish values from the analysis through the Python or R emitter, write them into the manuscript as bindings, and get an unbound number out of the red. Use when writing or changing an analysis script in a manuscript-guard project, when putting a result, table or figure into the text, or when check reports unclassified-number, unresolved-binding, value-splits-paragraph, unquoted-result, typed-parameter, typed-software-version, typed-dictionary-release, parameter-unread, hand-authored-table, results-edited, script-newer, input-changed, duplicate-quantity, pointer-to-nothing, display-not-cited, cited-out-of-order, pointer-word-mismatch or ref-number-unknown. Not for prose style (use manuscript-writing), the Methods against the code (use methods-writer), or a paper written outside manuscript-guard (use paper-audit).
+description: Publish values from the analysis through the Python or R emitter, write them into the manuscript as bindings, and get an unbound number out of the red. Use when writing or changing an analysis script in a manuscript-guard project, when putting a result, table or figure into the text, or when check reports unclassified-number, unresolved-binding, value-splits-paragraph, unquoted-result, typed-parameter, typed-software-version, typed-dictionary-release, parameter-unread, hand-authored-table, results-edited, script-newer, input-changed, duplicate-quantity, pointer-to-nothing, display-not-cited, cited-out-of-order, pointer-word-mismatch, ref-number-unknown or caption-names-another. Not for prose style (use manuscript-writing), the Methods against the code (use methods-writer), or a paper written outside manuscript-guard (use paper-audit).
 ---
 
 # Binding the numbers
@@ -114,9 +114,12 @@ The database held {{results.cohort.n_reports}} reports. The reporting odds ratio
 - `{{results.…}}` resolves against `results/`; `{{lit.…}}` against `literature/ledger.yaml`
   and `attested.yaml` (the [literature-verify](../literature-verify/SKILL.md) skill).
 - `{{table.key}}` goes on its own line and becomes the table with its caption.
-  `{{figure.key}}` inserts `figures/<key>.<ext>`. The build prints no number in either
-  caption. A mistyped figure key passes `check` and fails at `build`; a mistyped table key
-  is named only at `build`, though `check` reports the intended table as `unplaced-table`.
+  `{{figure.key}}` inserts `figures/<key>.<ext>`. The build prints the table's number
+  before its emitted caption ("Table 2. Reports by drug group."), so emit the caption
+  without one. A figure's caption is the paragraph under it, opened with its ref:
+  `{{ref.figure.forest}}. Forest plot of ...`. A mistyped figure key passes `check` and
+  fails at `build`; a mistyped table key is named only at `build`, though `check` reports
+  the intended table as `unplaced-table`.
 - `{{method.key}}` prints nothing. It ends Methods text and points it at a step the
   analysis marked with `em.step("key")`; the [methods-writer](../methods-writer/SKILL.md)
   skill covers it.
@@ -243,6 +246,7 @@ checked like any other.
 | `unplaced-table` | an emitted table is never placed with `{{table.key}}` |
 | `pointer-to-nothing`, `display-not-cited`, `cited-out-of-order` | a typed "Table 3" names no table the document places, a table is cited nowhere, or the first citations are not in the order the tables are numbered. Name it with `{{ref.table.key}}` (`bind --pointers` does it), or move the table |
 | `pointer-word-mismatch` | the words around a `{{num.…}}` or `{{ref.…}}` name another kind or the other document ("Figure {{num.table.a}}"). Fix the words, or write the ref whole |
+| `caption-names-another` | a caption beside a table or figure (typed under a figure, above or under a table, or emitted by the analysis with a number) names another one. Write the caption's number as `{{ref.figure.key}}`, or emit the caption without its number |
 | `ref-number-unknown` | the build cannot number this ref: its kind is also placed by hand or sent as files in that document, or its key is placed twice. Type that pointer |
 | `hand-authored-table` | emit the table |
 | `script-newer`, `input-changed` | re-run the script that wrote the results; where the input is a dataset's, with the date of the new extraction and its pin |

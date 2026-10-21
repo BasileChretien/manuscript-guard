@@ -11,6 +11,8 @@ Which registries, and in what order:
 * doi.org's handle API where neither knows it, for the other agencies (JaLC for Japanese
   papers, mEDRA, KISTI): whether the DOI is registered at all, and nothing more.
 * PubMed's ESummary for a PMID, separately from the DOI, with the DOI PubMed holds for it.
+* For a reference with neither, a search by its title: PubMed, Crossref, and OpenAlex while
+  its allowance lasts (`lookup/unidentified`).
 
 Nothing here decides anything about the reference. G7 reads the record, offline.
 """
@@ -30,6 +32,7 @@ from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.gates.identifiers import doi_of, pmid_of
 from manuscript_guard.gates.numbers import source_files
+from manuscript_guard.gates.searched import unsearchable
 from manuscript_guard.literature.bibfile import read_entries
 from manuscript_guard.literature.lookups import (
     SCHEMA,
@@ -59,6 +62,10 @@ CONTACT = "MANUSCRIPT_GUARD_CONTACT"
 #: The longest wait a 429's `Retry-After` is obeyed for, once, before the answer is kept as
 #: unresolvable.
 MAX_WAIT_SECONDS = 30.0
+#: The name Crossref's searches are paced under.
+CROSSREF_LIST = "api.crossref.org/works"
+#: Where paper.yaml says why a real work cited without an identifier is in no registry.
+NOT_INDEXED = "not_indexed"
 
 
 @dataclass(frozen=True)
@@ -70,6 +77,9 @@ class Services:
     datacite: str = "https://api.datacite.org/dois/"
     doi_org: str = "https://doi.org/api/handles/"
     pubmed: str = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi"
+    esearch: str = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
+    crossref_search: str = "https://api.crossref.org/works"
+    openalex_search: str = "https://api.openalex.org/works"
 
 
 @dataclass(frozen=True)
@@ -103,12 +113,15 @@ class Credentials:
 @dataclass
 class Pacer:
     """At most one request to a host in each `interval` seconds: NCBI allows three a second
-    without a key, the others more, and none is asked faster than five."""
+    without a key, the others more, and none is asked faster than five. Crossref answers a
+    search from another pool than a DOI, its list pool, at one a second
+    (`x-rate-limit-limit: 1`, `x-api-pool: public-array`, 2026-10-20): a search is paced
+    under its own name."""
 
     clock: Callable[[], float] = time.monotonic
     sleep: Callable[[float], None] = time.sleep
     intervals: dict[str, float] = field(
-        default_factory=lambda: {"eutils.ncbi.nlm.nih.gov": 0.34}
+        default_factory=lambda: {"eutils.ncbi.nlm.nih.gov": 0.34, CROSSREF_LIST: 1.0}
     )
     default: float = 0.2
     _last: dict[str, float] = field(default_factory=dict)
@@ -134,6 +147,8 @@ class Planned:
     skipped: str = ""
     #: Why it is looked up again, where it has a record.
     again: str = ""
+    #: What it is searched by, where it has no identifier (`lookup/unidentified.Query`).
+    query: Any = None
 
 
 def cited_keys(project: Project) -> list[str]:
@@ -149,6 +164,8 @@ def _stale(record: dict[str, Any] | None, planned: Planned) -> str:
     """Why a record no longer answers for the entry, or "" where it does."""
     if record is None:
         return "no record"
+    if record["schema"] != SCHEMA:
+        return "it was looked up before the authors were kept"
     if record["entry_sha256"] != planned.digest:
         return "the entry changed since it was looked up"
     wanted = {k: v for k, v in (("doi", planned.doi), ("pmid", planned.pmid)) if v}
@@ -161,7 +178,11 @@ def _stale(record: dict[str, Any] | None, planned: Planned) -> str:
 
 def plan(project: Project, *, again: bool = False) -> list[Planned]:
     """What `lookup` would do with each cited reference."""
-    entries = read_entries(project.path("literature") / BIB_FILE)
+    from manuscript_guard.lookup import unidentified
+
+    bib = project.path("literature") / BIB_FILE
+    entries, raw = read_entries(bib), read_entries(bib, braces=True)
+    excused = (project.setting("lookup") or {}).get(NOT_INDEXED) or {}
     planned: list[Planned] = []
     files: dict[str, str] = {}
     for citekey in cited_keys(project):
@@ -180,23 +201,30 @@ def plan(project: Project, *, again: bool = False) -> list[Planned]:
             )
             continue
         doi, pmid = doi_of(fields), pmid_of(fields)
+        query = None
         if not doi and not pmid:
-            written = fields.get("doi") or fields.get("pmid")
-            planned.append(
-                Planned(
-                    citekey,
-                    skipped="its identifier is malformed (G7 says how)"
-                    if written
-                    else "it has no DOI and no PMID",
-                )
-            )
-            continue
-        one = Planned(citekey, doi=doi, pmid=pmid, digest=entry_digest(fields))
+            why_not = _unsearched(fields, excused.get(citekey))
+            if why_not:
+                planned.append(Planned(citekey, skipped=why_not))
+                continue
+            query = unidentified.query(fields, raw.get(citekey, {}))
+        one = Planned(citekey, doi=doi, pmid=pmid, digest=entry_digest(fields), query=query)
         why = "looked up again, as asked" if again else _stale(read_record(project, citekey), one)
         planned.append(
-            Planned(citekey, doi, pmid, one.digest, skipped="" if why else "up to date", again=why)
+            Planned(citekey, doi, pmid, one.digest, skipped="" if why else "up to date", again=why,
+                    query=query)  # fmt: skip
         )
     return planned
+
+
+def _unsearched(fields: dict[str, str], excuse: str | None) -> str:
+    """Why an entry with no DOI and no PMID is not searched for, or "" where it is."""
+    if fields.get("doi") or fields.get("pmid"):
+        return "its identifier is malformed (G7 says how)"
+    if excuse:
+        return f"it has no DOI and no PMID, and paper.yaml says no registry has it: {excuse}"
+    why = unsearchable(fields)
+    return f"it has no DOI and no PMID, and {why}" if why else ""
 
 
 def _asker(transport: Transport, pacer: Pacer, credentials: Credentials) -> sources.Ask:
@@ -205,17 +233,19 @@ def _asker(transport: Transport, pacer: Pacer, credentials: Credentials) -> sour
 
     def ask(request: Request) -> Response:
         host = urlsplit(request.base).hostname or ""
+        # Crossref's searches have a pool, and a pace, of their own.
+        pool = CROSSREF_LIST if request.base.rstrip("/").endswith(CROSSREF_LIST) else host
         # The contact address is in the User-Agent only where a source puts it there.
         headers = {"User-Agent": user_agent(None), "Accept": "application/json",
                    **request.headers}  # fmt: skip
         sent = Request(request.base, request.params, request.secret, headers)
-        pacer.wait(host)
+        pacer.wait(pool)
         response = transport(sent, TIMEOUT_SECONDS)
         if response.status == 429:
             wait = response.headers.get("Retry-After", "")
             if wait.isdigit() and int(wait) <= MAX_WAIT_SECONDS:
                 pacer.sleep(float(wait))
-                pacer.wait(host)
+                pacer.wait(pool)
                 response = transport(sent, TIMEOUT_SECONDS)
         return response
 
@@ -228,8 +258,12 @@ def look_up(
     services: Services,
     credentials: Credentials,
     today: date,
+    allowance: Any = None,
 ) -> dict[str, Any]:
-    """The record for one reference: each registry asked in turn."""
+    """The record for one reference: each registry asked in turn, or, for one with no
+    identifier, each searched for its title."""
+    from manuscript_guard.lookup import unidentified
+
     found: dict[str, Any] = {}
     if planned.doi:
         doi = planned.doi
@@ -245,6 +279,13 @@ def look_up(
         found["pubmed"] = sources.pubmed(
             planned.pmid, ask, services.pubmed, credentials.contact, credentials.ncbi_key
         )
+    if planned.query is not None:
+        where = unidentified.Where(
+            esearch=services.esearch, esummary=services.pubmed,
+            crossref=services.crossref_search, openalex=services.openalex_search,
+            credentials=credentials, allowance=allowance or unidentified.Allowance(),
+        )  # fmt: skip
+        found = unidentified.look_up(planned.query, ask, where)
     identifiers = {k: v for k, v in (("doi", planned.doi), ("pmid", planned.pmid)) if v}
     record = {
         "schema": SCHEMA,
@@ -269,14 +310,20 @@ def run(
     said: Callable[[str], None] = print,
 ) -> list[tuple[Planned, dict[str, Any], Path]]:
     """Look up each planned reference that is due, write its record, and say what came."""
+    from manuscript_guard.lookup import unidentified
+
     services = services or Services()
     credentials = credentials or Credentials()
-    ask = _asker(transport or default_transport, pacer or Pacer(), credentials)
+    allowance = unidentified.Allowance()
+    ask = unidentified.listening(
+        _asker(transport or default_transport, pacer or Pacer(), credentials),
+        allowance, urlsplit(services.openalex_search).hostname or "",
+    )  # fmt: skip
     written = []
     for one in planned:
         if one.skipped:
             continue
-        record = look_up(one, ask, services, credentials, today or date.today())
+        record = look_up(one, ask, services, credentials, today or date.today(), allowance)
         _never_kept(record, credentials)
         path = write_record(project, record)
         said(f"@{one.citekey}: " + summary(record))
@@ -300,20 +347,28 @@ def summary(record: dict[str, Any]) -> str:
         "datacite": "DataCite",
         "doi_org": "doi.org",
         "pubmed": "PubMed",
+        "pubmed_search": "PubMed",
+        "crossref_search": "Crossref",
+        "openalex_search": "OpenAlex",
     }
     parts = []
     for name, answer in record["sources"].items():
         said = answer["status"]
         if said == sources.UNRESOLVABLE:
             said += f" ({answer['why']})"
+        elif name.endswith("_search"):
+            alike = len(answer.get("candidates", []))
+            said = f"{alike} work(s) of a like title" if said == sources.FOUND else "none"
         elif name == "openalex" and answer.get("is_retracted"):
             said += ", retracted"
         parts.append(f"{names[name]} {said}")
-    return "; ".join(parts)
+    searched = "searched by its title: " if not record["identifiers"] else ""
+    return searched + "; ".join(parts)
 
 
 __all__ = [
     "CONTACT",
+    "NOT_INDEXED",
     "NCBI_KEY",
     "OPENALEX_KEY",
     "Credentials",

@@ -361,7 +361,7 @@ def check_numbers(
     # points at is held here (`gates/pointers.py`).
     from manuscript_guard.gates.pointers import check_pointers
 
-    report = report.merge(check_pointers(project))
+    report = report.merge(check_pointers(project, results))
     return report.with_counts(
         source_files=totals["files"],
         numeric_atoms=totals["atoms"],

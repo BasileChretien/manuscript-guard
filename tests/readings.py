@@ -246,6 +246,22 @@ def _sections() -> Reading:
     return sections
 
 
+@reading("supplementary methods")
+def _supplementary_methods() -> Reading:
+    """What G9 reads as the Methods of a file of the supplement, and each model G15 finds
+    named in its Methods. Where G2 holds its Methods-only rules is the `numbers` reading's."""
+    from manuscript_guard.gates.methods import supplement_methods_in
+    from manuscript_guard.gates.models import named_in_methods
+
+    def supplementary(text: str) -> dict[str, Any]:
+        return {
+            "read": supplement_methods_in(text),
+            "models": [list(found) for found in named_in_methods(text)],
+        }
+
+    return supplementary
+
+
 @reading("summaries")
 def _summaries() -> Reading:
     """The results keys a file gives in its Abstract or a conclusion, and those it binds where
@@ -606,6 +622,46 @@ def _title_held() -> Reading:
         return None if found is None else round(found, 6)
 
     return held
+
+
+@reading("title alike")
+def _title_alike() -> Reading:
+    """How alike a cited title is to a registered one, each way, by which G7 takes a work a
+    search found for the one cited (`gates/searched`)."""
+    from manuscript_guard.gates.searched import alike
+
+    def held(given: dict[str, str]) -> float:
+        return round(alike(given["cited"], [given["registered"]]), 6)
+
+    return held
+
+
+@reading("search words")
+def _search_words() -> Reading:
+    """The words of a title `lookup` searches the registries for."""
+    from manuscript_guard.gates.searched import search_words
+
+    return search_words
+
+
+@reading("authors cited")
+def _authors_cited() -> Reading:
+    """A .bib entry's author field, read into people and groups."""
+    from manuscript_guard.literature.names import cited
+
+    def read(field: str) -> list[Any]:
+        found = cited(field)
+        return [[[n.family, n.given, n.group] for n in found.names], found.truncated]
+
+    return read
+
+
+@reading("same family name")
+def _same_family_name() -> Reading:
+    """Whether two family names are one person's, by G7's folding (`gates/authors`)."""
+    from manuscript_guard.gates.authors import same
+
+    return lambda given: same(given["cited"], given["registered"])
 
 
 @reading("units after")
@@ -1263,6 +1319,373 @@ def _import() -> Reading:
 
 def _named(said: str, root: Path, folder: Path) -> str:
     return _from_root(_from_root(said, root), folder, written="<folder>")
+
+
+# ---------------------------------------------------------------------- the marked-up copy
+
+_WML = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+_RELS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+#: The pictures a generated figure shows, by name: four pixels of one colour.
+PICTURES = {"red": (255, 0, 0), "blue": (0, 0, 255)}
+#: How a run of a generated document looks, by the letter a block's run is given.
+_LOOKS = {"": "", "i": "<w:i/>", "b": "<w:b/>"}
+
+
+def _png(colour: tuple[int, int, int]) -> bytes:
+    import struct
+    import zlib
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        crc = zlib.crc32(kind + data) & 0xFFFFFFFF
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", crc)
+
+    rows = b"".join(b"\x00" + bytes(colour) * 2 for _ in range(2))
+    header = struct.pack(">IIBBBBB", 2, 2, 8, 2, 0, 0, 0)
+    return (
+        b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header) + chunk(b"IDAT", zlib.compress(rows))
+        + chunk(b"IEND", b"")
+    )  # fmt: skip
+
+
+def _xml_text(text: str) -> str:
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _runs_xml(runs: list[list[str]]) -> str:
+    return "".join(
+        f'<w:r>{"<w:rPr>" + _LOOKS[look] + "</w:rPr>" if look else ""}'
+        f'<w:t xml:space="preserve">{_xml_text(text)}</w:t></w:r>'
+        for text, look in runs
+    )
+
+
+def document_of(blocks: list[dict[str, Any]], path: Path) -> Path:
+    """A Word document of `blocks`, laid out as pandoc lays one out: a paragraph (`runs`,
+    each its text and how it looks, a `style`, in a `list` or not, with a `note` at its
+    end or not), a `table` of rows of cells, or a `figure` showing one of `PICTURES`."""
+    body: list[str] = []
+    notes: list[str] = []
+    pictures: dict[str, str] = {}
+    for number, block in enumerate(blocks, start=1):
+        if block["kind"] == "table":
+            columns = len(block["rows"][0])
+            grid = '<w:gridCol w:w="2000"/>' * columns
+            rows = "".join(
+                "<w:tr>" + "".join(
+                    '<w:tc><w:tcPr/><w:p><w:pPr><w:pStyle w:val="Compact"/></w:pPr>'
+                    + _runs_xml([[cell, ""]]) + "</w:p></w:tc>"
+                    for cell in row
+                ) + "</w:tr>"
+                for row in block["rows"]
+            )  # fmt: skip
+            body.append(
+                f'<w:tbl><w:tblPr><w:tblStyle w:val="Table"/></w:tblPr><w:tblGrid>{grid}'
+                f"</w:tblGrid>{rows}</w:tbl>"
+            )
+            continue
+        if block["kind"] == "figure":
+            rid = pictures.setdefault(block["picture"], f"rIdPicture{len(pictures) + 1}")
+            body.append(
+                '<w:p><w:pPr><w:pStyle w:val="CaptionedFigure"/></w:pPr><w:r><w:drawing>'
+                '<wp:inline><wp:extent cx="91440" cy="91440"/>'
+                f'<wp:docPr id="{number}" name="Picture"/><a:graphic><a:graphicData '
+                'uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic>'
+                f'<pic:nvPicPr><pic:cNvPr id="0" name="{block["picture"]}.png"/>'
+                f'<pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="{rid}"/>'
+                '</pic:blipFill><pic:spPr/></pic:pic></a:graphicData></a:graphic>'
+                "</wp:inline></w:drawing></w:r></w:p>"
+            )  # fmt: skip
+            continue
+        style = block.get("style") or ("Compact" if block.get("list") else "BodyText")
+        listed = (
+            '<w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr>'
+            if block.get("list") else ""
+        )  # fmt: skip
+        reference = ""
+        if block.get("note"):
+            note = len(notes) + 1
+            notes.append(
+                f'<w:footnote w:id="{note}"><w:p><w:pPr><w:pStyle w:val="FootnoteText"/>'
+                '</w:pPr><w:r><w:rPr><w:rStyle w:val="FootnoteReference"/></w:rPr>'
+                f"<w:footnoteRef/></w:r>{_runs_xml([[' ', '']] + block['note'])}</w:p>"
+                "</w:footnote>"
+            )  # fmt: skip
+            reference = (
+                '<w:r><w:rPr><w:rStyle w:val="FootnoteReference"/></w:rPr>'
+                f'<w:footnoteReference w:id="{note}"/></w:r>'
+            )
+        body.append(
+            f'<w:p><w:pPr><w:pStyle w:val="{style}"/>{listed}</w:pPr>'
+            f'<w:bookmarkStart w:id="{number}" w:name="mg-p-main-{number}"/>'
+            f'<w:bookmarkEnd w:id="{number}"/>{_runs_xml(block["runs"])}{reference}</w:p>'
+        )
+    namespaces = (
+        f'xmlns:w="{_WML}" xmlns:r="{_RELS}" '
+        'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" '
+        'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
+        'xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"'
+    )
+    document = f"<w:document {namespaces}><w:body>{''.join(body)}<w:sectPr/></w:body></w:document>"
+    footnotes = (
+        f'<w:footnotes xmlns:w="{_WML}" xmlns:r="{_RELS}">'
+        '<w:footnote w:type="separator" w:id="-1"><w:p><w:r><w:separator/></w:r></w:p>'
+        '</w:footnote><w:footnote w:type="continuationSeparator" w:id="0"><w:p><w:r>'
+        f"<w:continuationSeparator/></w:r></w:p></w:footnote>{''.join(notes)}</w:footnotes>"
+    )  # fmt: skip
+    styles = (
+        f'<w:styles xmlns:w="{_WML}"><w:style w:type="paragraph" w:styleId="Heading1">'
+        '<w:name w:val="heading 1"/><w:pPr><w:outlineLvl w:val="0"/></w:pPr></w:style>'
+        '<w:style w:type="paragraph" w:styleId="BodyText"><w:name w:val="Body Text"/>'
+        '</w:style><w:style w:type="paragraph" w:styleId="Compact"><w:name w:val="Compact"/>'
+        "</w:style></w:styles>"
+    )  # fmt: skip
+    numbering = (
+        f'<w:numbering xmlns:w="{_WML}"><w:abstractNum w:abstractNumId="0"><w:lvl w:ilvl="0">'
+        '<w:numFmt w:val="bullet"/><w:lvlText w:val="-"/></w:lvl></w:abstractNum>'
+        '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num></w:numbering>'
+    )  # fmt: skip
+    package = "http://schemas.openxmlformats.org/package/2006"
+    office = "application/vnd.openxmlformats-officedocument.wordprocessingml"
+    types = (
+        f'<Types xmlns="{package}/content-types">'
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.'
+        'relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>'
+        '<Default Extension="png" ContentType="image/png"/>'
+        f'<Override PartName="/word/document.xml" ContentType="{office}.document.main+xml"/>'
+        f'<Override PartName="/word/footnotes.xml" ContentType="{office}.footnotes+xml"/>'
+        f'<Override PartName="/word/styles.xml" ContentType="{office}.styles+xml"/>'
+        f'<Override PartName="/word/numbering.xml" ContentType="{office}.numbering+xml"/>'
+        "</Types>"
+    )  # fmt: skip
+    kinds = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+    relationships = "".join(
+        f'<Relationship Id="{rid}" Type="{kinds}/image" Target="media/{name}.png"/>'
+        for name, rid in pictures.items()
+    ) + "".join(
+        f'<Relationship Id="rId{kind}" Type="{kinds}/{kind}" Target="{kind}.xml"/>'
+        for kind in ("footnotes", "styles", "numbering")
+    )  # fmt: skip
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as out:
+        out.writestr("[Content_Types].xml", types)
+        out.writestr(
+            "_rels/.rels",
+            f'<Relationships xmlns="{package}/relationships"><Relationship Id="rId1" '
+            f'Type="{kinds}/officeDocument" Target="word/document.xml"/></Relationships>',
+        )
+        out.writestr(
+            "word/_rels/document.xml.rels",
+            f'<Relationships xmlns="{package}/relationships">{relationships}</Relationships>',
+        )
+        out.writestr("word/document.xml", document)
+        out.writestr("word/footnotes.xml", footnotes)
+        out.writestr("word/styles.xml", styles)
+        out.writestr("word/numbering.xml", numbering)
+        for name in pictures:
+            out.writestr(f"word/media/{name}.png", _png(PICTURES[name]))
+    return path
+
+
+def _looked(pieces: list[tuple[str, str]]) -> str:
+    """Text with how it looks marked, character by character, so that two runs that look
+    alike read as one: `*` around italics, `**` around bold."""
+    out, now = [], ""
+    for text, look in pieces:
+        for char in text:
+            if look != now:
+                out.append({"i": "*", "b": "**"}.get(now, "") + {"i": "*", "b": "**"}.get(look, ""))
+                now = look
+            out.append(char)
+    out.append({"i": "*", "b": "**"}.get(now, ""))
+    return "".join(out)
+
+
+def plain_of(blocks: list[dict[str, Any]]) -> list[str]:
+    """What a generated document reads as, as `read_plainly` reads one: a line for each
+    paragraph, each row of a table and each figure, then each note."""
+    lines: list[str] = []
+    notes: list[str] = []
+    for block in blocks:
+        if block["kind"] == "table":
+            lines += [" | ".join(row) for row in block["rows"]]
+        elif block["kind"] == "figure":
+            lines.append(f"(picture {block['picture']})")
+        else:
+            lines.append(_looked([(text, look) for text, look in block["runs"]]))
+            if block.get("note"):
+                notes.append(_looked([(" ", "")] + [(t, k) for t, k in block["note"]]).strip())
+    return lines + [f"note: {note}" for note in notes]
+
+
+def _embedded(drawing: Any) -> str:
+    """The relationship id of the picture a drawing shows."""
+    key = f"{{{_RELS}}}embed"
+    return next(node.get(key) for node in drawing.iter() if node.get(key))
+
+
+def _look_of(properties: Any) -> str:
+    if properties is None:
+        return ""
+    if properties.find(f"{{{_WML}}}i") is not None:
+        return "i"
+    return "b" if properties.find(f"{{{_WML}}}b") is not None else ""
+
+
+def read_plainly(document: Path, *, accept: bool) -> list[str]:
+    """A document read as Word shows it with every tracked change accepted, or every one
+    rejected: by this file's own reading of the XML, which owes nothing to the package's."""
+    from xml.etree import ElementTree as ET
+
+    w = f"{{{_WML}}}"
+    gone = w + ("del" if accept else "ins")
+    with zipfile.ZipFile(document) as archive:
+        root = ET.fromstring(archive.read("word/document.xml"))
+        notes_root = ET.fromstring(archive.read("word/footnotes.xml"))
+        rels = ET.fromstring(archive.read("word/_rels/document.xml.rels"))
+        media = {name: archive.read(name) for name in archive.namelist() if "media/" in name}
+    colours = {_png(colour): name for name, colour in PICTURES.items()}
+    targets = {rel.get("Id"): rel.get("Target") for rel in rels}
+
+    def look(run: Any) -> str:
+        properties = run.find(w + "rPr")
+        change = None if properties is None else properties.find(w + "rPrChange")
+        if not accept and change is not None:
+            return _look_of(change.find(w + "rPr"))
+        return _look_of(properties)
+
+    def pieces(node: Any) -> list[tuple[str, str]]:
+        out: list[tuple[str, str]] = []
+        for child in node:
+            if child.tag == gone or child.tag in (w + "pPr", w + "rPr"):
+                continue
+            if child.tag == w + "r":
+                for inner in child:
+                    if inner.tag in (w + "t", w + "delText"):
+                        out.append((inner.text or "", look(child)))
+                    elif inner.tag == w + "drawing":
+                        data = media.get("word/" + targets.get(_embedded(inner), ""), b"")
+                        out.append((f"(picture {colours.get(data, '?')})", ""))
+            else:
+                out += pieces(child)
+        return out
+
+    def mark_gone(paragraph: Any) -> bool:
+        mark = paragraph.find(f"{w}pPr/{w}rPr")
+        return mark is not None and mark.find(gone) is not None
+
+    lines: list[str] = []
+    for block in root.find(w + "body"):
+        if block.tag == w + "p":
+            line = _looked(pieces(block))
+            if line or not mark_gone(block):
+                lines.append(line)
+        elif block.tag == w + "tbl":
+            for row in block.findall(w + "tr"):
+                properties = row.find(w + "trPr")
+                if properties is not None and properties.find(gone) is not None:
+                    continue
+                lines.append(" | ".join(_looked(pieces(cell)) for cell in row.findall(w + "tc")))
+    by_id = {n.get(w + "id"): n for n in notes_root.findall(w + "footnote")}
+    for reference in root.iter(w + "footnoteReference"):
+        holder = next(
+            (r for r in root.iter() if reference in list(r)), None
+        )  # the run that holds it
+        if holder is None:
+            continue
+        wrapper = next((p for p in root.iter() if holder in list(p)), None)
+        if wrapper is not None and wrapper.tag == gone:
+            continue
+        note = by_id[reference.get(w + "id")]
+        lines.append("note: " + " ".join(_looked(pieces(p)) for p in note.findall(w + "p")).strip())
+    return [line for line in lines if line]
+
+
+def shown(document: Path) -> list[str]:
+    """A marked-up copy as one line for each paragraph, row and note, its changes marked:
+    `[-...-]` deleted, `{+...+}` inserted, `~...~` reformatted, `¶-` and `¶+` a paragraph's
+    mark deleted or inserted, `row-` and `row+` a row."""
+    from xml.etree import ElementTree as ET
+
+    w = f"{{{_WML}}}"
+    with zipfile.ZipFile(document) as archive:
+        root = ET.fromstring(archive.read("word/document.xml"))
+        notes_root = ET.fromstring(archive.read("word/footnotes.xml"))
+        rels = ET.fromstring(archive.read("word/_rels/document.xml.rels"))
+        media = {name: archive.read(name) for name in archive.namelist() if "media/" in name}
+    colours = {_png(colour): name for name, colour in PICTURES.items()}
+    targets = {rel.get("Id"): rel.get("Target") for rel in rels}
+
+    def text(node: Any) -> str:
+        out = []
+        for child in node:
+            if child.tag == w + "ins":
+                out.append("{+" + text(child) + "+}")
+            elif child.tag == w + "del":
+                out.append("[-" + text(child) + "-]")
+            elif child.tag == w + "r":
+                properties = child.find(w + "rPr")
+                said = ""
+                for inner in child:
+                    if inner.tag in (w + "t", w + "delText"):
+                        said += inner.text or ""
+                    elif inner.tag == w + "drawing":
+                        data = media.get("word/" + targets.get(_embedded(inner), ""), b"")
+                        said += f"(picture {colours.get(data, '?')})"
+                    elif inner.tag == w + "footnoteReference":
+                        said += "^"
+                changed = properties is not None and properties.find(w + "rPrChange") is not None
+                out.append(f"~{said}~" if changed else said)
+            elif child.tag not in (w + "pPr",):
+                out.append(text(child))
+        return "".join(out)
+
+    def mark(paragraph: Any) -> str:
+        styled = "style " if paragraph.find(f"{w}pPr/{w}pPrChange") is not None else ""
+        found = paragraph.find(f"{w}pPr/{w}rPr")
+        if found is None:
+            return styled
+        if found.find(w + "del") is not None:
+            return styled + "\N{PILCROW SIGN}- "
+        return styled + ("\N{PILCROW SIGN}+ " if found.find(w + "ins") is not None else "")
+
+    lines = []
+    for block in root.find(w + "body"):
+        if block.tag == w + "p":
+            lines.append(mark(block) + text(block))
+        elif block.tag == w + "tbl":
+            for row in block.findall(w + "tr"):
+                properties = row.find(w + "trPr")
+                kind = ""
+                if properties is not None and properties.find(w + "del") is not None:
+                    kind = "row- "
+                elif properties is not None and properties.find(w + "ins") is not None:
+                    kind = "row+ "
+                lines.append(kind + " | ".join(text(c) for c in row.findall(w + "tc")))
+    for note in notes_root.findall(w + "footnote"):
+        if note.get(w + "type") is None:
+            lines.append("note: " + " ".join(text(p) for p in note.findall(w + "p")).strip())
+    return lines
+
+
+@reading("marked up")
+def _marked_up() -> Reading:
+    """The marked-up copy of a generated revision: as it shows its changes, and as it reads
+    accepted and rejected (`read_plainly`). What `build --marked-up` writes."""
+    from manuscript_guard.markedup import write
+
+    def marked_up(given: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
+        with tempfile.TemporaryDirectory() as scratch:
+            folder = Path(scratch)
+            before = document_of(given["before"], folder / "before.docx")
+            after = document_of(given["after"], folder / "after.docx")
+            made = write(before, after, folder / "marked.docx", date="2026-10-21")
+            return {
+                "shown": shown(made.path),
+                "accepted": read_plainly(made.path, accept=True),
+                "rejected": read_plainly(made.path, accept=False),
+                "counts": made.counts,
+            }
+
+    return marked_up
 
 
 # ------------------------------------------------------------------- as a process of its own

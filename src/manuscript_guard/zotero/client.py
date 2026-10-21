@@ -24,6 +24,7 @@ import json
 import re
 import urllib.error
 import urllib.request
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from functools import lru_cache
 
@@ -52,7 +53,21 @@ class ZoteroUnavailable(Exception):
 
 
 class ZoteroRefused(ZoteroUnavailable):
-    """Better BibTeX answered with an error: an unknown method, bad arguments, a duplicate."""
+    """Better BibTeX answered with an error: an unknown method, bad arguments, a duplicate.
+
+    `error` is the JSON-RPC error object as it came, where there was one, so that a caller can
+    tell "no library holds that key" from a refusal of another kind."""
+
+    def __init__(self, message: str, error: object = None) -> None:
+        super().__init__(message)
+        self.error = error if isinstance(error, dict) else None
+
+    @property
+    def not_found(self) -> bool:
+        """Better BibTeX's answer for a citation key no item carries: -32602, "<key> not
+        found" (9.0.71, probed 2026-10-20)."""
+        message = str((self.error or {}).get("message", ""))
+        return (self.error or {}).get("code") == -32602 and message.endswith("not found")
 
 
 @dataclass(frozen=True)
@@ -139,7 +154,7 @@ def rpc(method: str, params, timeout: int = GATE_TIMEOUT) -> object:
             f"could not reach Better BibTeX at {ENDPOINT}: {exc}. Is Zotero running?"
         ) from exc
     if "error" in body:
-        raise ZoteroRefused(f"Better BibTeX refused {method}: {body['error']}")
+        raise ZoteroRefused(f"Better BibTeX refused {method}: {body['error']}", body["error"])
     return body.get("result")
 
 
@@ -263,8 +278,71 @@ def export(citekeys: list[str], translator: str = "biblatex") -> str:
     raise ZoteroUnavailable(f"item.export returned {type(result).__name__}, expected text")
 
 
+@dataclass(frozen=True)
+class Attachment:
+    """One attachment of an item, as Better BibTeX's `item.attachments` describes it.
+
+    `path` is where Zotero keeps the file on this computer, or None for a link to a page or an
+    attachment with no file. It names the file Zotero would open, which need not be there: a
+    library synced to download files as they are needed holds, for a file never opened here,
+    only Zotero's text of it. `item` is Zotero's key of the attachment, read from its
+    `zotero://` link; it names the attachment and no place on any computer.
+    """
+
+    path: str | None
+    item: str | None
+
+
+_ATTACHMENT_KEY = re.compile(r"/items/([A-Z0-9]{8})$")
+
+
+@lru_cache(maxsize=1)
+def _groups(timeout: int) -> tuple[int, ...]:
+    return tuple(_group_libraries(timeout))
+
+
+def attachments(citekey: str, timeout: int = LONG_TIMEOUT) -> list[Attachment] | None:
+    """The attachments of the item a citation key names, or None where no library holds it.
+
+    The user's own library is asked first, then each group library, as `lookup` does: Better
+    BibTeX looks a key up in one library at a time. Its answer is a list of `{open, path}`,
+    `path` being `false` where there is no file, or null for an item with no attachment
+    (9.0.71, probed 2026-10-20)."""
+    for library_id in _libraries(timeout):
+        params: list = [citekey] if library_id is None else [citekey, library_id]
+        try:
+            result = rpc("item.attachments", params, timeout=timeout)
+        except ZoteroRefused as refused:
+            if refused.not_found:
+                continue
+            raise
+        if result is None:
+            return []
+        if not isinstance(result, list) or not all(isinstance(a, dict) for a in result):
+            raise ZoteroRefused("item.attachments did not return a list of attachments")
+        return [_attachment(a) for a in result]
+    return None
+
+
+def _libraries(timeout: int) -> Iterator[int | None]:
+    """The user's own library (None: Better BibTeX's default), then the group libraries,
+    which are asked for only once a key is not in the user's own."""
+    yield None
+    yield from _groups(timeout)
+
+
+def _attachment(answer: dict) -> Attachment:
+    path = answer.get("path")
+    found = _ATTACHMENT_KEY.search(str(answer.get("open") or ""))
+    return Attachment(
+        path=path if isinstance(path, str) and path.strip() else None,
+        item=found.group(1) if found else None,
+    )
+
+
 def reset_cache() -> None:
     global _unreachable
     _unreachable = False
     library.cache_clear()
     lookup.cache_clear()
+    _groups.cache_clear()

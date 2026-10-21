@@ -25,9 +25,28 @@ command needs it, write it to a file with the file tools and give the command th
 
 ## 1. Get the source
 
-Use a browser the user is signed in to, where a tool that drives one is connected, so the
-user's institutional session applies and paywalled full texts are reachable. If there is
-none, ask the user to save the files. Save what you can actually read:
+A claim with no source yet needs one found first, from a registry and chosen by the author:
+the manuscript-writing skill, "When a claim needs a citation", says how, with
+`manuscript-guard search`. Never take a number from a work recalled from memory.
+
+Where Zotero is running with Better BibTeX, start with `manuscript-guard sync-sources`. It
+copies each cited work's PDF or saved page from Zotero into `literature/sources/`, under the
+name below, or Zotero's text of it where the file is not on this computer or is an EPUB,
+and lists the
+works it found no copy of. Zotero's copies came through the user's own access: the Zotero
+Connector in their browser, or Find Available PDF through their library's proxy. It writes
+over no file it did not write.
+
+Where the user already has a folder of PDFs named by DOI, such as the one a downloader like
+auto-paper-harvester writes, `manuscript-guard sync-sources --from <folder>` files them the
+same way, matched by the DOI in `references.bib`, and asks Zotero nothing. It refuses a file
+that is not a PDF, a sign-in page saved under a `.pdf` name, and says so.
+
+For each work it lists, use a browser the user is signed in to, where a tool that drives one
+is connected, so the user's institutional session applies and paywalled full texts are
+reachable. Saving the work into Zotero from there (the Zotero Connector) and running
+`sync-sources` again keeps Zotero and the project in step. If there is no such browser, ask
+the user to save the files. Save what you can actually read:
 
 - **Full text** — the PDF, or the article page saved as HTML.
 - **Abstract only** — when the full text is genuinely unreachable. Save the abstract page.

@@ -48,6 +48,18 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "manuscript-guard-hook stop",
+            "timeout": 60,
+            "statusMessage": "Reading where the manuscript stands"
+          }
+        ]
+      }
     ]
   }
 }

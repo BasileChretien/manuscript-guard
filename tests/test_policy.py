@@ -238,8 +238,10 @@ def test_a_file_a_gate_cannot_read_is_named_and_not_called_a_bug(project: Path) 
 
 
 #: The gates that read the text of the manuscript, in the order they run. G11 reads its
-#: bytes for the digest and G13 reads it only once a revision round is open.
+#: bytes for the digest and G13 reads it only once a revision round is open. G16 reads the
+#: Methods from the drafting stage, where it asks whether they report the data checks.
 READ_THE_MANUSCRIPT = "G2, G7, G4, G8r, G6, G9, G8, G14, G15 and BUILD"
+READ_FROM_DRAFTING = "G2, G7, G4, G8r, G6, G9, G8, G14, G15, G16 and BUILD"
 
 
 def in_a_code_page(path: Path) -> int:
@@ -274,7 +276,9 @@ def test_a_manuscript_file_that_is_not_utf8_is_one_finding_that_names_it(
         f"manuscript/main.md: cannot read as UTF-8: the byte 0xe9 on line {line} is not UTF-8. "
         "Save the file as UTF-8."
     )
-    assert failure.hint == f"{READ_THE_MANUSCRIPT} read the manuscript and did not run"
+    drafted = stage_index(stage) >= stage_index(DRAFTING)
+    read = READ_FROM_DRAFTING if drafted else READ_THE_MANUSCRIPT
+    assert failure.hint == f"{read} read the manuscript and did not run"
     assert not [f for f in report.findings if f.code == "gate-errored"]
 
 

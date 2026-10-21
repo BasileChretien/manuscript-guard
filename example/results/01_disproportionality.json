@@ -3,13 +3,13 @@
   "provenance": {
     "generated_by": "analysis/01_disproportionality.py",
     "generated_by_sha256": "c4a3717650e99b33861e8c60c3710c23cfdff8b3d1ecf3ed6868701d51b2383a",
-    "generated_at": "2026-10-21T06:38:01+00:00",
+    "generated_at": "2026-10-21T08:07:19+00:00",
     "tool": {
       "name": "manuscript-guard",
       "version": "0.2.454"
     },
     "vcs": {
-      "sha": "e6ade8297d48f84a5ae6a0d8c9f7ed9f4ad53e31",
+      "sha": "f943786887d7d2721eed8f124913c26a2dba4b43",
       "dirty": true,
       "branch": "claude/goofy-swanson-8680f2"
     },
@@ -23,9 +23,9 @@
       },
       {
         "path": "design/data_dictionary.yaml",
-        "sha256": "96368afbf18cd5459bb9e983be3d4989476100aebd5155bc8b0bd5e001cdafbb",
-        "raw_sha256": "96368afbf18cd5459bb9e983be3d4989476100aebd5155bc8b0bd5e001cdafbb",
-        "bytes": 2350
+        "sha256": "e1524095cdb2be0e37bcef224d837f1ed2f1a525b8272b7d9a4251ba53c55fe1",
+        "raw_sha256": "e1524095cdb2be0e37bcef224d837f1ed2f1a525b8272b7d9a4251ba53c55fe1",
+        "bytes": 2489
       },
       {
         "path": "data/event_terms.txt",

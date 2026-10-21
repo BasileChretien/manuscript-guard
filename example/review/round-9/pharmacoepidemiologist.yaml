@@ -1,0 +1,26 @@
+# Findings go below, each with an id, a severity and the finding itself. An empty
+# list is a reviewer who found nothing, which is a claim in its own right.
+schema: manuscript-guard/review/1
+round: 9
+reviewer: pharmacoepidemiologist
+reviewed_by: Claude Code
+reviewed_on: '2026-10-21'
+manuscript_sha256: 69995649fbae64c3c862e7b05bed83e1d24979e09987008972218a2b63a201ac
+file_sha256:
+  main.md: 33b9e2ecab739f1a01260e7fd4ca2c75329ef3b724ac9f8cd590e3493224b596
+  supplementary/S1_code_lists.md: 8c462c203bf3c08ac5ced6eaf25d38b56f2239502952f8d8e6b3d23cbb05b9b3
+verdict: pass
+summary: 'The Methods now say that each report was checked against the data dictionary, and
+  bind what the checks found: the reports checked, those that repeated another''s identifier
+  and those with no age group. Duplicate reports are the bias a reader of a disproportionality
+  analysis asks about first, and the sentence answers it from the analysis rather than from
+  the generator''s description. Nothing from the earlier rounds is reopened.'
+findings:
+- id: r9-pe-01
+  severity: comment
+  where: Methods
+  finding: The paragraph before says the generator emits no duplicates, and the count now
+    shows it rather than asserting it. In a real database the count would be above nought,
+    and the sentence would then have to say what was done with the duplicates, which the
+    count alone does not.
+reading_sha256: 44d72b4537577f37091c250cb726c094501ee713f6bfb093d58428a10ee3bd4a

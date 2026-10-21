@@ -12109,9 +12109,9 @@ Open, recorded as each change landed:
   before and after cleaning, by one script or two, is `duplicate-key`. Check the table as
   read; what was dropped after is the script's to count.
 - **An identifier read as a number is read as one.** A whole number held as a double is
-  written to fifteen significant digits from 2 to the 53rd, so two identifiers of sixteen
-  digits or more that `read.csv`, or pandas with one blank in the column, reads as doubles
-  can be one key, and a pattern of digits fails them; pandas' int64 keeps their digits, and
+  written to fifteen significant digits from 2 to the 53rd (about 9 x 10^15), so two
+  identifiers from there up that `read.csv`, or pandas with one blank in the column, reads
+  as doubles can be one key, and a pattern of digits fails them; pandas' int64 keeps their digits, and
   the two languages then count otherwise. Read an identifier as text.
 - **The readers the script uses decide what the data hold before `check_data` sees them.**
   pandas reads "NULL", "N/A" and "None" as missing by default, and `read.csv` reads a column

@@ -4131,8 +4131,8 @@ def test_a_dictionary_that_does_not_read_fails_the_check_at_every_stage(
 
 #: What the example's Methods say of its data checks.
 _CHECKED_SAID = (
-    "Each report was checked against the data dictionary: of the {{results.quality.rows}} "
-    "reports, {{results.quality.rule.one_row_per_report}} repeated another's identifier and "
+    "Each report was checked against the data dictionary: of the {{results.quality.rows}}\n"
+    "reports, {{results.quality.rule.one_row_per_report}} repeated another's identifier and\n"
     "{{results.quality.age_group.missing}} gave no age group."
 )
 
@@ -14541,18 +14541,19 @@ def test_every_way_of_losing_a_reading_fails_a_submission(project: Path, name: s
 
 def test_the_example_s_own_rounds_are_read_as_they_were(project: Path) -> None:
     """One record a reviewer, no readers named: nothing about them changed. Rounds three to
-    eight read revisions with the earlier rounds in front of them, so the eighth supersedes
-    the seven before it and each says it was not blinded."""
+    nine read revisions with the earlier rounds in front of them, so the ninth supersedes
+    the eight before it and each says it was not blinded."""
     from manuscript_guard.gates import check_review
 
     report = check_review(load_project(project)[0], submission=True)
     assert report.ok, report.render(project)
     said = sorted((f.code, f.path.parent.name) for f in report.findings)
     superseded = [("review-superseded", f"round-{n}")
-                  for n, many in ((1, 3), (2, 2), (3, 2), (4, 2), (5, 2), (6, 2), (7, 1))
+                  for n, many in ((1, 3), (2, 2), (3, 2), (4, 2), (5, 2), (6, 2), (7, 1),
+                                  (8, 1))
                   for _ in range(many)]  # fmt: skip
-    assert said == superseded + [("round-not-blinded", "review")] * 6, report.render(project)
-    assert report.counts["review_rounds_complete"] == 8
+    assert said == superseded + [("round-not-blinded", "review")] * 7, report.render(project)
+    assert report.counts["review_rounds_complete"] == 9
 
 
 def test_a_reading_that_stops_parsing_fails_with_no_readers_named_either(project: Path) -> None:

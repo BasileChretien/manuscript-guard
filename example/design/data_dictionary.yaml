@@ -11,12 +11,14 @@ variables:
     type: identifier
     pattern: "R[0-9]{5}"
     required: true
+    reason: the record's own identifier, which the duplicates are counted by
   - name: year
     label: Year
     definition: The year the report was received.
     type: count
     range: {min: 2015, max: 2024}
     required: true
+    reason: places each report in the period the Methods give
   - name: drug
     label: Drug
     definition: The suspect drug, as reported.

@@ -191,7 +191,8 @@ def check_numbers(
                     path=path,
                     line=line,
                     hint=spell("the form is {{results.key}}, {{lit.key}}, {{table.key}}, "
-                               "{{figure.key}} or {{method.step}}"),
+                               "{{figure.key}}, {{ref.table.key}}, {{num.table.key}} or "
+                               "{{method.step}}"),
                 )
             )
 

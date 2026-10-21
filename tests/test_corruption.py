@@ -3984,6 +3984,322 @@ def test_a_table_cited_nowhere_is_said(project: Path) -> None:
     assert said[0][1].startswith("Table 2 ")
 
 
+# ------------------------------------------------------------ a pointer the build numbers
+# `{{ref.table.<key>}}` prints the number the document gives the table placed by
+# `{{table.<key>}}`, and `{{num.table.<key>}}` the number alone, for a list the author writes
+# (Basile's choices of 2026-10-20). Typed, "Table 2" went on naming the second table after
+# the first moved, and only G2 said so.
+
+#: Every finding about a pointer, typed or printed by a binding.
+_REF_CODES = (
+    "pointer-to-nothing", "cited-out-of-order", "display-not-cited", "unresolved-binding",
+    "ref-number-unknown", "pointer-word-mismatch", "pointer-form-unread",
+)  # fmt: skip
+
+
+def _ref_findings(root: Path) -> list[tuple[str, str]]:
+    return [(f.code, f.message) for f in gate_report(root).findings if f.code in _REF_CODES]
+
+
+def _rewrite(root: Path, *changes: tuple[str, str], file: Path | None = None) -> None:
+    path = file or main_md(root)
+    text = path.read_text(encoding="utf-8")
+    for was, now in changes:
+        assert was in text, was
+        text = text.replace(was, now, 1)
+    path.write_text(text, encoding="utf-8")
+
+
+def _assembled_main(root: Path) -> str:
+    """The main text as the build assembles it, every binding substituted."""
+    from manuscript_guard.build.assemble import assemble
+
+    project, _ = load_project(root)
+    namespace, results, _literature, _ = load_namespace(project)
+    assembled, report = assemble(project, namespace, results)
+    assert report.ok, report.findings
+    return next(item.text for item in assembled if item.path.name == "main.md")
+
+
+#: The example's two typed pointers to its main text's tables, as refs.
+_BY_REF = (
+    ("shown in Table 1.", "shown in {{ref.table.baseline}}."),
+    ("in Table 2, so", "in {{ref.table.two_by_two}}, so"),
+)
+
+
+def test_a_ref_prints_the_number_the_document_gives(project: Path) -> None:
+    _rewrite(project, *_BY_REF)
+    assert _ref_findings(project) == []
+    printed = _assembled_main(project)
+    assert "shown in Table 1." in printed
+    assert "in Table 2, so" in printed
+
+
+def test_a_moved_table_renumbers_every_ref_and_its_order_is_said(project: Path) -> None:
+    """The two tables swapped: each ref prints its table's new number, where the typed
+    pointers would go on naming the old one with nothing said. The first citation is now of
+    Table 2, which ICMJE's order refuses."""
+    _rewrite(project, *_BY_REF)
+    _rewrite(
+        project,
+        ("{{table.baseline}}", "{{table.swapped}}"),
+        ("{{table.two_by_two}}", "{{table.baseline}}"),
+        ("{{table.swapped}}", "{{table.two_by_two}}"),
+    )
+    printed = _assembled_main(project)
+    assert "shown in Table 2." in printed
+    assert "in Table 1, so" in printed
+    assert [code for code, _ in _ref_findings(project)] == ["cited-out-of-order"]
+
+
+def test_a_ref_counts_as_a_citation(project: Path) -> None:
+    """Table 2 cited nowhere, then cited by its ref."""
+    _rewrite(project, ("in Table 2, so", "below, so"))
+    assert [code for code, _ in _ref_findings(project)] == ["display-not-cited"]
+    _rewrite(project, ("below, so", "in {{ref.table.two_by_two}}, so"))
+    assert _ref_findings(project) == []
+
+
+@pytest.mark.parametrize(
+    ("ref", "named"),
+    [
+        ("{{ref.table.nothing}}", "names a table nothing places"),
+        ("{{num.figure.nothing}}", "names a figure nothing places"),
+        ("{{ref.baseline}}", "names no table and no figure"),
+        ("{{ref.model.baseline}}", "names no table and no figure"),
+    ],
+)
+def test_a_ref_to_a_key_nothing_places_is_unresolved(
+    project: Path, ref: str, named: str
+) -> None:
+    """In `check` and in the build: printed, it would be the binding's own text."""
+    from manuscript_guard.build.assemble import assemble
+
+    _rewrite(project, ("shown in Table 1.", f"shown in Table 1 and {ref}."))
+    said = _ref_findings(project)
+    assert [code for code, _ in said] == ["unresolved-binding"], said
+    assert named in said[0][1]
+    projekt, _ = load_project(project)
+    namespace, results, _literature, _ = load_namespace(projekt)
+    _assembled, report = assemble(projekt, namespace, results)
+    assert [f.code for f in report.failures] == ["unresolved-binding"]
+
+
+def _journal_forms(root: Path, forms: str) -> None:
+    profile = root / "profiles" / "journals" / "demo-journal.yaml"
+    profile.write_text(
+        profile.read_text(encoding="utf-8") + f"\npointers: {forms}\n", encoding="utf-8"
+    )
+
+
+@pytest.mark.parametrize(
+    ("forms", "whole", "alone"),
+    [
+        (None, "Table S1", "S1"),
+        ('{supplementary_table: "eTable {n}"}', "eTable 1", "1"),
+        ('{supplementary_table: "Supplementary Table {n}"}', "Supplementary Table 1", "1"),
+        ('{supplementary_table: "Table {n} in the Supplement"}', "Table 1 in the Supplement",
+         "1"),
+    ],
+)  # fmt: skip
+def test_a_ref_to_the_supplement_prints_the_journal_s_form(
+    project: Path, forms: str | None, whole: str, alone: str
+) -> None:
+    if forms:
+        _journal_forms(project, forms)
+    _rewrite(project, ("shown in Table 1.", "shown in Table 1 and {{ref.table.outcome_codes}}."))
+    assert _ref_findings(project) == []
+    assert f"shown in Table 1 and {whole}." in _assembled_main(project)
+    _rewrite(project, ("{{ref.table.outcome_codes}}", "{{num.table.outcome_codes}}"))
+    printed = _assembled_main(project)
+    assert f"shown in Table 1 and {alone}." in printed
+
+
+def test_a_form_g2_does_not_read_is_refused(project: Path) -> None:
+    """"Tab. 2" is no pointer G2 reads, so a ref printed in it could not be held to anything."""
+    _journal_forms(project, '{table: "Tab. {n}"}')
+    said = _ref_findings(project)
+    assert [code for code, _ in said] == ["pointer-form-unread"], said
+    assert "'Tab. {n}'" in said[0][1]
+
+
+def test_a_form_without_its_number_breaks_the_profile(project: Path) -> None:
+    _journal_forms(project, '{figure: "Figure"}')
+    from manuscript_guard.cli import _run_gates
+
+    assert "schema-violation" in codes(_run_gates(project)[0])
+
+
+def test_a_list_of_nums_is_read_whole(project: Path) -> None:
+    _rewrite(
+        project,
+        ("shown in Table 1.", "shown in Tables {{num.table.baseline}} and "
+         "{{num.table.two_by_two}}."),
+        ("in Table 2, so", "below, so"),
+    )  # fmt: skip
+    assert _ref_findings(project) == []
+    assert "shown in Tables 1 and 2." in _assembled_main(project)
+
+
+@pytest.mark.parametrize(
+    ("written", "read_as"),
+    [
+        # the word names a figure
+        ("Figure {{num.table.baseline}}", "a figure of the main text"),
+        # the words name the supplement
+        ("Supplementary Table {{num.table.baseline}}", "a table of the supplement"),
+        ("{{ref.table.baseline}} in the Supplement", "a table of the supplement"),
+        ("Supplementary {{ref.table.baseline}}", "a table of the supplement"),
+        # no word at all
+        ("number {{num.table.baseline}}", "no word before it"),
+    ],
+)
+def test_words_around_a_bound_pointer_that_point_elsewhere_are_said(
+    project: Path, written: str, read_as: str
+) -> None:
+    _rewrite(project, ("shown in Table 1.", f"shown in {written}."))
+    # Read as pointing elsewhere, it cites nothing, so Table 1 is cited nowhere, and Table 2
+    # first.
+    consequences = ("display-not-cited", "cited-out-of-order")
+    said = [s for s in _ref_findings(project) if s[0] not in consequences]
+    assert [code for code, _ in said] == ["pointer-word-mismatch"], said
+    assert read_as in said[0][1], said
+
+
+def test_a_word_mismatch_fails_from_the_internal_review(project: Path) -> None:
+    """Like a typed pointer that names the wrong table: the words go stale as tables move."""
+    from manuscript_guard.cli import _run_gates
+
+    _rewrite(project, ("shown in Table 1.", "shown in Figure {{num.table.baseline}}."))
+    drafting, *_ = _run_gates(project, stage="drafting")
+    assert [f.severity for f in drafting.findings if f.code == "pointer-word-mismatch"] == [
+        "info"
+    ]
+    reviewing, *_ = _run_gates(project, stage="internal-review")
+    assert "pointer-word-mismatch" in codes(reviewing)
+
+
+def _assembled_all(root: Path) -> dict[str, str]:
+    from manuscript_guard.build.assemble import assemble
+
+    project, _ = load_project(root)
+    namespace, results, _literature, _ = load_namespace(project)
+    assembled, _report = assemble(project, namespace, results)
+    # Spaces as pandoc reads them: "Table\nS2" bound is "{{ref...}}" on one line.
+    return {item.path.name: " ".join(item.text.split()) for item in assembled}
+
+
+def test_bind_pointers_binds_each_typed_pointer_and_prints_the_same(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`bind --pointers --apply` on the example: every typed pointer becomes the binding that
+    prints it, a list's numbers each a num, and the build prints what it printed before,
+    word for word, with nothing for G2 to say."""
+    from manuscript_guard.cli import main
+
+    _rewrite(project, ("in Table 2, so", "in Tables 1 and 2, so"))
+    before = _assembled_all(project)
+    assert main(["bind", str(project), "--pointers"]) == 0
+    assert "{{ref.table.baseline}}" in capsys.readouterr().out
+    assert main(["bind", str(project), "--pointers", "--apply"]) == 0
+    text = main_md(project).read_text(encoding="utf-8")
+    for bound in ("shown in {{ref.table.baseline}}.", "{{ref.figure.forest}}",
+                  "Tables {{num.table.baseline}} and {{num.table.two_by_two}}, so",
+                  "published in\n{{ref.table.outcome_codes}},", "{{ref.table.model_adjusted}}"):
+        assert bound in text, bound
+    supplement = project / "manuscript" / "supplementary" / "S1_code_lists.md"
+    assert "## {{ref.table.outcome_codes}}. Code lists" in supplement.read_text(encoding="utf-8")
+    assert _assembled_all(project) == before
+    assert _ref_findings(project) == []
+    capsys.readouterr()
+    assert main(["bind", str(project), "--pointers"]) == 0
+    assert "no typed pointer" in capsys.readouterr().out
+
+
+def test_bind_pointers_offers_nothing_that_would_print_otherwise(project: Path) -> None:
+    """"Supplementary Table 1" under the default form would print "Table S1": not offered.
+    Nor is a range that names a table it does not write, "Tables 1-3", nor a figure sent as
+    a file. The supplement's headings, "## Table S1. Code lists", are."""
+    from manuscript_guard.binding import typed_pointers
+
+    _rewrite(
+        project,
+        ("Table S1, emitted", "Supplementary Table 1, emitted"),
+        ("in Table 2, so", "in Tables 1\N{EN DASH}3, so"),
+    )
+    _declare(project, "displays: {figures_as_files: 1}")
+    offered = sorted(item.text for item in typed_pointers(load_project(project)[0]))
+    assert offered == sorted(["Table 1", "Table S1", "Table S2", "Table\nS2"]), offered
+
+
+def test_a_ref_in_the_response_to_the_reviewers_reads_as_printed(project: Path) -> None:
+    """Round 1 of #378: the response round read the manuscript with its values filled in and
+    its refs as written. A sentence quoted as the paper prints it, "Table 2", was absent from
+    it; the copy kept as submitted held `{{ref.`; a ref in a reply printed as written."""
+    from manuscript_guard.build.submission import response_letter
+
+    _in_the_discussion(project, "The counts are given again in {{ref.table.two_by_two}}.")
+    _round_with(project, [_point(
+        response="We now say so, in {{ref.table.baseline}}.",
+        changed=[{"kind": "text", "quote": "The counts are in Table 2.",
+                  "section": "Discussion"}],
+    )])  # fmt: skip
+    submitted = (project / "revision" / "round-1" / "submitted").rglob("*.md")
+    kept = "".join(path.read_text(encoding="utf-8") for path in submitted)
+    assert "given again in Table 2." in kept and "{{ref." not in kept
+    # Now "The counts are in {{ref.table.two_by_two}}.", which prints as quoted.
+    _rewrite(project, ("given again in {{ref.table.two_by_two}}", "in {{ref.table.two_by_two}}"))
+    assert _said(_g13(project), "quoted-text-absent") == []
+    letter = response_letter(load_project(project)[0])
+    assert "We now say so, in Table 1." in letter and "{{" not in letter
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_ref_in_the_abstract_is_printed_in_the_pack(project: Path) -> None:
+    from manuscript_guard.build.submission import assemble_pack
+
+    _rewrite(project, ("The reporting odds ratio was", "In {{ref.figure.forest}}, the reporting "
+                       "odds ratio was"))  # fmt: skip
+    projekt, _ = load_project(project)
+    document = project / "build" / "manuscript.docx"
+    document.parent.mkdir(parents=True, exist_ok=True)
+    document.write_bytes(b"PK\x03\x04 placeholder")
+    text = (assemble_pack(projekt, document).directory / "abstract.txt").read_text("utf-8")
+    assert "In Figure 1, the reporting odds ratio was" in text and "{{" not in text
+
+
+@pytest.mark.parametrize(
+    ("change", "ref", "why"),
+    [
+        # a figure sent as a file: where the bound one falls among the two is not known
+        (None, "{{ref.figure.forest}}", "sends 1 of the main text's figures as files"),
+        # a table placed by hand beside the bound ones
+        (("{{table.baseline}}", "{{table.baseline}}\n\n| A | B |\n|:--|--:|\n| x | y |"),
+         "{{ref.table.two_by_two}}", "also places a table by hand"),
+        # one table placed twice has two numbers
+        (("{{table.two_by_two}}", "{{table.two_by_two}}\n\n{{table.baseline}}"),
+         "{{ref.table.baseline}}", "placed 2 times"),
+    ],
+)  # fmt: skip
+def test_a_ref_the_count_cannot_number_is_refused_from_the_start(
+    project: Path, change: tuple[str, str] | None, ref: str, why: str
+) -> None:
+    """Exact numbers only, Basile's choice on 2026-10-20: refused, and from the drafting
+    stage on, since the build would have nothing to print."""
+    from manuscript_guard.cli import _run_gates
+
+    if change is None:
+        _declare(project, "displays: {figures_as_files: 1}")
+    else:
+        _rewrite(project, change)
+    _rewrite(project, ("can reconstruct it.", f"can reconstruct it. See {ref}."))
+    said = [s for s in _ref_findings(project) if s[0] == "ref-number-unknown"]
+    assert len(said) == 1 and why in said[0][1], _ref_findings(project)
+    drafting, *_ = _run_gates(project, stage="drafting")
+    assert "ref-number-unknown" in codes(drafting)
+
+
 @pytest.mark.parametrize(
     "sentence",
     ["In step 1204 reports were excluded.", "Box 47 lists the reports.",

@@ -76,6 +76,7 @@ from manuscript_guard.gates import (
 from manuscript_guard.gates.custodian import check_restricted_inputs, check_small_cells
 from manuscript_guard.gates.design_review import check_design_rounds
 from manuscript_guard.gates.formats import check_format, not_read_in_latex
+from manuscript_guard.gates.methods_review import check_method_passages, check_methods_review
 from manuscript_guard.gates.numbers import chosen_rules, typed_choice, why_no_manuscript
 from manuscript_guard.gates.shortlist import check_shortlist
 from manuscript_guard.gates.synthetic import check_synthetic_inputs
@@ -158,6 +159,8 @@ def _run_gates(
         ("G9", lambda: check_methods(project, namespace, results)),
         ("G12", lambda: check_design(project, results, chosen).merge(
             check_design_rounds(project, submission=at_submission))),
+        ("G7", lambda: check_method_passages(project)),
+        ("G12", lambda: check_methods_review(project)),
         ("G8", lambda: check_consistency(results)),
         ("G2", lambda: check_small_cells(project, results)),
         ("G1", lambda: check_restricted_inputs(project, results)),

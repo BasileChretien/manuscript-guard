@@ -614,6 +614,9 @@ def guard_write(payload: dict) -> int:
     named += [
         said for path in paths if (said := _or_nothing(lambda file: _judges(file, payload), path))
     ]
+    named += [
+        said for path in paths if (said := _or_nothing(lambda file: _decides(file, payload), path))
+    ]
     named += [said for path in paths if (said := _or_nothing(_an_approval, path))]
     if not named:
         return 0
@@ -775,6 +778,74 @@ def _judgements(text: str) -> set[tuple]:
             ("sentence", "citekey", "passage", "support", "judged_by", "judged_on")
         ))  # fmt: skip
     return judged
+
+
+def _decides(path: Path, payload: dict) -> str | None:
+    """Why an edit of the project's design/methods_review.yaml is a person's to make, or None
+    where it leaves every decision as it was, over the method it was of.
+
+    Whether this study takes a method from another is the decision of the person
+    `decided_by` names. G12 refuses a model's name there, and cannot tell a person's name
+    typed by an agent from the person's own; nor a decision left standing while an agent
+    changes the method it was of, nor one taken away. So an edit after which the decided
+    methods are not the ones the file held before, word for word, is put to the person, as an
+    edit of a passage's judgement is (`_judges`)."""
+    from manuscript_guard.methods_review import REVIEW
+
+    found = _relative_to_project(path)
+    if found is None or found[1] != REVIEW.as_posix():
+        return None
+    relative = found[1]
+    before, after = _whole_texts(payload, path)
+    if after is None:
+        if not any(_DECIDED_BY.search(text) for text in before):
+            return None
+        names = "a decision it touches or keeps"
+    else:
+        decided = _decisions(after) ^ _decisions(before[0])
+        if not decided:
+            return None
+        names = ", ".join(dict.fromkeys(str(entry[-2]) for entry in sorted(decided)))
+    return (
+        f"{relative}: this edit records, takes away, or leaves standing over a method it "
+        f"changes, a person's decision to adopt, adapt or reject a method of another study "
+        f"({names}). That is the person's decision, and G12 cannot tell a name an agent typed "
+        f"from theirs."
+    )
+
+
+#: A decider named in a methods review, in block or flow style, on a line that is not a
+#: comment.
+_DECIDED_BY = re.compile(r"""(?m)^(?![ \t]*#).*?\bdecided_by["']?[ \t]*:""")
+
+
+def _decisions(text: str) -> set[tuple]:
+    """Each decided method of a methods review's text, as the study, the method's field and
+    words, and the decision. A text YAML cannot read is taken to decide whatever it names a
+    decider in."""
+    import yaml
+
+    try:
+        document = yaml.safe_load(text)
+    except yaml.YAMLError:
+        return {
+            ("", "", str(match.start()), "", "", "a decider in a text YAML cannot read", "")
+            for match in _DECIDED_BY.finditer(text)
+        }
+    studies = document.get("studies") if isinstance(document, dict) else None
+    decided = set()
+    for study in studies if isinstance(studies, list) else []:
+        methods = study.get("methods") if isinstance(study, dict) else None
+        for method in methods if isinstance(methods, list) else []:
+            decision = method.get("decision") if isinstance(method, dict) else None
+            if not isinstance(decision, dict) or decision.get("decided_by") in (None, ""):
+                continue
+            decided.add((
+                str(study.get("citekey")), str(method.get("field")), str(method.get("passage")),
+                str(decision.get("choice")), str(decision.get("why")),
+                str(decision.get("decided_by")), str(decision.get("decided_on")),
+            ))  # fmt: skip
+    return decided
 
 
 def _whole_texts(payload: dict, path: Path) -> tuple[list[str], str | None]:

@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import math
 import os
+import re
 from collections.abc import Callable, Iterable
 from decimal import ROUND_HALF_DOWN, ROUND_HALF_UP, Decimal
 from fractions import Fraction
@@ -677,6 +678,52 @@ def passage_files(draw: st.DrawFn) -> tuple[dict[str, Any], list[tuple[int, str]
     text = "".join(f"{draw(noise)}\n\n{piece}\n\n" for piece in pieces) + draw(noise)
     entries = draw(st.permutations(entries))
     return {"text": text, "entries": [entry for entry, _n in entries]}, [n for _e, n in entries]
+
+
+# ------------------------------------------- a plan citing the studies it took methods from
+
+#: How a plan cites a study whose method it took, and credits it (Basile, 2026-10-21).
+CREDITING = ("a group", "a group with others", "a group with a locator", "narrative")
+#: How a plan names a study's key and does not cite it.
+NOT_CREDITING = ("in a comment", "a longer key", "in an address")
+
+
+def _cites(key: str, how: str) -> str:
+    return {
+        "a group": f"as before [@{key}]",
+        "a group with others": f"as before [@z9; @{key}, p. 4]",
+        "a group with a locator": f"as before [see @{key}, pp. 3-4]",
+        "narrative": f"as @{key} did",
+        "in a comment": f"<!-- as before [@{key}] -->",
+        "a longer key": f"as before [@{key}x]",
+        "in an address": f"as team@{key}.org wrote",
+    }[how]
+
+
+def _opening_no_block(text: str) -> str:
+    """`text` with no comment and no fence opening in it. Each mark is cut short as a whole
+    run: one `<!--` cut out of `<!---` leaves `<!--`, and a fence of four backticks cut by
+    one is a fence of three."""
+    text = re.sub(r"<!-+", "<!", text)
+    return re.sub(r"~{3,}", "~~", re.sub(r"`{3,}", "``", text))
+
+
+@st.composite
+def credited_plans(draw: st.DrawFn) -> tuple[dict[str, str], dict[str, str]]:
+    """A plan's text of drawn prose with a study cited each way of `CREDITING` and named each
+    way of `NOT_CREDITING`, each its own key, in an order drawn each time; with each key, how
+    it was written. Every way in each example, so that a rule broken for one fails under any
+    seed. Drawn text opens no comment and no fence, either of which would hide what follows
+    it: what is held here is how a citation is read, not where a block ends."""
+    noise = texts().map(_opening_no_block)
+    kinds = draw(st.permutations(CREDITING + NOT_CREDITING))
+    pieces, written = [], {}
+    for n, how in enumerate(kinds, start=1):
+        key = f"study{n}"
+        written[key] = how
+        pieces.append(f"The comparator follows the study {_cites(key, how)}.")
+    text = "".join(f"{draw(noise)}\n\n{piece}\n\n" for piece in pieces) + draw(noise)
+    return {"text": text}, written
 
 
 # ---------------------------------------------------------------------- a vector figure
@@ -1643,6 +1690,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "checker sentences": texts(),
     "prose quotations": texts(QUOTED),
     "passages": passage_files().map(lambda drawn: drawn[0]),
+    "plan citations": credited_plans().map(lambda drawn: drawn[0]),
     "mask": texts(TERMS),
     "hidden": texts(TERMS),
     "own words": texts(TERMS),

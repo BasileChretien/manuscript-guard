@@ -92,7 +92,7 @@ def assurance(report: Report, project: Project) -> list[str]:
     recorded = {
         "computational reproducibility": _verified(project),
         "literature": [*_attested(project), *_passages(report, project)],
-        "methodological validity": ["no review of the design"],
+        "methodological validity": ["no review of the design", *_similar(report)],
         "review": [*_rounds(project), *_figures(project)],
     }
     for dimension in DIMENSIONS:
@@ -245,6 +245,22 @@ def _attested(project: Project) -> list[str]:
     return [
         f"{len(attested)} value{'s' if len(attested) > 1 else ''} attested as read in a source "
         f"that could not be stored, by {', '.join(people)}"
+    ]
+
+
+def _similar(report: Report) -> list[str]:
+    """The methods of similar studies `design/methods_review.yaml` records, as G12 counted
+    them: how many rest on a standard and a domain it knows, and how many a person decided.
+    Whether an appraisal is right is not among them."""
+    methods = report.counts.get("similar_methods", 0)
+    if not methods:
+        return []
+    studies = report.counts.get("similar_studies", 0)
+    return [
+        f"methods of similar studies: {methods} from {studies} "
+        f"stud{'y' if studies == 1 else 'ies'}, "
+        f"{report.counts.get('similar_methods_appraised', 0)} judged against a named "
+        f"standard, {report.counts.get('similar_methods_decided', 0)} decided by a person"
     ]
 
 

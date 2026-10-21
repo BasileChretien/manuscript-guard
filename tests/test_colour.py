@@ -194,42 +194,44 @@ def _ramp(first: str, last: str, steps: int) -> list[colour.RGB]:
     ]
 
 
-def test_a_continuous_scale_drawn_densely_raises_nothing() -> None:
+def test_a_continuous_scale_is_found_by_the_chain_of_its_shades() -> None:
     """Round 1 of #398: a scale drawn in many shades, as ggplot2 colours points by a
     continuous variable or matplotlib a scatter by a colormap, has neighbours just over the
-    threshold apart, which grey or a deficiency brings under it: every such figure warned.
-    Colours that chain within the threshold are one scale, and are not compared."""
-    assert colour.confusions(_ramp("#132b43", "#56b1f7", 64)) == []
+    threshold apart, which grey or a deficiency brings under it. Colours chained within the
+    threshold, three or more, are found as a scale, for the gate to leave the figure
+    uncompared (Basile, 2026-10-21)."""
+    ramp = _ramp("#132b43", "#56b1f7", 64)
+    assert colour.scales(ramp) == {colour.hex_of(rgb) for rgb in ramp}
+    assert colour.confusions(ramp) != [], "compared, a scale's shades fall under it"
     matplotlib = pytest.importorskip("matplotlib")
     viridis = [tuple(rgba[:3]) for rgba in matplotlib.colormaps["viridis"](range(256))]
-    assert colour.confusions(viridis) == []
+    assert len(colour.scales(viridis)) > 250
 
 
-def test_two_series_beside_a_scale_are_still_compared() -> None:
-    """The series are compared with each other and with the scale's shades (green with the
-    blues, which tritanopia brings together), and no two shades with each other."""
+def test_a_figures_greys_and_series_are_no_scale() -> None:
+    """A panel's grey background, its white grid, a light strip and a legend's frame chain
+    within the threshold; were they a scale, every default ggplot2 and matplotlib figure
+    would go uncompared. Greys are no shades: no grey is ever said to be confused."""
+    ggplot2 = ("#ebebeb", "#ffffff", "#d9d9d9", "#f2f2f2", "#333333", "#4d4d4d", "#f8766d",
+               "#00ba38", "#619cff")  # fmt: skip
+    matplotlib = ("#000000", "#2ca02c", "#bcd6e8", "#d62728", "#d6d6d6", "#ffffff", "#b0b0b0",
+                  "#cccccc")  # fmt: skip
+    for figure in (ggplot2, matplotlib):
+        assert colour.scales([colour.parse(code)[0] for code in figure]) == set(), figure
+    greys = [colour.parse(code)[0] for code in ("#000000", "#4d4d4d", "#b0b0b0", "#ffffff")]
+    assert colour.confusions(greys) == []
+
+
+def test_every_pair_is_compared_where_the_caller_asks() -> None:
     red, green = colour.parse("#d62728")[0], colour.parse("#2ca02c")[0]
-    ramp = _ramp("#132b43", "#56b1f7", 64)
-    found = colour.confusions([*ramp, red, green], seen=colour.DEFICIENCIES)
-    pairs = {(c.first, c.second, c.seen) for c in found}
-    assert ("#2ca02c", "#d62728", "deuteranopia") in pairs
-    shades = {colour.hex_of(rgb) for rgb in ramp}
-    assert not any(c.first in shades and c.second in shades for c in found)
-
-
-def test_a_series_near_a_shade_of_a_scale_is_still_compared() -> None:
-    """Round 2 of #398: a scale was compared with nothing, and a series within the threshold
-    of one of its shades was taken into it: tab:red beside a heat map in reds, and tab:green
-    with it, went unsaid, the pair the check is for."""
-    red, green = colour.parse("#d62728")[0], colour.parse("#2ca02c")[0]
-    found = colour.confusions([*_ramp("#fcbba1", "#d62728", 64), red, green],
+    found = colour.confusions([*_ramp("#132b43", "#56b1f7", 64), red, green],
                               seen=colour.DEFICIENCIES)  # fmt: skip
     assert ("#2ca02c", "#d62728", "deuteranopia") in {(c.first, c.second, c.seen) for c in found}
 
 
-def test_a_scale_beside_black_white_and_a_grid_raises_nothing() -> None:
-    """A scale's dark end beside black, its light end beside white, a grey grid: no series."""
-    matplotlib = pytest.importorskip("matplotlib")
-    viridis = [tuple(rgba[:3]) for rgba in matplotlib.colormaps["viridis"](range(256))]
-    greys = [colour.parse(code)[0] for code in ("#000000", "#ffffff", "#b0b0b0")]
-    assert colour.confusions([*viridis, *greys]) == []
+def test_a_series_near_a_shade_is_in_the_scale_it_chains_to() -> None:
+    """Round 2 of #398: tab:red within the threshold of a shade of a heat map in reds is
+    chained into that scale, which is why a figure with a scale is not compared rather than
+    compared without its scale."""
+    red = colour.parse("#d62728")[0]
+    assert "#d62728" in colour.scales([*_ramp("#fcbba1", "#d62728", 64), red])

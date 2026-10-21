@@ -7982,16 +7982,23 @@ def _ramp_codes(steps: int) -> list[str]:
                           zip(start, end, strict=True)) for i in range(steps)]  # fmt: skip
 
 
-def test_points_coloured_by_a_continuous_scale_raise_nothing(project: Path) -> None:
-    """Round 1 of #398: the shades of a scale sit just over the threshold apart, and grey
-    brought every pair of neighbours under it, so every scatter coloured by a variable
-    warned. Beside the scale, two series are still compared."""
+def test_a_figure_that_draws_a_scale_is_said_not_to_be_compared(project: Path) -> None:
+    """Rounds 1 to 3 of #398: a scale's shades sit just over the threshold apart and grey
+    brought every pair under it, and each rule for telling its shades from series failed one
+    way or the other. Basile, 2026-10-21: such a figure is not compared, and is said not to
+    be, the series beside the scale with it."""
     _painted(project, *_ramp_codes(64))
-    assert _colours_said(project) == []
-    # Red and green are one colour with deuteranopia; beside the scale, each is also the
-    # grey of one of its shades, which is a note (round 2 of #398).
+    assert _colours_said(project) == [("figure-colours-scale", "info")]
     _painted(project, *_ramp_codes(64), _RED, _GREEN)
+    assert _colours_said(project) == [("figure-colours-scale", "info")]
+
+
+def test_a_default_figures_greys_make_no_scale(project: Path) -> None:
+    """matplotlib's black, its grid's grey, a legend's frame and white chain within the
+    threshold; they make no scale, and the figure's red and green are compared."""
+    _painted(project, "#000000", "#b0b0b0", "#cccccc", "#d6d6d6", "#ffffff", _RED, _GREEN)
     assert ("figure-colours-confused", "warn") in _colours_said(project)
+    assert ("figure-colours-scale", "info") not in _colours_said(project)
 
 
 def test_a_figure_of_more_colours_than_are_compared_is_said_to_be_a_scale(project: Path) -> None:
@@ -8028,17 +8035,14 @@ def _heat_codes() -> list[str]:
     return list(dict.fromkeys(out))
 
 
-def test_two_series_beside_a_heat_map_of_many_colours_are_still_compared(project: Path) -> None:
-    """Round 2 of #398: past three hundred colours nothing was compared, so a panel of red
-    and green lines beside a heat map drawn as vectors went unsaid. The shades are read to
-    five bits a channel first, and fall together."""
+def test_a_heat_map_of_many_colours_is_said_not_to_be_compared(project: Path) -> None:
+    """Past three hundred colours nothing is compared, the series beside the heat map with
+    it, and the note says so (a known gap, in DESIGN.md)."""
     from manuscript_guard.gates.figure_colours import MANY
 
     assert len(_heat_codes()) > MANY
     _painted(project, *_heat_codes(), _RED, _GREEN)
-    said = _colours_said(project)
-    assert ("figure-colours-confused", "warn") in said
-    assert ("figure-colours-many", "info") not in said
+    assert _colours_said(project) == [("figure-colours-many", "info")]
 
 
 def test_an_svg_that_cannot_be_read_gives_way_to_the_pdf_beside_it(project: Path) -> None:

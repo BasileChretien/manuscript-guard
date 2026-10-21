@@ -17,10 +17,11 @@ is distinct to normal vision and is not after is said.
   by Sharma, Wu and Dalal, Color Research and Application 30(1):21-30, 2005), between their
   CIELAB values under D65.
 * **A scale**: colours chained within the threshold of one another, three or more, are the
-  shades of a colormap, and are not compared with one another, nor with a grey (round 1 of
-  #398). What a deficiency does to a scale is whether its lightness still runs one way, a
-  question for the figure's review, not this. Each shade is compared with every other
-  colour, so a series near one shade is not swallowed by the scale (round 2 of #398).
+  shades of a colormap (`scales`). Pairs of them are just over the threshold apart and fall
+  under it once chroma is taken away, and which colours of a figure are a scale's and which
+  a series' is not known from the colours (three rounds of the review of #398 found each
+  rule for it wrong one way or the other). So a figure that draws one is not compared:
+  `gates/figure_colours.py` says so (decided by Basile, 2026-10-21).
 * **Distinct** is a difference of at least `THRESHOLD`, 10. No standard sets one. A
   difference of about 2 is the least an observer sees side by side in large patches; marks
   as small as a figure's lines and points need far more (Szafir, IEEE TVCG 24(1):392-401,
@@ -47,8 +48,7 @@ THRESHOLD = 10.0
 #: of one scale: a colormap, a gradient of points. Their neighbours sit just over the
 #: threshold apart, and anything that takes their chroma away brings them under it.
 SCALE = 3
-#: Below this chroma (CIELAB C*ab) a colour is a grey: black, white, a grid or a background,
-#: which no deficiency changes and which tells no series from another.
+#: Below this chroma (CIELAB C*ab) a colour is a grey, and is no shade of a scale.
 GREY = 5.0
 DEFICIENCIES = ("protanopia", "deuteranopia", "tritanopia")
 GREYSCALE = "greyscale"
@@ -288,8 +288,11 @@ def difference(first: RGB, second: RGB) -> float:
 
 def scales(colours: Iterable[RGB], threshold: float = THRESHOLD) -> set[str]:
     """The hex codes of `colours` that are the shades of a scale: chained within `threshold`
-    of one another to normal vision, `SCALE` or more."""
+    of one another to normal vision, `SCALE` or more, greys apart. A figure's greys chain
+    easily, a panel's background, its grid and a legend's frame, and no grey is ever said
+    to be confused with another, since neither a deficiency nor grey print moves one."""
     distinct = sorted({hex_of(colour) for colour in colours})
+    distinct = [code for code in distinct if math.hypot(*lab(parse(code)[0])[1:]) >= GREY]
     labs = [lab(parse(code)[0]) for code in distinct]
     normal = {(i, j): ciede2000(labs[i], labs[j])
               for i in range(len(labs)) for j in range(i + 1, len(labs))}  # fmt: skip
@@ -344,8 +347,7 @@ def confusions(
 ) -> list[Confusion]:
     """Each pair of `colours` at least `threshold` apart to normal vision and less than it
     as each of `seen` makes them, in the order of `seen` and then of the colours, each pair
-    once, by its hex codes. Two shades of one scale (`scales`) are not compared, nor a
-    shade with a grey."""
+    once, by its hex codes. Every pair: `scales` is for the caller to ask first."""
     distinct = sorted({hex_of(colour) for colour in colours})
     rgbs = [parse(code)[0] for code in distinct]
     labs = [lab(rgb) for rgb in rgbs]
@@ -354,21 +356,11 @@ def confusions(
         for i in range(len(rgbs))
         for j in range(i + 1, len(rgbs))
     }
-    group = _groups(len(rgbs), normal, threshold)
-    grey = [math.hypot(value[1], value[2]) < GREY for value in labs]
-
-    def apart_anyway(i: int, j: int) -> bool:
-        """Two shades of one scale, or a shade and a grey: not two series."""
-        if group[i] is None and group[j] is None:
-            return False
-        return group[i] == group[j] or (group[i] is not None and grey[j]) or (
-            group[j] is not None and grey[i])  # fmt: skip
-
     found = []
     for way in seen:
         after = [lab(simulate(rgb, way)) for rgb in rgbs]
         for (i, j), apart in normal.items():
-            if apart < threshold or apart_anyway(i, j):
+            if apart < threshold:
                 continue
             now = ciede2000(after[i], after[j])
             if now < threshold:

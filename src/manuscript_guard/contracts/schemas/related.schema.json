@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://manuscript-guard.org/schemas/related/1",
+  "title": "manuscript-guard record of the earlier outputs of the same study or the same data",
+  "description": "Each earlier output this paper overlaps with: a conference abstract, a preprint, a protocol paper, an earlier article on the same cohort or database extraction. G8 compares its numbers with this paper's, where an earlier manuscript-guard project was copied in with `manuscript-guard related --take` or values were recorded from its text with their quotes, and asks that an overlap of data and authors be disclosed. Every path is under the literature folder, as the ledger's are, except `project`, which the author supplies and which is read by `related --take` only.",
+  "type": "object",
+  "required": ["schema", "outputs"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "manuscript-guard/related/1" },
+    "outputs": { "type": "array", "items": { "$ref": "#/$defs/output" } }
+  },
+  "$defs": {
+    "text": { "type": "string", "pattern": "\\S" },
+    "key": {
+      "type": "string",
+      "pattern": "^(results\\.)?[a-z][a-z0-9_]*(\\.[a-z0-9_]+)*$",
+      "description": "A results key, as the analysis emits it or as the manuscript binds it (`cohort.n` or `results.cohort.n`)."
+    },
+    "output": {
+      "type": "object",
+      "required": ["id", "kind", "shares"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+        "kind": { "enum": ["abstract", "preprint", "article", "protocol", "report", "other"] },
+        "citekey": {
+          "$ref": "#/$defs/text",
+          "description": "Its key in references.bib. Cited in the manuscript, the overlap is disclosed."
+        },
+        "title": {
+          "$ref": "#/$defs/text",
+          "description": "What it is, where it has no citekey: the abstract's title and the meeting, for one."
+        },
+        "shares": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["data", "study", "authors"] },
+          "description": "What this paper has in common with it: the same data (a database extraction, a dataset), the same study (a cohort, a trial), authors. Data or study with authors is an overlap the manuscript has to disclose."
+        },
+        "project": {
+          "$ref": "#/$defs/text",
+          "description": "The earlier output's manuscript-guard project, as a path from this project's root, given by the author. Read by `related --take`, never by `check`."
+        },
+        "revision": {
+          "anyOf": [{ "$ref": "#/$defs/text" }, { "type": "number" }],
+          "description": "The git revision of `project` the earlier output was made from: a tag or a commit. Without one, the project's files as they stand."
+        },
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/text" },
+          "description": "The earlier analysis's own outputs, copied under the literature folder, where it had no manuscript-guard project: tables, logs, exported counts. Values are recorded against them as against a published text."
+        },
+        "files_unavailable": {
+          "$ref": "#/$defs/text",
+          "description": "Why its project and its outputs cannot be had, where an author of this paper is one of its authors."
+        },
+        "pairs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/pair" },
+          "description": "A key of the earlier project's results beside the key of this one's that is the same quantity under another name, or the same key with the reason it differs."
+        },
+        "not_compared": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["keys", "because"],
+            "additionalProperties": false,
+            "properties": {
+              "keys": {
+                "$ref": "#/$defs/text",
+                "description": "A key, or a pattern of keys with `*` (`ror.*`), that both projects emit and that are not the same quantity."
+              },
+              "because": { "$ref": "#/$defs/text" }
+            }
+          }
+        },
+        "values": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/value" },
+          "description": "Values read from the earlier output's text or from its copied outputs, each with the sentence that states it."
+        },
+        "disclosed_by": {
+          "$ref": "#/$defs/text",
+          "description": "The manuscript's sentence that discloses the overlap, where the earlier output is not cited: \"Preliminary results were presented at ...\"."
+        }
+      },
+      "anyOf": [{ "required": ["citekey"] }, { "required": ["title"] }],
+      "dependentRequired": {
+        "revision": ["project"],
+        "pairs": ["project"],
+        "not_compared": ["project"]
+      },
+      "not": {
+        "anyOf": [
+          { "required": ["project", "files_unavailable"] },
+          { "required": ["files", "files_unavailable"] }
+        ]
+      }
+    },
+    "explained": {
+      "type": "object",
+      "properties": {
+        "because": {
+          "$ref": "#/$defs/text",
+          "description": "Why the two differ: \"re-extracted in 2026 with a later cut-off\"."
+        },
+        "manuscript_says": {
+          "$ref": "#/$defs/text",
+          "description": "The manuscript's sentence that tells the reader so, as the manuscript writes it: a binding in it is read filled in, and a citation is written as the source has it (`[@key]`)."
+        }
+      },
+      "dependentRequired": { "manuscript_says": ["because"] }
+    },
+    "pair": {
+      "type": "object",
+      "required": ["earlier", "here"],
+      "unevaluatedProperties": false,
+      "allOf": [{ "$ref": "#/$defs/explained" }],
+      "properties": {
+        "earlier": { "$ref": "#/$defs/key" },
+        "here": { "$ref": "#/$defs/key" }
+      }
+    },
+    "value": {
+      "type": "object",
+      "required": ["here", "value", "source_file", "quote"],
+      "unevaluatedProperties": false,
+      "allOf": [{ "$ref": "#/$defs/explained" }],
+      "properties": {
+        "here": { "$ref": "#/$defs/key" },
+        "value": {
+          "anyOf": [{ "$ref": "#/$defs/text" }, { "type": "number" }],
+          "description": "The value as the earlier output prints it: `1,234`, `2.31`, `12.5%`."
+        },
+        "source_file": {
+          "$ref": "#/$defs/text",
+          "description": "The stored copy it is read from, under the literature folder: `sources/<citekey>.pdf`, or one of the entry's `files`."
+        },
+        "locator": { "$ref": "#/$defs/text" },
+        "quote": { "$ref": "#/$defs/text" }
+      }
+    }
+  }
+}

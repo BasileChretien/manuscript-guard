@@ -648,6 +648,23 @@ def _whole_number_means() -> Reading:
     return read
 
 
+@reading("printed value")
+def _printed_value() -> Reading:
+    """Whether a value an earlier output printed is this paper's, as G8 compares one read
+    from the earlier output's text: each printing given, and the same printing moved."""
+    from manuscript_guard.contracts.values import Value
+    from manuscript_guard.gates.related import _same_printed
+
+    def compared(given: list[dict[str, Any]]) -> list[list[bool]]:
+        found = []
+        for case in given:
+            now = Value(key="k", value=case["value"], display=case["display"], origin="results")
+            found.append([_same_printed(case["printed"], now), _same_printed(case["moved"], now)])
+        return found
+
+    return compared
+
+
 @reading("abbreviations")
 def _abbreviations() -> Reading:
     from manuscript_guard.gates.language import _judge, _Known, _shipped
@@ -840,6 +857,21 @@ def _placeholders() -> Reading:
     return placeholders
 
 
+@reading("residue")
+def _residue() -> Reading:
+    from manuscript_guard.gates.writing import load_rules, residue_in
+
+    def residue(text: str) -> list[list[Any]]:
+        """What G6's residue rules find in a text: each rule, whether it fails at
+        submission, where, and what it matched."""
+        return [
+            [rule["id"], bool(rule.get("self_reference")), match.start(), match.group(0)]
+            for rule, match in residue_in(load_rules(), text)
+        ]
+
+    return residue
+
+
 @reading("vector figure")
 def _vector_figure() -> Reading:
     """The texts and lines of an SVG figure as G4 reads them: each text's height and each
@@ -900,6 +932,28 @@ def _suggested_edit() -> Reading:
         }
 
     return placed
+
+
+@reading("suggestion written")
+def _suggestion_written() -> Reading:
+    """A suggestion accepted in Word, written into its paragraph's source where its words
+    are, as `import` writes it before it merges anything else the author changed there; or
+    why it is not."""
+    from manuscript_guard.suggestions import Words, write_in
+
+    def written(given: dict[str, Any]) -> dict[str, Any]:
+        tokens = [tuple(token) for token in given["tokens"]]
+        result = write_in(given["source"], given["printed"], tokens,
+                          [Words(given["old"], given["new"])])  # fmt: skip
+        if isinstance(result, str):
+            return {"refused": result}
+        return {
+            "source": result.source,
+            "shown": result.shown,
+            "tokens": [list(token) for token in result.tokens or ()],
+        }
+
+    return written
 
 
 # -------------------------------------------------------------------- a whole project

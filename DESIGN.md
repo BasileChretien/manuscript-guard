@@ -5415,7 +5415,8 @@ and that what it says never goes into a shell command; `tests/test_plugin.py` ho
 five to it. The tool's own output sets such text apart as well: `import` prints a Word
 comment after "comment from <author> (<date>), quoted:", each line behind `> `, cut at 200
 characters, with every control character and bidirectional control shown as `?`; a
-no-break space is shown as it is. Before 2026-10-15 it
+no-break space is shown as it is. The comment it files is stored as written and shown the
+same way in G11's report. Before 2026-10-15 it
 printed the comment on the same line as the tool's words, and a comment that read like an
 instruction read like the tool's.
 
@@ -7412,6 +7413,78 @@ rewritten past most of its words beside a block of its own kind deleted in the s
 (see Known gaps); four write nothing where main writes a block's text over a deleted
 paragraph; and 111 read as on main. Under the first version of this change, ten of the 23
 failed.
+
+## A co-author's comment is filed, and answered
+
+`import` used to print each Word comment and keep nothing. The skill said "Recording them is
+the reader's job", and a comment nobody transcribed was lost to every check: G11 counted the
+findings of panel readings, and a co-author's "this contradicts Table 2" in the margin of a
+returned document was in no record at all. The idea of keeping it came from PairTeX, a
+review layer for LaTeX projects that records each human comment as a structured,
+commit-stamped file an agent then applies. Its HTML surface does not fit a toolkit whose
+co-authors use Word; its record does.
+
+So `import --apply` files each comment as a finding (`filed_comments`), and the dry run says
+where each would go. The author decided four things on 2026-10-20:
+
+- **A record kind of its own**, `review/comments/<document>-<build>/<commenter>.yaml`
+  (`comments.schema.json`), outside every panel round. A comment is about a place in one
+  build; a reading answers a remit, is about the manuscript as it stands, goes stale with it,
+  and counts toward a round. Filed into a round, a co-author's notes would have left the
+  round incomplete until the co-author had a remit, and stale at the first `import --apply`,
+  which changes the manuscript.
+- **Every unanswered comment binds at submission, whatever its severity**
+  (`comment-unanswered`, `gates/comments.py`): a warning while the paper is written, a
+  failure in `check --submission`. One line of `resolution` or `overridden` answers it.
+- **A comment is filed as `comment`**, and its severity is the author's to change.
+- **A thread resolved in Word is filed open**, marked `resolved_in_word`. Word records that
+  it was resolved and neither who did it nor why, and either side can click it.
+
+A finding holds the comment word for word, or nothing for a comment that is a picture
+alone, which is filed too. It holds its date, and the replies to it, which Word keeps
+as comments of their own tied to it by `w15:paraIdParent` in `commentsExtended.xml`. It holds
+the words the comment's range covers and the kind of block the range starts in. Where the
+import vouches for the paragraph's identifier, as it must before it merges an edit there and
+as `respond --open` must before it anchors a point, it holds the identifier the paragraph
+has now and a digest of its source. G11 finds the paragraph by that text, as G13 finds a
+reviewer's, and says when the manuscript no longer holds it: "[the paragraph has changed
+since]". That is said, and answers nothing.
+
+**A comment is known again by the id Word keeps through a save.** Word renumbers `w:id`
+each time it saves: in Word 16 on 2026-10-20, a comment added above four others moved each
+of their ids, while their `w16cid:durableId` and `w14:paraId` stayed. Keyed on `w:id`, a copy
+saved again would have filed every comment a second time. Where Word wrote no durable id the
+key is the paragraph id, and where there is neither, the author, date and words. A later
+copy adds what is new: a comment, a reply, Word's Resolve.
+
+**A comment is filed when the edits are not.** The rewording of the paragraph it is on may
+be refused, and so may the whole document: built from another manuscript and imported
+without `--force`, or numbered by other rules. The second was the common way to lose a
+comment, since the author re-sends a fresh build and the old copy's comments went nowhere;
+they were not even printed. Such a comment has an identifier only where its paragraph still
+reads as it did at the build, and is marked `unmatched` where it does not. It is not filed
+where the identifiers cannot say whether the document is the paper or its supplement: it is
+printed, and the import says it is not filed.
+
+**The record is sealed**, `words_sha256`, over what the commenter wrote: the commenter, the
+document and its build, each finding's words, place and replies, and the list of findings.
+Severity and the answers are the author's and stay out of it. A comment reworded into one
+that needs nothing, deleted, or moved to another paragraph or person is `comments-altered`,
+and `import` adds nothing to that record, since adding would seal the change. `import` writes
+a record again when it adds to it, keeping every value; it will not write over a record that
+holds a YAML comment, which that would drop, found as a `#` outside every scalar of the
+file's own composing.
+
+Not filed: a review panel's own comments in a document of its suggested edits, and the
+replies to them, which are that panel's findings and their answers (#367); and a journal
+reviewer's comment already a point of a revision round, word for word under the reviewer id
+`respond --open --from` gives it, which G13 holds to its answer.
+
+The records are internal. No build reads `review/`, and the submission manifest lists only
+the panel's overrides (`gates.review.overrides`); a test builds a pack with a comment filed
+and looks for the commenter's name and words in every file of it. The words are stored as
+written, and shown through `text.shown.printable`, in `import`'s output and in G11's report
+alike.
 
 ## A fence is a line pandoc reads as one
 
@@ -13586,9 +13659,6 @@ Open, recorded as each change landed:
   - *An edit dropped when the document was made goes unmentioned.* A finding with one edit
     written and accepted and another dropped is resolved by the first, and its resolution
     does not say the second was never offered.
-  - *A reply in Word with no author is listed again as a co-author's comment*, since the
-    import's comment reader names such a comment "an unnamed reviewer" and the reader of
-    replies does not. Said twice, answered once.
   - *The refusal of undecided suggestions rests on the document's list of them.* A tool that
     dropped the `manuscript-guard-suggestions-*` properties and kept the source stamp would
     have every panel change read as accepted. The `mg-s-` bookmarks would still be there to
@@ -13619,7 +13689,53 @@ Open, recorded as each change landed:
   thrown away; and an edit to be dropped in a supplement paragraph has the supplement built,
   then deleted. Both come out right.
 
+- **What filing a co-author's comments does not do.** Each is non-blocking under the bar,
+  and none is reached by a document Word 16 saves from a build:
+  - *A comment saved by a Word that writes no durable id, then by one that does, is filed
+    twice*: its key goes from `para:` to `durable:`. Word 2010 and 2013, and other editors,
+    write no `commentsIds.xml`.
+  - *A comment edited in Word after it was filed keeps the words first filed*; `import` says
+    it reads differently. A reply edited since is filed as a further reply, beside the first.
+  - *Only a paragraph's comment is said to be stale.* A heading's or a caption's has no
+    digest of its source to look for.
+  - *A commenter is a label.* Two names with the same letters and digits share a record,
+    under the first; two people with one name share it too.
+  - *The words a comment was made on are read as `w:t` text*, without the font reading of
+    `docxtext`, so a Symbol-font character among them is kept as its code. They are a quote
+    to find the place by, and nothing compares them.
+  - *A comment whose range starts outside every paragraph of the body*, in a footnote for
+    one, is filed as made on `text`, with no identifier and no words it was made on: only
+    `word/document.xml` is read for ranges.
+  - *Writing a record again keeps its values, not its layout*: quoting and line breaks are
+    the tool's.
+  - *A record deleted whole is not noticed* (round 1 of #375). The seal covers what is in
+    a record, and nothing outside it says what was filed; git does. Importing the
+    document again files it anew.
+  - *A finding's identifier and its paragraph's digest are those of the import that filed
+    it* (round 1 of #375). A comment on a paragraph whose rewording the same `--apply`
+    merges is said at once to be on a paragraph changed since, which it is; and after a
+    move that `--apply` makes, its identifier, which is a position, can name the
+    neighbour. G11 finds the paragraph by its text, never by the identifier.
+  - *A document refused whole vouches for a value paragraph it may never have carried*
+    (round 1 of #375): with no build to compare with, its comment there is anchored
+    where the import of its edits would first have asked the build.
+  - *Two comments by one person, word for word, in a document that keeps no paragraph
+    ids and had its dates removed (Word's "remove personal information")* share a key,
+    and the second, added in a later copy, is taken for the first (round 1 of #375). Two
+    comments that are each a picture alone are word for word the same (round 2).
+  - *A panel's comment with a symbol inserted in it is filed as a co-author's* (round 2
+    of #375): `threads_of` reads its text with the font reading of `docxtext`, which
+    reads `w:sym`, and `suggestions.decisions` reads `w:t` alone, so their digests
+    differ. As before #375.
+
 Closed since, and why each mattered (an open gap goes above this line):
+
+- **A reply in Word with no author was listed again as a co-author's comment** (round 1 of
+  #367), since the import's comment reader named such a comment "an unnamed reviewer" and
+  the reader of replies did not. Said twice, it would now have been filed as a comment to
+  answer. The import reads threads now (`filed_comments.threads_of`), and leaves out a
+  panel's comment, and the replies in its thread, by its author and the digest of its words
+  as Word holds them, which is how `suggestions.decisions` knows it.
 
 - **A suggested edit beside emphasis, code or a link was not offered.** `import` merged an
   accepted suggestion as any rewording, rebuilding its stretch from Word's text, so an edit

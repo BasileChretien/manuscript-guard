@@ -13429,7 +13429,8 @@ def test_a_document_refused_for_carrying_no_identifier_still_reports_its_comment
     project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """The comments were read and then dropped when the document was refused, and with them
-    the prompt to record them for G11."""
+    the prompt to record them for G11. With no telling which document it is, they have no
+    record to be filed in (`filed_comments`), and the import says so."""
     from manuscript_guard.cli import main
 
     w = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
@@ -13455,4 +13456,5 @@ def test_a_document_refused_for_carrying_no_identifier_still_reports_its_comment
     out = capsys.readouterr().out
     assert "no telling whether it is the manuscript or its supplement" in out
     assert "Please cite the 2024 review." in out
-    assert "review/round-<n>/" in out
+    assert "The comments are not filed" in out and "they are filed with it" in out
+    assert not (project / "review" / "comments").exists()

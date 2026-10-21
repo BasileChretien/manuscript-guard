@@ -998,3 +998,127 @@ def comment_texts(document: Path) -> list[tuple[dict[str, str], str]]:
         text = " ".join(_text(p, fonts) for p in comment.iter(W + "p"))
         out.append((attributes, spaced(text).strip()))
     return out
+
+
+_W14 = "{http://schemas.microsoft.com/office/word/2010/wordml}"
+_W15 = "{http://schemas.microsoft.com/office/word/2012/wordml}"
+_W16CID = "{http://schemas.microsoft.com/office/word/2016/wordml/cid}"
+
+
+@dataclass(frozen=True)
+class WordComment:
+    """One comment as Word keeps it. A reply is a comment of its own, over the same words."""
+
+    #: `w:id`, which ties the comment to its range in the body. Word renumbers it each time
+    #: it saves (Word 16, 2026-10-20): a comment added above another moved the other's id on.
+    identifier: str
+    author: str
+    #: As Word writes it: the local time of whoever commented, marked `Z` all the same.
+    date: str
+    #: Each paragraph of the comment, as text, on a line of its own.
+    text: str
+    #: The `w14:paraId` of each of its paragraphs, which a reply names its comment by.
+    paragraphs: tuple[str, ...] = ()
+    #: The paragraph of the comment this one replies to, "" for a comment that starts a thread.
+    parent: str = ""
+    #: Word's "Resolve" was clicked on its thread.
+    done: bool = False
+    #: `w16cid:durableId`, which Word keeps through a save, "" where it wrote none.
+    durable: str = ""
+
+
+def word_comments(document: Path) -> list[WordComment]:
+    """Every comment in `word/comments.xml`, with what Word keeps of it in two other parts:
+    which comment it replies to and whether its thread is resolved, in
+    `word/commentsExtended.xml`, and the id it keeps through a save, in
+    `word/commentsIds.xml`. A document without them has no replies, nothing resolved and no
+    lasting ids: Word 16 writes all three, a pandoc-built document resolved in Word only once
+    it is converted from compatibility mode (verified 2026-10-20)."""
+    try:
+        with open_archive(document) as archive:
+            names = set(archive.namelist())
+            if "word/comments.xml" not in names:
+                return []
+
+            def part(name: str) -> ET.Element | None:
+                if name not in names:
+                    return None
+                return read_part(archive, name, what=f"{document.name}:{name.split('/')[-1]}")
+
+            root = part("word/comments.xml")
+            extended = part("word/commentsExtended.xml")
+            lasting = part("word/commentsIds.xml")
+            fonts = Fonts.of(archive, document.name)
+    except UnsafeDocument as exc:
+        raise DocumentUnreadable(str(exc)) from exc
+    parents: dict[str, str] = {}
+    resolved: set[str] = set()
+    for node in extended.iter(_W15 + "commentEx") if extended is not None else ():
+        paragraph = node.get(_W15 + "paraId", "")
+        if node.get(_W15 + "paraIdParent"):
+            parents[paragraph] = node.get(_W15 + "paraIdParent", "")
+        if node.get(_W15 + "done") in ("1", "true"):
+            resolved.add(paragraph)
+    durable = {
+        node.get(_W16CID + "paraId", ""): node.get(_W16CID + "durableId", "")
+        for node in (lasting.iter(_W16CID + "commentId") if lasting is not None else ())
+    }
+    out = []
+    for comment in root.iter(W + "comment"):
+        paragraphs = tuple(
+            p.get(_W14 + "paraId", "") for p in comment.iter(W + "p") if p.get(_W14 + "paraId")
+        )
+        lines = [spaced(_text(p, fonts)).strip() for p in comment.iter(W + "p")]
+        out.append(
+            WordComment(
+                identifier=comment.get(W + "id", ""),
+                author=comment.get(W + "author", ""),
+                date=comment.get(W + "date", ""),
+                text="\n".join(lines).strip("\n"),
+                paragraphs=paragraphs,
+                parent=next((parents[p] for p in paragraphs if p in parents), ""),
+                done=any(p in resolved for p in paragraphs),
+                durable=next((durable[p] for p in paragraphs if durable.get(p)), ""),
+            )
+        )
+    return out
+
+
+def comment_ranges(document: Path) -> dict[str, str]:
+    """The words each comment was made on, by the comment's `w:id`: the text between its
+    `w:commentRangeStart` and `w:commentRangeEnd` in the body, every tracked change accepted
+    and every break between paragraphs read as a space. "" for a comment made at a point."""
+    try:
+        with open_archive(document) as archive:
+            root = read_part(archive, "word/document.xml", what=f"{document.name}:document")
+    except UnsafeDocument as exc:
+        raise DocumentUnreadable(str(exc)) from exc
+    opened: set[str] = set()
+    found: dict[str, list[str]] = {}
+
+    def add(text: str) -> None:
+        for ident in opened:
+            found[ident].append(text)
+
+    # Depth first, in document order, without recursion: a range can start in one paragraph
+    # and end in another, so its text is gathered across them.
+    stack: list[ET.Element | None] = [root]
+    while stack:
+        node = stack.pop()
+        if node is None:
+            add(" ")  # the end of a paragraph
+        elif node.tag == W + "commentRangeStart":
+            ident = node.get(W + "id", "")
+            opened.add(ident)
+            found.setdefault(ident, [])
+        elif node.tag == W + "commentRangeEnd":
+            opened.discard(node.get(W + "id", ""))
+        elif node.tag == W + "t":
+            add(node.text or "")
+        elif node.tag in _SPACES:
+            add(" ")
+        elif node.tag not in _UNSEEN:
+            if node.tag == W + "p":
+                stack.append(None)
+            stack.extend(reversed(node))
+    return {ident: spaced("".join(parts)).strip() for ident, parts in found.items()}

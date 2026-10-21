@@ -712,7 +712,8 @@ def test_since_supplement_is_refused_where_no_supplement_is_built(
     shutil.rmtree(project / "manuscript" / "supplementary")
     assert main(["build", str(project), "--offline", "--skip-checks"]) == 0
     sent = project / "sent.docx"
-    shutil.copy2(project / "build" / "manuscript.docx", sent)
+    # Named UNCHECKED where a gate fails without the supplement the paper points at.
+    shutil.copy2(next((project / "build").glob("manuscript*.docx")), sent)
     capsys.readouterr()
     assert main(["build", str(project), "--offline", "--skip-checks", "--marked-up",
                  "--since", str(sent), "--since-supplement", str(sent)]) == 1  # fmt: skip

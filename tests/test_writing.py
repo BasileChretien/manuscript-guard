@@ -309,6 +309,7 @@ SAID_TO_ONE = [
     # Round 2 of #377: what round 1's narrowing let through.
     ("We thank the reviewer for bringing this to our attention.", "reviewer-answered"),
     ("We thank Reviewer 2 for their helpful suggestion.", "reviewer-answered"),
+    ("We thank the reviewer for bringing this up.", "reviewer-answered"),
     ("At the request of the editor, the abstract was shortened.", "reviewer-answered"),
     ("As the reviewer rightly pointed out, the cohort was small.", "reviewer-answered"),
     ("Reviewer #3 asked whether the dose was recorded.", "reviewer-answered"),
@@ -499,6 +500,7 @@ NOT_SAID_TO_ANYONE = [
     "All authors approved the content of this version of the manuscript.",
     "A new section has been added to the text of the SmPC.",
     "We thank the guest editor for bringing this collection together.",
+    "This has been updated in the revised text of the SmPC.",
 ]  # fmt: skip
 
 

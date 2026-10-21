@@ -183,7 +183,7 @@ residue_words:
   section: |-
     (?-i:Discussion|Introduction|Abstract|Methods|Results|Limitations|Conclusions?)(?:\s+section)?
     |(?:limitations?|methods|results|discussion|introduction|conclusions?)\s+section
-    |manuscript|main\s+text|revised\s+text
+    |manuscript|main\s+text|revised\s+text(?!\s+of\s+(?!(?:the|this|our)\s+(?:revised\s+)?manuscript\b))
   # What may stand between "we have" and its verb, and between the verb and the part.
   adverb: |-
     also|further|therefore|accordingly|thus|hence|now
@@ -212,7 +212,7 @@ residue:
         |(?:thank(?:s|ing)?|grateful|indebted)\s+(?:to\s+)?{{one}}\s+for\s+(?:(?:this|that)\s+(?:\w+\s+)?
           (?:comment|suggestion|point|question|remark|observation|query|concern)\b
           |(?:raising|pointing\s+out|bringing\s+up|highlighting|noting)\s+(?:this|that|it)\b
-          |bringing\s+(?:this|that|it)\s+to\s+(?:our|my)\s+attention\b
+          |bringing\s+(?:this|that|it)\s+(?:to\s+(?:our|my)\s+attention|up)\b
           |pointing\s+(?:this|that|it)\s+out\b)
         |(?:thank(?:s|ing)?|grateful|indebted)\s+(?:to\s+)?{{numbered}}\s+for\b
       )
@@ -233,7 +233,7 @@ residue:
         |thank(?:s|ing)?\s+(?:to\s+)?{{many}}\s+for\s+(?:(?:this|that)\s+(?:\w+\s+)?
           (?:comment|suggestion|point|question|remark|observation|query|concern)\b
           |(?:raising|pointing\s+out|bringing\s+up|highlighting|noting)\s+(?:this|that|it)\b
-          |bringing\s+(?:this|that|it)\s+to\s+(?:our|my)\s+attention\b
+          |bringing\s+(?:this|that|it)\s+(?:to\s+(?:our|my)\s+attention|up)\b
           |pointing\s+(?:this|that|it)\s+out\b)
       )
     why: An answer to the reviewers, unless the paper is about peer review

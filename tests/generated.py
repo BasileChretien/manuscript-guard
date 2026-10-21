@@ -1953,6 +1953,76 @@ def mean_tables(draw: st.DrawFn) -> tuple[str, list[str], list[Meant]]:
     return "\n".join(lines), [label.lower() for label in labels], expected
 
 
+# ------------------------------------------------- a number an earlier output printed
+
+#: The ways a paper prints one number that this one prints otherwise: as it is, its
+#: thousands grouped, a middle dot for the point, a percent sign after it, a minus sign
+#: before it, to fewer or more places than this paper, and below one with no zero before its
+#: point (".45").
+PRINTINGS = ("as it is", "grouped", "middle dot", "percent", "minus", "coarser", "finer",
+             "no leading zero")  # fmt: skip
+#: What a paper groups thousands with: a comma, a space, a thin space, a no-break space and
+#: a narrow no-break one, by code point since each looks like a space.
+GROUPS = (",", " ", chr(0x2009), chr(0x00A0), chr(0x202F))
+
+
+def _grouped(text: str, by: str) -> str:
+    whole, point, fraction = text.partition(".")
+    sign, digits = ("-", whole[1:]) if whole.startswith("-") else ("", whole)
+    parts = []
+    while len(digits) > 3:
+        digits, parts = digits[:-3], [digits[-3:], *parts]
+    return sign + by.join([digits, *parts]) + point + fraction
+
+
+def _printed_as(text: str, kind: str, by: str) -> str:
+    if kind == "grouped":
+        return _grouped(text, by)
+    if kind == "middle dot":
+        return text.replace(".", chr(0x00B7))
+    if kind == "percent":
+        return text + "%"
+    if kind == "minus":
+        return text.replace("-", chr(0x2212))
+    if kind == "no leading zero" and text.lstrip("-").startswith("0."):
+        return text.replace("0.", ".", 1)
+    return text
+
+
+@st.composite
+def printings(draw: st.DrawFn) -> list[dict[str, Any]]:
+    """One number of this paper, printed by an earlier output in each of the ways a paper
+    prints one, and the same printing of a number a unit and a half of the coarser
+    printing away. The first is the value; the second is not, however it was rounded:
+    each side is at most half a unit from what it rounds."""
+    cases = []
+    for kind in PRINTINGS:
+        here = draw(st.integers(1 if kind == "coarser" else 0, 3))
+        if kind == "coarser":
+            there = draw(st.integers(0, here - 1))
+        elif kind == "finer":
+            there = draw(st.integers(here + 1, 4))
+        else:
+            there = draw(st.integers(1 if kind == "no leading zero" else 0, 3))
+        low, high = {"grouped": (1000.0, 1e7), "no leading zero": (0.001, 0.94)}.get(
+            kind, (0.001, 999.0)
+        )
+        value = draw(st.floats(low, high, allow_nan=False, allow_infinity=False))
+        if kind == "minus" or (kind != "grouped" and draw(st.booleans())):
+            value = -value
+        unit = 10.0 ** -min(here, there)
+        moved = value + draw(st.sampled_from((1.5, -1.5))) * unit
+        by = draw(st.sampled_from(GROUPS))
+        cases.append({
+            "kind": kind,
+            "value": value,
+            "display": f"{value:.{here}f}",
+            "printed": _printed_as(f"{value:.{there}f}", kind, by),
+            "moved": _printed_as(f"{moved:.{there}f}", kind, by),
+        })  # fmt: skip
+    return cases
+
+
 # ---------------------------------------------------------------------- what an edit holds
 
 #: A binding, a citation and a number in each of the ways one is written: what `reworded`
@@ -2343,6 +2413,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "whole-number means": mean_tables().map(
         lambda drawn: {"text": drawn[0], "labels": drawn[1]}
     ),
+    "printed value": printings(),
     "units after": texts(BOUND_UNITS),
     "limit stated": st.fixed_dictionaries(
         {"text": texts(QUOTED_LIMITS), "value": st.sampled_from((3500, 4, 14, 35000, 500))}

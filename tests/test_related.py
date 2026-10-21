@@ -374,6 +374,9 @@ def test_an_unknown_revision_is_refused(project: Path, earlier: Path) -> None:
     _declare(project, _entry(project="../earlier", revision="no-such-tag"))
     with pytest.raises(TakeError, match="no revision 'no-such-tag'"):
         _take(project)
+    _declare(project, _entry(project="../earlier", revision="--output=x"))
+    with pytest.raises(TakeError, match="is not a revision"):
+        _take(project)
 
 
 # ---------------------------------------------------------------------- from the text

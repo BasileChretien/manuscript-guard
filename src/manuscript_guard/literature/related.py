@@ -371,6 +371,9 @@ class _Reader:
         self.source = source
         self.revision = revision
         if revision is not None:
+            if revision.startswith("-"):
+                # Given to git as it is, it would be read as an option.
+                raise TakeError(f"{source}: {revision!r} is not a revision")
             found = _git(source, "rev-parse", "--verify", "--quiet", f"{revision}^{{commit}}")
             if found is None:
                 raise TakeError(f"{source}: git knows no revision {revision!r} there")

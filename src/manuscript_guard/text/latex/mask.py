@@ -485,8 +485,10 @@ class _Reader:
         self.stack.append(frame)
         # A Markdown binding as a command's argument, `\\emph{{results.x}}` (round 1 of #400:
         # only one opening a group of its own was seen).
-        # `\\mg{{results.x}}` is `\\mg`'s own, said once there (round 2 of #400).
-        if closer == "}" and self.command != "mg" and _MARKDOWN_BINDING.match(self.text, at):
+        # `\\mg{{results.x}}` is `\\mg`'s own, said once there (round 2 of #400), but in
+        # siunitx, where `\\mg` records nothing (round 3).
+        mg_says_it = self.command == "mg" and not self.siunitx
+        if closer == "}" and not mg_says_it and _MARKDOWN_BINDING.match(self.text, at):
             self.suspects.append((at, self._suspect_end(at)))
         self._blank(at, at + 1)
         self.pos = at + 1

@@ -1350,7 +1350,8 @@ The result is compiled and packed by the code above, and checked three times:
   definition whose body follows a comment, `\renewcommand{\arraystretch}%` with `{1.5}` on
   the next line, has its body read as a group, so a parameter's size there is a number too.
 - physics' `\qty[a = b]` holds an `=`, so it is taken for siunitx's option list and blanked
-  (round 2 of #400).
+  (round 2 of #400). A siunitx key with no `=`, `\qty[sticky-per]`, is taken for a value and
+  read as prose words; it holds no number (round 3).
 - Past a refusal a file's bindings are found by their shape, in a comment too, so that a
   result quoted there is not said to be quoted nowhere.
 - A class or package that changes how a character is read, beyond those refused, is not seen.

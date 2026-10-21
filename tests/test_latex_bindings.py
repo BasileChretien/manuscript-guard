@@ -63,6 +63,8 @@ def test_round_2_of_400_an_option_list_is_blanked_and_a_value_in_brackets_is_rea
 
 def test_round_2_of_400_a_binding_s_own_markdown_braces_are_said_once() -> None:
     assert len(bindings(_source(DOC + "Of \\mg{{results.x}} reports.\n" + END))[1]) == 1
+    # Round 3: in siunitx, where `\\mg` records nothing, the braces are said.
+    assert len(bindings(_source(DOC + "Of \\num{\\mg{{results.x}}}.\n" + END))[1]) == 1
 
 
 def test_round_2_of_400_a_definition_left_without_its_body_blanks_no_later_body() -> None:

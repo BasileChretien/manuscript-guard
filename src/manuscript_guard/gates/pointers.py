@@ -233,11 +233,17 @@ def pointers_in(text: str, path: Path, numbers: Numbers | None = None) -> list[P
     return found
 
 
+#: What sets a caption's number off from its title: a stop or a colon, the end of the bold it
+#: is set in ("**Table 2** Counts"), or a dash between spaces ("Table 2 - Counts"). A space
+#: alone does not: "Table 2 shows" is a sentence.
+_SET_OFF = re.compile(r"[.:]|\*\*|__|[^\S\n]+[" + _DASHES + r"][^\S\n]")
+
+
 def _is_caption(shown: str, match: re.Match) -> bool:
-    """A pointer that opens its paragraph and is followed by a stop or a colon is a caption a
-    writer typed above the table, not a citation of it. One that opens a line in the middle
-    of a wrapped paragraph ends a sentence ("shown in\nTable 1.")."""
-    if shown[match.end() : match.end() + 1] not in (".", ":"):
+    """A pointer that opens its paragraph and is set off from what follows (`_SET_OFF`) is a
+    caption a writer typed above the table, not a citation of it. One that opens a line in
+    the middle of a wrapped paragraph ends a sentence ("shown in\nTable 1.")."""
+    if _SET_OFF.match(shown, match.end()) is None:
         return False
     start = shown.rfind("\n", 0, match.start()) + 1
     if not _CAPTION.fullmatch(shown[start : match.start()]):
@@ -568,9 +574,18 @@ def captioned(files: list[tuple[Path, str]], numbers: Numbers) -> frozenset[str]
         display.key
         for path, text in files
         for beside in _beside(text, numbers, pointers_in(text, path, numbers))
-        for display in beside.displays
+        for display in _named_beside(beside)
         if display.kind == TABLE
     )
+
+
+def _named_beside(beside: _Beside) -> tuple[Display, ...]:
+    """The displays a caption is the caption of: those beside it that it names, or all of them
+    where it names none, which G2 says (round 2 of #381: a caption between two tables took
+    the number off the other one's emitted caption too)."""
+    named = (beside.caption.supplementary, beside.caption.number)
+    mine = tuple(d for d in beside.displays if (d.supplementary, d.number) == named)
+    return mine or beside.displays
 
 
 def _captions(

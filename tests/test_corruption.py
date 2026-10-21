@@ -4117,10 +4117,32 @@ def test_a_caption_between_two_tables_is_held_to_the_one_it_names(
 
 
 @pytest.mark.parametrize(
+    ("between", "numbered"),
+    [
+        ("{{table.baseline}}\n\nTable 2. Counts.\n\n{{table.two_by_two}}",
+         ": Table 1. Reports by drug group."),
+        ("{{table.baseline}}\n\nTable 1. Characteristics.\n\n{{table.two_by_two}}",
+         ": Table 2. Contingency table underlying"),
+    ],
+)  # fmt: skip
+def test_a_caption_between_two_tables_leaves_the_other_its_number(
+    project: Path, between: str, numbered: str
+) -> None:
+    """Round 2 of #381: the caption of one of two tables placed one after the other took the
+    number off the other's emitted caption too, and nothing said so."""
+    _rewrite(project, ("\n{{table.two_by_two}}\n", "\n"), ("{{table.baseline}}", between))
+    assert numbered in _assembled_raw(project)["main.md"]
+    assert [s for s in _ref_findings(project) if s[0] == "caption-names-another"] == []
+
+
+@pytest.mark.parametrize(
     "typed",
     ["**Table 2.** Counts\n\n{{table.two_by_two}}", "## Table 2. Counts\n\n{{table.two_by_two}}",
      "{{table.two_by_two}}\n\nTable 2. Counts.", "{{ref.table.two_by_two}}. Counts\n\n"
-     "{{table.two_by_two}}"],
+     "{{table.two_by_two}}",
+     # round 2 of #381: set off by bold or a dash, and no stop
+     "**Table 2** Counts\n\n{{table.two_by_two}}",
+     "Table 2 \N{EN DASH} Counts\n\n{{table.two_by_two}}"],
 )  # fmt: skip
 def test_a_table_captioned_where_it_stands_gets_no_second_number(
     project: Path, typed: str

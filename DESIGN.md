@@ -497,9 +497,12 @@ paragraph the author writes under it, and opens with `{{ref.figure.forest}}.`, w
 A caption the analysis numbered already, "Table 2. Baseline ...", "Table 2 Baseline" or
 "**Table 2.** Baseline", is printed as it is: adding the number again would print "Table 2.
 Table 2.", in every paper that numbered its own captions before. So is the emitted caption
-of a table a caption is typed beside, as a paragraph or a heading set straight above it,
-which was how a paper numbered its tables before refs: the typed caption prints the number
-(round 1 of #381 found both printed twice). G2 holds an emitted caption's number to the
+of a table that has a caption typed beside it, as a paragraph or a heading set straight
+above it, which was how a paper numbered its tables before refs: the typed caption prints
+the number (round 1 of #381 found both printed twice). A caption between two tables is the
+caption of the one it names, and the other keeps its number (round 2). A typed caption's
+number is set off by a stop, a colon, the end of its bold or a dash between spaces: "Table 2
+shows the counts." above a table is a sentence. G2 holds an emitted caption's number to the
 table's, and so it holds a caption typed beside a display: the block directly under a
 figure placed by its binding, or directly above or under a table, when it opens with a
 pointer that cites nothing there (a caption, or a heading). One that names no display it
@@ -8057,6 +8060,14 @@ Open, recorded as each change landed:
   abstract is left out of the pack for such a ref, the reason given names the formatting the
   build does, not a pointer with no number; `check` refuses that ref in the manuscript
   (round 2 of #378).
+- **A caption typed "Table 2 Counts" reads as a sentence.** With nothing but a space after
+  its number, as Springer sets a caption, a paragraph above a table cannot be told from "Table
+  2 shows the counts.", so it is no caption: the build numbers the emitted caption as well,
+  and the number prints twice. Typed with a stop, a colon, in bold or as a heading, it is a
+  caption (round 2 of #381). Two tables placed in one block with no blank line between are
+  read as the last of them by the caption check, and an emitted caption that opens with a
+  pointer's word and digits that are no number of it ("Table 12-month outcomes") is taken
+  for numbered: printed without the build's number, and `caption-names-another` says so.
 - **A caption's number is written one way.** The build prints "Table 2. " before an emitted
   caption, a stop and a space, whatever the journal sets there ("Table 2:", the label in
   bold). Where the count cannot number a table (placed twice, or its kind also placed by

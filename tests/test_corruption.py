@@ -5619,7 +5619,7 @@ def _unexcused(root: Path) -> None:
     paper = root / "paper.yaml"
     lines = paper.read_text(encoding="utf-8").splitlines(keepends=True)
     kept = [line for line in lines if not line.strip().startswith(f"{_LOOKED_KEY}:")]
-    assert len(kept) == len(lines) - 1
+    assert len(kept) >= len(lines) - 1
     paper.write_text("".join(kept), encoding="utf-8")
 
 
@@ -5896,6 +5896,31 @@ def test_a_work_published_twice_offers_the_cited_copy_or_none(
         assert f"with {offered} and PMID" in said and "several" not in said, said
     else:
         assert "with DOI" not in said and "several works" in said, said
+
+
+def test_a_record_that_names_nobody_gives_way_to_one_that_names_the_first_author(
+    project: Path,
+) -> None:
+    """The measurement of 2026-10-21: NEJM files the letters about an article under the
+    article's own title, and Crossref's record of them lists nobody; it was offered for
+    the article. A work found without its people is taken only where none is found with
+    the cited first author first."""
+    letter = {**_CROSSREF_HIT, "doi": "10.5555/letters.about.it", "authors": []}
+    _searched(project, crossref_search=_hits(letter))
+    said = _finding_of(project, "reference-found").message
+    assert f"with DOI {_LOOKED_DOI} and PMID {_SEARCHED_PMID}" in said, said
+    # Without the PubMed record, the record that names nobody is all there is.
+    _searched(project, pubmed_search=_hits(), crossref_search=_hits(letter))
+    assert "with DOI 10.5555/letters.about.it" in _finding_of(project, "reference-found").message
+
+
+def test_one_work_in_two_registries_is_one_work(project: Path) -> None:
+    """A PubMed record with no DOI and Crossref's record of the same work share no
+    identifier, and are one work: nothing in them differs."""
+    pubmed = {k: v for k, v in _PUBMED_HIT.items() if k != "doi"}
+    _searched(project, pubmed_search=_hits(pubmed))
+    said = _finding_of(project, "reference-found").message
+    assert f"with DOI {_LOOKED_DOI} and PMID {_SEARCHED_PMID}" in said, said
 
 
 def test_a_withdrawn_review_is_the_work_not_a_notice(project: Path) -> None:

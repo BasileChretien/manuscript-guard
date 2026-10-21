@@ -315,6 +315,10 @@ def judge(
     titled = [w for w in usable if held(title, w) >= lookups.TITLE_HELD]
     dated = [w for w in titled if _dated(w, year)]
     lead = [w for w in dated if _leads(cited, w)]
+    # A work found with the cited first author first outweighs one whose record names
+    # nobody: NEJM files the letters about an article under its title, and Crossref's
+    # record of them lists no one (the measurement of 2026-10-21).
+    lead = [w for w in lead if authors.compare(cited, [w.people]).compared] or lead
     if lead:
         return Verdict(tuple(_found(citekey, fields, cited, lead, path, excuse)))
     # A book reviewed under its own title, by the reviewer, is no book by other people
@@ -333,33 +337,27 @@ def _leads(cited: Authors, work: Work) -> bool:
     return not said.compared or said.first
 
 
-def _one_work(lead: list[Work]) -> list[list[Work]]:
-    """The works found, the records of one work together: a PubMed and a Crossref record
-    that share a DOI, or two that share a PMID, are one work."""
-    groups: list[list[Work]] = []
-    for work in lead:
-        ids = {x for x in (work.doi and f"doi:{work.doi}", work.pmid and f"pmid:{work.pmid}") if x}
-        home = [g for g in groups if ids & {x for w in g for x in (
-            w.doi and f"doi:{w.doi}", w.pmid and f"pmid:{w.pmid}") if x}]  # fmt: skip
-        merged = [work] + [w for g in home for w in g]
-        groups = [g for g in groups if g not in home] + [merged]
-    return groups
+def _one(works: list[Work]) -> bool:
+    """Whether the records are of one work: no two DOIs and no two PMIDs among them. A
+    PubMed record with no DOI and Crossref's of the same work share no identifier, and
+    nothing in them differs."""
+    return (len({w.doi for w in works if w.doi}) <= 1
+            and len({w.pmid for w in works if w.pmid}) <= 1)  # fmt: skip
 
 
 def _cited_copy(fields: dict[str, str], lead: list[Work]) -> list[Work] | None:
     """Of a work found more than once, the copy in the journal the entry names, or None
     where that cannot be told: a statement co-published by several journals has one title,
     year and first author in each (PRISMA 2020 in BMJ and in J Clin Epidemiol; round 1 of
-    #379)."""
-    groups = _one_work(lead)
-    if len(groups) == 1:
-        return groups[0]
+    #379). A record that names no journal goes with the copy whose identifier it shares."""
+    if _one(lead):
+        return lead
     journal = fields.get("journal") or fields.get("journaltitle") or ""
-    named = [
-        g for g in groups
-        if journal and any(same_journal(journal, j) for w in g for j in w.journals)
-    ]  # fmt: skip
-    return named[0] if len(named) == 1 else None
+    named = [w for w in lead if journal and any(same_journal(journal, j) for j in w.journals)]
+    if not named or not _one(named):
+        return None
+    ids = {x for w in named for x in (w.doi, w.pmid) if x}
+    return named + [w for w in lead if not w.journals and {w.doi, w.pmid} & ids]
 
 
 def _found(citekey, fields, cited, lead: list[Work], path, excuse) -> list[Finding]:

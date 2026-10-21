@@ -425,11 +425,19 @@ LATEX_PLACES = (
     ("\\begin{{verbatim}}\n{}\n\\end{{verbatim}}\n", (False,)),
     ("\\iffalse {} \\fi ", (False,)),
     ("\\vspace{{{}pt}} ", (False,)),
+    # What round 1 of #380 found blanked though it prints.
+    ("\\iffalse {} \\else {} \\fi ", (False, True)),
+    ("\\begin{{align}}a &= b \\\\\n[{}] &= c\\end{{align}}\n", (True,)),
+    ("\\href{{http://a.b/{}}}{{text {}}} ", (False, True)),
+    ("\\begin{{tabular}}{{ll}}{} & \\multicolumn{{1}}{{c}}{{m {}}} \\\\\\end{{tabular}}\n",
+     (True, True)),
+    ("$x$${}$ ", (True,)),
 )  # fmt: skip
 #: Where a number stands in the preamble, before `\\begin{document}`.
 LATEX_PREAMBLE_PLACES = (
     ("\\begin{{filecontents}}{{x.bib}}\nkept {}\n\\end{{filecontents}}\n", (False,)),
     ("\\title{{T {}}}\n", (True,)),
+    ("\\newcommand{{\\ci}}[1][{}]{{#1 CI}}\n", (True,)),
     ("\\usepackage[opt{}]{{x}}\n", (False,)),
     ("\\author{{A {}}}\n", (False,)),
 )  # fmt: skip

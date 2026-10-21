@@ -2,7 +2,7 @@
 
 The contract is `mask`'s: the same length, every line break kept, and what is not prose
 replaced by NUL, so that a finding names the `.tex` line. Two additions keep the length. A
-sign TeX prints as a space is a space: `~`, `\\,`, `\\quad`, and `&` and `\\\\` in a table. An
+sign TeX prints as a space is a space: `~`, `\\,`, `\\quad`, `\\\\`, and `&` in a table. An
 escaped character is that character at the backslash's place, with a NUL after it, so that
 `95\\%` reads as `95%`.
 
@@ -32,17 +32,29 @@ from manuscript_guard.text.latex.commands import (
 
 NUL = "\x00"
 PROSE, BLANK, MATHS_READ, PREAMBLE = "prose", "blank", "maths", "preamble"
-#: Commands whose prose argument LaTeX prints though it stands in the preamble.
-PRINTED_IN_PREAMBLE = frozenset({"title", "thanks"})
-#: Commands that define another, whose name is checked against the commands the reader reads.
+#: Commands whose prose argument LaTeX prints though it stands in the preamble: the title, its
+#: note, and a definition's default argument, printed at each use that omits it (round 1 of
+#: #380: `\\newcommand{\\ci}[1][95]{...}` hid the 95).
+PRINTED_IN_PREAMBLE = frozenset(
+    {"title", "thanks", "newcommand", "renewcommand", "providecommand", "newenvironment",
+     "renewenvironment"}
+)  # fmt: skip
+#: Names that open no conditional though they start with `if`: a symbol and a command whose
+#: branches are its arguments, both read.
+NOT_CONDITIONALS = frozenset({"iff", "ifthenelse"})
 _LETTERS = re.compile(r"[A-Za-z]+")
 _LETTERS_AT = re.compile(r"[A-Za-z@]+")
 _TEXT = re.compile(r"[^\\%{}\[\]$&~#`'\n]+")
 _ENVIRONMENT_NAME = re.compile(r"[ \t]*\n?[ \t]*\{([^{}\n]*)\}")
 _BRACED_NAME = re.compile(r"\{\s*\\([A-Za-z@]+|[^A-Za-z@\s])\s*\}")
 _PARAMETERS = re.compile(r"(?:#[1-9])*")
-_INPUTENC = re.compile(r"\\usepackage\s*\[([^\]]*)\]\s*\{inputenc\}")
-_CONDITIONALS = re.compile(r"\\(?:if[A-Za-z]*|fi)(?![A-Za-z])")
+#: An input encoding set by a package's option or by `\\inputencoding`, a few hundred
+#: characters at most, so that an option never closed is not read to the file's end.
+_INPUTENC = re.compile(
+    r"\\(?:usepackage|RequirePackage)\s*\[([^\]]{0,300})\]\s*\{inputenc\}"
+    r"|\\inputencoding\s*\{([^}]{0,40})\}"
+)
+_CONDITIONALS = re.compile(r"\\(?:if[A-Za-z]*|fi|else)(?![A-Za-z])")
 _DOCUMENT = re.compile(r"\\begin\s*\{document\}")
 
 
@@ -81,13 +93,14 @@ def mask(text: str, *, body: bool | None = None) -> str:
 
 def read(text: str, *, body: bool | None = None) -> Reading:
     """The masked text and the first refusal. With `body` None, a file with a
-    `\\begin{document}` opens in the preamble and one without in the body; a file whose only
-    `\\begin{document}` is in a comment is read again as body, so that none of it is hidden
-    as preamble."""
+    `\\begin{document}` opens in the preamble and one without in the body; a file read to its
+    end or to a refusal without reaching a `\\begin{document}`, whose only one is in a comment
+    say, is read again as body, so that none of it is hidden as preamble (round 1 of #380:
+    one refused before it was not)."""
     opens_in_body = _DOCUMENT.search(text) is None if body is None else body
     reader = _Reader(text, opens_in_body)
     reading = reader.run()
-    if body is None and not reader.body and not reader.refused:
+    if body is None and not reader.body:
         return _Reader(text, True).run()
     return reading
 
@@ -96,6 +109,19 @@ def _verb_delimiter(text: str, at: int) -> str:
     """The character that opens and closes a `\\verb`: any but a letter, a space or a star."""
     character = text[at : at + 1]
     return "" if not character or character.isalpha() or character.isspace() else character
+
+
+def _opens_comment(text: str, start: int, end: int) -> bool:
+    """Whether an unescaped `%` stands between `start` and `end`, on one line."""
+    at = text.find("%", start, end)
+    while at >= 0:
+        before = at - 1
+        while before >= 0 and text[before] == "\\":
+            before -= 1
+        if (at - 1 - before) % 2 == 0:
+            return True
+        at = text.find("%", at + 1, end)
+    return False
 
 
 def _comment_end(text: str, at: int) -> int:
@@ -128,6 +154,7 @@ class _Reader:
         self.refused: Refusal | None = None
         self.letters = _LETTERS
         self.definitions = 0
+        self.tables: list[bool] = []
 
     # -- running -----------------------------------------------------------------------
     def run(self) -> Reading:
@@ -183,8 +210,10 @@ class _Reader:
 
     def _argument(self) -> bool:
         """Take the next argument the last command expects where it stands. False where
-        there is none, and the text is read on as it comes."""
-        at = self._after_space(self.pos)
+        there is none, and the text is read on as it comes. `\\\\` takes its star and its
+        length only where they follow it at once, as amsmath's does: a `[0.5, 1.2]` opening
+        the next row prints (round 1 of #380)."""
+        at = self.pos if self.command == "\\" else self._after_space(self.pos)
         here = self.text[at : at + 1]
         while self.pending:
             spec = self.pending[0]
@@ -202,9 +231,9 @@ class _Reader:
                 self.pending = self.pending[1:]
                 continue
             if spec[0] == "(":
-                end = self.text.find(")", at)
-                line_end = _comment_end(self.text, at)
-                if here == "(" and 0 <= end < line_end:
+                # A trim such as `(lr)` is a few letters: looked for that far, on its line.
+                end = self.text.find(")", at, at + 32) if here == "(" else -1
+                if end >= 0 and "\n" not in self.text[at:end]:
                     self._blank(at, end + 1)
                     self.pos = end + 1
                     self.pending = self.pending[1:]
@@ -322,10 +351,9 @@ class _Reader:
         self.pos = at + 2
 
     def _in_table(self) -> bool:
-        for frame in reversed(self.stack):
-            if frame.kind == "env":
-                return frame.table
-        return False
+        """Whether the innermost environment is a table: kept apart from the stack, so that a
+        file of braces and `&` is not read again for each `&` (round 1 of #380)."""
+        return bool(self.tables) and self.tables[-1]
 
     def _close_group(self, at: int) -> None:
         top = self.stack[-1] if self.stack else None
@@ -343,11 +371,12 @@ class _Reader:
             self.pending, self.command = frame.rest, frame.command
 
     def _dollar(self, at: int) -> None:
-        closer = "$$" if self.text.startswith("$$", at) else "$"
         top = self.stack[-1] if self.stack else None
-        if top is not None and top.kind == "maths" and top.closer == closer:
-            self._close(at, len(closer))
+        # The maths that is open closes first: `$x$$y$` is two formulas (round 1 of #380).
+        if top is not None and top.kind == "maths" and self.text.startswith(top.closer, at):
+            self._close(at, len(top.closer))
             return
+        closer = "$$" if self.text.startswith("$$", at) else "$"
         role = self._role()
         if role in (BLANK, PREAMBLE):
             self._blank(at, at + len(closer))
@@ -413,7 +442,7 @@ class _Reader:
             self.letters = _LETTERS_AT if name == "makeatletter" else _LETTERS
         elif name == "iffalse":
             self._skip_false(at)
-        elif name.startswith("if") and name not in COMMANDS:
+        elif name.startswith("if") and name not in COMMANDS and name not in NOT_CONDITIONALS:
             if self.body:
                 said = "a conditional in the body prints one branch, and which is not read"
                 self._refuse("tex-refused", at, f"\\{name} is not read: {said}")
@@ -426,21 +455,47 @@ class _Reader:
         elif name in SPACES:
             if self._reads():
                 self.out[at] = " "
+        elif name in ("usepackage", "RequirePackage", "inputencoding"):
+            self._encoding(at)
+            if name in COMMANDS:
+                self.command, self.pending = name, COMMANDS[name]
         elif name in COMMANDS:
-            if name == "usepackage":
-                self._encoding(at)
             self.command, self.pending = name, COMMANDS[name]
 
     def _encoding(self, at: int) -> None:
-        options = _INPUTENC.match(self.text, at)
-        if options and not {o.strip() for o in options.group(1).split(",")} & {"utf8", "utf8x"}:
+        """Refuse an input encoding other than UTF-8, set by a package's option or by
+        `\\inputencoding` (round 1 of #380: only `\\usepackage` was read)."""
+        found = _INPUTENC.match(self.text, at)
+        named = (found.group(1) or found.group(2) or "") if found else ""
+        if found and not {o.strip() for o in named.split(",")} & {"utf8", "utf8x"}:
             self._refuse("tex-refused", at, "the input encoding is not UTF-8, in which the file "
                          "is read")  # fmt: skip
 
     def _skip_false(self, at: int) -> None:
-        depth = 1
+        """Blank an `\\iffalse` block to its `\\fi`, or to its `\\else`, whose branch TeX
+        prints and the reader reads (round 1 of #380). A conditional in a comment counts for
+        nothing, and neither do `\\iff` and `\\ifthenelse`."""
+        depth, scanned, comment = 1, self.pos, False
         for match in _CONDITIONALS.finditer(self.text, self.pos):
-            depth += -1 if match.group(0) == "\\fi" else 1
+            start = match.start()
+            # Read forward only, from the last conditional or the last line break, so that a
+            # long line of conditionals is not read again for each.
+            newline = self.text.rfind("\n", scanned, start)
+            if newline >= 0:
+                scanned, comment = newline + 1, False
+            if not comment:
+                comment = _opens_comment(self.text, scanned, start)
+                scanned = start
+            word = match.group(0)[1:]
+            if comment or word in NOT_CONDITIONALS:
+                continue
+            if word == "else":
+                if depth == 1:
+                    self._blank(at, match.end())
+                    self.pos = match.end()
+                    return
+                continue
+            depth += -1 if word == "fi" else 1
             if depth == 0:
                 self._blank(at, match.end())
                 self.pos = match.end()
@@ -489,6 +544,11 @@ class _Reader:
         name = named.group(1).strip()
         self._blank(at, named.end())
         self.pos = named.end()
+        if self.definitions:
+            # In a definition's body an environment is text to be expanded at each use, not
+            # one that opens here (round 1 of #380: `\newenvironment{tight}{\begin{itemize}}
+            # {\end{itemize}}` was refused).
+            return
         if which == "end":
             self._end(name, at)
         elif name in REFUSED_ENVIRONMENTS:
@@ -508,6 +568,7 @@ class _Reader:
             maths = name in MATHS and role in (PROSE, MATHS_READ)
             self.stack.append(_Frame("env", MATHS_READ if maths else role, at, name,
                                      table=name in TABLES))  # fmt: skip
+            self.tables.append(name in TABLES)
             self.command, self.pending = "begin", ENVIRONMENTS.get(name, ())
 
     def _end(self, name: str, at: int) -> None:
@@ -524,6 +585,7 @@ class _Reader:
             self._refuse("tex-unbalanced", at, f"\\end{{{name}}} closes no \\begin{{{name}}}")
             return
         self.stack.pop()
+        self.tables.pop()
         self.pending = ()
 
 

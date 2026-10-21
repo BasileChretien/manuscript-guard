@@ -429,7 +429,9 @@ def test_the_latex_mask_keeps_every_character_in_its_place(text: str) -> None:
     assert len(masked) == len(text), text
     for at, (was, now) in enumerate(zip(text, masked, strict=True)):
         assert (now in "\r\n") == (was in "\r\n"), (at, text)
-        allowed = {was, NUL, " "}
+        # A space only where TeX prints one: a tie, a cell's `&`, or a command's backslash
+        # (round 1 of #380: any character could become one, and `4100` read as `41 00`).
+        allowed = {was, NUL} | ({" "} if was in " \t~&\\" else set())
         if was == "\\" and at + 1 < len(text):
             allowed.add(text[at + 1])
         allowed |= {"`": {LEFT_QUOTE}, "'": {RIGHT_QUOTE}}.get(was, set())
@@ -511,6 +513,24 @@ def _the_preamble_ends_at_the_first_begin(patch: pytest.MonkeyPatch) -> None:
         environment(self, which, at, end)
 
     patch.setattr(latex_mask._Reader, "_environment", broken)
+
+
+def _iffalse_hides_its_else(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_CONDITIONALS", re.compile(r"\\(?:if[A-Za-z]*|fi)(?![A-Za-z])"))
+
+
+def _a_line_break_takes_a_bracket_on_the_next_line(patch: pytest.MonkeyPatch) -> None:
+    argument = latex_mask._Reader._argument
+
+    def broken(self) -> bool:
+        command, self.command = self.command, "" if self.command == "\\" else self.command
+        try:
+            return argument(self)
+        finally:
+            if self.command == "":
+                self.command = command
+
+    patch.setattr(latex_mask._Reader, "_argument", broken)
 
 
 def _an_unknown_command_hides_its_arguments(patch: pytest.MonkeyPatch) -> None:
@@ -5813,6 +5833,14 @@ BROKEN = {
     ),
     "in LaTeX, the preamble ends at the first \\begin": (
         _the_preamble_ends_at_the_first_begin,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, \\iffalse hides its \\else branch": (
+        _iffalse_hides_its_else,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, \\\\ takes a bracket that opens the next line": (
+        _a_line_break_takes_a_bracket_on_the_next_line,
         test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
     ),
     "in LaTeX, a command the table lacks hides its arguments": (

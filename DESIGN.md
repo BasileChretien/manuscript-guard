@@ -946,10 +946,11 @@ for each such gate. The commands not yet moved refuse a LaTeX project with a sen
 ### What the LaTeX reader reads
 
 The reader lives in `text/latex/`, apart from `text/tex.py`, which reads TeX inside Markdown:
-- `scan.py` cuts a file into tokens with their offsets, under TeX's default category codes;
 - `commands.py` is the closed table of what each known command takes, and what each argument
   is;
-- `mask.py`, `structure.py` and `cite.py` answer the reader's questions from the tokens.
+- `mask.py` scans a file as it reads it, under TeX's default category codes, and gives the
+  masked text and the first refusal (step 2);
+- `structure.py` and `cite.py` answer the reader's other questions (steps 3 and 5).
 
 It is one pass, linear in the file.
 

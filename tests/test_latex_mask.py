@@ -135,12 +135,69 @@ def test_the_mask_keeps_the_length_and_every_line_break() -> None:
 
 
 @pytest.mark.parametrize(
+    ("text", "printed"),
+    [
+        # Round 1 of #380: numbers LaTeX prints that the reader had blanked.
+        ("\\iffalse Old: 10 cases.\\else New: 12 cases.\\fi", "12"),
+        ("\\begin{align}a &= b \\\\\n[0.5, 1.2] &= c\\end{align}", "0.5, 1.2"),
+        ("\\iffalse a % \\fi\n b\\fi Then 42.", "42"),
+    ],
+)
+def test_what_round_one_found_blanked_is_read(text: str, printed: str) -> None:
+    reading = read(text, body=True)
+    assert reading.refusals == ()
+    assert printed in reading.masked
+
+
+def test_a_definitions_default_in_the_preamble_is_read_as_its_body_is() -> None:
+    text = (
+        "\\documentclass{article}\n\\newcommand{\\ci}[1][95]{#1\\% CI}\n"
+        "\\begin{document}x\\end{document}"
+    )
+    masked = mask(text)
+    start = text.index("95")
+    assert masked[start : start + 2] == "95"
+
+
+def test_a_file_refused_before_its_document_is_read_as_body() -> None:
+    """Round 1 of #380: one whose only `\\begin{document}` is in a comment, and which is
+    refused, was left blanked as preamble up to the refusal."""
+    assert "4100" in mask("% \\begin{document}\nOf 4100. \\catcode")
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "\\documentclass{article}\n\\newenvironment{tight}{\\begin{itemize}}{\\end{itemize}}\n"
+        "\\begin{document}x\\end{document}",
+        "$A \\iff B$ 3",
+        "$x$$y$ 4",
+    ],
+)
+def test_what_round_one_found_refused_wrongly_is_read(text: str) -> None:
+    assert read(text, body=None if text.startswith("\\doc") else True).refusals == ()
+
+
+@pytest.mark.parametrize(
+    "text", ["\\RequirePackage[latin1]{inputenc} x", "\\inputencoding{latin1} x"]
+)
+def test_every_way_of_setting_another_encoding_is_refused(text: str) -> None:
+    assert [r.code for r in read(text, body=True).refusals] == ["tex-refused"]
+
+
+@pytest.mark.parametrize(
     "unit",
     [
         "\\emph{a} ", "{", "% c\n", "\\verb|x| ", "$x$ ", "\\label{x} ", "\\begin{itemize} ",
-        "\\cite[p.~1]{k} ", "``q'' ", "\\iffalse x \\fi ",
+        "\\cite[p.~1]{k} ", "``q'' ", "\\iffalse x \\fi ", "\\cmidrule ", "\\usepackage[ ",
     ],
 )  # fmt: skip
 def test_the_reader_is_linear_in_the_file(assert_linear, unit: str) -> None:
     assert_linear(lambda count: unit * count, lambda text: read(text, body=True), 2000,
                   f"the LaTeX reader on {unit!r}")  # fmt: skip
+
+
+def test_the_reader_is_linear_in_braces_and_cells(assert_linear) -> None:
+    """Round 1 of #380: each `&` walked every open brace to find whether it was in a table."""
+    assert_linear(lambda count: "{" * count + "&" * count, lambda text: read(text, body=True),
+                  2000, "the LaTeX reader on braces then cells")  # fmt: skip

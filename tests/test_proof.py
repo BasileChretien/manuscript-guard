@@ -462,11 +462,34 @@ def test_a_unit_of_time_abbreviated_is_a_copy_edit(tmp_path: Path, edit) -> None
     assert kinds(result, COPY_EDIT)
 
 
-@pytest.mark.parametrize("printed", ["months", "days"])
+@pytest.mark.parametrize("printed", ["months", "days", "fortnights", "decades"])
 def test_a_unit_of_time_spelt_out_as_another_is_a_correction(tmp_path: Path, printed) -> None:
     (change,) = corrections(changes_of(tmp_path, ("over 12 weeks", f"over 12 {printed}")))
     assert change.what == "unit or symbol"
     assert "12 weeks" in change.sent and f"12 {printed}" in change.printed
+
+
+@pytest.mark.parametrize("kind, what", [(PARAGRAPH, "unit or symbol"), (REFERENCE, "reference")])
+@pytest.mark.parametrize("sent_as", ["12-week", "12 weeks"])
+def test_a_unit_of_time_joined_to_its_number_is_beside_it(
+    tmp_path: Path, kind, what, sent_as
+) -> None:
+    # Review of #408: read as a unit first, it was named "unit or symbol" in a reference;
+    # and past the hyphen "12-week" was not beside its number.
+    sent = Sent(Path("m.docx"), (Part(kind, f"1. Smith A. A {sent_as} trial of example-drug. "
+                                      "J Imag Pharm. 2019;12:101-9.", "p"),), (), None)
+    printed = sent_as.replace("week", "month")
+    (change,) = corrections(changes_of(tmp_path, (sent_as, printed), sent=sent))
+    assert change.what == what
+
+
+def test_a_unit_of_time_a_word_away_from_its_number_is_a_copy_edit(tmp_path: Path) -> None:
+    # A limit (DESIGN.md, Known gaps): the unit is read only beside a number.
+    sent = Sent(Path("m.docx"), (Part(PARAGRAPH, "Patients were followed for 12 consecutive "
+                                      "weeks after the first dose.", "p"),), (), None)
+    result = changes_of(tmp_path, ("consecutive weeks", "consecutive months"), sent=sent)
+    assert corrections(result) == []
+    assert kinds(result, COPY_EDIT)
 
 
 def test_a_dash_at_a_line_end_joins_no_word(tmp_path: Path) -> None:

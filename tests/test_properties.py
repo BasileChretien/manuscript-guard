@@ -4658,6 +4658,12 @@ def _a_unit_of_time_spelt_out_is_a_word(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(module, "time_units", lambda found: set())
 
 
+def _a_unit_past_a_hyphen_is_not_beside_its_number(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.proof import compare as module
+
+    patch.setattr(module, "_past_hyphen", lambda found, lo: ())
+
+
 def _a_unit_of_time_spelt_out_is_a_unit(patch: pytest.MonkeyPatch) -> None:
     # So read, the AMA's "12 wk" for "12 weeks" was a correction (round 2 of #397).
     from manuscript_guard.proof import compare as module
@@ -6987,6 +6993,10 @@ BROKEN = {
     ),
     "a unit of time a proof spells out as another is a word": (
         _a_unit_of_time_spelt_out_is_a_word,
+        test_each_change_a_typesetter_makes_is_reported_once_where_it_is,
+    ),
+    "a unit a proof joins to its number by a hyphen is not beside it": (
+        _a_unit_past_a_hyphen_is_not_beside_its_number,
         test_each_change_a_typesetter_makes_is_reported_once_where_it_is,
     ),
     "a unit of time spelt out in a proof is a unit, abbreviated or not": (

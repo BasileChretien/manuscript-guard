@@ -1124,6 +1124,7 @@ PROOF_CORRECTIONS = (
     ("\N{MINUS SIGN}0.51", "0.51", "sign"),
     ("12 mg", "12 \N{GREEK SMALL LETTER MU}g", "unit or symbol"),
     ("12 days", "12 years", "unit or symbol"),
+    ("3-day", "3-month", "unit or symbol"),
     ("[4]", "[5]", "citation"),
 )
 #: The same values set otherwise: shown, and not counted.
@@ -1137,7 +1138,7 @@ PROOF_ABBREVIATED = ("6 months", "6 mo")
 #: What each part starts with, so that no two parts read alike.
 _PROOF_LEADS = (
     "Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel", "India",
-    "Juliet", "Kilo", "Lima", "Mike", "November", "Oscar", "Papa",
+    "Juliet", "Kilo", "Lima", "Mike", "November", "Oscar", "Papa", "Quebec",
 )  # fmt: skip
 
 

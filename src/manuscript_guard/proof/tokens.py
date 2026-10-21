@@ -59,7 +59,8 @@ _UNIT_WORDS = frozenset(
 #: number, "12 weeks" as "12 months", is a correction; printed as "12 wk" or "12 week", a
 #: copy-edit.
 _TIME_WORDS = {
-    spelling: unit for unit in ("second", "minute", "hour", "day", "week", "month", "year")
+    spelling: unit
+    for unit in ("second", "minute", "hour", "day", "week", "fortnight", "month", "year", "decade")
     for spelling in (unit, unit + "s")
 }  # fmt: skip
 #: The symbols beside a number that change what it says.

@@ -789,6 +789,8 @@ LATEX_PRINTED_PLACES = (
     ("% {}\n", ("hidden",)),
     ("\\mg{{results.{}}} ", ("bound",)),
     ("\\cite{{{}}} ", ("cited",)),
+    ("\\begin{{thebibliography}}{{9}}\\bibitem{{a}} ref {}\\end{{thebibliography}}\n", ("hidden",)),
+    ("the `{}' and `{}' terms ", ("prose", "prose")),
 )  # fmt: skip
 
 
@@ -797,7 +799,8 @@ def latex_printed(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
     """A LaTeX document with a word in every place of `LATEX_PRINTED_PLACES`, in an order
     drawn, after an abstract with text of its own and words after it, under a title in the
     preamble; and each word, with what the printed view makes of it. Every place is in every
-    document, so that a rule broken for one is seen in each."""
+    document, so that a rule broken for one is seen in each. The abstract is in the body or,
+    as a class that prints it from there allows, in the preamble (round 1 of step 6)."""
     filler = [*_spaced(FILLER)]
     order = draw(st.permutations(range(len(LATEX_PRINTED_PLACES))))
     between = draw(st.lists(st.sampled_from(filler), min_size=len(order) + 1,
@@ -808,8 +811,11 @@ def latex_printed(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
         planted.append((f"k{4101 + len(planted)}", kind))
         return planted[-1][0]
 
-    text = f"\\documentclass{{article}}\n\\title{{T {key('hidden')}}}\n\\begin{{document}}\n"
-    text += f"\\begin{{abstract}}abs {key('abstract')}\\end{{abstract}}\nafter {key('after')}\n"
+    preamble = draw(st.booleans())
+    text = f"\\documentclass{{article}}\n\\title{{T {key('hidden')}}}\n"
+    abstract = f"\\begin{{abstract}}abs {key('abstract')}\\end{{abstract}}\n"
+    text += (abstract + "\\begin{document}\n") if preamble else ("\\begin{document}\n" + abstract)
+    text += f"after {key('after')}\n"
     for piece, index in zip(between, order, strict=False):
         text += piece
         template, kinds = LATEX_PRINTED_PLACES[index]

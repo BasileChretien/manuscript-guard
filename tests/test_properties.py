@@ -784,6 +784,9 @@ def test_latex_s_printed_view_holds_what_it_prints_as_markdown_writes_it(
     ((abstract,), (after,)) = ([k for k, kind in planted if kind == which]
                                for which in ("abstract", "after"))  # fmt: skip
     assert abstract in sections["Abstract"] and after not in sections["Abstract"], view
+    # A word in prose is in no code span: LaTeX's single quote opens none (round 1 of step 6).
+    spans = "".join(re.findall(r"`[^`\n]+`", view))
+    assert not [k for k, kind in planted if kind == "prose" and k in spans], view
 
 
 @holds(60, latex_trees())
@@ -807,6 +810,19 @@ def test_latex_s_printed_view_writes_each_file_where_it_is_input(
 
 def _an_input_file_is_printed_after_its_parent(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(latex_print, "_cuts", lambda source: [])
+
+
+def _a_typed_reference_list_is_printed(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "REFERENCES", "nothing")
+
+
+def _a_single_quote_opens_a_code_span(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print, "_QUOTE", "`")
+
+
+def _an_abstract_in_the_preamble_is_not_printed(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print, "_printed_ranges",
+                  lambda reading: [(max(reading.body_start, 0), len(reading.masked))])  # fmt: skip
 
 
 def _a_floats_words_are_printed(patch: pytest.MonkeyPatch) -> None:
@@ -7515,6 +7531,18 @@ BROKEN = {
     "in LaTeX's printed view, a file input is printed after the file that inputs it": (
         _an_input_file_is_printed_after_its_parent,
         test_latex_s_printed_view_writes_each_file_where_it_is_input,
+    ),
+    "in LaTeX's printed view, a typed reference list is printed": (
+        _a_typed_reference_list_is_printed,
+        test_latex_s_printed_view_holds_what_it_prints_as_markdown_writes_it,
+    ),
+    "in LaTeX's printed view, a single quote opens a code span": (
+        _a_single_quote_opens_a_code_span,
+        test_latex_s_printed_view_holds_what_it_prints_as_markdown_writes_it,
+    ),
+    "in LaTeX's printed view, an abstract in the preamble is not printed": (
+        _an_abstract_in_the_preamble_is_not_printed,
+        test_latex_s_printed_view_holds_what_it_prints_as_markdown_writes_it,
     ),
     "in LaTeX's printed view, a float's words are printed": (
         _a_floats_words_are_printed,

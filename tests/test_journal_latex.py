@@ -101,3 +101,68 @@ def test_g4_reads_a_file_input_where_its_input_stands(project: Path) -> None:
     assert "Five words of the abstract." in sections["Abstract"], text
     assert "How it was done." in sections["Methods"], text
     assert measure(text).abstract_words == 5, text
+
+
+def _measured(project: Path, files: dict[str, str]):
+    from manuscript_guard.gates.journal import main_text
+    from manuscript_guard.text.sections import measure
+
+    folder = project / "manuscript"
+    for name, text in files.items():
+        (folder / name).write_text(text, encoding="utf-8")
+    return measure(main_text(load_project(project)[0]))
+
+
+def test_g4_counts_no_word_of_a_typed_reference_list_and_each_word_in_single_quotes(
+    project: Path,
+) -> None:
+    """A reference list typed in `thebibliography` is no part of the text, as Markdown's is
+    none of the source; LaTeX's single opening quote does not open a code span that hides the
+    words up to the next one (round 1 of step 6)."""
+    _latex(project, "{article}")
+    body = "We used the `as-treated' analysis and the `per-protocol' one.\n"
+    plain = body.replace("`", "'")
+    references = (
+        "\\begin{thebibliography}{9}\n\\bibitem{a} A. Author, A long title of many words. "
+        "J Med 2020;1:1-9.\n\\end{thebibliography}\n"
+    )
+    head = "\\documentclass{article}\n\\begin{document}\n\\section{Introduction}\n"
+    typed = _measured(project, {"main.tex": head + body + references + "\\end{document}\n"})
+    bare = _measured(project, {"main.tex": head + plain + "\\end{document}\n"})
+    assert typed.main_text_words == bare.main_text_words > 8
+
+
+def test_g4_counts_an_abstract_written_in_the_preamble(project: Path) -> None:
+    """A class that prints an abstract written before `\\begin{document}` (round 1 of step 6:
+    it was dropped with the preamble, and G4 said no heading names the abstract)."""
+    _latex(project, "{article}")
+    counts = _measured(project, {"main.tex": (
+        "\\documentclass{pnas-new}\n\\title{A title}\n\\begin{abstract}\n" + "word " * 300
+        + "\n\\end{abstract}\n\\begin{document}\n\\section{Introduction}\nx\n"
+        "\\end{document}\n"
+    )})  # fmt: skip
+    assert counts.abstract_words == 300
+
+
+def test_the_class_and_bibliography_are_read_wherever_the_preamble_states_them(
+    project: Path,
+) -> None:
+    """In a file the preamble inputs, and with an option on the line after a comment (round 1
+    of step 6)."""
+    _latex(project, "{article}\n\\input{preamble}")
+    (project / "manuscript" / "preamble.tex").write_text(
+        "\\usepackage[backend=biber,%\n  style=apa]{biblatex}\n", encoding="utf-8"
+    )
+    _asks(project, {"class": "article", "bibliography": {"kind": "biblatex", "style": "apa"}})
+    assert _said(project) == {}
+
+
+def test_an_entry_file_that_cannot_be_read_is_not_said_to_have_another_class(
+    project: Path,
+) -> None:
+    """Its encoding is refused where it is read; G4 does not add a class it could not read."""
+    _latex(project, "{article}")
+    entry = project / "manuscript" / "main.tex"
+    entry.write_bytes(entry.read_text(encoding="utf-8").encode("utf-16"))
+    _asks(project, {"class": "article"})
+    assert _said(project) == {}

@@ -377,7 +377,7 @@
         "engine": { "enum": ["pdflatex", "xelatex", "lualatex"] },
         "files": {
           "type": "array",
-          "description": "The class and style files the journal hands out, fetched once into profiles/journals/latex/<slug>/ with their address, digest and licence, as CSL styles are. None ships with the package.",
+          "description": "The class and style files the journal hands out, each with its address. The build is to fetch them once into profiles/journals/latex/<slug>/ with their digest and licence, as CSL styles are (DESIGN.md, LaTeX manuscripts, steps 9 and 10); no command fetches them yet. None ships with the package.",
           "items": {
             "type": "object",
             "additionalProperties": false,

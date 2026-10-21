@@ -13,7 +13,12 @@ Markdown of the main text. A LaTeX document is given to it as the same Markdown:
 - a float, a figure or a table, as the bindings it places, its caption and cells unread, since
   a journal counts a display item and not its words, and a table typed outside a float as
   nothing, as a Markdown table's rows are counted as no words; a displayed formula as
-  nothing, and an inline one as one word; `\\verb` and `\\texttt` as a code span.
+  nothing, and an inline one as one word; `\\verb` and `\\texttt` as a code span;
+- a reference list typed in `thebibliography` as nothing, as Markdown's, which the build
+  writes, is no part of the source;
+- an abstract written in the preamble, which the class prints, under Abstract;
+- LaTeX's single opening quote as a typographic one, since a backtick opens a code span in
+  Markdown.
 
 It is not the source's length: the gates that read it name the document, not a line of it.
 """
@@ -28,6 +33,8 @@ from manuscript_guard.text.latex.views import bindings
 
 #: An inline formula, one word as a journal counts it.
 FORMULA = "x"
+#: LaTeX's single opening quote, which Markdown would read as a code span's opening.
+_QUOTE = "\N{LEFT SINGLE QUOTATION MARK}"
 #: A line LaTeX prints as text that Markdown would read as a heading's or a rule's.
 _MARKDOWN_LINE = re.compile(r"(?m)^([ \t]*)(#|-{3,}[ \t]*$|={3,}[ \t]*$)")
 
@@ -74,11 +81,20 @@ def _printed(source: Source, shallowest: int, child=lambda: "") -> str:
         placed = [p.ref for p in placeholders if start <= p.start < end]
         events.append((start, end, "".join(" {{" + ref + "}} " for ref in placed)))
     # A table typed outside a float: its cells are no words of the text, as a Markdown
-    # table's rows are none.
-    events += [(start, end, " ") for start, end in reading.tables]
-    # A file that never reaches the body prints nothing, and the files it inputs are read.
-    body = _body(reading)
-    out, at = [], body if body >= 0 else len(reading.masked)
+    # table's rows are none. Nor is a reference list typed in the source.
+    events += [(start, end, " ") for start, end in (*reading.tables, *reading.references)]
+    # A file that never reaches the body prints nothing but an abstract written in its
+    # preamble, and the files it inputs are read.
+    ranges = _printed_ranges(reading)
+
+    def shown(start: int, end: int) -> str:
+        return "".join(_prose(reading.masked[max(start, low) : min(end, high)])
+                       for low, high in ranges if max(start, low) < min(end, high))  # fmt: skip
+
+    def inside(offset: int) -> bool:
+        return any(low <= offset <= high for low, high in ranges)
+
+    out, at = [], 0
     # The outermost event at each place is written, and those it holds go with its span. A
     # file input is never passed over: where an event holds its `\\input`, as a float may, it
     # is printed after that event, and before an event that starts where the `\\input` ends.
@@ -86,17 +102,26 @@ def _printed(source: Source, shallowest: int, child=lambda: "") -> str:
     for start, end, written in ordered:
         if written is None:
             if start > at:
-                out.append(_prose(reading.masked[at:start]))
+                out.append(shown(at, start))
                 at = start
             out.append(child())
             continue
-        if start < at:
+        if start < at or not inside(start):
             continue
-        out.append(_prose(reading.masked[at:start]))
+        out.append(shown(at, start))
         out.append(written)
         at = end
-    out.append(_prose(reading.masked[at:]))
+    out.append(shown(at, len(reading.masked)))
     return "".join(out)
+
+
+def _printed_ranges(reading) -> list[tuple[int, int]]:
+    """What of a file prints: each abstract written in its preamble, then its body."""
+    body = _body(reading)
+    if body < 0:
+        body = len(reading.masked)
+    return [*((start, end) for start, end in reading.abstracts if start < body),
+            (body, len(reading.masked))]  # fmt: skip
 
 
 def _body(reading) -> int:
@@ -138,4 +163,4 @@ def _citations(source: Source) -> list[tuple[int, int, str]]:
 def _prose(masked: str) -> str:
     """What the reader keeps of a stretch, as Markdown would print it: the blanks taken out,
     and a line Markdown would read as a heading or a rule escaped."""
-    return _MARKDOWN_LINE.sub(r"\1\\\2", masked.replace(NUL, ""))
+    return _MARKDOWN_LINE.sub(r"\1\\\2", masked.replace(NUL, "").replace("`", _QUOTE))

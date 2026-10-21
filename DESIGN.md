@@ -1515,6 +1515,13 @@ The result is compiled and packed by the code above, and checked three times:
   count differently by that much (step 6).
 - The heading with no title that closes an abstract is a section of its own to G4, which
   counts it as text and finds no required section in it (step 6).
+- A float counts as a display item only where it places a `\mg{figure.key}` or
+  `\mg{table.key}`; a figure placed with `\includegraphics` alone counts as none. Markdown
+  has the same gap for `![](...)`, met far less often (round 1 of step 6).
+- A title, affiliations and keywords written in the body, as elsarticle's `frontmatter` holds
+  them, are counted as main text (round 1 of step 6).
+- G4 does not hold a LaTeX figure's legend, its float's caption, to the profile's
+  `legend_words`, and says so (`not-read-in-latex`) (round 1 of step 6).
 - Past a refusal a file's bindings are found by their shape, in a comment too, so that a
   result quoted there is not said to be quoted nowhere.
 - A class or package that changes how a character is read, beyond those refused, is not seen.
@@ -1603,7 +1610,9 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
    `[@...]`, a float as the bindings it places, maths and typed tables as nothing but an
    inline formula's one word, `\verb` and `\texttt` as code spans, and each file input
    where its `\input` ends, so that an abstract input inside its environment is the
-   abstract. G4's `main_text` gives it
+   abstract; a reference list typed in `thebibliography` as nothing, an abstract written in
+   the preamble under Abstract, and a single opening quote as a typographic one, which opens
+   no code span. G4's `main_text` gives it
    for a LaTeX manuscript, so its counts, required sections and statements read the twin as
    they read the example, which takes `check_journal` out of `_NOT_READ_IN_LATEX`. The
    scanner records the spans it needs (`maths`, `floats`, `code`, `body_start`, each

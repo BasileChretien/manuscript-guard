@@ -18,21 +18,28 @@ from manuscript_guard.contracts.project import Project
 from manuscript_guard.findings import WARN, Finding, Report
 
 GATE = "G4"
-_STYLE = re.compile(r"(?:^|,)\s*(?:style|bibstyle)\s*=\s*([^,\s]+)")
+#: biblatex's `style=` or `bibstyle=`, after a comma, a comment or a line break: not
+#: `citestyle=` (round 1 of step 6: `[%` and `style=apa]` on the next line was missed).
+_STYLE = re.compile(r"(?:^|[,%\s])\s*(?:style|bibstyle)\s*=\s*([^,\s%]+)")
 
 
 def check_latex_profile(project: Project, document: dict, path: Path) -> Report:
     """A warning where the LaTeX manuscript's class or bibliography is not the profile's."""
-    from manuscript_guard.text.latex.mask import read
+    from manuscript_guard.text.latex.structure import ENTRY, read_document
     from manuscript_guard.text.reader import LATEX, manuscript_format
 
     wanted = document.get("latex")
     folder = project.path("manuscript")
     if not wanted or manuscript_format(folder) != LATEX:
         return Report()
-    entry = folder / "main.tex"
-    declared = read(entry.read_bytes().decode("utf-8", "replace")).declared
-    found = {kind: value for kind, value in declared}
+    entry = folder / ENTRY
+    sources = read_document(folder, supplementary=False).sources
+    if not any(source.path == ENTRY for source in sources):
+        return Report()  # the entry file cannot be read, which is said where it is read
+    # What the preamble states, in the entry file or a file or package it reads (round 1 of
+    # step 6: `\\input{preamble}` holding biblatex was taken for none).
+    found = {kind: value for source in sources if not source.loose
+             for kind, value in source.reading.declared}  # fmt: skip
     journal = document.get("name") or "the journal"
     findings = []
     if wanted.get("class") and found.get("class") != wanted["class"]:

@@ -40,6 +40,8 @@ from manuscript_guard.text.latex.commands import (
 from manuscript_guard.text.placeholders import NAMESPACES
 
 NUL = "\x00"
+#: The environment a reference list is typed in.
+REFERENCES = "thebibliography"
 PROSE, BLANK, MATHS_READ, PREAMBLE = "prose", "blank", "maths", "preamble"
 #: Commands whose prose argument LaTeX prints though it stands in the preamble: the title, its
 #: note, and a definition's default argument, printed at each use that omits it (round 1 of
@@ -168,6 +170,8 @@ class Reading:
     #: What a journal's profile states of a LaTeX source, as the file states it: ("class",
     #: name), ("class_option", option), ("bst", style), and ("biblatex", its options).
     declared: tuple[tuple[str, str], ...] = ()
+    #: Where each reference list typed in `thebibliography` runs.
+    references: tuple[tuple[int, int], ...] = ()
 
 
 #: The level of each sectioning command, as Markdown's `#` counts it; a part stands over a
@@ -358,6 +362,7 @@ class _Reader:
         self.citation_at = -1
         self.maths: list[tuple[int, int, bool]] = []
         self.floats: list[tuple[int, int]] = []
+        self.references: list[tuple[int, int]] = []
         self.code: list[tuple[int, int]] = []
         self.declared: list[tuple[str, str]] = []
         self.body_start = 0 if body else -1
@@ -388,11 +393,13 @@ class _Reader:
                                 if frame.inherited and frame.closer in FLOATS]  # fmt: skip
         maths = self.maths + [(0, self.n, True) for frame in self.stack
                               if frame.inherited and frame.closer in MATHS]  # fmt: skip
+        references = self.references + [(0, self.n) for frame in self.stack
+                                        if frame.inherited and frame.closer == REFERENCES]
         found = (tuple(self.inputs), tuple(self.headings), tuple(self.abstracts),
                  tuple(self.packages), tuple(self.bindings), tuple(self.suspects),
                  tuple(sorted(tables)), tuple(self.listings), tuple(self.cited),
                  tuple(sorted(maths)), tuple(sorted(floats)), self.body_start,
-                 tuple(self.code), tuple(self.declared))  # fmt: skip
+                 tuple(self.code), tuple(self.declared), tuple(sorted(references)))  # fmt: skip
         if self.refused is None:
             return Reading(masked, (), *found)
         at = self.refused.offset
@@ -1022,6 +1029,8 @@ class _Reader:
             self.maths.append((0 if top.inherited else top.start, self.pos, True))
         if name in FLOATS:
             self.floats.append((0 if top.inherited else top.start, self.pos))
+        if name == REFERENCES:
+            self.references.append((0 if top.inherited else top.start, self.pos))
 
     def _listing(self, name: str, end: int) -> None:
         """Record what a listing holds, and the language an `lstlisting`'s options name."""

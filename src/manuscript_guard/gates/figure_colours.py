@@ -17,8 +17,8 @@ deficiency makes of it and through grey (`colour.py`: Machado et al. 2009, CIEDE
   note: a raster's colours are blended at every edge, and are not guessed at.
 
 * `figure-colours-scale`: the figure draws a continuous scale, three or more colours chained
-  within the threshold of one another and running through 10 of lightness or more
-  (`colour.scales`), and its colours are not compared,
+  within the threshold of one another, greys apart, and running through 10 of lightness or
+  more (`colour.scales`), and its colours are not compared,
   a note. Which colours are the scale's and which a series' is not known from the colours,
   and every rule for telling them apart was wrong one way or the other (the review of
   #398); its review looks at it. `figure-colours-many`, the same past `MANY` colours.
@@ -37,6 +37,7 @@ from pathlib import Path
 from manuscript_guard.colour import (
     DEFICIENCIES,
     GREYSCALE,
+    SPAN,
     THRESHOLD,
     Confusion,
     confusions,
@@ -206,9 +207,9 @@ def _scale(name: str, path: Path, count: int) -> Finding:
         code="figure-colours-scale",
         severity=INFO,
         message=f"figure {name!r} draws a continuous scale ({count} shades, each within "
-        f"{THRESHOLD:g} of another and running through lightness): its colours were not "
-        "compared for readers with a colour-vision deficiency, since which are the scale's "
-        "and which a series' is not known from the colours",
+        f"{THRESHOLD:g} of another and running through {SPAN:g} of lightness): its colours "
+        "were not compared for readers with a colour-vision deficiency, since which are the "
+        "scale's and which a series' is not known from the colours",
         path=path,
         hint=_SCALE_HINT,
     )

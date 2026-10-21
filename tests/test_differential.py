@@ -231,11 +231,23 @@ CHANGED = {
         "MANY = 2\n",
         "spelling",
     ),
+    "a residue read across a blank line": (
+        "gates/writing.py",
+        "    return [*spans, (start, len(text))]\n",
+        "    return [(0, len(text))]\n",
+        "residue",
+    ),
     "a planned item read past its paragraph": (
         "gates/design.py",
         '_BLANK_LINE = re.compile(r"\\n[ \\t]*\\n")\n',
         '_BLANK_LINE = re.compile(r"(?!)")\n',
         "planned results",
+    ),
+    "code in brackets read as a plan's variable": (
+        "gates/collection.py",
+        'VARIABLE = re.compile(r"[A-Za-z][A-Za-z0-9_]*")\n',
+        'VARIABLE = re.compile(r"[A-Za-z][A-Za-z0-9_():]*")\n',
+        "plan variables",
     ),
     "a stop against a binding that ends no sentence": (
         "gates/numbers.py",

@@ -27,7 +27,7 @@ from suggesting import (
     with_edits,
 )
 from suggesting import document as document_of
-from word_edits import AUTHOR, decide
+from word_edits import AUTHOR, decide, retype
 
 # ------------------------------------------------------------------------- the reply
 
@@ -339,6 +339,203 @@ def test_a_document_whose_record_of_suggestions_was_altered_is_not_imported(
             archive.writestr(name, data)
     code, _said = run("import", str(returned), str(project), "--apply")
     assert code == 2
+
+
+# --------------------------------------------------------------- beside and inside markup
+
+
+@pytest.mark.parametrize(
+    "source, printed, old, new, written",
+    [
+        ("Growth of *E. coli* was slow and the cohort was small.",
+         "Growth of E. coli was slow and the cohort was small.", "cohort was small",
+         "group was small", "Growth of *E. coli* was slow and the group was small."),
+        ("The *cohort was small* overall.", "The cohort was small overall.", "cohort",
+         "group", "The *group was small* overall."),
+        ("The **cohort was small** overall.", "The cohort was small overall.",
+         "was small", "was tiny", "The **cohort was tiny** overall."),
+        ("We ran `glm` and the cohort\nwas small.", "We ran glm and the cohort was small.",
+         "cohort was", "group was", "We ran `glm` and the group was small."),
+        ("See [the protocol](https://example.org/p); the cohort was small.",
+         "See the protocol; the cohort was small.", "the cohort", "the  group",
+         "See [the protocol](https://example.org/p); the  group was small."),
+        ("The cohort was small. <!-- cohort was small? check -->", "The cohort was small.",
+         "cohort was small", "group was tiny",
+         "The group was tiny. <!-- cohort was small? check -->"),
+    ],
+    ids=["beside-emphasis", "inside-emphasis", "inside-strong", "beside-code", "beside-link",
+         "repeated-in-a-comment"],
+)  # fmt: skip
+def test_a_suggestion_is_written_where_its_words_are_and_the_markup_stays(
+    source: str, printed: str, old: str, new: str, written: str
+) -> None:
+    """What `import` writes for a suggestion accepted in Word: the new words where the old
+    ones were, and nothing else touched. Merged from Word's text, which holds no markup, the
+    emphasis, code and link here were flattened, and such an edit was not offered at all.
+    Inside emphasis the new words take it, as Word shows them."""
+    from manuscript_guard.suggestions import Words, write_in
+
+    result = write_in(source, printed, None, [Words(old, new)])
+    assert not isinstance(result, str), result
+    assert result.source == written
+    assert result.shown == printed.replace(" ".join(old.split()), " ".join(new.split()))
+    assert result.tokens is None
+
+
+def test_a_value_after_the_written_words_is_moved_along_with_them() -> None:
+    from manuscript_guard.roundtrip import align
+    from manuscript_guard.suggestions import Words, write_in
+
+    source = "The *cohort* was small ({{results.x}}) and the period short ({{results.y}})."
+    printed = "The cohort was small (12) and the period short (3.4)."
+    tokens = [(22, 24), (48, 51)]
+    result = write_in(source, printed, tokens, [Words("was small", "was very small indeed")])
+    assert not isinstance(result, str), result
+    assert result.source == source.replace("was small", "was very small indeed")
+    assert [result.shown[a:b] for a, b in result.tokens] == ["12", "3.4"]
+    # Accepted alone it comes back as written; with the author's word in another stretch,
+    # that stretch is merged from Word's text and the emphasis beside the edit stays.
+    assert align(result.bare, result.shown, result.shown, result.tokens).rebuilt == result.bare
+    retyped = result.shown.replace("period short", "period brief")
+    merged = align(result.bare, result.shown, retyped, result.tokens).rebuilt
+    assert merged == result.source.replace("period short", "period brief")
+
+
+@pytest.mark.parametrize(
+    "source, printed, tokens, edits, why",
+    [
+        ("The cohort was small.", "The cohort was small.", None,
+         [("group was", "x")], "not in the paragraph as it stands"),
+        ("The cohort was small and the cohort was old.",
+         "The cohort was small and the cohort was old.", None,
+         [("cohort was", "group was")], "in the paragraph 2 times"),
+        ("We ran `the glm` here.", "We ran the glm here.", None,
+         [("the glm", "a model")], "inside code"),
+        ("See [the protocol](https://example.org/p) here.", "See the protocol here.", None,
+         [("the protocol", "a plan")], "inside a link"),
+        ("The cohort was  \nsmall.", "The cohort was small.", None,
+         [("was small", "was tiny")], "across a line break"),
+        ("The cohort was small.", "The cohort was small.", None,
+         [("cohort was", "group was"), ("was small", "is small")], "the same words"),
+        ("The cohort was small.", "The cohort was small.", None,
+         [("cohort", "group", "0" * 16)], "not the ones the document showed"),
+        ("The _cohort_, said one, was small.", "The cohort, said one, was small.", None,
+         [(", said", "s said")], "would not read as Word shows it"),
+        ("The cohort was small.", "The cohort was small.", None,
+         [("cohort was", "cohort of 12 was")], "more than a change of words"),
+        ("The cohort ({{results.x}}) was small.", "The cohort (12) was small.", None,
+         [("was small", "was tiny")], "could not be lined up"),
+        ("The {{method.a}} cohort was small.", "The cohort was small.", None,
+         [("was small", "was tiny")], "ends in a way import cannot merge"),
+    ],
+    ids=["nowhere", "twice", "inside-code", "inside-link", "line-break", "same-words",
+         "not-as-shown", "underscore-glued", "a-number", "values-unplaced", "anchor-inside"],
+)  # fmt: skip
+def test_a_suggestion_that_cannot_be_written_exactly_is_not_written(
+    source: str, printed: str, tokens, edits: list, why: str
+) -> None:
+    """Each way the words could land somewhere other than where Word showed them, or change
+    more than words, refuses the write, and `import` then refuses the paragraph: merged
+    from Word's text instead, the suggestion's stretch would lose its markup."""
+    from manuscript_guard.suggestions import Words, write_in
+
+    result = write_in(source, printed, tokens, [Words(*edit) for edit in edits])
+    assert isinstance(result, str) and why in result, result
+
+
+MARKED_DRUG = {
+    "emphasis": "*example-drug*",
+    "strong": "**example-drug**",
+    "code": "`example-drug`",
+    "link": "[example-drug](https://example.org/drug)",
+}
+
+
+@needs_pandoc
+@pytest.mark.parametrize("marked", sorted(MARKED_DRUG))
+def test_an_accepted_edit_beside_markup_comes_back_with_the_markup(
+    project: Path, tmp_path: Path, marked: str
+) -> None:
+    """The edit is offered beside emphasis, code or a link, and accepted in Word it is
+    written into the source where its words were: the markup stays, which a merge from
+    Word's text would have flattened."""
+    main = project / "manuscript" / "main.md"
+    drug = MARKED_DRUG[marked]
+    main.write_text(
+        main.read_text(encoding="utf-8").replace(
+            "extends to example-drug specifically", f"extends to {drug} specifically"
+        ),
+        encoding="utf-8",
+    )
+    document = offered_round(project)
+    returned = decide(document, tmp_path / "back.docx", {1: "accept", 2: "accept", 3: "accept"})
+    code, said = run("import", str(returned), str(project), "--apply")
+    assert code == 0, said
+    text = main.read_text(encoding="utf-8")
+    assert f"Whether the signal extends to {drug} in particular remains unexamined." in text
+    found = {f["id"]: f for f in reading(project)["findings"]}
+    assert "now reads" in found["r8-pe-02"]["resolution"]
+    assert "now reads" in found["r8-pe-03"]["resolution"]
+
+
+@needs_pandoc
+def test_an_accepted_edit_inside_emphasis_keeps_it(project: Path, tmp_path: Path) -> None:
+    main = project / "manuscript" / "main.md"
+    main.write_text(
+        main.read_text(encoding="utf-8").replace(
+            "specifically has not been examined.", "specifically *has not been examined*."
+        ),
+        encoding="utf-8",
+    )
+    with_edits(project, finding("r8-pe-02", ("has not been examined", "remains unexamined")))
+    code, said = suggest(project)
+    assert code == 0 and "1 edit(s) written" in said, said
+    returned = decide(document_of(project), tmp_path / "back.docx", {1: "accept"})
+    code, said = run("import", str(returned), str(project), "--apply")
+    assert code == 0, said
+    assert "specifically *remains unexamined*." in main.read_text(encoding="utf-8")
+
+
+METHODS_EMPHASIS = (
+    "a property of the synthetic data rather than a design choice.",
+    "a property of the *synthetic* data rather than a design choice.",
+)
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    "retyped, kept",
+    [(("We analysed", "We examined"), True), (("de-duplication", "deduplication"), False)],
+    ids=["another-stretch", "the-same-stretch"],
+)
+def test_an_accepted_edit_and_the_author_s_own_edit_in_its_paragraph_both_come_back(
+    project: Path, tmp_path: Path, retyped: tuple[str, str], kept: bool
+) -> None:
+    """The suggestion is written where its words were, and then the author's own edit in
+    the same paragraph is merged as any rewording is, against the source with the
+    suggestion in it. Retyped between other values, the stretch with the suggestion and
+    its emphasis is kept as written. Retyped in the suggestion's own stretch, that stretch
+    is rebuilt from Word's text and its emphasis goes, as it does for any edit there
+    (DESIGN.md, Known gaps)."""
+    main = project / "manuscript" / "main.md"
+    main.write_text(
+        main.read_text(encoding="utf-8").replace(*METHODS_EMPHASIS), encoding="utf-8"
+    )
+    with_edits(project, finding("r8-pe-02", ("Reports were included without restriction on "
+                                             "age or sex.", "Reports of any age or sex were "
+                                             "included.")))  # fmt: skip
+    code, said = suggest(project)
+    assert code == 0 and "1 edit(s) written" in said, said
+    returned = decide(document_of(project), tmp_path / "back.docx", {1: "accept"})
+    retype(returned, 1, *retyped)
+    code, said = run("import", str(returned), str(project), "--apply")
+    assert code == 0, said
+    text = " ".join(main.read_text(encoding="utf-8").split())
+    assert "Reports of any age or sex were included." in text
+    assert retyped[1] in text and retyped[0] not in text
+    assert ("*synthetic*" in text) is kept
+    found = {f["id"]: f for f in reading(project)["findings"]}
+    assert "now reads" in found["r8-pe-02"]["resolution"]
 
 
 def test_suggestions_go_on_their_own(project: Path) -> None:

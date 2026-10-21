@@ -421,8 +421,35 @@ def check_design(
     results are not asked for. A dictionary that cannot be read or breaks its schema is said
     here once (`dictionary-invalid`), for every reader of it: the data-quality checks read
     the same file and say nothing of its shape."""
-    _dictionary, read = load_dictionary(project)
-    return _check_plan(project, results, stage).merge(read)
+    dictionary, read = load_dictionary(project)
+    report = _check_plan(project, results, stage).merge(read)
+    if dictionary is None:
+        return report
+    from manuscript_guard.gates.collection import check_collection
+
+    path = plan_path(project)
+    text = _read_plan(path)[0] if path.is_file() else None
+    return report.merge(check_collection(path, text, dictionary, _checklists(project, dictionary)))
+
+
+def _checklists(project: Project, dictionary) -> dict[str, set[str] | None]:
+    """For each guideline a dictionary entry names, the item ids of the checklist the project
+    reads for it, or None where it has none it can read."""
+    from manuscript_guard.gates.reporting import checklist_path
+
+    found: dict[str, set[str] | None] = {}
+    for guideline in {name for v in dictionary.variables for name, _items in v.reporting}:
+        path = checklist_path(project, guideline)
+        try:
+            document = read_structured(path) if path is not None else None
+        except ContractError:
+            document = None
+        items = document.get("items") if isinstance(document, dict) else None
+        found[guideline] = (
+            {str(item["id"]) for item in items if isinstance(item, dict) and "id" in item}
+            if isinstance(items, list) else None
+        )  # fmt: skip
+    return found
 
 
 def _check_plan(project: Project, results: Results | None, stage: str | None) -> Report:

@@ -266,7 +266,7 @@ All deterministic, all runnable in CI without Claude.
 | G3 | Figures | a number in a figure's output or in its source is not traceable to results |
 | G4 | Journal profile | word counts, structure, reference style, required statements |
 | G5 | Reporting checklist | a checklist item is unaddressed |
-| G6 | AI-writing lint | banned constructions and cadence tells |
+| G6 | AI-writing lint | banned constructions and cadence tells; words to the reviewers left in the paper |
 | G7 | Citation integrity | unpinned or unresolvable citation key; literature claim with no stored source |
 | G8 | Cross-artifact consistency | a quantity differs between abstract, results, table and figure |
 | G9 | Methods drift | analysis code changed since the Methods text was last reconciled; per step, a step or the text pointing at it changed since the pair was read |
@@ -1898,11 +1898,17 @@ link, the same from Europe PMC, OpenAlex's `is_retracted`, or Crossref's retract
 withdrawal or removal of a preprint. A record at PubMed or Europe PMC with neither mark is
 that registry saying no, and is shown as "retracted: no" with its name; "not known" is shown
 only where no registry that answered said either way, never as "no". A Crossref that did not
-answer is said, and is not read as having found nothing (round 1 of #369). A later version is PubMed's "Update in", Europe PMC's "Preprint of" or "Update
-in", or Crossref's `is-preprint-of`, and all three are asked because they do not agree: on
-2026-10-20 a medRxiv preprint had PubMed's link to its journal version and none at Crossref,
-and another had Crossref's and Europe PMC's and none at PubMed. Each is shown with whose word
-it is.
+answer is said, and is not read as having found nothing (round 1 of #369). Of several
+preprints, the line says for how many of them, with their DOIs and each reason given, and
+each preprint left unchecked says "Crossref did not answer" beside its retraction
+(`unchecked_by` in the JSON), since its "retracted: no" is then another registry's word
+alone (round 2 of #369). A later version is PubMed's "Update in", Europe PMC's "Preprint of"
+or "Update in", or Crossref's `is-preprint-of`, and all three are asked because they do not
+agree: on 2026-10-20 a medRxiv preprint had PubMed's link to its journal version and none at
+Crossref, and another had Crossref's and Europe PMC's and none at PubMed. Each is shown with
+whose word it is. Two links are one version where they share a PMID or a DOI and give
+neither differently; a registry giving PubMed's PMID with another DOI is shown as a second
+version under its own name, not as having said PubMed's DOI (round 2 of #369).
 
 A registry asked for a kind it does not type is not asked. OpenAlex types a review and a
 preprint and nothing finer, so with a systematic review, a meta-analysis, a guideline, a
@@ -2309,6 +2315,77 @@ future of ... lies in"), text about the text ("In this section, we will discuss"
 instruction to whoever fills the text in ("the user should add"). Each is a warning. Not
 "not widely available" or "not widely reported", which a paper says of a drug or an adverse
 event.
+
+**Words written to the reviewers and left in the paper are the residue of a revision**
+(`revision-residue`, 2026-10-20). "As requested by Reviewer 2, we added", "in the previous
+version of this manuscript", "we have now clarified", "page 4, lines 120-125", "the revised
+text is highlighted in yellow", "see the response letter"; and a model's words to its user,
+"as you requested", "I have shortened the abstract", "Below is the revised Discussion".
+They belong in the response to the reviewers, and the paper's reader never saw the review.
+The idea and part of the lists are Writing Guard's `process_residue` rules
+(ATTRIBUTION.md). The rules read the manuscript and its supplement only, in the prose the
+phrase rules read, so a comment, a listing or a citation holds none, and one paragraph at
+a time. They never read `revision/` nor the letter `respond` writes from it: that is where
+these words belong, and G13 lets a reply say them.
+
+A residue is reported wherever it stands, as an artefact is, and not counted by rate: one
+is enough to be read by the journal. Basile chose on 2026-10-20 between two kinds. A rule
+that answers one reviewer or the editor, or points at this manuscript, its earlier version,
+its lines, its marked changes or its letter, or holds a model's words to its user, warns
+while the paper is written and revised and fails at submission, as G13 and G11 do: the
+residue harms nobody until the journal reads it. The rest warn at every stage: the
+reviewers together or one not named ("in response to the reviewers' comments"), a
+manuscript's earlier version not said to be this one's ("the revised manuscript"), tracked
+changes, lines in brackets, a response letter not said to be the authors', and a change to
+a text that names no part of this manuscript ("we have revised the section on renal
+dosing", "This has now been clarified."). A paper about peer review writes those of the
+manuscripts it studied, and a guideline's update or a label's history writes the last of
+itself; neither must be stopped.
+
+What the rules leave alone was found by running them over the 399 papers of the G6 corpus
+and over the commonest ways a pharmacology or epidemiology paper writes the same words, and
+each is a passing case in `tests/test_writing.py`:
+- "revised" in a name, "the Revised Cardiac Risk Index", "the 1987 ACR revised criteria",
+  "the Clinical Interview Schedule-Revised", "10th revision";
+- the contributions, "drafted the initial manuscript", "revised the original manuscript",
+  "provided final approval of this version of the manuscript", read as a verb of writing
+  followed only by the words a contribution puts before the noun, so that "We revised the
+  Methods because our original submission pooled the cohorts" is still read;
+- the acknowledgements, "comments on an earlier version of this manuscript", "two
+  anonymous reviewers for their helpful comments", "grateful to Dr. Sampaio for their
+  critical review in the original manuscript", read from the thanks to the end of the
+  sentence, the stop of a title or an initial ending none; "We acknowledge that" opens a
+  limitation as often, and is no thanks; a thanks to one referee fails only for "this" or
+  "that", "for raising this point", "for bringing this to our attention", or where the
+  reviewer has a number, which a printed acknowledgement never gives, and not where it
+  names what it is for, "for pointing out an error in the variance estimator";
+- what a study writes of its own instrument: a Delphi panel's "our initial draft
+  comprised 45 items", "the revised wording is shown in Table 3", "new sentences were
+  written by two authors", "we have adapted the wording of the items";
+- a label's history, "This has now been included in the SmPC", since a change that names
+  no part of this manuscript warns only at the end of its clause;
+- a journal's notices, "the publisher, the editors and the reviewers", "the handling
+  editor declared a shared affiliation", and an invitation, "at the invitation of the
+  editor";
+- a systematic review's readers, "Reviewer 1 and Reviewer 2 independently extracted the
+  data", "resolved by a third reviewer", "discrepancies noted by the second reviewer": a
+  reviewer is one reviewer only with "the" or a number, and answered only with a request,
+  a reply or a suggestion;
+- and prose: "To address this concern, we used an active comparator", which 38 of the 399
+  papers write in some form and Writing Guard takes; "To avoid confusion"; "the original
+  submission of the dossier to the agency"; "we now report"; "(LINE 1)", a retrotransposon.
+
+Read as at submission, the 399 papers gave no failure, and two warnings: "(LINE 1)", which
+the rule for lines in brackets no longer takes, and "as suggested by one of the reviewers
+of our paper", words to a reviewer that reached print. `tools/g6_baseline.py` judges as at
+submission since round 1 of #377, and its measurement of the 384 papers it uses, taken
+again then, records that one warning and no failure; the held-out check is unchanged, 98.9%
+of the held-out papers with two warnings or fewer. Europe PMC listed 25 open-access
+research articles for the phrase "as suggested by the reviewer", and the text of their XML
+held it in 21: 17 only in the peer-review reports published with them, four in the article
+itself, each as a reply to a reviewer ("as suggested by the reviewer earlier, triglycerides
+and heart rate"). A sample chosen for the phrase says nothing of how common it is, only
+that the residue reaches print.
 
 **How often it warns on papers written by people** is measured, and the rate thresholds
 come from that measurement (item 54). `tools/g6_baseline.py` drew 400 open-access research
@@ -3702,15 +3779,19 @@ binding, citation, code, link, footnote or other inline construct; and the parag
 and after it gives `reworded.compare` nothing to say of a binding, a citation or a typed
 number. An edit that changes "2 x 2" to "3 x 2" is a finding, not a tracked change.
 
-**What is accepted comes back as written, or is not offered.** `import` merges an accepted
-edit as it merges any rewording from Word, and that merge rebuilds the edited stretch
-between two tokens from Word's text, which holds no markup. So each edit is put through the
-same merge before it is written (`roundtrip.align`, with the paragraph as Word would return
-it and the token extents of the marked build), and it is dropped unless the result is the
-source with `old` replaced by `new`, line wrapping aside. An edit beside emphasis in its
-stretch would flatten the emphasis on import, and is dropped here instead. Two edits of the
-same words are both dropped; one whose paragraph would not come back with the edits before
-it accepted too is dropped. Each dropped edit is listed with its reason and stays a finding.
+**What is accepted is written where its words were, or is not offered.** `import` merges a
+rewording from Word by rebuilding each edited stretch between two values or citations from
+Word's text, which holds no markup: emphasis, code or a link in that stretch is flattened,
+or the paragraph refused. An accepted suggestion is not merged so. Its words are known, from
+the sealed record, and so is where they were found, so `import` writes the new words there
+and touches nothing else (`suggestions.write_in`); see "An accepted suggestion is written,
+then the rest is merged" below. `review --suggestions` offers an edit only where that write
+holds: written into the source, the paragraph reads as Word shows it with the edit accepted
+(`roundtrip._reads_as`, the reading the merge holds its own result to), and the file still
+marks it as a paragraph of its own under its identifier (`_stays_marked`, by `tag`'s own
+reading of blocks). Two edits of the same words are both dropped; one that would not hold
+with the edits before it in its paragraph written too is dropped. Each dropped edit is listed
+with its reason and stays a finding.
 
 **The document is the build, with the changes in it.** `review --suggestions --round N` builds
 the document offline, as `build --offline` does, into `build/suggestions/round-N.docx` (and
@@ -3762,6 +3843,54 @@ last and changes nothing else in the file):
   to the author, with the reason.
 
 The answers are outside the seal, so the reading stays sealed.
+
+## An accepted suggestion is written, then the rest is merged
+
+The first version offered an edit only where `import`'s merge would bring it back exactly,
+and that merge rebuilds an edited stretch from Word's text. So an edit in a stretch that
+also held emphasis, code or a link was dropped: in a Results paragraph with an italic *P*,
+or an Introduction paragraph with no value in it and *E. coli* anywhere, that was every
+edit. Basile chose on 2026-10-20, from the options put to him, how an accepted suggestion
+and the author's own edits in the same paragraph come back together, and that an edit
+inside emphasis is offered.
+
+**The suggestion first, exactly.** For each paragraph holding a suggestion the author
+accepted (its bookmark `mg-s-<n>` holds the new words, `tracked.decided`), `import` takes the
+words from the sealed record, held to the document's digests of the new words and the
+comment, as the answer to the finding is. It finds the old words once in the paragraph's
+source and once in what the build printed, and the printed ones are the ones the document
+recorded a digest of. They lie outside every binding, citation and inline construct, and
+across no hard line break, which writing them would delete. The new words go into the
+source there, and into the printed text, and each value's place in that is moved along by
+the difference. Written, the paragraph has to be a change of words to `reworded` and read as
+Word shows it. Emphasis beside the words stays as the source has it, and emphasis around
+them goes round the new words: Word gives an insertion the formatting of the run it
+replaces, so the author saw them so when accepting.
+
+**Then the rest, by the usual rules.** Whatever else the author changed in that paragraph is
+merged by `roundtrip.align` against the source and the printed text with the suggestions
+already in them (`merge.plan_import`, `accepted`). A stretch the author left alone is kept
+from that source, markup and all, as for any rewording; a stretch the author edited is
+rebuilt from Word's text, as for any rewording. So the suggestion never costs markup, and the
+author's own edits cost what they cost on main. Where the author changed nothing else, the
+merge gives back the written source exactly. Every check `import` makes of a merge is made of
+this one too, the identifier test of `_identified` among them.
+
+**Where the words cannot be written, the paragraph is refused.** Old words no longer found
+once (the source changed since the document was made, imported with `--force`), printed
+words that are not the document's (the record's old words changed and sealed again), a
+record that is gone, values and citations with no place (the marked build could not be
+read), or a write that would not read as Word shows it: the whole paragraph is
+refused, with the reason, and the finding stays open. Merging it from Word's text instead
+would be the merge this design exists to avoid, and could flatten the markup the edit was
+offered beside. A suggestion refused in Word, or whose bookmark holds other words, writes
+nothing: Word's text there is merged as the author's own, and the finding is left to them as
+before.
+
+Considered and not built: refusing any paragraph that holds an accepted suggestion and
+anything else changed, so that nothing is ever composed. It costs the author's other edits
+in that paragraph, which would have to be made again in the .md, and it protects nothing the
+composed merge does not: what the author's edit flattens there, it flattens on main.
 
 ## A panel read by several providers
 
@@ -4173,6 +4302,108 @@ carries them.
 
 It is a warning: a new rule starts as one, until what it says of real papers is known.
 
+## An earlier output of the same data is held to this paper
+
+Several papers come out of one database extraction or one cohort: a conference abstract, a
+preprint, a protocol paper, the article, a second article on another outcome. A cohort of
+1,204 in the abstract and 1,187 in the article, with nothing said, is a number nobody can
+account for, and an article that does not say the abstract exists is an undeclared
+overlapping publication, which ICMJE asks authors to declare and journals treat as
+misconduct. Nothing compared this paper with anything outside it.
+
+`literature/related.yaml` names each earlier output, what it is, and what this paper shares
+with it (`data`, `study`, `authors`), as the author says it (Basile, 2026-10-21, the seven
+answers below all his). G8 reads it; without it G8 says nothing new, and no count is added,
+so a project that keeps none reads as before.
+
+**The earlier work's own files, where an author of this paper made it.** A comparison read
+from a PDF is a comparison of what was printed, rounded, with the reader's eye between. Where
+an author of this paper is an author of the earlier output, the skill asks for that work's
+files: its manuscript-guard project, at the revision the output was made from, or, with no
+project, its analysis outputs copied in. The path is the author's answer and is never
+looked for. `manuscript-guard related --take <id>` copies the project's results fragments,
+its frozen plan, its plan and its data dictionary, as git holds them at that revision (or as
+they stand, with HEAD recorded and whether they differ from it), into
+`literature/related/<id>/`, with a record of each file's digest. `check` reads the copy and
+never the project, so CI and a co-author's machine, where the earlier project is not, give
+the author's answer: the lookup's pattern of asking once and keeping what came back. A
+copied file whose digest changed, or a file added beside them, fails from drafting
+(`related-snapshot-edited`), as an edited lookup record does: a result edited in the copy
+compares an invented number. Each digest is taken as an analysis's input's is
+(`input_digest`), its line endings folded for `.json`, `.yaml` and `.md`: a plan saved with
+CRLF and committed under the `eol=lf` that `init` writes is checked out with LF everywhere
+else, and was read as an edit on every machine but the author's (round 1 of #391). A file
+whose name begins with a dot, the `.DS_Store` a system leaves, is neither copied nor counted,
+and the fragments' `.sha256` beside them are not copied, since nothing reads them there.
+`--take` writes over nothing it did not write. Until one of
+the three is there, or `files_unavailable` says why they cannot be had, an output that
+shares the data or the study with authors warns (`related-files-missing`); one of the same
+authors on other data (`shares: [authors]`) is listed for what other checks read of it and
+has nothing to compare (round 1 of #391). A project named and never copied warns, and
+fails at submission (`related-not-taken`): nothing was compared. A copy of another project or revision
+than the entry now names warns, and fails at submission (`related-taken-elsewhere`): it
+compared another output than the one named.
+
+**Numbers: every key both emit, and the pairs the author declares.** Through a copy, each
+results key that both projects emit and both papers print (`quoted`) is compared. A key
+renamed since is paired (`earlier: n_cases`, `here: cohort.n`); keys that share a name and
+not a meaning are set apart by pattern with a reason (`not_compared: ror.*`). Comparing only
+declared pairs would be quieter, and would never show the difference the author did not
+think of. Two values are the same where they print alike, or where both are numbers equal to
+nine significant digits, as `verify` holds a re-run: "2.3" and "2.31" of one estimate are
+one value printed to other places. A pair naming a key one side does not emit compares
+nothing, and warns and fails at submission (`related-pair-unmatched`).
+
+From a published text, or from outputs copied in, the author records each value as the
+ledger does: as the earlier output prints it, with the sentence that states it and the
+stored copy under `literature/` it is quoted from. The sentence is held to the copy and the
+value to the sentence by the ledger's own functions (`related-quote-not-in-source`,
+`related-value-not-in-quote`, `related-source-missing`, failing from drafting as the
+ledger's do). The printed value is compared with this paper's as a number, to within half a
+unit of the coarser of the two printings, where both read as one (grouped by commas or
+spaces, a middle dot for the point, a sign, a percent sign, and no zero before the point
+in a style that drops it, ".45"), and as text otherwise. A value YAML would read as a number,
+`1.50` or `0.00005`, is read as typed, and so is a revision that is a short commit of
+digits: read as numbers, `1.50` was `1.5`, which its quote's "1.50" does not state (round 1).
+
+**A difference is explained when the manuscript says why.** The pair or the value records
+the reason (`because`) and the manuscript's sentence that tells the reader
+(`manuscript_says`), and the sentence is looked for as G13 looks for a quoted change: in
+the manuscript with its bindings filled in, without comments, emphasis or line breaks, and
+with a binding in the sentence filled in too. A reason the reader is never given explains
+nothing to the reader. Explained, it is a note (`related-number-explained`); with a reason
+and no sentence found, `related-reason-not-in-text`; with neither, `related-number-differs`.
+Both warn and fail at submission. No new reading of text is made: the rule is G13's
+`as_quoted` and `rendered_manuscript`, held by the generated inputs already ("as quoted").
+
+**A choice of the analysis that changed is a change of method.** A value the analysis
+declared as a parameter or a coding dictionary's release, or a label (a period, a verdict
+in words), that differs is `related-method-differs`: a warning at every stage, a note with
+a reason (`related-method-explained`), and never a failure, since a method may rightly
+change between two papers and the review panel, not a gate, weighs whether it was said and
+justified. A software version is not compared: every later paper runs later software.
+
+**An overlap of data or study with authors is disclosed.** It is disclosed where the
+manuscript cites the earlier output (its citekey, in a citation a reader sees, comments left
+out), or where `disclosed_by` gives the manuscript's sentence that says so, found as above,
+for an abstract a journal does not want cited. Undisclosed, it warns and fails at submission
+(`related-undisclosed`). No file holds the covering letter, so `submit` lists the outputs to
+declare there.
+
+**The supplement is held as the main text is** (Basile, 2026-10-21): cohort counts and
+definitions often stand in an eTable or the eMethods. On this paper's side, values are
+compared by results key wherever they are printed, so a count bound only in
+`manuscript/supplementary/` is compared like any other, and a sentence that explains a
+difference or discloses the overlap, or a citation of the earlier output, counts in the
+supplement as in the main text: G8 reads the manuscript's files as every gate that reads prose
+does. On the earlier output's side, a copy holds every result its project emitted, those its
+supplement printed among them, and a value read from its text may be quoted from its
+supplement stored beside it (`sources/<citekey>-supplement.pdf`).
+
+`manuscript-guard related` prints every value compared, both printings and what came of it,
+and `--json` the same with the findings: what the author and a panel read, beside what
+`check` decides.
+
 ## The design gate warns and never blocks
 
 Writing down what you intended before you did it is the strongest single thing available for
@@ -4371,6 +4602,40 @@ written as it reads, `200.0` or `-0.5`, is left alone. And a key given twice in 
 is refused at the second: YAML keeps the last without a word, so a code list given twice
 under one name handed its second codes to every variable that named it (round 1 of #382).
 A variable that gives both `values` and a `code_list` is refused for the same reason.
+
+**The dictionary is held to the plan, both ways.** Every variable the analysis uses is to be
+collected, with its definition, and nothing collected that nothing needs (Basile,
+2026-10-20). So G12 reads the plan for the variables it names, and the plan names one by
+writing it in backticks exactly as the dictionary names it, `age`, anywhere outside its
+Deviations section and the sections under it (Basile chose this of three ways, 2026-10-21:
+names read from the Planned results alone would have left a covariate named only in the
+Analysis unchecked, and a list of uses kept in each entry would have been the same fact in
+two files). A code span that is a dictionary name is a use of it, a dotted one included. A
+span that reads as a variable's name, letters, digits and underscores from a letter, and
+that the dictionary lacks is `plan-variable-undefined`, at its first mention; where the
+dictionary has the name in another case, the hint says so. Code is written so that it does
+not read as a name, `glm()` or `stats::glm`; a result's key has a dot; nine values, `NA`, `NULL`,
+`TRUE`, `FALSE`, `None`, `True`, `False`, `NaN` and `Inf`, are not read; nor is what
+masking hides, a fence or a comment. A heading that names both the planned results and a
+change is the Deviations where the change comes first, as the list is read. The plan's
+title is not its Deviations: "Statistical analysis plan (amendment 2)" heads the plan
+(round 1). The title is a first heading at level 1 with a deeper one after it, whatever
+follows, so an appendix at its level leaves it a title; a first heading at level 2 is a
+section, so a plan with no title that opens with "## Amendment history" is not read there
+(round 2; Basile chose the level, 2026-10-21). In the other direction, an entry is needed
+where the plan names it, where
+a variable the plan needs is derived from it or asked under it (`applies_if`), again and
+again, where it names a reporting-checklist item, or where it gives a reason, and so are the
+inputs and the condition of an entry kept for an item or a reason (round 1); any other is
+`dictionary-entry-unused`. A reporting item is looked for in the guideline's checklist where
+the project holds one (`dictionary-reporting-item-unknown`), and is a note where it does
+not. Whatever the plan, an entry that leaves its codes undecided, a derivation without its
+inputs or inputs without it, an input the dictionary lacks, or a derivation that ends in
+itself, is said. All of these warn at every stage, as the rest of G12 does (Basile,
+2026-10-21); without a plan only the last group is asked. The `data-dictionary` skill
+drafts the dictionary with the author from the plan, and names a validated instrument and
+its licence rather than writing its items. The reading is held over generated plans
+(`plan variables` in `tests/readings.py`), one section of every kind in each.
 
 ## Stages: not every gate binds on day one
 
@@ -7631,7 +7896,29 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   rule's `order` takes dates and datetimes as one family, so the data checks that read it
   have to compare a date with a datetime by the date, and it refuses an order between two
   times (round 1 of #382). A bound in the basic ISO form, `20200101`, or with a fraction of
-  a second, reads on Python 3.11 and later and is refused on 3.10 (round 2 of #382).
+  a second of other than three or six digits, reads on Python 3.11 and later and is refused
+  on 3.10 (rounds 2 and 3 of #382). A sign YAML drops is a misreading in a code, an item and
+  a condition's codes, not in a reporting item: `reporting: {STROBE: [+6]}` reads as item 6
+  (round 3 of #382).
+- **The plan names a variable by its backticks, and nothing else.** A covariate the plan
+  writes in words, "adjusted for age", is not read, and an entry for it is said to be
+  unused until the plan writes `age`. A name in backticks that is code and not a variable,
+  `lme4` or `R`, is warned of as an undefined variable until it is written as code, `lme4::`
+  or `R()`, or without the backticks, and so is a value other than the nine left out,
+  `NA_real_` or a code written `M`. A heading with "deviation" in it is the Deviations, as G12
+  reads the plan, so a subsection "Standard deviation of `bmi_kg`" is not read (round 1).
+  A derivation cycle is said once for each group of variables derived from one another,
+  not once for every cycle in it. A plan written in `#` sections with no title, opening
+  with `# Amendment history` over a `## Version 2` that names a dropped variable, takes the
+  history for a title and reads it, so the dropped variable is not said to be unused (round
+  2; `test_a_history_at_the_title_s_level_is_read_as_a_title`). A title followed by a
+  heading at its own level is the Deviations of its text up to that heading, where it
+  names an amendment. The Deviations are left out whole, so a variable named
+  only there is unused even where the change kept it. That an entry is needed is all that
+  is checked: not that the plan uses it as its type says, that the analysis's own
+  `variable()` declarations agree with the dictionary, or that an instrument's `citation` is
+  in `references.bib`. An entry for an existing dataset's column the study does not use
+  needs its reason like any other.
 - **A statistic is held to what it belongs to by which bindings share its sentence, and by
   nothing else.** An estimate with intervals at two levels is asked to be quoted whole at
   each, though a paper quotes the one it means. An interval quoted whole only in a table the
@@ -7957,9 +8244,11 @@ Added by the adversarial review, verified and **not** fixed:
   colour space. A figure that draws a continuous scale is not compared at all, its series
   beside the scale included, and neither is one of more than 300 colours: both are said in a
   note, and left to the figure's review. A scale drawn with neighbours more than 10 apart, or
-  through less than 10 of lightness (a colormap's narrow slice), is no scale to the check,
-  and its shades are compared as series; a rainbow colormap a deficiency scrambles is not
-  said. A text drawn as glyphs is known for one where
+  through less than 10 of lightness (a colormap's narrow slice, a correlation map's pale
+  middle under fixed limits), is no scale to the check, and its shades are compared as
+  series; a rainbow colormap a deficiency scrambles is not said. The bands of one series at
+  three opacities or more chain through lightness and are taken for a scale, so such a
+  figure is not compared. A text drawn as glyphs is known for one where
   matplotlib (`text_` groups) or Cairo (`glyph` symbols) draws it so, and is a mark where
   another program does. A text's colour is left out, so data told apart only
   by coloured labels is not checked. Every colour painted is compared with every other, the
@@ -9767,6 +10056,42 @@ Open, recorded as each change landed:
   an encoding the XML parser cannot read. Each used to crash the reader that met it, the
   import or the audit, on the body, the comments, the styles or the font parts; a part that
   could not be decompressed crashed the import on the build's record as well.
+- **An earlier output is compared value by value, and never as prose.** G8 compares results
+  keys and recorded values. Two Methods sections that define the case, the exposure, the
+  outcome, the exclusions or the model in other words are not compared: the frozen plans are
+  copied in for that, and are not yet read by any gate; until they are, the skill gives the
+  panel an earlier-outputs remit read with both texts side by side. Nor are tables, model
+  cards or the data dictionary compared, though the copy holds them. A count printed only in
+  a table of either paper is compared with nothing. A value printed by only one of the two
+  papers (`quoted: false` on one side) is not compared, though it may show the data
+  changed.
+- **What a comparison read from a PDF cannot see.** A published value is read as printed: an
+  estimate rounded to one place is the same as any value within half a unit of it, so a
+  change smaller than the earlier rounding is not seen. A printed value that is not one
+  number ("2.3 (1.9 to 2.8)") is compared as text. A percentage there against a proportion
+  here (`12.5%` and `0.125`) is reported as a difference. Whether two printed numbers are
+  of the same quantity is the author's pairing, never checked; a pair of two different
+  quantities that happen to be equal passes. Which earlier outputs exist is the author's
+  word: an abstract nobody records is compared with nothing and its overlap is not asked
+  about.
+- **The copy holds the earlier project's results as they were, unprinted ones included.**
+  `related --take` copies every results fragment, so values the earlier paper did not print,
+  and counts its custodian may forbid outside the team, are committed with this paper. The
+  review panel's route B sends nothing under `literature/`; a public repository publishes
+  the copy. Which values a project may copy is not yet decided here.
+- **A sentence that explains or discloses is looked for as text, not as a sentence.**
+  `manuscript_says` and `disclosed_by` are found where their words stand together anywhere
+  in the manuscript, as G13 finds a quoted change, so `manuscript_says: "2026"` or
+  `disclosed_by: "abstract"` passes wherever those words are printed (round 1 of #391). A
+  citation in the sentence is matched as the source writes it (`[@key]`), not as printed.
+  A value brought into an entry by a YAML merge key (`<<: *common`) is read as YAML reads it,
+  `1.50` as `1.5`, not as typed (round 2 of #391; contrived).
+- **A disclosure is a citation or a sentence, and the covering letter is not read.** An
+  overlap counts as disclosed where the earlier output is cited anywhere in the manuscript
+  or the declared sentence is printed anywhere: neither is checked to say that the two share
+  data, and a citation in the Introduction to the abstract as a finding passes. The covering
+  letter is in no file, so what it declares is not checked; `submit` only lists what to put
+  there.
 - **A table cell styled as a heading ends a reference list.** A cell never starts one,
   since "References" there is a column header, but a heading-styled cell after the list's
   heading ends it, as it would anywhere: Word lists such a cell as a heading in its
@@ -10433,6 +10758,34 @@ Open, recorded as each change landed:
   frozen until it is put right; one saved in UTF-16 with no byte-order mark decodes as
   UTF-8 where its text is ASCII, so G12 does not say it is not UTF-8, and the
   `plan-not-frozen` hint, that the emitter keeps it on the next write, is not true of it.
+- **The residue of a revision is found by its words, in English, in the manuscript's prose
+  only.** A reply worded otherwise passes: "Reviewer 2 was right that", "we agree with the
+  reviewer", "this point is now made". Writing Guard's list in Chinese was not taken. A
+  residue in a figure, a table's caption or a cited entry is not read, nor one in a
+  comment, which is never printed. The rules that fail at submission leave no way to keep
+  the sentence, so a paper that means to answer a reviewer in print rewords it. "The
+  reviewer" with a request is taken for the journal's, so a chart review whose own reader
+  is "the reviewer" fails on "following the reviewer's recommendation, the case was
+  excluded", and a systematic review on "as suggested by the second reviewer". The
+  contributions are known by a verb of writing followed only by the words a contribution
+  puts before "manuscript", "draft", "version" or "submission", so "we revised the
+  original submission to add" and "we revised the content of our original manuscript" are
+  not read; the acknowledgements by their thanks to the end
+  of the sentence, so a residue later in a sentence of thanks is not read by the rules of
+  an earlier version; and "acknowledge" is no thanks, since a limitation opens on it, so
+  "We acknowledge the comments of two anonymous referees on our original submission" fails
+  at submission (round 2 of #377). "The revised manuscript" warns in a statement of
+  contributions that does not say who approved it. A change to the text fails only where it
+  names a section by its capitalised name, the manuscript or its text (not "the text of
+  the SmPC", but "the text of the manuscript", and not "the text of the main manuscript"),
+  says "accordingly", or is a rephrasing; "we have revised the discussion of
+  renal dosing", in lower case, only warns, and "This has now been clarified" warns only
+  at the end of its clause, so "This has now been clarified in the response" passes. A
+  change is marked only where it is highlighted, underlined, coloured or tracked, or shown
+  in a colour, bold, italics, underlined, highlighted or tracked changes within two words,
+  so "marked with an asterisk" passes. Lines in brackets, "(lines 245-250)", only warn,
+  since a program's listing is pointed at so. "In response to the editor's invitation"
+  passes, and so would an answer to the editor that names an invitation, a call or a note.
 - **G6's thresholds are measured on people only, in one field.** Each rate's threshold is
   the 99th percentile of 291 biomedical research articles of 2010 to 2022 (see "The
   AI-writing lint measures rate, not presence"), so about one paper by people in a hundred
@@ -12456,25 +12809,43 @@ Open, recorded as each change landed:
   work's stored files once for the passages and once for the quotations in the prose, so a
   PDF goes through `pdftotext` twice a `check`.
 
-- **A suggested edit is placed only where nothing else is in its way.** `review
-  --suggestions` writes an edit only where its words are found once and its acceptance
-  comes back into the source exactly (see "A reading may suggest the wording"). What that
-  leaves out:
-  - *Words beside markup.* An accepted edit is merged by `import`, which rebuilds the
-    edited stretch between two tokens from Word's text, so an edit in a stretch that also
-    holds emphasis, code or a link is dropped rather than offered. In a Results paragraph
-    with an italic *P* that is most of the paragraph. Writing the accepted words into the
-    source directly, at the range the edit was found at, would keep the markup; it would
-    also be a second way of merging Word's text beside `import`'s, and was not built.
+- **A suggested edit is placed only where it can be written exactly.** `review
+  --suggestions` writes an edit only where its words are found once and, written into the
+  source where they are, the paragraph reads as Word shows it (see "An accepted suggestion
+  is written, then the rest is merged"). What that leaves out:
+  - *Words across markup.* Words that cross the edge of emphasis, as "P value" quoting
+    `*P* value`, or lie inside code, a link's text, a span, struck-through, raised or
+    lowered text, or run across a hard line break, take no edit: written, they would change
+    the markup, which an edit does not. The reader is sent the text as printed and cannot
+    see where the markup is.
+  - *The author's own edit beside an accepted suggestion.* The suggestion is written
+    exactly, and an edit of the author's in the same stretch between two values or
+    citations is then merged from Word's text, as any rewording is: the emphasis or code in
+    that stretch is flattened, the suggestion's included
+    (`test_an_accepted_edit_and_the_author_s_own_edit_in_its_paragraph_both_come_back`).
+    A paragraph with no value or citation is one stretch. That is main's merge, unchanged;
+    only the suggestion's own write is exact.
+  - *A write that cannot be made refuses the paragraph.* At import, an accepted
+    suggestion whose words cannot be written exactly has its whole paragraph refused, the
+    author's other edits there with it, since merging it from Word's text could flatten the
+    markup it was offered beside. A source changed since the document was made (imported
+    with `--force`), a record changed or gone since, a mix of three or more edits accepted
+    in Word that was not tried (below), and a marked build `import` could not read, which
+    leaves no value or citation placed, each reach it. The last refuses such a paragraph on
+    main too, as unaligned.
+  - *The write is held to this package's reading of Markdown.* "Reads as Word shows it" is
+    `roundtrip._reads_as`, which the merge holds its own result to; where that reading and
+    pandoc's disagree, written words could print otherwise than Word showed them. New words
+    that make the paragraph a list item or a heading are caught by `tag`'s own reading of
+    blocks (`_stays_marked`), which `_reads_as` does not see.
   - *A heading, a caption, a list item, a quotation or a table cell* carries no identifier
     and so takes no edit, as `import` brings back none of them.
   - *Several edits in one paragraph* are tried alone and each with the ones before it
-    accepted. With three or more, a mix accepted in Word that was not tried could come
-    back otherwise; `import` then refuses or merges that paragraph by its own rules, and
-    the findings stay open where it refuses.
+    written. With three or more, a mix accepted in Word that was not tried is written by
+    `import` only if it holds; otherwise the paragraph is refused and the findings stay open.
   - *The inserted words are shown as typed*, a straight apostrophe in a paragraph pandoc
-    curled, because the merge keeps Word's quotes and the source should get what the reader
-    wrote. The next build prints them curled.
+    curled: the source gets what the reader wrote, and Word shows the same words. The next
+    build prints them curled.
   - *The source as it stands.* Edits are placed in the manuscript when the command runs;
     a reading of an earlier version has its edits placed where its words still stand once,
     and dropped where they do not.
@@ -12536,6 +12907,14 @@ Open, recorded as each change landed:
 
 Closed since, and why each mattered (an open gap goes above this line):
 
+- **A suggested edit beside emphasis, code or a link was not offered.** `import` merged an
+  accepted suggestion as any rewording, rebuilding its stretch from Word's text, so an edit
+  in a stretch that also held markup was dropped by `review --suggestions` rather than
+  flattened at import. In a paragraph with an italic *P*, or one with no value and *E. coli*
+  anywhere, that was every edit. An accepted suggestion is now written into the source where
+  its words were, and only the rest of the paragraph is merged (Basile, 2026-10-20; "An
+  accepted suggestion is written, then the rest is merged"). An edit inside emphasis is
+  offered too, and the new words keep it.
 - **The header's title was read by line, and the warning of two titles was wrong on any
   header but the plainest.** Nobody saw the warning until #165. Shown, it took what stands
   after the first `title:` in the block, at any depth and on that line alone, less every

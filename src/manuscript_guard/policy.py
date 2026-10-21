@@ -126,6 +126,12 @@ BINDS_AT = {
     # and a record edited by hand may be hiding one.
     "reference-retracted": DRAFTING,
     "lookup-record-edited": DRAFTING,
+    # An earlier output's numbers are compared as they were copied or quoted: a copy edited
+    # by hand, or a quote not in its source, compares an invented number.
+    "related-snapshot-edited": DRAFTING,
+    "related-source-missing": DRAFTING,
+    "related-quote-not-in-source": DRAFTING,
+    "related-value-not-in-quote": DRAFTING,
     # -- internal review --------------------------------------------------------
     # The draft is finished; now it is held to the journal's rules and read properly.
     "figure-unreviewed": INTERNAL_REVIEW,
@@ -207,6 +213,9 @@ BINDS_AT = {
     # A number typed into a reply to the reviewers: the letter is written while the
     # analysis is still being run again, and goes to the journal only at resubmission.
     "reply-unbound-number": SUBMISSION,
+    # Words to the reviewers left in the manuscript: G6 warns on them until submission, and
+    # fails there on those that answer one reviewer or point at this manuscript.
+    "revision-residue": SUBMISSION,
     "response-claims-nothing": SUBMISSION,
     "claimed-change-did-not-happen": SUBMISSION,
             "review-stale": SUBMISSION,

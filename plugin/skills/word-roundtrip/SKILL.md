@@ -191,11 +191,15 @@ built document is out of date. Rebuild before sending anything on.
 A document of a review panel's suggested edits (`build/suggestions/round-<n>.docx`, from
 `manuscript-guard review --suggestions`) is imported the same way. Each of the panel's
 tracked changes has to be accepted or rejected in Word first: while one is undecided the
-import refuses the whole document and writes nothing. The accepted words are merged as any
-rewording is, the panel's own comments are its findings and are not listed as a co-author's,
+import refuses the whole document and writes nothing. The accepted words are written where
+the edit found them, keeping the markup beside them, and anything else changed in that
+paragraph is merged as any rewording is; the panel's own comments are its findings and are
+not listed as a co-author's,
 and with `--apply` each finding gets its answer in its record (the review-panel skill, step
 3). An edit accepted in Word whose paragraph is refused leaves its finding open: the words
-are not in the source.
+are not in the source. Where the accepted words can no longer be written where they were (the
+`.md` changed there since, or the reading's record did), the whole paragraph is refused, as
+merging it from Word's text could flatten the markup beside them.
 
 When the returned document carries comments, when more than one co-author sends theirs back,
 when the dry run lists paragraphs that `were not compared`, or when the stamp check refuses

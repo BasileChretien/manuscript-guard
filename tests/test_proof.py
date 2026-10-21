@@ -483,11 +483,14 @@ def test_a_unit_of_time_joined_to_its_number_is_beside_it(
     assert change.what == what
 
 
-def test_a_unit_of_time_a_word_away_from_its_number_is_a_copy_edit(tmp_path: Path) -> None:
-    # A limit (DESIGN.md, Known gaps): the unit is read only beside a number.
+@pytest.mark.parametrize("edit", [("consecutive weeks", "consecutive months"),
+                                  ("day-28", "month-28")])
+def test_a_unit_of_time_a_word_away_from_its_number_is_a_copy_edit(tmp_path: Path, edit) -> None:
+    # A limit (DESIGN.md, Known gaps): the unit is read only beside a number, or after one
+    # and a hyphen, and not before a hyphen and its number (review of #408, round 2).
     sent = Sent(Path("m.docx"), (Part(PARAGRAPH, "Patients were followed for 12 consecutive "
-                                      "weeks after the first dose.", "p"),), (), None)
-    result = changes_of(tmp_path, ("consecutive weeks", "consecutive months"), sent=sent)
+                                      "weeks, and mortality at day-28 was low.", "p"),), (), None)
+    result = changes_of(tmp_path, edit, sent=sent)
     assert corrections(result) == []
     assert kinds(result, COPY_EDIT)
 

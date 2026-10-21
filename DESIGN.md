@@ -7484,11 +7484,10 @@ Each difference is then one of these:
 
 - **A correction** (exit 1, and the list `--out` writes): a number's digits, sign or decimal
   mark changed, or a number gone or come within a part; a unit, a percent or degree sign or a
-  comparator changed beside a number, or joined to it by a hyphen, "5-mg" (a unit's case is
+  comparator changed beside a number, or after a number and a hyphen, "5-mg" (a unit's case is
   kept, so "mM" is not "mm"; the two spellings of a litre and of a microgram are one); a
   unit of time spelt out and printed as another there, "12 weeks" as "12 months" or
-  "12-week" as "12-month" ("12 wk" and "12 week" are copy-edits); any change inside a
-  citation
+  "12-week" as "12-month" ("12 wk" and "12 week" are copy-edits); any change inside a citation
   (brackets, parentheses that hold a year, a short number set against a word as a superscript
   is) or an entry of the reference list; a part the proof does not print at all, or a
   paragraph, a caption or a reference of six tokens or more none of which it prints in place,
@@ -12767,9 +12766,10 @@ Open, recorded as each change landed:
   another spelt out: "12 weeks" printed "12 months" is a correction, and "12 wk", as the AMA
   sets it, a copy-edit. An abbreviation G14 does not know is a word, so "12 weeks" printed
   "12 mo" or "12 d" is a copy-edit too, though it names another unit (round 2 of #397). A
-  unit is read only beside its number or joined to it by a hyphen, so "12 consecutive weeks"
-  printed "12 consecutive months", or "two weeks" printed "two months", is a copy-edit
-  (review of #408).
+  unit is read only beside its number or after it and a hyphen, so "12 consecutive weeks"
+  printed "12 consecutive months", "two weeks" printed "two months", and "day-28" printed
+  "month-28" are copy-edits. A stretch that starts after a number and a hyphen is read as a
+  unit's change if a unit stands anywhere in it (review of #408).
 - **What a proof adds between two parts is shown, not counted, in a table too.** Every cell is
   a part, so a value the proof adds between two cells, or a row it prints twice, is added
   text. Counted as a correction, "Table 1 (continued)" over a table broken across a page, and a

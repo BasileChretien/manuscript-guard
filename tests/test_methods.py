@@ -193,6 +193,11 @@ def test_under_a_main_text_name_g9_reads_all_as_g2_holds_it() -> None:
     assert is_methods(("Supplementary methods", "Statistical analysis", "Software"))
     assert is_methods(("eMethods 1", Unprinted("Software")))
     assert not is_methods(("eMethods 1", "Table S2", Unprinted("Software")))
+    # As the gates reach it, through the chain of a file: `####### ` is no heading to pandoc.
+    from manuscript_guard.text.sections import chain_at, heading_index
+
+    printed = "# eMethods 1\n\n####### Software\n\nR 4.6.\n"
+    assert is_methods(chain_at(heading_index(printed), printed.index("R 4.6")))
 
 
 def test_the_methods_are_the_main_text_s_and_the_supplement_s(project: Path) -> None:

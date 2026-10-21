@@ -12489,7 +12489,12 @@ Open, recorded as each change landed:
   supplement has no Methods. `methods-supplement-unreconciled`
   says of a lock written before 2026-10-21 only where the supplement has Methods when `check`
   runs: eMethods added after a lock was written are no more noticed than a paragraph added to
-  the main text's Methods, which only an anchor holds to the code.
+  the main text's Methods, which only an anchor holds to the code. Under one of the main
+  text's names in the supplement, "Methods" or "Supplementary materials and methods" over
+  an eTable, everything is the Methods to all three, as G2 holds it: a number in that table
+  then states a locked parameter of the same value, and `methods-parameter-absent` is not
+  said (fix-only round of #395). G9 reads the printed headings, so a line pandoc prints as
+  text that names the Results ends G2's Methods there and not G9's.
 - **A supporting passage is in its work, and is not held to what its sentence says.** G7
   finds the words in the stored source; whether they say what the sentence says is the
   judgement it leaves to people, the author's in `passages.yaml` and the co-authors' in the

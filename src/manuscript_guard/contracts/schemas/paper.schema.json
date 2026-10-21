@@ -78,7 +78,7 @@
         "doi": {
           "type": "string",
           "pattern": "^10\\.\\d{4,9}/\\S+$",
-          "description": "The DOI of the deposited package, as the repository reserved or gave it, without the resolver. G4 warns while the Data availability statement does not name it, and fails at submission."
+          "description": "The DOI of the deposited package, as the repository reserved or gave it, without the resolver. G4 warns while neither the Data availability statement nor a Code or Software availability statement names it, and fails at submission."
         }
       }
     },

@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import posixpath
 import re
 import subprocess
 import unicodedata
@@ -167,6 +168,11 @@ def tracked_files(root: Path) -> set[str] | None:
     return None if listed is None else {os.path.normcase(n) for n in listed.split("\0") if n}
 
 
+def in_a_repository(root: Path) -> bool:
+    """Whether a `.git` folder or file is at the project's root or above it."""
+    return any((place / ".git").exists() for place in (root, *root.parents))
+
+
 def _identity(path: Path) -> tuple[int, int] | None:
     """The file a path leads to, as the system tells files apart, or None where it cannot say:
     a file system that gives every file the number 0, as FAT does, tells none apart."""
@@ -253,7 +259,8 @@ class _Collector:
         """Whether a folder `paths:` names may be walked: one that is the project itself
         would take every file of it (round 1 of #388), and one outside it none of its own."""
         here = Path(os.path.normpath(folder))
-        if here == Path(os.path.normpath(self.root)):
+        same = _identity(here)
+        if here == Path(os.path.normpath(self.root)) or (same and same == _identity(self.root)):
             self.refused.append(Finding(GATE, "package-folder-is-root", f"paths.{setting} "
                                         "is the project itself, and a package takes the "
                                         "files of that folder whole", path=self.root /
@@ -298,35 +305,47 @@ def inside(path: str) -> bool:
         and ".." not in pure.parts  # fmt: skip
 
 
+def canonical(path: str) -> str:
+    """A path a record declares, in one spelling: forward slashes and no `.` step, so that
+    `./data/raw.csv` and `data\\raw.csv` are `data/raw.csv` (round 2 of #388)."""
+    return posixpath.normpath(str(path).replace("\\", "/"))
+
+
+def _key(path: str) -> str:
+    """What two declared paths are compared by: one spelling, in the case the system
+    compares names in."""
+    return os.path.normcase(canonical(path))
+
+
 def _declared(results: Results) -> dict[str, dict]:
-    """Each input the runs declared, by its path: the scripts that read it, whether any run
-    calls it restricted, and whether every run calls it synthetic."""
+    """Each input the runs declared, by its path in one spelling: the scripts that read it,
+    whether any run calls it restricted, and whether every run calls it synthetic."""
     declared: dict[str, dict] = {}
     for fragment in results.fragments:
         for record in fragment.inputs:
             if not isinstance(record, dict) or not record.get("path"):
                 continue
-            seen = declared.setdefault(str(record["path"]), {"read_by": [], "synthetic": True,
-                                                             "restricted": False})  # fmt: skip
+            seen = declared.setdefault(_key(record["path"]), {
+                "path": canonical(record["path"]), "read_by": [], "synthetic": True,
+                "restricted": False, "record": record})  # fmt: skip
             seen["read_by"].append(fragment.generated_by)
             seen["restricted"] |= bool(record.get("restricted"))
             # Synthetic only where every run that read it says so.
             seen["synthetic"] &= bool(record.get("synthetic"))
-            seen.setdefault("record", record)
     return declared
 
 
-def _share_findings(project: Project, declared: dict[str, dict], shared: list[str]) -> list:
+def _share_findings(project: Project, declared: dict[str, dict], shared: dict[str, str]) -> list:
     """`package.share` naming an input no run declared, or one declared restricted."""
     refused = []
-    for path in shared:
-        if path not in declared:
+    for key, path in shared.items():
+        if key not in declared:
             refused.append(Finding(GATE, "package-share-unknown", f"package.share lists "
                                    f"{path}, which no analysis declares it read",
                                    path=project.root / "paper.yaml",
                                    hint="list an input as its path in the results' provenance "
                                    "says it, or take it out of the list"))  # fmt: skip
-        elif declared[path]["restricted"]:
+        elif declared[key]["restricted"]:
             refused.append(Finding(GATE, "package-share-restricted", f"package.share lists "
                                    f"{path}, which the analysis declares restricted",
                                    path=project.root / "paper.yaml",
@@ -338,19 +357,17 @@ def _share_findings(project: Project, declared: dict[str, dict], shared: list[st
 def _inputs(project: Project, results: Results) -> tuple[list[Input], list[Finding]]:
     """Each declared input, and whether the author's declarations let it go."""
     declared = _declared(results)
-    shared = [str(path) for path in settings(project).get("share") or []]
+    shared = {_key(path): str(path) for path in settings(project).get("share") or []}
     refused = _share_findings(project, declared, shared)
     out = []
-    produced = {f.path.relative_to(project.root).as_posix() for f in results.fragments}
-    for path, seen in sorted(declared.items()):
-        record = seen["record"]
+    produced = {_key(f.path.relative_to(project.root).as_posix()) for f in results.fragments}
+    for key, seen in sorted(declared.items(), key=lambda item: item[1]["path"]):
+        path, record = seen["path"], seen["record"]
         digest = str(record.get("raw_sha256") or record.get("sha256") or "")
         size = record.get("bytes") if isinstance(record.get("bytes"), int) else None
         read_by = tuple(sorted(set(seen["read_by"])))
         file = project.root / path
-        if path in produced:
-            included, why = True, RESULTS_INPUT
-        elif not inside(path):
+        if not inside(path):
             # A fragment is a file anyone can write: a path out of the project would be read
             # from outside it and written outside the package.
             included, why = False, "a path outside the project"
@@ -359,8 +376,12 @@ def _inputs(project: Project, results: Results) -> tuple[list[Input], list[Findi
                                    path=project.root, hint="an input is declared by its "
                                    "path from the project's root"))  # fmt: skip
         elif seen["restricted"]:
+            # Before a results file is taken as results: a declaration that it is restricted
+            # is the author's, and holds (round 2 of #388).
             included, why = False, "declared restricted"
-        elif not (seen["synthetic"] or path in shared):
+        elif key in produced:
+            included, why = True, RESULTS_INPUT
+        elif not (seen["synthetic"] or key in shared):
             included, why = False, "not declared shareable"
         elif not file.is_file():
             included, why = False, "not on this computer"
@@ -424,6 +445,13 @@ def plan_package(project: Project, results: Results, *, with_manuscript: bool = 
     collect = _Collector(project, tracked, {i.path for i in inputs if i.why != RESULTS_INPUT})
     licence = _collect(collect, project, results, inputs, with_manuscript)
     findings = refused + collect.refused + _licence_findings(project, licence)
+    if tracked is None and in_a_repository(project.root):
+        findings.append(Finding(GATE, "package-git-unanswered", "the project is in a git "
+                                "repository, and git could not say which files it tracks, so "
+                                "what is kept out of git cannot be kept out of the package",
+                                path=project.root, hint="run `git status` there: git may not "
+                                "be on PATH, or may refuse the folder as of dubious "
+                                "ownership"))  # fmt: skip
     findings += _notes(project, inputs)
     entries = sorted(collect.entries.values(), key=lambda entry: entry.path)
     findings += _names_taken(project, entries)

@@ -733,6 +733,101 @@ def test_the_readme_names_the_licence_file_copied(project: Path) -> None:
     assert "(see COPYING)" in (folder / "README.md").read_text(encoding="utf-8")
 
 
+# ------------------------------------------------------------ round 2 of the review
+
+
+def test_a_repository_git_cannot_answer_for_is_refused(project: Path) -> None:
+    """Round 2: in a repository git could not be asked about, every file was taken as though
+    there were none, the files git ignores with them, and the README said there was none."""
+    ready(project)
+    (project / ".git").mkdir()  # a repository git refuses: no HEAD, no objects
+    assert "package-git-unanswered" in refused(project)
+
+
+def test_two_spellings_of_one_input_are_one_input(project: Path) -> None:
+    """Round 2: `./data/event_terms.txt` declared restricted beside the same file declared
+    shared as `data/event_terms.txt` were two inputs, and the shared one went in."""
+    ready(project)
+
+    def declare(document: dict) -> None:
+        document["provenance"]["inputs"].append(
+            {"path": "./data/event_terms.txt", "sha256": "0" * 64, "bytes": 50,
+             "restricted": True}
+        )  # fmt: skip
+
+    edit_fragment(project, declare)
+    with_package(project, request="Apply to the custodian.")
+    assert "package-share-restricted" in refused(project)
+    with_package(project, share=[])
+    assert main(["package", str(project), "--skip-checks"]) == 0
+    assert "data/event_terms.txt" not in contents(built(project))
+
+
+def test_a_results_file_declared_restricted_stays_out(tmp_path: Path) -> None:
+    """Round 2: a results file another script declared restricted went in as results."""
+    root = _mini(tmp_path, {
+        "01_first.py": 'em.add_input("data/x.csv", synthetic=True)\nem.value("n.a", 40)\n',
+        "02_next.py": 'em.add_input("results/01_first.json", restricted=True)\n'
+                      'em.value("n.b", 41)\n',
+    }, "package:\n  licence: MIT\n  request: Write to the authors.\n")  # fmt: skip
+    assert main(["package", str(root)]) == 0
+    assert "results/01_first.json" not in contents(built(root))
+    assert "results/02_next.json" in contents(built(root))
+
+
+@pytest.mark.parametrize(
+    ("cell", "count"),
+    [
+        ("3 (0.7%)*", 3), ("3\N{MODIFIER LETTER SMALL A}", 3), ("3 (.7%)", 3),
+        ("3 [0.7%]", 3), ("3 (0.7%)\N{DAGGER}", 3), ("3^a^", 3), ("3/412 [0.7%]", 3),
+        ("1 (<0.001)", None), ("3 (<1)", None),
+    ],
+)  # fmt: skip
+def test_a_cell_is_read_with_its_footnote_and_a_bound_takes_a_percent(
+    cell: str, count: int | None
+) -> None:
+    """Round 2: a footnote mark after a count, a share with no digit before its point, and a
+    share in square brackets hid the count; a P behind a bound read as a share."""
+    from manuscript_guard.deposit.counts import count_in_cell
+
+    assert count_in_cell(cell) == count
+
+
+def test_a_folder_that_leads_to_the_project_itself_is_refused(project: Path) -> None:
+    """Round 2: `paths.analysis` set to a link to the project walked the whole of it."""
+    ready(project)
+    link = project / "code"
+    try:
+        os.symlink(project, link, target_is_directory=True)
+    except OSError:
+        made = subprocess.run(["cmd", "/c", "mklink", "/J", str(link), str(project)],
+                              capture_output=True) if sys.platform == "win32" else None  # fmt: skip
+        if made is None or made.returncode != 0:
+            pytest.skip("cannot make a link to a folder here")
+    document = paper(project)
+    document["paths"] = {"analysis": "code"}
+    set_paper(project, document)
+    try:
+        assert "package-folder-is-root" in refused(project)
+    finally:
+        # A junction is removed as an empty folder, which leaves what it leads to alone.
+        link.unlink() if link.is_symlink() else os.rmdir(link)
+
+
+@pytest.mark.parametrize(
+    ("text", "doi"),
+    [
+        ("\N{LEFT SINGLE QUOTATION MARK}10.5281/zenodo.1234567\N{RIGHT SINGLE QUOTATION MARK}",
+         "10.5281/zenodo.1234567"),
+        ("deposited as 10.1000/study" + chr(92) + "_code.", "10.1000/study_code"),
+    ],
+)  # fmt: skip
+def test_a_doi_in_curly_quotes_or_with_an_escaped_underscore_is_named(text: str, doi: str) -> None:
+    from manuscript_guard.gates.data_statement import names_doi
+
+    assert names_doi(text, doi)
+
+
 # ---------------------------------------------------------------------------- R
 
 

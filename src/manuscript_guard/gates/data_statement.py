@@ -197,7 +197,8 @@ def cited_in(statement: str, project: Project) -> str:
 #: without a backtick or a quotation mark round it (round 1 of #388).
 _NAMED_DOI = re.compile(
     r"(?<![0-9A-Za-z.])10\.\d{4,9}/"
-    r"(?:[^\s,;()<>\[\]\"\N{RIGHT DOUBLE QUOTATION MARK}*`]|\([^\s()]*\))+"
+    r"(?:[^\s,;()<>\[\]\"\N{RIGHT DOUBLE QUOTATION MARK}\N{RIGHT SINGLE QUOTATION MARK}*`]"
+    r"|\([^\s()]*\))+"
 )
 
 #: Where a deposit of code may be named besides the data availability statement: "Code
@@ -216,8 +217,10 @@ def names_doi(text: str, doi: str) -> bool:
     from manuscript_guard.gates.identifiers import normal_doi
 
     wanted = _plain_doi(normal_doi(doi))
+    # An underscore Markdown escapes is an underscore (round 2 of #388).
+    unescaped = text.replace("\\_", "_")
     return any(_plain_doi(found.group(0).rstrip("._:'`")) == wanted
-               for found in _NAMED_DOI.finditer(text))  # fmt: skip
+               for found in _NAMED_DOI.finditer(unescaped))  # fmt: skip
 
 
 def _cited_dois(statement: str, project: Project) -> str:

@@ -5030,8 +5030,13 @@ itself is refused, since it would take every file of the project (round 1 of #38
 a file collected at a name the package writes of its own, `paper.yaml` or `README.md`. A
 declared input is held out of the folders by its name and by the file it is: another name for
 the same file, a hard link, or its name in another case where the system ignores case, is the
-input all the same (round 1). An input that is itself a results file of the project, one
-script reading what another wrote, goes in as results. An input goes in only when the analysis
+input all the same (round 1). Declared paths are compared in one spelling, so that
+`./data/raw.csv` declared restricted by one script and `data/raw.csv` declared shared by
+another are one input, and restricted (round 2). A project inside a git repository that git
+cannot answer for, with git not on PATH or refusing the folder, is refused, since what git
+would have kept out could not be (round 2). An input that is itself a results file of the
+project, one script reading what another wrote, goes in as results unless it is declared
+restricted. An input goes in only when the analysis
 declared it synthetic or `paper.yaml` lists it in `package.share`; one declared restricted
 never goes, and listing it is refused. Every other input is withheld and listed in INPUTS.md,
 with its size, the SHA-256 of its bytes and how to obtain it (`package.request`, required
@@ -5044,11 +5049,12 @@ reads the counts the manuscript prints, and "<5" in the paper holds nothing back
 file beside it says 3. Where `custodian.minimum_cell_count` is declared, the package refuses
 while a fragment holds a count from one to below it: a value that is a count as G2 reads one,
 whatever its display; a table cell past the first column that states one count alone, over a
-denominator, with a share in brackets, or both, the share with a point, a middle dot or a
-decimal comma and behind a bound or not, "3/412 (0.7%)" or "3 (<1%)" (`count_in_cell`, round
-1 of #388); a model card's rows read, used
-and dropped, its events and its events at each level; a variable card's rows missing
-(`deposit/counts.py`). The data custodian `authors.yaml` names may sign the list off
+denominator, with a share in round or square brackets, or both, the share with a point, a
+middle dot or a decimal comma, "3/412 (0.7%)" (`count_in_cell`, round 1 of #388), and a
+footnote mark after it or none, "3 (0.7%)*" (round 2). A share behind a bound is one with its
+percent sign, "3 (<1%)"; without it, "1 (<0.001)", it is a P (round 2). A model card's rows
+read, used and dropped, its events and its events at each level, and a variable card's rows
+missing are counts too (`deposit/counts.py`). The data custodian `authors.yaml` names may sign the list off
 (`PACKAGE/custodian/small-counts`), and a list that changes is another statement. Where the
 custodian restricts sending, the package is written only once they have signed off its files
 and their digests as they stand (`PACKAGE/custodian/deposit`, and `-with-manuscript` for the
@@ -12017,9 +12023,11 @@ Open, recorded as each change landed:
 - **The custodian's minimum is read in the fragments, not in the figures.** A figure drawn
   from a small count shows it in the package as it does in the paper. A table cell is read for
   a count only where it states one in a shape `count_in_cell` knows: "3", "3/412", "3 (0.7%)",
-  "3/412 (0.7%)", "3 (<1%)"; "3 of 412", "3 (0.7% to 1.2%)", a count with thousands
-  separators, and a cell in the first column, which names the rows, are not. A reference
-  ratio typed as a bare "1" is read as a count, and the
+  "3/412 [0.7%]", "3 (<1%)", "3 (0.7%)*"; "3 of 412", "3 (0.7% to 1.2%)", "3 (<1)", a count
+  with thousands separators, and a cell in the first column, which names the rows, are not.
+  A decimal comma cannot be told from a list: "4 (2,7)", a median and two whole numbers, is
+  read as the count 4 and its share 2.7, and "2 (2020)" as 2 and a share. These, and a
+  reference ratio typed as a bare "1", are read as counts, and the
   custodian signs it off. A dataset's own file deposited by `package.share` is the author's
   declaration, and nothing reads it for small cells.
 - **What a file is, the package takes from its folder and its name.** A file of `analysis/`

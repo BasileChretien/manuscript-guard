@@ -5887,6 +5887,14 @@ def _a_share_is_digits_and_a_point(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(deposit_counts, "_COUNT_CELL", re.compile(old))
 
 
+def _a_cell_ends_at_its_brackets(patch: pytest.MonkeyPatch) -> None:
+    """The rule as it stood at def0e2f1 (round 2 of #388): no footnote mark, no square
+    brackets, a share with a digit before its point, and a bound with no percent sign."""
+    share = r"[<>]?\s*\d+(?:[.,]\d+)?\s*%?"
+    old = rf"\s*(?P<count>\d+)\s*(?:/\s*\d+\s*)?(?:\(\s*{share}\s*\))?\s*"
+    patch.setattr(deposit_counts, "_COUNT_CELL", re.compile(old))
+
+
 def _a_doi_begins_only_after_a_word_boundary(patch: pytest.MonkeyPatch) -> None:
     """The reading as it stood at 45348fe9 (round 1 of #388): the DOIs `_DOI` finds."""
     patch.setattr(data_statement, "_NAMED_DOI", data_statement._DOI)
@@ -6090,6 +6098,10 @@ BROKEN = {
     ),
     "a cell's share is plain digits and a point, and goes with no denominator": (
         _a_share_is_digits_and_a_point,
+        test_a_cell_is_read_as_a_count_only_where_it_states_one,
+    ),
+    "a cell ends at its brackets, and a bound takes no percent sign": (
+        _a_cell_ends_at_its_brackets,
         test_a_cell_is_read_as_a_count_only_where_it_states_one,
     ),
     "a deposit's DOI begins only after a word boundary": (

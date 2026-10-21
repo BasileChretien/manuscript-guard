@@ -37,17 +37,26 @@ GATE = "PACKAGE"
 SMALL_COUNTS = f"{GATE}/custodian/small-counts"
 ROLE = "data_custodian"
 
-#: A share as a cell writes it in brackets: a number with a point, a middle dot or a decimal
-#: comma, a percent sign or none, behind a bound or not ("0.7", "0·7%", "<1%", "≤0,7").
-_SHARE = (
-    r"[<>\N{LESS-THAN OR EQUAL TO}\N{GREATER-THAN OR EQUAL TO}]?\s*"
-    r"\d+(?:[.,\N{MIDDLE DOT}]\d+)?\s*%?"
+#: A share's number: with a point, a middle dot or a decimal comma, or with nothing before
+#: its point (".7", round 2 of #388).
+_NUMBER = r"(?:\d+(?:[.,\N{MIDDLE DOT}]\d+)?|[.\N{MIDDLE DOT}]\d+)"
+#: A share as a cell writes it in brackets: the number, with a percent sign or none, or
+#: behind a bound and with its percent sign ("<1%"); behind a bound and with none, "(<0.001)",
+#: it is a P (round 2 of #388).
+_BOUND = r"[<>\N{LESS-THAN OR EQUAL TO}\N{GREATER-THAN OR EQUAL TO}]"
+_SHARE = rf"(?:{_NUMBER}\s*%?|{_BOUND}\s*{_NUMBER}\s*%)"
+#: The footnote marks a cell may end in: "*", "†", "‡", "§", "¶", Markdown's "^a^", or a
+#: superscript letter "ᵃ" to "ᵉ" (round 2 of #388).
+_MARKS = (
+    r"(?:[*\N{DAGGER}\N{DOUBLE DAGGER}\N{SECTION SIGN}\N{PILCROW SIGN}]+|\^[a-z0-9*]+\^"
+    r"|[\N{MODIFIER LETTER SMALL A}\N{MODIFIER LETTER SMALL B}\N{MODIFIER LETTER SMALL C}"
+    r"\N{MODIFIER LETTER SMALL D}\N{MODIFIER LETTER SMALL E}])?"
 )
 #: A cell that states one count: the count alone, over its denominator, with its share in
-#: brackets, or both ("3/412 (0.7%)", round 1 of #388). The count is a whole number with no
-#: sign and no point.
+#: round or square brackets, or both ("3/412 (0.7%)", round 1 of #388), and a footnote mark
+#: after it or none. The count is a whole number with no sign and no point.
 _COUNT_CELL = re.compile(
-    rf"\s*(?P<count>\d+)\s*(?:/\s*\d+\s*)?(?:\(\s*{_SHARE}\s*\))?\s*"
+    rf"\s*(?P<count>\d+)\s*(?:/\s*\d+\s*)?(?:[(\[]\s*{_SHARE}\s*[)\]])?\s*{_MARKS}\s*"
 )
 
 #: The fields of a model card that count rows or events.

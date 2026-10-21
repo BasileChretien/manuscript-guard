@@ -999,6 +999,8 @@ DOI_NAMED = (
     "(10.5281/zenodo.1234567)", "*10.5281/zenodo.1234567*", "DOI: 10.5281/zenodo.1234567;",
     # Round 1 of #388: emphasis by underscores, a code span, quotation marks.
     "_10.5281/zenodo.1234567_", "`10.5281/zenodo.1234567`", "'10.5281/zenodo.1234567'",
+    # Round 2: curly single quotation marks.
+    "\N{LEFT SINGLE QUOTATION MARK}10.5281/zenodo.1234567\N{RIGHT SINGLE QUOTATION MARK}",
 )  # fmt: skip
 DOI_NOT_NAMED = (
     "10.5281/zenodo.12345678", "10.5281/zenodo.123456", "10.5281/zenodo.1234567/files",
@@ -1026,13 +1028,16 @@ def deposit_statements(draw: st.DrawFn) -> tuple[str, list[str], list[str]]:
 COUNT_CELLS = (
     "{n}", " {n} ", "{n} ({p})", "{n} ({p}%)", "{n} ( {p} % )", "{n}/{m}", "{n} / {m}",
     # Round 1 of #388: n/N (%), a share behind a bound, a middle dot, a decimal comma.
-    "{n}/{m} ({p}%)", "{n} / {m} ({p} %)", "{n} (<{p}%)", "{n} (\N{LESS-THAN OR EQUAL TO}{p})",
+    "{n}/{m} ({p}%)", "{n} / {m} ({p} %)", "{n} (<{p}%)", "{n} (\N{LESS-THAN OR EQUAL TO}{p}%)",
     "{n} ({dot})", "{n} ({comma}%)",
+    # Round 2: a footnote mark, a share with no digit before its point, square brackets.
+    "{n} ({p}%)*", "{n}\N{MODIFIER LETTER SMALL A}", "{n} ({frac}%)", "{n} [{p}%]",
+    "{n}/{m} [{p}]\N{DAGGER}", "{n}^a^",
 )  # fmt: skip
 NO_COUNT_CELLS = (
     "{n}.0", "{n}.00 (ref)", "<{n}", "\N{LESS-THAN OR EQUAL TO}{n}", "{n} (reference)",
     "{n}-{m}", "{n} to {m}", "{n}%", "{p}", "-{n}", "+{n}", "{n} ({p} to {q})", "{n}, {m}",
-    "{n} [{p}]", "~{n}", "{n}e3",
+    "{n} (<{p})", "~{n}", "{n}e3",
 )  # fmt: skip
 
 
@@ -1047,7 +1052,8 @@ def count_cells(draw: st.DrawFn) -> list[tuple[str, int | None]]:
         p = f"{draw(st.integers(0, 99))}.{draw(st.integers(0, 9))}"
         q = f"{draw(st.integers(0, 99))}.{draw(st.integers(0, 9))}"
         cell = shape.format(n=n, p=p, q=q, m=draw(st.integers(1, 9999)),
-                            dot=p.replace(".", "\N{MIDDLE DOT}"), comma=p.replace(".", ","))
+                            dot=p.replace(".", "\N{MIDDLE DOT}"), comma=p.replace(".", ","),
+                            frac=f".{draw(st.integers(0, 9))}")
         out.append((cell, n if counts else None))
     return out
 

@@ -267,6 +267,7 @@ number in the file and the rule that classified it.
 | `approve` | record an author's approval of the manuscript as it stands, which `submit` holds to the manuscript sent; the author's own act |
 | `sign` | record a named person's sign-off of a finding only they may close, a G15 warning for the statistician `authors.yaml` names, the journal's rules no gate checks for the corresponding author, a model provider the manuscript may be sent to for the data custodian; that person's own act |
 | `render` | substitute the bindings and stop there |
+| `values` | write a LaTeX manuscript's values file, `mgvalues.sty`, so that the `.tex` compiles with the results' numbers in it |
 | `stages` | what each stage means and what binds at it |
 | `journal` | list journal profiles, start one from the annotated template, or read a journal's page again against the stored one (`--reread`) |
 | `fetch` | download a reporting guideline's own checklist document |

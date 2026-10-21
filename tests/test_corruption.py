@@ -5849,7 +5849,7 @@ _NOT_THE_MANUSCRIPT = (
 #: The checks that read LaTeX: they run on a LaTeX manuscript as on any.
 _READS_LATEX = (
     "check_latex", "check_numbers", "check_bound_units", "check_small_cells",
-    "check_synthetic_inputs",
+    "check_synthetic_inputs", "check_values",
 )  # fmt: skip
 
 

@@ -48,7 +48,7 @@ from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.docxtext import TOKEN, spaced
 from manuscript_guard.safexml import UnsafeDocument, parse_xml, read_member
 from manuscript_guard.text.fences import fenced_spans
-from manuscript_guard.text.placeholders import PLACEHOLDER, VALUE_NAMESPACES, parse
+from manuscript_guard.text.placeholders import INLINE_NAMESPACES, PLACEHOLDER, parse
 
 #: Where the source digest travels. A sidecar cannot survive being emailed, and the whole
 #: point is to recognise a document that came back from somebody else's machine.
@@ -1162,12 +1162,12 @@ def _untagged(block: str) -> bool:
         # is the paragraph the bookmark lands in.
         or _brace_group_runs_on(stripped)
         or _FENCE.match(stripped) is not None
-        # A lone table or figure, or a misspelt placeholder. Not a lone value, which is a
-        # paragraph printing a number: skipped, a paragraph cut down to its number in Word
-        # lost its identifier, and its next edit was dropped with "nothing came back".
+        # A lone table or figure, or a misspelt placeholder. Not a lone value or pointer,
+        # which is a paragraph printing a number: skipped, a paragraph cut down to its number
+        # in Word lost its identifier, and its next edit was dropped with "nothing came back".
         or (
             re.fullmatch(r"\{\{[^}]*\}\}", stripped) is not None
-            and not (value and value.group("ns") in VALUE_NAMESPACES)
+            and not (value and value.group("ns") in INLINE_NAMESPACES)
         )
         or _FIGURE.fullmatch(stripped) is not None
         or _opens_block(lines[0])

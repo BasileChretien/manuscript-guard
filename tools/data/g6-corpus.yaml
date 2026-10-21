@@ -2802,7 +2802,7 @@ candidates:
   failures: 0
   phrase_findings: 0
   vague_findings: 0
-  other_warnings: 0
+  other_warnings: 1
   fired: {}
 - pmcid: PMC5481006
   doi: 10.1371/journal.pone.0179721

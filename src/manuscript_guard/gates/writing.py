@@ -26,6 +26,12 @@ a "TODO" in a table's caption written by the analysis, or in the note of a cited
 So the rules marked `elsewhere` also read the text of each figure G3 reads, the caption of
 each table in the results, and the fields of each cited entry of `references.bib` that a
 reference list can print.
+
+Words written to the reviewers or to a model, "As requested by Reviewer 2, we added", are
+the residue of a revision (`revision-residue`), read in the manuscript only: the response
+to the reviewers is where they belong, and G6 never reads it. Each is reported wherever it
+stands. Those that answer one reviewer or point at this manuscript warn until submission and
+fail there; those a paper about peer review also writes warn at every stage.
 """
 
 from __future__ import annotations
@@ -41,7 +47,7 @@ import yaml
 from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import Results
-from manuscript_guard.findings import WARN, Finding, Report
+from manuscript_guard.findings import FAIL, WARN, Finding, Report
 from manuscript_guard.gates.figures import TEXT_FORMATS, _extract_text
 from manuscript_guard.gates.numbers import source_files
 from manuscript_guard.literature.bibfile import read_entries
@@ -73,11 +79,20 @@ class Rules:
     density: tuple[dict, ...]
     structure: tuple[dict, ...]
     source: str
+    residue: tuple[dict, ...] = ()
+
+
+#: A name in a residue pattern, `{{one}}`, for the words of `residue_words` it stands for.
+_NAMED = re.compile(r"\{\{(\w+)\}\}")
 
 
 @lru_cache(maxsize=1)
 def load_rules() -> Rules:
     document = yaml.safe_load(DATA.read_text(encoding="utf-8"))
+    words = document.get("residue_words", {})
+    # A name may stand in the words of another, one level down: `one` holds `numbered`.
+    words = {name: _NAMED.sub(lambda m: f"(?:{words[m.group(1)]})", text)
+             for name, text in words.items()}  # fmt: skip
     return Rules(
         artefacts=tuple(document.get("artefacts", ())),
         phrases=tuple(document.get("phrases", ())),
@@ -85,13 +100,21 @@ def load_rules() -> Rules:
         density=tuple(document.get("density", ())),
         structure=tuple(document.get("structure", ())),
         source=document.get("source", ""),
+        residue=tuple(
+            {**rule, "pattern": _NAMED.sub(lambda m: f"(?:{words[m.group(1)]})", rule["pattern"])}
+            for rule in document.get("residue", ())
+        ),
     )
 
 
-def check_writing(project: Project, results: Results | None = None) -> Report:
+def check_writing(
+    project: Project, results: Results | None = None, *, submission: bool = False
+) -> Report:
+    """`submission` makes a failure of each residue that answers one reviewer or points at
+    this manuscript, which warns before it."""
     rules = load_rules()
     corpus = [(path, read_text(path)) for path in source_files(project.path("manuscript"))]
-    report, totals = judge_texts(corpus, rules)
+    report, totals = judge_texts(corpus, rules, submission=submission)
     elsewhere = _elsewhere(project, results, [text for _path, text in corpus])
     for where in elsewhere:
         report = report.merge(_artefacts_elsewhere(rules, where, totals))
@@ -101,6 +124,7 @@ def check_writing(project: Project, results: Results | None = None) -> Report:
         writing_artefacts=totals["artefacts"],
         writing_phrases=totals["phrases"],
         writing_vague=totals["vague"],
+        writing_residue=totals["residue"],
         writing_texts_elsewhere=len(elsewhere),
     )
 
@@ -111,19 +135,21 @@ def _prose(corpus: list[tuple[Path, str]]) -> list[tuple[Path, str, str]]:
 
 
 def judge_texts(
-    corpus: list[tuple[Path, str]], rules: Rules | None = None
+    corpus: list[tuple[Path, str]], rules: Rules | None = None, *, submission: bool = False
 ) -> tuple[Report, dict[str, int]]:
     """What G6 says of manuscript texts on their own, and its totals: the artefacts, phrases,
-    vague attributions and rates of `check_writing`, without the figures, captions and cited
-    fields it also reads. `tools/g6_baseline.py` judges papers written by people with it."""
+    residue, vague attributions and rates of `check_writing`, without the figures, captions
+    and cited fields it also reads. `tools/g6_baseline.py` judges papers written by people
+    with it."""
     rules = rules or load_rules()
     report = Report()
-    totals = {"words": 0, "artefacts": 0, "phrases": 0, "vague": 0}
+    totals = {"words": 0, "artefacts": 0, "phrases": 0, "vague": 0, "residue": 0}
     read = _prose(corpus)
     totals["words"] = sum(count_words(text) for _path, text, _prose in read)
     for path, text, prose in read:
         report = report.merge(_artefacts(rules, path, text, totals))
         report = report.merge(_phrases(rules, path, text, prose, totals))
+        report = report.merge(_residue(rules, path, text, prose, totals, submission))
         report = report.merge(_vague(rules, path, text, prose, totals))
     return report.merge(_density(rules, read, totals["words"])), totals
 
@@ -295,6 +321,77 @@ def _phrases(rules: Rules, path: Path, text: str, prose: str, totals: dict) -> R
                     hint="rewrite, or keep it deliberately",
                 )
             )
+    return report
+
+
+#: The end of a line with nothing on the next: where one paragraph stops for a residue rule.
+_BLANK_LINE = re.compile(r"\n[ \t\r]*(?=\n)")
+
+
+def _paragraphs(text: str) -> list[tuple[int, int]]:
+    """Where each paragraph of `text` begins and ends, so that "as suggested by" closing one
+    and "Reviewer 2" opening the next are not read as one phrase."""
+    spans, start = [], 0
+    for blank in _BLANK_LINE.finditer(text):
+        spans.append((start, blank.start()))
+        start = blank.end()
+    return [*spans, (start, len(text))]
+
+
+def residue_in(
+    rules: Rules, text: str, said: list[tuple[int, int]] | None = None
+) -> Iterator[tuple[dict, re.Match[str]]]:
+    """Each place in `text` that speaks to the reviewers or to a model, with the rule that
+    found it: read a paragraph at a time, less what the rule's exemptions cover and the
+    places `said` already, an artefact's. The rules that point at this manuscript are tried
+    first, so that a place two rules find is said once, and as the stricter."""
+    taken: list[tuple[int, int]] = list(said or ())
+    paragraphs = _paragraphs(text)
+    for rule in sorted(rules.residue, key=lambda rule: not rule.get("self_reference")):
+        pattern = re.compile(rule["pattern"])
+        exempt = [
+            span
+            for expression in rule.get("exempt", ())
+            for span in _spans(re.compile(expression), text)
+        ]
+        for start, end in paragraphs:
+            for match in pattern.finditer(text, start, end):
+                if any(left <= match.start() < right for left, right in exempt):
+                    continue
+                if any(left < match.end() and match.start() < right for left, right in taken):
+                    continue
+                taken.append(match.span())
+                yield rule, match
+
+
+def _residue(
+    rules: Rules, path: Path, text: str, prose: str, totals: dict, submission: bool
+) -> Report:
+    """Every residue, each reported: one "as requested by Reviewer 2" is enough. Not where
+    an artefact was found, "Here is the revised Methods", which fails already."""
+    report = Report()
+    said = [match.span() for _rule, match in artefacts_in(rules, text, manuscript=True)]
+    for rule, match in residue_in(rules, prose, said):
+        totals["residue"] += 1
+        binds = bool(rule.get("self_reference"))
+        if binds:
+            hint = "say it in the response to the reviewers, and here only what the paper reports"
+            hint += "" if submission else "; it fails at submission"
+        else:
+            hint = "say it in the response to the reviewers, unless the paper is about peer review"
+        shown = " ".join(match.group(0).split())[:60]
+        report = report.with_findings(
+            Finding(
+                gate=GATE,
+                code="revision-residue",
+                severity=FAIL if binds and submission else WARN,
+                message=f"{shown!r} — {rule['why']}",
+                path=path,
+                line=_line_of(text, match),
+                context=_context(prose, match.start(), match.end()),
+                hint=hint,
+            )
+        )
     return report
 
 

@@ -21,6 +21,7 @@ from collections.abc import Callable
 from typing import Any
 from urllib.parse import quote
 
+from manuscript_guard.literature import names
 from manuscript_guard.lookup.http import NoAnswer, Request, Response, user_agent
 
 FOUND = "found"
@@ -151,40 +152,49 @@ def crossref(doi: str, ask: Ask, base: str, contact: str | None) -> dict[str, An
         and isinstance(message.get("DOI"), str)
     ):
         return unresolvable(SHAPE)
+    return {"status": FOUND, **work(message)}
+
+
+def _authors(people: list[names.Name]) -> list[dict[str, str]]:
+    return [p.record() for p in people if p.family or p.group]
+
+
+def work(message: dict[str, Any]) -> dict[str, Any]:
+    """One Crossref work, from `/works/{doi}` or from a search's `items`, which hold the
+    same shape. The caller has held it to having a DOI."""
     relation = message.get("relation") if isinstance(message.get("relation"), dict) else {}
     preprint_of = [
         r["id"].lower()
         for r in relation.get("is-preprint-of", [])
         if isinstance(r, dict) and r.get("id-type") == "doi" and isinstance(r.get("id"), str)
     ]
-    return {
-        "status": FOUND,
-        **_kept(
-            {
-                "doi": message["DOI"].lower(),
-                "type": _text(message.get("type")),
-                "subtype": _text(message.get("subtype")),
-                "title": _text(message.get("title")),
-                "subtitle": _text(message.get("subtitle")),
-                "original_title": _text(message.get("original-title")),
-                "container": _text(message.get("container-title")),
-                "years": _kept(
-                    {
-                        "print": _year(message.get("published-print")),
-                        "online": _year(message.get("published-online")),
-                        "issued": _year(message.get("issued")),
-                        "posted": _year(message.get("posted")),
-                    }
-                ),
-                "volume": _text(message.get("volume")),
-                "page": _text(message.get("page")),
-                "article_number": _text(message.get("article-number")),
-                "updated_by": [u for u in map(_update, message.get("updated-by") or []) if u],
-                "update_to": [u for u in map(_update, message.get("update-to") or []) if u],
-                "preprint_of": preprint_of,
-            }
-        ),
-    }
+    people = message.get("author") if isinstance(message.get("author"), list) else []
+    return _kept(
+        {
+            "doi": message["DOI"].lower(),
+            "type": _text(message.get("type")),
+            "subtype": _text(message.get("subtype")),
+            "title": _text(message.get("title")),
+            "subtitle": _text(message.get("subtitle")),
+            "original_title": _text(message.get("original-title")),
+            "container": _text(message.get("container-title")),
+            "years": _kept(
+                {
+                    "print": _year(message.get("published-print")),
+                    "online": _year(message.get("published-online")),
+                    "issued": _year(message.get("issued")),
+                    "posted": _year(message.get("posted")),
+                }
+            ),
+            "volume": _text(message.get("volume")),
+            "page": _text(message.get("page")),
+            "article_number": _text(message.get("article-number")),
+            "updated_by": [u for u in map(_update, message.get("updated-by") or []) if u],
+            "update_to": [u for u in map(_update, message.get("update-to") or []) if u],
+            "preprint_of": preprint_of,
+            "authors": _authors([names.crossref(p) for p in people if isinstance(p, dict)]),
+        }
+    )
 
 
 # ------------------------------------------------------------------------------ OpenAlex
@@ -286,11 +296,22 @@ def pubmed(
 ) -> dict[str, Any]:
     """E-utilities ESummary, as JSON. It answers an error with a 200: `{"error": ...}` for
     the request, and `{"result": {pmid: {"error": ...}}}` for a PMID it does not know."""
+    answers = summaries([pmid], ask, base, contact, key)
+    return answers if "status" in answers else answers[pmid]
+
+
+def summaries(
+    pmids: list[str], ask: Ask, base: str, contact: str | None, key: str | None
+) -> dict[str, Any]:
+    """ESummary for several PMIDs in one request: each PMID's answer, or one unresolvable
+    answer for all of them where the request got none (it has a `status`; a PMID never
+    does)."""
     request = Request(
         base,
-        params={"db": "pubmed", "id": pmid, "retmode": "json", "tool": "manuscript-guard"},
+        params={"db": "pubmed", "id": ",".join(pmids), "retmode": "json",
+                "tool": "manuscript-guard"},
         secret={"email": contact or "", "api_key": key or ""},
-    )
+    )  # fmt: skip
     answer = _ask(ask, request)
     if isinstance(answer, dict):
         return answer
@@ -301,7 +322,15 @@ def pubmed(
     if not isinstance(data, dict) or "error" in data:
         return unresolvable(SHAPE if not isinstance(data, dict) else "the service said: error")
     result = data.get("result")
-    item = result.get(pmid) if isinstance(result, dict) else None
+    if not isinstance(result, dict):
+        return unresolvable(SHAPE)
+    read = {pmid: _summary(pmid, result.get(pmid)) for pmid in pmids}
+    shapeless = [a for a in read.values() if a["status"] == UNRESOLVABLE]
+    return shapeless[0] if shapeless else read
+
+
+def _summary(pmid: str, item: Any) -> dict[str, Any]:
+    """One PMID's summary. `{"error": ...}` in its place is a PMID PubMed does not know."""
     if not isinstance(item, dict):
         return unresolvable(SHAPE)
     if "error" in item:
@@ -315,6 +344,7 @@ def pubmed(
         if isinstance(i, dict) and i.get("idtype") == "doi" and isinstance(i.get("value"), str)
     ]
     pubtypes = item.get("pubtype") if isinstance(item.get("pubtype"), list) else []
+    people = [a for a in item.get("authors") or [] if isinstance(a, dict)]
     return {
         "status": FOUND,
         **_kept(
@@ -326,6 +356,12 @@ def pubmed(
                 "volume": _text(item.get("volume")),
                 "pages": _text(item.get("pages")),
                 "elocation": _text(item.get("elocationid")),
+                "journal": _text(item.get("fulljournalname")),
+                "journal_abbreviation": _text(item.get("source")),
+                "authors": _authors([
+                    names.pubmed(a["name"], a.get("authtype") == "CollectiveName")
+                    for a in people if isinstance(a.get("name"), str)
+                ]),  # fmt: skip
             }
         ),
     }
@@ -340,5 +376,7 @@ __all__ = [
     "doi_org",
     "openalex",
     "pubmed",
+    "summaries",
     "unresolvable",
+    "work",
 ]

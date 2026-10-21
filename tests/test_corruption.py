@@ -4064,6 +4064,67 @@ def test_a_planned_group_of_tables_or_models_is_looked_for_among_them(project: P
                                        "- `model.crude.*`: the crude models")]  # fmt: skip
 
 
+# ------------------------------------------------- the data dictionary
+
+#: The example's report file, described as a dictionary describes it.
+_EXAMPLE_DICTIONARY = """\
+schema: manuscript-guard/data-dictionary/1
+code_lists:
+  yes_no:
+    - {code: 1, label: "Yes"}
+    - {code: 0, label: "No"}
+variables:
+  - name: report_id
+    label: Report
+    definition: The report's identifier in the database.
+    type: identifier
+    reason: the record's own identifier
+  - name: serious
+    label: Serious
+    definition: The report was classed as serious.
+    type: binary
+    code_list: yes_no
+    reason: the proportion of the cases that were serious
+"""
+
+
+def _dictionary_failures(root: Path, text: str, stage: str) -> list[str]:
+    """What the whole check fails on at a stage, with this dictionary in the example."""
+    from manuscript_guard.cli import _run_gates
+
+    path = root / "design" / "data_dictionary.yaml"
+    path.write_bytes(text.encode("utf-8"))
+    report, _project, _chosen, _deferred = _run_gates(root, stage=stage)
+    return [f"{f.gate} {f.code}" for f in report.failures]
+
+
+@pytest.mark.parametrize("stage", ["design", "submission"])
+def test_a_dictionary_that_reads_leaves_the_example_as_it_was(project: Path, stage: str) -> None:
+    assert _dictionary_failures(project, _EXAMPLE_DICTIONARY, stage) == []
+
+
+@pytest.mark.parametrize(
+    "old, new",
+    [
+        ("    code_list: yes_no", "    code_list: yes_or_no"),
+        ("{code: 0, label: \"No\"}", "{code: 0, label: No}"),
+        ("{code: 1, label: \"Yes\"}", "{code: 01, label: \"Yes\"}"),
+        ("  - name: serious", "  - name: report_id"),
+        ("    type: binary", "    type: yes-no"),
+    ],
+)
+@pytest.mark.parametrize("stage", ["design", "submission"])
+def test_a_dictionary_that_does_not_read_fails_the_check_at_every_stage(
+    project: Path, stage: str, old: str, new: str
+) -> None:
+    """A dictionary read as written would hand the data checks another variable's codes, or
+    codes the data never hold: it fails, as a malformed contract does, where everything
+    else G12 says warns."""
+    assert old in _EXAMPLE_DICTIONARY
+    failed = _dictionary_failures(project, _EXAMPLE_DICTIONARY.replace(old, new), stage)
+    assert failed and set(failed) == {"G12 dictionary-invalid"}, failed
+
+
 # ------------------------------------------------- the unit of analysis
 
 

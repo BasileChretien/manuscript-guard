@@ -2630,6 +2630,10 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "tex outside maths": lines(),
     "title": lines(),
     "title held": st.fixed_dictionaries({"cited": lines(), "registered": lines()}),
+    "title alike": st.fixed_dictionaries({"cited": lines(), "registered": lines()}),
+    "search words": lines(),
+    "authors cited": lines(),
+    "same family name": st.fixed_dictionaries({"cited": lines(), "registered": lines()}),
     "blind names": texts(NAMED),
     "quotation": st.tuples(
         quotations(),

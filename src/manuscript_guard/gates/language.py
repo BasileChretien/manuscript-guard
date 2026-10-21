@@ -756,9 +756,17 @@ def _latex_read(root: Path, abstract_title: str | None) -> list[_File]:
                 len(files), root / source.path, whole.view, _hide(whole.words, outside),
                 _hide(whole.untitled, outside).replace(NUL, " "), whole.regions,
                 breaks=whole.breaks, stretch=(start, end), typed=source.text,
-                unread=tuple(span for span in whole.unread if start <= span[0] < end),
+                unread=tuple(span for span in whole.unread
+                             if start <= span[0] < end and _read_at(whole.regions, span[0])),
             ))  # fmt: skip
     return files
+
+
+def _read_at(regions: list[_Region], offset: int) -> bool:
+    """Whether G14 reads the text at `offset`: not in a reference list, whose accented names
+    are no words it skips (round 1 of step 7)."""
+    starts = [region.start for region in regions]
+    return regions[bisect_right(starts, offset) - 1].scope is not None
 
 
 @dataclass(frozen=True)
@@ -798,22 +806,31 @@ def _stretches(sources) -> Iterator[tuple[Source, int, int]]:
     a file up to an `\\input` it holds, the file input there, then the rest of it. `sources`
     are in the include tree's order, each file before the files it inputs; the author's
     packages, which no `\\input` reads, come last."""
-    texts = [source for source in sources if source.path.endswith(".tex")]
+    # A file input is text whatever the case of its suffix, `Methods.TEX` as `methods.tex`
+    # (round 1 of step 7).
+    texts = [source for source in sources if not _package(source)]
     queue = iter(texts)
 
     def of(source: Source) -> Iterator[tuple[Source, int, int]]:
         at = 0
         for cut in _input_ends(source):
             yield source, at, cut
-            yield from of(next(queue))
+            following = next(queue, None)
+            if following is not None:
+                yield from of(following)
             at = cut
         yield source, at, len(source.text)
 
     for source in queue:
         yield from of(source)
     for source in sources:
-        if not source.path.endswith(".tex"):
+        if _package(source):
             yield source, 0, len(source.text)
+
+
+def _package(source: Source) -> bool:
+    """Whether a source is the author's package, `macros.sty`, which no `\\input` reads."""
+    return source.path.lower().endswith(".sty")
 
 
 def _input_ends(source: Source) -> list[int]:

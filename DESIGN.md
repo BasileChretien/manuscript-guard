@@ -1519,7 +1519,13 @@ The result is compiled and packed by the code above, and checked three times:
   `\mg{table.key}`; a figure placed with `\includegraphics` alone counts as none. Markdown
   has the same gap for `![](...)`, met far less often (round 1 of step 6).
 - A title, affiliations and keywords written in the body, as elsarticle's `frontmatter` holds
-  them, are counted as main text (round 1 of step 6).
+  them, are counted as main text (round 1 of step 6), and G14 reads them as the text's: an
+  abbreviation in the title is used before its definition, and an institute's acronym in an
+  affiliation is undefined (round 1 of step 7). In the preamble they are not read.
+- Past a refusal G14 reads a LaTeX file as typed, its commands and comments as words; `check`
+  fails on the refusal already (round 1 of step 7).
+- `\~{}` before a number, written for "about", is taken for an accent on the word after it,
+  which is then not read (round 1 of step 7).
 - G4 does not hold a LaTeX figure's legend, its float's caption, to the profile's
   `legend_words`, and says so (`not-read-in-latex`) where a figure is placed (round 1 of
   step 6).

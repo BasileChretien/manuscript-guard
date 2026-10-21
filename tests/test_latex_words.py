@@ -157,10 +157,25 @@ def test_an_abstract_input_inside_its_environment_is_read_apart(project: Path) -
 def test_a_reference_list_typed_in_latex_is_not_read(project: Path) -> None:
     report = _latex(project, {"main.tex": OPEN + (
         "\\section{Results}\nThe ratio rose.\n\\begin{thebibliography}{9}\n"
-        "\\bibitem{a} Smith J. A colour study. JAMA. 2020.\n\\end{thebibliography}\n"
+        "\\bibitem{a} Smith J. A colour study. JAMA. 2020.\n"
+        "\\bibitem{b} M{\\\"u}ller J, Garc{\\'i}a P. A study. 2021.\n\\end{thebibliography}\n"
     ) + CLOSE}, english_variant="en-US", language={})  # fmt: skip
+    # Nor are its accented names words G14 says it skipped (round 1 of step 7).
     assert not [f for f in report.findings if f.code in ("abbreviation-undefined",
-                                                         "spelling-variant")]  # fmt: skip
+                                                         "spelling-variant",
+                                                         "tex-words-not-read")]  # fmt: skip
+
+
+def test_g14_reads_a_file_input_whatever_the_case_of_its_suffix() -> None:
+    """`Methods.TEX` is text, read where its `\\input` stands (round 1 of step 7: it was taken
+    for a package, and the file after it was read in its place)."""
+    from manuscript_guard.gates.language import _stretches
+
+    files = {"main.tex": OPEN + "One.\n\\input{Methods.TEX}\nTwo.\n" + CLOSE,
+             "Methods.TEX": "Inside.\n"}  # fmt: skip
+    read = "".join(source.text[start:end]
+                   for source, start, end in _stretches(read_tree(files).sources))  # fmt: skip
+    assert read.index("One.") < read.index("Inside.") < read.index("Two."), read
 
 
 def test_g14_says_once_a_file_how_many_words_it_did_not_read(project: Path) -> None:

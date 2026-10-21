@@ -5996,7 +5996,7 @@ _NOT_THE_MANUSCRIPT = (
 #: The checks that read LaTeX: they run on a LaTeX manuscript as on any.
 _READS_LATEX = (
     "check_latex", "check_numbers", "check_bound_units", "check_small_cells",
-    "check_synthetic_inputs",
+    "check_synthetic_inputs", "check_values",
 )  # fmt: skip
 
 
@@ -6095,6 +6095,42 @@ def _into_results(entry: Path, snippet: str) -> None:
     text = entry.read_text(encoding="utf-8")
     entry.write_text(text.replace("\\section{Discussion}", snippet + "\n\n\\section{Discussion}"),
                      encoding="utf-8")  # fmt: skip
+
+
+def test_g1_holds_the_twins_values_file_to_the_results(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The twin loads `mgvalues.sty`: missing, it is said; written by `values`, nothing is;
+    edited, it is stale; and a value it binds that the file cannot print is said (step 4b)."""
+    from manuscript_guard.build import latex_values
+    from manuscript_guard.cli import main
+
+    entry = _twin(project)
+
+    def codes() -> list[str]:
+        projekt = load_project(project)[0]
+        namespace, results, _literature, _rest = load_namespace(projekt)
+        return [f.code for f in latex_values.check_values(projekt, namespace, results).findings]
+
+    # The paper's and the supplement's, each loading it.
+    assert codes() == ["values-file-missing", "values-file-missing"]
+    assert main(["values", str(project)]) == 0
+    assert codes() == []
+    written = entry.parent / "mgvalues.sty"
+    text = written.read_text(encoding="utf-8")
+    written.write_text(text.replace("mg@results.cohort.n_reports\\endcsname#1{",
+                                    "mg@results.cohort.n_reports\\endcsname#1{9", 1),
+                       encoding="utf-8")  # fmt: skip
+    assert codes() == ["values-file-stale"]
+    escaped = latex_values.escaped
+
+    def refusing(display: str, ref: str) -> str:
+        if ref == "results.cohort.n_reports":
+            raise latex_values.NotPrintable(ref, "\N{ALMOST EQUAL TO}")
+        return escaped(display, ref)
+
+    monkeypatch.setattr(latex_values, "escaped", refusing)
+    assert "value-not-printable" in codes()
 
 
 def test_every_binding_of_the_twin_when_inlined_is_caught(project: Path) -> None:

@@ -74,6 +74,7 @@ from generated import (
     holds,
     laid_out,
     latex_bound,
+    latex_displays,
     latex_planted,
     latex_texts,
     latex_trees,
@@ -107,7 +108,7 @@ from readings import MAIN, PAPER, PEOPLE, READINGS, Unavailable, answer, plain_o
 
 from manuscript_guard import claims as claims_module
 from manuscript_guard import reworded as reworded_module
-from manuscript_guard.build import blinding
+from manuscript_guard.build import blinding, latex_values
 from manuscript_guard.build.blinding import names_in, sought
 from manuscript_guard.classify import CONVENTION, STRUCTURAL, TERM, UNCLASSIFIED, Classifier
 from manuscript_guard.contracts.project import outside_maths
@@ -688,6 +689,30 @@ def _a_listings_language_is_not_read(patch: pytest.MonkeyPatch) -> None:
 def _a_line_break_before_a_bindings_brace_makes_it_malformed(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(latex_mask, "_BINDING",
                   re.compile(r"[ \t]*(?:\[[^\]\n]*\])?[ \t]*\{(?P<inner>[^{}\n]*)\}"))  # fmt: skip
+
+
+@holds(100, latex_displays())
+def test_a_display_written_for_latex_holds_no_bare_special_and_no_ligature(display: str) -> None:
+    """Each of TeX's specials in a display is written escaped, but the no-break space, which is
+    written as a tie; and no dash TeX joins from two characters is written, `--`, which before
+    a minus sign made an em dash of both, from two hyphens too (step 4b)."""
+    written = latex_values.escaped(display, "results.x")
+    bare = re.sub(r"\\(?:[A-Za-z]+(?:\{[^{}]*\})?|[#$%&_{},])|\{\}", "", written)
+    assert sorted(set(bare) & set("\\{}$&#%_^")) == [], (display, written)
+    assert bare.count("~") == display.count("\N{NO-BREAK SPACE}"), (display, written)
+    assert "--" not in written, (display, written)
+
+
+def _a_percent_is_written_bare(patch: pytest.MonkeyPatch) -> None:
+    patch.setitem(latex_values._SPECIALS, "%", "%")
+
+
+def _two_hyphens_are_written_as_typed(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_values, "_joins", lambda text, index: False)
+
+
+def _an_en_dash_is_written_as_a_ligature(patch: pytest.MonkeyPatch) -> None:
+    patch.setitem(latex_values._TEXT, "\N{EN DASH}", "--")
 
 
 def _iffalse_hides_its_else(patch: pytest.MonkeyPatch) -> None:
@@ -7740,6 +7765,18 @@ BROKEN = {
     "in LaTeX, a line break before a binding's brace makes it malformed": (
         _a_line_break_before_a_bindings_brace_makes_it_malformed,
         test_a_latex_binding_is_read_where_it_prints_as_one_and_nowhere_else,
+    ),
+    "in a LaTeX values file, a percent sign is written bare": (
+        _a_percent_is_written_bare,
+        test_a_display_written_for_latex_holds_no_bare_special_and_no_ligature,
+    ),
+    "in a LaTeX values file, two hyphens are written as typed": (
+        _two_hyphens_are_written_as_typed,
+        test_a_display_written_for_latex_holds_no_bare_special_and_no_ligature,
+    ),
+    "in a LaTeX values file, an en dash is written as a ligature": (
+        _an_en_dash_is_written_as_a_ligature,
+        test_a_display_written_for_latex_holds_no_bare_special_and_no_ligature,
     ),
     "in LaTeX, a command the table lacks hides its arguments": (
         _an_unknown_command_hides_its_arguments,

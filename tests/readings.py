@@ -155,7 +155,8 @@ def _latex_refusals() -> Reading:
 
 @reading("latex sections")
 def _latex_sections() -> Reading:
-    from manuscript_guard.text.latex.mask import read
+    # `Heading` came with the headings, so that a base without them has no such reading.
+    from manuscript_guard.text.latex.mask import Heading, read  # noqa: F401
 
     def sections(text: str) -> dict[str, Any]:
         reading = read(text)

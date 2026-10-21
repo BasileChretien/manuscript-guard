@@ -4,8 +4,10 @@ Each refusal of the LaTeX reader is a finding at its file and line: a group, an 
 maths, a `\\verb` or an `\\iffalse` left open (`tex-unbalanced`), and what the reader does not
 read exactly, an `\\input` it cannot follow among them (`tex-refused`). Both fail at every
 stage: past a refusal the rest of the file is read as prose, so the gates read it, but not as
-LaTeX prints it. A `.tex` file that nothing inputs is a warning (`tex-not-input`): it is read
-as loose body under no heading, and no build prints it. A Markdown manuscript has none of these.
+LaTeX prints it. A `.tex` file that no `\\input` the reader follows names is a warning
+(`tex-not-input`): it is read as loose body under no heading. That is a file nothing inputs,
+and also one input past a refusal or from inside a definition, which LaTeX may still print.
+A Markdown manuscript has none of these.
 """
 
 from __future__ import annotations
@@ -52,11 +54,11 @@ def check_latex(project) -> Report:
                     gate=GATE,
                     code="tex-not-input",
                     severity=WARN,
-                    message=f"manuscript/{path} is input by no file: it is read as body under "
-                    "no heading, and no build prints it",
+                    message=f"manuscript/{path} is named by no \\input the reader follows: it "
+                    "is read as body under no heading",
                     path=folder / path,
-                    hint=f"\\input it where it belongs from {entry}, or move it into a folder "
-                    "whose name starts with '_'",
+                    hint=f"\\input it where it belongs from {entry}, outside a definition and "
+                    "before any refusal, or move it into a folder whose name starts with '_'",
                 )
             )
     return Report(tuple(findings))

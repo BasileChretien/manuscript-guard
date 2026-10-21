@@ -103,10 +103,17 @@ class Reading:
     packages: tuple[tuple[int, str], ...] = ()
 
 
-#: The level of each sectioning command, as Markdown's `#` counts it.
-LEVELS = {"part": 0, "chapter": 0, "section": 1, "subsection": 2, "subsubsection": 3,
+#: The level of each sectioning command, as Markdown's `#` counts it; a part stands over a
+#: chapter (round 1 of #385: both were 0, and a chapter closed its part).
+LEVELS = {"part": -1, "chapter": 0, "section": 1, "subsection": 2, "subsubsection": 3,
           "paragraph": 4, "subparagraph": 5}  # fmt: skip
-_BRACED_PATH = re.compile(r"[ \t]*\{([^{}\n]*)\}")
+#: A path in braces after `\input`, which TeX finds past spaces and one line break.
+_BRACED_PATH = re.compile(r"[ \t]*(?:\r?\n[ \t]*)?\{([^{}\n]*)\}")
+#: Commands the reader knows that an author may define again, which it then reads as before:
+#: `\abstract` was an unknown command, its arguments read, until it was given a heading.
+_REDEFINABLE = frozenset({"abstract"})
+_PREAMBLE_ABSTRACT = ("an abstract in the preamble is not read, as no prose there is: write it "
+                      "after \\begin{document}")  # fmt: skip
 _PACKAGES = re.compile(r"\s*(?:\[[^\]]{0,300}\])?\s*\{([^{}]{0,300})\}")
 
 
@@ -121,7 +128,7 @@ class _Frame:
     definition: bool = False
     table: bool = False
     #: A heading's level and where its command stands, for the argument that is its title.
-    heading: int = -1
+    heading: int | None = None
     origin: int = -1
     #: An environment the file was input inside, which it may close and need not.
     inherited: bool = False
@@ -228,6 +235,7 @@ class _Reader:
         self.command = ""
         self.refused: Refusal | None = None
         self.letters = _LETTERS_AT if package else _LETTERS
+        self.package = package
         self.definitions = 0
         self.environments: list[str] = []
         self.inputs: list[Input] = []
@@ -464,7 +472,7 @@ class _Reader:
         self.pos = at + width
         if frame.kind in ("arg", "opt"):
             self.pending, self.command = frame.rest, frame.command
-        if frame.heading >= 0:
+        if frame.heading is not None:
             if frame.command == "abstract":
                 self.headings.append(Heading(frame.origin, 1, "Abstract"))
                 self.abstracts.append((frame.origin, at + width))
@@ -567,19 +575,22 @@ class _Reader:
             if name in COMMANDS:
                 self.command, self.pending = name, COMMANDS[name]
         elif name in COMMANDS:
+            if name == "abstract" and self._in_preamble():
+                self._refuse("tex-refused", at, _PREAMBLE_ABSTRACT)
             if name in LEVELS or name == "abstract":
                 self.heading_at = at
             self.command, self.pending = name, COMMANDS[name]
 
     def _input(self, at: int, end: int) -> None:
         """Record an `\\input` with the state it stands in. Its path is read raw; one not
-        written in braces, or holding a command, is refused where the tree is read."""
+        written in braces, or holding a command, is refused where the tree is read. Its
+        argument is then taken as any blanked argument is, so that the mask is the same with
+        or without the tree (the old-against-new test of #385)."""
         braced = _BRACED_PATH.match(self.text, end)
         path = braced.group(1) if braced else ""
         stop = braced.end() if braced else end
         self.inputs.append(Input(at, stop, path, self.body, tuple(self.environments)))
-        self._blank(at, stop)
-        self.pos = stop
+        self.command, self.pending = "input", COMMANDS["input"]
 
     def _packages(self, at: int, end: int) -> None:
         listed = _PACKAGES.match(self.text, end)
@@ -664,7 +675,14 @@ class _Reader:
         self.command = name
         self._open("arg", "d", parameters, "}")
 
+    def _in_preamble(self) -> bool:
+        """In a preamble's own text: not the body, a package, or a definition's body, where an
+        abstract is text to be expanded where the definition is used."""
+        return not self.body and not self.package and not self.definitions
+
     def _defines(self, name: str, at: int) -> None:
+        if name in _REDEFINABLE:
+            return
         if name in COMMANDS or name in ("begin", "end", "verb", "def"):
             self._refuse("tex-refused", at, f"\\{name} is defined again, and the reader reads "
                          "it as LaTeX defines it")  # fmt: skip
@@ -698,6 +716,8 @@ class _Reader:
                 return
             self._blank(at, closing.end())
             self.pos = closing.end()
+        elif name == "abstract" and self._in_preamble():
+            self._refuse("tex-refused", at, _PREAMBLE_ABSTRACT)
         else:
             role = self._role()
             maths = name in MATHS and role in (PROSE, MATHS_READ)

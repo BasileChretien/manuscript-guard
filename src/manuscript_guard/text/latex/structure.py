@@ -9,7 +9,9 @@ where it has no suffix.
 
 Refused, where the `\\input` stands: a path not written out in full, one outside the
 manuscript or under a folder set aside, a file that is not there, and a file that inputs
-itself. A file input twice is read once, where it is first input. A package of the author's,
+itself. A bare name input from the preamble that the manuscript does not hold, such as
+`\\input{glyphtounicode}`, is the distribution's, and is passed over as a package is. A file
+input twice is read once, where it is first input. A package of the author's,
 `\\usepackage{macros}` with `macros.sty` beside the entry file, is read as preamble with `@` a
 letter; `mgvalues.sty`, which the tool writes, is not. A `.tex` file nothing inputs is read as
 loose body under no heading, and is warned of.
@@ -22,7 +24,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from manuscript_guard.text.latex.mask import Heading, Reading, Refusal, read
+from manuscript_guard.text.latex.mask import Heading, Input, Reading, Refusal, read
 
 ENTRY = "main.tex"
 SUPPLEMENT_ENTRY = "supplementary/main.tex"
@@ -45,11 +47,13 @@ class Source:
 
     def chain_at(self, offset: int) -> tuple[Heading, ...]:
         """The headings in force at `offset` of this file: those it started under, its own,
-        and those a file it input left in force where its `\\input` ends."""
+        and those a file it input left in force where its `\\input` ends. Where an `\\input`
+        ends and a heading starts at one offset, the heading comes after (round 1 of #385:
+        `\\input{a}\\section{B}` lost B)."""
         events = sorted(
             [(heading.start, heading, ()) for heading in self.reading.headings]
             + [(end, None, after) for end, after in self.resumes],
-            key=lambda event: event[0],
+            key=lambda event: (event[0], event[1] is not None),
         )
         chain = self.under
         for start, heading, after in events:
@@ -75,6 +79,16 @@ def _resumed(before: tuple[Heading, ...], after: tuple[Heading, ...]) -> tuple[H
     return after
 
 
+def _distributed(put: Input) -> bool:
+    """An `\\input` from the preamble of a bare name the manuscript does not hold, such as
+    `\\input{glyphtounicode}`: TeX finds it in its distribution, as it finds a package, and it
+    is not the author's (round 1 of #385: it was refused). So is TeX's form without braces,
+    `\\input glyphtounicode`, whose path the reader does not take."""
+    name = put.path.strip()
+    bare = not set(name) & (_NOT_WRITTEN_OUT | {"/"}) and not name.startswith(("_", "."))
+    return not put.body and bare
+
+
 @dataclass(frozen=True)
 class Document:
     """The files in the order the build prints them, loose ones after, and every refusal with
@@ -88,22 +102,11 @@ class Document:
         return tuple(source.path for source in self.sources if source.loose)
 
 
-def heading_chain(
-    under: tuple[Heading, ...], headings: tuple[Heading, ...], offset: int
-) -> tuple[Heading, ...]:
-    """The headings in force at `offset` of a file: those it started under, then its own
-    before `offset`, each closing the ones of its level or below."""
-    chain = under
-    for heading in headings:
-        if heading.start >= offset:
-            break
-        chain = _folded(chain, heading)
-    return chain
-
-
 def resolve(entry: str, written: str, files: Mapping[str, str]) -> tuple[str | None, str]:
     """The file an `\\input` names, from the entry file's folder, or None and why not."""
-    if not written.strip() or set(written) & _NOT_WRITTEN_OUT:
+    if not written.strip():
+        return None, "no path is written in braces after it: write \\input{path}"
+    if set(written) & _NOT_WRITTEN_OUT:
         return None, f"the path {written!r} is not written out in full"
     name = written.strip()
     if not posixpath.splitext(name)[1]:
@@ -165,7 +168,7 @@ def read_tree(
                 current = _folded(current, heading)
                 continue
             target, why = resolve(entry, put.path, known)
-            if target in unreadable:
+            if target in unreadable or (target is None and _distributed(put)):
                 continue
             if target is None:
                 refusals.append((path, Refusal("tex-refused", put.offset, why)))

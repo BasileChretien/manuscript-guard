@@ -108,6 +108,54 @@ def test_a_file_nothing_inputs_is_read_loose_and_accepts_what_a_preamble_does() 
     assert document.loose == ("old.tex",) and document.refusals == ()
 
 
+@pytest.mark.parametrize(
+    "abstract",
+    ["\\abstract{Of 4100 reports, 12 were fatal.}", "\\begin{abstract}12\\end{abstract}"],
+)
+def test_an_abstract_in_the_preamble_is_refused_and_one_in_a_definition_is_not(
+    abstract: str,
+) -> None:
+    """Round 1 of #385: the design refused it and the reader did not, so its numbers went
+    unread."""
+    from manuscript_guard.text.latex.mask import read
+
+    text = "\\documentclass{article}\n" + abstract + "\n\\begin{document}\nx\n" + END
+    (refusal,) = read(text).refusals
+    assert refusal.code == "tex-refused" and refusal.offset == text.index("\\", 5)
+    assert "preamble" in refusal.message
+    defined = ("\\documentclass{article}\n\\renewcommand{\\abstract}[1]{\\textbf{#1}}\n"
+               "\\newcommand{\\summary}{\\abstract{12}}\n\\let\\abstract\\relax\n"
+               "\\begin{document}\n\\abstract{We found 12.}\n" + END)  # fmt: skip
+    assert read(defined).refusals == ()
+
+
+def test_a_bare_name_input_from_the_preamble_is_the_distributions() -> None:
+    """Round 1 of #385: `\\input{glyphtounicode}`, common in templates, failed BUILD. In the
+    body a missing file is still refused, its prose unread."""
+    preamble = "\\documentclass{article}\n\\input{glyphtounicode}\n\\input glyphtounicode\n"
+    assert read_tree({"main.tex": preamble + "\\begin{document}\n" + END}).refusals == ()
+    text = preamble + "\\begin{document}\n\\input{glyphtounicode}\n" + END
+    ((_path, refusal),) = read_tree({"main.tex": text}).refusals
+    assert refusal.offset == text.rindex("\\input")
+
+
+def test_an_input_without_braces_is_named_so_and_one_past_a_line_break_is_followed() -> None:
+    text = DOC + "\\input methods\n\\input\n  {results}\n" + END
+    document = read_tree({"main.tex": text, "methods.tex": "m\n", "results.tex": "r\n"})
+    ((_path, refusal),) = document.refusals
+    assert "no path is written in braces" in refusal.message
+    assert [s.path for s in document.sources if not s.loose] == ["main.tex", "results.tex"]
+
+
+def test_the_chain_at_a_point_takes_a_heading_right_after_an_input_and_a_part_over_a_chapter(
+) -> None:
+    """Round 1 of #385: a heading that starts where an `\\input` ends was lost, and a chapter
+    closed its part."""
+    text = DOC + "\\part{I}\\chapter{A}\\input{a}\\section{B}\nafter\n" + END
+    (main, _a) = read_tree({"main.tex": text, "a.tex": "\\section{C}\n"}).sources
+    assert [h.title for h in main.chain_at(text.index("after"))] == ["I", "A", "B"]
+
+
 def test_a_heading_is_found_where_its_command_stands(tmp_path: Path) -> None:
     from manuscript_guard.text.latex.mask import read
 

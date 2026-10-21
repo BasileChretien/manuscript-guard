@@ -992,13 +992,17 @@ order is `printed_order`.
 - Each file is read on its own, so a finding names that file's line.
 - A file starts in the state its `\input` stands in. One input from the body is body, and one
   input from the preamble is preamble. The headings in force there stand before the file's first
-  character in `headings(text, path)`, so `p < 0.05` in a file input under `\section{Methods}`
-  is read under Methods. So does the environment that encloses the `\input`: a file input inside
-  `abstract` is abstract, and one inside a `tabular` is table cells.
+  character (`Source.under`, and `Source.chain_at` at any point of the file), so `p < 0.05` in a
+  file input under `\section{Methods}` is read under Methods. So does the environment that
+  encloses the `\input`: a file input inside `abstract` is abstract, and one inside a `tabular`
+  is table cells. A heading of a file input reaches the text after its `\input`, as LaTeX
+  prints it.
 - An `\input` in a comment, in a plain `\iffalse` block or in the `comment` environment is no
   input. A file named only there is one that nothing inputs, below.
-- A package or class file in `manuscript/`, such as `\usepackage{macros}` with
+- A package file in `manuscript/`, such as `\usepackage{macros}` with
   `manuscript/macros.sty` beside the entry file, is followed as a file input from the preamble.
+  A class file is not: a journal's `.cls` is shipped beside the entry file and is not the
+  author's.
   It is read as LaTeX reads a package, with `@` a letter. Its definitions are then read where
   they are written, below. In it, and in the preamble, both branches of a conditional other than
   a plain `\iffalse` block are read, since a package tests what is loaded. A package found
@@ -1006,9 +1010,11 @@ order is `printed_order`.
   tool writes it, its definitions are the bindings, and `check` compares it with what `values`
   would write.
 - Refused:
-  - a path that is not written out in full;
+  - a path that is not written out in full, or not written in braces;
   - a path outside `manuscript/` or under a `_` folder;
-  - a missing file, or a cycle;
+  - a missing file, or a cycle. A bare name input from the preamble that `manuscript/` does not
+    hold, such as `\input{glyphtounicode}`, is the distribution's and is passed over, as a
+    package is, and so is TeX's form without braces there, `\input glyphtounicode`;
   - `\import`, `\subfile` and `\InputIfFileExists`;
   - a command that prints a file no gate reads: `\lstinputlisting` and its kin,
     `\verbatiminput`, csvsimple's `\csvautotabular` and `\csvreader`, pgfplotstable's
@@ -1292,6 +1298,16 @@ The result is compiled and packed by the code above, and checked three times:
     says nothing when a `.tex` is saved (round 2 of #370).
 - An author's macro is not expanded where it is used, so a word its body prints there is in no
   sentence that G6 or G14 reads; its body is read once, at the definition.
+- An `\input` records the environments open around it, not the command whose argument it is
+  in, so `\title{\input{title}}` reads `title.tex` as preamble, blanked, though LaTeX prints it
+  (round 1 of #385).
+- A file input past a refusal in the file that inputs it, from inside a definition, or from
+  `\AtBeginDocument{\input{x}}` is not followed. It is warned of as `tex-not-input`, whose
+  message says no `\input` the reader follows names it, and is read under no heading (round 1
+  of #385).
+- An author's file input from the preamble without braces, `\input macros`, is taken for the
+  distribution's and not read, so its definitions are not known where they are used (round 1
+  of #385).
 - A class or package that changes how a character is read, beyond those refused, is not seen.
 - A package not in the refused list that prints a table or text from a data file is not seen:
   what it prints is read by no gate.

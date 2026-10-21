@@ -5,9 +5,9 @@ round: 9
 reviewer: pharmacoepidemiologist
 reviewed_by: Claude Code
 reviewed_on: '2026-10-21'
-manuscript_sha256: e036f05e1f73adef5996cc8b82d25c04f68b04e1823e276dbb87c5505d49c977
+manuscript_sha256: 5ea56595beff74152070f86c1b26c8da639ef92c1dd107473532701ae02025ee
 file_sha256:
-  main.md: 00a5583ac8e6aa01a34c7bdeb36d0993468dd52983be2841a9932e3f9ebfe2cf
+  main.md: 012dda200f1980db7268c1067853f3b28aa6f44cf6d0b808d7b53559c0d09f1b
   supplementary/S1_code_lists.md: 8c462c203bf3c08ac5ced6eaf25d38b56f2239502952f8d8e6b3d23cbb05b9b3
 verdict: pass
 summary: 'The Methods now give, beside the statement that the generator emits no duplicate

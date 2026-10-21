@@ -4231,14 +4231,15 @@ def test_a_dictionary_that_does_not_read_fails_the_check_at_every_stage(
 #: The example's sentence on its data checks, the last of its Methods' first paragraph. The
 #: count of repeated identifiers is no count of duplicate cases (a case two reporters sent
 #: carries two identifiers), so the generator stays the reason no de-duplication step was
-#: applied, as round 1's r1-pe-02 was answered (round 4 of #389).
+#: applied, as round 1's r1-pe-02 was answered (round 4 of #389). Its opening words are the
+#: ones tools/panel_measure.py plants a defect in, and stay as they were.
 _CHECKED_SAID = (
-    "Of the {{results.quality.rows}} reports checked against the data dictionary, "
-    "{{results.quality.rule.one_row_per_report}} repeated\n"
-    "another's identifier and {{results.quality.age_group.missing}} gave no age group. The "
-    "generator emits no duplicate cases, so no\n"
-    "de-duplication step was applied; a real database would require one, and its absence here "
-    "is a property of the synthetic data."
+    "Each record carries a unique report identifier; checked against the data dictionary, "
+    "{{results.quality.rule.one_row_per_report}} of the\n"
+    "{{results.quality.rows}} reports repeated another's and "
+    "{{results.quality.age_group.missing}} gave no age group. The generator emits no duplicate\n"
+    "cases, so no de-duplication step was applied; a real database would require one, and its "
+    "absence here is a property of the synthetic data."
 )
 
 

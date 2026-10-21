@@ -858,6 +858,7 @@ NAMED_NOWHERE = {
     "profiles/journals/journal-of-examples.yaml": "an example of a profile's name",
     "profiles/journals/styles/": "written by `style`",
     "supplementary/S1.md": "an example of a supplement's file",
+    "build/marked-up/": "written by `build --marked-up`",
     "build/response-to-reviewers.md": "written by `respond`",
     "build/manuscript.docx": "written by `build`",
     "build/supplementary.docx": "written by `build`",

@@ -105,6 +105,10 @@ BINDS_AT = {
     "ref-number-unknown": DRAFTING,
     "pointer-form-unread": DRAFTING,
     "unquoted-result": DRAFTING,
+    # A LaTeX document's values file: a PDF compiled from a stale one shows old numbers.
+    "values-file-missing": DRAFTING,
+    "values-file-stale": DRAFTING,
+    "value-not-printable": DRAFTING,
     "typed-parameter": DRAFTING,
     "typed-software-version": DRAFTING,
     "typed-dictionary-release": DRAFTING,

@@ -149,6 +149,10 @@ _REFERENCES = re.compile(r"(?:references|bibliography|(?:literature|works)\s+cit
                          re.IGNORECASE)  # fmt: skip
 #: A footnote's mark in a heading, which is no part of its title.
 _FOOTNOTE_MARK = re.compile(r"\[\^[^\]\n]*\]")
+#: What a supplement's heading opens with before the part it names: "Supplementary
+#: discussion", "Online methods", and JAMA's "eResults", whose "e" is a small letter before a
+#: capital ("Ethics" and "eGFR" keep theirs).
+_SUPPLEMENT_PREFIX = re.compile(r"(?i:supplement(?:ary|al)|online)\s+(?=\w)|e(?=[A-Z][a-z])")
 
 METHODS = "methods"
 INTRODUCTION = "introduction"
@@ -277,14 +281,18 @@ def _joined(
 
 
 def _kind_of(title: str, is_methods: bool, abstract_title: str | None) -> str | None:
-    """The part of the paper a heading names, where it names one."""
-    if names_abstract(title, abstract_title):
-        return ABSTRACT
-    if names_results(title):
-        return RESULTS
-    if names_conclusion(title):
-        return CONCLUSION
+    """The part of the paper a heading names, where it names one, a supplement's as the
+    main text's: "Supplementary discussion" and "eResults" name the Discussion and the
+    Results (round 7 of the review: they named none, and a passage there was given the
+    advice for text under no heading)."""
     shown = _FOOTNOTE_MARK.sub("", plain(title)).strip()
+    shown = _SUPPLEMENT_PREFIX.sub("", shown, count=1)
+    if names_abstract(shown, abstract_title):
+        return ABSTRACT
+    if names_results(shown):
+        return RESULTS
+    if names_conclusion(shown):
+        return CONCLUSION
     if _DISCUSSION.match(shown):
         return DISCUSSION
     if _INTRODUCTION.match(shown):

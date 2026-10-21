@@ -2064,11 +2064,15 @@ of each column, and every sentence of the left column is cut by the right one. p
 fallback, as it is for the chain.
 
 **The supplement is compared as the main text is** (Basile, 2026-10-21: supplementary
-material is held to the same rules). Every file under `manuscript/supplementary/` is read
-with the rest, its headings name its parts as the main text's do, and its Supplementary
-Methods are the Methods: a description reused there with its source cited in the paragraph is
-a note, and one that does not cite it warns from internal-review. A similarity check reads
-the supplement as it reads the paper.
+material is held to the same rules). Every Markdown file under `manuscript/supplementary/`
+is read with the rest, as every gate that reads the manuscript reads it; a LaTeX manuscript
+is not read by this check yet, and G7 says so (`not-read-in-latex`). The supplement's
+headings name its parts as the main text's do, a prefix read through: "Supplementary
+discussion", "Supplemental results" and JAMA's "eResults" are the Discussion and the Results
+(round 7 of the review: they named none). Its Supplementary Methods are the Methods: a
+description reused there with its source cited in the paragraph is a note, and one that does
+not cite it warns from internal-review. A similarity check reads the supplement as it reads
+the paper.
 
 **What is not compared.** The front matter, where an abstract already fails
 (`front-matter-abstract`) and the build prints nothing; the headings, which are also a bound
@@ -13017,6 +13021,12 @@ Open, recorded as each change landed:
   warning is due; under the Results it is the Results'. So is a subsection of the Methods
   that happens to bear a back-matter title, "Article information" in a review's data
   extraction (round 6 of the review; rare).
+- **The Methods are the sections whose title holds "methods", in the supplement as in the
+  main text.** A supplement's "eAppendix 1. Data source" or "Appendix S1: Definitions"
+  names no part, so a description reused there, cited or not, warns from internal-review as
+  under no heading. And a section titled "Methods and results", or "Supplementary methods
+  and results", is the Methods throughout, so Results reused there with the earlier paper
+  cited in the paragraph are noted where a warning is due (round 7 of the review).
 - **A title over the Discussion and its conclusions alone is not taken for a title over the
   paper.** The conclusions count as the Discussion's when the parts under a heading are
   counted, so that the Discussion over "Interpretation" and "Conclusions" stays the

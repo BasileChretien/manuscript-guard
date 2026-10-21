@@ -155,24 +155,32 @@ def test_a_description_in_the_methods_that_does_not_cite_its_paper_warns_from_in
     ("written_as", "said_of_it"),
     [
         pytest.param(f"# Supplementary methods\n\n{DESCRIPTION} As before [@{KEY}].",
-                     ("recycled-methods-cited", INFO), id="cited Supplementary Methods"),
+                     ("recycled-methods-cited", INFO, "in the Methods"),
+                     id="cited Supplementary Methods"),
         pytest.param(f"# Supplementary Methods\n\n## S1. Data source\n\n{DESCRIPTION}",
-                     ("recycled-text", WARN), id="uncited Supplementary Methods"),
+                     ("recycled-text", WARN, "in the Methods"), id="uncited Supplementary Methods"),
         pytest.param(f"# Supplementary discussion\n\n{CAVEAT}",
-                     ("recycled-text", WARN), id="a supplementary discussion"),
+                     ("recycled-text", WARN, "in the Discussion"),
+                     id="a supplementary discussion"),
+        pytest.param(f"# eResults\n\n{COUNTED}", ("recycled-text", WARN, "in the Results"),
+                     id="JAMA's eResults"),
     ],
 )  # fmt: skip
 def test_the_supplement_is_held_to_the_norms_the_main_text_is(
-    project: Path, written_as: str, said_of_it: tuple[str, str]
+    project: Path, written_as: str, said_of_it: tuple[str, str, str]
 ) -> None:
     """Basile, 2026-10-21: the supplement is held to the rules of the main text. Its
     Methods are the Methods, a description reused with its source cited there is a note,
-    and one that does not cite it warns from internal-review, as in the main text."""
+    and one that does not cite it warns from internal-review, as in the main text; its
+    Discussion and its Results are the Discussion and the Results, by whatever prefix a
+    supplement gives them (round 7 of the review: they named no part)."""
     stored(project)
     path = project / "manuscript" / "supplementary" / "S2_recycled.md"
     path.write_text(written_as + "\n", encoding="utf-8")
     (finding,) = found(project, "internal-review")
-    assert (finding.code, finding.severity) == said_of_it
+    code, severity, part = said_of_it
+    assert (finding.code, finding.severity) == (code, severity)
+    assert part in finding.message
     assert finding.path.name == "S2_recycled.md"
     assert finding.line == written_as.count("\n") + 1  # the passage is the file's last line
 

@@ -4254,8 +4254,10 @@ def _planted_recycling(draw: st.DrawFn) -> tuple[str, str, set[tuple[int, ...]]]
         elif kind == "like a statement":
             paragraph = f"## {draw(st.sampled_from(_LIKE_A_STATEMENT))}\n\n{sentence}"
         elif kind == "discussion":
+            discussion = draw(st.sampled_from(("Supplementary discussion", "eDiscussion",
+                                               "Discussion")))  # fmt: skip
             paragraph = (
-                f"## Discussion\n\n### Principal findings\n\n{sentence}\n\n### Interpretation\n\n"
+                f"## {discussion}\n\n### Principal findings\n\n{sentence}\n\n### Interpretation\n\n"
                 f"{filler().capitalize()}.\n\n### Conclusions\n\n{filler().capitalize()}.\n\n"
                 "## Afterword"
             )
@@ -6672,6 +6674,11 @@ def _the_conclusions_are_a_part_of_their_own(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(recycling_gate, "_COUNTED_AS", {})
 
 
+def _a_supplement_s_heading_names_no_part(patch: pytest.MonkeyPatch) -> None:
+    # Before round 7 of the review: "Supplementary discussion" named no part.
+    patch.setattr(recycling_gate, "_SUPPLEMENT_PREFIX", re.compile(r"(?!)"))
+
+
 def _sic_is_a_word_of_the_source(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(quotations_gate, "_SIC", re.compile(r"(?!)"))
 
@@ -7347,6 +7354,10 @@ BROKEN = {
     ),
     "the conclusions are a part of their own beside the Discussion": (
         _the_conclusions_are_a_part_of_their_own,
+        test_a_passage_of_an_earlier_paper_is_found_where_it_stands_however_it_is_set,
+    ),
+    "a supplement's heading names no part": (
+        _a_supplement_s_heading_names_no_part,
         test_a_passage_of_an_earlier_paper_is_found_where_it_stands_however_it_is_set,
     ),
     "a heading that opens with a statement's words is a statement": (

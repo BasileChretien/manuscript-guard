@@ -24,6 +24,13 @@
 # Spent entries may stay as a record or go; the list is not read for them.
 
 expected:
+  - reading: placeholders
+    why: >-
+      a journal template's instruction to its authors, "In this section you can acknowledge
+      any support given ...", "This section may be divided by subheadings", Word's "Click or
+      tap here to enter text.", is found as a placeholder, `placeholder-template`; the inputs
+      now hold such instructions, and a section the authors describe, a form a paper
+      reproduces and PLOS's "Click here for additional data file", which it is not
   - reading: reworded
     why: >-
       each sentence an edit changed is compared with what it was for the words of its
@@ -43,12 +50,8 @@ expected:
       against it ends one, so the bounds on either side of it are no longer compared
   - reading: check
     why: >-
-      G6 counts the words to the reviewers or to a model it found in the manuscript,
-      `writing_residue`, which is 0 in a manuscript that has none; and G7 counts the
-      sentences that cite and those with a supporting passage in literature/passages.yaml,
-      `cited_statements` and `cited_statements_with_passage`, and the passages by what it
-      found of them, and says in a note (a warning from internal-review) how many cited
-      sentences carry no passage
+      G11 counts the co-authors' Word comments `import` filed, `review_comments` and
+      `review_comments_open`, which are 0 in a project with none filed
   - reading: numbers
     why: >-
       a supplement's name of the Methods, "Supplementary methods", "eMethods 1. Data

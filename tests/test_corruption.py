@@ -3493,6 +3493,12 @@ def test_none_is_a_correction_with_its_reason(project: Path) -> None:
         "1,XXX reports",
         "[insert the date]{.mark}",
         "- Dose: fill in later\n- Route: oral",
+        # Each other construction of the filler rule, pinned before a journal template's
+        # instructions were read beside it.
+        "fill it in later.",
+        "replace this later.",
+        "Delete this section.",
+        "Add your affiliation here.",
     ],
 )
 def test_a_placeholder_in_the_manuscript_fails(project: Path, slot: str) -> None:
@@ -3518,11 +3524,134 @@ def test_a_placeholder_in_the_manuscript_fails(project: Path, slot: str) -> None
         "Terms were coded (system organ class/preferred term [SOC/PT]).",
         "Drugs that replace later\nlines of therapy were counted.",
         "Each case ended with discussion prompts.",
+        # Beside a journal template's instructions: a section the authors describe, a form
+        # a paper reproduces, a caption PLOS prints, a user interface, a declaration a paper
+        # printed (PMC8397635), a part of the text one author wrote.
+        "In this section, we describe the cohort.",
+        "In this section, you can see how the weights were chosen.",
+        'Respondents were asked: Please state "yes" or "no".',
+        "Click here for additional data file.",
+        "In the app, users click here to enter text.",
+        "This section is not applicable to our submission.",
+        "AB wrote the text for this section and CD the rest.",
+        "This is the sample size we needed.",
+        "The research highlights the role of the liver.",
+        # Round 1: a questionnaire a supplement reproduces, and a hard wrap before words a
+        # template opens a line with.
+        "In this section, please indicate how often you took each medicine.",
+        'If none, please state "not applicable".',
+        'Participants were told: please state "the first word that comes to mind".',
+        'Respondents could answer yes or no, or state "not applicable".',
+        "AB wrote the\ntext for this section and CD the rest.",
+        "We screened each title and\nabstract text. Two reviewers read each.",
     ],
 )
 def test_what_looks_like_a_placeholder_and_is_prose_passes(project: Path, prose: str) -> None:
     _with_paragraph(project, prose)
     assert _placeholders(_g6(project)) == []
+
+
+@pytest.mark.parametrize(
+    "instruction",
+    [
+        pytest.param(
+            "In this section you can acknowledge any support given which is not covered by"
+            " the author contribution or funding sections.",
+            id="mdpi-acknowledgements",
+        ),
+        pytest.param(
+            "In this section, you should add the Institutional Review Board Statement and"
+            " approval number, if relevant to your study.",
+            id="mdpi-review-board",
+        ),
+        pytest.param(
+            "In this section, please provide details regarding where data supporting"
+            " reported results can be found.",
+            id="mdpi-data",
+        ),
+        pytest.param(
+            'Please add: "This research received no external funding".', id="mdpi-funding"
+        ),
+        pytest.param(
+            "Please add \N{LEFT DOUBLE QUOTATION MARK}Informed consent was obtained from all"
+            " subjects involved in the study.\N{RIGHT DOUBLE QUOTATION MARK}",
+            id="mdpi-consent",
+        ),
+        pytest.param(
+            'Declare conflicts of interest or state "The authors declare no conflicts of'
+            ' interest."',
+            id="mdpi-conflicts",
+        ),
+        pytest.param("This section may be divided by subheadings.", id="mdpi-results"),
+        pytest.param(
+            "This section is not mandatory, but can be added to the manuscript if the"
+            " discussion is unusually long or complex.",
+            id="mdpi-conclusions",
+        ),
+        pytest.param(
+            "Authors should discuss the results and how they can be interpreted from the"
+            " perspective of previous studies and of the working hypotheses.",
+            id="mdpi-discussion",
+        ),
+        pytest.param(
+            "For research articles with several authors, a short paragraph specifying their"
+            " individual contributions must be provided.",
+            id="mdpi-contributions",
+        ),
+        pytest.param(
+            "Please turn to the CRediT taxonomy for the term explanation.", id="mdpi-credit"
+        ),
+        pytest.param("This is a figure. Schemes follow the same formatting.", id="mdpi-figure"),
+        pytest.param(
+            "This is a short text to acknowledge the contributions of specific colleagues,"
+            " institutions, or agencies that aided the efforts of the authors.",
+            id="frontiers-acknowledgements",
+        ),
+        pytest.param(
+            "Details of all funding sources should be provided, including grant numbers if"
+            " applicable.",
+            id="frontiers-funding",
+        ),
+        pytest.param("**Bold the figure title.** Panel A shows the cohort.", id="plos-caption"),
+        pytest.param("Text for this section.", id="bmc-section"),
+        pytest.param(
+            "Results.  Text for this section \N{HORIZONTAL ELLIPSIS}", id="bmc-two-spaces"
+        ),
+        pytest.param("Sample body text.", id="springer-body"),
+        pytest.param(
+            "If any of the sections are not relevant to your manuscript, please include the"
+            " heading and write 'Not applicable' for that section.",
+            id="springer-declarations",
+        ),
+        pytest.param("Section text. See Subsection 1.1.", id="elsevier-section"),
+        pytest.param("- Research highlight 1", id="elsevier-highlight"),
+        pytest.param("This is sample abstract text.", id="wiley-abstract"),
+        pytest.param("Age: Click or tap here to enter text. (in years)", id="word-prompt"),
+        pytest.param("In this section you can\nacknowledge any support given.", id="hard-wrapped"),
+    ],
+)
+def test_a_journal_templates_instruction_fails(project: Path, instruction: str) -> None:
+    """MDPI papers in the corpus of `tools/g6_baseline.py` were printed with "In this section
+    you can acknowledge any support given ...", and no rule read it: G6's instructions to the
+    writer were this project's own, "this section is a template", "delete this section"."""
+    _with_paragraph(project, instruction)
+    said = _placeholders(_g6(project))
+    assert [severity for severity, _ in said] == ["fail"], said
+    assert "journal template" in said[0][1], said
+
+
+def test_a_journal_templates_instruction_in_a_table_caption_fails(project: Path) -> None:
+    """MDPI's template captions its sample table with an instruction, which an analysis
+    may carry into the caption it writes."""
+    from dataclasses import replace
+
+    project_, _ = load_project(project)
+    _namespace, results, _literature, _report = load_namespace(project_)
+    caption = "This is a table. Tables should be placed in the main text near to the first time"
+    baseline = replace(results.tables["baseline"], caption=caption + " they are cited.")
+    results = replace(results, tables={**results.tables, "baseline": baseline})
+    said = _placeholders(_g6(project, results))
+    assert len(said) == 1 and "the caption of table 'baseline'" in said[0][1], said
 
 
 def test_a_placeholder_drawn_in_a_figure_fails(project: Path) -> None:
@@ -4808,6 +4937,19 @@ variables:
     type: binary
     code_list: yes_no
     reason: the proportion of the cases that were serious
+  - {name: drug, label: Drug, definition: The suspected drug the report names., type: text}
+  - {name: event, label: Event, definition: The event term the report names., type: text}
+  # The corruptions below replace `    type: binary` and `    code_list: yes_no` wherever
+  # they stand, so these entries keep both off the start of a line: one entry is broken.
+  - {name: exposed, type: binary, code_list: yes_no, label: Exposed, derived_from: [drug],
+     definition: The report names example-drug., derivation: drug is example-drug}
+  - {name: hepatic, type: binary, code_list: yes_no, label: Hepatic injury,
+     definition: The event is hepatic injury., derived_from: [event], derivation: by its term}
+  - {name: sex, label: Sex, definition: Sex as reported., type: categorical,
+     values: [{code: F, label: Female}, {code: M, label: Male}]}
+  - {name: age_group, label: Age group, definition: The age group as reported.,
+     type: categorical, values: [{code: 18-44, label: 18 to 44}, {code: 45-64, label: 45 to 64},
+     {code: 65-74, label: 65 to 74}, {code: 75+, label: 75 and over}]}
 """
 
 
@@ -4872,12 +5014,15 @@ def test_a_variable_the_plan_uses_and_nobody_collects_is_warned_of(
 
 @pytest.mark.parametrize("stage", ["design", "submission"])
 def test_an_entry_nothing_needs_is_warned_of(project: Path, stage: str) -> None:
+    """The example's plan names `serious`, so its entry needs no reason; one for the year,
+    which the plan does not name, does."""
     unneeded = _EXAMPLE_DICTIONARY.replace(
         "    reason: the proportion of the cases that were serious\n", ""
-    )
+    ) + "  - {name: year, label: Year, definition: The year of the report., type: continuous}\n"
     failed, warned = _collection_said(project, unneeded, stage)
     assert failed == [] and warned == ["dictionary-entry-unused"]
-    _plan_edited(project, "Seriousness is reported", "Seriousness, `serious`, is reported")
+    _plan_edited(project, "carry unique identifiers",
+                 "carry their year (`year`) and unique identifiers")
     assert _collection_said(project, unneeded, stage) == ([], [])
 
 
@@ -5818,11 +5963,14 @@ def test_a_gate_not_taught_latex_reads_nothing_and_fails_at_submission(project: 
     _as_latex(project)
     drafting, _project, _stage, _deferred = _run_gates(project, stage="drafting")
     unread = sorted(f.gate for f in drafting.findings if f.code == "not-read-in-latex")
-    expected = ["BUILD", "G1", "G13", "G14", "G15", "G2", "G4", "G6", "G7", "G8", "G8r", "G9"]
+    # G2 reads LaTeX but for its pointers to tables and figures, and says so (step 4).
+    expected = ["BUILD", "G13", "G14", "G15", "G2", "G4", "G6", "G7", "G8", "G8r", "G9"]
     assert unread == expected, drafting.render(project)
     assert "not-read-in-latex" not in codes(drafting)
     said = {f.code for f in drafting.findings}
-    assert not {"manuscript-empty", "unquoted-result"} & said, drafting.render(project)
+    assert "manuscript-empty" not in said, drafting.render(project)
+    typed = {f.context for f in drafting.findings if f.code == "unclassified-number"}
+    assert typed == {"Of 4100 reports, 12 were fatal."}, drafting.render(project)
     submission, _project, _stage, _deferred = _run_gates(project, stage="submission")
     failing = sorted(f.gate for f in submission.failures if f.code == "not-read-in-latex")
     assert failing == expected, submission.render(project)
@@ -5831,11 +5979,9 @@ def test_a_gate_not_taught_latex_reads_nothing_and_fails_at_submission(project: 
 #: The checks that read the manuscript only as Markdown, and those that do not read it.
 _MARKDOWN_ONLY = (
     "check_related",
-    "check_numbers", "check_bound_units", "check_small_cells", "check_citations",
-    "check_prose_quotations", "check_journal", "check_reporting", "check_writing",
-    "check_methods", "check_synthetic_inputs", "check_reported", "check_recomputed",
-    "check_revision", "check_language", "check_models", "check_shapes", "check_tex",
-    "check_passages",
+    "check_citations", "check_prose_quotations", "check_journal", "check_reporting",
+    "check_writing", "check_methods", "check_reported", "check_recomputed", "check_revision",
+    "check_language", "check_models", "check_shapes", "check_tex", "check_passages",
 )  # fmt: skip
 _NOT_THE_MANUSCRIPT = (
     "check_review", "check_freshness", "check_figures", "check_figure_reviews",
@@ -5848,7 +5994,10 @@ _NOT_THE_MANUSCRIPT = (
     "check_figure_colours",
 )  # fmt: skip
 #: The checks that read LaTeX: they run on a LaTeX manuscript as on any.
-_READS_LATEX = ("check_latex",)
+_READS_LATEX = (
+    "check_latex", "check_numbers", "check_bound_units", "check_small_cells",
+    "check_synthetic_inputs",
+)  # fmt: skip
 
 
 def test_each_check_not_taught_latex_is_not_run_and_the_others_are(
@@ -5918,6 +6067,175 @@ def test_what_the_latex_reader_refuses_fails_build_at_its_file_and_line(project:
     warned = [f for f in report.findings if f.code == "tex-not-input"]
     assert [f.path.name for f in warned] == ["notes.tex"]
     assert "tex-not-input" not in codes(report)
+
+
+# --------------------------------------------------------------- G2 on the LaTeX twin
+
+TWIN = Path(__file__).parent / "data" / "latex" / "manuscript"
+#: TeX's specials a value's display may hold, escaped as an author types them.
+_ESCAPED = str.maketrans({sign: "\\" + sign for sign in "%&#$_"})
+
+
+def _twin(root: Path) -> Path:
+    """The example's manuscript in LaTeX in place of its own (`tests/test_latex_twin.py`):
+    the path of its `main.tex`."""
+    folder = root / "manuscript"
+    shutil.rmtree(folder)
+    shutil.copytree(TWIN, folder)
+    return folder / "main.tex"
+
+
+def _twin_failures(root: Path) -> list:
+    """What G2 and the gates beside it fail of the twin, but that G2 does not read its
+    pointers to tables and figures yet."""
+    return [f for f in gate_report(root).failures if f.code != "not-read-in-latex"]
+
+
+def _into_results(entry: Path, snippet: str) -> None:
+    text = entry.read_text(encoding="utf-8")
+    entry.write_text(text.replace("\\section{Discussion}", snippet + "\n\n\\section{Discussion}"),
+                     encoding="utf-8")  # fmt: skip
+
+
+def test_every_binding_of_the_twin_when_inlined_is_caught(project: Path) -> None:
+    """The headline on the twin: each `\\mg` replaced by its own value, as an author types it,
+    fails G2 (step 4). A value with no digit, the model's kind, is G15's to hold, which reads
+    Markdown only until step 8: in the example it fails there, and G2 cannot see words."""
+    entry = _twin(project)
+    assert _twin_failures(project) == [], gate_report(project).render(project)
+    text = entry.read_text(encoding="utf-8")
+    namespace = load_namespace(load_project(project)[0])[0]
+    targets = sorted(
+        ref for ref in set(re.findall(r"\\mg\{((?:results|lit)\.[a-z0-9_.]+)\}", text))
+        if any(character.isdigit() for character in namespace[ref].display)
+    )
+    assert len(targets) >= 12, targets
+    escaped = []
+    for ref in targets:
+        typed = namespace[ref].display.translate(_ESCAPED)
+        entry.write_text(text.replace(f"\\mg{{{ref}}}", typed), encoding="utf-8")
+        if not _twin_failures(project):
+            escaped.append(f"{ref} -> {typed!r}")
+    assert not escaped, escaped
+
+
+@pytest.mark.parametrize(
+    ("snippet", "code"),
+    [
+        ("\\begin{tabular}{ll} Cases & 4123 \\\\ \\end{tabular}", "hand-authored-table"),
+        ("Seen in a note.\\footnote{Of 4123 reports.}", "unclassified-number"),
+        ("\\begin{figure}\\caption{Of 4123 reports.}\\end{figure}", "unclassified-number"),
+        ("\\newcommand{\\cases}{4123 cases}", "unclassified-number"),
+        ("The difference was significant ($p<0.05$, n = 4123).", "unclassified-number"),
+        ("Grade 3 events numbered 4123.", "unclassified-number"),
+        # The units package's `\unit[value]{unit}` (round 1 of #400: blanked as siunitx's).
+        ("A dose of \\unit[4123]{mg} was given.", "unclassified-number"),
+        ("In brackets, \\qty[4123 days].", "unclassified-number"),
+    ],
+)
+def test_a_number_typed_into_the_twin_fails_g2_where_it_stands(
+    project: Path, snippet: str, code: str
+) -> None:
+    """In a table, a footnote, a caption, a definition's body and maths under Results: each
+    is printed, and each typed number is a finding there (step 4)."""
+    entry = _twin(project)
+    _into_results(entry, snippet)
+    found = [f for f in _twin_failures(project) if "4123" in f.message]
+    assert [f.code for f in found] == [code], gate_report(project).render(project)
+    assert found[0].path == entry
+
+
+def test_a_number_in_a_file_the_twin_inputs_fails_g2_at_that_files_line(project: Path) -> None:
+    entry = _twin(project)
+    _into_results(entry, "\\input{sections/extra}")
+    (entry.parent / "sections").mkdir()
+    (entry.parent / "sections" / "extra.tex").write_text("Seen.\nOf 4123 reports.\n", "utf-8")
+    found = [f for f in _twin_failures(project) if "4123" in f.message]
+    assert [(f.code, f.path.name, f.line) for f in found] == [
+        ("unclassified-number", "extra.tex", 2)
+    ]
+
+
+@pytest.mark.parametrize(
+    ("before", "after", "code"),
+    [
+        ("\\mg{results.case.n_serious}", "\\mg{results.case.n_seriuos}", "unresolved-binding"),
+        ("\\mg{results.case.n_serious}", "\\Mg{results.case.n_serious}", "malformed-placeholder"),
+        ("\\mg{results.case.n_serious}", "{{results.case.n_serious}}", "malformed-placeholder"),
+        ("\\mg{results.case.n_serious}", "\\mg results.case.n_serious", "malformed-placeholder"),
+        ("\\mg{results.ror.ci_low} to\n\\mg{results.ror.ci_high}",
+         "\\mg{results.ror.ci_high} to\n\\mg{results.ror.ci_low}", "interval-reversed"),
+    ],
+)
+def test_a_binding_of_the_twin_mistyped_or_reversed_fails_g2(
+    project: Path, before: str, after: str, code: str
+) -> None:
+    """A key mistyped, `\\mg` misspelt, left in Markdown's syntax or without its braces, and an
+    interval quoted upper bound first (step 4)."""
+    entry = _twin(project)
+    text = entry.read_text(encoding="utf-8")
+    assert before in text
+    entry.write_text(text.replace(before, after, 1), encoding="utf-8")
+    assert code in {f.code for f in _twin_failures(project)}, gate_report(project).render(project)
+
+
+@pytest.mark.parametrize(
+    "snippet",
+    [
+        "\\begin{verbatim}\n\\mg{results.case.n_serious}\n\\end{verbatim}",
+        "\\verb|\\mg{results.case.n_serious}|",
+        "\\num{\\mg{results.case.n_serious}}",
+    ],
+)
+def test_a_binding_the_twin_would_print_as_typed_is_refused_where_it_stands(
+    project: Path, snippet: str
+) -> None:
+    """A binding in a listing or a `\\verb` prints as typed, and siunitx parses the number it
+    is given: each is refused under BUILD, at every stage (step 4)."""
+    from manuscript_guard.cli import _run_gates
+
+    entry = _twin(project)
+    _into_results(entry, snippet)
+    report, _project, _stage, _deferred = _run_gates(project, stage="design")
+    refused = [f for f in report.failures if f.code == "tex-refused"]
+    assert len(refused) == 1 and "binding" in refused[0].message, report.render(project)
+
+
+def test_siunitx_s_milligram_in_the_twin_is_no_binding(project: Path) -> None:
+    """`\\mg` in siunitx's units is its milligram: no binding and nothing malformed. The dose
+    typed before it is a number like any other."""
+    entry = _twin(project)
+    _into_results(entry, "A dose of \\qty{5}{\\mg} was given.")
+    found = [(f.code, f.message) for f in _twin_failures(project)]
+    assert found == [("unclassified-number", "'5' is not bound to any source")], found
+
+
+def test_layout_in_the_twin_is_no_number_g2_reads(project: Path) -> None:
+    """A LaTeX parameter defined again, a font's size, columns and a table's spacing print no
+    number (round 1 of #400: each failed G2 once G2 read LaTeX)."""
+    entry = _twin(project)
+    text = entry.read_text(encoding="utf-8")
+    entry.write_text(text.replace("\\begin{document}", "\\renewcommand{\\arraystretch}{1.5}\n"
+                                  "\\renewcommand{\\baselinestretch}{1.15}\n\\begin{document}",
+                                  1), encoding="utf-8")  # fmt: skip
+    _into_results(entry, "{\\fontsize{9}{11}\\selectfont Small.}\n\\begin{multicols}{2}\nTwo."
+                  "\n\\end{multicols}\n\\begin{tabular}{l}\\toprule a \\\\ \\addlinespace[2pt] b"
+                  " \\\\ \\end{tabular}")  # fmt: skip
+    assert _twin_failures(project) == [], gate_report(project).render(project)
+
+
+def test_the_custodian_and_g1_read_the_twins_bindings(project: Path) -> None:
+    """A count below the custodian's minimum, and the results of a run on synthetic data,
+    are found in the twin as in the example (step 4)."""
+    from manuscript_guard.gates.synthetic import quoted_refs
+
+    entry = _twin(project)
+    _custodian(project, 5)
+    _value_has(project, "case.n_serious", value=3, display="3")
+    line = next(n for n, text in enumerate(entry.read_text("utf-8").splitlines(), 1)
+                if "\\mg{results.case.n_serious}" in text)  # fmt: skip
+    assert _small(project) == [("results.case.n_serious", line)]
+    assert "results.case.n_serious" in quoted_refs(load_project(project)[0])
 
 
 @pytest.mark.parametrize("encoding", ["cp1252", "utf-16", "utf-32"])
@@ -10723,6 +11041,215 @@ def test_a_refused_build_into_the_build_directory_itself_does_not_crash(
     (project / "build").mkdir(exist_ok=True)
     out = project / "build"
     assert main(["build", str(project), "--offline", "--skip-checks", "-o", str(out)]) == 1
+
+
+# ------------------------------------------------- a co-author's Word comment, filed and answered
+#
+# `import` files each Word comment as a finding in review/comments/ (`filed_comments`), and
+# G11 holds every one until it is answered (`gates/comments.py`). Each way of making one stop
+# binding without answering it is here, and each record `import` must not add to.
+
+_STAMP = "a" * 64
+
+
+def _filed(project: Path, *texts: str, commenter: str = "Ann Coauthor") -> Path:
+    """A comments record as `import` files it, holding one finding for each of `texts`."""
+    from manuscript_guard.filed_comments import Thread, plan_filing, write_filing
+
+    threads = [
+        Thread(key=f"durable:{n:08X}", author=commenter, date="2026-10-19", text=text,
+               block="paragraph", anchored="the words")  # fmt: skip
+        for n, text in enumerate(texts, start=1)
+    ]
+    (filing,) = plan_filing(
+        load_project(project)[0], threads, stamp=_STAMP, printed=None, supplementary=False,
+        today="2026-10-20",
+    )  # fmt: skip
+    write_filing(filing)
+    return filing.path
+
+
+def _g11(project: Path, *, submission: bool):
+    from manuscript_guard.gates import check_review
+
+    return check_review(load_project(project)[0], submission=submission)
+
+
+def _record_of(path: Path) -> dict:
+    return yaml.safe_load(path.read_text(encoding="utf-8"))
+
+
+def _rewrite_comments(path: Path, record: dict) -> None:
+    path.write_text(yaml.safe_dump(record, sort_keys=False, allow_unicode=True), "utf-8")
+
+
+def test_an_unanswered_co_author_comment_fails_the_submission(project: Path) -> None:
+    _filed(project, "Is there a newer reference?")
+    report = _g11(project, submission=True)
+    (found,) = [f for f in report.failures if f.code == "comment-unanswered"]
+    assert "Is there a newer reference?" in found.message
+    assert not [f for f in _g11(project, submission=False).failures if f.code.startswith("comment")]
+
+
+def test_a_comment_lowered_to_the_least_severity_still_binds(project: Path) -> None:
+    """Severity is the author's to set and not sealed; it decides nothing here."""
+    path = _filed(project, "Rename the heading.")
+    record = _record_of(path)
+    record["findings"][0]["severity"] = "comment"
+    _rewrite_comments(path, record)
+    assert "comment-unanswered" in {f.code for f in _g11(project, submission=True).failures}
+
+
+@pytest.mark.parametrize("answer", ["", "   ", "\n"])
+def test_an_empty_answer_answers_nothing(project: Path, answer: str) -> None:
+    path = _filed(project, "Say which years.")
+    record = _record_of(path)
+    record["findings"][0]["resolution"] = answer
+    record["findings"][0]["overridden"] = answer
+    _rewrite_comments(path, record)
+    assert "comment-unanswered" in {f.code for f in _g11(project, submission=True).failures}
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        pytest.param(lambda r: r["findings"][0].update(finding="Fine as it is."), id="reworded"),
+        pytest.param(lambda r: r["findings"].pop(0), id="deleted"),
+        pytest.param(lambda r: r["findings"][1].update(where="mg-p-mainx-1"), id="re-anchored"),
+        pytest.param(lambda r: r["findings"][0].pop("anchored") and None, id="unanchored"),
+        pytest.param(lambda r: r.update(commenter="Someone Else"), id="re-attributed"),
+    ],
+)
+def test_a_filed_comment_changed_by_hand_is_caught(project: Path, change) -> None:
+    """A comment reworded into something answered, deleted, or moved to another paragraph
+    or person stops saying what the co-author wrote."""
+    path = _filed(project, "Is there a newer reference?", "Rename the heading.")
+    record = _record_of(path)
+    change(record)
+    _rewrite_comments(path, record)
+    codes_found = {f.code for f in _g11(project, submission=True).failures}
+    assert "comments-altered" in codes_found or "schema-violation" in codes_found
+
+
+def test_answering_a_filed_comment_is_not_an_alteration(project: Path) -> None:
+    path = _filed(project, "Is there a newer reference?")
+    record = _record_of(path)
+    record["findings"][0].update(
+        severity="major", overridden="The 2019 review is the latest.", overridden_by="Ana Author"
+    )
+    _rewrite_comments(path, record)
+    report = _g11(project, submission=True)
+    assert not [f for f in report.findings if f.code.startswith("comment")]
+
+
+def test_a_comments_record_that_cannot_be_read_fails_at_every_stage(project: Path) -> None:
+    """While it cannot be parsed none of its comments is counted, unanswered ones included."""
+    path = _filed(project, "Is there a newer reference?")
+    path.write_text("findings: [\nresolution: Done: it now says reporting\n", "utf-8")
+    assert "comments-unreadable" in {f.code for f in _g11(project, submission=False).failures}
+
+
+def test_a_comments_record_with_no_list_of_findings_is_reported_and_not_a_crash(
+    project: Path,
+) -> None:
+    """Round 1 of #375: `check`'s summary counted the findings of every record, and one
+    whose `findings` was not a list took `check` down."""
+    from manuscript_guard.cli import main
+
+    path = _filed(project, "Is there a newer reference?")
+    record = _record_of(path)
+    record["findings"] = 3
+    _rewrite_comments(path, record)
+    assert main(["check", str(project)]) == 1
+    assert "schema-violation" in {f.code for f in _g11(project, submission=False).failures}
+
+
+def test_a_record_that_would_not_fit_its_schema_is_not_written(project: Path) -> None:
+    from manuscript_guard.filed_comments import FilingError, Thread, plan_filing, write_filing
+
+    thread = Thread(key="durable:00000001", author="Ann Coauthor", date="2026-10-19",
+                    text="Fine.", block="paragraph", anchored="words")  # fmt: skip
+    (filing,) = plan_filing(load_project(project)[0], [thread], stamp=_STAMP, printed=None,
+                            supplementary=False, today="2026-10-20")  # fmt: skip
+    filing.document["findings"][0]["block"] = "footnote"
+    with pytest.raises(FilingError, match="would not fit its schema"):
+        write_filing(filing)
+    assert not filing.path.exists()
+
+
+def test_import_adds_nothing_to_a_record_changed_by_hand(project: Path) -> None:
+    """Adding to it would seal the change as the commenter's."""
+    from manuscript_guard.filed_comments import Thread, plan_filing
+
+    path = _filed(project, "Is there a newer reference?")
+    record = _record_of(path)
+    record["findings"][0]["finding"] = "Fine as it is."
+    _rewrite_comments(path, record)
+    new = Thread(key="durable:0000FFFF", author="Ann Coauthor", date="2026-10-20",
+                 text="And this one.", block="heading", anchored="Methods")  # fmt: skip
+    (filing,) = plan_filing(load_project(project)[0], [new], stamp=_STAMP, printed=None,
+                            supplementary=False, today="2026-10-21")  # fmt: skip
+    assert filing.document is None and "changed since it was filed" in filing.refused
+
+
+def test_import_does_not_drop_a_note_written_in_a_record(project: Path) -> None:
+    """Writing the record again would lose a YAML comment the author typed in it."""
+    from manuscript_guard.filed_comments import Thread, plan_filing
+
+    path = _filed(project, "Is there a newer reference?")
+    path.write_text(path.read_text(encoding="utf-8") + "# ask Ben first\n", "utf-8")
+    new = Thread(key="durable:0000FFFF", author="Ann Coauthor", date="2026-10-20",
+                 text="And this one.", block="heading", anchored="Methods")  # fmt: skip
+    (filing,) = plan_filing(load_project(project)[0], [new], stamp=_STAMP, printed=None,
+                            supplementary=False, today="2026-10-21")  # fmt: skip
+    assert filing.document is None and "YAML comment" in filing.refused
+    # A `#` inside a value is no comment.
+    path = _filed(project, "Use #2 instead.", commenter="Ben Second")
+    (filing,) = plan_filing(
+        load_project(project)[0],
+        [Thread(key="durable:0000EEEE", author="Ben Second", date="2026-10-20", text="Next.",
+                block="heading", anchored="Methods")],
+        stamp=_STAMP, printed=None, supplementary=False, today="2026-10-21",
+    )  # fmt: skip
+    assert filing.refused == "" and filing.added == ("c2",)
+
+
+def test_import_adds_nothing_to_a_record_moved_from_another_build(project: Path) -> None:
+    from manuscript_guard.filed_comments import Thread, plan_filing, record_path
+
+    path = _filed(project, "Is there a newer reference?")
+    other = "b" * 64
+    moved = record_path(load_project(project)[0], other, False, "Ann Coauthor")
+    moved.parent.mkdir(parents=True)
+    path.rename(moved)
+    new = Thread(key="durable:0000FFFF", author="Ann Coauthor", date="2026-10-20",
+                 text="And this one.", block="heading", anchored="Methods")  # fmt: skip
+    (filing,) = plan_filing(load_project(project)[0], [new], stamp=other, printed=None,
+                            supplementary=False, today="2026-10-21")  # fmt: skip
+    assert filing.document is None and "another commenter, document or build" in filing.refused
+
+
+def test_a_record_import_could_not_add_to_makes_import_exit_one(
+    project: Path, tmp_path: Path
+) -> None:
+    from test_filed_comments import built, commented, records, run
+
+    if shutil.which("pandoc") is None:
+        pytest.skip("pandoc is not installed")
+    returned = commented(built(project), tmp_path / "back.docx",
+                         [{"on": "Whether the signal extends", "text": "First."}])  # fmt: skip
+    assert run("import", str(returned), str(project), "--apply")[0] == 0
+    (name,) = records(project)
+    path = project / "review" / "comments" / name
+    record = _record_of(path)
+    record["findings"][0]["finding"] = "Fine as it is."
+    _rewrite_comments(path, record)
+    again = commented(built(project), tmp_path / "again.docx", [
+        {"on": "Whether the signal extends", "text": "First."},
+        {"on": "Drug-induced hepatic injury", "text": "Second."},
+    ])  # fmt: skip
+    code, said = run("import", str(again), str(project), "--apply")
+    assert code == 1 and "not filed in review/comments/" in said, said
 
 
 # ------------------------------------------------- a document reviewed blind names no author

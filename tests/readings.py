@@ -169,6 +169,27 @@ def _latex_sections() -> Reading:
     return sections
 
 
+@reading("latex bindings")
+def _latex_bindings() -> Reading:
+    from manuscript_guard.text.latex.mask import read
+    from manuscript_guard.text.latex.structure import Source
+    from manuscript_guard.text.latex.views import bindings, markdown_view
+
+    def bound(text: str) -> dict[str, Any]:
+        source = Source("main.tex", text, read(text))
+        good, malformed = bindings(source)
+        return {
+            "bound": [[p.ref, p.start, p.end, p.line, p.col] for p in good],
+            "malformed": [[raw, at, line] for raw, at, line in malformed],
+            "view": markdown_view(source, good),
+            "tables": [list(span) for span in source.reading.tables],
+            "listings": [[found.start, found.end, found.language]
+                         for found in source.reading.listings],  # fmt: skip
+        }
+
+    return bound
+
+
 @reading("hidden")
 def _hidden() -> Reading:
     from manuscript_guard.gates.language import _hidden as hidden
@@ -765,6 +786,19 @@ def _printed_value() -> Reading:
             now = Value(key="k", value=case["value"], display=case["display"], origin="results")
             found.append([_same_printed(case["printed"], now), _same_printed(case["moved"], now)])
         return found
+
+    return compared
+
+
+@reading("plan sections")
+def _plan_sections_compared() -> Reading:
+    """The headings of the sections two plans both have whose words differ, as G8 compares
+    an earlier output's plan with this paper's."""
+    from manuscript_guard.gates.related_methods import sections_compared
+
+    def compared(given: dict[str, str]) -> list[str]:
+        found = sections_compared(given["then"], given["now"])
+        return [title for title, _key, _there, _here in found]
 
     return compared
 

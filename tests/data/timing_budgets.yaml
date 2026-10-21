@@ -193,6 +193,17 @@ reads:
       The first check on a hostile project and the timed one after it took at most 21 s
       together, with thirteen other suites running: about 3x.
 
+  - where: tests/test_proof.py::test_a_proof_unlike_what_was_sent_is_compared_in_time_near_its_length
+    kind: budget
+    budget: 20.0
+    why: >-
+      One fixed proof of 128 paragraphs whose words read as the same keys from end to end, so
+      that nothing anchors the alignment. The regression was quadratic: the move search tried
+      every unmatched run of the proof for every unmatched run sent, 76 s here at 128
+      paragraphs and 2286 times the time for eight times the input on CI. Text that reads as
+      text is timed as a ratio by `test_lining_up_a_proof_takes_time_in_proportion_to_its_length`.
+    headroom: 1.75 s against 20 s, about 11x, 2026-10-21 beside other suites.
+
   - where: tests/test_corruption.py::test_modified_analysis_script_is_caught
     kind: timestamp
     why: Sets a script's modification time ten seconds ahead. Times nothing.

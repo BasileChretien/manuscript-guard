@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import math
 import os
+import textwrap
 from collections.abc import Callable, Iterable
 from decimal import ROUND_HALF_DOWN, ROUND_HALF_UP, Decimal
 from fractions import Fraction
@@ -660,6 +661,69 @@ def latex_planted(draw: st.DrawFn) -> tuple[str, list[tuple[int, str, bool]]]:
         plant(*LATEX_PLACES[index])
     text += between[-1] + "\\end{document}\n"
     plant("after {}\n", (False,))
+    return text, planted
+
+
+#: Where a binding stands in LaTeX, and what it is there: each `{}` holds the key's last part,
+#: and the kind says whether it is a binding, one in a typed table, something meant for one
+#: and none, a word in a listing, or nothing. A binding in a comment, an `\\iffalse` block or
+#: the `comment` environment is nothing, and so is the milligram siunitx defines as `\\mg`,
+#: and a `\\mg` that names no key in a `\\verb`.
+LATEX_BINDING_PLACES = (
+    ("prose \\mg{{results.{}}} ", "bound"),
+    ("\\footnote{{in \\mg{{results.{}}}}} ", "bound"),
+    ("\\caption{{Of \\mg{{results.{}}}}} ", "bound"),
+    ("\\begin{{tabular}}{{l}}\\mg{{results.{}}} \\\\\\end{{tabular}}\n", "table"),
+    ("\\mg\n  {{results.{}}} ", "bound"),
+    ("\\begin{{lstlisting}}[language=R]\nx <- {}\n\\end{{lstlisting}}\n", "listing"),
+    ("\\verb|\\mg| ", "none"),
+    ("\\emph{{{{results.{}}}}} ", "malformed"),
+    ("$x = \\mg{{results.{}}}$ ", "bound"),
+    ("\\newcommand{{\\nn}}{{\\mg{{results.{}}}}} ", "bound"),
+    ("\\mg[width=3cm]{{figure.{}}} ", "bound"),
+    ("\\mg {{ lit.{} }} ", "bound"),
+    ("% \\mg{{results.{}}}\n", "none"),
+    ("\\iffalse \\mg{{results.{}}} \\fi ", "none"),
+    ("\\begin{{comment}}\n\\mg{{results.{}}}\n\\end{{comment}}\n", "none"),
+    ("\\qty{{5}}{{\\mg}} and \\SI{{3}}{{\\mg\\per\\kg}} ", "none"),
+    ("\\Mg{{results.{}}} ", "malformed"),
+    ("\\mgg{{results.{}}} ", "malformed"),
+    ("{{{{results.{}}}}} ", "malformed"),
+    ("\\mg{{Results.{}}} ", "malformed"),
+    ("\\mg results.{} ", "malformed"),
+)  # fmt: skip
+#: Where a binding stands in the preamble: the title prints it.
+LATEX_PREAMBLE_BINDINGS = (("\\title{{T \\mg{{results.{}}}}}\n", "bound"),)
+
+
+@st.composite
+def latex_bound(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
+    """A LaTeX document with a binding in every place of `LATEX_BINDING_PLACES`, in an order
+    drawn, among whole pieces; and the last part of each key planted, with what it is where
+    it stands. Every place is in every document, so that a rule broken for one is seen in
+    each."""
+    filler = (*_spaced(FILLER), *(piece for piece in _LATEX_WHOLE if "\\mg" not in piece))
+    order = draw(st.permutations(range(len(LATEX_BINDING_PLACES))))
+    between = draw(st.lists(st.sampled_from(filler), min_size=len(order) + 1,
+                            max_size=len(order) + 1))  # fmt: skip
+    text, planted = "\\documentclass{article}\n", []
+
+    def plant(template: str, kind: str) -> None:
+        nonlocal text
+        pieces = [piece.replace("{{", "{").replace("}}", "}") for piece in template.split("{}")]
+        for piece in pieces[:-1]:
+            key = f"k{4101 + len(planted)}"
+            planted.append((key, kind))
+            text += piece + key
+        text += pieces[-1]
+
+    for template, kind in LATEX_PREAMBLE_BINDINGS:
+        plant(template, kind)
+    text += "\\begin{document}\n"
+    for piece, index in zip(between, order, strict=False):
+        text += piece
+        plant(*LATEX_BINDING_PLACES[index])
+    text += between[-1] + "\\end{document}\n"
     return text, planted
 
 
@@ -1367,6 +1431,115 @@ def pdf_figures(draw: st.DrawFn) -> tuple[bytes, list[float], list[float]]:
     return document, sorted(texts + form_texts), sorted(lines + form_lines)
 
 
+# ------------------------------------------------------------------- a publisher's proof
+
+#: The changes a typesetter makes that are corrections, each planted once in every proof
+#: drawn, in a part of its own: as sent, as printed, and what `proof` calls it.
+PROOF_CORRECTIONS = (
+    ("3.84", "3.48", "number"),
+    ("36.4%", "36,4%", "decimal mark"),
+    ("\N{MINUS SIGN}0.51", "0.51", "sign"),
+    ("12 mg", "12 \N{GREEK SMALL LETTER MU}g", "unit or symbol"),
+    ("[4]", "[5]", "citation"),
+)
+#: The same values set otherwise: shown, and not counted.
+PROOF_TYPOGRAPHY = (
+    ("1737", "1 737"), ("0.001", ".001"), ("\N{MINUS SIGN}0.20", "-0.20"),
+)  # fmt: skip
+#: A word copy-edited, as sent and as printed: no other part holds either.
+PROOF_EDIT = ("remained", "stayed")
+#: What each part starts with, so that no two parts read alike.
+_PROOF_LEADS = (
+    "Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel", "India",
+    "Juliet", "Kilo", "Lima", "Mike", "November",
+)  # fmt: skip
+
+
+@st.composite
+def proofs(draw: st.DrawFn, *, planted: bool = True) -> dict[str, Any]:
+    """Parts sent, as (label, text), and the pages of their proof as `pdftotext` writes
+    them: each part wrapped to a width drawn, a running head over each page and its number
+    under it, and the line numbers some proofs print, or not. A long word and a compound are
+    broken at a line's end. With `planted`, one of every change of `PROOF_CORRECTIONS` and
+    `PROOF_TYPOGRAPHY`, and `PROOF_EDIT`, each in a part of its own, and one part the proof
+    leaves out; the dictionary says which part holds which, and how the proof prints it.
+
+    The text reads as text does: each part draws its words from a share of `FILLER` of its
+    own and ends with a word of its own, so that no line stands at the foot of half the
+    pages as a running foot does, and a proof has a dozen lines and its pages six at least.
+    What a reading cannot tell apart from a running foot is in DESIGN.md, Known gaps."""
+
+    def fill(at: int) -> st.SearchStrategy[str]:
+        share = [FILLER[(3 * at + k) % len(FILLER)] for k in range(10)]
+        return st.lists(st.sampled_from(share), min_size=2, max_size=7, unique=True).map(
+            " ".join)  # fmt: skip
+
+    held: list[tuple[str, str, str]] = []  # what a part holds, as sent and as printed
+    if planted:
+        held += [(sent, printed, what) for sent, printed, what in PROOF_CORRECTIONS]
+        held += [(sent, printed, "typography") for sent, printed in PROOF_TYPOGRAPHY]
+        held += [(PROOF_EDIT[0], PROOF_EDIT[1], "copy-edit"), ("", "", "missing")]
+    held += [("pharmacovigilance and example-drug", "pharmacovigilance and example-drug",
+              "broken")]  # fmt: skip
+    held += [("", "", "plain")] * draw(st.integers(0 if planted else 3, 3 if planted else 6))
+    order = draw(st.permutations(range(len(held))))
+    parts, printed_parts, planted_at = [], [], {}
+    for index, (lead, at) in enumerate(zip(_PROOF_LEADS, order, strict=False)):
+        sent, printed, what = held[at]
+        before, after = draw(fill(index)), draw(fill(index))
+        label = f"the paragraph {lead}"
+        parts.append((label, " ".join(p for p in (lead, before, sent, after, lead.lower())
+                                      if p) + "."))  # fmt: skip
+        if what == "missing":
+            planted_at[what] = (label, "")
+            continue
+        # Kept on one line, so that where the proof prints it is one line.
+        kept = printed.replace(" ", "\N{NO-BREAK SPACE}")
+        printed_parts.append(" ".join(p for p in (lead, before, kept, after, lead.lower())
+                                      if p) + ".")  # fmt: skip
+        if what not in ("plain", "broken"):
+            planted_at[what if what != "typography" else f"typography {printed}"] = (label,
+                                                                                  printed)
+    width = draw(st.integers(28, 70))
+    while True:
+        lines = [line for text in printed_parts
+                 for line in textwrap.wrap(text, width, break_on_hyphens=False,
+                                           break_long_words=False)]  # fmt: skip
+        if len(lines) >= 12 or width <= 16:
+            break
+        width -= 8
+    lines = _broken_at_line_ends(lines)
+    numbered = draw(st.booleans())
+    # Two pages at least: on one, what every page repeats cannot be told (DESIGN.md).
+    per_page = draw(st.integers(6, max(6, (len(lines) + 1) // 2)))
+    pages, number, at_line = [], 0, {}
+    for start in range(0, len(lines), per_page):
+        page = []
+        for line in lines[start : start + per_page]:
+            number += 1
+            at_line[number] = (len(pages) + 1, line)
+            page.append(f"{number} {line}" if numbered else line)
+        pages.append("\n".join(["Example et al. J Imag Pharm 2026", *page,
+                                str(101 + len(pages))]))  # fmt: skip
+    return {"parts": parts, "pages": pages, "planted": planted_at, "numbered": numbered,
+            "lines": at_line}  # fmt: skip
+
+
+def _broken_at_line_ends(lines: list[str]) -> list[str]:
+    """The lines with "pharmacovigilance" and "example-drug" each broken at a line's end, as
+    a typesetter hyphenates: "pharmaco-" and "vigilance", "example-" and "drug"."""
+    out = []
+    for line in lines:
+        for whole, cut in (("pharmacovigilance", 8), ("example-drug", 8)):
+            if whole in line:
+                head, tail = line.split(whole, 1)
+                first = head + whole[:cut] + ("" if whole[cut - 1] == "-" else "-")
+                out.append(first.rstrip())
+                line = (whole[cut:] + tail).lstrip()
+        out.append(line)
+    return out
+
+
 # ------------------------------------------------------------- a figure's alternative text
 
 #: What pandoc's Markdown reads as markup in a picture's description unless each mark in it
@@ -1991,7 +2164,9 @@ FIXED_LINKS = (
 #: a karyotype, a syndrome, a link, a title translated into English in brackets, a phrase
 #: that goes on, a kinase. What the placeholder reading must tell apart. With round 2 of
 #: #262's shapes: a phrase before a list item, an instruction marked or linked, a slot that
-#: is a whole field of a cited entry.
+#: is a whole field of a cited entry. And a journal template's instructions, one of each
+#: kind and one hard-wrapped, beside a section the authors describe, a form a paper
+#: reproduces and the caption PLOS prints under a file.
 PLACEHOLDERS = (
     ("XXXX", "XXXX"), ("[TO BE COMPLETED]", "[TO BE COMPLETED]"),
     ("[Repository]", "[Repository]"), ("[describe the cohort]", "[describe the cohort]"),
@@ -2001,12 +2176,22 @@ PLACEHOLDERS = (
     ("Dose: fill in later\n- Route: oral", "fill in later"),
     ("[insert the date]{.mark}", "[insert the date]"), ("[insert link](#)", "[insert link]"),
     ("[DOI]", "[DOI]"),
+    ("In this section you can acknowledge any support given",
+     "In this section you can acknowledge any support"),
+    ('Please add: "This research received no external funding"', 'Please add: "This research'),
+    ("This section may be divided by\nsubheadings.", "This section may be divided by\nsubheadings"),
+    ("Click or tap here to enter text.", "Click or tap here to enter text."),
+    ("This is a short text to acknowledge the contributions",
+     "This is a short text to acknowledge"),
+    ("Sample body text.", "Sample body text"),
 )  # fmt: skip
 LOWERED = (("tbd", "tbd"), ("fixme", "fixme"), ("Todo", "Todo"))
 LOOKALIKES = (
     "47,XXX", "XXX syndrome", "[repository](https://example.org)",
     "[Add-on therapy in epilepsy]", "replace later lines", "replace later\nlines",
-    "TK inhibitors", "[SJS/TEN]", "[HIV/AIDS]",
+    "TK inhibitors", "[SJS/TEN]", "[HIV/AIDS]", "In this section, you can see the code.",
+    "In this section, please indicate how often", 'Please state "yes" or "no".',
+    'If none, please state "not applicable".', "Click here for additional data file.",
 )  # fmt: skip
 
 #: Words to the reviewers or to a model left in a paper, each a sentence, with the rule of
@@ -2570,6 +2755,67 @@ def printings(draw: st.DrawFn) -> list[dict[str, Any]]:
         })  # fmt: skip
     return cases
 
+# ------------------------------------------------------- two plans of one data, section by section
+
+#: What an edit of a plan's section may be: none, its lines re-wrapped, a word put in
+#: emphasis, a comment added, its case changed, a word added, a word added under a heading
+#: now numbered, a section the plan keeps of itself (its Deviations) changed, and one
+#: heading under two parents with a word added under the first. The two with a word added
+#: and one heading are sections that read otherwise; the heading that stands twice is not
+#: compared. This plan also ends in an appendix, a second top-level heading, which the
+#: earlier one does not have.
+SECTION_EDITS = ("as it is", "rewrapped", "emphasis", "comment", "case", "numbered",
+                 "word added", "own section", "one heading twice")  # fmt: skip
+TOPICS = ("Exposure", "Outcome", "Population", "Comparator", "Case definition",
+          "Exclusions", "Model", "Study period")  # fmt: skip
+
+
+@st.composite
+def plan_pairs(draw: st.DrawFn) -> tuple[dict[str, str], list[str]]:
+    """An earlier plan and this one, one section for each kind of edit, in drawn order, and
+    the headings of the sections whose words differ, as this plan writes them."""
+    kinds = draw(st.permutations(SECTION_EDITS))
+    then, now, changed = ["# Analysis plan", ""], ["# Analysis plan", ""], []
+    for at, kind in enumerate(kinds):
+        tag = TAGS[at % len(TAGS)] + "x" * (at // len(TAGS))
+        title = f"{draw(st.sampled_from(TOPICS))} {tag}"
+        if kind == "own section":
+            title = f"Deviations {tag}"
+        if kind == "one heading twice":
+            # The first Definition differs, the second does not: which answers which is not
+            # guessed, and neither is compared. Taken in order, the first would be said.
+            words = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=4, max_size=12)))
+            for parent, after in ((f"Exposure {tag}", words + " more"), (f"Outcome {tag}", words)):
+                then += [f"## {parent}", "", f"### Definition {tag}", "", words, ""]
+                now += [f"## {parent}", "", f"### Definition {tag}", "", after, ""]
+            continue
+        words = draw(st.lists(st.sampled_from(FILLER), min_size=4, max_size=12))
+        body = " ".join(words)
+        heading, edited = title, body
+        if kind == "rewrapped":
+            edited = body.replace(" ", "\n", draw(st.integers(1, 3)))
+        elif kind == "emphasis":
+            edited = " ".join([f"*{words[0]}*", *words[1:]])
+        elif kind == "comment":
+            edited = " ".join([words[0], "<!-- read again -->", *words[1:]])
+        elif kind == "case":
+            edited = body.upper()
+        if kind == "numbered":
+            heading = f"{at + 1}. {title}"
+        if kind in ("word added", "numbered", "own section"):
+            edited = f"{body} {draw(st.sampled_from(('altered', 'restricted', 'widened')))}"
+        if kind in ("word added", "numbered"):
+            changed.append(heading)
+        then += [f"## {title}", "", body, ""]
+        now += [f"## {heading}", "", edited, ""]
+        if kind == "own section":
+            # What the Deviations hold is theirs too, under a heading of its own that names
+            # no deviation ("Amendment" would be left out by its own name).
+            then += [f"### Second reading {tag}", "", body, ""]
+            now += [f"### Second reading {tag}", "", f"{body} later", ""]
+    now += ["# Appendix", "", "Notes kept apart from the plan.", ""]
+    return {"then": "\n".join(then), "now": "\n".join(now)}, changed
+
 
 # ---------------------------------------------------------------------- what an edit holds
 
@@ -3048,6 +3294,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "latex mask": latex_texts(),
     "latex refusals": latex_texts(),
     "latex sections": latex_texts(),
+    "latex bindings": latex_texts(),
     "hidden": texts(TERMS),
     "own words": texts(TERMS),
     "spans": texts(),
@@ -3104,6 +3351,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         lambda drawn: {"text": drawn[0], "labels": drawn[1]}
     ),
     "printed value": printings(),
+    "plan sections": plan_pairs().map(lambda drawn: drawn[0]),
     "units after": texts(BOUND_UNITS),
     "limit stated": st.fixed_dictionaries(
         {"text": texts(QUOTED_LIMITS), "value": st.sampled_from((3500, 4, 14, 35000, 500))}

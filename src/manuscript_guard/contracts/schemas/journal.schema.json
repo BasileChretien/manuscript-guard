@@ -159,6 +159,18 @@
             "minimum": 1,
             "description": "The most words in a figure's legend."
           },
+          "alt_text": {
+            "enum": [
+              "required",
+              "requested"
+            ],
+            "description": "Whether the journal requires each figure to carry alternative text, or asks for it. Required: G3 fails a figure with none at submission. Requested: a warning."
+          },
+          "alt_text_max_chars": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The most characters a figure's alternative text may hold."
+          },
           "supplementary": {
             "type": "object",
             "additionalProperties": false,
@@ -231,6 +243,18 @@
                 "type": "number",
                 "exclusiveMinimum": 0,
                 "description": "The thinnest line at the printed size, in points."
+              },
+              "alt_text": {
+                "enum": [
+                  "required",
+                  "requested"
+                ],
+                "description": "Whether the journal requires each figure to carry alternative text, or asks for it."
+              },
+              "alt_text_max_chars": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "The most characters a figure's alternative text may hold."
               }
             }
           }

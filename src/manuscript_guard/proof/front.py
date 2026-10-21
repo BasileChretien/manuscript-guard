@@ -76,8 +76,9 @@ def _flat(reading: Reading) -> _Flat:
         for word in _WORDS.findall(prepared(line.text)):
             bare = _EDGES.sub("", word)
             if broken and bare[:1].islower() and words:
-                # In an address the hyphen is the domain's: "nagoya-" and "u.ac.jp".
-                joint = "-" if "@" in shown[-1] else ""
+                # In an address the hyphen is the address's: "nagoya-" and "u.ac.jp" (round
+                # 1 of #397), "jean-" and "pierre@uni.fr" (round 2).
+                joint = "-" if "@" in shown[-1] or "@" in bare else ""
                 words[-1] += joint + key(bare)
                 shown[-1] += joint + bare
                 broken = False

@@ -417,15 +417,24 @@ def test_a_proof_unlike_what_was_sent_is_compared_in_time_near_its_length() -> N
     assert time.perf_counter() - started < 20
 
 
-def test_a_number_the_proof_adds_between_two_cells_is_a_correction(tmp_path: Path) -> None:
-    # Review of #397, round 1: every cell is a part, and text between two parts was added
-    # text, shown and not counted, so a value or a row the proof repeats passed.
-    (change,) = corrections(changes_of(tmp_path, ("226 (53.1)   1737", "226 (53.1)   99   1737")))
-    assert (change.what, change.note) == ("number", "the proof prints a number that was not sent")
-    rows = corrections(changes_of(tmp_path, ("Female   226 (53.1)   1737 (48.6)",
-                                             "Female   226 (53.1)   1737 (48.6)\n"
-                                             "Female   226 (53.1)   1737 (48.6)")))  # fmt: skip
-    assert rows and all(c.what == "number" for c in rows)
+def test_a_table_broken_across_a_page_needs_no_correction(tmp_path: Path) -> None:
+    # Review of #397, round 2: counting a number put between two cells as a correction made
+    # "Table 1 (continued)" one, on a proof that prints what was sent. What a proof adds
+    # between two parts is shown and not counted (DESIGN.md, Known gaps).
+    row = "Female   226 (53.1)   1737 (48.6)"
+    result = changes_of(tmp_path, (row, f"Table 1 (continued)\n{row}"))
+    assert corrections(result) == []
+    (added,) = kinds(result, ADDED)
+    assert added.printed == "Table 1 (continued)"
+
+
+def test_a_row_the_proof_repeats_is_shown_as_added(tmp_path: Path) -> None:
+    # DESIGN.md, Known gaps: shown, and not counted.
+    result = changes_of(tmp_path, ("Female   226 (53.1)   1737 (48.6)",
+                                   "Female   226 (53.1)   1737 (48.6)\n"
+                                   "Female   226 (53.1)   1737 (48.6)"))  # fmt: skip
+    assert corrections(result) == []
+    assert [c.printed for c in kinds(result, ADDED)] == ["Female 226 (53.1) 1737 (48.6)"]
 
 
 def test_a_paragraph_the_proof_prints_other_text_in_place_of_is_missing(tmp_path: Path) -> None:
@@ -443,9 +452,15 @@ def test_a_heading_the_journal_renames_is_a_copy_edit(tmp_path: Path) -> None:
         ("Funding", "Financial support")]
 
 
-def test_a_unit_of_time_changed_beside_a_number_is_a_correction(tmp_path: Path) -> None:
-    (change,) = corrections(changes_of(tmp_path, ("over 12 weeks", "over 12 months")))
-    assert change.what == "unit or symbol"
+@pytest.mark.parametrize("edit", [("over 12 weeks", "over 12 wk"),
+                                  ("over 12 weeks", "over 12 months")])
+def test_a_unit_of_time_spelt_out_is_a_word(tmp_path: Path, edit) -> None:
+    # Review of #397, round 2: spelt-out units of time taken for units made the AMA's "wk"
+    # a correction. A unit of time spelt out is a word, and a change of it a copy-edit,
+    # "months" for "weeks" among them (DESIGN.md, Known gaps).
+    result = changes_of(tmp_path, edit)
+    assert corrections(result) == []
+    assert kinds(result, COPY_EDIT)
 
 
 def test_a_dash_at_a_line_end_joins_no_word(tmp_path: Path) -> None:
@@ -636,11 +651,17 @@ def test_an_orcid_ending_in_x_is_found(project: Path, tmp_path: Path) -> None:
     assert _front(project, tmp_path, text) == []
 
 
-def test_an_address_broken_at_its_hyphen_is_found(project: Path, tmp_path: Path) -> None:
-    # Review of #397, round 1: the hyphen of "nagoya-u" was taken for a line end's.
-    _authors_edited(project, ("ada.example@invalid.example", "ada.example@s.mail.nagoya-u.ac.jp"))
-    text = edited(FRONT, ("ada.example@invalid.example", "ada.example@s.mail.nagoya-\nu.ac.jp"))
-    assert _front(project, tmp_path, text) == []
+@pytest.mark.parametrize(("address", "broken"), [
+    ("ada.example@s.mail.nagoya-u.ac.jp", "ada.example@s.mail.nagoya-\nu.ac.jp"),
+    ("jean-pierre.example@uni.example", "jean-\npierre.example@uni.example"),
+])  # fmt: skip
+def test_an_address_broken_at_its_hyphen_is_found(
+    project: Path, tmp_path: Path, address: str, broken: str
+) -> None:
+    # Review of #397: the hyphen of "nagoya-u" (round 1) and of "jean-pierre" (round 2) was
+    # taken for a line end's.
+    _authors_edited(project, ("ada.example@invalid.example", address))
+    assert _front(project, tmp_path, edited(FRONT, ("ada.example@invalid.example", broken))) == []
 
 
 def test_a_name_printed_with_initials_is_typography(built_example: Path, tmp_path: Path) -> None:
@@ -792,8 +813,11 @@ def test_a_proof_of_the_paper_and_its_supplement_in_one_file_is_compared_once_wi
     changed = edited(unwrapped(supplement.parts), ("interval of 2.89 to", "interval of 2.98 to"))
     lines = [*_proof_lines(packed), *wrapped(changed)]
     proof = packed / "both-proof.pdf"
-    proof.write_bytes(typeset(lines, per_column=56, head="Example et al. J Imag Pharmacoepidemiol "
-                              "2026", first_page=101))  # fmt: skip
+    # One column: the supplement's rows of four cells, set a line each, run wider than a
+    # column of two and into the next.
+    proof.write_bytes(typeset(lines, columns=1, per_column=60,
+                              head="Example et al. J Imag Pharmacoepidemiol 2026",
+                              first_page=101))  # fmt: skip
     assert main(["proof", str(proof), str(packed)]) == 0
     paper = capsys.readouterr().out
     assert "Corrections to ask for (0)" in paper

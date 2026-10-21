@@ -7212,10 +7212,9 @@ page had room or a statement the journal's template moves, is found there and co
 Each difference is then one of these:
 
 - **A correction** (exit 1, and the list `--out` writes): a number's digits, sign or decimal
-  mark changed, or a number gone or come within a part or between two cells of a table (a value
-  or a row the proof repeats); a unit, a percent or degree sign or a comparator changed beside a
-  number (a unit's case is kept, so "mM" is not "mm"; the two spellings of a litre and of a
-  microgram are one; a unit of time spelt out is a unit); any change inside a citation
+  mark changed, or a number gone or come within a part; a unit, a percent or degree sign or a
+  comparator changed beside a number (a unit's case is kept, so "mM" is not "mm"; the two
+  spellings of a litre and of a microgram are one); any change inside a citation
   (brackets, parentheses that hold a year, a short number set against a word as a superscript
   is) or an entry of the reference list; a part the proof does not print at all, or a
   paragraph, a caption or a reference of six tokens or more none of which it prints in place,
@@ -12407,7 +12406,23 @@ Open, recorded as each change landed:
 - **A case change and a style's synonym are not seen.** Words are compared case aside, so a
   heading set in capitals is no change, and neither is a name whose case changed in the body.
   Of units, only a litre's and a microgram's two spellings are read as one: "hours" printed "h"
-  beside a number is a correction.
+  beside a number is a correction. A unit of time spelt out is a word, so "12 weeks" printed
+  "12 months" is a copy-edit, shown and not counted: taken for units, the AMA's "12 wk" for
+  "12 weeks" was a correction (round 2 of #397).
+- **What a proof adds between two parts is shown, not counted, in a table too.** Every cell is
+  a part, so a value the proof adds between two cells, or a row it prints twice, is added
+  text. Counted as a correction, "Table 1 (continued)" over a table broken across a page, and a
+  header row set again, were corrections of a proof that prints what was sent (round 2 of
+  #397); the two cannot be told apart from a row repeated by their text alone.
+- **The alignment chooses between readings within limits.** A part left out next to a part
+  changed is left out whole only where the stretch is 400 tokens or fewer: a paragraph of about
+  330 words or more left out beside one that ends in its last words reads as a copy-edit of
+  that one. A run the proof sets elsewhere is found by runs of four keys it shares there: a
+  short paragraph moved with a word changed every four tokens or fewer reads as missing, and
+  its text as added (round 2 of #397).
+- **Affiliation marks are read as digits and signs.** "Example1,2", "Example1-3,*" and a
+  dagger are the name; marks set as letters, "Examplea,b", are not, and the name is reported
+  as printed otherwise. Letters are not taken for marks because "Paula" would then be "Paul".
 - **A source is named as it stands now.** The binding a correction names is the one in the
   source paragraph now whose value prints the number sent; where the source has changed since
   the pack the report says so, and the binding may be another. A table's binding is named by

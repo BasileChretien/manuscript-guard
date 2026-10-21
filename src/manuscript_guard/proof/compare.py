@@ -265,12 +265,9 @@ class _Reader:
                 self._say(ADDED, "text", None, "", spelled(shown), op.j1)
             return
         if not said and not self._inside(op.i1):
-            if shown and self._between_cells(op.i1) and any(t.kind == NUMBER for t in shown):
-                # A value, or a row, the proof adds to a table (round 1 of #397).
-                part = self.sent.parts[self.a[op.i1 - 1].where]
-                self._say(CORRECTION, "number", part, "", spelled(shown), op.j1,
-                          note=_gone_or_come(said, shown))  # fmt: skip
-            elif shown:
+            # Between two parts, and between two cells: "Table 1 (continued)" and a header
+            # row set again stand there as often as a row repeated (round 2 of #397).
+            if shown:
                 self._say(ADDED, "text", None, "", spelled(shown), op.j1)
             return
         part = self.sent.parts[(said[0] if said else self.a[op.i1 - 1]).where]
@@ -322,13 +319,6 @@ class _Reader:
     def _inside(self, i: int) -> bool:
         """Whether position `i` of what was sent falls inside a part, not between two."""
         return 0 < i < len(self.a) and self.a[i - 1].where == self.a[i].where
-
-    def _between_cells(self, i: int) -> bool:
-        """Whether position `i` falls between two cells of one table."""
-        if not 0 < i < len(self.a):
-            return False
-        before, after = self.sent.parts[self.a[i - 1].where], self.sent.parts[self.a[i].where]
-        return before.kind == CELL == after.kind and before.table == after.table
 
     def _kind_of_number(self, i1: int, i2: int, part: Part, shown: tuple = ()) -> str:
         if part.kind == REFERENCE:

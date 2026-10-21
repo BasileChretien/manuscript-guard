@@ -1536,6 +1536,12 @@ The result is compiled and packed by the code above, and checked three times:
 - In a LaTeX body as typed, an optional argument that reads as a placeholder fails as one in
   a Markdown raw block does: TikZ's `\draw[fill]`, a description list's `\item[Repository]`
   (round 1 of step 7b).
+- G6 reads no definition's body in a LaTeX preamble for a placeholder, used or not, so a
+  placeholder a macro prints, `\newcommand{\ncohort}{[TO BE CONFIRMED]}`, is not found where
+  it is used either; its phrases and residue rules still read such a body as prose; and a
+  definition written in the body is read as typed (round 3 of step 7b).
+- A typed reference list is judged entry by entry as a cited entry's fields are, capitals
+  only: a todonotes `\todo{...}` or a lower-case `% todo` in it passes (round 3 of step 7b).
 - G6's boldface rate counts `**...**` and so never counts LaTeX's `\textbf{...}`, which the
   reader blanks. A typed table's cells are not read by G6's rates, phrases, residue or vague
   attributions (round 1 of step 7b).

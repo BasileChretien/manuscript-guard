@@ -227,6 +227,10 @@ def _latex_typed(source) -> str:
     return _blank(typed, reading.references)
 
 
+#: Where an entry of a typed reference list opens.
+_BIBITEM = re.compile(r"\\bibitem(?![A-Za-z])")
+
+
 def _typed_lists(folder: Path) -> list[Elsewhere]:
     """Each reference list a LaTeX file types in `thebibliography`, as a cited entry's fields
     in `references.bib` are read: only a placeholder there no title holds, `TODO` in capitals
@@ -238,14 +242,18 @@ def _typed_lists(folder: Path) -> list[Elsewhere]:
 
 
 def _typed_lists_of(folder: Path, documents: list) -> list[Elsewhere]:
-    """`_typed_lists` of documents read, each the include tree's sources."""
+    """`_typed_lists` of documents read, each the include tree's sources: each entry apart,
+    from its `\\bibitem`, so that a finding names the entry's line (round 3 of step 7b)."""
     found = []
     for document in documents:
         for source in document:
             for start, end in source.reading.references:
-                found.append(Elsewhere(folder / source.path, source.text[start:end],
-                                       "the reference list typed in thebibliography",
-                                       source.text.count("\n", 0, start) + 1))  # fmt: skip
+                cuts = [start, *(item.start() for item in _BIBITEM.finditer(source.text, start, end)
+                                 if item.start() > start), end]  # fmt: skip
+                for at, stop in zip(cuts, cuts[1:], strict=False):
+                    found.append(Elsewhere(folder / source.path, source.text[at:stop],
+                                           "the reference list typed in thebibliography",
+                                           source.text.count("\n", 0, at) + 1))  # fmt: skip
     return found
 
 

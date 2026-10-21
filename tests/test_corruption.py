@@ -6179,7 +6179,7 @@ def test_g14_finds_in_the_twin_what_it_finds_in_the_example(
     assert found[0].line == text.count("\n", 0, text.index(snippet)) + 1
 
 
-def _g6(root: Path) -> list:
+def _g6_findings(root: Path) -> list:
     from manuscript_guard.gates import check_writing
 
     return list(check_writing(load_project(root)[0]).findings)
@@ -6202,13 +6202,13 @@ def test_g6_finds_in_the_twin_what_it_finds_in_the_example(
     on the line they are written on (step 7). A comment's placeholder is found as typed, as
     one in a Markdown comment is."""
     entry = _twin(project)
-    assert not [f for f in _g6(project) if f.code == code]
+    assert not [f for f in _g6_findings(project) if f.code == code]
     # At the head of the Results, which no citation stands within reach of.
     text = entry.read_text(encoding="utf-8")
     heading = "\\section{Results}\n"
     entry.write_text(text.replace(heading, heading + snippet + "\n", 1), encoding="utf-8")
-    found = [f for f in _g6(project) if f.code == code]
-    assert found and found[0].path == entry, [(f.code, f.message) for f in _g6(project)]
+    found = [f for f in _g6_findings(project) if f.code == code]
+    assert found and found[0].path == entry, [(f.code, f.message) for f in _g6_findings(project)]
     text = entry.read_text(encoding="utf-8")
     assert found[0].line == text.count("\n", 0, text.index(snippet)) + 1
 
@@ -6219,7 +6219,19 @@ def test_g6_takes_a_latex_citation_beside_a_claim_for_its_support(project: Path)
     entry = _twin(project)
     claim = "Studies have shown that reporting is low \\citep{fictionalHepaticCohort2021}."
     _into_results(entry, claim + "\n% Studies have shown it is high.")
-    assert not [f for f in _g6(project) if f.code == "vague-attribution"]
+    assert not [f for f in _g6_findings(project) if f.code == "vague-attribution"]
+
+
+def test_g6_names_the_line_of_a_typed_reference_lists_entry(project: Path) -> None:
+    """A placeholder in a typed reference list's sixth entry is named at that entry's line, and
+    a Spanish title's "Todo" is no placeholder (rounds 2 and 3 of step 7b)."""
+    entry = _twin(project)
+    entries = "".join(f"\\bibitem{{e{n}}} Garcia {n}. Todo lo que hay. 2020.\n" for n in range(5))
+    _into_results(entry, "\\begin{thebibliography}{9}\n" + entries
+                  + "\\bibitem{t} TODO find the journal.\n\\end{thebibliography}")  # fmt: skip
+    found = [f for f in _g6_findings(project) if f.code == "model-artefact"]
+    text = entry.read_text(encoding="utf-8")
+    assert [f.line for f in found] == [text.count("\n", 0, text.index("\\bibitem{t}")) + 1]
 
 
 @pytest.mark.parametrize("encoding", ["cp1252", "utf-16", "utf-32"])

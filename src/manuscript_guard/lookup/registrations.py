@@ -35,6 +35,7 @@ from manuscript_guard.registrations import (
     file_name,
     read_record,
     record_path,
+    refused,
     write_record,
 )
 
@@ -84,8 +85,7 @@ def plan(project: Project, *, again: bool = False) -> list[Planned]:
     seen: set[str] = set()
     for one in declared(project):
         if one.id is None:
-            out.append(Planned(one.written, skipped="its shape names no registry, and no "
-                               "`registry:` is given"))  # fmt: skip
+            out.append(Planned(one.written, skipped=f"its identifier {refused(one.named)}"))
             continue
         if one.id in seen:
             continue

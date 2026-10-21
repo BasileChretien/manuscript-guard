@@ -57,6 +57,7 @@ from manuscript_guard.registrations import (
     file_name,
     read_record,
     record_path,
+    refused,
 )
 from manuscript_guard.text.masking import blank_comments
 from manuscript_guard.text.reader import manuscript_files
@@ -203,23 +204,14 @@ def _undeclared(project: Project, paper: Path) -> Report:
 
 
 def _one(context: _Context, entry: Declared, paper: Path) -> Report:
-    if entry.id is None and entry.named:
-        # Round 2 of #390: the registry was named, and the finding said it was not.
-        name = NAMES.get(entry.named.strip().lower(), entry.named)
-        return Report((_finding(
-            "registration-id-malformed",
-            f"registration {entry.written!r} in paper.yaml is not written as {name} writes its "
-            "identifiers", FAIL, paper,
-            "write it as the registry does, its letters and digits with no space between them: "
-            "NCT04368728, EUPAS1000000417, ISRCTN17072692, osf.io/abcde, CRD42020123456",
-        ),))  # fmt: skip
     if entry.id is None:
+        # Rounds 2 and 3 of #390: the reason is the one `identify` had, named registry or not.
         return Report((_finding(
             "registration-id-malformed",
-            f"registration {entry.written!r} in paper.yaml is not an identifier of a registry "
-            "manuscript-guard knows, and no `registry:` is given", FAIL, paper,
-            "write it as the registry does (NCT04368728, EUPAS1000000417, ISRCTN17072692, "
-            "osf.io/abcde, CRD42020123456), or name the registry under `registry:`",
+            f"registration {entry.written!r} in paper.yaml {refused(entry.named)}", FAIL, paper,
+            "write the identifier alone, as the registry does: NCT04368728, EUPAS1000000417, "
+            "ISRCTN17072692, osf.io/abcde, CRD42020123456"
+            + ("" if entry.named else "; or name its registry under `registry:`"),
         ),))  # fmt: skip
     report = Report()
     if not named_in(context.text, entry):

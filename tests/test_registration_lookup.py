@@ -579,7 +579,8 @@ def test_a_registry_that_is_not_asked_and_a_record_copied_by_hand_are_left_alone
     project: Path,
 ) -> None:
     _declare(project, {"id": "CRD42020182366"}, {"id": "ACTRN12625000123456", "registry": "anzctr"},
-             {"id": NCT}, {"id": "ABC-123"})  # fmt: skip
+             {"id": NCT}, {"id": "ABC-123"}, {"id": "ISRCTN 17072692", "registry": "ISRCTN"},
+             {"id": "https://x.org/ACTRN1", "registry": "anzctr"})  # fmt: skip
     path = record_path(load_project(project)[0], NCT)
     path.parent.mkdir(parents=True)
     by_hand = {"schema": "manuscript-guard/registration/1", "id": NCT,
@@ -594,6 +595,8 @@ def test_a_registry_that_is_not_asked_and_a_record_copied_by_hand_are_left_alone
     assert "anzctr is not asked" in said["ACTRN12625000123456"]
     assert said[NCT] == lookup.BY_HAND
     assert "names no registry" in said["ABC-123"]
+    assert said["ISRCTN 17072692"].endswith("is not written as ISRCTN writes its identifiers")
+    assert "holds a character a file name cannot" in said["https://x.org/ACTRN1"]
     table = _everywhere()
     assert _run(project, table) == [] and table.sent == []
 

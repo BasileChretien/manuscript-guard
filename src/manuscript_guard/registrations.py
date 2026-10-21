@@ -130,6 +130,16 @@ def _listed(value: Any) -> list[Any]:
     return value if isinstance(value, list) else []
 
 
+def refused(named: str | None) -> str:
+    """Why `identify` kept no identifier, as a finding or `lookup` says it."""
+    key = named.strip().lower() if named else None
+    if key in {name for name, _shape, _kept in _SHAPES}:
+        return f"is not written as {NAMES.get(key, named)} writes its identifiers"
+    if key:
+        return 'is empty, or holds a character a file name cannot: \\ / : * ? " < > |'
+    return "names no registry by its shape, and no `registry:` is given"
+
+
 def declared(project: Project) -> list[Declared]:
     """Every registration `paper.yaml` lists, in its order. A value of another shape than
     the schema's is the contract's to report, and is read here as nothing."""

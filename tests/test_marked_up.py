@@ -12,6 +12,7 @@ rejected to what Word 16 made of one copy.
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 import zipfile
@@ -418,6 +419,51 @@ def _rewrite(path: Path, part: str, change) -> None:
             out.writestr(item, data)
 
 
+def test_a_part_read_and_not_changed_is_written_back_as_it_was(tmp_path: Path) -> None:
+    """Compared by ElementTree's writing of it, a part parsed and left alone read as changed
+    once `serialised` had registered other prefixes, and was written again (round 2 of
+    #396). A part is compared by its tree, which carries no prefix."""
+    from xml.etree import ElementTree as ET
+
+    from manuscript_guard.markedup.package import STYLES, W_NS, Package
+
+    source = document_of([{"kind": "p", "runs": [["Kept.", ""]]}], tmp_path / "source.docx")
+    with zipfile.ZipFile(source) as archive:
+        sent = archive.read(STYLES)
+    package = Package.read(source)
+    package.tree(STYLES)
+    try:
+        ET.register_namespace("wq", W_NS)
+        package.write(tmp_path / "written.docx")
+    finally:
+        ET.register_namespace("w", W_NS)
+    with zipfile.ZipFile(tmp_path / "written.docx") as archive:
+        assert archive.read(STYLES) == sent
+
+
+@needs_pandoc
+def test_an_equation_word_saved_unchanged_is_no_change(tmp_path: Path) -> None:
+    """Word writes an equation it did not change with property elements that set nothing,
+    and with the runs pandoc wrote a letter each run into one; neither is a change (round 2
+    of #396)."""
+    old, new = _pair(tmp_path, EQUATION, EQUATION)
+    letter = '<m:r><m:rPr><m:sty m:val="p" /></m:rPr><m:t>{}</m:t></m:r>'
+    pandoc_wrote = "".join(letter.format(char) for char in "dose")
+
+    def as_word_saves(xml: str) -> str:
+        assert pandoc_wrote in xml, xml
+        xml = xml.replace(pandoc_wrote, letter.format("dose"), 1)
+        return xml.replace("<m:sSup>", "<m:sSup><m:sSupPr><m:ctrlPr /></m:sSupPr>", 1)
+
+    _rewrite(old, "word/document.xml", as_word_saves)
+    made = write(old, new, tmp_path / "copy.docx", date=DAY)
+    assert made.counts == {} and _changes(made.path) == []
+
+
+#: An equation whose upright word pandoc writes a letter to a run.
+EQUATION = "$$\\mathrm{dose}^2$$\n"
+
+
 def test_a_part_written_again_keeps_every_namespace_it_declared(tmp_path: Path) -> None:
     """A reference document saved by Word declares namespaces in its styles that no element
     uses and names them in `mc:Ignorable`; written again by ElementTree, the unused ones
@@ -512,10 +558,19 @@ def test_a_round_keeps_the_document_sent_and_the_build_marks_up_what_changed_sin
     assert marked_up_of(marked)["round"] == 1
     projekt, _ = load_project(project)
     assert not [f for f in _check_built_document(projekt).findings if "marked" in str(f.path)]
-    # A run that fails takes away the copies it would have written, so that none is left
-    # from an earlier run to be sent (round 1 of #396).
+    # A copy named as the document sent is refused before anything is taken away: it was
+    # the file the run would replace, and was deleted (round 2 of #396).
+    capsys.readouterr()
     assert main(["build", str(project), "--offline", "--skip-checks", "--marked-up",
                  "--since", str(marked)]) == 1  # fmt: skip
+    assert "is itself a marked-up copy" in capsys.readouterr().err
+    assert marked.exists()
+    # A run that stops at the gates takes away the copies of an earlier one, so that none
+    # of an older source is left to be sent (rounds 1 and 2 of #396).
+    source = _source(project)
+    source.write_text(source.read_text(encoding="utf-8") + "\nThe cohort held 4321 reports.\n",
+                      encoding="utf-8")  # fmt: skip
+    assert main(["build", str(project), "--offline", "--marked-up"]) == 1
     assert not marked.exists()
 
 
@@ -546,7 +601,12 @@ def test_a_round_built_from_other_text_keeps_nothing_and_says_where_the_file_goe
     marked = next(folder.glob("manuscript*.highlighted.docx"))
     assert marked_up_of(marked)["form"] == "highlighted"
     assert marked_up_of(folder / "supplementary.highlighted.docx")["form"] == "highlighted"
-    assert "{+yet +}" in _line(shown(marked), "example-drug specifically")
+    # Highlighted, nothing is tracked: the word typed is a run highlighted yellow.
+    assert "{+" not in _line(shown(marked), "example-drug specifically")
+    assert re.search(
+        r'<w:highlight w:val="yellow" />(?:(?!</w:r>).)*<w:t xml:space="preserve">yet ',
+        _xml(marked), re.DOTALL,
+    )  # fmt: skip
 
 
 @needs_pandoc
@@ -602,6 +662,7 @@ def test_at_a_revision_the_pack_holds_the_marked_up_copy_beside_the_manuscript(
     _reword(project, _WAS, _NOW)
     capsys.readouterr()
     assert main(["submit", str(project), "--offline", "--skip-checks"]) == 0
+    assert "--since" not in capsys.readouterr().out
     pack = project / "build" / "submission"
     marked = pack / "manuscript-marked-up.docx"
     assert marked_up_of(marked)["form"] == "tracked"
@@ -611,6 +672,31 @@ def test_at_a_revision_the_pack_holds_the_marked_up_copy_beside_the_manuscript(
     assert {"manuscript-marked-up.docx", "supplementary-marked-up.docx"} <= {
         entry["file"] for entry in listed["files"]
     }
+    # Without the supplement the journal received, the pack says where to put it, and
+    # names no option `submit` does not have (round 2 of #396).
+    (project / "revision" / "round-1" / "submitted" / "supplementary.docx").unlink()
+    assert main(["submit", str(project), "--offline", "--skip-checks"]) == 0
+    said = capsys.readouterr().out
+    assert "the supplement is not marked up" in said and "--since" not in said
+    assert not (pack / "supplementary-marked-up.docx").exists()
+
+
+@needs_pandoc
+def test_since_supplement_is_refused_where_no_supplement_is_built(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An option that names a supplement in a project that builds none would be read by
+    nothing, and the build would say nothing of it (round 2 of #396)."""
+    from manuscript_guard.cli import main
+
+    shutil.rmtree(project / "manuscript" / "supplementary")
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 0
+    sent = project / "sent.docx"
+    shutil.copy2(project / "build" / "manuscript.docx", sent)
+    capsys.readouterr()
+    assert main(["build", str(project), "--offline", "--skip-checks", "--marked-up",
+                 "--since", str(sent), "--since-supplement", str(sent)]) == 1  # fmt: skip
+    assert "this project builds none" in capsys.readouterr().err
 
 
 # ----------------------------------------------------------------------------- Word itself

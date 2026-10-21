@@ -141,26 +141,59 @@ def _code(nodes: list[ET.Element]) -> str:
 _MATHS_FORMAT = frozenset((W + "rPr", M + "ctrlPr"))
 
 
+def _maths_values(node: ET.Element | None) -> tuple:
+    """What a property element of an equation sets: each value under it, by name, in order;
+    nothing where it sets none."""
+    if node is None:
+        return ()
+    found = []
+    for inner in node.iter():
+        if inner is node or inner.tag in _MATHS_FORMAT:
+            continue
+        values = sorted(
+            (k.rsplit("}", 1)[-1], v) for k, v in inner.attrib.items() if k.startswith(M)
+        )
+        if values:
+            found.append((inner.tag.rsplit("}", 1)[-1], tuple(values)))
+    return tuple(found)
+
+
 def _maths_key(equation: ET.Element) -> str:
-    """An equation as compared: each of its elements in order, with the values of its own
-    properties and its text. A superscript made a subscript, an accent or a root taken off
-    keeps its letters and is another equation (round 1 of #396: compared by its letters, it
-    was none)."""
-    parts: list[str] = []
+    """An equation as compared: its structure, the values of its own properties and its text.
+    A superscript made a subscript, an accent or a root taken off keeps its letters and is
+    another equation (round 1 of #396: compared by its letters, it was none). What Word adds
+    when it saves an equation it did not change is left out: a property element that sets
+    nothing, and the cutting of its text into runs, consecutive runs alike read as one
+    (round 2)."""
+    parts: list[tuple] = []
 
     def walk(node: ET.Element) -> None:
         if node.tag in _MATHS_FORMAT:
             return
-        values = sorted(
+        name = node.tag.rsplit("}", 1)[-1]
+        if node.tag == M + "r":
+            text = "".join(t.text or "" for t in node.iter(M + "t"))
+            values = _maths_values(node.find(M + "rPr"))
+            if parts and parts[-1][0] == "run" and parts[-1][1] == values:
+                parts[-1] = ("run", values, parts[-1][2] + text)
+            else:
+                parts.append(("run", values, text))
+            return
+        if node.tag.startswith(M) and name.endswith("Pr"):
+            values = _maths_values(node)
+            if values:
+                parts.append(("set", name, values))
+            return
+        attributes = sorted(
             (k.rsplit("}", 1)[-1], v) for k, v in node.attrib.items() if k.startswith(M)
         )
-        text = (node.text or "") if node.tag == M + "t" else ""
-        parts.append(f"{node.tag.rsplit('}', 1)[-1]}{values}{text}")
+        parts.append(("open", name, tuple(attributes)))
         for child in node:
             walk(child)
+        parts.append(("close",))
 
     walk(equation)
-    return "|".join(parts)
+    return repr(parts)
 
 
 def _field_key(nodes: list[ET.Element]) -> tuple:

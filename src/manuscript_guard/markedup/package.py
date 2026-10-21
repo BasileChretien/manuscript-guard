@@ -109,6 +109,21 @@ def _with_declarations(body: str, declared: Sequence[tuple[str, str]]) -> bytes:
     return (declaration + head + tail).encode("utf-8")
 
 
+def _fingerprint(root: ET.Element) -> str:
+    """A digest of a tree: each element's name, attributes, text and tail, and where each
+    ends."""
+    digest = hashlib.sha256()
+
+    def walk(node: ET.Element) -> None:
+        digest.update(repr((node.tag, sorted(node.attrib.items()), node.text, node.tail)).encode())
+        for child in node:
+            walk(child)
+        digest.update(b")")
+
+    walk(root)
+    return digest.hexdigest()
+
+
 def _rels_name(part: str) -> str:
     folder, name = posixpath.split(part)
     return posixpath.join(folder, "_rels", f"{name}.rels")
@@ -123,7 +138,10 @@ class Package:
     parts: dict[str, bytes]
     trees: dict[str, ET.Element] = field(default_factory=dict)
     declared: dict[str, list[tuple[str, str]]] = field(default_factory=dict)
-    #: Each part as parsed, so that one read and not changed is written back as it was.
+    #: A fingerprint of each part as parsed, so that one read and not changed is written
+    #: back as it was. Of the tree, in ElementTree's names, which carry each namespace and
+    #: no prefix: ElementTree's own writing of a part depends on the prefixes registered
+    #: since, which `serialised` registers (round 2 of #396).
     as_read: dict[str, str] = field(default_factory=dict)
 
     @classmethod
@@ -148,7 +166,7 @@ class Package:
             except UnsafeDocument as exc:
                 raise MarkedUpError(f"{self.name} cannot be read: {exc}") from exc
             self.declared[part] = _namespaces(self.parts[part])
-            self.as_read[part] = ET.tostring(self.trees[part], encoding="unicode")
+            self.as_read[part] = _fingerprint(self.trees[part])
         return self.trees[part]
 
     def body(self) -> ET.Element:
@@ -192,7 +210,7 @@ class Package:
         import zipfile
 
         for part, root in self.trees.items():
-            if ET.tostring(root, encoding="unicode") != self.as_read.get(part):
+            if _fingerprint(root) != self.as_read.get(part):
                 self.parts[part] = serialised(root, self.declared[part])
         with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as out:
             for name in self.names:

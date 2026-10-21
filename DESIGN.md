@@ -5889,8 +5889,13 @@ written back byte for byte; one it changed is written with every namespace it de
 declared again on its root. ElementTree declares only the namespaces an element uses, and a
 part saved by Word, such as the styles of a journal's template, names others in
 `mc:Ignorable`, which Word takes for a corrupt document where they are not declared (round 1
-of #396). And a run of `build --marked-up` takes away the copies it is to write before it
-makes them, so that a run that fails leaves no copy of an earlier one to be sent.
+of #396). A part is compared by its tree, in ElementTree's names, which carry no prefix:
+compared by ElementTree's writing of it, a part left alone read as changed once other
+prefixes had been registered (round 2). And `build --marked-up` takes away the marked-up
+copies an earlier run left in `build/marked-up/`, known by their property, before it checks
+anything, so that a run that stops at the gates or fails leaves none of an older source to be
+sent; a copy named with `--since` is refused before that, since it is the very file a run
+would take away (round 2).
 
 **The copy is never the manuscript.** It carries a property saying what it is and which
 document it was compared with (`manuscript-guard-marked-up`: its form, the SHA-256 of the
@@ -10485,9 +10490,11 @@ Open, recorded as each change landed:
     by the round's own rule: `--since` and `--since-supplement` name them, and `submit`
     reads only the round's.
   - *In the highlighted copy* a picture is marked by shading the paragraph it stands in, so a
-    picture inline in a paragraph of text shades the text with it; a change of formatting or
-    style is highlighted as new text is; and the highlighted copy is made from a checked
-    tracked one but not checked itself.
+    picture inline in a paragraph of text shades the text with it, and a paragraph that holds
+    both the picture taken out and the one put in, a picture redrawn in a table's cell or
+    inline in text, takes one shading, the new one's: the two cannot be told apart there
+    (round 2 of #396). A change of formatting or style is highlighted as new text is, and
+    the highlighted copy is made from a checked tracked one but not checked itself.
   - *Word itself is not asked*: CI has no Word, and the three copies above are the evidence
     that Word reads the copy as the check does.
 - **A paragraph identifier is positional, so `import --apply` can re-point it.** The index

@@ -63,7 +63,7 @@ tag was it submitted from? If it had none, where are its analysis outputs?"
   manuscript-guard related --take esc2025
   ```
 
-  The copy is kept under `literature/related/esc2025/` with the digest of every file, and
+  The copy is kept under `literature/related/<id>/` with the digest of every file, and
   committed: `check` reads the copy and never the earlier project, so CI and every co-author
   get the same answer. Take it again when the entry names another revision. Never edit the
   copy: `check` fails a copied file whose digest changed (`related-snapshot-edited`).

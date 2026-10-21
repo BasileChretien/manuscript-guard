@@ -3972,7 +3972,7 @@ name, domains and citation key; one the table holds is given only its key there,
 described again keeps the table's domains (`standard-redescribed`). An appraisal with no
 standard (`appraisal-without-standard`), one neither holds (`appraisal-standard-unknown`) or a
 domain the standard does not have (`appraisal-domain-unknown`) is a warning, each, as the rest
-of G12 is (Basile, 2026-10-21). A domain is matched loosely: case, hyphens and runs of space.
+of G12 is (Basile, 2026-10-21). A domain is matched loosely: case, hyphens, underscores, slashes and runs of space.
 Whether the judgement is right is not checked, and cannot be; what is checked is that a
 reader can go to the place it rests on. The methods with no appraisal are counted in a note
 (`similar-unappraised`), and so are those appraised and not decided (`similar-undecided`).
@@ -3981,8 +3981,11 @@ reader can go to the place it rests on. The methods with no appraisal are counte
 decided and when. A model's name may not sign it (`similar-decision-not-human`, the deny-list
 G7 reads `attested_by` with), failing from the analysis stage on. The plugin's write guard
 puts to the person an agent's edit after which the decided methods are not the ones the file
-held before, word for word in their study, field, passage and decision: a decision recorded,
-changed or taken away, or the method under one changed. An appraisal changed beside it is the
+held before, word for word in their study, field, label, passage and decision, and as many:
+a decision recorded, changed or taken away, or the method under one changed. A text YAML
+cannot read, a date that is not one among them, is taken to hold a decision wherever it
+names a decider (round 1 of #386: `2026-02-30` raised past the guard, and #374's judgements
+with it). An appraisal changed beside it is the
 agent's to make. A Codex patch to a review that holds a decision outside a comment is put to
 the person, and refused where the tool cannot ask, as for a passage's judgement.
 
@@ -12008,7 +12011,11 @@ Open, recorded as each change landed:
   the review, are not put to the person. On a LaTeX manuscript the Methods are not read for
   the citation, so a method cited there and not in the plan is said to be cited nowhere (a
   warning). `sync-sources --from` finds a study's file by the DOI in `references.bib`, which
-  at the design stage may not yet hold it.
+  at the design stage may not yet hold it. The deny-list a decision's `decided_by` is read
+  with is #374's, and it refuses a person whose name is a model's: `Claude Martin` fails
+  `similar-decision-not-human`, as it fails `attested_by` and `judged_by`, and only a guess
+  at which Claude is meant would tell them apart (round 1 of #386; pinned in
+  `tests/test_methods_review.py`).
 
 Closed since, and why each mattered (an open gap goes above this line):
 

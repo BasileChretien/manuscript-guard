@@ -288,6 +288,15 @@ def test_a_decision_a_model_signed_fails_from_analysis(
     assert at_stage(project, "analysis", capsys)["similar-decision-not-human"] == FAIL
 
 
+def test_a_person_whose_name_is_a_model_s_is_refused(project: Path) -> None:
+    """A known gap, pinned (round 1 of #386): the deny-list G7 reads `attested_by` and
+    `judged_by` with knows "Claude" as a model, and Claude is a given name too. The only fix
+    is a guess at which Claude is meant, so it stands, and DESIGN.md says so."""
+    add_to_plan(project, f"The case definition follows [@{COHORT}].")
+    with_method(project, decision=dict(DECIDED, decided_by="Claude Martin"))
+    assert ("similar-decision-not-human", FAIL) in said(project)
+
+
 def test_a_person_s_decision_is_counted(project: Path) -> None:
     add_to_plan(project, f"The case definition follows [@{COHORT}].")
     with_method(project, decision=DECIDED)
@@ -421,6 +430,15 @@ def test_the_design_round_is_sent_the_review(project: Path) -> None:
     assert any(sent.label == REVIEW.as_posix() for sent in material.sent)
 
 
+def test_the_round_says_one_study_in_the_singular(project: Path) -> None:
+    """Round 1 of #386: "1 studies"."""
+    from manuscript_guard.panel.prompt import gather_design
+
+    material = gather_design(load_project(project)[0])
+    [sent] = [one for one in material.sent if one.label == REVIEW.as_posix()]
+    assert sent.note.startswith("1 study, 1 method,"), sent.note
+
+
 def test_a_review_that_cannot_be_read_stops_the_round(project: Path) -> None:
     from manuscript_guard.panel.prompt import PromptError, gather_design
 
@@ -482,6 +500,20 @@ def test_sync_sources_copies_a_review_s_studies_before_there_is_a_manuscript(
     assert asked == [COHORT] and [o.key for o in outcomes] == [COHORT]
 
 
+def test_sync_sources_says_a_review_it_cannot_read_was_not_read(project: Path) -> None:
+    """Round 1 of #386: a review out of its schema named no keys, and with nothing cited the
+    command said the review named no study."""
+    from manuscript_guard.literature import copies
+
+    for path in (project / "manuscript").glob("*.md"):
+        path.write_text("# Title\n", encoding="utf-8")
+    with_method(project, locator=None)
+    with pytest.raises(copies.NothingToCopy, match="could not be read") as raised:
+        copies.sync(load_project(project)[0], dry_run=True, fetch=lambda key: [])
+    assert "names no study" not in str(raised.value)
+    assert "locator" in str(raised.value)
+
+
 # ---------------------------------------------------------------- the hook
 
 
@@ -533,6 +565,59 @@ def test_taking_a_decision_away_is_put_to_the_person(in_claude_code: Path, capsy
     result = run("guard-write", _writes(in_claude_code, file_path=str(path), content=content),
                  capsys)  # fmt: skip
     assert decision(result) == "ask" and "Ada Example" in reason(result)
+
+
+#: The example's commented decision, written out as a person writes it, on a day that is not.
+_UNDATED = (
+    "        decision:\n          choice: adapt\n          why: the enzyme criterion only\n"
+    '          decided_by: "Ada Example"\n          decided_on: 2026-02-30\n'
+)
+
+
+@pytest.mark.parametrize("record", ["design/methods_review.yaml", "literature/passages.yaml"])
+def test_a_decision_on_a_day_yaml_cannot_read_is_still_put_to_the_person(
+    in_claude_code: Path, record: str, capsys
+) -> None:
+    """Round 1 of #386: a date that is not one makes YAML raise a ValueError, not a YAML
+    error, and the hook said nothing; #374's judgements had the same hole."""
+    path = in_claude_code / record
+    text = path.read_text(encoding="utf-8")
+    if record.endswith("passages.yaml"):
+        judged = ('    locator: "Abstract, Results"\n    support: supports\n'
+                  '    judged_by: "Ada Example"\n    judged_on: 2026-02-30\n')  # fmt: skip
+        content = text.replace('    locator: "Abstract, Results"\n', judged)
+    else:
+        content = text.replace("        # The decision is the author's", _UNDATED + "        #", 1)
+    assert content != text
+    result = run("guard-write", _writes(in_claude_code, file_path=str(path), content=content),
+                 capsys)  # fmt: skip
+    assert decision(result) == "ask" and "Ada Example" in reason(result)
+
+
+def test_a_label_changed_under_a_decision_is_put_to_the_person(
+    in_claude_code: Path, capsys
+) -> None:
+    """Round 1 of #386: the label of an `other` field is what the decision is of."""
+    with_method(in_claude_code, field="other", label="enzyme criterion", decision=DECIDED)
+    path = in_claude_code / REVIEW
+    payload = _writes(in_claude_code, "Edit", file_path=str(path),
+                      old_string="label: enzyme criterion", new_string="label: dose")  # fmt: skip
+    assert decision(run("guard-write", payload, capsys)) == "ask"
+
+
+def test_one_of_two_like_decisions_taken_away_is_put_to_the_person(
+    in_claude_code: Path, capsys
+) -> None:
+    """Round 1 of #386: a set of the decided methods held two like ones as one."""
+    written = with_method(in_claude_code, decision=DECIDED)
+    written["studies"][0]["methods"].append(copy.deepcopy(written["studies"][0]["methods"][0]))
+    write(in_claude_code, written)
+    before = (in_claude_code / REVIEW).read_text(encoding="utf-8")
+    del written["studies"][0]["methods"][1]
+    content = yaml.safe_dump(written, sort_keys=False, allow_unicode=True)
+    assert content != before
+    payload = _writes(in_claude_code, file_path=str(in_claude_code / REVIEW), content=content)
+    assert decision(run("guard-write", payload, capsys)) == "ask"
 
 
 def test_appraising_a_method_is_the_agents_to_do(in_claude_code: Path, capsys) -> None:

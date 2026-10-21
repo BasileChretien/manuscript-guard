@@ -40,6 +40,7 @@ import json
 import os
 import re
 import sys
+from collections import Counter
 from pathlib import Path
 
 # Paths that no editor should write, relative to the project root. Each is generated, and
@@ -755,6 +756,15 @@ def _judges(path: Path, payload: dict) -> str | None:
 _JUDGED_BY = re.compile(r"""(?m)^(?![ \t]*#).*?\bjudged_by["']?[ \t]*:""")
 
 
+def _named_after(text: str, match: re.Match[str], otherwise: str) -> str:
+    """Who a `judged_by:` or `decided_by:` that `match` found names, read off the rest of its
+    line, for a text YAML cannot read: the person is told it is their name (round 1 of
+    #386). Up to a comma, a closing brace or a comment, and without quotes."""
+    rest = text[match.end():].split("\n", 1)[0]
+    name = re.split(r"[,}]|\s#", rest, maxsplit=1)[0].strip().strip("\"'").strip()
+    return name or otherwise
+
+
 def _judgements(text: str) -> set[tuple]:
     """Each judged entry of a passages.yaml text, as the words it judges and who judged them
     when. A text YAML cannot read is taken to judge whatever it names a judge in, so that an
@@ -763,11 +773,12 @@ def _judgements(text: str) -> set[tuple]:
 
     try:
         document = yaml.safe_load(text)
-    except yaml.YAMLError:
+    except Exception:  # noqa: BLE001 - `2026-02-30` is a ValueError (round 1 of #386)
         return {
-            ("", "", str(match.start()), "", "a judge in a text YAML cannot read", "")
+            ("", "", str(match.start()), "",
+             _named_after(text, match, "a judge in a text YAML cannot read"), "")
             for match in _JUDGED_BY.finditer(text)
-        }
+        }  # fmt: skip
     entries = document.get("passages") if isinstance(document, dict) else None
     judged = set()
     for entry in entries if isinstance(entries, list) else []:
@@ -802,7 +813,8 @@ def _decides(path: Path, payload: dict) -> str | None:
             return None
         names = "a decision it touches or keeps"
     else:
-        decided = _decisions(after) ^ _decisions(before[0])
+        now, then = _decisions(after), _decisions(before[0])
+        decided = (now - then) + (then - now)
         if not decided:
             return None
         names = ", ".join(dict.fromkeys(str(entry[-2]) for entry in sorted(decided)))
@@ -819,32 +831,35 @@ def _decides(path: Path, payload: dict) -> str | None:
 _DECIDED_BY = re.compile(r"""(?m)^(?![ \t]*#).*?\bdecided_by["']?[ \t]*:""")
 
 
-def _decisions(text: str) -> set[tuple]:
-    """Each decided method of a methods review's text, as the study, the method's field and
-    words, and the decision. A text YAML cannot read is taken to decide whatever it names a
-    decider in."""
+def _decisions(text: str) -> Counter:
+    """Each decided method of a methods review's text, as the study, the method's field,
+    label and words, and the decision, counted: two like methods are two (round 1 of #386).
+    A text YAML cannot read, a date that is not one among them, is taken to decide whatever
+    it names a decider in."""
     import yaml
 
     try:
         document = yaml.safe_load(text)
-    except yaml.YAMLError:
-        return {
-            ("", "", str(match.start()), "", "", "a decider in a text YAML cannot read", "")
+    except Exception:  # noqa: BLE001 - `2026-02-30` is a ValueError, not a YAML error
+        return Counter(
+            ("", "", "", str(match.start()), "", "",
+             _named_after(text, match, "a decider in a text YAML cannot read"), "")
             for match in _DECIDED_BY.finditer(text)
-        }
+        )  # fmt: skip
     studies = document.get("studies") if isinstance(document, dict) else None
-    decided = set()
+    decided: Counter = Counter()
     for study in studies if isinstance(studies, list) else []:
         methods = study.get("methods") if isinstance(study, dict) else None
         for method in methods if isinstance(methods, list) else []:
             decision = method.get("decision") if isinstance(method, dict) else None
             if not isinstance(decision, dict) or decision.get("decided_by") in (None, ""):
                 continue
-            decided.add((
-                str(study.get("citekey")), str(method.get("field")), str(method.get("passage")),
-                str(decision.get("choice")), str(decision.get("why")),
-                str(decision.get("decided_by")), str(decision.get("decided_on")),
-            ))  # fmt: skip
+            decided[(
+                str(study.get("citekey")), str(method.get("field")), str(method.get("label")),
+                str(method.get("passage")), str(decision.get("choice")),
+                str(decision.get("why")), str(decision.get("decided_by")),
+                str(decision.get("decided_on")),
+            )] += 1  # fmt: skip
     return decided
 
 

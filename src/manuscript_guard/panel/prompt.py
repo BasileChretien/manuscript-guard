@@ -552,7 +552,9 @@ def _methods_review(project: Project) -> tuple[str, Sent] | None:
         + for_panel(review),
     )
     count = len(review.methods)
-    said = f"{len(review.studies)} studies, {count} method{'' if count == 1 else 's'}"
+    studies = len(review.studies)
+    said = (f"{studies} stud{'y' if studies == 1 else 'ies'}, "
+            f"{count} method{'' if count == 1 else 's'}")  # fmt: skip
     return text, Sent(label, f"{said}, with appraisals and decisions")
 
 

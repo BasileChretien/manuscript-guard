@@ -846,7 +846,9 @@ duplicated key, where both keep the last.
 ## LaTeX manuscripts
 
 Status: designed 2026-10-20. Built: the first half of step 1, the format, the reader's file
-list, `two-formats`, `other-format-file` and `not-read-in-latex`. Where the design depends on
+list, `two-formats`, `other-format-file` and `not-read-in-latex`; step 2, the scanner and
+its mask; and step 3, the include tree and its refusals under BUILD. No gate reads the
+manuscript's prose through them yet. Where the design depends on
 what LaTeX does, the pull request that relies on it checks the statement against TeX Live and
 MiKTeX and records the measurement. On the author's machine, 2026-10-20: MiKTeX 24.4 and
 latexmk 4.88, with pdfLaTeX, LuaLaTeX, XeLaTeX, BibTeX and Biber on PATH.
@@ -945,10 +947,11 @@ for each such gate. The commands not yet moved refuse a LaTeX project with a sen
 ### What the LaTeX reader reads
 
 The reader lives in `text/latex/`, apart from `text/tex.py`, which reads TeX inside Markdown:
-- `scan.py` cuts a file into tokens with their offsets, under TeX's default category codes;
 - `commands.py` is the closed table of what each known command takes, and what each argument
   is;
-- `mask.py`, `structure.py` and `cite.py` answer the reader's questions from the tokens.
+- `mask.py` scans a file as it reads it, under TeX's default category codes, and gives the
+  masked text and the first refusal (step 2);
+- `structure.py` and `cite.py` answer the reader's other questions (steps 3 and 5).
 
 It is one pass, linear in the file.
 
@@ -962,13 +965,13 @@ NUL. Two additions keep the length:
 | Read as prose | Blanked |
 |---|---|
 | the body, `\begin{document}` to `\end{document}`, and the files input from it | the preamble of `main.tex` and the files input from it, except what the next row reads |
-| in the preamble, `\title`'s argument, read as the title in Markdown's front matter is and compared with paper.yaml's (`two-titles`); `\thanks`'s outside `\author`, read as a footnote is; the arguments of `\AtBeginDocument`, `\AtEndDocument`, `\AddToHook` and `\AfterEndPreamble`, read as the body is, or as the package is in an author's package | the author block, `\author` with what it holds, which is what authors.yaml holds for a Markdown project and G2 does not read; `\date`, which a Markdown build never prints (a known gap) |
+| in the preamble, `\title`'s argument, read as the title in Markdown's front matter is and compared with paper.yaml's (`two-titles`); an abstract, read under Abstract; `\thanks`'s outside `\author`, read as a footnote is; the arguments of `\AtBeginDocument`, `\AtEndDocument`, `\AddToHook` and `\AfterEndPreamble`, read as the body is, or as the package is in an author's package | the author block, `\author` with what it holds, which is what authors.yaml holds for a Markdown project and G2 does not read; `\date`, which a Markdown build never prints (a known gap) |
 | the arguments of text commands: `\emph`, `\textbf`, `\footnote`, `\caption` and its short form, `\section` and its kin, `\href`'s text | command names and braces; `\label`, `\ref` and its kin, `\url`, `\href`'s address, `\includegraphics` |
 | a citation's notes, as Markdown's prefix and suffix are read | citation keys |
 | the letters, digits and signs in maths, in subscripts and superscripts too, as Markdown's `mask` keeps them in `$x_1 = 10^{-8}$` | maths' commands, braces and delimiters |
 | `\verb` and `\texttt`, read as a code span is | `verbatim`, `Verbatim`, `lstlisting`, read by G2's code check as fenced blocks are |
 | table cells | a `tabular`'s column specification, `\multicolumn`'s first two arguments, rules |
-| the arguments, optional ones too, of a command not in the table | comments (an unescaped `%` to the end of the line, the `comment` environment, a plain `\iffalse` … `\fi` block), the layout commands `text/tex.py` knows, everything after `\end{document}`, bindings whole |
+| the arguments, optional ones too, of a command not in the table | comments (an unescaped `%` to the end of the line, the `comment` environment, a plain `\iffalse` block to its `\fi`, or to its `\else`, whose branch is read), the layout commands `text/tex.py` knows, everything after `\end{document}`, bindings whole |
 
 **Maths** is hidden from `words`, so G14 and G15 never read it as words. Its digits and signs
 stay in `mask`, as they do in `$...$` in Markdown today, because blanking `$\beta = 0.42$` would
@@ -989,13 +992,17 @@ order is `printed_order`.
 - Each file is read on its own, so a finding names that file's line.
 - A file starts in the state its `\input` stands in. One input from the body is body, and one
   input from the preamble is preamble. The headings in force there stand before the file's first
-  character in `headings(text, path)`, so `p < 0.05` in a file input under `\section{Methods}`
-  is read under Methods. So does the environment that encloses the `\input`: a file input inside
-  `abstract` is abstract, and one inside a `tabular` is table cells.
+  character (`Source.under`, and `Source.chain_at` at any point of the file), so `p < 0.05` in a
+  file input under `\section{Methods}` is read under Methods. So does the environment that
+  encloses the `\input`: a file input inside `abstract` is abstract, and one inside a `tabular`
+  is table cells. A heading of a file input reaches the text after its `\input`, as LaTeX
+  prints it.
 - An `\input` in a comment, in a plain `\iffalse` block or in the `comment` environment is no
   input. A file named only there is one that nothing inputs, below.
-- A package or class file in `manuscript/`, such as `\usepackage{macros}` with
+- A package file in `manuscript/`, such as `\usepackage{macros}` with
   `manuscript/macros.sty` beside the entry file, is followed as a file input from the preamble.
+  A class file is not: a journal's `.cls` is shipped beside the entry file and is not the
+  author's.
   It is read as LaTeX reads a package, with `@` a letter. Its definitions are then read where
   they are written, below. In it, and in the preamble, both branches of a conditional other than
   a plain `\iffalse` block are read, since a package tests what is loaded. A package found
@@ -1003,9 +1010,11 @@ order is `printed_order`.
   tool writes it, its definitions are the bindings, and `check` compares it with what `values`
   would write.
 - Refused:
-  - a path that is not written out in full;
+  - a path that is not written out in full, or not written in braces;
   - a path outside `manuscript/` or under a `_` folder;
-  - a missing file, or a cycle;
+  - a missing file, or a cycle. A bare name input from the preamble that `manuscript/` does not
+    hold, such as `\input{glyphtounicode}`, is the distribution's and is passed over, as a
+    package is, and so is TeX's form without braces there, `\input glyphtounicode`;
   - `\import`, `\subfile` and `\InputIfFileExists`;
   - a command that prints a file no gate reads: `\lstinputlisting` and its kin,
     `\verbatiminput`, csvsimple's `\csvautotabular` and `\csvreader`, pgfplotstable's
@@ -1022,12 +1031,17 @@ order is `printed_order`.
 - `equation`, `align`, `gather` and `multline`, their starred forms, `\[`, `$$` and `\(` are
   maths.
 - `abstract`, or `\abstract{…}`, opens a section titled Abstract for every reader, so the
-  counts, G4 and G5 find it as they find `# Abstract`. One in the preamble is refused, as an
-  `abstract:` in Markdown's front matter is.
+  counts, G4 and G5 find it as they find `# Abstract`. One in the preamble is read as prose
+  there, as `\title`'s argument is, since a class such as PNAS's prints it from there. This
+  design first refused it, as an `abstract:` in Markdown's front matter is refused. Round 2
+  of #385 found that this failed such a class, and failed `\let\oldabstract\abstract`, which
+  only names the command. Where a class does not print it, the compile fails (step 9).
 - An environment not in the table is read as an unknown command is, and so is its body.
 
-**Definitions.** A `\newcommand`, `\renewcommand`, `\providecommand`, `\def` or
-`\DeclareMathOperator` is read where it is written, and its body is prose there, in the preamble
+**Definitions.** A `\newcommand`, `\renewcommand`, `\providecommand`,
+`\DeclareRobustCommand`, `\def` or `\DeclareMathOperator`, or one of xparse's definers, whose
+argument specification is read for the defaults it prints, is read where it is written, and
+its body is prose there, in the preamble
 too, and in a package file of the author's (above). So `\newcommand{\n}{4100}` is one
 unclassified number, at its definition. The parameter tokens `#1` to `#9` in a body are blanked.
 A use of the macro is read as an unknown command is: its name is blanked and its arguments are
@@ -1037,12 +1051,15 @@ expanded, because an expansion is text at a place the file does not hold, with n
 give a finding.
 
 Refused:
-- a definition, in a file of the author's, of any command the reader reads, `\mg` among them;
+- a definition, in a file of the author's, of any command the reader reads, `\mg` among them,
+  but `\abstract`, which the reader read as an unknown command before it opened a section and
+  which an author restyles;
 - `\def` with delimited parameters;
 - anything that changes how characters are read: `\catcode`, `\makeatletter` in the body,
   `\csname`, `\expandafter`, and `babel` with a language whose shorthands make a character
   active;
-- in the body, any conditional but a plain `\iffalse` block.
+- in the body, any conditional but a plain `\iffalse` block and `\ifthenelse`, a command whose
+  branches are its arguments and are both read.
 
 **Characters.**
 - `--` and `---` stay as typed, as in Markdown.
@@ -1260,6 +1277,14 @@ The result is compiled and packed by the code above, and checked three times:
 
 ### Known gaps, from the start
 
+- `babel` with a language whose shorthands make a character active is not refused yet (step
+  2): a shorthand changes letters, not digits, so it is left to step 7, which reads words.
+- A bibliography typed by hand, `thebibliography`, is read as prose, so its years and pages are
+  numbers G2 reads; a Markdown project's reference list is built and never read.
+- Only the first refusal of a file is reported: past it the file is read as prose, and the
+  next is found once the first is put right.
+- A file whose only `\begin{document}` stands in a `\verb`, a listing or an `\iffalse` opens in
+  the preamble; refused, it keeps that reading, and what stands before the refusal is blanked.
 - A `.tex` file in a Markdown manuscript is not refused, as a Markdown file in a LaTeX one is
   (`other-format-file`): a project written before LaTeX was read may keep a `.tex` beside its
   Markdown for pandoc's header, and refusing it would fail a paper that passed. It is read by
@@ -1278,6 +1303,27 @@ The result is compiled and packed by the code above, and checked three times:
     says nothing when a `.tex` is saved (round 2 of #370).
 - An author's macro is not expanded where it is used, so a word its body prints there is in no
   sentence that G6 or G14 reads; its body is read once, at the definition.
+- An `\input` records the environments open around it, not the command whose argument it is
+  in, so `\title{\input{title}}` reads `title.tex` as preamble, blanked, though LaTeX prints it
+  (round 1 of #385).
+- A file input past a refusal in the file that inputs it, from inside a definition, or from
+  `\AtBeginDocument{\input{x}}` is not followed. It is warned of as `tex-not-input`, whose
+  message says no `\input` the reader follows names it, and is read under no heading (round 1
+  of #385).
+- An `\input` from the preamble without braces, `\input macros`, is not followed, so an
+  author's `macros.tex` is read as a file nothing inputs, warned of, and its definitions are
+  not known where they are used. A file input from the preamble by a path with no folder that
+  `manuscript/` lacks, `\input{settings.tex}` too, is taken for the distribution's and passes;
+  the compile finds it missing (step 9) (rounds 1 and 2 of #385).
+- After `\renewcommand{\abstract}` or `\let\abstract\relax`, `\abstract{…}` still opens a
+  section titled Abstract, though LaTeX prints what the author defined (round 2 of #385).
+- The Abstract an abstract opens stays in force to the next heading of its level, so text
+  between `\end{abstract}` and the first `\section` stands under Abstract, in the preamble's
+  case as in the body's. No gate reads LaTeX's headings yet; the counts, G4 and G5 close it
+  where the abstract ends (`Reading.abstracts`) when they move (round 3 of #385).
+- In the preamble, `\g@addto@macro\abstract{…}` or `\pretocmd\abstract{…}` reads the group
+  after `\abstract` as an abstract, and so is one in the branch of a conditional that is not
+  taken, both read there (round 3 of #385).
 - A class or package that changes how a character is read, beyond those refused, is not seen.
 - A package not in the refused list that prints a table or text from a data file is not seen:
   what it prints is read by no gate.
@@ -1308,12 +1354,21 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
    check in `_NOT_READ_IN_LATEX`, a set each later step takes its check out of. The second:
    the refusing commands, after the open pull requests that change the same commands. Tests:
    the differential unchanged, the corruption cases, rows in `test_reads_nothing.py`.
-2. The scanner and `mask`. `scan.py`, `commands.py`, `mask.py`, the refusals under BUILD.
-   Tests: `latex_texts()`, `latex mask` and `latex refusals`, their properties and `BROKEN`.
-   The likeliest to pass 600 lines; if it does, comments and the preamble go first, then maths
-   and listings.
-3. Structure. Includes, `printed_order`, inherited headings, sections, the abstract. Tests:
-   `latex sections`.
+2. The scanner and `mask`, built: `commands.py` and `mask.py`, which scans as it reads, so
+   that no `scan.py` stands apart. `read(text, body=...)` gives the masked text and the first
+   refusal. Tests: `latex_texts()`, `latex_planted()`, `latex mask` and `latex refusals`,
+   their properties and eight `BROKEN` rules, and a test of each rule in
+   `tests/test_latex_mask.py`. It passed 600 lines and was not split: comments, the preamble,
+   maths and listings share one scanner. The refusals reach BUILD with the reader in step 3,
+   which finds the files they are refused in.
+3. Structure, built: `structure.py` reads the include tree over a mapping of paths to
+   texts, with `read_document` reading it from the folder; each file starts in the state
+   its `\input` stands in, and a heading of a file input reaches the text after its
+   `\input`, as LaTeX prints it (`Source.chain_at`). `Reader.printed_order` takes the
+   tree's order. The scanner records each `\input`, heading, abstract and package as it
+   reads. `build/latex_check.py` puts each refusal under BUILD at its file and line, and
+   warns of a file nothing inputs. Tests: `tests/test_latex_structure.py`, the corruption
+   cases, `latex sections`, and `latex_trees()` with two `BROKEN` rules.
 4. Bindings and G2. `bindings`, `uncommented`, `table_at`, `mgvalues.sty` and its escape
    table, `values` and its README row, `values-file-stale`; G2 and the custodian's counts
    moved, and G1's synthetic-input check. Tests: the twin, G2's corruption cases on it,
@@ -4077,6 +4132,55 @@ the population, the exposure and the analysis are the registered ones, and that 
 for a change is a good one: these are the co-authors' and the panel's, read against the record
 kept. A remit for the panel and the co-author checker's items that put the record beside the
 Methods are the next step, not yet built.
+## The data dictionary is one contract with three readers
+
+A plan that sets out an analysis of data that do not exist yet (a survey, a chart review, a
+cohort, a trial, an extraction form) has a second thing to settle before the data do:
+exactly what will be collected. `design/data_dictionary.yaml` says it, one entry for each
+variable: its name as the data will hold it, its label, a definition precise enough that
+two people recording it from the same source record the same value, its type, its unit, its
+codes or its range, the codes that mean missing, whether it is required and where it
+applies, the form and the visit it belongs to, who records it and from what, the variables
+it is derived from and how, the validated instrument and item it records, the standard
+definition it follows (MedDRA, CTCAE, ICD-10), the reporting-checklist items that need it,
+and, where nothing in the plan needs it, the reason it is collected. The same file describes
+data that already exist: a dataset in several tables names them (`datasets`), and a name may
+hold capitals or dots, since an existing dataset's columns do.
+
+Three readers take it as it is written. G12 holds it to the plan. The data-quality checks
+hold the collected data to it: its `study_period`, `pattern`, `within_study_period` and
+`rules` (an order between dates, a set of variables unique per row, or a rule the author's
+script tests) are for them, and were agreed with that work so that the schema changes once.
+And the export gives it to whoever builds the form. One loader serves all three,
+`contracts/dictionary.py`, and what it accepts is what all three trust.
+
+**A dictionary that does not read fails, at every stage.** G12 warns and never blocks, but
+a malformed contract is not a plan with a gap in it: a data check that read a variable's
+codes from the wrong list, or an export that wrote them, would be worse than none. The
+schema says the shape; the loader says what a schema cannot, each as `dictionary-invalid`
+at its line: a name or an id given twice, a reference to a form, a list of codes, an
+instrument, a dataset or a variable that is not there, codes on a type that has none, a
+binary variable without two, a code given twice or as both a value and a missing code, a
+range on a type that has none or a bound its type cannot read, a pattern that does not
+compile, a condition on a variable with no codes. It is said once, by G12; the other readers
+are handed nothing and say nothing of the file's shape. A gap in the plan is not a fault of
+the file: a categorical variable whose codes are not decided yet, or a derived variable whose
+inputs are not in the dictionary, reads, and is G12's to warn of. A project with no
+dictionary is not asked for one.
+
+**A value is compared as text, so YAML may not read it first.** `1` and `"1"` are one code.
+PyYAML reads some plain values as something else before any check sees them: `010` as the
+number 8, `8:30` as 510, `1_000` as 1000, an unquoted `No` or `off` as false. A code `010`
+read as 8 would never match the data's "010", and `label: No` would fail the schema with
+"False is not of type 'string'". Each is refused at its line with the words to write
+instead, in quotes, and the schema's own finding on that line is left out as the same
+fault said less usefully. Where the value is a yes or a no, `required: yes`, the word means
+what it says and is read (round 1 of #382). A code written `1.0` or `+1` is refused too:
+JSON Schema takes the first for an integer, and as text the two are "1.0" and "1". A number
+written as it reads, `200.0` or `-0.5`, is left alone. And a key given twice in one mapping
+is refused at the second: YAML keeps the last without a word, so a code list given twice
+under one name handed its second codes to every variable that named it (round 1 of #382).
+A variable that gives both `values` and a `code_list` is refused for the same reason.
 
 ## Stages: not every gate binds on day one
 
@@ -7327,6 +7431,17 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   "Planned results and amendments", or a list nested under the Deviations heading, is
   read as the list and as the Deviations, so its items stand down their own keys' warnings
   (rounds 2 and 3 of #351; telling the two apart made other plans warned of).
+- **A data dictionary says one condition, and reads its range by its type alone.**
+  `applies_if` names one coded variable and the codes under which the variable is recorded;
+  a variable asked where two conditions hold, or where a number passes a threshold, cannot be
+  said, and is written without the condition. A `count`'s bounds are held to be numbers, not
+  whole ones. A datetime's bounds are compared only where both or neither carry a time zone.
+  What YAML reads as another value is found only where it is written plain; a value YAML
+  reads as written but the author meant otherwise, `1.5` for the item "1.50", is not. A
+  rule's `order` takes dates and datetimes as one family, so the data checks that read it
+  have to compare a date with a datetime by the date, and it refuses an order between two
+  times (round 1 of #382). A bound in the basic ISO form, `20200101`, or with a fraction of
+  a second, reads on Python 3.11 and later and is refused on 3.10 (round 2 of #382).
 - **A statistic is held to what it belongs to by which bindings share its sentence, and by
   nothing else.** An estimate with intervals at two levels is asked to be quoted whole at
   each, though a paper quotes the one it means. An interval quoted whole only in a table the

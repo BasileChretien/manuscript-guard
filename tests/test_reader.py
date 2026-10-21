@@ -65,6 +65,22 @@ def test_a_latex_manuscript_lists_its_tex_files_as_a_markdown_one_lists_its_md(
     assert [p.name for p in ordered] == ["main.tex", "results.tex"]
 
 
+def test_a_latex_manuscripts_printed_order_is_its_input_order_not_its_names(
+    tmp_path: Path,
+) -> None:
+    """Round 1 of #385: no test told the order of the `\\input`s from the order by name."""
+    (tmp_path / "main.tex").write_text(
+        "\\documentclass{article}\n\\begin{document}\n\\input{results}\n\\input{methods}\n"
+        "\\end{document}\n",
+        encoding="utf-8",
+    )
+    for name in ("methods.tex", "results.tex"):
+        (tmp_path / name).write_text("x\n", encoding="utf-8")
+    reader = Reader(tmp_path, LATEX)
+    ordered = reader.printed_order(sorted(reader.files()), supplementary=False)
+    assert [p.name for p in ordered] == ["main.tex", "results.tex", "methods.tex"]
+
+
 def test_a_review_of_a_latex_manuscript_is_tied_to_its_tex_files(project: Path) -> None:
     folder = project / "manuscript"
     for path in folder.rglob("*.md"):

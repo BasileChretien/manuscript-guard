@@ -4513,6 +4513,65 @@ def _paper_field(root: Path, key: str, value: str) -> None:
     paper = root / "paper.yaml"
     text = paper.read_text(encoding="utf-8").rstrip("\n")
     paper.write_text(text + f"\n{key}: {value}\n", encoding="utf-8")
+# ------------------------------------------------- the data dictionary
+
+#: The example's report file, described as a dictionary describes it.
+_EXAMPLE_DICTIONARY = """\
+schema: manuscript-guard/data-dictionary/1
+code_lists:
+  yes_no:
+    - {code: 1, label: "Yes"}
+    - {code: 0, label: "No"}
+variables:
+  - name: report_id
+    label: Report
+    definition: The report's identifier in the database.
+    type: identifier
+    reason: the record's own identifier
+  - name: serious
+    label: Serious
+    definition: The report was classed as serious.
+    type: binary
+    code_list: yes_no
+    reason: the proportion of the cases that were serious
+"""
+
+
+def _dictionary_failures(root: Path, text: str, stage: str) -> list[str]:
+    """What the whole check fails on at a stage, with this dictionary in the example."""
+    from manuscript_guard.cli import _run_gates
+
+    path = root / "design" / "data_dictionary.yaml"
+    path.write_bytes(text.encode("utf-8"))
+    report, _project, _chosen, _deferred = _run_gates(root, stage=stage)
+    return [f"{f.gate} {f.code}" for f in report.failures]
+
+
+@pytest.mark.parametrize("stage", ["design", "submission"])
+def test_a_dictionary_that_reads_leaves_the_example_as_it_was(project: Path, stage: str) -> None:
+    assert _dictionary_failures(project, _EXAMPLE_DICTIONARY, stage) == []
+
+
+@pytest.mark.parametrize(
+    "old, new",
+    [
+        ("    code_list: yes_no", "    code_list: yes_or_no"),
+        ("{code: 0, label: \"No\"}", "{code: 0, label: No}"),
+        ("{code: 1, label: \"Yes\"}", "{code: 01, label: \"Yes\"}"),
+        ("  - name: serious", "  - name: report_id"),
+        ("    type: binary", "    type: yes-no"),
+    ],
+)
+@pytest.mark.parametrize("stage", ["design", "submission"])
+def test_a_dictionary_that_does_not_read_fails_the_check_at_every_stage(
+    project: Path, stage: str, old: str, new: str
+) -> None:
+    """A dictionary read as written would hand the data checks another variable's codes, or
+    codes the data never hold: it fails, as a malformed contract does, where everything
+    else G12 says warns."""
+    assert old in _EXAMPLE_DICTIONARY
+    failed = _dictionary_failures(project, _EXAMPLE_DICTIONARY.replace(old, new), stage)
+    assert failed and set(failed) == {"G12 dictionary-invalid"}, failed
 
 
 # ------------------------------------------------- the unit of analysis
@@ -5474,9 +5533,10 @@ _NOT_THE_MANUSCRIPT = (
     "check_literature_chain", "check_shortlist", "check_design", "check_design_rounds",
     "check_consistency", "check_restricted_inputs", "check_relations",
 )  # fmt: skip
-#: Checks that read the manuscript as text in either format, and run on LaTeX too: G12's
-#: registration looks for an identifier and a sentence, which a `.tex` file holds as plainly.
-_EITHER_FORMAT = ("check_registration",)
+#: The checks that read LaTeX: they run on a LaTeX manuscript as on any. G12's
+#: registration looks for an identifier and a sentence, which a `.tex` file holds
+#: as plainly as a Markdown one.
+_READS_LATEX = ("check_latex", "check_registration")
 
 
 def test_each_check_not_taught_latex_is_not_run_and_the_others_are(
@@ -5492,13 +5552,13 @@ def test_each_check_not_taught_latex_is_not_run_and_the_others_are(
     def recorder(name: str):
         return lambda *_args, **_kwargs: called.append(name) or Report()
 
-    for name in _MARKDOWN_ONLY + _NOT_THE_MANUSCRIPT + _EITHER_FORMAT:
+    for name in _MARKDOWN_ONLY + _NOT_THE_MANUSCRIPT + _READS_LATEX:
         monkeypatch.setattr(cli, name, recorder(name))
     _as_latex(project)
     cli._run_gates(project, stage="drafting")
-    assert sorted(called) == sorted(_NOT_THE_MANUSCRIPT + _EITHER_FORMAT)
+    assert sorted(called) == sorted(_NOT_THE_MANUSCRIPT + _READS_LATEX)
     # One entry calls two checks, so the set is pinned name by name as well (round 2). A
-    # check an entry of the runner's table gains must be put in one of the two tuples, and
+    # check an entry of the runner's table gains must be put in one of the tuples, and
     # the one the runner calls in its own body is `check_format` (round 3).
     assert set(_MARKDOWN_ONLY) == cli._NOT_READ_IN_LATEX
     body = {name for name in cli._run_gates.__code__.co_names if name.startswith("check_")}
@@ -5510,7 +5570,7 @@ def test_each_check_not_taught_latex_is_not_run_and_the_others_are(
         for name in code.co_names
         if name.startswith("check_")
     }
-    assert runner == set(_MARKDOWN_ONLY + _NOT_THE_MANUSCRIPT + _EITHER_FORMAT)
+    assert runner == set(_MARKDOWN_ONLY + _NOT_THE_MANUSCRIPT + _READS_LATEX)
 
 
 def test_a_main_tex_without_a_class_leaves_a_markdown_manuscript_markdown(project: Path) -> None:
@@ -5523,6 +5583,29 @@ def test_a_main_tex_without_a_class_leaves_a_markdown_manuscript_markdown(projec
     report, _project, _stage, _deferred = _run_gates(project, stage="submission")
     said = {f.code for f in report.findings}
     assert not {"two-formats", "other-format-file", "not-read-in-latex"} & said
+
+
+def test_what_the_latex_reader_refuses_fails_build_at_its_file_and_line(project: Path) -> None:
+    """A brace left open in an input file, and an `\\input` of a file that is not there, each
+    fail BUILD at every stage where they stand; a file nothing inputs is a warning."""
+    from manuscript_guard.cli import _run_gates
+
+    entry = _as_latex(project)
+    folder = entry.parent
+    entry.write_text(
+        "\\documentclass{article}\n\\begin{document}\n\\input{methods}\n\\input{gone}\n"
+        "\\end{document}\n",
+        encoding="utf-8",
+    )
+    (folder / "methods.tex").write_text("Of 4100.\nAn {open brace\n", encoding="utf-8")
+    (folder / "notes.tex").write_text("Nobody inputs this.\n", encoding="utf-8")
+    report, _project, _stage, _deferred = _run_gates(project, stage="design")
+    found = {(f.code, f.path.name, f.line) for f in report.failures if f.gate == "BUILD"}
+    assert ("tex-unbalanced", "methods.tex", 2) in found, report.render(project)
+    assert ("tex-refused", "main.tex", 4) in found, report.render(project)
+    warned = [f for f in report.findings if f.code == "tex-not-input"]
+    assert [f.path.name for f in warned] == ["notes.tex"]
+    assert "tex-not-input" not in codes(report)
 
 
 @pytest.mark.parametrize("encoding", ["cp1252", "utf-16", "utf-32"])

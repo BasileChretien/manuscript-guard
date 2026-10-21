@@ -32,6 +32,7 @@ from manuscript_guard.build import (
 )
 from manuscript_guard.build.assemble import check_shapes
 from manuscript_guard.build.document import abbreviations
+from manuscript_guard.build.latex_check import check_latex
 from manuscript_guard.build.tex_check import check_tex
 from manuscript_guard.classify import UNCLASSIFIED, Classifier
 from manuscript_guard.contracts import (
@@ -171,6 +172,7 @@ def _run_gates(
         ("G14", lambda: check_language(project)),
         ("G15", lambda: check_models(project, results)),
         ("BUILD", lambda: check_shapes(project).merge(check_tex(project, namespace, results))),
+        ("BUILD", lambda: check_latex(project)),
     ):
         if latex and _NOT_READ_IN_LATEX & set(gate.__code__.co_names):
             # A check that reads only Markdown would read nothing here and pass: it is not

@@ -77,6 +77,7 @@ from manuscript_guard.gates import (
     sync_bib,
 )
 from manuscript_guard.gates.custodian import check_restricted_inputs, check_small_cells
+from manuscript_guard.gates.data_quality import check_data_quality, check_quality_reported
 from manuscript_guard.gates.data_sources import (
     check_data_sources,
     check_declared_datasets,
@@ -198,9 +199,16 @@ def _run_gates(
         ("G13", lambda: check_revision(project, submission=at_submission)),
         ("G14", lambda: check_language(project)),
         ("G15", lambda: check_models(project, results)),
+        ("G16", lambda: check_data_quality(project, results, chosen, submission=at_submission)),
+        ("G16", lambda: check_quality_reported(
+            project, results, chosen, submission=at_submission)),
         ("BUILD", lambda: check_shapes(project).merge(check_tex(project, namespace, results))),
         ("BUILD", lambda: check_latex(project)),
     ):
+        if latex and _MARKDOWN_BUILD & set(gate.__code__.co_names):
+            # The Markdown build's own checks: a LaTeX manuscript's build is checked by
+            # `check_latex` and its compile (step 13).
+            continue
         if latex and _NOT_READ_IN_LATEX & set(gate.__code__.co_names):
             # A check that reads only Markdown would read nothing here and pass: it is not
             # run, and its gate says so once.
@@ -225,11 +233,13 @@ def _run_gates(
 #: `_run_gates` calls. On a LaTeX manuscript they are not run, and each of their gates reports
 #: `not-read-in-latex`. A check leaves this set in the step that teaches it LaTeX (DESIGN.md,
 #: "LaTeX manuscripts", Order of work).
-_NOT_READ_IN_LATEX = frozenset(
-    {
-        "check_statement_sources", "check_shapes", "check_tex", "check_recycling",
-    }
-)  # fmt: skip
+_NOT_READ_IN_LATEX: frozenset[str] = frozenset()
+#: The Markdown build's own checks: of the shapes it refuses, of TeX in its text, and of the
+#: title a Markdown file's header gives against paper.yaml's. A LaTeX manuscript has none of
+#: them: its build is checked by `check_latex`, which reads it as the reader does, and by its
+#: compile, so these do not run on one and nothing is said (step 13). Its `\title` is not
+#: compared with paper.yaml's (DESIGN.md, the LaTeX known gaps).
+_MARKDOWN_BUILD = frozenset({"check_shapes", "check_tex"})
 
 
 def _unreadable_sources(project) -> dict[Path, Unreadable]:
@@ -1987,10 +1997,22 @@ def _keep_submitted(project, number: int) -> Path:
         from manuscript_guard.gates.revision import PRINTED_COPY, rendered_manuscript
 
         # The documents as LaTeX prints them, values in, which is what G13 reads the paper
-        # in now; the round's copy of the sources themselves is step 12's (step 8).
+        # in now (step 8); and the sources as the submission folder writes them, inputs and
+        # values in and comments out, the text the journal received (step 12).
         folder.mkdir(parents=True, exist_ok=True)
         text = rendered_manuscript(project, rendered)
         (folder / PRINTED_COPY).write_text(text, encoding="utf-8", newline="\n")
+        from manuscript_guard.build.latex_pack import written_documents
+
+        namespace, results = load_namespace(project)[:2]
+        try:
+            documents = written_documents(project, namespace, results).documents
+        except BuildError as exc:
+            print(f"the round keeps no copy of the LaTeX sources: {exc}")
+            return folder
+        (folder / "latex").mkdir(exist_ok=True)
+        for name, written in documents:
+            (folder / "latex" / f"{name}.tex").write_text(written, encoding="utf-8", newline="")
         return folder
     for source in source_files(manuscript):
         target = folder / source.relative_to(manuscript)
@@ -5330,8 +5352,9 @@ _MARKDOWN_COMMANDS: dict[str, Callable[[argparse.Namespace], bool]] = {
     # `init --latex` sets up a LaTeX manuscript; without it, `main.md` would go beside one.
     "init": lambda args: not args.latex,
     # A design round reads the plan, not the manuscript (round 1 of #404).
-    "review": lambda args: bool((args.run or args.dry_run) and not args.design
-                                or args.suggestions),
+    # A panel reads a LaTeX manuscript as the submission folder writes it (step 12); Word's
+    # suggestions are a Markdown manuscript's.
+    "review": lambda args: bool(args.suggestions),
 }  # fmt: skip
 #: The commands refused a `.tex` named whatever the project's format, since they read the
 #: file given as Markdown; `impact` follows the records of any file, a header's included.

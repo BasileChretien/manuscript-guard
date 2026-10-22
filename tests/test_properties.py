@@ -142,6 +142,7 @@ from manuscript_guard.gates import methods as methods_gate
 from manuscript_guard.gates import methods_review as methods_review_gate
 from manuscript_guard.gates import models as models_gate
 from manuscript_guard.gates import numbers as numbers_gate
+from manuscript_guard.gates import pointers_latex as pointers_latex_gate
 from manuscript_guard.gates import quotations as quotations_gate
 from manuscript_guard.gates import recycling as recycling_gate
 from manuscript_guard.gates import related as related_gate
@@ -865,9 +866,9 @@ def test_latex_s_printed_view_places_each_word_at_its_file_and_line(
 def _prose_breaks_its_lines_as_the_view_does(patch: pytest.MonkeyPatch) -> None:
     printed_one = latex_print._printed
 
-    def broken(source, shallowest, child=lambda: [], quoting=False, formula=""):
+    def broken(source, shallowest, child=lambda: [], *args, **kwargs):
         return [(text, of, at, False) for text, of, at, _linear in
-                printed_one(source, shallowest, child, quoting, formula)]  # fmt: skip
+                printed_one(source, shallowest, child, *args, **kwargs)]  # fmt: skip
 
     patch.setattr(latex_print, "_printed", broken)
 
@@ -875,9 +876,9 @@ def _prose_breaks_its_lines_as_the_view_does(patch: pytest.MonkeyPatch) -> None:
 def _each_stretch_is_placed_at_its_files_start(patch: pytest.MonkeyPatch) -> None:
     printed_one = latex_print._printed
 
-    def broken(source, shallowest, child=lambda: [], quoting=False, formula=""):
+    def broken(source, shallowest, child=lambda: [], *args, **kwargs):
         return [(text, of, 0, linear) for text, of, _at, linear in
-                printed_one(source, shallowest, child, quoting, formula)]  # fmt: skip
+                printed_one(source, shallowest, child, *args, **kwargs)]  # fmt: skip
 
     patch.setattr(latex_print, "_printed", broken)
 
@@ -5566,6 +5567,278 @@ def test_a_passage_of_an_earlier_paper_is_found_where_it_stands_however_it_is_se
     assert found == expected, (text, source)
 
 
+#: Where a LaTeX document repeats a run of an earlier paper, whether G7's text recycling reads
+#: it there, the file it is typed in, and whether the run is quoted (step 13): `<>` is the
+#: run. A place in `part.tex` is in the file the entry inputs, where a paragraph drawn of
+#: `main.tex` stands.
+_LATEX_RECYCLED_PLACES = (
+    ("<>.\n", True, "main.tex", False),
+    ("A note.\\footnote{<>.}\n", True, "main.tex", False),
+    ("% <>.\n", False, "main.tex", False),
+    ("\\iffalse <>. \\fi\n", False, "main.tex", False),
+    ("% a line of comment\n<>.\n", True, "main.tex", False),
+    ("<>.\n", True, "part.tex", False),
+    ("\\section{Discussion}\n<>.\n", True, "part.tex", False),
+    # A caption is compared, and a quotation LaTeX marks with a command is quoted (round 1
+    # of step 13).
+    ("\\begin{figure}\n\\mg{figure.forest}\n\\caption{<>.}\n\\end{figure}\n", True, "main.tex",
+     False),
+    ("As \\enquote{<>} put it.\n", True, "main.tex", True),
+    ("\\begin{quote}\n<>.\n\\end{quote}\n", True, "part.tex", True),
+)  # fmt: skip
+
+
+@st.composite
+def _planted_latex_recycling(draw: st.DrawFn) -> tuple[dict[str, str], str, set[tuple]]:
+    """A LaTeX document, `main.tex` and the `part.tex` it inputs, with a run of fourteen words
+    of an earlier paper in each place of `_LATEX_RECYCLED_PLACES`, in an order drawn, each its
+    own paragraph after words drawn and its lines wrapped as drawn; the earlier paper; and,
+    for each run the reading reads, its file, the lines of its first and last words, and
+    whether it is quoted."""
+    pool = list(draw(st.permutations(_EARLIER_WORDS)))
+    pieces: dict[str, list[str]] = {"main.tex": [], "part.tex": []}
+    source, runs = "", []
+    for index in draw(st.permutations(range(len(_LATEX_RECYCLED_PLACES)))):
+        template, read, name, quoted = _LATEX_RECYCLED_PLACES[index]
+        run, pool = pool[:14], pool[14:]
+        own = draw(st.lists(st.sampled_from(_ITS_OWN), min_size=_APART_BY, max_size=8))
+        source += " ".join(own) + "\n" + " ".join(run) + "\n"
+        joints = [draw(st.sampled_from((" ", " ", "\n"))) for _ in run[1:]]
+        # A comment ends at its line's end: the run it holds is on its one line.
+        if template.startswith("%"):
+            joints = [" "] * len(joints)
+        written = run[0] + "".join(j + w for j, w in zip(joints, run[1:], strict=True))
+        filler = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
+        pieces[name].append(f"\n{filler.capitalize()}.\n\n" + template.replace("<>", written))
+        runs.append((run, read, name, quoted))
+    main = pieces["main.tex"]
+    main.insert(draw(st.integers(0, len(main))), "\n\\input{part}\n")
+    texts = {
+        "main.tex": "\\documentclass{article}\n\\begin{document}\n" + "".join(main)
+        + "\n\\end{document}\n",
+        "part.tex": "".join(pieces["part.tex"]),
+    }
+    expected = set()
+    for run, read, name, quoted in runs:
+        if read:
+            found = re.search(r"\s+".join(run), texts[name])
+            assert found is not None, run
+            text = texts[name]
+            expected.add((name, text.count("\n", 0, found.start()) + 1,
+                          text.count("\n", 0, found.end()) + 1, quoted))  # fmt: skip
+    return texts, source, expected
+
+
+@holds(60, _planted_latex_recycling())
+def test_a_latex_passage_of_an_earlier_paper_is_placed_at_its_file_and_lines(
+    planted: tuple[dict[str, str], str, set[tuple]],
+) -> None:
+    """G7's text recycling reads a LaTeX document as it prints, and names each passage at
+    the file it is typed in and the lines there of its first and last words: in a paragraph,
+    in a footnote, past a comment's line, and in the file the entry inputs, under a heading
+    of its own too; a run in a comment or left out by `\\iffalse` is not read (step 13). A
+    float's caption is read, and a run `\\enquote{}` or a `quote` environment holds is quoted
+    (round 1)."""
+    texts, source, expected = planted
+    view = latex_print.printed(list(latex_structure.read_tree(texts).sources), compared=True)
+    read = recycling_gate._read(view.text, None)
+    placed = [
+        recycling_gate._placed(Path("m"), view, Path("c"), passage)
+        for passage in recycling_gate._recycled(read, recycling_gate.words(source), "k")
+    ]
+    found = {(path.name, p.first_line, p.last_line, p.quoted == p.shared)
+             for path, _copy, p in placed}  # fmt: skip
+    assert found == expected, (found, expected, texts)
+
+
+def _a_recycled_passage_s_lines_are_the_printed_view_s(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print.Printed, "place",
+                  lambda self, offset: (self.origins[0][1],
+                                        self.text.count("\n", 0, offset) + 1))  # fmt: skip
+
+
+@st.composite
+def _planted_latex_pointers(draw: st.DrawFn) -> tuple[dict[str, str], set[tuple]]:
+    """A LaTeX document, `main.tex` and the `part.tex` it inputs where a paragraph drawn of
+    `main.tex` stands, that numbers tables and figures with captioned floats, each labelled,
+    and holds a float with a starred caption only and one `\\ContinuedFloat` continues, which
+    number nothing. Its first table is a float that inputs `tab.tex`, which holds its caption,
+    and its first figure is two subfigures, whose captions number its parts. It cites each
+    numbered display in its order, by a cross-reference to its label or by a pointer typed,
+    the first table always by `\\ref`, and the first figure always by `\\ref` to its first
+    part's label; and it points, in `part.tex`, at one table more than it numbers. What G2
+    says of it: that last pointer, at its file and line (steps 13 and its round 2)."""
+    tables, figures = draw(st.integers(1, 3)), draw(st.integers(1, 2))
+    kinds = ["table"] * tables + ["figure"] * figures + ["starred", "continued"]
+    pieces, seen = [], {"table": 0, "figure": 0}
+    for kind in draw(st.permutations(kinds)):
+        if kind == "starred":
+            pieces.append("\\begin{table}\\caption*{Not numbered.}\\end{table}")
+            continue
+        if kind == "continued":
+            pieces.append("\\begin{figure}\\ContinuedFloat\\caption{Continued.}\\end{figure}")
+            continue
+        seen[kind] += 1
+        label = f"{kind[:3]}{seen[kind]}"
+        if (kind, seen[kind]) == ("table", 1):
+            pieces.append("\\begin{table}\\input{tab}\\end{table}")
+        elif (kind, seen[kind]) == ("figure", 1):
+            pieces.append("\\begin{figure}" + "".join(
+                f"\\begin{{subfigure}}{{.4\\linewidth}}\\caption{{Part.}}\\label{{{label}{part}}}"
+                "\\end{subfigure}" for part in "ab") + f"\\caption{{Both.}}\\label{{{label}}}"
+                "\\end{figure}")  # fmt: skip
+        else:
+            pieces.append(f"\\begin{{{kind}}}\\caption{{The {kind}.}}\\label{{{label}}}"
+                          f"\\end{{{kind}}}")  # fmt: skip
+    # Each kind's citations in its order, the two kinds interleaved as drawn.
+    queues = {"table": list(range(1, tables + 1)), "figure": list(range(1, figures + 1))}
+    while queues["table"] or queues["figure"]:
+        kind = draw(st.sampled_from([k for k in ("table", "figure") if queues[k]]))
+        number = queues[kind].pop(0)
+        word = kind.capitalize()
+        by_ref = number == 1 or draw(st.booleans())
+        part = "a" if (kind, number) == ("figure", 1) else ""
+        pieces.append(f"As {word}~\\ref{{{kind[:3]}{number}{part}}} shows." if by_ref
+                      else f"As {word}~{number} shows.")  # fmt: skip
+    pieces.insert(draw(st.integers(0, len(pieces))), "\\input{part}")
+    table = "\\caption{The table.}\\label{tab1}\n\\begin{tabular}{l}x\\end{tabular}\n"
+    filler = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=3)))
+    over = f"Table~{tables + 1}"
+    part = f"{filler.capitalize()}.\n\nThe rest is in {over}.\n"
+    texts = {
+        "main.tex": "\\documentclass{article}\n\\begin{document}\n"
+        + "".join(f"\n{piece}\n" for piece in pieces) + "\\end{document}\n",
+        "part.tex": part,
+        "tab.tex": table,
+    }
+    return texts, {("pointer-to-nothing", "part.tex", part.count("\n", 0, part.index(over)) + 1)}
+
+
+@holds(60, _planted_latex_pointers())
+def test_a_latex_pointer_is_held_to_what_latex_numbers(
+    planted: tuple[dict[str, str], set[tuple]],
+) -> None:
+    """G2 counts the tables and figures a LaTeX document numbers with a float's `\\caption`, a
+    starred one numbering nothing; a cross-reference cites the display whose label it names;
+    and a pointer to more than the document numbers is said at its file and line, in the
+    file the entry inputs too (step 13)."""
+    texts, expected = planted
+    sources = list(latex_structure.read_tree(texts).sources)
+    report = pointers_latex_gate.pointers_in_documents(
+        {False: sources, True: []}, Path("m"), dict.fromkeys(pointers_latex_gate.AS_FILES, 0)
+    )
+    found = {(f.code, f.path.name, f.line) for f in report.findings}
+    assert found == expected, (found, expected, texts)
+
+
+@st.composite
+def _planted_latex_legends(draw: st.DrawFn) -> tuple[str, set[int]]:
+    """A LaTeX document of floats in an order drawn, each caption of words drawn: figures, a
+    table, a figure with a starred caption only, and a figure of two subfigures whose own
+    captions are long. What G4 reads as a legend over `_LEGEND_LIMIT` words: the line of each
+    figure's caption that is longer, and no other (step 13)."""
+
+    def words(least: int, most: int) -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=least, max_size=most)))
+
+    long = _LEGEND_LIMIT + 3
+    floats = [("figure", words(1, _LEGEND_LIMIT * 2)) for _ in range(draw(st.integers(1, 3)))]
+    floats += [("table", words(long, long + 4)), ("starred", words(long, long + 4)),
+               ("parts", words(long, long + 4))]  # fmt: skip
+    lines, expected = ["\\documentclass{article}", "\\begin{document}"], set()
+    for kind, said in draw(st.permutations(floats)):
+        lines.append(draw(st.sampled_from(("Words first.", ""))))
+        if kind == "figure":
+            lines += ["\\begin{figure}", f"\\caption{{{said}}}", "\\end{figure}"]
+            if len(said.split()) > _LEGEND_LIMIT:
+                expected.add(len(lines) - 1)
+        elif kind == "table":
+            lines += [f"\\begin{{table}}\\caption{{{said}}}\\end{{table}}"]
+        elif kind == "starred":
+            lines += [f"\\begin{{figure}}\\caption*{{{said}}}\\end{{figure}}"]
+        else:
+            lines += ["\\begin{figure}",
+                      f"\\begin{{subfigure}}{{.4\\linewidth}}\\caption{{{said}}}\\end{{subfigure}}",
+                      "\\caption{Two parts.}", "\\end{figure}"]  # fmt: skip
+    lines.append("\\end{document}")
+    return "\n".join(lines) + "\n", expected
+
+
+#: The words a legend may have in `_planted_latex_legends`.
+_LEGEND_LIMIT = 6
+
+
+@holds(60, _planted_latex_legends())
+def test_a_latex_legend_is_its_figure_s_caption(planted: tuple[str, set[int]]) -> None:
+    """G4 reads a figure's legend in the caption LaTeX numbers it by, its words counted as a
+    Markdown legend's: not a table's caption, a starred one, nor a subfigure's (step 13)."""
+    from manuscript_guard.text.sections import count_words
+
+    text, expected = planted
+    sources = list(latex_structure.read_tree({"main.tex": text}).sources)
+    found = {line for _path, line, legend in latex_print.captions_in(sources)
+             if count_words(legend) > _LEGEND_LIMIT}  # fmt: skip
+    assert found == expected, (found, expected, text)
+
+
+def _a_subfigure_s_caption_numbers_the_float(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print, "_SUBFLOAT", re.compile(r"(?!)"))
+
+
+def _a_continued_float_numbers_a_display(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print, "_CONTINUED", re.compile(r"(?!)"))
+
+
+def _a_part_s_label_names_nothing(patch: pytest.MonkeyPatch) -> None:
+    named = latex_print._named
+    patch.setattr(latex_print, "_named",
+                  lambda captions, labels, _parts: named(captions, labels, []))  # fmt: skip
+
+
+def _a_float_that_inputs_its_caption_is_uncounted(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print, "_holds_input", lambda _source, _start, _end: False)
+    patch.setattr(latex_print, "FLOATS", frozenset())
+
+
+def _a_starred_caption_numbers_a_display(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print, "_NUMBERED", re.compile(r"\\caption\*?(?![A-Za-z])\s*\{"))
+
+
+class _EveryCommand(frozenset):
+    """A set that holds every command, which the broken rule below takes for the pages'."""
+
+    def __contains__(self, _item: object) -> bool:
+        return True
+
+
+def _a_cross_reference_cites_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(pointers_latex_gate, "_PAGES", _EveryCommand())
+
+
+def _a_latex_pointer_s_line_is_the_view_s(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print.Printed, "place",
+                  lambda self, offset: (self.origins[0][1],
+                                        self.text.count("\n", 0, offset) + 1))  # fmt: skip
+
+
+def _a_caption_is_not_compared(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print, "_CAPTION", re.compile(r"(?!)"))
+
+
+def _a_quotation_latex_marks_with_a_command_is_not_quoted(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(recycling_gate, "_MARKED", re.compile(r"(?!)"))
+
+
+def _a_recycled_passage_ends_on_its_first_line(patch: pytest.MonkeyPatch) -> None:
+    placed = recycling_gate._placed
+
+    def first_line_only(folder, where, copy, passage):
+        path, copy, passage = placed(folder, where, copy, passage)
+        return path, copy, dataclasses.replace(passage, last_line=passage.first_line)
+
+    patch.setattr(recycling_gate, "_placed", first_line_only)
+
+
 @holds(150, plan_pairs())
 def test_a_section_of_two_plans_differs_only_where_its_words_do(
     drawn: tuple[dict[str, str], list[str]],
@@ -8245,11 +8518,12 @@ def _a_name_is_one_space_apart(patch: pytest.MonkeyPatch) -> None:
 
 def _an_institution_is_in_its_own_case(patch: pytest.MonkeyPatch) -> None:
     real = blinding._words
-    patch.setattr(blinding, "_words", lambda piece, flags=0: real(piece))
+    patch.setattr(blinding, "_words",
+                  lambda piece, flags=0, *, latex=False: real(piece, latex=latex))  # fmt: skip
 
 
 def _an_initial_needs_no_stop(patch: pytest.MonkeyPatch) -> None:
-    def name(given: str, family: str) -> re.Pattern[str]:
+    def name(given: str, family: str, *, latex: bool = False) -> re.Pattern[str]:
         initial, surname = re.escape(given[0]), blinding._spaced(family)
         return re.compile(
             rf"(?<!\w)(?:{blinding._spaced(given)}\s+{surname}|{initial}(?:\.\s*|\s+)"
@@ -8261,12 +8535,13 @@ def _an_initial_needs_no_stop(patch: pytest.MonkeyPatch) -> None:
 
 def _an_apostrophe_is_matched_as_typed(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(
-        blinding, "_spaced", lambda words: r"\s+".join(re.escape(w) for w in words.split())
+        blinding, "_spaced",
+        lambda words, *, latex=False: r"\s+".join(re.escape(w) for w in words.split()),
     )
 
 
 def _a_name_is_not_read_family_name_first(patch: pytest.MonkeyPatch) -> None:
-    def name(given: str, family: str) -> re.Pattern[str]:
+    def name(given: str, family: str, *, latex: bool = False) -> re.Pattern[str]:
         initial, surname = re.escape(given[0]), blinding._spaced(family)
         return re.compile(
             rf"(?<!\w)(?:{blinding._spaced(given)}\s+{surname}|{initial}\.\s*{surname})(?!\w)"
@@ -9589,6 +9864,54 @@ BROKEN = {
     "in LaTeX, a quotation's line is the printed view's": (
         _a_quotation_s_line_is_the_printed_view_s,
         test_a_latex_quotation_is_read_at_its_line_and_nowhere_else,
+    ),
+    "in LaTeX, a recycled passage's lines are the printed view's": (
+        _a_recycled_passage_s_lines_are_the_printed_view_s,
+        test_a_latex_passage_of_an_earlier_paper_is_placed_at_its_file_and_lines,
+    ),
+    "in LaTeX, a recycled passage ends on its first line": (
+        _a_recycled_passage_ends_on_its_first_line,
+        test_a_latex_passage_of_an_earlier_paper_is_placed_at_its_file_and_lines,
+    ),
+    "in LaTeX, a starred caption numbers a display": (
+        _a_starred_caption_numbers_a_display,
+        test_a_latex_pointer_is_held_to_what_latex_numbers,
+    ),
+    "in LaTeX, a starred caption is a legend": (
+        _a_starred_caption_numbers_a_display,
+        test_a_latex_legend_is_its_figure_s_caption,
+    ),
+    "in LaTeX, a subfigure's caption is a legend": (
+        _a_subfigure_s_caption_numbers_the_float,
+        test_a_latex_legend_is_its_figure_s_caption,
+    ),
+    "in LaTeX, a continued float numbers a display": (
+        _a_continued_float_numbers_a_display,
+        test_a_latex_pointer_is_held_to_what_latex_numbers,
+    ),
+    "in LaTeX, a part's label names nothing": (
+        _a_part_s_label_names_nothing,
+        test_a_latex_pointer_is_held_to_what_latex_numbers,
+    ),
+    "in LaTeX, a float that inputs its caption is uncounted": (
+        _a_float_that_inputs_its_caption_is_uncounted,
+        test_a_latex_pointer_is_held_to_what_latex_numbers,
+    ),
+    "in LaTeX, a cross-reference cites nothing": (
+        _a_cross_reference_cites_nothing,
+        test_a_latex_pointer_is_held_to_what_latex_numbers,
+    ),
+    "in LaTeX, a pointer's line is the printed view's": (
+        _a_latex_pointer_s_line_is_the_view_s,
+        test_a_latex_pointer_is_held_to_what_latex_numbers,
+    ),
+    "in LaTeX, a float's caption is not compared with an earlier paper": (
+        _a_caption_is_not_compared,
+        test_a_latex_passage_of_an_earlier_paper_is_placed_at_its_file_and_lines,
+    ),
+    "in LaTeX, a quotation marked with a command is not quoted": (
+        _a_quotation_latex_marks_with_a_command_is_not_quoted,
+        test_a_latex_passage_of_an_earlier_paper_is_placed_at_its_file_and_lines,
     ),
     "in LaTeX's printed view, dashes are printed as typed": (
         _latex_dashes_are_printed_as_typed,

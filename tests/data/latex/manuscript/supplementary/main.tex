@@ -1,5 +1,5 @@
 \documentclass{article}
-\usepackage{mgvalues}
+\usepackage{mgvalues}\renewcommand{\thetable}{S\arabic{table}}
 
 \begin{document}
 
@@ -17,7 +17,7 @@ a reader checking it wants the whole list rather than a sentence about it. It is
 the terms the analysis filtered on, so the definition in this table and the definition the
 code applied cannot come apart.
 
-\mg{table.outcome_codes}
+\begin{table}\caption{Code lists used to identify the outcome.}\label{tab:codes}\mg{table.outcome_codes}\end{table}
 
 Events were coded with the data generator's own list of event terms, release
 \mg{results.dictionary.generator_event_terms}; a real study codes with MedDRA, and names the
@@ -29,7 +29,7 @@ The model as it was fitted: the outcome, and each variable with the kind it was 
 how the model entered it. The table is made from the fit and from those declarations, not
 typed, so it cannot describe a model other than the one that produced the estimate.
 
-\mg{table.model_adjusted}
+\begin{table}\caption{The adjusted model.}\label{tab:model}\mg{table.model_adjusted}\end{table}
 
 \subsection{Sensitivity of the estimate to the interval quoted}
 

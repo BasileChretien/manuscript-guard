@@ -71,6 +71,9 @@ GATES = {
     "G14": Zero("the manuscript's words", "abbreviations_read", why=_NO_MANUSCRIPT),
     "G15": Zero("the models the analysis fitted", "models",
                 why="an analysis may fit no model"),
+    "G16": Zero("the data dictionary, and the counts its checks made", None,
+                why="a project keeps a data dictionary where it plans or reads data; with "
+                "none, nothing is asked of the data"),
     "BUILD": Zero("each document as pandoc reads it", "documents_read_for_tex",
                   why=_NO_MANUSCRIPT),
 }
@@ -264,7 +267,9 @@ LATEX = {
     "related": ("reads", ("related", "{project}")),
     "render": ("refuses", ("render", "{project}")),
     "respond": ("refuses", ("respond", "{project}", "--from", "{project}/returned.docx")),
-    "review": ("refuses", ("review", "{project}", "--run")),
+    # A panel is sent the documents as the submission folder writes them (step 12); the
+    # edits its readings suggest are written into a Word copy, which is Markdown's.
+    "review": ("refuses", ("review", "{project}", "--suggestions", "--round", "1")),
     "reworded": ("refuses", ("reworded", "{project}")),
     "search": ("no manuscript", ("search", "hepatic injury")),
     "sign": ("reads", ("sign", "{project}", "--as", "Nobody Listed", "--finding", "G15/x/y")),

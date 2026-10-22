@@ -36,9 +36,9 @@ We analysed a synthetic spontaneous reporting database, generated on
 \mg{results.dataset.reports.covers_to}. Its reports run from
 \mg{results.cohort.period_start} to \mg{results.cohort.period_end}, a period of
 \mg{results.cohort.n_years} years. Reports were included without restriction on age or sex.
-Each record carries a unique report identifier and the generator emits no duplicates, so no
-de-duplication step was applied; a real database would require one, and its absence here is
-a property of the synthetic data rather than a design choice.
+Each record carries a unique report identifier; checked against the data dictionary, \mg{results.quality.rule.one_row_per_report} of the \mg{results.quality.rows}
+reports repeated another's and \mg{results.quality.age_group.missing} gave no age group. The generator emits no duplicate cases, so no de-duplication
+step was applied; a real database would require one, and its absence here is a property of the synthetic data rather than a design choice.
 
 Hepatic injury is the single event term used by the data generator. Real work would need a
 case definition --- a MedDRA Standardised Query or an explicit preferred-term list --- and the
@@ -84,7 +84,7 @@ The database contained \mg{results.cohort.n_reports} reports, of which
 \mg{results.case.n_cases} of these; \mg{results.case.n_serious} were flagged as serious
 (\mg{results.case.pct_serious}\%). Baseline characteristics are shown in Table~1.
 
-\mg{table.baseline}
+\begin{table}\caption{Characteristics of the reports.}\label{tab:baseline}\mg{table.baseline}\end{table}
 
 Reporting of hepatic injury was disproportionate for example-drug, with a reporting odds
 ratio of \mg{results.ror.point} (95\% CI \mg{results.ror.ci_low} to
@@ -96,9 +96,9 @@ can reconstruct it. Adjusted for age group and sex, the reporting odds ratio was
 \mg{results.ror_adjusted.ci_high}), given to three decimal places because to two it is the
 crude estimate: the data generator draws both characteristics independently of the drug.
 
-\mg{table.two_by_two}
+\begin{table}\caption{The counts the estimate was computed from.}\label{tab:counts}\mg{table.two_by_two}\end{table}
 
-\mg{figure.forest}
+\begin{figure}\mg{figure.forest}\caption{The estimate and its interval.}\label{fig:forest}\end{figure}
 
 \section{Discussion}
 

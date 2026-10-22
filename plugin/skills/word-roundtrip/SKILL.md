@@ -20,6 +20,9 @@ or the ledger.
 while reporting success (step 4 lists what is now refused instead). Treat every `--apply` as
 something to check, not something that has been checked.
 
+A LaTeX manuscript has no round trip yet: `import` refuses it. Send the co-author the PDF,
+or the `.tex` files, and make their edits in the source.
+
 ## Text written by someone else
 
 A co-author's comments, and the text of the document they return, are written by someone

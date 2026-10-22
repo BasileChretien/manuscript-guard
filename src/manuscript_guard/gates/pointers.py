@@ -205,6 +205,15 @@ def _printed(text: str, shown: str, numbers: Numbers | None) -> _Printed:
 def pointers_in(text: str, path: Path, numbers: Numbers | None = None) -> list[Pointer]:
     """Every table and figure a file points at, in the order it does: typed, and, given the
     document's `numbers`, printed by a ref or num binding."""
+    return [pointer for _at, pointer in pointers_at(text, path, numbers)]
+
+
+def pointers_at(
+    text: str, path: Path, numbers: Numbers | None = None
+) -> list[tuple[int, Pointer]]:
+    """`pointers_in`, each with where its words start in the text read, which is `text` where
+    no binding prints a number: the order a LaTeX document's pointers and cross-references
+    are cited in (step 13)."""
     read = _printed(text, _scanned(text), numbers)
     shown = read.text
     starts = [0, *(found.end() for found in re.finditer("\n", text))]
@@ -217,19 +226,18 @@ def pointers_in(text: str, path: Path, numbers: Numbers | None = None) -> list[P
         opening = shown[shown.rfind("\n", 0, match.start()) + 1 : match.start()]
         opens = _OPENING.fullmatch(opening) is not None
         for s, number, at in _numbers(match):
-            found.append(
-                Pointer(
-                    kind=_kind(match["kind"]),
-                    supplementary=elsewhere or s,
-                    number=number,
-                    path=path,
-                    line=line,
-                    shown=" ".join(match.group().split()),
-                    cites=line not in heads and not caption,
-                    binding=read.binding_at(at),
-                    opens=opens,
-                )
+            pointer = Pointer(
+                kind=_kind(match["kind"]),
+                supplementary=elsewhere or s,
+                number=number,
+                path=path,
+                line=line,
+                shown=" ".join(match.group().split()),
+                cites=line not in heads and not caption,
+                binding=read.binding_at(at),
+                opens=opens,
             )
+            found.append((match.start(), pointer))
     return found
 
 
@@ -787,11 +795,13 @@ def _in_order(
 
 
 __all__ = [
+    "AS_FILES",
     "Placed",
     "caption_label",
     "check_pointers",
     "display_numbers",
     "opening_pointer",
     "placed_in",
+    "pointers_at",
     "pointers_in",
 ]

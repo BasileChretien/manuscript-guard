@@ -39,6 +39,11 @@ manuscript as it stands, otherwise the one in `build/`. That is what the marked-
 compared with at resubmission. Where it says none was kept, ask the author for the file they
 sent and put it at `revision/round-<N>/submitted/manuscript.docx`.
 
+For a LaTeX manuscript it keeps the text as LaTeX prints it, with the values in, which is
+what G13 reads, and in `revision/round-<N>/submitted/latex/` each document as the
+submission folder writes it. A round cannot be seeded from a returned Word document
+(`--from`), and `build --marked-up` makes no marked-up copy of it yet.
+
 If revising has already started, the baseline has to come from the version that was sent.
 Check out the submitted commit somewhere (a `git worktree` works) and run
 `manuscript-guard review --files` there. It prints one digest per manuscript file. Paste

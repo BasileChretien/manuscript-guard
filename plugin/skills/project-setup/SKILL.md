@@ -46,7 +46,14 @@ hook says once when that release is newer than the installed tool, with the upgr
 ```bash
 manuscript-guard init my-paper --title "Working title"   # a new project
 manuscript-guard init . --title "Working title"          # an existing analysis repository
+manuscript-guard init my-paper --title "Working title" --latex   # the manuscript in LaTeX
 ```
+
+Ask the authors whether they write the manuscript in Markdown or in LaTeX before running it.
+With `--latex` the manuscript is `manuscript/main.tex`, which declares its class and loads
+`mgvalues`, with `mgvalues.sty` beside it, in place of `main.md`. A project is one or the
+other: `init --latex` makes nothing where `manuscript/` holds Markdown, and `check` fails a
+Markdown file in a LaTeX manuscript (`other-format-file`).
 
 It never overwrites an existing file, so the second form adds manuscript-guard to a
 repository that already holds an analysis, with `paper.yaml` at its root. That also means
@@ -70,6 +77,7 @@ analysis/              scripts that publish results through the emitter
 results/               machine-written; never edited by hand
 literature/            ledger.yaml, attested.yaml, references.bib, sources/
 manuscript/main.md     prose with {{results.x}}, {{lit.y}}, [@citekey]
+                       (main.tex and mgvalues.sty under --latex, with \mg{results.x})
 figures/  review/  build/
 .gitattributes         * text=auto eol=lf
 AGENTS.md              the rules of the project, for any agent working in it
@@ -136,8 +144,13 @@ manuscript-guard build --offline     # the same from references.bib, for CI and 
 ```
 
 Publishing values and binding them is the [results-binding](../results-binding/SKILL.md)
-skill. `build` refuses while anything fails at the current stage. `--skip-checks` writes
-`manuscript.UNCHECKED.docx` instead, which is for reading, not for sending.
+skill. In a LaTeX manuscript, run `manuscript-guard values` after the analysis, which writes
+`mgvalues.sty` from the results, and `explain manuscript/main.tex`; `build` compiles the PDF
+with latexmk, which TeX Live and MiKTeX provide, and `--skip-checks` writes
+`manuscript.UNCHECKED.pdf`. Each table and figure goes in a float with a `\caption`, which
+LaTeX numbers it by. `build` refuses while anything fails at the current stage. For a Markdown manuscript,
+`--skip-checks` writes `manuscript.UNCHECKED.docx` instead, which is for reading, not for
+sending.
 
 `build` needs Zotero running for live fields; the first live build also downloads Better
 BibTeX's Lua filter. `--offline` needs a `literature/references.bib`, which
@@ -150,13 +163,13 @@ Each finding names a code. The code says where to go:
 
 | Codes | Skill |
 |---|---|
-| `no-analysis-plan`, `plan-section-*`, `feasibility-not-run` | [analysis-plan](../analysis-plan/SKILL.md) |
+| `no-analysis-plan`, `plan-section-*`, `feasibility-not-run`, `not-in-dictionary` | [analysis-plan](../analysis-plan/SKILL.md) |
 | `data-source-*`, `data-sources-schema`, `custodian-rule-undeclared`, `plan-source-unnamed`, `data-statement-source-unnamed`, `data-statement-route-differs`, `dataset-not-chosen`; which dataset could answer the question, and how it is reached | [data-sources](../data-sources/SKILL.md) |
 | `dictionary-*`, `plan-variable-undefined` | [data-dictionary](../data-dictionary/SKILL.md) |
 | `similar-*`, `appraisal-*`, `adopted-*`, `standard-redescribed` | [methods-review](../methods-review/SKILL.md) |
-| `unclassified-number`, `unresolved-binding`, `unquoted-result`, `typed-parameter`, `parameter-unread`, `hand-authored-table`, G1 and G8 codes | [results-binding](../results-binding/SKILL.md) |
+| `unclassified-number`, `unresolved-binding`, `unquoted-result`, `typed-parameter`, `parameter-unread`, `hand-authored-table`, G1 and G8 codes, `quality-not-run`, `entry-unchecked`, `rule-unchecked` | [results-binding](../results-binding/SKILL.md) |
 | `ai-phrasing`, `ai-cadence`, `vague-attribution`, `model-artefact`, `revision-residue`, `abbreviation-*`, `term-avoided`, `vocabulary-conflict`, `spelling-*`, `notation-*`, `recycled-*`, `earlier-output-not-compared` | [manuscript-writing](../manuscript-writing/SKILL.md) |
-| `methods-drift`, `methods-never-reconciled`, `methods-supplement-unreconciled`, `method-…`, G15 codes (`model-…`, `variable-…`, `typed-model-kind`; `model-binary-as-number`, `variable-not-binary` and `model-engine-unknown` are among them) | [methods-writer](../methods-writer/SKILL.md) |
+| `methods-drift`, `methods-never-reconciled`, `methods-supplement-unreconciled`, `method-…`, G15 codes (`model-…`, `variable-…`, `typed-model-kind`; `model-binary-as-number`, `variable-not-binary` and `model-engine-unknown` are among them), `quality-not-reported` | [methods-writer](../methods-writer/SKILL.md) |
 | `literature-source-missing`, `quote-not-in-source`, `value-not-in-quote`, `quote-too-short`, `quotation-not-in-source`, `quotation-unchecked`, `passage-not-in-source`, `passage-unchecked`, `passage-too-short`, `passage-stale`, `statements-without-passage`, `judgement-not-human`, `passage-does-not-support`, `passage-partly-supports` | [literature-verify](../literature-verify/SKILL.md) |
 | `figure-unreviewed`, `figure-review-stale`, `figure-alt-*` | [figure-review](../figure-review/SKILL.md) |
 | `figure-colours-*`, `figure-greyscale-confused`, choosing a figure's look or palette | [figure-design](../figure-design/SKILL.md) |

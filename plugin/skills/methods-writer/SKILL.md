@@ -1,6 +1,6 @@
 ---
 name: methods-writer
-description: Write or reconcile a Methods section against the analysis code that was actually run. Use when drafting Methods, when describing a statistical model, when pointing Methods text at a step of the code, when check reports methods-drift, methods-never-reconciled, a method-… finding or a G15 model-… or variable-… finding, or after the analysis changes. Not for the prose of other sections (use manuscript-writing), nor for putting a result into the text (use results-binding).
+description: Write or reconcile a Methods section against the analysis code that was actually run. Use when drafting Methods, when describing a statistical model, when pointing Methods text at a step of the code, when check reports methods-drift, methods-never-reconciled, a method-… finding, a G15 model-… or variable-… finding or quality-not-reported, or after the analysis changes. Not for the prose of other sections (use manuscript-writing), nor for putting a result into the text (use results-binding).
 ---
 
 # Writing Methods that describe what was done
@@ -82,6 +82,8 @@ with em.step("ci"):                       # R: em$step("ci", { ... })
 Confidence intervals were derived from the standard error of the log odds ratio.
 {{method.ci}}
 ```
+
+In a LaTeX manuscript the anchor is `\mg{method.ci}`, and it prints nothing either.
 
 (The standard error in the example, the square root of the sum of the reciprocals of the
 four cells, is Woolf's: B. Woolf, *Annals of Human Genetics* 19:251-253, 1955.)
@@ -255,6 +257,31 @@ What G15 reports, and what to do:
 | `model-ordinal-as-trend`, `model-number-as-categories`, `model-few-events`, `model-kind-unfitted` | warnings: say in the Methods why, or change the model |
 | `model-engine-unknown` | a warning: the toolkit's list has no name for this fit, so its outcome is not checked and it has no kind to bind; name the model in your own words |
 | `unit-rows-independent` | a warning: the rows outnumber the declared units and the standard errors take each row as independent. Cluster them by the unit (`cov_type="cluster"`) or fit a mixed model, and say so in the Methods |
+
+## Saying what the data held
+
+Where the analysis checked its data against the data dictionary (`check_data`, the
+[results-binding](../results-binding/SKILL.md) skill), the counts are results under
+`quality.`, and the Methods say what was checked, what was found and what was done with it,
+binding the counts. RECORD asks for the data cleaning methods (item 12.2), and a reader
+cannot judge a cohort whose impossible values were dropped without a word:
+
+```markdown
+Each report was checked against the data dictionary (Supplementary Table S3). Of the
+{{results.quality.rows}} reports, {{results.quality.age.out_of_range}} gave an age outside
+0 to 120 years and {{results.quality.rule.one_row_per_version}} repeated a version already
+held; both were left out. Age was missing from {{results.quality.age.missing}} reports.
+```
+
+- Say what was done with each kind of fault: left out, set to missing, corrected from
+  another field, or kept. The count says how many; only the text says which.
+- A count printed `<5` is held back for the data custodian: write "fewer than five", and
+  bind it rather than typing the bound.
+- A long list of checks belongs in the supplement. One bound count there is enough for G16,
+  but the Methods should still say that the data were checked and where the result is.
+
+`quality-not-reported` is G16's: there are counts and neither the Methods nor the
+supplement binds one. It warns from drafting and fails at submission.
 
 ## Locking the parameters worth checking
 

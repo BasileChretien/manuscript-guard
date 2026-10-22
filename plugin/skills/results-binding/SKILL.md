@@ -1,6 +1,6 @@
 ---
 name: results-binding
-description: Publish values from the analysis through the Python or R emitter, write them into the manuscript as bindings, and get an unbound number out of the red. Use when writing or changing an analysis script in a manuscript-guard project, when putting a result, table or figure into the text, or when check reports unclassified-number, unresolved-binding, value-splits-paragraph, unquoted-result, typed-parameter, typed-software-version, typed-dictionary-release, parameter-unread, hand-authored-table, results-edited, script-newer, input-changed, duplicate-quantity, pointer-to-nothing, display-not-cited, cited-out-of-order, pointer-word-mismatch, ref-number-unknown or caption-names-another. Not for prose style (use manuscript-writing), the Methods against the code (use methods-writer), or a paper written outside manuscript-guard (use paper-audit).
+description: Publish values from the analysis through the Python or R emitter, write them into the manuscript as bindings, and get an unbound number out of the red. Use when writing or changing an analysis script in a manuscript-guard project, when putting a result, table or figure into the text, or when check reports unclassified-number, unresolved-binding, value-splits-paragraph, unquoted-result, typed-parameter, typed-software-version, typed-dictionary-release, parameter-unread, hand-authored-table, results-edited, script-newer, input-changed, duplicate-quantity, pointer-to-nothing, display-not-cited, cited-out-of-order, pointer-word-mismatch, ref-number-unknown, caption-names-another, quality-not-run, entry-unchecked or rule-unchecked. Not for prose style (use manuscript-writing), the Methods against the code (use methods-writer), or a paper written outside manuscript-guard (use paper-audit).
 ---
 
 # Binding the numbers
@@ -95,6 +95,12 @@ results relate (a sum, a difference, a ratio, an upper bound or an order), draws
 PRISMA flow, or `check` warns under G8, read
 [references/arithmetic-and-flows.md](references/arithmetic-and-flows.md).
 
+### The data, held to the data dictionary
+
+With a `design/data_dictionary.yaml`, hand each table read to `em.check_data(table)` (R:
+`em$check_data(table)`); [references/data-quality.md](references/data-quality.md) has the
+counts and their findings.
+
 **Never edit `results/`.** The fragments are machine-written and digested. An edited one is
 `results-edited`, the write guard refuses the edit where the hooks run, and
 `manuscript-guard verify` re-runs the analysis in a scratch copy and compares value by value.
@@ -148,6 +154,14 @@ The database held {{results.cohort.n_reports}} reports. The reporting odds ratio
   on PATH `check` passes it and says in a note (`tex-not-judged`) that the build judges it.
 - `manuscript/supplementary/` is checked the same way and built as its own document.
 
+In a LaTeX manuscript, a binding is one command: `\mg{results.key}`, `\mg{lit.key}`,
+`\mg{table.key}` inside the float you caption, `\mg[width=\linewidth]{figure.key}` with
+`\includegraphics`'s options, and `\mg{method.step}`. Point at a table or a figure with
+`\ref`. `manuscript-guard values` writes `mgvalues.sty` from the results, so that the `.tex`
+compiles in any editor with the numbers in: run it after the analysis and commit it; `check`
+fails a stale one. A number in a siunitx command, `\num{0.42}`, cannot be bound, since
+siunitx parses a number and a value prints as text: type the unit beside the binding.
+
 ## 3. Tables and figures come from results
 
 A pipe table typed with numbers in it is `hand-authored-table`. Emit it:
@@ -187,7 +201,7 @@ There are four ways out, and usually it is the first:
 1. It is already published and was typed instead of bound. `bind` names the key whose
    display matches. `bind --apply --only manuscript/main.md:42` applies the suggestions on
    line 42 only, and is refused if any number on that line has no single match; the path is
-   relative to the project root. `bind --apply` alone takes every unambiguous
+   relative to the project root. In a LaTeX manuscript it offers and writes `\mg{...}`. `bind --apply` alone takes every unambiguous
    match, and a match is a guess: "10 of them" can be bound to a ten-year study period.
    Where two keys display the same, `bind` refuses to choose, and so should you.
 2. It should be published. Emit it from the analysis and bind it.

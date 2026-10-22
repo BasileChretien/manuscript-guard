@@ -1,0 +1,88 @@
+schema: manuscript-guard/data-dictionary/1
+title: Spontaneous reports of a fictional drug, as both emitters' quality checks read them
+study_period: {start: 2015-01-01, end: 2024-12-31}
+code_lists:
+  yes_no:
+    - {code: 0, label: "No"}
+    - {code: 1, label: "Yes"}
+variables:
+  - name: report_id
+    label: Report
+    definition: The report's number in the database, R and four digits.
+    type: identifier
+    pattern: "R[0-9]{4}"
+    required: true
+  - name: version
+    label: Version
+    definition: The report's version, from 1, raised at each follow-up.
+    type: count
+    range: {min: 1}
+  - name: age
+    label: Age
+    definition: Age in years at the onset of the reaction, as reported.
+    type: continuous
+    unit: years
+    range: {min: 0, max: 120}
+    missing:
+      - {code: -99, label: not known}
+  - name: weight
+    label: Weight
+    definition: Body weight in kilograms, as reported.
+    type: continuous
+    unit: kg
+    range: {min: 1, max: 300}
+  - name: sex
+    label: Sex
+    definition: Sex as reported.
+    type: binary
+    values:
+      - {code: 1, label: Male}
+      - {code: 2, label: Female}
+  - name: pregnant
+    label: Pregnant
+    definition: Pregnant at the onset of the reaction.
+    type: binary
+    code_list: yes_no
+    required: true
+    applies_if: {variable: sex, in: [2]}
+  - name: seriousness
+    label: Seriousness
+    definition: Seriousness, from 1 (not serious) to 3 (fatal).
+    type: ordinal
+    values:
+      - {code: 1, label: not serious}
+      - {code: 2, label: serious}
+      - {code: 3, label: fatal}
+  - name: drug_start
+    label: Start of the drug
+    definition: The day the suspect drug was first taken.
+    type: date
+    within_study_period: true
+  - name: onset
+    label: Onset
+    definition: The day the reaction began.
+    type: date
+    within_study_period: true
+  - name: received
+    label: Received
+    definition: When the report was received, to the minute.
+    type: datetime
+    range: {min: "2016-02-04"}
+  - name: dose_time
+    label: Time of the dose
+    definition: The time of day of the last dose before the reaction.
+    type: time
+  - name: outcome_text
+    label: Outcome
+    definition: The outcome as the reporter wrote it.
+    type: text
+rules:
+  - id: start_before_onset
+    says: The reaction began on or after the day the drug was started.
+    order: [drug_start, onset]
+  - id: one_row_per_version
+    says: Each version of a report is one row.
+    unique: [report_id, version]
+  - id: no_pregnant_men
+    says: No man is recorded as pregnant.
+    computed: true

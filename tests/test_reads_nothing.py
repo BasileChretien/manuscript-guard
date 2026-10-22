@@ -142,6 +142,8 @@ COMMANDS = {
     "transcribe": Zero("the reporting guidelines' sources",
                        why="a recipe whose source is missing is counted as failed (exit 1)"),
     "verify": Zero("the results fragments, re-run", exits=2, argv=("verify", "{project}")),
+    "package": Zero("the results fragments, and the files that made them", exits=2,
+                    argv=("package", "{project}")),
 }
 
 
@@ -249,6 +251,10 @@ LATEX = {
     # G9, G15, G7's passages, G8's earlier outputs and G13 read LaTeX from step 8.
     "methods": ("reads", ("methods", "{project}")),
     "models": ("reads", ("models", "{project}")),
+    # It packages the results, the scripts and the inputs whatever the format, and the `.tex`
+    # sources with `--with-manuscript`; BOUND.md does not read LaTeX's bindings yet, and the
+    # package says so with a warning (`package-bound-not-read`).
+    "package": ("reads", ("package", "{project}")),
     "palettes": ("no manuscript", ("palettes",)),
     "passages": ("reads", ("passages", "{project}")),
     "proof": ("refuses", ("proof", "{project}/proof.pdf", "{project}")),

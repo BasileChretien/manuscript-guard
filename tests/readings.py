@@ -556,6 +556,30 @@ def _data_statement() -> Reading:
     return read
 
 
+@reading("deposit named")
+def _deposit_named() -> Reading:
+    from manuscript_guard.gates.data_statement import names_doi
+
+    def read(text: str) -> bool:
+        """Whether a Data availability statement names the package deposited as
+        10.5281/zenodo.1234567."""
+        return names_doi(text, "10.5281/zenodo.1234567")
+
+    return read
+
+
+@reading("count cells")
+def _count_cells() -> Reading:
+    from manuscript_guard.deposit.counts import count_in_cell
+
+    def read(cells: list[str]) -> list[int | None]:
+        """The count each table cell states, as a package reads a fragment for the data
+        custodian's minimum."""
+        return [count_in_cell(cell) for cell in cells]
+
+    return read
+
+
 #: Two chosen sources, one anyone may download and one a committee decides on, as the record
 #: of data sources gives them.
 DATA_SOURCES = (

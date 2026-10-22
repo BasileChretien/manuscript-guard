@@ -10150,9 +10150,11 @@ def test_a_lock_of_the_main_text_only_is_not_said_of_where_the_supplement_has_no
     project: Path,
 ) -> None:
     """The example's supplement has "Supplementary methods" over its tables, and no text of
-    its own under it nor a section that names a method: it has no Methods to read."""
+    its own under it nor a section that names a method: it has no Methods to read. The lock
+    is set to the version that would be said of, since one the tool writes now never is."""
     from manuscript_guard.gates.methods import supplementary_methods
 
+    _lock_of_the_main_text_only(project, "as written")
     assert supplementary_methods(load_project(project)[0]) == []
     assert _methods_warnings(project) == []
 

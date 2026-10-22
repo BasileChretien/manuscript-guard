@@ -97,3 +97,86 @@ def reader_for(project) -> Reader:
 def manuscript_files(project, *, main_text_only: bool = False) -> list[Path]:
     """Every source of a project's manuscript, in its format."""
     return reader_for(project).files(main_text_only=main_text_only)
+
+
+@dataclass(frozen=True)
+class Bound:
+    """One manuscript file with its bindings, the `Placeholder` records of
+    `placeholders.parse`: its text as typed, and as Markdown writes it, which for a LaTeX file
+    is its Markdown view (`text/latex/views.py`), `\\mg{results.key}` as `{{results.key}}` at
+    the same offsets, and for a Markdown file the text itself."""
+
+    path: Path
+    text: str
+    view: str
+    placeholders: list
+    latex: bool = False
+
+
+def bound_files(project) -> list[Bound]:
+    """Each manuscript file with its bindings, in its format. A Markdown file that cannot be
+    read raises `Unreadable`, as `read_text` does; a LaTeX one is passed over by the include
+    tree, and named by the check that reads every file first."""
+    folder = project.path("manuscript")
+    if manuscript_format(folder) == LATEX:
+        from manuscript_guard.text.latex.views import files
+
+        return [Bound(found.path, found.text, found.view, list(found.placeholders), latex=True)
+                for found in files(folder)]  # fmt: skip
+    from manuscript_guard.contracts._schema import read_text
+    from manuscript_guard.gates.numbers import source_files
+    from manuscript_guard.text.placeholders import parse
+
+    bound = []
+    for path in source_files(folder):
+        text = read_text(path)
+        bound.append(Bound(path, text, text, parse(text)[0]))
+    return bound
+
+
+class CitationsUnknown(Exception):
+    """A LaTeX manuscript holds a part its reader refuses, so the citations after it are not
+    known."""
+
+
+def citation_uses(project, *, whole: bool = False) -> list:
+    """Every citation of the manuscript, as `zotero.find_citations` gives the `CitationUse`
+    records: a Markdown file's `[@key]` and `@key`, and a LaTeX file's citation commands
+    (`text/latex/cite.py`), `\\nocite{*}` as each key of `references.bib`. A Markdown file
+    that cannot be read raises `Unreadable`, as `read_text` does. With `whole`, a LaTeX
+    manuscript that holds a part its reader refuses raises `CitationsUnknown`: the keys
+    after the refusal are not read, and a bibliography written from the rest would lose them
+    (round 1 of step 5)."""
+    folder = project.path("manuscript")
+    if manuscript_format(folder) == LATEX:
+        from manuscript_guard.gates.citations import bib_keys
+        from manuscript_guard.text.latex.cite import citations
+        from manuscript_guard.text.latex.structure import read_document
+        from manuscript_guard.text.latex.views import files
+
+        if whole:
+            _refuse_unread(folder, read_document)
+
+        every = tuple(sorted(bib_keys(project)))
+        return [use for found in files(folder) for use in citations(found.source, found.path,
+                                                                     every)]  # fmt: skip
+    from manuscript_guard.contracts._schema import read_text
+    from manuscript_guard.gates.numbers import source_files
+    from manuscript_guard.zotero import find_citations
+
+    uses = []
+    for path in source_files(folder):
+        uses.extend(find_citations(read_text(path), path))
+    return uses
+
+
+def _refuse_unread(folder: Path, read_document) -> None:
+    """Raise `CitationsUnknown` where either document of a LaTeX manuscript holds a refusal."""
+    for supplementary in (False, True):
+        for path, refusal in read_document(folder, supplementary=supplementary).refusals:
+            text = (folder / path).read_text(encoding="utf-8", errors="replace")
+            line = text.count("\n", 0, refusal.offset) + 1
+            raise CitationsUnknown(
+                f"manuscript/{path}:{line} is refused ({refusal.message}), so the citations "
+                "after it are not read: put it right, then run this again"
+            )

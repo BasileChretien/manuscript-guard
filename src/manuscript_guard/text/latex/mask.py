@@ -22,17 +22,29 @@ from dataclasses import dataclass
 
 from manuscript_guard.text.latex.commands import (
     AMSMATH,
+    CITATIONS,
     COMMANDS,
     ENVIRONMENTS,
+    FIGURES,
+    FLOATS,
+    LISTINGS,
     MATHS,
+    PARAMETERS,
     RAW,
     REFUSED,
     REFUSED_ENVIRONMENTS,
+    SIUNITX,
     SPACES,
     TABLES,
+    TYPED_TABLES,
 )
+from manuscript_guard.text.placeholders import NAMESPACES
 
 NUL = "\x00"
+#: The environment a reference list is typed in.
+REFERENCES = "thebibliography"
+#: The hooks whose body LaTeX runs where it stands, unlike a definition's.
+HOOKS = frozenset({"AtBeginDocument", "AtEndDocument", "AfterEndPreamble", "AddToHook"})
 PROSE, BLANK, MATHS_READ, PREAMBLE = "prose", "blank", "maths", "preamble"
 #: Commands whose prose argument LaTeX prints though it stands in the preamble: the title, its
 #: note, and a definition's default argument, printed at each use that omits it (round 1 of
@@ -86,11 +98,45 @@ class Input:
 
 @dataclass(frozen=True)
 class Heading:
-    """A heading where its command stands, its level as Markdown counts `#`, and its title."""
+    """A heading where its command stands, its level as Markdown counts `#`, its title, and
+    where its title's argument ends, or -1 where nothing of it is the title (an abstract)."""
 
     start: int
     level: int
     title: str
+    end: int = -1
+
+
+@dataclass(frozen=True)
+class BindingUse:
+    """A `\\mg` where it stands, to the brace that closes it, and what its braces hold: None
+    where it is followed by none. Whether that is a binding is `views.py`'s to say."""
+
+    start: int
+    end: int
+    inner: str | None
+
+
+@dataclass(frozen=True)
+class Listing:
+    """What a listing holds, between its `\\begin` and its `\\end`, and the language an
+    `lstlisting` names, or "" where it names none."""
+
+    start: int
+    end: int
+    language: str
+
+
+@dataclass(frozen=True)
+class Cited:
+    """One key a citation command names: the key, where it stands, whether the command prints
+    the authors' names in the sentence, and the command to its keys' closing brace."""
+
+    key: str
+    offset: int
+    narrative: bool
+    start: int
+    end: int
 
 
 @dataclass(frozen=True)
@@ -103,6 +149,39 @@ class Reading:
     abstracts: tuple[tuple[int, int], ...] = ()
     #: Each package loaded, where its `\\usepackage` stands.
     packages: tuple[tuple[int, str], ...] = ()
+    #: Each `\\mg` read, outside a comment, a listing and siunitx's commands.
+    bindings: tuple[BindingUse, ...] = ()
+    #: What looks meant for a binding and is none: a near spelling of `\\mg`, `\\Mg{results.x}`,
+    #: and a Markdown binding left in a `.tex`, `{{results.x}}`.
+    suspects: tuple[tuple[int, int], ...] = ()
+    #: Where each table the author typed runs, `\\begin{tabular}` to its `\\end`.
+    tables: tuple[tuple[int, int], ...] = ()
+    #: Each listing, read by G2's code check as a fenced block is.
+    listings: tuple[Listing, ...] = ()
+    #: Each key a citation command names, outside a definition's body.
+    cited: tuple[Cited, ...] = ()
+    #: Where each formula runs, and whether it is displayed rather than inline.
+    maths: tuple[tuple[int, int, bool], ...] = ()
+    #: Where each float runs, `\\begin{figure}` or `\\begin{table}` to its `\\end`.
+    floats: tuple[tuple[int, int], ...] = ()
+    #: Where the body starts: past `\\begin{document}`, 0 in a file that opens in it, or -1
+    #: in one that never reaches it.
+    body_start: int = 0
+    #: Each code span, `\\verb` or `\\texttt`, from its opening delimiter to past its closing
+    #: one: read as prose, and as Markdown's code span is where words are counted.
+    code: tuple[tuple[int, int], ...] = ()
+    #: What a journal's profile states of a LaTeX source, as the file states it: ("class",
+    #: name), ("class_option", option), ("bst", style), and ("biblatex", its options).
+    declared: tuple[tuple[str, str], ...] = ()
+    #: Where each float that holds a figure runs (`commands.FIGURES`).
+    figures: tuple[tuple[int, int], ...] = ()
+    #: Where each reference list typed in `thebibliography` runs.
+    references: tuple[tuple[int, int], ...] = ()
+    #: Where `\\end{document}` stands, or -1 in a file that does not end the document.
+    body_end: int = -1
+    #: Where each definition's body runs, which prints only where the definition is used; not
+    #: a hook's, which LaTeX runs where it stands.
+    bodies: tuple[tuple[int, int], ...] = ()
 
 
 #: The level of each sectioning command, as Markdown's `#` counts it; a part stands over a
@@ -114,7 +193,39 @@ _BRACED_PATH = re.compile(r"[ \t]*(?:\r?\n[ \t]*)?\{([^{}\n]*)\}")
 #: Commands the reader knows that an author may define again, which it then reads as before:
 #: `\abstract` was an unknown command, its arguments read, until it was given a heading.
 _REDEFINABLE = frozenset({"abstract"})
-_PACKAGES = re.compile(r"\s*(?:\[[^\]]{0,300}\])?\s*\{([^{}]{0,300})\}")
+_PACKAGES = re.compile(r"\s*(?:\[([^\]]{0,300})\])?\s*\{([^{}]{0,300})\}")
+_NAMESPACE = "(?:" + "|".join(NAMESPACES) + r")\."
+#: What TeX passes over before an argument: spaces, and one line break (round 1 of #400).
+_GAP = r"[ \t]*(?:\r?\n[ \t]*)?"
+#: What follows a `\\mg`: its options, and its braces with what they hold, on one line.
+_BINDING = re.compile(_GAP + r"(?:\[[^\]\n]*\])?" + _GAP + r"\{(?P<inner>[^{}\n]*)\}")
+#: What makes a command, or a Markdown binding, look meant for one.
+_LOOKS_BOUND = re.compile(_GAP + r"(?:\[[^\]\n]*\])?" + _GAP + r"\{[ \t]*" + _NAMESPACE)
+_MARKDOWN_BINDING = re.compile(r"\{\{[ \t]*" + _NAMESPACE)
+_KEYED = re.compile(r"[ \t]*" + _NAMESPACE)
+#: The word after a `\\mg` that no braces follow, shown with it: `\\mg results.x`.
+_BARE = re.compile(r"[ \t]*[^\s{}\\%]*")
+#: A `\\mg` that names a key, which a listing or a `\\verb` prints as typed. One that names
+#: none documents the command and is left alone (round 1 of #400).
+_MG_USE = re.compile(r"\\mg(?![A-Za-z@])" + _LOOKS_BOUND.pattern)
+_LISTING_OPTIONS = re.compile(r"[ \t]*\[([^\]\n]*)\]")
+_LANGUAGE = re.compile(r"language\s*=\s*\{?\s*(?:\[[^\]]*\])?\s*([A-Za-z][A-Za-z0-9+#]*)")
+_BOUND_IN_SIUNITX = ("a binding in a siunitx command is not read: siunitx parses its number, "
+                     "and a value prints as text; write \\mg{...} outside it")  # fmt: skip
+
+
+def _near_binding(name: str) -> bool:
+    """Whether a command's name is `mg` mistyped: another case, or one letter added, taken
+    out, changed or swapped with its neighbour."""
+    low = name.lower()
+    if low == "mg":
+        return name != "mg"
+    if len(low) == 2:
+        return low == "gm" or sum(a != b for a, b in zip(low, "mg", strict=True)) == 1
+    if len(low) not in (1, 3):
+        return False
+    longer, shorter = (low, "mg") if len(low) == 3 else ("mg", low)
+    return any(longer[:i] + longer[i + 1 :] == shorter for i in range(len(longer)))
 
 
 @dataclass
@@ -132,6 +243,8 @@ class _Frame:
     origin: int = -1
     #: An environment the file was input inside, which it may close and need not.
     inherited: bool = False
+    #: An argument of a siunitx command.
+    siunitx: bool = False
 
 
 def mask(text: str, *, body: bool | None = None) -> str:
@@ -198,6 +311,16 @@ def _opens_comment(text: str, start: int, end: int) -> bool:
     return False
 
 
+#: How far a multi-citation's global note is looked for, `\\cites(see)(p.~5){a}{b}`.
+_NOTE_REACH = 300
+
+
+def _key_list(keys: str) -> str:
+    """A citation's keys with each comment in them blanked, at the same offsets: LaTeX drops
+    `%` to the end of its line, so `\\citep{a,%` and `b}` on the next line cite a and b."""
+    return re.sub(r"(?<!\\)%[^\n]*", lambda found: " " * len(found.group(0)), keys)
+
+
 def _comment_end(text: str, at: int) -> int:
     """Where a comment opened at `at` ends: before its line's break."""
     end = text.find("\n", at)
@@ -241,6 +364,24 @@ class _Reader:
         self.headings: list[Heading] = []
         self.abstracts: list[tuple[int, int]] = []
         self.packages: list[tuple[int, str]] = []
+        self.bindings: list[BindingUse] = []
+        self.suspects: list[tuple[int, int]] = []
+        self.tables: list[tuple[int, int]] = []
+        self.listings: list[Listing] = []
+        self.cited: list[Cited] = []
+        self.citation_at = -1
+        self.maths: list[tuple[int, int, bool]] = []
+        self.floats: list[tuple[int, int]] = []
+        self.figures: list[tuple[int, int]] = []
+        self.references: list[tuple[int, int]] = []
+        self.body_end = -1
+        self.bodies: list[tuple[int, int]] = []
+        self.code: list[tuple[int, int]] = []
+        self.declared: list[tuple[str, str]] = []
+        self.body_start = 0 if body else -1
+        self.siunitx = 0
+        #: The command a definition being read defines, until its body opens.
+        self.defining = ""
         self.heading_at = -1
         for name in environments:
             role = MATHS_READ if name in MATHS else self._role()
@@ -257,8 +398,24 @@ class _Reader:
         if self.refused is None and opened:
             self._refuse("tex-unbalanced", opened[0].start, f"{_opened(opened[0])} is not closed")
         masked = "".join(self.out)
+        # A table the file was input inside and does not close runs to its end.
+        tables = self.tables + [(0, self.n) for frame in self.stack
+                                if frame.inherited and frame.closer in TYPED_TABLES]  # fmt: skip
+        # So does a float or a displayed formula: a figure's file input inside `figure`.
+        floats = self.floats + [(0, self.n) for frame in self.stack
+                                if frame.inherited and frame.closer in FLOATS]  # fmt: skip
+        maths = self.maths + [(0, self.n, True) for frame in self.stack
+                              if frame.inherited and frame.closer in MATHS]  # fmt: skip
+        figures = self.figures + [(0, self.n) for frame in self.stack
+                                  if frame.inherited and frame.closer in FIGURES]  # fmt: skip
+        references = self.references + [(0, self.n) for frame in self.stack
+                                        if frame.inherited and frame.closer == REFERENCES]
         found = (tuple(self.inputs), tuple(self.headings), tuple(self.abstracts),
-                 tuple(self.packages))  # fmt: skip
+                 tuple(self.packages), tuple(self.bindings), tuple(self.suspects),
+                 tuple(sorted(tables)), tuple(self.listings), tuple(self.cited),
+                 tuple(sorted(maths)), tuple(sorted(floats)), self.body_start,
+                 tuple(self.code), tuple(self.declared), tuple(sorted(figures)),
+                 tuple(sorted(references)), self.body_end, tuple(self.bodies))  # fmt: skip
         if self.refused is None:
             return Reading(masked, (), *found)
         at = self.refused.offset
@@ -323,18 +480,31 @@ class _Reader:
                     return True
                 continue
             if spec[0] == "[":
+                if here == "[" and spec[1] == "o":
+                    # An option list is blanked, a value read (`commands.py`, `[o]`).
+                    close = self.text.find("]", at, at + 300)
+                    listed = "=" in self.text[at : close if close >= 0 else at + 300]
+                    self._open("opt", "b" if listed else "p", at, "]", siunitx=listed)
+                    return True
                 if here == "[":
                     self._open("opt", spec[1], at, "]")
                     return True
                 self.pending = self.pending[1:]
                 continue
             if spec[0] == "(":
-                # A trim such as `(lr)` is a few letters: looked for that far, on its line.
-                end = self.text.find(")", at, at + 32) if here == "(" else -1
-                if end >= 0 and "\n" not in self.text[at:end]:
+                # A trim such as `(lr)` is a few letters: looked for that far, on its line. A
+                # multi-citation's global note is a phrase, and may wrap (round 1 of step 5).
+                reach, stop = (_NOTE_REACH, "\n\n") if self.command in CITATIONS else (32, "\n")
+                end = self.text.find(")", at, at + reach) if here == "(" else -1
+                if end >= 0 and stop not in self.text[at:end]:
                     self._blank(at, end + 1)
                     self.pos = end + 1
                     self.pending = self.pending[1:]
+                    return True
+                if here == "(" and self.command in CITATIONS:
+                    # Read past, the note would hide the keys after it (round 2 of step 5).
+                    said = f"its global note is not closed within {_NOTE_REACH} characters"
+                    self._refuse("tex-refused", at, f"\\{self.command} is not read: {said}")
                     return True
                 self.pending = self.pending[1:]
                 continue
@@ -355,6 +525,8 @@ class _Reader:
             return True
         if here != "{":
             self.pending = ()
+            # A definition whose body is not there defines nothing a later body is of.
+            self.defining = ""
             return False
         if kind == "r":
             end = self._group_end(at)
@@ -369,39 +541,77 @@ class _Reader:
         self._open("arg", kind, at, "}")
         return True
 
-    def _open(self, kind: str, spec: str, at: int, closer: str) -> None:
+    def _open(
+        self, kind: str, spec: str, at: int, closer: str, *, siunitx: bool | None = None
+    ) -> None:
         role = self._role()
+        # A body prints where it is used, but a LaTeX parameter's is a size. What is being
+        # defined is spent on the body that opens, whatever its role (round 2 of #400: left
+        # set, it blanked the next body that defined nothing, `\AtBeginDocument`'s).
+        parameter = spec == "d" and self.defining in PARAMETERS
+        if spec == "d":
+            self.defining = ""
         if role == BLANK or spec in "bc":
             chosen = BLANK
         elif spec == "d":
-            chosen = PROSE
+            chosen = BLANK if parameter else PROSE
         elif role == PREAMBLE:
             chosen = PROSE if self._printed_from_preamble(self.command) else PREAMBLE
         else:
             chosen = _note_role(spec)
-        frame = _Frame(kind, chosen, at, closer, self.pending[1:], self.command, spec == "d")
+        frame = _Frame(kind, chosen, at, closer, self.pending[1:], self.command, spec == "d",
+                       siunitx=self.command in SIUNITX if siunitx is None else siunitx)  # fmt: skip
+        self.siunitx += frame.siunitx
         heads = self.command in LEVELS or self.command == "abstract"
         if kind == "arg" and spec == "p" and heads and not self.definitions and chosen == PROSE:
             frame.heading = LEVELS.get(self.command, 1)
             frame.origin = self.heading_at
+        if kind == "arg" and spec == "b" and self.command in CITATIONS and not self.definitions:
+            self._cite(at)
         self.definitions += frame.definition
         self.stack.append(frame)
+        # A Markdown binding as a command's argument, `\\emph{{results.x}}` (round 1 of #400:
+        # only one opening a group of its own was seen).
+        # `\\mg{{results.x}}` is `\\mg`'s own, said once there (round 2 of #400), but in
+        # siunitx, where `\\mg` records nothing (round 3).
+        mg_says_it = self.command == "mg" and not self.siunitx
+        if closer == "}" and not mg_says_it and _MARKDOWN_BINDING.match(self.text, at):
+            self.suspects.append((at, self._suspect_end(at)))
         self._blank(at, at + 1)
         self.pos = at + 1
         self.pending = ()
 
-    def _group_end(self, at: int) -> int:
+    def _cite(self, at: int) -> None:
+        """Record each key the citation's braces at `at` name, where it stands: split at the
+        commas, as natbib and biblatex split them, a space round each taken off."""
+        end = self._group_end(at, comments=True)
+        if end < 0:
+            return  # the brace left open is refused where it stands
+        narrative = CITATIONS[self.command]
+        offset = at + 1
+        for part in _key_list(self.text[at + 1 : end - 1]).split(","):
+            key = part.strip()
+            if key:
+                self.cited.append(Cited(key, offset + part.index(key), narrative,
+                                        self.citation_at, end))  # fmt: skip
+            offset += len(part) + 1
+
+    def _group_end(self, at: int, *, comments: bool = False) -> int:
         """Where a brace group opened at `at` ends, read as characters: `%` and `#` are no
-        signs in a URL."""
-        depth = 0
-        for index in range(at, self.n):
+        signs in a URL. With `comments`, a brace in a comment is passed over, as LaTeX passes
+        over a comment in a citation's keys."""
+        depth, index = 0, at
+        while index < self.n:
             character = self.text[index]
-            if character == "{":
+            index += 1
+            if comments and character == "%" and self.text[index - 2] != "\\":
+                index = _comment_end(self.text, index - 1)
+            elif character == "{":
                 depth += 1
             elif character == "}":
                 depth -= 1
                 if depth == 0:
-                    return index + 1
+                    return index
         return -1
 
     # -- one token -------------------------------------------------------------------------
@@ -414,6 +624,8 @@ class _Reader:
             self._blank(at, end)
             self.pos = end
         elif character == "{":
+            if _MARKDOWN_BINDING.match(self.text, at):
+                self.suspects.append((at, self._suspect_end(at)))
             self.stack.append(_Frame("group", self._role(), at))
             self._blank(at, at + 1)
             self.pos = at + 1
@@ -467,6 +679,9 @@ class _Reader:
     def _close(self, at: int, width: int) -> None:
         frame = self.stack.pop()
         self.definitions -= frame.definition
+        if frame.definition and frame.command not in HOOKS:
+            self.bodies.append((frame.start, at + width))
+        self.siunitx -= frame.siunitx
         self._blank(at, at + width)
         self.pos = at + width
         if frame.kind in ("arg", "opt"):
@@ -477,7 +692,11 @@ class _Reader:
                 self.abstracts.append((frame.origin, at + width))
             else:
                 title = " ".join("".join(self.out[frame.start + 1 : at]).replace(NUL, "").split())
-                self.headings.append(Heading(frame.origin, frame.heading, title))
+                self.headings.append(Heading(frame.origin, frame.heading, title, at + width))
+        if frame.kind == "maths":
+            self.maths.append((frame.start, at + width, frame.closer in ("$$", "\\]")))
+        if frame.kind == "arg" and frame.command == "texttt" and not self.definitions:
+            self.code.append((frame.start, at + width))
 
     def _dollar(self, at: int) -> None:
         top = self.stack[-1] if self.stack else None
@@ -573,10 +792,56 @@ class _Reader:
                 self._packages(at, end)
             if name in COMMANDS:
                 self.command, self.pending = name, COMMANDS[name]
+        elif name == "mg":
+            self._binding(at, end)
+            self.command, self.pending = name, COMMANDS[name]
         elif name in COMMANDS:
             if name in LEVELS or name == "abstract":
                 self.heading_at = at
+            if name in CITATIONS:
+                self.citation_at = at
+            if name in ("documentclass", "bibliographystyle"):
+                self._declares(name, end)
             self.command, self.pending = name, COMMANDS[name]
+        elif self._unknown_citation(name):
+            # A citation command the reader does not know would hide its keys from G7 (DESIGN.md,
+            # "Citations"); one an author defines is refused where it is used.
+            said = ("a citation command the reader does not know, whose keys G7 would not see; "
+                    "cite with \\cite or one of the natbib and biblatex commands it reads")
+            self._refuse("tex-refused", at, f"\\{name} is not read: {said}")
+        elif _near_binding(name) and _LOOKS_BOUND.match(self.text, end):
+            self.suspects.append((at, self._suspect_end(at)))
+
+    def _unknown_citation(self, name: str) -> bool:
+        """Whether a command the reader does not know is one that cites, where what it cites
+        would print: its name holds `cite`, outside a definition's body and outside the
+        preamble, where natbib's and biblatex's settings stand, `\\setcitestyle` and
+        `\\DeclareCiteCommand` among them (round 1 of step 5)."""
+        return "cite" in name.lower() and not self.definitions and self._role() != PREAMBLE
+
+    def _binding(self, at: int, end: int) -> None:
+        """Record a `\\mg` where it stands, with what its braces hold. In a siunitx command
+        `\\mg` is the milligram siunitx defines, `\\qty{5}{\\mg}`, and one that names a key is
+        refused, since siunitx parses what it holds and a value's display is formatted text."""
+        written = _BINDING.match(self.text, end)
+        if self.siunitx:
+            if written and _KEYED.match(written.group("inner")):
+                self._refuse("tex-refused", at, _BOUND_IN_SIUNITX)
+            return
+        stop = written.end() if written else _BARE.match(self.text, end).end()
+        self.bindings.append(BindingUse(at, stop, written.group("inner") if written else None))
+
+    def _suspect_end(self, at: int) -> int:
+        """Where something that looks meant for a binding ends: at the braces that close it,
+        on its line."""
+        line_end = self.text.find("\n", at)
+        line_end = self.n if line_end < 0 else line_end
+        close = self.text.find("}", at, line_end)
+        if close < 0:
+            return line_end
+        while close < line_end and self.text[close] == "}":
+            close += 1
+        return close
 
     def _input(self, at: int, end: int) -> None:
         """Record an `\\input` with the state it stands in. Its path is read raw; one not
@@ -592,9 +857,25 @@ class _Reader:
     def _packages(self, at: int, end: int) -> None:
         listed = _PACKAGES.match(self.text, end)
         if listed and not self.definitions:
-            for name in listed.group(1).split(","):
+            for name in listed.group(2).split(","):
                 if name.strip():
                     self.packages.append((at, name.strip()))
+                if name.strip() == "biblatex":
+                    self.declared.append(("biblatex", listed.group(1) or ""))
+
+    def _declares(self, name: str, end: int) -> None:
+        """Record the class a `\\documentclass` names and its options, or the style a
+        `\\bibliographystyle` names, as a journal's profile states them (G4)."""
+        found = _PACKAGES.match(self.text, end)
+        if found is None or self.definitions:
+            return
+        if name == "documentclass":
+            self.declared.append(("class", found.group(2).strip()))
+            for option in (found.group(1) or "").split(","):
+                if option.strip():
+                    self.declared.append(("class_option", option.strip()))
+        else:
+            self.declared.append(("bst", found.group(2).strip()))
 
     def _encoding(self, at: int) -> None:
         """Refuse an input encoding other than UTF-8, set by a package's option or by
@@ -653,6 +934,11 @@ class _Reader:
         self._keep_or_blank(start + 1, close)
         self._blank(close, close + 1)
         self.pos = close + 1
+        if not self.definitions:
+            self.code.append((start, close + 1))
+        bound = _MG_USE.search(self.text, start + 1, close)
+        if bound is not None:
+            self._refuse("tex-refused", bound.start(), _bound_as_typed("\\verb"))
 
     def _definition(self, name: str, at: int, end: int) -> None:
         start = self._after_space(end)
@@ -663,6 +949,7 @@ class _Reader:
         self._blank(start, name_end)
         self.pos = name_end
         if name == "let":
+            self.defining = ""
             return
         parameters = _PARAMETERS.match(self.text, name_end).end()
         if self.text[parameters : parameters + 1] != "{":
@@ -681,6 +968,7 @@ class _Reader:
         return name in PRINTED_IN_PREAMBLE and all(f.kind == "group" for f in self.stack)
 
     def _defines(self, name: str, at: int) -> None:
+        self.defining = name
         if name in _REDEFINABLE:
             return
         if name in COMMANDS or name in ("begin", "end", "verb", "def"):
@@ -708,14 +996,20 @@ class _Reader:
             self._refuse("tex-refused", at, f"{name} is not read: {REFUSED_ENVIRONMENTS[name]}")
         elif name == "document":
             self.body = True
+            self.body_start = self.pos
         elif name in RAW:
             ending = re.compile(r"\\end\s*\{" + re.escape(name) + r"\}")
             closing = ending.search(self.text, self.pos)
             if closing is None:
                 self._refuse("tex-unbalanced", at, f"\\begin{{{name}}} is not closed")
                 return
+            if name in LISTINGS:
+                self._listing(name, closing.start())
             self._blank(at, closing.end())
             self.pos = closing.end()
+            bound = _MG_USE.search(self.text, at, closing.start()) if name in LISTINGS else None
+            if bound is not None:
+                self._refuse("tex-refused", bound.start(), _bound_as_typed(name))
         else:
             role = self._role()
             if role == PREAMBLE and self._printed_from_preamble(name):
@@ -735,6 +1029,7 @@ class _Reader:
                 first = opened[0]
                 self._refuse("tex-unbalanced", first.start, f"{_opened(first)} is not closed")
                 return
+            self.body_end = at
             self._blank(at, self.n)
             self.pos = self.n
             return
@@ -747,6 +1042,31 @@ class _Reader:
         self.pending = ()
         if name == "abstract" and top.role == PROSE:
             self.abstracts.append((top.start, self.pos))
+        if name in TYPED_TABLES:
+            self.tables.append((0 if top.inherited else top.start, at))
+        if name in MATHS:
+            self.maths.append((0 if top.inherited else top.start, self.pos, True))
+        if name in FLOATS:
+            self.floats.append((0 if top.inherited else top.start, self.pos))
+        if name in FIGURES:
+            self.figures.append((0 if top.inherited else top.start, self.pos))
+        if name == REFERENCES:
+            self.references.append((0 if top.inherited else top.start, self.pos))
+
+    def _listing(self, name: str, end: int) -> None:
+        """Record what a listing holds, and the language an `lstlisting`'s options name."""
+        start, language = self.pos, ""
+        options = _LISTING_OPTIONS.match(self.text, start) if name == "lstlisting" else None
+        if options is not None:
+            start = options.end()
+            named = _LANGUAGE.search(options.group(1))
+            language = named.group(1).lower() if named else ""
+        self.listings.append(Listing(start, end, language))
+
+
+def _bound_as_typed(where: str) -> str:
+    return (f"a binding in {where} is printed as typed, not as its value: bind the number "
+            "outside it")  # fmt: skip
 
 
 def _opened(frame: _Frame) -> str:

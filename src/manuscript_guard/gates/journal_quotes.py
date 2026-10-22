@@ -80,13 +80,16 @@ def rules_of(document: dict) -> dict[str, object]:
         rules[f"required_statements.{statement['id']}"] = statement
     if document.get("references"):
         rules["references"] = document["references"]
-    for name in ("english_variant", "blinding"):
+    for name in ("english_variant", "blinding", "text_recycling"):
         if name in document:
             rules[name] = document[name]
     if document.get("reporting_guidelines"):
         rules["reporting_guidelines"] = document["reporting_guidelines"]
     for name, form in (document.get("pointers") or {}).items():
         rules[f"pointers.{name}"] = form
+    # How the journal takes a LaTeX source, each part of it a rule of the page.
+    for name, value in (document.get("latex") or {}).items():
+        rules[f"latex.{name}"] = value
     return rules
 
 

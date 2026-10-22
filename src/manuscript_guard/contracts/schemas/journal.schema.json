@@ -35,7 +35,7 @@
     },
     "quotes": {
       "type": "object",
-      "description": "For each rule, the words of the page it was read from, as the page writes them, keyed by the rule: limits.abstract_words, structure.required_sections, required_statements.<id>, references, english_variant, blinding, reporting_guidelines, pointers.<kind>. G4 holds each to the stored page, and a limit's number to its quote.",
+      "description": "For each rule, the words of the page it was read from, as the page writes them, keyed by the rule: limits.abstract_words, structure.required_sections, required_statements.<id>, references, english_variant, blinding, text_recycling, reporting_guidelines, pointers.<kind>. G4 holds each to the stored page, and a limit's number to its quote.",
       "propertyNames": { "type": "string", "minLength": 1 },
       "additionalProperties": { "type": "string", "minLength": 1 }
     },
@@ -63,6 +63,12 @@
     "blinding": {
       "enum": ["single", "double", "triple", "open"],
       "description": "How the journal's peer review is blinded, as its own page says. Double or triple: the reviewers are not to know the authors, and the build fails a document that names one of them, an institution of theirs, or their ORCID iD or e-mail address."
+    },
+    "text_recycling": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S",
+      "description": "What the journal says of text its authors reuse from their own earlier papers, in a sentence, as its own page says: Methods only and cited, say, or none. Its quote, under `quotes.text_recycling`, is held to the stored page, and G7 gives that quote with each passage it finds repeated from an earlier output."
     },
     "figures": {
         "type": "object",
@@ -178,6 +184,13 @@
             "minimum": 1,
             "description": "The most characters a figure's alternative text may hold."
           },
+          "print": {
+            "enum": [
+              "colour",
+              "greyscale"
+            ],
+            "description": "How the journal prints figures. Greyscale: G3 warns of two colours that print as one grey, which it otherwise only notes."
+          },
           "supplementary": {
             "type": "object",
             "additionalProperties": false,
@@ -262,6 +275,13 @@
                 "type": "integer",
                 "minimum": 1,
                 "description": "The most characters a figure's alternative text may hold."
+              },
+              "print": {
+                "enum": [
+                  "colour",
+                  "greyscale"
+                ],
+                "description": "How the journal prints supplementary figures."
               }
             }
           }
@@ -355,6 +375,41 @@
         "csl": { "type": "string", "description": "The style's name in the CSL style repository, as Zotero names it (the-lancet), or its zotero.org/styles URL. A live build hands it to Zotero; `manuscript-guard style` keeps the file in the project, and an offline build then formats with it unless --csl names another." },
         "style_name": { "type": "string" },
         "numbered": { "type": "boolean" }
+      }
+    },
+    "latex": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "How the journal takes a LaTeX source, each part quoted under `quotes:` as latex.<part>. G4 warns where a LaTeX manuscript's \\documentclass, \\bibliographystyle or biblatex's style= differ from it.",
+      "properties": {
+        "class": { "type": "string", "minLength": 1, "description": "The document class the journal asks for (elsarticle)." },
+        "class_options": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "bibliography": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": {
+            "kind": { "enum": ["bibtex", "biblatex"] },
+            "bst": { "type": "string", "minLength": 1, "description": "BibTeX's style, for \\bibliographystyle." },
+            "style": { "type": "string", "minLength": 1, "description": "biblatex's style=." }
+          }
+        },
+        "engine": { "enum": ["pdflatex", "xelatex", "lualatex"] },
+        "files": {
+          "type": "array",
+          "description": "The class and style files the journal hands out, each with its address. The build is to fetch them once into profiles/journals/latex/<slug>/ with their digest and licence, as CSL styles are (DESIGN.md, LaTeX manuscripts, steps 9 and 10); no command fetches them yet. None ships with the package.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["url"],
+            "properties": {
+              "url": { "type": "string", "minLength": 1 },
+              "name": { "type": "string", "minLength": 1 },
+              "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+              "licence": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
       }
     },
     "reporting_guidelines": {

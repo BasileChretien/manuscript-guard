@@ -92,8 +92,8 @@ def assurance(report: Report, project: Project) -> list[str]:
     recorded = {
         "computational reproducibility": _verified(project),
         "literature": [*_attested(project), *_passages(report, project)],
-        "methodological validity": ["no review of the design"],
-        "review": [*_rounds(project), *_figures(project)],
+        "methodological validity": ["no review of the design", *_similar(report)],
+        "review": [*_rounds(project), *_comments(project), *_figures(project)],
     }
     for dimension in DIMENSIONS:
         lines.append(f"  {dimension.name}")
@@ -215,6 +215,28 @@ def _rounds(project: Project) -> list[str]:
     ]
 
 
+def _comments(project: Project) -> list[str]:
+    """The co-authors' Word comments `import` filed, and how many are still unanswered."""
+    from manuscript_guard.filed_comments import records
+
+    findings = []
+    for path in records(project):
+        listed = _read(path).get("findings")
+        # One the schema refuses is G11's to report, as it is G11's to count.
+        findings += [f for f in listed if isinstance(f, dict)] if isinstance(listed, list) else []
+    if not findings:
+        return []
+    open_ = sum(
+        1
+        for f in findings
+        if not (str(f.get("resolution") or "").strip() or str(f.get("overridden") or "").strip())
+    )
+    return [
+        f"{len(findings)} comment{'s' if len(findings) > 1 else ''} from Word filed, "
+        f"{open_} of them unanswered"
+    ]
+
+
 def _figures(project: Project) -> list[str]:
     """Who reviewed the figures, and the last time one was."""
     reviews = [_read(path) for path in sorted(project.path("figures").rglob("*.review.yaml"))]
@@ -245,6 +267,22 @@ def _attested(project: Project) -> list[str]:
     return [
         f"{len(attested)} value{'s' if len(attested) > 1 else ''} attested as read in a source "
         f"that could not be stored, by {', '.join(people)}"
+    ]
+
+
+def _similar(report: Report) -> list[str]:
+    """The methods of similar studies `design/methods_review.yaml` records, as G12 counted
+    them: how many rest on a standard and a domain it knows, and how many a person decided.
+    Whether an appraisal is right is not among them."""
+    methods = report.counts.get("similar_methods", 0)
+    if not methods:
+        return []
+    studies = report.counts.get("similar_studies", 0)
+    return [
+        f"methods of similar studies: {methods} from {studies} "
+        f"stud{'y' if studies == 1 else 'ies'}, "
+        f"{report.counts.get('similar_methods_appraised', 0)} judged against a named "
+        f"standard, {report.counts.get('similar_methods_decided', 0)} decided by a person"
     ]
 
 

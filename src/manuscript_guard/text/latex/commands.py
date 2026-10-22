@@ -4,6 +4,9 @@ An argument is written as its delimiters around one letter:
 
 - `*` a star, taken where it follows;
 - `[p]` an optional argument read as prose, `[b]` one blanked;
+- `[o]` one that is an option list, `key=value`, and blanked, or that holds no `=` and is
+  read as prose: a name two packages give, siunitx's `\\qty[round-precision=1]` and the
+  units package's `\\unit[250]{mg}` (round 2 of #400);
 - `(b)` an optional argument in parentheses, blanked (booktabs' `\\cmidrule(lr)`);
 - `{p}` a mandatory argument read as prose, `{b}` one blanked;
 - `{r}` one blanked and read raw, with `%` and `#` as characters (a URL);
@@ -18,7 +21,7 @@ from __future__ import annotations
 
 import re
 
-_ITEM = re.compile(r"\*|\[[pb]\]|\(b\)|\{[pbrdc]\}")
+_ITEM = re.compile(r"\*|\[[pbo]\]|\(b\)|\{[pbrdc]\}")
 
 
 def _specs(table: dict[str, str]) -> dict[str, tuple[str, ...]]:
@@ -26,6 +29,31 @@ def _specs(table: dict[str, str]) -> dict[str, tuple[str, ...]]:
 
 
 _CITE = "*[p][p]{b}"
+#: natbib's and biblatex's citation commands, and whether each prints the authors' names in
+#: the sentence (narrative), as `@key` does in Markdown; `\\cite` does not. Each has a
+#: capitalised form.
+_CITATIONS = {
+    "cite": False, "nocite": False, "citep": False, "citet": True, "citealt": True,
+    "citealp": False, "citeauthor": True, "citeyear": False, "citeyearpar": False,
+    "citenum": False, "parencite": False, "textcite": True, "autocite": False,
+    "footcite": False, "footcitetext": False, "smartcite": False, "supercite": False,
+    "fullcite": False, "citetitle": False, "citetalias": True, "citepalias": False,
+    "citefullauthor": True, "footfullcite": False, "citeurl": False, "citedate": False,
+    "citeurldate": False, "notecite": False, "pnotecite": False, "fnotecite": False,
+}  # fmt: skip
+_MULTI_CITATIONS = {
+    "cites": False, "parencites": False, "textcites": True, "autocites": False,
+    "footcites": False, "smartcites": False, "supercites": False,
+}  # fmt: skip
+#: Every citation command the reader reads, the multi-citation forms among them.
+CITATIONS = {
+    **{name: narrative for table in (_CITATIONS, _MULTI_CITATIONS)
+       for name, narrative in table.items()},
+    **{name[0].upper() + name[1:]: narrative for table in (_CITATIONS, _MULTI_CITATIONS)
+       for name, narrative in table.items() if name != "nocite"},
+}  # fmt: skip
+_CITATION_NAMES = [name for name in CITATIONS if name.lower() not in _MULTI_CITATIONS]
+_MULTI_CITATION_NAMES = [name for name in CITATIONS if name.lower() in _MULTI_CITATIONS]
 _REF = "{b}"
 _SECTION = "*[p]{p}"
 _DEFINE = "*{c}[b][p]{d}"
@@ -38,7 +66,7 @@ COMMANDS = _specs(
             (
                 "emph", "textbf", "textit", "textsc", "textsf", "texttt", "textrm", "textup",
                 "textmd", "textsl", "textnormal", "underline", "mbox", "fbox", "textsuperscript",
-                "textsubscript", "enquote", "text", "intertext",
+                "textsubscript", "enquote", "text", "intertext", "citetext",
             ),
             "{p}",
         ),
@@ -76,6 +104,7 @@ COMMANDS = _specs(
         **dict.fromkeys(
             ("label", "ref", "eqref", "pageref", "autoref", "nameref", "cref", "Cref", "vref",
              "cpageref", "labelcref", "input", "include", "includeonly", "bibliography",
+             "setcitestyle", "citereset", "defcitealias",
              "bibliographystyle", "graphicspath", "linespread", "hypersetup", "geometry",
              "newgeometry", "pagestyle", "thispagestyle", "pagenumbering", "nocite", "cline",
              "newlength", "date"),
@@ -91,6 +120,11 @@ COMMANDS = _specs(
         **dict.fromkeys(("setlength", "addtolength", "setcounter", "addtocounter",
                          "numberwithin"), "{b}{b}"),
         **dict.fromkeys(("vspace", "hspace"), "*{b}"),
+        # Layout that takes a size: its numbers are no claims (round 1 of #400, now that G2
+        # reads them).
+        "fontsize": "{b}{b}",
+        "addlinespace": "[b]",
+        **dict.fromkeys(("setstretch", "enlargethispage"), "*{b}"),
         "captionsetup": "[b]{b}",
         "color": "[b]{b}",
         "cmidrule": "[b](b){b}",
@@ -98,15 +132,26 @@ COMMANDS = _specs(
         "\\": "*[b]",
         # A binding: the value it prints is the results', not the author's.
         "mg": "[b]{b}",
-        # Citations: the notes are read, the keys are not.
-        **dict.fromkeys(
-            ("cite", "citep", "citet", "citealt", "citealp", "citeauthor", "citeyear",
-             "citeyearpar", "citenum", "Citep", "Citet", "Citealt", "Citealp", "Citeauthor",
-             "parencite", "Parencite", "textcite", "Textcite", "autocite", "Autocite",
-             "footcite", "footcitetext", "smartcite", "Smartcite", "supercite", "fullcite",
-             "citetitle"),
-            _CITE,
-        ),
+        # siunitx: its number read as prose, its options and units blanked. A binding in one
+        # is refused, since siunitx parses what it holds, and `\\mg` in one is the milligram
+        # siunitx defines there (`mask.py`). `\\qty` and `\\unit` are other packages' too,
+        # physics' brackets and units' `\\unit[250]{mg}`, so what their brackets hold is read
+        # where it is no option list (round 1 of #400: it was blanked, and 250 passed; round
+        # 2: read whole, siunitx's `round-precision=1` failed G2).
+        **dict.fromkeys(("num", "numlist", "numproduct", "ang", "tablenum", "complexnum"),
+                        "[b]{p}"),
+        "numrange": "[b]{p}{p}",
+        "SI": "[b]{p}[b]{b}",
+        "qty": "[o]{p}[b]{b}",
+        **dict.fromkeys(("qtylist", "SIlist", "qtyproduct", "complexqty"), "[b]{p}{b}"),
+        **dict.fromkeys(("qtyrange", "SIrange"), "[b]{p}{p}{b}"),
+        "si": "[b]{b}",
+        "unit": "[o]{b}",
+        # Citations: the notes are read, the keys are not (`CITATIONS`).
+        **dict.fromkeys((name for name in _CITATION_NAMES if name != "nocite"), _CITE),
+        # The multi-citation forms: a global prenote and postnote in parentheses, blanked,
+        # then groups of notes and keys, as many as follow.
+        **dict.fromkeys(_MULTI_CITATION_NAMES, "(b)(b)" + "[p][p]{b}" * 16),
         # Definitions: what they define is checked, their bodies read where they stand.
         **dict.fromkeys(("newcommand", "renewcommand", "providecommand",
                          "DeclareRobustCommand"), _DEFINE),
@@ -131,6 +176,7 @@ ENVIRONMENTS = _specs(
         **dict.fromkeys(("figure", "figure*", "table", "table*", "tablenotes", "enumerate"),
                         "[b]"),
         "minipage": "[b][b][b]{b}",
+        **dict.fromkeys(("multicols", "multicols*"), "{b}[p][b]"),
         "wrapfigure": "[b]{b}[b]{b}",
         "subfigure": "[b]{b}",
         "thebibliography": "{b}",
@@ -171,6 +217,35 @@ AMSMATH = frozenset(
 #: Environments read to their `\\end` as characters and blanked whole: a listing, read by G2's
 #: code check as a fenced block is, and a comment.
 RAW = frozenset({"verbatim", "verbatim*", "Verbatim", "lstlisting", "comment"})
+#: The listings among them, which print what they hold as typed.
+LISTINGS = RAW - {"comment"}
+
+#: Tables an author types: a number in one is `hand-authored-table`, as one in a Markdown
+#: table's row is. Maths' alignments separate cells too, and are no tables.
+TYPED_TABLES = frozenset({"tabular", "tabular*", "tabularx", "tabulary", "longtable"})
+
+#: Floats: a journal does not count their words against the text's limit, as it counts a
+#: table or a figure as a display item.
+FLOATS = frozenset(
+    {"figure", "figure*", "table", "table*", "wrapfigure", "wraptable", "sidewaysfigure",
+     "sidewaystable"}
+)  # fmt: skip
+#: The floats that hold a figure, whose caption G14 does not read, as it does not read an
+#: image's caption in Markdown.
+FIGURES = frozenset({"figure", "figure*", "wrapfigure", "sidewaysfigure"})
+
+#: LaTeX's own parameters an author sets by defining them again, whose body is a size and
+#: prints nothing: `\\renewcommand{\\arraystretch}{1.5}` (round 1 of #400: its 1.5 failed G2).
+PARAMETERS = frozenset(
+    {"arraystretch", "baselinestretch", "topfraction", "bottomfraction", "textfraction",
+     "floatpagefraction", "dbltopfraction", "dblfloatpagefraction"}
+)  # fmt: skip
+
+#: siunitx's commands, in which `\\mg` is its milligram and a binding is refused.
+SIUNITX = frozenset(
+    {"num", "numlist", "numproduct", "ang", "tablenum", "complexnum", "numrange", "qty", "SI",
+     "qtylist", "SIlist", "qtyproduct", "complexqty", "qtyrange", "SIrange", "unit", "si"}
+)  # fmt: skip
 
 #: Why a command is refused, by the command. Past a refusal the rest of the file is read as
 #: prose, so that nothing the reader did not understand is hidden.

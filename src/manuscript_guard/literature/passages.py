@@ -223,7 +223,7 @@ def survey(
     read: dict[Path, str | UnreadableSource] = {}
     checked = []
     for passage in passages:
-        found, looked_in, why = _looked_for(sources, passage, read)
+        found, looked_in, why = looked_for(sources, passage.citekey, passage.passage, read)
         mine = tuple(sentences_of.get(passage.number, ()))
         stale, near = (None, None) if mine else _why_stale(passage, sentences, words)
         checked.append(Checked(passage, found, looked_in, why, mine, stale, near))
@@ -235,18 +235,19 @@ def survey(
     return Survey(tuple(sentences), tuple(checked), held)
 
 
-def _looked_for(
-    sources: Path, passage: Passage, read: dict[Path, str | UnreadableSource]
+def looked_for(
+    sources: Path, citekey: str, words: str, read: dict[Path, str | UnreadableSource]
 ) -> tuple[str, tuple[str, ...], str | None]:
-    """What the stored files of the passage's work say of it: verified where one holds it,
-    with the files read and, where none does, what stands in the way."""
+    """What the stored files of work `citekey` say of `words`: verified where one holds them,
+    with the files read and, where none does, what stands in the way. `read` keeps each file
+    read, for the next passage. A methods review's passages are looked for here too."""
     from manuscript_guard.gates.quotations import _ELIDED, _SIC, _as_words, quoted_in
 
-    if not passage_words(passage.passage):
+    if not passage_words(words):
         # All elision, "[...]" or "...": nothing to look for, which `quoted_in` finds
         # anywhere (round 1 of #374). A number is something (round 2).
         return ABSENT, (), "it holds nothing to look for"
-    files = stored_files(sources, passage.citekey)
+    files = stored_files(sources, citekey)
     if not files:
         return NO_SOURCE, (), None
     texts = []
@@ -263,16 +264,16 @@ def _looked_for(
     names = tuple(path.name for path, _text in readable)
     # With nothing left out, as words of their own, as each piece of an elided one is: "6,
     # 95%" is no part of "2.6, 95%" (the post-budget round of #374).
-    whole = normalise(_SIC.sub("", passage.passage)).lower()
-    if any(quoted_in(text, passage.passage) if _ELIDED.search(passage.passage)
+    whole = normalise(_SIC.sub("", words)).lower()
+    if any(quoted_in(text, words) if _ELIDED.search(words)
            else _as_words(normalise(text).lower(), whole, 0) >= 0
            for _path, text in readable):  # fmt: skip
         return VERIFIED, names, None
     why = None
-    if len(readable) == 1 and not _ELIDED.search(passage.passage):
+    if len(readable) == 1 and not _ELIDED.search(words):
         from manuscript_guard.literature.placement import why_not_found
 
-        why = why_not_found(readable[0][0], passage.passage)
+        why = why_not_found(readable[0][0], words)
     return ABSENT, names, why
 
 

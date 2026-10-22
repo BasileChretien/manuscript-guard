@@ -14,7 +14,6 @@ import contextlib
 import hashlib
 import re
 import sys
-import unicodedata
 from collections.abc import Callable, Collection
 from datetime import date
 from pathlib import Path
@@ -33,6 +32,7 @@ from manuscript_guard.build import (
 from manuscript_guard.build.assemble import check_shapes
 from manuscript_guard.build.document import abbreviations
 from manuscript_guard.build.latex_check import check_latex
+from manuscript_guard.build.latex_values import check_values
 from manuscript_guard.build.tex_check import check_tex
 from manuscript_guard.classify import UNCLASSIFIED, Classifier
 from manuscript_guard.contracts import (
@@ -60,6 +60,7 @@ from manuscript_guard.gates import (
     check_passages,
     check_prose_quotations,
     check_recomputed,
+    check_recycling,
     check_relations,
     check_reported,
     check_reporting,
@@ -75,9 +76,12 @@ from manuscript_guard.gates import (
     sync_bib,
 )
 from manuscript_guard.gates.custodian import check_restricted_inputs, check_small_cells
+from manuscript_guard.gates.data_sources import check_data_sources, check_statement_sources
 from manuscript_guard.gates.design_review import check_design_rounds
 from manuscript_guard.gates.figure_alt import check_figure_alt
+from manuscript_guard.gates.figure_colours import check_figure_colours
 from manuscript_guard.gates.formats import check_format, not_read_in_latex
+from manuscript_guard.gates.methods_review import check_method_passages, check_methods_review
 from manuscript_guard.gates.numbers import chosen_rules, typed_choice, why_no_manuscript
 from manuscript_guard.gates.related import check_related
 from manuscript_guard.gates.shortlist import check_shortlist
@@ -97,6 +101,7 @@ from manuscript_guard.text.masking import mask
 from manuscript_guard.text.placeholders import parse, substitute
 from manuscript_guard.text.reader import LATEX, manuscript_files, manuscript_format
 from manuscript_guard.text.sections import chains_at, footnote_index, heading_index
+from manuscript_guard.text.shown import printable
 from manuscript_guard.text.tokens import find_atoms
 
 
@@ -150,22 +155,29 @@ def _run_gates(
         ("G2", lambda: check_bound_units(project, results)),
         ("G3", lambda: check_figures(project, results)),
         ("G3", lambda: check_figure_alt(project, namespace, chosen)),
+        ("G3", lambda: check_figure_colours(project)),
         ("G10", lambda: check_figure_reviews(project, content_digest)),
         ("G7", lambda: check_citations(project, literature)),
         ("G7", lambda: check_literature_chain(project, literature)),
         ("G7", lambda: check_prose_quotations(project)),
         ("G7", lambda: check_passages(project, chosen)),
+        ("G7", lambda: check_recycling(project, chosen)),
         ("G4", lambda: check_journal(project)),
         ("G4", lambda: check_shortlist(project)),
+        ("G4", lambda: check_statement_sources(project)),
         ("G8r", lambda: check_reporting(project)),
         ("G6", lambda: check_writing(project, results, submission=at_submission)),
         ("G9", lambda: check_methods(project, namespace, results)),
         ("G12", lambda: check_design(project, results, chosen).merge(
             check_design_rounds(project, submission=at_submission))),
+        ("G12", lambda: check_data_sources(project, chosen)),
+        ("G7", lambda: check_method_passages(project)),
+        ("G12", lambda: check_methods_review(project)),
         ("G8", lambda: check_consistency(results)),
         ("G2", lambda: check_small_cells(project, results)),
         ("G1", lambda: check_restricted_inputs(project, results)),
         ("G1", lambda: check_synthetic_inputs(project, results, submission=at_submission)),
+        ("G1", lambda: check_values(project, namespace, results)),
         ("G8", lambda: check_reported(project, results)),
         ("G8", lambda: check_relations(results)),
         ("G8", lambda: check_recomputed(project, namespace, results)),
@@ -202,12 +214,12 @@ def _run_gates(
 #: "LaTeX manuscripts", Order of work).
 _NOT_READ_IN_LATEX = frozenset(
     {
-        "check_related",
-        "check_numbers", "check_bound_units", "check_small_cells", "check_citations",
-        "check_prose_quotations", "check_journal", "check_reporting", "check_writing",
-        "check_methods", "check_synthetic_inputs", "check_reported", "check_recomputed",
-        "check_revision", "check_language", "check_models", "check_shapes", "check_tex",
+        "check_statement_sources", "check_related",
+        "check_prose_quotations", "check_reporting",
+        "check_methods", "check_reported", "check_recomputed",
+        "check_revision", "check_models", "check_shapes", "check_tex",
         "check_passages",
+        "check_recycling",
     }
 )  # fmt: skip
 
@@ -766,6 +778,14 @@ def _which_document(project, known: dict, returned, name: str) -> bool | None:
     read from the source files: read from the identifiers, a supplement of headings and tables,
     which has none, was taken for no supplement, and compared with the paper.
     """
+    supplementary, refusal = _document_kind(project, known, returned, name)
+    if refusal:
+        print(refusal)
+    return supplementary
+
+
+def _document_kind(project, known: dict, returned, name: str) -> tuple[bool | None, str]:
+    """`_which_document`'s answer, and what it says when there is none."""
     from manuscript_guard.gates.numbers import is_supplementary, source_files
 
     manuscript_dir = project.path("manuscript")
@@ -777,23 +797,21 @@ def _which_document(project, known: dict, returned, name: str) -> bool | None:
     }
     has_supplement = any(is_supplementary(manuscript_dir, p) for p in source_files(manuscript_dir))
     if not kinds and has_supplement:
-        print(
+        return None, (
             f"{name} carries no paragraph identifier this manuscript knows, so there is no "
             f"telling whether it is the manuscript or its supplement, and import compares "
             f"paragraphs only through those identifiers. Nothing was imported. A supplement of "
             f"headings, tables and figures carries none, and holds nothing import compares; "
             f"otherwise, import the document the co-author was sent, edited in place."
         )
-        return None
     if kinds == {True, False}:
-        print(
+        return None, (
             f"{name} carries paragraphs of both the manuscript and its supplement. They are "
             f"built as two documents and imported one at a time, and a paragraph pasted from "
             f"one into the other is not something import can apply. Nothing was imported: "
             f"make the move in the .md yourself, and import each document on its own."
         )
-        return None
-    return kinds == {True}
+    return kinds == {True}, ""
 
 
 def _refused_inserted(plan, inserted: dict[str, list], returned: list, project):
@@ -939,7 +957,6 @@ def cmd_import(args: argparse.Namespace) -> int:
         OFFLINE_CITATIONS,
         RoundTripError,
         cited_of,
-        comments_in,
         inserted_citations,
         named_now,
         numbering,
@@ -965,6 +982,8 @@ def cmd_import(args: argparse.Namespace) -> int:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
 
+    if _refused_marked_up(edited, "imported"):
+        return 1
     if carried is None:
         print(
             f"{edited.name} carries no record of the source it was built from, so there is "
@@ -1000,6 +1019,7 @@ def cmd_import(args: argparse.Namespace) -> int:
         return 2
     if numbered.refusal:
         print(numbering_refusal(edited.name, numbered.refusal))
+        _comments_all_the_same(project, edited, carried, numbered, offered, applying=args.apply)
         return 1
     if stale and not args.force:
         print(
@@ -1010,11 +1030,11 @@ def cmd_import(args: argparse.Namespace) -> int:
             f"  --force imports anyway: an edit is merged only where the paragraph it was "
             f"made in reads as it did at the build, and every hunk still has to be read."
         )
+        _comments_all_the_same(project, edited, carried, numbered, offered, applying=args.apply)
         return 1
 
     try:
         returned = read_blocks(edited)
-        comments = comments_in(edited)
     except RoundTripError as exc:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
@@ -1028,14 +1048,20 @@ def cmd_import(args: argparse.Namespace) -> int:
             print(f"manuscript-guard: {exc}", file=sys.stderr)
             return 2
         # The panel's own comments are its findings, which are in the records, and a reply
-        # to one is an answer, said with the suggestions.
-        comments = [c for c in comments if (c.author, c.text) not in told]
+        # to one is an answer, said with the suggestions: neither is filed (`_threads`).
     known = tagged_paragraphs(project)
     supplementary = _which_document(project, known, returned, edited.name)
     if supplementary is None:
         # The comments need no identifier to be read, and are the most useful thing in the
-        # document: refusing the edits is no reason to drop them.
-        _report_comments(comments)
+        # document: refusing the edits is no reason to drop them. With no telling which
+        # document it is they have no record to go in, so they are printed and not filed.
+        threads = _threads(project, edited, {}, offered) or []
+        _report_comments(threads)
+        if threads:
+            print(f"\nThe comments are not filed: each is filed with the document it was made "
+                  f"in, and there is no telling which one {edited.name} is. Import the "
+                  f"document the co-author was sent, edited in place, and they are filed "
+                  f"with it.")  # fmt: skip
         return 1
     try:
         # Its record is the one written for the document it is, the paper or the supplement:
@@ -1260,7 +1286,12 @@ def cmd_import(args: argparse.Namespace) -> int:
     unexamined = "\n  ".join(part for part in (unexamined, *said) if part)
     unaccounted += values
 
-    if plan.empty and not comments and not strangers and not unaccounted:
+    # Each comment, anchored where the import vouches for the paragraph it was made on, with
+    # the identifier that paragraph has now, as `respond --open` anchors a point.
+    threads = _threads(project, edited, {name: name for name in trusted} | dict(followed), offered)
+    unread = threads is None
+    threads = threads or []
+    if plan.empty and not threads and not strangers and not unaccounted and not unread:
         what = "supplement" if supplementary else "manuscript"
         print(f"nothing came back: the document matches the {what} on disk.")
         if unexamined:
@@ -1283,7 +1314,9 @@ def cmd_import(args: argparse.Namespace) -> int:
         if plan.merged:
             print(f"merged {len(plan.merged)} reworded paragraph(s), bindings intact.")
 
-    _report_comments(comments)
+    filed = _file_comments(
+        project, edited, threads, stamp=carried, supplementary=supplementary, applying=args.apply
+    )
     _answer_suggestions(project, decided, plan.merged, applying=args.apply, named=now_named)
 
     if unexamined:
@@ -1310,8 +1343,8 @@ def cmd_import(args: argparse.Namespace) -> int:
         or plan.reordered
         or plan.held_back
     ) or (not args.apply and bool(plan.moved or plan.merged))
-    # A paragraph not compared is not applied either.
-    return 1 if outstanding or strangers or unaccounted else 0
+    # A paragraph not compared is not applied either, nor a comment that could not be filed.
+    return 1 if outstanding or strangers or unaccounted or not filed or unread else 0
 
 
 def _answer_suggestions(project, decided, merged, *, applying: bool, named) -> None:
@@ -1394,33 +1427,131 @@ def quoted(text: str, limit: int = COMMENT_SHOWN) -> str:
     return "\n".join(f"    > {line}" for line in printable(shown).split("\n"))
 
 
-#: The bidirectional controls, which reorder what follows them on screen.
-_BIDI = frozenset(map(chr, (0x061C, 0x200E, 0x200F, *range(0x202A, 0x202F),
-                            *range(0x2066, 0x206A))))  # fmt: skip
-
-
-def printable(text: str) -> str:
-    """`text` with every character a terminal would act on, rather than show, as `?`: a
-    control character (an escape, a carriage return) and a bidirectional control. A line
-    break is kept, and so is a no-break space, which Word puts in "5 mg" and before a
-    French colon."""
-    return "".join(
-        "?" if c in _BIDI or (unicodedata.category(c) == "Cc" and c != "\n") else c for c in text
-    )
-
-
 def _report_comments(comments) -> None:
-    """Each co-author comment, and where to record them so G11 can see they were answered.
-    The comment is the co-author's text, quoted, never the tool's words."""
+    """Each co-author comment, with what it was made on and the replies to it. The comment
+    is the co-author's text, quoted, never the tool's words."""
+    from manuscript_guard.filed_comments import made_on
+    from manuscript_guard.gates.comments import NO_WORDS
+
     for comment in comments:
         author = printable(f"{comment.author} ({comment.date})").replace("\n", " ")
-        print(f"\ncomment from {author}, quoted:")
-        print(quoted(comment.text))
-    if comments:
-        print(
-            f"\n{len(comments)} comment(s). Record them in a review file so G11 can see they "
-            f"were answered: write them into review/round-<n>/<reviewer>.yaml."
-        )
+        block = getattr(comment, "block", "")
+        on = f", {made_on(block)}" if block else ""
+        print(f"\ncomment from {author}{on}, quoted:")
+        print(quoted(comment.text) if comment.text else f"    {NO_WORDS}")
+        for reply in getattr(comment, "replies", ()):
+            by = printable(f"{reply.by} ({reply.date})").replace("\n", " ")
+            print(f"  reply from {by}, quoted:")
+            print(quoted(reply.text) if reply.text else f"    {NO_WORDS}")
+
+
+def _threads(project, edited: Path, vouched: dict[str, str], offered) -> list | None:
+    """The comment threads of a returned document (`filed_comments.threads_of`), less a
+    review panel's own (`offered`), or None once it has said why they cannot be read."""
+    from manuscript_guard.filed_comments import FilingError, threads_of
+    from manuscript_guard.roundtrip import tagged_paragraphs
+
+    sources = {name: entry[1] for name, entry in tagged_paragraphs(project).items()}
+    try:
+        return threads_of(edited, vouched=vouched, sources=sources, panel=offered)
+    except FilingError as exc:
+        print(f"manuscript-guard: {exc}. Its comments are not filed.", file=sys.stderr)
+        return None
+
+
+def _comments_all_the_same(
+    project, edited: Path, stamp: str, numbered, offered, *, applying: bool
+) -> None:
+    """File the comments of a document whose edits were refused whole: a comment nobody
+    transcribed is lost to the checks, whatever became of the edits. Only where the
+    identifiers say which document it is, and anchored only to a paragraph whose identifier
+    the import vouches for, as an edit is merged only there."""
+    from manuscript_guard.roundtrip import RoundTripError, read_blocks, tagged_paragraphs
+
+    try:
+        returned = read_blocks(edited)
+    except RoundTripError as exc:
+        print(f"\nThe comments in {edited.name} are not filed: {exc}")
+        return
+    present = {n for b in returned if not b.table for n in b.names}
+    trusted = numbered.trusted | (numbered.unsure & present)
+    threads = _threads(project, edited, {n: n for n in trusted} | dict(numbered.followed), offered)
+    if not threads:
+        return
+    supplementary, _refusal = _document_kind(
+        project, tagged_paragraphs(project), returned, edited.name
+    )
+    if supplementary is None:
+        _report_comments(threads)
+        print(f"\nThe comments are not filed: each is filed with the document it was made in, "
+              f"and there is no telling which one {edited.name} is.")  # fmt: skip
+        return
+    if _file_comments(project, edited, threads, stamp=stamp, supplementary=supplementary,
+                      applying=applying) and applying:  # fmt: skip
+        print("The edits were not imported; the comments are filed all the same.")
+
+
+def _file_comments(
+    project, edited: Path, threads, *, stamp: str, supplementary: bool, applying: bool
+) -> bool:
+    """Print each comment, and with `--apply` file it as a finding the author answers
+    (`filed_comments`); without, say what would be filed. False where some could not be."""
+    from manuscript_guard.filed_comments import (
+        FilingError,
+        not_seeded,
+        plan_filing,
+        seeded,
+        write_filing,
+    )
+    from manuscript_guard.roundtrip import printed_of
+
+    if not threads:
+        return True
+    _report_comments(threads)
+    threads, answered_there = not_seeded(threads, seeded(project))
+    for thread, number in answered_there:
+        print(f"\n{printable(thread.commenter)}'s comment of {thread.date or 'no date'} is a "
+              f"point of revision round {number} already, answered in the response, and is "
+              f"not filed again.")  # fmt: skip
+    filings = plan_filing(
+        project, threads, stamp=stamp, printed=printed_of(edited), supplementary=supplementary,
+        today=date.today().isoformat(),
+    )  # fmt: skip
+    ok = True
+    if filings:
+        print()
+    for filing in filings:
+        where = filing.path.relative_to(project.root).as_posix()
+        if filing.refused:
+            ok = False
+            print(f"not filed in {where}: {filing.refused}.")
+            continue
+        said = []
+        if filing.added:
+            said.append(f"{len(filing.added)} new ({', '.join(filing.added)})")
+        if filing.extended:
+            said.append(f"replies or Word's Resolve added to {', '.join(filing.extended)}")
+        if filing.kept:
+            said.append(f"{filing.kept} filed already")
+        if filing.document is None:
+            print(f"{where}: {'; '.join(said)}, nothing new.")
+        elif not applying:
+            print(f"--apply files in {where}: {'; '.join(said)}.")
+        else:
+            try:
+                write_filing(filing)
+            except (FilingError, OSError) as exc:
+                ok = False
+                print(f"not filed in {where}: {exc}")
+                continue
+            print(f"filed in {where}: {'; '.join(said)}.")
+        for identifier in filing.reworded:
+            print(f"  {identifier} reads differently in {edited.name}; the record keeps the "
+                  f"words it was filed with.")  # fmt: skip
+    if filings and ok:
+        print("G11 reports each comment until it is answered in its record: what was done in "
+              "`resolution`, or why it is left in `overridden`.")  # fmt: skip
+    return ok
 
 
 def _report_plan(project, known: dict, plan, *, applying: bool, followed=frozenset()) -> None:
@@ -1682,6 +1813,8 @@ def cmd_respond(args: argparse.Namespace) -> int:
             except RoundTripError as exc:
                 print(f"manuscript-guard: {exc}", file=sys.stderr)
                 return 2
+            if _refused_marked_up(args.source, "read for comments"):
+                return 1
             if carried is None:
                 # Not offered --force: there is no baseline to override. The refusal used to
                 # suggest it, and then refused it.
@@ -1770,6 +1903,16 @@ def cmd_respond(args: argparse.Namespace) -> int:
             f"renders now, so a response that quotes the revised text is checked for saying "
             f"something the journal has not read"
         )
+        from manuscript_guard.markedup.rounds import keep_sent
+
+        kept, missing = keep_sent(project, number)
+        for path in kept:
+            print(
+                f"  {path.relative_to(project.root).as_posix()} is the document the journal "
+                f"received, which `build --marked-up` shows the revision's changes against"
+            )
+        if missing:
+            print(f"  {missing}")
         if args.source:
             seeded = sum(len(r["points"]) for r in document["reviewers"])
             anchored = sum(
@@ -2065,6 +2208,47 @@ def cmd_stages(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_palettes(args: argparse.Namespace) -> int:
+    """List the palettes shipped with the toolkit, with what the colour check says of each,
+    or show one. Reads nothing of a project."""
+    import json as json_module
+
+    from manuscript_guard import palettes
+
+    if args.show:
+        try:
+            found = palettes.palette(args.show)
+            codes = palettes.colours(args.show, args.colours)
+        except palettes.PaletteError as exc:
+            print(f"manuscript-guard: {exc}", file=sys.stderr)
+            return 2
+        if args.json:
+            print(json_module.dumps({"name": found.name, "colours": codes,
+                                     "collection": found.collection, "kind": found.kind,
+                                     "distinct": found.distinct, "lightness": found.lightness,
+                                     "lightness_kept": found.lightness_kept,
+                                     "claims_cvd": found.claims_cvd}, indent=1))  # fmt: skip
+            return 0
+        for line in palettes.describe(found, codes):
+            print(line)
+        return 0
+    try:
+        rows = palettes.chosen(kind=args.kind, colours=args.colours, safe=args.safe,
+                               collection=args.collection)  # fmt: skip
+    except palettes.PaletteError as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json_module.dumps([palettes.row(found) for found in rows], indent=1))
+        return 0
+    if not rows:
+        print("no palette answers that; `manuscript-guard palettes` lists them all")
+        return 1
+    for line in palettes.table(rows, args.colours):
+        print(line)
+    return 0
+
+
 def cmd_impact(args: argparse.Namespace) -> int:
     """Everything that depends on each file named, or on each file changed since a commit.
 
@@ -2292,6 +2476,33 @@ def cmd_reworded(args: argparse.Namespace) -> int:
     return 0 if report.ok else 1
 
 
+def cmd_proof(args: argparse.Namespace) -> int:
+    """Compare the publisher's proof with the document sent, and list the corrections.
+
+    Exit 1 where the proof needs a correction, 0 where it needs none, and 2 where there is
+    nothing to compare: no proof that can be read, no document sent, or a proof that reads
+    as too little of it. Nothing is sent, and nothing is written but `--out`."""
+    from manuscript_guard.proof import NotSent, NotThisProof, UnreadableProof, check_proof
+    from manuscript_guard.proof.report import as_json, markdown, render
+
+    if not args.proof.is_file():
+        print(f"manuscript-guard proof: {args.proof} does not exist", file=sys.stderr)
+        return 2
+    project, _ = load_project(args.path)
+    try:
+        report = check_proof(project, args.proof, against=args.against,
+                             supplementary=args.supplementary)  # fmt: skip
+    except (NotSent, UnreadableProof, NotThisProof) as exc:
+        print(f"manuscript-guard proof: {exc}", file=sys.stderr)
+        return 2
+    print(as_json(report) if args.json else render(report, project.root))
+    if args.out is not None:
+        args.out.write_text(markdown(report), encoding="utf-8", newline="\n")
+        if not args.json:
+            print(f"\nThe corrections are written to {args.out}, to paste into your reply.")
+    return 1 if report.corrections else 0
+
+
 def cmd_render(args: argparse.Namespace) -> int:
     """Substitute bindings into build/, without producing a document yet."""
     project, _ = load_project(args.path)
@@ -2320,6 +2531,35 @@ def cmd_render(args: argparse.Namespace) -> int:
         count += 1
     print(f"rendered {count} file{'' if count == 1 else 's'} to {out_dir}")
     return 0
+
+
+def cmd_values(args: argparse.Namespace) -> int:
+    """Write each LaTeX document's values file, `mgvalues.sty`, beside its entry file, from the
+    results as they stand (DESIGN.md, "LaTeX manuscripts", "The values file")."""
+    from manuscript_guard.build.latex_values import bound_refs, values_files
+
+    project, _ = load_project(args.path)
+    namespace, results, _literature, load_report = load_namespace(project)
+    if not load_report.ok:
+        print(load_report.render(project.root))
+        return 2
+    written = values_files(project, namespace, results)
+    if not written:
+        folder = project.path("manuscript")
+        print("manuscript-guard: values writes a LaTeX manuscript's values file, and "
+              f"{folder} holds no LaTeX entry file", file=sys.stderr)  # fmt: skip
+        return 2
+    bound = bound_refs(project)
+    for each in written:
+        each.path.write_text(each.text, encoding="utf-8", newline="\n")
+        entries = each.text.count(r"\expandafter\def")
+        print(f"wrote {each.path} ({entries} entr{'y' if entries == 1 else 'ies'})")
+    # A value it has no way to print is left out; one a document binds prints `??` there.
+    refused = [found for each in written for found in each.refused
+               if found.ref in bound.get(each.path.parent, set())]  # fmt: skip
+    for found in refused:
+        print(f"manuscript-guard: {found}; the document prints ?? for it", file=sys.stderr)
+    return 1 if refused else 0
 
 
 
@@ -2412,6 +2652,143 @@ def _print_assembly_warnings(report: Report, project) -> None:
         print(Report(report.findings).render(project.root))
 
 
+def _refused_marked_up(document: Path, what: str) -> bool:
+    """Say so and return True where `document` is a marked-up copy, which shows changes
+    and is never the manuscript."""
+    from manuscript_guard.markedup import marked_up_of
+
+    if marked_up_of(document) is None:
+        return False
+    print(
+        f"{document.name} is a marked-up copy: it shows the changes since a submission and "
+        f"is not the manuscript, so it is not {what}. Use the document it was made from."
+    )
+    return True
+
+
+def _marked_up(
+    project, paper: Path, supplement: Path | None, *, since: Path | None,
+    round_number: int | None, form: str, since_supplement: Path | None = None,
+    by_option: bool = True,
+) -> tuple[list[tuple[Path, Path]], list[str]]:  # fmt: skip
+    """The marked-up copies of a built paper and supplement, each with the document it was
+    compared with; and what to say of any not made. The supplement is held to the paper's
+    rules: kept by the round as the paper is, or named with `since_supplement`, and marked
+    up by the same comparison. Raises `MarkedUpError` where a copy asked for cannot be made,
+    saying which. `by_option` is whether the command has `--since` and `--since-supplement`
+    to name what was sent: `submit` has not. The caller takes earlier copies away first
+    (`_cleared_marked_up`)."""
+    from manuscript_guard.gates.revision import rounds
+    from manuscript_guard.markedup import MarkedUpError
+    from manuscript_guard.markedup.rounds import (
+        PAPER,
+        SUPPLEMENT,
+        Asked,
+        describe,
+        make,
+        sent_copy,
+        target_for,
+    )
+    from manuscript_guard.roundtrip import RoundTripError, cited_of
+
+    if since_supplement is not None and supplement is None:
+        raise MarkedUpError("`--since-supplement` names a supplement, and none was built")
+    numbers = [n for n, _path in rounds(project)]
+    if round_number is not None and round_number not in numbers:
+        raise MarkedUpError(f"there is no revision round {round_number}")
+    number = round_number if round_number is not None else max(numbers, default=None)
+
+    def sent(given: Path | None, name: str, option: str) -> Path | None:
+        found = given if given is not None else (
+            sent_copy(project, number, name) if number is not None else None
+        )  # fmt: skip
+        if found is not None and not found.is_file():
+            raise MarkedUpError(f"{found} does not exist")
+        if found is None and name == PAPER:
+            where = (
+                "no revision round is open"
+                if number is None
+                else f"round {number} kept no copy of the document the journal received"
+            )
+            named = f"name the document sent with `{option}`, or " if by_option else ""
+            raise MarkedUpError(f"{where}; {named}put it at revision/round-<n>/submitted/{name}")
+        return found
+
+    asked = [(sent(since, PAPER, "--since"), paper)]
+    notes: list[str] = []
+    if supplement is not None:
+        old_supplement = sent(since_supplement, SUPPLEMENT, "--since-supplement")
+        if old_supplement is None:
+            named = "name it with `--since-supplement`, or " if by_option else ""
+            notes.append(
+                "the supplement is not marked up: the round kept no copy of the one the "
+                f"journal received; {named}put it at revision/round-<n>/submitted/{SUPPLEMENT}"
+            )
+        else:
+            asked.append((old_supplement, supplement))
+    made = []
+    for old, new in asked:
+        try:
+            differ = cited_of(old) != cited_of(new)
+        except RoundTripError:
+            differ = False
+        if differ:
+            notes.append(
+                f"{old.name} and {new.name} format their citations differently (live Zotero "
+                f"fields against citeproc, or another style), so a citation may show as "
+                f"changed that is not; build as the document sent was built"
+            )
+        target = target_for(project, new, form)
+        try:
+            result = make(project, Asked(old, new, target, number), form)
+        except MarkedUpError as exc:
+            which = "the supplement" if new == supplement else "the paper"
+            kept = "".join(f"; {_shown_path(project, done)} was made" for _o, done in made)
+            raise MarkedUpError(f"no marked-up copy of {which}: {exc}{kept}") from exc
+        print(
+            f"marked up {target.relative_to(project.root).as_posix()} against "
+            f"{_shown_path(project, old)}: {describe(result)}"
+        )
+        made.append((old, target))
+    return made, notes
+
+
+def _refused_inputs(since: list[Path | None]) -> str | None:
+    """Why the documents `--since` and `--since-supplement` name cannot be compared, before
+    anything is taken away: a marked-up copy, which may be the very file a run would replace
+    (round 2 of #396), or nothing at all."""
+    from manuscript_guard.markedup import marked_up_of
+
+    for given in since:
+        if given is None:
+            continue
+        if not given.is_file():
+            return f"{given} does not exist"
+        if marked_up_of(given) is not None:
+            return f"{given.name} is itself a marked-up copy; name the document that was sent"
+    return None
+
+
+def _cleared_marked_up(project) -> None:
+    """Take away the marked-up copies an earlier run left in build/marked-up/, known by the
+    property each carries and nothing else, so that a run that stops before it writes leaves
+    none of an older source to be sent (round 2 of #396)."""
+    from manuscript_guard.markedup import marked_up_of
+    from manuscript_guard.markedup.rounds import FOLDER
+
+    folder = project.path("build") / FOLDER
+    for path in sorted(folder.glob("*.docx")) if folder.is_dir() else []:
+        if marked_up_of(path) is not None:
+            path.unlink()
+
+
+def _shown_path(project, path: Path) -> str:
+    try:
+        return path.resolve().relative_to(project.root.resolve()).as_posix()
+    except ValueError:
+        return str(path)
+
+
 def cmd_build(args: argparse.Namespace) -> int:
     """Produce the .docx. Gates run first unless the author insists otherwise.
 
@@ -2419,9 +2796,25 @@ def cmd_build(args: argparse.Namespace) -> int:
     document, not a list of unfinished bindings. It is a flag rather than the default,
     so that the version you send anyone has passed.
     """
+    marked_up = getattr(args, "marked_up", False)
+    if marked_up and getattr(args, "annotated", False):
+        print("manuscript-guard: --marked-up and --annotated make different copies; ask for "
+              "one at a time", file=sys.stderr)  # fmt: skip
+        return 2
+    marked_options = ("since", "since_supplement", "round", "highlight")
+    if not marked_up and any(getattr(args, name, None) for name in marked_options):
+        print("manuscript-guard: --since, --since-supplement, --round and --highlight go with "
+              "--marked-up", file=sys.stderr)  # fmt: skip
+        return 2
     report, project, _stage, _deferred = _run_gates(
         args.path, submission=args.submission, stage=getattr(args, "stage", None)
     )
+    if marked_up:
+        refused = _refused_inputs([args.since, args.since_supplement])
+        if refused is not None:
+            print(f"manuscript-guard: no marked-up copy: {refused}", file=sys.stderr)
+            return 1
+        _cleared_marked_up(project)
     if not report.ok and not args.skip_checks:
         print(report.render(project.root))
         print(f"\n{len(report.failures)} failing; not building. Use --skip-checks to override.")
@@ -2502,6 +2895,28 @@ def cmd_build(args: argparse.Namespace) -> int:
     named = any(f.code == CODE for f in result.report.failures)
     if supplement is not None:
         named = named or not check_blinded(project, supplement).ok
+    if getattr(args, "marked_up", False):
+        from manuscript_guard.markedup import MarkedUpError
+
+        form = "highlighted" if args.highlight else "tracked"
+        try:
+            made, notes = _marked_up(
+                project, result.output, supplement, since=args.since,
+                round_number=args.round, form=form, since_supplement=args.since_supplement,
+            )  # fmt: skip
+        except MarkedUpError as exc:
+            message = str(exc)
+            if not message.startswith("no marked-up copy"):
+                message = f"no marked-up copy: {message}"
+            print(f"manuscript-guard: {message}", file=sys.stderr)
+            return 1
+        for note in notes:
+            print(f"  {note}")
+        for _old, marked in made:
+            blind = check_blinded(project, marked)
+            if not blind.ok:
+                print(blind.render(project.root))
+                named = True
     if named:
         print("The document names an author, and the journal's review is blind: do not send it.")
         return 1
@@ -2539,6 +2954,16 @@ def cmd_submit(args: argparse.Namespace) -> int:
     from manuscript_guard.build import SubmissionError, assemble_pack
 
     report, project, _stage, _deferred = _run_gates(args.path, submission=True)
+    from manuscript_guard.gates.revision import rounds
+
+    # A marked-up copy given as the document is refused by name before the copies are
+    # cleared: in build/marked-up/, it would be taken away first and reported missing.
+    if args.document is not None and _refused_marked_up(args.document, "packed as the manuscript"):
+        return 1
+    if rounds(project):
+        # Before anything can stop the pack, as `build` does: a copy left by an earlier run
+        # is of an older source (round 3 of #396).
+        _cleared_marked_up(project)
     if not report.ok and not args.skip_checks:
         print(report.render(project.root))
         print(
@@ -2607,8 +3032,28 @@ def cmd_submit(args: argparse.Namespace) -> int:
     # author fields come from; the build checked only the one it made.
     from manuscript_guard.build.blinding import check_blinded
 
+    # At a revision, the copy that shows what changed since the round's document, which
+    # journals ask for beside the manuscript itself.
+    marked: list[tuple[Path, str]] = []
+    marked_notes: list[str] = []
+    if rounds(project):
+        from manuscript_guard.markedup import MarkedUpError
+
+        form = "highlighted" if args.highlight else "tracked"
+        try:
+            made, marked_notes = _marked_up(
+                project, document, supplement if wants_supplement else None,
+                since=None, round_number=None, form=form, by_option=False,
+            )  # fmt: skip
+        except MarkedUpError as exc:
+            marked_notes = [f"no marked-up copy is packed: {exc}"]
+            made = []
+        suffix = "-highlighted" if form == "highlighted" else "-marked-up"
+        marked = [(path, f"{path.name.split('.')[0]}{suffix}.docx") for _old, path in made]
+
     packed = [document] if args.document is not None else []
     packed += [supplement] if wants_supplement else []
+    packed += [path for path, _name in marked]
     blind = merge_all([check_blinded(project, path) for path in packed])
     if not blind.ok:
         print(blind.render(project.root))
@@ -2617,7 +3062,7 @@ def cmd_submit(args: argparse.Namespace) -> int:
         return 1
 
     try:
-        pack = assemble_pack(project, document, checked=report.ok)
+        pack = assemble_pack(project, document, checked=report.ok, extra=marked)
     except SubmissionError as exc:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
@@ -2628,7 +3073,7 @@ def cmd_submit(args: argparse.Namespace) -> int:
     for path in pack.files:
         print(f"  {path.relative_to(pack.directory)}")
     print(f"  {pack.manifest.name}")
-    for note in pack.notes:
+    for note in (*pack.notes, *marked_notes):
         print(f"  {note}")
     # Said, and not refused: whether to send without an approval is the corresponding
     # author's call, and an approval given by e-mail is still one.
@@ -2727,12 +3172,13 @@ def cmd_sign(args: argparse.Namespace) -> int:
 
 def cmd_sync_bib(args: argparse.Namespace) -> int:
     """Rewrite literature/references.bib from what the manuscript cites."""
+    from manuscript_guard.text.reader import CitationsUnknown
     from manuscript_guard.zotero import ZoteroUnavailable
 
     project, _ = load_project(args.path)
     try:
         path, count = sync_bib(project)
-    except ZoteroUnavailable as exc:
+    except (ZoteroUnavailable, CitationsUnknown) as exc:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
     print(f"wrote {count} reference{'' if count == 1 else 's'} to {path}")
@@ -2955,6 +3401,51 @@ def cmd_search(args: argparse.Namespace) -> int:
         raise RuntimeError("the search's answer would have printed a key or the contact address")
     print(said)
     return 0 if proposals.answered(result) else 1
+
+
+def cmd_dictionary(args: argparse.Namespace) -> int:
+    """Write the data dictionary out for whoever builds the form: REDCap's data dictionary,
+    a plain CSV, or the form's outline. Each is written only where the dictionary reads and
+    the shape can hold it; nothing is written on a refusal."""
+    import os
+
+    from manuscript_guard.contracts.dictionary import DICTIONARY, load_dictionary
+    from manuscript_guard.dictionary_export import ExportRefused, outline, plain_csv, redcap
+
+    wanted = [(target, make) for target, make in
+              ((args.redcap, redcap), (args.csv, plain_csv), (args.outline, outline))
+              if target is not None]  # fmt: skip
+    if not wanted:
+        print("say what to write: --redcap, --csv or --outline", file=sys.stderr)
+        return 2
+    # One file under two spellings, out.csv and OUT.csv on Windows, is one file (round 2).
+    if len({os.path.normcase(target.resolve()) for target, _make in wanted}) < len(wanted):
+        print("each of --redcap, --csv and --outline needs a file of its own", file=sys.stderr)
+        return 2
+    project, _ = load_project(args.path)
+    dictionary, report = load_dictionary(project)
+    if dictionary is None:
+        if report.ok:
+            print(f"there is no {DICTIONARY.as_posix()} to write out", file=sys.stderr)
+            return 2
+        print(report.render(project.root))
+        return 1
+    try:
+        written = [(target, make(dictionary)) for target, make in wanted]
+    except ExportRefused as refused:
+        print(f"nothing written: {refused}", file=sys.stderr)
+        return 1
+    for target, made in written:
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(made.text.encode("utf-8"))
+        except OSError as exc:
+            print(f"cannot write {target}: {exc.strerror or exc}", file=sys.stderr)
+            return 1
+        print(f"wrote {target}")
+        for said in made.left_out:
+            print(f"  left out {said}")
+    return 0
 
 
 def cmd_style(args: argparse.Namespace) -> int:
@@ -3746,6 +4237,20 @@ def build_parser() -> argparse.ArgumentParser:
     stages = sub.add_parser("stages", help="what each stage means and what binds at it")
     stages.set_defaults(func=cmd_stages)
 
+    palettes_ = sub.add_parser(
+        "palettes",
+        help="list the palettes shipped, with what the colour check says of each, or show one",
+    )
+    palettes_.add_argument("--kind", choices=("qualitative", "sequential", "diverging",
+                                              "multi-sequential", "cyclic"))  # fmt: skip
+    palettes_.add_argument("--colours", type=int, help="how many colours the figure needs")
+    palettes_.add_argument("--safe", action="store_true",
+                           help="only those every reader can read for that use")  # fmt: skip
+    palettes_.add_argument("--collection", help="e.g. MetBrewer, Crameri, ColorBrewer")
+    palettes_.add_argument("--show", metavar="NAME", help="one palette's colours and licence")
+    palettes_.add_argument("--json", action="store_true")
+    palettes_.set_defaults(func=cmd_palettes)
+
     hook = sub.add_parser("hook", help="handle a Claude Code hook event (reads stdin)")
     hook.add_argument(
         "event",
@@ -3951,6 +4456,33 @@ def build_parser() -> argparse.ArgumentParser:
     explain.add_argument("file", type=Path)
     explain.set_defaults(func=cmd_explain)
 
+    proof = sub.add_parser(
+        "proof",
+        help="compare the publisher's proof with the document sent, and list the corrections",
+        description="Reads the typeset proof (PDF, JATS XML, HTML or text) and holds it to "
+        "the document in the submission pack, part by part and table cell by cell, and its "
+        "title page to authors.yaml. A changed number, sign, decimal mark, unit, citation, "
+        "reference, name, affiliation, ORCID iD or e-mail address, or a part the proof "
+        "leaves out, is a correction; a copy-editor's change of words is shown for you to "
+        "accept or query. Nothing is sent.",
+    )
+    proof.add_argument("proof", type=Path, help="the proof: .pdf, .xml, .html or .txt")
+    proof.add_argument("path", nargs="?", type=Path, default=Path.cwd())
+    proof.add_argument(
+        "--against", type=Path, metavar="DOCX",
+        help="the document to compare with, where it is not the submission pack's",
+    )  # fmt: skip
+    proof.add_argument(
+        "--supplementary", action="store_true",
+        help="the proof is of the supplement, typeset as its own document",
+    )  # fmt: skip
+    proof.add_argument(
+        "--out", type=Path, metavar="FILE",
+        help="also write the corrections as a numbered list, to paste into the reply",
+    )  # fmt: skip
+    proof.add_argument("--json", action="store_true", help="the report as JSON")
+    proof.set_defaults(func=cmd_proof)
+
     impact = sub.add_parser(
         "impact",
         help="list what depends on a file: results, sentences, figures, Methods, readings "
@@ -4025,6 +4557,12 @@ def build_parser() -> argparse.ArgumentParser:
     render.add_argument("path", nargs="?", type=Path, default=Path.cwd())
     render.set_defaults(func=cmd_render)
 
+    values = sub.add_parser(
+        "values", help="write a LaTeX manuscript's values file, mgvalues.sty, from the results"
+    )
+    values.add_argument("path", nargs="?", type=Path, default=Path.cwd())
+    values.set_defaults(func=cmd_values)
+
     build = sub.add_parser("build", help="produce the .docx")
     build.add_argument("path", nargs="?", type=Path, default=Path.cwd())
     build.add_argument(
@@ -4050,6 +4588,30 @@ def build_parser() -> argparse.ArgumentParser:
         "--submission",
         action="store_true",
         help="the version you send anywhere: unanswered review findings fail the build",
+    )
+    build.add_argument(
+        "--marked-up",
+        action="store_true",
+        help="also write build/marked-up/: the revision with every change since the document "
+        "the journal received shown as Word tracked changes",
+    )
+    build.add_argument(
+        "--since",
+        type=Path,
+        help="with --marked-up: the document sent, where the revision round kept none",
+    )
+    build.add_argument(
+        "--since-supplement",
+        type=Path,
+        help="with --marked-up: the supplement sent, where the revision round kept none",
+    )
+    build.add_argument(
+        "--round", type=int, help="with --marked-up: the revision round, the latest by default"
+    )
+    build.add_argument(
+        "--highlight",
+        action="store_true",
+        help="with --marked-up: show the changes highlighted and struck through, not tracked",
     )
     build.set_defaults(func=cmd_build)
 
@@ -4145,6 +4707,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     search.set_defaults(func=cmd_search)
 
+    dictionary = sub.add_parser(
+        "dictionary",
+        help="write the data dictionary out: REDCap's data dictionary, a plain CSV or the "
+        "form's outline",
+    )
+    dictionary.add_argument("path", nargs="?", type=Path, default=Path.cwd())
+    dictionary.add_argument("--redcap", type=Path, help="REDCap's data dictionary, as CSV")
+    dictionary.add_argument("--csv", type=Path, help="one row per variable, as CSV")
+    dictionary.add_argument("--outline", type=Path, help="the form's outline, as Markdown")
+    dictionary.set_defaults(func=cmd_dictionary)
+
     style = sub.add_parser(
         "style",
         help="fetch the journal's citation style from the CSL style repository, for the "
@@ -4170,6 +4743,11 @@ def build_parser() -> argparse.ArgumentParser:
     submit.add_argument("--csl", type=Path)
     submit.add_argument("--document", type=Path, help="use an existing .docx instead of building")
     submit.add_argument("--skip-checks", action="store_true")
+    submit.add_argument(
+        "--highlight",
+        action="store_true",
+        help="at a revision, pack the changes highlighted and struck through, not tracked",
+    )
     submit.set_defaults(func=cmd_submit)
 
     checker = sub.add_parser(
@@ -4343,11 +4921,9 @@ _MARKDOWN_COMMANDS: dict[str, Callable[[argparse.Namespace], bool]] = {
     # too, which match answers against them (round 2 of #404).
     **dict.fromkeys(
         ("bind", "build", "checker", "explain", "impact", "import", "init", "methods",
-         "models", "passages", "render", "respond", "reworded", "submit", "sync-bib",
-         "sync-sources"),
+         "models", "passages", "proof", "render", "respond", "reworded", "submit"),
         _always,
     ),
-    "lookup": lambda args: not args.journals,
     # Its comparison reads the manuscript; taking an earlier output's copy does not.
     "related": lambda args: args.take is None,
     # A design round reads the plan, not the manuscript (round 1 of #404).

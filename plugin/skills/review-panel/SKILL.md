@@ -38,6 +38,10 @@ One remit is worth a reviewer of its own on most papers: **contradiction**. Wher
 say something was done and the Limitations, the Discussion or the registration say otherwise,
 neither section's reader notices, because each reads its own part.
 
+A paper with earlier outputs on the same data, an abstract or an earlier article, needs an
+**earlier outputs** remit: whether each difference from them is a change of method the paper
+states and justifies. The related-outputs skill says how it is read.
+
 A paper that rests on its references needs a second: **citation support**. G7 checks that a
 quoted number is in its stored source, and the lookup that a cited work exists and was not
 retracted. Neither asks whether the work says what the sentence citing it says. A tool cited
@@ -250,6 +254,10 @@ while any of the panel's changes is undecided, and writes each answer into its r
 accepted edit as the finding's `resolution`, a refused one with a reply as its `overridden`,
 the reply's author as `overridden_by`. A refused edit with no reply leaves the finding open.
 The accepting and refusing are the author's; an agent does not do them in the document.
+
+A co-author's comments in Word are not a panel's reading. `import` files each of them in
+`review/comments/`, outside every round, and each has to be answered there whatever its
+severity: the word-roundtrip skill says how. Do not copy them into a panel record as well.
 
 With several readers, every major finding from any of them has to be answered, in the
 record that raised it. One reader's clean reading does not answer another's finding, and

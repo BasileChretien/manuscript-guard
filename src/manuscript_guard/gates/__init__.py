@@ -22,6 +22,7 @@ from manuscript_guard.gates.numbers import check_numbers, source_files
 from manuscript_guard.gates.passages import check_passages
 from manuscript_guard.gates.quotations import check_prose_quotations
 from manuscript_guard.gates.recomputed import check_recomputed
+from manuscript_guard.gates.recycling import check_recycling
 from manuscript_guard.gates.relations import check_relations
 from manuscript_guard.gates.reported import check_reported
 from manuscript_guard.gates.reporting import (
@@ -41,7 +42,7 @@ from manuscript_guard.gates.writing import check_writing
 GATES = {
     "G1": "results freshness",
     "G2": "number classification and coverage",
-    "G3": "figure sources, rendered figures and their alternative text",
+    "G3": "figure sources, rendered figures, their alternative text and their colours",
     "G4": "journal guidelines",
     "G5": "reporting checklist completeness",
     "G6": "signs of machine-written prose",
@@ -62,6 +63,7 @@ GATES = {
 __all__ = [
     "check_models",
     "check_recomputed",
+    "check_recycling",
     "check_revision",
     "rounds",
     "GATES",

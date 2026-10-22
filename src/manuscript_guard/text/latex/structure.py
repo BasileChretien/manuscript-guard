@@ -20,8 +20,10 @@ loose body under no heading, and is warned of.
 from __future__ import annotations
 
 import posixpath
+from bisect import bisect_left
 from collections.abc import Mapping
 from dataclasses import dataclass
+from functools import cached_property
 from pathlib import Path
 
 from manuscript_guard.text.latex.mask import Heading, Input, Reading, Refusal, read
@@ -35,8 +37,9 @@ _NOT_WRITTEN_OUT = set("\\#$%{}~")
 
 @dataclass(frozen=True)
 class Source:
-    """One file of the document: its text, how it reads, the headings over its start, and
-    the headings in force after each file it inputs, which that file's own headings change."""
+    """One file of the document: its text, how it reads, the headings over its start, the
+    headings in force after each file it inputs, which that file's own headings change, and
+    the environments its `\\input` stands in, which it is read inside."""
 
     path: str
     text: str
@@ -44,23 +47,32 @@ class Source:
     under: tuple[Heading, ...] = ()
     loose: bool = False
     resumes: tuple[tuple[int, tuple[Heading, ...]], ...] = ()
+    environments: tuple[str, ...] = ()
 
     def chain_at(self, offset: int) -> tuple[Heading, ...]:
         """The headings in force at `offset` of this file: those it started under, its own,
         and those a file it input left in force where its `\\input` ends. Where an `\\input`
         ends and a heading starts at one offset, the heading comes after (round 1 of #385:
-        `\\input{a}\\section{B}` lost B)."""
+        `\\input{a}\\section{B}` lost B). Found by bisection in the chains worked out once,
+        since G2 asks at every number (step 4)."""
+        starts, chains = self._chains
+        before = bisect_left(starts, offset)
+        return chains[before - 1] if before else self.under
+
+    @cached_property
+    def _chains(self) -> tuple[list[int], list[tuple[Heading, ...]]]:
+        """Where the headings in force change, and what they are from there on."""
         events = sorted(
             [(heading.start, heading, ()) for heading in self.reading.headings]
             + [(end, None, after) for end, after in self.resumes],
             key=lambda event: (event[0], event[1] is not None),
         )
-        chain = self.under
+        chain, starts, chains = self.under, [], []
         for start, heading, after in events:
-            if start >= offset:
-                break
             chain = _folded(chain, heading) if heading is not None else after
-        return chain
+            starts.append(start)
+            chains.append(chain)
+        return starts, chains
 
 
 def _folded(chain: tuple[Heading, ...], heading: Heading) -> tuple[Heading, ...]:
@@ -148,7 +160,7 @@ def read_tree(
         text = files[path]
         reading = read(text, body=body, environments=environments)
         place = len(sources)
-        sources.append(Source(path, text, reading, under))
+        sources.append(Source(path, text, reading, under, environments=environments))
         refusals.extend((path, refusal) for refusal in reading.refusals)
         for _at, name in reading.packages:
             style = posixpath.join(posixpath.dirname(entry), f"{name}.sty")
@@ -184,7 +196,8 @@ def read_tree(
                           (*chain, target))  # fmt: skip
             current = _resumed(current, after)
             resumes.append((put.end, current))
-        sources[place] = Source(path, text, reading, under, resumes=tuple(resumes))
+        sources[place] = Source(path, text, reading, under, resumes=tuple(resumes),
+                               environments=environments)
         return current
 
     if entry in files:

@@ -74,6 +74,11 @@ BINDS_AT = {
     "model-empty-level": ANALYSIS,
     "variable-level-undeclared": ANALYSIS,
     "variable-not-binary": ANALYSIS,
+    # A methods review is a design record, read while the plan is written; the plan built on
+    # it is frozen at the first results, and from then a passage not in its study, or a
+    # decision a model signed, fails (Basile, 2026-10-21).
+    "similar-passage-not-in-source": ANALYSIS,
+    "similar-decision-not-human": ANALYSIS,
     # -- drafting ---------------------------------------------------------------
     # Numbers in prose only exist once there is prose.
     "no-results-dir": DRAFTING,
@@ -85,6 +90,10 @@ BINDS_AT = {
     # A count the custodian forbids may be read inside the team; not outside it, which a
     # panel sent to a model provider already is.
     "count-below-minimum": INTERNAL_REVIEW,
+    # A minimum or a ban on sending that the record of data sources holds and paper.yaml
+    # does not declare: the check above never runs. Said as a warning before (gates/
+    # data_sources.py), and failing where the count would.
+    "custodian-rule-undeclared": INTERNAL_REVIEW,
     "code-block-text-number": DRAFTING,
     "raw-block": DRAFTING,
     # TeX in the text that the Word writer leaves out. Pandoc is asked for it, and what it
@@ -97,6 +106,10 @@ BINDS_AT = {
     "ref-number-unknown": DRAFTING,
     "pointer-form-unread": DRAFTING,
     "unquoted-result": DRAFTING,
+    # A LaTeX document's values file: a PDF compiled from a stale one shows old numbers.
+    "values-file-missing": DRAFTING,
+    "values-file-stale": DRAFTING,
+    "value-not-printable": DRAFTING,
     "typed-parameter": DRAFTING,
     "typed-software-version": DRAFTING,
     "typed-dictionary-release": DRAFTING,
@@ -184,6 +197,8 @@ BINDS_AT = {
     # "Figures {{num.table.a}}". The binding's number is right; the words go stale as the
     # display moves, as a typed pointer does.
     "pointer-word-mismatch": INTERNAL_REVIEW,
+    # A caption beside a table or a figure, typed or emitted, that names another one.
+    "caption-names-another": INTERNAL_REVIEW,
     "cited-out-of-order": INTERNAL_REVIEW,
     "display-not-cited": INTERNAL_REVIEW,
     # A reference list is printed for others to read from the finished draft on. While
@@ -234,6 +249,10 @@ BINDS_AT = {
     # A sealed reading whose words changed: a major finding softened or deleted binds
     # nothing any more, so this binds where the major findings do.
     "reading-altered": SUBMISSION,
+    # A co-author's comment from Word, filed by `import`: answered before the paper goes
+    # anywhere, whatever its severity, and its record held to what was filed.
+    "comment-unanswered": SUBMISSION,
+    "comments-altered": SUBMISSION,
 }
 
 

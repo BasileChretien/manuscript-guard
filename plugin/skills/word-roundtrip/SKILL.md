@@ -204,8 +204,9 @@ merging it from Word's text could flatten the markup beside them.
 When the returned document carries comments, when more than one co-author sends theirs back,
 when the dry run lists paragraphs that `were not compared`, or when the stamp check refuses
 the document, read
-[references/comments-and-co-authors.md](references/comments-and-co-authors.md): how comments
-are recorded so that G11 sees them answered, what a build records of each paragraph and what
+[references/comments-and-co-authors.md](references/comments-and-co-authors.md): how `import`
+files each comment and how to answer it so that G11 sees it answered, what a build records
+of each paragraph and what
 `import` merges because of it, what to carry over by hand, and how several returned copies
 are brought in one after another.
 
@@ -218,3 +219,6 @@ still not been through a real co-author round.
 
 When a co-author changed a number, do not type their number into the source to make the
 paragraph merge. Ask whether the analysis should change, and if so, change it there.
+
+A filed comment is answered by the author. Draft a `resolution` or an `overridden` reason if
+asked, and leave the decision, and the name in `overridden_by`, to them.

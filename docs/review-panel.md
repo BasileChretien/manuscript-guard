@@ -76,7 +76,10 @@ front matter and comments and with its feasibility results printed into it, and 
 feasibility results.
 Where `paper.yaml` declares a `study_type`, it is also sent what a plan for that design has
 to settle, each item with the guideline it comes from: the reviewers ask the plan about
-those risks. Not the manuscript, and no result but a feasibility one. Each reply is filed under `review/design/round-<n>/`, and G12 reads it:
+those risks. Where the project keeps `design/methods_review.yaml`, the methods of similar
+studies are sent too, each in the study's words with its appraisals and the author's
+decisions, for the reviewers to check each appraisal against its standard; a reading's digest
+holds the record, so one changed since is stale. Not the manuscript, and no result but a feasibility one. Each reply is filed under `review/design/round-<n>/`, and G12 reads it:
 
 ```bash
 manuscript-guard review --design --run --dry-run   # what would be sent where; sends nothing
@@ -151,5 +154,16 @@ reply becomes its `overridden`, with the reply as the reason and its author as
 `overridden_by`. A refused edit with no reply leaves its finding open, since turning down a
 wording does not answer what the finding says. Nothing in the reader's words changes, so the
 seal still holds.
+
+## Comments a co-author left in Word
+
+A co-author's comments are not a panel's reading, and they are not lost either. `import
+--apply` files each comment of a returned document in
+`review/comments/<manuscript|supplementary>-<build>/<commenter>.yaml`, outside every round:
+the comment word for word, its replies, the words it was made on and its paragraph. G11
+reports each one until it has a `resolution` or an `overridden` reason, whatever its
+severity, and `check --submission` fails while one has neither. The records are sealed like a
+reading, so a comment reworded or deleted by hand is `comments-altered`, and they never go
+into a build or the submission pack. The word-roundtrip skill has the details.
 
 [Back to the README](../README.md)

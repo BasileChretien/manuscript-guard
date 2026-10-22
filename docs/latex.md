@@ -108,6 +108,7 @@ where it would apply:
 - G4's figure legends, and its check that the data availability statement names each data
   source;
 - G7's passages repeated from the authors' earlier papers;
+- G16's check that the Methods or the supplement report what the data checks counted;
 - BUILD's checks of the Markdown build.
 
 The finding is a note before `submission` and a failure from it, so that a manuscript only

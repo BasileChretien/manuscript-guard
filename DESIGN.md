@@ -1219,7 +1219,10 @@ finding, `not-read-in-latex`, naming the gate. That finding fails from `submissi
 it is shown as a note, as any finding not yet due is. Each pull request then ships on its own,
 and a half-taught `check` cannot pass a submission. `tests/test_reads_nothing.py` gets a row
 for each such gate. The commands not yet moved refuse a LaTeX project with a sentence and exit
-2: `explain`, `bind`, `audit`, `reworded`, `checker`, the panel's prompt and the hooks.
+2: every command that reads the manuscript only as Markdown, `explain`, `bind`, `reworded`,
+`checker` and the panel's prompt among them (step 1, `_MARKDOWN_COMMANDS`), and `audit`
+given a `.tex`, which it holds apart since it reads no project. A hook stops nothing, and the
+hooks are taught in step 12.
 
 ### What the LaTeX reader reads
 
@@ -1571,18 +1574,15 @@ The result is compiled and packed by the code above, and checked three times:
   (`other-format-file`): a project written before LaTeX was read may keep a `.tex` beside its
   Markdown for pandoc's header, and refusing it would fail a paper that passed. It is read by
   no gate. Whether to warn of it is left for later.
-- Until the second half of step 1, the commands other than `check` do not yet know a LaTeX
-  manuscript (round 1 of #370):
-  - `bind`, `lookup` and `build` stop on it, as on a folder with no Markdown, and so does the
-    panel's prompt ("no manuscript to review");
-  - `explain manuscript/main.tex` reads the file as Markdown and labels its numbers;
-  - `reworded` and `checker` read only Markdown, and so does `audit` given a folder; `audit`
-    given a `.tex` by name reads it as text, as `explain` does;
-  - `review` and `respond --open` digest the `.tex` files, as G11 does, but `respond --open`
-    keeps no copy of them;
-  - the submission refusal and the status line run the gates, so they see
-    `not-read-in-latex` as `check` does; the note on a saved file reads only Markdown, and
-    says nothing when a `.tex` is saved (round 2 of #370).
+- The hooks are not refused with the commands: a hook never stops the tool that called it.
+  The submission refusal and the status line run the gates, so they see `not-read-in-latex`
+  as `check` does; the note on a saved file reads only Markdown, and says nothing when a
+  `.tex` is saved (round 2 of #370), until step 12 teaches the hooks.
+- `audit` is not tied to a project: given a folder of `.tex` it says it found nothing to
+  audit, and only a `.tex` named is refused.
+- On a LaTeX project, `sign` of an id that stands nowhere lists G15's ids among those that
+  stand, though `sign` refuses them there; and `review --suggestions --design`, a misuse, is
+  told LaTeX is not read rather than that `--suggestions` stands alone (round 2 of #404).
 - An author's macro is not expanded where it is used, so a word its body prints there is in no
   sentence that G6 or G14 reads; its body is read once, at the definition.
 - An `\input` records the environments open around it, not the command whose argument it is
@@ -1819,9 +1819,20 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
 1. The seam, in two pull requests. The first, built: `text/reader.py` with the format and the
    files; G11's digests and the unreadable-file check through it; format detection,
    `two-formats` and `other-format-file`; `not-read-in-latex`, given by `_run_gates` for each
-   check in `_NOT_READ_IN_LATEX`, a set each later step takes its check out of. The second:
-   the refusing commands, after the open pull requests that change the same commands. Tests:
-   the differential unchanged, the corruption cases, rows in `test_reads_nothing.py`.
+   check in `_NOT_READ_IN_LATEX`, a set each later step takes its check out of. The second,
+   built: the refusing commands. `main` refuses, before a command runs, each one in
+   `_MARKDOWN_COMMANDS` whose invocation reads the manuscript, where the project's manuscript
+   or a file it is given is LaTeX: a sentence, and exit 2. They had read nothing and said so
+   as of an empty manuscript, "rendered 0 files", "cites nothing", or read the `.tex` as
+   Markdown, and `init` wrote a `main.md` beside `main.tex`, two formats. Some are refused in
+   part: `review` with `--run` or `--dry-run`, but for a design round, which reads the plan,
+   and with `--suggestions`; `lookup` but with `--journals`; `sign` of a G15 finding, and not
+   of a design round's override. `checker` is refused whole: every verb draws its items from
+   the manuscript, and `import` and `status` match answers against them (round 2 of #404).
+   A `.tex` named is refused by `explain` and
+   `reworded`, which read the file they are given, whatever the project's format. Tests:
+   the differential unchanged, and in `test_reads_nothing.py` a table, `LATEX`, of what each
+   command does with a LaTeX manuscript, each refusing one run on one.
 2. The scanner and `mask`, built: `commands.py` and `mask.py`, which scans as it reads, so
    that no `scan.py` stands apart. `read(text, body=...)` gives the masked text and the first
    refusal. Tests: `latex_texts()`, `latex_planted()`, `latex mask` and `latex refusals`,

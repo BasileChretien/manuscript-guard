@@ -75,6 +75,13 @@ said they would do":
 Numbers in the plan are not checked. G2 reads only `manuscript/`, and the plan does not go
 in the submission pack.
 
+## How others answered the question
+
+Before the design, the comparator, time zero or the case definition is fixed, read how
+studies of the same question did it, judged against a methodological standard rather than
+by how many did it, and take what the author decides, with its citation: the
+[methods-review](../methods-review/SKILL.md) skill, and `design/methods_review.yaml`.
+
 ## What the data can answer
 
 Before the analysis section is settled, count what the data hold, with a script of the

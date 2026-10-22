@@ -40,6 +40,7 @@ import pytest
 from generated import (
     AGREED,
     CLAIMED,
+    CREDITING,
     DATA_IDENTIFIERS,
     EDIT_GAPS,
     EDIT_WORDS,
@@ -71,6 +72,7 @@ from generated import (
     claim_edits,
     collection_plans,
     commented,
+    credited_plans,
     generated,
     holds,
     laid_out,
@@ -118,6 +120,7 @@ from manuscript_guard.gates import bound_units as bound_units_gate
 from manuscript_guard.gates import journal_quotes as journal_quotes_gate
 from manuscript_guard.gates import language as language_gate
 from manuscript_guard.gates import methods as methods_gate
+from manuscript_guard.gates import methods_review as methods_review_gate
 from manuscript_guard.gates import models as models_gate
 from manuscript_guard.gates import numbers as numbers_gate
 from manuscript_guard.gates import quotations as quotations_gate
@@ -3031,6 +3034,20 @@ def test_a_passage_belongs_to_its_sentence_by_its_words_and_its_work(
         else:
             assert belongs == [], (how, belongs)
             assert stale == ("uncited" if how == "work not cited" else "changed"), (how, stale)
+
+
+@holds(60, credited_plans())
+def test_a_study_is_credited_by_a_citation_of_the_plan_and_by_nothing_else(
+    drawn: tuple[dict[str, str], dict[str, str]],
+) -> None:
+    """Basile, 2026-10-21: a method taken from a study of `design/methods_review.yaml` is
+    cited in the plan. A citation in a group, with others or a locator, or a narrative one,
+    credits the study; its key in a comment, inside a longer key or in an address does not
+    (`gates/methods_review.py`)."""
+    given, written = drawn
+    credited = set(READINGS["plan citations"]()(given))
+    for key, how in written.items():
+        assert (key in credited) is (how in CREDITING), (key, how, given)
 
 
 # ------------------------------------------------------------ pointers to tables and figures
@@ -7914,6 +7931,28 @@ def _no_reworded_sentence_is_near(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(passages_module, "NEAR", 1.1)
 
 
+def _a_comment_of_the_plan_credits_its_citations(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(methods_review_gate, "blank_comments", lambda text: text)
+
+
+def _a_narrative_citation_credits_nothing(patch: pytest.MonkeyPatch) -> None:
+    found = methods_review_gate.find_citations
+    patch.setattr(methods_review_gate, "find_citations", lambda text, path: [
+        use for use in found(text, path) if not use.narrative
+    ])  # fmt: skip
+
+
+def _a_key_credits_the_keys_it_begins(patch: pytest.MonkeyPatch) -> None:
+    # A key read up to its last digit: `study3x` as `study3`.
+    from dataclasses import replace
+
+    found = methods_review_gate.find_citations
+    patch.setattr(methods_review_gate, "find_citations", lambda text, path: [
+        replace(use, citekey=re.match(r"[A-Za-z]+[0-9]*", use.citekey)[0])
+        for use in found(text, path)
+    ])  # fmt: skip
+
+
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
@@ -7948,6 +7987,18 @@ BROKEN = {
     "no reworded sentence is near its passage's": (
         _no_reworded_sentence_is_near,
         test_a_passage_belongs_to_its_sentence_by_its_words_and_its_work,
+    ),
+    "a comment of the plan credits its citations": (
+        _a_comment_of_the_plan_credits_its_citations,
+        test_a_study_is_credited_by_a_citation_of_the_plan_and_by_nothing_else,
+    ),
+    "a narrative citation credits nothing": (
+        _a_narrative_citation_credits_nothing,
+        test_a_study_is_credited_by_a_citation_of_the_plan_and_by_nothing_else,
+    ),
+    "a key credits the keys it begins": (
+        _a_key_credits_the_keys_it_begins,
+        test_a_study_is_credited_by_a_citation_of_the_plan_and_by_nothing_else,
     ),
     "no stop ends a sentence": (
         _no_stop_ends_a_sentence,

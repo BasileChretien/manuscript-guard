@@ -905,6 +905,18 @@ def _passages() -> Reading:
     return passages
 
 
+@reading("plan citations")
+def _plan_citations() -> Reading:
+    """The citation keys a plan's text credits a study by: what G12 asks of a method taken
+    from a study of `design/methods_review.yaml` (Basile, 2026-10-21)."""
+    from manuscript_guard.gates.methods_review import plan_citations
+
+    def credited(given: dict[str, Any]) -> list[str]:
+        return sorted(plan_citations(given["text"]))
+
+    return credited
+
+
 @reading("recycled passages")
 def _recycled_passages() -> Reading:
     """The passages of a manuscript file an earlier paper of its authors has too, with their

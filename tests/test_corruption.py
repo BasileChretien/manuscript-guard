@@ -2184,6 +2184,76 @@ def test_a_passage_of_a_work_with_no_stored_copy_is_unchecked(project: Path) -> 
     assert _passage_findings(project) == [("passage-unchecked", "warn")]
 
 
+# ------------------------------------------------- the methods of a similar study
+
+
+def _methods_review_findings(project: Path) -> list[tuple[str, str]]:
+    from manuscript_guard.gates.methods_review import check_method_passages, check_methods_review
+
+    loaded = load_project(project)[0]
+    found = check_method_passages(loaded).merge(check_methods_review(loaded)).findings
+    return [(f.code, f.severity) for f in found if f.code != "similar-undecided"]
+
+
+def _reviewed(project: Path, old: str, new: str) -> None:
+    path = project / "design" / "methods_review.yaml"
+    text = path.read_text(encoding="utf-8")
+    assert old in text, old
+    path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+
+#: The example's appraisal, and a decision a person recorded after it.
+_PROPOSED = "          proposed_on: 2026-10-21\n"
+_DECIDED = (
+    _PROPOSED + "        decision:\n          choice: adopt\n"
+    "          why: the enzyme criterion only\n"
+)
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "said"),
+    [
+        pytest.param("toxic liver disease,\n", "liver disease,\n",
+                     [("similar-passage-not-in-source", "fail")], id="a passage retyped"),
+        pytest.param("          standard: encepp-guide\n", "",
+                     [("appraisal-without-standard", "warn")], id="a judgement with no standard"),
+        pytest.param("standard: encepp-guide", "standard: most-studies-do-it",
+                     [("appraisal-standard-unknown", "warn")], id="a standard nothing holds"),
+        pytest.param("domain: Definition and validation", "domain: Validation",
+                     [("appraisal-domain-unknown", "warn")], id="a domain the standard lacks"),
+        pytest.param(_PROPOSED, _DECIDED + "          decided_by: Claude\n"
+                     "          decided_on: 2026-10-21\n",
+                     [("similar-decision-not-human", "fail"), ("adopted-method-uncited", "warn"),
+                      ("adopted-standard-uncited", "warn")], id="decided by a model"),
+        pytest.param(_PROPOSED, _DECIDED + "          decided_by: Ada Example\n"
+                     "          decided_on: 2026-10-21\n",
+                     [("adopted-method-uncited", "warn"), ("adopted-standard-uncited", "warn")],
+                     id="an adopted method with no citation"),
+        pytest.param("proposed_on", "proposed_on", [], id="as recorded"),
+    ],
+)  # fmt: skip
+def test_a_method_of_a_similar_study_that_rests_on_nothing_is_caught(
+    project: Path, old: str, new: str, said: list
+) -> None:
+    """Basile, 2026-10-21: a method's words not its study's, a judgement that names no
+    standard or one nothing holds, a decision a model signed, and a method taken into the
+    plan that the plan does not cite."""
+    _reviewed(project, old, new)
+    assert _methods_review_findings(project) == said
+
+
+def test_an_adopted_method_the_plan_cites_with_its_standard_is_clean(project: Path) -> None:
+    _reviewed(project, _PROPOSED, _DECIDED + "          decided_by: Ada Example\n"
+              "          decided_on: 2026-10-21\n")  # fmt: skip
+    _reviewed(project, "studies:\n", "standards:\n  - id: encepp-guide\n    citekey: encepp2023\n"
+              "\nstudies:\n")  # fmt: skip
+    plan = project / "design" / "plan.md"
+    plan.write_text(plan.read_text(encoding="utf-8") + "\nThe case definition follows "
+                    "[@fictionalHepaticCohort2021], validated as [@encepp2023] advises.\n",
+                    encoding="utf-8")  # fmt: skip
+    assert _methods_review_findings(project) == []
+
+
 # ------------------------------------------------------------- what a change makes stale
 
 
@@ -6048,6 +6118,7 @@ _NOT_THE_MANUSCRIPT = (
     "check_review", "check_freshness", "check_figures", "check_figure_reviews",
     "check_literature_chain", "check_shortlist", "check_design", "check_design_rounds",
     "check_consistency", "check_restricted_inputs", "check_relations", "check_data_sources",
+    "check_method_passages", "check_methods_review",
     # It finds the figures placed in the Markdown sources, so it reads nothing of a LaTeX
     # manuscript and says nothing of one; it runs, as G3's other check does (round 1 of #387).
     "check_figure_alt",

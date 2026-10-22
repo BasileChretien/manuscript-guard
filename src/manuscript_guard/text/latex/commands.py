@@ -169,6 +169,11 @@ COMMANDS = _specs(
 
 #: Commands that print a space, written as one.
 SPACES = frozenset({"quad", "qquad", "enspace", "thinspace", "space", "enskip", "nobreakspace"})
+#: The commands that print one character, which the mask writes where the command stands: a
+#: quotation with an ellipsis or a dash is then the words its source holds (round 1 of G7 in
+#: step 8).
+SYMBOLS = {"ldots": "\u2026", "dots": "\u2026", "textellipsis": "\u2026",
+           "textendash": "\u2013", "textemdash": "\u2014"}  # fmt: skip
 
 #: Environments and the arguments `\\begin` takes for them.
 ENVIRONMENTS = _specs(
@@ -220,6 +225,9 @@ RAW = frozenset({"verbatim", "verbatim*", "Verbatim", "lstlisting", "comment"})
 #: The listings among them, which print what they hold as typed.
 LISTINGS = RAW - {"comment"}
 
+#: The cross-references, which print a number only the compiled document knows (step 8).
+POINTERS = frozenset({"ref", "eqref", "pageref", "autoref", "nameref", "cref", "Cref", "vref",
+                      "cpageref", "labelcref"})  # fmt: skip
 #: Tables an author types: a number in one is `hand-authored-table`, as one in a Markdown
 #: table's row is. Maths' alignments separate cells too, and are no tables.
 TYPED_TABLES = frozenset({"tabular", "tabular*", "tabularx", "tabulary", "longtable"})

@@ -790,9 +790,14 @@ LATEX_PRINTED_PLACES = (
     ("$a {}$ ", ("hidden",)),
     ("% {}\n", ("hidden",)),
     ("\\mg{{results.{}}} ", ("bound",)),
+    # A binding is printed where it stands, nothing added round it (step 8, G13).
+    ("(\\mg{{results.{}}}). ", ("tight",)),
     ("\\cite{{{}}} ", ("cited",)),
     ("\\begin{{thebibliography}}{{9}}\\bibitem{{a}} ref {}\\end{{thebibliography}}\n", ("hidden",)),
     ("the `{}' and `{}' terms ", ("prose", "prose")),
+    # A formula and a typed table print the bindings they hold (round 1 of step 8).
+    ("$n = \\mg{{results.{}}}$ ", ("bound",)),
+    ("\\begin{{tabular}}{{l}}\\mg{{results.{}}}\\end{{tabular}}\n", ("bound",)),
 )  # fmt: skip
 
 
@@ -827,6 +832,274 @@ def latex_printed(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
         text += parts[-1]
     text += between[-1] + "\\end{document}\n"
     return text, planted
+
+
+#: Where a quotation stands in LaTeX, and whether G7 reads it (step 8): each `{}` is a word
+#: inside the quotation, which cites the work it quotes.
+LATEX_QUOTATION_PLACES = (
+    ("As ``the cohort {} found a rise with age'' \\cite{{w}}.\n", True),
+    ("As \u201cthe cohort {} found a rise with age\u201d \\citep{{w}}.\n", True),
+    ("As ``the cohort {} found a rise\nwith age'' \\cite{{w}}.\n", True),
+    ("A note.\\footnote{{As ``the cohort {} found a rise with age'' \\cite{{w}}.}}\n", True),
+    ("% As ``the cohort {} found a rise with age'' \\cite{{w}}.\n", False),
+    ("\\iffalse As ``the cohort {} found a rise with age'' \\cite{{w}}. \\fi\n", False),
+    ("As ``the cohort {} found a rise with age'' and no citation.\n", False),
+    # A dash and an ellipsis are the characters LaTeX prints, and a sentence that opens with
+    # a quotation is its own: the citation before it is not its (round 1 of G7 in step 8).
+    ("As ``the cohort {} of 2010--2019 rose \\ldots~with age'' \\cite{{w}}.\n", True),
+    ("A rise was seen \\cite{{v}}. ``The cohort {} found a rise with age'' \\cite{{w}}.\n",
+     True),
+    ("As ``the cohort {} rose---by \\textemdash~far---with age'' \\cite{{w}}.\n", True),
+    ("\\section{{Part}}\nAs ``the cohort {} found a rise with age'' \\cite{{w}}.\n", True),
+)  # fmt: skip
+
+
+@st.composite
+def latex_quotations(draw: st.DrawFn) -> tuple[str, list[tuple[str, bool]]]:
+    """A LaTeX document with a quotation in every place of `LATEX_QUOTATION_PLACES`, in an
+    order drawn, each its own paragraph after words drawn; and each word planted, with whether
+    G7 reads its quotation."""
+    order = draw(st.permutations(range(len(LATEX_QUOTATION_PLACES))))
+    planted: list[tuple[str, bool]] = []
+    text = "\\documentclass{article}\n\\begin{document}\n"
+    for index in order:
+        template, read = LATEX_QUOTATION_PLACES[index]
+        key = f"k{4101 + len(planted)}"
+        planted.append((key, read))
+        words = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
+        text += f"\n{words}\n\n" + template.replace("{{", "{").replace("}}", "}").replace(
+            "{}", key)
+    return text + "\n\\end{document}\n", planted
+
+
+#: Where a LaTeX document says it followed a reporting guideline, and whether G8r reads the
+#: claim there (step 8): each `{}` is a guideline's name.
+LATEX_CLAIM_PLACES = (
+    ("This report follows {}.\n", True),
+    ("A note.\\footnote{{The report follows {}.}}\n", True),
+    ("% This report follows {}.\n", False),
+    ("We used \\texttt{{follows {}}} here.\n", False),
+    ("We used \\verb+follows {}+ here.\n", False),
+    ("\\begin{{verbatim}}\nfollows {}\n\\end{{verbatim}}\n", False),
+    ("\\iffalse This report follows {}. \\fi\n", False),
+    ("\\begin{{thebibliography}}{{9}}\n\\bibitem{{k}} The {} statement.\n"
+     "\\end{{thebibliography}}\n", False),
+)  # fmt: skip
+#: A guideline's name for each place, none the start of another.
+_GUIDELINES_CLAIMED = ("STROBE", "CONSORT", "SPIRIT", "PRISMA", "TRIPOD", "ARRIVE", "SQUIRE",
+                       "COREQ")  # fmt: skip
+
+
+@st.composite
+def latex_claims(draw: st.DrawFn) -> tuple[str, list[tuple[str, bool]]]:
+    """A LaTeX document with a claim in every place of `LATEX_CLAIM_PLACES`, in an order
+    drawn, each its own paragraph; and each guideline named, with whether G8r reads it."""
+    order = draw(st.permutations(range(len(LATEX_CLAIM_PLACES))))
+    planted: list[tuple[str, bool]] = []
+    text = "\\documentclass{article}\n\\begin{document}\n"
+    for index in order:
+        template, read = LATEX_CLAIM_PLACES[index]
+        name = _GUIDELINES_CLAIMED[index]
+        planted.append((name, read))
+        text += "\n" + template.replace("{{", "{").replace("}}", "}").replace("{}", name)
+    return text + "\n\\end{document}\n", planted
+
+
+#: Where a cross-reference stands in LaTeX, and whether the reader records it there
+#: (`Reading.pointers`, round 1 of G13 in step 8): each `{}` is in its label.
+LATEX_POINTER_PLACES = (
+    ("see Table~\\ref{{t{}}} ", True),
+    ("see \\autoref{{t{}}} ", True),
+    ("by \\eqref{{e{}}} ", True),
+    ("in \\cref{{t{}}} ", True),
+    ("% see \\ref{{t{}}}\n", False),
+    ("\\begin{{verbatim}}\n\\ref{{t{}}}\n\\end{{verbatim}}\n", False),
+    ("\\iffalse \\ref{{t{}}} \\fi ", False),
+    ("\\label{{t{}}} ", False),
+    ("\\cite{{t{}}} ", False),
+)  # fmt: skip
+
+
+@st.composite
+def latex_pointers(draw: st.DrawFn) -> tuple[str, list[tuple[str, bool]]]:
+    """A LaTeX document with a label in every place of `LATEX_POINTER_PLACES`, in an order
+    drawn, among words; and each label, with whether a cross-reference to it is recorded."""
+    order = draw(st.permutations(range(len(LATEX_POINTER_PLACES))))
+    planted: list[tuple[str, bool]] = []
+    text = "\\documentclass{article}\n\\begin{document}\n"
+    for index in order:
+        template, recorded = LATEX_POINTER_PLACES[index]
+        key = f"k{4101 + len(planted)}"
+        planted.append((key, recorded))
+        words = draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=3))
+        text += " ".join(words) + " " + template.replace("{{", "{").replace("}}", "}").replace(
+            "{}", key)
+    return text + "\n\\end{document}\n", planted
+
+
+#: A cross-reference as the quoting view writes it, `{}` for `printed.POINTER`, with what
+#: the author typed round it, and what the PDF prints there: by `\\ref`, by `\\autoref` or
+#: `\\cref`, which print the name, by `\\eqref`, which prints the brackets, and with brackets
+#: or a panel's letter the author typed (round 2 of G13 in step 8).
+_PRINTED_REFERENCES = (
+    ("{}", "1"), ("{}", "S2"), ("{}", "2.4"), ("Table {}", "Table 1"), ("{}", "figure 3"),
+    ("Eq. {}", "Eq. (2)"), ("{}", "(3)"), ("({})", "(3)"), ("(Table {})", "(Table 1)"),
+    ("Figure {}A", "Figure 1A"), ("(Eq. {})", "(Eq. 2)"),
+)  # fmt: skip
+
+
+@st.composite
+def quoted_references(draw: st.DrawFn) -> tuple[str, str, str]:
+    """A sentence as the quoting view writes it, a cross-reference as `printed.POINTER`
+    among words and typed numbers; a quote of it copied from the PDF, each reference a
+    number with the word before it; and the same quote with one word changed."""
+    from manuscript_guard.text.latex.printed import POINTER
+
+    kinds = st.lists(st.sampled_from(("word", "number", "reference")), min_size=3, max_size=9)
+    parts = draw(kinds.filter(lambda drawn: {"reference", "word"} <= set(drawn)))
+    view, quote, plain = [], [], []
+    for kind in parts:
+        if kind == "word":
+            word = draw(st.sampled_from(FILLER))
+            view.append(word)
+            plain.append(len(quote))
+            quote.append(word)
+        elif kind == "number":
+            number = draw(st.sampled_from(("3.84", "41", "2019")))
+            view.append(number)
+            quote.append(number)
+        else:
+            shown, printed = draw(st.sampled_from(_PRINTED_REFERENCES))
+            view.append(shown.replace("{}", POINTER))
+            quote.append(printed)
+    # A word of the sentence's own is changed: a number a reference printed may be any.
+    changed = list(quote)
+    at = draw(st.sampled_from(plain))
+    changed[at] = changed[at] + "x"
+    return " ".join(view) + ".", " ".join(quote) + ".", " ".join(changed) + "."
+
+
+#: What a LaTeX document's Methods hold, as G9 reads them (`gates/methods.py`, step 8): each
+#: `{}` holds a word, its kind says what G9 makes of the paragraph it is in, and a claim's
+#: words are what G9 reads it as saying. A paragraph that points at no step is open where its
+#: first word is, after a heading glued to it too; a claim reads a binding as Markdown writes
+#: it; a typed table, a listing and a comment are no paragraph.
+LATEX_METHODS_PLACES = (
+    ("Prose {} that points at no step.\n\n", "open", ""),
+    ("Text {} the step backs. \\mg{{method.{}}}\n\n", "claim", "Text {} the step backs."),
+    ("Counted {} as \\mg{{results.n}} cases. \\mg{{method.{}}}\n\n", "claim",
+     "Counted {} as {{results.n}} cases."),
+    ("\\subsection{{Part}}\nGlued {} under a heading.\n\n", "open", ""),
+    ("\\subsection{{Part}} Beside {} its heading.\n\n", "open", ""),
+    ("\\begin{{tabular}}{{ll}}{} & b \\\\ c & d\\end{{tabular}}\n\n", "none", ""),
+    ("\\begin{{verbatim}}\n{} = 1\n\\end{{verbatim}}\n\n", "none", ""),
+    ("% A comment {} with words.\n\n", "none", ""),
+    # A line of a comment or of a label alone ends no paragraph, and a paragraph that opens
+    # with one starts at its first printed word; a float is no paragraph, and a table that
+    # holds an anchor is a claim, as a pipe table is (round 1 of step 8).
+    ("Kept {} whole\n% a note\nthrough a comment. \\mg{{method.{}}}\n\n", "claim",
+     "Kept {} whole through a comment."),
+    ("Open {} paragraph\n\\label{{s}}\ngoes on.\n\n", "open", ""),
+    ("% a note first\nOpened {} after a comment.\n\n", "open", ""),
+    ("\\begin{{figure}}\\includegraphics{{f}}\\caption{{Flow {}.}}\\end{{figure}}\n\n", "none",
+     ""),
+    ("\\begin{{tabular}}{{ll}}Dose {} & 5 \\mg{{method.{}}}\\end{{tabular}}\n\n", "claim",
+     "Dose {} 5"),
+    # A float typed inside a paragraph ends none: TeX moves it out, and the paragraph goes on
+    # (round 2 of step 8).
+    ("We fit {}\n\\begin{{figure}}\\includegraphics{{f}}\\caption{{Flow.}}\\end{{figure}}\n"
+     "a model. \\mg{{method.{}}}\n\n", "claim", "We fit {} a model."),
+    # A table set apart, in a `center` or a `longtable`, ends the paragraph before it; a
+    # float that holds an anchor is a paragraph of its own, its claim its caption's words
+    # (round 3 of step 8). `<open>` is a second word, planted open.
+    ("Lead <open> text\n\\begin{{center}}\\begin{{tabular}}{{l}}x\\end{{tabular}}\\end{{center}}\n"
+     "We fit {}. \\mg{{method.{}}}\n\n", "claim", "We fit {}."),
+    ("Lead <open> text\n\\begin{{longtable}}{{l}}x\\end{{longtable}}\nWe fit {}. "
+     "\\mg{{method.{}}}\n\n", "claim", "We fit {}."),
+    ("We fit <open>.\n\\begin{{table}}\\begin{{tabular}}{{l}}x\\end{{tabular}}"
+     "\\caption{{Doses {} \\mg{{method.{}}}}}\\end{{table}}\n\n", "claim", "Doses {}"),
+    ("Lead <open> text\n\\begin{{center}}\\begin{{tabular}}{{ll}}Dose {} & 5 \\mg{{method.{}}}"
+     "\\end{{tabular}}\\end{{center}}\n\n", "claim", "Dose {} 5"),
+)  # fmt: skip
+
+
+@st.composite
+def latex_methods(draw: st.DrawFn) -> tuple[str, list[tuple[str, str, str]]]:
+    """A LaTeX document whose Methods hold every place of `LATEX_METHODS_PLACES`, in an order
+    drawn, and a Results section glued to its heading after them; and each word planted,
+    with what G9 makes of its paragraph and what a claim says. Every place is in every
+    document, so that a rule broken for one is seen in each."""
+    order = draw(st.permutations(range(len(LATEX_METHODS_PLACES))))
+    planted: list[tuple[str, str, str]] = []
+    text = "\\documentclass{article}\n\\begin{document}\n\\section{Methods}\n\n"
+    for index in order:
+        template, kind, said = LATEX_METHODS_PLACES[index]
+        key = f"k{4101 + len(planted)}"
+        planted.append((key, kind, said.replace("{}", key)))
+        written = template.replace("{{", "{").replace("}}", "}").replace("{}", key)
+        if "<open>" in written:
+            planted.append((f"k{4101 + len(planted)}", "open", ""))
+            written = written.replace("<open>", planted[-1][0])
+        text += written
+    tail = f"k{4101 + len(planted)}"
+    planted.append((tail, "none", ""))
+    return text + f"\\section{{Results}}\nResults {tail} words.\n\n\\end{{document}}\n", planted
+
+
+#: How a LaTeX document names a model, the kind G15 reads there, and whether it reads it
+#: (`gates/models.py`, step 8): a `|` marks where the name starts. Nothing is read in a
+#: comment, code, maths, a figure's float, a heading's title or what `\\iffalse` leaves out,
+#: nor after a word that makes it another model's; a command's braces inside a name, or a
+#: footnote, leave it read.
+LATEX_MODEL_NAMES = (
+    ("logistic regression", "logistic regression", True),
+    ("Logistic Regression", "logistic regression", True),
+    ("negative\nbinomial model", "negative binomial regression", True),
+    ("\\emph{|probit models}", "probit regression", True),
+    ("logistic \\emph{regression}", "logistic regression", True),
+    ("\\footnote{|Poisson regression}", "Poisson regression", True),
+    ("multivariable |logistic regression", "logistic regression", True),
+    ("was exact\n\n|probit regression", "probit regression", True),
+    ("% Poisson regression\n", None, False),
+    ("\\texttt{gamma regression}", None, False),
+    ("\\verb+gamma regression+", None, False),
+    ("$\\text{probit regression}$", None, False),
+    ("\\iffalse logistic regression \\fi", None, False),
+    ("quasilogistic regression", None, False),
+    ("conditional logistic regression", None, False),
+    ("\\begin{figure}\\includegraphics{f}\\caption{Poisson regression}\\end{figure}", None,
+     False),
+    ("\n\n\\subsection{Logistic regression}\n\n", None, False),
+    ("\n\n\\subsection*{Poisson models} ", None, False),
+)  # fmt: skip
+
+
+@st.composite
+def latex_model_names(draw: st.DrawFn) -> tuple[str, list[tuple[int, str]]]:
+    """A LaTeX document with every way of naming a model of `LATEX_MODEL_NAMES` under its
+    Methods, and the same again under its Results, in an order and among words drawn; and
+    where each name G15 reads starts, with its kind."""
+    parts = ["\\documentclass{article}\n\\begin{document}\n"]
+    found: list[tuple[int, str]] = []
+
+    def filler() -> str:
+        words = draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=5))
+        return "".join(draw(st.sampled_from((" ", " ", "\n"))) + word for word in words)
+
+    for heading, methods in (
+        (draw(st.sampled_from(("\\section{Methods}", "\\section*{Materials and methods}"))),
+         True),
+        (draw(st.sampled_from(("\\section{Results}", "\\section*{Discussion}"))), False),
+    ):  # fmt: skip
+        parts.append(f"{heading}\n\n{filler().strip().capitalize()}")
+        for written, kind, counted in draw(st.permutations(LATEX_MODEL_NAMES)):
+            before, _bar, name = written.rpartition("|")
+            parts.append(filler() + " " + before)
+            if methods and counted:
+                found.append((len("".join(parts)), kind))
+            parts.append(name)
+        parts.append(f"{filler()}.\n\n")
+    return "".join(parts) + "\\end{document}\n", found
 
 
 #: Where a LaTeX document holds a word, as G14 reads it (`text/latex/words.py`): each `{}`
@@ -3844,6 +4117,10 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "latex words": latex_texts(),
     "latex writing": latex_texts(),
     "latex escaped": latex_texts(),
+    "latex places": latex_texts(),
+    "latex pointers": st.one_of(latex_texts(), latex_pointers().map(lambda drawn: drawn[0])),
+    "latex methods": st.one_of(latex_texts(), latex_methods().map(lambda drawn: drawn[0])),
+    "latex models": st.one_of(latex_texts(), latex_model_names().map(lambda drawn: drawn[0])),
     "hidden": texts(TERMS),
     "own words": texts(TERMS),
     "spans": texts(),

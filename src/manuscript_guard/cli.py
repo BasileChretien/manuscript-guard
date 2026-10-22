@@ -222,12 +222,7 @@ def _run_gates(
 #: "LaTeX manuscripts", Order of work).
 _NOT_READ_IN_LATEX = frozenset(
     {
-        "check_statement_sources", "check_related",
-        "check_prose_quotations", "check_reporting",
-        "check_methods", "check_reported", "check_recomputed",
-        "check_revision", "check_models", "check_shapes", "check_tex",
-        "check_passages",
-        "check_recycling",
+        "check_statement_sources", "check_shapes", "check_tex", "check_recycling",
     }
 )  # fmt: skip
 
@@ -1976,6 +1971,15 @@ def _keep_submitted(project, number: int) -> Path:
     folder = project.root / REVISION_DIR / f"round-{number}" / SUBMITTED_DIR
     rendered = displays(project)
     manuscript = project.path("manuscript")
+    if manuscript_format(manuscript) == LATEX:
+        from manuscript_guard.gates.revision import PRINTED_COPY, rendered_manuscript
+
+        # The documents as LaTeX prints them, values in, which is what G13 reads the paper
+        # in now; the round's copy of the sources themselves is step 12's (step 8).
+        folder.mkdir(parents=True, exist_ok=True)
+        text = rendered_manuscript(project, rendered)
+        (folder / PRINTED_COPY).write_text(text, encoding="utf-8", newline="\n")
+        return folder
     for source in source_files(manuscript):
         target = folder / source.relative_to(manuscript)
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -5054,17 +5058,16 @@ _MARKDOWN_COMMANDS: dict[str, Callable[[argparse.Namespace], bool]] = {
     # `checker` draws its items from the manuscript for every verb, `import` and `status`
     # too, which match answers against them (round 2 of #404).
     **dict.fromkeys(
-        ("bind", "build", "checker", "explain", "impact", "import", "init", "methods",
-         "models", "passages", "proof", "render", "respond", "reworded", "submit"),
+        ("bind", "build", "checker", "explain", "impact", "import", "init", "proof",
+         "render", "reworded", "submit"),
         _always,
     ),
-    # Its comparison reads the manuscript; taking an earlier output's copy does not.
-    "related": lambda args: args.take is None,
+    # A round opened and checked reads a LaTeX manuscript (step 8); one seeded from a returned
+    # .docx reads the Word copy a Markdown manuscript is built to.
+    "respond": lambda args: args.source is not None,
     # A design round reads the plan, not the manuscript (round 1 of #404).
     "review": lambda args: bool((args.run or args.dry_run) and not args.design
                                 or args.suggestions),
-    # G15's findings come from the manuscript; a design round's overrides do not.
-    "sign": lambda args: args.finding.startswith("G15/"),
 }  # fmt: skip
 #: The commands refused a `.tex` named whatever the project's format, since they read the
 #: file given as Markdown; `impact` follows the records of any file, a header's included.

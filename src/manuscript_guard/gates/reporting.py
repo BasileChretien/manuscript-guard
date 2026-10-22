@@ -26,6 +26,7 @@ from manuscript_guard.findings import WARN, Finding, Report
 from manuscript_guard.gates.numbers import source_files
 from manuscript_guard.paths import SHIPPED_CHECKLISTS, recipes
 from manuscript_guard.text.masking import mask
+from manuscript_guard.text.reader import LATEX, manuscript_format
 from manuscript_guard.text.sections import headings
 
 GATE = "G5"
@@ -153,18 +154,7 @@ def _claimed_in_prose(project: Project, declared: set[str]) -> Report:
     own conduct, which makes it worse than an unbound number.
     """
     report = Report()
-    named: dict[str, Path] = {}
-    for path in source_files(project.path("manuscript")):
-        # Masked, so a claim inside an HTML comment or a code block does not count. A
-        # comment reaches no document, and an author explaining a guideline in a note to
-        # themselves is not claiming to have followed it.
-        text = mask(read_text(path))
-        for sentence in _SENTENCE.finditer(text):
-            said = sentence.group(0)
-            if not _CLAIMING.search(said):
-                continue
-            for name in _NAMED.findall(said):
-                named.setdefault(name.upper(), path)
+    named = _claims(_prose_texts(project))
 
     for name, path in sorted(named.items()):
         if any(name == entry or name in entry or entry in name for entry in declared):
@@ -220,6 +210,63 @@ def _for_design(project: Project, declared: set[str], wanted: list | None = None
     )
 
 
+def _claims(texts: list[tuple[Path, str]]) -> dict[str, Path]:
+    """Each guideline a sentence of the texts says was followed, with the first file that
+    says so."""
+    named: dict[str, Path] = {}
+    for path, text in texts:
+        for sentence in _SENTENCE.finditer(text):
+            said = sentence.group(0)
+            if not _CLAIMING.search(said):
+                continue
+            for name in _NAMED.findall(said):
+                named.setdefault(name.upper(), path)
+    return named
+
+
+def _prose_texts(project: Project) -> list[tuple[Path, str]]:
+    """Each manuscript file as its claims are read, so that a claim inside a comment or code
+    does not count: a comment reaches no document, and an author explaining a guideline in a
+    note to themselves is not claiming to have followed it. A Markdown file is masked; a
+    LaTeX file is its Markdown view, where a comment and what `\\iffalse` leaves out are
+    spaces, with its code, `\\verb` and `\\texttt`, blanked as well (step 8)."""
+    folder = project.path("manuscript")
+    if manuscript_format(folder) != LATEX:
+        return [(path, mask(read_text(path))) for path in source_files(folder)]
+    from manuscript_guard.text.latex.views import files
+
+    # A file nothing inputs and an author's package print nothing (round 1 of G8r in step 8).
+    return [(found.path, _latex_prose(found.source, found.view)) for found in files(folder)
+            if not found.source.loose and found.path.suffix.lower() != ".sty"]  # fmt: skip
+
+
+def _latex_prose(source, view: str) -> str:
+    """A LaTeX file's Markdown view with its code blanked, and a reference list typed in
+    `thebibliography`, which cites a guideline's statement and claims nothing, as a Markdown
+    paper's list from `references.bib` is never read (round 2 of G8r in step 8)."""
+    return _blanked(view, (*source.reading.code, *source.reading.references))
+
+
+def _blanked(text: str, spans) -> str:
+    out = list(text)
+    for start, end in spans:
+        for index in range(start, end):
+            if out[index] != "\n":
+                out[index] = " "
+    return "".join(out)
+
+
+def _printed_manuscript(project: Project) -> str:
+    """The manuscript whose headings a checklist's answer may point at: a LaTeX one as its
+    documents print, its headings `#` lines (step 8)."""
+    folder = project.path("manuscript")
+    if manuscript_format(folder) != LATEX:
+        return "\n\n".join(read_text(p) for p in source_files(folder))
+    from manuscript_guard.text.latex.printed import printed_document
+
+    return "\n\n".join(printed_document(folder, supplementary=part) for part in (False, True))
+
+
 def check_reporting(project: Project) -> Report:
     wanted = project.reporting_guidelines
     declared = {str(name).upper() for name in wanted}
@@ -231,10 +278,7 @@ def check_reporting(project: Project) -> Report:
 
     report = claims.merge(_superseded(project, wanted))
     complete = 0
-    manuscript = "\n\n".join(
-        read_text(p) for p in source_files(project.path("manuscript"))
-    )
-    known_headings = {h.lower() for h in headings(manuscript)}
+    known_headings = {h.lower() for h in headings(_printed_manuscript(project))}
 
     for name in wanted:
         path = checklist_path(project, name)

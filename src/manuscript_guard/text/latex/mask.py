@@ -30,11 +30,13 @@ from manuscript_guard.text.latex.commands import (
     LISTINGS,
     MATHS,
     PARAMETERS,
+    POINTERS,
     RAW,
     REFUSED,
     REFUSED_ENVIRONMENTS,
     SIUNITX,
     SPACES,
+    SYMBOLS,
     TABLES,
     TYPED_TABLES,
 )
@@ -182,6 +184,9 @@ class Reading:
     #: Where each definition's body runs, which prints only where the definition is used; not
     #: a hook's, which LaTeX runs where it stands.
     bodies: tuple[tuple[int, int], ...] = ()
+    #: Where each cross-reference stands, `\\ref{...}` to its brace, outside a definition's
+    #: body: what LaTeX prints there is a number only the compiled document knows (step 8).
+    pointers: tuple[tuple[int, int], ...] = ()
 
 
 #: The level of each sectioning command, as Markdown's `#` counts it; a part stands over a
@@ -376,6 +381,8 @@ class _Reader:
         self.references: list[tuple[int, int]] = []
         self.body_end = -1
         self.bodies: list[tuple[int, int]] = []
+        self.pointers: list[tuple[int, int]] = []
+        self.pointer_at = -1
         self.code: list[tuple[int, int]] = []
         self.declared: list[tuple[str, str]] = []
         self.body_start = 0 if body else -1
@@ -415,7 +422,8 @@ class _Reader:
                  tuple(sorted(tables)), tuple(self.listings), tuple(self.cited),
                  tuple(sorted(maths)), tuple(sorted(floats)), self.body_start,
                  tuple(self.code), tuple(self.declared), tuple(sorted(figures)),
-                 tuple(sorted(references)), self.body_end, tuple(self.bodies))  # fmt: skip
+                 tuple(sorted(references)), self.body_end, tuple(self.bodies),
+                 tuple(self.pointers))  # fmt: skip
         if self.refused is None:
             return Reading(masked, (), *found)
         at = self.refused.offset
@@ -568,6 +576,10 @@ class _Reader:
             frame.origin = self.heading_at
         if kind == "arg" and spec == "b" and self.command in CITATIONS and not self.definitions:
             self._cite(at)
+        if kind == "arg" and spec == "b" and self.command in POINTERS and not self.definitions:
+            end = self._group_end(at, comments=True)
+            if end >= 0:
+                self.pointers.append((self.pointer_at, end))
         self.definitions += frame.definition
         self.stack.append(frame)
         # A Markdown binding as a command's argument, `\\emph{{results.x}}` (round 1 of #400:
@@ -786,6 +798,9 @@ class _Reader:
         elif name in SPACES:
             if self._reads():
                 self.out[at] = " "
+        elif name in SYMBOLS:
+            if self._reads():
+                self.out[at] = SYMBOLS[name]
         elif name in ("usepackage", "RequirePackage", "inputencoding"):
             self._encoding(at)
             if name != "inputencoding":
@@ -800,6 +815,8 @@ class _Reader:
                 self.heading_at = at
             if name in CITATIONS:
                 self.citation_at = at
+            if name in POINTERS:
+                self.pointer_at = at
             if name in ("documentclass", "bibliographystyle"):
                 self._declares(name, end)
             self.command, self.pending = name, COMMANDS[name]

@@ -22,12 +22,10 @@ excludes its null beside a P above one less its level, or includes it beside a P
 
 from __future__ import annotations
 
-from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import Results
 from manuscript_guard.contracts.values import Value
 from manuscript_guard.findings import WARN, Finding, Report
-from manuscript_guard.gates.numbers import source_files
 from manuscript_guard.stats.intervals import (
     ASYMMETRY,
     asymmetry,
@@ -40,7 +38,8 @@ from manuscript_guard.stats.intervals import (
 )
 from manuscript_guard.stats.reported import ALPHA, described, judge, reported_tests
 from manuscript_guard.text.masking import NUL, mask
-from manuscript_guard.text.placeholders import substitute
+from manuscript_guard.text.placeholders import parse, substitute
+from manuscript_guard.text.reader import bound_files
 
 GATE = "G8"
 
@@ -60,8 +59,13 @@ def check_recomputed(project: Project, namespace: dict[str, Value], results: Res
     displays = {ref: value.display for ref, value in namespace.items()}
     findings: list[Finding] = []
     judged = judged_intervals = 0
-    for path in source_files(project.path("manuscript")):
-        printed = mask(substitute(read_text(path), displays))
+    # Each file as Markdown writes it, its values put in: a LaTeX file's Markdown view, which
+    # holds its lines where the `.tex` has them, `\\mg{results.key}` as `{{results.key}}`.
+    # Nothing reads TeX after, so a `%` in a display is the character (step 8).
+    for bound in bound_files(project):
+        path = bound.path
+        printed = mask(_put_in(bound.view, displays) if bound.latex
+                       else substitute(bound.view, displays))
         for test in reported_tests(printed):
             verdict = judge(test, alpha)
             if verdict is None:
@@ -91,6 +95,31 @@ def check_recomputed(project: Project, namespace: dict[str, Value], results: Res
         tuple(findings),
         {"p_values_recomputed": judged, "printed_intervals_read": judged_intervals},
     )
+
+
+def _put_in(view: str, displays: dict[str, str]) -> str:
+    """A LaTeX file's Markdown view with each value put in, its line breaks kept: one between
+    `\\mg` and its brace is kept beside the display, so the lines after it stay the `.tex`
+    lines (round 1 of step 8): before it where nothing but spaces follows it on its line, so
+    that no line of nothing but spaces ends the paragraph between a statistic and its P
+    (rounds 2 and 3). A split binding alone on its line makes such a line on one side or the
+    other (DESIGN.md, step 8's limits)."""
+    out = view
+    for placeholder in sorted(parse(view)[0], key=lambda p: p.start, reverse=True):
+        if placeholder.is_anchor:
+            written = ""
+        elif placeholder.ref in displays:
+            written = displays[placeholder.ref]
+        else:
+            continue
+        breaks = "\n" * view.count("\n", placeholder.start, placeholder.end)
+        rest = view.find("\n", placeholder.end)
+        if not view[placeholder.end : len(view) if rest < 0 else rest].strip():
+            written = breaks + written
+        else:
+            written = written + breaks
+        out = out[: placeholder.start] + written + out[placeholder.end :]
+    return out
 
 
 def _interval_findings(interval, printed: str, path) -> list[Finding]:

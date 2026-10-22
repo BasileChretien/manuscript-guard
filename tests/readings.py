@@ -230,6 +230,61 @@ def _latex_printed() -> Reading:
     return printed
 
 
+@reading("latex places")
+def _latex_places() -> Reading:
+    from manuscript_guard.text.latex.mask import read
+    from manuscript_guard.text.latex.printed import printed
+    from manuscript_guard.text.latex.structure import Source
+
+    def placed(text: str) -> dict[str, Any]:
+        view = printed([Source("main.tex", text, read(text))])
+        starts = [0, *(found.end() for found in re.finditer("\n", view.text))]
+        return {"lines": [None if (where := view.place(start)) is None else where[1]
+                          for start in starts]}  # fmt: skip
+
+    return placed
+
+
+@reading("latex models")
+def _latex_models() -> Reading:
+    """Each model G15 finds named in a LaTeX file's Methods (step 8)."""
+    from manuscript_guard.gates.models import named_in_latex
+    from manuscript_guard.text.latex.mask import read
+    from manuscript_guard.text.latex.structure import Source
+
+    def named(text: str) -> dict[str, Any]:
+        return {"models": [list(found) for found in
+                           named_in_latex(Source("main.tex", text, read(text)))]}  # fmt: skip
+
+    return named
+
+
+@reading("latex pointers")
+def _latex_pointers() -> Reading:
+    """Where the reader records each cross-reference (round 1 of G13 in step 8)."""
+    from manuscript_guard.text.latex.commands import POINTERS  # noqa: F401 - absent at base
+    from manuscript_guard.text.latex.mask import read
+
+    return lambda text: [list(span) for span in read(text).pointers]
+
+
+@reading("latex methods")
+def _latex_methods() -> Reading:
+    from manuscript_guard.gates.methods import _anchored_in, _latex_read
+    from manuscript_guard.text.latex.mask import read
+    from manuscript_guard.text.latex.structure import Source
+    from manuscript_guard.text.latex.views import bindings, markdown_view
+
+    def anchored(text: str) -> dict[str, Any]:
+        source = Source("main.tex", text, read(text))
+        view = markdown_view(source, bindings(source)[0])
+        claims, open_ = _anchored_in(_latex_read(Path("main.tex"), source, view))
+        return {"claims": [[list(c.steps), c.text, c.line, c.anchor_line] for c in claims],
+                "open": [[p.text, p.line] for p in open_]}  # fmt: skip
+
+    return anchored
+
+
 @reading("latex writing")
 def _latex_writing() -> Reading:
     from manuscript_guard.gates.writing import _read_latex

@@ -46,6 +46,7 @@ from manuscript_guard.literature.passages import (
     survey,
 )
 from manuscript_guard.policy import DRAFTING, INTERNAL_REVIEW, stage_index
+from manuscript_guard.text.reader import LATEX, manuscript_format
 
 GATE = "G7"
 #: The fewest words a passage holds for it to say more than that its words are in the work.
@@ -56,12 +57,33 @@ def survey_of(project: Project) -> tuple[Survey, Report]:
     """The manuscript's cited sentences and the project's passages, matched and looked for,
     with what stopped the passages file being read."""
     passages, report = read_passages(project.path("literature"))
-    documents = [
-        citing_document(path, read_text(path))
-        for path in source_files(project.path("manuscript"))
-    ]
+    documents = citing_documents(project)
     sources = project.path("literature") / "sources"
     return survey(sources, cited_sentences(documents), passages), report
+
+
+def citing_documents(project: Project) -> list:
+    """Each manuscript file as G7 reads it for its cited sentences (`citing_document`). A
+    LaTeX manuscript's documents are read as they print (`printed_of`), a citation `[@key]`,
+    and each sentence is placed back at its `.tex` file's line, one document a file (step
+    8)."""
+    folder = project.path("manuscript")
+    if manuscript_format(folder) != LATEX:
+        return [citing_document(path, read_text(path)) for path in source_files(folder)]
+    from manuscript_guard.text.latex.printed import printed_of
+
+    documents = []
+    for part in (False, True):
+        view = printed_of(folder, supplementary=part)
+        _path, body, sentences = citing_document(folder, view.text)
+        by_file: dict[Path, list] = {}
+        for line, sentence in sentences:
+            where = view.place_line(line)
+            if where is not None:
+                source, placed = where
+                by_file.setdefault(folder / source.path, []).append((placed, sentence))
+        documents += [(path, body, found) for path, found in by_file.items()]
+    return documents
 
 
 def current_judges(project: Project) -> list[str]:
@@ -77,8 +99,7 @@ def current_judges(project: Project) -> list[str]:
     if not judged:
         return []
     belonging = Belonging(judged)
-    documents = [citing_document(path, read_text(path))
-                 for path in source_files(project.path("manuscript"))]  # fmt: skip
+    documents = citing_documents(project)
     return sorted({str(passage.judged_by) for cited in cited_sentences(documents)
                    for key in cited.keys for passage in belonging.of(cited, key)})  # fmt: skip
 

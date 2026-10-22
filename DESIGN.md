@@ -1685,6 +1685,77 @@ The result is compiled and packed by the code above, and checked three times:
   only: a todonotes `\todo{...}` or a lower-case `% todo` in it passes (round 3 of step 7b).
   A finding in an entry is named at its `\bibitem` line, one above a placeholder on the next
   line (round 4).
+- G8 reads a LaTeX document's printed view, so a supplementary file nothing inputs reports
+  nothing, where Markdown counts every supplementary file; G0 warns of the file
+  (`tex-not-input`). Past a refusal G8's recomputation reads the file as typed, a comment's
+  P value with it (round 1 of step 8).
+- G8 keeps a line break inside a `\mg`, between the command and its brace, as a line of the
+  view, beside the value it puts in: before it where nothing but spaces or a comment follows
+  on its line, else after it. A binding split so and alone on its line, or two in a row, still
+  leaves a line of nothing but spaces, which ends the paragraph, and a statistic before it is
+  not read with a P after it (round 3 of step 8); so does an anchor split so at the end of a
+  line, since it writes nothing (round 4).
+- G9 reads a LaTeX claim's words as the view prints them: a command's name and braces are
+  spaces, so `\emph{fixed}` says "fixed" where Markdown's `*fixed*` says "*fixed*", and a lock
+  made from the Markdown of a paper reads such a claim as changed once the paper is LaTeX.
+  An open paragraph is told with a space where a command's brace stood ("paper.yaml ."). The
+  supplement's Methods are read in its printed document and named at its entry file (step 8).
+  G9 ends a LaTeX paragraph at an empty line alone, not at `\par`: two paragraphs a `\par`
+  parts on one line are read as one, the claim of the second holding the words of the
+  first (round 1 of step 8). An empty line TeX never reads, inside `\iffalse` or a
+  `comment` environment typed within a paragraph, ends it all the same (round 2). A typed
+  table outside a float ends its paragraph, as one a `center` or a `longtable` sets apart
+  does, so a `tabular` typed within a sentence parts it in two; and another environment
+  that sets text apart, a list or a `quote`, ends none (round 3). A float that holds an
+  anchor parts the paragraph typed round it, where TeX moves it out and the paragraph goes
+  on; and an anchor typed alone after a table set apart claims nothing
+  (`method-claim-empty`), as one alone after any paragraph does (round 4).
+- G15 reads a LaTeX file's names of models in the words G14 reads, which hides a word that
+  holds `\-` or an accent command: `logis\-tic regression` is not found, and after
+  `condi\-tional` a logistic regression is read as one. Two or more lines of comments
+  between a word and the name after it are as many line breaks, so "conditional" over them
+  does not make the name another model's (round 1 of G15 in step 8). A name a macro of the
+  preamble prints, `\newcommand{\mainmodel}{logistic regression}`, is not read where the
+  macro is used; past a refusal the headings stay as they were and the rest of the file is
+  read as typed, comments too; and a float's caption is read where it is typed, not where
+  LaTeX prints the float (round 2).
+- G8r reads a claim to have followed a guideline within one line, in LaTeX as in Markdown,
+  so a claim whose verb and name a hard-wrapped source puts on two lines is not read; a
+  name a command parts, `RECORD\textendash{}PE`, is read as the part before it, RECORD; and
+  a heading more than six levels below the shallowest, `\subparagraph` under `\part`, is
+  no heading a checklist's answer can point at (round 1 of G8r in step 8). A definition's
+  body is read where it is written, not where it prints: a claim a macro of a package
+  prints is not read, and one an unused macro of the preamble holds is (round 2).
+- The printed view types LaTeX's dashes, so a quotation G13 is given as the `.tex` has it,
+  with `--`, is not found where one copied from the PDF is; and a sentence that opens with a
+  typographic quotation mark is now cut from the one before in Markdown too, so a passage or
+  a co-author's item recorded on the two joined is matched no more (round 2 of G7 in step
+  8).
+- G7 reads no quotation in a float's caption or a table's cell, which the printed view does
+  not print, and a footnote's words stand at its mark, glued to the word before it, so a
+  quotation or a cited sentence a footnote interrupts is read with the note's words in it
+  (round 1 of G7 in step 8).
+- G7 reads a quotation in LaTeX where it is set in ``...'' or typographic marks: one set in
+  csquotes' `\enquote{...}` prints its marks in the PDF but not in the printed view, and is
+  not read as a quotation. A cited sentence holds its citation as `[@key]` with a space
+  before the stop after it; a passage is matched on the sentence's words, which that space
+  does not change (step 8).
+- G13 and G8 look for a quoted sentence in a LaTeX paper in its printed view, where a
+  footnote's words stand at its mark, glued to the word before it, and a float typed inside
+  a paragraph leaves its bindings there: a quote of a sentence across either is not found.
+  A citation is `[@key]` with a space before the stop after it, so a quote that holds one
+  is not found either, as in Markdown (step 8). An accent typed as a command, `Chr\'etien`,
+  prints there without its mark, `\ldots` as nothing and `--` as typed, so a quote copied
+  from the PDF that holds one is not found. A number in a quote may stand where the source
+  has a cross-reference, with the word before it ("Table 1", "(2)"), whatever the compiled
+  paper numbered it: the number is not checked, nor whether the name before it is printed
+  by the command or by no one, `Table 1` passing where a plain `\ref` prints `1` (round 1
+  of G13). A reference printed as a roman numeral or a letter ("Table II", "Appendix A"),
+  by `\nameref` as a title, by `\vref` with its page, or by `\cref{a,b}` as two numbers
+  is not found; nor an inline formula whose spacing or symbols the PDF prints otherwise
+  than they are typed, `$n=\mg{results.n}$` against "n = 41" (round 2). Brackets round a
+  quote's number pass where the source has a plain `\ref`, as `\eqref` prints them, and a
+  letter after it, "1A", as a subfigure's `\ref` prints one (round 3).
 - G6's boldface rate counts `**...**` and so never counts LaTeX's `\textbf{...}`, which the
   reader blanks. A typed table's cells are not read by G6's rates, phrases, residue or vague
   attributions (round 1 of step 7b).
@@ -1881,8 +1952,83 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
    `BROKEN` rules. The plan as
    written: `words`, accents, both gates moved. Tests: `latex words`, planted terms and
    spellings.
-8. `substituted`, with TeX's specials escaped; G5, G8, G9, G13 and G15 moved. Tests:
-   each gate's cases on the twin, and a display holding `%` through G8.
+8. `substituted`, with TeX's specials escaped; G5, G8, G9, G13 and G15 moved. Built in parts,
+   one gate or two at a time. The first: `printed` gives the printed view with where each
+   stretch of it comes from (`Printed.place`): a stretch of prose keeps its source's line
+   breaks, and what the view writes for an event stands on the line its command starts on.
+   So a gate that reads a document's sections as Markdown reads a LaTeX one in its printed
+   view, unchanged, and names the `.tex` file and line of what it finds. G8's check that a
+   summary's number is reported elsewhere (`check_reported`) reads it so, which takes it out
+   of `_NOT_READ_IN_LATEX`; a file nothing inputs is not printed, and reports nothing. The
+   view writes the bindings a formula or a typed table holds, which a sentence of the
+   summary may give. G8's recomputation of each P and interval (`check_recomputed`) reads
+   each file's Markdown view with its values put in, a line break inside a `\mg` kept, and
+   leaves `_NOT_READ_IN_LATEX` too. Tests: G8 on the twin and its cases there (a number the
+   Abstract alone gives, a display holding `%`, a binding split over two lines, one in a
+   formula or a typed table), `latex places`, and where the view places each word and what
+   it prints over `latex_trees()` and `latex_printed()` with `BROKEN` rules for each.
+   The second: G9 (`check_methods`) reads each file's anchors in its Markdown view, under
+   the headings the include tree gives at each place. A paragraph ends where the file is
+   typed with an empty line, as TeX reads it, so a line of a comment alone ends none; each
+   heading's command and each table typed outside a float is cut out of the paragraphs, as a
+   Markdown heading is a line of its own and a pipe table no prose, and as a `center` or a
+   `longtable` sets a table apart; each float that holds no anchor is blanked and ends none,
+   as TeX moves it out of its paragraph. A float or a table that holds an anchor is a
+   paragraph of its own and a claim, as a pipe table is, a table inside it that holds no
+   anchor blanked. A binding in a claim reads as Markdown
+   writes it, so a claim says what the same claim says in Markdown and one lock serves
+   both. The parameters are held to the Methods of the printed document, the main text's
+   and then the supplement's, and a LaTeX manuscript with none is told so. A line of nothing
+   but anchors ends no paragraph in LaTeX, so `method-anchor-line` is a Markdown file's
+   alone. Tests: G9 on the twin and its cases there (a claim reworded, one across a
+   comment's line, an anchor deleted, a wrong parameter in the main text's Methods and in
+   the supplement's, no Methods, a float inside a claim, a table set apart, a heading and a
+   table that are no paragraph), `latex methods`, and `latex_methods()` with `BROKEN` rules
+   for each cut, each blank, where a paragraph starts and ends, and a binding in a claim.
+   The third: G15 (`check_models`) finds a model named in a LaTeX file's Methods in the
+   words G14 reads (`text/latex/words.py`), so not in a comment, maths, code or a figure's
+   float, with each heading's title blanked, under the headings the include tree gives at
+   each place (`named_in_latex`); the bindings it holds are `bound_files`' in either
+   format. A command's braces inside a name, `logistic \emph{regression}`, leave it one
+   name, as LaTeX prints it. Tests: G15 on the twin and its case there (the kind typed, a
+   model the analysis did not fit, a name in a subsection's title and in the Results), the
+   kind inlined among the twin's bindings, `latex models`, and `latex_model_names()` with
+   `BROKEN` rules for the titles, the Methods, the view and the spaces it reads.
+   The fourth: G13 (`check_revision`) and G8's check of the earlier outputs
+   (`check_related`) read the paper as `rendered_manuscript` gives it, which for LaTeX is
+   the main text's document and then the supplement's as they print (`printed_document`),
+   values filled in; a binding in prose is printed where it stands, nothing added round it,
+   so a quote that ends after one is found; an inline formula is what it holds, its
+   bindings in place, and a cross-reference, which the reader records (`Reading.pointers`),
+   may be any number with the word before it (`quoted_in`). `respond --open` keeps that
+   text as the round's
+   copy (`printed.md`), so a quote the journal already read is told so; the copy of the
+   sources themselves is step 12's. G8's earlier outputs are cited through
+   `citation_uses`, a comment's citation, a `\nocite` and a file nothing inputs left out.
+   A letter that names a `.tex` file's line, in either format,
+   leaks it, as one that names a `.md` file's does, and the round's and G11's records key a
+   `.tex` file as they key a `.md` one. Tests: G13's quoted revision on the twin, found,
+   absent and already read, a `.tex` line in a letter, G8's earlier output disclosed on the
+   twin by its `\cite` and by a sentence, and a sentence with a binding; and a binding
+   between a bracket and a full stop over `latex_printed()` with a `BROKEN` rule.
+   The fifth: G8r (`check_reporting`) reads a LaTeX file's claims to have followed a
+   guideline in its Markdown view, where a comment and what `\iffalse` leaves out are
+   spaces, with its code (`\verb`, `\texttt`) blanked as Markdown's mask blanks inline code;
+   and the headings a checklist's answer may point at are those the documents print. Tests:
+   G8r on the twin and its case there (a claim in prose, one in a comment and one in
+   `\texttt`), and `latex_claims()` with `BROKEN` rules for the file as typed and its code.
+   The sixth: G7's quotations (`check_prose_quotations`) and passages (`check_passages`, and
+   the `passages` command through `survey_of`) read a LaTeX paper's documents as they print
+   (`printed_of`), where ``...'' is a quotation and a citation `[@key]`, and each quotation
+   or cited sentence is named at its `.tex` file's line (`Printed.place_line`): a quotation
+   at the line its paragraph starts on, as in Markdown. The printed view types `--` and `---`
+   as their dashes, and the mask writes `\ldots`, `\textendash` and `\textemdash` as their
+   characters (`commands.SYMBOLS`); a sentence opens at a typographic quotation mark, as at a
+   straight one. That leaves only BUILD's checks
+   (`check_shapes`, `check_tex`) in `_NOT_READ_IN_LATEX`, which are the PDF build's (step
+   9), and G2's pointers. Tests: G7 on the twin, its quotations (``...'', typographic, in a
+   comment, a narrative citation, in a file the twin inputs) and its cited statements, and
+   `latex_quotations()` with `BROKEN` rules for the line and the citations printed.
 9. The PDF. `build/latex.py`, the log, the comparison of headings through the `.aux`, CI's
    TeX Live and `MANUSCRIPT_GUARD_REQUIRE_LATEX`. Tests: `test_latex_agreement.py`.
 10. The submission folder. Flattening, values written in, `.bib` and `.bbl`, figures, the

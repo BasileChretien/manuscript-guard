@@ -68,7 +68,10 @@ BINDING = PLACEHOLDER
 CITEKEY = re.compile(r"@([A-Za-z][\w:.#$%&+?<>~/-]*)")
 #: A stop, then a space, then something that can start a sentence. The opening bracket matters:
 #: a numbered-citation style writes "Okada et al. [@key]." and the stop in "al." is not an end.
-SENTENCE_END = re.compile(r"(?<=[.!?])\s+(?=[A-Z\"'(\[])")
+#: A stop, then spaces, then what may open a sentence: a capital, a quotation mark, straight
+#: or typographic, or a bracket. A typographic one is how LaTeX prints ``...`` (round 1 of G7
+#: in step 8).
+SENTENCE_END = re.compile(r"(?<=[.!?])\s+(?=[A-Z\"'(\[\u201c\u2018])")
 #: Words that end in a stop and do not end a sentence. Lower-cased, without their stops. Short on
 #: purpose: each one is a word a manuscript really writes before a citation or a figure. A word
 #: with a stop inside it ("U.S.", "e.g.", "Ph.D.") is never an end and needs no entry here: see

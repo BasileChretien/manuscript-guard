@@ -6198,8 +6198,10 @@ def test_a_gate_not_taught_latex_reads_nothing_and_fails_at_submission(project: 
     _as_latex(project)
     drafting, _project, _stage, _deferred = _run_gates(project, stage="drafting")
     unread = sorted(f.gate for f in drafting.findings if f.code == "not-read-in-latex")
-    # G2 reads LaTeX but for its pointers to tables and figures, and says so (step 4).
-    expected = ["BUILD", "G13", "G14", "G15", "G2", "G4", "G6", "G7", "G8", "G8r", "G9"]
+    # G2 reads LaTeX but for its pointers to tables and figures, and says so (step 4). G4
+    # reads it from step 6 but for the data sources its statements name, G14 and G6 from
+    # step 7.
+    expected = ["BUILD", "G13", "G15", "G2", "G4", "G7", "G8", "G8r", "G9"]
     assert unread == expected, drafting.render(project)
     assert "not-read-in-latex" not in codes(drafting)
     said = {f.code for f in drafting.findings}
@@ -6214,10 +6216,9 @@ def test_a_gate_not_taught_latex_reads_nothing_and_fails_at_submission(project: 
 #: The checks that read the manuscript only as Markdown, and those that do not read it.
 _MARKDOWN_ONLY = (
     "check_statement_sources", "check_related",
-    "check_citations", "check_prose_quotations", "check_journal", "check_reporting",
-    "check_writing", "check_methods", "check_reported", "check_recomputed", "check_revision",
-    "check_language", "check_models", "check_shapes", "check_tex", "check_passages",
-    "check_package_doi",
+    "check_prose_quotations", "check_reporting",
+    "check_methods", "check_reported", "check_recomputed", "check_revision",
+    "check_models", "check_shapes", "check_tex", "check_passages",
     "check_recycling",
 )  # fmt: skip
 _NOT_THE_MANUSCRIPT = (
@@ -6234,7 +6235,8 @@ _NOT_THE_MANUSCRIPT = (
 #: The checks that read LaTeX: they run on a LaTeX manuscript as on any.
 _READS_LATEX = (
     "check_latex", "check_numbers", "check_bound_units", "check_small_cells",
-    "check_synthetic_inputs", "check_values",
+    "check_synthetic_inputs", "check_citations", "check_journal", "check_language",
+    "check_writing", "check_values",
 )  # fmt: skip
 
 
@@ -6510,6 +6512,148 @@ def test_the_custodian_and_g1_read_the_twins_bindings(project: Path) -> None:
                 if "\\mg{results.case.n_serious}" in text)  # fmt: skip
     assert _small(project) == [("results.case.n_serious", line)]
     assert "results.case.n_serious" in quoted_refs(load_project(project)[0])
+
+
+def test_g7_reads_the_twins_citations_as_the_examples(project: Path) -> None:
+    """The twin's citations pass G7 as the example's do; a key cited in a group with another,
+    and wrapped onto the next line, that is in no bibliography is said (step 5)."""
+    entry = _twin(project)
+    clean = {(f.code, f.severity) for f in _g7(project).findings}
+    _into_results(entry, "A claim \\citep[p.~2]{ghostKey2020,\n  fictionalHepaticCohort2021}.")
+    text = entry.read_text(encoding="utf-8")
+    found = [f for f in _g7(project).failures if "ghostKey2020" in f.message]
+    line = text.count("\n", 0, text.index("ghostKey2020")) + 1
+    assert [f.line for f in found] == [line], _g7(project).render(project)
+    assert not [f for f in _g7(project).failures if "fictionalHepaticCohort2021" in f.message]
+    assert clean <= {(f.code, f.severity) for f in _g7(project).findings}
+
+
+def _g4(root: Path) -> set[str]:
+    from manuscript_guard.gates import check_journal
+
+    return {f.code for f in check_journal(load_project(root)[0]).findings}
+
+
+@pytest.mark.parametrize(
+    ("before", "after", "code"),
+    [
+        ("\\section{Methods}", "\\section{Approach}", "missing-required-section"),
+        ("\\section{Funding}", "\\textbf{Funding}", "missing-required-statement"),
+        ("\\end{abstract}", " ".join(["word"] * 320) + "\n\\end{abstract}",
+         "over-journal-limit"),
+    ],
+)
+def test_g4_reads_the_twins_sections_statements_and_limits(
+    project: Path, before: str, after: str, code: str
+) -> None:
+    """A required section renamed, a required statement left without its heading, an
+    abstract over its limit: each is found in the twin as in the example (step 6)."""
+    entry = _twin(project)
+    assert code not in _g4(project)
+    text = entry.read_text(encoding="utf-8")
+    assert before in text
+    entry.write_text(text.replace(before, after, 1), encoding="utf-8")
+    assert code in _g4(project)
+
+
+def test_g4_counts_no_word_of_a_float_a_formula_or_the_preamble_in_the_twin(
+    project: Path,
+) -> None:
+    """A caption, a displayed formula and the preamble print no word of the text, as a journal
+    counts it: 4,000 of them in each leave the main text under its limit (step 6)."""
+    entry = _twin(project)
+    words = " ".join(["word"] * 4000)
+    text = entry.read_text(encoding="utf-8")
+    text = text.replace("\\begin{document}", f"\\author{{{words}}}\n\\begin{{document}}", 1)
+    entry.write_text(text, encoding="utf-8")
+    _into_results(entry, f"\\begin{{figure}}\\caption{{{words}}}\\end{{figure}}\n"
+                         f"\\[ {words} \\]")  # fmt: skip
+    assert "over-journal-limit" not in _g4(project)
+
+
+def _g14(root: Path) -> list:
+    from manuscript_guard.gates import check_language
+
+    return list(check_language(load_project(root)[0]).findings)
+
+
+@pytest.mark.parametrize(
+    ("snippet", "code", "word"),
+    [
+        ("The hazard ratio was HR here.", "abbreviation-undefined", "HR is used once"),
+        ("The color of the reports.", "spelling-variant", "'color'"),
+        ("The caf\\'e reports.", "tex-words-not-read", "caf\\\\'e"),
+        ("The SSRI rose. The SSRI (selective serotonin reuptake inhibitor) class.",
+         "abbreviation-used-before-defined", "SSRI"),
+    ],
+)
+def test_g14_finds_in_the_twin_what_it_finds_in_the_example(
+    project: Path, snippet: str, code: str, word: str
+) -> None:
+    """An abbreviation never defined, an American spelling in a British paper, a word an
+    accent command splits, and a use before the definition, each written into the twin's
+    Results, are found there, on the line it is written on (step 7)."""
+    entry = _twin(project)
+    _into_results(entry, snippet)
+    found = [f for f in _g14(project) if f.code == code and word in f.message]
+    assert found and found[0].path == entry, [(f.code, f.message) for f in _g14(project)]
+    text = entry.read_text(encoding="utf-8")
+    assert found[0].line == text.count("\n", 0, text.index(snippet)) + 1
+
+
+def _g6_findings(root: Path) -> list:
+    from manuscript_guard.gates import check_writing
+
+    return list(check_writing(load_project(root)[0]).findings)
+
+
+@pytest.mark.parametrize(
+    ("snippet", "code"),
+    [
+        ("Studies have shown that reporting is low.", "vague-attribution"),
+        ("We delve into the reports here.", "ai-phrasing"),
+        ("% TODO check the counts", "model-artefact"),
+        ("As requested by Reviewer 2, we added the counts.", "revision-residue"),
+    ],
+)
+def test_g6_finds_in_the_twin_what_it_finds_in_the_example(
+    project: Path, snippet: str, code: str
+) -> None:
+    """A claim with no citation near it, a phrase G6 reports, a placeholder left in a
+    comment and words to a reviewer, each written into the twin's Results, are found there,
+    on the line they are written on (step 7). A comment's placeholder is found as typed, as
+    one in a Markdown comment is."""
+    entry = _twin(project)
+    assert not [f for f in _g6_findings(project) if f.code == code]
+    # At the head of the Results, which no citation stands within reach of.
+    text = entry.read_text(encoding="utf-8")
+    heading = "\\section{Results}\n"
+    entry.write_text(text.replace(heading, heading + snippet + "\n", 1), encoding="utf-8")
+    found = [f for f in _g6_findings(project) if f.code == code]
+    assert found and found[0].path == entry, [(f.code, f.message) for f in _g6_findings(project)]
+    text = entry.read_text(encoding="utf-8")
+    assert found[0].line == text.count("\n", 0, text.index(snippet)) + 1
+
+
+def test_g6_takes_a_latex_citation_beside_a_claim_for_its_support(project: Path) -> None:
+    """Judged against where the twin's citation commands stand, as `[@...]` in Markdown; and
+    a claim in a comment is no claim of the paper's (step 7)."""
+    entry = _twin(project)
+    claim = "Studies have shown that reporting is low \\citep{fictionalHepaticCohort2021}."
+    _into_results(entry, claim + "\n% Studies have shown it is high.")
+    assert not [f for f in _g6_findings(project) if f.code == "vague-attribution"]
+
+
+def test_g6_names_the_line_of_a_typed_reference_lists_entry(project: Path) -> None:
+    """A placeholder in a typed reference list's sixth entry is named at that entry's line, and
+    a Spanish title's "Todo" is no placeholder (rounds 2 and 3 of step 7b)."""
+    entry = _twin(project)
+    entries = "".join(f"\\bibitem{{e{n}}} Garcia {n}. Todo lo que hay. 2020.\n" for n in range(5))
+    _into_results(entry, "\\begin{thebibliography}{9}\n" + entries
+                  + "\\bibitem{t} TODO find the journal.\n\\end{thebibliography}")  # fmt: skip
+    found = [f for f in _g6_findings(project) if f.code == "model-artefact"]
+    text = entry.read_text(encoding="utf-8")
+    assert [f.line for f in found] == [text.count("\n", 0, text.index("\\bibitem{t}")) + 1]
 
 
 @pytest.mark.parametrize("encoding", ["cp1252", "utf-16", "utf-32"])

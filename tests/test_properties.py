@@ -80,10 +80,15 @@ from generated import (
     holds,
     laid_out,
     latex_bound,
+    latex_cited,
+    latex_declared,
     latex_displays,
     latex_planted,
+    latex_printed,
     latex_texts,
     latex_trees,
+    latex_words,
+    latex_writing,
     lines,
     mean_tables,
     numbered_displays,
@@ -164,12 +169,20 @@ from manuscript_guard.reworded import (
     facts,
 )
 from manuscript_guard.text import placeholders, tokens
+from manuscript_guard.text.latex import cite as latex_cite
 from manuscript_guard.text.latex import mask as latex_mask
+from manuscript_guard.text.latex import printed as latex_print
 from manuscript_guard.text.latex import structure as latex_structure
 from manuscript_guard.text.latex import views as latex_views
+from manuscript_guard.text.latex import words as latex_words_view
 from manuscript_guard.text.masking import NUL, mask
 from manuscript_guard.text.placeholders import parse as parse_bindings
-from manuscript_guard.text.sections import chains_at, footnote_index, heading_index
+from manuscript_guard.text.sections import (
+    chains_at,
+    footnote_index,
+    heading_index,
+    split_sections,
+)
 from manuscript_guard.text.tex import tex_outside_maths
 from manuscript_guard.text.tokens import DIGIT, find_atoms
 
@@ -701,6 +714,347 @@ def _a_line_break_before_a_bindings_brace_makes_it_malformed(patch: pytest.Monke
                   re.compile(r"[ \t]*(?:\[[^\]\n]*\])?[ \t]*\{(?P<inner>[^{}\n]*)\}"))  # fmt: skip
 
 
+@holds(100, latex_cited())
+def test_a_latex_citation_is_read_where_it_prints_and_nowhere_else(
+    drawn: tuple[str, list[tuple[str, str]]],
+) -> None:
+    """A key planted in every citation command LaTeX prints, in prose and a note, alone or
+    with others and in a multi-citation, is cited there, narrative where the command prints
+    the authors' names; a key in a comment, an `\\iffalse` block or a definition's body is
+    cited nowhere (step 5)."""
+    text, planted = drawn
+    reading = latex_mask.read(text)
+    assert reading.refusals == (), (reading.refusals, text)
+    source = latex_structure.Source("main.tex", text, reading)
+    uses = latex_cite.citations(source, Path("main.tex"))
+    assert sorted((use.citekey, use.narrative) for use in uses) == sorted(
+        (key, kind == "narrative") for key, kind in planted if kind != "none"
+    ), text
+    for use in uses:
+        assert text[use.start : use.start + len(use.citekey)] == use.citekey, (use, text)
+
+
+def _a_comment_in_a_key_list_is_a_key(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_key_list", lambda keys: keys)
+
+
+def _a_long_global_note_hides_its_citations(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_NOTE_REACH", 32)
+
+
+def _a_preamble_cite_setting_is_refused(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask._Reader, "_unknown_citation",
+                  lambda self, name: "cite" in name.lower() and not self.definitions)  # fmt: skip
+
+
+def _a_citations_keys_are_not_split(patch: pytest.MonkeyPatch) -> None:
+    def broken(self, at: int) -> None:
+        end = self._group_end(at)
+        narrative = latex_mask.CITATIONS[self.command]
+        key = self.text[at + 1 : end - 1].strip()
+        self.cited.append(latex_mask.Cited(key, at + 1, narrative, self.citation_at, end))
+
+    patch.setattr(latex_mask._Reader, "_cite", broken)
+
+
+def _a_key_in_a_definitions_body_is_cited(patch: pytest.MonkeyPatch) -> None:
+    opened = latex_mask._Reader._open
+
+    def broken(self, kind, spec, at, closer, **options):
+        citing = kind == "arg" and spec == "b" and self.command in latex_mask.CITATIONS
+        if citing and self.definitions:
+            self._cite(at)
+        return opened(self, kind, spec, at, closer, **options)
+
+    patch.setattr(latex_mask._Reader, "_open", broken)
+
+
+def _no_latex_citation_is_narrative(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "CITATIONS", dict.fromkeys(latex_mask.CITATIONS, False))
+
+
+def _a_multi_citation_reads_its_first_group_only(patch: pytest.MonkeyPatch) -> None:
+    for name in ("parencites", "Parencites"):
+        patch.setitem(latex_mask.COMMANDS, name, ("(b)", "(b)", "[p]", "[p]", "{b}"))
+
+
+@holds(100, latex_printed())
+def test_latex_s_printed_view_holds_what_it_prints_as_markdown_writes_it(
+    drawn: tuple[str, list[tuple[str, str]]],
+) -> None:
+    """A word planted in every place a LaTeX document holds one is in the view G4 reads where
+    LaTeX prints it, once: a heading's title as its `#` line, prose as prose, a binding as
+    `{{...}}`, a citation as `[@...]`; a float's caption, maths, a comment and the preamble's
+    title are not in it; and an abstract's text is under Abstract and the text after it is
+    not (step 6)."""
+    text, planted = drawn
+    reading = latex_mask.read(text)
+    assert reading.refusals == (), (reading.refusals, text)
+    view = latex_print.printed_view([latex_structure.Source("main.tex", text, reading)])
+    headings = [line for line in view.splitlines() if line.startswith("#")]
+    for key, kind in planted:
+        if kind.startswith("heading"):
+            assert f"{'#' * int(kind[-1])} {key}" in headings and view.count(key) == 1, view
+        elif kind in ("prose", "abstract", "after"):
+            assert view.count(key) == 1, (key, view)
+        elif kind == "hidden":
+            assert key not in view, (key, view)
+        else:
+            written = {"bound": "{{results.%s}}", "table": "{{table.%s}}", "cited": "[@%s]"}
+            assert written[kind] % key in view, (key, view)
+    sections = {section.title: section.body for section in split_sections(view)}
+    ((abstract,), (after,)) = ([k for k, kind in planted if kind == which]
+                               for which in ("abstract", "after"))  # fmt: skip
+    assert abstract in sections["Abstract"] and after not in sections["Abstract"], view
+    # A word in prose is in no code span: LaTeX's single quote opens none (round 1 of step 6).
+    spans = "".join(re.findall(r"`[^`\n]+`", view))
+    assert not [k for k, kind in planted if kind == "prose" and k in spans], view
+
+
+@holds(60, latex_trees())
+def test_latex_s_printed_view_writes_each_file_where_it_is_input(
+    drawn: tuple[dict[str, str], dict[str, list[str]], dict[str, list[str]]],
+) -> None:
+    """A word written after each heading of a manuscript of several files is in the view G4
+    reads in the order LaTeX prints it, under the heading LaTeX prints it under: a file input
+    is printed where its `\\input` stands, and the text of the file that input it goes on
+    after it (step 6)."""
+    files, _under, marks = drawn
+    document = latex_structure.read_tree(files)
+    assert document.refusals == (), document.refusals
+    view = latex_print.printed_view([s for s in document.sources if not s.loose])
+    order = [int(found) for found in re.findall(r"\bmark(\d+)\b", view)]
+    assert order == list(range(1, len(marks) + 1)), view
+    for section in split_sections(view):
+        for found in re.findall(r"\bmark\d+\b", section.body):
+            assert marks[found][-1] == section.title, (found, section.title, view)
+
+
+def _an_input_file_is_printed_after_its_parent(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print, "_cuts", lambda source: [])
+
+
+def _a_typed_reference_list_is_printed(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "REFERENCES", "nothing")
+
+
+def _a_single_quote_opens_a_code_span(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print, "_QUOTE", "`")
+
+
+def _an_abstract_in_the_preamble_is_not_printed(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print, "_printed_ranges",
+                  lambda reading: [(max(reading.body_start, 0), len(reading.masked))])  # fmt: skip
+
+
+@holds(100, latex_words())
+def test_latex_s_words_hold_each_word_where_latex_prints_it(
+    drawn: tuple[str, list[tuple[str, str]]],
+) -> None:
+    """A word planted in every place a LaTeX document holds one is in the view G14 reads, at
+    its own offset, where LaTeX prints it as prose; it is not in it in maths, code, a figure's
+    caption, a comment, a label or the preamble's title; a word an accent command or `\\-`
+    splits is not in it and is given as unread, and no other word is; and a count written as
+    a subscript after a letter is written as Markdown writes it (step 7)."""
+    text, planted = drawn
+    reading = latex_mask.read(text)
+    assert reading.refusals == (), (reading.refusals, text)
+    seen = latex_words_view.words(latex_structure.Source("main.tex", text, reading))
+    assert len(seen.text) == len(text), text
+    unread = [text[start:end] for start, end in seen.unread]
+    for key, kind in planted:
+        if kind == "read":
+            assert seen.text.count(key) == 1 and seen.text.find(key) == text.find(key), key
+        elif kind == "subscript":
+            assert f"{key}X~2~" in seen.text, (key, seen.text)
+        else:
+            assert key not in seen.text, (key, kind, seen.text)
+        if kind == "split":
+            assert [word for word in unread if key in word], (key, unread)
+    assert len(unread) == sum(kind == "split" for _key, kind in planted), unread
+
+
+def _maths_is_words(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_words_view, "_maths", lambda reading: [])
+
+
+def _code_is_words(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_words_view, "_code", lambda reading: [])
+
+
+def _a_figures_caption_is_words(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "FIGURES", frozenset())
+
+
+def _the_preamble_is_words(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_words_view, "_preamble", lambda reading: [])
+
+
+def _an_accented_word_is_read_in_pieces(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_words_view, "_split_words", lambda text: [])
+
+
+def _an_accented_word_is_cut_at_its_accent(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_words_view, "_in_word", lambda char: False)
+
+
+def _a_subscripts_count_is_maths(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_words_view, "_subscripts", lambda out, text: None)
+
+
+@holds(60, latex_trees())
+def test_g14_reads_a_latex_document_in_the_order_it_prints(
+    drawn: tuple[dict[str, str], dict[str, list[str]], dict[str, list[str]]],
+) -> None:
+    """The stretches G14 reads a LaTeX manuscript of several files in hold a word written
+    after each heading in the order LaTeX prints it: a file input is read where its `\\input`
+    stands, and the text of the file that input it after it, so that a definition and a use
+    are read in the order a reader meets them (step 7)."""
+    files, _under, marks = drawn
+    document = latex_structure.read_tree(files)
+    assert document.refusals == (), document.refusals
+    stretches = language_gate._stretches(document.sources)
+    read = "".join(source.text[start:end] for source, start, end in stretches)
+    order = [int(found) for found in re.findall(r"\bmark(\d+)\b", read)]
+    assert order == list(range(1, len(marks) + 1)), read
+
+
+def _a_file_input_is_read_after_its_parent(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_input_ends", lambda source: [])
+
+
+@holds(60, latex_writing())
+def test_g6_judges_a_latex_document_where_it_prints_and_by_its_citations(
+    drawn: tuple[str, list[tuple[str, str]]],
+) -> None:
+    """A claim with no citation, a phrase and a placeholder planted in a LaTeX document are each
+    found on their line, and nothing else is: a claim beside a citation command is supported, a
+    claim or a phrase in a comment is no text of the paper, and a placeholder in a comment is
+    found as typed, as one in a Markdown comment is, and one in a typed reference list as one in
+    a cited entry's field is; nothing past the document's end is read, nor a package's name or
+    a definition's body in the preamble (step 7)."""
+    text, planted = drawn
+    sources = latex_structure.read_tree({"main.tex": text}).sources
+    read, words, cited = writing_gate._read_latex(Path("m"), [sources])
+    rules = writing_gate.load_rules()
+    report, totals = writing_gate._judged(read, words, rules, cited=cited)
+    for where in writing_gate._typed_lists_of(Path("m"), [sources]):
+        report = report.merge(writing_gate._artefacts_elsewhere(rules, where, totals))
+    lines = {key: text.count("\n", 0, text.index(key)) + 1 for key, _kind in planted}
+    for code, kind in (("vague-attribution", "vague"), ("ai-phrasing", "phrase"),
+                       ("model-artefact", "artefact")):  # fmt: skip
+        found = sorted(finding.line for finding in report.findings if finding.code == code)
+        assert found == sorted(lines[key] for key, was in planted if was == kind), (code, text)
+
+
+def _g6_takes_no_latex_citation(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(writing_gate, "_cited_at", lambda source: [])
+
+
+def _g6_reads_a_latex_comment_as_prose(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(writing_gate, "_latex_prose", lambda source: source.text)
+
+
+def _g6_looks_for_a_placeholder_in_the_prose_only(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(writing_gate, "_latex_typed", writing_gate._latex_prose)
+
+
+def _g6_reads_a_latex_file_whole_as_typed(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(writing_gate, "_latex_typed", lambda source: source.text)
+
+
+def _g6_reads_a_typed_reference_list(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "REFERENCES", "nothing")
+
+
+def _g6_takes_nocite_for_a_claims_support(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(writing_gate, "_cited_at",
+                  lambda source: [found.start for found in source.reading.cited])  # fmt: skip
+
+
+def _g6_reads_no_typed_reference_list(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(writing_gate, "_typed_lists_of", lambda folder, documents: [])
+
+
+def _g6_reads_a_definitions_body_in_the_preamble(patch: pytest.MonkeyPatch) -> None:
+    class Every:
+        def __contains__(self, name: object) -> bool:
+            return True
+
+    patch.setattr(latex_mask, "HOOKS", Every())
+
+
+def _g6_reads_past_the_documents_end(patch: pytest.MonkeyPatch) -> None:
+    ended = latex_mask._Reader._end
+
+    def broken(self, name: str, at: int) -> None:
+        ended(self, name, at)
+        self.body_end = -1
+
+    patch.setattr(latex_mask._Reader, "_end", broken)
+
+
+def _a_floats_words_are_printed(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "FLOATS", frozenset())
+
+
+def _the_preamble_is_printed(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print, "_body", lambda reading: 0)
+
+
+def _a_headings_title_is_printed_twice(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print, "_title_end", lambda heading: heading.start)
+
+
+def _an_abstract_runs_on_to_the_next_heading(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print, "_abstracts_closed", lambda reading: [])
+
+
+def _a_formula_is_printed_as_typed(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print, "_formulas", lambda reading: [])
+
+
+@holds(60, latex_declared())
+def test_a_latex_preamble_states_its_class_and_bibliography_as_written(
+    drawn: tuple[str, dict[str, object]],
+) -> None:
+    """The class, each of its options, the bibliography style and biblatex's style a preamble
+    states are what G4 compares with the journal's profile, and what a comment or an
+    `\\iffalse` block names is not (step 6)."""
+    text, stated = drawn
+    reading = latex_mask.read(text)
+    assert reading.refusals == (), (reading.refusals, text)
+    declared = list(reading.declared)
+    assert [value for kind, value in declared if kind == "class"] == [stated["class"]], text
+    assert [value for kind, value in declared if kind == "class_option"] == stated["options"]
+    assert [value for kind, value in declared if kind == "bst"] == [stated["bst"]], text
+    (options,) = [value for kind, value in declared if kind == "biblatex"]
+    assert f"style={stated['style']}" in options, (options, text)
+
+
+def _a_class_named_in_a_comment_is_stated(patch: pytest.MonkeyPatch) -> None:
+    declares = latex_mask._Reader._declares
+
+    def broken(self, name: str, end: int) -> None:
+        declares(self, name, end)
+        for found in re.finditer(r"\\" + name + r"\{([^{}]*)\}", self.text):
+            kind = "class" if name == "documentclass" else "bst"
+            self.declared.append((kind, found.group(1)))
+
+    patch.setattr(latex_mask._Reader, "_declares", broken)
+
+
+def _a_class_s_options_are_one(patch: pytest.MonkeyPatch) -> None:
+    declares = latex_mask._Reader._declares
+
+    def broken(self, name: str, end: int) -> None:
+        declares(self, name, end)
+        options = [value for kind, value in self.declared if kind == "class_option"]
+        self.declared = [d for d in self.declared if d[0] != "class_option"]
+        if options:
+            self.declared.append(("class_option", ",".join(options)))
+
+    patch.setattr(latex_mask._Reader, "_declares", broken)
 @holds(100, latex_displays())
 def test_a_display_written_for_latex_holds_no_bare_special_and_no_ligature(display: str) -> None:
     """Each of TeX's specials in a display is written escaped, but the no-break space, which is
@@ -8185,6 +8539,146 @@ BROKEN = {
     "in LaTeX, a line break before a binding's brace makes it malformed": (
         _a_line_break_before_a_bindings_brace_makes_it_malformed,
         test_a_latex_binding_is_read_where_it_prints_as_one_and_nowhere_else,
+    ),
+    "in LaTeX, a citation's keys are not split at its commas": (
+        _a_citations_keys_are_not_split,
+        test_a_latex_citation_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a key in a definition's body is cited": (
+        _a_key_in_a_definitions_body_is_cited,
+        test_a_latex_citation_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, no citation is narrative": (
+        _no_latex_citation_is_narrative,
+        test_a_latex_citation_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a multi-citation reads its first group only": (
+        _a_multi_citation_reads_its_first_group_only,
+        test_a_latex_citation_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a comment in a citation's keys is a key": (
+        _a_comment_in_a_key_list_is_a_key,
+        test_a_latex_citation_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a long global note hides a multi-citation's keys": (
+        _a_long_global_note_hides_its_citations,
+        test_a_latex_citation_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, natbib's and biblatex's settings in the preamble are refused": (
+        _a_preamble_cite_setting_is_refused,
+        test_a_latex_citation_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX's words, maths is words": (
+        _maths_is_words,
+        test_latex_s_words_hold_each_word_where_latex_prints_it,
+    ),
+    "in LaTeX's words, code is words": (
+        _code_is_words,
+        test_latex_s_words_hold_each_word_where_latex_prints_it,
+    ),
+    "in LaTeX's words, a figure's caption is words": (
+        _a_figures_caption_is_words,
+        test_latex_s_words_hold_each_word_where_latex_prints_it,
+    ),
+    "in LaTeX's words, the preamble is words": (
+        _the_preamble_is_words,
+        test_latex_s_words_hold_each_word_where_latex_prints_it,
+    ),
+    "in LaTeX's words, an accented word is read in pieces": (
+        _an_accented_word_is_read_in_pieces,
+        test_latex_s_words_hold_each_word_where_latex_prints_it,
+    ),
+    "in LaTeX's words, an accented word is cut at its accent": (
+        _an_accented_word_is_cut_at_its_accent,
+        test_latex_s_words_hold_each_word_where_latex_prints_it,
+    ),
+    "in LaTeX's words, a subscript's count is maths": (
+        _a_subscripts_count_is_maths,
+        test_latex_s_words_hold_each_word_where_latex_prints_it,
+    ),
+    "in LaTeX, G6 takes no citation command for a claim's support": (
+        _g6_takes_no_latex_citation,
+        test_g6_judges_a_latex_document_where_it_prints_and_by_its_citations,
+    ),
+    "in LaTeX, G6 reads a file whole as typed, its preamble too": (
+        _g6_reads_a_latex_file_whole_as_typed,
+        test_g6_judges_a_latex_document_where_it_prints_and_by_its_citations,
+    ),
+    "in LaTeX, G6 reads a typed reference list": (
+        _g6_reads_a_typed_reference_list,
+        test_g6_judges_a_latex_document_where_it_prints_and_by_its_citations,
+    ),
+    "in LaTeX, G6 takes \\nocite for a claim's support": (
+        _g6_takes_nocite_for_a_claims_support,
+        test_g6_judges_a_latex_document_where_it_prints_and_by_its_citations,
+    ),
+    "in LaTeX, G6 reads no typed reference list": (
+        _g6_reads_no_typed_reference_list,
+        test_g6_judges_a_latex_document_where_it_prints_and_by_its_citations,
+    ),
+    "in LaTeX, G6 reads a definition's body in the preamble": (
+        _g6_reads_a_definitions_body_in_the_preamble,
+        test_g6_judges_a_latex_document_where_it_prints_and_by_its_citations,
+    ),
+    "in LaTeX, G6 reads past the document's end": (
+        _g6_reads_past_the_documents_end,
+        test_g6_judges_a_latex_document_where_it_prints_and_by_its_citations,
+    ),
+    "in LaTeX, G6 reads a comment as prose": (
+        _g6_reads_a_latex_comment_as_prose,
+        test_g6_judges_a_latex_document_where_it_prints_and_by_its_citations,
+    ),
+    "in LaTeX, G6 looks for a placeholder in the prose only": (
+        _g6_looks_for_a_placeholder_in_the_prose_only,
+        test_g6_judges_a_latex_document_where_it_prints_and_by_its_citations,
+    ),
+    "in LaTeX, G14 reads a file input after the file that inputs it": (
+        _a_file_input_is_read_after_its_parent,
+        test_g14_reads_a_latex_document_in_the_order_it_prints,
+    ),
+    "in LaTeX's printed view, a file input is printed after the file that inputs it": (
+        _an_input_file_is_printed_after_its_parent,
+        test_latex_s_printed_view_writes_each_file_where_it_is_input,
+    ),
+    "in LaTeX's printed view, a typed reference list is printed": (
+        _a_typed_reference_list_is_printed,
+        test_latex_s_printed_view_holds_what_it_prints_as_markdown_writes_it,
+    ),
+    "in LaTeX's printed view, a single quote opens a code span": (
+        _a_single_quote_opens_a_code_span,
+        test_latex_s_printed_view_holds_what_it_prints_as_markdown_writes_it,
+    ),
+    "in LaTeX's printed view, an abstract in the preamble is not printed": (
+        _an_abstract_in_the_preamble_is_not_printed,
+        test_latex_s_printed_view_holds_what_it_prints_as_markdown_writes_it,
+    ),
+    "in LaTeX's printed view, a float's words are printed": (
+        _a_floats_words_are_printed,
+        test_latex_s_printed_view_holds_what_it_prints_as_markdown_writes_it,
+    ),
+    "in LaTeX's printed view, the preamble is printed": (
+        _the_preamble_is_printed,
+        test_latex_s_printed_view_holds_what_it_prints_as_markdown_writes_it,
+    ),
+    "in LaTeX's printed view, a heading's title is printed twice": (
+        _a_headings_title_is_printed_twice,
+        test_latex_s_printed_view_holds_what_it_prints_as_markdown_writes_it,
+    ),
+    "in LaTeX's printed view, an abstract runs on to the next heading": (
+        _an_abstract_runs_on_to_the_next_heading,
+        test_latex_s_printed_view_holds_what_it_prints_as_markdown_writes_it,
+    ),
+    "in LaTeX's printed view, a formula is printed as typed": (
+        _a_formula_is_printed_as_typed,
+        test_latex_s_printed_view_holds_what_it_prints_as_markdown_writes_it,
+    ),
+    "in LaTeX, a class named in a comment is stated": (
+        _a_class_named_in_a_comment_is_stated,
+        test_a_latex_preamble_states_its_class_and_bibliography_as_written,
+    ),
+    "in LaTeX, a class's options are one option": (
+        _a_class_s_options_are_one,
+        test_a_latex_preamble_states_its_class_and_bibliography_as_written,
     ),
     "in a LaTeX values file, a percent sign is written bare": (
         _a_percent_is_written_bare,

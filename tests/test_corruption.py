@@ -11047,7 +11047,8 @@ def test_a_legend_longer_than_the_journal_takes_is_a_warning(project: Path) -> N
 
 def test_a_latex_legend_longer_than_the_journal_takes_is_a_warning(project: Path) -> None:
     """Step 13: a LaTeX figure's legend is the caption its float numbers it by, its words
-    counted as a Markdown legend's are: a citation and a binding are none."""
+    counted as a Markdown legend's are: a citation and a binding are none, and the label
+    LaTeX prints, "Figure 1", two (round 2)."""
     shutil.rmtree(project / "manuscript")
     shutil.copytree(TWIN, project / "manuscript")
     main = project / "manuscript" / "main.tex"
@@ -11056,8 +11057,8 @@ def test_a_latex_legend_longer_than_the_journal_takes_is_a_warning(project: Path
               + " \\cite{fictionalClassSignal2019} \\mg{results.ror.point}}")  # fmt: skip
     main.write_text(main.read_text(encoding="utf-8").replace(caption, longer),
                     encoding="utf-8")  # fmt: skip
-    assert _artwork_said(project, legend_words=27) == [("legend-words", "warn")]
-    assert _artwork_said(project, legend_words=28) == []
+    assert _artwork_said(project, legend_words=29) == [("legend-words", "warn")]
+    assert _artwork_said(project, legend_words=30) == []
 
 
 def test_a_second_files_front_matter_is_not_a_required_section(project: Path) -> None:

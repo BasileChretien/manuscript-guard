@@ -166,6 +166,8 @@ def captions_in(sources: list[Source]) -> list[tuple[str, int, str]]:
     for source in sources:
         reading, text = source.reading, source.text
         read, comments = _passed_over(reading)
+        if _read_in_a_part(source):
+            continue
         for start, end in reading.figures:
             for begun, opened, closed in _numbered_captions(text, start, end, read, comments):
                 pieces = [view.text[at:until]
@@ -341,6 +343,14 @@ def _pointing_events(source: Source) -> list[tuple[int, int, str]]:
     read, comments = _passed_over(reading)
     events = [(start, end, _float_marks(source, start, end, read, comments))
               for start, end in reading.floats]  # fmt: skip
+    # A caption outside the floats the reader knows numbers a display of a float it does not,
+    # `SCfigure` or a `\\newfloat`, of a kind the view cannot tell (round 2 of step 13, part 2).
+    known = [*reading.floats, *reading.tables]
+    if not _read_in_a_part(source):
+        for begun, _opened, closed in _arguments(text, _NUMBERED, 0, len(text), comments):
+            if read(begun) and not any(low <= begun < high for low, high in known):
+                events.append((begun, closed + 1,
+                               DISPLAY + "T" + MARK_END + DISPLAY + "F" + MARK_END))  # fmt: skip
     for start, end in reading.tables:
         if text.startswith("\\begin{longtable}", start) and any(
             read(found.start()) for found in _NUMBERED.finditer(text, start, end)
@@ -395,27 +405,46 @@ def _float_marks(source: Source, start: int, end: int, read, comments: dict) -> 
     kind = "f" if (start, end) in set(source.reading.figures) else "t"
     captions = [begun for begun, _opened, _closed
                 in _numbered_captions(text, start, end, read, comments)]  # fmt: skip
-    if any(read(found.start()) for found in _CONTINUED.finditer(text, start, end)):
+    if _read_in_a_part(source) or any(
+        read(found.start()) for found in _CONTINUED.finditer(text, start, end)
+    ):
         return ""
     if not captions:
         inherited = start == 0 and bool(set(source.environments) & FLOATS)
-        holds_input = any(start < cut < end for cut in _cuts(source))
         starred = any(read(found.start()) for found in _ANY_CAPTION.finditer(text, start, end))
-        return "" if starred or inherited or holds_input else DISPLAY + kind.upper() + MARK_END
+        if starred or inherited or _holds_input(source, start, end):
+            return ""
+        return DISPLAY + kind.upper() + MARK_END
     labels = [(found.start(), found[1].strip()) for found in _LABEL.finditer(text, start, end)
               if read(found.start())]  # fmt: skip
-    marks = []
-    for index, begun in enumerate(captions):
-        until = captions[index + 1] if index + 1 < len(captions) else end
-        named = [label for at, label in labels if begun <= at < until]
-        marks.append(DISPLAY + kind + ",".join(named) + MARK_END)
-    return "".join(marks)
+    parts = _parts(text, start, end, read)
+    named: list[list[str]] = [[] for _ in captions]
+    for at, label in labels:
+        if any(low <= at < high for low, high in parts):
+            # A part's label, "1a", names the display of the caption its float numbers after
+            # it, or its last (round 2 of step 13, part 2).
+            after = [index for index, begun in enumerate(captions) if begun > at]
+            named[after[0] if after else len(captions) - 1].append(label)
+        else:
+            before = [index for index, begun in enumerate(captions) if begun <= at]
+            if before:
+                named[before[-1]].append(label)
+    return "".join(DISPLAY + kind + ",".join(labels_of) + MARK_END for labels_of in named)
 
 
-def _numbered_captions(text: str, start: int, end: int, read, comments: dict):
-    """Each caption LaTeX numbers a float by between `start` and `end`, where it starts and
-    where its argument runs: not one inside a `subfigure` or a `subtable`, which numbers a
-    part of the float (round 1 of step 13, part 2)."""
+def _holds_input(source: Source, start: int, end: int) -> bool:
+    """Whether the float from `start` to `end` holds a file input, read inside it."""
+    return any(start < cut < end for cut in _cuts(source))
+
+
+def _read_in_a_part(source: Source) -> bool:
+    """Whether `source` is a file input inside a `subfigure` or a `subtable`, whose captions
+    number a part of a float (round 2 of step 13, part 2)."""
+    return bool(set(source.environments) & _PARTS)
+
+
+def _parts(text: str, start: int, end: int, read) -> list[tuple[int, int]]:
+    """Where each outermost `subfigure` or `subtable` between `start` and `end` runs."""
     parts, depth, opened = [], 0, 0
     for found in _SUBFLOAT.finditer(text, start, end):
         if not read(found.start()):
@@ -427,12 +456,21 @@ def _numbered_captions(text: str, start: int, end: int, read, comments: dict):
             depth -= 1
             if depth == 0:
                 parts.append((opened, found.end()))
+    return parts
+
+
+def _numbered_captions(text: str, start: int, end: int, read, comments: dict):
+    """Each caption LaTeX numbers a float by between `start` and `end`, where it starts and
+    where its argument runs: not one inside a `subfigure` or a `subtable`, which numbers a
+    part of the float (round 1 of step 13, part 2)."""
+    parts = _parts(text, start, end, read)
     return [(begun, opened_at, closed)
             for begun, opened_at, closed in _arguments(text, _NUMBERED, start, end, comments)
             if read(begun) and not any(low <= begun < high for low, high in parts)]  # fmt: skip
 
 
 #: The environments of subcaption whose `\\caption` numbers a part of a float, not a float.
+_PARTS = frozenset({"subfigure", "subtable"})
 _SUBFLOAT = re.compile(r"\\(begin|end)\s*\{(?:subfigure|subtable)\}")
 #: A float that continues the last of its kind, numbered as it is.
 _CONTINUED = re.compile(r"\\ContinuedFloat(?![A-Za-z])")

@@ -1616,14 +1616,18 @@ The result is compiled and packed by the code above, and checked three times:
   the first display it labels. Where a document numbers a kind in a way the view cannot
   count, a `\captionof`, a `longtable`'s caption, or a float whose caption a command of the
   author's writes, that kind's pointers are not checked, and a note says so; a page
-  `\includepdf` takes in leaves both kinds of its document unchecked. A float that holds a
-  file input and no caption of its own, or a file read inside a float, numbers what the
-  captions of the other number. A `\ref` to a label nobody defined is the compile's to refuse
-  (step 9).
+  `\includepdf` takes in, or a `\caption` in a float the reader does not know, `SCfigure` or
+  a `\newfloat`, leaves both kinds of its document unchecked. A float that holds a file input
+  and no caption of its own, or a file read inside a float, numbers what the captions of the
+  other number; where neither has a caption the view reads, one a command of the author's
+  writes in the file, the float is counted as none, and a pointer to it may be said to point
+  at nothing (round 2). A `\ref` to a label nobody defined is the compile's to refuse (step
+  9).
 - G4 reads a LaTeX figure's legend in the caption LaTeX numbers it by, in a float that holds
-  a figure, the main text's and the supplement's: a legend written by a command of the
-  author's, or in a `\captionof`, is not read, and a continued figure's caption is a legend
-  of its own (step 13).
+  a figure, the main text's and the supplement's, and counts the label LaTeX prints before it,
+  "Figure 1", as two words, which a Markdown legend types: a legend written by a command of
+  the author's, or in a `\captionof`, is not read, and a continued figure's caption is a
+  legend of its own (step 13).
 - A number typed as a LaTeX heading's or list item's numbering, `\section*{2.1 Methods}`, is
   a number like any other: LaTeX numbers them, so the rules that pass Markdown's typed
   numbering hold nowhere in a `.tex`.
@@ -2354,14 +2358,18 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
     ref binding does in Markdown; `\pageref` cites none. A `\mg{table.key}` outside a float is
     a table LaTeX does not number, so the twin now places its displays in captioned,
     labelled floats. A `\caption` in a `subfigure` or `subtable` numbers a part, and a float
-    `\ContinuedFloat` continues numbers nothing new (round 1). G4's figure legends are read
-    too: a figure's legend is the caption LaTeX numbers it by, in the compared view, so its
-    words are counted as a Markdown legend's (`figure_captions`). No check says
+    `\ContinuedFloat` continues numbers nothing new (round 1); a subfigure's label names its
+    float's display, as LaTeX's "2a" points at Figure 2, a caption in a file read inside a
+    subfigure numbers a part, and a `\caption` outside the floats the reader knows leaves both
+    kinds uncounted (round 2). G4's figure legends are read too: a figure's legend is the
+    caption LaTeX numbers it by, in the compared view, so its words are counted as a Markdown
+    legend's (`figure_captions`), the label LaTeX prints counted too. No check says
     `not-read-in-latex` any more; the mechanism stays for one added later. Tests:
     `tests/test_latex_pointers.py`, `tests/test_journal_latex.py`, and
     `_planted_latex_pointers` and `_planted_latex_legends` in `tests/test_properties.py`, with
     `BROKEN` rules for a starred caption counted, a subfigure's caption taken for the
-    figure's, a cross-reference citing nothing, and the line.
+    figure's or its label naming nothing, a continued float counted, a float that inputs its
+    caption left uncounted, a cross-reference citing nothing, and the line.
 
 ## Zotero is never on the critical path
 

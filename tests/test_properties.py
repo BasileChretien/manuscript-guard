@@ -5660,30 +5660,47 @@ def _a_recycled_passage_s_lines_are_the_printed_view_s(patch: pytest.MonkeyPatch
 def _planted_latex_pointers(draw: st.DrawFn) -> tuple[dict[str, str], set[tuple]]:
     """A LaTeX document, `main.tex` and the `part.tex` it inputs where a paragraph drawn of
     `main.tex` stands, that numbers tables and figures with captioned floats, each labelled,
-    and holds a float with a starred caption only, which numbers nothing; that cites each
+    and holds a float with a starred caption only and one `\\ContinuedFloat` continues, which
+    number nothing. Its first table is a float that inputs `tab.tex`, which holds its caption,
+    and its first figure is two subfigures, whose captions number its parts. It cites each
     numbered display in its order, by a cross-reference to its label or by a pointer typed,
-    the first table always by `\\ref`; and that points, in `part.tex`, at one table more than
-    it numbers. What G2 says of it: that last pointer, at its file and line (step 13)."""
+    the first table always by `\\ref`, and the first figure always by `\\ref` to its first
+    part's label; and it points, in `part.tex`, at one table more than it numbers. What G2
+    says of it: that last pointer, at its file and line (steps 13 and its round 2)."""
     tables, figures = draw(st.integers(1, 3)), draw(st.integers(1, 2))
-    kinds = ["table"] * tables + ["figure"] * figures + ["starred"]
+    kinds = ["table"] * tables + ["figure"] * figures + ["starred", "continued"]
     pieces, seen = [], {"table": 0, "figure": 0}
     for kind in draw(st.permutations(kinds)):
         if kind == "starred":
             pieces.append("\\begin{table}\\caption*{Not numbered.}\\end{table}")
             continue
+        if kind == "continued":
+            pieces.append("\\begin{figure}\\ContinuedFloat\\caption{Continued.}\\end{figure}")
+            continue
         seen[kind] += 1
-        pieces.append(f"\\begin{{{kind}}}\\caption{{The {kind}.}}"
-                      f"\\label{{{kind[:3]}{seen[kind]}}}\\end{{{kind}}}")  # fmt: skip
+        label = f"{kind[:3]}{seen[kind]}"
+        if (kind, seen[kind]) == ("table", 1):
+            pieces.append("\\begin{table}\\input{tab}\\end{table}")
+        elif (kind, seen[kind]) == ("figure", 1):
+            pieces.append("\\begin{figure}" + "".join(
+                f"\\begin{{subfigure}}{{.4\\linewidth}}\\caption{{Part.}}\\label{{{label}{part}}}"
+                "\\end{subfigure}" for part in "ab") + f"\\caption{{Both.}}\\label{{{label}}}"
+                "\\end{figure}")  # fmt: skip
+        else:
+            pieces.append(f"\\begin{{{kind}}}\\caption{{The {kind}.}}\\label{{{label}}}"
+                          f"\\end{{{kind}}}")  # fmt: skip
     # Each kind's citations in its order, the two kinds interleaved as drawn.
     queues = {"table": list(range(1, tables + 1)), "figure": list(range(1, figures + 1))}
     while queues["table"] or queues["figure"]:
         kind = draw(st.sampled_from([k for k in ("table", "figure") if queues[k]]))
         number = queues[kind].pop(0)
         word = kind.capitalize()
-        by_ref = (kind, number) == ("table", 1) or draw(st.booleans())
-        pieces.append(f"As {word}~\\ref{{{kind[:3]}{number}}} shows." if by_ref
+        by_ref = number == 1 or draw(st.booleans())
+        part = "a" if (kind, number) == ("figure", 1) else ""
+        pieces.append(f"As {word}~\\ref{{{kind[:3]}{number}{part}}} shows." if by_ref
                       else f"As {word}~{number} shows.")  # fmt: skip
     pieces.insert(draw(st.integers(0, len(pieces))), "\\input{part}")
+    table = "\\caption{The table.}\\label{tab1}\n\\begin{tabular}{l}x\\end{tabular}\n"
     filler = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=3)))
     over = f"Table~{tables + 1}"
     part = f"{filler.capitalize()}.\n\nThe rest is in {over}.\n"
@@ -5691,6 +5708,7 @@ def _planted_latex_pointers(draw: st.DrawFn) -> tuple[dict[str, str], set[tuple]
         "main.tex": "\\documentclass{article}\n\\begin{document}\n"
         + "".join(f"\n{piece}\n" for piece in pieces) + "\\end{document}\n",
         "part.tex": part,
+        "tab.tex": table,
     }
     return texts, {("pointer-to-nothing", "part.tex", part.count("\n", 0, part.index(over)) + 1)}
 
@@ -5764,6 +5782,19 @@ def test_a_latex_legend_is_its_figure_s_caption(planted: tuple[str, set[int]]) -
 
 def _a_subfigure_s_caption_numbers_the_float(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(latex_print, "_SUBFLOAT", re.compile(r"(?!)"))
+
+
+def _a_continued_float_numbers_a_display(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print, "_CONTINUED", re.compile(r"(?!)"))
+
+
+def _a_part_s_label_names_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print, "_parts", lambda _text, _start, _end, _read: [])
+
+
+def _a_float_that_inputs_its_caption_is_uncounted(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print, "_holds_input", lambda _source, _start, _end: False)
+    patch.setattr(latex_print, "FLOATS", frozenset())
 
 
 def _a_starred_caption_numbers_a_display(patch: pytest.MonkeyPatch) -> None:
@@ -9767,6 +9798,18 @@ BROKEN = {
     "in LaTeX, a subfigure's caption is a legend": (
         _a_subfigure_s_caption_numbers_the_float,
         test_a_latex_legend_is_its_figure_s_caption,
+    ),
+    "in LaTeX, a continued float numbers a display": (
+        _a_continued_float_numbers_a_display,
+        test_a_latex_pointer_is_held_to_what_latex_numbers,
+    ),
+    "in LaTeX, a subfigure's caption numbers a float and its label names nothing": (
+        _a_part_s_label_names_nothing,
+        test_a_latex_pointer_is_held_to_what_latex_numbers,
+    ),
+    "in LaTeX, a float that inputs its caption is uncounted": (
+        _a_float_that_inputs_its_caption_is_uncounted,
+        test_a_latex_pointer_is_held_to_what_latex_numbers,
     ),
     "in LaTeX, a cross-reference cites nothing": (
         _a_cross_reference_cites_nothing,

@@ -501,6 +501,10 @@ def _legends(project: Project, manuscript: Path, rules: dict, profile_path: Path
     return findings
 
 
+#: The words of the label LaTeX prints before a figure's caption: "Figure 1".
+_LABEL_WORDS = 2
+
+
 def _latex_legends(manuscript: Path, rules: dict) -> list[Finding]:
     """`_legends` of a LaTeX manuscript: a figure's legend is the caption LaTeX numbers it by,
     in a float that holds a figure, its words counted as the main text's are, in the view a
@@ -513,7 +517,9 @@ def _latex_legends(manuscript: Path, rules: dict) -> list[Finding]:
     findings = []
     for supplementary in (False, True):
         for path, line, legend in figure_captions(manuscript, supplementary=supplementary):
-            words = count_words(legend)
+            # And the label LaTeX prints before a caption, "Figure 1", which a Markdown legend
+            # types and counts (round 2 of step 13, part 2).
+            words = count_words(legend) + _LABEL_WORDS
             if words > limit:
                 findings.append(
                     Finding(

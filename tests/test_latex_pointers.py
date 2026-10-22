@@ -124,6 +124,31 @@ def test_a_subfigure_s_caption_numbers_a_part_and_a_continued_float_nothing(
     assert _said(twin) == []
 
 
+def test_a_part_s_label_cites_its_figure(twin: Path) -> None:
+    """Round 2 of step 13, part 2: `\\ref` to a subfigure's label prints "2a", and cites
+    Figure 2; a caption in a file read inside a subfigure numbers a part too."""
+    (twin.parent / "part_b.tex").write_text("\\caption{Right.}\\label{fig:2b}\n",
+                                            encoding="utf-8")  # fmt: skip
+    _replaced(twin, "\\section{Discussion}", (
+        "\\begin{figure}\\begin{subfigure}{.4\\linewidth}\\caption{Left.}\\label{fig:2a}"
+        "\\end{subfigure}\\begin{subfigure}{.4\\linewidth}\\input{part_b}\\end{subfigure}"
+        "\\caption{Both.}\\label{fig:two}\\end{figure}\n\n"
+        "Figure~\\ref{fig:2a} shows the left.\n\n\\section{Discussion}"))
+    assert _said(twin) == []
+
+
+def test_a_caption_in_a_float_the_reader_does_not_know_leaves_both_kinds_unchecked(
+    twin: Path,
+) -> None:
+    """Round 2 of step 13, part 2: a `\\caption` in `SCfigure` numbers a display of a kind
+    the view cannot tell, so neither kind is counted, and "Figure 2" is not said to point at
+    nothing."""
+    _replaced(twin, "\\section{Discussion}",
+              "\\begin{SCfigure}\\caption{Beside.}\\end{SCfigure}\n\nFigure~2 is beside.\n\n"
+              "\\section{Discussion}")  # fmt: skip
+    assert [code for code, *_rest in _said(twin)] == ["pointers-unchecked"] * 2
+
+
 @pytest.mark.parametrize("caption_in_the_file", [False, True])
 def test_a_float_whose_content_a_file_inputs_is_one_display(
     twin: Path, caption_in_the_file: bool

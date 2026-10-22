@@ -1631,6 +1631,69 @@ The result is compiled and packed by the code above, and checked three times:
 - physics' `\qty[a = b]` holds an `=`, so it is taken for siunitx's option list and blanked
   (round 2 of #400). A siunitx key with no `=`, `\qty[sticky-per]`, is taken for a value and
   read as prose words; it holds no number (round 3).
+- A multi-citation's global notes, `\cites(see)(p.~5)[...]{a}{b}`, are blanked, so a number in
+  one is read by no gate; its per-group notes are read (step 5). A global note is looked for
+  up to 300 characters on, and not past a blank line; one longer is refused (round 2 of step
+  5). A `)` in a comment inside a global note is taken for its end. A comment in the middle of
+  a key, `\cite{smi%` with `th}` on the next line, leaves a space in the key, where TeX joins
+  it, and `\\%` in a key list is taken for an escaped `%`.
+- apacite's `\citeA` and `\citeNP`, and an author's own command whose name holds `cite`, are
+  refused where they are used, as the design asks: the reader knows natbib's and biblatex's
+  (step 5). In the preamble such a command is not refused, since natbib's and biblatex's
+  settings stand there, `\setcitestyle` and `\DeclareCiteCommand` among them, and nothing of
+  it prints; biblatex's `\volcite` family is refused in the body (round 1 of step 5).
+  natbib's `\citetext`, `\defcitealias` and biblatex's `\citereset` and `\notecite` family
+  are read (round 2).
+- A citation in a hook's body, `\AtBeginDocument{\nocite{smith2019}}`, is not recorded, as one
+  in a definition's body is not, and G7 warns that its key is cited nowhere (round 1 of
+  step 5).
+- `sync-bib` refuses a LaTeX manuscript the reader refuses anywhere, since the keys after the
+  refusal are not read; `lookup` looks up the keys before it (round 1 of step 5).
+- `\nocite{*}` cites what `literature/references.bib` holds, not a bibliography a class or a
+  `\bibliography{}` names elsewhere (step 5).
+- G4 counts an inline formula as one word and a displayed one as none; Markdown's count reads
+  a formula's tokens as words. A LaTeX paper and its Markdown twin with maths in their prose
+  count differently by that much (step 6).
+- The heading with no title that closes an abstract is a section of its own to G4, which
+  counts it as text and finds no required section in it (step 6).
+- A float counts as a display item only where it places a `\mg{figure.key}` or
+  `\mg{table.key}`; a figure placed with `\includegraphics` alone counts as none. Markdown
+  has the same gap for `![](...)`, met far less often (round 1 of step 6).
+- A title, affiliations and keywords written in the body, as elsarticle's `frontmatter` holds
+  them, are counted as main text (round 1 of step 6), and G14 reads them as the text's: an
+  abbreviation in the title is used before its definition, and an institute's acronym in an
+  affiliation is undefined (round 1 of step 7). In the preamble they are not read.
+- Past a refusal G14 reads a LaTeX file as typed, its commands and comments as words; `check`
+  fails on the refusal already (round 1 of step 7).
+- `\~{}` before a number, written for "about", is taken for an accent on the word after it,
+  which is then not read (round 1 of step 7).
+- G6 looks for a placeholder in a LaTeX file's body as typed, as in a Markdown file:
+  `\todo{...}` and a `% TODO` comment each fail as a TODO in the text does. Its preamble is
+  read as the reader reads it, without a definition's body, so a package or a definition
+  named for a note does not; nor do `\author`, `\date` or a comment in the preamble, which
+  the reader blanks, though Markdown's front matter is read as typed. Past `\end{document}`
+  nothing is read. A phrase G6 reports is not read in a comment, but past a refusal, where
+  the file is read as typed (rounds 1 and 2 of step 7b).
+- In a LaTeX body as typed, an optional argument that reads as a placeholder fails as one in
+  a Markdown raw block does: TikZ's `\draw[fill]`, a description list's `\item[Repository]`
+  (round 1 of step 7b).
+- G6 reads no definition's body in a LaTeX preamble for a placeholder, used or not, so a
+  placeholder a macro prints, `\newcommand{\ncohort}{[TO BE CONFIRMED]}`, is not found where
+  it is used either; its phrases and residue rules still read such a body as prose; and a
+  definition written in the body is read as typed (round 3 of step 7b).
+- A typed reference list is judged entry by entry as a cited entry's fields are, capitals
+  only: a todonotes `\todo{...}` or a lower-case `% todo` in it passes (round 3 of step 7b).
+  A finding in an entry is named at its `\bibitem` line, one above a placeholder on the next
+  line (round 4).
+- G6's boldface rate counts `**...**` and so never counts LaTeX's `\textbf{...}`, which the
+  reader blanks. A typed table's cells are not read by G6's rates, phrases, residue or vague
+  attributions (round 1 of step 7b).
+- G4 does not hold a LaTeX figure's legend, its float's caption, to the profile's
+  `legend_words`, and says so (`not-read-in-latex`) where a figure is placed (round 1 of
+  step 6).
+- An abstract input from a file inside the abstract environment in the preamble, as a class
+  that prints a preamble abstract allows, is not counted: the file is read as preamble. In
+  the body the same shape is counted (round 2 of step 6).
 - Past a refusal a file's bindings are found by their shape, in a comment too, so that a
   result quoted there is not said to be quoted nowhere.
 - A class or package that changes how a character is read, beyond those refused, is not seen.
@@ -1639,7 +1702,17 @@ The result is compiled and packed by the code above, and checked three times:
 - A profile's LaTeX template is read by no gate, so text or digits it prints after
   `\begin{document}` are compared with nothing in `build --latex`.
 - `\date` is read by no gate, since a Markdown build prints no date to compare it with.
-- A word holding an accent command is not read by G14.
+- A word holding an accent command or `\-` is not read by G14, which says how many there are
+  in each file. `\=`, `\'` and `\-` are tab commands in `tabbing`, where the word after one is
+  taken for an accented word all the same (step 7).
+- G14 does not read a figure's caption, as it does not read an image's caption in Markdown; a
+  table's caption it reads (step 7).
+- A P value or another symbol written in maths, `$P < 0.05$`, is not read by G14's notation,
+  as one in Markdown's `$...$` is not. A LaTeX paper writes them in maths more often, so G14
+  says less of its notation (step 7).
+- Only `$_2$`, `$_{12}$` and `\textsubscript{2}` straight after a letter are read as a
+  formula's count; `\(_2\)` and `$_{\mathrm{2}}$` are maths, and `CO` before them is read as
+  an abbreviation (step 7).
 - The author block is written in the class's own commands, and is not compared with
   authors.yaml. A number typed into the author block or `\date` is read by no gate.
 - The Word round trip, `annotate`, `reworded` and `audit` do not read `.tex`.
@@ -1733,12 +1806,69 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
    file's `\ProvidesPackage` names no description, which LaTeX 2024-06 read as a date and
    which stopped the next `\title`, and it loads graphicx for its figures (#416, measured
    under MiKTeX 24.4 on 2026-10-22).
-5. Citations and G7. `cite.py`; G7, `lookup` and G6's citation positions moved; the twin's
+5. Citations and G7, built in its first part: the scanner records each key a citation command
+   names, where its braces stand (`Reading.cited`), outside a definition's body, and refuses a
+   command whose name holds `cite` that it does not know; `cite.py` gives them as
+   `CitationUse` records, `\nocite{*}` as each key of `references.bib`; `reader.citation_uses`
+   gives either format's, and G7's citation check, `sync-bib` and `lookup` read it, which
+   takes `check_citations` out of `_NOT_READ_IN_LATEX`. The multi-citation forms are in the
+   table, their global notes blanked. Tests: `tests/test_latex_cite.py`, the twin's citations
+   against the example's, G7 on the twin, `latex citations`, `latex_cited()` with four
+   `BROKEN` rules. G6's citation positions move with G6 (step 7). The plan as written: `cite.py`;
+   G7, `lookup` and G6's citation positions moved; the twin's
    comparison with the example takes in the citations. Tests: `latex citations`, G7's cases on
    the twin.
-6. G4. The counts, sections and statements, and the profile's `latex:` block. Tests: G4's
-   cases on the twin.
-7. G6 and G14. `words`, accents, both gates moved. Tests: `latex words`, planted terms and
+6. G4, built in two parts. The first: `printed.py` writes the main text's document
+   as Markdown would print it, the design's `printed_view`: each heading as a `#` line, the
+   body only, an abstract closed where it ends, bindings as `{{...}}` and citations as
+   `[@...]`, a float as the bindings it places, maths and typed tables as nothing but an
+   inline formula's one word, `\verb` and `\texttt` as code spans, and each file input
+   where its `\input` ends, so that an abstract input inside its environment is the
+   abstract; a reference list typed in `thebibliography` as nothing, an abstract written in
+   the preamble under Abstract, and a single opening quote as a typographic one, which opens
+   no code span. G4's `main_text` gives it
+   for a LaTeX manuscript, so its counts, required sections and statements read the twin as
+   they read the example, which takes `check_journal` out of `_NOT_READ_IN_LATEX`. The
+   scanner records the spans it needs (`maths`, `floats`, `code`, `body_start`, each
+   heading's end). Tests: the twin's counts and findings against the example's, G4's cases on
+   the twin, `latex_printed()` with five `BROKEN` rules, and the order a document of several
+   files prints in over `latex_trees()` with one. The second: the profile's `latex:`
+   block in the schema, each of its parts a rule quoted as `latex.<part>`; the scanner
+   records the class and its options, `\bibliographystyle` and biblatex's options
+   (`Reading.declared`), outside a comment; G4 warns `latex-class-differs` and
+   `latex-bibliography-differs` (`gates/journal_latex.py`). Tests:
+   `tests/test_journal_latex.py`, `latex printed`, `latex_declared()` with two `BROKEN`
+   rules. The engine and the files the profile names are the build's, steps 9 and 10. The
+   plan as written: the counts, sections and statements, and the profile's `latex:` block.
+   Tests: G4's cases on the twin.
+7. G6 and G14, built in two parts. The first: `words.py` gives a file's words as
+   `language._hidden` gives a Markdown file's, the design's `words`: NUL where the reader
+   blanks, in the preamble but an abstract written there, in maths, in code and in a
+   figure's caption; a word an accent command or `\-` splits is NUL as well, and given as
+   unread, which G14 says once a file (`tex-words-not-read`); a count written as a subscript
+   straight after a letter, `CO$_2$`, is written as Markdown's `CO~2~`. G14 reads a LaTeX
+   document in stretches in the order it prints, a file input where its `\input` ends, so
+   that a definition and a use are met in the order a reader meets them; the headings in
+   force are the include tree's, the abstract is where its environment runs or where a file
+   is input inside it, and a reference list typed in `thebibliography` is not read. A file's
+   passages are its Markdown view, so the notation reads a bound value in an interval or a
+   percentage as it does in Markdown. That takes `check_language` out of
+   `_NOT_READ_IN_LATEX`. The scanner records each float that holds a figure
+   (`Reading.figures`) and each typed reference list (`Reading.references`), and the include
+   tree the environments a file is input inside (`Source.environments`). Tests:
+   `tests/test_latex_words.py`, G14 on the twin, `latex words`, `latex_words()` with seven
+   `BROKEN` rules, and the order G14 reads a document of several files in over
+   `latex_trees()` with one. The second: G6 reads each LaTeX file of both documents, the
+   author's packages aside: as typed for the artefacts and placeholders, in a comment too,
+   as in a Markdown comment; as the reader masks it for the phrases, the residue and the
+   rates; a vague attribution against where its citation commands stand (`Reading.cited`);
+   and the words as G4 counts them in the printed view. `\nocite{*}` cites every entry whose
+   printed fields G6 reads, and supports no claim beside it. Its preamble is read as the reader
+   reads it, and a reference list typed in `thebibliography` and a table's cells are no prose
+   of the paper: the list is read as a cited entry's fields in `references.bib` are. That takes `check_writing` out of `_NOT_READ_IN_LATEX`. Tests: G6
+   on the twin, its cases on the twin, `latex writing`, `latex_writing()` with three
+   `BROKEN` rules. The plan as
+   written: `words`, accents, both gates moved. Tests: `latex words`, planted terms and
    spellings.
 8. `substituted`, with TeX's specials escaped; G5, G8, G9, G13 and G15 moved. Tests:
    each gate's cases on the twin, and a display holding `%` through G8.

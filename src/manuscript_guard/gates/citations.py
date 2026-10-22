@@ -25,15 +25,13 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.contracts.literature import ATTESTED, Literature
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.findings import WARN, Finding, Report
 from manuscript_guard.gates.duplicates import check_duplicates
 from manuscript_guard.gates.identifiers import check_identifiers
 from manuscript_guard.gates.lookups import check_lookups
-from manuscript_guard.gates.numbers import source_files
-from manuscript_guard.zotero import Lookup, ZoteroUnavailable, available, find_citations, lookup
+from manuscript_guard.zotero import Lookup, ZoteroUnavailable, available, lookup
 
 GATE = "G7"
 BIB_FILE = "references.bib"
@@ -48,10 +46,10 @@ def bib_keys(project: Project) -> frozenset[str]:
 
 
 def check_citations(project: Project, literature: Literature) -> Report:
+    from manuscript_guard.text.reader import citation_uses
+
     report = Report()
-    uses = []
-    for path in source_files(project.path("manuscript")):
-        uses.extend(find_citations(read_text(path), path))
+    uses = citation_uses(project)
 
     seen: set[str] = {use.citekey for use in uses}
     committed = bib_keys(project)
@@ -220,12 +218,10 @@ def _nearest(citekey: str, known: frozenset[str]) -> str:
 
 def sync_bib(project: Project) -> tuple[Path, int]:
     """Write `literature/references.bib` from the keys the manuscript actually cites."""
+    from manuscript_guard.text.reader import citation_uses
     from manuscript_guard.zotero import export
 
-    uses = []
-    for path in source_files(project.path("manuscript")):
-        uses.extend(find_citations(read_text(path), path))
-    citekeys = sorted({use.citekey for use in uses})
+    citekeys = sorted({use.citekey for use in citation_uses(project, whole=True)})
     if not citekeys:
         raise ZoteroUnavailable("the manuscript cites nothing, so there is no bibliography")
 

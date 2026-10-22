@@ -696,6 +696,236 @@ LATEX_BINDING_PLACES = (
 #: Where a binding stands in the preamble: the title prints it.
 LATEX_PREAMBLE_BINDINGS = (("\\title{{T \\mg{{results.{}}}}}\n", "bound"),)
 
+#: Where a citation stands in LaTeX, and what each key in it is there: each `{}` holds a key,
+#: cited (in brackets, as `\\cite` prints it), narrative (the authors' names in the sentence),
+#: or nothing (in a comment, an `\\iffalse` block, or a definition's body, where it is text to
+#: be expanded where the definition is used). A comment inside a key list is dropped, and a
+#: multi-citation's global note may be a phrase (round 1 of step 5).
+LATEX_CITATION_PLACES = (
+    ("\\cite{{{}}} ", ("cited",)),
+    ("\\citet{{{}}} ", ("narrative",)),
+    ("\\Citet*{{{}}} ", ("narrative",)),
+    ("\\citep[see][p.~3]{{{}, {} }} ", ("cited", "cited")),
+    ("\\textcite{{{}}} ", ("narrative",)),
+    ("\\footnote{{As \\citeauthor{{{}}} wrote.}} ", ("narrative",)),
+    ("\\parencites[a]{{{}}}[b]{{{},{}}} ", ("cited", "cited", "cited")),
+    ("\\nocite{{{}}} ", ("cited",)),
+    ("% \\cite{{{}}}\n", ("none",)),
+    ("\\iffalse \\cite{{{}}} \\fi ", ("none",)),
+    ("\\newcommand{{\\later}}[1]{{\\cite{{{}}}}} ", ("none",)),
+    ("\\citep{{{},% old\n {}}} ", ("cited", "cited")),
+    ("\\cites(see the reviews of this question in)(){{{}}}{{{}}} ", ("cited", "cited")),
+    ("\\citetalias{{{}}} ", ("narrative",)),
+    ("\\footfullcite{{{}}} ", ("cited",)),
+)  # fmt: skip
+#: A preamble that sets natbib's and biblatex's styles, which cite nothing.
+LATEX_CITATION_PREAMBLE = (
+    "\\documentclass{article}\n\\usepackage{natbib}\n\\setcitestyle{authoryear}\n"
+    "\\DeclareCiteCommand{\\citeyearonly}{}{}{}{}\n\\begin{document}\n"
+)
+
+
+@st.composite
+def latex_cited(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
+    """A LaTeX document with a citation in every place of `LATEX_CITATION_PLACES`, in an order
+    drawn, among whole pieces; and each key planted, with what it is where it stands. Every
+    place is in every document, so that a rule broken for one is seen in each."""
+    filler = (*_spaced(FILLER), *(piece for piece in _LATEX_WHOLE if "cite" not in piece))
+    order = draw(st.permutations(range(len(LATEX_CITATION_PLACES))))
+    between = draw(st.lists(st.sampled_from(filler), min_size=len(order) + 1,
+                            max_size=len(order) + 1))  # fmt: skip
+    text, planted = LATEX_CITATION_PREAMBLE, []
+    for piece, index in zip(between, order, strict=False):
+        text += piece
+        template, kinds = LATEX_CITATION_PLACES[index]
+        pieces = [part.replace("{{", "{").replace("}}", "}") for part in template.split("{}")]
+        for part, kind in zip(pieces, kinds, strict=False):
+            key = f"k{4101 + len(planted)}"
+            planted.append((key, kind))
+            text += part + key
+        text += pieces[-1]
+    text += between[-1] + "\\end{document}\n"
+    return text, planted
+
+
+@st.composite
+def latex_declared(draw: st.DrawFn) -> tuple[str, dict[str, object]]:
+    """A LaTeX preamble that states its class with options drawn, a bibliography style and
+    biblatex's options, among a class, a style and a package named in a comment and in an
+    `\\iffalse` block, in an order drawn; and what it states. Every kind is in every
+    preamble."""
+    name = st.sampled_from(("article", "elsarticle", "revtex4-2", "svjour3"))
+    # Two options at least, so that options not split apart are seen in every preamble.
+    options = draw(st.lists(st.sampled_from(("12pt", "twocolumn", "a4paper", "final")),
+                            unique=True, min_size=2, max_size=3))  # fmt: skip
+    stated = {"class": draw(name), "options": options, "bst": draw(name) + "-num",
+              "style": draw(st.sampled_from(("apa", "numeric", "authoryear")))}  # fmt: skip
+    pieces = [
+        f"\\documentclass[{', '.join(options)}]{{{stated['class']}}}\n",
+        f"\\bibliographystyle{{{stated['bst']}}}\n",
+        f"\\usepackage[backend=biber,style={stated['style']}]{{biblatex}}\n",
+        "% \\documentclass{commented}\n% \\bibliographystyle{commented}\n",
+        "\\iffalse \\usepackage[style=hidden]{biblatex} \\fi\n",
+    ]
+    order = draw(st.permutations(range(1, len(pieces))))
+    text = pieces[0] + "".join(pieces[index] for index in order)
+    return text + "\\begin{document}\nx\n\\end{document}\n", stated
+
+
+#: What a LaTeX document prints, as G4 reads it in Markdown (`text/latex/printed.py`): each
+#: `{}` holds a word, and its kind says what the view makes of it. A heading's title is its
+#: `#` line, of its level; prose is read once; a float's caption, maths and a comment are not
+#: read; a binding is `{{...}}` and a citation `[@...]`; an abstract's text is under Abstract,
+#: and the text after it is not.
+LATEX_PRINTED_PLACES = (
+    ("\\section{{{}}}\n", ("heading1",)),
+    ("\\subsection*{{{}}}\n", ("heading2",)),
+    ("prose {} words ", ("prose",)),
+    ("\\emph{{{}}} ", ("prose",)),
+    ("\\footnote{{note {}}} ", ("prose",)),
+    ("\\begin{{figure}}\\caption{{cap {}}}\\end{{figure}}\n", ("hidden",)),
+    ("\\begin{{table}}\\caption{{tab {}}}\\mg{{table.{}}}\\end{{table}}\n", ("hidden", "table")),
+    ("\\[ {} = 1 \\]\n", ("hidden",)),
+    ("\\begin{{equation}}{}\\end{{equation}}\n", ("hidden",)),
+    ("$a {}$ ", ("hidden",)),
+    ("% {}\n", ("hidden",)),
+    ("\\mg{{results.{}}} ", ("bound",)),
+    ("\\cite{{{}}} ", ("cited",)),
+    ("\\begin{{thebibliography}}{{9}}\\bibitem{{a}} ref {}\\end{{thebibliography}}\n", ("hidden",)),
+    ("the `{}' and `{}' terms ", ("prose", "prose")),
+)  # fmt: skip
+
+
+@st.composite
+def latex_printed(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
+    """A LaTeX document with a word in every place of `LATEX_PRINTED_PLACES`, in an order
+    drawn, after an abstract with text of its own and words after it, under a title in the
+    preamble; and each word, with what the printed view makes of it. Every place is in every
+    document, so that a rule broken for one is seen in each. The abstract is in the body or,
+    as a class that prints it from there allows, in the preamble (round 1 of step 6)."""
+    filler = [*_spaced(FILLER)]
+    order = draw(st.permutations(range(len(LATEX_PRINTED_PLACES))))
+    between = draw(st.lists(st.sampled_from(filler), min_size=len(order) + 1,
+                            max_size=len(order) + 1))  # fmt: skip
+    planted: list[tuple[str, str]] = []
+
+    def key(kind: str) -> str:
+        planted.append((f"k{4101 + len(planted)}", kind))
+        return planted[-1][0]
+
+    preamble = draw(st.booleans())
+    text = f"\\documentclass{{article}}\n\\title{{T {key('hidden')}}}\n"
+    abstract = f"\\begin{{abstract}}abs {key('abstract')}\\end{{abstract}}\n"
+    text += (abstract + "\\begin{document}\n") if preamble else ("\\begin{document}\n" + abstract)
+    text += f"after {key('after')}\n"
+    for piece, index in zip(between, order, strict=False):
+        text += piece
+        template, kinds = LATEX_PRINTED_PLACES[index]
+        parts = [part.replace("{{", "{").replace("}}", "}") for part in template.split("{}")]
+        for part, kind in zip(parts, kinds, strict=False):
+            text += part + key(kind)
+        text += parts[-1]
+    text += between[-1] + "\\end{document}\n"
+    return text, planted
+
+
+#: Where a LaTeX document holds a word, as G14 reads it (`text/latex/words.py`): each `{}`
+#: holds a word, and its kind says what the words view makes of it. A word in prose, a
+#: heading, a footnote or a table's caption is read where it stands; one in maths, code, a
+#: figure's caption, a comment or a label is not; one an accent command or `\\-` splits is not
+#: read and is given as unread; and a count written as a subscript after a word's last letter
+#: is written `~2~`.
+LATEX_WORDS_PLACES = (
+    ("prose {} words ", ("read",)),
+    ("\\section{{{}}}\n", ("read",)),
+    ("\\emph{{{}}} ", ("read",)),
+    ("\\footnote{{note {}}} ", ("read",)),
+    ("\\begin{{table}}\\caption{{tab {}}}\\end{{table}}\n", ("read",)),
+    ("\\begin{{figure}}\\caption{{cap {}}}\\end{{figure}}\n", ("hidden",)),
+    ("$a {}$ ", ("hidden",)),
+    ("\\[ {} \\]\n", ("hidden",)),
+    ("\\texttt{{{}}} ", ("hidden",)),
+    ("% {}\n", ("hidden",)),
+    ("\\label{{{}}} ", ("hidden",)),
+    ("caf\\'e{} ", ("split",)),
+    ("{}co\\-op ", ("split",)),
+    ("{}X$_2$ ", ("subscript",)),
+)  # fmt: skip
+
+
+@st.composite
+def latex_words(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
+    """A LaTeX document with a word in every place of `LATEX_WORDS_PLACES`, in an order drawn,
+    under a title and after an abstract in the preamble; and each word, with what the words
+    view makes of it. Every place is in every document, so that a rule broken for one is seen
+    in each."""
+    filler = [*_spaced(FILLER)]
+    order = draw(st.permutations(range(len(LATEX_WORDS_PLACES))))
+    between = draw(st.lists(st.sampled_from(filler), min_size=len(order) + 1,
+                            max_size=len(order) + 1))  # fmt: skip
+    planted: list[tuple[str, str]] = []
+
+    def key(kind: str) -> str:
+        planted.append((f"k{4101 + len(planted)}", kind))
+        return planted[-1][0]
+
+    text = f"\\documentclass{{article}}\n\\title{{T {key('hidden')}}}\n"
+    text += f"\\abstract{{abs {key('read')}}}\n\\begin{{document}}\n"
+    for piece, index in zip(between, order, strict=False):
+        text += piece
+        template, kinds = LATEX_WORDS_PLACES[index]
+        parts = [part.replace("{{", "{").replace("}}", "}") for part in template.split("{}")]
+        for part, kind in zip(parts, kinds, strict=False):
+            text += part + key(kind)
+        text += parts[-1]
+    text += between[-1] + "\\end{document}\n"
+    return text, planted
+
+
+#: What G6 finds in a LaTeX document (`gates/writing.py`), each `{}` a word on a line of its
+#: own: a claim with a citation command beside it is supported, and one in a comment is no
+#: claim; a phrase G6 reports is found in prose and not in a comment; and a placeholder is found
+#: as typed, in a comment too.
+LATEX_WRITING_PLACES = (
+    ("Studies have shown that {} rose \\citep{{a}}.\n", "cited"),
+    ("Studies have shown that {} fell \\textcite{{b}}.\n", "cited"),
+    ("% Studies have shown that {} rose.\n", "none"),
+    ("We delve into {} here.\n", "phrase"),
+    ("% We delve into {} here.\n", "none"),
+    ("% TODO {}\n", "artefact"),
+    ("Studies have shown that {} rose.\n", "vague"),
+    # `\\nocite` prints nothing beside a claim, and a typed reference list is no text of the
+    # paper (round 1 of step 7b).
+    ("Studies have shown that {} rose \\nocite{{c}}.\n", "vague"),
+    ("\\begin{{thebibliography}}{{9}}\\bibitem{{g}} Garcia J. Todo lo que {} hay. 2020.\n"
+     "\\end{{thebibliography}}\n", "none"),
+    # A typed reference list is read as a cited entry's fields are (round 2 of step 7b).
+    ("\\begin{{thebibliography}}{{9}}\\bibitem{{h}} TODO find the journal {}.\n"
+     "\\end{{thebibliography}}\n", "artefact"),
+)  # fmt: skip
+#: Words between two places, more than G6's citation window, so that a claim stands near a
+#: citation only where one is planted beside it.
+_FAR = "word " * 60 + "\n"
+
+
+@st.composite
+def latex_writing(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
+    """A LaTeX document with every place of `LATEX_WRITING_PLACES`, in an order drawn, each
+    apart from the next; and each word planted, with what G6 makes of the line it is on. Every
+    place is in every document, so that a rule broken for one is seen in each."""
+    order = draw(st.permutations(range(len(LATEX_WRITING_PLACES))))
+    planted: list[tuple[str, str]] = []
+    # A package or a definition named for a note is no note, and nothing past the document's
+    # end prints (rounds 1 and 2 of step 7b).
+    text = ("\\documentclass{article}\n\\usepackage[final]{fixme}\n"
+            "\\newcommand{\\todo}[1]{\\textcolor{red}{TODO: #1}}\n\\begin{document}\n")  # fmt: skip
+    for index in order:
+        template, kind = LATEX_WRITING_PLACES[index]
+        key = f"k{4101 + len(planted)}"
+        planted.append((key, kind))
+        text += _FAR + template.replace("{{", "{").replace("}}", "}").replace("{}", key)
+    return text + _FAR + "\\end{document}\n% TODO cut\nXXX patients\n", planted
+
 
 #: What a display is written in: digits and the signs a number is written with, each of TeX's
 #: specials, and each character the values file writes another way (`build/latex_values.py`).
@@ -3420,6 +3650,10 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "latex refusals": latex_texts(),
     "latex sections": latex_texts(),
     "latex bindings": latex_texts(),
+    "latex citations": latex_texts(),
+    "latex printed": latex_texts(),
+    "latex words": latex_texts(),
+    "latex writing": latex_texts(),
     "latex escaped": latex_texts(),
     "hidden": texts(TERMS),
     "own words": texts(TERMS),

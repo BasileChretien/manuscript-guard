@@ -29,6 +29,31 @@ def _specs(table: dict[str, str]) -> dict[str, tuple[str, ...]]:
 
 
 _CITE = "*[p][p]{b}"
+#: natbib's and biblatex's citation commands, and whether each prints the authors' names in
+#: the sentence (narrative), as `@key` does in Markdown; `\\cite` does not. Each has a
+#: capitalised form.
+_CITATIONS = {
+    "cite": False, "nocite": False, "citep": False, "citet": True, "citealt": True,
+    "citealp": False, "citeauthor": True, "citeyear": False, "citeyearpar": False,
+    "citenum": False, "parencite": False, "textcite": True, "autocite": False,
+    "footcite": False, "footcitetext": False, "smartcite": False, "supercite": False,
+    "fullcite": False, "citetitle": False, "citetalias": True, "citepalias": False,
+    "citefullauthor": True, "footfullcite": False, "citeurl": False, "citedate": False,
+    "citeurldate": False, "notecite": False, "pnotecite": False, "fnotecite": False,
+}  # fmt: skip
+_MULTI_CITATIONS = {
+    "cites": False, "parencites": False, "textcites": True, "autocites": False,
+    "footcites": False, "smartcites": False, "supercites": False,
+}  # fmt: skip
+#: Every citation command the reader reads, the multi-citation forms among them.
+CITATIONS = {
+    **{name: narrative for table in (_CITATIONS, _MULTI_CITATIONS)
+       for name, narrative in table.items()},
+    **{name[0].upper() + name[1:]: narrative for table in (_CITATIONS, _MULTI_CITATIONS)
+       for name, narrative in table.items() if name != "nocite"},
+}  # fmt: skip
+_CITATION_NAMES = [name for name in CITATIONS if name.lower() not in _MULTI_CITATIONS]
+_MULTI_CITATION_NAMES = [name for name in CITATIONS if name.lower() in _MULTI_CITATIONS]
 _REF = "{b}"
 _SECTION = "*[p]{p}"
 _DEFINE = "*{c}[b][p]{d}"
@@ -41,7 +66,7 @@ COMMANDS = _specs(
             (
                 "emph", "textbf", "textit", "textsc", "textsf", "texttt", "textrm", "textup",
                 "textmd", "textsl", "textnormal", "underline", "mbox", "fbox", "textsuperscript",
-                "textsubscript", "enquote", "text", "intertext",
+                "textsubscript", "enquote", "text", "intertext", "citetext",
             ),
             "{p}",
         ),
@@ -79,6 +104,7 @@ COMMANDS = _specs(
         **dict.fromkeys(
             ("label", "ref", "eqref", "pageref", "autoref", "nameref", "cref", "Cref", "vref",
              "cpageref", "labelcref", "input", "include", "includeonly", "bibliography",
+             "setcitestyle", "citereset", "defcitealias",
              "bibliographystyle", "graphicspath", "linespread", "hypersetup", "geometry",
              "newgeometry", "pagestyle", "thispagestyle", "pagenumbering", "nocite", "cline",
              "newlength", "date"),
@@ -121,15 +147,11 @@ COMMANDS = _specs(
         **dict.fromkeys(("qtyrange", "SIrange"), "[b]{p}{p}{b}"),
         "si": "[b]{b}",
         "unit": "[o]{b}",
-        # Citations: the notes are read, the keys are not.
-        **dict.fromkeys(
-            ("cite", "citep", "citet", "citealt", "citealp", "citeauthor", "citeyear",
-             "citeyearpar", "citenum", "Citep", "Citet", "Citealt", "Citealp", "Citeauthor",
-             "parencite", "Parencite", "textcite", "Textcite", "autocite", "Autocite",
-             "footcite", "footcitetext", "smartcite", "Smartcite", "supercite", "fullcite",
-             "citetitle"),
-            _CITE,
-        ),
+        # Citations: the notes are read, the keys are not (`CITATIONS`).
+        **dict.fromkeys((name for name in _CITATION_NAMES if name != "nocite"), _CITE),
+        # The multi-citation forms: a global prenote and postnote in parentheses, blanked,
+        # then groups of notes and keys, as many as follow.
+        **dict.fromkeys(_MULTI_CITATION_NAMES, "(b)(b)" + "[p][p]{b}" * 16),
         # Definitions: what they define is checked, their bodies read where they stand.
         **dict.fromkeys(("newcommand", "renewcommand", "providecommand",
                          "DeclareRobustCommand"), _DEFINE),
@@ -201,6 +223,16 @@ LISTINGS = RAW - {"comment"}
 #: Tables an author types: a number in one is `hand-authored-table`, as one in a Markdown
 #: table's row is. Maths' alignments separate cells too, and are no tables.
 TYPED_TABLES = frozenset({"tabular", "tabular*", "tabularx", "tabulary", "longtable"})
+
+#: Floats: a journal does not count their words against the text's limit, as it counts a
+#: table or a figure as a display item.
+FLOATS = frozenset(
+    {"figure", "figure*", "table", "table*", "wrapfigure", "wraptable", "sidewaysfigure",
+     "sidewaystable"}
+)  # fmt: skip
+#: The floats that hold a figure, whose caption G14 does not read, as it does not read an
+#: image's caption in Markdown.
+FIGURES = frozenset({"figure", "figure*", "wrapfigure", "sidewaysfigure"})
 
 #: LaTeX's own parameters an author sets by defining them again, whose body is a size and
 #: prints nothing: `\\renewcommand{\\arraystretch}{1.5}` (round 1 of #400: its 1.5 failed G2).

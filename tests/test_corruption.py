@@ -6237,6 +6237,9 @@ _READS_LATEX = (
     "check_latex", "check_numbers", "check_bound_units", "check_small_cells",
     "check_synthetic_inputs", "check_citations", "check_journal", "check_language",
     "check_writing", "check_values",
+    # It reads the main text through G4's `main_text`, which gives a LaTeX manuscript as it
+    # prints (#414).
+    "check_package_doi",
 )  # fmt: skip
 
 

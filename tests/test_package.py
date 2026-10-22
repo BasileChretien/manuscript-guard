@@ -274,6 +274,7 @@ def _entries(root: Path) -> set[str]:
     return {entry.path for entry in plan_package(loaded, results).entries}
 
 
+@pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
 def test_a_design_record_git_does_not_track_goes_by_the_inputs_rule(project: Path) -> None:
     """Taken as the record only where the records are taken: one never committed is withheld
     as git does not track it, and as an input it is not said to be deposited."""

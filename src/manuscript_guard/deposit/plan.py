@@ -404,9 +404,10 @@ def _share_findings(project: Project, declared: dict[str, dict], shared: dict[st
 
 
 def _taken_as_record(file: Path, key: str, tracked: set[str] | None) -> bool:
-    """Whether the design records' loop takes the file: one on this computer, not a link,
-    and committed where the project is a repository (round on c4c78959). Otherwise the input
-    goes by the inputs' rule, as before."""
+    """Whether a declared input is taken as the design record: where the records' loop takes
+    it, on this computer and committed where the project is a repository (round on c4c78959),
+    and not a link, which the loop would follow and is refused here. Otherwise the input goes
+    by the inputs' rule, as before. An undeclared record that is a link is still followed."""
     return file.is_file() and not file.is_symlink() and (tracked is None or key in tracked)
 
 

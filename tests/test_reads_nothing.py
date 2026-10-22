@@ -249,6 +249,10 @@ LATEX = {
     "lookup": ("reads", ("lookup", "{project}", "--dry-run")),
     "methods": ("refuses", ("methods", "{project}")),
     "models": ("refuses", ("models", "{project}")),
+    # It packages the results, the scripts and the inputs whatever the format, and the `.tex`
+    # sources with `--with-manuscript`; BOUND.md does not read LaTeX's bindings yet, and the
+    # package says so with a warning (`package-bound-not-read`).
+    "package": ("reads", ("package", "{project}")),
     "palettes": ("no manuscript", ("palettes",)),
     "passages": ("refuses", ("passages", "{project}")),
     "proof": ("refuses", ("proof", "{project}/proof.pdf", "{project}")),

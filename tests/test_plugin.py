@@ -866,6 +866,7 @@ NAMED_NOWHERE = {
     "build/package/": "written by `package`",
     "review/comments/": "written by `import --apply`, one record per commenter per build",
     "journals/shortlist.yaml": "written with the author by the journal-profile skill",
+    "design/registrations/": "written by `lookup --registrations`",
     "design/data_sources.yaml": "written with the author by the data-sources skill",
     "design/data_dictionary.yaml": "written with the author by the data-dictionary skill",
     "analysis/00_feasibility.py": "the feasibility script a project writes, an example",

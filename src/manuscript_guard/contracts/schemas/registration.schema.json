@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://manuscript-guard.org/schemas/registration/1",
+  "title": "manuscript-guard registration record",
+  "description": "What a registry said of one of the study's registrations, on one day. `manuscript-guard lookup --registrations` writes it to design/registrations/<id>.yaml for ClinicalTrials.gov, the EU PAS register, OSF and ISRCTN, with a digest of what it says; G12 reads it offline. A registry it does not ask, PROSPERO among them, has a record copied by hand (`source: by-hand`), which names who copied it and when, and has no digest.",
+  "type": "object",
+  "required": ["schema", "id", "registry", "source", "status"],
+  "additionalProperties": false,
+  "$defs": {
+    "text": { "type": "string", "pattern": "\\S" },
+    "date": {
+      "type": "string",
+      "pattern": "^\\d{4}(-\\d{2}(-\\d{2})?)?$",
+      "description": "A date as far as the registry gives it: a day, a month or a year."
+    },
+    "section": {
+      "type": "object",
+      "required": ["label", "text"],
+      "additionalProperties": false,
+      "properties": {
+        "label": { "$ref": "#/$defs/text", "description": "The registry's own name for the field." },
+        "role": {
+          "enum": ["primary", "secondary", "other", "outcomes"],
+          "description": "For an outcome field: primary or secondary where the registry keeps them apart, `other` for ClinicalTrials.gov's other pre-specified outcomes, `outcomes` for a field that holds them all."
+        },
+        "text": { "$ref": "#/$defs/text" }
+      }
+    },
+    "sections": { "type": "array", "items": { "$ref": "#/$defs/section" } },
+    "dates": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "registered": { "$ref": "#/$defs/date", "description": "When the registry received the registration." },
+        "study_start": { "$ref": "#/$defs/date", "description": "The study's actual start as the registry gives it: ClinicalTrials.gov's start date of type ACTUAL, the EU PAS register's actual start of data collection, ISRCTN's recruitment start. An estimated or planned date is not kept." },
+        "analysis_start": { "$ref": "#/$defs/date", "description": "The EU PAS register's actual start of data analysis." },
+        "updated": { "$ref": "#/$defs/date", "description": "The registry's last update of the record." }
+      }
+    }
+  },
+  "properties": {
+    "schema": { "const": "manuscript-guard/registration/1" },
+    "id": { "$ref": "#/$defs/text" },
+    "registry": { "$ref": "#/$defs/text" },
+    "source": { "enum": ["registry", "by-hand"] },
+    "asked_on": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+    "copied_on": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+    "copied_by": { "$ref": "#/$defs/text", "description": "Who copied a by-hand record from the registry's page." },
+    "status": { "enum": ["found", "absent", "unresolvable"] },
+    "why": { "$ref": "#/$defs/text" },
+    "title": { "$ref": "#/$defs/text" },
+    "dates": { "$ref": "#/$defs/dates" },
+    "study_type": { "enum": ["interventional", "observational"] },
+    "design": { "$ref": "#/$defs/text" },
+    "withdrawn": { "type": "boolean" },
+    "sections": { "$ref": "#/$defs/sections" },
+    "first_version": {
+      "type": "object",
+      "required": ["sections"],
+      "additionalProperties": false,
+      "description": "OSF only, where the registration was updated after it was first registered: what it said first. The outcomes are held to this version.",
+      "properties": {
+        "updated": { "$ref": "#/$defs/date" },
+        "reason": { "$ref": "#/$defs/text", "description": "The justification OSF holds for the update." },
+        "sections": { "$ref": "#/$defs/sections" }
+      }
+    },
+    "answers_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "source": { "const": "by-hand" } } },
+      "then": { "required": ["copied_on", "copied_by"], "properties": { "status": { "const": "found" } } },
+      "else": { "required": ["asked_on", "answers_sha256"] }
+    },
+    {
+      "if": { "properties": { "status": { "const": "found" } } },
+      "then": { "required": ["dates", "sections"], "properties": { "dates": { "required": ["registered"] } } },
+      "else": { "required": ["why"] }
+    }
+  ]
+}

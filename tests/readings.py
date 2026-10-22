@@ -690,6 +690,46 @@ def _planned_results() -> Reading:
     return read
 
 
+@reading("registration named")
+def _registration_named() -> Reading:
+    from manuscript_guard.gates.registration import named_in
+    from manuscript_guard.registrations import Declared, identify
+    from manuscript_guard.text.masking import blank_comments
+
+    def read(given: dict[str, str]) -> bool:
+        """Whether the manuscript gives the registration, as G12 reads it: comments out."""
+        registry, kept = identify(given["id"])
+        entry = Declared(given["id"], kept, registry, None, (), False, 0)
+        return named_in(blank_comments(given["text"]), entry)
+
+    return read
+
+
+@reading("registration identifiers")
+def _registration_identifiers() -> Reading:
+    from manuscript_guard.registrations import NAMED_IN_TEXT
+
+    return NAMED_IN_TEXT.findall
+
+
+@reading("retrospective said")
+def _retrospective_said() -> Reading:
+    from manuscript_guard.gates.registration import says_retrospective
+
+    return says_retrospective
+
+
+@reading("registered quote")
+def _registered_quote() -> Reading:
+    from manuscript_guard.gates.registration import fold
+
+    def read(given: dict[str, str]) -> bool:
+        """Whether a quote of a registered outcome is in the registry's record of it."""
+        return fold(given["quote"]) in fold(given["record"])
+
+    return read
+
+
 @reading("plan variables")
 def _plan_variables() -> Reading:
     from manuscript_guard.gates.collection import variables_named

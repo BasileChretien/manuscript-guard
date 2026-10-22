@@ -186,7 +186,9 @@ time, which a copy resets, nor invent a version. The first run without `fingerpr
 refused and prints the pin to paste. A new extract is refused under the old pin, so the date
 changes with the data. A date of the data typed into the script as a string, rather than
 declared this way, is warned of where the sentence dates the data (`data-date-not-declared`).
-Use the name the source has in `design/data_sources.yaml` where the project keeps one.
+Use the name the source has in `design/data_sources.yaml` where the project keeps one:
+`check` warns of a dataset whose name is none of the sources the record chose
+(`dataset-not-chosen`).
 
 ## Describing a model
 

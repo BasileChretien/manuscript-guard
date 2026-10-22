@@ -19,7 +19,9 @@ What the record says of the chosen sources is held to the rest of the paper:
 * the Data availability statement saying a chosen source is had on request when anyone may
   download it, or publicly available when somebody decides who has it
   (`data-statement-route-differs`), or naming none of the chosen sources
-  (`data-statement-source-unnamed`): G4, warnings.
+  (`data-statement-source-unnamed`): G4, warnings;
+* a dataset the analysis declares with `dataset()` under a name that is none of the ids the
+  decision chose (`dataset-not-chosen`, G12, a warning).
 """
 
 from __future__ import annotations
@@ -30,6 +32,7 @@ from typing import Any
 
 from manuscript_guard.contracts._schema import ContractError, read_structured, read_text, validate
 from manuscript_guard.contracts.project import Project
+from manuscript_guard.contracts.results import Fragment, Results
 from manuscript_guard.data_sources import (
     ACCESS_FIELDS,
     PAGES,
@@ -43,6 +46,7 @@ from manuscript_guard.data_sources import (
     route,
     route_differs,
 )
+from manuscript_guard.datasets import slug
 from manuscript_guard.findings import FAIL, INFO, WARN, Finding, Report
 from manuscript_guard.gates.custodian import minimum_cell_count
 from manuscript_guard.gates.journal_quotes import _on_page
@@ -88,8 +92,9 @@ def check_data_sources(project: Project, stage: str) -> Report:
                     Finding(
                         GATE,
                         "data-source-undecided",
-                        "no dataset is chosen in the record, so paper.yaml, the plan and the "
-                        "Data availability statement are not held to it",
+                        "no dataset is chosen in the record, so paper.yaml, the plan, the "
+                        "Data availability statement and the datasets the analysis declares "
+                        "are not held to it",
                         severity=INFO,
                         path=path,
                         hint="once the author has chosen, write `decision:` with who chose and "
@@ -149,6 +154,63 @@ def check_statement_sources(project: Project) -> Report:
         source = by_id[source_id]
         findings.append(_route_finding(source, said, path, statement))
     return Report(tuple(findings))
+
+
+def check_declared_datasets(project: Project, results: Results) -> Report:
+    """G12: each dataset the analysis declares with `dataset()` is named by an id the
+    record's decision chose.
+
+    A dataset's name is meant to be the id of the source in the record (Basile, 2026-10-21),
+    so that the record of how the data were found and reached and the analysis that read
+    them name one source alike. A name that is not chosen is the analysis reading another
+    source than the one decided on, or the two naming one source differently; either the
+    analysis or the record is to change, so it is a warning. The name compared is the one
+    the fragment's `datasets` block records, not its results key, which writes a hyphen as
+    an underscore. Each name is said once, at the first fragment that declares it. A record
+    with no decision, or one its schema refuses, holds nothing to it: G12's other check says
+    so."""
+    document, _report = read_record(project)
+    decision = (document or {}).get("decision") or {}
+    picked = list(decision.get("chosen") or [])
+    if not picked:
+        return Report()
+    findings: list[Finding] = []
+    said: set[str] = set()
+    for fragment in results.fragments:
+        for name in sorted(fragment.datasets):
+            if name not in picked and name not in said:
+                said.add(name)
+                findings.append(_not_chosen(name, fragment, document, picked))
+    return Report(tuple(findings))
+
+
+def _not_chosen(name: str, fragment: Fragment, document: dict[str, Any],
+                picked: list[str]) -> Finding:  # fmt: skip
+    rejected = {entry["source"] for entry in (document["decision"].get("rejected") or [])}
+    if name in rejected:
+        what = "; the record rejected it"
+    elif name in candidates_by_id(document):
+        what = "; the record considered it and did not choose it"
+    else:
+        what = ""
+    alike = [source for source in picked if slug(source) == slug(name)]
+    if alike:
+        hint = (f"the record writes it {alike[0]!r}: give the dataset that name where "
+                f"{fragment.generated_by} declares it")  # fmt: skip
+    else:
+        hint = (f"name the dataset by the id {RECORD.as_posix()} gives the source the analysis "
+                "read; if it read a source the record did not choose, record the choice under "
+                "`decision:`, with who made it and when")  # fmt: skip
+    return Finding(
+        GATE,
+        "dataset-not-chosen",
+        f"dataset {name!r}, which {fragment.path.name} declares, is not a source the record of "
+        f"data sources chose ({', '.join(picked)}){what}",
+        severity=WARN,
+        path=fragment.path,
+        context=f"written {fragment.generated_at} by {fragment.generated_by}",
+        hint=hint,
+    )
 
 
 def _holding(project: Project, heading: str | None):
@@ -432,4 +494,5 @@ def _warn(code: str, message: str, path, hint: str | None = None) -> Finding:
     return Finding(GATE, code, message, severity=WARN, path=path, hint=hint)
 
 
-__all__ = ["check_data_sources", "check_statement_sources", "read_record"]
+__all__ = ["check_data_sources", "check_declared_datasets", "check_statement_sources",
+           "read_record"]  # fmt: skip

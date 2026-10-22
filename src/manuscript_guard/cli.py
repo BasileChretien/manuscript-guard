@@ -78,7 +78,11 @@ from manuscript_guard.gates import (
 )
 from manuscript_guard.gates.custodian import check_restricted_inputs, check_small_cells
 from manuscript_guard.gates.data_quality import check_data_quality, check_quality_reported
-from manuscript_guard.gates.data_sources import check_data_sources, check_statement_sources
+from manuscript_guard.gates.data_sources import (
+    check_data_sources,
+    check_declared_datasets,
+    check_statement_sources,
+)
 from manuscript_guard.gates.data_statement import check_package_doi
 from manuscript_guard.gates.design_review import check_design_rounds
 from manuscript_guard.gates.figure_alt import check_figure_alt
@@ -179,6 +183,7 @@ def _run_gates(
         # it and not the plan's.
         ("G12", lambda: check_registration(project, results, chosen)),
         ("G12", lambda: check_data_sources(project, chosen)),
+        ("G12", lambda: check_declared_datasets(project, results)),
         ("G7", lambda: check_method_passages(project)),
         ("G12", lambda: check_methods_review(project)),
         ("G8", lambda: check_consistency(results)),

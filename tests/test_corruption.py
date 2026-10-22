@@ -6122,7 +6122,7 @@ _NOT_THE_MANUSCRIPT = (
     "check_review", "check_freshness", "check_figures", "check_figure_reviews",
     "check_literature_chain", "check_shortlist", "check_design", "check_design_rounds",
     "check_consistency", "check_restricted_inputs", "check_relations", "check_data_sources",
-    "check_datasets",
+    "check_datasets", "check_declared_datasets",
     "check_method_passages", "check_methods_review",
     # It finds the figures placed in the Markdown sources, so it reads nothing of a LaTeX
     # manuscript and says nothing of one; it runs, as G3's other check does (round 1 of #387).
@@ -9319,6 +9319,105 @@ def test_a_statement_that_says_otherwise_than_the_route_is_said(project: Path) -
     set_statement(project, "The ENCD data are not publicly available; they can be had on "
                            "application to its committee.")  # fmt: skip
     assert _sources_said(project, document) == []
+
+
+def _renamed(document: dict, old: str, new: str) -> dict:
+    """The record with the candidate `old` given the id `new`, wherever the record names it."""
+    for candidate in document["candidates"]:
+        if candidate["id"] == old:
+            candidate["id"] = new
+    for entry in document.get("ranking") or []:
+        if entry["source"] == old:
+            entry["source"] = new
+    decision = document["decision"]
+    decision["chosen"] = [new if source == old else source for source in decision["chosen"]]
+    return document
+
+
+def _not_chosen(root: Path, document=None) -> list:
+    """G12's `dataset-not-chosen`, with the record written as `document` (the one of
+    tests/test_data_sources.py, which chose the open archive, `ora`, by default)."""
+    from test_data_sources import write_record
+
+    from manuscript_guard.gates.data_sources import check_declared_datasets
+
+    write_record(root, document)
+    project, _ = load_project(root)
+    _namespace, results, _literature, _load = load_namespace(project)
+    return list(check_declared_datasets(project, results).findings)
+
+
+def test_a_dataset_the_record_did_not_choose_is_warned_of(project: Path) -> None:
+    """The example declares its reports as the dataset `reports`, and keeps no record of data
+    sources, so nothing is said. A record that chose another source is warned of by G12,
+    through the runner as `check` calls it, at the fragment that declares the dataset, with
+    the dataset's name and the ids the record chose."""
+    from test_data_sources import write_record
+
+    from manuscript_guard.cli import _run_gates
+
+    def said() -> list:
+        report, *_ = _run_gates(project, stage="submission")
+        return [f for f in report.findings if f.code == "dataset-not-chosen"]
+
+    assert said() == []
+    write_record(project)
+    [found] = said()
+    assert (found.gate, found.severity) == ("G12", "warn")
+    assert found.message.startswith("dataset 'reports', which 01_disproportionality.json "
+                                    "declares, is not a source the record of data sources "
+                                    "chose (ora)")  # fmt: skip
+    assert found.path == project / "results" / "01_disproportionality.json"
+    assert "analysis/01_disproportionality.py" in found.context
+
+
+def test_a_dataset_the_record_considered_or_rejected_says_which(project: Path) -> None:
+    from test_data_sources import record
+
+    [found] = _not_chosen(project, _renamed(record(), "encd", "reports"))
+    assert "considered it and did not choose it" in found.message
+    document = _renamed(record(), "encd", "reports")
+    document["decision"]["rejected"] = [{"source": "reports", "why": "four months away"}]
+    [found] = _not_chosen(project, document)
+    assert "rejected it" in found.message
+    [found] = _not_chosen(project)
+    assert "considered" not in found.message and "rejected" not in found.message
+
+
+def test_a_dataset_the_record_chose_says_nothing(project: Path) -> None:
+    """The baseline: the dataset is named by the id of the source chosen, alone or beside
+    another. A record with no decision, or out of shape, holds nothing to it here; G12's
+    other check says so."""
+    from test_data_sources import record
+
+    assert _not_chosen(project, _renamed(record(), "ora", "reports")) == []
+    document = _renamed(record(), "encd", "reports")
+    document["decision"]["chosen"] = ["ora", "reports"]
+    assert _not_chosen(project, document) == []
+    document = record()
+    del document["decision"]
+    assert _not_chosen(project, document) == []
+    document = record()
+    document["decision"]["chosen"] = "ora"
+    assert _not_chosen(project, document) == []
+
+
+def test_a_dataset_is_compared_by_its_name_and_not_its_key(project: Path) -> None:
+    """A record's id holds hyphens and no underscore, and a results key writes a hyphen as an
+    underscore: the name the fragment's `datasets` block records is what is compared. A name
+    that differs from a chosen id only there is told the id as the record writes it."""
+    from test_data_sources import record
+
+    fragment = project / "results" / "01_disproportionality.json"
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    chosen = _renamed(record(), "ora", "open-reports")
+    for name, said in (("open-reports", 0), ("open_reports", 1)):
+        document["datasets"] = {name: next(iter(document["datasets"].values()))}
+        fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+        write_digest(fragment)
+        found = _not_chosen(project, chosen)
+        assert len(found) == said, name
+    assert "the record writes it 'open-reports'" in found[0].hint
 
 
 #: What G4 says of the figure files.

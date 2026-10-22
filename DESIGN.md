@@ -6704,10 +6704,11 @@ dataset's date printed in another English than `paper.yaml` declares now
 
 The name is the source's id in `design/data_sources.yaml` where the project keeps one, so
 that the record of how the data were found and reached, and the analysis that read them,
-name one source alike. Nothing reads the record yet (Known gaps). The example declares its
-simulated reports as a dataset generated on 3 August 2026 to cover 2015 to 2024, its
-reports' years held to them, and its Methods print both that and the years the reports run
-over.
+name one source alike. G12 warns where it is none of the ids the record chose
+(`dataset-not-chosen`); the record's coverage is not compared with the dataset's (Known
+gaps). The example declares its simulated reports as a dataset generated on 3 August 2026
+to cover 2015 to 2024, its reports' years held to them, and its Methods print both that and
+the years the reports run over.
 
 ## The datasets considered are a record, and the one chosen is held to it
 
@@ -6787,6 +6788,19 @@ the author's and the custodian's to settle, and a gate that blocked on a quote w
 a page that moved. The reading of the statement is held over generated inputs: every
 phrasing, denied and not, under an open and a restricted source, and every rendering of a
 source's name, in drawn text (`tests/test_properties.py`); the limits are in Known gaps.
+
+**The datasets the analysis declares are held to it too**, built once `dataset()` and the
+record were both on main, as Basile chose on 2026-10-21. A dataset's name is the id of its
+source in the record, and G12 warns where a fragment's `datasets` block names one that is
+none of the ids under `decision.chosen` (`dataset-not-chosen`). The finding names the
+dataset and the ids chosen, and says whether the record rejected it or considered it and
+chose another. The name compared is the one the block records, not the results key, which
+writes the record's hyphen as an underscore; a name that differs from a chosen id only there
+is told the id as the record writes it. It is a warning: either the analysis read another
+source than the one decided on, or the two name one source differently, and which of them
+changes is the author's to say. A record with no decision, or one its schema refuses, holds
+nothing to it, and G12's other findings say why. Each name is said once, at the first
+fragment that declares it.
 
 ## What a change makes stale
 
@@ -14798,9 +14812,11 @@ Open, recorded as each change landed:
   `paper.yaml` changed afterwards is warned of (`dataset-date-english`), not failed. R reads
   `english_variant` from its own line of `paper.yaml`, not as YAML, and takes British
   English where it finds none there: a value in a flow mapping is not seen.
-- **`design/data_sources.yaml` is not read.** A dataset whose name is not a source the
-  record chose is not said, and the record's coverage is not compared with the declared one.
-  That waits for the record to be on main (Basile, 2026-10-21).
+- **A chosen source's coverage is not compared with a dataset's.** The record says what a
+  candidate covers in words (`covers.period`, "1968 to present", "2004 Q1 onwards"), and
+  `dataset()`'s `covers` is the extract's, which may rightly be narrower than the source's.
+  Nothing reads one against the other; only a dataset's name is held to the record
+  (`dataset-not-chosen`).
 - **"After today" is the machine's today.** An extraction dated today in one timezone may be
   tomorrow on the machine that runs the analysis, and is refused there.
 
@@ -14845,6 +14861,12 @@ Open, recorded as each change landed:
 
 Closed since, and why each mattered (an open gap goes above this line):
 
+- **A dataset's name was not held to the record of data sources.** The name was meant to be
+  the id of its source in `design/data_sources.yaml`, and nothing said where it was not: an
+  analysis could read another source than the one the record chose, or name the chosen one
+  otherwise, with every gate green. G12 now warns of a dataset the results declare whose
+  name is none of the ids under `decision.chosen` (`dataset-not-chosen`), and names it and
+  the ids chosen. The comparison of coverage is still open, above.
 - **A reply in Word with no author was listed again as a co-author's comment** (round 1 of
   #367), since the import's comment reader named such a comment "an unnamed reviewer" and
   the reader of replies did not. Said twice, it would now have been filed as a comment to

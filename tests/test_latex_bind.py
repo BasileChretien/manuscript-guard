@@ -80,8 +80,14 @@ def test_bind_offers_and_writes_a_latex_binding(
     assert main(["bind", str(project)]) == 1
     said = capsys.readouterr().out
     assert "replace it with \\mg{results.ror.point}" in said, said
-    # Not offered where the reader would refuse it (round 1 of step 12).
+    # Not offered where the reader would refuse it (round 1 of step 12), and `--only` says
+    # why (round 2).
     assert "the reader would refuse it there" in said, said
+    line = next(number for number, text in enumerate(twin.read_text(encoding="utf-8")
+                                                      .splitlines(), 1) if "\\num{" in text)
+    assert main(["bind", str(project), "--apply", "--only",
+                 f"manuscript/main.tex:{line}"]) == 2  # fmt: skip
+    assert "siunitx" in capsys.readouterr().err
     main(["bind", str(project), "--apply"])
     written = twin.read_text(encoding="utf-8")
     assert "The estimate was \\mg{results.ror.point} again" in written, written
@@ -101,6 +107,18 @@ def test_bind_writes_nothing_past_a_files_first_refusal(
     assert "past the file's first refusal" in capsys.readouterr().out
     main(["bind", str(project), "--apply"])
     assert twin.read_text(encoding="utf-8") == before
+
+
+def test_a_tree_refusal_above_a_number_does_not_keep_its_binding_back(
+    project: Path, twin: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An `\\input` of a file set aside is a refusal of the tree, above the number, which the
+    binding does not move (round 2 of step 12)."""
+    point = _display(project, "results.ror.point")
+    _typed_before(twin, "\\section{Introduction}", "\\input{_drafts/old}")
+    _typed_before(twin, "\\section{Discussion}", f"The estimate was {point} again.\n")
+    main(["bind", str(project)])
+    assert "replace it with \\mg{results.ror.point}" in capsys.readouterr().out
 
 
 def test_bind_pointers_says_latex_numbers_its_tables(
@@ -143,7 +161,8 @@ def test_init_latex_passes_over_drafts_set_aside(tmp_path: Path) -> None:
     (tmp_path / "manuscript" / "_drafts").mkdir()
     (tmp_path / "manuscript" / "_drafts" / "notes.md").write_text("Notes.\n", encoding="utf-8")
     assert main(["init", str(tmp_path), "--latex"]) == 0
-    assert "`manuscript/mgvalues.sty` by" in (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
+    rules = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
+    assert "`manuscript/mgvalues.sty` by" in rules and "`render`" not in rules
 
 
 def test_init_latex_beside_a_markdown_manuscript_makes_nothing(

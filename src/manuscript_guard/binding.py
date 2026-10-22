@@ -68,8 +68,11 @@ class Unbound:
         return f"\\mg{{{key}}}" if self.latex else f"{{{{{key}}}}}"
 
 
-def unbound(project: Project, namespace: dict[str, Value]) -> list[Unbound]:
-    """Every number in the manuscript that nothing accounts for, with its way out."""
+def unbound(project: Project, namespace: dict[str, Value], *,
+            offers: bool = True) -> list[Unbound]:  # fmt: skip
+    """Every number in the manuscript that nothing accounts for, with its way out. Without
+    `offers`, a LaTeX binding is not read in its file to see whether it can be offered, which
+    the note on a saved file does not need (round 2 of step 12)."""
     classifier = Classifier.load(project.extra_conventions, project.extra_terms)
 
     # Display strings first, then the same with separators stripped, so a literal typed
@@ -82,7 +85,7 @@ def unbound(project: Project, namespace: dict[str, Value]) -> list[Unbound]:
 
     found: list[Unbound] = []
     if _is_latex(project):
-        return _latex_unbound(project, classifier, by_display)
+        return _latex_unbound(project, classifier, by_display, offers=offers)
     for path in source_files(project.path("manuscript")):
         text = read_text(path)
         headings = heading_index(text)
@@ -96,8 +99,8 @@ def unbound(project: Project, namespace: dict[str, Value]) -> list[Unbound]:
     return found
 
 
-def _latex_unbound(project: Project, classifier: Classifier,
-                   by_display: dict[str, list[str]]) -> list[Unbound]:  # fmt: skip
+def _latex_unbound(project: Project, classifier: Classifier, by_display: dict[str, list[str]],
+                   *, offers: bool = True) -> list[Unbound]:  # fmt: skip
     """Each file of a LaTeX manuscript as G2 reads it, through the include tree, with its
     rules' scan. A number with one key that reads the same is offered only where the reader
     reads the binding written there (round 1 of step 12)."""
@@ -122,7 +125,7 @@ def _latex_unbound(project: Project, classifier: Classifier,
             if stop is not None and atom.start >= stop:
                 why = ("it stands past the file's first refusal, where the reader reads the "
                        "file as typed")  # fmt: skip
-            elif not _reads(item, read.text):
+            elif offers and not _reads(item, read.text):
                 why = "the reader would refuse it there, as it refuses one in siunitx"
             else:
                 why = ""
@@ -150,6 +153,10 @@ def _reads(item: Unbound, text: str) -> bool:
     after = _first_refusal(item, changed)
     if before is None:
         return after is None
+    # A refusal of the tree above the number, an `\\input` of a file set aside, stays where
+    # it is; one below it moves with the binding (round 2 of step 12).
+    if before < item.start:
+        return after == before
     return after == before + len(binding) - (item.end - item.start)
 
 
@@ -301,6 +308,10 @@ def select(items: list[Unbound], wanted: list[str], root: Path) -> list[Unbound]
         if not found:
             near = ", ".join(sorted(by_label)[:6]) or "none"
             raise SelectionError(f"nothing to bind at {selector!r}. Suggestions here: {near}")
+        refused = next((item for item in found if item.not_offered), None)
+        if refused is not None:
+            raise SelectionError(f"{selector} is not applied: {refused.not_offered}. Write the "
+                                 "binding by hand where a binding can stand")  # fmt: skip
         undecided = [item for item in found if not item.certain]
         if undecided:
             listed = ", ".join(undecided[0].binding(key)

@@ -1092,7 +1092,7 @@ def _latex_note(path: Path) -> str | None:
         return None
     wanted = path.resolve()
     namespace = load_namespace(project)[0]
-    loose = [(item.line, item.text) for item in unbound(project, namespace)
+    loose = [(item.line, item.text) for item in unbound(project, namespace, offers=False)
              if item.path.resolve() == wanted]  # fmt: skip
     if not loose:
         return None

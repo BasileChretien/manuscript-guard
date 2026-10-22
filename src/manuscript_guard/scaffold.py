@@ -161,7 +161,8 @@ LATEX_MANUSCRIPT = """\
 
 \\section{{Discussion}}
 
-% Once the manuscript cites, its references are those of literature/references.bib:
+% Once the manuscript cites: `build` puts literature/references.bib beside this file and
+% compiles there; an editor compiling here needs a copy of it beside this file.
 % \\bibliographystyle{{plain}}
 % \\bibliography{{references}}
 
@@ -440,10 +441,12 @@ def _in_latex(rules: str) -> str:
     file among the files written by a command (step 12 and its round 1)."""
     for key in ("results.<key>", "lit.<key>"):
         rules = rules.replace(f"{{{{{key}}}}}", f"\\mg{{{key}}}")
-    return rules.replace(
+    rules = rules.replace(
         "`results/` is written by the analysis, ",
         "`results/` is written by the analysis, `manuscript/mgvalues.sty` by\n   "
         "`manuscript-guard values` from it, ", 1)
+    # `render` writes Markdown, and refuses a LaTeX manuscript (round 2 of step 12).
+    return rules.replace("`manuscript-guard build`, `render`, ", "`manuscript-guard build`, ", 1)
 
 
 def rules_to_add(root: Path, *, latex: bool = False) -> str | None:

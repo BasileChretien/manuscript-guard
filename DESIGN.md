@@ -1781,6 +1781,19 @@ The result is compiled and packed by the code above, and checked three times:
   pictures (round 1 of step 12, part 2).
 - At a revision, a LaTeX manuscript's pack has no marked-up copy: `build --marked-up` makes
   Word copies, and `submit` says so in a note (step 10).
+- A LaTeX manuscript's `\title` is not compared with paper.yaml's title, where a Markdown
+  file's header title is (`two-titles`), and the PDF prints the `\title` (round 1 of step
+  13).
+- G7's text recycling places a passage that runs on past an `\input` at its first file only,
+  ending on its first line there (step 13).
+- G7's text recycling does not compare a caption `\subfloat[...]` takes in its option, nor a
+  `longtable`'s `\caption`, which the view blanks with the table's cells (round 2 of step 13).
+- Past a refusal of the reader in a supplement's file, G16 reads that file's bindings by
+  their shape, one in a comment among them; the refusal fails the file in G2 (round 2 of
+  step 13). Past a refusal in any file, the compared view counts a brace in a comment the
+  reader did not read as a group's, where it marks a quotation (round 3), and an option of a
+  quotation's command whose braces do not close in its paragraph ends at its first `]`
+  (round 4).
 - `build --latex` refuses Markdown that G2's Markdown reader and pandoc read otherwise, and
   says where the digits part: measured, 38 of 180 of the suite's generated files (`texts()`),
   which hold fences closed by a line separator, `:::` divs and a YAML block left open at the
@@ -2289,6 +2302,35 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
     reads; where the reader refuses a file, it says so and keeps the printed copy only.
     `review --suggestions` still refuses a LaTeX manuscript: its edits go into a Word copy.
     Tests: `tests/test_latex_panel.py`.
+13. The last checks. Until each reads LaTeX, a LaTeX manuscript fails `check --submission` on
+    its `not-read-in-latex`. Built in parts. The first: the checks merged after step 8 read
+    it. G4's check of the sources the Data availability statement names reads the main text
+    as it prints (`main_text`), and places its finding in the `.tex` file the statement's
+    heading is typed in. G7's text recycling reads each document as it prints
+    (`printed_of`), the main text and the supplement, by its parts as Markdown's headings
+    give them, a `\cite` as `[@key]`, in the view `printed(..., compared=True)` writes: a
+    float's caption, or a `\subcaption`, as a paragraph of its own, which the word counts'
+    view leaves out, and a quotation csquotes' commands mark (`\enquote`, `\textquote` and
+    `\blockquote`; the `c` forms of the last two, and the `\foreign...`, `\hyphen...` and
+    `\hybrid...` forms) or a `quote`, `quotation` or `displayquote` environment holds,
+    between `QUOTE_OPEN` and
+    `QUOTE_CLOSE`, which the comparison counts as quoted, one inside another the outer's
+    (rounds 1 and 2). A file
+    nothing inputs is compared on its own, as G2 reads it (round 1). A passage is placed at
+    the `.tex` file its first word is typed in, and at the lines there of its first and last
+    words; where the last is in another file, the passage ends on its first line. BUILD's
+    Markdown checks (`check_shapes`, `check_tex`) do not run on a LaTeX manuscript, and
+    nothing is said: its build is checked by `check_latex`, which reads it as the reader
+    does, and by its compile (`_MARKDOWN_BUILD`); its `\title` against paper.yaml's is a
+    known gap.
+    G16's check that the Methods or the supplement bind a count of the data's checks
+    (`check_quality_reported`, #389) reads a LaTeX manuscript's Methods as G9 does, and the
+    bindings of its supplement's files, one nothing inputs among them. `_NOT_READ_IN_LATEX`
+    is then empty. Left: G4's figure legends, which are a float's caption, and G2's pointers
+    to tables and figures, each a `not-read-in-latex` for its part. Tests:
+    `tests/test_recycling.py`, `tests/test_corruption.py`, and
+    `_planted_latex_recycling` in `tests/test_properties.py`, with `BROKEN` rules for the
+    file and the lines.
 
 ## Zotero is never on the critical path
 

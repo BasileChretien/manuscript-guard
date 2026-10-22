@@ -52,7 +52,7 @@ from __future__ import annotations
 import re
 from bisect import bisect_right
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from manuscript_guard.contracts._schema import read_text
@@ -69,7 +69,9 @@ from manuscript_guard.literature.sources import (
 )
 from manuscript_guard.policy import DRAFTING, INTERNAL_REVIEW, stage_index
 from manuscript_guard.text.blocks import find_headings
+from manuscript_guard.text.latex.printed import QUOTE_CLOSE, QUOTE_OPEN
 from manuscript_guard.text.masking import blank_comments, fenced_blocks, front_matter_end, mask
+from manuscript_guard.text.reader import LATEX, manuscript_format
 from manuscript_guard.text.section_names import (
     methods_sections,
     names_abstract,
@@ -101,6 +103,23 @@ _APART = "\x01"
 _TABLE_LINE = re.compile(r"^[ \t]*(?:\||\+[-=:+]+)[^\n]*", re.MULTILINE)
 #: A line of a block quotation.
 _BLOCK_QUOTE = re.compile(r"^[ \t]{0,3}>[^\n]*", re.MULTILINE)
+#: Where a LaTeX document's view opens or closes a quotation marked with a command.
+_MARKED = re.compile(f"[{QUOTE_OPEN}{QUOTE_CLOSE}]")
+
+
+def _marked(seen: str) -> list[tuple[int, int]]:
+    """Each outermost quotation a LaTeX document marks with a command, as its view writes it:
+    one inside another is the outer's (round 2 of step 13)."""
+    spans, depth, opened = [], 0, 0
+    for found in _MARKED.finditer(seen):
+        if found.group() == QUOTE_OPEN:
+            opened = found.start() if depth == 0 else opened
+            depth += 1
+        elif depth:
+            depth -= 1
+            if depth == 0:
+                spans.append((opened, found.end()))
+    return spans
 #: A quotation in single curly marks; a closing mark before a letter is an apostrophe.
 _SINGLE_QUOTED = re.compile(
     "\N{LEFT SINGLE QUOTATION MARK}"
@@ -389,12 +408,17 @@ def _prepared(text: str, parts: list[tuple[int, int, str]]) -> str:
 
 def _quoted_spans(seen: str) -> list[tuple[int, int]]:
     """Where the manuscript quotes, as spans none of which overlaps another: in double
-    marks, straight or curly, in single curly marks, and in a block quotation."""
+    marks, straight or curly, in single curly marks, and in a block quotation; in a LaTeX
+    document's view, also where LaTeX marks a quotation with a command (round 1 of step
+    13)."""
     spans = sorted(
-        (m.start(), m.end())
-        for pattern in (_QUOTED, _SINGLE_QUOTED, _BLOCK_QUOTE)
-        for m in pattern.finditer(seen)
-    )
+        [
+            *((m.start(), m.end())
+              for pattern in (_QUOTED, _SINGLE_QUOTED, _BLOCK_QUOTE)
+              for m in pattern.finditer(seen)),
+            *_marked(seen),
+        ]
+    )  # fmt: skip
     merged: list[tuple[int, int]] = []
     for start, end in spans:
         if merged and start <= merged[-1][1]:
@@ -465,7 +489,12 @@ def _recycled(read: _Manuscript, source: Sequence[Word], key: str) -> list[Recyc
                 kind=read.parts[at][2] if at >= 0 else UNNAMED,
                 cited=_cites(read.seen, key, first.start, last.end),
                 source_at=passage.source_at,
-                excerpt=" ".join(read.text[first.start : last.end].split()),
+                excerpt=" ".join(
+                    read.text[first.start : last.end]
+                    .replace(QUOTE_OPEN, "")
+                    .replace(QUOTE_CLOSE, "")
+                    .split()
+                ),
             )
         )
     return found
@@ -503,9 +532,8 @@ def check_recycling(project: Project, stage: str = DRAFTING) -> Report:
     stored = project.path("literature") / "sources"
     due = stage_index(stage) >= stage_index(INTERNAL_REVIEW)
     named, policy = abstract_title(project), text_recycling(project)
-    manuscript = [
-        (path, _read(read_text(path), named)) for path in source_files(project.path("manuscript"))
-    ]
+    folder = project.path("manuscript")
+    manuscript = _manuscript(folder, named)
     report, compared, reported = Report(), 0, 0
     for output in outputs:
         key = output.citekey
@@ -517,8 +545,8 @@ def check_recycling(project: Project, stage: str = DRAFTING) -> Report:
         texts = dict(copies)
         read = [(copy, words(source)) for copy, source in copies]
         found = [
-            (path, copy, passage)
-            for path, prepared in manuscript
+            _placed(folder, where, copy, passage)
+            for where, prepared in manuscript
             for copy, passage in _kept(
                 (copy, passage)
                 for copy, source in read
@@ -535,6 +563,46 @@ def check_recycling(project: Project, stage: str = DRAFTING) -> Report:
                 _finding(path, key, copy, texts[copy], passage, due, policy)
             )
     return report.with_counts(earlier_outputs_compared=compared, recycled_passages=reported)
+
+
+def _manuscript(folder: Path, named: str | None) -> list[tuple[object, _Manuscript]]:
+    """Each manuscript file, read for the passages it repeats. A LaTeX manuscript's documents
+    are read as they print (`printed_of`), the main text and the supplement, with its
+    headings as Markdown's and a citation `[@key]`; a passage is placed back at its `.tex`
+    file by `_placed` (step 13)."""
+    if manuscript_format(folder) != LATEX:
+        return [(path, _read(read_text(path), named)) for path in source_files(folder)]
+    from manuscript_guard.text.latex.printed import printed
+    from manuscript_guard.text.latex.structure import read_document
+
+    views = []
+    for part in (False, True):
+        sources = [source for source in read_document(folder, supplementary=part).sources
+                   if not source.path.lower().endswith(".sty")]  # fmt: skip
+        # A file nothing inputs is compared on its own, as G2 reads it (round 1 of step 13):
+        # a supplement with no `main.tex` is all such files.
+        views.append(printed([s for s in sources if not s.loose], compared=True))
+        views += [printed([source], compared=True) for source in sources if source.loose]
+    return [(view, _read(view.text, named)) for view in views if view.text.strip()]
+
+
+def _placed(
+    folder: Path, where: object, copy: Path, passage: Recycled
+) -> tuple[Path, Path, Recycled]:
+    """A passage with the file and the lines it is typed on: a Markdown file's own, or, for
+    a LaTeX document's printed view, the `.tex` file its first word is typed in, and the
+    lines there of its first word and, in that file, its last (step 13)."""
+    if isinstance(where, Path):
+        return where, copy, passage
+    first = where.place(passage.start)
+    if first is None:
+        from manuscript_guard.text.latex.structure import ENTRY
+
+        return folder / ENTRY, copy, passage
+    source, line = first
+    last = where.place(max(passage.end - 1, passage.start))
+    end = last[1] if last is not None and last[0] is source else line
+    return folder / source.path, copy, replace(passage, first_line=line, last_line=end)
 
 
 def _copies(stored: Path, key: str) -> tuple[list[tuple[Path, str]], list[str]]:

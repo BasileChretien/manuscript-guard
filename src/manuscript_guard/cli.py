@@ -205,6 +205,10 @@ def _run_gates(
         ("BUILD", lambda: check_shapes(project).merge(check_tex(project, namespace, results))),
         ("BUILD", lambda: check_latex(project)),
     ):
+        if latex and _MARKDOWN_BUILD & set(gate.__code__.co_names):
+            # The Markdown build's own checks: a LaTeX manuscript's build is checked by
+            # `check_latex` and its compile (step 13).
+            continue
         if latex and _NOT_READ_IN_LATEX & set(gate.__code__.co_names):
             # A check that reads only Markdown would read nothing here and pass: it is not
             # run, and its gate says so once.
@@ -229,12 +233,13 @@ def _run_gates(
 #: `_run_gates` calls. On a LaTeX manuscript they are not run, and each of their gates reports
 #: `not-read-in-latex`. A check leaves this set in the step that teaches it LaTeX (DESIGN.md,
 #: "LaTeX manuscripts", Order of work).
-_NOT_READ_IN_LATEX = frozenset(
-    {
-        "check_statement_sources", "check_shapes", "check_tex", "check_recycling",
-        "check_quality_reported",
-    }
-)  # fmt: skip
+_NOT_READ_IN_LATEX: frozenset[str] = frozenset()
+#: The Markdown build's own checks: of the shapes it refuses, of TeX in its text, and of the
+#: title a Markdown file's header gives against paper.yaml's. A LaTeX manuscript has none of
+#: them: its build is checked by `check_latex`, which reads it as the reader does, and by its
+#: compile, so these do not run on one and nothing is said (step 13). Its `\title` is not
+#: compared with paper.yaml's (DESIGN.md, the LaTeX known gaps).
+_MARKDOWN_BUILD = frozenset({"check_shapes", "check_tex"})
 
 
 def _unreadable_sources(project) -> dict[Path, Unreadable]:

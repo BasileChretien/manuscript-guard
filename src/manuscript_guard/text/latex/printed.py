@@ -98,6 +98,23 @@ def printed_view(sources: list[Source], *, formula: str = "") -> str:
 #: What a quoting view writes for a cross-reference, whose number only the compiled
 #: document knows: a character no text holds, which a quote's number may stand for (step 8).
 POINTER = "\ue000"
+#: Where the view G7's text recycling compares opens and closes a quotation LaTeX makes with a
+#: command, one of csquotes' (`_QUOTING`), or a `quote`, `quotation` or `displayquote`
+#: environment: characters no text holds, between which every word is quoted (rounds 1 and 2
+#: of step 13).
+QUOTE_OPEN, QUOTE_CLOSE = chr(0xE001), chr(0xE002)
+#: A float's caption, or a subfigure's, its short form passed over, to the brace its text
+#: opens with.
+_CAPTION = re.compile(r"\\(?:sub)?caption\*?\s*(?:\[[^\[\]]*\]\s*)?\{")
+#: A quotation csquotes marks with a command: `\\enquote`, `\\textquote`, `\\blockquote`,
+#: a language's `\\foreign...` and `\\hyphen...` forms, and the `c` forms that cite (round 2
+#: of step 13). Its arguments are read by `_quoted_text`.
+_QUOTING = re.compile(
+    r"\\(?P<lang>foreign|hyphen|hybrid)?"
+    r"(?P<kind>enquote|textcquote|textquote|blockcquote|blockquote|quote)(?![A-Za-z])\*?"
+)
+#: The start and the end of a quotation environment.
+_QUOTATION = re.compile(r"\\(begin|end)\s*\{(?:quote|quotation|displayquote)\}")
 
 
 def printed_document(folder, *, supplementary: bool, quoting: bool = False) -> str:
@@ -107,24 +124,29 @@ def printed_document(folder, *, supplementary: bool, quoting: bool = False) -> s
     return printed_of(folder, supplementary=supplementary, quoting=quoting).text
 
 
-def printed_of(folder, *, supplementary: bool, quoting: bool = False) -> Printed:
+def printed_of(folder, *, supplementary: bool, quoting: bool = False,
+               compared: bool = False) -> Printed:  # fmt: skip
     """`printed_document`, with where each stretch of it comes from."""
     from manuscript_guard.text.latex.structure import read_document
 
     sources = read_document(folder, supplementary=supplementary).sources
     kept = [source for source in sources
             if not source.loose and not source.path.lower().endswith(".sty")]  # fmt: skip
-    return printed(kept, quoting=quoting)
+    return printed(kept, quoting=quoting, compared=compared)
 
 
-def printed(sources: list[Source], *, quoting: bool = False, formula: str = "") -> Printed:
+def printed(sources: list[Source], *, quoting: bool = False, formula: str = "",
+            compared: bool = False) -> Printed:  # fmt: skip
     """`printed_view`, with where each stretch of it comes from. With `quoting`, the view a
     quote of the paper is looked for in (G13, G8): an inline formula is what it holds, its
-    bindings in place, and a cross-reference is `POINTER` (round 1 of G13 in step 8)."""
+    bindings in place, and a cross-reference is `POINTER` (round 1 of G13 in step 8). With
+    `compared`, the view G7's text recycling compares with the authors' earlier papers: each
+    float's caption is written as a paragraph of its own, and each quotation LaTeX marks
+    with a command between `QUOTE_OPEN` and `QUOTE_CLOSE` (round 1 of step 13)."""
     text: list[str] = []
     origins: list[tuple[int, Source, int, bool]] = []
     at = 0
-    for chunk, source, start, linear in _pieces(sources, quoting, formula):
+    for chunk, source, start, linear in _pieces(sources, quoting, formula, compared):
         if chunk and source is not None:
             origins.append((at, source, start, linear))
         text.append(chunk)
@@ -132,14 +154,15 @@ def printed(sources: list[Source], *, quoting: bool = False, formula: str = "") 
     return Printed("".join(text), tuple(origins))
 
 
-def _pieces(sources: list[Source], quoting: bool = False, formula: str = "") -> list[Piece]:
+def _pieces(sources: list[Source], quoting: bool = False, formula: str = "",
+            compared: bool = False) -> list[Piece]:  # fmt: skip
     """The view of the sources in pieces, each file input where its `\\input` ends."""
     levels = [heading.level for source in sources for heading in source.reading.headings]
     shallowest = min(levels, default=1)
     queue = iter(sources)
 
     def written(source: Source) -> list[Piece]:
-        return _printed(source, shallowest, following, quoting, formula)
+        return _printed(source, shallowest, following, quoting, formula, compared)
 
     def following() -> list[Piece]:
         """The next file, the one the include tree read where this `\\input` ends; none
@@ -162,7 +185,8 @@ def _cuts(source: Source) -> list[int]:
 
 
 def _printed(
-    source: Source, shallowest: int, child=lambda: [], quoting: bool = False, formula: str = ""
+    source: Source, shallowest: int, child=lambda: [], quoting: bool = False, formula: str = "",
+    compared: bool = False,
 ) -> list[Piece]:
     """One source's part of the view: its body, with each event written as Markdown, and
     `child()` where each file it inputs is printed."""
@@ -187,8 +211,11 @@ def _printed(
     # A code span as Markdown writes one, which a journal's count passes over.
     events += [(start, end, "`" + _prose(reading.masked[start + 1 : end - 1]) + "`")
                for start, end in reading.code]  # fmt: skip
-    for start, end in reading.floats:
-        events.append((start, end, _bindings_in(placeholders, start, end)))
+    if compared:
+        events += _compared_events(source, placeholders)
+    else:
+        for start, end in reading.floats:
+            events.append((start, end, _bindings_in(placeholders, start, end)))
     # A table typed outside a float: its cells are no words of the text, as a Markdown
     # table's rows are none. Nor is a reference list typed in the source.
     events += _table_events(reading, placeholders)
@@ -224,6 +251,159 @@ def _printed(
         at = end
     out += shown(at, len(reading.masked))
     return out
+
+
+def _compared_events(source: Source, placeholders) -> list[tuple[int, int, str]]:
+    """The events the view G7's text recycling compares writes in place of a float's: the
+    float as the bindings it places outside its captions, and each caption a paragraph of
+    its own, read as the text around it is; and each quotation one of csquotes' commands or a
+    quotation environment marks, between `QUOTE_OPEN` and `QUOTE_CLOSE` (rounds 1 and 2 of
+    step 13)."""
+    reading, text = source.reading, source.text
+    passed = [*reading.comments, *reading.unprinted, *reading.code,
+              *((listing.start, listing.end) for listing in reading.listings)]  # fmt: skip
+
+    def read(at: int) -> bool:
+        return not any(start <= at < end for start, end in passed)
+
+    # What a group's braces are not counted in: a comment, and code, `\\verb|{|` and a listing,
+    # which print a brace as typed (round 3 of step 13). Not an empty one, which a scan would
+    # jump to where it stands, and stop there (round 4).
+    comments = {start: end for start, end in
+                [*reading.comments, *reading.code,
+                 *((listing.start, listing.end) for listing in reading.listings)]
+                if end > start}  # fmt: skip
+    events: list[tuple[int, int, str]] = []
+    for start, end in reading.floats:
+        captions = [(opened, closed) for _begun, opened, closed
+                    in _arguments(text, _CAPTION, start, end, comments)
+                    if read(opened)]  # fmt: skip
+        outside = [placeholder for placeholder in placeholders
+                   if not any(opened < placeholder.start < closed
+                              for opened, closed in captions)]  # fmt: skip
+        edges = [start, *(edge for opened, closed in captions for edge in (opened + 1, closed)),
+                 end]  # fmt: skip
+        for index in range(0, len(edges), 2):
+            written = _bindings_in(outside, start, end) if index == 0 else ""
+            events.append((edges[index], edges[index + 1],
+                           written + ("\n\n" if captions else "")))  # fmt: skip
+    for begun, opened, closed in _quoted_text(text, comments):
+        if read(begun):
+            events += [(begun, opened + 1, QUOTE_OPEN),
+                       (closed, closed + 1, QUOTE_CLOSE)]  # fmt: skip
+    for found in _QUOTATION.finditer(text):
+        if read(found.start()):
+            mark = f"\n\n{QUOTE_OPEN}" if found[1] == "begin" else f"{QUOTE_CLOSE}\n\n"
+            events.append((found.start(), found.end(), mark))
+    return events
+
+
+def _arguments(text: str, pattern: re.Pattern[str], start: int, end: int, comments: dict):
+    """Where each command of `pattern` between `start` and `end` starts, and where the
+    argument it opens runs, from its opening brace to its closing one, where that closes
+    before `end`."""
+    for found in pattern.finditer(text, start, end):
+        closed = _closing(text, found.end() - 1, comments)
+        if 0 <= closed < end:
+            yield found.start(), found.end() - 1, closed
+
+
+def _quoted_text(text: str, comments: dict):
+    """Where each quotation csquotes marks with a command starts, and where its text runs,
+    from its opening brace to its closing one: past a language's `{...}`, the options
+    `[...]`, and a `c` form's citation key `{...}`."""
+    for found in _QUOTING.finditer(text):
+        if found["kind"] == "quote" and not found["lang"]:
+            continue  # LaTeX's own `\\quote`, which begins the environment's body
+        at = found.end()
+        if found["lang"]:
+            at = _group_end(text, at, comments)
+        at = _options_end(text, at, comments)
+        if "cquote" in found["kind"]:
+            at = _options_end(text, _group_end(text, at, comments), comments)
+        at = _ahead(text, at, comments)
+        if at < 0 or at >= len(text) or text[at] != "{":
+            continue
+        closed = _closing(text, at, comments)
+        if closed >= 0:
+            yield found.start(), at, closed
+
+
+def _ahead(text: str, at: int, comments: dict) -> int:
+    """Past the white space and the comments from `at`, which LaTeX reads past between a
+    command's arguments (round 3 of step 13); -1 stays -1."""
+    while 0 <= at < len(text):
+        if at in comments:
+            at = comments[at]
+        elif text[at].isspace():
+            at += 1
+        else:
+            break
+    return at
+
+
+def _group_end(text: str, at: int, comments: dict) -> int:
+    """Past the group `{...}` ahead of `at`; -1 where none is."""
+    at = _ahead(text, at, comments)
+    if at < 0 or at >= len(text) or text[at] != "{":
+        return -1
+    closed = _closing(text, at, comments)
+    return closed + 1 if closed >= 0 else -1
+
+
+def _options_end(text: str, at: int, comments: dict) -> int:
+    """Past each option `[...]` ahead of `at`, a `]` inside braces kept in it, as csquotes
+    asks for one: `[{\\cite[p.~3]{key}}]` (round 3 of step 13)."""
+    while at >= 0:
+        ahead = _ahead(text, at, comments)
+        if ahead >= len(text) or text[ahead] != "[":
+            return at
+        # Within its paragraph: an option whose braces do not close there ends at its first
+        # `]`, as it did before braces were counted (round 4 of step 13).
+        blank = _BLANK_LINE.search(text, ahead)
+        limit = blank.start() if blank else len(text)
+        depth, at = 0, ahead + 1
+        while at < limit and not (text[at] == "]" and depth == 0):
+            if text[at] == "\\":
+                at += 2
+                continue
+            if at in comments:
+                at = comments[at]
+                continue
+            depth += {"{": 1, "}": -1}.get(text[at], 0)
+            at += 1
+        if at >= limit:
+            at = text.find("]", ahead)
+            if at < 0:
+                return -1
+        at += 1
+    return at
+
+
+#: A line with nothing on it, which ends a paragraph, in a file with CRLF line ends too
+#: (round 5 of step 13).
+_BLANK_LINE = re.compile(r"\n[ \t\r]*\n")
+
+
+def _closing(text: str, opened: int, comments: dict) -> int:
+    """Where the group that opens at `opened` closes, past escaped braces and what
+    `comments` holds by where each starts, the comments the reader read and code; -1 where it
+    does not. A `%` the reader did not read as a comment, in `\\url{}`, is a character (round
+    2 of step 13)."""
+    depth, at = 0, opened
+    while at < len(text):
+        character = text[at]
+        if character == "\\":
+            at += 2
+            continue
+        if at in comments:
+            at = comments[at]
+            continue
+        depth += {"{": 1, "}": -1}.get(character, 0)
+        if depth == 0:
+            return at
+        at += 1
+    return -1
 
 
 def _typeset(prose: str) -> str:

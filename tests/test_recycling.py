@@ -25,6 +25,8 @@ from manuscript_guard.gates import recycling as recycling_gate
 from manuscript_guard.literature import sources
 
 KEY = "fictionalEarlierAnalysis2020"
+#: The example's manuscript written in LaTeX.
+TWIN = Path(__file__).parent / "data" / "latex" / "manuscript"
 
 #: Methods of the earlier paper: a standard description, 35 words.
 DESCRIPTION = (
@@ -189,6 +191,154 @@ def test_the_supplement_is_held_to_the_norms_the_main_text_is(
     assert part in finding.message
     assert finding.path.name == "S2_recycled.md"
     assert finding.line == written_as.count("\n") + 1  # the passage is the file's last line
+
+
+def _as_latex(root: Path) -> Path:
+    """The example's manuscript as its LaTeX twin; the entry file."""
+    shutil.rmtree(root / "manuscript")
+    shutil.copytree(TWIN, root / "manuscript")
+    return root / "manuscript" / "main.tex"
+
+
+def _typed_before(entry: Path, heading: str, typed: str) -> int:
+    """`typed` written into `entry` before the heading; the line it starts on."""
+    text = entry.read_text(encoding="utf-8")
+    at = text.index(heading)
+    entry.write_text(text[:at] + typed + "\n\n" + text[at:], encoding="utf-8")
+    return text.count("\n", 0, at) + 1
+
+
+def test_a_latex_manuscript_is_compared_as_it_prints_and_placed_at_its_file(
+    project: Path,
+) -> None:
+    """Step 13: G7 reads a LaTeX manuscript's documents as they print, by their parts, and
+    names each passage at the `.tex` file and the lines it is typed on: a file the entry
+    inputs, and the entry itself past a comment, where the passage's first line is not the
+    view's."""
+    stored(project)
+    entry = _as_latex(project)
+    (entry.parent / "reused.tex").write_text(f"{DESCRIPTION}\n", encoding="utf-8")
+    _typed_before(entry, "\\section{Results}", "\\input{reused}")
+    broken = CAVEAT.replace("so a ", "so a\n")
+    line = _typed_before(entry, "\\section{Data availability}", f"% from before\n{broken}") + 1
+    found_ = sorted(found(project, "internal-review"), key=lambda f: f.path.name)
+    assert [(f.code, f.severity, f.path.name, f.line) for f in found_] == [
+        ("recycled-text", WARN, "main.tex", line),
+        ("recycled-text", WARN, "reused.tex", 1),
+    ]
+    assert "in the Discussion" in found_[0].message and f"lines {line}-{line + 1}" in (
+        found_[0].message
+    )
+    assert "in the Methods" in found_[1].message
+
+
+def test_a_latex_caption_is_compared_at_its_line(project: Path) -> None:
+    """Round 1 of step 13: a float's caption is read as Markdown's legend is, where the view
+    the word counts read leaves it out."""
+    stored(project)
+    entry = _as_latex(project)
+    line = _typed_before(entry, "\\section{Discussion}",
+                         "\\begin{figure}\n\\caption{" + CAVEAT + "}\n\\end{figure}") + 1
+    assert said(project, "internal-review") == [("recycled-text", WARN, line)]
+
+
+@pytest.mark.parametrize(
+    "typed",
+    [
+        "As \\enquote{" + DESCRIPTION[:-1] + "} \\cite{" + KEY + "}.",
+        "\\begin{quote}\n" + DESCRIPTION + "\n\\end{quote}",
+        "\\begin{quotation}\n" + DESCRIPTION + " \\cite{" + KEY + "}\n\\end{quotation}",
+        # Round 2: csquotes' other forms, and a quotation inside another.
+        "\\blockquote{" + DESCRIPTION + "}",
+        "\\textquote[{" + KEY + "}][.]{" + DESCRIPTION[:-1] + "}",
+        "\\textcquote[12]{" + KEY + "}[.]{" + DESCRIPTION[:-1] + "}",
+        "\\foreignblockquote{english}[x]{" + DESCRIPTION + "}",
+        "\\enquote{He wrote \\enquote{this} and: " + DESCRIPTION[:-1] + "}.",
+        "\\enquote{From \\url{https://ex.org/a%20b}: " + DESCRIPTION[:-1] + "}.",
+        # Round 3: an option with a `]` in braces, and a comment that wraps the arguments.
+        "\\textquote[{\\cite[p.~3]{" + KEY + "}}][.]{" + DESCRIPTION[:-1] + "}",
+        "\\textcquote[12]{" + KEY + "}%\n{" + DESCRIPTION[:-1] + "}",
+    ],
+)
+def test_a_quotation_latex_marks_with_a_command_is_a_quotation(project: Path, typed: str) -> None:
+    """Round 1 of step 13: `\\enquote{}` and a quotation environment quote, as Markdown's
+    quotation marks and `>` do."""
+    stored(project)
+    entry = _as_latex(project)
+    _typed_before(entry, "\\section{Results}", typed)
+    assert [code for code, _severity, _line in said(project, "submission")] == [
+        "recycled-quotation"
+    ]
+
+
+def test_a_passage_running_into_a_quotation_shows_no_mark_of_it(project: Path) -> None:
+    """Round 2 of step 13: the characters that mark a quotation in the view are no text."""
+    stored(project)
+    entry = _as_latex(project)
+    words = DESCRIPTION.split()
+    _typed_before(entry, "\\section{Results}", " ".join(words[:20]) + " \\enquote{"
+                  + " ".join(words[20:]) + "}")  # fmt: skip
+    [finding] = found(project, "submission")
+    assert "\\ue00" not in finding.message and "\ue001" not in finding.message
+
+
+def test_an_empty_listing_after_an_unclosed_quotation_ends_the_reading() -> None:
+    """Round 4 of step 13: an empty listing in the spans a scan passes over stopped the scan
+    where it stood, and `check` did not end."""
+    from manuscript_guard.text.latex import mask, printed, structure
+
+    text = ("\\documentclass{article}\n\\begin{document}\n% \\enquote{\n"
+            "\\begin{verbatim}\\end{verbatim}\nWords.\n\\end{document}\n")  # fmt: skip
+    source = structure.Source("main.tex", text, mask.read(text))
+    assert "Words." in printed.printed([source], compared=True).text
+
+
+def test_a_brace_in_code_does_not_close_a_quotation(project: Path) -> None:
+    """Round 3 of step 13: `\\verb|{|` prints a brace, and opens no group, so the quotation
+    ends where its own brace does and the paragraph after it is not quoted."""
+    stored(project)
+    entry = _as_latex(project)
+    line = _typed_before(entry, "\\section{Results}", "\\blockquote{type \\verb|{| to open}\n\n"
+                         + DESCRIPTION + " \\emph{x}") + 2  # fmt: skip
+    assert said(project, "internal-review") == [("recycled-text", WARN, line)]
+
+
+def test_a_subfigure_s_caption_and_one_with_an_address_are_compared(project: Path) -> None:
+    """Round 2 of step 13: `\\subcaption`, and a `%` an address holds, which ends no group."""
+    stored(project)
+    entry = _as_latex(project)
+    line = _typed_before(entry, "\\section{Discussion}",
+                         "\\begin{figure}\n\\subcaption{" + CAVEAT + "}\n\\end{figure}") + 1
+    second = _typed_before(entry, "\\section{Data availability}",
+                           "\\begin{figure}\n\\caption{See \\url{https://ex.org/a%20b}. "
+                           + DESCRIPTION + "}\n\\end{figure}") + 1  # fmt: skip
+    assert sorted(said(project, "internal-review")) == [
+        ("recycled-text", WARN, line), ("recycled-text", WARN, second)
+    ]
+
+
+def test_a_latex_file_nothing_inputs_is_compared_on_its_own(project: Path) -> None:
+    """Round 1 of step 13: a supplement with no `main.tex` is files nothing inputs, which G2
+    reads on their own, and so does G7."""
+    stored(project)
+    _as_latex(project)
+    folder = project / "manuscript" / "supplementary"
+    shutil.rmtree(folder)
+    folder.mkdir()
+    (folder / "methods.tex").write_text(f"Words first.\n\n{DESCRIPTION}\n", encoding="utf-8")
+    [finding] = found(project, "internal-review")
+    assert (finding.code, finding.path, finding.line) == (
+        "recycled-text", folder / "methods.tex", 3
+    )
+
+
+def test_a_latex_description_that_cites_its_paper_is_a_note(project: Path) -> None:
+    """A `\\cite` is the citation G7 reads, as `[@key]` is in Markdown (step 13)."""
+    stored(project)
+    entry = _as_latex(project)
+    line = _typed_before(entry, "\\section{Results}", f"{DESCRIPTION[:-1]}, as before "
+                         f"\\cite{{{KEY}}}.")  # fmt: skip
+    assert said(project, "submission") == [("recycled-methods-cited", INFO, line)]
 
 
 def test_a_heading_that_only_opens_like_a_supplement_s_part_names_none() -> None:

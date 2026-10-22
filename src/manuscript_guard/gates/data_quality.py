@@ -161,6 +161,26 @@ def _binds_a_count(text: str) -> bool:
     )
 
 
+def _supplement_binds_a_count(manuscript: Path) -> bool:
+    """Whether the supplement binds a count: a file of a Markdown one, or a binding of a LaTeX
+    one's, in a file its entry inputs or one nothing inputs (step 13)."""
+    from manuscript_guard.text.reader import LATEX, manuscript_format
+
+    if manuscript_format(manuscript) != LATEX:
+        main = set(source_files(manuscript, main_text_only=True))
+        return any(_binds_a_count(read_text(path)) for path in source_files(manuscript)
+                   if path not in main)  # fmt: skip
+    from manuscript_guard.text.latex.structure import read_document
+    from manuscript_guard.text.latex.views import bindings
+
+    return any(
+        placeholder.namespace == "results" and placeholder.key.startswith(PREFIX)
+        for source in read_document(manuscript, supplementary=True).sources
+        if not source.path.lower().endswith(".sty")
+        for placeholder in bindings(source)[0]
+    )
+
+
 def check_quality_reported(
     project: Project, results: Results, stage: str | None = None, *, submission: bool = False
 ) -> Report:
@@ -176,12 +196,8 @@ def check_quality_reported(
     if dictionary is None:
         return Report()
     manuscript = project.path("manuscript")
-    main = set(source_files(manuscript, main_text_only=True))
-    supplement = [path for path in source_files(manuscript) if path not in main]
     methods = methods_text(project)
-    if (methods and _binds_a_count(methods)) or any(
-        _binds_a_count(read_text(path)) for path in supplement
-    ):
+    if (methods and _binds_a_count(methods)) or _supplement_binds_a_count(manuscript):
         return Report()
     return Report(
         (

@@ -3,7 +3,8 @@
 A manuscript can be written in LaTeX instead of Markdown. The gates read it as they read a
 Markdown one: each number is bound, cited or a convention, and the check says where one is
 not. A few checks do not read LaTeX yet, and until they do, a LaTeX manuscript does not pass
-`check --submission` ("Not yet for LaTeX" below). This page says what changes. The design, and every known limit, is in
+`check --submission` ("Not yet for LaTeX" below). This page says what changes. The design,
+and every known limit, is in
 [DESIGN.md](../DESIGN.md), under "LaTeX manuscripts".
 
 ## Starting
@@ -105,14 +106,11 @@ These checks do not read a LaTeX manuscript yet, and each says so with `not-read
 where it would apply:
 
 - G2's pointers to tables and figures, which LaTeX numbers itself;
-- G4's figure legends, and its check that the data availability statement names each data
-  source;
-- G7's passages repeated from the authors' earlier papers;
-- G16's check that the Methods or the supplement report what the data checks counted;
-- BUILD's checks of the Markdown build.
+- G4's figure legends.
 
 The finding is a note before `submission` and a failure from it, so that a manuscript only
-part of the checks read is never passed for submission.
+part of the checks read is never passed for submission. BUILD's checks of the Markdown build
+do not run on a LaTeX manuscript, whose build is checked by its compile, and say nothing.
 
 These commands read Markdown only, and refuse a LaTeX manuscript with a sentence: `render`,
 `reworded`, `checker`, `import` (the Word round trip), `proof`, `impact`, `audit` of a `.tex`

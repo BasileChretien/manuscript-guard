@@ -195,8 +195,8 @@ def _not_chosen(name: str, fragment: Fragment, document: dict[str, Any],
         what = ""
     alike = [source for source in picked if slug(source) == slug(name)]
     if alike:
-        hint = (f"the record writes it {alike[0]!r}: name the dataset so in "
-                f"{fragment.generated_by}, dataset({alike[0]!r}, ...)")  # fmt: skip
+        hint = (f"the record writes it {alike[0]!r}: give the dataset that name where "
+                f"{fragment.generated_by} declares it")  # fmt: skip
     else:
         hint = (f"name the dataset by the id {RECORD.as_posix()} gives the source the analysis "
                 "read; if it read a source the record did not choose, record the choice under "

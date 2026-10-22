@@ -14817,6 +14817,11 @@ Open, recorded as each change landed:
   `dataset()`'s `covers` is the extract's, which may rightly be narrower than the source's.
   Nothing reads one against the other; only a dataset's name is held to the record
   (`dataset-not-chosen`).
+- **Every dataset is to be a source the record chose.** A second extract of the chosen source
+  under a name of its own (`vigibase-background`), or data declared with `dataset()` only for
+  their date, census denominators for one, is warned of (`dataset-not-chosen`) until the
+  record lists it as a candidate and chooses it (round 1 of #418). A name is not matched on
+  its first part, which would let any name that begins with a chosen id pass.
 - **"After today" is the machine's today.** An extraction dated today in one timezone may be
   tomorrow on the machine that runs the analysis, and is refused there.
 

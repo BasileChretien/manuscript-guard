@@ -9418,6 +9418,30 @@ def test_a_dataset_is_compared_by_its_name_and_not_its_key(project: Path) -> Non
         found = _not_chosen(project, chosen)
         assert len(found) == said, name
     assert "the record writes it 'open-reports'" in found[0].hint
+    assert "analysis/01_disproportionality.py" in found[0].hint
+    # The call is `em.dataset` in Python and `em$dataset` in R: the hint names neither
+    # (round 1 of #418).
+    assert "dataset(" not in found[0].hint
+
+
+def test_a_second_dataset_of_the_chosen_source_is_warned_of_until_chosen(project: Path) -> None:
+    """A known gap (round 1 of #418): every dataset is to be a source the record chose, so a
+    second extract of the chosen one under a name of its own is warned of until the record
+    lists it as a candidate and chooses it. A name is not matched on its first part."""
+    from test_data_sources import record
+
+    fragment = project / "results" / "01_disproportionality.json"
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    extract = document["datasets"]["reports"]
+    document["datasets"] = {"reports": extract, "reports-background": extract}
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    chosen = _renamed(record(), "ora", "reports")
+    [found] = _not_chosen(project, chosen)
+    assert found.message.startswith("dataset 'reports-background',")
+    chosen["candidates"].append({"id": "reports-background", "name": "Background extract"})
+    chosen["decision"]["chosen"].append("reports-background")
+    assert _not_chosen(project, chosen) == []
 
 
 #: What G4 says of the figure files.

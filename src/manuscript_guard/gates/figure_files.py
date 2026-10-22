@@ -173,7 +173,9 @@ def check_figure_files(project: Project, profile: dict, profile_path: Path) -> R
     severity = INFO if rules.get("applies_from") == "acceptance" else WARN
     findings: list[Finding] = []
     manuscript = project.path("manuscript")
-    for name, supplementary in _placed(project):
+    latex = _latex(manuscript)
+    placed = _placed(project)
+    for name, supplementary in placed:
         own = rules.get("supplementary") if supplementary else None
         held = {**rules, **own} if isinstance(own, dict) else rules
         files = _files_of(project.path("figures"), name)
@@ -183,8 +185,22 @@ def check_figure_files(project: Project, profile: dict, profile_path: Path) -> R
         findings += _format(name, files, held, profile_path)
         for path in files:
             findings += _file(path, held, side, supplementary, profile_path)
-    findings += _legends(project, manuscript, rules, profile_path)
-    return Report(tuple(_with(finding, severity) for finding in findings))
+    if not latex:
+        findings += _legends(project, manuscript, rules, profile_path)
+    report = Report(tuple(_with(finding, severity) for finding in findings))
+    if latex and placed and severity == WARN and isinstance(rules.get("legend_words"), int):
+        # A LaTeX figure's legend is its float's caption, which G4 does not read yet: said
+        # where a figure is placed and the rule applies before acceptance (round 2 of step 6).
+        from manuscript_guard.gates.formats import not_read_in_latex
+
+        report = report.with_findings(not_read_in_latex(GATE, "figure legends"))
+    return report
+
+
+def _latex(manuscript: Path) -> bool:
+    from manuscript_guard.text.reader import LATEX, manuscript_format
+
+    return manuscript_format(manuscript) == LATEX
 
 
 def _with(finding: Finding, severity: str) -> Finding:
@@ -194,14 +210,16 @@ def _with(finding: Finding, severity: str) -> Finding:
 
 
 def _placed(project: Project) -> list[tuple[str, bool]]:
-    """Each figure a manuscript file places, once, and whether a supplementary file does."""
+    """Each figure a manuscript file places, once, and whether a supplementary file does: a
+    LaTeX file's `\\mg{figure.key}` as a Markdown file's `{{figure.key}}`."""
+    from manuscript_guard.text.reader import bound_files
+
     manuscript = project.path("manuscript")
     seen: dict[str, bool] = {}
-    for path in source_files(manuscript):
-        placeholders, _ = parse(read_text(path))
-        for placeholder in placeholders:
+    for bound in bound_files(project):
+        for placeholder in bound.placeholders:
             if placeholder.namespace == "figure":
-                supplementary = is_supplementary(manuscript, path)
+                supplementary = is_supplementary(manuscript, bound.path)
                 seen[placeholder.key] = seen.get(placeholder.key, True) and supplementary
     return sorted(seen.items())
 

@@ -217,9 +217,9 @@ def _run_gates(
 _NOT_READ_IN_LATEX = frozenset(
     {
         "check_statement_sources", "check_related",
-        "check_citations", "check_prose_quotations", "check_journal", "check_reporting",
-        "check_writing", "check_methods", "check_reported", "check_recomputed",
-        "check_revision", "check_language", "check_models", "check_shapes", "check_tex",
+        "check_prose_quotations", "check_reporting",
+        "check_methods", "check_reported", "check_recomputed",
+        "check_revision", "check_models", "check_shapes", "check_tex",
         "check_passages",
         "check_recycling",
     }
@@ -3174,12 +3174,13 @@ def cmd_sign(args: argparse.Namespace) -> int:
 
 def cmd_sync_bib(args: argparse.Namespace) -> int:
     """Rewrite literature/references.bib from what the manuscript cites."""
+    from manuscript_guard.text.reader import CitationsUnknown
     from manuscript_guard.zotero import ZoteroUnavailable
 
     project, _ = load_project(args.path)
     try:
         path, count = sync_bib(project)
-    except ZoteroUnavailable as exc:
+    except (ZoteroUnavailable, CitationsUnknown) as exc:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
     print(f"wrote {count} reference{'' if count == 1 else 's'} to {path}")

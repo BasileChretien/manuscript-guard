@@ -14,7 +14,7 @@ import contextlib
 import hashlib
 import re
 import sys
-from collections.abc import Collection
+from collections.abc import Callable, Collection
 from datetime import date
 from pathlib import Path
 
@@ -4907,11 +4907,95 @@ def _survive_the_console() -> None:
             stream._manuscript_guard_folded = True
 
 
+def _always(_args: argparse.Namespace) -> bool:
+    return True
+
+
+#: The commands that read the manuscript only as Markdown, and when an invocation reads it.
+#: On a LaTeX manuscript each refuses with a sentence and exits 2 (DESIGN.md, "LaTeX
+#: manuscripts", step 1): it read nothing of one, and said it found nothing, "rendered 0
+#: files", "cites nothing", or read the `.tex` as Markdown. A command leaves this table in the
+#: step that teaches it LaTeX.
+_MARKDOWN_COMMANDS: dict[str, Callable[[argparse.Namespace], bool]] = {
+    # `checker` draws its items from the manuscript for every verb, `import` and `status`
+    # too, which match answers against them (round 2 of #404).
+    **dict.fromkeys(
+        ("bind", "build", "checker", "explain", "impact", "import", "init", "methods",
+         "models", "passages", "proof", "render", "respond", "reworded", "submit"),
+        _always,
+    ),
+    # Its comparison reads the manuscript; taking an earlier output's copy does not.
+    "related": lambda args: args.take is None,
+    # A design round reads the plan, not the manuscript (round 1 of #404).
+    "review": lambda args: bool((args.run or args.dry_run) and not args.design
+                                or args.suggestions),
+    # G15's findings come from the manuscript; a design round's overrides do not.
+    "sign": lambda args: args.finding.startswith("G15/"),
+}  # fmt: skip
+#: The commands refused a `.tex` named whatever the project's format, since they read the
+#: file given as Markdown; `impact` follows the records of any file, a header's included.
+_READ_AS_MARKDOWN = frozenset({"explain", "reworded"})
+
+
+def _named_paths(args: argparse.Namespace) -> list[Path]:
+    """The files a command was given, by whichever of these names it takes them. A flag
+    that shares the name, `review --files`, gives none (a list of `True` was read as one)."""
+    found: list[Path] = []
+    for name in ("file", "files", "paths", "paper"):
+        value = getattr(args, name, None)
+        values = value if isinstance(value, (list, tuple)) else [value]
+        found += [Path(path) for path in values if isinstance(path, (str, Path))]
+    return found
+
+
+def _refused_for_latex(args: argparse.Namespace) -> str | None:
+    """Why this command does not run here, where the manuscript, or a file it is given, is
+    LaTeX; None where it runs."""
+    command = args.command
+    named = _named_paths(args)
+    if command == "audit":
+        typed = [path for path in named if path.suffix.lower() == ".tex"]
+        return f"audit does not read LaTeX yet: {typed[0]} is not read" if typed else None
+    reads = _MARKDOWN_COMMANDS.get(command)
+    if reads is None or not reads(args):
+        return None
+    typed = [path for path in named if path.suffix.lower() == ".tex"]
+    if typed and command in _READ_AS_MARKDOWN:
+        return (f"{command} does not read LaTeX yet: {typed[0]} is a LaTeX file; "
+                "`manuscript-guard check` says what is read of a LaTeX manuscript")  # fmt: skip
+    start = getattr(args, "path", None) or (named[0] if named else Path.cwd())
+    start = start.parent if start.is_file() else start
+    folder = _manuscript_folder(start, command)
+    if folder is None or manuscript_format(folder) != LATEX:
+        return None
+    if command == "init":
+        return (f"init writes a Markdown manuscript, and {folder / 'main.tex'} is a LaTeX "
+                "one's; it does not set up a LaTeX project yet")  # fmt: skip
+    return (f"{command} does not read a LaTeX manuscript yet, and {folder} holds one: "
+            "`manuscript-guard check` says what is read of it")  # fmt: skip
+
+
+def _manuscript_folder(start: Path, command: str) -> Path | None:
+    """The manuscript folder of the project at `start`; for `init`, of the one it would make
+    there. None where there is no project to read, which the command says itself."""
+    if command == "init":
+        return start / "manuscript"
+    try:
+        project, _ = load_project(start)
+    except ContractError:
+        return None
+    return project.path("manuscript")
+
+
 def main(argv: list[str] | None = None) -> int:
     from manuscript_guard.roundtrip import RoundTripError
 
     args = build_parser().parse_args(argv)
     _survive_the_console()
+    refused = _refused_for_latex(args)
+    if refused is not None:
+        print(f"manuscript-guard: {refused}", file=sys.stderr)
+        return 2
     # Every error this toolkit raises on purpose says what went wrong in words. Catching
     # only the contract errors here meant `import` without pandoc, or `respond --from` a
     # file that is not a .docx, ended in a traceback instead of that sentence.

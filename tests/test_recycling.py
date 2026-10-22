@@ -255,6 +255,9 @@ def test_a_latex_caption_is_compared_at_its_line(project: Path) -> None:
         "\\foreignblockquote{english}[x]{" + DESCRIPTION + "}",
         "\\enquote{He wrote \\enquote{this} and: " + DESCRIPTION[:-1] + "}.",
         "\\enquote{From \\url{https://ex.org/a%20b}: " + DESCRIPTION[:-1] + "}.",
+        # Round 3: an option with a `]` in braces, and a comment that wraps the arguments.
+        "\\textquote[{\\cite[p.~3]{" + KEY + "}}][.]{" + DESCRIPTION[:-1] + "}",
+        "\\textcquote[12]{" + KEY + "}%\n{" + DESCRIPTION[:-1] + "}",
     ],
 )
 def test_a_quotation_latex_marks_with_a_command_is_a_quotation(project: Path, typed: str) -> None:
@@ -277,6 +280,16 @@ def test_a_passage_running_into_a_quotation_shows_no_mark_of_it(project: Path) -
                   + " ".join(words[20:]) + "}")  # fmt: skip
     [finding] = found(project, "submission")
     assert "\\ue00" not in finding.message and "\ue001" not in finding.message
+
+
+def test_a_brace_in_code_does_not_close_a_quotation(project: Path) -> None:
+    """Round 3 of step 13: `\\verb|{|` prints a brace, and opens no group, so the quotation
+    ends where its own brace does and the paragraph after it is not quoted."""
+    stored(project)
+    entry = _as_latex(project)
+    line = _typed_before(entry, "\\section{Results}", "\\blockquote{type \\verb|{| to open}\n\n"
+                         + DESCRIPTION + " \\emph{x}") + 2  # fmt: skip
+    assert said(project, "internal-review") == [("recycled-text", WARN, line)]
 
 
 def test_a_subfigure_s_caption_and_one_with_an_address_are_compared(project: Path) -> None:

@@ -99,8 +99,9 @@ def printed_view(sources: list[Source], *, formula: str = "") -> str:
 #: document knows: a character no text holds, which a quote's number may stand for (step 8).
 POINTER = "\ue000"
 #: Where the view G7's text recycling compares opens and closes a quotation LaTeX makes with a
-#: command, `\\enquote{}` or a `quote`, `quotation` or `displayquote` environment: characters
-#: no text holds, between which every word is quoted (round 1 of step 13).
+#: command, one of csquotes' (`_QUOTING`), or a `quote`, `quotation` or `displayquote`
+#: environment: characters no text holds, between which every word is quoted (rounds 1 and 2
+#: of step 13).
 QUOTE_OPEN, QUOTE_CLOSE = chr(0xE001), chr(0xE002)
 #: A float's caption, or a subfigure's, its short form passed over, to the brace its text
 #: opens with.
@@ -255,8 +256,9 @@ def _printed(
 def _compared_events(source: Source, placeholders) -> list[tuple[int, int, str]]:
     """The events the view G7's text recycling compares writes in place of a float's: the
     float as the bindings it places outside its captions, and each caption a paragraph of
-    its own, read as the text around it is; and each quotation `\\enquote{}` or a quotation
-    environment marks, between `QUOTE_OPEN` and `QUOTE_CLOSE` (round 1 of step 13)."""
+    its own, read as the text around it is; and each quotation one of csquotes' commands or a
+    quotation environment marks, between `QUOTE_OPEN` and `QUOTE_CLOSE` (rounds 1 and 2 of
+    step 13)."""
     reading, text = source.reading, source.text
     passed = [*reading.comments, *reading.unprinted, *reading.code,
               *((listing.start, listing.end) for listing in reading.listings)]  # fmt: skip
@@ -264,7 +266,10 @@ def _compared_events(source: Source, placeholders) -> list[tuple[int, int, str]]
     def read(at: int) -> bool:
         return not any(start <= at < end for start, end in passed)
 
-    comments = dict(reading.comments)
+    # What a group's braces are not counted in: a comment, and code, `\\verb|{|` and a listing,
+    # which print a brace as typed (round 3 of step 13).
+    comments = dict([*reading.comments, *reading.code,
+                     *((listing.start, listing.end) for listing in reading.listings)])  # fmt: skip
     events: list[tuple[int, int, str]] = []
     for start, end in reading.floats:
         captions = [(opened, closed) for _begun, opened, closed
@@ -310,11 +315,10 @@ def _quoted_text(text: str, comments: dict):
         at = found.end()
         if found["lang"]:
             at = _group_end(text, at, comments)
-        at = _options_end(text, at)
+        at = _options_end(text, at, comments)
         if "cquote" in found["kind"]:
-            at = _options_end(text, _group_end(text, at, comments))
-        while 0 <= at < len(text) and text[at].isspace():
-            at += 1
+            at = _options_end(text, _group_end(text, at, comments), comments)
+        at = _ahead(text, at, comments)
         if at < 0 or at >= len(text) or text[at] != "{":
             continue
         closed = _closing(text, at, comments)
@@ -322,35 +326,56 @@ def _quoted_text(text: str, comments: dict):
             yield found.start(), at, closed
 
 
+def _ahead(text: str, at: int, comments: dict) -> int:
+    """Past the white space and the comments from `at`, which LaTeX reads past between a
+    command's arguments (round 3 of step 13); -1 stays -1."""
+    while 0 <= at < len(text):
+        if at in comments:
+            at = comments[at]
+        elif text[at].isspace():
+            at += 1
+        else:
+            break
+    return at
+
+
 def _group_end(text: str, at: int, comments: dict) -> int:
-    """Past the group `{...}` at `at`, white space before it skipped; -1 where none is."""
-    while 0 <= at < len(text) and text[at].isspace():
-        at += 1
+    """Past the group `{...}` ahead of `at`; -1 where none is."""
+    at = _ahead(text, at, comments)
     if at < 0 or at >= len(text) or text[at] != "{":
         return -1
     closed = _closing(text, at, comments)
     return closed + 1 if closed >= 0 else -1
 
 
-def _options_end(text: str, at: int) -> int:
-    """Past each option `[...]` from `at`, white space between them skipped."""
+def _options_end(text: str, at: int, comments: dict) -> int:
+    """Past each option `[...]` ahead of `at`, a `]` inside braces kept in it, as csquotes
+    asks for one: `[{\\cite[p.~3]{key}}]` (round 3 of step 13)."""
     while at >= 0:
-        ahead = at
-        while ahead < len(text) and text[ahead].isspace():
-            ahead += 1
+        ahead = _ahead(text, at, comments)
         if ahead >= len(text) or text[ahead] != "[":
             return at
-        closed = text.find("]", ahead)
-        if closed < 0:
+        depth, at = 0, ahead + 1
+        while at < len(text) and not (text[at] == "]" and depth == 0):
+            if text[at] == "\\":
+                at += 2
+                continue
+            if at in comments:
+                at = comments[at]
+                continue
+            depth += {"{": 1, "}": -1}.get(text[at], 0)
+            at += 1
+        if at >= len(text):
             return -1
-        at = closed + 1
+        at += 1
     return at
 
 
 def _closing(text: str, opened: int, comments: dict) -> int:
-    """Where the group that opens at `opened` closes, past escaped braces and the comments
-    the reader read, `comments` by where each starts; -1 where it does not. A `%` the reader
-    did not read as a comment, in `\\url{}`, is a character (round 2 of step 13)."""
+    """Where the group that opens at `opened` closes, past escaped braces and what
+    `comments` holds by where each starts, the comments the reader read and code; -1 where it
+    does not. A `%` the reader did not read as a comment, in `\\url{}`, is a character (round
+    2 of step 13)."""
     depth, at = 0, opened
     while at < len(text):
         character = text[at]

@@ -149,6 +149,24 @@ def test_a_caption_in_a_float_the_reader_does_not_know_leaves_both_kinds_uncheck
     assert [code for code, *_rest in _said(twin)] == ["pointers-unchecked"] * 2
 
 
+@pytest.mark.parametrize(
+    "placed",
+    [
+        "\\begin{algorithm}\\caption{Matching.}\\end{algorithm}",
+        "\\begin{listing}\\caption{The code.}\\end{listing}",
+        "\\newcommand{\\figcap}[1]{\\caption{#1}}",
+    ],
+)
+def test_a_caption_that_numbers_no_table_or_figure_leaves_them_counted(
+    twin: Path, placed: str
+) -> None:
+    """Round 3 of step 13, part 2: an algorithm's caption, a listing's, or one in a
+    definition's body numbers neither a table nor a figure, so "Table 3" is still said."""
+    _replaced(twin, "\\section{Discussion}", placed + "\n\n\\section{Discussion}")
+    _replaced(twin, "in Table~2, so", "in Table~2 and Table~3, so")
+    assert _said(twin) == [("pointer-to-nothing", "fail", "main.tex", _line(twin, "Table~3"))]
+
+
 @pytest.mark.parametrize("caption_in_the_file", [False, True])
 def test_a_float_whose_content_a_file_inputs_is_one_display(
     twin: Path, caption_in_the_file: bool

@@ -345,7 +345,10 @@ def _pointing_events(source: Source) -> list[tuple[int, int, str]]:
               for start, end in reading.floats]  # fmt: skip
     # A caption outside the floats the reader knows numbers a display of a float it does not,
     # `SCfigure` or a `\\newfloat`, of a kind the view cannot tell (round 2 of step 13, part 2).
-    known = [*reading.floats, *reading.tables]
+    # Not one in an `algorithm` or a `listing`, which number neither, nor in a definition's
+    # body, which prints only where it is used (round 3).
+    known = [*reading.floats, *reading.tables, *reading.bodies,
+             *_spans(text, _OTHER_FLOATS, 0, len(text), read)]  # fmt: skip
     if not _read_in_a_part(source):
         for begun, _opened, closed in _arguments(text, _NUMBERED, 0, len(text), comments):
             if read(begun) and not any(low <= begun < high for low, high in known):
@@ -417,19 +420,24 @@ def _float_marks(source: Source, start: int, end: int, read, comments: dict) -> 
         return DISPLAY + kind.upper() + MARK_END
     labels = [(found.start(), found[1].strip()) for found in _LABEL.finditer(text, start, end)
               if read(found.start())]  # fmt: skip
-    parts = _parts(text, start, end, read)
+    named = _named(captions, labels, _parts(text, start, end, read))
+    return "".join(DISPLAY + kind + ",".join(labels_of) + MARK_END for labels_of in named)
+
+
+def _named(captions: list[int], labels: list[tuple[int, str]], parts) -> list[list[str]]:
+    """The labels each caption's display has: those after it, before the next; and a part's,
+    "1a", the display of the caption its float numbers after it, or its last (round 2 of
+    step 13, part 2)."""
     named: list[list[str]] = [[] for _ in captions]
     for at, label in labels:
         if any(low <= at < high for low, high in parts):
-            # A part's label, "1a", names the display of the caption its float numbers after
-            # it, or its last (round 2 of step 13, part 2).
             after = [index for index, begun in enumerate(captions) if begun > at]
             named[after[0] if after else len(captions) - 1].append(label)
         else:
             before = [index for index, begun in enumerate(captions) if begun <= at]
             if before:
                 named[before[-1]].append(label)
-    return "".join(DISPLAY + kind + ",".join(labels_of) + MARK_END for labels_of in named)
+    return named
 
 
 def _holds_input(source: Source, start: int, end: int) -> bool:
@@ -445,8 +453,14 @@ def _read_in_a_part(source: Source) -> bool:
 
 def _parts(text: str, start: int, end: int, read) -> list[tuple[int, int]]:
     """Where each outermost `subfigure` or `subtable` between `start` and `end` runs."""
+    return _spans(text, _SUBFLOAT, start, end, read)
+
+
+def _spans(text: str, pattern: re.Pattern[str], start: int, end: int, read):
+    """Where each outermost environment `pattern` begins and ends runs, between `start` and
+    `end`."""
     parts, depth, opened = [], 0, 0
-    for found in _SUBFLOAT.finditer(text, start, end):
+    for found in pattern.finditer(text, start, end):
         if not read(found.start()):
             continue
         if found[1] == "begin":
@@ -474,6 +488,9 @@ _PARTS = frozenset({"subfigure", "subtable"})
 _SUBFLOAT = re.compile(r"\\(begin|end)\s*\{(?:subfigure|subtable)\}")
 #: A float that continues the last of its kind, numbered as it is.
 _CONTINUED = re.compile(r"\\ContinuedFloat(?![A-Za-z])")
+#: The floats packages give that number neither a table nor a figure: an algorithm, and
+#: minted's listing (round 3 of step 13, part 2).
+_OTHER_FLOATS = re.compile(r"\\(begin|end)\s*\{(?:algorithm\*?|listing)\}")
 
 
 #: A caption LaTeX numbers: not a starred one, nor a subfigure's.

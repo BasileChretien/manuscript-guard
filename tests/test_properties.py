@@ -5789,7 +5789,9 @@ def _a_continued_float_numbers_a_display(patch: pytest.MonkeyPatch) -> None:
 
 
 def _a_part_s_label_names_nothing(patch: pytest.MonkeyPatch) -> None:
-    patch.setattr(latex_print, "_parts", lambda _text, _start, _end, _read: [])
+    named = latex_print._named
+    patch.setattr(latex_print, "_named",
+                  lambda captions, labels, _parts: named(captions, labels, []))  # fmt: skip
 
 
 def _a_float_that_inputs_its_caption_is_uncounted(patch: pytest.MonkeyPatch) -> None:
@@ -9803,7 +9805,7 @@ BROKEN = {
         _a_continued_float_numbers_a_display,
         test_a_latex_pointer_is_held_to_what_latex_numbers,
     ),
-    "in LaTeX, a subfigure's caption numbers a float and its label names nothing": (
+    "in LaTeX, a part's label names nothing": (
         _a_part_s_label_names_nothing,
         test_a_latex_pointer_is_held_to_what_latex_numbers,
     ),

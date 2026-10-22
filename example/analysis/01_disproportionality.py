@@ -55,6 +55,14 @@ def main() -> None:
         synthetic=True,
     )
 
+    # The reports held to the data dictionary (design/data_dictionary.yaml), with the two
+    # variables the model reads derived first so that they are checked too. Each count is a
+    # result under quality., which the Methods bind; G16 says where one is missing.
+    em.check_data(
+        [{**r, "hepatic": int(r["event"] == EVENT), "exposed": int(r["drug"] == DRUG)}
+         for r in rows]
+    )
+
     # The choices the Methods state, declared where the code makes them and used from here.
     # The Methods bind them, so the alpha and the signal criterion they print are the ones
     # this run applied, and G2 fails either one typed instead.

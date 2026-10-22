@@ -5770,13 +5770,15 @@ variables:
 
 
 def _dictionary_failures(root: Path, text: str, stage: str) -> list[str]:
-    """What the whole check fails on at a stage, with this dictionary in the example."""
+    """What the whole check fails on at a stage, with this dictionary in the example in
+    place of its own: less G1's `input-changed`, since the example's analysis read the one
+    replaced."""
     from manuscript_guard.cli import _run_gates
 
     path = root / "design" / "data_dictionary.yaml"
     path.write_bytes(text.encode("utf-8"))
     report, _project, _chosen, _deferred = _run_gates(root, stage=stage)
-    return [f"{f.gate} {f.code}" for f in report.failures]
+    return [f"{f.gate} {f.code}" for f in report.failures if f.code != "input-changed"]
 
 
 @pytest.mark.parametrize("stage", ["design", "submission"])
@@ -5807,14 +5809,15 @@ def test_a_dictionary_that_does_not_read_fails_the_check_at_every_stage(
 
 
 def _collection_said(root: Path, text: str, stage: str) -> tuple[list[str], list[str]]:
-    """What the whole check fails on and what G12 warns of the collection plan, at a stage."""
+    """What the whole check fails on and what G12 warns of the collection plan, at a stage:
+    less G1's `input-changed`, since the example's analysis read the dictionary replaced."""
     from manuscript_guard.cli import _run_gates
 
     (root / "design" / "data_dictionary.yaml").write_bytes(text.encode("utf-8"))
     report, _project, _chosen, _deferred = _run_gates(root, stage=stage)
     warned = [f.code for f in report.warnings
               if f.code.startswith(("plan-variable", "dictionary-"))]  # fmt: skip
-    return [f.code for f in report.failures], warned
+    return [f.code for f in report.failures if f.code != "input-changed"], warned
 
 
 @pytest.mark.parametrize("stage", ["design", "submission"])
@@ -5840,6 +5843,243 @@ def test_an_entry_nothing_needs_is_warned_of(project: Path, stage: str) -> None:
     _plan_edited(project, "carry unique identifiers",
                  "carry their year (`year`) and unique identifiers")
     assert _collection_said(project, unneeded, stage) == ([], [])
+
+
+# ------------------------------------------------- the data held to the dictionary (G16)
+
+#: The example's sentence on its data checks, the last of its Methods' first paragraph. The
+#: count of repeated identifiers is no count of duplicate cases (a case two reporters sent
+#: carries two identifiers), so the generator stays the reason no de-duplication step was
+#: applied, as round 1's r1-pe-02 was answered (round 4 of #389). Its opening words are the
+#: ones tools/panel_measure.py plants a defect in, and its closing words the ones
+#: test_suggestions.py emphasises (METHODS_EMPHASIS): both stay as they were.
+_CHECKED_SAID = (
+    "Each record carries a unique report identifier; checked against the data dictionary, "
+    "{{results.quality.rule.one_row_per_report}} of the {{results.quality.rows}}\n"
+    "reports repeated another's and {{results.quality.age_group.missing}} gave no age group. "
+    "The generator emits no duplicate cases, so no de-duplication\n"
+    "step was applied; a real database would require one, and its absence here is a property "
+    "of the synthetic data rather than a design choice."
+)
+
+
+def _without_counts(root: Path) -> None:
+    """The example as its analysis left it before it checked its data: no result under
+    `quality.`."""
+    fragment = root / "results" / "01_disproportionality.json"
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"] = {
+        key: spec for key, spec in document["values"].items() if not key.startswith("quality.")
+    }
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+
+
+def _dictionary_edited(root: Path, old: str, new: str) -> None:
+    path = root / "design" / "data_dictionary.yaml"
+    text = path.read_text(encoding="utf-8")
+    assert old in text
+    path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+
+def _unsaid(root: Path) -> str:
+    """Take the example's sentence on its data checks, the last of the Methods' first
+    paragraph, out of the Methods, and return it."""
+    text = main_md(root).read_text(encoding="utf-8")
+    assert _CHECKED_SAID + "\n\n" in text
+    main_md(root).write_text(text.replace(_CHECKED_SAID + "\n", "", 1), encoding="utf-8")
+    return _CHECKED_SAID
+
+
+def _say_in(root: Path, heading: str, said: str = _CHECKED_SAID) -> None:
+    """Put a paragraph at the head of a section of the manuscript."""
+    text = main_md(root).read_text(encoding="utf-8")
+    assert f"\n# {heading}\n\n" in text
+    main_md(root).write_text(
+        text.replace(f"\n# {heading}\n\n", f"\n# {heading}\n\n{said}\n\n", 1), encoding="utf-8"
+    )
+
+
+def _g16(root: Path, stage: str) -> list[tuple[str, str]]:
+    """What G16 says of the project at a stage: each finding's code and severity."""
+    from manuscript_guard.gates.data_quality import check_data_quality, check_quality_reported
+
+    project, _ = load_project(root)
+    _namespace, results, _literature, _report = load_namespace(project)
+    at_submission = stage == "submission"
+    report = check_data_quality(project, results, stage, submission=at_submission).merge(
+        check_quality_reported(project, results, stage, submission=at_submission)
+    )
+    return sorted((f.code, f.severity) for f in report.findings)
+
+
+@pytest.mark.parametrize("stage", ["design", "analysis", "drafting", "submission"])
+def test_the_example_holds_its_data_to_the_dictionary_and_says_so(
+    project: Path, stage: str
+) -> None:
+    assert _g16(project, stage) == []
+
+
+def test_no_dictionary_leaves_g16_quiet(project: Path) -> None:
+    (project / "design" / "data_dictionary.yaml").unlink()
+    _without_counts(project)
+    assert _g16(project, "submission") == []
+
+
+def test_the_counts_are_results_and_bound_as_any_result(project: Path) -> None:
+    """The counts are there, none of them a result that must be quoted, and the Methods bind
+    three of them."""
+    _namespace, results, _literature, _report = load_namespace(load_project(project)[0])
+    counted = {key: value for key, value in results.values.items() if key.startswith("quality.")}
+    assert counted["quality.rows"].value == 4000
+    assert counted["quality.rule.one_row_per_report"].value == 0
+    assert counted["quality.hepatic.not_allowed"].value == 0
+    assert not any(value.quoted for value in counted.values())
+    assert "unresolved-binding" not in codes(gate_report(project))
+
+
+@pytest.mark.parametrize(
+    "stage, said",
+    [
+        ("design", []),
+        ("analysis", [("quality-not-run", "warn")]),
+        ("submission", [("quality-not-run", "fail")]),
+    ],
+)
+def test_a_dictionary_nothing_checked_the_data_against(
+    project: Path, stage: str, said: list
+) -> None:
+    _unsaid(project)
+    _without_counts(project)
+    assert _g16(project, stage) == said
+
+
+def _without_entry(root: Path, name: str) -> None:
+    """The example's dictionary less one variable's entry."""
+    path = root / "design" / "data_dictionary.yaml"
+    text = path.read_text(encoding="utf-8")
+    start = text.index(f"  - name: {name}\n")
+    end = text.find("  - name: ", start + 1)
+    end = text.index("rules:") if end < 0 else end
+    path.write_text(text[:start] + text[end:], encoding="utf-8")
+
+
+@pytest.mark.parametrize("name", ["exposed", "sex"])
+def test_a_variable_the_analysis_uses_with_no_entry_warns(project: Path, name: str) -> None:
+    """`exposed` the analysis derives, `sex` it reads: the model reads both, and the
+    analysis declares both. Neither is defined anywhere once its entry is gone."""
+    from manuscript_guard.gates.data_quality import check_data_quality
+
+    _without_entry(project, name)
+    for stage in ("analysis", "submission"):
+        assert _g16(project, stage) == [("not-in-dictionary", "warn")]
+    project_, _ = load_project(project)
+    (finding,) = check_data_quality(project_, load_namespace(project_)[1], "analysis").findings
+    assert finding.message == (
+        f"{name} is declared in results/01_disproportionality.json and has no entry in the "
+        "data dictionary"
+    )
+
+
+@pytest.mark.parametrize(
+    "stage, said",
+    [
+        ("design", []),
+        ("drafting", [("entry-unchecked", "warn")]),
+        ("submission", [("entry-unchecked", "fail")]),
+    ],
+)
+def test_an_entry_no_count_covers_warns_and_fails_at_submission(
+    project: Path, stage: str, said: list
+) -> None:
+    """The dictionary lists a weight the reports do not hold: nothing was counted of it."""
+    _dictionary_edited(
+        project,
+        "rules:\n",
+        "  - name: weight\n    label: Weight\n    definition: Body weight in kilograms.\n"
+        "    type: continuous\n    unit: kg\nrules:\n",
+    )
+    assert _g16(project, stage) == said
+
+
+def test_a_rule_no_count_covers_warns_and_fails_at_submission(project: Path) -> None:
+    """A computed rule the script never handed check_data."""
+    path = project / "design" / "data_dictionary.yaml"
+    path.write_text(
+        path.read_text(encoding="utf-8")
+        + "  - id: no_fatal_rash\n    says: No rash is fatal.\n    computed: true\n",
+        encoding="utf-8",
+    )
+    assert _g16(project, "drafting") == [("rule-unchecked", "warn")]
+    assert _g16(project, "submission") == [("rule-unchecked", "fail")]
+
+
+@pytest.mark.parametrize(
+    "heading, said",
+    [
+        (None, [("quality-not-reported", "fail")]),
+        ("Results", [("quality-not-reported", "fail")]),
+        ("Discussion", [("quality-not-reported", "fail")]),
+    ],
+)
+def test_counts_the_methods_do_not_bind_fail_at_submission(
+    project: Path, heading: str | None, said: list
+) -> None:
+    """The counts bound outside the Methods, or nowhere, tell the reader of the Methods
+    nothing about what the data held."""
+    sentence = _unsaid(project)
+    if heading:
+        _say_in(project, heading, sentence)
+    assert _g16(project, "submission") == said
+    assert _g16(project, "analysis") == []
+    assert _g16(project, "drafting") == [(code, "warn") for code, _severity in said]
+
+
+def test_counts_the_supplement_binds_are_reported(project: Path) -> None:
+    sentence = _unsaid(project)
+    supplement = project / "manuscript" / "supplementary"
+    supplement.mkdir(exist_ok=True)
+    (supplement / "data_checks.md").write_text(
+        f"# Data checks\n\n{sentence}\n", encoding="utf-8"
+    )
+    assert _g16(project, "submission") == []
+
+
+def test_a_dictionary_edited_after_the_counts_is_an_input_changed(project: Path) -> None:
+    """The dictionary is an input of the run that counted: G1 says the counts are stale."""
+    assert "input-changed" not in codes(gate_report(project))
+    _dictionary_edited(project, "{min: 2015, max: 2024}", "{min: 2016}")
+    stale = [f for f in gate_report(project).failures if f.code == "input-changed"]
+    assert [(f.path.name, f.message) for f in stale] == [
+        ("01_disproportionality.json", "input design/data_dictionary.yaml changed since "
+                                       "these results were written")
+    ]  # fmt: skip
+
+
+def test_a_small_count_is_held_back_and_g2_passes_it(project: Path) -> None:
+    """One report breaks the pattern, R04000, under a custodian's minimum of five: the
+    count prints "<5", which the Methods bind and G2 does not fail."""
+    import subprocess
+    import sys
+
+    from manuscript_guard.gates.custodian import check_small_cells
+
+    paper = project / "paper.yaml"
+    paper.write_text(
+        paper.read_text(encoding="utf-8") + "\ncustodian:\n  minimum_cell_count: 5\n",
+        encoding="utf-8",
+    )
+    _dictionary_edited(project, '"R[0-9]{5}"', '"R0[0-3][0-9]{3}"')
+    script = project / "analysis" / "01_disproportionality.py"
+    ran = subprocess.run([sys.executable, str(script)], capture_output=True, text=True, cwd=project)
+    assert ran.returncode == 0, ran.stderr
+    _say_in(project, "Methods", "{{results.quality.report_id.not_matching}} were misnumbered.")
+    project_, _ = load_project(project)
+    results = load_namespace(project_)[1]
+    held = results.values["quality.report_id.not_matching"]
+    assert (held.value, held.display) == (1, "<5")
+    said = [f.message for f in check_small_cells(project_, results).findings]
+    assert not [m for m in said if "quality." in m], said
 
 
 # ------------------------------------------------- the unit of analysis
@@ -6781,8 +7021,9 @@ def test_a_gate_not_taught_latex_reads_nothing_and_fails_at_submission(project: 
     unread = sorted(f.gate for f in drafting.findings if f.code == "not-read-in-latex")
     # G2 reads LaTeX but for its pointers to tables and figures, and says so (step 4). G4
     # reads it from step 6 but for the data sources its statements name, G14 and G6 from
-    # step 7, G7 but for its text recycling, G8, G8r, G9, G13 and G15 from step 8.
-    expected = ["BUILD", "G2", "G4", "G7"]
+    # step 7, G7 but for its text recycling, G8, G8r, G9, G13 and G15 from step 8; G16
+    # reads the Markdown only (#389).
+    expected = ["BUILD", "G16", "G2", "G4", "G7"]
     assert unread == expected, drafting.render(project)
     assert "not-read-in-latex" not in codes(drafting)
     said = {f.code for f in drafting.findings}
@@ -6797,12 +7038,14 @@ def test_a_gate_not_taught_latex_reads_nothing_and_fails_at_submission(project: 
 #: The checks that read the manuscript only as Markdown, and those that do not read it.
 _MARKDOWN_ONLY = (
     "check_statement_sources", "check_shapes", "check_tex", "check_recycling",
+    "check_quality_reported",
 )  # fmt: skip
 _NOT_THE_MANUSCRIPT = (
     "check_review", "check_freshness", "check_figures", "check_figure_reviews",
     "check_literature_chain", "check_shortlist", "check_design", "check_design_rounds",
     "check_consistency", "check_restricted_inputs", "check_relations", "check_data_sources",
-    "check_datasets",
+    "check_data_quality",
+    "check_datasets", "check_declared_datasets",
     "check_method_passages", "check_methods_review",
     # It finds the figures placed in the Markdown sources, so it reads nothing of a LaTeX
     # manuscript and says nothing of one; it runs, as G3's other check does (round 1 of #387).
@@ -10403,6 +10646,129 @@ def test_a_statement_that_says_otherwise_than_the_route_is_said(project: Path) -
     assert _sources_said(project, document) == []
 
 
+def _renamed(document: dict, old: str, new: str) -> dict:
+    """The record with the candidate `old` given the id `new`, wherever the record names it."""
+    for candidate in document["candidates"]:
+        if candidate["id"] == old:
+            candidate["id"] = new
+    for entry in document.get("ranking") or []:
+        if entry["source"] == old:
+            entry["source"] = new
+    decision = document["decision"]
+    decision["chosen"] = [new if source == old else source for source in decision["chosen"]]
+    return document
+
+
+def _not_chosen(root: Path, document=None) -> list:
+    """G12's `dataset-not-chosen`, with the record written as `document` (the one of
+    tests/test_data_sources.py, which chose the open archive, `ora`, by default)."""
+    from test_data_sources import write_record
+
+    from manuscript_guard.gates.data_sources import check_declared_datasets
+
+    write_record(root, document)
+    project, _ = load_project(root)
+    _namespace, results, _literature, _load = load_namespace(project)
+    return list(check_declared_datasets(project, results).findings)
+
+
+def test_a_dataset_the_record_did_not_choose_is_warned_of(project: Path) -> None:
+    """The example declares its reports as the dataset `reports`, and keeps no record of data
+    sources, so nothing is said. A record that chose another source is warned of by G12,
+    through the runner as `check` calls it, at the fragment that declares the dataset, with
+    the dataset's name and the ids the record chose."""
+    from test_data_sources import write_record
+
+    from manuscript_guard.cli import _run_gates
+
+    def said() -> list:
+        report, *_ = _run_gates(project, stage="submission")
+        return [f for f in report.findings if f.code == "dataset-not-chosen"]
+
+    assert said() == []
+    write_record(project)
+    [found] = said()
+    assert (found.gate, found.severity) == ("G12", "warn")
+    assert found.message.startswith("dataset 'reports', which 01_disproportionality.json "
+                                    "declares, is not a source the record of data sources "
+                                    "chose (ora)")  # fmt: skip
+    assert found.path == project / "results" / "01_disproportionality.json"
+    assert "analysis/01_disproportionality.py" in found.context
+
+
+def test_a_dataset_the_record_considered_or_rejected_says_which(project: Path) -> None:
+    from test_data_sources import record
+
+    [found] = _not_chosen(project, _renamed(record(), "encd", "reports"))
+    assert "considered it and did not choose it" in found.message
+    document = _renamed(record(), "encd", "reports")
+    document["decision"]["rejected"] = [{"source": "reports", "why": "four months away"}]
+    [found] = _not_chosen(project, document)
+    assert "rejected it" in found.message
+    [found] = _not_chosen(project)
+    assert "considered" not in found.message and "rejected" not in found.message
+
+
+def test_a_dataset_the_record_chose_says_nothing(project: Path) -> None:
+    """The baseline: the dataset is named by the id of the source chosen, alone or beside
+    another. A record with no decision, or out of shape, holds nothing to it here; G12's
+    other check says so."""
+    from test_data_sources import record
+
+    assert _not_chosen(project, _renamed(record(), "ora", "reports")) == []
+    document = _renamed(record(), "encd", "reports")
+    document["decision"]["chosen"] = ["ora", "reports"]
+    assert _not_chosen(project, document) == []
+    document = record()
+    del document["decision"]
+    assert _not_chosen(project, document) == []
+    document = record()
+    document["decision"]["chosen"] = "ora"
+    assert _not_chosen(project, document) == []
+
+
+def test_a_dataset_is_compared_by_its_name_and_not_its_key(project: Path) -> None:
+    """A record's id holds hyphens and no underscore, and a results key writes a hyphen as an
+    underscore: the name the fragment's `datasets` block records is what is compared. A name
+    that differs from a chosen id only there is told the id as the record writes it."""
+    from test_data_sources import record
+
+    fragment = project / "results" / "01_disproportionality.json"
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    chosen = _renamed(record(), "ora", "open-reports")
+    for name, said in (("open-reports", 0), ("open_reports", 1)):
+        document["datasets"] = {name: next(iter(document["datasets"].values()))}
+        fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+        write_digest(fragment)
+        found = _not_chosen(project, chosen)
+        assert len(found) == said, name
+    assert "the record writes it 'open-reports'" in found[0].hint
+    assert "analysis/01_disproportionality.py" in found[0].hint
+    # The call is `em.dataset` in Python and `em$dataset` in R: the hint names neither
+    # (round 1 of #418).
+    assert "dataset(" not in found[0].hint
+
+
+def test_a_second_dataset_of_the_chosen_source_is_warned_of_until_chosen(project: Path) -> None:
+    """A known gap (round 1 of #418): every dataset is to be a source the record chose, so a
+    second extract of the chosen one under a name of its own is warned of until the record
+    lists it as a candidate and chooses it. A name is not matched on its first part."""
+    from test_data_sources import record
+
+    fragment = project / "results" / "01_disproportionality.json"
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    extract = document["datasets"]["reports"]
+    document["datasets"] = {"reports": extract, "reports-background": extract}
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    chosen = _renamed(record(), "ora", "reports")
+    [found] = _not_chosen(project, chosen)
+    assert found.message.startswith("dataset 'reports-background',")
+    chosen["candidates"].append({"id": "reports-background", "name": "Background extract"})
+    chosen["decision"]["chosen"].append("reports-background")
+    assert _not_chosen(project, chosen) == []
+
+
 #: What G4 says of the figure files.
 _ARTWORK_CODES = ("figure-format", "figure-resolution", "figure-height", "figure-file-size",
                   "figure-shrinks", "legend-words")  # fmt: skip
@@ -10945,11 +11311,12 @@ def test_a_p_value_reported_under_a_supplement_s_methods_heading_is_still_bound(
 
 
 def _lock_of_the_main_text_only(root: Path, schema: str) -> None:
-    """The example's lock, written by main, with its schema as `schema` says: as main wrote
-    it, left out, or left empty."""
+    """The example's lock as one written when G9 read the main text's Methods alone, its
+    schema as `schema` says: that version's, left out, or left empty. The example's own lock
+    may be written again by the tool as it now is, so the old version is set here."""
     path = root / "methods.lock"
     lock = yaml.safe_load(path.read_text(encoding="utf-8"))
-    assert lock["schema"] == "manuscript-guard/methods-lock/1"
+    lock["schema"] = "manuscript-guard/methods-lock/1"
     if schema == "absent":
         lock.pop("schema")
     elif schema == "empty":
@@ -10989,9 +11356,11 @@ def test_a_lock_of_the_main_text_only_is_not_said_of_where_the_supplement_has_no
     project: Path,
 ) -> None:
     """The example's supplement has "Supplementary methods" over its tables, and no text of
-    its own under it nor a section that names a method: it has no Methods to read."""
+    its own under it nor a section that names a method: it has no Methods to read. The lock
+    is set to the version that would be said of, since one the tool writes now never is."""
     from manuscript_guard.gates.methods import supplementary_methods
 
+    _lock_of_the_main_text_only(project, "as written")
     assert supplementary_methods(load_project(project)[0]) == []
     assert _methods_warnings(project) == []
 
@@ -18673,8 +19042,8 @@ def test_every_way_of_losing_a_reading_fails_a_submission(project: Path, name: s
 
 def test_the_example_s_own_rounds_are_read_as_they_were(project: Path) -> None:
     """One record a reviewer, no readers named: nothing about them changed. Rounds three to
-    nine read revisions with the earlier rounds in front of them, so the ninth supersedes
-    the eight before it and each says it was not blinded."""
+    ten read revisions with the earlier rounds in front of them, so the tenth supersedes
+    the nine before it and each says it was not blinded."""
     from manuscript_guard.gates import check_review
 
     report = check_review(load_project(project)[0], submission=True)
@@ -18682,10 +19051,10 @@ def test_the_example_s_own_rounds_are_read_as_they_were(project: Path) -> None:
     said = sorted((f.code, f.path.parent.name) for f in report.findings)
     superseded = [("review-superseded", f"round-{n}")
                   for n, many in ((1, 3), (2, 2), (3, 2), (4, 2), (5, 2), (6, 2), (7, 1),
-                                  (8, 1))
+                                  (8, 1), (9, 1))
                   for _ in range(many)]  # fmt: skip
-    assert said == superseded + [("round-not-blinded", "review")] * 7, report.render(project)
-    assert report.counts["review_rounds_complete"] == 9
+    assert said == superseded + [("round-not-blinded", "review")] * 8, report.render(project)
+    assert report.counts["review_rounds_complete"] == 10
 
 
 def test_a_reading_that_stops_parsing_fails_with_no_readers_named_either(project: Path) -> None:
@@ -19963,13 +20332,22 @@ def _feasibility_said(root: Path, stage: str, **values: int) -> list[str]:
 
 def test_a_plan_written_before_the_data_were_looked_at_is_a_warning(project: Path) -> None:
     """Item 47: a plan could set out an analysis of data nobody had counted, and nothing
-    said so while it was written."""
+    said so while it was written. The example counts its data against its dictionary, so
+    those counts are taken out first."""
+    _without_counts(project)
     assert _feasibility_said(project, "design") == ["feasibility-not-run"]
     assert _feasibility_said(project, "drafting") == []
 
 
 def test_a_plan_with_feasibility_results_says_nothing(project: Path) -> None:
     assert _feasibility_said(project, "design", feasibility__n_reports=4000) == []
+
+
+def test_a_plan_with_the_data_checked_against_the_dictionary_says_nothing(project: Path) -> None:
+    """The counts of the data checks say what the data hold, as the feasibility ones do
+    (Basile, 2026-10-21)."""
+    _without_counts(project)
+    assert _feasibility_said(project, "design", quality__rows=4000) == []
 
 
 def test_a_plan_with_no_analysis_yet_is_not_asked_for_feasibility(project: Path) -> None:

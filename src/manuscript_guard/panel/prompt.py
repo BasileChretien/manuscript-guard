@@ -22,10 +22,11 @@ are not sent; the place of each is marked.
 
 **A design round is sent the plan instead** (`gather_design`): the facts about the paper,
 `design/plan.md` without its front matter and comments and with its feasibility results
-printed into it, the feasibility results, each under its key, and where `paper.yaml`
-declares a `study_type`, what a plan for that design has to settle. Not the manuscript, and no
-result but a feasibility one: a binding in the plan to any other result, a value or a table,
-is sent as written. Its reviewers are told they read a plan before its analysis
+printed into it, the feasibility results and the counts of the data checks (`quality.*`),
+each under its key, and where `paper.yaml` declares a `study_type`, what a plan for that
+design has to settle. Not the manuscript, and no result but a feasibility one or a count of
+the data checks: a binding in the plan to any other result, a value or a table, is sent as
+written. Its reviewers are told they read a plan before its analysis
 is run (`system_text(..., design=True)`); the reply asked of them is the same.
 
 **The failure of a model reviewer is agreeableness.** A panel of personas that all approve
@@ -46,7 +47,7 @@ from manuscript_guard.build.assemble import render_table, strip_front_matter
 from manuscript_guard.contracts import load_namespace
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.gates.journal import profile_path
-from manuscript_guard.gates.numbers import is_supplementary, printed_order, source_files
+from manuscript_guard.gates.numbers import is_supplementary, printed_order
 from manuscript_guard.gates.reporting import checklist_path
 from manuscript_guard.paths import SHIPPED
 from manuscript_guard.text.masking import blank_comments
@@ -71,7 +72,7 @@ NOT_SENT = (
 #: the declared study design needs.
 NOT_SENT_DESIGN = (
     "the manuscript",
-    "results other than feasibility.*",
+    "results other than feasibility.* and quality.*",
     "authors.yaml",
     "figures",
     "literature/",
@@ -397,7 +398,10 @@ def _manuscript_files(project: Project) -> tuple[Path, list[Path]]:
             "paths.manuscript in paper.yaml takes in the review rounds or the response to "
             "reviewers, which are never sent. Keep the manuscript in a directory of its own"
         )
-    sources = source_files(directory)
+    from manuscript_guard.text.reader import manuscript_files
+
+    # In the manuscript's format: a LaTeX one's `.tex` files, which G11 digests (step 12).
+    sources = manuscript_files(project)
     for path in sources:
         if not _inside(path, directory) or any(_inside(path, private) for private in kept_out):
             raise PromptError(
@@ -405,6 +409,38 @@ def _manuscript_files(project: Project) -> tuple[Path, list[Path]]:
                 "is not sent"
             )
     return directory, sources
+
+
+#: What a name of an author's is sent as.
+WITHHELD = "[withheld]"
+
+
+def _withheld(project: Project, text: str) -> str:
+    """`text` with each name, address, ORCID iD and institution authors.yaml gives written
+    as `WITHHELD`, found as the blind review's check finds them (round 2 of step 12, part 2):
+    as LaTeX types them too, and not in a reference list typed in `thebibliography`, which the
+    check passes over and the journal receives as typed (round 3)."""
+    from manuscript_guard.build.blinding import sought
+    from manuscript_guard.text.latex.mask import read
+
+    listed = read(text).references
+    spans = sorted(found.span() for one in sought(project.authors, latex=True)
+                   for found in one.pattern.finditer(text)
+                   if not any(start <= found.start() < end for start, end in listed))  # fmt: skip
+    out, at = [], 0
+    for start, end in spans:
+        if start < at:
+            at = max(at, end)
+            continue
+        out += [text[at:start], WITHHELD]
+        at = end
+    return "".join(out) + text[at:]
+
+
+def _body_start(text: str) -> int:
+    """Where a LaTeX document's `\\begin{document}` stands, or its start where it has none."""
+    found = re.search(r"\\begin\s*\{document\}", text)
+    return found.start() if found else 0
 
 
 def gather(project: Project) -> Material:
@@ -458,9 +494,43 @@ def gather(project: Project) -> Material:
         whole.update(path.name.encode("utf-8"))
         whole.update(data)
         digests[relative] = hashlib.sha256(data).hexdigest()
+        if path.suffix.lower() == ".tex":
+            continue
         shown, missing = _as_read(text, namespace, results, numbers)
         unrendered += missing
         blocks[path] = (label, shown)
+
+    if any(path.suffix.lower() == ".tex" for path in sources):
+        # A LaTeX manuscript is sent as the submission folder writes each document, its inputs
+        # written in, its values in and its comments out, which a blinded reviewer is not to
+        # read (step 12).
+        from manuscript_guard.build.document import BuildError
+        from manuscript_guard.build.latex_pack import written_documents
+
+        try:
+            written = written_documents(project, namespace, results)
+        except BuildError as exc:
+            raise PromptError(str(exc)) from exc
+        entries = {"manuscript": "main.tex", "supplementary": "supplementary/main.tex"}
+        for name, text in written.documents:
+            label = f"{manuscript_dir.name}/{entries[name]}"
+            # From `\\begin{document}` on: the preamble holds the authors, `\\author` and
+            # `\\thanks`, which stay on the machine as authors.yaml does; the title and the
+            # facts of the paper are sent apart (round 1 of step 12, part 2). A journal's
+            # template may name them in the body too, `\\affil` or a `frontmatter`: what
+            # authors.yaml names is withheld wherever it stands (round 2).
+            shown = _withheld(project, text[_body_start(text):])
+            unrendered += sum(shown.count(marker) for marker in set(written.unbound))
+            parts.append(_block(label, shown))
+            sent.append(Sent(label, "its body as the build prints it, the files it inputs "
+                                    "written in"))  # fmt: skip
+        return Material(
+            user="\n\n".join(parts) + "\n",
+            sent=tuple(sent),
+            file_sha256=digests,
+            manuscript_sha256=whole.hexdigest(),
+            unrendered=unrendered,
+        )
 
     # Sent in the order the build prints them: the paper with `main.md` first, then the
     # supplement. In path order `1_methods.md` came before `main.md`.
@@ -494,7 +564,7 @@ def gather_design(project: Project) -> Material:
     results, and one already emitted is not the reviewers' to see.
     """
     from manuscript_guard.gates.design import plan_path
-    from manuscript_guard.gates.design_review import FEASIBILITY, plan_digest
+    from manuscript_guard.gates.design_review import FEASIBILITY, QUALITY, plan_digest
 
     plan = plan_path(project)
     if not plan.is_file():
@@ -506,7 +576,8 @@ def gather_design(project: Project) -> Material:
         raise PromptError(f"{label} resolves to a file of the review's, which is not sent")
     namespace, results, _literature, _report = load_namespace(project)
     counted = {key: value for key, value in results.values.items() if key.startswith(FEASIBILITY)}
-    printable = {f"results.{key}": value for key, value in counted.items()}
+    checked = {key: value for key, value in results.values.items() if key.startswith(QUALITY)}
+    printable = {f"results.{key}": value for key, value in {**counted, **checked}.items()}
     # A table is a result too, and none is a feasibility one (a table's key has no dot): one
     # the plan binds is sent as written (round 1 of #316: it was printed into the request).
     tables = SimpleNamespace(tables={})
@@ -519,6 +590,11 @@ def gather_design(project: Project) -> Material:
         listed = "\n".join(f"{key}: {value.display}" for key, value in sorted(counted.items()))
         parts += ["# The feasibility results", _block("results: feasibility.*", listed)]
         sent.append(Sent("results: feasibility.*", f"{len(counted)} values, each with its key"))
+    if checked:
+        listed = "\n".join(f"{key}: {value.display}" for key, value in sorted(checked.items()))
+        parts += ["# The data, checked against the data dictionary",
+                  _block("results: quality.*", listed)]  # fmt: skip
+        sent.append(Sent("results: quality.*", f"{len(checked)} counts, each with its key"))
     needs = _design_needs(project)
     if needs:
         parts += ["# What this study design needs", needs[0]]

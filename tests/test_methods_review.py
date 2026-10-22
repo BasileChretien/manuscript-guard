@@ -470,7 +470,8 @@ def test_a_project_with_no_review_keeps_the_digest_it_had(project: Path) -> None
         for key in (json.loads(path.read_text(encoding="utf-8")).get("values") or {})
     )
     if not results_counted:
-        assert plan_digest(loaded) == digest.hexdigest()
+        # Without the data checks' counts, which a plan read before any were made also lacks.
+        assert plan_digest(loaded, checks=False) == digest.hexdigest()
 
 
 # ---------------------------------------------------------------- the stored copies

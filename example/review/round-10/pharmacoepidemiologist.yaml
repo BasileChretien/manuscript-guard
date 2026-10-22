@@ -1,0 +1,28 @@
+# Findings go below, each with an id, a severity and the finding itself. An empty
+# list is a reviewer who found nothing, which is a claim in its own right.
+schema: manuscript-guard/review/1
+round: 10
+reviewer: pharmacoepidemiologist
+reviewed_by: Claude Code
+reviewed_on: '2026-10-22'
+manuscript_sha256: 0a5c5ab3600c6516a42732a31742bb9f9614be48b56b1a8f33329fc15e09da65
+file_sha256:
+  main.md: c60ff1f5a917d2a04b350a5e3015a018d5d69d47ff6ae4a40254287f27a42a41
+  supplementary/S1_code_lists.md: 8c462c203bf3c08ac5ced6eaf25d38b56f2239502952f8d8e6b3d23cbb05b9b3
+verdict: pass
+summary: 'The Methods now give, beside the statement that the generator emits no duplicate
+  cases, what the checks against the data dictionary found: the reports checked, those that
+  repeated another''s identifier and those with no age group. The count of repeated identifiers
+  is not offered as evidence of no duplicate cases, so round 1''s r1-pe-02 stands as it was
+  answered: no de-duplication step was applied because the data are synthetic, and a real
+  database would need one.'
+findings:
+- id: r10-pe-01
+  severity: comment
+  where: Methods
+  finding: The count of repeated identifiers finds a report entered twice, not the same case
+    sent by two reporters, which carries two identifiers. The sentence does not ask it to;
+    it keeps the generator as the reason no de-duplication step was applied, and a real
+    database as needing one, as round 1's r1-pe-02 was answered. A real study would report
+    its case-level de-duplication beside this count.
+reading_sha256: 810139200deb8364a569c1dd4c6911122e2708d9ae1de21a2be581eca9932e5c

@@ -102,8 +102,9 @@ remotes::install_github("BasileChretien/manuscript-guard", subdir = "r/manuscrip
 ```
 
 `install_github` also installs `jsonlite` and `digest`. From a clone,
-`R CMD INSTALL r/manuscriptguard` does the same once those two are installed. Then, run from
-the project root:
+`R CMD INSTALL r/manuscriptguard` does the same once those two are installed. Checking data
+against the data dictionary (`em$check_data()`) also needs `yaml`, which it asks for when it
+is not there. Then, run from the project root:
 
 ```r
 library(manuscriptguard)

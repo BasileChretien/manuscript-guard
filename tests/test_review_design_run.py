@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 import yaml
-from test_corruption import _feasibility_said, _plan_edited
+from test_corruption import _feasibility_said, _plan_edited, _without_counts
 from test_review_run import KEY_A, KEY_B, MODEL_A, MODEL_B, Providers, answer, configure, reply_text
 
 from manuscript_guard.cli import main
@@ -68,7 +68,7 @@ def test_a_design_dry_run_sends_the_plan_and_the_feasibility_results(
     out = capsys.readouterr().out
     assert "Design round 1: 2 reviewers x 2 models = 4 calls" in out
     assert "There is no review/design/panel-1.yaml" in out
-    assert "Not sent: the manuscript, results other than feasibility.*" in out
+    assert "Not sent: the manuscript, results other than feasibility.* and quality.*" in out
     folder = planned / "build" / "review" / "design" / "round-1" / "dry-run"
     assert sorted(path.name for path in folder.glob("*.json")) == sorted(
         f"{reviewer}.{model}.json" for reviewer in ("design-methods", "statistics")
@@ -131,6 +131,57 @@ def test_a_table_the_plan_binds_is_sent_as_written(planned: Path, capsys) -> Non
     text = (folder / "as-text.txt").read_text(encoding="utf-8")
     assert "Table 1 will be {{table.baseline}}." in text
     assert "SECRET-ROW-426" not in text
+
+
+def test_a_design_round_is_sent_the_data_checks_and_reads_them(planned: Path, capsys) -> None:
+    """The counts of the data checks say what the data hold, as the feasibility results do
+    (Basile, 2026-10-21): they are sent under a heading of their own, a binding in the plan
+    to one is printed, and a reading made before they changed is of another plan."""
+    before = plan_digest(load_project(planned)[0])
+    _feasibility_said(planned, "design", quality__rows=4000, quality__age__missing=12)
+    assert plan_digest(load_project(planned)[0]) != before
+    _plan_edited(
+        planned, "## Outcome",
+        "## Outcome\n\n{{results.quality.age.missing}} reports give no age.\n",
+    )  # fmt: skip
+    assert design_run(planned, "--dry-run") == 0
+    capsys.readouterr()
+    folder = planned / "build" / "review" / "design" / "round-1" / "dry-run"
+    text = (folder / "as-text.txt").read_text(encoding="utf-8")
+    assert "# The data, checked against the data dictionary" in text
+    assert "quality.age.missing: 12" in text and "quality.rows: 4000" in text
+    assert "12 reports give no age." in text
+
+
+def _stale(root: Path) -> list[str]:
+    report = check_design_rounds(load_project(root)[0])
+    return [f.code for f in report.findings if f.code == "design-review-stale"]
+
+
+def test_counts_the_analysis_makes_later_leave_a_design_reading_current(
+    planned: Path, providers: Providers, capsys
+) -> None:
+    """Round 1 of #389: the analysis checks its data after the design round, and the plan
+    has not changed. The counts are none the round read, so its readings stay current."""
+    _without_counts(planned)
+    assert design_run(planned, "--yes") == 0
+    capsys.readouterr()
+    assert _stale(planned) == []
+    _feasibility_said(planned, "analysis", quality__rows=4000, quality__age__missing=12)
+    assert _stale(planned) == []
+
+
+def test_a_design_reading_of_counts_is_stale_once_they_change(
+    planned: Path, providers: Providers, capsys
+) -> None:
+    """A round that read the counts of the data checks is held to them: counted again, the
+    data are another plan to read."""
+    _feasibility_said(planned, "design", quality__rows=4000)
+    assert design_run(planned, "--yes") == 0
+    capsys.readouterr()
+    assert _stale(planned) == []
+    _feasibility_said(planned, "design", quality__rows=4001)
+    assert _stale(planned) and set(_stale(planned)) == {"design-review-stale"}
 
 
 def test_the_design_instructions_name_no_manuscript() -> None:

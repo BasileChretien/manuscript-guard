@@ -282,6 +282,17 @@ def test_a_passage_running_into_a_quotation_shows_no_mark_of_it(project: Path) -
     assert "\\ue00" not in finding.message and "\ue001" not in finding.message
 
 
+def test_an_empty_listing_after_an_unclosed_quotation_ends_the_reading() -> None:
+    """Round 4 of step 13: an empty listing in the spans a scan passes over stopped the scan
+    where it stood, and `check` did not end."""
+    from manuscript_guard.text.latex import mask, printed, structure
+
+    text = ("\\documentclass{article}\n\\begin{document}\n% \\enquote{\n"
+            "\\begin{verbatim}\\end{verbatim}\nWords.\n\\end{document}\n")  # fmt: skip
+    source = structure.Source("main.tex", text, mask.read(text))
+    assert "Words." in printed.printed([source], compared=True).text
+
+
 def test_a_brace_in_code_does_not_close_a_quotation(project: Path) -> None:
     """Round 3 of step 13: `\\verb|{|` prints a brace, and opens no group, so the quotation
     ends where its own brace does and the paragraph after it is not quoted."""

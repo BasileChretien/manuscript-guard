@@ -1790,8 +1790,10 @@ The result is compiled and packed by the code above, and checked three times:
   `longtable`'s `\caption`, which the view blanks with the table's cells (round 2 of step 13).
 - Past a refusal of the reader in a supplement's file, G16 reads that file's bindings by
   their shape, one in a comment among them; the refusal fails the file in G2 (round 2 of
-  step 13). Past one, too, the compared view counts a brace in a comment the reader did not
-  read as a group's, where it marks a quotation (round 3).
+  step 13). Past a refusal in any file, the compared view counts a brace in a comment the
+  reader did not read as a group's, where it marks a quotation (round 3), and an option of a
+  quotation's command whose braces do not close in its paragraph ends at its first `]`
+  (round 4).
 - `build --latex` refuses Markdown that G2's Markdown reader and pandoc read otherwise, and
   says where the digits part: measured, 38 of 180 of the suite's generated files (`texts()`),
   which hold fences closed by a line separator, `:::` divs and a YAML block left open at the
@@ -2309,9 +2311,9 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
     give them, a `\cite` as `[@key]`, in the view `printed(..., compared=True)` writes: a
     float's caption, or a `\subcaption`, as a paragraph of its own, which the word counts'
     view leaves out, and a quotation csquotes' commands mark (`\enquote`, `\textquote` and
-    `\blockquote`; the `c` forms of the last two, and the `\foreign...` and `\hyphen...` forms)
-    or a `quote`,
-    `quotation` or `displayquote` environment holds, between `QUOTE_OPEN` and
+    `\blockquote`; the `c` forms of the last two, and the `\foreign...`, `\hyphen...` and
+    `\hybrid...` forms) or a `quote`, `quotation` or `displayquote` environment holds,
+    between `QUOTE_OPEN` and
     `QUOTE_CLOSE`, which the comparison counts as quoted, one inside another the outer's
     (rounds 1 and 2). A file
     nothing inputs is compared on its own, as G2 reads it (round 1). A passage is placed at

@@ -267,9 +267,12 @@ def _compared_events(source: Source, placeholders) -> list[tuple[int, int, str]]
         return not any(start <= at < end for start, end in passed)
 
     # What a group's braces are not counted in: a comment, and code, `\\verb|{|` and a listing,
-    # which print a brace as typed (round 3 of step 13).
-    comments = dict([*reading.comments, *reading.code,
-                     *((listing.start, listing.end) for listing in reading.listings)])  # fmt: skip
+    # which print a brace as typed (round 3 of step 13). Not an empty one, which a scan would
+    # jump to where it stands, and stop there (round 4).
+    comments = {start: end for start, end in
+                [*reading.comments, *reading.code,
+                 *((listing.start, listing.end) for listing in reading.listings)]
+                if end > start}  # fmt: skip
     events: list[tuple[int, int, str]] = []
     for start, end in reading.floats:
         captions = [(opened, closed) for _begun, opened, closed
@@ -355,8 +358,12 @@ def _options_end(text: str, at: int, comments: dict) -> int:
         ahead = _ahead(text, at, comments)
         if ahead >= len(text) or text[ahead] != "[":
             return at
+        # Within its paragraph: an option whose braces do not close there ends at its first
+        # `]`, as it did before braces were counted (round 4 of step 13).
+        blank = _BLANK_LINE.search(text, ahead)
+        limit = blank.start() if blank else len(text)
         depth, at = 0, ahead + 1
-        while at < len(text) and not (text[at] == "]" and depth == 0):
+        while at < limit and not (text[at] == "]" and depth == 0):
             if text[at] == "\\":
                 at += 2
                 continue
@@ -365,10 +372,16 @@ def _options_end(text: str, at: int, comments: dict) -> int:
                 continue
             depth += {"{": 1, "}": -1}.get(text[at], 0)
             at += 1
-        if at >= len(text):
-            return -1
+        if at >= limit:
+            at = text.find("]", ahead)
+            if at < 0:
+                return -1
         at += 1
     return at
+
+
+#: A line with nothing on it, which ends a paragraph.
+_BLANK_LINE = re.compile(r"\n[ \t]*\n")
 
 
 def _closing(text: str, opened: int, comments: dict) -> int:

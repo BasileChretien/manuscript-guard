@@ -628,6 +628,27 @@ def test_a_round_built_from_other_text_keeps_nothing_and_says_where_the_file_goe
     )  # fmt: skip
 
 
+def _extract_again(project: Path, simulate: Path) -> None:
+    """Make the example's data again and date and pin them as a new extraction, which the
+    analysis asks of data that are not the ones its dataset was pinned to."""
+    import sys
+
+    from manuscript_guard.emit import input_digest
+
+    subprocess.run([sys.executable, str(simulate)], cwd=project, check=True)
+    fresh = input_digest(project / "data" / "reports.csv")[:16]
+    script = project / "analysis" / "01_disproportionality.py"
+    text = script.read_text(encoding="utf-8")
+    pinned = re.search(r'fingerprint="([0-9a-f]+)"', text)
+    assert pinned, "the example's dataset is pinned"
+    script.write_text(
+        text.replace('extracted="2026-08-03"', 'extracted="2026-10-21"').replace(
+            pinned.group(0), f'fingerprint="{fresh}"'
+        ),
+        encoding="utf-8",
+    )
+
+
 @needs_pandoc
 def test_a_re_run_shows_in_the_marked_up_supplement_as_in_the_paper(
     project: Path, capsys: pytest.CaptureFixture[str]
@@ -650,6 +671,7 @@ def test_a_re_run_shows_in_the_marked_up_supplement_as_in_the_paper(
         simulate.read_text(encoding="utf-8").replace("Random(20260803)", "Random(20261021)"),
         encoding="utf-8",
     )
+    _extract_again(project, simulate)
     run_analysis(project)
     restamp_figure_review(project)
     now = displays(load_project(project)[0])

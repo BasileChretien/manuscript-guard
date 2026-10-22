@@ -1158,6 +1158,158 @@ def test_r_and_python_declare_a_dictionary_alike(tmp_path: Path) -> None:
     assert r_inputs == py_inputs == ["data/MedAscii/meddra_release.asc"]
 
 
+DATASETS = {
+    "R": """
+if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
+  cat("MISSING_DEPS\\n"); quit(status = 3)
+}
+source("%(emit)s")
+em <- mg_emitter("%(script)s")
+em$dataset("vigibase", "data/extract.csv", extracted = "2024-03-01",
+           covers = c(NA, "2023-12-31"), version = "2024  Q1", fingerprint = "%(pin)s",
+           dates = as.Date(c("2023-01-05", NA, "2023-12-30")))
+em$dataset("faers-q4", c("data/demo.csv", "data/extract.csv"), extracted = "2024-02",
+           covers = c("2004", "2023-12"), fingerprint = "%(both)s", dates = c(2004, 2023))
+em$value("period.start", "2015-01-01", display = "1 January 2015")
+em$write()
+""",
+    "py": """
+from datetime import date
+from manuscript_guard.emit import Emitter
+em = Emitter(__file__)
+em.dataset("vigibase", "data/extract.csv", extracted="2024-03-01",
+           covers=(None, "2023-12-31"), version="2024  Q1", fingerprint="%(pin)s",
+           dates=[date(2023, 1, 5), None, date(2023, 12, 30)])
+em.dataset("faers-q4", ["data/demo.csv", "data/extract.csv"], extracted="2024-02",
+           covers=("2004", "2023-12"), fingerprint="%(both)s", dates=[2004, 2023])
+em.value("period.start", "2015-01-01", display="1 January 2015")
+em.write()
+""",
+}
+
+
+def _dataset_project(tmp_path: Path, english: str = "en-US") -> tuple[Path, dict[str, str]]:
+    from manuscript_guard.datasets import dataset_digest
+    from manuscript_guard.emit import input_digest
+
+    root = _parameter_project(tmp_path)
+    paper = root / "paper.yaml"
+    paper.write_text(paper.read_text(encoding="utf-8").replace("en-GB", english),
+                     encoding="utf-8")  # fmt: skip
+    (root / "data").mkdir()
+    # CRLF, so that the digest the pin is of is the one with line endings left out.
+    (root / "data" / "extract.csv").write_bytes(b"id,received\r\n1,2023-01-05\r\n")
+    (root / "data" / "demo.csv").write_bytes(b"id,age\n1,40\n")
+    pins = {
+        "pin": input_digest(root / "data" / "extract.csv")[:16],
+        "both": dataset_digest(sorted(
+            (f"data/{name}", input_digest(root / "data" / name))
+            for name in ("extract.csv", "demo.csv")
+        ))[:16],
+    }  # fmt: skip
+    return root, pins
+
+
+def test_r_and_python_declare_a_dataset_alike(tmp_path: Path) -> None:
+    """The same calls give the same keys, displays and records: dates at each precision,
+    one end of a period, a version, several files under one pin, and the data's own dates."""
+    import runpy
+
+    root, pins = _dataset_project(tmp_path)
+    r_script = root / "analysis" / "data_r.R"
+    r_script.write_text(DATASETS["R"] % {"emit": EMIT_R.as_posix(), "script": r_script.as_posix(),
+                                         **pins}, encoding="utf-8")  # fmt: skip
+    out = _run_r(r_script, root)
+    assert out.returncode == 0, out.stderr
+    py_script = root / "analysis" / "data_py.py"
+    py_script.write_text(DATASETS["py"] % pins, encoding="utf-8")
+    runpy.run_path(str(py_script), run_name="__main__")
+
+    def read(name: str) -> dict:
+        return json.loads((root / "results" / name).read_text(encoding="utf-8"))
+
+    r_document, py_document = read("data_r.json"), read("data_py.json")
+    assert r_document["values"] == py_document["values"]
+    assert r_document["datasets"] == py_document["datasets"]
+    assert py_document["values"]["dataset.vigibase.extracted"]["display"] == "March 1, 2024"
+    assert py_document["values"]["dataset.faers_q4.extracted"]["display"] == "February 2024"
+    assert py_document["datasets"]["faers-q4"]["observed"] == {
+        "earliest": "2004", "latest": "2023", "count": 2,
+    }  # fmt: skip
+    assert [i["path"] for i in r_document["provenance"]["inputs"]] == [
+        i["path"] for i in py_document["provenance"]["inputs"]
+    ]
+    report = validate(r_document, "results", root / "results" / "data_r.json")
+    assert report.ok, report.render(root)
+
+
+REFUSED_R = """
+if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
+  cat("MISSING_DEPS\\n"); quit(status = 3)
+}
+source("%(emit)s")
+em <- mg_emitter("%(script)s")
+%(call)s
+"""
+
+
+@pytest.mark.parametrize(
+    ("call", "says"),
+    [
+        ('em$dataset("vigibase", "data/extract.csv", extracted = "2024-03-01")',
+         'pin the extraction to its data, fingerprint = "%(pin)s"'),
+        ('em$dataset("vigibase", "data/extract.csv", extracted = "2024-03-01", '
+         'fingerprint = "0123456789abcdef")',
+         "is not the data pinned as extracted on 2024-03-01"),
+        ('em$dataset("vigibase", "data/extract.csv", extracted = "2024-03-01", '
+         'covers = c("2010", NA), fingerprint = "%(pin)s", dates = c("2009-12-31"))',
+         "1 of 1 dates lie outside the period the data are declared to cover (2010 to ...)"),
+        ('em$dataset("vigibase", "data/extract.csv", extracted = "2024-03-01", '
+         'fingerprint = "%(pin)s", version = 5)', "give the version as text"),
+        ('em$value("period.end", "2015-01-01", display = "1 January 2016")',
+         "is 2016-01-01, and the value is 2015-01-01"),
+        # Round 1 of #392: an impossible day stopped R inside as.Date, not with the refusal.
+        ('em$dataset("vigibase", "data/extract.csv", extracted = "2024-02-30", '
+         'fingerprint = "%(pin)s")', "extracted 2024-02-30 is not a date written as ISO 8601"),
+        # Round 2 of #392: a month of nought, refused in both languages.
+        ('em$value("period.end", "2024-03-15", display = "0/3/2024")', "is not a date"),
+    ],
+    ids=["unpinned", "other data", "outside the period", "a number", "another date",
+         "no such day", "a month of nought"],
+)
+def test_r_refuses_what_python_refuses_of_a_dataset(tmp_path: Path, call: str, says: str) -> None:
+    root, pins = _dataset_project(tmp_path)
+    script = root / "analysis" / "refused.R"
+    script.write_text(REFUSED_R % {"emit": EMIT_R.as_posix(), "script": script.as_posix(),
+                                   "call": call % pins}, encoding="utf-8")  # fmt: skip
+    out = _run_r(script, root)
+    assert out.returncode != 0
+    assert (says % pins) in " ".join(out.stderr.split()), out.stderr
+
+
+def test_r_reads_a_blank_date_as_missing_and_a_date_in_figures_as_python_does(
+    tmp_path: Path,
+) -> None:
+    """Round 1 of #392: a date of blanks was refused in R and missing in Python; a display
+    in figures, "01/03/2024", is read both ways in both."""
+    root, pins = _dataset_project(tmp_path)
+    script = root / "analysis" / "blank.R"
+    call = "\n".join((
+        'em$dataset("vigibase", "data/extract.csv", extracted = "2024-03-01", '
+        'fingerprint = "%(pin)s", dates = c("2023-01-05", "  ", NA))',
+        'em$value("day.a", "2024-01-03", display = "01/03/2024")',
+        'em$value("day.b", "2023-12-31", display = "31.12.2023")',
+        'em$value("day.c", "2023-12-31", display = "31-Dec-2023")',
+        "em$write()",
+    )) % pins  # fmt: skip
+    script.write_text(REFUSED_R % {"emit": EMIT_R.as_posix(), "script": script.as_posix(),
+                                   "call": call}, encoding="utf-8")  # fmt: skip
+    out = _run_r(script, root)
+    assert out.returncode == 0, out.stderr
+    document = json.loads((root / "results" / "blank.json").read_text(encoding="utf-8"))
+    assert document["datasets"]["vigibase"]["observed"]["count"] == 1
+
+
 MODEL_R = """
 if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
   cat("MISSING_DEPS\\n"); quit(status = 3)

@@ -261,7 +261,7 @@ All deterministic, all runnable in CI without Claude.
 
 | | Gate | Fails when |
 |---|---|---|
-| G1 | Results freshness | a results file whose script, or an input that script declared, has changed since it was written |
+| G1 | Results freshness | a results file whose script, or an input that script declared, has changed since it was written; a dataset's date pinned to other data than the results were computed from |
 | G2 | Number classification | a numeric token is unclassified, or a display value has no bound claim |
 | G3 | Figures | a number in a figure's output or in its source is not traceable to results |
 | G4 | Journal profile | word counts, structure, reference style, required statements |
@@ -1219,7 +1219,10 @@ finding, `not-read-in-latex`, naming the gate. That finding fails from `submissi
 it is shown as a note, as any finding not yet due is. Each pull request then ships on its own,
 and a half-taught `check` cannot pass a submission. `tests/test_reads_nothing.py` gets a row
 for each such gate. The commands not yet moved refuse a LaTeX project with a sentence and exit
-2: `explain`, `bind`, `audit`, `reworded`, `checker`, the panel's prompt and the hooks.
+2: every command that reads the manuscript only as Markdown, `explain`, `bind`, `reworded`,
+`checker` and the panel's prompt among them (step 1, `_MARKDOWN_COMMANDS`), and `audit`
+given a `.tex`, which it holds apart since it reads no project. A hook stops nothing, and the
+hooks are taught in step 12.
 
 ### What the LaTeX reader reads
 
@@ -1571,18 +1574,15 @@ The result is compiled and packed by the code above, and checked three times:
   (`other-format-file`): a project written before LaTeX was read may keep a `.tex` beside its
   Markdown for pandoc's header, and refusing it would fail a paper that passed. It is read by
   no gate. Whether to warn of it is left for later.
-- Until the second half of step 1, the commands other than `check` do not yet know a LaTeX
-  manuscript (round 1 of #370):
-  - `bind`, `lookup` and `build` stop on it, as on a folder with no Markdown, and so does the
-    panel's prompt ("no manuscript to review");
-  - `explain manuscript/main.tex` reads the file as Markdown and labels its numbers;
-  - `reworded` and `checker` read only Markdown, and so does `audit` given a folder; `audit`
-    given a `.tex` by name reads it as text, as `explain` does;
-  - `review` and `respond --open` digest the `.tex` files, as G11 does, but `respond --open`
-    keeps no copy of them;
-  - the submission refusal and the status line run the gates, so they see
-    `not-read-in-latex` as `check` does; the note on a saved file reads only Markdown, and
-    says nothing when a `.tex` is saved (round 2 of #370).
+- The hooks are not refused with the commands: a hook never stops the tool that called it.
+  The submission refusal and the status line run the gates, so they see `not-read-in-latex`
+  as `check` does; the note on a saved file reads only Markdown, and says nothing when a
+  `.tex` is saved (round 2 of #370), until step 12 teaches the hooks.
+- `audit` is not tied to a project: given a folder of `.tex` it says it found nothing to
+  audit, and only a `.tex` named is refused.
+- On a LaTeX project, `sign` of an id that stands nowhere lists G15's ids among those that
+  stand, though `sign` refuses them there; and `review --suggestions --design`, a misuse, is
+  told LaTeX is not read rather than that `--suggestions` stands alone (round 2 of #404).
 - An author's macro is not expanded where it is used, so a word its body prints there is in no
   sentence that G6 or G14 reads; its body is read once, at the definition.
 - An `\input` records the environments open around it, not the command whose argument it is
@@ -1748,9 +1748,20 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
 1. The seam, in two pull requests. The first, built: `text/reader.py` with the format and the
    files; G11's digests and the unreadable-file check through it; format detection,
    `two-formats` and `other-format-file`; `not-read-in-latex`, given by `_run_gates` for each
-   check in `_NOT_READ_IN_LATEX`, a set each later step takes its check out of. The second:
-   the refusing commands, after the open pull requests that change the same commands. Tests:
-   the differential unchanged, the corruption cases, rows in `test_reads_nothing.py`.
+   check in `_NOT_READ_IN_LATEX`, a set each later step takes its check out of. The second,
+   built: the refusing commands. `main` refuses, before a command runs, each one in
+   `_MARKDOWN_COMMANDS` whose invocation reads the manuscript, where the project's manuscript
+   or a file it is given is LaTeX: a sentence, and exit 2. They had read nothing and said so
+   as of an empty manuscript, "rendered 0 files", "cites nothing", or read the `.tex` as
+   Markdown, and `init` wrote a `main.md` beside `main.tex`, two formats. Some are refused in
+   part: `review` with `--run` or `--dry-run`, but for a design round, which reads the plan,
+   and with `--suggestions`; `lookup` but with `--journals`; `sign` of a G15 finding, and not
+   of a design round's override. `checker` is refused whole: every verb draws its items from
+   the manuscript, and `import` and `status` match answers against them (round 2 of #404).
+   A `.tex` named is refused by `explain` and
+   `reworded`, which read the file they are given, whatever the project's format. Tests:
+   the differential unchanged, and in `test_reads_nothing.py` a table, `LATEX`, of what each
+   command does with a LaTeX manuscript, each refusing one run on one.
 2. The scanner and `mask`, built: `commands.py` and `mask.py`, which scans as it reads, so
    that no `scan.py` stands apart. `read(text, body=...)` gives the masked text and the first
    refusal. Tests: `latex_texts()`, `latex_planted()`, `latex mask` and `latex refusals`,
@@ -6700,6 +6711,105 @@ shareable, a pointer in place of an input, a file git does not track and a cited
 copy each left out of the folder written; each kind of small count refusing it; the
 custodian's two sign-offs; every digest of the manifest; and the generated reading of a cell
 and of a DOI (`tests/test_properties.py`). It has not been used on a real deposit.
+## The data a paper analysed are named by the analysis
+
+"Data were extracted from VigiBase on 1 March 2024, covering reports to 31 December 2023" is
+a claim like any number. A date typed in the Methods already failed G2, each of its digits
+unbound, and the way out G2's hint gave was a string emitted with its display,
+`em.value("period.start", "2015-01-01", display="1 January 2015")`. That route had two
+holes. Nothing compared a string value with its display, so the display could be another
+year; and the call raised, the digits of an ISO date being taken for a measurement. Neither
+tied the date to the data: the extract could be replaced and the analysis run again, and the
+old date went out with every gate green.
+
+Many databases have one version, or none a user can name (Basile, 2026-10-21), so a version
+cannot be what identifies the data. The date of the extraction can, with the file. The
+analysis declares both where it reads the file, in either emitter:
+
+    em.dataset("vigibase", "data/vigibase.csv", extracted="2024-03-01",
+               covers=("1968", "2023-12-31"), version=None,
+               fingerprint="3f9a1c2b7e4d5a60", dates=frame["received"])
+
+It declares the files as inputs and emits `dataset.<name>.extracted`, `.covers_from`,
+`.covers_to`, and `.version` only where the source has one, each with the role `dataset`.
+The fragment carries a `datasets` record: the files, the pin, the dates and what the data's
+own dates were found to span. Dates are ISO 8601 to a year, a month or a day, and each is a
+span of days: data covering "2023" end on 31 December 2023. They are printed in the English
+`paper.yaml` declares, "1 March 2024" or "March 1, 2024", a month as "March 2024" in both.
+Direction two holds the Methods to binding each one, as it holds every value.
+
+**The date is pinned to the file** (Basile's choice of four, 2026-10-21). `fingerprint` is
+twelve or more characters from the start of the file's digest, the one G1 records with line
+endings left out or the one `sha256sum` prints; for several files it is the SHA-256 of a
+line `<digest>  <path>` for each, in the order of their paths (`datasets.dataset_digest`),
+so that a FAERS quarter in seven files is one dataset. A call without a pin is refused, and
+the refusal prints the pin to paste. A run on other files is refused and prints the new
+digest: data extracted again need the date of the new extraction. The other choices were a
+pin that only warned while it was missing, a ledger the tool would write and the author
+commit, and no pin. A ledger is state, and deleted it accepts anything again. A missing pin
+left the date free for as long as nobody pinned it.
+
+**What is on disk is held to it, whoever wrote it.** G1 fails a dataset whose pin is not the
+start of the digest its own fragment recorded for its files, or that names a file the run
+did not record reading (`dataset-pin-mismatch`). And it fails any other fragment that read
+one of those files with another digest (`dataset-read-differs`): a model fitted on the new
+extract beside a script that dates the old one. And it fails a value under the role
+`dataset` that its fragment's record does not hold, there or with that date
+(`dataset-value-unrecorded`, round 1 of #392): G2 does not warn of a dataset's date, so a
+value that says it is one, typed into a fragment, would be tied to nothing. All three read
+the records alone, so they hold in CI and in a co-author's clone, where restricted data are
+not. An input that changed since the results were written was `input-changed` already, and
+now names the date it makes stale.
+
+**The data's own dates are held to what the call states.** `dates` is a column of them:
+dates, date-times, pandas and NumPy values, ISO text with a time after the day, or whole
+years. A date wholly outside the period covered, or wholly after the extraction, is refused,
+with the first three named and the rest counted. "Wholly": a report dated "2023" may lie
+within data covered to 2023-06-30, and only one that cannot is refused. The period itself is
+refused where it runs backwards or ends after the extraction, and the extraction where it is
+after today.
+
+**A date's display is the date.** A string value that is an ISO date may be printed as that
+date or a coarser statement of it, "1 March 2015", "March 2015" or "2015", or in figures,
+"01/03/2015", "01.03.2015" or "2015/03/01", and never another date nor a finer one
+(`dates.display_problem`). Figures with the day and the month apart are read both ways, and
+pass where either reading is the date (round 1 of #392: a display in figures loaded on
+main). Only a day is a date beyond doubt: "2010-12" is also the period 2010 to 2012 written
+short, so a year or a month is held only to a display that reads as a date, and "2010 to
+2012" passes as it did. The Python emitter refuses a display that breaks the rule as it
+runs, and so does R's; the loader reads every fragment with the same rule and reports
+`no-display` for one that breaks it. An ISO date is no longer refused as a string carrying a
+number, a month or a day: four digits alone outside 1900 to 2099, the years `_LABELLIKE` takes for a label, are still a number until a label says otherwise,
+since "1520" read from a CSV is a count as often as a year (round 1 of #392). So
+`em.parameter("period.start", "2015-01-01", display="1 January 2015")`, a study period the
+analysis chose, can be written as G2's hint now says.
+
+**G2 warns where a sentence dates the data with a date the analysis typed**
+(`data-date-not-declared`, Basile, 2026-10-21). The sentence says the data were extracted,
+downloaded, retrieved, queried, accessed, obtained, locked, snapshotted or frozen, or given
+a cut-off, or what period they cover, span, run until or through, in any form of those
+words, and binds a string value that is a date, as its value or its display, under none of
+the roles that say what a value is. A dataset's date, a parameter's, a software version and
+a dictionary's release are not warned of (round 1 of #392: ICD-10's release is "2019"), nor
+a number, which the analysis may have computed from the data as the example computes its
+first and last year. The words are read in the binding's sentence, as `labels` reads one,
+with every binding, comment and citation in it blanked: a key named `extracted`, a step
+named `extraction` and a citekey `extracted2020` say nothing. The property is
+`test_a_date_typed_into_the_analysis_is_warned_where_its_sentence_dates_the_data`, over the
+reading `data dates`, with a planted sentence for each word, and twelve broken rules each
+caught under seeds 1 to 12. The supplement is held to the rules of the main text (Basile,
+2026-10-21), and G2 reads it as it reads the main text (`source_files`): an extraction date
+typed in Supplementary Methods fails, one typed into the script is warned of there, at that
+file, and a dataset's date bound only there is quoted. One more warning reads no text: a
+dataset's date printed in another English than `paper.yaml` declares now
+(`dataset-date-english`), since the emitter reads it when the analysis runs.
+
+The name is the source's id in `design/data_sources.yaml` where the project keeps one, so
+that the record of how the data were found and reached, and the analysis that read them,
+name one source alike. Nothing reads the record yet (Known gaps). The example declares its
+simulated reports as a dataset generated on 3 August 2026 to cover 2015 to 2024, its
+reports' years held to them, and its Methods print both that and the years the reports run
+over.
 
 ## The datasets considered are a record, and the one chosen is held to it
 
@@ -14787,6 +14897,48 @@ Open, recorded as each change landed:
   kept, is not found. The Word templates were not opened: their words were read in the LaTeX
   templates and in the papers printed with them. A Word drop-down's "Choose an item." is not
   read, since a paper writes that participants "choose an item".
+
+- **The extraction date is the author's word, pinned to a file.** No format the sources
+  export in carries the date in one place, so the emitter reads it from the call, never from
+  the data, and never from a file's modification time, which a copy resets. A date typed
+  wrongly with the right pin passes. What the pin holds is that the date changes when the
+  data do, and that a re-run cannot keep it unawares. A version is the author's word too,
+  checked for nothing but being text.
+- **A file derived from the extract is another input.** A script that cleans the extract and
+  writes `data/cohort.parquet` for the next to read hands on a file with its own digest, and
+  G1 records no outputs, so nothing ties the derived file to the extraction dated. Declare
+  the dataset in the script that reads the extract. `dataset-read-differs` compares
+  fragments that record the same path, and data copied to another path are another file to
+  it.
+- **The words that date the data are a list.** `data-date-not-declared` reads the forms of
+  extract, download, retrieve, query, access, obtain, lock, cut-off, snapshot, freeze, cover
+  and span, and until, through and "up to", in the binding's sentence. A sentence that dates
+  the data in other words, "as of", "received by", "data cut", is not read, and one that
+  uses those words of something else and binds a typed date is warned of. A year typed into
+  the script as a number is never warned of, since it cannot be told from one the analysis
+  computed. The sentence is the one `in_sentences` gives the binding, with its limit: a stop
+  typed against a binding with no space after it ends no sentence.
+- **A display is read in English, in three orders, or in figures.** "1 March 2024", "March
+  1, 2024", "March 2024", the ISO forms, three-letter months, "Sept", an ordinal day, a day
+  as strftime's `%d-%b-%Y` and SAS's DATE9 write it ("31-Dec-2023", "31DEC2023"), and
+  figures with a four-digit year first or last, the day and the month taken either way, and
+  neither a month nor a day of 0. A
+  two-digit year, a day of the week, a month in another language and a date with words
+  around it are no dates to it: as the display of an ISO day they are refused, and as the
+  display of a year or a month they pass unread, since "2010-12" is also a period written
+  short. "Spring 2025" for the value "2024" passes so. Years are of four digits, 0001 to
+  9999, in the Gregorian calendar.
+- **R counts the data's dates from one.** A refusal of `dates` names the first entries that
+  lie outside as `dates[1]` in R and `dates[0]` in Python, each its language's way.
+- **The English a dataset's date is printed in is read when the analysis runs.** A
+  `paper.yaml` changed afterwards is warned of (`dataset-date-english`), not failed. R reads
+  `english_variant` from its own line of `paper.yaml`, not as YAML, and takes British
+  English where it finds none there: a value in a flow mapping is not seen.
+- **`design/data_sources.yaml` is not read.** A dataset whose name is not a source the
+  record chose is not said, and the record's coverage is not compared with the declared one.
+  That waits for the record to be on main (Basile, 2026-10-21).
+- **"After today" is the machine's today.** An extraction dated today in one timezone may be
+  tomorrow on the machine that runs the analysis, and is refused there.
 
 - **What filing a co-author's comments does not do.** Each is non-blocking under the bar,
   and none is reached by a document Word 16 saves from a build:

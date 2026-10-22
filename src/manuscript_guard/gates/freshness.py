@@ -19,6 +19,7 @@ from pathlib import Path
 
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import HOW_TO_EMIT, Results
+from manuscript_guard.datasets import slug
 from manuscript_guard.emit import (
     DIGEST_SUFFIX,
     input_digest_matches,
@@ -28,6 +29,7 @@ from manuscript_guard.emit import (
     source_digest_matches,
 )
 from manuscript_guard.findings import INFO, WARN, Finding, Report
+from manuscript_guard.gates.datasets import dataset_of
 from manuscript_guard.paths import SOURCE_SUFFIXES, lockfiles
 from manuscript_guard.pointers import Pointer, pointer_at
 
@@ -75,10 +77,12 @@ def check_freshness(project: Project, results: Results) -> Report:
                         gate=GATE,
                         code="input-changed",
                         message=f"input {declared['path']} changed since these results "
-                        f"were written",
+                        f"were written" + _dates(fragment, declared["path"]),
                         path=fragment.path,
                         context=f"written {fragment.generated_at} by {fragment.generated_by}",
-                        hint=f"re-run {fragment.generated_by}",
+                        hint=f"re-run {fragment.generated_by}"
+                        + (", with the date of the new extraction and its pin"
+                           if dataset_of(fragment, declared["path"]) else ""),
                     )
                 )
 
@@ -154,6 +158,19 @@ def check_freshness(project: Project, results: Results) -> Report:
     report = report.merge(_check_built_document(project))
     return report.with_counts(
         fragments_checked=len(results.fragments), inputs_checked=checked_inputs
+    )
+
+
+def _dates(fragment, path: str) -> str:
+    """What a change to `path` makes stale beyond the results: the date of a dataset it is
+    one of the files of, which the Methods print as the date of the data they describe."""
+    found = dataset_of(fragment, path)
+    if found is None:
+        return ""
+    name, record = found
+    return (
+        f", and dataset.{slug(name)}.extracted dates the data as they were "
+        f"({record.get('extracted')})"
     )
 
 

@@ -169,6 +169,11 @@ COMMANDS = _specs(
 
 #: Commands that print a space, written as one.
 SPACES = frozenset({"quad", "qquad", "enspace", "thinspace", "space", "enskip", "nobreakspace"})
+#: The commands that print one character, which the mask writes where the command stands: a
+#: quotation with an ellipsis or a dash is then the words its source holds (round 1 of G7 in
+#: step 8).
+SYMBOLS = {"ldots": "\u2026", "dots": "\u2026", "textellipsis": "\u2026",
+           "textendash": "\u2013", "textemdash": "\u2014"}  # fmt: skip
 
 #: Environments and the arguments `\\begin` takes for them.
 ENVIRONMENTS = _specs(

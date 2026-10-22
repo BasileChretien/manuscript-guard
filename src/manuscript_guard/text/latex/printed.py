@@ -64,10 +64,15 @@ class Printed:
         self._starts.extend(origin[0] for origin in self.origins)
 
     def place_line(self, line: int) -> tuple[Source, int] | None:
-        """`place` for the start of the view's `line`, counted from 1 (step 8, G7)."""
+        """`place` for the first character the view's `line`, counted from 1, prints or that
+        follows it: a paragraph that opens a line after a heading's is placed at its own line,
+        not the heading's (round 1 of G7 in step 8)."""
         if not self._lines:
             self._lines.extend([0, *(at + 1 for at, char in enumerate(self.text) if char == "\n")])
-        return self.place(self._lines[min(max(line, 1), len(self._lines)) - 1])
+        offset = self._lines[min(max(line, 1), len(self._lines)) - 1]
+        while offset < len(self.text) - 1 and self.text[offset].isspace():
+            offset += 1
+        return self.place(offset)
 
     def place(self, offset: int) -> tuple[Source, int] | None:
         """The source and the line of it that `offset` of the view stands on, or None before
@@ -165,7 +170,7 @@ def _printed(
     for heading in reading.headings:
         hashes = "#" * (heading.level - shallowest + 1)
         events.append((heading.start, _title_end(heading),
-                       f"\n\n{hashes} {heading.title}\n\n"))  # fmt: skip
+                       f"\n\n{hashes} {_typeset(heading.title)}\n\n"))  # fmt: skip
     events += _abstracts_closed(reading)
     placeholders = bindings(source)[0]
     for placeholder in placeholders:
@@ -191,7 +196,7 @@ def _printed(
     ranges = _printed_ranges(reading)
 
     def shown(start: int, end: int) -> list[Piece]:
-        return [(_prose(reading.masked[max(start, low) : min(end, high)]), source,
+        return [(_prose(_typeset(reading.masked[max(start, low) : min(end, high)])), source,
                  max(start, low), True)
                 for low, high in ranges if max(start, low) < min(end, high)]  # fmt: skip
 
@@ -218,6 +223,15 @@ def _printed(
         at = end
     out += shown(at, len(reading.masked))
     return out
+
+
+def _typeset(prose: str) -> str:
+    """Prose with the dashes LaTeX joins from hyphens, `---` and `--`, as the characters it
+    prints: a quotation with one is then the words its source holds (round 1 of G7 in step
+    8). Code is written apart, as typed. Typed before the NULs go, so that hyphens a `{}`
+    keeps apart stay apart, and before a line of `---` is escaped as Markdown's rule (round
+    2)."""
+    return prose.replace("---", "\u2014").replace("--", "\u2013")
 
 
 def _binding(placeholder) -> str:

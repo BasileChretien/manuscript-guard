@@ -844,6 +844,13 @@ LATEX_QUOTATION_PLACES = (
     ("% As ``the cohort {} found a rise with age'' \\cite{{w}}.\n", False),
     ("\\iffalse As ``the cohort {} found a rise with age'' \\cite{{w}}. \\fi\n", False),
     ("As ``the cohort {} found a rise with age'' and no citation.\n", False),
+    # A dash and an ellipsis are the characters LaTeX prints, and a sentence that opens with
+    # a quotation is its own: the citation before it is not its (round 1 of G7 in step 8).
+    ("As ``the cohort {} of 2010--2019 rose \\ldots~with age'' \\cite{{w}}.\n", True),
+    ("A rise was seen \\cite{{v}}. ``The cohort {} found a rise with age'' \\cite{{w}}.\n",
+     True),
+    ("As ``the cohort {} rose---by \\textemdash~far---with age'' \\cite{{w}}.\n", True),
+    ("\\section{{Part}}\nAs ``the cohort {} found a rise with age'' \\cite{{w}}.\n", True),
 )  # fmt: skip
 
 

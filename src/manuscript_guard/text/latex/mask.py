@@ -36,6 +36,7 @@ from manuscript_guard.text.latex.commands import (
     REFUSED_ENVIRONMENTS,
     SIUNITX,
     SPACES,
+    SYMBOLS,
     TABLES,
     TYPED_TABLES,
 )
@@ -797,6 +798,9 @@ class _Reader:
         elif name in SPACES:
             if self._reads():
                 self.out[at] = " "
+        elif name in SYMBOLS:
+            if self._reads():
+                self.out[at] = SYMBOLS[name]
         elif name in ("usepackage", "RequirePackage", "inputencoding"):
             self._encoding(at)
             if name != "inputencoding":

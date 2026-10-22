@@ -160,34 +160,33 @@ def check_prose_quotations(project: Project) -> Report:
     read: dict[Path, str | None] = {}
     report = Report()
     for path, quotation in _quotations(project):
-        if True:
-            stored = [(key, source) for key in quotation.keys
-                      for source in _sources_of(sources, key)]  # fmt: skip
-            if not stored:
-                report = report.with_findings(_unchecked(path, quotation))
-                continue
-            texts = [(key, _text(read, source)) for key, source in stored]
-            if any(text is not None and quoted_in(text, quotation.quote) for _k, text in texts):
-                continue
-            # Named only where a source was read: a work with none was not looked in (round
-            # 1 of #282: every cited key was named).
-            looked_in = list(dict.fromkeys(key for key, text in texts if text is not None))
-            if not looked_in:
-                report = report.with_findings(_unchecked(path, quotation))
-                continue
-            report = report.with_findings(
-                Finding(
-                    gate=GATE,
-                    code="quotation-not-in-source",
-                    severity=WARN,
-                    message=f"the quotation {_shown(quotation.quote)} is not in the stored "
-                    f"source of {', '.join('@' + key for key in looked_in)}",
-                    path=path,
-                    line=quotation.line,
-                    hint="copy the words from the source rather than from memory, or cite the "
-                    "work that says them",
-                )
+        stored = [(key, source) for key in quotation.keys
+                  for source in _sources_of(sources, key)]  # fmt: skip
+        if not stored:
+            report = report.with_findings(_unchecked(path, quotation))
+            continue
+        texts = [(key, _text(read, source)) for key, source in stored]
+        if any(text is not None and quoted_in(text, quotation.quote) for _k, text in texts):
+            continue
+        # Named only where a source was read: a work with none was not looked in (round 1 of
+        # #282: every cited key was named).
+        looked_in = list(dict.fromkeys(key for key, text in texts if text is not None))
+        if not looked_in:
+            report = report.with_findings(_unchecked(path, quotation))
+            continue
+        report = report.with_findings(
+            Finding(
+                gate=GATE,
+                code="quotation-not-in-source",
+                severity=WARN,
+                message=f"the quotation {_shown(quotation.quote)} is not in the stored "
+                f"source of {', '.join('@' + key for key in looked_in)}",
+                path=path,
+                line=quotation.line,
+                hint="copy the words from the source rather than from memory, or cite the "
+                "work that says them",
             )
+        )
     return report
 
 

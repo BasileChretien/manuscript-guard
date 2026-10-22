@@ -1726,6 +1726,15 @@ The result is compiled and packed by the code above, and checked three times:
   no heading a checklist's answer can point at (round 1 of G8r in step 8). A definition's
   body is read where it is written, not where it prints: a claim a macro of a package
   prints is not read, and one an unused macro of the preamble holds is (round 2).
+- The printed view types LaTeX's dashes, so a quotation G13 is given as the `.tex` has it,
+  with `--`, is not found where one copied from the PDF is; and a sentence that opens with a
+  typographic quotation mark is now cut from the one before in Markdown too, so a passage or
+  a co-author's item recorded on the two joined is matched no more (round 2 of G7 in step
+  8).
+- G7 reads no quotation in a float's caption or a table's cell, which the printed view does
+  not print, and a footnote's words stand at its mark, glued to the word before it, so a
+  quotation or a cited sentence a footnote interrupts is read with the note's words in it
+  (round 1 of G7 in step 8).
 - G7 reads a quotation in LaTeX where it is set in ``...'' or typographic marks: one set in
   csquotes' `\enquote{...}` prints its marks in the PDF but not in the printed view, and is
   not read as a quotation. A cited sentence holds its citation as `[@key]` with a space
@@ -1997,7 +2006,10 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
    the `passages` command through `survey_of`) read a LaTeX paper's documents as they print
    (`printed_of`), where ``...'' is a quotation and a citation `[@key]`, and each quotation
    or cited sentence is named at its `.tex` file's line (`Printed.place_line`): a quotation
-   at the line its paragraph starts on, as in Markdown. That leaves only BUILD's checks
+   at the line its paragraph starts on, as in Markdown. The printed view types `--` and `---`
+   as their dashes, and the mask writes `\ldots`, `\textendash` and `\textemdash` as their
+   characters (`commands.SYMBOLS`); a sentence opens at a typographic quotation mark, as at a
+   straight one. That leaves only BUILD's checks
    (`check_shapes`, `check_tex`) in `_NOT_READ_IN_LATEX`, which are the PDF build's (step
    9), and G2's pointers. Tests: G7 on the twin, its quotations (``...'', typographic, in a
    comment, a narrative citation, in a file the twin inputs) and its cited statements, and

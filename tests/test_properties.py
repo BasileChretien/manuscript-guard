@@ -1112,12 +1112,48 @@ def test_a_latex_quotation_is_read_at_its_line_and_nowhere_else(
     for _path, quotation in found:
         (key,) = [key for key in read if key in quotation.quote]
         start = text.rindex("\n\n", 0, text.index(key)) + 2
+        # A paragraph that opens under a heading's line is placed at its own line.
+        start = text.index("\n", start) + 1 if text.startswith("\\section", start) else start
         assert quotation.line == text.count("\n", 0, start) + 1, (quotation, text)
+        assert quotation.keys == ("w",), quotation
+        assert "--" not in quotation.quote, quotation
+        if "rose" in quotation.quote and "of" in quotation.quote.split():
+            assert "\u2013" in quotation.quote and "\u2026" in quotation.quote, quotation
+        if "far" in quotation.quote:
+            assert quotation.quote.count("\u2014") == 3 and "-" not in quotation.quote, quotation
 
 
 def _a_quotation_s_line_is_the_printed_view_s(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(latex_print.Printed, "place_line",
                   lambda self, line: (self.origins[0][1], line))  # fmt: skip
+
+
+def _latex_dashes_are_printed_as_typed(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print, "_typeset", lambda prose: prose)
+
+
+def _latex_s_ellipsis_prints_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "SYMBOLS", {})
+
+
+def _a_typographic_quotation_mark_opens_no_sentence(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.checking import produce
+
+    patch.setattr(produce, "SENTENCE_END", re.compile(r"(?<=[.!?])\s+(?=[A-Z\"'(\[])"))
+
+
+def _latex_s_en_dash_is_typed_before_its_em_dash(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print, "_typeset",
+                  lambda prose: prose.replace("--", "\u2013").replace("---", "\u2014"))  # fmt: skip
+
+
+def _a_line_is_placed_where_it_starts_blank(patch: pytest.MonkeyPatch) -> None:
+    def place_line(self, line):
+        self._lines[:] = self._lines or [0, *(at + 1 for at, c in enumerate(self.text)
+                                             if c == "\n")]  # fmt: skip
+        return self.place(self._lines[min(max(line, 1), len(self._lines)) - 1])
+
+    patch.setattr(latex_print.Printed, "place_line", place_line)
 
 
 def _no_latex_citation_is_printed(patch: pytest.MonkeyPatch) -> None:
@@ -3416,7 +3452,7 @@ def test_an_anchor_claims_the_text_back_to_the_anchor_before_it_or_its_paragraph
     line of its own does not end the paragraph, and an anchor in a comment is none. A
     Methods paragraph with no anchor is one that points at no step."""
     text, expected, bare = planted
-    claims, open_ = methods_gate._anchored_in(Path("main.md"), text)
+    claims, open_ = methods_gate._anchored_in(methods_gate._Read(Path("main.md"), text))
     assert [(c.steps, c.text, c.line, c.anchor_line) for c in claims] == expected, text
     assert [paragraph.line for paragraph in open_] == bare, text
 
@@ -8059,9 +8095,9 @@ def _a_wordless_piece_is_left_alone(patch: pytest.MonkeyPatch) -> None:
 def _a_claim_runs_back_to_its_paragraph(patch: pytest.MonkeyPatch) -> None:
     real = methods_gate.claims_in
 
-    def claims_in(text: str) -> Any:
-        found, bare = real(text)
-        starts = [start for start, _end in methods_gate._paragraphs(text)]
+    def claims_in(text: str, *rest: Any) -> Any:
+        found, bare = real(text, *rest)
+        starts = [start for start, _end in methods_gate._paragraphs(text, *rest)]
         return [
             (steps, max(s for s in starts if s <= start), end, anchor)
             for steps, start, end, anchor in found
@@ -8073,8 +8109,8 @@ def _a_claim_runs_back_to_its_paragraph(patch: pytest.MonkeyPatch) -> None:
 def _anchors_side_by_side_claim_apart(patch: pytest.MonkeyPatch) -> None:
     real = methods_gate.claims_in
 
-    def claims_in(text: str) -> Any:
-        found, bare = real(text)
+    def claims_in(text: str, *rest: Any) -> Any:
+        found, bare = real(text, *rest)
         apart = []
         for steps, start, end, anchor in found:
             apart.append((steps[:1], start, end, anchor))
@@ -8088,7 +8124,8 @@ def _a_comment_line_ends_a_paragraph(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.text.masking import blank_comments
 
     real = methods_gate._paragraphs
-    patch.setattr(methods_gate, "_paragraphs", lambda text: real(blank_comments(text)))
+    patch.setattr(methods_gate, "_paragraphs",
+                  lambda text, *rest: real(blank_comments(text), *rest))  # fmt: skip
 
 
 def _a_claim_keeps_the_words_of_a_comment(patch: pytest.MonkeyPatch) -> None:
@@ -8849,6 +8886,26 @@ BROKEN = {
     ),
     "in LaTeX, a quotation's line is the printed view's": (
         _a_quotation_s_line_is_the_printed_view_s,
+        test_a_latex_quotation_is_read_at_its_line_and_nowhere_else,
+    ),
+    "in LaTeX's printed view, dashes are printed as typed": (
+        _latex_dashes_are_printed_as_typed,
+        test_a_latex_quotation_is_read_at_its_line_and_nowhere_else,
+    ),
+    "in LaTeX, an ellipsis prints nothing": (
+        _latex_s_ellipsis_prints_nothing,
+        test_a_latex_quotation_is_read_at_its_line_and_nowhere_else,
+    ),
+    "a typographic quotation mark opens no sentence": (
+        _a_typographic_quotation_mark_opens_no_sentence,
+        test_a_latex_quotation_is_read_at_its_line_and_nowhere_else,
+    ),
+    "in LaTeX's printed view, an en dash is typed before an em dash": (
+        _latex_s_en_dash_is_typed_before_its_em_dash,
+        test_a_latex_quotation_is_read_at_its_line_and_nowhere_else,
+    ),
+    "in LaTeX's printed view, a line is placed where it starts, blank or not": (
+        _a_line_is_placed_where_it_starts_blank,
         test_a_latex_quotation_is_read_at_its_line_and_nowhere_else,
     ),
     "in LaTeX's printed view, no citation is printed": (

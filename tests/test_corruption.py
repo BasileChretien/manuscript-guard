@@ -6900,6 +6900,11 @@ _LATEX_QUOTED = (
         (f"% As {_LATEX_QUOTED.format('fell')} \\cite{{fictionalHepaticCohort2021}}.", []),
         (f"As {_LATEX_QUOTED.format('fell')}, \\textcite{{fictionalHepaticCohort2021}}\nsays.",
          [("quotation-not-in-source", "warn")]),
+        # LaTeX's dash and ellipsis are the characters they print (round 1 of G7 in step 8).
+        ("It is ``a fictional national cohort, 2010--2019'' \\cite{fictionalHepaticCohort2021}.",
+         []),
+        ("They wrote ``The crude incidence \\ldots{} was 14 per 100 000 person-years'' "
+         "\\cite{fictionalHepaticCohort2021}.", []),
     ],
 )  # fmt: skip
 def test_g7_holds_a_quotation_in_the_twin_to_its_source(
@@ -6917,6 +6922,51 @@ def test_g7_holds_a_quotation_in_the_twin_to_its_source(
     text = entry.read_text(encoding="utf-8")
     line = text.count("\n", 0, text.index(sentence)) + 1
     assert all(Path(f.path).name == "main.tex" and f.line == line for f in found), found
+
+
+def test_g7_holds_a_quotation_that_opens_a_sentence_to_that_sentence_s_citation(
+    project: Path,
+) -> None:
+    """A sentence that opens with ``...'' is a sentence of its own: its quotation is held to
+    the work it cites, not to the one the sentence before cites (round 1 of G7 in step 8)."""
+    from manuscript_guard.gates import check_prose_quotations
+
+    entry = _twin(project)
+    sentence = ("Earlier work found a rise \\cite{fictionalHepaticCohort2021}. ``Incidence rose "
+                "with age and did not differ by region'' \\cite{fictionalClassSignal2019}.")
+    _replace_once(entry, "\\section{Discussion}", f"{sentence}\n\n\\section{{Discussion}}")
+    (found,) = check_prose_quotations(load_project(project)[0]).findings
+    assert "@fictionalClassSignal2019" in found.message, found.message
+    assert "@fictionalHepaticCohort2021" not in found.message, found.message
+
+
+def test_g7_names_a_quotation_under_a_heading_at_its_own_line(project: Path) -> None:
+    """A paragraph that opens on the line after `\\section` is named at its own line, not the
+    heading's (round 1 of G7 in step 8)."""
+    from manuscript_guard.gates import check_prose_quotations
+
+    entry = _twin(project)
+    misquoted = f"As {_LATEX_QUOTED.format('fell')} \\cite{{fictionalHepaticCohort2021}}."
+    _replace_once(entry, "\\section{Discussion}\n\n", f"\\section{{Discussion}}\n{misquoted}\n\n")
+    (found,) = check_prose_quotations(load_project(project)[0]).findings
+    text = entry.read_text(encoding="utf-8")
+    assert found.line == text.count("\n", 0, text.index(misquoted)) + 1, found
+
+
+def test_g7_places_each_cited_statement_of_the_twin_at_its_tex_line(project: Path) -> None:
+    """Step 8: each cited sentence is placed at the `.tex` line its paragraph starts on, as a
+    Markdown one is."""
+    from manuscript_guard.checking.produce import cited_sentences
+    from manuscript_guard.gates.passages import citing_documents
+
+    entry = _twin(project)
+    text = entry.read_text(encoding="utf-8")
+    words = ("In a national cohort", "exceeds the class-level estimate",
+             "is the only population-level figure")  # fmt: skip
+    starts = [text.rindex("\n\n", 0, text.index(said)) + 2 for said in words]
+    lines = [text.count("\n", 0, start) + 1 for start in starts]
+    cited = cited_sentences(citing_documents(load_project(project)[0]))
+    assert [(Path(c.path).name, c.line) for c in cited] == [("main.tex", n) for n in lines]
 
 
 def test_g7_names_a_misquotation_in_an_input_file_at_its_own_line(project: Path) -> None:

@@ -59,8 +59,9 @@ class Given:
     key: str
     heading: str
     line: int
-    #: Where in the text read the binding starts.
-    start: int = 0
+    #: Where in the text read the binding starts, which places a LaTeX finding at its `.tex`
+    #: line and is no part of what was given.
+    start: int = field(default=0, compare=False)
 
 
 @dataclass

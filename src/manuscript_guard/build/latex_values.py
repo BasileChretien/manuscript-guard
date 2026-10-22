@@ -312,10 +312,13 @@ def results_digest(root: Path, results: Results) -> str:
     return found.hexdigest()
 
 
+#: The file's head. `\\ProvidesPackage` takes no description: LaTeX reads one as a date, and
+#: under LaTeX 2024-06 a description that opens with no date stopped the next `\\title`
+#: ("Missing = inserted for \\ifnum"), measured under MiKTeX 24.4 on 2026-10-22.
 _HEAD = r"""% manuscript-guard values, from the results sha256:{digest}
 % Written by `manuscript-guard values`; `check` compares it with what that would write.
 \NeedsTeXFormat{{LaTeX2e}}
-\ProvidesPackage{{mgvalues}}[manuscript-guard values]
+\ProvidesPackage{{mgvalues}}
 \DeclareRobustCommand{{\mg}}[2][]{{%
   \ifcsname mg@#2\endcsname
     \csname mg@#2\endcsname{{#1}}%

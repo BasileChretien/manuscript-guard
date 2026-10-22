@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import re
 from bisect import bisect_right
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 
 from manuscript_guard.classify import is_methods
@@ -33,7 +33,7 @@ from manuscript_guard.gates.language import _hidden
 from manuscript_guard.gates.numbers import source_files
 from manuscript_guard.sign_offs import Signable, digest_of, settle
 from manuscript_guard.text.blocks import Unprinted
-from manuscript_guard.text.placeholders import parse
+from manuscript_guard.text.reader import LATEX, bound_files, manuscript_format
 from manuscript_guard.text.sections import chains_at, footnote_index, heading_index
 
 GATE = "G15"
@@ -131,7 +131,21 @@ def _raised(project: Project, results: Results) -> Report:
         report = report.merge(_model(model, variables, referenced))
     report = report.merge(Report(tuple(_rows_compared(models))))
     report = report.merge(_names_in_methods(project, models))
+    if manuscript_format(project.path("manuscript")) == LATEX:
+        report = _spelt_for_latex(report)
     return report.with_counts(models=len(models), model_variables=len(variables))
+
+
+#: A binding a hint names, `{{results.model.adjusted.kind}}`.
+_HINTED = re.compile(r"\{\{([a-z]+\.[^{}\s]*)\}\}")
+
+
+def _spelt_for_latex(report: Report) -> Report:
+    """Each hint's bindings as a LaTeX manuscript writes them, `\\mg{...}`, as G2 spells its
+    own (round 2 of G15 in step 8)."""
+    findings = tuple(replace(f, hint=_HINTED.sub(r"\\mg{\1}", f.hint)) if f.hint else f
+                     for f in report.findings)  # fmt: skip
+    return Report(findings, report.counts)
 
 
 def _finding(model: Model, code: str, message: str, hint: str, *, warn: bool = False) -> Finding:
@@ -512,11 +526,8 @@ def _entered(model: Model, record: dict, variable: Variable) -> list[Finding]:
 
 
 def _referenced(project: Project) -> set[str]:
-    refs: set[str] = set()
-    for path in source_files(project.path("manuscript")):
-        placeholders, _ = parse(read_text(path))
-        refs |= {placeholder.ref for placeholder in placeholders}
-    return refs
+    """Every binding the manuscript holds, in either format (step 8)."""
+    return {placeholder.ref for bound in bound_files(project) for placeholder in bound.placeholders}
 
 
 def _names() -> re.Pattern[str]:
@@ -567,16 +578,49 @@ def named_in_methods(text: str) -> list[tuple[int, int, str]]:
     the Methods are where the headings above say they are, as G2 has them. A name after a
     word that makes it another model's ("conditional logistic regression") is not read, nor
     one in a heading, which names the analysis it heads: the running text is read."""
-    hidden = _hidden(text)
     headings, notes = heading_index(text), footnote_index(text)
     lines = _heading_lines(text, headings)
     starts = [start for start, _end in lines]
+
+    def methods(start: int) -> bool:
+        at = bisect_right(starts, start) - 1
+        if at >= 0 and start <= lines[at][1]:
+            return False
+        return any(is_methods(chain) for chain in chains_at(headings, notes, start))
+
+    return _named(_hidden(text), methods)
+
+
+def named_in_latex(source) -> list[tuple[int, int, str]]:
+    """Each model the Methods of a LaTeX file name, as `named_in_methods` reads Markdown: in
+    the words G14 reads (`text/latex/words.py`), so not in a comment, maths, code or a
+    figure's float, nor in a heading's title, under the headings the include tree gives at
+    each place (step 8)."""
+    from manuscript_guard.text.latex.views import chain
+
+    return _named(_latex_words(source), lambda start: is_methods(chain(source, start)))
+
+
+def _latex_words(source) -> str:
+    """A LaTeX file's words as G14 reads them, a space wherever it reads none, and its
+    headings' titles blanked, keeping the file's offsets and line breaks."""
+    from manuscript_guard.text.latex.mask import NUL
+    from manuscript_guard.text.latex.words import words
+
+    out = list(words(source).text.replace(NUL, " "))
+    for heading in source.reading.headings:
+        for index in range(heading.start, max(heading.end, heading.start)):
+            if out[index] != "\n":
+                out[index] = " "
+    return "".join(out)
+
+
+def _named(hidden: str, methods) -> list[tuple[int, int, str]]:
+    """Each name of a model in `hidden` where `methods` says the Methods are, after no word
+    that makes it another model's, with the kind it names."""
     found = []
     for match in _names().finditer(hidden):
-        at = bisect_right(starts, match.start()) - 1
-        if at >= 0 and match.start() <= lines[at][1]:
-            continue
-        if not any(is_methods(chain) for chain in chains_at(headings, notes, match.start())):
+        if not methods(match.start()):
             continue
         if _other_model(hidden, match.start()):
             continue
@@ -584,6 +628,22 @@ def named_in_methods(text: str) -> list[tuple[int, int, str]]:
         if kind is not None:
             found.append((match.start(), match.end(), kind))
     return found
+
+
+def _named_files(project: Project):
+    """Each manuscript file, its text as typed, and the models its Methods name: a LaTeX file
+    as the include tree reads it, the main text's document and then the supplement's."""
+    folder = project.path("manuscript")
+    if manuscript_format(folder) != LATEX:
+        for path in source_files(folder):
+            text = read_text(path)
+            yield Path(path), text, named_in_methods(text)
+        return
+    from manuscript_guard.text.latex.structure import read_document
+
+    for supplementary in (False, True):
+        for source in read_document(folder, supplementary=supplementary).sources:
+            yield folder / source.path, source.text, named_in_latex(source)
 
 
 def _names_in_methods(project: Project, models: dict[str, Model]) -> Report:
@@ -596,9 +656,8 @@ def _names_in_methods(project: Project, models: dict[str, Model]) -> Report:
         if model.kind is not None:
             fitted.setdefault(model.kind, []).append(model.key)
     findings = []
-    for path in source_files(project.path("manuscript")):
-        text = read_text(path)
-        for start, _end, kind in named_in_methods(text):
+    for path, text, named in _named_files(project):
+        for start, _end, kind in named:
             where = {
                 "path": Path(path),
                 "line": text.count("\n", 0, start) + 1,

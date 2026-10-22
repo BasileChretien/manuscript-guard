@@ -265,6 +265,82 @@ def test_data_shared_without_authors_needs_no_disclosure(project: Path) -> None:
     assert _found(_check(project, submission=True)) == []
 
 
+# ---------------------------------------------------------------------- a LaTeX manuscript
+
+TWIN = Path(__file__).parent / "data" / "latex" / "manuscript"
+
+
+def _as_twin(root: Path) -> Path:
+    """The example's manuscript in LaTeX (`tests/test_latex_twin.py`): its `main.tex`."""
+    shutil.rmtree(root / "manuscript")
+    shutil.copytree(TWIN, root / "manuscript")
+    return root / "manuscript" / "main.tex"
+
+
+def _before_data_availability(entry: Path, text: str) -> None:
+    typed = entry.read_text(encoding="utf-8")
+    heading = "\\section{Data availability}"
+    assert typed.count(heading) == 1
+    entry.write_bytes(typed.replace(heading, f"{text}\n\n{heading}").encode("utf-8"))
+
+
+def test_a_latex_manuscript_discloses_by_its_citation_command(project: Path) -> None:
+    """Step 8: the twin's `\\cite` discloses the earlier output, and one in a comment does
+    not."""
+    entry = _as_twin(project)
+    _declare(project, _entry(citekey=CITED, shares=["data", "authors"], files_unavailable="lost"))
+    assert _found(_check(project, submission=True)) == []
+    typed = entry.read_text(encoding="utf-8")
+    entry.write_bytes((typed.replace(f"\\cite{{{CITED}}}", "\\cite{fictionalClassSignal2019}")
+                       .replace("\\end{document}", f"% \\cite{{{CITED}}}\n\\end{{document}}"))
+                      .encode("utf-8"))  # fmt: skip
+    assert _found(_check(project)) == [("related-undisclosed", WARN)]
+
+
+@pytest.mark.parametrize("cited", ["\\nocite{%s}", "%s"])
+def test_a_latex_citation_nothing_prints_in_the_text_discloses_nothing(
+    project: Path, cited: str
+) -> None:
+    """Round 1 of G13 in step 8: `\\nocite` lists an entry without citing it in the text, and
+    a file nothing inputs prints nothing."""
+    entry = _as_twin(project)
+    typed = entry.read_text(encoding="utf-8").replace(f"\\cite{{{CITED}}}",
+                                                      "\\cite{fictionalClassSignal2019}")
+    if cited.startswith("\\"):
+        typed = typed.replace("\\end{document}", f"{cited % CITED}\n\\end{{document}}")
+    else:
+        (entry.parent / "old.tex").write_text(f"Seen \\cite{{{CITED}}}.\n", encoding="utf-8")
+    entry.write_bytes(typed.encode("utf-8"))
+    _declare(project, _entry(citekey=CITED, shares=["data", "authors"], files_unavailable="lost"))
+    assert _found(_check(project)) == [("related-undisclosed", WARN)]
+
+
+def test_a_latex_manuscript_discloses_by_a_sentence_as_it_prints_it(project: Path) -> None:
+    """Step 8: a sentence is found in the twin as LaTeX prints it, a command's braces and the
+    line breaks left out, and not in a comment."""
+    entry = _as_twin(project)
+    said = "Preliminary results were presented at a meeting of the society."
+    _declare(project, _entry(shares=["data", "authors"], files_unavailable="lost",
+                             disclosed_by=said))  # fmt: skip
+    _before_data_availability(entry, f"% {said}")
+    assert _found(_check(project)) == [("related-undisclosed", WARN)]
+    _before_data_availability(entry, "Preliminary results were \\emph{presented} at a\n"
+                                     "meeting of the society.")  # fmt: skip
+    assert _found(_check(project, submission=True)) == []
+
+
+def test_a_latex_sentence_with_a_binding_is_read_filled_in(project: Path, earlier: Path) -> None:
+    """Step 8: the twin's `\\mg` is read as the value it prints."""
+    _as_twin(project)
+    _set(earlier, "cohort.n_reports", 4012, "4012")
+    said = "The database contained {{results.cohort.n_reports}} reports"
+    pair = {"earlier": "cohort.n_reports", "here": "cohort.n_reports",
+            "because": "a later cut-off", "manuscript_says": said}  # fmt: skip
+    _declare(project, _entry(project="../earlier", pairs=[pair]))
+    _take(project)
+    assert _found(_check(project)) == [("related-number-explained", INFO)]
+
+
 # ---------------------------------------------------------------------- the supplement
 
 

@@ -46,6 +46,9 @@ GATE = "G13"
 REVISION_DIR = "revision"
 #: Where `respond --open` writes the manuscript as the journal received it, rendered.
 SUBMITTED_DIR = "submitted"
+#: What `respond --open` keeps there of a LaTeX manuscript: its documents as LaTeX prints
+#: them, values in, one Markdown file (step 8).
+PRINTED_COPY = "printed.md"
 #: What the `reviewer-response` skill writes where the author still has to supply something.
 MARKER = re.compile(r"\[AUTHOR:[^\]\n]*\]")
 #: The text `respond --open` puts in a new round for the reviewer's words.
@@ -324,15 +327,24 @@ def displays(project: Project) -> dict[str, str]:
 
 def rendered_manuscript(project: Project, rendered: dict[str, str] | None = None) -> str:
     """The manuscript's files, joined in order, with every binding filled in: the text a
-    quote of it is looked for in, and what `respond --open` keeps as submitted."""
+    quote of it is looked for in, and what `respond --open` keeps as submitted. A LaTeX
+    manuscript is its main text's document and then its supplement's, each as Markdown would
+    print it (`text/latex/printed.py`), its headings `#` lines and its escapes the
+    characters they stand for (step 8)."""
     from manuscript_guard.gates.numbers import source_files
     from manuscript_guard.text.placeholders import substitute
+    from manuscript_guard.text.reader import LATEX, manuscript_format
 
     rendered = displays(project) if rendered is None else rendered
-    return "\n\n".join(
-        substitute(read_text(path), rendered)
-        for path in source_files(project.path("manuscript"))
-    )
+    folder = project.path("manuscript")
+    if manuscript_format(folder) == LATEX:
+        from manuscript_guard.text.latex.printed import printed_document
+
+        texts = [printed_document(folder, supplementary=part, quoting=True)
+                 for part in (False, True)]  # fmt: skip
+    else:
+        texts = [read_text(path) for path in source_files(folder)]
+    return "\n\n".join(substitute(text, rendered) for text in texts)
 
 
 def submitted_copy(project: Project, number: int) -> str | None:
@@ -358,6 +370,54 @@ def as_quoted(text: str) -> str:
     return " ".join(text.split())
 
 
+#: What a cross-reference may print, which a quote copied from the PDF holds where the
+#: paper's source has `\\ref`: a number, or a letter and a number ("1", "S2"), in brackets
+#: where `\\eqref` prints them or the author typed them ("(3)"), a letter typed after it
+#: ("1A"), with the name before it that `\\autoref` and `\\cref` print too ("Table 1").
+#: Only such a name: another word before a number is the quote's own, and stays to be found.
+_REF_NAMES = (
+    r"[Tt]ables?|[Ff]igures?|[Ff]igs?\.|[Ss]ections?|[Ss]ecs?\.|[Ee]quations?|[Ee]qs?\.|"
+    r"[Aa]ppendix|[Aa]ppendices|[Cc]hapters?|[Ll]istings?|[Aa]lgorithms?"
+)
+_REF_SHAPED = re.compile(
+    rf"(?:(?<![\w.])(?P<name>{_REF_NAMES}) )?(?P<opened>\()?(?<![\w.])"
+    rf"[A-Z]?\d+(?:[.:]\d+)*(?P<letter>[A-Za-z]?)(?![\w])(?P<closed>\))?"
+)
+
+
+def quoted_in(quote: str, text: str) -> bool:
+    """Whether `text` holds `quote`, both as `as_quoted` gives them. Where the text holds a
+    cross-reference (`printed.POINTER`), a number in the quote, with the word before it,
+    may stand for it, as the compiled paper printed it (round 1 of G13 in step 8)."""
+    from manuscript_guard.text.latex.printed import POINTER
+
+    if quote in text:
+        return True
+    if POINTER not in text:
+        return False
+    parts, at = [], 0
+    for found in _REF_SHAPED.finditer(quote):
+        parts += [re.escape(quote[at : found.start()]), _printed_as(found, POINTER)]
+        at = found.end()
+    parts.append(re.escape(quote[at:]))
+    return re.search("".join(parts), text) is not None
+
+
+def _printed_as(found: re.Match[str], pointer: str) -> str:
+    """What a number-shaped run of a quote may be in the text: itself, or a cross-reference
+    with what the author typed round it, its name and brackets or not (round 2 of G13 in
+    step 8: a bracket typed after `\\ref` was taken for the reference's own)."""
+    opened, closed = found.group("opened") or "", found.group("closed") or ""
+    cores = {pointer, pointer + found.group("letter")}
+    shapes = {opened + core + closed for core in cores}
+    if opened and closed:
+        shapes |= cores  # `\\eqref` prints the brackets itself
+    name = found.group("name")
+    shapes |= {f"{name} {shape}" for shape in shapes} if name else set()
+    options = [re.escape(found.group(0)), *(re.escape(shape) for shape in sorted(shapes))]
+    return "(?:" + "|".join(options) + ")"
+
+
 def _in_section(text: str, quote: str, section: str) -> bool:
     """Whether `quote` stands in a section whose title holds the words of `section`."""
     from manuscript_guard.text.sections import split_sections
@@ -366,7 +426,7 @@ def _in_section(text: str, quote: str, section: str) -> bool:
     for found in split_sections(text):
         words = re.findall(r"\w+", found.title.casefold())
         held = any(words[at : at + len(wanted)] == wanted for at in range(len(words)))
-        if held and quote in as_quoted(found.enclosed):
+        if held and quoted_in(quote, as_quoted(found.enclosed)):
             return True
     return False
 
@@ -391,7 +451,7 @@ def _quoted(
     quote = as_quoted(substitute(str(entry.get("quote", "")), seen["displays"]))
     now = seen["rendered"]
     problem = None
-    if quote not in as_quoted(now):
+    if not quoted_in(quote, as_quoted(now)):
         problem = ("quoted-text-absent", "the manuscript does not now read it")
     elif entry.get("section") and not _in_section(now, quote, str(entry["section"])):
         problem = ("quoted-text-elsewhere", f"it is not in the {entry['section']}")
@@ -426,7 +486,7 @@ def _quoted(
             ),
             True,
         )
-    if quote in as_quoted(before):
+    if quoted_in(quote, as_quoted(before)):
         return (
             report.with_findings(
                 Finding(
@@ -458,7 +518,10 @@ def _gate_code() -> re.Pattern[str]:
     return re.compile(rf"\bG(?:1[0-5]|[1-9])r?[ \t]*:[ \t]*(?:{codes})\b")
 
 
-_SOURCE_PLACE = re.compile(r"\b[\w./-]+\.md(?::\d+|,?[ \t]+lines?[ \t]+\d+)", re.IGNORECASE)
+#: A source file's line, Markdown's or LaTeX's (step 8).
+_SOURCE_PLACE = re.compile(
+    r"\b[\w./-]+\.(?:md|tex)(?::\d+|,?[ \t]+lines?[ \t]+\d+)", re.IGNORECASE
+)
 
 
 def _reply(path: Path, number: int, reviewer: str, point: dict, severity: str) -> Report:

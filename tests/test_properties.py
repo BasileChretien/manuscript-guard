@@ -21,6 +21,7 @@ through this one, which is the third thing the reviews did.
 from __future__ import annotations
 
 import bisect
+import dataclasses
 import hashlib
 import json
 import math
@@ -81,15 +82,21 @@ from generated import (
     laid_out,
     latex_bound,
     latex_cited,
+    latex_claims,
     latex_declared,
     latex_displays,
+    latex_methods,
+    latex_model_names,
     latex_planted,
+    latex_pointers,
     latex_printed,
+    latex_quotations,
     latex_texts,
     latex_trees,
     latex_words,
     latex_writing,
     lines,
+    markdown_for_latex,
     mean_tables,
     numbered_displays,
     painted_pdfs,
@@ -101,6 +108,7 @@ from generated import (
     printings,
     proofs,
     quotations,
+    quoted_references,
     revisions,
     share_tables,
     signs,
@@ -800,7 +808,8 @@ def test_latex_s_printed_view_holds_what_it_prints_as_markdown_writes_it(
         elif kind == "hidden":
             assert key not in view, (key, view)
         else:
-            written = {"bound": "{{results.%s}}", "table": "{{table.%s}}", "cited": "[@%s]"}
+            written = {"bound": "{{results.%s}}", "table": "{{table.%s}}", "cited": "[@%s]",
+                       "tight": "({{results.%s}})."}  # fmt: skip
             assert written[kind] % key in view, (key, view)
     sections = {section.title: section.body for section in split_sections(view)}
     ((abstract,), (after,)) = ([k for k, kind in planted if kind == which]
@@ -832,6 +841,44 @@ def test_latex_s_printed_view_writes_each_file_where_it_is_input(
 
 def _an_input_file_is_printed_after_its_parent(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(latex_print, "_cuts", lambda source: [])
+
+
+@holds(60, latex_trees())
+def test_latex_s_printed_view_places_each_word_at_its_file_and_line(
+    drawn: tuple[dict[str, str], dict[str, list[str]], dict[str, list[str]]],
+) -> None:
+    """A word written after each heading of a manuscript of several files is placed by the
+    printed view at the file and the line it is written on, so that a gate reading the view
+    as Markdown names the `.tex` line (step 8)."""
+    files, _under, marks = drawn
+    sources = [source for source in latex_structure.read_tree(files).sources if not source.loose]
+    view = latex_print.printed(sources)
+    for mark in marks:
+        name, typed = next((name, typed) for name, typed in files.items()
+                           if re.search(rf"\b{mark}\b", typed))  # fmt: skip
+        written = re.search(rf"\b{mark}\b", typed).start()
+        source, line = view.place(re.search(rf"\b{mark}\b", view.text).start())
+        assert (source.path, line) == (name, typed.count("\n", 0, written) + 1), (mark, files)
+
+
+def _prose_breaks_its_lines_as_the_view_does(patch: pytest.MonkeyPatch) -> None:
+    printed_one = latex_print._printed
+
+    def broken(source, shallowest, child=lambda: [], quoting=False, formula=""):
+        return [(text, of, at, False) for text, of, at, _linear in
+                printed_one(source, shallowest, child, quoting, formula)]  # fmt: skip
+
+    patch.setattr(latex_print, "_printed", broken)
+
+
+def _each_stretch_is_placed_at_its_files_start(patch: pytest.MonkeyPatch) -> None:
+    printed_one = latex_print._printed
+
+    def broken(source, shallowest, child=lambda: [], quoting=False, formula=""):
+        return [(text, of, 0, linear) for text, of, _at, linear in
+                printed_one(source, shallowest, child, quoting, formula)]  # fmt: skip
+
+    patch.setattr(latex_print, "_printed", broken)
 
 
 def _a_typed_reference_list_is_printed(patch: pytest.MonkeyPatch) -> None:
@@ -947,6 +994,315 @@ def test_g6_judges_a_latex_document_where_it_prints_and_by_its_citations(
         assert found == sorted(lines[key] for key, was in planted if was == kind), (code, text)
 
 
+@holds(60, latex_methods())
+def test_g9_reads_a_latex_methods_section_as_it_reads_a_markdown_one(
+    drawn: tuple[str, list[tuple[str, str, str]]],
+) -> None:
+    """Each paragraph of a LaTeX document's Methods that points at no step is open on the line
+    of its first word, after a heading glued to it too; each claim points at its step and says
+    its words, a binding among them as Markdown writes it; a heading, a typed table, a
+    listing, a comment and the Results after the Methods are no open paragraph (step 8)."""
+    text, planted = drawn
+    source = latex_structure.Source("main.tex", text, latex_mask.read(text))
+    view = latex_views.markdown_view(source, latex_views.bindings(source)[0])
+    read = methods_gate._latex_read(Path("main.tex"), source, view)
+    claims, open_ = methods_gate._anchored_in(read)
+    lines = {key: text.count("\n", 0, text.index(key)) + 1 for key, _kind, _said in planted}
+    opened = [key for key, kind, _said in planted if kind == "open"]
+    assert sorted(p.line for p in open_) == sorted(lines[key] for key in opened), (text, open_)
+    for key in opened:
+        assert any(key in p.text for p in open_), (key, text, open_)
+    for key in (key for key, kind, _said in planted if kind == "none"):
+        assert not any(key in p.text for p in open_), (key, text, open_)
+    said = [((key,), words) for key, kind, words in planted if kind == "claim"]
+    assert [(c.steps, c.text) for c in claims] == said, text
+
+
+@holds(100, latex_model_names())
+def test_a_model_named_in_latex_methods_is_found_where_latex_prints_it(
+    planted: tuple[str, list[tuple[int, str]]],
+) -> None:
+    """A model a LaTeX document's Methods name is found where it stands, with the kind it
+    names, as in Markdown: in a command's braces or a footnote too, and not in a comment,
+    code, maths, a figure's float, a heading's title, what `\\iffalse` leaves out or the
+    Results, nor after a word that makes it another model's (step 8)."""
+    text, expected = planted
+    source = latex_structure.Source("main.tex", text, latex_mask.read(text))
+    found = [(start, kind) for start, _end, kind in models_gate.named_in_latex(source)]
+    assert found == expected, text
+
+
+def _g15_reads_a_latex_heading_s_title(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text.latex.words import words
+
+    patch.setattr(models_gate, "_latex_words",
+                  lambda source: words(source).text.replace(latex_mask.NUL, " "))  # fmt: skip
+
+
+def _g15_reads_all_of_a_latex_file_as_its_methods(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(models_gate, "named_in_latex",
+                  lambda source: models_gate._named(models_gate._latex_words(source),
+                                                    lambda start: True))  # fmt: skip
+
+
+def _g15_reads_a_latex_file_in_its_markdown_view(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(models_gate, "_latex_words",
+                  lambda source: source.reading.masked.replace(latex_mask.NUL, " "))  # fmt: skip
+
+
+def _g15_reads_a_latex_file_s_words_with_its_nul(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text.latex.words import words
+
+    patch.setattr(models_gate, "_latex_words", lambda source: words(source).text)
+
+
+@holds(80, latex_pointers())
+def test_a_latex_cross_reference_is_recorded_where_it_prints_and_nowhere_else(
+    drawn: tuple[str, list[tuple[str, bool]]],
+) -> None:
+    """A `\\ref`, `\\autoref`, `\\eqref` or `\\cref` in prose is recorded, from its command
+    to its brace; one in a comment, a listing or what `\\iffalse` leaves out is not, nor a
+    label or a citation (round 1 of G13 in step 8)."""
+    text, planted = drawn
+    spans = latex_mask.read(text).pointers
+    found = sorted(key for key, _recorded in planted
+                   if any(key in text[start:end] for start, end in spans))  # fmt: skip
+    assert found == sorted(key for key, recorded in planted if recorded), (text, spans)
+    assert all(text[start] == "\\" and text[end - 1] == "}" for start, end in spans), spans
+
+
+@holds(100, quoted_references())
+def test_a_quote_of_a_latex_sentence_holds_a_number_where_its_reference_stands(
+    drawn: tuple[str, str, str],
+) -> None:
+    """A quote copied from the PDF finds the sentence whose source has a cross-reference
+    where the quote has its number, with the word before it, and a quote with one word
+    changed does not (round 1 of G13 in step 8)."""
+    from manuscript_guard.gates.revision import as_quoted, quoted_in
+
+    view, quote, changed = drawn
+    assert quoted_in(as_quoted(quote), as_quoted(view)), (quote, view)
+    assert not quoted_in(as_quoted(changed), as_quoted(view)), (changed, view)
+
+
+@holds(60, latex_claims())
+def test_a_latex_claim_to_have_followed_a_guideline_is_read_where_it_prints(
+    drawn: tuple[str, list[tuple[str, bool]]],
+) -> None:
+    """A claim in prose or a footnote is read; one in a comment, code, a listing or what
+    `\\iffalse` leaves out is no claim (G8r, step 8)."""
+    from manuscript_guard.gates import reporting as reporting_gate
+
+    text, planted = drawn
+    source = latex_structure.Source("main.tex", text, latex_mask.read(text))
+    view = latex_views.markdown_view(source, latex_views.bindings(source)[0])
+    named = reporting_gate._claims([(Path("main.tex"), reporting_gate._latex_prose(source, view))])
+    assert sorted(named) == sorted(name for name, read in planted if read), text
+
+
+@holds(60, latex_quotations())
+def test_a_latex_quotation_is_read_at_its_line_and_nowhere_else(
+    drawn: tuple[str, list[tuple[str, bool]]],
+) -> None:
+    """A quotation that cites a work, ``...'' or typographic, over a line break or in a
+    footnote, is read on the line of the `.tex` its paragraph starts on; one in a comment,
+    left out by `\\iffalse` or citing nothing is not (G7, step 8)."""
+    from manuscript_guard.gates import quotations as quotations_gate
+
+    text, planted = drawn
+    view = latex_print.printed([latex_structure.Source("main.tex", text, latex_mask.read(text))])
+    found = quotations_gate.printed_quotations(view)
+    read = sorted(key for key, was in planted if was)
+    assert sorted(key for key in read if any(key in q.quote for _p, q in found)) == read, found
+    assert len(found) == len(read), (found, text)
+    for _path, quotation in found:
+        (key,) = [key for key in read if key in quotation.quote]
+        start = text.rindex("\n\n", 0, text.index(key)) + 2
+        # A paragraph that opens under a heading's line is placed at its own line.
+        start = text.index("\n", start) + 1 if text.startswith("\\section", start) else start
+        assert quotation.line == text.count("\n", 0, start) + 1, (quotation, text)
+        assert quotation.keys == ("w",), quotation
+        assert "--" not in quotation.quote, quotation
+        if "rose" in quotation.quote and "of" in quotation.quote.split():
+            assert "\u2013" in quotation.quote and "\u2026" in quotation.quote, quotation
+        if "far" in quotation.quote:
+            assert quotation.quote.count("\u2014") == 3 and "-" not in quotation.quote, quotation
+
+
+def _a_quotation_s_line_is_the_printed_view_s(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print.Printed, "place_line",
+                  lambda self, line: (self.origins[0][1], line))  # fmt: skip
+
+
+def _latex_dashes_are_printed_as_typed(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print, "_typeset", lambda prose: prose)
+
+
+def _latex_s_ellipsis_prints_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "SYMBOLS", {})
+
+
+def _a_typographic_quotation_mark_opens_no_sentence(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.checking import produce
+
+    patch.setattr(produce, "SENTENCE_END", re.compile(r"(?<=[.!?])\s+(?=[A-Z\"'(\[])"))
+
+
+def _latex_s_en_dash_is_typed_before_its_em_dash(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print, "_typeset",
+                  lambda prose: prose.replace("--", "\u2013").replace("---", "\u2014"))  # fmt: skip
+
+
+def _a_line_is_placed_where_it_starts_blank(patch: pytest.MonkeyPatch) -> None:
+    def place_line(self, line):
+        self._lines[:] = self._lines or [0, *(at + 1 for at, c in enumerate(self.text)
+                                             if c == "\n")]  # fmt: skip
+        return self.place(self._lines[min(max(line, 1), len(self._lines)) - 1])
+
+    patch.setattr(latex_print.Printed, "place_line", place_line)
+
+
+def _no_latex_citation_is_printed(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print, "_citations", lambda source: [])
+
+
+def _g8r_reads_a_latex_file_as_typed(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import reporting as reporting_gate
+
+    patch.setattr(reporting_gate, "_latex_prose", lambda source, view: source.text)
+
+
+def _g8r_reads_a_latex_file_s_code(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import reporting as reporting_gate
+
+    def prose(source, view):
+        return reporting_gate._blanked(view, source.reading.references)
+
+    patch.setattr(reporting_gate, "_latex_prose", prose)
+
+
+def _g8r_reads_a_typed_reference_list(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import reporting as reporting_gate
+
+    def prose(source, view):
+        return reporting_gate._blanked(view, source.reading.code)
+
+    patch.setattr(reporting_gate, "_latex_prose", prose)
+
+
+def _no_latex_cross_reference_is_recorded(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "POINTERS", frozenset())
+
+
+def _a_label_is_a_cross_reference(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "POINTERS", latex_mask.POINTERS | {"label"})
+
+
+def _a_quote_s_number_stands_for_no_reference(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import revision
+
+    patch.setattr(revision, "_REF_SHAPED", re.compile("(?!)"))
+
+
+def _a_reference_stands_for_its_number_alone(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import revision
+
+    unnamed = (r"(?P<name>(?!))?(?P<opened>\()?[A-Z]?\d+(?:[.:]\d+)*(?P<letter>[A-Za-z]?)"
+               r"(?P<closed>\))?")  # fmt: skip
+    patch.setattr(revision, "_REF_SHAPED", re.compile(unnamed))
+
+
+def _a_bracket_typed_round_a_reference_is_its_own(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import revision
+
+    def printed_as(found, pointer):
+        options = [re.escape(found.group(0)), re.escape(pointer + found.group("letter")),
+                   re.escape(pointer)]  # fmt: skip
+        if found.group("name"):
+            options.append(re.escape(found.group("name") + " " + pointer))
+        return "(?:" + "|".join(options) + ")"
+
+    patch.setattr(revision, "_printed_as", printed_as)
+
+
+def _g9_keeps_of_its_cuts(patch: pytest.MonkeyPatch, dropped) -> None:
+    """G9 with `dropped(source, span)` taken out of what it cuts."""
+    kept = methods_gate._cuts
+    patch.setattr(methods_gate, "_cuts", lambda source, view: tuple(
+        span for span in kept(source, view) if not dropped(source, span)))  # fmt: skip
+
+
+def _g9_cuts_no_latex_heading(patch: pytest.MonkeyPatch) -> None:
+    _g9_keeps_of_its_cuts(patch, lambda source, span: any(
+        span == (h.start, h.end) for h in source.reading.headings))  # fmt: skip
+
+
+def _g9_reads_a_table_set_apart_with_its_paragraph(patch: pytest.MonkeyPatch) -> None:
+    _g9_keeps_of_its_cuts(patch, lambda source, span: span in source.reading.tables)
+
+
+def _g9_reads_an_anchored_float_with_the_paragraph_round_it(patch: pytest.MonkeyPatch) -> None:
+    _g9_keeps_of_its_cuts(patch, lambda source, span: span[0] == span[1])
+
+
+def _g9_reads_a_float_s_words(patch: pytest.MonkeyPatch) -> None:
+    kept = methods_gate._unprinted
+    patch.setattr(methods_gate, "_unprinted", lambda source, view: tuple(
+        span for span in kept(source, view) if span not in source.reading.floats))  # fmt: skip
+
+
+def _g9_reads_a_table_s_words_inside_a_float(patch: pytest.MonkeyPatch) -> None:
+    kept = methods_gate._unprinted
+    patch.setattr(methods_gate, "_unprinted", lambda source, view: tuple(
+        span for span in kept(source, view) if span not in source.reading.tables))  # fmt: skip
+
+
+def _g9_reads_no_word_of_a_float_that_holds_an_anchor(patch: pytest.MonkeyPatch) -> None:
+    def every(source, view):
+        return (*source.reading.tables, *source.reading.floats)
+
+    patch.setattr(methods_gate, "_unprinted", every)
+
+
+def _g9_ends_a_paragraph_at_a_float(patch: pytest.MonkeyPatch) -> None:
+    kept = methods_gate._latex_read
+
+    def read(path, source, view):
+        found = kept(path, source, view)
+        return dataclasses.replace(
+            found, cuts=(*found.cuts, *methods_gate._unprinted(source, view))
+        )
+
+    patch.setattr(methods_gate, "_latex_read", read)
+
+
+def _g9_ends_a_latex_paragraph_at_a_line_of_spaces_in_its_view(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    kept = methods_gate._latex_read
+    patch.setattr(methods_gate, "_latex_read", lambda path, source, view: dataclasses.replace(
+        kept(path, source, view), typed=None))  # fmt: skip
+
+
+def _g9_starts_a_typed_paragraph_where_its_first_line_starts(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    patch.setattr(methods_gate, "_printed_from", lambda text, first, last: (
+        [(first, last)] if text[first:last].strip() else []))  # fmt: skip
+
+
+def _g9_starts_a_paragraph_at_the_end_of_its_heading(patch: pytest.MonkeyPatch) -> None:
+    def cut(text, span, cut):
+        if cut[1] <= span[0] or span[1] <= cut[0]:
+            return [span]
+        return [(first, last) for first, last in ((span[0], cut[0]), (cut[1], span[1]))
+                if text[first:last].strip()]  # fmt: skip
+
+    patch.setattr(methods_gate, "_cut", cut)
+
+
+def _g9_reads_a_latex_binding_as_its_view_pads_it(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(methods_gate, "_PADDED", re.compile("(?!)"))
 def _g6_takes_no_latex_citation(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(writing_gate, "_cited_at", lambda source: [])
 
@@ -1011,7 +1367,25 @@ def _an_abstract_runs_on_to_the_next_heading(patch: pytest.MonkeyPatch) -> None:
 
 
 def _a_formula_is_printed_as_typed(patch: pytest.MonkeyPatch) -> None:
-    patch.setattr(latex_print, "_formulas", lambda reading: [])
+    patch.setattr(latex_print, "_formulas", lambda reading, formula="": [])
+
+
+def _a_spans_bindings_are_not_printed(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print, "_bindings_in", lambda placeholders, start, end: "")
+
+
+def _a_prose_binding_is_printed_with_spaces_round_it(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print, "_binding", lambda placeholder: f" {{{{{placeholder.ref}}}}} ")
+
+
+def _a_formulas_bindings_are_not_printed(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print, "_formula_events", lambda reading, placeholders, formula="":
+                  latex_print._formulas(reading, formula))  # fmt: skip
+
+
+def _a_typed_tables_bindings_are_not_printed(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print, "_table_events", lambda reading, placeholders: [
+        (start, end, " ") for start, end in (*reading.tables, *reading.references)])  # fmt: skip
 
 
 @holds(60, latex_declared())
@@ -3327,7 +3701,7 @@ def test_an_anchor_claims_the_text_back_to_the_anchor_before_it_or_its_paragraph
     line of its own does not end the paragraph, and an anchor in a comment is none. A
     Methods paragraph with no anchor is one that points at no step."""
     text, expected, bare = planted
-    claims, open_ = methods_gate._anchored_in(Path("main.md"), text)
+    claims, open_ = methods_gate._anchored_in(methods_gate._Read(Path("main.md"), text))
     assert [(c.steps, c.text, c.line, c.anchor_line) for c in claims] == expected, text
     assert [paragraph.line for paragraph in open_] == bare, text
 
@@ -6103,6 +6477,73 @@ def test_an_isbn_is_valid_by_its_check_digit_and_one_digit_changed_is_not(
         assert [code for code, _said in found] == ["identifier-malformed"], (field, found)
 
 
+# ----------------------------------------------------------------- LaTeX out of Markdown
+
+#: The works the generated citations name, for citeproc to format.
+_LATEX_OUT_BIB = (
+    "@article{smith2020, author = {Smith, Ann}, title = {A study}, journal = {J}, year = {2020}}\n"
+    "@article{jones2019, author = {Jones, Ben}, title = {A trial}, journal = {K}, year = {2019}}\n"
+)
+
+
+def _latex_body(markdown: str, *arguments: str) -> str:
+    """The body pandoc writes as LaTeX for `markdown`, as `build --latex` asks for it."""
+    pandoc = shutil.which("pandoc")
+    if pandoc is None:
+        pytest.skip("pandoc is not installed, and the LaTeX is the one it writes")
+    done = subprocess.run([pandoc, "-f", "markdown", "-t", "latex", "--wrap=preserve",
+                           "--no-highlight", *arguments], input=markdown, capture_output=True,
+                          text=True, encoding="utf-8", check=True)  # fmt: skip
+    return done.stdout
+
+
+@holds(15, markdown_for_latex())
+def test_pandocs_latex_prints_the_digits_the_markdown_reader_keeps(markdown: str) -> None:
+    """For ordinary Markdown, which pandoc writes as LaTeX on purpose otherwise than it is
+    typed, the comparison `build --latex` refuses on finds nothing, under natbib and under
+    citeproc: each thing pandoc moves or LaTeX prints on its own is put right (step 11)."""
+    from manuscript_guard.build import latex_out
+    from manuscript_guard.text.latex.mask import read
+
+    body = _latex_body(markdown, "--natbib")
+    reading = read(body, body=True)
+    assert not reading.refusals, (markdown, body, reading.refusals)
+    assert latex_out.compare_digits(markdown, body, reading, citeproc=False) is None, (
+        markdown, body)
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as folder:
+        bib = Path(folder) / "references.bib"
+        bib.write_text(_LATEX_OUT_BIB, encoding="utf-8")
+        body = _latex_body(markdown, "--citeproc", f"--bibliography={bib}",
+                           "--metadata=link-citations:true")  # fmt: skip
+    reading = read(latex_out._without_citeproc_keys(body), body=True)
+    assert not reading.refusals, (markdown, body, reading.refusals)
+    assert latex_out.compare_digits(markdown, body, reading, citeproc=True) is None, (
+        markdown, body)
+
+
+@holds(15, markdown_for_latex(), st.integers(min_value=0, max_value=10_000))
+def test_a_digit_pandoc_wrote_otherwise_is_caught(markdown: str, which: int) -> None:
+    """Any digit the reader keeps in pandoc's LaTeX, changed, is a difference: a table's
+    caption, a footnote and a cell among them (step 11)."""
+    from manuscript_guard.build import latex_out
+    from manuscript_guard.text.latex.mask import NUL, read
+    body = _latex_body(markdown, "--natbib")
+    shown = read(body, body=True).masked.replace(NUL, " ")
+    # What the comparison passes over on purpose, as the Markdown reader does: the header a
+    # `longtable` repeats, and an address or a DOI.
+    passed = [found.span("head") for found in latex_out._REPEATED.finditer(body)]
+    passed += latex_out.addresses(body, read(body, body=True))
+    kept = [found.start() for found in re.finditer(r"\d", shown)
+            if not any(start <= found.start() < end for start, end in passed)]  # fmt: skip
+    at = kept[which % len(kept)]
+    changed = body[:at] + str((int(body[at]) + 1) % 10) + body[at + 1 :]
+    reading = read(changed, body=True)
+    assert latex_out.compare_digits(markdown, changed, reading, citeproc=False) is not None, (
+        markdown, changed[max(0, at - 60) : at + 20])
+
+
 # ------------------------------------------------------------- a cited title, as registered
 
 #: British spellings a cited title may have where the registry has the American one.
@@ -8009,6 +8450,98 @@ def _a_sentence_added_whole_is_read(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(claims_module, "_stretch", read)
 
 
+def _a_footnote_is_read_where_it_is_defined(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import sections
+
+    patch.setattr(sections, "footnote_index", lambda text, unreferenced=False: [])
+
+
+def _a_tables_caption_is_compared_where_pandoc_does_not_write_it(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    from manuscript_guard.build import latex_out
+
+    patch.setattr(latex_out, "_CAPTION", re.compile(r"(?!)"))
+
+
+def _a_lists_numbers_are_read_as_typed(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import blocks
+
+    patch.setattr(blocks, "list_items", lambda text: [])
+
+
+def _a_figures_alternative_text_is_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.build import latex_out
+
+    patch.setattr(latex_out, "_FIGURE", re.compile(r"(?!)(?P<alt>)"))
+
+
+def _a_footnote_is_read_at_its_first_mark_only(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import sections
+
+    found = sections.footnote_index
+    patch.setattr(sections, "footnote_index", lambda text, unreferenced=False: [
+        dataclasses.replace(note, references=note.references[:1])
+        for note in found(text, unreferenced=unreferenced)])  # fmt: skip
+
+
+def _a_bare_address_is_read_in_latex(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import masking
+
+    patch.setattr(masking, "_URL", re.compile(r"(?!)"))
+
+
+def _a_yaml_block_is_read_as_text(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import masking
+
+    patch.setattr(masking, "metadata_blocks", lambda text: [])
+
+
+def _a_mark_with_no_note_is_read_as_a_mark(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.build import latex_out
+
+    patch.setattr(latex_out, "_NOTE_MARK", re.compile(r"(?!)(?P<label>)"))
+
+
+def _a_narrative_locator_is_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.build import latex_out
+
+    patch.setattr(latex_out, "_LOCATOR", re.compile(r"(?!)"))
+
+
+def _a_note_nothing_marks_is_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import sections
+
+    found = sections.footnote_index
+    patch.setattr(sections, "footnote_index", lambda text, unreferenced=False: found(text))
+
+
+def _a_sign_written_as_a_command_ends_an_address(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.build import latex_out
+
+    patch.setattr(latex_out, "_PRINTED_SIGN", re.compile(r"(?!)"))
+
+
+def _an_address_takes_in_what_follows_it(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.build import latex_out
+
+    found = latex_out.addresses
+    patch.setattr(latex_out, "addresses", lambda body, reading: [
+        (start, end + 6) for start, end in found(body, reading)])
+
+
+def _a_repeated_table_header_is_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.build import latex_out
+
+    patch.setattr(latex_out, "_REPEATED", re.compile(r"(?!)(?P<head>)"))
+
+
+def _no_difference_in_digits_is_seen(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.build import latex_out
+
+    patch.setattr(latex_out, "compare_digits", lambda *_args, **_kwargs: None)
+
+
 def _every_stop_ends_a_sentence(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.checking import produce
 
@@ -8055,9 +8588,9 @@ def _a_wordless_piece_is_left_alone(patch: pytest.MonkeyPatch) -> None:
 def _a_claim_runs_back_to_its_paragraph(patch: pytest.MonkeyPatch) -> None:
     real = methods_gate.claims_in
 
-    def claims_in(text: str) -> Any:
-        found, bare = real(text)
-        starts = [start for start, _end in methods_gate._paragraphs(text)]
+    def claims_in(text: str, *rest: Any) -> Any:
+        found, bare = real(text, *rest)
+        starts = [start for start, _end in methods_gate._paragraphs(text, *rest)]
         return [
             (steps, max(s for s in starts if s <= start), end, anchor)
             for steps, start, end, anchor in found
@@ -8069,8 +8602,8 @@ def _a_claim_runs_back_to_its_paragraph(patch: pytest.MonkeyPatch) -> None:
 def _anchors_side_by_side_claim_apart(patch: pytest.MonkeyPatch) -> None:
     real = methods_gate.claims_in
 
-    def claims_in(text: str) -> Any:
-        found, bare = real(text)
+    def claims_in(text: str, *rest: Any) -> Any:
+        found, bare = real(text, *rest)
         apart = []
         for steps, start, end, anchor in found:
             apart.append((steps[:1], start, end, anchor))
@@ -8084,7 +8617,8 @@ def _a_comment_line_ends_a_paragraph(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.text.masking import blank_comments
 
     real = methods_gate._paragraphs
-    patch.setattr(methods_gate, "_paragraphs", lambda text: real(blank_comments(text)))
+    patch.setattr(methods_gate, "_paragraphs",
+                  lambda text, *rest: real(blank_comments(text), *rest))  # fmt: skip
 
 
 def _a_claim_keeps_the_words_of_a_comment(patch: pytest.MonkeyPatch) -> None:
@@ -8720,6 +9254,62 @@ BROKEN = {
         _a_passage_is_matched_as_it_is_typed,
         test_a_passage_belongs_to_its_sentence_by_its_words_and_its_work,
     ),
+    "a footnote is read where it is defined": (
+        _a_footnote_is_read_where_it_is_defined,
+        test_pandocs_latex_prints_the_digits_the_markdown_reader_keeps,
+    ),
+    "a table's caption is compared where pandoc does not write it": (
+        _a_tables_caption_is_compared_where_pandoc_does_not_write_it,
+        test_pandocs_latex_prints_the_digits_the_markdown_reader_keeps,
+    ),
+    "a list's numbers are read as typed": (
+        _a_lists_numbers_are_read_as_typed,
+        test_pandocs_latex_prints_the_digits_the_markdown_reader_keeps,
+    ),
+    "a figure's alternative text is read": (
+        _a_figures_alternative_text_is_read,
+        test_pandocs_latex_prints_the_digits_the_markdown_reader_keeps,
+    ),
+    "a footnote is read at its first mark only": (
+        _a_footnote_is_read_at_its_first_mark_only,
+        test_pandocs_latex_prints_the_digits_the_markdown_reader_keeps,
+    ),
+    "a bare address is read in LaTeX": (
+        _a_bare_address_is_read_in_latex,
+        test_pandocs_latex_prints_the_digits_the_markdown_reader_keeps,
+    ),
+    "a YAML block is read as text": (
+        _a_yaml_block_is_read_as_text,
+        test_pandocs_latex_prints_the_digits_the_markdown_reader_keeps,
+    ),
+    "a mark with no note is read as a mark": (
+        _a_mark_with_no_note_is_read_as_a_mark,
+        test_pandocs_latex_prints_the_digits_the_markdown_reader_keeps,
+    ),
+    "a narrative citation's locator is read under citeproc": (
+        _a_narrative_locator_is_read,
+        test_pandocs_latex_prints_the_digits_the_markdown_reader_keeps,
+    ),
+    "a note nothing marks is read": (
+        _a_note_nothing_marks_is_read,
+        test_pandocs_latex_prints_the_digits_the_markdown_reader_keeps,
+    ),
+    "a sign written as a command ends an address": (
+        _a_sign_written_as_a_command_ends_an_address,
+        test_pandocs_latex_prints_the_digits_the_markdown_reader_keeps,
+    ),
+    "an address takes in what follows it": (
+        _an_address_takes_in_what_follows_it,
+        test_pandocs_latex_prints_the_digits_the_markdown_reader_keeps,
+    ),
+    "a repeated table header is read": (
+        _a_repeated_table_header_is_read,
+        test_pandocs_latex_prints_the_digits_the_markdown_reader_keeps,
+    ),
+    "no difference in digits is seen": (
+        _no_difference_in_digits_is_seen,
+        test_a_digit_pandoc_wrote_otherwise_is_caught,
+    ),
     "a citation group is words of the sentence": (
         _a_citation_group_is_words_of_the_sentence,
         test_a_passage_belongs_to_its_sentence_by_its_words_and_its_work,
@@ -8912,6 +9502,126 @@ BROKEN = {
         _a_subscripts_count_is_maths,
         test_latex_s_words_hold_each_word_where_latex_prints_it,
     ),
+    "in LaTeX, a quotation's line is the printed view's": (
+        _a_quotation_s_line_is_the_printed_view_s,
+        test_a_latex_quotation_is_read_at_its_line_and_nowhere_else,
+    ),
+    "in LaTeX's printed view, dashes are printed as typed": (
+        _latex_dashes_are_printed_as_typed,
+        test_a_latex_quotation_is_read_at_its_line_and_nowhere_else,
+    ),
+    "in LaTeX, an ellipsis prints nothing": (
+        _latex_s_ellipsis_prints_nothing,
+        test_a_latex_quotation_is_read_at_its_line_and_nowhere_else,
+    ),
+    "a typographic quotation mark opens no sentence": (
+        _a_typographic_quotation_mark_opens_no_sentence,
+        test_a_latex_quotation_is_read_at_its_line_and_nowhere_else,
+    ),
+    "in LaTeX's printed view, an en dash is typed before an em dash": (
+        _latex_s_en_dash_is_typed_before_its_em_dash,
+        test_a_latex_quotation_is_read_at_its_line_and_nowhere_else,
+    ),
+    "in LaTeX's printed view, a line is placed where it starts, blank or not": (
+        _a_line_is_placed_where_it_starts_blank,
+        test_a_latex_quotation_is_read_at_its_line_and_nowhere_else,
+    ),
+    "in LaTeX's printed view, no citation is printed": (
+        _no_latex_citation_is_printed,
+        test_a_latex_quotation_is_read_at_its_line_and_nowhere_else,
+    ),
+    "in LaTeX, G8r reads a file as typed": (
+        _g8r_reads_a_latex_file_as_typed,
+        test_a_latex_claim_to_have_followed_a_guideline_is_read_where_it_prints,
+    ),
+    "in LaTeX, G8r reads a file's code": (
+        _g8r_reads_a_latex_file_s_code,
+        test_a_latex_claim_to_have_followed_a_guideline_is_read_where_it_prints,
+    ),
+    "in LaTeX, G8r reads a typed reference list": (
+        _g8r_reads_a_typed_reference_list,
+        test_a_latex_claim_to_have_followed_a_guideline_is_read_where_it_prints,
+    ),
+    "in LaTeX, no cross-reference is recorded": (
+        _no_latex_cross_reference_is_recorded,
+        test_a_latex_cross_reference_is_recorded_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a label is a cross-reference": (
+        _a_label_is_a_cross_reference,
+        test_a_latex_cross_reference_is_recorded_where_it_prints_and_nowhere_else,
+    ),
+    "a quote's number stands for no cross-reference": (
+        _a_quote_s_number_stands_for_no_reference,
+        test_a_quote_of_a_latex_sentence_holds_a_number_where_its_reference_stands,
+    ),
+    "a bracket typed round a cross-reference is taken for its own": (
+        _a_bracket_typed_round_a_reference_is_its_own,
+        test_a_quote_of_a_latex_sentence_holds_a_number_where_its_reference_stands,
+    ),
+    "a cross-reference stands for its number alone, not the word before it": (
+        _a_reference_stands_for_its_number_alone,
+        test_a_quote_of_a_latex_sentence_holds_a_number_where_its_reference_stands,
+    ),
+    "in LaTeX, G15 reads a heading's title": (
+        _g15_reads_a_latex_heading_s_title,
+        test_a_model_named_in_latex_methods_is_found_where_latex_prints_it,
+    ),
+    "in LaTeX, G15 reads all of a file as its Methods": (
+        _g15_reads_all_of_a_latex_file_as_its_methods,
+        test_a_model_named_in_latex_methods_is_found_where_latex_prints_it,
+    ),
+    "in LaTeX, G15 reads a file in its Markdown view": (
+        _g15_reads_a_latex_file_in_its_markdown_view,
+        test_a_model_named_in_latex_methods_is_found_where_latex_prints_it,
+    ),
+    "in LaTeX, G15 reads a file's words with a NUL where it reads none": (
+        _g15_reads_a_latex_file_s_words_with_its_nul,
+        test_a_model_named_in_latex_methods_is_found_where_latex_prints_it,
+    ),
+    "in LaTeX, G9 cuts no heading out of a paragraph": (
+        _g9_cuts_no_latex_heading,
+        test_g9_reads_a_latex_methods_section_as_it_reads_a_markdown_one,
+    ),
+    "in LaTeX, G9 reads a table set apart with its paragraph": (
+        _g9_reads_a_table_set_apart_with_its_paragraph,
+        test_g9_reads_a_latex_methods_section_as_it_reads_a_markdown_one,
+    ),
+    "in LaTeX, G9 reads an anchored float with the paragraph round it": (
+        _g9_reads_an_anchored_float_with_the_paragraph_round_it,
+        test_g9_reads_a_latex_methods_section_as_it_reads_a_markdown_one,
+    ),
+    "in LaTeX, G9 reads a float's words": (
+        _g9_reads_a_float_s_words,
+        test_g9_reads_a_latex_methods_section_as_it_reads_a_markdown_one,
+    ),
+    "in LaTeX, G9 reads a table's words inside a float": (
+        _g9_reads_a_table_s_words_inside_a_float,
+        test_g9_reads_a_latex_methods_section_as_it_reads_a_markdown_one,
+    ),
+    "in LaTeX, G9 reads no word of a float that holds an anchor": (
+        _g9_reads_no_word_of_a_float_that_holds_an_anchor,
+        test_g9_reads_a_latex_methods_section_as_it_reads_a_markdown_one,
+    ),
+    "in LaTeX, G9 ends a paragraph at a float": (
+        _g9_ends_a_paragraph_at_a_float,
+        test_g9_reads_a_latex_methods_section_as_it_reads_a_markdown_one,
+    ),
+    "in LaTeX, G9 ends a paragraph at a line of spaces in its view": (
+        _g9_ends_a_latex_paragraph_at_a_line_of_spaces_in_its_view,
+        test_g9_reads_a_latex_methods_section_as_it_reads_a_markdown_one,
+    ),
+    "in LaTeX, G9 starts a typed paragraph where its first line starts": (
+        _g9_starts_a_typed_paragraph_where_its_first_line_starts,
+        test_g9_reads_a_latex_methods_section_as_it_reads_a_markdown_one,
+    ),
+    "in LaTeX, G9 starts a paragraph glued to its heading at the heading's end": (
+        _g9_starts_a_paragraph_at_the_end_of_its_heading,
+        test_g9_reads_a_latex_methods_section_as_it_reads_a_markdown_one,
+    ),
+    "in LaTeX, G9 reads a binding in a claim as the view pads it": (
+        _g9_reads_a_latex_binding_as_its_view_pads_it,
+        test_g9_reads_a_latex_methods_section_as_it_reads_a_markdown_one,
+    ),
     "in LaTeX, G6 takes no citation command for a claim's support": (
         _g6_takes_no_latex_citation,
         test_g6_judges_a_latex_document_where_it_prints_and_by_its_citations,
@@ -8952,6 +9662,14 @@ BROKEN = {
         _a_file_input_is_read_after_its_parent,
         test_g14_reads_a_latex_document_in_the_order_it_prints,
     ),
+    "in LaTeX's printed view, prose breaks its lines as the view does": (
+        _prose_breaks_its_lines_as_the_view_does,
+        test_latex_s_printed_view_places_each_word_at_its_file_and_line,
+    ),
+    "in LaTeX's printed view, each stretch is placed at its file's start": (
+        _each_stretch_is_placed_at_its_files_start,
+        test_latex_s_printed_view_places_each_word_at_its_file_and_line,
+    ),
     "in LaTeX's printed view, a file input is printed after the file that inputs it": (
         _an_input_file_is_printed_after_its_parent,
         test_latex_s_printed_view_writes_each_file_where_it_is_input,
@@ -8982,6 +9700,22 @@ BROKEN = {
     ),
     "in LaTeX's printed view, an abstract runs on to the next heading": (
         _an_abstract_runs_on_to_the_next_heading,
+        test_latex_s_printed_view_holds_what_it_prints_as_markdown_writes_it,
+    ),
+    "in LaTeX's printed view, a prose binding is printed with spaces round it": (
+        _a_prose_binding_is_printed_with_spaces_round_it,
+        test_latex_s_printed_view_holds_what_it_prints_as_markdown_writes_it,
+    ),
+    "in LaTeX's printed view, a formula's bindings are not printed": (
+        _a_formulas_bindings_are_not_printed,
+        test_latex_s_printed_view_holds_what_it_prints_as_markdown_writes_it,
+    ),
+    "in LaTeX's printed view, a typed table's bindings are not printed": (
+        _a_typed_tables_bindings_are_not_printed,
+        test_latex_s_printed_view_holds_what_it_prints_as_markdown_writes_it,
+    ),
+    "in LaTeX's printed view, a span's bindings are not printed": (
+        _a_spans_bindings_are_not_printed,
         test_latex_s_printed_view_holds_what_it_prints_as_markdown_writes_it,
     ),
     "in LaTeX's printed view, a formula is printed as typed": (

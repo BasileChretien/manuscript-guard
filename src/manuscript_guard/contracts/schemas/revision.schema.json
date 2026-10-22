@@ -19,7 +19,7 @@
     "submitted_files": {
       "type": "object",
       "description": "The manuscript as the journal received it, one digest per file. Written when the round is opened, from the version that was submitted. This is what makes a response verifiable: a point claiming the Methods were revised can be checked against whether methods.md actually differs from what went out.",
-      "propertyNames": { "pattern": "^(?!.*\\.\\.)[^\\\\]+\\.md$" },
+      "propertyNames": { "pattern": "^(?!.*\\.\\.)[^\\\\]+\\.(?:md|tex)$" },
       "additionalProperties": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
     },
     "submitted_paragraphs": {

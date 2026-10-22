@@ -263,8 +263,10 @@ def _ends_a_note(found: Heading, shown: str) -> bool:
     return found.setext and not _OLD_SCAN_SKIPPED.match(line)
 
 
-def footnote_index(text: str) -> list[Note]:
-    """Every footnote definition in `text` with the references that print it.
+def footnote_index(text: str, *, unreferenced: bool = False) -> list[Note]:
+    """Every footnote definition in `text` with the references that print it; with
+    `unreferenced`, one nothing references too, with none, which pandoc does not print
+    (round 3 of step 11).
 
     Pandoc prints a footnote where it is referenced, and G2 read its numbers under the
     section its definition line sits in only: a finding referenced from Results and defined
@@ -326,11 +328,11 @@ def footnote_index(text: str) -> list[Note]:
         Note(
             low,
             high,
-            tuple(references[label]),
-            _one_of_each_kind(chain_at(found_headings, at) for at in references[label]),
+            tuple(references.get(label, ())),
+            _one_of_each_kind(chain_at(found_headings, at) for at in references.get(label, ())),
         )
         for low, high, label in spans
-        if label in references
+        if unreferenced or label in references
     ]
 
 

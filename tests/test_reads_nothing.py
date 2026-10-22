@@ -235,41 +235,46 @@ def test_a_command_that_reads_nothing_exits_as_the_table_says(
 LATEX = {
     "approve": ("reads", ("approve", "{project}", "--as", "Nobody Listed")),
     "audit": ("refuses", ("audit", "{tex}", "--against", "{project}/results")),
-    "bind": ("refuses", ("bind", "{project}")),
-    "build": ("refuses", ("build", "{project}")),
+    # It reads each file as G2 does and offers `\\mg{...}` (step 12).
+    "bind": ("reads", ("bind", "{project}")),
+    # It compiles the PDF with latexmk (step 9).
+    "build": ("reads", ("build", "{project}")),
     "check": ("reads", ("check", "{project}")),
     "checker": ("refuses", ("checker", "build", "{project}")),
     "checklist": ("no manuscript", ("checklist", "{project}")),
     "dictionary": ("no manuscript", ("dictionary", "{project}")),
-    "explain": ("refuses", ("explain", "{tex}")),
+    "explain": ("reads", ("explain", "{tex}")),
     "fetch": ("no manuscript", ("fetch", "STROBE")),
     "hook": ("reads", ("hook", "session-start")),
     "impact": ("refuses", ("impact", "{project}/paper.yaml")),
     "import": ("refuses", ("import", "{project}/returned.docx", "{project}")),
+    # Without `--latex` it would put `main.md` beside `main.tex` (step 12).
     "init": ("refuses", ("init", "{project}")),
     "install-skills": ("no manuscript", ("install-skills",)),
     "journal": ("no manuscript", ("journal",)),
     # They find the citations through the reader's `citation_uses` (step 5).
     "lookup": ("reads", ("lookup", "{project}", "--dry-run")),
-    "methods": ("refuses", ("methods", "{project}")),
-    "models": ("refuses", ("models", "{project}")),
+    # G9, G15, G7's passages, G8's earlier outputs and G13 read LaTeX from step 8.
+    "methods": ("reads", ("methods", "{project}")),
+    "models": ("reads", ("models", "{project}")),
     # It packages the results, the scripts and the inputs whatever the format, and the `.tex`
     # sources with `--with-manuscript`; BOUND.md does not read LaTeX's bindings yet, and the
     # package says so with a warning (`package-bound-not-read`).
     "package": ("reads", ("package", "{project}")),
     "palettes": ("no manuscript", ("palettes",)),
-    "passages": ("refuses", ("passages", "{project}")),
+    "passages": ("reads", ("passages", "{project}")),
     "proof": ("refuses", ("proof", "{project}/proof.pdf", "{project}")),
-    "related": ("refuses", ("related", "{project}")),
+    "related": ("reads", ("related", "{project}")),
     "render": ("refuses", ("render", "{project}")),
-    "respond": ("refuses", ("respond", "{project}")),
+    "respond": ("refuses", ("respond", "{project}", "--from", "{project}/returned.docx")),
     "review": ("refuses", ("review", "{project}", "--run")),
     "reworded": ("refuses", ("reworded", "{project}")),
     "search": ("no manuscript", ("search", "hepatic injury")),
-    "sign": ("refuses", ("sign", "{project}", "--as", "Nobody Listed", "--finding", "G15/x/y")),
+    "sign": ("reads", ("sign", "{project}", "--as", "Nobody Listed", "--finding", "G15/x/y")),
     "stages": ("no manuscript", ("stages",)),
     "style": ("no manuscript", ("style", "{project}")),
-    "submit": ("refuses", ("submit", "{project}")),
+    # It packs the source as one folder that compiles alone (step 10).
+    "submit": ("reads", ("submit", "{project}")),
     "sync-bib": ("reads", ("sync-bib", "{project}")),
     "sync-sources": ("reads", ("sync-sources", "{project}")),
     "transcribe": ("no manuscript", ("transcribe",)),
@@ -341,5 +346,7 @@ def test_the_refusal_is_for_a_latex_manuscript_only(empty: Path) -> None:
         ("related", "{project}", "--take"),
         # `--files` is a flag here, no list of files (main's `review --files`).
         ("review", "{project}", "--files"),
+        # A round opened, and one checked, read a LaTeX manuscript (step 8).
+        ("respond", "{project}", "--open"), ("respond", "{project}"),
     ):  # fmt: skip
         assert cli._refused_for_latex(_parsed(argv, empty)) is None, argv

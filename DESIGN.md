@@ -1405,8 +1405,9 @@ written as a command, and two hyphens apart, so that no dash TeX joins from them
 minus sign after it. The pull request that builds the table compiles each entry under OT1
 and T1 and compares the printed text with the value.
 
-**The submission copy** replaces each binding with what the file defines for it and removes
-`\usepackage{mgvalues}`, so it needs no macro file.
+**The submission copy** replaces each binding with what the file defines for it and writes
+`\usepackage{mgvalues}` as `\usepackage{graphicx}`, which the values file loads, so it needs
+no macro file (step 10).
 
 ### Citations
 
@@ -1468,10 +1469,10 @@ profile.
 **The submission folder.** `submit` writes `build/submission/latex/`:
 - `manuscript.tex`, flattened, with the values written in and the comments removed, since a
   comment can hold a draft and its old numbers;
-- `references.bib` with only the cited keys, and the `.bbl` where the profile asks for one;
+- `references.bib` with only the cited keys, and the `.bbl` (step 10 packs it always);
 - the figures, with their paths rewritten;
-- the journal's files;
-- the PDF.
+- the journal's files (not yet: no command fetches them);
+- the PDF, which step 10 puts at the pack's root, beside the other documents.
 
 The folder is then compiled alone, in an empty directory, and refused if it needs anything
 outside itself.
@@ -1686,6 +1687,149 @@ The result is compiled and packed by the code above, and checked three times:
   only: a todonotes `\todo{...}` or a lower-case `% todo` in it passes (round 3 of step 7b).
   A finding in an entry is named at its `\bibitem` line, one above a placeholder on the next
   line (round 4).
+- G8 reads a LaTeX document's printed view, so a supplementary file nothing inputs reports
+  nothing, where Markdown counts every supplementary file; G0 warns of the file
+  (`tex-not-input`). Past a refusal G8's recomputation reads the file as typed, a comment's
+  P value with it (round 1 of step 8).
+- G8 keeps a line break inside a `\mg`, between the command and its brace, as a line of the
+  view, beside the value it puts in: before it where nothing but spaces or a comment follows
+  on its line, else after it. A binding split so and alone on its line, or two in a row, still
+  leaves a line of nothing but spaces, which ends the paragraph, and a statistic before it is
+  not read with a P after it (round 3 of step 8); so does an anchor split so at the end of a
+  line, since it writes nothing (round 4).
+- G9 reads a LaTeX claim's words as the view prints them: a command's name and braces are
+  spaces, so `\emph{fixed}` says "fixed" where Markdown's `*fixed*` says "*fixed*", and a lock
+  made from the Markdown of a paper reads such a claim as changed once the paper is LaTeX.
+  An open paragraph is told with a space where a command's brace stood ("paper.yaml ."). The
+  supplement's Methods are read in its printed document and named at its entry file (step 8).
+  G9 ends a LaTeX paragraph at an empty line alone, not at `\par`: two paragraphs a `\par`
+  parts on one line are read as one, the claim of the second holding the words of the
+  first (round 1 of step 8). An empty line TeX never reads, inside `\iffalse` or a
+  `comment` environment typed within a paragraph, ends it all the same (round 2). A typed
+  table outside a float ends its paragraph, as one a `center` or a `longtable` sets apart
+  does, so a `tabular` typed within a sentence parts it in two; and another environment
+  that sets text apart, a list or a `quote`, ends none (round 3). A float that holds an
+  anchor parts the paragraph typed round it, where TeX moves it out and the paragraph goes
+  on; and an anchor typed alone after a table set apart claims nothing
+  (`method-claim-empty`), as one alone after any paragraph does (round 4).
+- G15 reads a LaTeX file's names of models in the words G14 reads, which hides a word that
+  holds `\-` or an accent command: `logis\-tic regression` is not found, and after
+  `condi\-tional` a logistic regression is read as one. Two or more lines of comments
+  between a word and the name after it are as many line breaks, so "conditional" over them
+  does not make the name another model's (round 1 of G15 in step 8). A name a macro of the
+  preamble prints, `\newcommand{\mainmodel}{logistic regression}`, is not read where the
+  macro is used; past a refusal the headings stay as they were and the rest of the file is
+  read as typed, comments too; and a float's caption is read where it is typed, not where
+  LaTeX prints the float (round 2).
+- G8r reads a claim to have followed a guideline within one line, in LaTeX as in Markdown,
+  so a claim whose verb and name a hard-wrapped source puts on two lines is not read; a
+  name a command parts, `RECORD\textendash{}PE`, is read as the part before it, RECORD; and
+  a heading more than six levels below the shallowest, `\subparagraph` under `\part`, is
+  no heading a checklist's answer can point at (round 1 of G8r in step 8). A definition's
+  body is read where it is written, not where it prints: a claim a macro of a package
+  prints is not read, and one an unused macro of the preamble holds is (round 2).
+- The printed view types LaTeX's dashes, so a quotation G13 is given as the `.tex` has it,
+  with `--`, is not found where one copied from the PDF is; and a sentence that opens with a
+  typographic quotation mark is now cut from the one before in Markdown too, so a passage or
+  a co-author's item recorded on the two joined is matched no more (round 2 of G7 in step
+  8).
+- G7 reads no quotation in a float's caption or a table's cell, which the printed view does
+  not print, and a footnote's words stand at its mark, glued to the word before it, so a
+  quotation or a cited sentence a footnote interrupts is read with the note's words in it
+  (round 1 of G7 in step 8).
+- The reader does not refuse a bare `^` or `_` outside maths, which LaTeX stops on: `check`
+  reads the paper, and the build names the error at its line (step 9's agreement test passes
+  such a file over).
+- MiKTeX does not honour `openin_any`: under it a manuscript can `\input` a file outside the
+  copy, by a path that climbs out of it, and print it. TeX Live refuses that path. A manuscript
+  that names a file of its own outside its folders, `\includegraphics{../figures/x}` typed by
+  hand, is refused under TeX Live, and its figures are the values file's to name (round 1 of
+  step 9). So is a supplement that reads the main text by `..`, xr's
+  `\externaldocument{../main}` or `\input{../preamble}`: with xr its references come out
+  undefined, and fail at `--submission` (round 2).
+- The build compares headings only where LaTeX numbers them, and reads them only as
+  `\numberline` writes them: under `\setcounter{secnumdepth}{0}`, or in a class that writes
+  its contents otherwise (amsart's `\tocsection`), it has nothing to compare, and a heading a
+  macro makes is not caught. A title whose words are the `.aux`'s with some left out is the
+  reader's, a title the reader reads as empty (`\section{\drug}`) among them, and the match
+  looks on past the reader's headings that LaTeX does not number: so a macro's heading stands
+  for a later heading of the reader's whose words it holds, or one the reader reads as empty
+  (rounds 2 and 3 of step 9).
+- On Windows, a program latexmk starts before latexmk is put in the build's job is outside
+  the job, and is not stopped at the limit with the rest (round 2 of step 9).
+- The submission folder holds every file under its own name, and only `\includegraphics` is
+  written with that name. A file another command names by a path into a folder
+  (`\documentclass{cls/journal}`, `\usepackage{sty/mine}`) is in the folder but not where
+  the path points, so the compile alone refuses the folder and names the file. A picture found
+  through `\graphicspath` is found, since graphicx looks where TeX finds files too, unless
+  its name holds a folder (step 10).
+- The folder writes in every file the document `\include`s, as the reader reads them all,
+  so a file `\includeonly` leaves out of the PDF is in the folder's (step 10).
+- A biblatex `.bbl` belongs to the biblatex version that wrote it. A journal with another
+  version that compiles without running Biber gets a warning and the references of that
+  `.bbl` (step 10).
+- At a revision, a LaTeX manuscript's pack has no marked-up copy: `build --marked-up` makes
+  Word copies, and `submit` says so in a note (step 10).
+- `build --latex` refuses Markdown that G2's Markdown reader and pandoc read otherwise, and
+  says where the digits part: measured, 38 of 180 of the suite's generated files (`texts()`),
+  which hold fences closed by a line separator, `:::` divs and a YAML block left open at the
+  end. It is a refusal, never a misprint (step 11).
+- `build --latex` compares digits, not numbers: a raw TeX that moves a decimal point or a
+  sign, `1\iffalse.\fi5` printing 15 where the gates read 1.5, passes, and a digit moved
+  between a table's caption and its rows passes. Raw TeX in the text fails `tex-in-the-text`
+  from `drafting` on, so this needs an earlier stage or `--skip-checks` (round 1 of step 11).
+- `build --latex` reads a `[^n]:` line directly under a paragraph's line as a note's
+  definition, as G2 does, where pandoc may read it as the paragraph's text: with a digit in
+  its label the build is refused, and with none, `[^a]:`, it builds, and pandoc may print the
+  note in the paragraph, its mark included, with no footnote (round 5 of step 11). A tilde
+  pair in an address, written `\textsubscript`, ends the address; and an `@` right after a
+  `/`, as in an address, is taken for a citation's key. Each of these two is a refusal of the
+  build, never a misprint (round 4).
+- Under citeproc, a narrative citation whose key starts with a digit, `@2020who`, is not
+  passed over as one, and its digits refuse the build (round 5 of step 11).
+- Under citeproc, the digits of a citation are compared on neither side, so raw TeX in its
+  locator that hides a digit, `[@key, p. \iffalse 1\fi 2]`, is not found; raw TeX in the
+  text fails `tex-in-the-text` from `drafting` on (round 2 of step 11).
+- A YAML block in the body is passed over on both sides, but the template prints its
+  `abstract:` and `date:`: their digits are not compared, and raw TeX in them is not read
+  (round 1 of step 11).
+- `build --latex` writes a figure as the Word build does, a picture in its own paragraph
+  with its caption as the next one, not as a float with `\caption`; the title page is the
+  template's, with the authors' names and no affiliations, identifiers or corresponding
+  author (step 11).
+- Under MiKTeX, which reads a file by a path written out in full whatever `openin_any` says,
+  the compile alone reads one outside the project, and the folder is not refused: only a read
+  of the project's files is seen (round 1 of step 10).
+- The reader reads a file input past its `\endinput`, which TeX does not: the gates read
+  text the PDF does not print, and the submission folder leaves it out (round 1 of step 10).
+- A file `filecontents` writes keeps its `%` lines in the folder, and the reader reads its
+  content as the preamble's, not as a file's (round 1 of step 10).
+- `build` and the compile alone set BibTeX's and Biber's paths, as TeX's, to the document's
+  folder: a `.bib` an author keeps on their own `BIBINPUTS` is not found, and the build
+  says the citations are undefined (round 2 of step 10).
+- An `\IfFileExists` of a `.tex` file the folder writes in is left as it is typed, and is
+  false in the folder, so what it guards is not printed (rounds 3 and 4 of step 10).
+- G7 reads a quotation in LaTeX where it is set in ``...'' or typographic marks: one set in
+  csquotes' `\enquote{...}` prints its marks in the PDF but not in the printed view, and is
+  not read as a quotation. A cited sentence holds its citation as `[@key]` with a space
+  before the stop after it; a passage is matched on the sentence's words, which that space
+  does not change (step 8).
+- G13 and G8 look for a quoted sentence in a LaTeX paper in its printed view, where a
+  footnote's words stand at its mark, glued to the word before it, and a float typed inside
+  a paragraph leaves its bindings there: a quote of a sentence across either is not found.
+  A citation is `[@key]` with a space before the stop after it, so a quote that holds one
+  is not found either, as in Markdown (step 8). An accent typed as a command, `Chr\'etien`,
+  prints there without its mark, `\ldots` as nothing and `--` as typed, so a quote copied
+  from the PDF that holds one is not found. A number in a quote may stand where the source
+  has a cross-reference, with the word before it ("Table 1", "(2)"), whatever the compiled
+  paper numbered it: the number is not checked, nor whether the name before it is printed
+  by the command or by no one, `Table 1` passing where a plain `\ref` prints `1` (round 1
+  of G13). A reference printed as a roman numeral or a letter ("Table II", "Appendix A"),
+  by `\nameref` as a title, by `\vref` with its page, or by `\cref{a,b}` as two numbers
+  is not found; nor an inline formula whose spacing or symbols the PDF prints otherwise
+  than they are typed, `$n=\mg{results.n}$` against "n = 41" (round 2). Brackets round a
+  quote's number pass where the source has a plain `\ref`, as `\eqref` prints them, and a
+  letter after it, "1A", as a subfigure's `\ref` prints one (round 3).
 - G6's boldface rate counts `**...**` and so never counts LaTeX's `\textbf{...}`, which the
   reader blanks. A typed table's cells are not read by G6's rates, phrases, residue or vague
   attributions (round 1 of step 7b).
@@ -1882,16 +2026,239 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
    `BROKEN` rules. The plan as
    written: `words`, accents, both gates moved. Tests: `latex words`, planted terms and
    spellings.
-8. `substituted`, with TeX's specials escaped; G5, G8, G9, G13 and G15 moved. Tests:
-   each gate's cases on the twin, and a display holding `%` through G8.
+8. `substituted`, with TeX's specials escaped; G5, G8, G9, G13 and G15 moved. Built in parts,
+   one gate or two at a time. The first: `printed` gives the printed view with where each
+   stretch of it comes from (`Printed.place`): a stretch of prose keeps its source's line
+   breaks, and what the view writes for an event stands on the line its command starts on.
+   So a gate that reads a document's sections as Markdown reads a LaTeX one in its printed
+   view, unchanged, and names the `.tex` file and line of what it finds. G8's check that a
+   summary's number is reported elsewhere (`check_reported`) reads it so, which takes it out
+   of `_NOT_READ_IN_LATEX`; a file nothing inputs is not printed, and reports nothing. The
+   view writes the bindings a formula or a typed table holds, which a sentence of the
+   summary may give. G8's recomputation of each P and interval (`check_recomputed`) reads
+   each file's Markdown view with its values put in, a line break inside a `\mg` kept, and
+   leaves `_NOT_READ_IN_LATEX` too. Tests: G8 on the twin and its cases there (a number the
+   Abstract alone gives, a display holding `%`, a binding split over two lines, one in a
+   formula or a typed table), `latex places`, and where the view places each word and what
+   it prints over `latex_trees()` and `latex_printed()` with `BROKEN` rules for each.
+   The second: G9 (`check_methods`) reads each file's anchors in its Markdown view, under
+   the headings the include tree gives at each place. A paragraph ends where the file is
+   typed with an empty line, as TeX reads it, so a line of a comment alone ends none; each
+   heading's command and each table typed outside a float is cut out of the paragraphs, as a
+   Markdown heading is a line of its own and a pipe table no prose, and as a `center` or a
+   `longtable` sets a table apart; each float that holds no anchor is blanked and ends none,
+   as TeX moves it out of its paragraph. A float or a table that holds an anchor is a
+   paragraph of its own and a claim, as a pipe table is, a table inside it that holds no
+   anchor blanked. A binding in a claim reads as Markdown
+   writes it, so a claim says what the same claim says in Markdown and one lock serves
+   both. The parameters are held to the Methods of the printed document, the main text's
+   and then the supplement's, and a LaTeX manuscript with none is told so. A line of nothing
+   but anchors ends no paragraph in LaTeX, so `method-anchor-line` is a Markdown file's
+   alone. Tests: G9 on the twin and its cases there (a claim reworded, one across a
+   comment's line, an anchor deleted, a wrong parameter in the main text's Methods and in
+   the supplement's, no Methods, a float inside a claim, a table set apart, a heading and a
+   table that are no paragraph), `latex methods`, and `latex_methods()` with `BROKEN` rules
+   for each cut, each blank, where a paragraph starts and ends, and a binding in a claim.
+   The third: G15 (`check_models`) finds a model named in a LaTeX file's Methods in the
+   words G14 reads (`text/latex/words.py`), so not in a comment, maths, code or a figure's
+   float, with each heading's title blanked, under the headings the include tree gives at
+   each place (`named_in_latex`); the bindings it holds are `bound_files`' in either
+   format. A command's braces inside a name, `logistic \emph{regression}`, leave it one
+   name, as LaTeX prints it. Tests: G15 on the twin and its case there (the kind typed, a
+   model the analysis did not fit, a name in a subsection's title and in the Results), the
+   kind inlined among the twin's bindings, `latex models`, and `latex_model_names()` with
+   `BROKEN` rules for the titles, the Methods, the view and the spaces it reads.
+   The fourth: G13 (`check_revision`) and G8's check of the earlier outputs
+   (`check_related`) read the paper as `rendered_manuscript` gives it, which for LaTeX is
+   the main text's document and then the supplement's as they print (`printed_document`),
+   values filled in; a binding in prose is printed where it stands, nothing added round it,
+   so a quote that ends after one is found; an inline formula is what it holds, its
+   bindings in place, and a cross-reference, which the reader records (`Reading.pointers`),
+   may be any number with the word before it (`quoted_in`). `respond --open` keeps that
+   text as the round's
+   copy (`printed.md`), so a quote the journal already read is told so; the copy of the
+   sources themselves is step 12's. G8's earlier outputs are cited through
+   `citation_uses`, a comment's citation, a `\nocite` and a file nothing inputs left out.
+   A letter that names a `.tex` file's line, in either format,
+   leaks it, as one that names a `.md` file's does, and the round's and G11's records key a
+   `.tex` file as they key a `.md` one. Tests: G13's quoted revision on the twin, found,
+   absent and already read, a `.tex` line in a letter, G8's earlier output disclosed on the
+   twin by its `\cite` and by a sentence, and a sentence with a binding; and a binding
+   between a bracket and a full stop over `latex_printed()` with a `BROKEN` rule.
+   The fifth: G8r (`check_reporting`) reads a LaTeX file's claims to have followed a
+   guideline in its Markdown view, where a comment and what `\iffalse` leaves out are
+   spaces, with its code (`\verb`, `\texttt`) blanked as Markdown's mask blanks inline code;
+   and the headings a checklist's answer may point at are those the documents print. Tests:
+   G8r on the twin and its case there (a claim in prose, one in a comment and one in
+   `\texttt`), and `latex_claims()` with `BROKEN` rules for the file as typed and its code.
+   The sixth: G7's quotations (`check_prose_quotations`) and passages (`check_passages`, and
+   the `passages` command through `survey_of`) read a LaTeX paper's documents as they print
+   (`printed_of`), where ``...'' is a quotation and a citation `[@key]`, and each quotation
+   or cited sentence is named at its `.tex` file's line (`Printed.place_line`): a quotation
+   at the line its paragraph starts on, as in Markdown. The printed view types `--` and `---`
+   as their dashes, and the mask writes `\ldots`, `\textendash` and `\textemdash` as their
+   characters (`commands.SYMBOLS`); a sentence opens at a typographic quotation mark, as at a
+   straight one. That leaves only BUILD's checks
+   (`check_shapes`, `check_tex`) in `_NOT_READ_IN_LATEX`, which are the PDF build's (step
+   9), and G2's pointers. Tests: G7 on the twin, its quotations (``...'', typographic, in a
+   comment, a narrative citation, in a file the twin inputs) and its cited statements, and
+   `latex_quotations()` with `BROKEN` rules for the line and the citations printed.
 9. The PDF. `build/latex.py`, the log, the comparison of headings through the `.aux`, CI's
-   TeX Live and `MANUSCRIPT_GUARD_REQUIRE_LATEX`. Tests: `test_latex_agreement.py`.
+   TeX Live and `MANUSCRIPT_GUARD_REQUIRE_LATEX`. Tests: `test_latex_agreement.py`. Built in
+   two parts. The first: `build` of a LaTeX manuscript compiles a copy in `build/latex/` with
+   latexmk, the main text and the supplement, each to its own PDF, given as
+   `build/manuscript.pdf` and `build/supplementary.pdf` (named UNCHECKED as the Word build
+   names its documents), in the folders `paper.yaml` names. Each document whose entry file
+   declares a class gets beside it a fresh values file, `references.bib` and the rendered
+   figures in a `figures/` folder, so that the values file names each figure with no `..`,
+   which TeX Live's `openin_any=p` refuses. TeX is held to the copy as "The build of a LaTeX
+   source" says; measured under MiKTeX 24.4 on 2026-10-22, its installer is turned off with
+   the engine's `-disable-installer`, and it refuses an `\openout` outside the folder by
+   itself. The log's lines are not broken (`max_print_line`, MiKTeX's `-max-print-line`), so a
+   long key is read whole. An error is named at the manuscript's file and line, one in the
+   values file at the build's; a package not found, by its name; the log's undefined
+   citations and references are listed and fail at `--submission`; and each heading LaTeX
+   numbered, in every `.aux` an `\include` writes too, must be one the reader reads, in order,
+   by its title or its short title, a heading a macro makes refused (`MisreadError`). A title
+   is the reader's where its words are the `.aux`'s in order with some left out, since the
+   `.aux` holds what an author's macro in it expands to and the reader blanks the macro, as in
+   prose (round 2). A compile that runs past its limit, or is interrupted, is stopped with
+   every program it started. The engine is the one the journal's profile names under
+   `latex: {engine: ...}`, pdfLaTeX where it names none. The copy's folder holds a file that
+   marks it as the build's, and a folder there that the build did not make, or one that holds
+   the manuscript or is inside it, is refused rather than replaced: `paths.build` may name any
+   folder (round 2). Without latexmk or the engine, `build` says so and exits 2. CI's `latex` job installs Ubuntu 24.04's TeX Live 2023 with apt and runs the
+   compiling tests with `MANUSCRIPT_GUARD_REQUIRE_LATEX`, which `tests/conftest.py` holds to
+   the first line `pdflatex --version` prints. Tests: `tests/test_latex_build.py` (the twin
+   built, its manuscript untouched; an error here and in a file input; a missing package; a
+   write outside the copy; an undefined reference; a macro's heading; no LaTeX). The second
+   part is `test_latex_agreement.py`: 24 generated files the reader does not refuse are
+   compiled with LuaLaTeX, a `pre_shipout_filter` callback writes out each digit set on each
+   page, a discretionary's as it prints unbroken, and the digits must be the mask's, in
+   order. LaTeX's own numbers (page, section,
+   footnote mark) are turned off, `\mg` prints nothing, and the content of `verbatim` and
+   `\url`, which the mask blanks on purpose, is taken out first; a file LaTeX stops on is
+   passed over, and at least half must compile. Under MiKTeX 24.4 on 2026-10-22 every file
+   that compiled agreed. In the first measurement, of sixteen files, the two that did not
+   compile held a bare `^` from the filler the Markdown suites share. CI's `latex` job holds
+   LuaLaTeX present too, so that this test cannot skip there (round 2).
 10. The submission folder. Flattening, values written in, `.bib` and `.bbl`, figures, the
-    compile alone, `submit`.
+    compile alone, `submit`. Built in `build/latex_pack.py`. `submit` builds the PDFs as
+    `build` does, then writes the folder from what the reader read of each document, which is
+    refused where the reader refuses a file. The reader records, for this, each comment, what
+    TeX never prints (an `\iffalse` block's content, a `comment` environment's lines) and each
+    `\includegraphics`'s path; the build records each file of the manuscript's that LaTeX
+    read, from latexmk's recorder. Each document is written as one file, `manuscript.tex` and
+    `supplementary.tex`, with these changes:
+    - an `\input` is replaced by the file it reads, and an `\include` by the file between two
+      `\clearpage`s;
+    - a binding is replaced by what the values file prints for it, a table by its `tabular`;
+    - `mgvalues` in a package list becomes `graphicx`;
+    - a comment loses its text and keeps its `%`; an `\iffalse` block keeps its `\iffalse\fi`;
+      a `comment` environment keeps its two lines.
+    The author's packages are written the same way, under their own names. All the files are
+    in one folder, which submission systems ask for: a bound figure under its rendered name,
+    and each file LaTeX read (a picture, a class, a style) under its own name. Where two files
+    have one name, the second is named by its path, `other-a.png`. Each `\includegraphics` of
+    a manuscript's file is written with that name. One that names a file outside the manuscript
+    is refused, and one LaTeX found in its distribution is left as it was. A `.bib` the document
+    names (`references.bib` from `literature/`, as the build puts it beside the entry) is cut
+    to the cited entries, those their `crossref` and `xdata` name, and every `@string` and
+    `@preamble`; `\nocite{*}` keeps every entry. The cited keys are the reader's and those
+    the build's `.aux` holds, so that a citation a macro makes keeps its entry, and keys are
+    matched without case, as BibTeX matches them; biblatex's `xref`, `related` and
+    `entryset` are followed too (round 1). A file the folder holds under another name than
+    its own, where two have one, is refused unless an `\includegraphics` is written with
+    it, since a class or a picture found through `\graphicspath` is found by its name; and
+    a file the build wrote into its copy, a rendered figure over an old one of the author's,
+    is none of the manuscript's (round 1). A file written in ends its last line, as TeX does,
+    and stops at its `\endinput` (round 1). The folder is then copied into an empty
+    temporary folder, with an empty TEXMFHOME and the folder alone on TEXINPUTS, and compiled
+    there as `build` compiles, the headings compared. It is refused where LaTeX stops or does
+    not find a file, or where the recorder shows a file of the project read. The `.bbl` and the
+    PDFs are that compile's, and an undefined citation or reference fails. The PDFs are at the
+    pack's root, as the Word documents are, the main text's as the document and the
+    supplement's beside it; the source is in `latex/`, each file in the manifest. The `.bbl` is
+    always packed: a journal that runs BibTeX writes it again, and one that does not needs it,
+    so the profile needs no field for it. Where the journal's review is blind, the `.tex` and
+    `.sty` files are read whole for the authors' names, the preamble's `\author` among them.
+    `--document` is refused (exit 2). The journal's own class and style files are not fetched,
+    since no command fetches them yet (see "The journal profile" above). Tests:
+    `tests/test_latex_submit.py`.
 11. Markdown to LaTeX. `build --latex`, the template, the reading back and the comparison
-    of digits.
+    of digits. Built in `build/latex_out.py`, measured against pandoc 3.9.0.2. `build
+    --latex` assembles the Markdown as the Word build does. Pandoc then writes it as LaTeX,
+    code as `verbatim` (`--no-highlight`):
+    - with the profile's class and options;
+    - with pandoc's template, or the project's `profiles/journals/latex/<slug>/template.latex`
+      where it keeps one;
+    - with natbib or biblatex as `bibliography:` says, with its `bst` or `style`, or else with
+      citeproc and the journal's citation style kept by `style`;
+    - with the title, the keywords and, where review is not blind, the authors' names as the
+      template's variables.
+    Pandoc 3.9's template quotes each keyword with `\xmpquote`, which hyperref defines only
+    in its recent versions; MiKTeX's of 2024-06 does not, so the build gives it with
+    `\providecommand`. The body checked is written from the same Markdown, header included,
+    since citeproc writes the reference list in the document's language. Check 2: the reader
+    reads that body and refuses what it refuses. Citeproc's `\citeproc{ref-x}` and its
+    reference list, pandoc's commands that the author-facing reader refuses as unknown
+    citation commands, are blanked first. Check 3: the digits the reader keeps there are
+    compared in order with those the Markdown reader keeps in the assembled Markdown. What
+    pandoc changes on purpose is put right on one side:
+    - a figure's alternative text in the build's `[![...](...)]{.mg-figure}`, which LaTeX
+      holds in `\includegraphics`'s options, is taken out of the Markdown;
+    - so is the number of each ordered list's item, found by G2's own block reader
+      (`list_items`), which LaTeX prints from its counter;
+    - so is a YAML block in the body, which pandoc reads as metadata;
+    - a footnote's digits are read at each of its marks (`footnote_index`), where pandoc
+      writes `\footnote` with the note's text again each time (round 1);
+    - an address or a DOI that pandoc writes as text, `https://doi.org/10.5281/...`, which
+      the Markdown mask blanks, is passed over in the LaTeX too, found by the mask's own
+      pattern in the reader's view (round 1);
+    - a note's mark that has no definition, which pandoc prints as typed, is read;
+    - a `longtable`'s header, written again between `\endfirsthead` and `\endhead` for the
+      pages it runs on to, is passed over;
+    - its caption, which pandoc writes first, may stand before or after its rows;
+    - under citeproc, the citations with their locators and the reference list are passed
+      over on both sides. Measured with pandoc's default style and with a numeric one:
+      pandoc writes the number and the locator inside `\citeproc`'s text (round 1).
+    A difference refuses the build (`MisreadError`) and names the line of each where the
+    digits part. The commands pandoc writes round a heading and a table are in the reader's
+    table: `\texorpdfstring`'s second argument, a bookmark's text, and the three of
+    `\addcontentsline`, a contents entry, are blanked; so are `\hypertarget`'s anchor and
+    `\real`'s width. The source goes in `build/latex/submission/`, as step 10's folder does,
+    with each picture under its name and the `.bib` cut to the cited entries. It is compiled
+    alone, as step 10's is, but without comparing headings, which the gates read in the
+    Markdown, and the PDFs are `build/manuscript.pdf` and `build/supplementary.pdf`. `submit
+    --latex` packs that folder in `latex/` with the PDFs as the documents. The comparison is
+    held over generated documents in `tests/test_properties.py`, which hold one of each thing
+    above in an order drawn, a YAML block and a note's mark with no definition among them
+    (round 2). It finds nothing under natbib or citeproc, and a digit changed anywhere the
+    reader reads is found. Each normalisation, broken, fails the first property under a dozen
+    seeds: the figure's text, the list's numbers, the YAML block, the note at each mark, the
+    mark with no note, the address, the repeated header, the caption, and the narrative
+    citation's locator under citeproc. Tests: `tests/test_latex_from_markdown.py`. The comparison has no
+    reading in `tests/readings.py`: it is new, and a reading there runs in the differential
+    job against a base that has none.
 12. The rest. `init --latex`, the hooks, `explain` and `bind`, the panel's prompt, the
-    round's copy in `revision/`, the skills and the README.
+    round's copy in `revision/`, the skills and the README. First part, `explain` and `bind`:
+    each reads a LaTeX manuscript's file as G2 reads it, through `numbers._files_read`, the
+    include tree, the headings over a number and the rules' scan of the file's Markdown
+    view. `explain` takes a file of the include tree, or one nothing inputs, which G2 reads
+    on its own; a `.tex` in a Markdown manuscript, which no gate reads, it refuses (exit 2).
+    `bind` offers a typed number that reads as one published value as `\mg{key}`, and
+    `--apply` writes that, except where the reader would then refuse the file, as it refuses
+    a binding in a siunitx command: that number is left as typed and listed. `bind
+    --pointers` refuses a LaTeX manuscript (exit 2), whose tables and figures LaTeX numbers
+    itself. `init --latex` makes `manuscript/main.tex`, its title escaped as the values file
+    escapes text, with the values file beside it from the results as they stand, so that a
+    new project fails `check` on what a new Markdown one fails on and no more; the
+    bibliography is in a comment, since BibTeX stops on a document that cites nothing yet,
+    and AGENTS.md writes a binding `\mg{...}`. Over a Markdown manuscript it makes nothing
+    (exit 2), and `init` without it over a LaTeX one is still refused. The hooks: the write
+    guard refuses a hand edit of `mgvalues.sty`, which `values` writes, and the note on a
+    saved `.tex` lists its numbers bound to nothing as `bind` reads them, with the LaTeX
+    binding. Tests: `tests/test_latex_bind.py`.
 
 ## Zotero is never on the critical path
 

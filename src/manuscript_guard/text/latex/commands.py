@@ -126,6 +126,14 @@ COMMANDS = _specs(
         "addlinespace": "[b]",
         **dict.fromkeys(("setstretch", "enlargethispage"), "*{b}"),
         "captionsetup": "[b]{b}",
+        # What pandoc writes round a heading and a table, measured against pandoc 3.9 (step
+        # 11): a heading's text for the PDF's bookmarks and its entry in the contents, which
+        # the page does not print where the command stands; a link's anchor, whose content
+        # prints; and a column's width.
+        "texorpdfstring": "{p}{b}",
+        "addcontentsline": "{b}{b}{b}",
+        "hypertarget": "{b}{p}",
+        "real": "{b}",
         "color": "[b]{b}",
         "cmidrule": "[b](b){b}",
         "rule": "[b]{b}{b}",
@@ -169,6 +177,11 @@ COMMANDS = _specs(
 
 #: Commands that print a space, written as one.
 SPACES = frozenset({"quad", "qquad", "enspace", "thinspace", "space", "enskip", "nobreakspace"})
+#: The commands that print one character, which the mask writes where the command stands: a
+#: quotation with an ellipsis or a dash is then the words its source holds (round 1 of G7 in
+#: step 8).
+SYMBOLS = {"ldots": "\u2026", "dots": "\u2026", "textellipsis": "\u2026",
+           "textendash": "\u2013", "textemdash": "\u2014"}  # fmt: skip
 
 #: Environments and the arguments `\\begin` takes for them.
 ENVIRONMENTS = _specs(
@@ -220,6 +233,9 @@ RAW = frozenset({"verbatim", "verbatim*", "Verbatim", "lstlisting", "comment"})
 #: The listings among them, which print what they hold as typed.
 LISTINGS = RAW - {"comment"}
 
+#: The cross-references, which print a number only the compiled document knows (step 8).
+POINTERS = frozenset({"ref", "eqref", "pageref", "autoref", "nameref", "cref", "Cref", "vref",
+                      "cpageref", "labelcref"})  # fmt: skip
 #: Tables an author types: a number in one is `hand-authored-table`, as one in a Markdown
 #: table's row is. Maths' alignments separate cells too, and are no tables.
 TYPED_TABLES = frozenset({"tabular", "tabular*", "tabularx", "tabulary", "longtable"})

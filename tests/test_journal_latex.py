@@ -169,18 +169,30 @@ def test_an_entry_file_that_cannot_be_read_is_not_said_to_have_another_class(
     assert _said(project) == {}
 
 
-def test_g4_says_it_does_not_read_a_latex_legend_only_where_a_figure_is_placed(
-    project: Path,
-) -> None:
-    """Round 2 of step 6: said with no figure placed, the note failed a submission over a
-    rule about figures that do not exist."""
+def test_g4_reads_a_latex_legend_in_its_caption(project: Path) -> None:
+    """G4 says nothing of legends where no figure is captioned (round 2 of step 6: a note on
+    them failed a submission over a rule about figures that do not exist), and reads a
+    figure's caption as its legend from step 13: not a table's, a starred one or a
+    subfigure's, which number no figure."""
     _latex(project, "{article}")
     path = project / PROFILE
     document = yaml.safe_load(path.read_text(encoding="utf-8"))
-    document["figures"] = {"legend_words": 250}
+    document["figures"] = {"source_url": "https://journal.example/artwork",
+                           "read_on": "2026-10-15", "confirmed": True,
+                           "legend_words": 5}  # fmt: skip
     path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
     report = check_journal(load_project(project)[0])
-    assert not [f for f in report.findings if f.code == "not-read-in-latex"], report.findings
+    assert not [f for f in report.findings if f.code in ("not-read-in-latex", "legend-words")]
+    main = project / "manuscript" / "main.tex"
+    long = "one two three four five six"
+    main.write_text(main.read_text(encoding="utf-8").replace("\nx\n", (
+        f"\nx\n\\begin{{table}}\\caption{{{long}}}\\end{{table}}\n"
+        f"\\begin{{figure}}\\caption*{{{long}}}\\end{{figure}}\n"
+        f"\\begin{{figure}}\\subcaption{{{long}}}\\caption{{Short.}}\\end{{figure}}\n"
+        f"\\begin{{figure}}\n\\caption{{{long}}}\\end{{figure}}\n")), encoding="utf-8")
+    report = check_journal(load_project(project)[0])
+    said = [(f.code, f.line) for f in report.findings if f.code == "legend-words"]
+    assert said == [("legend-words", 9)], report.findings
 
 
 def test_the_printed_view_of_files_given_without_those_they_input_reads_what_it_has() -> None:

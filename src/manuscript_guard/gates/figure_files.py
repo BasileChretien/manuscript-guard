@@ -185,16 +185,11 @@ def check_figure_files(project: Project, profile: dict, profile_path: Path) -> R
         findings += _format(name, files, held, profile_path)
         for path in files:
             findings += _file(path, held, side, supplementary, profile_path)
-    if not latex:
+    if latex:
+        findings += _latex_legends(manuscript, rules)
+    else:
         findings += _legends(project, manuscript, rules, profile_path)
-    report = Report(tuple(_with(finding, severity) for finding in findings))
-    if latex and placed and severity == WARN and isinstance(rules.get("legend_words"), int):
-        # A LaTeX figure's legend is its float's caption, which G4 does not read yet: said
-        # where a figure is placed and the rule applies before acceptance (round 2 of step 6).
-        from manuscript_guard.gates.formats import not_read_in_latex
-
-        report = report.with_findings(not_read_in_latex(GATE, "figure legends"))
-    return report
+    return Report(tuple(_with(finding, severity) for finding in findings))
 
 
 def _latex(manuscript: Path) -> bool:
@@ -499,6 +494,36 @@ def _legends(project: Project, manuscript: Path, rules: dict, profile_path: Path
                         f"and the journal takes {limit}",
                         path=path,
                         line=placeholder.line,
+                        hint="move what the legend explains into the text, or into the "
+                        "Methods",
+                    )
+                )
+    return findings
+
+
+def _latex_legends(manuscript: Path, rules: dict) -> list[Finding]:
+    """`_legends` of a LaTeX manuscript: a figure's legend is the caption LaTeX numbers it by,
+    in a float that holds a figure, its words counted as the main text's are, in the view a
+    caption is printed in (`figure_captions`, step 13)."""
+    limit = rules.get("legend_words")
+    if not isinstance(limit, int):
+        return []
+    from manuscript_guard.text.latex.printed import figure_captions
+
+    findings = []
+    for supplementary in (False, True):
+        for path, line, legend in figure_captions(manuscript, supplementary=supplementary):
+            words = count_words(legend)
+            if words > limit:
+                findings.append(
+                    Finding(
+                        gate=GATE,
+                        code="legend-words",
+                        severity=WARN,
+                        message=f"the legend of the figure captioned at {path}:{line} is "
+                        f"{words} words, and the journal takes {limit}",
+                        path=manuscript / path,
+                        line=line,
                         hint="move what the legend explains into the text, or into the "
                         "Methods",
                     )

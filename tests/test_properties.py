@@ -141,6 +141,7 @@ from manuscript_guard.gates import methods as methods_gate
 from manuscript_guard.gates import methods_review as methods_review_gate
 from manuscript_guard.gates import models as models_gate
 from manuscript_guard.gates import numbers as numbers_gate
+from manuscript_guard.gates import pointers_latex as pointers_latex_gate
 from manuscript_guard.gates import quotations as quotations_gate
 from manuscript_guard.gates import recycling as recycling_gate
 from manuscript_guard.gates import related as related_gate
@@ -864,10 +865,9 @@ def test_latex_s_printed_view_places_each_word_at_its_file_and_line(
 def _prose_breaks_its_lines_as_the_view_does(patch: pytest.MonkeyPatch) -> None:
     printed_one = latex_print._printed
 
-    def broken(source, shallowest, child=lambda: [], quoting=False, formula="", compared=False):
+    def broken(source, shallowest, child=lambda: [], *args, **kwargs):
         return [(text, of, at, False) for text, of, at, _linear in
-                printed_one(source, shallowest, child, quoting, formula,
-                            compared)]  # fmt: skip
+                printed_one(source, shallowest, child, *args, **kwargs)]  # fmt: skip
 
     patch.setattr(latex_print, "_printed", broken)
 
@@ -875,10 +875,9 @@ def _prose_breaks_its_lines_as_the_view_does(patch: pytest.MonkeyPatch) -> None:
 def _each_stretch_is_placed_at_its_files_start(patch: pytest.MonkeyPatch) -> None:
     printed_one = latex_print._printed
 
-    def broken(source, shallowest, child=lambda: [], quoting=False, formula="", compared=False):
+    def broken(source, shallowest, child=lambda: [], *args, **kwargs):
         return [(text, of, 0, linear) for text, of, _at, linear in
-                printed_one(source, shallowest, child, quoting, formula,
-                            compared)]  # fmt: skip
+                printed_one(source, shallowest, child, *args, **kwargs)]  # fmt: skip
 
     patch.setattr(latex_print, "_printed", broken)
 
@@ -5657,6 +5656,137 @@ def _a_recycled_passage_s_lines_are_the_printed_view_s(patch: pytest.MonkeyPatch
                                         self.text.count("\n", 0, offset) + 1))  # fmt: skip
 
 
+@st.composite
+def _planted_latex_pointers(draw: st.DrawFn) -> tuple[dict[str, str], set[tuple]]:
+    """A LaTeX document, `main.tex` and the `part.tex` it inputs where a paragraph drawn of
+    `main.tex` stands, that numbers tables and figures with captioned floats, each labelled,
+    and holds a float with a starred caption only, which numbers nothing; that cites each
+    numbered display in its order, by a cross-reference to its label or by a pointer typed,
+    the first table always by `\\ref`; and that points, in `part.tex`, at one table more than
+    it numbers. What G2 says of it: that last pointer, at its file and line (step 13)."""
+    tables, figures = draw(st.integers(1, 3)), draw(st.integers(1, 2))
+    kinds = ["table"] * tables + ["figure"] * figures + ["starred"]
+    pieces, seen = [], {"table": 0, "figure": 0}
+    for kind in draw(st.permutations(kinds)):
+        if kind == "starred":
+            pieces.append("\\begin{table}\\caption*{Not numbered.}\\end{table}")
+            continue
+        seen[kind] += 1
+        pieces.append(f"\\begin{{{kind}}}\\caption{{The {kind}.}}"
+                      f"\\label{{{kind[:3]}{seen[kind]}}}\\end{{{kind}}}")  # fmt: skip
+    # Each kind's citations in its order, the two kinds interleaved as drawn.
+    queues = {"table": list(range(1, tables + 1)), "figure": list(range(1, figures + 1))}
+    while queues["table"] or queues["figure"]:
+        kind = draw(st.sampled_from([k for k in ("table", "figure") if queues[k]]))
+        number = queues[kind].pop(0)
+        word = kind.capitalize()
+        by_ref = (kind, number) == ("table", 1) or draw(st.booleans())
+        pieces.append(f"As {word}~\\ref{{{kind[:3]}{number}}} shows." if by_ref
+                      else f"As {word}~{number} shows.")  # fmt: skip
+    pieces.insert(draw(st.integers(0, len(pieces))), "\\input{part}")
+    filler = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=3)))
+    over = f"Table~{tables + 1}"
+    part = f"{filler.capitalize()}.\n\nThe rest is in {over}.\n"
+    texts = {
+        "main.tex": "\\documentclass{article}\n\\begin{document}\n"
+        + "".join(f"\n{piece}\n" for piece in pieces) + "\\end{document}\n",
+        "part.tex": part,
+    }
+    return texts, {("pointer-to-nothing", "part.tex", part.count("\n", 0, part.index(over)) + 1)}
+
+
+@holds(60, _planted_latex_pointers())
+def test_a_latex_pointer_is_held_to_what_latex_numbers(
+    planted: tuple[dict[str, str], set[tuple]],
+) -> None:
+    """G2 counts the tables and figures a LaTeX document numbers with a float's `\\caption`, a
+    starred one numbering nothing; a cross-reference cites the display whose label it names;
+    and a pointer to more than the document numbers is said at its file and line, in the
+    file the entry inputs too (step 13)."""
+    texts, expected = planted
+    sources = list(latex_structure.read_tree(texts).sources)
+    report = pointers_latex_gate.pointers_in_documents(
+        {False: sources, True: []}, Path("m"), dict.fromkeys(pointers_latex_gate.AS_FILES, 0)
+    )
+    found = {(f.code, f.path.name, f.line) for f in report.findings}
+    assert found == expected, (found, expected, texts)
+
+
+@st.composite
+def _planted_latex_legends(draw: st.DrawFn) -> tuple[str, set[int]]:
+    """A LaTeX document of floats in an order drawn, each caption of words drawn: figures, a
+    table, a figure with a starred caption only, and a figure of two subfigures whose own
+    captions are long. What G4 reads as a legend over `_LEGEND_LIMIT` words: the line of each
+    figure's caption that is longer, and no other (step 13)."""
+
+    def words(least: int, most: int) -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=least, max_size=most)))
+
+    long = _LEGEND_LIMIT + 3
+    floats = [("figure", words(1, _LEGEND_LIMIT * 2)) for _ in range(draw(st.integers(1, 3)))]
+    floats += [("table", words(long, long + 4)), ("starred", words(long, long + 4)),
+               ("parts", words(long, long + 4))]  # fmt: skip
+    lines, expected = ["\\documentclass{article}", "\\begin{document}"], set()
+    for kind, said in draw(st.permutations(floats)):
+        lines.append(draw(st.sampled_from(("Words first.", ""))))
+        if kind == "figure":
+            lines += ["\\begin{figure}", f"\\caption{{{said}}}", "\\end{figure}"]
+            if len(said.split()) > _LEGEND_LIMIT:
+                expected.add(len(lines) - 1)
+        elif kind == "table":
+            lines += [f"\\begin{{table}}\\caption{{{said}}}\\end{{table}}"]
+        elif kind == "starred":
+            lines += [f"\\begin{{figure}}\\caption*{{{said}}}\\end{{figure}}"]
+        else:
+            lines += ["\\begin{figure}",
+                      f"\\begin{{subfigure}}{{.4\\linewidth}}\\caption{{{said}}}\\end{{subfigure}}",
+                      "\\caption{Two parts.}", "\\end{figure}"]  # fmt: skip
+    lines.append("\\end{document}")
+    return "\n".join(lines) + "\n", expected
+
+
+#: The words a legend may have in `_planted_latex_legends`.
+_LEGEND_LIMIT = 6
+
+
+@holds(60, _planted_latex_legends())
+def test_a_latex_legend_is_its_figure_s_caption(planted: tuple[str, set[int]]) -> None:
+    """G4 reads a figure's legend in the caption LaTeX numbers it by, its words counted as a
+    Markdown legend's: not a table's caption, a starred one, nor a subfigure's (step 13)."""
+    from manuscript_guard.text.sections import count_words
+
+    text, expected = planted
+    sources = list(latex_structure.read_tree({"main.tex": text}).sources)
+    found = {line for _path, line, legend in latex_print.captions_in(sources)
+             if count_words(legend) > _LEGEND_LIMIT}  # fmt: skip
+    assert found == expected, (found, expected, text)
+
+
+def _a_subfigure_s_caption_numbers_the_float(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print, "_SUBFLOAT", re.compile(r"(?!)"))
+
+
+def _a_starred_caption_numbers_a_display(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print, "_NUMBERED", re.compile(r"\\caption\*?(?![A-Za-z])\s*\{"))
+
+
+class _EveryCommand(frozenset):
+    """A set that holds every command, which the broken rule below takes for the pages'."""
+
+    def __contains__(self, _item: object) -> bool:
+        return True
+
+
+def _a_cross_reference_cites_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(pointers_latex_gate, "_PAGES", _EveryCommand())
+
+
+def _a_latex_pointer_s_line_is_the_view_s(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print.Printed, "place",
+                  lambda self, offset: (self.origins[0][1],
+                                        self.text.count("\n", 0, offset) + 1))  # fmt: skip
+
+
 def _a_caption_is_not_compared(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(latex_print, "_CAPTION", re.compile(r"(?!)"))
 
@@ -9625,6 +9755,26 @@ BROKEN = {
     "in LaTeX, a recycled passage ends on its first line": (
         _a_recycled_passage_ends_on_its_first_line,
         test_a_latex_passage_of_an_earlier_paper_is_placed_at_its_file_and_lines,
+    ),
+    "in LaTeX, a starred caption numbers a display": (
+        _a_starred_caption_numbers_a_display,
+        test_a_latex_pointer_is_held_to_what_latex_numbers,
+    ),
+    "in LaTeX, a starred caption is a legend": (
+        _a_starred_caption_numbers_a_display,
+        test_a_latex_legend_is_its_figure_s_caption,
+    ),
+    "in LaTeX, a subfigure's caption is a legend": (
+        _a_subfigure_s_caption_numbers_the_float,
+        test_a_latex_legend_is_its_figure_s_caption,
+    ),
+    "in LaTeX, a cross-reference cites nothing": (
+        _a_cross_reference_cites_nothing,
+        test_a_latex_pointer_is_held_to_what_latex_numbers,
+    ),
+    "in LaTeX, a pointer's line is the printed view's": (
+        _a_latex_pointer_s_line_is_the_view_s,
+        test_a_latex_pointer_is_held_to_what_latex_numbers,
     ),
     "in LaTeX, a float's caption is not compared with an earlier paper": (
         _a_caption_is_not_compared,

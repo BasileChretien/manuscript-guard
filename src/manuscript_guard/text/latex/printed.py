@@ -380,8 +380,9 @@ def _options_end(text: str, at: int, comments: dict) -> int:
     return at
 
 
-#: A line with nothing on it, which ends a paragraph.
-_BLANK_LINE = re.compile(r"\n[ \t]*\n")
+#: A line with nothing on it, which ends a paragraph, in a file with CRLF line ends too
+#: (round 5 of step 13).
+_BLANK_LINE = re.compile(r"\n[ \t\r]*\n")
 
 
 def _closing(text: str, opened: int, comments: dict) -> int:

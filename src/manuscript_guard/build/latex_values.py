@@ -251,7 +251,7 @@ def check_values(project: Project, namespace: dict[str, Value], results: Results
             report = report.with_findings(Finding(
                 gate="G1", code="values-file-stale",
                 message=f"{shown} is not what `values` writes from the results as they stand, "
-                "so a PDF compiled from it shows other numbers than the results",
+                "so a PDF compiled from it may show other numbers than the results",
                 path=written.path, hint="run `manuscript-guard values`, and commit the file",
             ))  # fmt: skip
     return report
@@ -314,11 +314,13 @@ def results_digest(root: Path, results: Results) -> str:
 
 #: The file's head. `\\ProvidesPackage` takes no description: LaTeX reads one as a date, and
 #: under LaTeX 2024-06 a description that opens with no date stopped the next `\\title`
-#: ("Missing = inserted for \\ifnum"), measured under MiKTeX 24.4 on 2026-10-22.
+#: ("Missing = inserted for \\ifnum"), measured under MiKTeX 24.4 on 2026-10-22. A figure's
+#: entry is `\\includegraphics`, so the file loads graphicx itself.
 _HEAD = r"""% manuscript-guard values, from the results sha256:{digest}
 % Written by `manuscript-guard values`; `check` compares it with what that would write.
 \NeedsTeXFormat{{LaTeX2e}}
 \ProvidesPackage{{mgvalues}}
+\RequirePackage{{graphicx}}
 \DeclareRobustCommand{{\mg}}[2][]{{%
   \ifcsname mg@#2\endcsname
     \csname mg@#2\endcsname{{#1}}%

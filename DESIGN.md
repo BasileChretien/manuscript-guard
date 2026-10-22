@@ -1812,7 +1812,11 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
    `latex escaped`, and a display holding each character the table writes over
    `latex_displays()` with two `BROKEN` rules. The escape table's compile test needs LaTeX,
    so it skips on CI until step 9 installs TeX Live; it was run under MiKTeX 24.4 on
-   2026-10-21, under OT1 and T1, and the pull request records what pdftotext read.
+   2026-10-21, under OT1 and T1, and the pull request records what pdftotext read. A document
+   that loads the file is compiled too, with a title, a value, a table and a figure: the
+   file's `\ProvidesPackage` names no description, which LaTeX 2024-06 read as a date and
+   which stopped the next `\title`, and it loads graphicx for its figures (#416, measured
+   under MiKTeX 24.4 on 2026-10-22).
 5. Citations and G7, built in its first part: the scanner records each key a citation command
    names, where its braces stand (`Reading.cited`), outside a definition's body, and refuses a
    command whose name holds `cite` that it does not know; `cite.py` gives them as

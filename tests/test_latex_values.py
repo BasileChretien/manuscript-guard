@@ -129,6 +129,51 @@ def test_pdflatex_prints_each_escape_as_the_value(tmp_path: Path, encoding: str)
     assert printed == [_READ_AS[encoding].get(display, display) for display in _PRINTED]
 
 
+@pytest.mark.skipif(not (_PDFLATEX and _PDFTOTEXT), reason="pdflatex and pdftotext are needed")
+def test_a_document_that_loads_the_values_file_compiles_and_prints_its_values(
+    project: Path,
+) -> None:
+    """The file `values` writes for the example, loaded by a document with a title: its head
+    stopped `\\title` under LaTeX 2024-06, since `\\ProvidesPackage` read a description as a
+    date. CI runs it from step 9, which installs TeX Live."""
+    from manuscript_guard.build.latex_values import contents, rendered_figures
+    from manuscript_guard.contracts import load_namespace, load_project
+
+    projekt = load_project(project)[0]
+    namespace, results = load_namespace(projekt)[:2]
+    folder = project / "probe"
+    folder.mkdir()
+    written = contents(folder, namespace, results, rendered_figures(projekt), "0" * 64)
+    (folder / "mgvalues.sty").write_text(written.text, encoding="utf-8")
+    # A figure's entry as well: the file loads graphicx itself (round 1 of #416).
+    (folder / "probe.tex").write_text(
+        "\\documentclass{article}\n\\usepackage{mgvalues}\n\\title{A title}\n\\author{A}\n"
+        "\\begin{document}\n\\maketitle\nOf \\mg{results.cohort.n_reports} reports.\n\n"
+        "\\mg{table.baseline}\n\n\\mg[width=3cm]{figure.forest}\n\\end{document}\n",
+        encoding="utf-8",
+    )
+    done = subprocess.run(
+        [_PDFLATEX, "-interaction=nonstopmode", "-halt-on-error", "probe.tex"],
+        cwd=folder, capture_output=True, text=True, timeout=300, check=False,
+    )  # fmt: skip
+    assert done.returncode == 0, done.stdout[-2000:]
+    read = subprocess.run([_PDFTOTEXT, "-enc", "UTF-8", "probe.pdf", "-"], cwd=folder,
+                          capture_output=True, timeout=60, check=False)  # fmt: skip
+    shown = " ".join(read.stdout.decode("utf-8").split())
+    displayed = namespace["results.cohort.n_reports"].display
+    assert f"Of {displayed} reports." in shown and "A title" in shown, shown
+    assert "Characteristic" in shown and "??" not in shown, shown
+
+
+def test_the_values_file_s_package_line_names_no_description(tmp_path: Path) -> None:
+    """LaTeX reads `\\ProvidesPackage`'s optional argument as a date: one that opens with words
+    stopped the next `\\title` (2026-10-22)."""
+    from manuscript_guard.build.latex_values import contents
+
+    written = contents(tmp_path, {}, _results(), {}, "ab")
+    assert "\\ProvidesPackage{mgvalues}\n\\RequirePackage{graphicx}\n" in written.text
+
+
 # ------------------------------------------------------------------------ the check
 
 

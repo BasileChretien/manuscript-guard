@@ -101,7 +101,8 @@ printed copy only.
 
 ## Not yet for LaTeX
 
-These checks do not read a LaTeX manuscript yet, and each says so with `not-read-in-latex`:
+These checks do not read a LaTeX manuscript yet, and each says so with `not-read-in-latex`
+where it would apply:
 
 - G2's pointers to tables and figures, which LaTeX numbers itself;
 - G4's figure legends, and its check that the data availability statement names each data

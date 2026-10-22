@@ -148,8 +148,10 @@ skill. In a LaTeX manuscript, run `manuscript-guard values` after the analysis, 
 `mgvalues.sty` from the results, and `explain manuscript/main.tex`; `build` compiles the PDF
 with latexmk, which TeX Live and MiKTeX provide, and `--skip-checks` writes
 `manuscript.UNCHECKED.pdf`. A few checks do not read LaTeX yet and say so
-(`not-read-in-latex`), which fails at `submission`: tell the authors before they choose. `build` refuses while anything fails at the current stage. `--skip-checks` writes
-`manuscript.UNCHECKED.docx` instead, which is for reading, not for sending.
+(`not-read-in-latex`), which fails at `submission`: tell the authors before they choose.
+`build` refuses while anything fails at the current stage. For a Markdown manuscript,
+`--skip-checks` writes `manuscript.UNCHECKED.docx` instead, which is for reading, not for
+sending.
 
 `build` needs Zotero running for live fields; the first live build also downloads Better
 BibTeX's Lua filter. `--offline` needs a `literature/references.bib`, which

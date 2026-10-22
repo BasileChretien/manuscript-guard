@@ -1735,6 +1735,26 @@ The result is compiled and packed by the code above, and checked three times:
   not print, and a footnote's words stand at its mark, glued to the word before it, so a
   quotation or a cited sentence a footnote interrupts is read with the note's words in it
   (round 1 of G7 in step 8).
+- The reader does not refuse a bare `^` or `_` outside maths, which LaTeX stops on: `check`
+  reads the paper, and the build names the error at its line (step 9's agreement test passes
+  such a file over).
+- MiKTeX does not honour `openin_any`: under it a manuscript can `\input` a file outside the
+  copy, by a path that climbs out of it, and print it. TeX Live refuses that path. A manuscript
+  that names a file of its own outside its folders, `\includegraphics{../figures/x}` typed by
+  hand, is refused under TeX Live, and its figures are the values file's to name (round 1 of
+  step 9). So is a supplement that reads the main text by `..`, xr's
+  `\externaldocument{../main}` or `\input{../preamble}`: with xr its references come out
+  undefined, and fail at `--submission` (round 2).
+- The build compares headings only where LaTeX numbers them, and reads them only as
+  `\numberline` writes them: under `\setcounter{secnumdepth}{0}`, or in a class that writes
+  its contents otherwise (amsart's `\tocsection`), it has nothing to compare, and a heading a
+  macro makes is not caught. A title whose words are the `.aux`'s with some left out is the
+  reader's, a title the reader reads as empty (`\section{\drug}`) among them, and the match
+  looks on past the reader's headings that LaTeX does not number: so a macro's heading stands
+  for a later heading of the reader's whose words it holds, or one the reader reads as empty
+  (rounds 2 and 3 of step 9).
+- On Windows, a program latexmk starts before latexmk is put in the build's job is outside
+  the job, and is not stopped at the limit with the rest (round 2 of step 9).
 - G7 reads a quotation in LaTeX where it is set in ``...'' or typographic marks: one set in
   csquotes' `\enquote{...}` prints its marks in the PDF but not in the printed view, and is
   not read as a quotation. A cited sentence holds its citation as `[@key]` with a space
@@ -2030,7 +2050,44 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
    comment, a narrative citation, in a file the twin inputs) and its cited statements, and
    `latex_quotations()` with `BROKEN` rules for the line and the citations printed.
 9. The PDF. `build/latex.py`, the log, the comparison of headings through the `.aux`, CI's
-   TeX Live and `MANUSCRIPT_GUARD_REQUIRE_LATEX`. Tests: `test_latex_agreement.py`.
+   TeX Live and `MANUSCRIPT_GUARD_REQUIRE_LATEX`. Tests: `test_latex_agreement.py`. Built in
+   two parts. The first: `build` of a LaTeX manuscript compiles a copy in `build/latex/` with
+   latexmk, the main text and the supplement, each to its own PDF, given as
+   `build/manuscript.pdf` and `build/supplementary.pdf` (named UNCHECKED as the Word build
+   names its documents), in the folders `paper.yaml` names. Each document whose entry file
+   declares a class gets beside it a fresh values file, `references.bib` and the rendered
+   figures in a `figures/` folder, so that the values file names each figure with no `..`,
+   which TeX Live's `openin_any=p` refuses. TeX is held to the copy as "The build of a LaTeX
+   source" says; measured under MiKTeX 24.4 on 2026-10-22, its installer is turned off with
+   the engine's `-disable-installer`, and it refuses an `\openout` outside the folder by
+   itself. The log's lines are not broken (`max_print_line`, MiKTeX's `-max-print-line`), so a
+   long key is read whole. An error is named at the manuscript's file and line, one in the
+   values file at the build's; a package not found, by its name; the log's undefined
+   citations and references are listed and fail at `--submission`; and each heading LaTeX
+   numbered, in every `.aux` an `\include` writes too, must be one the reader reads, in order,
+   by its title or its short title, a heading a macro makes refused (`MisreadError`). A title
+   is the reader's where its words are the `.aux`'s in order with some left out, since the
+   `.aux` holds what an author's macro in it expands to and the reader blanks the macro, as in
+   prose (round 2). A compile that runs past its limit, or is interrupted, is stopped with
+   every program it started. The engine is the one the journal's profile names under
+   `latex: {engine: ...}`, pdfLaTeX where it names none. The copy's folder holds a file that
+   marks it as the build's, and a folder there that the build did not make, or one that holds
+   the manuscript or is inside it, is refused rather than replaced: `paths.build` may name any
+   folder (round 2). Without latexmk or the engine, `build` says so and exits 2. CI's `latex` job installs Ubuntu 24.04's TeX Live 2023 with apt and runs the
+   compiling tests with `MANUSCRIPT_GUARD_REQUIRE_LATEX`, which `tests/conftest.py` holds to
+   the first line `pdflatex --version` prints. Tests: `tests/test_latex_build.py` (the twin
+   built, its manuscript untouched; an error here and in a file input; a missing package; a
+   write outside the copy; an undefined reference; a macro's heading; no LaTeX). The second
+   part is `test_latex_agreement.py`: 24 generated files the reader does not refuse are
+   compiled with LuaLaTeX, a `pre_shipout_filter` callback writes out each digit set on each
+   page, a discretionary's as it prints unbroken, and the digits must be the mask's, in
+   order. LaTeX's own numbers (page, section,
+   footnote mark) are turned off, `\mg` prints nothing, and the content of `verbatim` and
+   `\url`, which the mask blanks on purpose, is taken out first; a file LaTeX stops on is
+   passed over, and at least half must compile. Under MiKTeX 24.4 on 2026-10-22 every file
+   that compiled agreed. In the first measurement, of sixteen files, the two that did not
+   compile held a bare `^` from the filler the Markdown suites share. CI's `latex` job holds
+   LuaLaTeX present too, so that this test cannot skip there (round 2).
 10. The submission folder. Flattening, values written in, `.bib` and `.bbl`, figures, the
     compile alone, `submit`.
 11. Markdown to LaTeX. `build --latex`, the template, the reading back and the comparison

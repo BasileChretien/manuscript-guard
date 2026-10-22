@@ -2036,7 +2036,16 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
 11. Markdown to LaTeX. `build --latex`, the template, the reading back and the comparison
     of digits.
 12. The rest. `init --latex`, the hooks, `explain` and `bind`, the panel's prompt, the
-    round's copy in `revision/`, the skills and the README.
+    round's copy in `revision/`, the skills and the README. First part, `explain` and `bind`:
+    each reads a LaTeX manuscript's file as G2 reads it, through `numbers._files_read`, the
+    include tree, the headings over a number and the rules' scan of the file's Markdown
+    view. `explain` takes a file of the include tree, or one nothing inputs, which G2 reads
+    on its own; a `.tex` in a Markdown manuscript, which no gate reads, it refuses (exit 2).
+    `bind` offers a typed number that reads as one published value as `\mg{key}`, and
+    `--apply` writes that, except where the reader would then refuse the file, as it refuses
+    a binding in a siunitx command: that number is left as typed and listed. `bind
+    --pointers` refuses a LaTeX manuscript (exit 2), whose tables and figures LaTeX numbers
+    itself. Tests: `tests/test_latex_bind.py`.
 
 ## Zotero is never on the critical path
 

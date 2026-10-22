@@ -626,7 +626,12 @@ def _bind_pointers(args: argparse.Namespace, project) -> int:
     that prints it as it reads now (`binding.typed_pointers`). A typed pointer is not a
     defect, so finding some is no failure: the exit is 0 either way."""
     from manuscript_guard.binding import SelectionError, apply, label, select, typed_pointers
+    from manuscript_guard.gates.numbers import _is_latex
 
+    if _is_latex(project):
+        print("manuscript-guard bind: LaTeX numbers a LaTeX manuscript's tables and figures "
+              "itself; point to one with `Table~\\ref{...}`", file=sys.stderr)  # fmt: skip
+        return 2
     items = typed_pointers(project)
     if not items:
         print("no typed pointer to a table or a figure that a binding could print as it reads.")
@@ -661,9 +666,11 @@ def cmd_bind(args: argparse.Namespace) -> int:
     typed instead of bound. That case is detected and offered as a replacement.
     """
     from manuscript_guard.binding import SelectionError, apply, label, routes, select, unbound
+    from manuscript_guard.gates.numbers import _is_latex
 
     project, _ = load_project(args.path)
-    empty = why_no_manuscript(project)
+    # A LaTeX manuscript has its entry file, and the gates read it (step 12).
+    empty = None if _is_latex(project) else why_no_manuscript(project)
     if empty is not None:
         # "every number in the manuscript is accounted for" was said of no manuscript.
         print(f"manuscript-guard bind: {empty}", file=sys.stderr)
@@ -2376,6 +2383,10 @@ def cmd_explain(args: argparse.Namespace) -> int:
     with a finding needs to see which rule fired rather than guess.
     """
     project, _ = load_project(args.file.parent)
+    from manuscript_guard.gates.numbers import _is_latex
+
+    if _is_latex(project) or args.file.suffix.lower() == ".tex":
+        return _explain_latex(project, args.file)
     classifier = Classifier.load(project.extra_conventions, project.extra_terms)
     text = read_text(args.file)
     # The same section chain G2 uses. Without it every `methods_only` rule fired everywhere,
@@ -2400,6 +2411,11 @@ def cmd_explain(args: argparse.Namespace) -> int:
         failed = verdict.kind == UNCLASSIFIED or typed is not None
         rows.append((atom.line, atom.text, verdict.kind, rule, failed))
     rows += _explained_refs(project, text)
+    return _explained(rows)
+
+
+def _explained(rows: list[tuple[int, str, str, str, bool]]) -> int:
+    """`explain`'s table: each number's line, text, kind and the rule that decided it."""
     if not rows:
         print("no numeric atoms outside masked regions")
         return 0
@@ -2409,6 +2425,39 @@ def cmd_explain(args: argparse.Namespace) -> int:
         marker = "FAIL" if failed else "ok  "
         print(f"{marker} {line:>5}  {atom_text:<{width}}  {kind:<12} {rule}")
     return 0
+
+
+def _explain_latex(project, file: Path) -> int:
+    """`explain` of a LaTeX manuscript's file: each number as G2 classifies it there, read
+    through the include tree under the headings over it, a binding written `\\mg{...}`
+    (step 12). G2's check of pointers to tables and figures is Markdown's only."""
+    from manuscript_guard.gates.numbers import _files_read, _is_latex
+
+    if not _is_latex(project):
+        print(f"manuscript-guard explain: {file} is a LaTeX file in a Markdown manuscript, "
+              "which no gate reads", file=sys.stderr)  # fmt: skip
+        return 2
+    wanted = file.resolve()
+    read = next((each for each in _files_read(project) if each.path.resolve() == wanted), None)
+    if read is None:
+        print(f"manuscript-guard explain: {file} is no file of the manuscript's include tree, "
+              "which is what the gates read", file=sys.stderr)  # fmt: skip
+        return 2
+    classifier = Classifier.load(project.extra_conventions, project.extra_terms)
+    namespace, _results, _literature, _loaded = load_namespace(project)
+    choices = [value for value in namespace.values() if value.role]
+    chosen = chosen_rules(classifier)
+    scan = classifier.scan(read.scanned, blocks=read.blocks)
+    rows = []
+    for atom in find_atoms(read.text, read.masked):
+        verdict = classifier.classify_under(atom, read.chains(atom.start), scan)
+        typed = typed_choice(atom.text, verdict, choices, chosen)
+        rule = verdict.rule or "-"
+        if typed is not None:
+            rule = f"{rule}, typed: write {read.spell(typed.reference)}"
+        failed = verdict.kind == UNCLASSIFIED or typed is not None
+        rows.append((atom.line, atom.text, verdict.kind, rule, failed))
+    return _explained(rows)
 
 
 def _explained_refs(project, text: str) -> list[tuple[int, str, str, str, bool]]:
@@ -5058,8 +5107,8 @@ _MARKDOWN_COMMANDS: dict[str, Callable[[argparse.Namespace], bool]] = {
     # `checker` draws its items from the manuscript for every verb, `import` and `status`
     # too, which match answers against them (round 2 of #404).
     **dict.fromkeys(
-        ("bind", "build", "checker", "explain", "impact", "import", "init", "proof",
-         "render", "reworded", "submit"),
+        ("build", "checker", "impact", "import", "init", "proof", "render", "reworded",
+         "submit"),
         _always,
     ),
     # A round opened and checked reads a LaTeX manuscript (step 8); one seeded from a returned
@@ -5071,7 +5120,7 @@ _MARKDOWN_COMMANDS: dict[str, Callable[[argparse.Namespace], bool]] = {
 }  # fmt: skip
 #: The commands refused a `.tex` named whatever the project's format, since they read the
 #: file given as Markdown; `impact` follows the records of any file, a header's included.
-_READ_AS_MARKDOWN = frozenset({"explain", "reworded"})
+_READ_AS_MARKDOWN = frozenset({"reworded"})
 
 
 def _named_paths(args: argparse.Namespace) -> list[Path]:

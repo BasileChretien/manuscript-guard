@@ -30,7 +30,7 @@ from manuscript_guard.classify import UNCLASSIFIED, Classifier
 from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.values import Value
-from manuscript_guard.gates.numbers import _hint_for, source_files
+from manuscript_guard.gates.numbers import _files_read, _hint_for, _is_latex, source_files
 from manuscript_guard.text.masking import mask
 from manuscript_guard.text.sections import chains_at, footnote_index, heading_index
 from manuscript_guard.text.tokens import find_atoms
@@ -47,11 +47,17 @@ class Unbound:
     text: str
     hint: str
     candidates: tuple[str, ...]
+    #: Whether the file is a LaTeX manuscript's, where a binding is `\\mg{key}` (step 12).
+    latex: bool = False
 
     @property
     def certain(self) -> str | None:
         """The one key this could be replaced by, when there is exactly one."""
         return self.candidates[0] if len(self.candidates) == 1 else None
+
+    def binding(self, key: str) -> str:
+        """`key` as a binding is written in this file."""
+        return f"\\mg{{{key}}}" if self.latex else f"{{{{{key}}}}}"
 
 
 def unbound(project: Project, namespace: dict[str, Value]) -> list[Unbound]:
@@ -67,6 +73,17 @@ def unbound(project: Project, namespace: dict[str, Value]) -> list[Unbound]:
                 by_display.setdefault(form, []).append(key)
 
     found: list[Unbound] = []
+    if _is_latex(project):
+        # Each file as G2 reads it, through the include tree, with its rules' scan.
+        for read in _files_read(project):
+            scan = classifier.scan(read.scanned, blocks=read.blocks)
+            for atom in find_atoms(read.text, read.masked):
+                verdict = classifier.classify_under(atom, read.chains(atom.start), scan)
+                if verdict.kind != UNCLASSIFIED:
+                    continue
+                found.append(_found(read.path, atom, by_display, read.spell(_hint_for(atom)),
+                                    latex=True))  # fmt: skip
+        return found
     for path in source_files(project.path("manuscript")):
         text = read_text(path)
         headings = heading_index(text)
@@ -76,20 +93,17 @@ def unbound(project: Project, namespace: dict[str, Value]) -> list[Unbound]:
             chains = chains_at(headings, notes, atom.start)
             if classifier.classify_under(atom, chains, scan).kind != UNCLASSIFIED:
                 continue
-            plain = atom.text.replace(",", "").replace(" ", "")
-            candidates = sorted({*by_display.get(atom.text, ()), *by_display.get(plain, ())})
-            found.append(
-                Unbound(
-                    path=path,
-                    line=atom.line,
-                    start=atom.start,
-                    end=atom.end,
-                    text=atom.text,
-                    hint=_hint_for(atom),
-                    candidates=tuple(candidates),
-                )
-            )
+            found.append(_found(path, atom, by_display, _hint_for(atom)))
     return found
+
+
+def _found(path: Path, atom, by_display: dict[str, list[str]], hint: str, *,
+           latex: bool = False) -> Unbound:  # fmt: skip
+    """An unbound number, with the published values that read as it does."""
+    plain = atom.text.replace(",", "").replace(" ", "")
+    candidates = sorted({*by_display.get(atom.text, ()), *by_display.get(plain, ())})
+    return Unbound(path=path, line=atom.line, start=atom.start, end=atom.end, text=atom.text,
+                   hint=hint, candidates=tuple(candidates), latex=latex)  # fmt: skip
 
 
 def typed_pointers(project: Project) -> list[Unbound]:
@@ -157,18 +171,18 @@ def routes(item: Unbound) -> list[str]:
     """The ways to give this number a source, likeliest first."""
     out: list[str] = []
     if item.certain:
-        out.append(f"replace it with {{{{{item.certain}}}}}  — `bind --apply` does this")
+        out.append(f"replace it with {item.binding(item.certain)}  — `bind --apply` does this")
     elif item.candidates:
-        listed = ", ".join(f"{{{{{key}}}}}" for key in item.candidates)
+        listed = ", ".join(item.binding(key) for key in item.candidates)
         out.append(
             f"{len(item.candidates)} published values read the same: {listed}. "
             f"Pick one by hand — guessing would write the wrong binding"
         )
     out += [
         f'emit it from the analysis:  em.value("<key>", {item.text})  '
-        f"then write {{{{results.<key>}}}}",
+        f"then write {item.binding('results.<key>')}",
         "record it from a source:    add an entry to literature/ledger.yaml, "
-        "then write {{lit.<key>}}",
+        f"then write {item.binding('lit.<key>')}",
         "attest it:                  add an entry to literature/attested.yaml if the "
         "source cannot be stored",
         "declare it a convention:    add it to `conventions:` in paper.yaml with a reason",
@@ -247,11 +261,25 @@ def apply(items: list[Unbound]) -> tuple[list[tuple[Unbound, str]], list[Unbound
 
     for path, entries in by_file.items():
         text = read_text(path)
+        refused = _refusals(text) if entries[0].latex else 0
         for item in sorted(entries, key=lambda i: i.start, reverse=True):
-            binding = f"{{{{{item.certain}}}}}"
-            text = f"{text[: item.start]}{binding}{text[item.end :]}"
+            binding = item.binding(item.certain)
+            changed = f"{text[: item.start]}{binding}{text[item.end :]}"
+            # A LaTeX binding where the reader refuses one, in a siunitx command, is not
+            # written: the file would then be read no further (step 12).
+            if item.latex and _refusals(changed) > refused:
+                accepted.discard((item.path, item.start))
+                continue
+            text = changed
             applied.append((item, binding))
         path.write_text(text, encoding="utf-8", newline="\n")
 
     applied.sort(key=lambda pair: (pair[0].path.name, pair[0].start))
     return applied, [item for item in items if (item.path, item.start) not in accepted]
+
+
+def _refusals(text: str) -> int:
+    """How many refusals the LaTeX reader gives `text`: none or the first."""
+    from manuscript_guard.text.latex.mask import read
+
+    return len(read(text).refusals)

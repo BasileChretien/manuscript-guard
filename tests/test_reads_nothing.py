@@ -232,13 +232,14 @@ def test_a_command_that_reads_nothing_exits_as_the_table_says(
 LATEX = {
     "approve": ("reads", ("approve", "{project}", "--as", "Nobody Listed")),
     "audit": ("refuses", ("audit", "{tex}", "--against", "{project}/results")),
-    "bind": ("refuses", ("bind", "{project}")),
+    # It reads each file as G2 does and offers `\\mg{...}` (step 12).
+    "bind": ("reads", ("bind", "{project}")),
     "build": ("refuses", ("build", "{project}")),
     "check": ("reads", ("check", "{project}")),
     "checker": ("refuses", ("checker", "build", "{project}")),
     "checklist": ("no manuscript", ("checklist", "{project}")),
     "dictionary": ("no manuscript", ("dictionary", "{project}")),
-    "explain": ("refuses", ("explain", "{tex}")),
+    "explain": ("reads", ("explain", "{tex}")),
     "fetch": ("no manuscript", ("fetch", "STROBE")),
     "hook": ("reads", ("hook", "session-start")),
     "impact": ("refuses", ("impact", "{project}/paper.yaml")),

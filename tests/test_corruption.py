@@ -10105,11 +10105,12 @@ def test_a_p_value_reported_under_a_supplement_s_methods_heading_is_still_bound(
 
 
 def _lock_of_the_main_text_only(root: Path, schema: str) -> None:
-    """The example's lock, written by main, with its schema as `schema` says: as main wrote
-    it, left out, or left empty."""
+    """The example's lock as one written when G9 read the main text's Methods alone, its
+    schema as `schema` says: that version's, left out, or left empty. The example's own lock
+    may be written again by the tool as it now is, so the old version is set here."""
     path = root / "methods.lock"
     lock = yaml.safe_load(path.read_text(encoding="utf-8"))
-    assert lock["schema"] == "manuscript-guard/methods-lock/1"
+    lock["schema"] = "manuscript-guard/methods-lock/1"
     if schema == "absent":
         lock.pop("schema")
     elif schema == "empty":
@@ -17833,8 +17834,8 @@ def test_every_way_of_losing_a_reading_fails_a_submission(project: Path, name: s
 
 def test_the_example_s_own_rounds_are_read_as_they_were(project: Path) -> None:
     """One record a reviewer, no readers named: nothing about them changed. Rounds three to
-    nine read revisions with the earlier rounds in front of them, so the ninth supersedes
-    the eight before it and each says it was not blinded."""
+    ten read revisions with the earlier rounds in front of them, so the tenth supersedes
+    the nine before it and each says it was not blinded."""
     from manuscript_guard.gates import check_review
 
     report = check_review(load_project(project)[0], submission=True)
@@ -17842,10 +17843,10 @@ def test_the_example_s_own_rounds_are_read_as_they_were(project: Path) -> None:
     said = sorted((f.code, f.path.parent.name) for f in report.findings)
     superseded = [("review-superseded", f"round-{n}")
                   for n, many in ((1, 3), (2, 2), (3, 2), (4, 2), (5, 2), (6, 2), (7, 1),
-                                  (8, 1))
+                                  (8, 1), (9, 1))
                   for _ in range(many)]  # fmt: skip
-    assert said == superseded + [("round-not-blinded", "review")] * 7, report.render(project)
-    assert report.counts["review_rounds_complete"] == 9
+    assert said == superseded + [("round-not-blinded", "review")] * 8, report.render(project)
+    assert report.counts["review_rounds_complete"] == 10
 
 
 def test_a_reading_that_stops_parsing_fails_with_no_readers_named_either(project: Path) -> None:

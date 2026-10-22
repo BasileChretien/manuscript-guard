@@ -111,6 +111,8 @@ COMMANDS = {
                    argv=("lookup", "{project}")),
     "methods": Zero("the analysis files", why="it prints `analysis_files`, 0 included"),
     "models": Zero("the models the analysis fitted", why="it says when there are none"),
+    "palettes": Zero("the palettes shipped with the toolkit, nothing of a project",
+                     why="it lists them all, and says so when a filter leaves none (exit 1)"),
     "passages": Zero("the sentences that cite, and the passages recorded for them",
                      why="it prints how many cited statements carry a passage, 0 of 0 "
                      "included"),

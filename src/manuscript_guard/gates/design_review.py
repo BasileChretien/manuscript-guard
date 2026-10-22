@@ -81,12 +81,18 @@ def design_panels(project: Project) -> list[tuple[int, Path]]:
 
 def plan_digest(project: Project) -> str:
     """What a design round reads: the plan's bytes, and each feasibility result's value and
-    display, by key. A plan edited, or the data counted again, is another plan to read."""
+    display, by key, and the methods review's bytes where there is one. A plan edited, the
+    data counted again, or a method appraised or decided again is another plan to read. A
+    project with no methods review has the digest it had before there was one."""
     from manuscript_guard.gates.design import plan_path
+    from manuscript_guard.methods_review import review_path
 
     digest = hashlib.sha256()
     plan = plan_path(project)
     digest.update(plan.read_bytes() if plan.is_file() else b"")
+    review = review_path(project)
+    if review.is_file():
+        digest.update(b"\0methods review\0" + review.read_bytes())
     counted: dict[str, list] = {}
     results = project.path("results")
     for path in sorted(results.glob("*.json")) if results.is_dir() else []:

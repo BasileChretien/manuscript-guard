@@ -523,6 +523,10 @@ def gather_design(project: Project) -> Material:
     if needs:
         parts += ["# What this study design needs", needs[0]]
         sent.append(needs[1])
+    methods = _methods_review(project)
+    if methods:
+        parts += ["# The methods of similar studies", methods[0]]
+        sent.append(methods[1])
     return Material(
         user="\n\n".join(parts) + "\n",
         sent=tuple(sent),
@@ -553,6 +557,40 @@ def _design_needs(project: Project) -> tuple[str, Sent] | None:
     )
     return text, Sent(f"study type: {design}", f"what a plan for a {known['label']} settles, "
                       f"{len(sections)} items, each with its source")  # fmt: skip
+
+
+def _methods_review(project: Project) -> tuple[str, Sent] | None:
+    """The methods of similar studies the plan learnt from (`design/methods_review.yaml`),
+    each with its words, the appraisals proposed and the author's decisions, for a design
+    round to read: an appraisal is an agent's proposal, and the panel is who checks it. None
+    where the project keeps no review. One that cannot be read stops the round, since the
+    digest the readings are filed with holds its bytes."""
+    from manuscript_guard.methods_review import for_panel, read_review, review_path
+
+    path = review_path(project)
+    if not path.is_file():
+        return None
+    label = _label(project, path)
+    if any(_inside(path, private) for private in _kept_out(project)):
+        raise PromptError(f"{label} resolves to a file of the review's, which is not sent")
+    review, report = read_review(project)
+    if review is None:
+        said = "; ".join(finding.message for finding in report.findings)
+        raise PromptError(f"{label} cannot be read, so the round would read the plan without "
+                          f"it: {said}")  # fmt: skip
+    text = _block(
+        label,
+        "The methods of studies of the same question, each in the study's words. Each "
+        "appraisal was proposed by whoever it names, against the standard and domain it "
+        "names: check it against that standard, and say where it is wrong or where a method "
+        "the plan takes carries a risk the appraisal missed. A decision is the author's.\n\n"
+        + for_panel(review),
+    )
+    count = len(review.methods)
+    studies = len(review.studies)
+    said = (f"{studies} stud{'y' if studies == 1 else 'ies'}, "
+            f"{count} method{'' if count == 1 else 's'}")  # fmt: skip
+    return text, Sent(label, f"{said}, with appraisals and decisions")
 
 
 __all__ = [

@@ -1,0 +1,189 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://manuscript-guard.org/schemas/methods-review/1",
+  "title": "manuscript-guard methods review",
+  "description": "The methods of studies of the same question, read at the design stage: for each study, why it is similar and, field by field, the words of its stored copy that say what it did; an appraisal of each method against a published methodological standard, which is an agent's or a person's proposal; and the author's decision to adopt, adapt or reject it. G7 looks for each passage in the study's stored copy under literature/sources/; G12 holds each appraisal to a standard and a domain, each decision to a person, and each method adopted to a citation in the plan.",
+  "type": "object",
+  "required": ["schema", "studies"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "manuscript-guard/methods-review/1" },
+    "question": {
+      "type": "string",
+      "description": "The question the studies were chosen for: the plan's, in a sentence."
+    },
+    "searched": {
+      "type": "array",
+      "description": "How the studies were found, so that a reader can repeat the search.",
+      "items": { "$ref": "#/$defs/search" }
+    },
+    "standards": {
+      "type": "array",
+      "description": "The citation key of each standard the appraisals name, and any standard the built-in table does not hold, with its domains.",
+      "items": { "$ref": "#/$defs/standard" }
+    },
+    "studies": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/study" }
+    }
+  },
+  "$defs": {
+    "text": { "type": "string", "pattern": "\\S" },
+    "search": {
+      "type": "object",
+      "required": ["query", "searched_on"],
+      "additionalProperties": false,
+      "properties": {
+        "with": {
+          "type": "string",
+          "description": "What was searched: `manuscript-guard search`, or a registry by name."
+        },
+        "query": { "$ref": "#/$defs/text" },
+        "searched_on": {
+          "type": "string",
+          "format": "date",
+          "description": "The day it was searched. Not `on`, which YAML reads as true."
+        },
+        "found": { "type": "integer", "minimum": 0 },
+        "note": { "type": "string" }
+      }
+    },
+    "standard": {
+      "type": "object",
+      "required": ["id"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$",
+          "description": "A standard of the built-in table (data/method_standards.yaml), or one of the project's own."
+        },
+        "citekey": {
+          "$ref": "#/$defs/text",
+          "description": "Where the standard is published, by the key the plan cites it under."
+        },
+        "name": {
+          "$ref": "#/$defs/text",
+          "description": "For a standard the built-in table does not hold: its name."
+        },
+        "domains": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/text" },
+          "description": "For a standard the built-in table does not hold: its domains, as it names them."
+        }
+      }
+    },
+    "study": {
+      "type": "object",
+      "required": ["citekey", "similar", "methods"],
+      "additionalProperties": false,
+      "properties": {
+        "citekey": {
+          "$ref": "#/$defs/text",
+          "description": "The study, by its citation key; its stored copy is literature/sources/<citekey>.*"
+        },
+        "similar": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["question", "exposure", "outcome", "population", "data source", "design"] },
+          "description": "What it shares with this study."
+        },
+        "why": { "type": "string", "description": "Why it was chosen, in a sentence." },
+        "methods": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/method" }
+        }
+      }
+    },
+    "method": {
+      "type": "object",
+      "required": ["field", "passage", "locator"],
+      "additionalProperties": false,
+      "properties": {
+        "field": {
+          "enum": [
+            "design", "data source", "population", "case definition", "exposure", "outcome",
+            "comparator", "time zero and follow-up", "confounding", "model", "missing data",
+            "sensitivity analyses", "other"
+          ]
+        },
+        "label": {
+          "$ref": "#/$defs/text",
+          "description": "What the field is, where it is `other`."
+        },
+        "summary": {
+          "type": "string",
+          "description": "What the study did, in a few words, for the table."
+        },
+        "passage": {
+          "$ref": "#/$defs/text",
+          "description": "The study's words that say what it did, copied from its stored copy. Words left out are marked [...] or an ellipsis, and each piece is looked for in order."
+        },
+        "locator": {
+          "$ref": "#/$defs/text",
+          "description": "Where in the study, e.g. 'Methods, Exposure, p. 3': precise enough for a co-author to find it."
+        },
+        "appraisal": {
+          "description": "The method judged against a published standard: one judgement, or several.",
+          "oneOf": [
+            { "$ref": "#/$defs/appraisal" },
+            { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/appraisal" } }
+          ]
+        },
+        "decision": { "$ref": "#/$defs/decision" }
+      },
+      "if": { "properties": { "field": { "const": "other" } } },
+      "then": { "required": ["label"] }
+    },
+    "appraisal": {
+      "type": "object",
+      "required": ["concern", "says", "proposed_by"],
+      "additionalProperties": false,
+      "properties": {
+        "standard": {
+          "type": "string",
+          "description": "The standard it is judged against, by its id. G12 warns where there is none, or it is not known."
+        },
+        "domain": {
+          "type": "string",
+          "description": "The standard's domain the judgement is of, as the standard names it."
+        },
+        "concern": {
+          "enum": ["low", "some", "serious", "unclear"],
+          "description": "How far the method departs from the standard in that domain."
+        },
+        "says": {
+          "$ref": "#/$defs/text",
+          "description": "The judgement, naming the risk: 'risk of immortal time: exposure defined after cohort entry'."
+        },
+        "proposed_by": {
+          "$ref": "#/$defs/text",
+          "description": "Who proposed it: an agent or a model by name, or a person."
+        },
+        "proposed_on": { "type": "string", "format": "date" }
+      }
+    },
+    "decision": {
+      "type": "object",
+      "required": ["choice", "why", "decided_by", "decided_on"],
+      "additionalProperties": false,
+      "properties": {
+        "choice": {
+          "enum": ["adopt", "adapt", "reject"],
+          "description": "Whether this study's plan takes the method as it is, changed, or not at all."
+        },
+        "why": {
+          "$ref": "#/$defs/text",
+          "description": "Why; for `adapt`, what is changed."
+        },
+        "decided_by": {
+          "$ref": "#/$defs/text",
+          "description": "The person who decided, by name. An agent may propose an appraisal; only a person decides."
+        },
+        "decided_on": { "type": "string", "format": "date" }
+      }
+    }
+  }
+}

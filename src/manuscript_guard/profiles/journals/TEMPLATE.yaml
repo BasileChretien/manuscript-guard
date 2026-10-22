@@ -68,6 +68,13 @@ english_variant: either
 # author fields Word keeps. Delete the line where the page does not say.
 # blinding: double
 
+# What the journal says of text its authors reuse from their own earlier papers, in one
+# sentence, where its page says anything: the Methods only and cited, say, or none at all.
+# Quote the page under `quotes.text_recycling`. G7 gives that quote with each passage the
+# manuscript repeats from an earlier output (`literature/related.yaml`). Delete the line
+# where the page does not say.
+# text_recycling: "Methods may repeat an earlier description of ours if it is cited."
+
 # ── Limits ───────────────────────────────────────────────────────────────────────────────
 #
 # Numbers only, and only the ones the journal states. Delete every line you cannot point at a
@@ -296,8 +303,8 @@ reporting_guidelines:
 # For every rule above, the words of the stored page it was read from, as the page writes
 # them, under the rule's key: limits.<name>, structure.required_sections,
 # structure.abstract_structured, structure.abstract_headings, structure.abstract_title,
-# required_statements.<id>, references, english_variant, blinding, reporting_guidelines,
-# pointers.<kind>.
+# required_statements.<id>, references, english_variant, blinding, text_recycling,
+# reporting_guidelines, pointers.<kind>.
 # G4 names every rule that has none. A limit's number must be in its quote, as digits
 # ("3500", "3,500") or as a word up to twenty ("four").
 #

@@ -4608,10 +4608,11 @@ def test_a_variable_of_two_data_dictionaries_differs_only_where_it_is_recorded_o
 ) -> None:
     """G8 says which variables an earlier data dictionary and this one both have that are
     recorded otherwise, and in which part. A definition re-wrapped or in capitals, codes
-    named by their list, inputs in another order, a bound written with a point, a term or a
-    label in capitals is the same variable recorded alike; each other edit changes the one
-    part it names; a variable one dictionary lacks is compared with nothing; and a study
-    period given otherwise is said. Each example holds every edit."""
+    named by their list, inputs in another order, a bound written with a point, a time
+    bound quoted or in another zone's notation, a term or a label in capitals is the same
+    variable recorded alike; each other edit changes the one part it names, a code dropped
+    and a code added among them; a variable one dictionary lacks is compared with nothing;
+    and a study period given otherwise is said. Each example holds every edit."""
     given, changed = drawn
     assert READINGS["data dictionaries"]()(given) == changed, given
 
@@ -7804,6 +7805,11 @@ def _a_bound_is_compared_as_written(patch: pytest.MonkeyPatch) -> None:
                   lambda variable: (str(variable.minimum), str(variable.maximum)))  # fmt: skip
 
 
+def _a_time_bound_is_compared_as_text(patch: pytest.MonkeyPatch) -> None:
+    """The rule of #415 before its first round: a bound no number is the loader's string."""
+    patch.setattr(related_methods_gate, "_BOUND_READERS", {})
+
+
 def _inputs_are_compared_in_their_order(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(related_methods_gate, "_inputs",
                   lambda variable: ", ".join(variable.derived_from))  # fmt: skip
@@ -8739,6 +8745,10 @@ BROKEN = {
     ),
     "a range's bound is compared as written": (
         _a_bound_is_compared_as_written,
+        test_a_variable_of_two_data_dictionaries_differs_only_where_it_is_recorded_otherwise,
+    ),
+    "a range's time bound is compared as text": (
+        _a_time_bound_is_compared_as_text,
         test_a_variable_of_two_data_dictionaries_differs_only_where_it_is_recorded_otherwise,
     ),
     "a derived variable's inputs are compared in their order": (

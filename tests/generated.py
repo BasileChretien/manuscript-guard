@@ -40,6 +40,7 @@ import os
 import re
 import textwrap
 from collections.abc import Callable, Iterable
+from datetime import datetime, timezone
 from decimal import ROUND_HALF_DOWN, ROUND_HALF_UP, Decimal
 from fractions import Fraction
 from functools import cache
@@ -2947,9 +2948,10 @@ def plan_pairs(draw: st.DrawFn) -> tuple[dict[str, str], list[str]]:
 #: What an edit of one variable of a data dictionary may be, and the part of it that then
 #: reads otherwise, or None where it reads the same: a definition re-wrapped or in capitals,
 #: codes named by their list rather than written out, a derived variable's inputs in another
-#: order, a bound written with a point, a standard's term or a code's label in capitals, and
-#: a variable the earlier dictionary has and this one does not. Each other edit changes the
-#: one part it names.
+#: order, a bound written with a point, a time bound quoted where it was not and in another
+#: zone's notation (round 1 of #415), a standard's term or a code's label in capitals, and a
+#: variable the earlier dictionary has and this one does not. Each other edit changes the one
+#: part it names: a code dropped and a code added are a code one side lacks, either way.
 VARIABLE_EDITS = {
     "as it is": None,
     "rewrapped": None,
@@ -2957,13 +2959,15 @@ VARIABLE_EDITS = {
     "codes from a list": None,
     "inputs in another order": None,
     "a bound with a point": None,
+    "a time bound quoted": None,
     "a term in capitals": None,
     "a label in capitals": None,
     "there only": None,
     "word added": "definition",
     "type": "type",
     "code relabelled": "code 2",
-    "code added": "code 3",
+    "code dropped": "code 3",
+    "code added": "code 4",
     "codes reordered": "order of codes",
     "unit": "unit",
     "range": "range",
@@ -2975,6 +2979,10 @@ VARIABLE_EDITS = {
 }
 #: The study period of this dictionary beside the earlier one's, 2015 to 2024.
 STUDY_PERIODS = ("the same", "a later end", "none here")
+
+
+#: A time of day a report was received, with its zone.
+_RECEIVED = datetime(2015, 1, 1, 10, 0, tzinfo=timezone.utc)
 
 
 def _yes_no() -> list[dict[str, Any]]:
@@ -2993,11 +3001,15 @@ def _dictionary_variable(kind: str, name: str, words: list[str]) -> tuple[dict, 
     if kind in ("release", "level", "standard code", "a term in capitals"):
         then["standard"] = {"system": "MedDRA", "version": "27.1", "level": "PT",
                             "term": f"{label} {words[-1]}", "code": "10019851"}  # fmt: skip
-    if kind in ("a label in capitals", "code relabelled", "code added", "codes reordered"):
+    if kind in ("a label in capitals", "code relabelled", "code dropped", "code added",
+                "codes reordered"):
         then.update(type="ordinal", values=[{"code": at, "label": f"{word.capitalize()} {at}"}
                                             for at, word in enumerate(words[:3], 1)])  # fmt: skip
     if kind in ("type", "unit", "range", "a bound with a point"):
         then.update(type="continuous", unit="days", range={"min": 0, "max": 110})
+    if kind == "a time bound quoted":
+        # YAML writes a time unquoted and reads it back as one; a string it quotes.
+        then.update(type="datetime", range={"min": _RECEIVED, "max": "2024-12-31T23:59:00Z"})
     if kind in ("inputs in another order", "input dropped", "derivation reworded"):
         then.update(type="count", unit="days", derived_from=["start", "onset"],
                     derivation=f"onset minus start, {text}")  # fmt: skip
@@ -3016,8 +3028,10 @@ def _dictionary_variable(kind: str, name: str, words: list[str]) -> tuple[dict, 
     elif kind == "code relabelled":
         now["values"] = [{**code, "label": code["label"] + " later" if code["code"] == 2 else
                           code["label"]} for code in then["values"]]  # fmt: skip
-    elif kind == "code added":
+    elif kind == "code dropped":
         now["values"] = then["values"][:2]
+    elif kind == "code added":
+        now["values"] = [*then["values"], {"code": 4, "label": f"{label} 4"}]
     elif kind == "codes reordered":
         now["values"] = then["values"][::-1]
     elif kind == "type":
@@ -3028,6 +3042,9 @@ def _dictionary_variable(kind: str, name: str, words: list[str]) -> tuple[dict, 
         now["range"] = {"min": 0, "max": 120}
     elif kind == "a bound with a point":
         now["range"] = {"min": 0.0, "max": 110.0}
+    elif kind == "a time bound quoted":
+        now["range"] = {"min": "2015-01-01 10:00:00Z",
+                        "max": datetime(2024, 12, 31, 23, 59, tzinfo=timezone.utc)}  # fmt: skip
     elif kind == "release":
         now["standard"]["version"] = "26.0"
     elif kind == "level":

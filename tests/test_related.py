@@ -586,6 +586,11 @@ variables:
     unit: days
     derived_from: [start, onset]
     derivation: onset minus start, in days
+  - name: received
+    label: Received
+    definition: When the report was received.
+    type: datetime
+    range: {min: 2015-01-01 10:00:00Z, max: 2024-12-31T23:59:00Z}
 """
 
 
@@ -705,6 +710,32 @@ def test_what_reads_the_same_is_not_said(project: Path, earlier: Path) -> None:
         ("label: Mild", "label: mild"),
     )
     assert _found(_check(project)) == []
+
+
+def test_a_time_bound_quoted_or_written_with_another_zone_is_the_same_bound(
+    project: Path, earlier: Path
+) -> None:
+    """Round 1 of #415: YAML makes an unquoted timestamp a time, which the loader writes in
+    ISO form, and leaves a quoted one as typed; one instant read two ways was a difference."""
+    _dictionaries(project, earlier, ("min: 2015-01-01 10:00:00Z", 'min: "2015-01-01 10:00:00Z"'),
+                  ("max: 2024-12-31T23:59:00Z", 'max: "2024-12-31T23:59:00Z"'))  # fmt: skip
+    assert _found(_check(project)) == []
+    _dictionary(earlier, ("min: 2015-01-01 10:00:00Z", "min: 2015-01-01 11:00:00Z"))
+    _take(project)
+    (finding,) = _check(project).findings
+    assert "variable received: its range is 2015-01-01T11:00:00+00:00 to " in finding.message
+
+
+def test_a_copy_yaml_cannot_parse_is_said_once_on_one_line(project: Path, earlier: Path) -> None:
+    """Round 1 of #415: the loader's own "cannot be read:" was said again, with the parser's
+    line breaks inside the note."""
+    _dictionaries(project, earlier)
+    (earlier / "design" / "data_dictionary.yaml").write_bytes(b"variables: [\n")
+    _take(project)
+    (finding,) = _check(project).findings
+    assert finding.code == "related-dictionary-unreadable"
+    assert "cannot be read (cannot be read" not in finding.message
+    assert "\n" not in finding.message
 
 
 def test_a_variable_one_dictionary_lacks_is_not_compared_nor_named(

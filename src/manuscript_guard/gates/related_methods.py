@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from manuscript_guard.contracts._schema import ContractError, read_structured
+from manuscript_guard.contracts.dictionary import _BOUNDS as _BOUND_READERS
 from manuscript_guard.contracts.dictionary import (
     Code,
     Dictionary,
@@ -253,7 +254,10 @@ def read_dictionaries(
         return (then, now), None
     said = []
     if then is None:
+        # The loader says "cannot be read: <the parser's lines>" of a file YAML cannot
+        # parse: said once, on one line (round 1 of #415).
         why = then_read.findings[0].message if then_read.findings else "it is not in its shape"
+        why = (why.removeprefix("cannot be read: ").splitlines() or [why])[0].strip()
         said.append(f"its copied data dictionary cannot be read ({why})")
     if now is None:
         said.append("this paper's data dictionary cannot be read (G12 says why)")
@@ -367,8 +371,12 @@ def _unit(variable: Variable) -> str:
 
 
 def _bounds(variable: Variable) -> tuple:
-    """A range's bounds as numbers where they are, so that 110 and 110.0 are one bound."""
-    return tuple(None if bound is None else float(bound) if _number(bound) else str(bound)
+    """A range's bounds as numbers where they are, so that 110 and 110.0 are one bound,
+    and as dates or times where they are, read as the loader reads them: YAML gives an
+    unquoted timestamp in ISO form and a quoted one as typed, and `2015-01-01 10:00:00Z`
+    and `2015-01-01T10:00:00+00:00` are one instant (round 1 of #415)."""
+    read = _BOUND_READERS.get(variable.type, str)
+    return tuple(None if bound is None else float(bound) if _number(bound) else read(bound)
                  for bound in (variable.minimum, variable.maximum))  # fmt: skip
 
 

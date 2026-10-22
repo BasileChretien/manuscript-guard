@@ -5032,7 +5032,10 @@ part by part:
   side has and the other lacks, a code labelled otherwise (in either case), and an ordinal
   scale's codes in another order;
 - its unit, as written, its case included, since mg and Mg are two units;
-- its range, a bound read as a number where it is one, so that 110 and 110.0 are one bound;
+- its range, a bound read as a number where it is one, so that 110 and 110.0 are one bound,
+  and as a date or a time where it is one, as the loader reads it: YAML gives an unquoted
+  timestamp in ISO form and keeps a quoted one as typed, and `2015-01-01 10:00:00Z` and
+  `2015-01-01T10:00:00+00:00` are one instant (round 1 of #415);
 - its standard: another system, or one side with none, is one difference; within one
   system, its release, its level, its term and its code each (the level and the term in
   either case);
@@ -11433,12 +11436,11 @@ Open, recorded as each change landed:
   it is required, its form, timing, recorder, source, dataset, instrument, item, pattern and
   reporting items are not compared, nor the dictionary's forms, instruments, datasets and
   rules. A list of codes is compared by the codes it gives, never by its name. A unit is
-  compared as written, so `mg/dL` and `mg/dl` differ. A range bound that is a date is
-  compared as text. A reason under `methods:` answers for the variable, not for one part of
-  it, as a model's does, so a later change to a variable already explained is explained by
-  the old reason. A copied dictionary the loader of this version refuses, one written under
-  an earlier shape of the schema among them, is not compared, though it read when the
-  earlier output was made.
+  compared as written, so `mg/dL` and `mg/dl` differ. A reason under `methods:` answers for
+  the variable, not for one part of it, as a model's does, so a later change to a variable
+  already explained is explained by the old reason. A copied dictionary the loader of this
+  version refuses, one written under an earlier shape of the schema among them, is not
+  compared, though it read when the earlier output was made.
 - **What a comparison read from a PDF cannot see.** A published value is read as printed: an
   estimate rounded to one place is the same as any value within half a unit of it, so a
   change smaller than the earlier rounding is not seen. A printed value that is not one

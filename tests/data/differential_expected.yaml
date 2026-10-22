@@ -68,3 +68,8 @@ expected:
       G2 holds a caption beside a table or a figure to that display, so a typed caption or a
       ref opening one that names another display is caption-names-another; the inputs now
       place captions, and two tables one after the other with a caption between them
+  - reading: latex printed
+    why: >-
+      a binding in LaTeX prose is printed where it stands, `{{results.key}}` with no space
+      added before or after it, as LaTeX prints its value: a sentence quoted from the paper
+      that ends after a binding is found in it (step 8, G13)

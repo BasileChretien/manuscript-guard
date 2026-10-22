@@ -220,6 +220,9 @@ RAW = frozenset({"verbatim", "verbatim*", "Verbatim", "lstlisting", "comment"})
 #: The listings among them, which print what they hold as typed.
 LISTINGS = RAW - {"comment"}
 
+#: The cross-references, which print a number only the compiled document knows (step 8).
+POINTERS = frozenset({"ref", "eqref", "pageref", "autoref", "nameref", "cref", "Cref", "vref",
+                      "cpageref", "labelcref"})  # fmt: skip
 #: Tables an author types: a number in one is `hand-authored-table`, as one in a Markdown
 #: table's row is. Maths' alignments separate cells too, and are no tables.
 TYPED_TABLES = frozenset({"tabular", "tabular*", "tabularx", "tabulary", "longtable"})

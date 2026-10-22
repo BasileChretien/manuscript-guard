@@ -41,6 +41,7 @@ compared directly, because those are checkable and they are what reviewers query
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -124,21 +125,31 @@ class Paragraph:
     line: int
 
 
+Span = tuple[int, int]
+
 #: A line that ends a paragraph and starts no claim: blank, or an ATX heading.
 _HEADING = re.compile(r"[ ]{0,3}#{1,6}(?:[ \t]|$)")
 
 
-def _paragraphs(text: str) -> list[tuple[int, int]]:
+def _paragraphs(
+    text: str, cuts: tuple[Span, ...] = (), typed: str | None = None
+) -> list[Span]:
     """Where each paragraph of `text` starts and ends, by its lines: a blank line ends one,
     and a heading is a line of its own. Read on the text as written, so a comment on a line of
-    its own inside a paragraph, which pandoc keeps in the paragraph, does not end it."""
+    its own inside a paragraph, which pandoc keeps in the paragraph, does not end it.
+
+    A LaTeX file's view is `text` and the file as typed is `typed`, whose empty lines alone end
+    a paragraph, as TeX reads it: a line of a comment or of a `\\label` alone, spaces in the
+    view, ends none. Each paragraph starts at its first character the view prints. `cuts` are
+    the spans of its headings' commands and of its tables set apart, which end a paragraph
+    where they stand and are part of none (`_cuts`, step 8)."""
     spans: list[tuple[int, int]] = []
     start: int | None = None
     at = 0
     # A line ends at a line feed and nowhere else, as `placeholders.parse` counts lines.
-    for line in re.findall(r"[^\n]*\n|[^\n]+\Z", text):
+    for line in re.findall(r"[^\n]*\n|[^\n]+\Z", text if typed is None else typed):
         bare = line.rstrip("\r\n")
-        if not bare.strip() or _HEADING.match(bare):
+        if not bare.strip() or (typed is None and _HEADING.match(bare)):
             if start is not None:
                 spans.append((start, at))
                 start = None
@@ -147,7 +158,27 @@ def _paragraphs(text: str) -> list[tuple[int, int]]:
         at += len(line)
     if start is not None:
         spans.append((start, at))
+    if typed is not None:
+        spans = [part for first, last in spans for part in _printed_from(text, first, last)]
+    for cut in cuts:
+        spans = [piece for span in spans for piece in _cut(text, span, cut)]
     return spans
+
+
+def _cut(text: str, span: Span, cut: Span) -> list[Span]:
+    """What of `span` is outside `cut` and holds more than spaces, each part from its first
+    character that is not one."""
+    start, end = span
+    if cut[1] <= start or end <= cut[0]:
+        return [span]
+    return [part for first, last in ((start, cut[0]), (cut[1], end))
+            for part in _printed_from(text, first, last)]  # fmt: skip
+
+
+def _printed_from(text: str, first: int, last: int) -> list[Span]:
+    """`first` to `last` from its first character that is not a space, or nothing."""
+    first += len(text[first:last]) - len(text[first:last].lstrip())
+    return [(first, last)] if first < last else []
 
 
 def _inside(above: str | None, below: str | None) -> bool:
@@ -220,10 +251,9 @@ def _collapsed(text: str) -> str:
     return " ".join(text.split())
 
 
-Span = tuple[int, int]
-
-
-def claims_in(text: str) -> tuple[list[tuple[tuple[str, ...], int, int, int]], list[Span]]:
+def claims_in(
+    text: str, cuts: tuple[Span, ...] = (), typed: str | None = None
+) -> tuple[list[tuple[tuple[str, ...], int, int, int]], list[Span]]:
     """The claims of one file, and its paragraphs that hold no anchor.
 
     Each claim is its steps, where its text starts and ends, and where its anchors start.
@@ -233,7 +263,7 @@ def claims_in(text: str) -> tuple[list[tuple[tuple[str, ...], int, int, int]], l
     anchors = [found for found in parse(text)[0] if found.is_anchor]
     shown = blank_comments(text) if "<!--" in text else text
     claims, bare = [], []
-    for start, end in _paragraphs(text):
+    for start, end in _paragraphs(text, cuts, typed):
         inside = [a for a in anchors if start <= a.start < end]
         if not inside:
             bare.append((start, end))
@@ -255,20 +285,122 @@ def anchored(project: Project) -> tuple[list[Claim], list[Paragraph]]:
     """Every claim in the manuscript, and every Methods paragraph that points at no step."""
     claims: list[Claim] = []
     open_: list[Paragraph] = []
-    for path in source_files(project.path("manuscript")):
-        found, bare = _anchored_in(path, read_text(path))
+    for read in _anchor_texts(project):
+        found, bare = _anchored_in(read)
         claims += found
         open_ += bare
     return claims, open_
 
 
-def _anchored_in(path: Path, text: str) -> tuple[list[Claim], list[Paragraph]]:
-    found, bare = claims_in(text)
+@dataclass(frozen=True)
+class _Read:
+    """A manuscript file as its anchors are read. A Markdown file is read as typed, under its
+    own headings (`chains` None). A LaTeX file is read as Markdown writes it
+    (`views.markdown_view`), `\\mg{method.step}` as `{{method.step}}` at its offsets, under the
+    headings the include tree gives at each place, its paragraphs ended where it is typed with
+    an empty line (`typed`), each heading's command and each table set apart cut out of them
+    (`_cuts`), as a Markdown heading is a line of its own and a pipe table is no prose, and
+    each float blanked (`_unprinted`), which TeX moves out of its paragraph (step 8)."""
+
+    path: Path
+    text: str
+    chains: Callable[[int], list] | None = None
+    cuts: tuple[Span, ...] = ()
+    typed: str | None = None
+
+
+def _anchor_texts(project: Project) -> list[_Read]:
+    from manuscript_guard.text.reader import LATEX, manuscript_format
+
+    folder = project.path("manuscript")
+    if manuscript_format(folder) != LATEX:
+        return [_Read(path, read_text(path)) for path in source_files(folder)]
+    from manuscript_guard.text.latex.views import files
+
+    return [_latex_read(found.path, found.source, found.view) for found in files(folder)]
+
+
+def _latex_read(path: Path, source, view: str) -> _Read:
+    """A LaTeX file as G9 reads it: its Markdown view, under the headings the include tree
+    gives at each place."""
+    from manuscript_guard.text.latex.views import chain
+
+    shown = _blanked(view, _unprinted(source, view))
+    return _Read(path, shown, lambda at: [chain(source, at)], _cuts(source, view), source.text)
+
+
+def _cuts(source, view: str) -> tuple[Span, ...]:
+    """What of a LaTeX file ends a paragraph: each heading's command, to its title's end, and
+    each table typed outside a float, which a `longtable` or a `center` sets apart, each part
+    of none; and either end of a float or such a table that holds an anchor, which is a
+    paragraph of its own, as a pipe table is in Markdown, its words before the anchor the
+    claim (rounds 1 and 3 of step 8). A `tabular` typed within a sentence ends it too."""
+    reading = source.reading
+    anchors = _anchors_at(view)
+    headings = [(h.start, h.end) for h in reading.headings if h.end > h.start]
+    apart = [span for span in reading.tables if not _within(span, reading.floats)]
+    ends = [(edge, edge) for span in (*reading.floats, *apart) if _holds(span, anchors)
+            for edge in span]  # fmt: skip
+    return (*headings, *(span for span in apart if not _holds(span, anchors)), *ends)
+
+
+def _unprinted(source, view: str) -> tuple[Span, ...]:
+    """What of a LaTeX file's paragraphs G9 reads no word of, and that ends none: each float
+    that holds no anchor, which TeX moves out of its paragraph, and the paragraph goes on
+    round it (round 2 of step 8); and each table inside a float that holds no anchor, so that
+    a float's claim is its caption's words (round 3)."""
+    reading = source.reading
+    anchors = _anchors_at(view)
+    inside = [span for span in reading.tables if _within(span, reading.floats)]
+    return tuple(span for span in (*reading.floats, *inside) if not _holds(span, anchors))
+
+
+def _anchors_at(view: str) -> list[int]:
+    return [found.start for found in parse(view)[0] if found.is_anchor]
+
+
+def _holds(span: Span, anchors: list[int]) -> bool:
+    return any(span[0] <= at < span[1] for at in anchors)
+
+
+def _within(span: Span, spans) -> bool:
+    """Whether `span` is inside one of `spans` other than itself."""
+    return any(start <= span[0] and span[1] <= end and (start, end) != span
+               for start, end in spans)  # fmt: skip
+
+
+def _blanked(text: str, spans: tuple[Span, ...]) -> str:
+    """`text` with each of `spans` spaces, its line breaks kept."""
+    out = list(text)
+    for start, end in spans:
+        for index in range(start, end):
+            if out[index] != "\n":
+                out[index] = " "
+    return "".join(out)
+
+
+#: The view pads a binding inside its braces to the command's width (`{{ results.n}}`); the
+#: claim reads it as Markdown writes it.
+_PADDED = re.compile(r"\{\{ +")
+
+
+def _anchored_in(read: _Read) -> tuple[list[Claim], list[Paragraph]]:
+    """A file's claims and its Methods paragraphs that point at no step."""
+    path, text, chains = read.path, read.text, read.chains
+    found, bare = claims_in(text, read.cuts, read.typed)
     shown = blank_comments(text) if "<!--" in text else text
-    headings, notes = heading_index(text), footnote_index(text)
+
+    def said(words: str) -> str:
+        return _collapsed(words) if read.chains is None else _PADDED.sub("{{", _collapsed(words))
+
+    if chains is None:
+        headings, notes = heading_index(text), footnote_index(text)
+
+        def chains(at: int):
+            return chains_at(headings, notes, at)
 
     def methods(at: int) -> bool:
-        return any(is_methods(chain) for chain in chains_at(headings, notes, at))
+        return any(is_methods(chain) for chain in chains(at))
 
     def line(at: int) -> int:
         return text.count("\n", 0, at) + 1
@@ -276,7 +408,7 @@ def _anchored_in(path: Path, text: str) -> tuple[list[Claim], list[Paragraph]]:
     claims = [
         Claim(
             steps=steps,
-            text=_collapsed(shown[start:end]),
+            text=said(shown[start:end]),
             path=path,
             # Where its first word is: after the anchor before it, a line break can come first.
             line=line(start + len(shown[start:end]) - len(shown[start:end].lstrip())),
@@ -286,7 +418,7 @@ def _anchored_in(path: Path, text: str) -> tuple[list[Claim], list[Paragraph]]:
     ]
     open_ = []
     for start, end in bare:
-        words = _collapsed(shown[start:end])
+        words = said(shown[start:end])
         if words and methods(start) and not _NOT_PROSE.match(words):
             open_.append(Paragraph(words, path, line(start)))
     return claims, open_
@@ -348,11 +480,23 @@ def main_methods(project: Project) -> str | None:
     from manuscript_guard.gates.journal import abstract_title
 
     named = abstract_title(project)
-    for path in source_files(project.path("manuscript"), main_text_only=True):
+    folder = project.path("manuscript")
+    if _latex(folder):
+        # The document as Markdown would print it, its headings as `#` lines (step 8).
+        from manuscript_guard.text.latex.printed import printed_document
+
+        return methods_in(printed_document(folder, supplementary=False), named)
+    for path in source_files(folder, main_text_only=True):
         found = methods_in(read_text(path), named)
         if found is not None:
             return found
     return None
+
+
+def _latex(folder: Path) -> bool:
+    from manuscript_guard.text.reader import LATEX, manuscript_format
+
+    return manuscript_format(folder) == LATEX
 
 
 def supplementary_methods(project: Project) -> list[tuple[Path, str]]:
@@ -362,6 +506,12 @@ def supplementary_methods(project: Project) -> list[tuple[Path, str]]:
 
     named = abstract_title(project)
     root = project.path("manuscript")
+    if _latex(root):
+        from manuscript_guard.text.latex.printed import printed_document
+        from manuscript_guard.text.latex.structure import SUPPLEMENT_ENTRY
+
+        text = supplement_methods_in(printed_document(root, supplementary=True), named)
+        return [] if text is None else [(root / SUPPLEMENT_ENTRY, text)]
     found = []
     for path in source_files(root):
         if is_supplementary(root, path):
@@ -412,8 +562,10 @@ def supplement_methods_in(text: str, abstract_title: str | None = None) -> str |
 
 
 def _no_methods(project: Project) -> Report:
-    """Said where the manuscript has text and no heading names the Methods."""
-    if not source_files(project.path("manuscript"), main_text_only=True):
+    """Said where the manuscript has text and no heading names the Methods: a LaTeX one has
+    its entry file (round 1 of step 8)."""
+    folder = project.path("manuscript")
+    if not _latex(folder) and not source_files(folder, main_text_only=True):
         return Report()
     return Report(
         (
@@ -678,11 +830,14 @@ def _anchor_line_findings(project: Project) -> list[Finding]:
             "paragraph ends here in the document though it goes on in the source",
             hint="put the anchor at the end of the line above, or leave a blank line after it "
             "if a new paragraph or a list is meant",
-            path=path,
+            path=read.path,
             line=line,
         )
-        for path in source_files(project.path("manuscript"))
-        for line in anchor_lines(read_text(path))
+        # A line of nothing but anchors ends no paragraph in LaTeX, where only an empty line
+        # does: a Markdown file's alone are read (step 8).
+        for read in _anchor_texts(project)
+        if read.chains is None
+        for line in anchor_lines(read.text)
     ]
 
 

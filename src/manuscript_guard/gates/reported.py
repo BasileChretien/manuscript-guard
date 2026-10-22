@@ -59,6 +59,8 @@ class Given:
     key: str
     heading: str
     line: int
+    #: Where in the text read the binding starts.
+    start: int = 0
 
 
 @dataclass
@@ -98,7 +100,7 @@ class Walk:
             if place is REPORTED:
                 reported.add(placeholder.key)
             elif place is not None:
-                given.append(Given(placeholder.key, place, placeholder.line))
+                given.append(Given(placeholder.key, place, placeholder.line, placeholder.start))
         return given, reported
 
     def _name(self, sections: list[Section]) -> None:
@@ -134,27 +136,14 @@ class Walk:
 def check_reported(project: Project, results: Results) -> Report:
     """A warning for each results key a summary gives that the paper reports nowhere else."""
     from manuscript_guard.gates.journal import abstract_title
+    from manuscript_guard.text.reader import LATEX, manuscript_format
 
     root = project.path("manuscript")
-    sources = source_files(root)
     walk = Walk(abstract_title(project))
-    given: list[tuple[Path, Given]] = []
-    reported: set[str] = set()
-    placed: dict[str, set[str]] = {"table": set(), "figure": set()}
-    supplement = [p for p in sources if is_supplementary(root, p)]
-    paper = printed_order([p for p in sources if p not in supplement], supplementary=False)
-    for path in [*paper, *supplement]:
-        text = read_text(path)
-        placeholders = parse(text)[0]
-        for placeholder in placeholders:
-            if placeholder.namespace in placed:
-                placed[placeholder.namespace].add(placeholder.key)
-        if path in supplement:
-            reported |= {p.key for p in placeholders if p.namespace == "results"}
-            continue
-        found, binds = walk.read(text)
-        given += [(path, one) for one in found]
-        reported |= binds
+    if manuscript_format(root) == LATEX:
+        given, reported, placed = _latex_read(root, walk)
+    else:
+        given, reported, placed = _markdown_read(root, walk)
     same = _same_quantity(results)
     reported_as = {same(key) for key in reported}
     missing = [(path, one) for path, one in given if same(one.key) not in reported_as]
@@ -183,6 +172,63 @@ def check_reported(project: Project, results: Results) -> Report:
             )
         )
     return report
+
+
+def _latex_read(root: Path, walk: Walk) -> tuple[list[tuple[Path, Given]], set[str], dict]:
+    """A LaTeX manuscript's summaries and reports, read in each document's printed view
+    (`text/latex/printed.py`), where a binding is `{{results.key}}` under the headings LaTeX
+    prints it under; each summary's binding named at its `.tex` file and line (step 8). Its
+    files nothing inputs are not printed, and report nothing."""
+    from dataclasses import replace
+
+    from manuscript_guard.text.latex.printed import printed
+    from manuscript_guard.text.latex.structure import ENTRY, read_document
+
+    given: list[tuple[Path, Given]] = []
+    reported: set[str] = set()
+    placed: dict[str, set[str]] = {"table": set(), "figure": set()}
+    for supplementary in (False, True):
+        sources = [source for source in read_document(root, supplementary=supplementary).sources
+                   if not source.loose and not source.path.lower().endswith(".sty")]  # fmt: skip
+        view = printed(sources)
+        placeholders = parse(view.text)[0]
+        for placeholder in placeholders:
+            if placeholder.namespace in placed:
+                placed[placeholder.namespace].add(placeholder.key)
+        if supplementary:
+            reported |= {p.key for p in placeholders if p.namespace == "results"}
+            continue
+        found, binds = walk.read(view.text)
+        for one in found:
+            where = view.place(one.start)
+            path, line = (where[0].path, where[1]) if where else (ENTRY, one.line)
+            given.append((root / path, replace(one, line=line)))
+        reported |= binds
+    return given, reported, placed
+
+
+def _markdown_read(root: Path, walk: Walk) -> tuple[list[tuple[Path, Given]], set[str], dict]:
+    """A Markdown manuscript's summaries and reports: the paper's files in printed order, the
+    headings carried from one into the next, and the supplement's bindings, each reported."""
+    sources = source_files(root)
+    given: list[tuple[Path, Given]] = []
+    reported: set[str] = set()
+    placed: dict[str, set[str]] = {"table": set(), "figure": set()}
+    supplement = [p for p in sources if is_supplementary(root, p)]
+    paper = printed_order([p for p in sources if p not in supplement], supplementary=False)
+    for path in [*paper, *supplement]:
+        text = read_text(path)
+        placeholders = parse(text)[0]
+        for placeholder in placeholders:
+            if placeholder.namespace in placed:
+                placed[placeholder.namespace].add(placeholder.key)
+        if path in supplement:
+            reported |= {p.key for p in placeholders if p.namespace == "results"}
+            continue
+        found, binds = walk.read(text)
+        given += [(path, one) for one in found]
+        reported |= binds
+    return given, reported, placed
 
 
 def _same_quantity(results: Results):

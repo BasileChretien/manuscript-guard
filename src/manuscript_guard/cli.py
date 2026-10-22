@@ -214,12 +214,7 @@ def _run_gates(
 #: "LaTeX manuscripts", Order of work).
 _NOT_READ_IN_LATEX = frozenset(
     {
-        "check_statement_sources", "check_related",
-        "check_prose_quotations", "check_reporting",
-        "check_methods", "check_reported", "check_recomputed",
-        "check_revision", "check_models", "check_shapes", "check_tex",
-        "check_passages",
-        "check_recycling",
+        "check_statement_sources", "check_shapes", "check_tex", "check_recycling",
     }
 )  # fmt: skip
 
@@ -1968,6 +1963,15 @@ def _keep_submitted(project, number: int) -> Path:
     folder = project.root / REVISION_DIR / f"round-{number}" / SUBMITTED_DIR
     rendered = displays(project)
     manuscript = project.path("manuscript")
+    if manuscript_format(manuscript) == LATEX:
+        from manuscript_guard.gates.revision import PRINTED_COPY, rendered_manuscript
+
+        # The documents as LaTeX prints them, values in, which is what G13 reads the paper
+        # in now; the round's copy of the sources themselves is step 12's (step 8).
+        folder.mkdir(parents=True, exist_ok=True)
+        text = rendered_manuscript(project, rendered)
+        (folder / PRINTED_COPY).write_text(text, encoding="utf-8", newline="\n")
+        return folder
     for source in source_files(manuscript):
         target = folder / source.relative_to(manuscript)
         target.parent.mkdir(parents=True, exist_ok=True)

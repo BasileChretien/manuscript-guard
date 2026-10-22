@@ -46,7 +46,14 @@ hook says once when that release is newer than the installed tool, with the upgr
 ```bash
 manuscript-guard init my-paper --title "Working title"   # a new project
 manuscript-guard init . --title "Working title"          # an existing analysis repository
+manuscript-guard init my-paper --title "Working title" --latex   # the manuscript in LaTeX
 ```
+
+Ask the authors whether they write the manuscript in Markdown or in LaTeX before running it.
+With `--latex` the manuscript is `manuscript/main.tex`, which declares its class and loads
+`mgvalues`, with `mgvalues.sty` beside it, in place of `main.md`. A project is one or the
+other: `init --latex` makes nothing where `manuscript/` holds Markdown, and `check` fails a
+Markdown file in a LaTeX manuscript (`other-format-file`).
 
 It never overwrites an existing file, so the second form adds manuscript-guard to a
 repository that already holds an analysis, with `paper.yaml` at its root. That also means
@@ -70,6 +77,7 @@ analysis/              scripts that publish results through the emitter
 results/               machine-written; never edited by hand
 literature/            ledger.yaml, attested.yaml, references.bib, sources/
 manuscript/main.md     prose with {{results.x}}, {{lit.y}}, [@citekey]
+                       (main.tex and mgvalues.sty under --latex, with \mg{results.x})
 figures/  review/  build/
 .gitattributes         * text=auto eol=lf
 AGENTS.md              the rules of the project, for any agent working in it
@@ -136,7 +144,9 @@ manuscript-guard build --offline     # the same from references.bib, for CI and 
 ```
 
 Publishing values and binding them is the [results-binding](../results-binding/SKILL.md)
-skill. `build` refuses while anything fails at the current stage. `--skip-checks` writes
+skill. In a LaTeX manuscript, run `manuscript-guard values` after the analysis, which writes
+`mgvalues.sty` from the results, and `explain manuscript/main.tex`; `build` compiles the PDF
+with latexmk, which TeX Live and MiKTeX provide. `build` refuses while anything fails at the current stage. `--skip-checks` writes
 `manuscript.UNCHECKED.docx` instead, which is for reading, not for sending.
 
 `build` needs Zotero running for live fields; the first live build also downloads Better

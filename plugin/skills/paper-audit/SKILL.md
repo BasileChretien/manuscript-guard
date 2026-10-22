@@ -173,7 +173,9 @@ There is no converter. `import` refuses a `.docx` this toolkit did not build. Fo
 still being written, the route is:
 
 1. `manuscript-guard init`, then convert the text into `manuscript/*.md`, for example with
-   `pandoc paper.docx -t markdown -o manuscript/main.md`.
+   `pandoc paper.docx -t markdown -o manuscript/main.md`. A paper written in LaTeX needs no
+   conversion: `manuscript-guard init --latex`, then its files go in `manuscript/`, the
+   entry file as `main.tex`, loading `mgvalues`.
 2. Make the analysis publish its values. The [results-binding](../results-binding/SKILL.md)
    skill covers the emitters.
 3. `manuscript-guard bind` lists every unbound number and proposes a key wherever exactly

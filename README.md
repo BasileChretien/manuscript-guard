@@ -22,7 +22,8 @@ not something left for a reviewer to notice.
 </picture>
 
 It is a command line tool written in Python, for a manuscript written in Markdown and built
-to a Word document. The checks are deterministic code: they run offline and in CI and give
+to a Word document, or written in LaTeX and compiled to a PDF ([LaTeX
+manuscripts](docs/latex.md)). The checks are deterministic code: they run offline and in CI and give
 the same answer every time. No gate asks a model anything. Two of them read a recorded
 review, of each figure and of the manuscript, which a person or a model may have written:
 the record is what the gate reads, and a person answers its major findings
@@ -256,7 +257,7 @@ number in the file and the rule that classified it.
 
 | Command | What it does |
 |---|---|
-| `init` | scaffold a new manuscript project |
+| `init` | scaffold a new manuscript project; `--latex` starts the manuscript in LaTeX |
 | `check` | run every gate; `--submission` holds the manuscript to submission standards |
 | `bind` | show every unbound number and how to give it a source; `--pointers` offers the `{{ref.…}}` binding that prints each typed "Table 2" |
 | `explain` | show how each number in a file was classified |
@@ -264,7 +265,7 @@ number in the file and the rule that classified it.
 | `impact` | list what depends on a file, or on each file changed since a commit: results, the sentences that bind them, figures, Methods paragraphs, panel readings and co-author answers |
 | `verify` | re-run the analysis and check it still produces the recorded results |
 | `package` | write the package to deposit for reproducibility (Zenodo, OSF, a journal's repository): the scripts, the results and their digests, what they ran with, a README on running them again, CITATION.cff and the results the paper binds; an input goes in only when declared synthetic or shareable, never a restricted one; it uploads nothing |
-| `build` | produce the .docx, or for a LaTeX manuscript the PDF, compiled with latexmk in a copy; `--annotated` colours every number by what backs it; `--marked-up` also writes the revision, and its supplement, with every change since the documents the journal received shown as Word tracked changes, or highlighted (`--highlight`) |
+| `build` | produce the .docx, or for a LaTeX manuscript the PDF, compiled with latexmk in a copy; `--annotated` colours every number by what backs it; `--marked-up` also writes the revision, and its supplement, with every change since the documents the journal received shown as Word tracked changes, or highlighted (`--highlight`); `--latex` writes a Markdown manuscript as LaTeX, holds its digits to the Markdown's, and compiles it |
 | `approve` | record an author's approval of the manuscript as it stands, which `submit` holds to the manuscript sent; the author's own act |
 | `sign` | record a named person's sign-off of a finding only they may close, a G15 warning for the statistician `authors.yaml` names, the journal's rules no gate checks for the corresponding author, a model provider the manuscript may be sent to for the data custodian; that person's own act |
 | `render` | substitute the bindings and stop there |
@@ -288,7 +289,7 @@ number in the file and the rule that classified it.
 | `import` | bring a co-author's Word edits back into the manuscript source, and file each of their Word comments as a finding to answer |
 | `reworded` | check that an edit changed the wording and no binding, citation or typed number, and warn where it made a sentence claim more, less or the opposite |
 | `respond` | open a revision round, or write the point-by-point response |
-| `submit` | assemble the submission pack, with a checklist of the journal's rules no gate checks, and at a revision the marked-up copy beside the manuscript |
+| `submit` | assemble the submission pack, with a checklist of the journal's rules no gate checks, and at a revision the marked-up copy beside the manuscript; a LaTeX manuscript's source, or with `--latex` a Markdown one's, in one folder that compiles alone |
 | `proof` | compare the publisher's proof (PDF, JATS XML, HTML or text) with the document in the submission pack, table cell by cell, and its title page with `authors.yaml`; list each changed number, sign, decimal mark, unit, citation, reference, name or affiliation, and each part left out, with its page and line, as corrections to send; nothing is sent |
 | `audit` | check the numbers of a paper that was not written this way against existing outputs |
 | `related` | compare the paper with the earlier outputs of the same data in `literature/related.yaml`, value by value; `--take` copies an earlier project's results and plan in, at the revision the author names |
@@ -383,6 +384,7 @@ everywhere.
 | [Principles](docs/principles.md) | what the check guarantees, and why it is built this way |
 | [Agent tools](docs/agent-tools.md) | Claude Code, Codex and the others: installing, updating, what each enforces |
 | [A review panel read by several models](docs/review-panel.md) | internal review by people, an agent, or models from several providers |
+| [LaTeX manuscripts](docs/latex.md) | writing in LaTeX, or sending a Markdown manuscript as LaTeX, and what does not read LaTeX yet |
 | [Auditing a paper you already wrote](docs/audit.md) | one command for a manuscript with no bindings, and how little a match means |
 | [DESIGN.md](DESIGN.md) | the architecture, the reasons for its decisions, and the known gaps |
 | [ATTRIBUTION.md](ATTRIBUTION.md) | the reporting guidelines' licences, and the one data file derived from another work |

@@ -83,6 +83,8 @@ Confidence intervals were derived from the standard error of the log odds ratio.
 {{method.ci}}
 ```
 
+In a LaTeX manuscript the anchor is `\mg{method.ci}`, and it prints nothing either.
+
 (The standard error in the example, the square root of the sum of the reciprocals of the
 four cells, is Woolf's: B. Woolf, *Annals of Human Genetics* 19:251-253, 1955.)
 

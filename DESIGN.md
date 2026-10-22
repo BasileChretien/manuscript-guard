@@ -6847,7 +6847,8 @@ the roles that say what a value is. A dataset's date, a parameter's, a software 
 a dictionary's release are not warned of (round 1 of #392: ICD-10's release is "2019"), nor
 a number, which the analysis may have computed from the data as the example computes its
 first and last year. The words are read in the binding's sentence, as `labels` reads one,
-with every binding, comment and citation in it blanked: a key named `extracted`, a step
+with every binding and comment in it blanked, and every citation's key, the words around a
+key in its brackets being the sentence's (round 2 of #392): a key named `extracted`, a step
 named `extraction` and a citekey `extracted2020` say nothing. The property is
 `test_a_date_typed_into_the_analysis_is_warned_where_its_sentence_dates_the_data`, over the
 reading `data dates`, with a planted sentence for each word, and twelve broken rules each
@@ -10147,9 +10148,8 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
 - **Typed releases of a dictionary.** Any number equal to the release within 60 characters
   after the dictionary's name is taken for it, and a second release overlapping the first
   ("2025" in "Global B3 March 2025") draws a second finding. A slug with a doubled or
-  trailing underscore ("MedDRA®") is never found. A `release_file` outside the project
-  raises in Python at `write()` and is recorded by its absolute path in R, and R looks for
-  a relative one in its working directory first.
+  trailing underscore ("MedDRA®") is never found. A `release_file` is an input, and R
+  looks for a relative one where it looks for any (see "The emitters").
 - **Figure estimates.** `def std(values):` is read as a call; an `.Rmd` or `.qmd` is lexed
   as R throughout, its Python chunks missed and "sample (" in its prose read; a form feed
   counts as a line break for one count and not the other. `stripplot` is not marked seeded,
@@ -10250,10 +10250,20 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   `old_string` uses curly quotes may pass unasked (not confirmed live).
 - **The emitters.** R lists lockfiles in their case on Windows (`Requirements.txt` is not
   seen); an empty lockfile's digest has not been compared between R and Python, nor R's
-  `validUTF8` with Python's decoder on overlong, surrogate and out-of-range forms. A path
-  given to R's `add_input` as a factor is recorded, and its `restricted` or `synthetic` mark
-  is lost, so G1 says nothing of a restricted file git tracks. A `.txt` input is digested
-  as its bytes, so a copy checked out with CRLF line ends reads as changed.
+  `validUTF8` with Python's decoder on overlong, surrogate and out-of-range forms. R reads
+  a relative input from its working directory where a file of that name is there, and
+  Python always from the project root, so an analysis run from another folder that holds
+  one may read and record another file in R; and on Windows `~` is R's home (Documents) and
+  the user's folder to Python. An input's path is collapsed as text inside the project
+  (round 1 of #409): `data/linked/../x.csv`, where `data/linked` is a link, is recorded as
+  `data/x.csv`, while on Linux and macOS the file read and digested is the one beside the
+  link's target. Python expands `~name` as well as `~`, so a project folder named `~raw`
+  is read elsewhere, and R records a path when it is added and digests the file at
+  `write()`, so a `setwd()` between the two may digest another file of that name (round 2
+  of #409). On Windows a path is recorded in the case it was written in, so one file
+  spelt in two cases is two inputs, and a path in another case than the disk's names no
+  file in a clone on Linux. A `.txt` input is digested as its bytes, so a copy checked out
+  with CRLF line ends reads as changed.
 - **The plan's sections.** A heading "### Standard deviation of the dose" is read by G12 as
   a Deviations section.
 - **Inputs kept by Git LFS or git-annex.** Results written from an analysis run on an
@@ -15007,6 +15017,10 @@ Open, recorded as each change landed:
   the script as a number is never warned of, since it cannot be told from one the analysis
   computed. The sentence is the one `in_sentences` gives the binding, with its limit: a stop
   typed against a binding with no space after it ends no sentence.
+- **A braced citation key is read as words.** Pandoc's `[@{who-extraction:2020}]` is not
+  blanked as a key is, so its "extraction" dates the data, and a typed date beside it is
+  warned of (`test_a_braced_citation_key_is_read_as_words`). No rule in the project reads a
+  braced key.
 - **A display is read in English, in three orders, or in figures.** "1 March 2024", "March
   1, 2024", "March 2024", the ISO forms, three-letter months, "Sept", an ordinal day, a day
   as strftime's `%d-%b-%Y` and SAS's DATE9 write it ("31-Dec-2023", "31DEC2023"), and
@@ -15083,6 +15097,21 @@ Closed since, and why each mattered (an open gap goes above this line):
   otherwise, with every gate green. G12 now warns of a dataset the results declare whose
   name is none of the ids under `decision.chosen` (`dataset-not-chosen`), and names it and
   the ids chosen. The comparison of coverage is still open, above.
+- **One file had as many inputs as it had spellings, and R and Python recorded it apart.**
+  Python's `add_input` compared the text of the path as given, so a file declared by
+  `dataset()`, which names it from the project, and by `add_input` spelt in full was two
+  entries, and G1 reported a change to it twice. R's compared the text too, recorded the
+  path through `normalizePath`, which follows links (a git-annex input is one), and wrote
+  the full path of a file outside the project, where Python wrote "../" or stopped at
+  `write()`; and a path R was given as a factor lost its `restricted` mark. Both now record
+  an input once, by its path from the project with "." and ".." collapsed as text and no
+  link followed, and mark it by that path (the review of 76880fc3, #392;
+  `test_r_and_python_record_a_file_however_spelt_as_one_input_alike`). Read only as text,
+  a path from the home folder, `~/proj/data/x.csv`, or one written through a folder that
+  links to the project, as a home folder on a cluster can, was recorded as written, since
+  the root is resolved (round 1 of #409). So `~` is expanded, and where the path as written
+  leaves the project, the folder it is in is resolved and its name kept; an input is
+  digested where the analysis read it.
 - **A reply in Word with no author was listed again as a co-author's comment** (round 1 of
   #367), since the import's comment reader named such a comment "an unnamed reviewer" and
   the reader of replies did not. Said twice, it would now have been filed as a comment to

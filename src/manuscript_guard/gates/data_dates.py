@@ -82,8 +82,9 @@ def data_dates(files: list[tuple[Path, str, list]], namespace: dict[str, Value])
 
 
 def _words(read: str, stops: list[int], placeholders: list) -> str:
-    """The words of the sentence the bindings stand in, with each binding blanked, and every
-    other binding and citation in it."""
+    """The words of the sentence the bindings stand in, with each binding blanked, every
+    other binding in it, and each citation's key. The words around a key in its brackets are
+    kept, and a braced key, `@{...}`, is not blanked (DESIGN.md, Known gaps)."""
     first = min(p.start for p in placeholders)
     last = max(p.end for p in placeholders)
     before = bisect_left(stops, first)

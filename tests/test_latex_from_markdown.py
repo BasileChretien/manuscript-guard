@@ -85,6 +85,8 @@ def _compared(markdown: str, *arguments: str) -> str | None:
     "```\ngsub(\"[^0-9]\", \"\", x)\n```\n\nA mark with no note[^q7].\n",
     # Round 4: a mark inside another note, which pandoc prints as typed; and smart dots.
     "Text[^a].\n\n[^a]: See [^b2].\n\n[^b2]: Details.\n",
+    # Round 5: one inside a note whose label the text marks as well.
+    "Text[^1] and[^2].\n\n[^1]: See note [^2].\n\n[^2]: Details.\n",
     "See https://github.com/o/r/compare/v1.2...v1.3 now.\n",
 ])  # fmt: skip
 def test_what_pandoc_writes_otherwise_on_purpose_is_put_right(markdown: str) -> None:

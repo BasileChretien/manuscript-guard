@@ -1778,10 +1778,14 @@ The result is compiled and packed by the code above, and checked three times:
   between a table's caption and its rows passes. Raw TeX in the text fails `tex-in-the-text`
   from `drafting` on, so this needs an earlier stage or `--skip-checks` (round 1 of step 11).
 - `build --latex` reads a `[^n]:` line directly under a paragraph's line as a note's
-  definition, as G2 does, where pandoc may read it as the paragraph's text; a tilde pair in an
-  address, written `\textsubscript`, ends the address; and an `@` right after a `/`, as in
-  an address, is taken for a citation's key. Each is a refusal of the build, never a misprint
-  (round 4 of step 11).
+  definition, as G2 does, where pandoc may read it as the paragraph's text: with a digit in
+  its label the build is refused, and with none, `[^a]:`, it builds, and pandoc may print the
+  note in the paragraph, its mark included, with no footnote (round 5 of step 11). A tilde
+  pair in an address, written `\textsubscript`, ends the address; and an `@` right after a
+  `/`, as in an address, is taken for a citation's key. Each of these two is a refusal of the
+  build, never a misprint (round 4).
+- Under citeproc, a narrative citation whose key starts with a digit, `@2020who`, is not
+  passed over as one, and its digits refuse the build (round 5 of step 11).
 - Under citeproc, the digits of a citation are compared on neither side, so raw TeX in its
   locator that hides a digit, `[@key, p. \iffalse 1\fi 2]`, is not found; raw TeX in the
   text fails `tex-in-the-text` from `drafting` on (round 2 of step 11).

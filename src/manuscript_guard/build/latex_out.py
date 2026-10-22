@@ -345,13 +345,15 @@ def _markdown_digits(markdown: str, *, citeproc: bool) -> list[tuple[str, int]]:
     # `[^1]`, in LaTeX as in Word, and the mask blanks it all the same. Only where the mask
     # blanked it as a mark: one in a listing or a comment is not printed (round 2 of step 11).
     # Only a note something marks: a mark inside another note pandoc prints as typed
-    # (round 4 of step 11).
+    # (round 4 of step 11), whatever its label (round 5).
     defined = {found["label"] for note in noted if note.references
                and (found := _NOTE_DEFINITION.match(markdown, note.start)) is not None}  # fmt: skip
     hidden = [span for name, spans in masked_spans(markdown).items() if name != "footnote"
               for span in spans]  # fmt: skip
     for found in _NOTE_MARK.finditer(markdown):
-        if found["label"] in defined or any(a <= found.start() < b for a, b in hidden):
+        within = any(note.start < found.start() < note.end for note in noted)
+        if (found["label"] in defined and not within
+                or any(a <= found.start() < b for a, b in hidden)):  # fmt: skip
             continue
         for index in range(found.start("label"), found.end("label")):
             if markdown[index].isdigit():

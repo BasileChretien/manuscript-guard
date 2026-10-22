@@ -160,6 +160,21 @@ def contents(
     write the same file. One it cannot print is left out and given as refused, and the rest
     are written: a value no file binds stops nothing (round 1 of step 4b). `figures` are the
     rendered figures by key, None where none is in a format pdfLaTeX includes."""
+    written, refused = entries(folder, namespace, results, figures)
+    return Written(folder / NAME, _HEAD.format(digest=digest) + "".join(
+        rf"\expandafter\def\csname mg@{ref}\endcsname#1{{{body}}}" + "\n" for ref, body in written
+    ), tuple(refused))  # fmt: skip
+
+
+def entries(
+    folder: Path,
+    namespace: dict[str, Value],
+    results: Results,
+    figures: dict[str, Path | None],
+) -> tuple[list[tuple[str, str]], list[NotPrintable]]:
+    """What the values file defines for each key, `#1` standing for a figure's options, and
+    what it cannot print: `contents`'s, and the submission folder's, which writes each in
+    where its binding stands (step 10)."""
     entries: list[tuple[str, str]] = []
     refused: list[NotPrintable] = []
     for ref, value in sorted(namespace.items()):
@@ -187,9 +202,7 @@ def contents(
         entries.append((f"figure.{key}", r"\includegraphics[#1]{" + relative + "}"))
     for step in sorted(results.steps):
         entries.append((f"method.{step}", ""))
-    return Written(folder / NAME, _HEAD.format(digest=digest) + "".join(
-        rf"\expandafter\def\csname mg@{ref}\endcsname#1{{{body}}}" + "\n" for ref, body in entries
-    ), tuple(refused))  # fmt: skip
+    return entries, refused
 
 
 def rendered_figures(project: Project) -> dict[str, Path | None]:
@@ -251,7 +264,7 @@ def check_values(project: Project, namespace: dict[str, Value], results: Results
             report = report.with_findings(Finding(
                 gate="G1", code="values-file-stale",
                 message=f"{shown} is not what `values` writes from the results as they stand, "
-                "so a PDF compiled from it shows other numbers than the results",
+                "so a PDF compiled from it may show other numbers than the results",
                 path=written.path, hint="run `manuscript-guard values`, and commit the file",
             ))  # fmt: skip
     return report
@@ -312,10 +325,15 @@ def results_digest(root: Path, results: Results) -> str:
     return found.hexdigest()
 
 
+#: The file's head. `\\ProvidesPackage` takes no description: LaTeX reads one as a date, and
+#: under LaTeX 2024-06 a description that opens with no date stopped the next `\\title`
+#: ("Missing = inserted for \\ifnum"), measured under MiKTeX 24.4 on 2026-10-22. A figure's
+#: entry is `\\includegraphics`, so the file loads graphicx itself.
 _HEAD = r"""% manuscript-guard values, from the results sha256:{digest}
 % Written by `manuscript-guard values`; `check` compares it with what that would write.
 \NeedsTeXFormat{{LaTeX2e}}
-\ProvidesPackage{{mgvalues}}[manuscript-guard values]
+\ProvidesPackage{{mgvalues}}
+\RequirePackage{{graphicx}}
 \DeclareRobustCommand{{\mg}}[2][]{{%
   \ifcsname mg@#2\endcsname
     \csname mg@#2\endcsname{{#1}}%

@@ -16,7 +16,7 @@ numbers are not compared: a PDF's page index is not the page printed on it.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from manuscript_guard.contracts._schema import read_text
@@ -31,6 +31,7 @@ from manuscript_guard.literature.sources import (
     stored_files,
 )
 from manuscript_guard.text.masking import blank_comments
+from manuscript_guard.text.reader import LATEX, manuscript_format
 
 GATE = "G7"
 #: The fewest words a quotation holds for it to be looked for: "so-called" and a quoted term
@@ -158,36 +159,62 @@ def check_prose_quotations(project: Project) -> Report:
     sources = project.path("literature") / "sources"
     read: dict[Path, str | None] = {}
     report = Report()
-    for path in source_files(project.path("manuscript")):
-        for quotation in quotations_in(read_text(path)):
-            stored = [(key, source) for key in quotation.keys
-                      for source in _sources_of(sources, key)]  # fmt: skip
-            if not stored:
-                report = report.with_findings(_unchecked(path, quotation))
-                continue
-            texts = [(key, _text(read, source)) for key, source in stored]
-            if any(text is not None and quoted_in(text, quotation.quote) for _k, text in texts):
-                continue
-            # Named only where a source was read: a work with none was not looked in (round
-            # 1 of #282: every cited key was named).
-            looked_in = list(dict.fromkeys(key for key, text in texts if text is not None))
-            if not looked_in:
-                report = report.with_findings(_unchecked(path, quotation))
-                continue
-            report = report.with_findings(
-                Finding(
-                    gate=GATE,
-                    code="quotation-not-in-source",
-                    severity=WARN,
-                    message=f"the quotation {_shown(quotation.quote)} is not in the stored "
-                    f"source of {', '.join('@' + key for key in looked_in)}",
-                    path=path,
-                    line=quotation.line,
-                    hint="copy the words from the source rather than from memory, or cite the "
-                    "work that says them",
-                )
+    for path, quotation in _quotations(project):
+        stored = [(key, source) for key in quotation.keys
+                  for source in _sources_of(sources, key)]  # fmt: skip
+        if not stored:
+            report = report.with_findings(_unchecked(path, quotation))
+            continue
+        texts = [(key, _text(read, source)) for key, source in stored]
+        if any(text is not None and quoted_in(text, quotation.quote) for _k, text in texts):
+            continue
+        # Named only where a source was read: a work with none was not looked in (round 1 of
+        # #282: every cited key was named).
+        looked_in = list(dict.fromkeys(key for key, text in texts if text is not None))
+        if not looked_in:
+            report = report.with_findings(_unchecked(path, quotation))
+            continue
+        report = report.with_findings(
+            Finding(
+                gate=GATE,
+                code="quotation-not-in-source",
+                severity=WARN,
+                message=f"the quotation {_shown(quotation.quote)} is not in the stored "
+                f"source of {', '.join('@' + key for key in looked_in)}",
+                path=path,
+                line=quotation.line,
+                hint="copy the words from the source rather than from memory, or cite the "
+                "work that says them",
             )
+        )
     return report
+
+
+def _quotations(project: Project) -> list[tuple[Path, Quotation]]:
+    """Each quotation of the manuscript with the file and the line it is typed on. A LaTeX
+    manuscript's are read in its documents as they print (`printed_of`), where ``...'' is a
+    quotation and a citation is `[@key]`, each placed back at its `.tex` file's line (step
+    8)."""
+    folder = project.path("manuscript")
+    if manuscript_format(folder) != LATEX:
+        return [(path, quotation) for path in source_files(folder)
+                for quotation in quotations_in(read_text(path))]  # fmt: skip
+    from manuscript_guard.text.latex.printed import printed_of
+
+    return [(folder / path, quotation) for part in (False, True)
+            for path, quotation in printed_quotations(printed_of(folder, supplementary=part))]
+
+
+def printed_quotations(view) -> list[tuple[str, Quotation]]:
+    """Each quotation of a LaTeX document's printed view, with the path of the `.tex` file
+    it is typed in and its line there (`Printed.place_line`)."""
+    found = []
+    for quotation in quotations_in(view.text):
+        where = view.place_line(quotation.line)
+        if where is not None:
+            source, line = where
+            found.append((source.path, replace(quotation, line=line)))
+    return found
 
 
 def _text(read: dict[Path, str | None], source: Path) -> str | None:

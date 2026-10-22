@@ -30,6 +30,13 @@ mg_find_root <- function(start = getwd()) {
 #' and a label such as "2015-2024" is a value rather than a rounding of one.
 #' @noRd
 mg_check_display <- function(key, value, display) {
+  # A string that is an ISO date is printed as that date or a coarser statement of it,
+  # as Python's `display_problem` holds it.
+  if (is.character(value) && length(value) == 1) {
+    problem <- mg_date_display_problem(value, display)
+    if (!is.null(problem)) stop(key, ": ", problem, call. = FALSE)
+    return(invisible(NULL))
+  }
   if (is.logical(value) || !is.numeric(value)) {
     return(invisible(NULL))
   }
@@ -256,6 +263,83 @@ mg_lockfile_digest <- function(path) {
 #' @noRd
 mg_input_digest <- function(path) {
   mg_digest_in(path, c(MG_SOURCE_SUFFIXES, MG_DATA_SUFFIXES))
+}
+
+#' The path a file the analysis READ is recorded under
+#'
+#' Mirrors `Emitter._input_path` in the Python emitter and must stay identical to it: the
+#' path from the project root, with "." and ".." collapsed as text, so that one file spelt
+#' two ways is one input (the review of 76880fc3, #392). Unlike `normalizePath`, it follows
+#' no link: a git-annex input is a link into .git/annex, and its own path is the one that
+#' names it. Where the path as written leaves the project, as one written through a link to
+#' it does (a home folder that is a link, on a cluster), the folder it is in is resolved, as
+#' the root is, and the name kept (round 1 of #409). A relative `path` is read from the
+#' working directory, as R reads it.
+#' @noRd
+mg_input_path <- function(path, root) {
+  path <- path.expand(path)
+  recorded <- mg_path_from(path, root)
+  if (!mg_path_outside(recorded)) return(recorded)
+  folder <- normalizePath(dirname(path), winslash = "/", mustWork = FALSE)
+  inside <- mg_path_from(paste0(folder, "/", basename(path)), root)
+  if (mg_path_outside(inside)) recorded else inside
+}
+
+#' Whether a recorded path is outside the project: above it, or on another drive
+#'
+#' As `_outside` in the Python emitter.
+#' @noRd
+mg_path_outside <- function(recorded) {
+  recorded == ".." || startsWith(recorded, "../") || startsWith(recorded, "/") ||
+    substr(recorded, 2, 2) == ":"
+}
+
+#' A path from the project root, with "." and ".." collapsed as text
+#'
+#' As `_from_root` in the Python emitter, `os.path.relpath` of `os.path.normpath`: on
+#' Windows the drive and the names compare in any case, and a path on another drive than
+#' the project is kept whole.
+#' @noRd
+mg_path_from <- function(path, root) {
+  windows <- .Platform$OS.type == "windows"
+  same <- function(a, b) if (windows) tolower(a) == tolower(b) else a == b
+  split <- function(text) {
+    if (windows) text <- gsub("\\", "/", text, fixed = TRUE)
+    drive <- if (windows) regmatches(text, regexpr("^([A-Za-z]:|//[^/]+/[^/]+)", text)) else ""
+    if (length(drive) == 0) drive <- ""
+    rest <- substring(text, nchar(drive) + 1L)
+    list(drive = drive, rooted = startsWith(rest, "/"),
+         names = strsplit(rest, "/", fixed = TRUE)[[1]])
+  }
+  # As `os.path.normpath` collapses a rooted path: a ".." at the top goes nowhere.
+  collapse <- function(names) {
+    kept <- character()
+    for (name in names) {
+      if (name %in% c("", ".")) next
+      kept <- if (name == "..") head(kept, -1L) else c(kept, name)
+    }
+    kept
+  }
+  home <- split(root)
+  given <- split(path)
+  if (!given$rooted) {
+    here <- split(normalizePath(getwd(), winslash = "/"))
+    given <- list(drive = here$drive, names = c(here$names, given$names))
+  } else if (!nzchar(given$drive)) {
+    given$drive <- home$drive
+  }
+  base <- collapse(home$names)
+  target <- collapse(given$names)
+  if (!same(given$drive, home$drive)) {
+    return(paste0(given$drive, "/", paste(target, collapse = "/")))
+  }
+  shared <- 0L
+  while (shared < min(length(target), length(base)) &&
+         same(target[shared + 1L], base[shared + 1L])) {
+    shared <- shared + 1L
+  }
+  names <- c(rep("..", length(base) - shared), target[seq_along(target) > shared])
+  if (length(names) == 0) "." else paste(names, collapse = "/")
 }
 
 #' The exponent a display carries, whichever of its two spellings was used
@@ -682,10 +766,357 @@ mg_meddra_release <- function(path) {
   version
 }
 
+# Dates the analysis states about its data, mirroring the Python `dates` module: ISO 8601 to
+# a year, a month or a day, each a span of days; printed in the English the paper declares,
+# and a display written by hand held to its date. Month names are written out: `month.name`
+# is English in every locale, and spelt here so that the two languages read one list.
+MG_MONTHS <- c("January", "February", "March", "April", "May", "June", "July", "August",
+               "September", "October", "November", "December")
+
+# A date as a year, a month and a day, NA where it is not stated, or NULL where there is no
+# such day: 2023-02-30, or month 13.
+mg_dated <- function(year, month, day) {
+  if (is.na(year) || year < 1L) return(NULL)
+  if (!is.na(month) && (month < 1L || month > 12L)) return(NULL)
+  if (!is.na(day)) {
+    if (is.na(month)) return(NULL)
+    # With its format, an impossible day is NA; without one, as.Date stops.
+    on <- as.Date(sprintf("%04d-%02d-%02d", year, month, day), format = "%Y-%m-%d")
+    if (is.na(on) || as.integer(format(on, "%d")) != day) return(NULL)
+  }
+  list(year = as.integer(year), month = as.integer(month), day = as.integer(day))
+}
+
+# `text` as an ISO 8601 date to a year, a month or a day, or NULL, as Python's `parse_iso`.
+mg_iso_date <- function(text) {
+  if (!is.character(text) || length(text) != 1 || is.na(text)) return(NULL)
+  plain <- trimws(text)
+  parts <- regmatches(plain, regexec("^([0-9]{4})(?:-([0-9]{2})(?:-([0-9]{2}))?)?$", plain,
+                                     perl = TRUE))[[1]]
+  if (length(parts) == 0) return(NULL)
+  part <- function(i) if (nzchar(parts[i])) as.integer(parts[i]) else NA_integer_
+  mg_dated(part(2), part(3), part(4))
+}
+
+mg_date_first <- function(dated) {
+  as.Date(sprintf("%04d-%02d-%02d", dated$year, if (is.na(dated$month)) 1L else dated$month,
+                  if (is.na(dated$day)) 1L else dated$day))
+}
+
+mg_date_last <- function(dated) {
+  if (!is.na(dated$day)) return(mg_date_first(dated))
+  month <- if (is.na(dated$month)) 12L else dated$month
+  following <- if (month == 12L) sprintf("%04d-01-01", dated$year + 1L) else
+    sprintf("%04d-%02d-01", dated$year, month + 1L)
+  as.Date(following) - 1
+}
+
+mg_date_iso <- function(dated) {
+  if (!is.na(dated$day)) return(sprintf("%04d-%02d-%02d", dated$year, dated$month, dated$day))
+  if (!is.na(dated$month)) return(sprintf("%04d-%02d", dated$year, dated$month))
+  sprintf("%04d", dated$year)
+}
+
+mg_date_precision <- function(dated) {
+  if (!is.na(dated$day)) "day" else if (!is.na(dated$month)) "month" else "year"
+}
+
+# How the paper prints the date, as Python's `written`: "1 March 2024" or "March 1, 2024",
+# "March 2024", "2024".
+mg_date_written <- function(dated, english) {
+  if (is.na(dated$month)) return(as.character(dated$year))
+  month <- MG_MONTHS[dated$month]
+  if (is.na(dated$day)) return(paste(month, dated$year))
+  if (identical(english, "en-US")) return(paste0(month, " ", dated$day, ", ", dated$year))
+  paste(dated$day, month, dated$year)
+}
+
+# Every date a display can be read as, as Python's `readings`: read whole; a date in
+# figures with the day and the month apart is read both ways, the year first one way.
+mg_readings <- function(text) {
+  plain <- gsub("[[:space:]]+", " ", trimws(gsub("\u00a0", " ", text, fixed = TRUE)))
+  iso <- mg_iso_date(plain)
+  if (!is.null(iso)) return(list(iso))
+  words <- mg_read_words(plain)
+  if (!is.null(words)) return(if (isFALSE(words)) list() else list(words))
+  parts <- regmatches(plain, regexec("^([0-9]{1,4})([/.-])([0-9]{1,2})\\2([0-9]{1,4})$",
+                                     plain, perl = TRUE))[[1]]
+  if (length(parts) == 0) return(list())
+  first <- parts[2]
+  middle <- parts[4]
+  last <- parts[5]
+  orders <- list()
+  if (nchar(first) == 4) {
+    orders <- list(c(first, middle, last))
+  } else if (nchar(last) == 4) {
+    orders <- list(c(last, middle, first), c(last, first, middle))
+  }
+  found <- list()
+  for (order in orders) {
+    dated <- mg_dated(as.integer(order[1]), as.integer(order[2]), as.integer(order[3]))
+    if (!is.null(dated) && !any(vapply(found, identical, logical(1), dated))) {
+      found[[length(found) + 1]] <- dated
+    }
+  }
+  found
+}
+
+# The first date a display can be read as, or NULL, as Python's `read_written`.
+mg_read_written <- function(text) {
+  found <- mg_readings(text)
+  if (length(found) == 0) NULL else found[[1]]
+}
+
+# A display written in words, "1 March 2024", "March 1, 2024" or "March 2024": its date,
+# FALSE where it is written so and is no date ("31 April 2024"), NULL where it is not.
+mg_read_words <- function(plain) {
+  names_ <- tolower(MG_MONTHS)
+  month_of <- function(name) {
+    hit <- match(tolower(name), c(names_, substr(names_, 1, 3), "sept"))
+    if (is.na(hit)) NA_integer_ else c(1:12, 1:12, 9L)[hit]
+  }
+  month <- "([A-Za-z]{3,9})\\.?"
+  day <- "([0-9]{1,2})(?:st|nd|rd|th)?"
+  year <- "([0-9]{4})"
+  forms <- list(
+    dmy = paste0("^", day, " ", month, ",? ", year, "$"),
+    mdy = paste0("^", month, " ", day, ",? ", year, "$"),
+    my = paste0("^", month, ",? ", year, "$"),
+    # strftime's "%d-%b-%Y" and SAS's DATE9 (round 2 of #392): "31-Dec-2023", "31DEC2023".
+    dmy = paste0("^([0-9]{1,2})-?([A-Za-z]{3,9})-?", year, "$")
+  )
+  for (at in seq_along(forms)) {
+    order <- names(forms)[at]
+    parts <- regmatches(plain, regexec(forms[[at]], plain, perl = TRUE))[[1]]
+    if (length(parts) == 0) next
+    stated <- switch(order,
+      dmy = list(day = parts[2], name = parts[3], year = parts[4]),
+      mdy = list(day = parts[3], name = parts[2], year = parts[4]),
+      my = list(day = NA, name = parts[2], year = parts[3])
+    )
+    number <- month_of(stated$name)
+    if (is.na(number)) return(FALSE)
+    dated <- mg_dated(as.integer(stated$year), number, as.integer(stated$day))
+    return(if (is.null(dated)) FALSE else dated)
+  }
+  NULL
+}
+
+# What is wrong with `display` as the display of the ISO date `value`, or NULL, as Python's
+# `display_problem`: the date itself or a coarser statement of it.
+mg_date_display_problem <- function(value, display) {
+  dated <- mg_iso_date(value)
+  if (is.null(dated) || identical(display, value)) return(NULL)
+  shown <- mg_readings(display)
+  # Only a day is a date beyond doubt: "2010-12" is also a period written short.
+  if (length(shown) == 0 && mg_date_precision(dated) != "day") return(NULL)
+  if (length(shown) == 0) {
+    return(paste0("display '", display, "' is not a date, and the value is the date ",
+                  mg_date_iso(dated), ". Write the date alone, \"",
+                  mg_date_written(dated, "en-GB"), "\" or \"",
+                  mg_date_written(dated, "en-US"), "\", and the words around it in the text"))
+  }
+  levels <- c("year", "month", "day")
+  coarse <- Filter(function(s) {
+    match(mg_date_precision(s), levels) <= match(mg_date_precision(dated), levels)
+  }, shown)
+  if (length(coarse) == 0) {
+    return(paste0("display '", display, "' names a ", mg_date_precision(shown[[1]]),
+                  ", and the value is the ", mg_date_precision(dated), " ", mg_date_iso(dated),
+                  ": a display may state a date less precisely, never more"))
+  }
+  within <- vapply(coarse, function(s) {
+    mg_date_first(s) <= mg_date_first(dated) && mg_date_last(dated) <= mg_date_last(s)
+  }, logical(1))
+  if (!any(within)) {
+    return(paste0("display '", display, "' is ", mg_date_iso(coarse[[1]]),
+                  ", and the value is ", mg_date_iso(dated)))
+  }
+  NULL
+}
+
+# The English paper.yaml declares, read from its own line, and British English where none is:
+# the emitter reads no YAML. As Python's `_english`.
+mg_english <- function(project_root) {
+  paper <- file.path(project_root, "paper.yaml")
+  if (!file.exists(paper)) return("en-GB")
+  lines <- readLines(paper, warn = FALSE, encoding = "UTF-8")
+  found <- regmatches(lines, regexec(
+    "^english_variant:[[:space:]]*[\"']?(en-GB|en-US)[\"']?[[:space:]]*(#.*)?$", lines))
+  found <- Filter(length, found)
+  if (length(found) == 0) "en-GB" else found[[1]][2]
+}
+
+# The digest that identifies a dataset, as Python's `dataset_digest`: one file's own, or the
+# SHA-256 of "<digest>  <path>\n" for each file, in the order of their paths as bytes compare.
+mg_dataset_digest <- function(paths, digests) {
+  if (length(paths) == 1) return(digests[1])
+  in_order <- order(paths, method = "radix")
+  lines <- paste0(digests[in_order], "  ", paths[in_order], "\n", collapse = "")
+  digest::digest(charToRaw(enc2utf8(lines)), algo = "sha256", serialize = FALSE)
+}
+
+# The pin, checked against the files' digests, or the refusal that says what to pin, as
+# Python's `pin_of`.
+mg_pin <- function(name, fingerprint, whole, accepted, what, extracted) {
+  proposal <- paste0("fingerprint = \"", substr(whole, 1, 16), "\"")
+  if (is.null(fingerprint)) {
+    stop("dataset ", name, ": pin the extraction to its data, ", proposal, ", the digest of ",
+         what, " as it is now. The pin is what makes a new extraction need a new date",
+         call. = FALSE)
+  }
+  if (!is.character(fingerprint) || length(fingerprint) != 1 || is.na(fingerprint)) {
+    stop("dataset ", name, ": the fingerprint is text, ", proposal, call. = FALSE)
+  }
+  pin <- sub("^sha256:", "", tolower(trimws(fingerprint)))
+  if (!grepl("^[0-9a-f]{12,64}$", pin)) {
+    stop("dataset ", name, ": fingerprint '", fingerprint, "' is not the first twelve or ",
+         "more characters of a SHA-256 digest; ", what, " is ", proposal, call. = FALSE)
+  }
+  if (!any(startsWith(accepted, pin))) {
+    stop("dataset ", name, ": ", what, " is not the data pinned as extracted on ", extracted,
+         " (fingerprint ", pin, "); its digest begins ", substr(whole, 1, 16), ". If the ",
+         "data were extracted again, give the date of the new extraction and pin it: ",
+         "extracted = \"YYYY-MM-DD\", ", proposal, call. = FALSE)
+  }
+  pin
+}
+
+# A date the author states, as Python's `stated_date`.
+mg_stated_date <- function(name, what, text, optional = FALSE) {
+  missing_ <- is.null(text) || (length(text) == 1 && is.na(text))
+  if (missing_ && optional) return(NULL)
+  if (is.null(text)) {
+    stop("dataset ", name, ": give the date the data were extracted or downloaded, as ISO ",
+         "8601: ", what, " = \"2024-03-01\", or \"2024-03\" or \"2024\" where that is all ",
+         "that is known", call. = FALSE)
+  }
+  dated <- mg_iso_date(text)
+  if (is.null(dated)) {
+    stop("dataset ", name, ": ", what, " ", format(text), " is not a date written as ISO ",
+         "8601: \"2024-03-01\", \"2024-03\" or \"2024\"", call. = FALSE)
+  }
+  dated
+}
+
+# The data's own dates, each as its first and last day and its ISO text, NA where missing, as
+# Python's `as_dated`: a Date or a date-time is a day, text is ISO with a time after the day
+# left out, a whole number is a year. Read once for each distinct entry.
+mg_spans <- function(name, dates) {
+  if (inherits(dates, "Date") || inherits(dates, "POSIXt")) {
+    day <- if (inherits(dates, "Date")) dates else as.Date(format(dates, "%Y-%m-%d"))
+    return(list(first = day, last = day, iso = format(day, "%Y-%m-%d")))
+  }
+  if (is.factor(dates)) dates <- as.character(dates)
+  if (is.list(dates)) dates <- unlist(dates)
+  distinct <- unique(dates)
+  first <- rep(as.Date(NA), length(distinct))
+  last <- first
+  iso <- rep(NA_character_, length(distinct))
+  for (i in seq_along(distinct)) {
+    item <- distinct[i]
+    if (is.na(item) || (is.character(item) && !nzchar(trimws(item)))) next
+    dated <- NULL
+    if (is.character(item)) {
+      dated <- mg_iso_date(strsplit(trimws(item), "[T ]")[[1]][1])
+    } else if (is.numeric(item) && item == round(item) && item >= 1000 && item <= 9999) {
+      dated <- mg_dated(as.integer(item), NA_integer_, NA_integer_)
+    }
+    if (is.null(dated)) {
+      stop("dataset ", name, ": dates[", match(item, dates), "]: ", format(item),
+           " is not a date", call. = FALSE)
+    }
+    first[i] <- mg_date_first(dated)
+    last[i] <- mg_date_last(dated)
+    iso[i] <- mg_date_iso(dated)
+  }
+  at <- match(dates, distinct)
+  list(first = first[at], last = last[at], iso = iso[at])
+}
+
+# The data's own dates against what the call states, as Python's `_observed`.
+mg_observed_dates <- function(name, dates, from, to, when) {
+  spans <- mg_spans(name, dates)
+  present <- !is.na(spans$first)
+  count <- sum(present)
+  if (count == 0) stop("dataset ", name, ": dates holds no date", call. = FALSE)
+  named <- function(at) {
+    shown <- paste0(spans$iso[at[seq_len(min(3, length(at)))]], " at dates[",
+                    at[seq_len(min(3, length(at)))], "]", collapse = ", ")
+    if (length(at) > 3) paste0(shown, " and ", length(at) - 3, " more") else shown
+  }
+  outside <- rep(FALSE, length(present))
+  if (!is.null(from)) outside <- outside | (present & spans$last < mg_date_first(from))
+  if (!is.null(to)) outside <- outside | (present & spans$first > mg_date_last(to))
+  if (any(outside)) {
+    period <- paste0(if (is.null(from)) "..." else mg_date_iso(from), " to ",
+                     if (is.null(to)) "..." else mg_date_iso(to))
+    stop("dataset ", name, ": ", sum(outside), " of ", count, " dates lie outside the period ",
+         "the data are declared to cover (", period, "): ", named(which(outside)),
+         call. = FALSE)
+  }
+  after <- present & spans$first > mg_date_last(when)
+  if (any(after)) {
+    stop("dataset ", name, ": ", sum(after), " of ", count, " dates are after the extraction ",
+         "on ", mg_date_iso(when), ": ", named(which(after)), call. = FALSE)
+  }
+  earliest <- which(present)[which.min(spans$first[present])]
+  latest <- which(present)[which.max(spans$last[present])]
+  list(earliest = spans$iso[earliest], latest = spans$iso[latest], count = count)
+}
+
+# What a `dataset()` call states, checked, as Python's `declare`.
+mg_declare <- function(name, extracted, covers, version, dates) {
+  when <- mg_stated_date(name, "extracted", extracted)
+  if (mg_date_first(when) > Sys.Date()) {
+    stop("dataset ", name, ": extracted ", mg_date_iso(when), " is after today", call. = FALSE)
+  }
+  from <- NULL
+  to <- NULL
+  if (!is.null(covers)) {
+    if (length(covers) != 2) {
+      stop("dataset ", name, ": covers is a pair, c(from, to), each an ISO date or NA where ",
+           "it is not stated: covers = c(\"1968\", \"2023-12-31\")", call. = FALSE)
+    }
+    from <- mg_stated_date(name, "covers from", covers[[1]], optional = TRUE)
+    to <- mg_stated_date(name, "covers to", covers[[2]], optional = TRUE)
+    if (is.null(from) && is.null(to)) {
+      stop("dataset ", name, ": covers states neither end; leave it out", call. = FALSE)
+    }
+    if (!is.null(from) && !is.null(to) && mg_date_first(from) > mg_date_last(to)) {
+      stop("dataset ", name, ": covers runs backwards, from ", mg_date_iso(from), " to ",
+           mg_date_iso(to), call. = FALSE)
+    }
+  }
+  for (end_of in c("from", "to")) {
+    dated <- if (end_of == "from") from else to
+    if (!is.null(dated) && mg_date_first(dated) > mg_date_last(when)) {
+      stop("dataset ", name, ": the data cannot cover a period after they were extracted, ",
+           "and covers ", end_of, " ", mg_date_iso(dated), " is after ", mg_date_iso(when),
+           call. = FALSE)
+    }
+  }
+  if (!is.null(version)) {
+    if (!is.character(version) || length(version) != 1 || is.na(version)) {
+      # A number has no digits of its own: 5.0 is "5" here and "5.0" in Python.
+      stop("dataset ", name, ": give the version as text, as the source writes it ",
+           "(\"2024 Q1\", \"5.0\")", call. = FALSE)
+    }
+    version <- trimws(gsub("[[:space:]]+", " ", version))
+    if (!nzchar(version)) {
+      stop("dataset ", name, ": the version is empty; leave it out where the source has none",
+           call. = FALSE)
+    }
+  }
+  observed <- if (is.null(dates)) NULL else mg_observed_dates(name, dates, from, to, when)
+  list(extracted = when, from = from, to = to, version = version, observed = observed)
+}
+
 # Keep the plan as it stands the first time the analysis writes results, and never again,
 # mirroring the Python emitter's `freeze_plan`: design/plan.frozen.yaml holds the plan's
-# text, its digest, the day and the script, written as JSON, which is YAML too.
-mg_freeze_plan <- function(project_root, script) {
+# text, its digest, the day and the script, written as JSON, which is YAML too. `synthetic`
+# says every input of that first write was declared synthetic, as in Python.
+mg_freeze_plan <- function(project_root, script, synthetic = FALSE) {
   plan <- file.path(project_root, "design", "plan.md")
   frozen <- file.path(project_root, "design", "plan.frozen.yaml")
   if (!file.exists(plan) || file.exists(frozen)) return(invisible(NULL))
@@ -709,6 +1140,7 @@ mg_freeze_plan <- function(project_root, script) {
     sha256 = mg_source_digest(plan),
     plan = text
   )
+  if (isTRUE(synthetic)) record$synthetic <- TRUE
   json <- jsonlite::toJSON(record, auto_unbox = TRUE, pretty = 2)
   mg_write_lf(as.character(json), frozen)
   invisible(frozen)
@@ -740,9 +1172,16 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
          call. = FALSE)
   }
   project_root <- if (is.null(root)) mg_find_root(dirname(script_path)) else normalizePath(root, winslash = "/")
+  # Where a data file is read, as given or from the project root, and the path it is
+  # recorded under, which says whether two spellings are one file (`mg_input_path`).
+  input_full <- function(path) if (file.exists(path)) path else file.path(project_root, path)
+  input_path <- function(path) mg_input_path(input_full(path), project_root)
   state <- new.env(parent = emptyenv())
   state$values <- list()
   state$inputs <- as.character(inputs)
+  # The path each input is recorded under, beside it, so that `add_input` lists a file once
+  # without working out the path of every input before it.
+  state$recorded <- vapply(state$inputs, input_path, character(1), USE.NAMES = FALSE)
   state$restricted <- character()
   state$synthetic <- character()
   state$tables <- list()
@@ -753,6 +1192,7 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
   state$relations <- list()
   state$flows <- list()
   state$corrections <- list()
+  state$datasets <- list()
   # Which cells this emitter produced from numbers, per table, in the shape the fragment
   # publishes. G2 reads it and applies the same rule to a fragment from either language;
   # without it, a composed cell and a typed one are the same characters on disk.
@@ -964,6 +1404,79 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
     state$values[[key]] <- list(value = version, display = version, label = TRUE,
                                 role = "dictionary")
     invisible(version)
+  }
+
+  # The data the analysis read, by what identifies them, mirroring the Python `dataset()`:
+  # the date they were extracted or downloaded, the period they cover, and the source's
+  # version where it has one, each emitted as `dataset.<name>.<part>`. `fingerprint` pins the
+  # date to the files, twelve or more characters from the start of their digest; a run on
+  # other files is refused, and the refusal gives the digest to pin. `dates` is the data's own
+  # dates, none of which may lie wholly outside `covers` or after the extraction.
+  dataset <- function(name, path, extracted = NULL, fingerprint = NULL, covers = NULL,
+                      version = NULL, dates = NULL, restricted = FALSE, synthetic = FALSE) {
+    if (!is.character(name) || length(name) != 1 || !grepl("^[a-z0-9][a-z0-9_-]*$", name)) {
+      stop("dataset ", format(name), ": a name is lowercase letters, digits, hyphens and ",
+           "underscores, as design/data_sources.yaml names a source", call. = FALSE)
+    }
+    slug <- gsub("-", "_", name, fixed = TRUE)
+    taken <- names(state$datasets)
+    clash <- taken[gsub("-", "_", taken, fixed = TRUE) == slug]
+    if (length(clash) > 0) {
+      stop("dataset ", name, ": ", clash[1], " is already declared by ", script_path,
+           ", under the same keys", call. = FALSE)
+    }
+    if (!is.character(path) || length(path) == 0) {
+      stop("dataset ", name, ": name the file or files the data are in", call. = FALSE)
+    }
+    full <- vapply(path, input_full, character(1), USE.NAMES = FALSE)
+    for (i in seq_along(full)) {
+      if (!file.exists(full[i]) || dir.exists(full[i])) {
+        stop("dataset ", name, ": no file ", path[i], call. = FALSE)
+      }
+    }
+    rel <- vapply(path, input_path, character(1), USE.NAMES = FALSE)
+    # A file named twice, however it is spelt, is one file of the data, as in Python
+    # (rounds 1 and 2 of #392).
+    once <- !duplicated(rel)
+    path <- path[once]
+    full <- full[once]
+    rel <- rel[once]
+    whole <- mg_dataset_digest(rel, vapply(full, mg_input_digest, character(1),
+                                           USE.NAMES = FALSE))
+    # One file is also known by its bytes as they are, which `sha256sum` prints.
+    accepted <- whole
+    if (length(full) == 1) accepted <- c(accepted, digest::digest(file = full[1], algo = "sha256"))
+    what <- if (length(full) == 1) rel[1] else paste0("the ", length(full), " files")
+    stated <- mg_declare(name, extracted, covers, version, dates)
+    pin <- mg_pin(name, fingerprint, whole, accepted, what, mg_date_iso(stated$extracted))
+    add_input(path, restricted = restricted, synthetic = synthetic)
+    english <- mg_english(project_root)
+    parts <- list(extracted = stated$extracted, covers_from = stated$from, covers_to = stated$to)
+    for (part in names(parts)) {
+      dated <- parts[[part]]
+      if (is.null(dated)) next
+      key <- paste0("dataset.", slug, ".", part)
+      if (!is.null(state$values[[key]])) stop(key, " emitted twice by ", script_path, call. = FALSE)
+      state$values[[key]] <- list(value = mg_date_iso(dated),
+                                  display = mg_date_written(dated, english),
+                                  label = TRUE, role = "dataset")
+    }
+    if (!is.null(stated$version)) {
+      key <- paste0("dataset.", slug, ".version")
+      if (!is.null(state$values[[key]])) stop(key, " emitted twice by ", script_path, call. = FALSE)
+      state$values[[key]] <- list(value = stated$version, display = stated$version,
+                                  label = TRUE, role = "dataset")
+    }
+    record <- list(inputs = as.list(rel), fingerprint = pin,
+                   extracted = mg_date_iso(stated$extracted))
+    covered <- list()
+    if (!is.null(stated$from)) covered$from <- mg_date_iso(stated$from)
+    if (!is.null(stated$to)) covered$to <- mg_date_iso(stated$to)
+    if (length(covered) > 0) record$covers <- covered
+    if (!is.null(stated$version)) record$version <- stated$version
+    if (!is.null(stated$observed)) record$observed <- stated$observed
+    state$datasets[[name]] <- record
+    invisible(NULL)
   }
 
   # Declare a variable a model uses, with the kind it is meant to be, mirroring the Python
@@ -1356,19 +1869,26 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
   # extract or a test fixture: G1 then says so of every result the manuscript quotes from
   # this run, and fails at submission.
   add_input <- function(path, restricted = FALSE, synthetic = FALSE) {
-    # One path or several, as `list.files()` gives them; one already declared is not listed twice.
-    state$inputs <- c(state$inputs, setdiff(as.character(path), state$inputs))
-    if (isTRUE(restricted)) state$restricted <- c(state$restricted, path)
-    if (isTRUE(synthetic)) state$synthetic <- c(state$synthetic, path)
+    # One path or several, as `list.files()` gives them. One already declared, however it is
+    # spelt, is not listed twice, and its marks go by the path it is recorded under.
+    path <- as.character(path)
+    recorded <- vapply(path, input_path, character(1), USE.NAMES = FALSE)
+    new <- !duplicated(recorded) & !(recorded %in% state$recorded)
+    state$inputs <- c(state$inputs, path[new])
+    state$recorded <- c(state$recorded, recorded[new])
+    if (isTRUE(restricted)) state$restricted <- c(state$restricted, recorded)
+    if (isTRUE(synthetic)) state$synthetic <- c(state$synthetic, recorded)
     invisible(NULL)
   }
 
   provenance <- function() {
-    input_records <- lapply(state$inputs, function(path) {
-      full <- if (file.exists(path)) path else file.path(project_root, path)
+    # Each file once, digested where the analysis read it.
+    input_records <- lapply(which(!duplicated(state$recorded)), function(i) {
+      path <- state$recorded[[i]]
+      full <- input_full(state$inputs[[i]])
       if (!file.exists(full)) stop("declared input does not exist: ", full, call. = FALSE)
       record <- list(
-        path = relative(full),
+        path = path,
         sha256 = mg_input_digest(full),
         # The bytes as they are, which a Git LFS or git-annex pointer names the content by,
         # so G1 can tell an input that is not fetched (item 35). As `raw_sha256` in Python.
@@ -1474,6 +1994,7 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
     if (length(state$relations) > 0) document$relations <- state$relations
     if (length(state$flows) > 0) document$flows <- state$flows
     if (length(state$corrections) > 0) document$corrections <- state$corrections
+    if (length(state$datasets) > 0) document$datasets <- state$datasets
     json <- jsonlite::toJSON(document, auto_unbox = TRUE, pretty = 2, digits = NA, null = "null")
     mg_write_lf(as.character(json), path)
 
@@ -1481,7 +2002,8 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
     # you just wrote, so a later hand-edit cannot pass unnoticed.
     checksum <- digest::digest(file = path, algo = "sha256")
     mg_write_lf(paste0(checksum, "  ", basename(path)), paste0(path, ".sha256"))
-    mg_freeze_plan(project_root, relative(script_path))
+    every <- length(state$inputs) > 0 && all(state$inputs %in% state$synthetic)
+    mg_freeze_plan(project_root, relative(script_path), every)
     invisible(path)
   }
 
@@ -1491,6 +2013,7 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
     parameter = parameter,
     software = software,
     dictionary = dictionary,
+    dataset = dataset,
     variable = variable,
     model = model,
     step = step,

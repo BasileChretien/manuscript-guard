@@ -21,6 +21,7 @@ import hashlib
 import importlib.metadata
 import json
 import numbers
+import os
 import platform
 import re
 import subprocess
@@ -32,6 +33,8 @@ from pathlib import Path
 from manuscript_guard import __version__
 from manuscript_guard.contracts.project import find_root
 from manuscript_guard.contracts.values import DisplayError, check_string_value, derive_display
+from manuscript_guard.datasets import NAME as DATASET_NAME
+from manuscript_guard.datasets import dataset_digest, declare, pin_of, slug
 from manuscript_guard.paths import lockfiles
 from manuscript_guard.tables import HEADER_ROW, TABLE_SECTION, problems_in
 
@@ -326,6 +329,21 @@ def input_digest_matches(path: Path, recorded: str) -> bool:
     return _matches(path, recorded, _TEXT_SUFFIXES)
 
 
+def _from_root(path: Path, root: Path) -> str:
+    """`path` from `root`, with "." and ".." collapsed as text, or whole where it is on
+    another drive."""
+    full = os.path.normpath(path)
+    try:
+        return os.path.relpath(full, root).replace("\\", "/")
+    except ValueError:  # on another drive than the project
+        return Path(full).as_posix()
+
+
+def _outside(recorded: str) -> bool:
+    """Whether a recorded path is outside the project: above it, or on another drive."""
+    return recorded == ".." or recorded.startswith(("../", "/")) or recorded[1:2] == ":"
+
+
 def source_digest(path: Path) -> str:
     """The digest of a *script*, ignoring line endings.
 
@@ -384,7 +402,7 @@ PLAN = Path("design") / "plan.md"
 FROZEN_PLAN = Path("design") / "plan.frozen.yaml"
 
 
-def freeze_plan(root: Path, script: Path | str) -> Path | None:
+def freeze_plan(root: Path, script: Path | str, *, synthetic: bool = False) -> Path | None:
     """Keep the plan as it stands, the first time the analysis writes results, and never again.
 
     A plan rewritten after the results are known is how a hypothesis comes to fit its
@@ -400,6 +418,11 @@ def freeze_plan(root: Path, script: Path | str) -> Path | None:
     (`plan-not-utf8`) where its bytes do not decode; UTF-16 with no byte-order mark, of
     ASCII text, decodes, NULs and all, and is not said to be. R cannot hold a NUL in a
     string, and stopped there with the results already written (round 1 of #271).
+
+    `synthetic` says every input of that first write was declared synthetic: a dry run on
+    simulated data. The copy says so, and G12 then does not date the study's first results
+    by it, which a registration made after the dry run would otherwise be held to (Basile's
+    choice, 2026-10-21, round 1 of #390).
     """
     plan, frozen = root / PLAN, root / FROZEN_PLAN
     if not plan.is_file() or frozen.exists():
@@ -419,6 +442,8 @@ def freeze_plan(root: Path, script: Path | str) -> Path | None:
         "sha256": source_digest(plan),
         "plan": text,
     }
+    if synthetic:
+        record["synthetic"] = True
     frozen.write_text(
         json.dumps(record, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n"
     )
@@ -1137,10 +1162,15 @@ class Emitter:
     _relations: list[dict] = field(default_factory=list, init=False)
     _flows: dict[str, dict] = field(default_factory=dict, init=False)
     _corrections: dict[str, dict] = field(default_factory=dict, init=False)
-    # The inputs declared restricted, as they were written to `add_input`.
+    # The path each input is recorded under (`_input_path`), so that `add_input` lists a
+    # file once without working out the path of every input before it.
+    _recorded: set[str] = field(default_factory=set, init=False)
+    # The inputs declared restricted, by the path each is recorded under.
     _restricted: set[str] = field(default_factory=set, init=False)
     # The inputs declared synthetic: simulated data, a dummy extract, a test fixture.
     _synthetic: set[str] = field(default_factory=set, init=False)
+    # The data the analysis read, by what identifies them, as `dataset()` declared them.
+    _datasets: dict[str, dict] = field(default_factory=dict, init=False)
 
     def __post_init__(self) -> None:
         self.script = Path(self.script).resolve()
@@ -1149,6 +1179,7 @@ class Emitter:
             raise ValueError(
                 f"ci_level {self.ci_level!r}: a level is a percentage, \"95%\" or \"90%\""
             )
+        self._recorded = {self._input_path(given) for given in self.inputs}
 
     @staticmethod
     def cell(template: str, *parts: object) -> Composed:
@@ -1445,6 +1476,94 @@ class Emitter:
         self.value(key, version, label=True)
         self._values[key]["role"] = "dictionary"
         return version
+
+    def dataset(
+        self,
+        name: str,
+        path: str | Path | list[str | Path] | tuple[str | Path, ...],
+        *,
+        extracted: str | None = None,
+        fingerprint: str | None = None,
+        covers: tuple[str | None, str | None] | None = None,
+        version: str | None = None,
+        dates: object = None,
+        restricted: bool = False,
+        synthetic: bool = False,
+    ) -> None:
+        """Declare the data the analysis read by what identifies them: the date they were
+        extracted or downloaded, the period they cover, and the source's version where it
+        has one.
+
+            em.dataset("vigibase", "data/vigibase.csv", extracted="2024-03-01",
+                       covers=("1968", "2023-12-31"), fingerprint="3f9a1c2b7e4d5a60")
+
+        Writes `dataset.vigibase.extracted`, `.covers_from`, `.covers_to`, and `.version`
+        where one is given, which the Methods quote: "extracted on
+        {{results.dataset.vigibase.extracted}}". Dates are ISO 8601 to a year, a month or a
+        day, printed in the English paper.yaml declares. The name is the source's id in
+        `design/data_sources.yaml` where the project keeps one.
+
+        Many databases have one version, or none a user can name. What identifies the data
+        is then the extraction date and the file, so `fingerprint` pins the one to the other:
+        twelve or more characters from the start of the file's digest, as G1 records it or
+        as `sha256sum` prints it, or for several files the digest `datasets.dataset_digest`
+        names. A run on another file is refused, so that data extracted again cannot go out
+        under the old date, and the refusal gives the digest to pin.
+
+        `dates` is the data's own dates, a column of them: none may lie wholly outside
+        `covers`, or after the extraction. The files are declared as inputs, as `add_input`
+        declares them, `restricted` and `synthetic` as there.
+        """
+        if not isinstance(name, str) or not DATASET_NAME.fullmatch(name):
+            raise ValueError(
+                f"dataset {name!r}: a name is lowercase letters, digits, hyphens and "
+                f"underscores, as design/data_sources.yaml names a source"
+            )
+        taken = {slug(other): other for other in self._datasets}
+        if slug(name) in taken:
+            raise ValueError(
+                f"dataset {name!r}: {taken[slug(name)]!r} is already declared by "
+                f"{self.script}, under the same keys"
+            )
+        given = [path] if isinstance(path, (str, Path)) else list(path)
+        if not given:
+            raise ValueError(f"dataset {name!r}: name the file or files the data are in")
+        assert self.root is not None
+        files: list[tuple[str, Path]] = []
+        for raw in given:
+            full = self._read_at(raw)
+            if not full.is_file():
+                raise FileNotFoundError(f"dataset {name!r}: no file {full}")
+            rel = self._input_path(raw)
+            # A file named twice, however it is spelt, is one file of the data (rounds 1
+            # and 2 of #392).
+            if rel not in {done for done, _full in files}:
+                files.append((rel, full))
+        whole = dataset_digest([(rel, input_digest(full)) for rel, full in files])
+        # One file is also known by its bytes as they are, which `sha256sum` prints.
+        accepted = {whole} | ({sha256_of(files[0][1])} if len(files) == 1 else set())
+        what = files[0][0] if len(files) == 1 else f"the {len(files)} files"
+        stated = declare(name, extracted=extracted, covers=covers, version=version,
+                         dates=dates)  # fmt: skip
+        pin = pin_of(name, fingerprint, whole, accepted, what, stated.extracted.iso)
+        for _rel, full in files:
+            self.add_input(full, restricted=restricted, synthetic=synthetic)
+        english = self._english()
+        for part, value, display in stated.values(english):
+            key = f"dataset.{slug(name)}.{part}"
+            self.value(key, value, display=display, label=True)
+            self._values[key]["role"] = "dataset"
+        self._datasets[name] = stated.record([rel for rel, _full in files], pin)
+
+    def _english(self) -> str:
+        """The English paper.yaml declares, and British English where it cannot be read."""
+        try:
+            from manuscript_guard.contracts import load_project
+
+            project, _report = load_project(self.root)
+            return project.english_variant
+        except Exception:  # noqa: BLE001 - a half-configured project must not stop an analysis
+            return "en-GB"
 
     def variable(
         self,
@@ -1839,33 +1958,58 @@ class Emitter:
         forbids it leaving their hands: G1 then fails while git tracks it. `synthetic` says it
         is not the real data, a simulation, a dummy extract or a test fixture: G1 then says
         so of every result the manuscript quotes from this run, and fails at submission."""
-        if str(path) not in {str(given) for given in self.inputs}:
+        recorded = self._input_path(path)
+        if recorded not in self._recorded:
+            self._recorded.add(recorded)
             self.inputs.append(path)
         if restricted:
-            self._restricted.add(str(path))
+            self._restricted.add(recorded)
         if synthetic:
-            self._synthetic.add(str(path))
+            self._synthetic.add(recorded)
+
+    def _read_at(self, path: str | Path) -> Path:
+        """Where an input is read: as written, from the project root where it is relative."""
+        assert self.root is not None
+        given = Path(path).expanduser()
+        return given if given.is_absolute() else self.root / given
+
+    def _input_path(self, path: str | Path) -> str:
+        """The path an input is recorded under: from the project root, with "." and ".."
+        collapsed as text, so that one file spelt two ways is one input (the review of
+        76880fc3, #392). No link is followed: a git-annex input is a link into .git/annex,
+        and its own path is the one that names it. Where the path as written leaves the
+        project, as one written through a link to it does (a home folder that is a link,
+        on a cluster), the folder it is in is resolved, as the root is, and the name kept
+        (round 1 of #409). R's `mg_input_path` is the same."""
+        assert self.root is not None
+        written = self._read_at(path)
+        recorded = _from_root(written, self.root)
+        if not _outside(recorded):
+            return recorded
+        inside = _from_root(Path(os.path.realpath(written.parent)) / written.name, self.root)
+        return recorded if _outside(inside) else inside
 
     def _provenance(self) -> dict:
         root = self.root
         assert root is not None
         inputs = []
+        # Each file once, digested where the analysis read it.
+        reads: dict[str, Path] = {}
         for raw in self.inputs:
-            path = Path(raw)
-            if not path.is_absolute():
-                path = root / path
+            reads.setdefault(self._input_path(raw), self._read_at(raw))
+        for recorded, path in reads.items():
             if not path.exists():
                 raise FileNotFoundError(f"declared input does not exist: {path}")
             inputs.append(
                 {
-                    "path": str(path.relative_to(root)).replace("\\", "/"),
+                    "path": recorded,
                     "sha256": input_digest(path),
                     # The bytes as they are, which a Git LFS or git-annex pointer names the
                     # content by, so G1 can tell an input that is not fetched (item 35).
                     "raw_sha256": sha256_of(path),
                     "bytes": path.stat().st_size,
-                    **({"restricted": True} if str(raw) in self._restricted else {}),
-                    **({"synthetic": True} if str(raw) in self._synthetic else {}),
+                    **({"restricted": True} if recorded in self._restricted else {}),
+                    **({"synthetic": True} if recorded in self._synthetic else {}),
                 }
             )
 
@@ -1936,6 +2080,8 @@ class Emitter:
             document["flows"] = dict(self._flows)
         if self._corrections:
             document["corrections"] = dict(self._corrections)
+        if self._datasets:
+            document["datasets"] = dict(self._datasets)
         return document
 
     def _composition_of(self, key: str) -> dict:
@@ -2015,5 +2161,6 @@ class Emitter:
         payload = json.dumps(self.document(), indent=2, ensure_ascii=False, sort_keys=False)
         path.write_text(payload + "\n", encoding="utf-8", newline="\n")
         write_digest(path)
-        freeze_plan(root, self.script)
+        every = bool(self.inputs) and all(str(i) in self._synthetic for i in self.inputs)
+        freeze_plan(root, self.script, synthetic=every)
         return path

@@ -8,6 +8,7 @@ documentation.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -835,6 +836,42 @@ def test_r_and_python_keep_the_plan_alike(tmp_path: Path) -> None:
     assert from_python["plan"] == written, "kept without its byte-order mark"
 
 
+FROZEN_SYNTHETIC_R = """
+if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
+  cat("MISSING_DEPS\\n"); quit(status = 3)
+}
+source("%(emit)s")
+em <- mg_emitter("%(script)s")
+em$add_input("simulated.csv", synthetic = TRUE)
+em$add_input("codes.csv", synthetic = %(codes)s)
+em$value("n", 412L)
+em$write()
+"""
+
+
+@pytest.mark.parametrize("real", [False, True])
+def test_r_marks_a_plan_frozen_on_synthetic_inputs_as_python_does(
+    tmp_path: Path, real: bool
+) -> None:
+    """Round 1 of #390: both emitters say when the first results came from synthetic
+    inputs only, which G12 then does not take for the study's first results. Python's
+    mark is held by `test_a_plan_frozen_on_synthetic_inputs_only_says_so`, on the same
+    inputs."""
+    root = _parameter_project(tmp_path)
+    (root / "design").mkdir()
+    (root / "design" / "plan.md").write_text("# Analysis plan\n", encoding="utf-8")
+    for name in ("simulated.csv", "codes.csv"):
+        (root / name).write_text("x\n1\n", encoding="utf-8")
+    script = root / "analysis" / "synthetic.R"
+    codes = "FALSE" if real else "TRUE"
+    script.write_text(FROZEN_SYNTHETIC_R % {"emit": EMIT_R.as_posix(), "script": script.as_posix(),
+                                     "codes": codes}, encoding="utf-8")  # fmt: skip
+    out = _run_r(script, root)
+    assert out.returncode == 0, out.stderr
+    kept = json.loads((root / "design" / "plan.frozen.yaml").read_text(encoding="utf-8"))
+    assert kept.get("synthetic") is (None if real else True)
+
+
 @pytest.mark.parametrize(
     "written",
     [
@@ -1156,6 +1193,315 @@ def test_r_and_python_declare_a_dictionary_alike(tmp_path: Path) -> None:
         "dictionary.icd_10": "2019",
     }
     assert r_inputs == py_inputs == ["data/MedAscii/meddra_release.asc"]
+
+
+DATASETS = {
+    "R": """
+if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
+  cat("MISSING_DEPS\\n"); quit(status = 3)
+}
+source("%(emit)s")
+em <- mg_emitter("%(script)s")
+em$dataset("vigibase", "data/extract.csv", extracted = "2024-03-01",
+           covers = c(NA, "2023-12-31"), version = "2024  Q1", fingerprint = "%(pin)s",
+           dates = as.Date(c("2023-01-05", NA, "2023-12-30")))
+em$dataset("faers-q4", c("data/demo.csv", "data/extract.csv"), extracted = "2024-02",
+           covers = c("2004", "2023-12"), fingerprint = "%(both)s", dates = c(2004, 2023))
+em$value("period.start", "2015-01-01", display = "1 January 2015")
+em$write()
+""",
+    "py": """
+from datetime import date
+from manuscript_guard.emit import Emitter
+em = Emitter(__file__)
+em.dataset("vigibase", "data/extract.csv", extracted="2024-03-01",
+           covers=(None, "2023-12-31"), version="2024  Q1", fingerprint="%(pin)s",
+           dates=[date(2023, 1, 5), None, date(2023, 12, 30)])
+em.dataset("faers-q4", ["data/demo.csv", "data/extract.csv"], extracted="2024-02",
+           covers=("2004", "2023-12"), fingerprint="%(both)s", dates=[2004, 2023])
+em.value("period.start", "2015-01-01", display="1 January 2015")
+em.write()
+""",
+}
+
+
+def _dataset_project(tmp_path: Path, english: str = "en-US") -> tuple[Path, dict[str, str]]:
+    from manuscript_guard.datasets import dataset_digest
+    from manuscript_guard.emit import input_digest
+
+    root = _parameter_project(tmp_path)
+    paper = root / "paper.yaml"
+    paper.write_text(paper.read_text(encoding="utf-8").replace("en-GB", english),
+                     encoding="utf-8")  # fmt: skip
+    (root / "data").mkdir()
+    # CRLF, so that the digest the pin is of is the one with line endings left out.
+    (root / "data" / "extract.csv").write_bytes(b"id,received\r\n1,2023-01-05\r\n")
+    (root / "data" / "demo.csv").write_bytes(b"id,age\n1,40\n")
+    pins = {
+        "pin": input_digest(root / "data" / "extract.csv")[:16],
+        "both": dataset_digest(sorted(
+            (f"data/{name}", input_digest(root / "data" / name))
+            for name in ("extract.csv", "demo.csv")
+        ))[:16],
+    }  # fmt: skip
+    return root, pins
+
+
+def test_r_and_python_declare_a_dataset_alike(tmp_path: Path) -> None:
+    """The same calls give the same keys, displays and records: dates at each precision,
+    one end of a period, a version, several files under one pin, and the data's own dates."""
+    import runpy
+
+    root, pins = _dataset_project(tmp_path)
+    r_script = root / "analysis" / "data_r.R"
+    r_script.write_text(DATASETS["R"] % {"emit": EMIT_R.as_posix(), "script": r_script.as_posix(),
+                                         **pins}, encoding="utf-8")  # fmt: skip
+    out = _run_r(r_script, root)
+    assert out.returncode == 0, out.stderr
+    py_script = root / "analysis" / "data_py.py"
+    py_script.write_text(DATASETS["py"] % pins, encoding="utf-8")
+    runpy.run_path(str(py_script), run_name="__main__")
+
+    def read(name: str) -> dict:
+        return json.loads((root / "results" / name).read_text(encoding="utf-8"))
+
+    r_document, py_document = read("data_r.json"), read("data_py.json")
+    assert r_document["values"] == py_document["values"]
+    assert r_document["datasets"] == py_document["datasets"]
+    assert py_document["values"]["dataset.vigibase.extracted"]["display"] == "March 1, 2024"
+    assert py_document["values"]["dataset.faers_q4.extracted"]["display"] == "February 2024"
+    assert py_document["datasets"]["faers-q4"]["observed"] == {
+        "earliest": "2004", "latest": "2023", "count": 2,
+    }  # fmt: skip
+    assert [i["path"] for i in r_document["provenance"]["inputs"]] == [
+        i["path"] for i in py_document["provenance"]["inputs"]
+    ]
+    report = validate(r_document, "results", root / "results" / "data_r.json")
+    assert report.ok, report.render(root)
+
+
+DATASET_INPUTS = {
+    "R": """
+if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
+  cat("MISSING_DEPS\\n"); quit(status = 3)
+}
+source("%(emit)s")
+em <- mg_emitter("%(script)s", inputs = "data/../data/demo.csv")
+em$dataset("vigibase", "./data/extract.csv", extracted = "2024-03-01", fingerprint = "%(pin)s")
+em$add_input(factor("data/extract.csv"), restricted = TRUE)
+em$add_input(c("%(root)s/data/demo.csv", "../shared.csv"))
+em$add_input("%(shared)s", synthetic = TRUE)
+em$write()
+""",
+    "py": """
+from manuscript_guard.emit import Emitter
+em = Emitter(__file__, inputs=["data/../data/demo.csv"])
+em.dataset("vigibase", "./data/extract.csv", extracted="2024-03-01", fingerprint="%(pin)s")
+em.add_input("data/extract.csv", restricted=True)
+for path in ("%(root)s/data/demo.csv", "../shared.csv"):
+    em.add_input(path)
+em.add_input("%(shared)s", synthetic=True)
+em.write()
+""",
+}
+
+
+def test_r_and_python_record_a_file_however_spelt_as_one_input_alike(tmp_path: Path) -> None:
+    """The review of 76880fc3 (#392): R declared a dataset's file under its first spelling,
+    and Python under its path from the project, so the same calls wrote different inputs. R
+    resolved links and a leading ".." where Python read the text. Both now record the path
+    from the project with "." and ".." collapsed as text, once, with the marks each spelling
+    gave it; in R a path given as a factor keeps its mark too."""
+    import runpy
+
+    root, pins = _dataset_project(tmp_path)
+    (root.parent / "shared.csv").write_bytes(b"id\n1\n")
+    paths = {"root": root.as_posix(), "shared": (root.parent / "shared.csv").as_posix(), **pins}
+    r_script = root / "analysis" / "inputs_r.R"
+    r_script.write_text(DATASET_INPUTS["R"] % {"emit": EMIT_R.as_posix(),
+                                               "script": r_script.as_posix(), **paths},
+                        encoding="utf-8")  # fmt: skip
+    out = _run_r(r_script, root)
+    assert out.returncode == 0, out.stderr
+    py_script = root / "analysis" / "inputs_py.py"
+    py_script.write_text(DATASET_INPUTS["py"] % paths, encoding="utf-8")
+    runpy.run_path(str(py_script), run_name="__main__")
+
+    def inputs(name: str) -> list[dict]:
+        document = json.loads((root / "results" / name).read_text(encoding="utf-8"))
+        return document["provenance"]["inputs"]
+
+    assert inputs("inputs_r.json") == inputs("inputs_py.json")
+    assert [(i["path"], i.get("restricted"), i.get("synthetic"))
+            for i in inputs("inputs_r.json")] == [
+        ("data/demo.csv", None, None),
+        ("data/extract.csv", True, None),
+        ("../shared.csv", None, True),
+    ]  # fmt: skip
+
+
+SPELT_R = """
+if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
+  cat("MISSING_DEPS\\n"); quit(status = 3)
+}
+source("%(emit)s")
+em <- mg_emitter("%(script)s")
+em$dataset("vigibase", "~/paper/data/extract.csv", extracted = "2024-03-01",
+           fingerprint = "%(pin)s")
+em$add_input("%(via)s/data/extract.csv", restricted = TRUE)
+em$add_input("~/paper/data/demo.csv")
+em$add_input("%(via)s/data/demo.csv", synthetic = TRUE)
+em$write()
+"""
+
+
+def test_r_and_python_name_a_file_spelt_from_home_or_through_a_link_from_the_project(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Round 1 of #409: the root is resolved and an input was read as text, so a path from
+    the home folder, or through a folder that links to the project, was recorded as written
+    where #392's R recorded the path from the project."""
+    from test_review_plan import link_directory
+
+    from manuscript_guard.emit import Emitter
+
+    root, pins = _dataset_project(tmp_path)
+    link_directory(tmp_path / "via", root)
+    home = {"HOME": str(tmp_path), "R_USER": str(tmp_path), "USERPROFILE": str(tmp_path)}
+    script = root / "analysis" / "spelt.R"
+    script.write_text(SPELT_R % {"emit": EMIT_R.as_posix(), "script": script.as_posix(),
+                                 "via": (tmp_path / "via").as_posix(), **pins},
+                      encoding="utf-8")  # fmt: skip
+    out = subprocess.run(
+        [RSCRIPT, "--vanilla", str(script)], capture_output=True, text=True, encoding="utf-8",
+        errors="replace", cwd=root, env={**os.environ, **home},
+    )  # fmt: skip
+    if out.returncode == 3:
+        pytest.skip("R packages jsonlite and digest are not installed")
+    assert out.returncode == 0, out.stderr
+    from_r = json.loads((root / "results" / "spelt.json").read_text(encoding="utf-8"))
+    for name, value in home.items():
+        monkeypatch.setenv(name, value)
+    em = Emitter(script, root=root)
+    em.dataset("vigibase", "~/paper/data/extract.csv", extracted="2024-03-01",
+               fingerprint=pins["pin"])  # fmt: skip
+    em.add_input(tmp_path / "via" / "data" / "extract.csv", restricted=True)
+    em.add_input("~/paper/data/demo.csv")
+    em.add_input(tmp_path / "via" / "data" / "demo.csv", synthetic=True)
+    from_python = em.document()
+    assert from_r["provenance"]["inputs"] == from_python["provenance"]["inputs"]
+    assert from_r["datasets"] == from_python["datasets"]
+    assert [(i["path"], i.get("restricted"), i.get("synthetic"))
+            for i in from_r["provenance"]["inputs"]] == [
+        ("data/extract.csv", True, None),
+        ("data/demo.csv", None, True),
+    ]  # fmt: skip
+
+
+LINKED_R = """
+if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
+  cat("MISSING_DEPS\\n"); quit(status = 3)
+}
+source("%(emit)s")
+em <- mg_emitter("%(script)s")
+em$add_input("data/link.csv", restricted = TRUE)
+em$value("n", 1L)
+em$write()
+"""
+
+
+def test_r_and_python_record_a_linked_input_by_its_own_path(tmp_path: Path) -> None:
+    """A git-annex input is a link into the annex, and the link's own path names it. R's
+    `normalizePath` followed it to the annex (the review of 76880fc3, #392)."""
+    from manuscript_guard.emit import Emitter
+
+    root = _parameter_project(tmp_path)
+    (root / "annex").mkdir()
+    (root / "annex" / "SHA256E-s6--0a1b.csv").write_bytes(b"id\n1\n")
+    (root / "data").mkdir()
+    try:
+        (root / "data" / "link.csv").symlink_to(root / "annex" / "SHA256E-s6--0a1b.csv")
+    except OSError:
+        pytest.skip("this system makes no symbolic links")
+    script = root / "analysis" / "linked.R"
+    script.write_text(LINKED_R % {"emit": EMIT_R.as_posix(), "script": script.as_posix()},
+                      encoding="utf-8")  # fmt: skip
+    out = _run_r(script, root)
+    assert out.returncode == 0, out.stderr
+    from_r = json.loads((root / "results" / "linked.json").read_text(encoding="utf-8"))
+    em = Emitter(script, root=root)
+    em.add_input("data/link.csv", restricted=True)
+    em.value("n", 1)
+    from_python = json.loads(em.write().read_text(encoding="utf-8"))
+    assert from_r["provenance"]["inputs"] == from_python["provenance"]["inputs"]
+    assert [i["path"] for i in from_r["provenance"]["inputs"]] == ["data/link.csv"]
+
+
+REFUSED_R = """
+if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
+  cat("MISSING_DEPS\\n"); quit(status = 3)
+}
+source("%(emit)s")
+em <- mg_emitter("%(script)s")
+%(call)s
+"""
+
+
+@pytest.mark.parametrize(
+    ("call", "says"),
+    [
+        ('em$dataset("vigibase", "data/extract.csv", extracted = "2024-03-01")',
+         'pin the extraction to its data, fingerprint = "%(pin)s"'),
+        ('em$dataset("vigibase", "data/extract.csv", extracted = "2024-03-01", '
+         'fingerprint = "0123456789abcdef")',
+         "is not the data pinned as extracted on 2024-03-01"),
+        ('em$dataset("vigibase", "data/extract.csv", extracted = "2024-03-01", '
+         'covers = c("2010", NA), fingerprint = "%(pin)s", dates = c("2009-12-31"))',
+         "1 of 1 dates lie outside the period the data are declared to cover (2010 to ...)"),
+        ('em$dataset("vigibase", "data/extract.csv", extracted = "2024-03-01", '
+         'fingerprint = "%(pin)s", version = 5)', "give the version as text"),
+        ('em$value("period.end", "2015-01-01", display = "1 January 2016")',
+         "is 2016-01-01, and the value is 2015-01-01"),
+        # Round 1 of #392: an impossible day stopped R inside as.Date, not with the refusal.
+        ('em$dataset("vigibase", "data/extract.csv", extracted = "2024-02-30", '
+         'fingerprint = "%(pin)s")', "extracted 2024-02-30 is not a date written as ISO 8601"),
+        # Round 2 of #392: a month of nought, refused in both languages.
+        ('em$value("period.end", "2024-03-15", display = "0/3/2024")', "is not a date"),
+    ],
+    ids=["unpinned", "other data", "outside the period", "a number", "another date",
+         "no such day", "a month of nought"],
+)
+def test_r_refuses_what_python_refuses_of_a_dataset(tmp_path: Path, call: str, says: str) -> None:
+    root, pins = _dataset_project(tmp_path)
+    script = root / "analysis" / "refused.R"
+    script.write_text(REFUSED_R % {"emit": EMIT_R.as_posix(), "script": script.as_posix(),
+                                   "call": call % pins}, encoding="utf-8")  # fmt: skip
+    out = _run_r(script, root)
+    assert out.returncode != 0
+    assert (says % pins) in " ".join(out.stderr.split()), out.stderr
+
+
+def test_r_reads_a_blank_date_as_missing_and_a_date_in_figures_as_python_does(
+    tmp_path: Path,
+) -> None:
+    """Round 1 of #392: a date of blanks was refused in R and missing in Python; a display
+    in figures, "01/03/2024", is read both ways in both."""
+    root, pins = _dataset_project(tmp_path)
+    script = root / "analysis" / "blank.R"
+    call = "\n".join((
+        'em$dataset("vigibase", "data/extract.csv", extracted = "2024-03-01", '
+        'fingerprint = "%(pin)s", dates = c("2023-01-05", "  ", NA))',
+        'em$value("day.a", "2024-01-03", display = "01/03/2024")',
+        'em$value("day.b", "2023-12-31", display = "31.12.2023")',
+        'em$value("day.c", "2023-12-31", display = "31-Dec-2023")',
+        "em$write()",
+    )) % pins  # fmt: skip
+    script.write_text(REFUSED_R % {"emit": EMIT_R.as_posix(), "script": script.as_posix(),
+                                   "call": call}, encoding="utf-8")  # fmt: skip
+    out = _run_r(script, root)
+    assert out.returncode == 0, out.stderr
+    document = json.loads((root / "results" / "blank.json").read_text(encoding="utf-8"))
+    assert document["datasets"]["vigibase"]["observed"]["count"] == 1
 
 
 MODEL_R = """

@@ -32,6 +32,8 @@ em.correction("secondary", "holm")                     # how the family is corre
 em.value("table2x2.a", a, quoted=False)                # published but not quoted in the text
 alpha = em.parameter("alpha", 0.05)                    # param.alpha: a choice, handed back to use
 em.software("statsmodels")                             # software.statsmodels, as imported
+em.dataset("vigibase", "data/vb.csv", extracted="2024-03-01",  # dataset.vigibase.extracted,
+           covers=(None, "2023-12-31"), fingerprint="3f9a1c2b7e4d5a60")  # .covers_to
 em.variable("age_group", "categorical", label="age group", reference="18-44")
 em.model("adjusted", fit, name="Adjusted model")       # model.adjusted.*, table.model_adjusted
 em.write()                                             # results/<script stem>.json + .sha256
@@ -49,6 +51,8 @@ em$value("model.p", 0.012, digits = 3, of = "model.or.point", family = "secondar
 em$correction("secondary", "holm")
 alpha <- em$parameter("alpha", 0.05)
 em$software("survival")
+em$dataset("vigibase", "data/vb.csv", extracted = "2024-03-01",
+           covers = c(NA, "2023-12-31"), fingerprint = "3f9a1c2b7e4d5a60")
 em$write()
 ```
 
@@ -68,6 +72,12 @@ What the emitter holds you to:
   quotes from that run, and fails at submission. Only a worked example or a teaching paper
   sets `demonstration: true` in `paper.yaml`, which the title page then states; never set it
   to get a paper past the check.
+- The data are named by what identifies them, with `em.dataset()`: the date they were
+  extracted, the period they cover, the source's version where it has one, all ISO dates
+  printed in the paper's English. `fingerprint` pins the date to the file; the first run
+  without it is refused and prints the pin, and a new extract under the old pin is refused,
+  so the date changes with the data. A date as a string value is held to its display: an
+  ISO date may be printed "1 March 2024", "March 2024" or "2024", never another date.
 - Units are not rendered. Write `{{results.case.pct_serious}}%` in the text.
 - NumPy integers are refused; pass `int(x)`. Years and study periods are numbers like any
   other: emit them.
@@ -79,47 +89,11 @@ What the emitter holds you to:
 
 ### Arithmetic between results, and flows
 
-G8 checks the arithmetic the analysis declares between results, and only that. It does not
-search the text for numbers that might add up:
-
-```python
-em.relation("sum", "cohort.n_reports", ["table2x2.a", "table2x2.b", "table2x2.c", "table2x2.d"])
-em.relation("difference", "risk.difference", ["risk.treated", "risk.control"])
-em.relation("ratio", "rate.per_1000", ["events.n", "person_years"], scale=1000)
-em.relation("at_most", "patients.with_event", ["patients.n"])
-em.relation("in_order", "cohort.period_start", ["cohort.period_end"])   # dates or numbers
-
-em.flow("consort",
-        stages={"Assessed for eligibility": 412, "Randomised": 300},
-        exclusions=[{"Not meeting criteria": 87, "Declined": 25}],
-        arms={"Drug": 151, "Placebo": 149})
-```
-
-In R, `em$relation("sum", "cohort.n", c("cohort.n_men", "cohort.n_women"))`. A flow's stages,
-reasons and arms are named vectors there: `stages = c("Randomised" = 300, ...)`.
-
-- **Keys may be another script's.** G8 reads every fragment together.
-- **Values are compared exactly, displays within their rounding.** A sum of counts must be
-  exact. A float relation holds to its last bits, so emit values unrounded.
-- **Printed numbers get a warning when the arithmetic does not hold for them.** For example,
-  2.4 less 1.1 is 1.3, and the difference is printed 1.2. That is a warning: print one more
-  digit, or say in the text that each number is rounded on its own.
-- **A flow writes each count as a key.** The keys are `flow.<key>.stage.<n>`,
-  `flow.<key>.excluded.<n>.<m>` and `flow.<key>.arm.<n>`. Bind them in the text, and have the
-  diagram's script read them from the results.
-- **The emitter refuses a flow whose arithmetic fails.** Each stage less its exclusions must
-  be the next stage, and the arms must sum to the last stage.
-- **Overlapping reasons.** Where one record can be excluded for several reasons at a step,
-  name that step: `overlapping=[3]` for the step from stage 3 to stage 4 (`overlapping = 3`
-  in R), or `True` for every step. Its reasons may then sum to more than the step removed,
-  and the stages still have to agree. Every other step's reasons must still sum exactly.
-- **PRISMA 2020.** The records removed before screening (duplicates, automation, other) are
-  the exclusions of the first step. Where a report is excluded for several reasons, name the
-  step from reports assessed to reports included in `overlapping`. Studies are not a
-  subtraction from reports: end the flow at the reports, and declare the studies `at_most`
-  the reports included.
-- **A 2x2 table.** Declare each margin as a sum of its cells, and the total as the sum of all
-  four.
+G8 checks the arithmetic the analysis declares between results, with `em.relation()`, and
+the counts of a flow diagram, with `em.flow()`, and only that. When a paper declares how its
+results relate (a sum, a difference, a ratio, an upper bound or an order), draws a CONSORT or
+PRISMA flow, or `check` warns under G8, read
+[references/arithmetic-and-flows.md](references/arithmetic-and-flows.md).
 
 **Never edit `results/`.** The fragments are machine-written and digested. An edited one is
 `results-edited`, the write guard refuses the edit where the hooks run, and
@@ -275,7 +249,10 @@ checked like any other.
 | `caption-names-another` | a caption beside a table or figure (typed under a figure, above or under a table, or emitted by the analysis with a number) names another one. Write the caption's number as `{{ref.figure.key}}`, or emit the caption without its number |
 | `ref-number-unknown` | the build cannot number this ref: its kind is also placed by hand or sent as files in that document, or its key is placed twice. Type that pointer |
 | `hand-authored-table` | emit the table |
-| `script-newer`, `input-changed` | re-run the script that wrote the results |
+| `script-newer`, `input-changed` | re-run the script that wrote the results; where the input is a dataset's, with the date of the new extraction and its pin |
+| `dataset-pin-mismatch`, `dataset-read-differs`, `dataset-value-unrecorded` | the results were computed from other data than the extraction the dataset dates, or a dataset's value was typed into a fragment: re-run the scripts that read the old data, through the emitter |
+| `data-date-not-declared` | a warning: a date of the data typed into the script as a string. Declare the data with `em.dataset()` and bind `{{results.dataset.<name>.extracted}}`; a date the study chose is `em.parameter()` |
+| `dataset-date-english` | a warning: the dataset's date was printed in the English paper.yaml declared when the analysis ran; run it again |
 | `input-missing` | restore the input, or stop declaring it, then re-run |
 | `input-not-fetched` | a warning: the input is a Git LFS or git-annex pointer that cannot be compared with the results (an MD5 key, an LFS extension, or results written before the emitter recorded `raw_sha256`). Fetch it to check it, or re-run where it is fetched |
 | `results-edited`, `no-digest` | re-run through the emitter; never edit the fragment |

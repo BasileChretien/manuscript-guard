@@ -26,6 +26,54 @@
       "enum": ["cohort", "case-control", "self-controlled", "disproportionality", "trial", "systematic-review", "prediction-model"],
       "description": "The study's design. G12 asks the analysis plan for the sections this design needs beyond the seven every plan has, and G5 says where none of the reporting guidelines for it is declared. Each design's sections cite the guideline item they come from (src/manuscript_guard/data/study_types.yaml). Absent, the plan is asked for the seven only."
     },
+    "registration": {
+      "type": "array",
+      "description": "The study's registrations. `manuscript-guard lookup --registrations` asks ClinicalTrials.gov, the EU PAS register, OSF and ISRCTN about each one and keeps the answer in design/registrations/; any other registry's record is copied by hand. G12 then holds the paper to it: the identifier is in the manuscript, the registry knows it, it was registered before the study started and before the first results, and each registered outcome quoted here is in the registry's record under the role given and is reported as the planned result named.",
+      "items": {
+        "type": "object",
+        "required": ["id"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "As the registry writes it: NCT04368728, EUPAS1000000417, ISRCTN17072692, osf.io/abcde, CRD42020123456."
+          },
+          "registry": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The registry's name, needed only where the identifier's shape does not say it: anzctr, drks, jrct. Its record is copied by hand into design/registrations/."
+          },
+          "retrospective": {
+            "type": "string",
+            "pattern": "\\S",
+            "description": "Why the study was registered after it started, or after the first results were written. With it, and with the manuscript saying the study was registered retrospectively, G12 notes a late registration rather than failing it at submission."
+          },
+          "outcomes": {
+            "type": "array",
+            "description": "Each outcome the registration holds, quoted in the registry's words, with the role it has there and the planned result that reports it. One the paper does not report has no `reported_as`, and the plan's Deviations section quotes the same words.",
+            "items": {
+              "type": "object",
+              "required": ["registered", "role"],
+              "additionalProperties": false,
+              "properties": {
+                "registered": {
+                  "type": "string",
+                  "pattern": "\\S",
+                  "description": "Words of the registered outcome, as the registry's record has them. Case, spacing and line breaks are not compared."
+                },
+                "role": { "enum": ["primary", "secondary"] },
+                "reported_as": {
+                  "type": "string",
+                  "pattern": "^(?:(?:results\\.)?[A-Za-z_][\\w-]*(?:\\.[\\w-]+)*\\.\\*|results\\.[A-Za-z_][\\w-]*(?:\\.[\\w-]+)*|[A-Za-z_][\\w-]*(?:\\.[\\w-]+)+)$",
+                  "description": "The key of the result that reports it, as the plan's Planned results section lists it: `ror.point`, `results.dose`, or a group, `ror.*`."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "reporting_guideline": {
       "type": "array",
       "description": "Names of checklists under profiles/reporting/. Commonly STROBE, RECORD, RECORD-PE, CONSORT, SPIRIT, PRISMA, TRIPOD or ARRIVE, but deliberately not a closed list: guidelines are revised, extensions appear, and a schema that refuses CHEERS or SQUIRE would be wrong about the world rather than about the project.",
@@ -44,6 +92,41 @@
         "restricts_sending": {
           "type": "boolean",
           "description": "The custodian forbids sending the manuscript or its results anywhere they have not agreed to: `review --run` sends to a model the built-in Ollama runs on this machine, and to any other provider, one added at localhost included, only once the data custodian named in authors.yaml has authorised it with `manuscript-guard sign`."
+        }
+      }
+    },
+    "package": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "What `manuscript-guard package` deposits besides the code and the results, and the deposit's DOI once it has one.",
+      "properties": {
+        "licence": {
+          "description": "The SPDX identifier of the licence the deposit is under, as CITATION.cff names it, or a list of them (code and data under two): `MIT`, `[MIT, CC-BY-4.0]`. The licence file itself is the project's LICENSE; the tool chooses none.",
+          "oneOf": [
+            { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9.+-]*$" },
+            {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9.+-]*$" }
+            }
+          ]
+        },
+        "share": {
+          "type": "array",
+          "uniqueItems": true,
+          "description": "Inputs the analysis declared that may be deposited, each as its path in the results' provenance. An input declared synthetic goes without being listed; one declared restricted never goes, and listing it is refused. Every other input is withheld and listed in INPUTS.md.",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "request": {
+          "type": "string",
+          "minLength": 1,
+          "description": "How to obtain the inputs the package withholds: who to apply to, and on what terms. Required by `package` when it withholds any."
+        },
+        "doi": {
+          "type": "string",
+          "pattern": "^10\\.\\d{4,9}/\\S+$",
+          "description": "The DOI of the deposited package, as the repository reserved or gave it, without the resolver. G4 warns while neither the Data availability statement nor a Code or Software availability statement names it, and fails at submission."
         }
       }
     },

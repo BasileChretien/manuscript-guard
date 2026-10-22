@@ -203,6 +203,116 @@ def _latex_bindings() -> Reading:
     return bound
 
 
+@reading("latex citations")
+def _latex_citations() -> Reading:
+    from manuscript_guard.text.latex.cite import citations
+    from manuscript_guard.text.latex.mask import read
+    from manuscript_guard.text.latex.structure import Source
+
+    def cited(text: str) -> list[list[Any]]:
+        uses = citations(Source("main.tex", text, read(text)), Path("main.tex"), ("every",))
+        return [[use.citekey, use.start, use.line, use.narrative, use.raw] for use in uses]
+
+    return cited
+
+
+@reading("latex printed")
+def _latex_printed() -> Reading:
+    from manuscript_guard.text.latex.mask import read
+    from manuscript_guard.text.latex.printed import printed_view
+    from manuscript_guard.text.latex.structure import Source
+
+    def printed(text: str) -> dict[str, Any]:
+        reading = read(text)
+        return {"view": printed_view([Source("main.tex", text, reading)]),
+                "declared": [list(each) for each in reading.declared]}  # fmt: skip
+
+    return printed
+
+
+@reading("latex places")
+def _latex_places() -> Reading:
+    from manuscript_guard.text.latex.mask import read
+    from manuscript_guard.text.latex.printed import printed
+    from manuscript_guard.text.latex.structure import Source
+
+    def placed(text: str) -> dict[str, Any]:
+        view = printed([Source("main.tex", text, read(text))])
+        starts = [0, *(found.end() for found in re.finditer("\n", view.text))]
+        return {"lines": [None if (where := view.place(start)) is None else where[1]
+                          for start in starts]}  # fmt: skip
+
+    return placed
+
+
+@reading("latex models")
+def _latex_models() -> Reading:
+    """Each model G15 finds named in a LaTeX file's Methods (step 8)."""
+    from manuscript_guard.gates.models import named_in_latex
+    from manuscript_guard.text.latex.mask import read
+    from manuscript_guard.text.latex.structure import Source
+
+    def named(text: str) -> dict[str, Any]:
+        return {"models": [list(found) for found in
+                           named_in_latex(Source("main.tex", text, read(text)))]}  # fmt: skip
+
+    return named
+
+
+@reading("latex pointers")
+def _latex_pointers() -> Reading:
+    """Where the reader records each cross-reference (round 1 of G13 in step 8)."""
+    from manuscript_guard.text.latex.commands import POINTERS  # noqa: F401 - absent at base
+    from manuscript_guard.text.latex.mask import read
+
+    return lambda text: [list(span) for span in read(text).pointers]
+
+
+@reading("latex methods")
+def _latex_methods() -> Reading:
+    from manuscript_guard.gates.methods import _anchored_in, _latex_read
+    from manuscript_guard.text.latex.mask import read
+    from manuscript_guard.text.latex.structure import Source
+    from manuscript_guard.text.latex.views import bindings, markdown_view
+
+    def anchored(text: str) -> dict[str, Any]:
+        source = Source("main.tex", text, read(text))
+        view = markdown_view(source, bindings(source)[0])
+        claims, open_ = _anchored_in(_latex_read(Path("main.tex"), source, view))
+        return {"claims": [[list(c.steps), c.text, c.line, c.anchor_line] for c in claims],
+                "open": [[p.text, p.line] for p in open_]}  # fmt: skip
+
+    return anchored
+
+
+@reading("latex writing")
+def _latex_writing() -> Reading:
+    from manuscript_guard.gates.writing import _read_latex
+    from manuscript_guard.text.latex.mask import read
+    from manuscript_guard.text.latex.structure import Source
+
+    def judged(text: str) -> dict[str, Any]:
+        texts, words, cited = _read_latex(Path("m"), [[Source("main.tex", text, read(text))]])
+        ((_path, typed, prose),) = texts
+        return {"typed": typed == text, "prose": prose, "words": words,
+                "cited": [list(cited[Path("m") / "main.tex"])]}  # fmt: skip
+
+    return judged
+
+
+@reading("latex words")
+def _latex_words() -> Reading:
+    from manuscript_guard.text.latex.mask import read
+    from manuscript_guard.text.latex.structure import Source
+    from manuscript_guard.text.latex.words import words
+
+    def seen(text: str) -> dict[str, Any]:
+        found = words(Source("main.tex", text, read(text)))
+        return {"words": found.text, "unread": [list(span) for span in found.unread]}
+
+    return seen
+
+
 @reading("hidden")
 def _hidden() -> Reading:
     from manuscript_guard.gates.language import _hidden as hidden
@@ -446,6 +556,30 @@ def _data_statement() -> Reading:
     return read
 
 
+@reading("deposit named")
+def _deposit_named() -> Reading:
+    from manuscript_guard.gates.data_statement import names_doi
+
+    def read(text: str) -> bool:
+        """Whether a Data availability statement names the package deposited as
+        10.5281/zenodo.1234567."""
+        return names_doi(text, "10.5281/zenodo.1234567")
+
+    return read
+
+
+@reading("count cells")
+def _count_cells() -> Reading:
+    from manuscript_guard.deposit.counts import count_in_cell
+
+    def read(cells: list[str]) -> list[int | None]:
+        """The count each table cell states, as a package reads a fragment for the data
+        custodian's minimum."""
+        return [count_in_cell(cell) for cell in cells]
+
+    return read
+
+
 #: Two chosen sources, one anyone may download and one a committee decides on, as the record
 #: of data sources gives them.
 DATA_SOURCES = (
@@ -551,6 +685,46 @@ def labels_namespace() -> dict[str, Any]:
     )
 
 
+@reading("data dates")
+def _data_dates() -> Reading:
+    # The gate's function first: where the source has none, the reading is newer than it.
+    from manuscript_guard.gates.data_dates import data_dates
+    from manuscript_guard.gates.numbers import in_sentences
+    from manuscript_guard.text.placeholders import parse
+
+    namespace = data_dates_namespace()
+
+    def read(text: str) -> dict[str, Any]:
+        """What G2 says of the dates of the data a text binds, typed into the analysis."""
+        placeholders, _malformed = parse(text)
+        return _told(data_dates([(MAIN, text, in_sentences(placeholders, text))], namespace))
+
+    return read
+
+
+def data_dates_namespace() -> dict[str, Any]:
+    """Results that hold dates: two typed into the analysis, one an ISO date and one a date
+    only its display writes; one a dataset declared, one a parameter, a dictionary's release
+    named by a year, a year computed from the data as a number, and a count."""
+    from manuscript_guard.contracts.values import RESULTS, Value
+
+    def value(key: str, held: object, display: str, role: str | None = None) -> tuple[str, Any]:
+        return f"results.{key}", Value(key=key, value=held, display=display, origin=RESULTS,
+                                       role=role)  # fmt: skip
+
+    return dict(
+        [
+            value("old.extracted", "2024-03-01", "1 March 2024"),
+            value("old.label", "1 March 2024", "1 March 2024"),
+            value("dataset.vb.extracted", "2024-03-01", "1 March 2024", "dataset"),
+            value("param.start", "2010-01-01", "1 January 2010", "parameter"),
+            value("dictionary.icd_10", "2019", "2019", "dictionary"),
+            value("cohort.first_year", 2010, "2010"),
+            value("n", 12, "12"),
+        ]
+    )
+
+
 @reading("deviations")
 def _deviations() -> Reading:
     from manuscript_guard.gates.design import deviations_said
@@ -567,6 +741,46 @@ def _planned_results() -> Reading:
         line; None where the plan has no such section."""
         found = planned_results(plan)
         return None if found is None else [[p.key, p.group, p.line] for p in found]
+
+    return read
+
+
+@reading("registration named")
+def _registration_named() -> Reading:
+    from manuscript_guard.gates.registration import named_in
+    from manuscript_guard.registrations import Declared, identify
+    from manuscript_guard.text.masking import blank_comments
+
+    def read(given: dict[str, str]) -> bool:
+        """Whether the manuscript gives the registration, as G12 reads it: comments out."""
+        registry, kept = identify(given["id"])
+        entry = Declared(given["id"], kept, registry, None, (), False, 0)
+        return named_in(blank_comments(given["text"]), entry)
+
+    return read
+
+
+@reading("registration identifiers")
+def _registration_identifiers() -> Reading:
+    from manuscript_guard.registrations import NAMED_IN_TEXT
+
+    return NAMED_IN_TEXT.findall
+
+
+@reading("retrospective said")
+def _retrospective_said() -> Reading:
+    from manuscript_guard.gates.registration import says_retrospective
+
+    return says_retrospective
+
+
+@reading("registered quote")
+def _registered_quote() -> Reading:
+    from manuscript_guard.gates.registration import fold
+
+    def read(given: dict[str, str]) -> bool:
+        """Whether a quote of a registered outcome is in the registry's record of it."""
+        return fold(given["quote"]) in fold(given["record"])
 
     return read
 

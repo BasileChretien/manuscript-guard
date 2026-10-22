@@ -412,7 +412,9 @@ def test_a_manuscript_file_that_cannot_be_read_does_not_stop_the_plan_s_gate(
     with_method(project, decision=DECIDED)
     report, _project, _stage, _deferred = _run_gates(project, stage="design")
     [unreadable] = [f for f in report.findings if f.code == "manuscript-unreadable"]
-    assert "G12" not in (unreadable.hint or "")
+    # G12 is named among the gates that stopped, for its registration check, which reads the
+    # manuscript (#390); the plan's checks still ran, as the finding below shows.
+    assert "G12" in (unreadable.hint or "")
     [finding] = [f for f in report.findings if f.code == "adopted-method-uncited"]
     assert "could not be read, so its Methods were not" in finding.message
 

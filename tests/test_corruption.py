@@ -32,6 +32,7 @@ from manuscript_guard.emit import write_digest
 from manuscript_guard.findings import merge_all
 from manuscript_guard.gates import (
     check_consistency,
+    check_datasets,
     check_figures,
     check_freshness,
     check_models,
@@ -48,6 +49,7 @@ def gate_report(root: Path):
             contract_report,
             load_report,
             check_freshness(project, results),
+            check_datasets(project, results),
             check_numbers(project, namespace, results, literature),
             check_figures(project, results),
             check_consistency(results),
@@ -2993,6 +2995,102 @@ def test_a_quoted_revision_that_is_in_the_paper_and_new_passes(project: Path) ->
                  "quoted-text-elsewhere", "quoted-text-unchecked") == []  # fmt: skip
 
 
+def test_g13_reads_a_quote_in_a_latex_manuscript_as_it_prints(project: Path) -> None:
+    """Step 8: a quoted revision is looked for in the twin as LaTeX prints it, its binding
+    filled in, a command's braces and the line breaks left out, under the heading LaTeX
+    prints over it; one the twin does not hold fails."""
+    entry = _twin(project)
+    _round_with(project, [_point(
+        response="We now say so.",
+        changed=[{"kind": "text", "quote": "The adjusted ratio was {{results.ror.point}}.",
+                  "section": "Discussion"}],
+    )])  # fmt: skip
+    codes = ("quoted-text-absent", "quoted-text-not-new", "quoted-text-elsewhere",
+             "quoted-text-unchecked")  # fmt: skip
+    assert _said(_g13(project), *codes) == [("quoted-text-absent", "fail")]
+    typed = entry.read_text(encoding="utf-8")
+    heading = "\\section{Data availability}"
+    entry.write_text(typed.replace(heading, "The \\emph{adjusted} ratio was\n"
+                                            f"\\mg{{results.ror.point}}.\n\n{heading}"),
+                     encoding="utf-8")  # fmt: skip
+    assert _said(_g13(project), *codes) == []
+
+
+@pytest.mark.parametrize(
+    ("typed", "quote"),
+    [
+        ("The ratio was $\\mg{results.ror.point}$.", "The ratio was {{results.ror.point}}."),
+        ("It is in Table~\\ref{tab:main} now.", "It is in Table 1 now."),
+        ("It is in \\autoref{tab:main} now.", "It is in Table 1 now."),
+        ("By equation \\eqref{eq:ror} it holds.", "By equation (2) it holds."),
+        # A bracket typed round a reference is the author's (round 2 of G13 in step 8).
+        ("It is shown (Table~\\ref{tab:main}).", "It is shown (Table 1)."),
+        ("By Eq.~(\\ref{eq:ror}) it holds.", "By Eq. (2) it holds."),
+        ("See Figure~\\ref{fig:forest}A now.", "See Figure 1A now."),
+    ],
+)
+def test_g13_finds_a_latex_quote_through_a_formula_or_a_cross_reference(
+    project: Path, typed: str, quote: str
+) -> None:
+    """Round 1 of G13 in step 8: a binding in a formula is read as the PDF prints it, and a
+    number where the source has a cross-reference may stand for it, whose number only the
+    compiled paper knows."""
+    entry = _twin(project)
+    _round_with(project, [_point(response="We now say so.",
+                                 changed=[{"kind": "text", "quote": quote}])])  # fmt: skip
+    text = entry.read_text(encoding="utf-8")
+    heading = "\\section{Data availability}"
+    entry.write_text(text.replace(heading, f"{typed}\n\n{heading}"), encoding="utf-8")
+    assert _said(_g13(project), "quoted-text-absent") == []
+    entry.write_text(text.replace(heading, f"% {typed}\n\n{heading}"), encoding="utf-8")
+    assert _said(_g13(project), "quoted-text-absent") == [("quoted-text-absent", "fail")]
+
+
+@pytest.mark.parametrize(
+    ("typed", "quote"),
+    [
+        ("It is shown Table~\\ref{tab:main}.", "It is shown (Table 1)."),
+        ("It is shown in Table~\\ref{tab:main}.", "It is shown at Table 1."),
+    ],
+)
+def test_g13_does_not_find_a_latex_quote_that_differs_beside_a_cross_reference(
+    project: Path, typed: str, quote: str
+) -> None:
+    """A bracket or a word the paper does not print beside a cross-reference keeps the quote
+    from being found: only the reference's own number is not checked (round 3 of G13 in
+    step 8)."""
+    entry = _twin(project)
+    _round_with(project, [_point(response="We now say so.",
+                                 changed=[{"kind": "text", "quote": quote}])])  # fmt: skip
+    text = entry.read_text(encoding="utf-8")
+    heading = "\\section{Data availability}"
+    entry.write_text(text.replace(heading, f"{typed}\n\n{heading}"), encoding="utf-8")
+    assert _said(_g13(project), "quoted-text-absent") == [("quoted-text-absent", "fail")]
+
+
+def test_g13_says_a_latex_quote_the_journal_read_is_not_new(project: Path) -> None:
+    """Step 8: `respond --open` keeps the twin as LaTeX printed it, values in, and a quote
+    found there was already read."""
+    entry = _twin(project)
+    typed = entry.read_text(encoding="utf-8")
+    heading = "\\section{Data availability}"
+    entry.write_text(typed.replace(heading, f"A sentence the journal has read.\n\n{heading}"),
+                     encoding="utf-8")  # fmt: skip
+    _round_with(project, [_point(
+        response="We now say so.",
+        changed=[{"kind": "text", "quote": "A sentence the journal has read."}],
+    )])  # fmt: skip
+    assert _said(_g13(project), "quoted-text-not-new") == [("quoted-text-not-new", "fail")]
+
+
+def test_g13_names_a_tex_file_s_line_in_a_letter_as_a_leak(project: Path) -> None:
+    """Step 8: a letter that points the journal at `main.tex:120` points at a file it never
+    sees, as one that names `main.md:120` does."""
+    _twin(project)
+    _round_with(project, [_point(response="See main.tex:120 for the new text.", rebutted="x")])
+    assert ("response-leak", "fail") in _said(_g13(project), "response-leak")
+
+
 def test_a_quoted_revision_the_paper_does_not_hold_fails(project: Path) -> None:
     _round_with(project, [_point(
         response="We now say so.",
@@ -3163,6 +3261,111 @@ def _with_whole(root: Path, paragraph: str, corrections: dict | None = None) -> 
     write_digest(fragment)
     path = main_md(root)
     path.write_text(path.read_text(encoding="utf-8") + f"\n\n{paragraph}\n", encoding="utf-8")
+
+
+# ------------------------------------------------- what a deposited package carries
+
+
+def _packable(root: Path, **package: object) -> None:
+    (root / "LICENSE").write_text("MIT License\n", encoding="utf-8")
+    paper = root / "paper.yaml"
+    document = yaml.safe_load(paper.read_text(encoding="utf-8"))
+    document["package"] = {**document.get("package", {}), **package}
+    paper.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+
+def _resign(root: Path, change) -> None:
+    path = root / "results" / "01_disproportionality.json"
+    document = json.loads(path.read_text(encoding="utf-8"))
+    change(document)
+    path.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(path)
+
+
+def _restricted(document: dict) -> None:
+    for record in document["provenance"]["inputs"]:
+        if record["path"] == "data/event_terms.txt":
+            record["restricted"] = True
+
+
+def test_a_restricted_input_listed_as_shared_never_reaches_the_package(project: Path) -> None:
+    """The input the custodian keeps, named in package.share by mistake: nothing is written,
+    with the checks skipped too, since what stops it is no check of the results."""
+    _packable(project, request="Apply to the custodian.")
+    _resign(project, _restricted)
+    for extra in ([], ["--skip-checks"]):
+        assert _run_cli(["package", str(project), *extra]) == 1
+        assert not (project / "build" / "package").exists()
+
+
+@pytest.mark.parametrize("planted", ["../secret.csv", "data/../../secret.csv", "/secret.csv",
+                                     "C:/secret.csv", "..\\secret.csv"])  # fmt: skip
+def test_an_input_declared_outside_the_project_is_neither_read_nor_written(
+    project: Path, planted: str
+) -> None:
+    """A fragment is a file anyone can edit: an input it declares outside the project, as
+    synthetic so that it would go, is copied from nowhere and written nowhere."""
+    secret = project.parent / "secret.csv"
+    secret.write_text("id\n1\n", encoding="utf-8")
+    _packable(project, request="Write to the authors.")
+
+    def plant(document: dict) -> None:
+        document["provenance"]["inputs"].append(
+            {"path": planted, "sha256": "0" * 64, "bytes": 5, "synthetic": True}
+        )
+
+    _resign(project, plant)
+    assert _run_cli(["package", str(project), "--skip-checks"]) == 1
+    assert not (project / "build" / "package").exists()
+    assert not (project / "build" / "secret.csv").exists()
+
+
+def test_a_count_below_the_minimum_planted_in_a_table_stops_the_package(project: Path) -> None:
+    _packable(project)
+    _custodian(project, 5)
+    assert _run_cli(["package", str(project), "--dry-run"]) == 0
+
+    def plant(document: dict) -> None:
+        document["tables"]["two_by_two"]["rows"][0][1] = "2"
+
+    _resign(project, plant)
+    assert _run_cli(["package", str(project)]) == 1
+    assert not (project / "build" / "package").exists()
+
+
+def test_a_file_changed_after_the_plan_stops_the_package(project: Path) -> None:
+    """What is written is what was planned, and what the custodian signed: a script edited
+    between the two is a package nobody planned."""
+    from manuscript_guard.deposit import PackageError, plan_package, write_package
+
+    _packable(project)
+    loaded, _ = load_project(project)
+    _namespace, results, _literature, _ = load_namespace(loaded)
+    plan = plan_package(loaded, results)
+    assert plan.report.ok, plan.report.render(project)
+    script = project / "figures" / "forest.py"
+    script.write_text(script.read_text(encoding="utf-8") + "# later\n", encoding="utf-8")
+    with pytest.raises(PackageError, match="forest.py changed"):
+        write_package(loaded, plan)
+    assert not (project / "build" / "package" / plan.name).exists()
+    assert not (project / "build" / "package" / f"{plan.name}.zip").exists()
+
+
+def test_a_statement_that_loses_the_deposits_doi_fails_at_submission(project: Path) -> None:
+    from manuscript_guard.gates.data_statement import check_package_doi
+
+    _packable(project, doi="10.5281/zenodo.7654321")
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    named = text.replace("are all in\nthis repository.",
+                         "are all in this repository, deposited as 10.5281/zenodo.7654321.")
+    assert named != text
+    path.write_text(named, encoding="utf-8")
+    loaded, _ = load_project(project)
+    assert check_package_doi(loaded, submission=True).ok
+    path.write_text(named.replace("7654321", "7654320"), encoding="utf-8")
+    report = check_package_doi(load_project(project)[0], submission=True)
+    assert [f.code for f in report.failures] == ["package-doi-not-named"]
 
 
 # ------------------------------------------------- what the data statement says
@@ -5090,6 +5293,489 @@ def test_a_planned_group_of_tables_or_models_is_looked_for_among_them(project: P
                                        "- `model.crude.*`: the crude models")]  # fmt: skip
 
 
+# ------------------------------------------------- the registered protocol
+
+_NCT = "NCT01234567"
+_PRIMARY = "The reporting odds ratio of hepatic injury with example-drug"
+_SECONDARY = "The proportion of the cases that were serious"
+_STATED = f"The study was registered at ClinicalTrials.gov ({_NCT}) before its analysis."
+
+
+def _ctgov_record(**changed) -> dict:
+    """A fictional study's record as `lookup --registrations` writes one, its primary and
+    secondary outcomes apart, registered before anything the example does."""
+    record = {
+        "schema": "manuscript-guard/registration/1",
+        "id": _NCT,
+        "registry": "clinicaltrials.gov",
+        "source": "registry",
+        "asked_on": "2026-10-01",
+        "status": "found",
+        "title": "Hepatic injury with example-drug",
+        "dates": {"registered": "2025-01-10", "study_start": "2025-02"},
+        "study_type": "observational",
+        "sections": [
+            {"label": "Primary outcome 1", "role": "primary",
+             "text": f"{_PRIMARY}\nAt the end of the reporting period"},
+            {"label": "Secondary outcome 1", "role": "secondary", "text": _SECONDARY},
+        ],
+    }  # fmt: skip
+    return {**record, **changed}
+
+
+def _outcome(registered: str = _PRIMARY, role: str = "primary", reported_as="ror.*") -> dict:
+    said = {"registered": registered, "role": role}
+    return {**said, "reported_as": reported_as} if reported_as else said
+
+
+_OUTCOMES = (_outcome(), _outcome(_SECONDARY, "secondary", "case.pct_serious"))
+
+
+def _register(root: Path, *, record: dict | None = None, entry: dict | None = None,
+              stated: str | None = _STATED, digest: bool = True) -> None:  # fmt: skip
+    """Declare a registration in paper.yaml, give it in the manuscript, and keep its
+    record; each as the test changes it."""
+    from manuscript_guard.registrations import answers_digest, file_name
+
+    entry = {"id": _NCT, "outcomes": list(_OUTCOMES), **(entry or {})}
+    entry = {key: value for key, value in entry.items() if value is not None}
+    paper = root / "paper.yaml"
+    text = paper.read_text(encoding="utf-8").rstrip("\n")
+    paper.write_text(text + "\n\n" + yaml.safe_dump({"registration": [entry]},
+                                                    sort_keys=False), encoding="utf-8")  # fmt: skip
+    if stated:
+        main = main_md(root)
+        main.write_text(main.read_text(encoding="utf-8") + f"\n\n{stated}\n", encoding="utf-8")
+    record = _ctgov_record() if record is None else record
+    if record:
+        if digest and record.get("source") != "by-hand":
+            record = {**record, "answers_sha256": answers_digest(record)}
+        folder = root / "design" / "registrations"
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / file_name(str(entry["id"]))
+        path.write_text(yaml.safe_dump(record, sort_keys=False), encoding="utf-8")
+
+
+def _registration(root: Path, stage: str = "drafting") -> dict[str, str]:
+    """G12's word on the registrations at a stage, after the stage policy: code, severity."""
+    from manuscript_guard.gates.registration import check_registration
+    from manuscript_guard.policy import apply_stage
+
+    project, _ = load_project(root)
+    _namespace, results, _literature, _ = load_namespace(project)
+    report, _deferred = apply_stage(check_registration(project, results, stage), stage)
+    return {f.code: f.severity for f in report.findings}
+
+
+def test_a_paper_held_to_its_registration_passes(project: Path) -> None:
+    _register(project)
+    assert _registration(project) == {}
+    assert _registration(project, "submission") == {}
+
+
+def test_a_trial_with_no_registration_fails_from_internal_review(project: Path) -> None:
+    _paper_field(project, "study_type", "trial")
+    assert _registration(project) == {"registration-missing": "info"}
+    assert _registration(project, "internal-review") == {"registration-missing": "fail"}
+
+
+def test_an_identifier_the_manuscript_gives_and_paper_yaml_does_not_is_a_warning(
+    project: Path,
+) -> None:
+    main = main_md(project)
+    main.write_text(main.read_text(encoding="utf-8") + f"\n\n{_STATED}\n", encoding="utf-8")
+    assert _registration(project, "submission") == {"registration-undeclared": "warn"}
+
+
+def test_an_identifier_that_names_no_registry_fails(project: Path) -> None:
+    _register(project, entry={"id": "ABC-123"}, stated="ABC-123", record={})
+    assert _registration(project, "internal-review") == {"registration-id-malformed": "fail"}
+
+
+def test_an_identifier_not_written_as_its_named_registry_writes_it_fails_and_says_so(
+    project: Path,
+) -> None:
+    """Round 2 of #390: the finding told an author who had named the registry to name it."""
+    from manuscript_guard.gates.registration import check_registration
+
+    _register(project, entry={"id": "ISRCTN 17072692", "registry": "ISRCTN"},
+              stated="ISRCTN 17072692", record={})  # fmt: skip
+    assert _registration(project, "internal-review") == {"registration-id-malformed": "fail"}
+    [said] = check_registration(load_project(project)[0]).findings
+    assert "not written as ISRCTN writes" in said.message and "registry:" not in said.hint
+
+
+def test_a_registration_the_manuscript_does_not_give_fails(project: Path) -> None:
+    _register(project, stated=None)
+    assert _registration(project, "internal-review") == {"registration-not-in-manuscript": "fail"}
+    assert _registration(project) == {"registration-not-in-manuscript": "info"}
+
+
+def test_a_registration_with_no_record_fails(project: Path) -> None:
+    _register(project, record={})
+    said = _registration(project, "internal-review")
+    assert said == {"registration-not-looked-up": "fail"}
+
+
+def test_a_record_that_is_not_one_fails(project: Path) -> None:
+    _register(project, record={"schema": "manuscript-guard/registration/1", "id": _NCT})
+    assert _registration(project, "internal-review") == {"registration-record-unreadable": "fail"}
+
+
+def test_a_record_of_another_registration_fails(project: Path) -> None:
+    _register(project, record=_ctgov_record(id="NCT07654321"))
+    assert _registration(project, "internal-review") == {"registration-record-misfiled": "fail"}
+
+
+def test_an_edited_record_fails_from_drafting(project: Path) -> None:
+    """An outcome put into the record by hand, the digest left as `lookup` wrote it."""
+    from manuscript_guard.registrations import answers_digest
+
+    record = _ctgov_record()
+    edited = {**record, "answers_sha256": answers_digest(record)}
+    edited["sections"] = [*record["sections"], {"label": "Primary outcome 2", "role": "primary",
+                                                "text": "Anything at all"}]  # fmt: skip
+    _register(project, record=edited, digest=False)
+    assert _registration(project) == {"registration-record-edited": "fail"}
+
+
+def test_a_registration_record_dated_in_the_future_fails(project: Path) -> None:
+    _register(project, record=_ctgov_record(asked_on="2999-01-01"))
+    assert _registration(project, "internal-review") == {"registration-date-future": "fail"}
+
+
+def test_a_registration_the_registry_does_not_know_fails(project: Path) -> None:
+    absent = {k: v for k, v in _ctgov_record().items() if k not in (
+        "title", "dates", "study_type", "sections")}  # fmt: skip
+    _register(project, record={**absent, "status": "absent", "why": "it knows no such study"})
+    assert _registration(project, "internal-review") == {"registration-unknown": "fail"}
+
+
+def test_a_registry_that_did_not_answer_is_a_warning_and_nothing_more(project: Path) -> None:
+    absent = {k: v for k, v in _ctgov_record().items() if k not in (
+        "title", "dates", "study_type", "sections")}  # fmt: skip
+    _register(project, record={**absent, "status": "unresolvable", "why": "HTTP 503"})
+    assert _registration(project, "submission") == {"registration-unanswered": "warn"}
+
+
+def test_a_record_copied_by_hand_is_noted_and_held_like_another(project: Path) -> None:
+    record = {k: v for k, v in _ctgov_record().items() if k not in ("asked_on",)}
+    record = {**record, "id": "ACTRN12625000123456", "registry": "anzctr", "source": "by-hand",
+              "copied_on": "2026-10-01", "copied_by": "A. Author"}  # fmt: skip
+    entry = {"id": "ACTRN12625000123456", "registry": "anzctr"}
+    _register(project, record=record, entry=entry, stated="Registered as ACTRN12625000123456.")
+    assert _registration(project, "submission") == {"registration-by-hand": "info"}
+    entry = {**entry, "outcomes": [_outcome("Something never registered")]}
+    _register_again(project, record=record, entry=entry)
+    said = _registration(project, "submission")
+    assert said["registration-outcome-not-registered"] == "fail"
+
+
+def _register_again(root: Path, **changed) -> None:
+    """The registration declared anew: paper.yaml's block replaced, the rest as it was."""
+    paper = root / "paper.yaml"
+    text = paper.read_text(encoding="utf-8")
+    paper.write_text(text[: text.index("\n\nregistration:")] + "\n", encoding="utf-8")
+    _register(root, stated=None, **changed)
+
+
+def test_a_withdrawn_registration_warns_then_fails_at_submission(project: Path) -> None:
+    _register(project, record=_ctgov_record(withdrawn=True))
+    assert _registration(project) == {"registration-withdrawn": "warn"}
+    assert _registration(project, "submission") == {"registration-withdrawn": "fail"}
+
+
+def test_a_registered_design_other_than_the_paper_s_warns_then_fails(project: Path) -> None:
+    _paper_field(project, "study_type", "trial")
+    _register(project)
+    assert _registration(project) == {"registration-design-differs": "warn"}
+    assert _registration(project, "submission") == {"registration-design-differs": "fail"}
+
+
+def test_a_registration_after_the_study_started_warns_then_fails(project: Path) -> None:
+    dates = {"registered": "2025-03-02", "study_start": "2025-02-14"}
+    _register(project, record=_ctgov_record(dates=dates))
+    assert _registration(project) == {"registration-late": "warn"}
+    assert _registration(project, "submission") == {"registration-late": "fail"}
+
+
+def test_a_start_known_to_the_month_is_compared_to_the_month(project: Path) -> None:
+    _register(project, record=_ctgov_record(dates={"registered": "2025-02-27",
+                                                   "study_start": "2025-02"}))  # fmt: skip
+    assert _registration(project, "submission") == {}
+
+
+def _days_on(days: int) -> str:
+    """A day this many days from today: the fixture wrote its first results today."""
+    from datetime import date, timedelta
+
+    return (date.today() + timedelta(days=days)).isoformat()
+
+
+def test_a_planned_start_after_the_day_asked_is_not_a_start(project: Path) -> None:
+    dates = {"registered": _days_on(30), "study_start": _days_on(29)}
+    _register(project, record=_ctgov_record(dates=dates, asked_on=_days_on(-20)))
+    said = _registration(project, "submission")
+    # Registered after the first results, which the fixture wrote today: that is said.
+    assert said == {"registration-late": "fail"}
+    assert "the study's start" not in _registration_messages(project)
+
+
+def test_a_registration_after_the_first_results_warns_then_fails(project: Path) -> None:
+    _register(project, record=_ctgov_record(dates={"registered": _days_on(30)}))
+    assert _registration(project) == {"registration-late": "warn"}
+    assert "the first results" in _registration_messages(project)
+
+
+def _registration_messages(root: Path) -> str:
+    from manuscript_guard.gates.registration import check_registration
+
+    project, _ = load_project(root)
+    return " ".join(f.message for f in check_registration(project).findings)
+
+
+def test_a_retrospective_registration_said_in_paper_and_manuscript_is_a_note(
+    project: Path,
+) -> None:
+    dates = {"registered": "2025-03-02", "study_start": "2025-02-14"}
+    stated = (f"The study was retrospectively\nregistered ({_NCT}), as the protocol was agreed "
+              "with the data custodian first.")  # fmt: skip
+    _register(project, record=_ctgov_record(dates=dates), stated=stated,
+              entry={"retrospective": "the custodian agreed the protocol first"})
+    assert _registration(project, "submission") == {"registration-retrospective": "info"}
+
+
+def test_a_registry_based_cohort_does_not_say_the_registration_was_late(project: Path) -> None:
+    """Round 1 of #390: "registry" was read as "registered", and a late registration whose
+    manuscript said only this passed as said."""
+    dates = {"registered": "2025-03-02", "study_start": "2025-02-14"}
+    stated = f"A retrospective registry-based cohort ({_NCT})."
+    _register(project, record=_ctgov_record(dates=dates), stated=stated,
+              entry={"retrospective": "the custodian agreed the protocol first"})  # fmt: skip
+    said = _registration(project, "submission")
+    assert said == {"registration-retrospective-unsaid": "fail"}
+
+
+def test_a_registration_after_a_dry_run_on_synthetic_data_is_a_note(project: Path) -> None:
+    """Round 1 of #390: the plan is frozen on the first results of any kind, so a study
+    registered after a dry run on simulated data, and before its real analysis, failed as
+    late, and only an untrue sentence cleared it."""
+    frozen = project / "design" / "plan.frozen.yaml"
+    record = json.loads(frozen.read_text(encoding="utf-8"))
+    frozen.write_text(json.dumps({**record, "synthetic": True}), encoding="utf-8")
+    _register(project, record=_ctgov_record(dates={"registered": _days_on(30)}))
+    assert _registration(project, "submission") == {"registration-after-dry-run": "info"}
+    dates = {"registered": _days_on(30), "study_start": _days_on(-3)}
+    _register_again(project, record=_ctgov_record(dates=dates, asked_on=_days_on(-1)))
+    said = _registration(project, "submission")
+    assert said == {"registration-late": "fail", "registration-after-dry-run": "info"}
+
+
+def _in_the_supplement(root: Path, said: str) -> None:
+    supplement = root / "manuscript" / "supplementary" / "S1_code_lists.md"
+    supplement.write_text(supplement.read_text(encoding="utf-8") + f"\n\n{said}\n", "utf-8")
+
+
+def test_the_supplement_gives_a_registration_as_the_main_text_does(project: Path) -> None:
+    """Basile's rule (2026-10-21): the supplement is held to the main text's rules. The
+    identifier and the words of a late registration count there, and so does an identifier
+    paper.yaml does not list."""
+    dates = {"registered": "2025-03-02", "study_start": "2025-02-14"}
+    _register(project, stated=None, record=_ctgov_record(dates=dates),
+              entry={"retrospective": "the custodian agreed the protocol first"})  # fmt: skip
+    _in_the_supplement(project, f"The study was retrospectively registered ({_NCT}).")
+    assert _registration(project, "submission") == {"registration-retrospective": "info"}
+
+
+def test_an_identifier_given_only_in_the_supplement_is_read(project: Path) -> None:
+    _in_the_supplement(project, "Its comparator came from trial NCT07654321.")
+    assert _registration(project, "submission") == {"registration-undeclared": "warn"}
+
+
+def test_a_retrospective_registration_the_manuscript_does_not_say_fails(project: Path) -> None:
+    dates = {"registered": "2025-03-02", "study_start": "2025-02-14"}
+    _register(project, record=_ctgov_record(dates=dates),
+              entry={"retrospective": "the custodian agreed the protocol first"})  # fmt: skip
+    said = _registration(project, "submission")
+    assert said == {"registration-retrospective-unsaid": "fail"}
+
+
+def test_no_outcome_quoted_warns_then_fails(project: Path) -> None:
+    _register(project, entry={"outcomes": None})
+    said = _registration(project, "submission")
+    assert said == {"registration-outcomes-undeclared": "fail"}
+
+
+def test_a_quoted_outcome_the_registry_does_not_hold_warns_then_fails(project: Path) -> None:
+    _register(project, entry={"outcomes": [_outcome("The incidence of hepatic failure"),
+                                           _OUTCOMES[1]]})  # fmt: skip
+    said = _registration(project, "submission")
+    assert said == {"registration-outcome-not-registered": "fail",
+                    "registration-primary-unquoted": "fail"}  # fmt: skip
+
+
+def test_an_outcome_not_registered_and_named_under_deviations_passes(project: Path) -> None:
+    _deviation(project, "3. The ratio, `ror.*`, replaced the outcome registered.")
+    outcomes = [_outcome("The incidence of hepatic failure"), _OUTCOMES[1],
+                _outcome(_PRIMARY, reported_as=None)]  # fmt: skip
+    _deviation(project, f'4. "{_PRIMARY.lower()}" was not reported.')
+    _register(project, entry={"outcomes": outcomes})
+    assert _registration(project, "submission") == {}
+
+
+def test_case_spacing_and_dashes_are_not_compared(project: Path) -> None:
+    quote = "the  REPORTING odds\nratio of hepatic injury with example\N{EN DASH}drug"
+    _register(project, entry={"outcomes": [_outcome(quote), _OUTCOMES[1]]})
+    assert _registration(project, "submission") == {}
+
+
+def test_a_registered_secondary_outcome_reported_as_primary_warns_then_fails(
+    project: Path,
+) -> None:
+    outcomes = [_outcome(), _outcome(_SECONDARY, "primary", "case.pct_serious")]
+    _register(project, entry={"outcomes": outcomes})
+    assert _registration(project) == {"registration-outcome-role-changed": "warn"}
+    assert _registration(project, "submission") == {"registration-outcome-role-changed": "fail"}
+
+
+def test_a_registered_primary_outcome_reported_as_secondary_warns_then_fails(
+    project: Path,
+) -> None:
+    outcomes = [_outcome(role="secondary"), _OUTCOMES[1]]
+    _register(project, entry={"outcomes": outcomes})
+    said = _registration(project, "submission")
+    assert said == {"registration-outcome-role-changed": "fail"}
+
+
+def test_a_role_changed_and_named_under_deviations_passes(project: Path) -> None:
+    _deviation(project, "3. `case.pct_serious` is reported as the primary outcome.")
+    outcomes = [_outcome(), _outcome(_SECONDARY, "primary", "case.pct_serious")]
+    _register(project, entry={"outcomes": outcomes})
+    assert _registration(project, "submission") == {}
+
+
+def test_a_registered_outcome_not_reported_and_not_said_warns_then_fails(project: Path) -> None:
+    outcomes = [_outcome(), _outcome(_SECONDARY, "secondary", None)]
+    _register(project, entry={"outcomes": outcomes})
+    assert _registration(project, "submission") == {"registration-outcome-dropped": "fail"}
+    _deviation(project, f"3. {_SECONDARY} was not analysed.")
+    assert _registration(project, "submission") == {}
+
+
+def test_an_outcome_reported_under_a_key_the_plan_does_not_list_warns_then_fails(
+    project: Path,
+) -> None:
+    outcomes = [_outcome(reported_as="liver.ror"), _OUTCOMES[1]]
+    _register(project, entry={"outcomes": outcomes})
+    said = _registration(project, "submission")
+    assert said == {"registration-outcome-unplanned": "fail"}
+    _register_again(project, entry={"outcomes": [_outcome(reported_as="ror.point"),
+                                                 _OUTCOMES[1]]})  # fmt: skip
+    assert _registration(project, "submission") == {}, "a key in a planned group is planned"
+
+
+def test_an_outcome_reported_as_a_planned_result_never_emitted_warns_then_fails(
+    project: Path,
+) -> None:
+    _plan_edited(project, "- `case.pct_serious`",
+                 "- `death.n_cases`: deaths among the cases\n- `case.pct_serious`")  # fmt: skip
+    outcomes = [_outcome(), _outcome(_SECONDARY, "secondary", "death.n_cases")]
+    _register(project, entry={"outcomes": outcomes})
+    said = _registration(project, "submission")
+    assert said == {"registration-outcome-unreported": "fail"}
+    assert _registration(project, "design") == {}, "nothing is emitted at the design stage"
+
+
+def test_a_registered_primary_outcome_no_quote_stands_for_warns_then_fails(
+    project: Path,
+) -> None:
+    record = _ctgov_record()
+    failure = "The reporting odds ratio of hepatic failure"
+    record["sections"].insert(1, {"label": "Primary outcome 2", "role": "primary",
+                                  "text": failure})
+    _register(project, record=record)
+    said = _registration(project, "submission")
+    assert said == {"registration-primary-unquoted": "fail"}
+    # One vague quote found in both stands for one of them, not both.
+    outcomes = [_outcome("The reporting odds ratio of hepatic"), _OUTCOMES[1]]
+    _register_again(project, record=record, entry={"outcomes": outcomes})
+    assert _registration(project, "submission") == {"registration-primary-unquoted": "fail"}
+
+
+def test_a_registered_secondary_outcome_no_quote_stands_for_is_a_warning(project: Path) -> None:
+    _register(project, entry={"outcomes": [_outcome()]})
+    said = _registration(project, "submission")
+    assert said == {"registration-secondary-unquoted": "warn"}
+
+
+def test_a_registry_that_gives_its_outcomes_as_text_is_noted(project: Path) -> None:
+    record = _ctgov_record(id="EUPAS1000000999", registry="eu-pas", sections=[
+        {"label": "Outcomes", "role": "outcomes",
+         "text": f"Primary outcome: {_PRIMARY}.\nSecondary outcome: {_SECONDARY}."},
+        {"label": "Data analysis plan", "text": "A reporting odds ratio."},
+    ])  # fmt: skip
+    outcomes = [_outcome(), _outcome(_SECONDARY, "primary", "case.pct_serious")]
+    _register(project, record=record, entry={"id": "EUPAS1000000999", "outcomes": outcomes},
+              stated="Registered in the EU PAS register (EUPAS1000000999).")  # fmt: skip
+    # The role cannot be read where the registry keeps the outcomes as one text: the swap
+    # above is a co-author's to see, and the gate says it did not look.
+    assert _registration(project, "submission") == {"registration-roles-unchecked": "info"}
+    outcomes = [_outcome("A reporting odds ratio"), _OUTCOMES[1]]
+    _register_again(project, record=record, entry={"id": "EUPAS1000000999",
+                                                   "outcomes": outcomes})  # fmt: skip
+    said = _registration(project, "submission")
+    assert said["registration-outcome-not-registered"] == "fail", "only an outcome field counts"
+
+
+def test_an_outcome_added_to_an_updated_registration_warns_then_fails(project: Path) -> None:
+    first = [{"label": "Outcome(s)", "role": "outcomes", "text": _SECONDARY}]
+    record = _ctgov_record(id="osf.io/abcde", registry="osf", sections=[
+        {"label": "Outcome(s)", "role": "outcomes", "text": f"{_PRIMARY}; {_SECONDARY}"}],
+        first_version={"updated": "2025-06-01", "reason": "added an outcome",
+                       "sections": first})  # fmt: skip
+    _register(project, record=record, entry={"id": "osf.io/abcde"},
+              stated="Preregistered at https://osf.io/abcde.")  # fmt: skip
+    said = _registration(project, "submission")
+    assert said["registration-outcome-added-later"] == "fail"
+
+
+def test_check_holds_the_paper_to_its_registration(project: Path) -> None:
+    from manuscript_guard.cli import _run_gates
+
+    _register(project, record={})
+    report, _project, _stage, _deferred = _run_gates(project, stage="internal-review")
+    assert "registration-not-looked-up" in {f.code for f in report.failures}
+    report, *_ = _run_gates(project, stage="drafting")
+    assert "registration-not-looked-up" not in {f.code for f in report.failures}
+
+
+_SHAPES = ["5", "NCT01234567", "{id: 5, registry: 7, outcomes: 3}",
+           "[{id: NCT01234567, outcomes: [{registered: 1}]}]"]  # fmt: skip
+
+
+@pytest.mark.parametrize("written", _SHAPES)
+def test_a_registration_of_another_shape_is_the_contract_s_to_report(
+    project: Path, written: str
+) -> None:
+    paper = project / "paper.yaml"
+    paper.write_text(paper.read_text(encoding="utf-8") + f"\nregistration: {written}\n",
+                     encoding="utf-8")  # fmt: skip
+    project_, contract = load_project(project)
+    assert not contract.ok, "the schema says what is wrong with it"
+    from manuscript_guard.gates.registration import check_registration
+
+    check_registration(project_, None, "submission")  # reads it as nothing, and does not raise
+
+
+def _deviation(root: Path, said: str) -> None:
+    """One more item under the plan's Deviations section."""
+    _plan_edited(root, "No analysis was added", f"{said}\n\nNo analysis was added")
+
+
+def _paper_field(root: Path, key: str, value: str) -> None:
+    paper = root / "paper.yaml"
+    text = paper.read_text(encoding="utf-8").rstrip("\n")
+    paper.write_text(text + f"\n{key}: {value}\n", encoding="utf-8")
 # ------------------------------------------------- the data dictionary
 
 #: The example's report file, described as a dictionary describes it.
@@ -6137,8 +6823,10 @@ def test_a_gate_not_taught_latex_reads_nothing_and_fails_at_submission(project: 
     _as_latex(project)
     drafting, _project, _stage, _deferred = _run_gates(project, stage="drafting")
     unread = sorted(f.gate for f in drafting.findings if f.code == "not-read-in-latex")
-    # G2 reads LaTeX but for its pointers to tables and figures, and says so (step 4).
-    expected = ["BUILD", "G13", "G14", "G15", "G2", "G4", "G6", "G7", "G8", "G8r", "G9"]
+    # G2 reads LaTeX but for its pointers to tables and figures, and says so (step 4). G4
+    # reads it from step 6 but for the data sources its statements name, G14 and G6 from
+    # step 7, G7 but for its text recycling, G8, G8r, G9, G13 and G15 from step 8.
+    expected = ["BUILD", "G2", "G4", "G7"]
     assert unread == expected, drafting.render(project)
     assert "not-read-in-latex" not in codes(drafting)
     said = {f.code for f in drafting.findings}
@@ -6152,16 +6840,13 @@ def test_a_gate_not_taught_latex_reads_nothing_and_fails_at_submission(project: 
 
 #: The checks that read the manuscript only as Markdown, and those that do not read it.
 _MARKDOWN_ONLY = (
-    "check_statement_sources", "check_related",
-    "check_citations", "check_prose_quotations", "check_journal", "check_reporting",
-    "check_writing", "check_methods", "check_reported", "check_recomputed", "check_revision",
-    "check_language", "check_models", "check_shapes", "check_tex", "check_passages",
-    "check_recycling",
+    "check_statement_sources", "check_shapes", "check_tex", "check_recycling",
 )  # fmt: skip
 _NOT_THE_MANUSCRIPT = (
     "check_review", "check_freshness", "check_figures", "check_figure_reviews",
     "check_literature_chain", "check_shortlist", "check_design", "check_design_rounds",
     "check_consistency", "check_restricted_inputs", "check_relations", "check_data_sources",
+    "check_datasets",
     "check_method_passages", "check_methods_review",
     # It finds the figures placed in the Markdown sources, so it reads nothing of a LaTeX
     # manuscript and says nothing of one; it runs, as G3's other check does (round 1 of #387).
@@ -6169,10 +6854,18 @@ _NOT_THE_MANUSCRIPT = (
     # The same, for the colours each figure paints.
     "check_figure_colours",
 )  # fmt: skip
-#: The checks that read LaTeX: they run on a LaTeX manuscript as on any.
+#: The checks that read LaTeX: they run on a LaTeX manuscript as on any. G12's
+#: registration looks for an identifier and a sentence, which a `.tex` file holds
+#: as plainly as a Markdown one.
 _READS_LATEX = (
     "check_latex", "check_numbers", "check_bound_units", "check_small_cells",
-    "check_synthetic_inputs", "check_values",
+    "check_synthetic_inputs", "check_citations", "check_journal", "check_language",
+    "check_writing", "check_values", "check_registration", "check_reported",
+    "check_recomputed", "check_methods", "check_models", "check_related", "check_revision",
+    "check_reporting", "check_prose_quotations", "check_passages",
+    # It reads the main text through G4's `main_text`, which gives a LaTeX manuscript as it
+    # prints (#414).
+    "check_package_doi",
 )  # fmt: skip
 
 
@@ -6311,8 +7004,7 @@ def test_g1_holds_the_twins_values_file_to_the_results(
 
 def test_every_binding_of_the_twin_when_inlined_is_caught(project: Path) -> None:
     """The headline on the twin: each `\\mg` replaced by its own value, as an author types it,
-    fails G2 (step 4). A value with no digit, the model's kind, is G15's to hold, which reads
-    Markdown only until step 8: in the example it fails there, and G2 cannot see words."""
+    fails G2 (step 4), and the model's kind, a value with no digit, fails G15 (step 8)."""
     entry = _twin(project)
     assert _twin_failures(project) == [], gate_report(project).render(project)
     text = entry.read_text(encoding="utf-8")
@@ -6320,7 +7012,9 @@ def test_every_binding_of_the_twin_when_inlined_is_caught(project: Path) -> None
     targets = sorted(
         ref for ref in set(re.findall(r"\\mg\{((?:results|lit)\.[a-z0-9_.]+)\}", text))
         if any(character.isdigit() for character in namespace[ref].display)
+        or (ref.startswith("results.model.") and ref.endswith(".kind"))
     )
+    assert "results.model.adjusted.kind" in targets, targets
     assert len(targets) >= 12, targets
     escaped = []
     for ref in targets:
@@ -6448,6 +7142,542 @@ def test_the_custodian_and_g1_read_the_twins_bindings(project: Path) -> None:
                 if "\\mg{results.case.n_serious}" in text)  # fmt: skip
     assert _small(project) == [("results.case.n_serious", line)]
     assert "results.case.n_serious" in quoted_refs(load_project(project)[0])
+
+
+def test_g7_reads_the_twins_citations_as_the_examples(project: Path) -> None:
+    """The twin's citations pass G7 as the example's do; a key cited in a group with another,
+    and wrapped onto the next line, that is in no bibliography is said (step 5)."""
+    entry = _twin(project)
+    clean = {(f.code, f.severity) for f in _g7(project).findings}
+    _into_results(entry, "A claim \\citep[p.~2]{ghostKey2020,\n  fictionalHepaticCohort2021}.")
+    text = entry.read_text(encoding="utf-8")
+    found = [f for f in _g7(project).failures if "ghostKey2020" in f.message]
+    line = text.count("\n", 0, text.index("ghostKey2020")) + 1
+    assert [f.line for f in found] == [line], _g7(project).render(project)
+    assert not [f for f in _g7(project).failures if "fictionalHepaticCohort2021" in f.message]
+    assert clean <= {(f.code, f.severity) for f in _g7(project).findings}
+
+
+def _g4(root: Path) -> set[str]:
+    from manuscript_guard.gates import check_journal
+
+    return {f.code for f in check_journal(load_project(root)[0]).findings}
+
+
+@pytest.mark.parametrize(
+    ("before", "after", "code"),
+    [
+        ("\\section{Methods}", "\\section{Approach}", "missing-required-section"),
+        ("\\section{Funding}", "\\textbf{Funding}", "missing-required-statement"),
+        ("\\end{abstract}", " ".join(["word"] * 320) + "\n\\end{abstract}",
+         "over-journal-limit"),
+    ],
+)
+def test_g4_reads_the_twins_sections_statements_and_limits(
+    project: Path, before: str, after: str, code: str
+) -> None:
+    """A required section renamed, a required statement left without its heading, an
+    abstract over its limit: each is found in the twin as in the example (step 6)."""
+    entry = _twin(project)
+    assert code not in _g4(project)
+    text = entry.read_text(encoding="utf-8")
+    assert before in text
+    entry.write_text(text.replace(before, after, 1), encoding="utf-8")
+    assert code in _g4(project)
+
+
+def test_g4_counts_no_word_of_a_float_a_formula_or_the_preamble_in_the_twin(
+    project: Path,
+) -> None:
+    """A caption, a displayed formula and the preamble print no word of the text, as a journal
+    counts it: 4,000 of them in each leave the main text under its limit (step 6)."""
+    entry = _twin(project)
+    words = " ".join(["word"] * 4000)
+    text = entry.read_text(encoding="utf-8")
+    text = text.replace("\\begin{document}", f"\\author{{{words}}}\n\\begin{{document}}", 1)
+    entry.write_text(text, encoding="utf-8")
+    _into_results(entry, f"\\begin{{figure}}\\caption{{{words}}}\\end{{figure}}\n"
+                         f"\\[ {words} \\]")  # fmt: skip
+    assert "over-journal-limit" not in _g4(project)
+
+
+def _g14(root: Path) -> list:
+    from manuscript_guard.gates import check_language
+
+    return list(check_language(load_project(root)[0]).findings)
+
+
+@pytest.mark.parametrize(
+    ("snippet", "code", "word"),
+    [
+        ("The hazard ratio was HR here.", "abbreviation-undefined", "HR is used once"),
+        ("The color of the reports.", "spelling-variant", "'color'"),
+        ("The caf\\'e reports.", "tex-words-not-read", "caf\\\\'e"),
+        ("The SSRI rose. The SSRI (selective serotonin reuptake inhibitor) class.",
+         "abbreviation-used-before-defined", "SSRI"),
+    ],
+)
+def test_g14_finds_in_the_twin_what_it_finds_in_the_example(
+    project: Path, snippet: str, code: str, word: str
+) -> None:
+    """An abbreviation never defined, an American spelling in a British paper, a word an
+    accent command splits, and a use before the definition, each written into the twin's
+    Results, are found there, on the line it is written on (step 7)."""
+    entry = _twin(project)
+    _into_results(entry, snippet)
+    found = [f for f in _g14(project) if f.code == code and word in f.message]
+    assert found and found[0].path == entry, [(f.code, f.message) for f in _g14(project)]
+    text = entry.read_text(encoding="utf-8")
+    assert found[0].line == text.count("\n", 0, text.index(snippet)) + 1
+
+
+def test_g8_says_of_the_twin_a_number_its_abstract_alone_gives(project: Path) -> None:
+    """A key the twin's Abstract binds, taken out of its Results, is a number the paper reports
+    nowhere else, named at the Abstract's line of main.tex, as in the example (step 8)."""
+    from manuscript_guard.gates.reported import check_reported
+
+    entry = _twin(project)
+    text = entry.read_text(encoding="utf-8")
+    binding = "\\mg{results.cohort.n_reports}"
+    first = text.index(binding) + len(binding)
+    entry.write_text(text[:first] + text[first:].replace(binding, "many"), encoding="utf-8")
+    projekt = load_project(project)[0]
+    (found,) = check_reported(projekt, load_namespace(projekt)[1]).findings
+    assert found.path == entry and found.line == text.count("\n", 0, first) + 1
+    assert found.message.startswith("results.cohort.n_reports is given under 'Abstract'")
+
+
+def test_g8_recomputes_a_p_in_the_twin_after_a_display_holding_a_percent(project: Path) -> None:
+    """A t statistic and a P that do not meet, typed after a bound percentage: the display's
+    `%` is printed, not a comment, so the rest of the line is read, at its line of main.tex
+    (step 8, DESIGN.md's "a display holding `%` through G8")."""
+    from dataclasses import replace
+
+    from manuscript_guard.gates.recomputed import check_recomputed
+
+    entry = _twin(project)
+    snippet = "Of them, \\mg{results.case.pct_serious} were serious; t(23) = 2.45, p = 0.002."
+    _into_results(entry, snippet)
+    projekt = load_project(project)[0]
+    namespace, results, _literature, _rest = load_namespace(projekt)
+    # The example prints its percentage's unit apart; this display holds the sign itself.
+    key = "results.case.pct_serious"
+    namespace = {**namespace, key: replace(namespace[key], display="36.4%")}
+    found = [f for f in check_recomputed(projekt, namespace, results).findings
+             if f.code == "p-inconsistent"]  # fmt: skip
+    text = entry.read_text(encoding="utf-8")
+    assert [(f.path, f.line) for f in found] == [(entry, text.count("\n", 0, text.index(snippet))
+                                                  + 1)]  # fmt: skip
+
+
+def test_g8_names_the_tex_line_after_a_binding_split_over_two_lines(project: Path) -> None:
+    """`\\mg` at a line's end and its key on the next: the value is put in and the line break
+    kept, so a finding after it names its own line (round 1 of step 8)."""
+    from manuscript_guard.gates.recomputed import check_recomputed
+
+    entry = _twin(project)
+    snippet = "Seen in \\mg\n{results.case.n_cases} reports; t(23) = 2.45, p = 0.002."
+    _into_results(entry, snippet)
+    projekt = load_project(project)[0]
+    found = [f for f in check_recomputed(projekt, *load_namespace(projekt)[:2]).findings
+             if f.code == "p-inconsistent"]  # fmt: skip
+    text = entry.read_text(encoding="utf-8")
+    assert [f.line for f in found] == [text.count("\n", 0, text.index("reports; t(23)")) + 1]
+
+
+@pytest.mark.parametrize("after", ["", " ", "%"])
+def test_g8_reads_a_p_after_a_binding_split_at_the_end_of_its_line(
+    project: Path, after: str
+) -> None:
+    """`t(23) = \\mg`, its key on the next line and the P on the one after: no blank line is
+    made between the statistic and its P, where nothing follows the key on its line, a space
+    or a comment (rounds 2 and 3 of step 8)."""
+    from manuscript_guard.gates.recomputed import check_recomputed
+
+    entry = _twin(project)
+    _into_results(entry, f"t(23) = \\mg\n{{results.case.n_cases}}{after}\nand p = 0.9.")
+    projekt = load_project(project)[0]
+    codes = ("p-inconsistent", "p-decision-error")
+    found = [f for f in check_recomputed(projekt, *load_namespace(projekt)[:2]).findings
+             if f.code in codes and "t(23)" in f.context]  # fmt: skip
+    assert len(found) == 1, found
+
+
+def test_g8_reads_a_binding_in_a_formula_or_a_typed_table_as_reported(project: Path) -> None:
+    """A key the Abstract gives, reported in the Results inside `$...$` or a bare `tabular`
+    and nowhere else, is reported (round 1 of step 8)."""
+    from manuscript_guard.gates.reported import check_reported
+
+    for wrapped in ("$n = {}$", "\\begin{{tabular}}{{l}}{}\\end{{tabular}}"):
+        entry = _twin(project)
+        text = entry.read_text(encoding="utf-8")
+        binding = "\\mg{results.cohort.n_reports}"
+        first = text.index(binding) + len(binding)
+        rest = text[first:].replace(binding, "many")
+        results = rest.index("\\section{Discussion}")
+        rest = rest[:results] + wrapped.format(binding) + "\n\n" + rest[results:]
+        entry.write_text(text[:first] + rest, encoding="utf-8")
+        projekt = load_project(project)[0]
+        assert check_reported(projekt, load_namespace(projekt)[1]).findings == (), wrapped
+
+
+def test_g9_names_a_reworded_claim_of_the_twin_at_its_line_with_what_it_said(
+    project: Path,
+) -> None:
+    """Step 8: the twin's claims are the example's, word for word, so the example's lock holds
+    them, and a claim reworded is named on the line of the `.tex` where its anchors are."""
+    entry = _twin(project)
+    _replace_once(entry, "computed from a 2 x 2 table", "computed from a 2 by 2 table")
+    report = _methods_report(project)
+    found = [f for f in report.failures if f.code == "method-claim-changed"]
+    assert [f.message.split("'")[1] for f in found] == ["ror", "ci"], report.render(project)
+    text = entry.read_text(encoding="utf-8")
+    line = text.count("\n", 0, text.index("\\mg{method.ror}")) + 1
+    assert {(Path(f.path).name, f.line) for f in found} == {("main.tex", line)}, found
+    assert all(
+        f.context.startswith("was: The reporting odds ratio was computed from a 2 x 2 table")
+        for f in found
+    ), found
+
+
+def test_g9_finds_a_step_the_twin_no_longer_points_at(project: Path) -> None:
+    entry = _twin(project)
+    _replace_once(entry, "\n\\mg{method.signal}", "")
+    report = _methods_report(project)
+    assert [f.message for f in report.warnings if f.code == "method-step-undescribed"] == [
+        "step 'signal' ran, and no text in the manuscript points at it"
+    ]
+
+
+def test_g9_holds_the_lock_s_parameters_to_the_twin_s_methods(project: Path) -> None:
+    _twin(project)
+    assert _methods_warnings(project) == []
+    _wrong_alpha_in_the_lock(project)
+    assert _methods_warnings(project) == [
+        "methods-parameter-absent: the Methods do not mention alpha = 0.07"
+    ]
+
+
+def test_g9_reads_the_twin_s_supplement_methods_where_the_main_text_has_none(
+    project: Path,
+) -> None:
+    """The LaTeX form of the research letter with its Methods in eMethods: the supplement's
+    are read where the main text names none."""
+    from manuscript_guard.gates import reconcile
+
+    entry = _twin(project)
+    _replace_once(entry, "\\section{Methods}", "\\section{Approach}")
+    _replace_once(entry.parent / "supplementary" / "main.tex", "\\end{document}",
+                  "\\section{eMethods 1. Statistical analysis}\n\nTests were two-sided at an "
+                  "alpha of \\mg{results.param.alpha}.\n\n\\end{document}")  # fmt: skip
+    _wrong_alpha_in_the_lock(project)
+    assert _methods_warnings(project) == [
+        "methods-parameter-absent: the Methods do not mention alpha = 0.07"
+    ]
+    reconcile(load_project(project)[0], parameters={"alpha": "0.05"})
+    assert _methods_warnings(project) == []
+
+
+def test_g9_says_the_twin_has_no_methods_where_no_heading_names_them(project: Path) -> None:
+    """A LaTeX manuscript has no Markdown file, and was taken for one with no text: the lock's
+    parameters were compared with nothing, and nothing was said (round 1 of step 8)."""
+    entry = _twin(project)
+    _replace_once(entry, "\\section{Methods}", "\\section{Approach}")
+    assert [line.split(":")[0] for line in _methods_warnings(project)] == ["methods-not-found"]
+
+
+def test_g9_reads_a_claim_of_the_twin_whole_across_a_comment_s_line(project: Path) -> None:
+    """A line of a comment alone ends no paragraph in LaTeX: the claim before it is not
+    emptied, and the words before the comment are not a paragraph that points at no step
+    (round 1 of step 8)."""
+    from manuscript_guard.gates.methods import anchored
+
+    entry = _twin(project)
+    _replace_once(entry, "practice. \\mg{method.ror}",
+                  "practice.\n% checked against the protocol\n\\mg{method.ror}")  # fmt: skip
+    assert _methods_report(project).findings == ()
+    claims, open_ = anchored(load_project(project)[0])
+    assert len(open_) == 4 and claims[0].text.endswith("with signal-detection practice."), claims
+
+
+def test_g9_reads_a_claim_of_the_twin_whole_round_a_float_typed_inside_it(
+    project: Path,
+) -> None:
+    """A float typed inside a paragraph ends none: TeX moves it out, and the paragraph prints
+    whole, so the claim is not emptied (round 2 of step 8)."""
+    entry = _twin(project)
+    figure = "\\begin{figure}\\caption{Flow.}\\end{figure}"
+    _replace_once(entry, "practice. \\mg{method.ror}", f"practice.\n{figure}\n\\mg{{method.ror}}")
+    assert _methods_report(project).findings == ()
+
+
+@pytest.mark.parametrize(
+    "table",
+    ["\\begin{center}\\begin{tabular}{l}x\\end{tabular}\\end{center}",
+     "\\begin{longtable}{l}x\\end{longtable}"],
+)  # fmt: skip
+def test_g9_ends_a_paragraph_of_the_twin_at_a_table_set_apart(project: Path, table: str) -> None:
+    """A table a `center` or a `longtable` sets apart ends the paragraph before it, as TeX
+    prints it: the words after it are the claim, and those before it point at no step (round 3
+    of step 8)."""
+    from manuscript_guard.gates.methods import anchored
+
+    entry = _twin(project)
+    _replace_once(entry, "practice. \\mg{method.ror}",
+                  f"practice.\n{table}\nAs typed. \\mg{{method.ror}}")  # fmt: skip
+    claims, open_ = anchored(load_project(project)[0])
+    assert claims[0].text == "As typed.", claims[0]
+    assert any(p.text.endswith("with signal-detection practice.") for p in open_), open_
+
+
+def test_g9_reads_no_heading_or_typed_table_of_the_twin_as_a_methods_paragraph(
+    project: Path,
+) -> None:
+    """A heading glued to the paragraph after it, a typed table, and the Results glued to
+    their heading are no paragraph of the Methods; a paragraph glued to a subsection's heading
+    is one, on its own line."""
+    from manuscript_guard.gates.methods import anchored
+
+    entry = _twin(project)
+    before = len(anchored(load_project(project)[0])[1])
+    _replace_once(entry, "\\section{Results}\n\n", "\\section{Results}\n")
+    _replace_once(entry, "\\section{Results}",
+                  "\\begin{tabular}{ll}a & b \\\\ c & d\\end{tabular}\n\n"
+                  "\\subsection{Outcome}\nThe outcome was hepatic injury.\n\n"
+                  "\\section{Results}")  # fmt: skip
+    open_ = anchored(load_project(project)[0])[1]
+    text = entry.read_text(encoding="utf-8")
+    line = text.count("\n", 0, text.index("The outcome was")) + 1
+    assert len(open_) == before + 1, open_
+    assert [(p.text, p.line) for p in open_[-1:]] == [("The outcome was hepatic injury.", line)]
+
+
+def test_g15_finds_the_model_s_kind_typed_in_the_twin_s_methods_and_nowhere_else(
+    project: Path,
+) -> None:
+    """Step 8: the kind of the model typed in the twin's Methods fails where it stands, a model
+    the analysis did not fit is warned of, and one a subsection's title or the Results names
+    is not read."""
+    from manuscript_guard.gates.models import check_models
+
+    entry = _twin(project)
+    _replace_once(entry, "\\mg{results.model.adjusted.kind}", "logistic regression")
+    _replace_once(entry, "\\section{Results}",
+                  "We also tried probit regression.\n\n\\subsection{Poisson regression}\n"
+                  "No words.\n\n\\section{Results}\nA gamma regression.\n")  # fmt: skip
+    projekt = load_project(project)[0]
+    report = check_models(projekt, load_namespace(projekt)[1])
+    text = entry.read_text(encoding="utf-8")
+    lines = {words: text.count("\n", 0, text.index(words)) + 1
+             for words in ("estimated by logistic", "probit regression")}  # fmt: skip
+    assert [(f.code, Path(f.path).name, f.line) for f in report.findings] == [
+        ("typed-model-kind", "main.tex", lines["estimated by logistic"]),
+        ("model-kind-unfitted", "main.tex", lines["probit regression"]),
+    ], report.findings
+    assert "\\mg{results.model.adjusted.kind}" in report.findings[0].hint, "LaTeX spells it"
+
+
+def test_g15_finds_the_model_s_kind_typed_in_an_input_file_and_the_twin_s_supplement(
+    project: Path,
+) -> None:
+    """A file input under the Methods is read under them, and the supplement's Methods are
+    Methods too: the kind typed in either fails at its own file's line (round 1 of G15 in
+    step 8)."""
+    from manuscript_guard.gates.models import check_models
+
+    entry = _twin(project)
+    (entry.parent / "fitted.tex").write_text("Then a\nlogistic regression was fitted.\n",
+                                             encoding="utf-8")  # fmt: skip
+    _replace_once(entry, "\\section{Methods}\n", "\\section{Methods}\n\\input{fitted}\n")
+    supplement = entry.parent / "supplementary" / "main.tex"
+    heading = "\\section{Supplementary methods}\n"
+    _replace_once(supplement, heading, heading + "\nThe logistic regression was refitted.\n")
+    projekt = load_project(project)[0]
+    report = check_models(projekt, load_namespace(projekt)[1])
+    text = supplement.read_text(encoding="utf-8")
+    line = text.count("\n", 0, text.index("The logistic regression")) + 1
+    assert [(f.code, Path(f.path).name, f.line) for f in report.findings] == [
+        ("typed-model-kind", "fitted.tex", 2),
+        ("typed-model-kind", "main.tex", line),
+    ], report.findings
+
+
+def test_g8r_names_a_guideline_the_twin_says_it_followed_and_not_one_in_a_comment(
+    project: Path,
+) -> None:
+    """Step 8: a claim to have followed a guideline not declared is told at the `.tex` file
+    that makes it, and one in a comment or in `\\texttt` is no claim."""
+    from manuscript_guard.gates import check_reporting
+
+    entry = _twin(project)
+    _replace_once(entry, "\\section{Results}",
+                  "% This report follows CONSORT.\nWe used \\texttt{follows SPIRIT} here.\n\n"
+                  "This report follows PRISMA.\n\n\\section{Results}")  # fmt: skip
+    (entry.parent / "old_draft.tex").write_text("This trial followed CONSORT.\n",
+                                                encoding="utf-8")  # fmt: skip
+    (entry.parent / "macros.sty").write_text("\\newcommand{\\note}{This report follows SPIRIT.}\n",
+                                             encoding="utf-8")  # fmt: skip
+    _replace_once(entry, "\\begin{document}", "\\usepackage{macros}\n\\begin{document}")
+    found = [(f.code, Path(f.path).name, f.message.split(" followed ")[1].split(",")[0])
+             for f in check_reporting(load_project(project)[0]).findings
+             if f.code == "guideline-claimed-not-declared"]  # fmt: skip
+    assert found == [("guideline-claimed-not-declared", "main.tex", "PRISMA")], found
+
+
+_LATEX_QUOTED = (
+    "the cohort found that ``incidence {} with age and did not differ meaningfully by sex''"
+)
+
+
+@pytest.mark.parametrize(
+    ("sentence", "said"),
+    [
+        (f"As {_LATEX_QUOTED.format('rose')} \\cite{{fictionalHepaticCohort2021}}.", []),
+        (f"As {_LATEX_QUOTED.format('fell')} \\cite{{fictionalHepaticCohort2021}}.",
+         [("quotation-not-in-source", "warn")]),
+        ("The cohort found that \u201cincidence fell with age and differed by sex\u201d "
+         "\\citep{fictionalHepaticCohort2021}.", [("quotation-not-in-source", "warn")]),
+        (f"% As {_LATEX_QUOTED.format('fell')} \\cite{{fictionalHepaticCohort2021}}.", []),
+        (f"As {_LATEX_QUOTED.format('fell')}, \\textcite{{fictionalHepaticCohort2021}}\nsays.",
+         [("quotation-not-in-source", "warn")]),
+        # LaTeX's dash and ellipsis are the characters they print (round 1 of G7 in step 8).
+        ("It is ``a fictional national cohort, 2010--2019'' \\cite{fictionalHepaticCohort2021}.",
+         []),
+        ("They wrote ``The crude incidence \\ldots{} was 14 per 100 000 person-years'' "
+         "\\cite{fictionalHepaticCohort2021}.", []),
+    ],
+)  # fmt: skip
+def test_g7_holds_a_quotation_in_the_twin_to_its_source(
+    project: Path, sentence: str, said: list
+) -> None:
+    """Step 8: a quotation in LaTeX, ``...'' or typographic, in a sentence that cites a work
+    is looked for in its stored source, and a misquotation is named at its `.tex` line; one
+    in a comment is no quotation."""
+    from manuscript_guard.gates import check_prose_quotations
+
+    entry = _twin(project)
+    _replace_once(entry, "\\section{Discussion}", f"{sentence}\n\n\\section{{Discussion}}")
+    found = check_prose_quotations(load_project(project)[0]).findings
+    assert [(f.code, f.severity) for f in found] == said
+    text = entry.read_text(encoding="utf-8")
+    line = text.count("\n", 0, text.index(sentence)) + 1
+    assert all(Path(f.path).name == "main.tex" and f.line == line for f in found), found
+
+
+def test_g7_holds_a_quotation_that_opens_a_sentence_to_that_sentence_s_citation(
+    project: Path,
+) -> None:
+    """A sentence that opens with ``...'' is a sentence of its own: its quotation is held to
+    the work it cites, not to the one the sentence before cites (round 1 of G7 in step 8)."""
+    from manuscript_guard.gates import check_prose_quotations
+
+    entry = _twin(project)
+    sentence = ("Earlier work found a rise \\cite{fictionalHepaticCohort2021}. ``Incidence rose "
+                "with age and did not differ by region'' \\cite{fictionalClassSignal2019}.")
+    _replace_once(entry, "\\section{Discussion}", f"{sentence}\n\n\\section{{Discussion}}")
+    (found,) = check_prose_quotations(load_project(project)[0]).findings
+    assert "@fictionalClassSignal2019" in found.message, found.message
+    assert "@fictionalHepaticCohort2021" not in found.message, found.message
+
+
+def test_g7_names_a_quotation_under_a_heading_at_its_own_line(project: Path) -> None:
+    """A paragraph that opens on the line after `\\section` is named at its own line, not the
+    heading's (round 1 of G7 in step 8)."""
+    from manuscript_guard.gates import check_prose_quotations
+
+    entry = _twin(project)
+    misquoted = f"As {_LATEX_QUOTED.format('fell')} \\cite{{fictionalHepaticCohort2021}}."
+    _replace_once(entry, "\\section{Discussion}\n\n", f"\\section{{Discussion}}\n{misquoted}\n\n")
+    (found,) = check_prose_quotations(load_project(project)[0]).findings
+    text = entry.read_text(encoding="utf-8")
+    assert found.line == text.count("\n", 0, text.index(misquoted)) + 1, found
+
+
+def test_g7_places_each_cited_statement_of_the_twin_at_its_tex_line(project: Path) -> None:
+    """Step 8: each cited sentence is placed at the `.tex` line its paragraph starts on, as a
+    Markdown one is."""
+    from manuscript_guard.checking.produce import cited_sentences
+    from manuscript_guard.gates.passages import citing_documents
+
+    entry = _twin(project)
+    text = entry.read_text(encoding="utf-8")
+    words = ("In a national cohort", "exceeds the class-level estimate",
+             "is the only population-level figure")  # fmt: skip
+    starts = [text.rindex("\n\n", 0, text.index(said)) + 2 for said in words]
+    lines = [text.count("\n", 0, start) + 1 for start in starts]
+    cited = cited_sentences(citing_documents(load_project(project)[0]))
+    assert [(Path(c.path).name, c.line) for c in cited] == [("main.tex", n) for n in lines]
+
+
+def test_g7_names_a_misquotation_in_an_input_file_at_its_own_line(project: Path) -> None:
+    """Step 8: a quotation typed in a file the twin inputs is named in that file."""
+    from manuscript_guard.gates import check_prose_quotations
+
+    entry = _twin(project)
+    (entry.parent / "quoted.tex").write_text(
+        f"Before.\n\nAs {_LATEX_QUOTED.format('fell')} \\cite{{fictionalHepaticCohort2021}}.\n",
+        encoding="utf-8",
+    )
+    _replace_once(entry, "\\section{Discussion}", "\\input{quoted}\n\n\\section{Discussion}")
+    found = check_prose_quotations(load_project(project)[0]).findings
+    assert [(f.code, Path(f.path).name, f.line) for f in found] == [
+        ("quotation-not-in-source", "quoted.tex", 3)
+    ], found
+
+
+def _g6_findings(root: Path) -> list:
+    from manuscript_guard.gates import check_writing
+
+    return list(check_writing(load_project(root)[0]).findings)
+
+
+@pytest.mark.parametrize(
+    ("snippet", "code"),
+    [
+        ("Studies have shown that reporting is low.", "vague-attribution"),
+        ("We delve into the reports here.", "ai-phrasing"),
+        ("% TODO check the counts", "model-artefact"),
+        ("As requested by Reviewer 2, we added the counts.", "revision-residue"),
+    ],
+)
+def test_g6_finds_in_the_twin_what_it_finds_in_the_example(
+    project: Path, snippet: str, code: str
+) -> None:
+    """A claim with no citation near it, a phrase G6 reports, a placeholder left in a
+    comment and words to a reviewer, each written into the twin's Results, are found there,
+    on the line they are written on (step 7). A comment's placeholder is found as typed, as
+    one in a Markdown comment is."""
+    entry = _twin(project)
+    assert not [f for f in _g6_findings(project) if f.code == code]
+    # At the head of the Results, which no citation stands within reach of.
+    text = entry.read_text(encoding="utf-8")
+    heading = "\\section{Results}\n"
+    entry.write_text(text.replace(heading, heading + snippet + "\n", 1), encoding="utf-8")
+    found = [f for f in _g6_findings(project) if f.code == code]
+    assert found and found[0].path == entry, [(f.code, f.message) for f in _g6_findings(project)]
+    text = entry.read_text(encoding="utf-8")
+    assert found[0].line == text.count("\n", 0, text.index(snippet)) + 1
+
+
+def test_g6_takes_a_latex_citation_beside_a_claim_for_its_support(project: Path) -> None:
+    """Judged against where the twin's citation commands stand, as `[@...]` in Markdown; and
+    a claim in a comment is no claim of the paper's (step 7)."""
+    entry = _twin(project)
+    claim = "Studies have shown that reporting is low \\citep{fictionalHepaticCohort2021}."
+    _into_results(entry, claim + "\n% Studies have shown it is high.")
+    assert not [f for f in _g6_findings(project) if f.code == "vague-attribution"]
+
+
+def test_g6_names_the_line_of_a_typed_reference_lists_entry(project: Path) -> None:
+    """A placeholder in a typed reference list's sixth entry is named at that entry's line, and
+    a Spanish title's "Todo" is no placeholder (rounds 2 and 3 of step 7b)."""
+    entry = _twin(project)
+    entries = "".join(f"\\bibitem{{e{n}}} Garcia {n}. Todo lo que hay. 2020.\n" for n in range(5))
+    _into_results(entry, "\\begin{thebibliography}{9}\n" + entries
+                  + "\\bibitem{t} TODO find the journal.\n\\end{thebibliography}")  # fmt: skip
+    found = [f for f in _g6_findings(project) if f.code == "model-artefact"]
+    text = entry.read_text(encoding="utf-8")
+    assert [f.line for f in found] == [text.count("\n", 0, text.index("\\bibitem{t}")) + 1]
 
 
 @pytest.mark.parametrize("encoding", ["cp1252", "utf-16", "utf-32"])
@@ -17487,18 +18717,19 @@ def test_every_way_of_losing_a_reading_fails_a_submission(project: Path, name: s
 
 def test_the_example_s_own_rounds_are_read_as_they_were(project: Path) -> None:
     """One record a reviewer, no readers named: nothing about them changed. Rounds three to
-    eight read revisions with the earlier rounds in front of them, so the eighth supersedes
-    the seven before it and each says it was not blinded."""
+    nine read revisions with the earlier rounds in front of them, so the ninth supersedes
+    the eight before it and each says it was not blinded."""
     from manuscript_guard.gates import check_review
 
     report = check_review(load_project(project)[0], submission=True)
     assert report.ok, report.render(project)
     said = sorted((f.code, f.path.parent.name) for f in report.findings)
     superseded = [("review-superseded", f"round-{n}")
-                  for n, many in ((1, 3), (2, 2), (3, 2), (4, 2), (5, 2), (6, 2), (7, 1))
+                  for n, many in ((1, 3), (2, 2), (3, 2), (4, 2), (5, 2), (6, 2), (7, 1),
+                                  (8, 1))
                   for _ in range(many)]  # fmt: skip
-    assert said == superseded + [("round-not-blinded", "review")] * 6, report.render(project)
-    assert report.counts["review_rounds_complete"] == 8
+    assert said == superseded + [("round-not-blinded", "review")] * 7, report.render(project)
+    assert report.counts["review_rounds_complete"] == 9
 
 
 def test_a_reading_that_stops_parsing_fails_with_no_readers_named_either(project: Path) -> None:
@@ -20306,6 +21537,141 @@ def test_a_typed_dictionary_release_fails_and_only_beside_its_name(
     found = [f for f in gate_report(project).failures if f.code == "typed-dictionary-release"]
     assert [f.message.split(" is ")[0] for f in found] == typed
     assert all("{{results.dictionary." in f.hint for f in found)
+
+
+# ----------------------------------------------------- the data the paper analysed, named
+
+
+def test_the_example_names_its_data_by_their_date_and_its_file(project: Path) -> None:
+    """The example declares its data with `dataset()`: its date and the years it covers are
+    values the Methods bind, and the fragment pins them to the file."""
+    namespace, results, *_ = load_namespace(load_project(project)[0])
+    assert namespace["results.dataset.reports.extracted"].display == "3 August 2026"
+    assert namespace["results.dataset.reports.covers_to"].role == "dataset"
+    (fragment,) = results.fragments
+    assert fragment.datasets["reports"]["inputs"] == ["data/reports.csv"]
+    assert fragment.datasets["reports"]["observed"]["count"] == 4000
+
+
+def test_a_typed_extraction_date_fails(project: Path) -> None:
+    _replace_once(main_md(project), "{{results.dataset.reports.extracted}}", "3 August 2026")
+    report = gate_report(project)
+    assert "unclassified-number" in codes(report)
+    assert "unquoted-result" in codes(report)
+
+
+def test_a_date_typed_into_the_script_is_warned_where_the_methods_date_the_data(
+    project: Path,
+) -> None:
+    """The way out G2's hint offered before `dataset()`: a string emitted with its display,
+    typed into the script and tied to nothing."""
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"]["data.extracted"] = {"value": "2026-08-03", "display": "3 August 2026"}
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    main = main_md(project)
+    main.write_text(main.read_text(encoding="utf-8") + "\nThe data were downloaded on "
+                    "{{results.data.extracted}}.\n", encoding="utf-8")  # fmt: skip
+    report = gate_report(project)
+    assert report.ok, report.render(project)
+    assert [f.code for f in report.findings if f.code.startswith("data-date")] == [
+        "data-date-not-declared"
+    ]
+
+
+def test_a_period_printed_as_another_than_the_one_declared_fails(project: Path) -> None:
+    """The fragment's display says the data cover to 2023, its value to 2024: read with the
+    emitter's rule, from either language or by hand."""
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"]["dataset.reports.covers_to"]["display"] = "2023"
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    report = gate_report(project)
+    assert "no-display" in codes(report)
+    assert "unresolved-binding" in codes(report)
+
+
+def test_the_data_made_again_make_the_date_stale(project: Path) -> None:
+    """New data at the path: G1 names the date it makes stale, and the analysis run again
+    with the old date is refused."""
+    data = project / "data" / "reports.csv"
+    data.write_text(data.read_text(encoding="utf-8") + "R99999,2024,example-drug,rash,N,F,75+\n",
+                    encoding="utf-8", newline="")  # fmt: skip
+    found = [f for f in gate_report(project).failures if f.code == "input-changed"]
+    assert any("dataset.reports.extracted dates the data as they were" in f.message
+               for f in found)  # fmt: skip
+    import subprocess
+    import sys
+
+    out = subprocess.run([sys.executable, str(_analysis(project))], capture_output=True,
+                         text=True, cwd=project)  # fmt: skip
+    assert out.returncode != 0
+    assert "is not the data pinned as extracted on 2026-08-03" in out.stderr
+
+
+def test_a_dataset_pinned_to_other_data_fails(project: Path) -> None:
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["datasets"]["reports"]["fingerprint"] = "0123456789abcdef"
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    assert "dataset-pin-mismatch" in codes(gate_report(project))
+
+
+def test_a_report_dated_outside_the_years_covered_is_refused(project: Path) -> None:
+    _replace_once(_analysis(project), 'covers=("2015", "2024")', 'covers=("2016", "2024")')
+    import subprocess
+    import sys
+
+    out = subprocess.run([sys.executable, str(_analysis(project))], capture_output=True,
+                         text=True, cwd=project)  # fmt: skip
+    assert out.returncode != 0
+    assert "dates lie outside the period the data are declared to cover (2016 to 2024)" in (
+        out.stderr
+    )
+
+
+#: The example's supplement, which every gate that reads prose reads as it reads the main text.
+_SUPPLEMENT = "manuscript/supplementary/S1_code_lists.md"
+
+
+@pytest.mark.parametrize("where", ["manuscript/main.md", _SUPPLEMENT])
+def test_a_date_of_the_data_in_the_supplement_is_held_as_in_the_methods(
+    project: Path, where: str
+) -> None:
+    """The supplement is held to the rules of the main text (Basile, 2026-10-21): an
+    extraction date typed in Supplementary Methods fails as one typed in the Methods does,
+    and one typed into the script is warned of there too, at the file it stands in."""
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"]["data.extracted"] = {"value": "2026-08-03", "display": "3 August 2026"}
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    page = project / where
+    page.write_text(page.read_text(encoding="utf-8") + "\n\nThe data were extracted on 3 August "
+                    "2026. They were downloaded on {{results.data.extracted}}.\n",
+                    encoding="utf-8")  # fmt: skip
+    report = gate_report(project)
+    typed = {f.message.split(" is ")[0] for f in report.failures
+             if f.code == "unclassified-number" and f.path.name == page.name}  # fmt: skip
+    assert typed == {"'3'", "'2026'"}, report.render(project)
+    warned = [f for f in report.findings if f.code == "data-date-not-declared"]
+    assert [f.path.name for f in warned] == [page.name]
+
+
+def test_a_dataset_date_bound_in_the_supplement_alone_is_quoted(project: Path) -> None:
+    """The date bound only in Supplementary Methods is quoted, as one bound in the Methods
+    is: direction two reads the supplement too."""
+    _replace_once(main_md(project), "generated on\n{{results.dataset.reports.extracted}} to cover",
+                  "made to cover")  # fmt: skip
+    page = project / _SUPPLEMENT
+    page.write_text(page.read_text(encoding="utf-8") + "\n\nThe database was generated on "
+                    "{{results.dataset.reports.extracted}}.\n", encoding="utf-8")  # fmt: skip
+    report = gate_report(project)
+    assert report.ok, report.render(project)
+    assert "unquoted-result" not in {f.code for f in report.findings}
 
 
 def test_a_parameter_declared_and_never_read_fails(project: Path) -> None:

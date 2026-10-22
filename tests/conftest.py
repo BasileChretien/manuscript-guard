@@ -38,6 +38,12 @@ IGNORE = shutil.ignore_patterns("build", "__pycache__", ".pytest_cache")
 #: pandoc, and none failed for want of it.
 REQUIRE_PANDOC = "MANUSCRIPT_GUARD_REQUIRE_PANDOC"
 
+#: Set by CI's `latex` job to the TeX Live it installs, as it is named on the first line
+#: `pdflatex --version` prints ("TeX Live 2023"). The tests that compile skip without LaTeX,
+#: which is right on a contributor's machine; with this set, the suite refuses to start
+#: unless latexmk is on PATH and pdfLaTeX is that TeX Live (step 9).
+REQUIRE_LATEX = "MANUSCRIPT_GUARD_REQUIRE_LATEX"
+
 #: The version on the line that names the program, wherever that line falls in the output.
 #: pandoc 3.8 and later print "pandoc"; earlier releases print the name they were started
 #: by, which on Windows ends in ".exe", in whatever case `shutil.which` gave the path.
@@ -75,6 +81,7 @@ def pytest_configure(config: pytest.Config) -> None:
         _TERMINAL = os.dup(sys.stderr.fileno())
     except (AttributeError, OSError, ValueError):
         _TERMINAL = None
+    _require_latex()
     wanted = os.environ.get(REQUIRE_PANDOC, "").strip()
     if not wanted:
         return
@@ -97,6 +104,23 @@ def pytest_configure(config: pytest.Config) -> None:
     version = line.group(1) if line else "unreadable"
     if version != wanted:
         raise pytest.UsageError(f"{REQUIRE_PANDOC}={wanted}, but pandoc on PATH is {version}")
+
+
+def _require_latex() -> None:
+    """Where LaTeX is required, refuse to start without the TeX Live named."""
+    wanted = os.environ.get(REQUIRE_LATEX, "").strip()
+    if not wanted:
+        return
+    # LuaLaTeX for the agreement test, which would otherwise skip (round 2 of step 9).
+    found = {name: shutil.which(name) for name in ("latexmk", "pdflatex", "lualatex")}
+    absent = [name for name, path in found.items() if path is None]
+    if absent:
+        raise pytest.UsageError(f"{REQUIRE_LATEX}={wanted}, but {', '.join(absent)} not on PATH")
+    printed = subprocess.run([found["pdflatex"], "--version"], capture_output=True, text=True,
+                             encoding="utf-8", errors="replace", check=False).stdout  # fmt: skip
+    first = printed.splitlines()[0] if printed else "nothing"
+    if wanted not in first:
+        raise pytest.UsageError(f"{REQUIRE_LATEX}={wanted}, but pdflatex on PATH is {first}")
 
 
 def pytest_unconfigure(config: pytest.Config) -> None:

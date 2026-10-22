@@ -49,7 +49,7 @@ from manuscript_guard.gates.related_methods import (
     this_plan,
     variables_compared,
 )
-from manuscript_guard.gates.revision import as_quoted, rendered_manuscript
+from manuscript_guard.gates.revision import as_quoted, quoted_in, rendered_manuscript
 from manuscript_guard.literature.related import (
     GATE,
     Output,
@@ -67,6 +67,7 @@ from manuscript_guard.literature.sources import (
 )
 from manuscript_guard.text.masking import blank_comments
 from manuscript_guard.text.placeholders import substitute
+from manuscript_guard.text.reader import LATEX, citation_uses, manuscript_format
 from manuscript_guard.zotero.citations import find_citations
 
 #: The roles of a value that is a choice of the analysis rather than a measurement.
@@ -114,6 +115,8 @@ class _Seen:
         """Every citekey the manuscript cites where a reader sees it, comments left out."""
         if self._cited is None:
             keys = set()
+            if manuscript_format(self.project.path("manuscript")) == LATEX:
+                keys.update(_printed_citekeys(self.project))
             for path in source_files(self.project.path("manuscript")):
                 text = blank_comments(read_text(path))
                 keys.update(use.citekey for use in find_citations(text, path))
@@ -126,7 +129,20 @@ class _Seen:
         sentence is read filled in too, as it is in a response's quote."""
         if self._text is None:
             self._text = as_quoted(rendered_manuscript(self.project, self.displays))
-        return as_quoted(substitute(sentence, self.displays)) in self._text
+        return quoted_in(as_quoted(substitute(sentence, self.displays)), self._text)
+
+
+def _printed_citekeys(project: Project) -> set[str]:
+    """Each key a LaTeX paper cites where a reader sees it: the reader masks a comment, as
+    `blank_comments` does; a file nothing inputs prints nothing, and `\\nocite` puts an entry
+    in the list without citing it in the text (round 1 of G13 in step 8)."""
+    from manuscript_guard.text.latex.structure import read_document
+
+    folder = project.path("manuscript")
+    loose = {folder / source.path for part in (False, True)
+             for source in read_document(folder, supplementary=part).sources if source.loose}
+    return {use.citekey for use in citation_uses(project)
+            if use.path not in loose and not use.raw.startswith("\\nocite")}  # fmt: skip
 
 
 def check_related(

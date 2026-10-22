@@ -171,6 +171,42 @@ def check_blinded(project: Project, document: Path) -> Report:
                 ),
             )
         )
+    return _named(places, wanted, kind, document)
+
+
+def check_blinded_latex(project: Project, files: list[Path]) -> Report:
+    """What names an author in the LaTeX submission folder's files, where the journal's review
+    is blind: its `.tex` and `.sty` files read whole, the preamble's `\\author` and a
+    `\\hypersetup`'s `pdfauthor` among them, and the text of each PDF picture (step 10)."""
+    from manuscript_guard.gates.journal import blinding
+
+    kind = blinding(project)
+    wanted = sought(project.authors)
+    if kind not in BLIND or not wanted:
+        return Report()
+    from manuscript_guard.contracts._schema import read_text
+    from manuscript_guard.gates.figures import _extract_text
+    from manuscript_guard.text.latex.mask import read
+
+    places, document = [], files[0] if files else project.path("build")
+    for path in files:
+        if path.suffix in (".tex", ".sty"):
+            # A reference list typed in `thebibliography` names the authors cited, as the Word
+            # check passes the bibliography over (round 2 of step 10).
+            text = read_text(path)
+            listed = read(text).references
+            places.append(("the text", "".join(
+                " " if any(start <= at < end for start, end in listed) else character
+                for at, character in enumerate(text))))  # fmt: skip
+        elif path.suffix.lower() in (".pdf", ".svg"):
+            text = _extract_text(path)
+            if text:
+                places.append((f"a figure ({path.name})", text))
+    return _named(places, wanted, kind, document)
+
+
+def _named(places: list[tuple[str, str]], wanted, kind: str, document: Path) -> Report:
+    """A finding for each name of `wanted` in each place."""
     report = Report()
     said: set[tuple[str, str]] = set()
     for where, text in places:

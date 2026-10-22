@@ -14858,6 +14858,11 @@ Open, recorded as each change landed:
   contrived). A DOI that `references.bib` writes with a TeX escape, `10.1000/abc\_def`, is
   looked for under `10.1000_abc__def` and not found, as G7 reads the same DOI with its
   backslash (round 1).
+- **A design record declared as an input in other capitals is not known for it on macOS.**
+  Declared paths are compared in the case the system compares names in, which Python
+  folds only on Windows, so on a case-insensitive macOS volume `Design/data_dictionary.yaml`
+  is not taken as the data dictionary: it is withheld as data, and the package refused, as
+  before the design records were taken as such (round on c4c78959 of #389).
 - **A deposited package is not checked against the results once it is deposited.** After the
   DOI exists, the analysis can be run again and the paper's numbers change, and the statement
   still names a deposit of the old ones. Nothing records what was deposited for `check` to

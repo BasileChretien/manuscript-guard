@@ -403,7 +403,15 @@ def _share_findings(project: Project, declared: dict[str, dict], shared: dict[st
     return refused
 
 
-def _inputs(project: Project, results: Results) -> tuple[list[Input], list[Finding]]:
+def _taken_as_record(file: Path, key: str, tracked: set[str] | None) -> bool:
+    """Whether the design records' loop takes the file: one on this computer, not a link,
+    and committed where the project is a repository (round on c4c78959). Otherwise the input
+    goes by the inputs' rule, as before."""
+    return file.is_file() and not file.is_symlink() and (tracked is None or key in tracked)
+
+
+def _inputs(project: Project, results: Results,
+            tracked: set[str] | None = None) -> tuple[list[Input], list[Finding]]:  # fmt: skip
     """Each declared input, and whether the author's declarations let it go."""
     declared = _declared(results)
     shared = {_key(path): str(path) for path in settings(project).get("share") or []}
@@ -431,7 +439,7 @@ def _inputs(project: Project, results: Results) -> tuple[list[Input], list[Findi
             included, why = False, "declared restricted"
         elif key in produced:
             included, why = True, RESULTS_INPUT
-        elif key in records:
+        elif key in records and _taken_as_record(file, key, tracked):
             included, why = True, DESIGN_INPUT
         elif not (seen["synthetic"] or key in shared):
             included, why = False, "not declared shareable"
@@ -506,8 +514,8 @@ def plan_package(project: Project, results: Results, *, with_manuscript: bool = 
     if not results.fragments:
         raise PackageError(f"no results in {project.path('results')}: there is nothing to "
                            "package; run the analysis first")  # fmt: skip
-    inputs, refused = _inputs(project, results)
     tracked = tracked_files(project.root)
+    inputs, refused = _inputs(project, results, tracked)
     collect = _Collector(project, tracked, {i.path for i in inputs
                                             if i.why not in (RESULTS_INPUT, DESIGN_INPUT)})
     licence = _collect(collect, project, results, inputs, with_manuscript)

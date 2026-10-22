@@ -263,6 +263,44 @@ def test_a_design_record_the_analysis_reads_goes_as_the_record(project: Path) ->
     assert all(w["path"] != "design/data_dictionary.yaml" for w in manifest["withheld"])
     declare_input(project, "design/data_dictionary.yaml", restricted=True)
     assert "package-request-missing" in refused(project)
+    assert "design/data_dictionary.yaml" not in _entries(project)
+
+
+def _entries(root: Path) -> set[str]:
+    from manuscript_guard.deposit import plan_package
+
+    loaded, _ = load_project(root)
+    _namespace, results, _literature, _ = load_namespace(loaded)
+    return {entry.path for entry in plan_package(loaded, results).entries}
+
+
+def test_a_design_record_git_does_not_track_goes_by_the_inputs_rule(project: Path) -> None:
+    """Taken as the record only where the records are taken: one never committed is withheld
+    as git does not track it, and as an input it is not said to be deposited."""
+    ready(project)
+    _git(project, "init", "-q")
+    _git(project, "add", "-A")
+    _git(project, "rm", "-q", "--cached", "design/data_dictionary.yaml")
+    _git(project, "commit", "-q", "-m", "x")
+    assert "package-request-missing" in refused(project)
+    assert "design/data_dictionary.yaml" not in _entries(project)
+
+
+def test_a_design_record_that_is_a_link_goes_by_the_inputs_rule(
+    project: Path, tmp_path: Path
+) -> None:
+    """A link is not taken as the record, whose loop does not ask: the inputs' rule holds it."""
+    ready(project)
+    dictionary = project / "design" / "data_dictionary.yaml"
+    target = tmp_path / "elsewhere.yaml"
+    target.write_bytes(dictionary.read_bytes())
+    dictionary.unlink()
+    try:
+        dictionary.symlink_to(target)
+    except OSError:
+        pytest.skip("this system makes no symbolic link without a privilege")
+    assert "package-request-missing" in refused(project)
+    assert "design/data_dictionary.yaml" not in _entries(project)
 
 
 def test_a_withheld_input_with_no_way_to_request_it_is_refused(project: Path, capsys) -> None:

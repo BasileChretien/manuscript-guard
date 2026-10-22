@@ -187,6 +187,14 @@ class Reading:
     #: Where each cross-reference stands, `\\ref{...}` to its brace, outside a definition's
     #: body: what LaTeX prints there is a number only the compiled document knows (step 8).
     pointers: tuple[tuple[int, int], ...] = ()
+    #: Where each comment runs, its `%` to its line's end, as the reader meets it (step 10).
+    comments: tuple[tuple[int, int], ...] = ()
+    #: What TeX reads past and never prints: an `\\iffalse` block's content, to its `\\fi` or
+    #: `\\else`, and a `comment` environment's lines (step 10).
+    unprinted: tuple[tuple[int, int], ...] = ()
+    #: Each `\\includegraphics`, from the command to past its path's closing brace, and where
+    #: its path's braces open (step 10).
+    graphics: tuple[tuple[int, int, int], ...] = ()
 
 
 #: The level of each sectioning command, as Markdown's `#` counts it; a part stands over a
@@ -383,6 +391,10 @@ class _Reader:
         self.bodies: list[tuple[int, int]] = []
         self.pointers: list[tuple[int, int]] = []
         self.pointer_at = -1
+        self.comments: list[tuple[int, int]] = []
+        self.unprinted: list[tuple[int, int]] = []
+        self.graphics: list[tuple[int, int, int]] = []
+        self.graphics_at = -1
         self.code: list[tuple[int, int]] = []
         self.declared: list[tuple[str, str]] = []
         self.body_start = 0 if body else -1
@@ -423,7 +435,8 @@ class _Reader:
                  tuple(sorted(maths)), tuple(sorted(floats)), self.body_start,
                  tuple(self.code), tuple(self.declared), tuple(sorted(figures)),
                  tuple(sorted(references)), self.body_end, tuple(self.bodies),
-                 tuple(self.pointers))  # fmt: skip
+                 tuple(self.pointers), tuple(self.comments), tuple(self.unprinted),
+                 tuple(self.graphics))  # fmt: skip
         if self.refused is None:
             return Reading(masked, (), *found)
         at = self.refused.offset
@@ -580,6 +593,10 @@ class _Reader:
             end = self._group_end(at, comments=True)
             if end >= 0:
                 self.pointers.append((self.pointer_at, end))
+        if kind == "arg" and self.command == "includegraphics":
+            end = self._group_end(at)
+            if end >= 0:
+                self.graphics.append((self.graphics_at, end, at))
         self.definitions += frame.definition
         self.stack.append(frame)
         # A Markdown binding as a command's argument, `\\emph{{results.x}}` (round 1 of #400:
@@ -634,6 +651,7 @@ class _Reader:
         elif character == "%":
             end = _comment_end(self.text, at)
             self._blank(at, end)
+            self.comments.append((at, end))
             self.pos = end
         elif character == "{":
             if _MARKDOWN_BINDING.match(self.text, at):
@@ -817,6 +835,8 @@ class _Reader:
                 self.citation_at = at
             if name in POINTERS:
                 self.pointer_at = at
+            if name == "includegraphics":
+                self.graphics_at = at
             if name in ("documentclass", "bibliographystyle"):
                 self._declares(name, end)
             self.command, self.pending = name, COMMANDS[name]
@@ -927,12 +947,14 @@ class _Reader:
                 continue
             if word == "else":
                 if depth == 1:
+                    self.unprinted.append((self.pos, start))
                     self._blank(at, match.end())
                     self.pos = match.end()
                     return
                 continue
             depth += -1 if word == "fi" else 1
             if depth == 0:
+                self.unprinted.append((self.pos, start))
                 self._blank(at, match.end())
                 self.pos = match.end()
                 return
@@ -1022,6 +1044,13 @@ class _Reader:
                 return
             if name in LISTINGS:
                 self._listing(name, closing.start())
+            elif name == "comment":
+                # The comment package reads to an `\end{comment}` that opens a line, so what is
+                # taken out runs from past the `\begin`, its line's rest among it, to that
+                # line's break (step 10 and its round 1).
+                last = self.text.rfind("\n", self.pos, closing.start())
+                if last > self.pos:
+                    self.unprinted.append((self.pos, last))
             self._blank(at, closing.end())
             self.pos = closing.end()
             bound = _MG_USE.search(self.text, at, closing.start()) if name in LISTINGS else None

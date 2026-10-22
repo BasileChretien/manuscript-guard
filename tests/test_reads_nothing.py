@@ -270,7 +270,8 @@ LATEX = {
     "sign": ("reads", ("sign", "{project}", "--as", "Nobody Listed", "--finding", "G15/x/y")),
     "stages": ("no manuscript", ("stages",)),
     "style": ("no manuscript", ("style", "{project}")),
-    "submit": ("refuses", ("submit", "{project}")),
+    # It packs the source as one folder that compiles alone (step 10).
+    "submit": ("reads", ("submit", "{project}")),
     "sync-bib": ("reads", ("sync-bib", "{project}")),
     "sync-sources": ("reads", ("sync-sources", "{project}")),
     "transcribe": ("no manuscript", ("transcribe",)),

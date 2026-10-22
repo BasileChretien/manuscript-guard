@@ -1404,8 +1404,9 @@ written as a command, and two hyphens apart, so that no dash TeX joins from them
 minus sign after it. The pull request that builds the table compiles each entry under OT1
 and T1 and compares the printed text with the value.
 
-**The submission copy** replaces each binding with what the file defines for it and removes
-`\usepackage{mgvalues}`, so it needs no macro file.
+**The submission copy** replaces each binding with what the file defines for it and writes
+`\usepackage{mgvalues}` as `\usepackage{graphicx}`, which the values file loads, so it needs
+no macro file (step 10).
 
 ### Citations
 
@@ -1467,10 +1468,10 @@ profile.
 **The submission folder.** `submit` writes `build/submission/latex/`:
 - `manuscript.tex`, flattened, with the values written in and the comments removed, since a
   comment can hold a draft and its old numbers;
-- `references.bib` with only the cited keys, and the `.bbl` where the profile asks for one;
+- `references.bib` with only the cited keys, and the `.bbl` (step 10 packs it always);
 - the figures, with their paths rewritten;
-- the journal's files;
-- the PDF.
+- the journal's files (not yet: no command fetches them);
+- the PDF, which step 10 puts at the pack's root, beside the other documents.
 
 The folder is then compiled alone, in an empty directory, and refused if it needs anything
 outside itself.
@@ -1755,6 +1756,31 @@ The result is compiled and packed by the code above, and checked three times:
   (rounds 2 and 3 of step 9).
 - On Windows, a program latexmk starts before latexmk is put in the build's job is outside
   the job, and is not stopped at the limit with the rest (round 2 of step 9).
+- The submission folder holds every file under its own name, and only `\includegraphics` is
+  written with that name. A file another command names by a path into a folder
+  (`\documentclass{cls/journal}`, `\usepackage{sty/mine}`) is in the folder but not where
+  the path points, so the compile alone refuses the folder and names the file. A picture found
+  through `\graphicspath` is found, since graphicx looks where TeX finds files too, unless
+  its name holds a folder (step 10).
+- The folder writes in every file the document `\include`s, as the reader reads them all,
+  so a file `\includeonly` leaves out of the PDF is in the folder's (step 10).
+- A biblatex `.bbl` belongs to the biblatex version that wrote it. A journal with another
+  version that compiles without running Biber gets a warning and the references of that
+  `.bbl` (step 10).
+- At a revision, a LaTeX manuscript's pack has no marked-up copy: `build --marked-up` makes
+  Word copies, and `submit` says so in a note (step 10).
+- Under MiKTeX, which reads a file by a path written out in full whatever `openin_any` says,
+  the compile alone reads one outside the project, and the folder is not refused: only a read
+  of the project's files is seen (round 1 of step 10).
+- The reader reads a file input past its `\endinput`, which TeX does not: the gates read
+  text the PDF does not print, and the submission folder leaves it out (round 1 of step 10).
+- A file `filecontents` writes keeps its `%` lines in the folder, and the reader reads its
+  content as the preamble's, not as a file's (round 1 of step 10).
+- `build` and the compile alone set BibTeX's and Biber's paths, as TeX's, to the document's
+  folder: a `.bib` an author keeps on their own `BIBINPUTS` is not found, and the build
+  says the citations are undefined (round 2 of step 10).
+- An `\IfFileExists` of a `.tex` file the folder writes in is left as it is typed, and is
+  false in the folder, so what it guards is not printed (rounds 3 and 4 of step 10).
 - G7 reads a quotation in LaTeX where it is set in ``...'' or typographic marks: one set in
   csquotes' `\enquote{...}` prints its marks in the PDF but not in the printed view, and is
   not read as a quotation. A cited sentence holds its citation as `[@key]` with a space
@@ -2089,7 +2115,48 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
    compile held a bare `^` from the filler the Markdown suites share. CI's `latex` job holds
    LuaLaTeX present too, so that this test cannot skip there (round 2).
 10. The submission folder. Flattening, values written in, `.bib` and `.bbl`, figures, the
-    compile alone, `submit`.
+    compile alone, `submit`. Built in `build/latex_pack.py`. `submit` builds the PDFs as
+    `build` does, then writes the folder from what the reader read of each document, which is
+    refused where the reader refuses a file. The reader records, for this, each comment, what
+    TeX never prints (an `\iffalse` block's content, a `comment` environment's lines) and each
+    `\includegraphics`'s path; the build records each file of the manuscript's that LaTeX
+    read, from latexmk's recorder. Each document is written as one file, `manuscript.tex` and
+    `supplementary.tex`, with these changes:
+    - an `\input` is replaced by the file it reads, and an `\include` by the file between two
+      `\clearpage`s;
+    - a binding is replaced by what the values file prints for it, a table by its `tabular`;
+    - `mgvalues` in a package list becomes `graphicx`;
+    - a comment loses its text and keeps its `%`; an `\iffalse` block keeps its `\iffalse\fi`;
+      a `comment` environment keeps its two lines.
+    The author's packages are written the same way, under their own names. All the files are
+    in one folder, which submission systems ask for: a bound figure under its rendered name,
+    and each file LaTeX read (a picture, a class, a style) under its own name. Where two files
+    have one name, the second is named by its path, `other-a.png`. Each `\includegraphics` of
+    a manuscript's file is written with that name. One that names a file outside the manuscript
+    is refused, and one LaTeX found in its distribution is left as it was. A `.bib` the document
+    names (`references.bib` from `literature/`, as the build puts it beside the entry) is cut
+    to the cited entries, those their `crossref` and `xdata` name, and every `@string` and
+    `@preamble`; `\nocite{*}` keeps every entry. The cited keys are the reader's and those
+    the build's `.aux` holds, so that a citation a macro makes keeps its entry, and keys are
+    matched without case, as BibTeX matches them; biblatex's `xref`, `related` and
+    `entryset` are followed too (round 1). A file the folder holds under another name than
+    its own, where two have one, is refused unless an `\includegraphics` is written with
+    it, since a class or a picture found through `\graphicspath` is found by its name; and
+    a file the build wrote into its copy, a rendered figure over an old one of the author's,
+    is none of the manuscript's (round 1). A file written in ends its last line, as TeX does,
+    and stops at its `\endinput` (round 1). The folder is then copied into an empty
+    temporary folder, with an empty TEXMFHOME and the folder alone on TEXINPUTS, and compiled
+    there as `build` compiles, the headings compared. It is refused where LaTeX stops or does
+    not find a file, or where the recorder shows a file of the project read. The `.bbl` and the
+    PDFs are that compile's, and an undefined citation or reference fails. The PDFs are at the
+    pack's root, as the Word documents are, the main text's as the document and the
+    supplement's beside it; the source is in `latex/`, each file in the manifest. The `.bbl` is
+    always packed: a journal that runs BibTeX writes it again, and one that does not needs it,
+    so the profile needs no field for it. Where the journal's review is blind, the `.tex` and
+    `.sty` files are read whole for the authors' names, the preamble's `\author` among them.
+    `--document` is refused (exit 2). The journal's own class and style files are not fetched,
+    since no command fetches them yet (see "The journal profile" above). Tests:
+    `tests/test_latex_submit.py`.
 11. Markdown to LaTeX. `build --latex`, the template, the reading back and the comparison
     of digits.
 12. The rest. `init --latex`, the hooks, `explain` and `bind`, the panel's prompt, the

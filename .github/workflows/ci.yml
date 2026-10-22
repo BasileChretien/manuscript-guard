@@ -96,7 +96,7 @@ jobs:
       - run: pdflatex --version && latexmk -v
       - run: python -m pip install --upgrade pip
       - run: pip install -e ".[dev]"
-      - run: pytest -q -rs tests/test_latex_build.py tests/test_latex_values.py tests/test_latex_agreement.py
+      - run: pytest -q -rs tests/test_latex_build.py tests/test_latex_values.py tests/test_latex_agreement.py tests/test_latex_submit.py
 
   test:
     # The gates must hold on the platforms other scientists actually use, and only Windows

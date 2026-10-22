@@ -160,6 +160,21 @@ def contents(
     write the same file. One it cannot print is left out and given as refused, and the rest
     are written: a value no file binds stops nothing (round 1 of step 4b). `figures` are the
     rendered figures by key, None where none is in a format pdfLaTeX includes."""
+    written, refused = entries(folder, namespace, results, figures)
+    return Written(folder / NAME, _HEAD.format(digest=digest) + "".join(
+        rf"\expandafter\def\csname mg@{ref}\endcsname#1{{{body}}}" + "\n" for ref, body in written
+    ), tuple(refused))  # fmt: skip
+
+
+def entries(
+    folder: Path,
+    namespace: dict[str, Value],
+    results: Results,
+    figures: dict[str, Path | None],
+) -> tuple[list[tuple[str, str]], list[NotPrintable]]:
+    """What the values file defines for each key, `#1` standing for a figure's options, and
+    what it cannot print: `contents`'s, and the submission folder's, which writes each in
+    where its binding stands (step 10)."""
     entries: list[tuple[str, str]] = []
     refused: list[NotPrintable] = []
     for ref, value in sorted(namespace.items()):
@@ -187,9 +202,7 @@ def contents(
         entries.append((f"figure.{key}", r"\includegraphics[#1]{" + relative + "}"))
     for step in sorted(results.steps):
         entries.append((f"method.{step}", ""))
-    return Written(folder / NAME, _HEAD.format(digest=digest) + "".join(
-        rf"\expandafter\def\csname mg@{ref}\endcsname#1{{{body}}}" + "\n" for ref, body in entries
-    ), tuple(refused))  # fmt: skip
+    return entries, refused
 
 
 def rendered_figures(project: Project) -> dict[str, Path | None]:

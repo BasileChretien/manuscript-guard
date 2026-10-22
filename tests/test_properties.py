@@ -863,9 +863,9 @@ def test_latex_s_printed_view_places_each_word_at_its_file_and_line(
 def _prose_breaks_its_lines_as_the_view_does(patch: pytest.MonkeyPatch) -> None:
     printed_one = latex_print._printed
 
-    def broken(source, shallowest, child=lambda: [], quoting=False):
+    def broken(source, shallowest, child=lambda: [], quoting=False, formula=""):
         return [(text, of, at, False) for text, of, at, _linear in
-                printed_one(source, shallowest, child, quoting)]  # fmt: skip
+                printed_one(source, shallowest, child, quoting, formula)]  # fmt: skip
 
     patch.setattr(latex_print, "_printed", broken)
 
@@ -873,9 +873,9 @@ def _prose_breaks_its_lines_as_the_view_does(patch: pytest.MonkeyPatch) -> None:
 def _each_stretch_is_placed_at_its_files_start(patch: pytest.MonkeyPatch) -> None:
     printed_one = latex_print._printed
 
-    def broken(source, shallowest, child=lambda: [], quoting=False):
+    def broken(source, shallowest, child=lambda: [], quoting=False, formula=""):
         return [(text, of, 0, linear) for text, of, _at, linear in
-                printed_one(source, shallowest, child, quoting)]  # fmt: skip
+                printed_one(source, shallowest, child, quoting, formula)]  # fmt: skip
 
     patch.setattr(latex_print, "_printed", broken)
 
@@ -1366,7 +1366,7 @@ def _an_abstract_runs_on_to_the_next_heading(patch: pytest.MonkeyPatch) -> None:
 
 
 def _a_formula_is_printed_as_typed(patch: pytest.MonkeyPatch) -> None:
-    patch.setattr(latex_print, "_formulas", lambda reading: [])
+    patch.setattr(latex_print, "_formulas", lambda reading, formula="": [])
 
 
 def _a_spans_bindings_are_not_printed(patch: pytest.MonkeyPatch) -> None:
@@ -1378,8 +1378,8 @@ def _a_prose_binding_is_printed_with_spaces_round_it(patch: pytest.MonkeyPatch) 
 
 
 def _a_formulas_bindings_are_not_printed(patch: pytest.MonkeyPatch) -> None:
-    patch.setattr(latex_print, "_formula_events",
-                  lambda reading, placeholders: latex_print._formulas(reading))  # fmt: skip
+    patch.setattr(latex_print, "_formula_events", lambda reading, placeholders, formula="":
+                  latex_print._formulas(reading, formula))  # fmt: skip
 
 
 def _a_typed_tables_bindings_are_not_printed(patch: pytest.MonkeyPatch) -> None:

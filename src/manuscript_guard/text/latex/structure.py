@@ -37,8 +37,9 @@ _NOT_WRITTEN_OUT = set("\\#$%{}~")
 
 @dataclass(frozen=True)
 class Source:
-    """One file of the document: its text, how it reads, the headings over its start, and
-    the headings in force after each file it inputs, which that file's own headings change."""
+    """One file of the document: its text, how it reads, the headings over its start, the
+    headings in force after each file it inputs, which that file's own headings change, and
+    the environments its `\\input` stands in, which it is read inside."""
 
     path: str
     text: str
@@ -46,6 +47,7 @@ class Source:
     under: tuple[Heading, ...] = ()
     loose: bool = False
     resumes: tuple[tuple[int, tuple[Heading, ...]], ...] = ()
+    environments: tuple[str, ...] = ()
 
     def chain_at(self, offset: int) -> tuple[Heading, ...]:
         """The headings in force at `offset` of this file: those it started under, its own,
@@ -158,7 +160,7 @@ def read_tree(
         text = files[path]
         reading = read(text, body=body, environments=environments)
         place = len(sources)
-        sources.append(Source(path, text, reading, under))
+        sources.append(Source(path, text, reading, under, environments=environments))
         refusals.extend((path, refusal) for refusal in reading.refusals)
         for _at, name in reading.packages:
             style = posixpath.join(posixpath.dirname(entry), f"{name}.sty")
@@ -194,7 +196,8 @@ def read_tree(
                           (*chain, target))  # fmt: skip
             current = _resumed(current, after)
             resumes.append((put.end, current))
-        sources[place] = Source(path, text, reading, under, resumes=tuple(resumes))
+        sources[place] = Source(path, text, reading, under, resumes=tuple(resumes),
+                               environments=environments)
         return current
 
     if entry in files:

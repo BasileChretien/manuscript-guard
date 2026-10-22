@@ -47,6 +47,41 @@ roles produces a statement saying the roles are missing, because most journals n
 them. An author whose `competing_interests` field is empty is listed as having made no
 declaration — an empty field is not a declaration of none, and journals ask per author.
 
+## The deposit the Data availability statement cites
+
+Where the journal asks for the code and results in a repository, `manuscript-guard package`
+writes them as one folder and a .zip, under `build/package/`: the scripts, the results and
+their digests, the figure scripts, the plan, the literature ledger, the lockfiles, the
+licence, and a README that says how to run it all again and what `manuscript-guard verify`
+checks. Run `--dry-run` first and read what it leaves out.
+
+```bash
+manuscript-guard package --dry-run    # what would go in, what stays out, and why
+manuscript-guard package              # writes build/package/<name>/ and <name>.zip
+```
+
+It needs from the author, in `paper.yaml` under `package:`, what only the author can say:
+
+- `licence`, the SPDX identifier of the licence the deposit is under, and a LICENSE file at
+  the project's root. Ask the author which; do not choose one.
+- `share`, the inputs the analysis read that may be deposited. An input declared synthetic
+  goes without being listed; one declared restricted never goes. Ask the author about each
+  other input: a data file is not shareable because it is in the folder.
+- `request`, how someone obtains the inputs that are withheld, in the author's words.
+
+Where the custodian's minimum cell count is declared, the package refuses while any results
+file holds a count below it, in a value, a table cell or a model's counts, since the file is
+deposited whole. Hold the count back in the analysis. Only the data custodian can sign the
+exception off, and where the custodian restricts sending, only they can sign off the package
+itself (`manuscript-guard sign --as <them> --finding PACKAGE/custodian/...`). Never run
+`sign` for them.
+
+The tool uploads nothing, and neither should you: depositing is the author's act. Tell them
+to reserve the DOI at their repository where it allows that, write it in `paper.yaml` as
+`package.doi`, run `package` again so that the README and CITATION.cff carry it, and upload
+the .zip. `check` then says where neither the Data availability statement nor a Code
+availability statement names that DOI (`package-doi-not-named`), and it fails at submission.
+
 ## The covering letter
 
 Nothing in the project holds it, and nothing should: it is the one part addressed to a

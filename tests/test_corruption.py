@@ -3123,6 +3123,111 @@ def _with_whole(root: Path, paragraph: str, corrections: dict | None = None) -> 
     path.write_text(path.read_text(encoding="utf-8") + f"\n\n{paragraph}\n", encoding="utf-8")
 
 
+# ------------------------------------------------- what a deposited package carries
+
+
+def _packable(root: Path, **package: object) -> None:
+    (root / "LICENSE").write_text("MIT License\n", encoding="utf-8")
+    paper = root / "paper.yaml"
+    document = yaml.safe_load(paper.read_text(encoding="utf-8"))
+    document["package"] = {**document.get("package", {}), **package}
+    paper.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+
+def _resign(root: Path, change) -> None:
+    path = root / "results" / "01_disproportionality.json"
+    document = json.loads(path.read_text(encoding="utf-8"))
+    change(document)
+    path.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(path)
+
+
+def _restricted(document: dict) -> None:
+    for record in document["provenance"]["inputs"]:
+        if record["path"] == "data/event_terms.txt":
+            record["restricted"] = True
+
+
+def test_a_restricted_input_listed_as_shared_never_reaches_the_package(project: Path) -> None:
+    """The input the custodian keeps, named in package.share by mistake: nothing is written,
+    with the checks skipped too, since what stops it is no check of the results."""
+    _packable(project, request="Apply to the custodian.")
+    _resign(project, _restricted)
+    for extra in ([], ["--skip-checks"]):
+        assert _run_cli(["package", str(project), *extra]) == 1
+        assert not (project / "build" / "package").exists()
+
+
+@pytest.mark.parametrize("planted", ["../secret.csv", "data/../../secret.csv", "/secret.csv",
+                                     "C:/secret.csv", "..\\secret.csv"])  # fmt: skip
+def test_an_input_declared_outside_the_project_is_neither_read_nor_written(
+    project: Path, planted: str
+) -> None:
+    """A fragment is a file anyone can edit: an input it declares outside the project, as
+    synthetic so that it would go, is copied from nowhere and written nowhere."""
+    secret = project.parent / "secret.csv"
+    secret.write_text("id\n1\n", encoding="utf-8")
+    _packable(project, request="Write to the authors.")
+
+    def plant(document: dict) -> None:
+        document["provenance"]["inputs"].append(
+            {"path": planted, "sha256": "0" * 64, "bytes": 5, "synthetic": True}
+        )
+
+    _resign(project, plant)
+    assert _run_cli(["package", str(project), "--skip-checks"]) == 1
+    assert not (project / "build" / "package").exists()
+    assert not (project / "build" / "secret.csv").exists()
+
+
+def test_a_count_below_the_minimum_planted_in_a_table_stops_the_package(project: Path) -> None:
+    _packable(project)
+    _custodian(project, 5)
+    assert _run_cli(["package", str(project), "--dry-run"]) == 0
+
+    def plant(document: dict) -> None:
+        document["tables"]["two_by_two"]["rows"][0][1] = "2"
+
+    _resign(project, plant)
+    assert _run_cli(["package", str(project)]) == 1
+    assert not (project / "build" / "package").exists()
+
+
+def test_a_file_changed_after_the_plan_stops_the_package(project: Path) -> None:
+    """What is written is what was planned, and what the custodian signed: a script edited
+    between the two is a package nobody planned."""
+    from manuscript_guard.deposit import PackageError, plan_package, write_package
+
+    _packable(project)
+    loaded, _ = load_project(project)
+    _namespace, results, _literature, _ = load_namespace(loaded)
+    plan = plan_package(loaded, results)
+    assert plan.report.ok, plan.report.render(project)
+    script = project / "figures" / "forest.py"
+    script.write_text(script.read_text(encoding="utf-8") + "# later\n", encoding="utf-8")
+    with pytest.raises(PackageError, match="forest.py changed"):
+        write_package(loaded, plan)
+    assert not (project / "build" / "package" / plan.name).exists()
+    assert not (project / "build" / "package" / f"{plan.name}.zip").exists()
+
+
+def test_a_statement_that_loses_the_deposits_doi_fails_at_submission(project: Path) -> None:
+    from manuscript_guard.gates.data_statement import check_package_doi
+
+    _packable(project, doi="10.5281/zenodo.7654321")
+    path = main_md(project)
+    text = path.read_text(encoding="utf-8")
+    named = text.replace("are all in\nthis repository.",
+                         "are all in this repository, deposited as 10.5281/zenodo.7654321.")
+    assert named != text
+    path.write_text(named, encoding="utf-8")
+    loaded, _ = load_project(project)
+    assert check_package_doi(loaded, submission=True).ok
+    path.write_text(named.replace("7654321", "7654320"), encoding="utf-8")
+    report = check_package_doi(load_project(project)[0], submission=True)
+    assert [f.code for f in report.failures] == ["package-doi-not-named"]
+
+
 # ------------------------------------------------- what the data statement says
 
 
@@ -6862,6 +6967,9 @@ _READS_LATEX = (
     "check_latex", "check_numbers", "check_bound_units", "check_small_cells",
     "check_synthetic_inputs", "check_citations", "check_journal", "check_language",
     "check_writing", "check_values", "check_registration",
+    # It reads the main text through G4's `main_text`, which gives a LaTeX manuscript as it
+    # prints (#414).
+    "check_package_doi",
 )  # fmt: skip
 
 

@@ -543,6 +543,78 @@ def test_a_file_named_twice_is_one_file_of_the_data(scratch: Path, again: str) -
     assert [i["path"] for i in document["provenance"]["inputs"]] == ["data/extract.csv"]
 
 
+@pytest.mark.parametrize("spelt", ["absolute", "./data/extract.csv", "data/../data/extract.csv"])
+@pytest.mark.parametrize("dataset_first", [False, True], ids=["add_input first", "dataset first"])
+def test_a_file_declared_by_add_input_and_by_dataset_is_one_input(
+    scratch: Path, spelt: str, dataset_first: bool
+) -> None:
+    """The review of 76880fc3 (#392): `dataset()` declares its files by their path from the
+    project, and `add_input` compared the text of the path as given, so the same file
+    declared by both was two inputs, and G1 reported a change to it twice."""
+    given = scratch / "data" / "extract.csv" if spelt == "absolute" else spelt
+    em = emitter(scratch)
+    calls = [
+        lambda: em.add_input(given, restricted=True),
+        lambda: em.dataset("vigibase", given, extracted="2024-03-01", fingerprint=pin(scratch)),
+    ]
+    for call in reversed(calls) if dataset_first else calls:
+        call()
+    inputs = em.document()["provenance"]["inputs"]
+    assert [(i["path"], i.get("restricted")) for i in inputs] == [("data/extract.csv", True)]
+
+
+def test_a_file_named_twice_keeps_the_marks_each_spelling_gave_it(scratch: Path) -> None:
+    em = Emitter(scratch / "analysis" / "run.py", root=scratch,
+                 inputs=[scratch / "data" / "extract.csv", "data/extract.csv"])  # fmt: skip
+    em.add_input("./data/extract.csv", synthetic=True)
+    em.add_input("data/../data/extract.csv", restricted=True)
+    inputs = em.document()["provenance"]["inputs"]
+    assert [(i["path"], i.get("restricted"), i.get("synthetic")) for i in inputs] == [
+        ("data/extract.csv", True, True)
+    ]
+
+
+def test_a_file_outside_the_project_is_named_from_it_however_spelt(scratch: Path) -> None:
+    """Spelt from the project it was recorded as "../shared.csv", and spelt in full the run
+    stopped on it; R recorded the full path. Both now record the path from the project."""
+    (scratch.parent / "shared.csv").write_bytes(DATA.encode("utf-8"))
+    em = emitter(scratch)
+    em.add_input("../shared.csv")
+    em.add_input(scratch.parent / "shared.csv", restricted=True)
+    inputs = em.document()["provenance"]["inputs"]
+    assert [(i["path"], i.get("restricted")) for i in inputs] == [("../shared.csv", True)]
+
+
+def test_a_file_spelt_through_a_link_to_the_project_is_named_from_it(scratch: Path) -> None:
+    """Round 1 of #409: the root is resolved, so a path written through a folder that links
+    to the project, a home folder that is a link on a cluster, left it as text."""
+    from test_review_plan import link_directory
+
+    link_directory(scratch.parent / "via", scratch)
+    em = emitter(scratch)
+    em.add_input(scratch.parent / "via" / "data" / "extract.csv", restricted=True)
+    em.dataset("vigibase", "data/extract.csv", extracted="2024-03-01", fingerprint=pin(scratch))
+    inputs = em.document()["provenance"]["inputs"]
+    assert [(i["path"], i.get("restricted")) for i in inputs] == [("data/extract.csv", True)]
+
+
+def test_a_file_spelt_from_the_home_folder_is_named_from_the_project(
+    scratch: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Round 1 of #409: "~" was read as a folder's name."""
+    monkeypatch.setenv("HOME", str(scratch.parent))
+    monkeypatch.setenv("USERPROFILE", str(scratch.parent))
+    em = emitter(scratch)
+    em.dataset("vigibase", "~/paper/data/extract.csv", extracted="2024-03-01",
+               fingerprint=pin(scratch))  # fmt: skip
+    em.add_input("~/paper/data/extract.csv", restricted=True)
+    document = em.document()
+    assert document["datasets"]["vigibase"]["inputs"] == ["data/extract.csv"]
+    assert [(i["path"], i.get("restricted")) for i in document["provenance"]["inputs"]] == [
+        ("data/extract.csv", True)
+    ]
+
+
 @pytest.mark.parametrize("role", ["software", "dictionary"])
 def test_a_release_named_by_a_year_is_no_date_typed(role: str) -> None:
     """Round 1 of #392: ICD-10's release is "2019", and declared with `dictionary()` it is no
@@ -567,6 +639,15 @@ def test_the_words_of_another_binding_or_a_citation_say_nothing(text: str) -> No
 def test_the_words_around_a_citation_s_key_are_the_sentence_s() -> None:
     """Round 2 of #392: the whole bracket was blanked, and the words in it with the key."""
     assert _said("Reports [extracted on {{results.old.extracted}}; see @who2020] were kept.") == [
+        "{{results.old.extracted}}"
+    ]
+
+
+def test_a_braced_citation_key_is_read_as_words() -> None:
+    """A known gap (DESIGN.md): a braced key, Pandoc's `@{...}`, is not blanked, so its words
+    are read as the sentence's, and a typed date beside one is warned of. No other rule in
+    the project reads a braced key either."""
+    assert _said("Approval came on {{results.old.extracted}} [@{who-extraction:2020}].") == [
         "{{results.old.extracted}}"
     ]
 

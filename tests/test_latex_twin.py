@@ -56,6 +56,26 @@ def test_the_twin_binds_the_examples_keys_in_order_under_the_same_headings(
     assert _latex_bindings(twin) == _markdown_bindings(built_example)
 
 
+def _cited(root: Path) -> list[tuple[str, str, bool]]:
+    """Each citation, in the order the files print them and each file writes them: its file,
+    its key, and whether it is narrative."""
+    from manuscript_guard.text.reader import citation_uses
+
+    uses = citation_uses(load_project(root)[0])
+    files = list(dict.fromkeys(use.path for use in uses))
+    written = sorted(uses, key=lambda use: (files.index(use.path), use.start))
+    return [(use.path.name, use.citekey, use.narrative) for use in written]
+
+
+def test_the_twin_cites_the_examples_keys_in_order_as_the_example_does(
+    built_example: Path, twin: Path
+) -> None:
+    """Step 5: the citations join the comparison when the citation reader does."""
+    twin_cited = [(key, narrative) for _name, key, narrative in _cited(twin)]
+    example = [(key, narrative) for _name, key, narrative in _cited(built_example)]
+    assert twin_cited == example and example
+
+
 def _numbers(root: Path):
     loaded, _ = load_project(root)
     namespace, results, literature, _ = load_namespace(loaded)
@@ -85,4 +105,63 @@ def test_g2_counts_and_judges_the_twin_as_it_does_the_example(
     assert [f.message for f in latex.findings if f.code == "not-read-in-latex"] == [
         "G2 does not read pointers to tables and figures in LaTeX yet, so it did not check them "
         "here"
+    ]
+
+
+def test_g4_counts_the_twins_words_sections_and_display_items_as_the_examples(
+    project: Path, tmp_path: Path
+) -> None:
+    """Step 6: the journal's limits, its required sections and its statements read the twin
+    as Markdown would print it, and find what they find in the example."""
+    from manuscript_guard.gates import check_journal
+
+    example = check_journal(load_project(project)[0])
+    root = tmp_path / "twin"
+    shutil.copytree(project, root)
+    shutil.rmtree(root / "manuscript")
+    shutil.copytree(TWIN, root / "manuscript")
+    latex = check_journal(load_project(root)[0])
+    counted = ("abstract_words", "main_text_words", "display_items")
+    assert {key: latex.counts[key] for key in counted} == {
+        key: example.counts[key] for key in counted
+    }
+    assert example.counts["main_text_words"] > 0 and example.counts["display_items"] > 0
+    assert Counter((f.code, f.severity) for f in latex.findings) == Counter(
+        (f.code, f.severity) for f in example.findings
+    )
+
+
+def test_g14_reads_the_twins_words_as_the_examples(project: Path, tmp_path: Path) -> None:
+    """Step 7: the abbreviations, terms, spelling and notation of the twin are read as the
+    example's are, a bound value in an interval or a percentage among them, and G14 says of
+    it what it says of the example."""
+    from manuscript_guard.gates import check_language
+
+    example = check_language(load_project(project)[0])
+    root = tmp_path / "twin"
+    shutil.copytree(project, root)
+    shutil.rmtree(root / "manuscript")
+    shutil.copytree(TWIN, root / "manuscript")
+    latex = check_language(load_project(root)[0])
+    assert latex.counts == example.counts
+    assert example.counts["notation_intervals"] > 0 and example.counts["notation_percents"] > 0
+    assert [(f.code, f.message) for f in latex.findings] == [
+        (f.code, f.message) for f in example.findings
+    ]
+
+
+def test_g6_reads_the_twins_prose_as_the_examples(project: Path, tmp_path: Path) -> None:
+    """Step 7: G6 counts the twin's words, phrases, artefacts and vague attributions as the
+    example's, and says of it what it says of the example."""
+    from manuscript_guard.gates import check_writing
+
+    example = check_writing(load_project(project)[0])
+    root = tmp_path / "twin"
+    shutil.copytree(project, root)
+    shutil.rmtree(root / "manuscript")
+    shutil.copytree(TWIN, root / "manuscript")
+    latex = check_writing(load_project(root)[0])
+    assert latex.counts == example.counts and example.counts["prose_words"] > 1000
+    assert [(f.code, f.message) for f in latex.findings] == [
+        (f.code, f.message) for f in example.findings
     ]

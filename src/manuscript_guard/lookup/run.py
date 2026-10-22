@@ -28,10 +28,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.gates.identifiers import doi_of, pmid_of
-from manuscript_guard.gates.numbers import source_files
 from manuscript_guard.gates.searched import unsearchable
 from manuscript_guard.literature.bibfile import read_entries
 from manuscript_guard.literature.lookups import (
@@ -51,7 +49,6 @@ from manuscript_guard.lookup.http import (
     default_transport,
     user_agent,
 )
-from manuscript_guard.zotero import find_citations
 
 BIB_FILE = "references.bib"
 #: Read from the environment only, so that no key is ever written into the project.
@@ -152,11 +149,12 @@ class Planned:
 
 
 def cited_keys(project: Project) -> list[str]:
-    """Every citekey the manuscript cites, in order of first use."""
+    """Every citekey the manuscript cites, in order of first use, in its format."""
+    from manuscript_guard.text.reader import citation_uses
+
     seen: dict[str, None] = {}
-    for path in source_files(project.path("manuscript")):
-        for use in find_citations(read_text(path), path):
-            seen.setdefault(use.citekey, None)
+    for use in citation_uses(project):
+        seen.setdefault(use.citekey, None)
     return list(seen)
 
 

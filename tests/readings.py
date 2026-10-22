@@ -203,6 +203,61 @@ def _latex_bindings() -> Reading:
     return bound
 
 
+@reading("latex citations")
+def _latex_citations() -> Reading:
+    from manuscript_guard.text.latex.cite import citations
+    from manuscript_guard.text.latex.mask import read
+    from manuscript_guard.text.latex.structure import Source
+
+    def cited(text: str) -> list[list[Any]]:
+        uses = citations(Source("main.tex", text, read(text)), Path("main.tex"), ("every",))
+        return [[use.citekey, use.start, use.line, use.narrative, use.raw] for use in uses]
+
+    return cited
+
+
+@reading("latex printed")
+def _latex_printed() -> Reading:
+    from manuscript_guard.text.latex.mask import read
+    from manuscript_guard.text.latex.printed import printed_view
+    from manuscript_guard.text.latex.structure import Source
+
+    def printed(text: str) -> dict[str, Any]:
+        reading = read(text)
+        return {"view": printed_view([Source("main.tex", text, reading)]),
+                "declared": [list(each) for each in reading.declared]}  # fmt: skip
+
+    return printed
+
+
+@reading("latex writing")
+def _latex_writing() -> Reading:
+    from manuscript_guard.gates.writing import _read_latex
+    from manuscript_guard.text.latex.mask import read
+    from manuscript_guard.text.latex.structure import Source
+
+    def judged(text: str) -> dict[str, Any]:
+        texts, words, cited = _read_latex(Path("m"), [[Source("main.tex", text, read(text))]])
+        ((_path, typed, prose),) = texts
+        return {"typed": typed == text, "prose": prose, "words": words,
+                "cited": [list(cited[Path("m") / "main.tex"])]}  # fmt: skip
+
+    return judged
+
+
+@reading("latex words")
+def _latex_words() -> Reading:
+    from manuscript_guard.text.latex.mask import read
+    from manuscript_guard.text.latex.structure import Source
+    from manuscript_guard.text.latex.words import words
+
+    def seen(text: str) -> dict[str, Any]:
+        found = words(Source("main.tex", text, read(text)))
+        return {"words": found.text, "unread": [list(span) for span in found.unread]}
+
+    return seen
+
+
 @reading("hidden")
 def _hidden() -> Reading:
     from manuscript_guard.gates.language import _hidden as hidden

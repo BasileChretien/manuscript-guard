@@ -5018,6 +5018,38 @@ nothing and is said (`related-pair-unmatched`). What the words mean is
 not compared: two sections that say one thing in other words differ, and the panel's
 earlier-outputs remit reads them.
 
+**The data dictionaries, variable by variable.** Answer 5 named the data dictionary as well,
+which was on no branch then; #382 brought it. Where both projects keep one (the copy holds
+the earlier project's `design/data_dictionary.yaml`, and this paper's is read by the loader
+G12 reads it with), each variable both have under one name, its case included, is compared
+part by part:
+
+- its definition, word by word, in either case and with line breaks aside. A dictionary is
+  YAML, not Markdown, so a `*` or a backtick in it is read as written, which G13's reading
+  of a quotation would drop: "ALT above 3*ULN" is not "ALT above 3ULN";
+- its type;
+- its codes, as the values they give, written out or named by their list alike: a code one
+  side has and the other lacks, a code labelled otherwise (in either case), and an ordinal
+  scale's codes in another order;
+- its unit, as written, its case included, since mg and Mg are two units;
+- its range, a bound read as a number where it is one, so that 110 and 110.0 are one bound;
+- its standard: another system, or one side with none, is one difference; within one
+  system, its release, its level, its term and its code each (the level and the term in
+  either case);
+- what it is derived from, in any order, and its derivation, word by word as a definition.
+
+The study period, the dictionary's own, is compared as well, and one given on one side only
+differs. Each variable that differs is one `related-method-differs` that says every part
+that does ("variable hepatic: its MedDRA version is 26.0 there and 27.1 here"), and the study
+period one of its own; each is a note with a reason under `methods:` (`variable:`, the name
+both dictionaries write, or `dictionary: study_period`) and never a failure. A reason that
+names a variable not in both, or a study period neither gives, explains nothing and is said
+(`related-pair-unmatched`). A dictionary on one side only is compared with nothing, and
+nothing is said. One that does not read, on either side, is said in a note
+(`related-dictionary-unreadable`), and nothing of either is compared: this paper's own is
+failed by G12 as `dictionary-invalid` already, and the copy's is what the earlier project
+held at that revision, which only another revision can change.
+
 **An overlap of data or study with authors is disclosed.** It is disclosed where the
 manuscript cites the earlier output (its citekey, in a citation a reader sees, comments left
 out), or where `disclosed_by` gives the manuscript's sentence that says so, found as above,
@@ -11289,8 +11321,8 @@ Open, recorded as each change landed:
   one heading. Two Methods sections of the manuscripts are not compared, nor what a plan's
   section means: a section reworded with nothing changed differs, and one that keeps its
   words under another heading is compared with nothing. A word in emphasis by underscores
-  (`_case_`) is read with them, as G13 reads a quotation. Tables and the data dictionary are
-  not compared, though the copy holds the dictionary. A count printed only in a table of
+  (`_case_`) is read with them, as G13 reads a quotation. Tables are not compared. A count
+  printed only in a table of
   either paper is compared with nothing. A value printed by only one of the two papers
   (`quoted: false` on one side) is not compared, though it may show the data changed. A
   model is compared under its key only, so a model renamed since is compared with nothing;
@@ -11307,6 +11339,19 @@ Open, recorded as each change landed:
   a date) are compared, and a title the Deviations rule matches ("amendment 2") leaves the
   whole plan out. The generator draws only titled plans; the untitled one is held by a unit
   test (the second post-budget round).
+- **An earlier output's data dictionary is compared by variable name, and by what defines
+  and codes a variable.** A variable renamed since, or whose name changed case, is two
+  variables, each compared with nothing, and nothing says that one is gone or new. A
+  variable's label, its question, its missing codes, its condition (`applies_if`), whether
+  it is required, its form, timing, recorder, source, dataset, instrument, item, pattern and
+  reporting items are not compared, nor the dictionary's forms, instruments, datasets and
+  rules. A list of codes is compared by the codes it gives, never by its name. A unit is
+  compared as written, so `mg/dL` and `mg/dl` differ. A range bound that is a date is
+  compared as text. A reason under `methods:` answers for the variable, not for one part of
+  it, as a model's does, so a later change to a variable already explained is explained by
+  the old reason. A copied dictionary the loader of this version refuses, one written under
+  an earlier shape of the schema among them, is not compared, though it read when the
+  earlier output was made.
 - **What a comparison read from a PDF cannot see.** A published value is read as printed: an
   estimate rounded to one place is the same as any value within half a unit of it, so a
   change smaller than the earlier rounding is not seen. A printed value that is not one

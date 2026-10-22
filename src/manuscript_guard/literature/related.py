@@ -80,11 +80,20 @@ class Apart:
 
 @dataclass(frozen=True)
 class Changed:
-    """Why a model or a section of the plan rightly differs from the earlier output's."""
+    """Why a model, a section of the plan, a variable of the data dictionary or the
+    dictionary's study period rightly differs from the earlier output's."""
 
-    model: str | None
-    plan_section: str | None
     because: str
+    model: str | None = None
+    plan_section: str | None = None
+    variable: str | None = None
+    dictionary: str | None = None
+
+    @property
+    def named(self) -> tuple[str, str]:
+        """Which of the four it names, and its name: the schema has one given."""
+        return next((part, name) for part in ("model", "plan_section", "variable", "dictionary")
+                    if (name := getattr(self, part)) is not None)  # fmt: skip
 
 
 @dataclass(frozen=True)
@@ -216,7 +225,11 @@ def _output(entry: dict, where: tuple[int | None, dict, int]) -> Output:
         disclosed_by=text("disclosed_by"),
         line=line,
         methods=tuple(
-            Changed(text("model", changed), text("plan_section", changed), str(changed["because"]))
+            Changed(
+                str(changed["because"]),
+                **{part: text(part, changed)
+                   for part in ("model", "plan_section", "variable", "dictionary")},
+            )  # fmt: skip
             for changed in entry.get("methods", ())
         ),
     )

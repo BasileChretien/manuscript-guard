@@ -1797,12 +1797,24 @@ def test_a_number_the_supplement_reports_is_reported(project: Path) -> None:
 # definition (a parameter of the analysis) that changed, and an overlap nobody disclosed.
 
 
-def _earlier_output(project: Path, *, set_to: tuple[str, int] | None = None, **entry) -> None:
-    """Copy the example as the earlier project, plant a value in it, declare it, copy it in."""
+def _earlier_output(
+    project: Path,
+    *,
+    set_to: tuple[str, int] | None = None,
+    dictionary: tuple[str, str] | None = None,
+    **entry,
+) -> None:
+    """Copy the example as the earlier project, plant a value in it, or an edit in its data
+    dictionary, declare it, copy it in."""
     from manuscript_guard.literature.related import load_related, take
 
     earlier = project.parent / "earlier"
     shutil.copytree(project, earlier)
+    if dictionary is not None:
+        path = earlier / "design" / "data_dictionary.yaml"
+        old, new = dictionary
+        assert old in path.read_text(encoding="utf-8"), old
+        path.write_bytes(path.read_bytes().replace(old.encode(), new.encode()))
     if set_to is not None:
         key, value = set_to
         fragment = earlier / "results" / "01_disproportionality.json"
@@ -1852,6 +1864,38 @@ def test_a_count_printed_only_in_the_supplement_is_held_to_the_abstract(project:
 
 def test_a_definition_changed_since_the_abstract_is_said_and_does_not_fail(project: Path) -> None:
     _earlier_output(project, set_to=("param.signal.min_cases", 5))
+    assert _submitted(project) == [("related-method-differs", "warn")]
+
+
+_CASES_DICTIONARY = """\
+schema: manuscript-guard/data-dictionary/1
+study_period: {start: 2004-01-01, end: 2023-12-31}
+variables:
+  - name: hepatic
+    label: Hepatic injury
+    definition: A report coded to a term of the drug-related hepatic disorders query.
+    type: binary
+    values: [{code: 1, label: "Yes"}, {code: 0, label: "No"}]
+    standard: {system: MedDRA, version: "27.1", level: SMQ, term: Drug related hepatic disorders}
+"""
+
+
+@pytest.mark.parametrize(
+    "edit",
+    [
+        pytest.param(('version: "27.1"', 'version: "26.0"'), id="an older MedDRA release"),
+        pytest.param(("A report coded", "A serious report coded"), id="a narrower definition"),
+        pytest.param(("end: 2023-12-31", "end: 2021-06-30"), id="an earlier cut-off"),
+    ],
+)
+def test_a_data_dictionary_changed_since_the_abstract_is_said_and_does_not_fail(
+    project: Path, edit: tuple[str, str]
+) -> None:
+    """The abstract's data dictionary recorded the cases otherwise: the paper's check says
+    so, as a change of method, and never fails on it."""
+    path = project / "design" / "data_dictionary.yaml"
+    path.write_bytes(_CASES_DICTIONARY.encode("utf-8"))
+    _earlier_output(project, dictionary=edit)
     assert _submitted(project) == [("related-method-differs", "warn")]
 
 

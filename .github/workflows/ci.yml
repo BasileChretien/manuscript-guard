@@ -267,7 +267,7 @@ jobs:
       - uses: r-lib/actions/setup-r@v2
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
-          packages: jsonlite, digest
+          packages: jsonlite, digest, yaml
       # test_r_emitter.py calls no pandoc, but every pytest run here runs under the same
       # requirement, and setup-r-dependencies leaves apt's older pandoc on PATH, which the
       # requirement refuses. One rule for every job, rather than an exception to remember.
@@ -275,7 +275,7 @@ jobs:
         with:
           pandoc-version: ${{ env.MANUSCRIPT_GUARD_REQUIRE_PANDOC }}
       - run: pip install -e ".[dev]"
-      - run: pytest -q tests/test_r_emitter.py
+      - run: pytest -q tests/test_r_emitter.py tests/test_r_quality.py
 
   wheel:
     # Every other job installs editable, which reads src/ where it stands. A data file, a schema

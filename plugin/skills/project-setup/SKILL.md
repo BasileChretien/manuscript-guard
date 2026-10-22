@@ -150,13 +150,13 @@ Each finding names a code. The code says where to go:
 
 | Codes | Skill |
 |---|---|
-| `no-analysis-plan`, `plan-section-*`, `feasibility-not-run` | [analysis-plan](../analysis-plan/SKILL.md) |
+| `no-analysis-plan`, `plan-section-*`, `feasibility-not-run`, `not-in-dictionary` | [analysis-plan](../analysis-plan/SKILL.md) |
 | `data-source-*`, `data-sources-schema`, `custodian-rule-undeclared`, `plan-source-unnamed`, `data-statement-source-unnamed`, `data-statement-route-differs`, `dataset-not-chosen`; which dataset could answer the question, and how it is reached | [data-sources](../data-sources/SKILL.md) |
 | `dictionary-*`, `plan-variable-undefined` | [data-dictionary](../data-dictionary/SKILL.md) |
 | `similar-*`, `appraisal-*`, `adopted-*`, `standard-redescribed` | [methods-review](../methods-review/SKILL.md) |
-| `unclassified-number`, `unresolved-binding`, `unquoted-result`, `typed-parameter`, `parameter-unread`, `hand-authored-table`, G1 and G8 codes | [results-binding](../results-binding/SKILL.md) |
+| `unclassified-number`, `unresolved-binding`, `unquoted-result`, `typed-parameter`, `parameter-unread`, `hand-authored-table`, G1 and G8 codes, `quality-not-run`, `entry-unchecked`, `rule-unchecked` | [results-binding](../results-binding/SKILL.md) |
 | `ai-phrasing`, `ai-cadence`, `vague-attribution`, `model-artefact`, `revision-residue`, `abbreviation-*`, `term-avoided`, `vocabulary-conflict`, `spelling-*`, `notation-*`, `recycled-*`, `earlier-output-not-compared` | [manuscript-writing](../manuscript-writing/SKILL.md) |
-| `methods-drift`, `methods-never-reconciled`, `methods-supplement-unreconciled`, `method-…`, G15 codes (`model-…`, `variable-…`, `typed-model-kind`; `model-binary-as-number`, `variable-not-binary` and `model-engine-unknown` are among them) | [methods-writer](../methods-writer/SKILL.md) |
+| `methods-drift`, `methods-never-reconciled`, `methods-supplement-unreconciled`, `method-…`, G15 codes (`model-…`, `variable-…`, `typed-model-kind`; `model-binary-as-number`, `variable-not-binary` and `model-engine-unknown` are among them), `quality-not-reported` | [methods-writer](../methods-writer/SKILL.md) |
 | `literature-source-missing`, `quote-not-in-source`, `value-not-in-quote`, `quote-too-short`, `quotation-not-in-source`, `quotation-unchecked`, `passage-not-in-source`, `passage-unchecked`, `passage-too-short`, `passage-stale`, `statements-without-passage`, `judgement-not-human`, `passage-does-not-support`, `passage-partly-supports` | [literature-verify](../literature-verify/SKILL.md) |
 | `figure-unreviewed`, `figure-review-stale`, `figure-alt-*` | [figure-review](../figure-review/SKILL.md) |
 | `figure-colours-*`, `figure-greyscale-confused`, choosing a figure's look or palette | [figure-design](../figure-design/SKILL.md) |

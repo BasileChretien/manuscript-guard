@@ -1,0 +1,18 @@
+schema: manuscript-guard/panel/1
+round: 10
+opened_on: 2026-10-22
+manuscript_sha256: 0a5c5ab3600c6516a42732a31742bb9f9614be48b56b1a8f33329fc15e09da65
+blinded: false
+rationale: 'A revision round for one sentence. The Methods now say what the reports held when
+  they were checked against the data dictionary: the rows checked, the repeated identifiers
+  and the missing age groups, each a count the analysis writes and the sentence binds. The remit that
+  reads denominators and the biases of spontaneous reporting reads it, with the earlier rounds
+  in front of it.'
+reviewers:
+- id: pharmacoepidemiologist
+  role: Pharmacoepidemiologist
+  remit: Whether the design can answer the question asked. Case and exposure definitions,
+    denominators, the difference between disproportionate reporting and risk, and
+    the biases specific to spontaneous reporting.
+  why: The Methods now report the repeated identifiers and the missing values the data checks
+    found, beside why no de-duplication step was applied.

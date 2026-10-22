@@ -31,6 +31,7 @@ institution's city or country.
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 from xml.etree import ElementTree as ET
@@ -69,6 +70,43 @@ _ADDRESSED = re.compile(
 )
 #: A space of any kind, a line break inside a paragraph included.
 _SPACE = r"\s+"
+#: What stands between two words of a name in a LaTeX source: a space, a tie, a thin or a
+#: control space, a brace, and a template's command round a word, `\fnm{Ada} \sur{Example}`
+#: (round 3 of step 12, part 2).
+_LATEX_SPACE = r"(?:[\s~{}]|\\[,;: ]|\\[A-Za-z]+\*?)+"
+#: The accents LaTeX types as a command before the letter, by the combining character a
+#: letter that bears one decomposes into.
+_ACCENTS = {
+    "\N{COMBINING ACUTE ACCENT}": "'",
+    "\N{COMBINING GRAVE ACCENT}": "`",
+    "\N{COMBINING CIRCUMFLEX ACCENT}": "^",
+    "\N{COMBINING DIAERESIS}": '"',
+    "\N{COMBINING TILDE}": "~",
+    "\N{COMBINING MACRON}": "=",
+    "\N{COMBINING DOT ABOVE}": ".",
+    "\N{COMBINING CEDILLA}": "c",
+    "\N{COMBINING CARON}": "v",
+    "\N{COMBINING BREVE}": "u",
+    "\N{COMBINING DOUBLE ACUTE ACCENT}": "H",
+    "\N{COMBINING RING ABOVE}": "r",
+    "\N{COMBINING OGONEK}": "k",
+    "\N{COMBINING DOT BELOW}": "d",
+}
+#: The letters LaTeX types as a command of their own.
+_LETTERS = {
+    "\N{LATIN SMALL LETTER SHARP S}": "ss",
+    "\N{LATIN SMALL LETTER O WITH STROKE}": "o",
+    "\N{LATIN CAPITAL LETTER O WITH STROKE}": "O",
+    "\N{LATIN SMALL LETTER AE}": "ae",
+    "\N{LATIN CAPITAL LETTER AE}": "AE",
+    "\N{LATIN SMALL LIGATURE OE}": "oe",
+    "\N{LATIN CAPITAL LIGATURE OE}": "OE",
+    "\N{LATIN SMALL LETTER A WITH RING ABOVE}": "aa",
+    "\N{LATIN CAPITAL LETTER A WITH RING ABOVE}": "AA",
+    "\N{LATIN SMALL LETTER L WITH STROKE}": "l",
+    "\N{LATIN CAPITAL LETTER L WITH STROKE}": "L",
+    "\N{LATIN SMALL LETTER DOTLESS I}": "i",
+}
 
 
 @dataclass(frozen=True)
@@ -79,8 +117,10 @@ class Sought:
     pattern: re.Pattern[str]
 
 
-def sought(authors: dict | None) -> list[Sought]:
-    """What names each author of `authors.yaml`, and each of their institutions."""
+def sought(authors: dict | None, *, latex: bool = False) -> list[Sought]:
+    """What names each author of `authors.yaml`, and each of their institutions. With `latex`,
+    also as a LaTeX source types it: a tie or a template's commands between the words, an
+    accent as a command, `Chr\\'{e}tien`, and `\\_` or `\\&` (round 3 of step 12, part 2)."""
     found: list[Sought] = []
     authors = authors if isinstance(authors, dict) else {}
     for person in authors.get("authors") or []:
@@ -89,28 +129,32 @@ def sought(authors: dict | None) -> list[Sought]:
         given, family = str(person.get("given") or "").strip(), str(person.get("family") or "")
         family = family.strip()
         if given and family:
-            found.append(Sought(f"{given} {family}", _name(given, family)))
+            found.append(Sought(f"{given} {family}", _name(given, family, latex=latex)))
         for field, label in (("orcid", "ORCID iD"), ("email", "e-mail address")):
             value = str(person.get(field) or "").strip()
             if value:
-                pattern = re.compile(rf"(?<![\w.]){re.escape(value)}(?![\w])", re.IGNORECASE)
+                typed = "".join(_letter(character, latex=latex) for character in value)
+                pattern = re.compile(rf"(?<![\w.]){typed}(?![\w])", re.IGNORECASE)
                 found.append(Sought(f"the {label} {value}", pattern))
     for affiliation in authors.get("affiliations") or []:
         if isinstance(affiliation, dict):
             for piece in _institutions(str(affiliation.get("text") or "")):
-                found.append(Sought(piece, _words(piece, re.IGNORECASE)))
+                found.append(Sought(piece, _words(piece, re.IGNORECASE, latex=latex)))
     return found
 
 
-def _name(given: str, family: str) -> re.Pattern[str]:
+def _name(given: str, family: str, *, latex: bool = False) -> re.Pattern[str]:
     """A name as it is written: "Ada Example", "A. Example", "Example, A.". An initial counts
     with its stop before the family name and after a comma behind it, and not bare: "A Cross-
-    sectional study" and "patients on Ward A" name nobody (round 1 of #273)."""
-    initial = re.escape(given[0])
-    surname = _spaced(family)
+    sectional study" and "patients on Ward A" name nobody (round 1 of #273). With `latex`,
+    also as a LaTeX source types it, `A.~Example` (round 3 of step 12, part 2)."""
+    space = _LATEX_SPACE if latex else _SPACE
+    initial = _letter(given[0], latex=latex)
+    surname = _spaced(family, latex=latex)
+    stop = rf"\.(?:{_LATEX_SPACE})?" if latex else r"\.\s*"
     return re.compile(
-        rf"(?<!\w)(?:{_spaced(given)}{_SPACE}{surname}|{initial}\.\s*{surname}"
-        rf"|{surname},{_SPACE}{initial}[A-Z]?\.?)(?!\w)"
+        rf"(?<!\w)(?:{_spaced(given, latex=latex)}{space}{surname}|{initial}{stop}{surname}"
+        rf"|{surname},{space}{initial}[A-Z]?\.?)(?!\w)"
     )
 
 
@@ -119,15 +163,39 @@ def _name(given: str, family: str) -> re.Pattern[str]:
 _APOSTROPHE = "['\N{RIGHT SINGLE QUOTATION MARK}]"
 
 
-def _spaced(words: str) -> str:
-    return _SPACE.join(
-        "".join(_APOSTROPHE if c in _APOSTROPHE[1:-1] else re.escape(c) for c in word)
+def _spaced(words: str, *, latex: bool = False) -> str:
+    return (_LATEX_SPACE if latex else _SPACE).join(
+        "".join(_APOSTROPHE if c in _APOSTROPHE[1:-1] else _letter(c, latex=latex) for c in word)
         for word in words.split()
     )
 
 
-def _words(piece: str, flags: int = 0) -> re.Pattern[str]:
-    return re.compile(rf"(?<!\w){_spaced(piece)}(?!\w)", flags)
+def _letter(character: str, *, latex: bool = False) -> str:
+    """`character` as a pattern; with `latex`, also as LaTeX types it: `\\_` or `\\&`, an
+    accented letter as `\\'{e}` or `{\\'e}`, and `\\ss` (round 3 of step 12, part 2)."""
+    plain = re.escape(character)
+    if not latex:
+        return plain
+    if character in "_&%#$":
+        return rf"\\?{plain}"
+    typed = []
+    if character in _LETTERS:
+        typed.append(rf"\\{_LETTERS[character]}(?![A-Za-z])\s*(?:\{{\}})?")
+    letter, *marks = unicodedata.normalize("NFD", character)
+    if len(marks) == 1 and marks[0] in _ACCENTS and letter.isascii():
+        command, base = _ACCENTS[marks[0]], re.escape(letter)
+        if letter in "ij":
+            base = rf"(?:{base}|\\{letter}(?![A-Za-z])\s*)"
+        argument = rf"\s*\{{\s*{base}\s*\}}"
+        if command.isalpha():
+            typed.append(rf"\\{command}(?:{argument}|\s+{base})")
+        else:
+            typed.append(rf"\\{re.escape(command)}(?:{argument}|\s*{base})")
+    return rf"(?:{plain}|\{{?(?:{'|'.join(typed)})\}}?)" if typed else plain
+
+
+def _words(piece: str, flags: int = 0, *, latex: bool = False) -> re.Pattern[str]:
+    return re.compile(rf"(?<!\w){_spaced(piece, latex=latex)}(?!\w)", flags)
 
 
 def _institutions(text: str) -> list[str]:
@@ -177,11 +245,12 @@ def check_blinded(project: Project, document: Path) -> Report:
 def check_blinded_latex(project: Project, files: list[Path]) -> Report:
     """What names an author in the LaTeX submission folder's files, where the journal's review
     is blind: its `.tex` and `.sty` files read whole, the preamble's `\\author` and a
-    `\\hypersetup`'s `pdfauthor` among them, and the text of each PDF picture (step 10)."""
+    `\\hypersetup`'s `pdfauthor` among them, and the text of each PDF picture (step 10); a
+    name as LaTeX types it too (round 3 of step 12, part 2)."""
     from manuscript_guard.gates.journal import blinding
 
     kind = blinding(project)
-    wanted = sought(project.authors)
+    wanted = sought(project.authors, latex=True)
     if kind not in BLIND or not wanted:
         return Report()
     from manuscript_guard.contracts._schema import read_text

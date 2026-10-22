@@ -146,14 +146,15 @@ that Word's plugin adopts. Without it, `--offline` formats the citations from a 
 | G13 | every reviewer point is answered, every claimed revision really happened, a quoted revision is new, and nothing in a reply should not reach the journal |
 | G14 | an abbreviation is defined once, before it is used, the manuscript keeps to the terms its author declared, it is spelt in one English, a P value, an interval and a percentage are each written one way, and prose in a script the gates do not read is said (warnings only) |
 | G15 | each model is the model its variables call for: the outcome is one its kind of model is for, each variable entered as the kind it was declared, with its declared reference and levels, the fit converged with events at every level, the rows of one declared unit are not taken as independent, a crude and an adjusted model were fitted on the same rows, a Poisson model of a binary outcome has a robust variance, and the Methods name the model that was fitted |
+| G16 | where the project keeps a data dictionary: each variable the analysis declares or a model reads has an entry (a warning); the data were held to it, each entry and each rule counted by the emitter's `check_data` (a warning from the analysis stage); and the Methods or the supplement bind one of the counts, so that a reader sees what the data held (a warning from drafting); the last two fail at submission |
 
 In place of a gate, a finding can carry one of two labels that are no gate of their own:
 `G0`, for a file of the project that cannot be used as it stands, and `BUILD`, for what
 the build would refuse or warn of.
 
 `check` ends by grouping what it did by what it is about: computational reproducibility,
-numerical provenance, reporting completeness, methodological validity, the literature, the
-review, and the language. For each it says which gates checked it and what they found, what
+numerical provenance, reporting completeness, methodological validity, the data, the
+literature, the review, and the language. For each it says which gates checked it and what they found, what
 was recorded and by whom and when (a run of `verify`, a panel's reading, a figure review, a
 value attested), and in words what no gate decides, such as whether the design supports the
 conclusion. There is no score: a single number would be read as "the paper is right", which

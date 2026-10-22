@@ -6045,6 +6045,28 @@ def test_counts_the_supplement_binds_are_reported(project: Path) -> None:
     assert _g16(project, "submission") == []
 
 
+def test_a_latex_manuscript_s_counts_are_found_in_its_methods_and_its_supplement(
+    project: Path,
+) -> None:
+    """Step 13: G16 reads a LaTeX manuscript's Methods as they print, and its supplement's
+    bindings, in a file nothing inputs too."""
+    shutil.rmtree(project / "manuscript")
+    shutil.copytree(TWIN, project / "manuscript")
+    assert _g16(project, "submission") == []
+    main = project / "manuscript" / "main.tex"
+    text = main.read_text(encoding="utf-8")
+    start = text.index("Each record carries a unique report identifier")
+    end = text.index("\n\n", start)
+    sentence = text[start:end]
+    assert "\\mg{results.quality." in sentence
+    main.write_text(text[:start] + "Each record was checked." + text[end:], encoding="utf-8")
+    assert _g16(project, "submission") == [("quality-not-reported", "fail")]
+    (project / "manuscript" / "supplementary" / "checks.tex").write_text(
+        sentence + "\n", encoding="utf-8"
+    )
+    assert _g16(project, "submission") == []
+
+
 def test_a_dictionary_edited_after_the_counts_is_an_input_changed(project: Path) -> None:
     """The dictionary is an input of the run that counted: G1 says the counts are stale."""
     assert "input-changed" not in codes(gate_report(project))
@@ -7022,9 +7044,9 @@ def test_a_gate_not_taught_latex_reads_nothing_and_fails_at_submission(project: 
     # G2 reads LaTeX but for its pointers to tables and figures, and says so (step 4). G4
     # reads it from step 6, G14 and G6 from step 7, G7, G8, G8r, G9, G13 and G15 from step
     # 8, and the data sources G4's statements name and G7's text recycling from step 13.
-    # BUILD's Markdown checks do not run on LaTeX, whose build `check_latex` reads. G16
-    # reads the Markdown only (#389).
-    expected = ["G16", "G2"]
+    # BUILD's Markdown checks do not run on LaTeX, whose build `check_latex` reads. G16's
+    # count reported reads it from step 13 too.
+    expected = ["G2"]
     assert unread == expected, drafting.render(project)
     assert "not-read-in-latex" not in codes(drafting)
     said = {f.code for f in drafting.findings}
@@ -7037,7 +7059,7 @@ def test_a_gate_not_taught_latex_reads_nothing_and_fails_at_submission(project: 
 
 
 #: The checks that read the manuscript only as Markdown, and those that do not read it.
-_MARKDOWN_ONLY = ("check_quality_reported",)
+_MARKDOWN_ONLY: tuple[str, ...] = ()
 #: The Markdown build's own checks, which a LaTeX manuscript's build has no use for: they do
 #: not run on one, and nothing is said (step 13).
 _MARKDOWN_BUILD = ("check_shapes", "check_tex")
@@ -7066,8 +7088,9 @@ _READS_LATEX = (
     # It reads the main text through G4's `main_text`, which gives a LaTeX manuscript as it
     # prints (#414).
     "check_package_doi",
-    # They read the documents as they print, and place a finding in its `.tex` file (step 13).
-    "check_statement_sources", "check_recycling",
+    # They read the documents as they print, and place a finding in its `.tex` file, or
+    # read the supplement's bindings (step 13).
+    "check_statement_sources", "check_recycling", "check_quality_reported",
 )  # fmt: skip
 
 

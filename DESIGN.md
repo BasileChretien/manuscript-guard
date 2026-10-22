@@ -2307,13 +2307,16 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
     nothing inputs is compared on its own, as G2 reads it (round 1). A passage is placed at
     the `.tex` file its first word is typed in, and at the lines there of its first and last
     words; where the last is in another file, the passage ends on its first line. BUILD's
-    Markdown checks (`check_shapes`, `check_tex`) do not run on a LaTeX manuscript, and nothing is said: its
-    build is checked by `check_latex`, which reads it as the reader does, and by its compile
-    (`_MARKDOWN_BUILD`); its `\title` against paper.yaml's is a known gap.
-    Left: G16's check of what the Methods report of the data's quality
-    (`check_quality_reported`, #389), the one check still in `_NOT_READ_IN_LATEX`; G4's
-    figure legends, which are a float's caption; and G2's pointers to tables and figures,
-    each a `not-read-in-latex` for its part. Tests: `tests/test_recycling.py`, `tests/test_corruption.py`, and
+    Markdown checks (`check_shapes`, `check_tex`) do not run on a LaTeX manuscript, and
+    nothing is said: its build is checked by `check_latex`, which reads it as the reader
+    does, and by its compile (`_MARKDOWN_BUILD`); its `\title` against paper.yaml's is a
+    known gap.
+    G16's check that the Methods or the supplement bind a count of the data's checks
+    (`check_quality_reported`, #389) reads a LaTeX manuscript's Methods as G9 does, and the
+    bindings of its supplement's files, one nothing inputs among them. `_NOT_READ_IN_LATEX`
+    is then empty. Left: G4's figure legends, which are a float's caption, and G2's pointers
+    to tables and figures, each a `not-read-in-latex` for its part. Tests:
+    `tests/test_recycling.py`, `tests/test_corruption.py`, and
     `_planted_latex_recycling` in `tests/test_properties.py`, with `BROKEN` rules for the
     file and the lines.
 

@@ -1617,8 +1617,10 @@ The result is compiled and packed by the code above, and checked three times:
   count, a `\captionof`, a `longtable`'s caption, or a float whose caption a command of the
   author's writes, that kind's pointers are not checked, and a note says so; a page
   `\includepdf` takes in, or a `\caption` in a float the reader does not know, `SCfigure` or
-  a `\newfloat`, leaves both kinds of its document unchecked; an `algorithm`'s caption or a
-  minted `listing`'s numbers neither (round 3). A float that holds a file input and no caption
+  a `\newfloat`, or in a command that wraps a whole float, leaves both kinds of its document
+  unchecked; an `algorithm`'s caption or a minted `listing`'s numbers neither (round 3), and
+  under algorithm2e's `figure` option, which numbers an algorithm as a figure, the figures
+  are counted one short of what LaTeX prints (round 4). A float that holds a file input and no caption
   of its own, or a file read inside a float, numbers what the captions of the other number;
   where neither has a caption the view reads, one a command of the author's writes in the
   file, the float is counted as none, and a pointer to it may be said to point at nothing

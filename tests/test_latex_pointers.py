@@ -167,6 +167,15 @@ def test_a_caption_that_numbers_no_table_or_figure_leaves_them_counted(
     assert _said(twin) == [("pointer-to-nothing", "fail", "main.tex", _line(twin, "Table~3"))]
 
 
+def test_a_definition_that_prints_a_float_leaves_both_kinds_unchecked(twin: Path) -> None:
+    """Round 4 of step 13, part 2: a command that wraps a whole float prints it where it is
+    used, which the reader does not see, so neither kind is counted."""
+    _replaced(twin, "\\section{Discussion}",
+              "\\newcommand{\\fig}[1]{\\begin{figure}\\caption{#1}\\end{figure}}\\fig{Extra.}\n\n"
+              "Figure~2 is the extra one.\n\n\\section{Discussion}")  # fmt: skip
+    assert [code for code, *_rest in _said(twin)] == ["pointers-unchecked"] * 2
+
+
 @pytest.mark.parametrize("caption_in_the_file", [False, True])
 def test_a_float_whose_content_a_file_inputs_is_one_display(
     twin: Path, caption_in_the_file: bool

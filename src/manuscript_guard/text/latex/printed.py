@@ -346,8 +346,11 @@ def _pointing_events(source: Source) -> list[tuple[int, int, str]]:
     # A caption outside the floats the reader knows numbers a display of a float it does not,
     # `SCfigure` or a `\\newfloat`, of a kind the view cannot tell (round 2 of step 13, part 2).
     # Not one in an `algorithm` or a `listing`, which number neither, nor in a definition's
-    # body, which prints only where it is used (round 3).
-    known = [*reading.floats, *reading.tables, *reading.bodies,
+    # body that holds no environment, which prints a caption where it is used (round 3); one
+    # whose body begins or ends a float may print a whole float there (round 4).
+    bodies = [(low, high) for low, high in reading.bodies
+              if not _ENVIRONMENT.search(text, low, high)]  # fmt: skip
+    known = [*reading.floats, *reading.tables, *bodies,
              *_spans(text, _OTHER_FLOATS, 0, len(text), read)]  # fmt: skip
     if not _read_in_a_part(source):
         for begun, _opened, closed in _arguments(text, _NUMBERED, 0, len(text), comments):
@@ -491,6 +494,8 @@ _CONTINUED = re.compile(r"\\ContinuedFloat(?![A-Za-z])")
 #: The floats packages give that number neither a table nor a figure: an algorithm, and
 #: minted's listing (round 3 of step 13, part 2).
 _OTHER_FLOATS = re.compile(r"\\(begin|end)\s*\{(?:algorithm\*?|listing)\}")
+#: Where an environment begins or ends.
+_ENVIRONMENT = re.compile(r"\\(?:begin|end)\s*\{")
 
 
 #: A caption LaTeX numbers: not a starred one, nor a subfigure's.

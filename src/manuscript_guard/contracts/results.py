@@ -51,6 +51,9 @@ class Fragment:
     # The lockfiles at the project root when the fragment was written, each with its
     # digest. None for a fragment written before the emitters recorded them.
     environment: tuple[dict, ...] | None = None
+    # The data the run read, by what identifies them, as `dataset()` declared them: by
+    # name, the files, the pin and the dates. G1 holds the pin to the inputs above.
+    datasets: dict[str, dict] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -189,6 +192,7 @@ def load_results(results_dir: Path) -> tuple[Results, Report]:
                 environment=(
                     tuple(prov["environment"]) if "environment" in prov else None
                 ),
+                datasets=dict(document.get("datasets") or {}),
             )
         )
         corrections.update(document.get("corrections") or {})

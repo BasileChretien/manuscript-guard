@@ -32,6 +32,7 @@ from manuscript_guard.emit import write_digest
 from manuscript_guard.findings import merge_all
 from manuscript_guard.gates import (
     check_consistency,
+    check_datasets,
     check_figures,
     check_freshness,
     check_models,
@@ -48,6 +49,7 @@ def gate_report(root: Path):
             contract_report,
             load_report,
             check_freshness(project, results),
+            check_datasets(project, results),
             check_numbers(project, namespace, results, literature),
             check_figures(project, results),
             check_consistency(results),
@@ -6120,6 +6122,7 @@ _NOT_THE_MANUSCRIPT = (
     "check_review", "check_freshness", "check_figures", "check_figure_reviews",
     "check_literature_chain", "check_shortlist", "check_design", "check_design_rounds",
     "check_consistency", "check_restricted_inputs", "check_relations", "check_data_sources",
+    "check_datasets",
     "check_method_passages", "check_methods_review",
     # It finds the figures placed in the Markdown sources, so it reads nothing of a LaTeX
     # manuscript and says nothing of one; it runs, as G3's other check does (round 1 of #387).
@@ -17588,18 +17591,19 @@ def test_every_way_of_losing_a_reading_fails_a_submission(project: Path, name: s
 
 def test_the_example_s_own_rounds_are_read_as_they_were(project: Path) -> None:
     """One record a reviewer, no readers named: nothing about them changed. Rounds three to
-    eight read revisions with the earlier rounds in front of them, so the eighth supersedes
-    the seven before it and each says it was not blinded."""
+    nine read revisions with the earlier rounds in front of them, so the ninth supersedes
+    the eight before it and each says it was not blinded."""
     from manuscript_guard.gates import check_review
 
     report = check_review(load_project(project)[0], submission=True)
     assert report.ok, report.render(project)
     said = sorted((f.code, f.path.parent.name) for f in report.findings)
     superseded = [("review-superseded", f"round-{n}")
-                  for n, many in ((1, 3), (2, 2), (3, 2), (4, 2), (5, 2), (6, 2), (7, 1))
+                  for n, many in ((1, 3), (2, 2), (3, 2), (4, 2), (5, 2), (6, 2), (7, 1),
+                                  (8, 1))
                   for _ in range(many)]  # fmt: skip
-    assert said == superseded + [("round-not-blinded", "review")] * 6, report.render(project)
-    assert report.counts["review_rounds_complete"] == 8
+    assert said == superseded + [("round-not-blinded", "review")] * 7, report.render(project)
+    assert report.counts["review_rounds_complete"] == 9
 
 
 def test_a_reading_that_stops_parsing_fails_with_no_readers_named_either(project: Path) -> None:
@@ -20407,6 +20411,141 @@ def test_a_typed_dictionary_release_fails_and_only_beside_its_name(
     found = [f for f in gate_report(project).failures if f.code == "typed-dictionary-release"]
     assert [f.message.split(" is ")[0] for f in found] == typed
     assert all("{{results.dictionary." in f.hint for f in found)
+
+
+# ----------------------------------------------------- the data the paper analysed, named
+
+
+def test_the_example_names_its_data_by_their_date_and_its_file(project: Path) -> None:
+    """The example declares its data with `dataset()`: its date and the years it covers are
+    values the Methods bind, and the fragment pins them to the file."""
+    namespace, results, *_ = load_namespace(load_project(project)[0])
+    assert namespace["results.dataset.reports.extracted"].display == "3 August 2026"
+    assert namespace["results.dataset.reports.covers_to"].role == "dataset"
+    (fragment,) = results.fragments
+    assert fragment.datasets["reports"]["inputs"] == ["data/reports.csv"]
+    assert fragment.datasets["reports"]["observed"]["count"] == 4000
+
+
+def test_a_typed_extraction_date_fails(project: Path) -> None:
+    _replace_once(main_md(project), "{{results.dataset.reports.extracted}}", "3 August 2026")
+    report = gate_report(project)
+    assert "unclassified-number" in codes(report)
+    assert "unquoted-result" in codes(report)
+
+
+def test_a_date_typed_into_the_script_is_warned_where_the_methods_date_the_data(
+    project: Path,
+) -> None:
+    """The way out G2's hint offered before `dataset()`: a string emitted with its display,
+    typed into the script and tied to nothing."""
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"]["data.extracted"] = {"value": "2026-08-03", "display": "3 August 2026"}
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    main = main_md(project)
+    main.write_text(main.read_text(encoding="utf-8") + "\nThe data were downloaded on "
+                    "{{results.data.extracted}}.\n", encoding="utf-8")  # fmt: skip
+    report = gate_report(project)
+    assert report.ok, report.render(project)
+    assert [f.code for f in report.findings if f.code.startswith("data-date")] == [
+        "data-date-not-declared"
+    ]
+
+
+def test_a_period_printed_as_another_than_the_one_declared_fails(project: Path) -> None:
+    """The fragment's display says the data cover to 2023, its value to 2024: read with the
+    emitter's rule, from either language or by hand."""
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"]["dataset.reports.covers_to"]["display"] = "2023"
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    report = gate_report(project)
+    assert "no-display" in codes(report)
+    assert "unresolved-binding" in codes(report)
+
+
+def test_the_data_made_again_make_the_date_stale(project: Path) -> None:
+    """New data at the path: G1 names the date it makes stale, and the analysis run again
+    with the old date is refused."""
+    data = project / "data" / "reports.csv"
+    data.write_text(data.read_text(encoding="utf-8") + "R99999,2024,example-drug,rash,N,F,75+\n",
+                    encoding="utf-8", newline="")  # fmt: skip
+    found = [f for f in gate_report(project).failures if f.code == "input-changed"]
+    assert any("dataset.reports.extracted dates the data as they were" in f.message
+               for f in found)  # fmt: skip
+    import subprocess
+    import sys
+
+    out = subprocess.run([sys.executable, str(_analysis(project))], capture_output=True,
+                         text=True, cwd=project)  # fmt: skip
+    assert out.returncode != 0
+    assert "is not the data pinned as extracted on 2026-08-03" in out.stderr
+
+
+def test_a_dataset_pinned_to_other_data_fails(project: Path) -> None:
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["datasets"]["reports"]["fingerprint"] = "0123456789abcdef"
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    assert "dataset-pin-mismatch" in codes(gate_report(project))
+
+
+def test_a_report_dated_outside_the_years_covered_is_refused(project: Path) -> None:
+    _replace_once(_analysis(project), 'covers=("2015", "2024")', 'covers=("2016", "2024")')
+    import subprocess
+    import sys
+
+    out = subprocess.run([sys.executable, str(_analysis(project))], capture_output=True,
+                         text=True, cwd=project)  # fmt: skip
+    assert out.returncode != 0
+    assert "dates lie outside the period the data are declared to cover (2016 to 2024)" in (
+        out.stderr
+    )
+
+
+#: The example's supplement, which every gate that reads prose reads as it reads the main text.
+_SUPPLEMENT = "manuscript/supplementary/S1_code_lists.md"
+
+
+@pytest.mark.parametrize("where", ["manuscript/main.md", _SUPPLEMENT])
+def test_a_date_of_the_data_in_the_supplement_is_held_as_in_the_methods(
+    project: Path, where: str
+) -> None:
+    """The supplement is held to the rules of the main text (Basile, 2026-10-21): an
+    extraction date typed in Supplementary Methods fails as one typed in the Methods does,
+    and one typed into the script is warned of there too, at the file it stands in."""
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"]["data.extracted"] = {"value": "2026-08-03", "display": "3 August 2026"}
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    page = project / where
+    page.write_text(page.read_text(encoding="utf-8") + "\n\nThe data were extracted on 3 August "
+                    "2026. They were downloaded on {{results.data.extracted}}.\n",
+                    encoding="utf-8")  # fmt: skip
+    report = gate_report(project)
+    typed = {f.message.split(" is ")[0] for f in report.failures
+             if f.code == "unclassified-number" and f.path.name == page.name}  # fmt: skip
+    assert typed == {"'3'", "'2026'"}, report.render(project)
+    warned = [f for f in report.findings if f.code == "data-date-not-declared"]
+    assert [f.path.name for f in warned] == [page.name]
+
+
+def test_a_dataset_date_bound_in_the_supplement_alone_is_quoted(project: Path) -> None:
+    """The date bound only in Supplementary Methods is quoted, as one bound in the Methods
+    is: direction two reads the supplement too."""
+    _replace_once(main_md(project), "generated on\n{{results.dataset.reports.extracted}} to cover",
+                  "made to cover")  # fmt: skip
+    page = project / _SUPPLEMENT
+    page.write_text(page.read_text(encoding="utf-8") + "\n\nThe database was generated on "
+                    "{{results.dataset.reports.extracted}}.\n", encoding="utf-8")  # fmt: skip
+    report = gate_report(project)
+    assert report.ok, report.render(project)
+    assert "unquoted-result" not in {f.code for f in report.findings}
 
 
 def test_a_parameter_declared_and_never_read_fails(project: Path) -> None:

@@ -85,21 +85,11 @@ class LatexPack:
 
 def pack_latex(project, namespace, results, *, engine: str = "pdflatex") -> LatexPack:
     """Build the manuscript as `build` does, write the folder, and compile it alone."""
-    from manuscript_guard.build.latex_values import entry_folders
-    from manuscript_guard.text.latex.structure import read_document
 
     built = build_latex(project, namespace, results, engine=engine)
-    manuscript = project.path("manuscript")
     folder = project.path("build") / COPY / STAGED
     folder.mkdir()
-    documents = []
-    for entry_folder in entry_folders(project):
-        supplementary = entry_folder != manuscript
-        document = read_document(manuscript, supplementary=supplementary)
-        for path, refusal in document.refusals:
-            raise BuildError(f"{manuscript / path}: the reader refused it ({refusal.message}), "
-                             "and the submission folder is written from what it reads")  # fmt: skip
-        documents.append((document, supplementary))
+    documents = _documents(project)
     read = {path: None for compiled in built for path in compiled.read}
     writer = _Writer(project, namespace, results, folder, documents, tuple(read))
     writer.cited |= {key for compiled in built for key in compiled.cited}
@@ -110,6 +100,54 @@ def pack_latex(project, namespace, results, *, engine: str = "pdflatex") -> Late
     files = tuple(sorted(path for path in folder.iterdir() if path.name not in documents_made))
     undefined = tuple(dict.fromkeys(left for compiled in alone for left in compiled.undefined))
     return LatexPack(folder, files, tuple(compiled.pdf for compiled in alone), undefined)
+
+
+def _documents(project) -> list:
+    """Each document the manuscript has, read, and whether it is the supplement; or
+    `BuildError` where the reader refuses a file of one, since what is written is what it
+    read."""
+    from manuscript_guard.build.latex_values import entry_folders
+    from manuscript_guard.text.latex.structure import read_document
+
+    manuscript = project.path("manuscript")
+    documents = []
+    for entry_folder in entry_folders(project):
+        supplementary = entry_folder != manuscript
+        document = read_document(manuscript, supplementary=supplementary)
+        for path, refusal in document.refusals:
+            raise BuildError(f"{manuscript / path}: the reader refused it ({refusal.message}), "
+                             "and the submission folder is written from what it reads")  # fmt: skip
+        documents.append((document, supplementary))
+    return documents
+
+
+@dataclass(frozen=True)
+class Written:
+    """The documents by their names, as `written_documents` writes them, and what each binding
+    to a value, a table or a figure the results do not have is written as, `\\textbf{??}...`,
+    once for each."""
+
+    documents: tuple[tuple[str, str], ...]
+    unbound: tuple[str, ...] = ()
+
+
+def written_documents(project, namespace, results) -> Written:
+    """Each document by its name, as the submission folder's writer writes it, without the
+    build: its inputs written in, its values in and its comments out; the line ends, and a
+    picture's path but a rendered figure's, as typed. What a review panel is sent and a
+    revision round keeps of the text the journal received (step 12). What only the folder
+    cannot hold is not refused: two packages of one name are left as typed (round 2 of step
+    12, part 2), and a picture outside the manuscript is written by its file's name alone,
+    since its folders may name the author's account (round 3)."""
+    with tempfile.TemporaryDirectory(prefix="manuscript-guard-",
+                                     ignore_cleanup_errors=True) as scratch:  # fmt: skip
+        folder = Path(scratch)
+        writer = _Writer(project, namespace, results, folder, _documents(project), (),
+                         strict=False)  # fmt: skip
+        written = writer.write()
+        documents = tuple((name, (folder / f"{name}.tex").read_text(encoding="utf-8"))
+                          for name, _supplementary in written)  # fmt: skip
+        return Written(documents, tuple(writer.unbound))
 
 
 def _alone(project, folder: Path, names: list[str], engine: str) -> list[Compiled]:
@@ -170,8 +208,12 @@ class _Names:
 class _Writer:
     """The folder's files, written from what the reader read of each document."""
 
-    def __init__(self, project, namespace, results, folder: Path, documents, read) -> None:
+    def __init__(self, project, namespace, results, folder: Path, documents, read, *,
+                 strict: bool = True) -> None:  # fmt: skip
         self.project = project
+        #: Whether what the folder cannot hold is refused, as the submission folder refuses
+        #: it, or left as typed (round 2 of step 12, part 2).
+        self.strict = strict
         self.namespace = namespace
         self.results = results
         self.folder = folder
@@ -185,6 +227,8 @@ class _Writer:
                      if path.is_relative_to(self.manuscript)}  # fmt: skip
         self.cited: set[str] = set()
         self.bibliographies: dict[str, Path] = {}
+        #: Each binding to what the results do not have, as written (step 12, part 2).
+        self.unbound: list[str] = []
         #: Each picture an `\\includegraphics` is written with its name for.
         self.renamed: set[Path] = set()
 
@@ -194,6 +238,7 @@ class _Writer:
         from manuscript_guard.build.latex_values import entries, rendered_figures
 
         rendered = rendered_figures(self.project)
+        self.rendered = rendered
         #: Where the build puts each rendered figure beside each entry file, from the
         #: manuscript's folder, for a picture named by that path.
         self.placed = {posixpath.join(posixpath.dirname(document.sources[0].path), "figures",
@@ -222,7 +267,7 @@ class _Writer:
                     # Claimed by its file, as a path that names it is (round 3 of step 10).
                     claimed = self.names.claim((self.manuscript / source.path).resolve(),
                                                source.path)  # fmt: skip
-                    if claimed != package:
+                    if claimed != package and self.strict:
                         raise BuildError(f"two of the author's packages are named {package}, "
                                          "and the submission folder holds one")  # fmt: skip
                     self._save(package, self._text(source, depth=0))
@@ -345,7 +390,15 @@ class _Writer:
         ref = f"{found.namespace}.{found.key}"
         body = self.values.get(ref)
         if body is None:
-            return r"\textbf{??}\,\texttt{" + escaped(ref, ref) + "}"
+            # A figure rendered in no format pdfLaTeX includes, or a value it cannot print,
+            # has what it names; only a binding to nothing is unbound.
+            known = {"table": self.results.tables, "figure": self.rendered,
+                     "method": self.results.steps}.get(found.namespace, self.namespace)  # fmt: skip
+            key = ref if found.namespace not in ("table", "figure", "method") else found.key
+            written = r"\textbf{??}\,\texttt{" + escaped(ref, ref) + "}"
+            if key not in known:
+                self.unbound.append(written)
+            return written
         if found.namespace == "figure":
             options = re.match(r"\\mg\s*(?:\[(?P<options>[^\]\n]*)\])?", found.raw)
             return body.replace("[#1]", f"[{options['options'] or ''}]")
@@ -413,11 +466,19 @@ class _Writer:
         """An `\\includegraphics` of a file of the manuscript's, written with its name in the
         folder. One LaTeX found elsewhere, in the distribution, is left as written."""
         path = source.text[opened + 1 : end - 1].strip()
+        bare = path.strip('"')
+        if not self.strict and re.match(r"[A-Za-z]:|/|\\\\", bare):
+            # Quoted, or with backslashes, its folders may name the author's account all the
+            # same (round 4 of step 12, part 2).
+            name = re.split(r"[/\\]", bare)[-1]
+            return [(opened, end, "{" + (f'"{name}"' if bare != path else name) + "}")]
         if not path or set(path) & set("#\\{}"):
             return []
         folder = posixpath.dirname(self.entry)
         joined = posixpath.normpath(posixpath.join(folder, path))
         if re.match(r"[A-Za-z]:|/", path) or joined == ".." or joined.startswith("../"):
+            if not self.strict:
+                return [(opened, end, "{" + posixpath.basename(path) + "}")]
             raise BuildError(f"{self.manuscript / source.path}: \\includegraphics names "
                              f"{path}, outside the manuscript's folder, which the submission "
                              "folder cannot hold; put the file in the manuscript's "

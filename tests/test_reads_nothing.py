@@ -262,7 +262,9 @@ LATEX = {
     "related": ("reads", ("related", "{project}")),
     "render": ("refuses", ("render", "{project}")),
     "respond": ("refuses", ("respond", "{project}", "--from", "{project}/returned.docx")),
-    "review": ("refuses", ("review", "{project}", "--run")),
+    # A panel is sent the documents as the submission folder writes them (step 12); the
+    # edits its readings suggest are written into a Word copy, which is Markdown's.
+    "review": ("refuses", ("review", "{project}", "--suggestions", "--round", "1")),
     "reworded": ("refuses", ("reworded", "{project}")),
     "search": ("no manuscript", ("search", "hepatic injury")),
     "sign": ("reads", ("sign", "{project}", "--as", "Nobody Listed", "--finding", "G15/x/y")),

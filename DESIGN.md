@@ -1767,6 +1767,17 @@ The result is compiled and packed by the code above, and checked three times:
 - A biblatex `.bbl` belongs to the biblatex version that wrote it. A journal with another
   version that compiles without running Biber gets a warning and the references of that
   `.bbl` (step 10).
+- A review panel is not sent a LaTeX manuscript's preamble, nor the author's packages: a
+  command an author defines there, `\drug`, reaches the reviewer as its name, and an abstract
+  a class takes in the preamble (MDPI's `\abstract{}`) is not sent. A name in the body that
+  authors.yaml does not give is sent; a value pdfLaTeX cannot print is sent as `??`, which
+  the dry run does not count. What the blind check's patterns match is sent as `[withheld]`
+  where it names no author too: a bare initial and a family name, "group A. Long-term" for
+  an author A. Long, or an affiliation's three words in a sentence of the text (round 3 of
+  step 12, part 2). A letter with two accents, `\~{\^e}`, or a comma below, `\textcommabelow{s}`,
+  is not found as LaTeX types it (round 4). The round's copy
+  keeps a picture's path and the line ends as typed, where the submission folder renames
+  pictures (round 1 of step 12, part 2).
 - At a revision, a LaTeX manuscript's pack has no marked-up copy: `build --marked-up` makes
   Word copies, and `submit` says so in a note (step 10).
 - Under MiKTeX, which reads a file by a path written out in full whatever `openin_any` says,
@@ -2160,7 +2171,26 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
 11. Markdown to LaTeX. `build --latex`, the template, the reading back and the comparison
     of digits.
 12. The rest. `init --latex`, the hooks, `explain` and `bind`, the panel's prompt, the
-    round's copy in `revision/`, the skills and the README.
+    round's copy in `revision/`, the skills and the README. The panel's prompt and the
+    round's copy: `latex_pack.written_documents` gives each document as the submission folder
+    writes it, its inputs written in, its values in and its comments out, without the build.
+    A panel is sent each from its `\begin{document}`, labelled as the build prints it, with
+    the digests G11 holds the round to, of the `.tex` files. A comment is not sent, as an HTML
+    comment is not, and neither is the preamble, which holds the authors in `\author` and
+    `\thanks`; the title and the paper's facts are sent apart, as for Markdown (round 1). A
+    journal's template may name the authors in the body, `\affil` or elsarticle's
+    `frontmatter`: each name, address, ORCID iD and institution authors.yaml gives is sent as
+    `[withheld]` wherever it stands, found as the blind review's check finds them; two
+    packages of one name, which only the folder cannot hold, are left as typed (round 2). The
+    check and the panel find a name as LaTeX types it too, `\fnm{Ada} \sur{Example}`,
+    `A.~Example` or `Chr\'{e}tien`, and an address with `\_`; a reference list typed in
+    `thebibliography` is sent as typed, as the check passes it over; and a picture outside
+    the manuscript is sent by its file's name alone, since its folders may name the author's
+    account (round 3). `respond
+    --open` keeps them in `revision/round-N/submitted/latex/`, beside the printed copy G13
+    reads; where the reader refuses a file, it says so and keeps the printed copy only.
+    `review --suggestions` still refuses a LaTeX manuscript: its edits go into a Word copy.
+    Tests: `tests/test_latex_panel.py`.
 
 ## Zotero is never on the critical path
 

@@ -378,6 +378,43 @@ def test_a_reference_list_typed_in_the_source_names_no_author(project: Path) -> 
     assert not check_blinded_latex(load_project(project)[0], [source]).ok
 
 
+@pytest.mark.parametrize(
+    "typed",
+    [
+        "\\fnm{Ada} \\sur{Example}",
+        "A.~Example",
+        "Ada~Example",
+        "Example,~A.",
+        "Zo\\'e Chr\\'{e}tien",
+        "Z.~Chr{\\'e}tien",
+        "\\email{first\\_last@uni.edu}",
+        "Faculty of Arts \\& Sciences",
+        "Bj\\o rn Mart\\'\\i nez",
+        "Ece Y{\\i}ld{\\i}z",
+    ],
+)
+def test_a_name_is_found_as_latex_types_it(typed: str) -> None:
+    """A tie, a template's commands between the words, an accent as a command, and `\\_` or
+    `\\&` (round 3 of step 12, part 2)."""
+    from manuscript_guard.build.blinding import names_in, sought
+
+    acute = "\N{LATIN SMALL LETTER E WITH ACUTE}"
+    authors = {
+        "authors": [
+            {"given": "Ada", "family": "Example", "email": "first_last@uni.edu"},
+            {"given": f"Zo{acute}", "family": f"Chr{acute}tien"},
+            {"given": "Bj\N{LATIN SMALL LETTER O WITH STROKE}rn",
+             "family": "Mart\N{LATIN SMALL LETTER I WITH ACUTE}nez"},
+            {"given": "Ece", "family": "Y\N{LATIN SMALL LETTER DOTLESS I}ld"
+             "\N{LATIN SMALL LETTER DOTLESS I}z"},
+        ],
+        "affiliations": [{"text": "Faculty of Arts & Sciences, Springfield"}],
+    }
+    assert names_in(f"See {typed} here.", sought(authors, latex=True))
+    assert not names_in("\\fnm{Ada} \\sur{Exampled} and Chr\\'{e}tiens",
+                        sought(authors, latex=True))  # fmt: skip
+
+
 def test_a_picture_outside_the_manuscript_is_refused(
     project: Path, twin: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

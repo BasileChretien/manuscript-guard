@@ -1975,10 +1975,22 @@ def _keep_submitted(project, number: int) -> Path:
         from manuscript_guard.gates.revision import PRINTED_COPY, rendered_manuscript
 
         # The documents as LaTeX prints them, values in, which is what G13 reads the paper
-        # in now; the round's copy of the sources themselves is step 12's (step 8).
+        # in now (step 8); and the sources as the submission folder writes them, inputs and
+        # values in and comments out, the text the journal received (step 12).
         folder.mkdir(parents=True, exist_ok=True)
         text = rendered_manuscript(project, rendered)
         (folder / PRINTED_COPY).write_text(text, encoding="utf-8", newline="\n")
+        from manuscript_guard.build.latex_pack import written_documents
+
+        namespace, results = load_namespace(project)[:2]
+        try:
+            documents = written_documents(project, namespace, results).documents
+        except BuildError as exc:
+            print(f"the round keeps no copy of the LaTeX sources: {exc}")
+            return folder
+        (folder / "latex").mkdir(exist_ok=True)
+        for name, written in documents:
+            (folder / "latex" / f"{name}.tex").write_text(written, encoding="utf-8", newline="")
         return folder
     for source in source_files(manuscript):
         target = folder / source.relative_to(manuscript)
@@ -5192,8 +5204,9 @@ _MARKDOWN_COMMANDS: dict[str, Callable[[argparse.Namespace], bool]] = {
     # .docx reads the Word copy a Markdown manuscript is built to.
     "respond": lambda args: args.source is not None,
     # A design round reads the plan, not the manuscript (round 1 of #404).
-    "review": lambda args: bool((args.run or args.dry_run) and not args.design
-                                or args.suggestions),
+    # A panel reads a LaTeX manuscript as the submission folder writes it (step 12); Word's
+    # suggestions are a Markdown manuscript's.
+    "review": lambda args: bool(args.suggestions),
 }  # fmt: skip
 #: The commands refused a `.tex` named whatever the project's format, since they read the
 #: file given as Markdown; `impact` follows the records of any file, a header's included.

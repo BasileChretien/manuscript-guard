@@ -2897,6 +2897,13 @@ def _build_latex(project, report, args: argparse.Namespace) -> int:
     except OSError as exc:
         print(f"manuscript-guard: the PDF is not built: {exc}", file=sys.stderr)
         return 2
+    return _pdfs_built(project, report, args, compiled)
+
+
+def _pdfs_built(project, report, args: argparse.Namespace, compiled) -> int:
+    """The PDFs compiled given as `build/manuscript.pdf` and `build/supplementary.pdf`, an
+    unchecked one named so, each citation or reference LaTeX left undefined listed, and any
+    failing at `--submission` (steps 9 and 11)."""
     mark = "" if report.ok else ".UNCHECKED"
     names = ("manuscript", "supplementary")
     project.path("build").mkdir(parents=True, exist_ok=True)
@@ -2924,6 +2931,52 @@ def _build_latex(project, report, args: argparse.Namespace) -> int:
     return 0
 
 
+def _latex_from_markdown(project, args: argparse.Namespace):
+    """The LaTeX folder and PDFs of a Markdown manuscript, as `latex_pack.LatexPack`, or the
+    exit status where it could not be made, said (step 11)."""
+    from manuscript_guard.build.latex import LatexMissing
+    from manuscript_guard.build.latex_out import build_from_markdown
+
+    namespace, results, _literature, _ = load_namespace(project)
+    assembled, assemble_report = assemble(project, namespace, results)
+    if not assemble_report.ok:
+        print(assemble_report.render(project.root))
+        return 1
+    _print_assembly_warnings(assemble_report, project)
+    # Citeproc formats offline, with the journal's style kept by `style` or the one given.
+    style = _journal_style(project, argparse.Namespace(csl=args.csl, offline=True))
+    try:
+        return build_from_markdown(project, assembled, engine=_latex_engine(project), csl=style)
+    except LatexMissing as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 2
+    except BuildError as exc:
+        print(f"manuscript-guard: the LaTeX is not built: {exc}", file=sys.stderr)
+        return 1
+    except OSError as exc:
+        print(f"manuscript-guard: the LaTeX is not built: {exc}", file=sys.stderr)
+        return 2
+
+
+def _build_markdown_latex(project, report, args: argparse.Namespace) -> int:
+    """`build --latex` for a Markdown manuscript: the LaTeX source pandoc writes, checked
+    against the Markdown, in one folder, and its PDFs (step 11)."""
+    if getattr(args, "marked_up", False) or getattr(args, "annotated", False):
+        print("manuscript-guard: --marked-up and --annotated make Word copies; build them "
+              "without --latex", file=sys.stderr)  # fmt: skip
+        return 2
+    if not report.ok and not args.skip_checks:
+        print(report.render(project.root))
+        print(f"\n{len(report.failures)} failing; not building. Use --skip-checks to override.")
+        return 1
+    packed = _latex_from_markdown(project, args)
+    if isinstance(packed, int):
+        return packed
+    print(f"the LaTeX source: {packed.folder}")
+    # Each document with what LaTeX left undefined in it (round 1 of step 11).
+    return _pdfs_built(project, report, args, list(packed.each))
+
+
 def cmd_build(args: argparse.Namespace) -> int:
     """Produce the .docx. Gates run first unless the author insists otherwise.
 
@@ -2946,6 +2999,8 @@ def cmd_build(args: argparse.Namespace) -> int:
     )
     if manuscript_format(project.path("manuscript")) == LATEX:
         return _build_latex(project, report, args)
+    if getattr(args, "latex", False):
+        return _build_markdown_latex(project, report, args)
     if marked_up:
         refused = _refused_inputs([args.since, args.since_supplement])
         if refused is not None:
@@ -3112,7 +3167,7 @@ def cmd_submit(args: argparse.Namespace) -> int:
 
     from manuscript_guard.text.reader import LATEX, manuscript_format
 
-    if manuscript_format(project.path("manuscript")) == LATEX:
+    if manuscript_format(project.path("manuscript")) == LATEX or getattr(args, "latex", False):
         return _submit_latex(project, report, args)
     namespace, results, _literature, _ = load_namespace(project)
     assembled, assemble_report = assemble(project, namespace, results)
@@ -3211,8 +3266,9 @@ def cmd_submit(args: argparse.Namespace) -> int:
 
 
 def _submit_latex(project, report, args: argparse.Namespace) -> int:
-    """`submit` for a LaTeX manuscript: its source as one folder, `latex/`, compiled alone,
-    and that compile's PDFs as the documents (step 10)."""
+    """`submit` for a LaTeX manuscript, or `submit --latex` for a Markdown one: the source as
+    one folder, `latex/`, compiled alone, and that compile's PDFs as the documents (steps 10
+    and 11)."""
     from manuscript_guard.build import SubmissionError, assemble_pack
     from manuscript_guard.build.blinding import check_blinded_latex
     from manuscript_guard.build.latex import LatexMissing
@@ -3223,18 +3279,25 @@ def _submit_latex(project, report, args: argparse.Namespace) -> int:
         print("manuscript-guard: --document packs a Word document a co-author edited, and a "
               "LaTeX manuscript is packed from its source", file=sys.stderr)  # fmt: skip
         return 2
-    namespace, results, _literature, _ = load_namespace(project)
-    try:
-        packed = pack_latex(project, namespace, results, engine=_latex_engine(project))
-    except LatexMissing as exc:
-        print(f"manuscript-guard: {exc}", file=sys.stderr)
-        return 2
-    except BuildError as exc:
-        print(f"manuscript-guard: the pack is not assembled: {exc}", file=sys.stderr)
-        return 1
-    except OSError as exc:
-        print(f"manuscript-guard: the pack is not assembled: {exc}", file=sys.stderr)
-        return 2
+    from manuscript_guard.text.reader import LATEX, manuscript_format
+
+    if manuscript_format(project.path("manuscript")) != LATEX:
+        packed = _latex_from_markdown(project, args)
+        if isinstance(packed, int):
+            return packed
+    else:
+        namespace, results, _literature, _ = load_namespace(project)
+        try:
+            packed = pack_latex(project, namespace, results, engine=_latex_engine(project))
+        except LatexMissing as exc:
+            print(f"manuscript-guard: {exc}", file=sys.stderr)
+            return 2
+        except BuildError as exc:
+            print(f"manuscript-guard: the pack is not assembled: {exc}", file=sys.stderr)
+            return 1
+        except OSError as exc:
+            print(f"manuscript-guard: the pack is not assembled: {exc}", file=sys.stderr)
+            return 2
     if packed.undefined:
         for left in packed.undefined:
             print(f"LaTeX left the {left} undefined")
@@ -3249,8 +3312,8 @@ def _submit_latex(project, report, args: argparse.Namespace) -> int:
         return 1
     notes = []
     if rounds(project):
-        notes.append("no marked-up copy is packed: `build --marked-up` makes Word copies, and "
-                     "a LaTeX manuscript has none yet")  # fmt: skip
+        notes.append("no marked-up copy is packed: `build --marked-up` makes Word copies, "
+                     "and the LaTeX source is packed without one")  # fmt: skip
     try:
         pack = assemble_pack(project, packed.documents[0], checked=report.ok,
                              extra=[(path, f"latex/{path.name}") for path in packed.files],
@@ -4848,6 +4911,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="the version you send anywhere: unanswered review findings fail the build",
     )
     build.add_argument(
+        "--latex",
+        action="store_true",
+        help="a Markdown manuscript as LaTeX: the source pandoc writes, checked against the "
+        "Markdown, in build/latex/submission/, and its PDF",
+    )
+    build.add_argument(
         "--marked-up",
         action="store_true",
         help="also write build/marked-up/: the revision with every change since the document "
@@ -5006,6 +5075,11 @@ def build_parser() -> argparse.ArgumentParser:
     submit.add_argument("--offline", action="store_true")
     submit.add_argument("--csl", type=Path)
     submit.add_argument("--document", type=Path, help="use an existing .docx instead of building")
+    submit.add_argument(
+        "--latex",
+        action="store_true",
+        help="pack a Markdown manuscript as LaTeX: the source in latex/ and its PDF",
+    )
     submit.add_argument("--skip-checks", action="store_true")
     submit.add_argument(
         "--highlight",

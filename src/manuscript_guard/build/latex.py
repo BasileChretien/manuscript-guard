@@ -130,18 +130,7 @@ def _copy(project, namespace, results) -> _Copy:
     )
 
     source = project.path("manuscript")
-    root = project.path("build") / COPY
-    _may_replace(root, source)
-    if root.exists():
-        # The mark last, so that a removal stopped by a locked file leaves a folder the next
-        # build still knows as its own (round 3 of step 9).
-        for path in root.iterdir():
-            if path.name != MARK:
-                shutil.rmtree(path) if path.is_dir() and not path.is_symlink() else path.unlink()
-        shutil.rmtree(root)
-    root.mkdir(parents=True)
-    (root / MARK).write_text("made by manuscript-guard build; replaced by each build\n",
-                             encoding="utf-8")  # fmt: skip
+    root = fresh_root(project)
     shutil.copytree(source, root / "manuscript", symlinks=False)
     copy = _Copy(root, source, ())
     folders = tuple(copy.manuscript / folder.relative_to(source)
@@ -167,6 +156,25 @@ def _copy(project, namespace, results) -> _Copy:
     return _Copy(root, source, folders, made=frozenset(made))
 
 
+def fresh_root(project) -> Path:
+    """The build's folder in the project's build folder, emptied and marked as the build's;
+    or `BuildError` where it would take the author's files (rounds 2 and 3 of step 9)."""
+    source = project.path("manuscript")
+    root = project.path("build") / COPY
+    _may_replace(root, source)
+    if root.exists():
+        # The mark last, so that a removal stopped by a locked file leaves a folder the next
+        # build still knows as its own (round 3 of step 9).
+        for path in root.iterdir():
+            if path.name != MARK:
+                shutil.rmtree(path) if path.is_dir() and not path.is_symlink() else path.unlink()
+        shutil.rmtree(root)
+    root.mkdir(parents=True)
+    (root / MARK).write_text("made by manuscript-guard build; replaced by each build\n",
+                             encoding="utf-8")  # fmt: skip
+    return root
+
+
 def _may_replace(root: Path, source: Path) -> None:
     """Refuse a copy's folder that the build would take the author's files with: one that
     holds the manuscript or is inside it, or one already there that the build did not make.
@@ -184,7 +192,7 @@ def _may_replace(root: Path, source: Path) -> None:
 
 
 def _compile(project, copy: _Copy, entry: Path, programs: tuple[str, str], engine: str, *,
-             supplementary: bool) -> Compiled:  # fmt: skip
+             supplementary: bool, headings: bool = True) -> Compiled:  # fmt: skip
     latexmk, binary = programs
     command = [latexmk, "-norc", ENGINES[engine], "-interaction=nonstopmode", "-recorder",
                "-halt-on-error", "-file-line-error", "-no-shell-escape"]  # fmt: skip
@@ -204,7 +212,8 @@ def _compile(project, copy: _Copy, entry: Path, programs: tuple[str, str], engin
     if not entry.with_suffix(".pdf").is_file() or _ERROR.search(log) or _MISSING.search(log):
         raise BuildError(_first_error(copy, entry, log) or
                          f"latexmk stopped on {copy.original(entry)}: {said[-600:]}")
-    _compare_headings(project, copy, entry, supplementary)
+    if headings:
+        _compare_headings(project, copy, entry, supplementary)
     return Compiled(entry.with_suffix(".pdf"), _undefined(log), _recorded(copy, entry),
                     tuple(dict.fromkeys(aux_citations(entry.with_suffix(".aux")))))
 

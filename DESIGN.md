@@ -5326,6 +5326,93 @@ identifier or with a coded variable whose codes are not decided, and nothing is 
 skip and whether it is required, a validated instrument's items marked as the licensed
 instrument's wording, and what is derived and not asked.
 
+## A plan learns from how others answered its question
+
+A plan is better for knowing how studies of the same question chose their comparator, their
+time zero, their case definition and their adjustment set. It is not better for taking what
+most of them did. A design used often can carry a bias often: immortal time was found in one
+published cohort study of drug effects after another (Suissa, *Am J Epidemiol* 2008), each
+following the last. So a method is judged against a published methodological standard and
+never by how many studies used it, the judgement is a proposal, and the author decides what
+the plan takes (Basile, 2026-10-21).
+
+**The record.** `design/methods_review.yaml` (`methods_review.py`; schema
+`manuscript-guard/methods-review/1`) holds the question the studies were chosen for, how
+they were searched for, and one entry per study: its citation key, what it shares with this
+study (`similar`: question, exposure, outcome, population, data source, design) and why it
+was chosen. Under each study, one entry per field it reports (`FIELDS`: design, data source,
+population, case definition, exposure, outcome, comparator, time zero and follow-up,
+confounding, model, missing data, sensitivity analyses, or `other` with a label), each with
+the study's own words (`passage`) and where they are (`locator`); an appraisal, or several;
+and the author's decision. A file of its own beside the plan, at the stage the plan is
+written, before there is a manuscript to cite the studies from. The date a search was run is
+`searched_on`, not `on`, which YAML reads as `true`.
+
+**The words are the study's.** G7 looks for each passage in the study's stored files as it
+looks for a supporting passage (`looked_for`, shared with `literature/passages.py`): each file
+read once, words left out read as in a quotation. One that is in none of them is
+`similar-passage-not-in-source`, a note at the design stage and a failure from the analysis
+stage on, the stage the plan built on it is frozen at (Basile, 2026-10-21). A study with no
+stored copy that can be read is a warning (`similar-passage-unchecked`), and a passage of
+fewer than four words is a warning (`similar-passage-too-short`). `sync-sources` copies the
+studies the review names, and the standards it gives a key to, as it copies the works the
+manuscript cites (`copies.wanted_keys`): at the design stage there is no manuscript, and
+before this it refused with nothing cited.
+
+**A judgement says what it rests on.** An appraisal names the standard (`standard`) and the
+standard's domain the judgement is of (`domain`), how far the method departs from it
+(`concern`: low, some, serious, unclear), what the risk is (`says`), and who proposed it
+(`proposed_by`): an agent may. The built-in standards are a table, `data/method_standards.yaml`,
+as the study types are: each with its domains in its own words, the study types it is for,
+where it is published and the day it was read, every one read on its own page (2026-10-21):
+the ENCePP Guide's chapters, the components of a target trial's protocol (Hernán and
+Robins), the domains of ROBINS-I, ROBINS-E, RoB 2, PROBAST+AI and ROBIS, the assumptions of
+the self-controlled case series, immortal time (Suissa), and the Methods items of READUS-PV,
+STROBE and RECORD-PE. A standard the table does not hold is described in the record, with its
+name, domains and citation key; one the table holds is given only its key there, and one
+described again keeps the table's domains (`standard-redescribed`). An appraisal with no
+standard (`appraisal-without-standard`), one neither holds (`appraisal-standard-unknown`) or a
+domain the standard does not have (`appraisal-domain-unknown`) is a warning, each, as the rest
+of G12 is (Basile, 2026-10-21). A domain is matched loosely: case, hyphens, underscores, slashes and runs of space.
+Whether the judgement is right is not checked, and cannot be; what is checked is that a
+reader can go to the place it rests on. The methods with no appraisal are counted in a note
+(`similar-unappraised`), and so are those appraised and not decided (`similar-undecided`).
+
+**A decision is a person's.** `decision` holds the choice (adopt, adapt, reject), why, who
+decided and when. A model's name may not sign it (`similar-decision-not-human`, the deny-list
+G7 reads `attested_by` with), failing from the analysis stage on. The plugin's write guard
+puts to the person an agent's edit after which the decided methods are not the ones the file
+held before, word for word in their study, field, label, passage and decision, and as many:
+a decision recorded, changed or taken away, or the method under one changed. Where the file
+before an edit or after it is a text YAML cannot read, a date that is not one among them,
+what a decision there is of cannot be told, and the edit is put to the person wherever
+either text names a decider, named where the line gives a plain or quoted name (rounds 1 and
+2 of #386: `2026-02-30` raised past the guard, and #374's judgements with it). An appraisal changed beside it is the
+agent's to make. A Codex patch to a review that holds a decision outside a comment is put to
+the person, and refused where the tool cannot ask, as for a passage's judgement.
+
+**What is taken is cited.** A method decided `adopt` or `adapt` is cited by its study's key in
+the plan, or in the manuscript's Methods, and by the key of each standard it was judged
+against: a method taken from another paper is that paper's, and the methodological source is
+where the reasons are (Basile, 2026-10-21). Each is a warning where it is not:
+`adopted-method-uncited`, `adopted-standard-uncited`, the second also where the review gives
+the standard no key. A citation in a comment of the plan is not one, and one elsewhere in the
+manuscript, the Introduction citing the study for its incidence, does not credit the method.
+On a LaTeX manuscript the Methods are not read yet, so only the plan's citations count, and
+the finding says so. When the Methods are drafted, the sentence citing the study is a cited
+statement like any other, and its supporting passage goes in `literature/passages.yaml`.
+
+**The design round reads it.** `prompt.gather_design` sends the record with the plan, under
+"The methods of similar studies": each study, each method in its words, each appraisal with
+its standard and its proposer, and each decision, with an instruction to check each appraisal
+against its standard. `plan_digest` takes in the record's bytes where there is one, so an
+appraisal or a decision changed after a design reading leaves it stale, as a changed plan
+does; a project with no record has the digest it had before. A record that cannot be read
+stops the round, since the readings would be filed with a digest of a file they never read.
+The `methods-review` skill drives the steps, from the search to the citation; how many
+studies is the author's choice, the most relevant five to ten usually, and nothing counts
+them.
+
 ## Stages: not every gate binds on day one
 
 The first version of `check` ran all twelve gates unconditionally, which meant that someone
@@ -14300,6 +14387,27 @@ Open, recorded as each change landed:
   by the names they are sold under and not every name an agent could sign. G7 reads a
   work's stored files once for the passages and once for the quotations in the prose, so a
   PDF goes through `pdftotext` twice a `check`.
+- **An appraisal of a similar study's method is judgement, not a guarantee.** G12 holds it
+  to a standard and a domain that exist, and nothing more: that the method departs from the
+  standard as the appraisal says, that the concern is the right one, and that the studies
+  chosen are the relevant ones and not the convenient ones, are the design round's and the
+  author's to judge. A study is credited by its key anywhere in the plan, so a citation in
+  the Population section counts for a method of its comparator, and so does one inside a
+  fenced block of code, where a comment is no comment and is not blanked; and a method
+  rejected after it was cited leaves the citation, which nothing asks about. A standard is
+  known by its id and its domains by their labels; that the version read is the one the
+  author meant, the ENCePP Guide being revised chapter by chapter, is in `read_on` and in
+  nobody's check. The built-in table holds the standards read on 2026-10-21 and not TARGET's
+  items, nor ROBINS-I V2, a draft. The write guard reads a decision as #374's reads a
+  judgement, with the same limits: an edit made by a shell command, and a patch that deletes
+  the review, are not put to the person. On a LaTeX manuscript the Methods are not read for
+  the citation, so a method cited there and not in the plan is said to be cited nowhere (a
+  warning). `sync-sources --from` finds a study's file by the DOI in `references.bib`, which
+  at the design stage may not yet hold it. The deny-list a decision's `decided_by` is read
+  with is #374's, and it refuses a person whose name is a model's: `Claude Martin` fails
+  `similar-decision-not-human`, as it fails `attested_by` and `judged_by`, and only a guess
+  at which Claude is meant would tell them apart (round 1 of #386; pinned in
+  `tests/test_methods_review.py`).
 
 - **A suggested edit is placed only where it can be written exactly.** `review
   --suggestions` writes an edit only where its words are found once and, written into the

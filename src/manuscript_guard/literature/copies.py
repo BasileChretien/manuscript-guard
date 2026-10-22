@@ -305,6 +305,28 @@ def _without_copy(folder: Path, key: str, why: list[str], holder: str = "Zotero"
     return Outcome(key, NO_COPY, f"no copy: {reasons}")
 
 
+def wanted_keys(project: Project) -> list[str]:
+    """The works whose copies are kept: those the manuscript cites, in order of first use,
+    then those the methods review names, the studies first. A methods review is read at the
+    design stage, before there is a manuscript to cite them (Basile, 2026-10-21)."""
+    from manuscript_guard.lookup.run import cited_keys
+    from manuscript_guard.methods_review import review_keys
+
+    return list(dict.fromkeys(cited_keys(project) + review_keys(project)))
+
+
+def _review_said(project: Project) -> str:
+    """What the methods review names, for a message: no study, or why it could not be read
+    (round 1 of #386: a review out of its schema was said to name no study)."""
+    from manuscript_guard.methods_review import REVIEW, read_review
+
+    review, report = read_review(project)
+    if review is None and report.findings:
+        why = "; ".join(finding.message for finding in report.findings[:3])
+        return f"{REVIEW.as_posix()} could not be read ({why})"
+    return f"{REVIEW.as_posix()} names no study"
+
+
 def sync(
     project: Project,
     *,
@@ -315,11 +337,10 @@ def sync(
 ) -> list[Outcome]:
     """Copy each cited work's files from Zotero, or from the folder `offered` was read from,
     record them, and say what became of each."""
-    from manuscript_guard.lookup.run import cited_keys
-
-    keys = cited_keys(project)
+    keys = wanted_keys(project)
     if not keys:
-        raise NothingToCopy("the manuscript cites nothing, so there is no source to copy")
+        raise NothingToCopy(f"the manuscript cites nothing and {_review_said(project)}, so "
+                            "there is no source to copy")  # fmt: skip
     fetch = fetch or client.attachments
     holder = "Zotero" if offered is None else "the folder"
     folder = project.path("literature") / FOLDER

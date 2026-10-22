@@ -2859,6 +2859,18 @@ def _shown_path(project, path: Path) -> str:
         return str(path)
 
 
+def _latex_engine(project) -> str:
+    """The engine the journal's profile names, as `latex: {engine: ...}`, or pdfLaTeX."""
+    from manuscript_guard.gates.journal import _profile, profile_path
+
+    profile = _profile(project)
+    slug = project.target_journal
+    if profile is None and slug and profile_path(project, slug) is not None:
+        print(f"the journal's profile {slug} does not validate, so the engine it may name is "
+              "not read: building with pdfLaTeX (round 3 of step 9)", file=sys.stderr)  # fmt: skip
+    return ((profile or {}).get("latex") or {}).get("engine", "pdflatex")
+
+
 def _build_latex(project, report, args: argparse.Namespace) -> int:
     """`build` for a LaTeX manuscript: its PDF, and its supplement's, compiled in a copy in
     `build/latex/` and given as `build/manuscript.pdf` and `build/supplementary.pdf`, an
@@ -2873,18 +2885,9 @@ def _build_latex(project, report, args: argparse.Namespace) -> int:
         print(report.render(project.root))
         print(f"\n{len(report.failures)} failing; not building. Use --skip-checks to override.")
         return 1
-    from manuscript_guard.gates.journal import _profile, profile_path
-
-    # The engine the journal's profile names, as `latex: {engine: ...}`.
-    profile = _profile(project)
-    engine = ((profile or {}).get("latex") or {}).get("engine", "pdflatex")
-    slug = project.target_journal
-    if profile is None and slug and profile_path(project, slug) is not None:
-        print(f"the journal's profile {slug} does not validate, so the engine it may name is "
-              "not read: building with pdfLaTeX (round 3 of step 9)", file=sys.stderr)  # fmt: skip
     namespace, results, _literature, _ = load_namespace(project)
     try:
-        compiled = build_latex(project, namespace, results, engine=engine)
+        compiled = build_latex(project, namespace, results, engine=_latex_engine(project))
     except LatexMissing as exc:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
@@ -3107,6 +3110,10 @@ def cmd_submit(args: argparse.Namespace) -> int:
         )
         return 1
 
+    from manuscript_guard.text.reader import LATEX, manuscript_format
+
+    if manuscript_format(project.path("manuscript")) == LATEX:
+        return _submit_latex(project, report, args)
     namespace, results, _literature, _ = load_namespace(project)
     assembled, assemble_report = assemble(project, namespace, results)
     if not assemble_report.ok:
@@ -3200,14 +3207,69 @@ def cmd_submit(args: argparse.Namespace) -> int:
     except SubmissionError as exc:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
+    return _packed(project, report, pack, marked_notes)
 
+
+def _submit_latex(project, report, args: argparse.Namespace) -> int:
+    """`submit` for a LaTeX manuscript: its source as one folder, `latex/`, compiled alone,
+    and that compile's PDFs as the documents (step 10)."""
+    from manuscript_guard.build import SubmissionError, assemble_pack
+    from manuscript_guard.build.blinding import check_blinded_latex
+    from manuscript_guard.build.latex import LatexMissing
+    from manuscript_guard.build.latex_pack import pack_latex
+    from manuscript_guard.gates.revision import rounds
+
+    if args.document is not None:
+        print("manuscript-guard: --document packs a Word document a co-author edited, and a "
+              "LaTeX manuscript is packed from its source", file=sys.stderr)  # fmt: skip
+        return 2
+    namespace, results, _literature, _ = load_namespace(project)
+    try:
+        packed = pack_latex(project, namespace, results, engine=_latex_engine(project))
+    except LatexMissing as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 2
+    except BuildError as exc:
+        print(f"manuscript-guard: the pack is not assembled: {exc}", file=sys.stderr)
+        return 1
+    except OSError as exc:
+        print(f"manuscript-guard: the pack is not assembled: {exc}", file=sys.stderr)
+        return 2
+    if packed.undefined:
+        for left in packed.undefined:
+            print(f"LaTeX left the {left} undefined")
+        print("\nAn undefined citation or reference fails at submission: the PDF prints `?` "
+              "where it stands. The pack is not assembled.")  # fmt: skip
+        return 1
+    blind = check_blinded_latex(project, list(packed.files))
+    if not blind.ok:
+        print(blind.render(project.root))
+        print("\nThe source names an author, and the journal's review is blind. The pack is "
+              "not assembled.")  # fmt: skip
+        return 1
+    notes = []
+    if rounds(project):
+        notes.append("no marked-up copy is packed: `build --marked-up` makes Word copies, and "
+                     "a LaTeX manuscript has none yet")  # fmt: skip
+    try:
+        pack = assemble_pack(project, packed.documents[0], checked=report.ok,
+                             extra=[(path, f"latex/{path.name}") for path in packed.files],
+                             supplements=packed.documents[1:])  # fmt: skip
+    except SubmissionError as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 2
+    return _packed(project, report, pack, notes)
+
+
+def _packed(project, report, pack, notes: list[str]) -> int:
+    """What `submit` says of the pack it assembled."""
     print(f"submission pack: {pack.directory}")
     if not report.ok:
         print(f"  assembled with --skip-checks; {pack.manifest.name} records that.")
     for path in pack.files:
         print(f"  {path.relative_to(pack.directory)}")
     print(f"  {pack.manifest.name}")
-    for note in (*pack.notes, *marked_notes):
+    for note in (*pack.notes, *notes):
         print(f"  {note}")
     # Said, and not refused: whether to send without an approval is the corresponding
     # author's call, and an approval given by e-mail is still one.
@@ -5123,7 +5185,7 @@ _MARKDOWN_COMMANDS: dict[str, Callable[[argparse.Namespace], bool]] = {
     # too, which match answers against them (round 2 of #404).
     **dict.fromkeys(
         ("bind", "checker", "explain", "impact", "import", "init", "proof", "render",
-         "reworded", "submit"),
+         "reworded"),
         _always,
     ),
     # A round opened and checked reads a LaTeX manuscript (step 8); one seeded from a returned

@@ -55,11 +55,15 @@ class LatexMissing(BuildError):
 
 @dataclass(frozen=True)
 class Compiled:
-    """One document compiled: its PDF, and each citation or reference LaTeX left undefined,
-    as `citation key` or `reference label`."""
+    """One document compiled: its PDF, each citation or reference LaTeX left undefined, as
+    `citation key` or `reference label`, and each of the manuscript's files LaTeX read, by
+    its path in the manuscript, none it wrote (step 10)."""
 
     pdf: Path
     undefined: tuple[str, ...] = ()
+    read: tuple[Path, ...] = ()
+    #: Each key LaTeX wrote to the `.aux` as cited, through any command (round 1 of step 10).
+    cited: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -69,10 +73,16 @@ class _Copy:
     root: Path
     source: Path
     folders: tuple[Path, ...]
+    #: The folder of the copy that `source` is, in `root`: none for the submission folder
+    #: compiled alone, which is copied whole (step 10).
+    inner: str = "manuscript"
+    #: Each file the build wrote into the copy, a rendered figure over the author's of the
+    #: same name among them, which is none of the manuscript's (round 1 of step 10).
+    made: frozenset[Path] = frozenset()
 
     @property
     def manuscript(self) -> Path:
-        return self.root / "manuscript"
+        return self.root / self.inner if self.inner else self.root
 
     def original(self, path: Path) -> Path:
         """The manuscript's file that `path` of the copy is."""
@@ -88,7 +98,9 @@ def build_latex(project, namespace, results, *, engine: str = "pdflatex") -> lis
 
     programs = _programs(engine)
     copy = _copy(project, namespace, results)
-    return [_compile(project, copy, folder / ENTRY, programs, engine) for folder in copy.folders]
+    return [_compile(project, copy, folder / ENTRY, programs, engine,
+                     supplementary=folder != copy.manuscript)
+            for folder in copy.folders]  # fmt: skip
 
 
 def _programs(engine: str) -> tuple[str, str]:
@@ -136,6 +148,7 @@ def _copy(project, namespace, results) -> _Copy:
                     for folder in entry_folders(project))  # fmt: skip
     bib = project.path("literature") / "references.bib"
     digest = results_digest(project.root, results)
+    made = set()
     for folder in folders:
         figures = {}
         for key, rendered in rendered_figures(project).items():
@@ -143,12 +156,15 @@ def _copy(project, namespace, results) -> _Copy:
             if rendered is not None:
                 (folder / "figures").mkdir(exist_ok=True)
                 figures[key] = Path(shutil.copyfile(rendered, folder / "figures" / rendered.name))
+                made.add(figures[key].resolve())
         written = contents(folder, namespace, results, figures, digest)
         (folder / VALUES).write_text(written.text, encoding="utf-8", newline="\n")
+        made.add((folder / VALUES).resolve())
         if bib.is_file():
             shutil.copyfile(bib, folder / "references.bib")
+            made.add((folder / "references.bib").resolve())
     (root / ".texmfhome").mkdir()
-    return _Copy(root, source, folders)
+    return _Copy(root, source, folders, made=frozenset(made))
 
 
 def _may_replace(root: Path, source: Path) -> None:
@@ -167,15 +183,18 @@ def _may_replace(root: Path, source: Path) -> None:
                          "paper.yaml")  # fmt: skip
 
 
-def _compile(project, copy: _Copy, entry: Path, programs: tuple[str, str],
-             engine: str) -> Compiled:  # fmt: skip
+def _compile(project, copy: _Copy, entry: Path, programs: tuple[str, str], engine: str, *,
+             supplementary: bool) -> Compiled:  # fmt: skip
     latexmk, binary = programs
-    command = [latexmk, "-norc", ENGINES[engine], "-interaction=nonstopmode",
+    command = [latexmk, "-norc", ENGINES[engine], "-interaction=nonstopmode", "-recorder",
                "-halt-on-error", "-file-line-error", "-no-shell-escape"]  # fmt: skip
     if _miktex(binary):
         command.append(f"-{engine}={engine} -disable-installer -max-print-line=10000 %O %S")
+    # BibTeX's and Biber's paths too, so that a `.bib` of the author's elsewhere is not read
+    # (round 2 of step 10).
+    here = f"{entry.parent}{os.pathsep}"
     env = {**os.environ, "openout_any": "p", "openin_any": "p", "max_print_line": "10000",
-           "TEXINPUTS": f"{entry.parent}{os.pathsep}",
+           "TEXINPUTS": here, "BIBINPUTS": here, "BSTINPUTS": here,
            "TEXMFHOME": str(copy.root / ".texmfhome")}  # fmt: skip
     stopped, said = _run(command + [entry.name], entry.parent, env)
     if stopped:
@@ -185,8 +204,67 @@ def _compile(project, copy: _Copy, entry: Path, programs: tuple[str, str],
     if not entry.with_suffix(".pdf").is_file() or _ERROR.search(log) or _MISSING.search(log):
         raise BuildError(_first_error(copy, entry, log) or
                          f"latexmk stopped on {copy.original(entry)}: {said[-600:]}")
-    _compare_headings(project, copy, entry)
-    return Compiled(entry.with_suffix(".pdf"), _undefined(log))
+    _compare_headings(project, copy, entry, supplementary)
+    return Compiled(entry.with_suffix(".pdf"), _undefined(log), _recorded(copy, entry),
+                    tuple(dict.fromkeys(aux_citations(entry.with_suffix(".aux")))))
+
+
+#: A key the `.aux` holds as cited: BibTeX's `\\citation{a,b}`, biblatex's
+#: `\\abx@aux@cite{0}{a}`; and the `.aux` of an included file.
+_AUX_CITED = re.compile(r"\\citation\{(?P<keys>[^{}]*)\}|\\abx@aux@cite\{[^{}]*\}"
+                        r"\{(?P<key>[^{}]*)\}|\\@input\{(?P<input>[^{}]+\.aux)\}")  # fmt: skip
+
+
+def aux_citations(aux: Path, depth: int = 0) -> list[str]:
+    """Each key LaTeX wrote to `aux` and the `.aux` files it inputs as cited, in order: what
+    BibTeX or Biber is asked for, whatever command cited it (round 1 of step 10)."""
+    keys = []
+    for found in _AUX_CITED.finditer(_read(aux)):
+        if found["input"] is not None:
+            if depth < 8:
+                keys += aux_citations(aux.parent / found["input"], depth + 1)
+        elif found["key"] is not None:
+            keys.append(found["key"].strip())
+        else:
+            keys += [key.strip() for key in found["keys"].split(",") if key.strip()]
+    return keys
+
+
+#: What LaTeX and the programs latexmk runs write beside a document, which is no file of the
+#: author's even where an old one is in the manuscript's folder.
+_MADE = frozenset({".aux", ".bbl", ".bcf", ".blg", ".fdb_latexmk", ".fls", ".idx", ".ilg",
+                   ".ind", ".lof", ".log", ".lot", ".nav", ".out", ".run.xml", ".snm",
+                   ".synctex.gz", ".toc", ".vrb", ".xdv", ".xml"})  # fmt: skip
+
+
+def recorded(entry: Path) -> tuple[list[Path], set[Path]]:
+    """Each file the recorder's `.fls` lists as read for `entry`, in order, and those it lists
+    as written (step 10)."""
+    where, read, written = entry.parent, [], set()
+    for line in _read(entry.with_suffix(".fls")).splitlines():
+        kind, _, name = line.partition(" ")
+        if kind == "PWD":
+            where = Path(name)
+        elif kind in ("INPUT", "OUTPUT") and name:
+            path = (where / name).resolve()
+            (written.add(path) if kind == "OUTPUT" else read.append(path))
+    return read, written
+
+
+def _recorded(copy: _Copy, entry: Path) -> tuple[Path, ...]:
+    """Each of the manuscript's files LaTeX read for `entry`, by its path in the manuscript:
+    none it wrote, and none the build put in the copy, which the manuscript does not hold
+    (step 10)."""
+    read, written = recorded(entry)
+    found: dict[Path, None] = {}
+    for path in read:
+        if path in written or path in copy.made or path.suffix.lower() in _MADE \
+                or "".join(path.suffixes[-2:]).lower() in _MADE:
+            continue
+        original = copy.original(path)
+        if original != path and original.is_file():
+            found[original] = None
+    return tuple(found)
 
 
 def _run(command: list[str], folder: Path, env: dict[str, str]) -> tuple[bool, str]:
@@ -350,14 +428,14 @@ def _undefined(log: str) -> tuple[str, ...]:
     return tuple(found)
 
 
-def _compare_headings(project, copy: _Copy, entry: Path) -> None:
+def _compare_headings(project, copy: _Copy, entry: Path, supplementary: bool) -> None:
     """Each heading LaTeX numbered is one the reader reads, in order (`MisreadError`). The
     reader may read more: a heading LaTeX does not number, below `secnumdepth`, is none of the
     `.aux`'s (round 1 of step 9). A title is the reader's where its words are the `.aux`'s in
     order with some left out: the `.aux` holds what an author's macro in the title expands to,
     which the reader blanks, as it does in prose (round 2 of step 9)."""
     written = aux_headings(entry.with_suffix(".aux"))
-    read = reader_headings(project, supplementary=entry.parent != copy.manuscript)
+    read = reader_headings(project, supplementary=supplementary)
     at = 0
     for title in written:
         plain = _plain(title).split()

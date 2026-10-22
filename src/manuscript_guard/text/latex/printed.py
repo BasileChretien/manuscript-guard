@@ -87,11 +87,12 @@ class Printed:
         return source, line
 
 
-def printed_view(sources: list[Source]) -> str:
+def printed_view(sources: list[Source], *, formula: str = "") -> str:
     """The document the sources make, as the build prints it, as Markdown. `sources` are in
     the include tree's order, each file before the files it inputs, and each file input is
-    written where its `\\input` ends, which is where LaTeX prints it."""
-    return printed(sources).text
+    written where its `\\input` ends, which is where LaTeX prints it. `formula` is what an
+    inline formula is written as, `FORMULA` by default."""
+    return printed(sources, formula=formula).text
 
 
 #: What a quoting view writes for a cross-reference, whose number only the compiled
@@ -116,14 +117,14 @@ def printed_of(folder, *, supplementary: bool, quoting: bool = False) -> Printed
     return printed(kept, quoting=quoting)
 
 
-def printed(sources: list[Source], *, quoting: bool = False) -> Printed:
+def printed(sources: list[Source], *, quoting: bool = False, formula: str = "") -> Printed:
     """`printed_view`, with where each stretch of it comes from. With `quoting`, the view a
     quote of the paper is looked for in (G13, G8): an inline formula is what it holds, its
     bindings in place, and a cross-reference is `POINTER` (round 1 of G13 in step 8)."""
     text: list[str] = []
     origins: list[tuple[int, Source, int, bool]] = []
     at = 0
-    for chunk, source, start, linear in _pieces(sources, quoting):
+    for chunk, source, start, linear in _pieces(sources, quoting, formula):
         if chunk and source is not None:
             origins.append((at, source, start, linear))
         text.append(chunk)
@@ -131,14 +132,14 @@ def printed(sources: list[Source], *, quoting: bool = False) -> Printed:
     return Printed("".join(text), tuple(origins))
 
 
-def _pieces(sources: list[Source], quoting: bool = False) -> list[Piece]:
+def _pieces(sources: list[Source], quoting: bool = False, formula: str = "") -> list[Piece]:
     """The view of the sources in pieces, each file input where its `\\input` ends."""
     levels = [heading.level for source in sources for heading in source.reading.headings]
     shallowest = min(levels, default=1)
     queue = iter(sources)
 
     def written(source: Source) -> list[Piece]:
-        return _printed(source, shallowest, following, quoting)
+        return _printed(source, shallowest, following, quoting, formula)
 
     def following() -> list[Piece]:
         """The next file, the one the include tree read where this `\\input` ends; none
@@ -161,7 +162,7 @@ def _cuts(source: Source) -> list[int]:
 
 
 def _printed(
-    source: Source, shallowest: int, child=lambda: [], quoting: bool = False
+    source: Source, shallowest: int, child=lambda: [], quoting: bool = False, formula: str = ""
 ) -> list[Piece]:
     """One source's part of the view: its body, with each event written as Markdown, and
     `child()` where each file it inputs is printed."""
@@ -182,7 +183,7 @@ def _printed(
         events += _quoted_formulas(source, placeholders)
         events += [(start, end, POINTER) for start, end in reading.pointers]
     else:
-        events += _formula_events(reading, placeholders)
+        events += _formula_events(reading, placeholders, formula)
     # A code span as Markdown writes one, which a journal's count passes over.
     events += [(start, end, "`" + _prose(reading.masked[start + 1 : end - 1]) + "`")
                for start, end in reading.code]  # fmt: skip
@@ -240,10 +241,10 @@ def _binding(placeholder) -> str:
     return "{{" + placeholder.ref + "}}"
 
 
-def _formula_events(reading, placeholders) -> list[tuple[int, int, str]]:
+def _formula_events(reading, placeholders, formula: str = "") -> list[tuple[int, int, str]]:
     """Each formula as the view writes it, with the bindings it holds."""
     return [(start, end, written + _bindings_in(placeholders, start, end))
-            for start, end, written in _formulas(reading)]  # fmt: skip
+            for start, end, written in _formulas(reading, formula)]  # fmt: skip
 
 
 def _quoted_formulas(source: Source, placeholders) -> list[tuple[int, int, str]]:
@@ -296,8 +297,13 @@ def _title_end(heading) -> int:
     return max(heading.end, heading.start)
 
 
-def _formulas(reading) -> list[tuple[int, int, str]]:
-    """A displayed formula as nothing, and an inline one as one word."""
+def _formulas(reading, formula: str = "") -> list[tuple[int, int, str]]:
+    """A displayed formula as nothing, and an inline one as one word. Given `formula`, `$x$`,
+    an inline one as it and a displayed one as it in double signs, `$$x$$`, so that neither
+    is passed over (round 3 of step 10)."""
+    if formula:
+        return [(start, end, f" {formula[0]}{formula}{formula[-1]} " if display else
+                 f" {formula} ") for start, end, display in reading.maths]  # fmt: skip
     return [(start, end, " " if display else f" {FORMULA} ")
             for start, end, display in reading.maths]  # fmt: skip
 

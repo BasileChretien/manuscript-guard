@@ -2951,7 +2951,8 @@ def plan_pairs(draw: st.DrawFn) -> tuple[dict[str, str], list[str]]:
 #: order, a bound written with a point, a time bound quoted where it was not and in another
 #: zone's notation (round 1 of #415), a standard's term or a code's label in capitals, and a
 #: variable the earlier dictionary has and this one does not. Each other edit changes the one
-#: part it names: a code dropped and a code added are a code one side lacks, either way.
+#: part it names: a code dropped and a code added are a code one side lacks, either way, and
+#: a date made a time is its type alone, its range written alike (round 2 of #415).
 VARIABLE_EDITS = {
     "as it is": None,
     "rewrapped": None,
@@ -2965,6 +2966,7 @@ VARIABLE_EDITS = {
     "there only": None,
     "word added": "definition",
     "type": "type",
+    "a date made a time": "type",
     "code relabelled": "code 2",
     "code dropped": "code 3",
     "code added": "code 4",
@@ -3007,6 +3009,8 @@ def _dictionary_variable(kind: str, name: str, words: list[str]) -> tuple[dict, 
                                             for at, word in enumerate(words[:3], 1)])  # fmt: skip
     if kind in ("type", "unit", "range", "a bound with a point"):
         then.update(type="continuous", unit="days", range={"min": 0, "max": 110})
+    if kind == "a date made a time":
+        then.update(type="date", range={"min": "2015-01-01", "max": "2024-12-31"})
     if kind == "a time bound quoted":
         # YAML writes a time unquoted and reads it back as one; a string it quotes.
         then.update(type="datetime", range={"min": _RECEIVED, "max": "2024-12-31T23:59:00Z"})
@@ -3036,6 +3040,8 @@ def _dictionary_variable(kind: str, name: str, words: list[str]) -> tuple[dict, 
         now["values"] = then["values"][::-1]
     elif kind == "type":
         now["type"] = "count"
+    elif kind == "a date made a time":
+        now["type"] = "datetime"
     elif kind == "unit":
         now["unit"] = "weeks"
     elif kind == "range":

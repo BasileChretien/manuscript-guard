@@ -726,9 +726,22 @@ def test_a_time_bound_quoted_or_written_with_another_zone_is_the_same_bound(
     assert "variable received: its range is 2015-01-01T11:00:00+00:00 to " in finding.message
 
 
+def test_a_variable_whose_type_changed_keeps_a_range_written_alike(
+    project: Path, earlier: Path
+) -> None:
+    """Round 2 of #415: read by each side's own type, a date and a datetime of one written
+    bound never compared equal, and the range was said to differ and shown the same."""
+    zoned = "type: datetime\n    range: {min: 2015-01-01 10:00:00Z, max: 2024-12-31T23:59:00Z}"
+    days = 'range: {min: "2015-01-01", max: "2024-12-31"}'
+    _dictionaries(project, earlier, (zoned, f"type: date\n    {days}"))
+    _dictionary(project, (zoned, f"type: datetime\n    {days}"))
+    (finding,) = _check(project).findings
+    assert finding.message.endswith("variable received: its type is date there and datetime here")
+
+
 def test_a_copy_yaml_cannot_parse_is_said_once_on_one_line(project: Path, earlier: Path) -> None:
-    """Round 1 of #415: the loader's own "cannot be read:" was said again, with the parser's
-    line breaks inside the note."""
+    """Rounds 1 and 2 of #415: the loader's own "cannot be read:" was said again, with the
+    parser's line breaks inside the note; then its first line alone dropped the problem."""
     _dictionaries(project, earlier)
     (earlier / "design" / "data_dictionary.yaml").write_bytes(b"variables: [\n")
     _take(project)
@@ -736,6 +749,7 @@ def test_a_copy_yaml_cannot_parse_is_said_once_on_one_line(project: Path, earlie
     assert finding.code == "related-dictionary-unreadable"
     assert "cannot be read (cannot be read" not in finding.message
     assert "\n" not in finding.message
+    assert "expected the node content" in finding.message
 
 
 def test_a_variable_one_dictionary_lacks_is_not_compared_nor_named(

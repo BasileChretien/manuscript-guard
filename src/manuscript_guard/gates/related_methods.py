@@ -10,6 +10,7 @@ whether the paper says so.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -255,9 +256,9 @@ def read_dictionaries(
     said = []
     if then is None:
         # The loader says "cannot be read: <the parser's lines>" of a file YAML cannot
-        # parse: said once, on one line (round 1 of #415).
-        why = then_read.findings[0].message if then_read.findings else "it is not in its shape"
-        why = (why.removeprefix("cannot be read: ").splitlines() or [why])[0].strip()
+        # parse: said once, every line kept on one (rounds 1 and 2 of #415).
+        why = then_read.findings[0].message if then_read.findings else ""
+        why = " ".join(why.removeprefix("cannot be read: ").split()) or "no reason is given"
         said.append(f"its copied data dictionary cannot be read ({why})")
     if now is None:
         said.append("this paper's data dictionary cannot be read (G12 says why)")
@@ -304,7 +305,10 @@ def _variable_differences(then: Variable, now: Variable) -> list[Differs]:
     found += _codes_compared(then, now)
     if _unit(then) != _unit(now):
         found.append(Differs("unit", _unit(then) or _NOT_GIVEN, _unit(now) or _NOT_GIVEN))
-    if _bounds(then) != _bounds(now):
+    # A date there and a datetime here of one written bound are no two bounds: each type's
+    # reader only where both give the variable one type (round 2 of #415).
+    read = _BOUND_READERS.get(now.type, str) if then.type == now.type else str
+    if _bounds(then, read) != _bounds(now, read):
         found.append(Differs("range", _range(then), _range(now)))
     found += _standards_compared(then.standard, now.standard)
     if _inputs(then) != _inputs(now):
@@ -370,12 +374,11 @@ def _unit(variable: Variable) -> str:
     return " ".join((variable.unit or "").split())
 
 
-def _bounds(variable: Variable) -> tuple:
+def _bounds(variable: Variable, read: Callable[[str], object]) -> tuple:
     """A range's bounds as numbers where they are, so that 110 and 110.0 are one bound,
-    and as dates or times where they are, read as the loader reads them: YAML gives an
-    unquoted timestamp in ISO form and a quoted one as typed, and `2015-01-01 10:00:00Z`
+    and otherwise by `read`: a date or a time read as the loader reads it, since YAML gives
+    an unquoted timestamp in ISO form and a quoted one as typed, and `2015-01-01 10:00:00Z`
     and `2015-01-01T10:00:00+00:00` are one instant (round 1 of #415)."""
-    read = _BOUND_READERS.get(variable.type, str)
     return tuple(None if bound is None else float(bound) if _number(bound) else read(bound)
                  for bound in (variable.minimum, variable.maximum))  # fmt: skip
 

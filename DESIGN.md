@@ -5035,7 +5035,10 @@ part by part:
 - its range, a bound read as a number where it is one, so that 110 and 110.0 are one bound,
   and as a date or a time where it is one, as the loader reads it: YAML gives an unquoted
   timestamp in ISO form and keeps a quoted one as typed, and `2015-01-01 10:00:00Z` and
-  `2015-01-01T10:00:00+00:00` are one instant (round 1 of #415);
+  `2015-01-01T10:00:00+00:00` are one instant (round 1 of #415). That reading is the
+  type's, so it is used where both sides give the variable one type; a variable whose
+  type changed has its bounds compared as written, and a date there and a datetime here
+  of one written range is said to differ in its type alone (round 2);
 - its standard: another system, or one side with none, is one difference; within one
   system, its release, its level, its term and its code each (the level and the term in
   either case);

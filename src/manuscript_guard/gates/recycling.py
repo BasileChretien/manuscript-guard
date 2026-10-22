@@ -103,8 +103,23 @@ _APART = "\x01"
 _TABLE_LINE = re.compile(r"^[ \t]*(?:\||\+[-=:+]+)[^\n]*", re.MULTILINE)
 #: A line of a block quotation.
 _BLOCK_QUOTE = re.compile(r"^[ \t]{0,3}>[^\n]*", re.MULTILINE)
-#: A quotation a LaTeX document marks with a command, as its view writes it.
-_MARKED = re.compile(f"{QUOTE_OPEN}[^{QUOTE_CLOSE}]*{QUOTE_CLOSE}")
+#: Where a LaTeX document's view opens or closes a quotation marked with a command.
+_MARKED = re.compile(f"[{QUOTE_OPEN}{QUOTE_CLOSE}]")
+
+
+def _marked(seen: str) -> list[tuple[int, int]]:
+    """Each outermost quotation a LaTeX document marks with a command, as its view writes it:
+    one inside another is the outer's (round 2 of step 13)."""
+    spans, depth, opened = [], 0, 0
+    for found in _MARKED.finditer(seen):
+        if found.group() == QUOTE_OPEN:
+            opened = found.start() if depth == 0 else opened
+            depth += 1
+        elif depth:
+            depth -= 1
+            if depth == 0:
+                spans.append((opened, found.end()))
+    return spans
 #: A quotation in single curly marks; a closing mark before a letter is an apostrophe.
 _SINGLE_QUOTED = re.compile(
     "\N{LEFT SINGLE QUOTATION MARK}"
@@ -397,10 +412,13 @@ def _quoted_spans(seen: str) -> list[tuple[int, int]]:
     document's view, also where LaTeX marks a quotation with a command (round 1 of step
     13)."""
     spans = sorted(
-        (m.start(), m.end())
-        for pattern in (_QUOTED, _SINGLE_QUOTED, _BLOCK_QUOTE, _MARKED)
-        for m in pattern.finditer(seen)
-    )
+        [
+            *((m.start(), m.end())
+              for pattern in (_QUOTED, _SINGLE_QUOTED, _BLOCK_QUOTE)
+              for m in pattern.finditer(seen)),
+            *_marked(seen),
+        ]
+    )  # fmt: skip
     merged: list[tuple[int, int]] = []
     for start, end in spans:
         if merged and start <= merged[-1][1]:
@@ -471,7 +489,12 @@ def _recycled(read: _Manuscript, source: Sequence[Word], key: str) -> list[Recyc
                 kind=read.parts[at][2] if at >= 0 else UNNAMED,
                 cited=_cites(read.seen, key, first.start, last.end),
                 source_at=passage.source_at,
-                excerpt=" ".join(read.text[first.start : last.end].split()),
+                excerpt=" ".join(
+                    read.text[first.start : last.end]
+                    .replace(QUOTE_OPEN, "")
+                    .replace(QUOTE_CLOSE, "")
+                    .split()
+                ),
             )
         )
     return found

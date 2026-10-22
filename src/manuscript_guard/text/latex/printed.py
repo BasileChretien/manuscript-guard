@@ -102,10 +102,16 @@ POINTER = "\ue000"
 #: command, `\\enquote{}` or a `quote`, `quotation` or `displayquote` environment: characters
 #: no text holds, between which every word is quoted (round 1 of step 13).
 QUOTE_OPEN, QUOTE_CLOSE = chr(0xE001), chr(0xE002)
-#: A float's caption, its short form passed over, to the brace its text opens with.
-_CAPTION = re.compile(r"\\caption\*?\s*(?:\[[^\[\]]*\]\s*)?\{")
-#: A quotation csquotes marks with a command, to the brace its text opens with.
-_ENQUOTE = re.compile(r"\\enquote\*?\s*\{")
+#: A float's caption, or a subfigure's, its short form passed over, to the brace its text
+#: opens with.
+_CAPTION = re.compile(r"\\(?:sub)?caption\*?\s*(?:\[[^\[\]]*\]\s*)?\{")
+#: A quotation csquotes marks with a command: `\\enquote`, `\\textquote`, `\\blockquote`,
+#: a language's `\\foreign...` and `\\hyphen...` forms, and the `c` forms that cite (round 2
+#: of step 13). Its arguments are read by `_quoted_text`.
+_QUOTING = re.compile(
+    r"\\(?P<lang>foreign|hyphen|hybrid)?"
+    r"(?P<kind>enquote|textcquote|textquote|blockcquote|blockquote|quote)(?![A-Za-z])\*?"
+)
 #: The start and the end of a quotation environment.
 _QUOTATION = re.compile(r"\\(begin|end)\s*\{(?:quote|quotation|displayquote)\}")
 
@@ -258,10 +264,12 @@ def _compared_events(source: Source, placeholders) -> list[tuple[int, int, str]]
     def read(at: int) -> bool:
         return not any(start <= at < end for start, end in passed)
 
+    comments = dict(reading.comments)
     events: list[tuple[int, int, str]] = []
     for start, end in reading.floats:
         captions = [(opened, closed) for _begun, opened, closed
-                    in _arguments(text, _CAPTION, start, end) if read(opened)]  # fmt: skip
+                    in _arguments(text, _CAPTION, start, end, comments)
+                    if read(opened)]  # fmt: skip
         outside = [placeholder for placeholder in placeholders
                    if not any(opened < placeholder.start < closed
                               for opened, closed in captions)]  # fmt: skip
@@ -271,7 +279,7 @@ def _compared_events(source: Source, placeholders) -> list[tuple[int, int, str]]
             written = _bindings_in(outside, start, end) if index == 0 else ""
             events.append((edges[index], edges[index + 1],
                            written + ("\n\n" if captions else "")))  # fmt: skip
-    for begun, opened, closed in _arguments(text, _ENQUOTE, 0, len(text)):
+    for begun, opened, closed in _quoted_text(text, comments):
         if read(begun):
             events += [(begun, opened + 1, QUOTE_OPEN),
                        (closed, closed + 1, QUOTE_CLOSE)]  # fmt: skip
@@ -282,28 +290,75 @@ def _compared_events(source: Source, placeholders) -> list[tuple[int, int, str]]
     return events
 
 
-def _arguments(text: str, pattern: re.Pattern[str], start: int, end: int):
+def _arguments(text: str, pattern: re.Pattern[str], start: int, end: int, comments: dict):
     """Where each command of `pattern` between `start` and `end` starts, and where the
     argument it opens runs, from its opening brace to its closing one, where that closes
     before `end`."""
     for found in pattern.finditer(text, start, end):
-        closed = _closing(text, found.end() - 1)
+        closed = _closing(text, found.end() - 1, comments)
         if 0 <= closed < end:
             yield found.start(), found.end() - 1, closed
 
 
-def _closing(text: str, opened: int) -> int:
-    """Where the group that opens at `opened` closes, past escaped braces and comments; -1
-    where it does not."""
+def _quoted_text(text: str, comments: dict):
+    """Where each quotation csquotes marks with a command starts, and where its text runs,
+    from its opening brace to its closing one: past a language's `{...}`, the options
+    `[...]`, and a `c` form's citation key `{...}`."""
+    for found in _QUOTING.finditer(text):
+        if found["kind"] == "quote" and not found["lang"]:
+            continue  # LaTeX's own `\\quote`, which begins the environment's body
+        at = found.end()
+        if found["lang"]:
+            at = _group_end(text, at, comments)
+        at = _options_end(text, at)
+        if "cquote" in found["kind"]:
+            at = _options_end(text, _group_end(text, at, comments))
+        while 0 <= at < len(text) and text[at].isspace():
+            at += 1
+        if at < 0 or at >= len(text) or text[at] != "{":
+            continue
+        closed = _closing(text, at, comments)
+        if closed >= 0:
+            yield found.start(), at, closed
+
+
+def _group_end(text: str, at: int, comments: dict) -> int:
+    """Past the group `{...}` at `at`, white space before it skipped; -1 where none is."""
+    while 0 <= at < len(text) and text[at].isspace():
+        at += 1
+    if at < 0 or at >= len(text) or text[at] != "{":
+        return -1
+    closed = _closing(text, at, comments)
+    return closed + 1 if closed >= 0 else -1
+
+
+def _options_end(text: str, at: int) -> int:
+    """Past each option `[...]` from `at`, white space between them skipped."""
+    while at >= 0:
+        ahead = at
+        while ahead < len(text) and text[ahead].isspace():
+            ahead += 1
+        if ahead >= len(text) or text[ahead] != "[":
+            return at
+        closed = text.find("]", ahead)
+        if closed < 0:
+            return -1
+        at = closed + 1
+    return at
+
+
+def _closing(text: str, opened: int, comments: dict) -> int:
+    """Where the group that opens at `opened` closes, past escaped braces and the comments
+    the reader read, `comments` by where each starts; -1 where it does not. A `%` the reader
+    did not read as a comment, in `\\url{}`, is a character (round 2 of step 13)."""
     depth, at = 0, opened
     while at < len(text):
         character = text[at]
         if character == "\\":
             at += 2
             continue
-        if character == "%":
-            line_end = text.find("\n", at)
-            at = len(text) if line_end < 0 else line_end
+        if at in comments:
+            at = comments[at]
             continue
         depth += {"{": 1, "}": -1}.get(character, 0)
         if depth == 0:

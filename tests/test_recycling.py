@@ -248,6 +248,13 @@ def test_a_latex_caption_is_compared_at_its_line(project: Path) -> None:
         "As \\enquote{" + DESCRIPTION[:-1] + "} \\cite{" + KEY + "}.",
         "\\begin{quote}\n" + DESCRIPTION + "\n\\end{quote}",
         "\\begin{quotation}\n" + DESCRIPTION + " \\cite{" + KEY + "}\n\\end{quotation}",
+        # Round 2: csquotes' other forms, and a quotation inside another.
+        "\\blockquote{" + DESCRIPTION + "}",
+        "\\textquote[{" + KEY + "}][.]{" + DESCRIPTION[:-1] + "}",
+        "\\textcquote[12]{" + KEY + "}[.]{" + DESCRIPTION[:-1] + "}",
+        "\\foreignblockquote{english}[x]{" + DESCRIPTION + "}",
+        "\\enquote{He wrote \\enquote{this} and: " + DESCRIPTION[:-1] + "}.",
+        "\\enquote{From \\url{https://ex.org/a%20b}: " + DESCRIPTION[:-1] + "}.",
     ],
 )
 def test_a_quotation_latex_marks_with_a_command_is_a_quotation(project: Path, typed: str) -> None:
@@ -258,6 +265,31 @@ def test_a_quotation_latex_marks_with_a_command_is_a_quotation(project: Path, ty
     _typed_before(entry, "\\section{Results}", typed)
     assert [code for code, _severity, _line in said(project, "submission")] == [
         "recycled-quotation"
+    ]
+
+
+def test_a_passage_running_into_a_quotation_shows_no_mark_of_it(project: Path) -> None:
+    """Round 2 of step 13: the characters that mark a quotation in the view are no text."""
+    stored(project)
+    entry = _as_latex(project)
+    words = DESCRIPTION.split()
+    _typed_before(entry, "\\section{Results}", " ".join(words[:20]) + " \\enquote{"
+                  + " ".join(words[20:]) + "}")  # fmt: skip
+    [finding] = found(project, "submission")
+    assert "\\ue00" not in finding.message and "\ue001" not in finding.message
+
+
+def test_a_subfigure_s_caption_and_one_with_an_address_are_compared(project: Path) -> None:
+    """Round 2 of step 13: `\\subcaption`, and a `%` an address holds, which ends no group."""
+    stored(project)
+    entry = _as_latex(project)
+    line = _typed_before(entry, "\\section{Discussion}",
+                         "\\begin{figure}\n\\subcaption{" + CAVEAT + "}\n\\end{figure}") + 1
+    second = _typed_before(entry, "\\section{Data availability}",
+                           "\\begin{figure}\n\\caption{See \\url{https://ex.org/a%20b}. "
+                           + DESCRIPTION + "}\n\\end{figure}") + 1  # fmt: skip
+    assert sorted(said(project, "internal-review")) == [
+        ("recycled-text", WARN, line), ("recycled-text", WARN, second)
     ]
 
 

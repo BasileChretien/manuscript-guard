@@ -1981,6 +1981,66 @@ def test_a_misquotation_names_only_the_works_looked_in(project: Path) -> None:
     assert found.message.endswith("is not in the stored source of @fictionalHepaticCohort2021")
 
 
+# ----------------------------- a passage repeated from the authors' own earlier paper
+
+
+@pytest.mark.parametrize(
+    ("before", "paragraph"),
+    [
+        pytest.param("Data availability", "{caveat}", id="a sentence of the Discussion"),
+        pytest.param("Data availability", "{caveat} [@{key}]",
+                     id="cited, in the Discussion"),
+        pytest.param("Methods", "{caveat}", id="in the Introduction"),
+        pytest.param("Results", "{description}", id="a description in the Methods, uncited"),
+        pytest.param("Discussion", "{counted}", id="the Results with other numbers"),
+        pytest.param("Data availability", "{swapped}", id="a word changed"),
+        pytest.param("Data availability", "{marked}", id="emphasis and a binding inside"),
+        pytest.param("Data availability", "{wrapped}", id="wrapped, a word broken at a hyphen"),
+        pytest.param("Data availability", "{cited_inside}", id="a citation inside it"),
+        pytest.param(None, "{caveat}", id="in the supplement"),
+    ],
+)  # fmt: skip
+def test_a_passage_of_an_earlier_paper_warns_however_it_is_written(
+    project: Path, before: str | None, paragraph: str
+) -> None:
+    """The norms for text recycling hold a passage of the authors' earlier paper outside a
+    cited Methods description unlikely to be acceptable, and the journal's similarity check
+    shows it whatever was done to it short of rewriting: a word changed for another, numbers
+    updated, marks of emphasis, a citation inside it, the lines wrapped. Each is a warning
+    from internal-review."""
+    from test_recycling import CAVEAT, COUNTED, DESCRIPTION, KEY, found, stored, written
+
+    stored(project)
+    paragraph = paragraph.format(
+        caveat=CAVEAT, key=KEY, description=DESCRIPTION,
+        counted=COUNTED.replace("1,234", "{{results.cohort.n_reports}}").replace("56", "61"),
+        swapped=CAVEAT.replace("subject", "prone").replace("measure", "gauge"),
+        marked=CAVEAT.replace("disproportionality", "*disproportionality*").replace(
+            "risk", "risk {{results.signal.ror}}"),
+        wrapped=CAVEAT.replace("under-reporting", "under-\nreporting").replace(" so ", "\nso "),
+        cited_inside=CAVEAT.replace("communications,", f"communications [@{KEY}],"),
+    )  # fmt: skip
+    if before is None:
+        supplement = project / "manuscript" / "supplementary" / "recycled.md"
+        supplement.write_text(f"# Supplementary discussion\n\n{paragraph}\n", encoding="utf-8")
+    else:
+        written(project, paragraph, before=before)
+    findings = found(project, "internal-review")
+    assert [(f.code, f.severity) for f in findings] == [("recycled-text", "warn")], findings
+    assert found(project, "drafting")[0].severity == "info"
+
+
+def test_a_cited_methods_description_is_never_more_than_a_note(project: Path) -> None:
+    """The one place the norms accept recycled text, with its source cited (COPE)."""
+    from test_recycling import DESCRIPTION, KEY, found, stored, written
+
+    stored(project)
+    written(project, f"{DESCRIPTION} We used it as before [@{KEY}].", before="Results")
+    assert [(f.code, f.severity) for f in found(project, "submission")] == [
+        ("recycled-methods-cited", "info")
+    ]
+
+
 def test_an_elided_quotation_reads_points_as_a_reader_does(  # and a dash, as pinned
 ) -> None:
     """The review of #282: a reference number after a full stop joined the word before it,
@@ -2124,6 +2184,76 @@ def test_a_passage_whose_sentence_changed_is_stale(
 def test_a_passage_of_a_work_with_no_stored_copy_is_unchecked(project: Path) -> None:
     (project / "literature" / "sources" / "fictionalClassSignal2019.txt").unlink()
     assert _passage_findings(project) == [("passage-unchecked", "warn")]
+
+
+# ------------------------------------------------- the methods of a similar study
+
+
+def _methods_review_findings(project: Path) -> list[tuple[str, str]]:
+    from manuscript_guard.gates.methods_review import check_method_passages, check_methods_review
+
+    loaded = load_project(project)[0]
+    found = check_method_passages(loaded).merge(check_methods_review(loaded)).findings
+    return [(f.code, f.severity) for f in found if f.code != "similar-undecided"]
+
+
+def _reviewed(project: Path, old: str, new: str) -> None:
+    path = project / "design" / "methods_review.yaml"
+    text = path.read_text(encoding="utf-8")
+    assert old in text, old
+    path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+
+#: The example's appraisal, and a decision a person recorded after it.
+_PROPOSED = "          proposed_on: 2026-10-21\n"
+_DECIDED = (
+    _PROPOSED + "        decision:\n          choice: adopt\n"
+    "          why: the enzyme criterion only\n"
+)
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "said"),
+    [
+        pytest.param("toxic liver disease,\n", "liver disease,\n",
+                     [("similar-passage-not-in-source", "fail")], id="a passage retyped"),
+        pytest.param("          standard: encepp-guide\n", "",
+                     [("appraisal-without-standard", "warn")], id="a judgement with no standard"),
+        pytest.param("standard: encepp-guide", "standard: most-studies-do-it",
+                     [("appraisal-standard-unknown", "warn")], id="a standard nothing holds"),
+        pytest.param("domain: Definition and validation", "domain: Validation",
+                     [("appraisal-domain-unknown", "warn")], id="a domain the standard lacks"),
+        pytest.param(_PROPOSED, _DECIDED + "          decided_by: Claude\n"
+                     "          decided_on: 2026-10-21\n",
+                     [("similar-decision-not-human", "fail"), ("adopted-method-uncited", "warn"),
+                      ("adopted-standard-uncited", "warn")], id="decided by a model"),
+        pytest.param(_PROPOSED, _DECIDED + "          decided_by: Ada Example\n"
+                     "          decided_on: 2026-10-21\n",
+                     [("adopted-method-uncited", "warn"), ("adopted-standard-uncited", "warn")],
+                     id="an adopted method with no citation"),
+        pytest.param("proposed_on", "proposed_on", [], id="as recorded"),
+    ],
+)  # fmt: skip
+def test_a_method_of_a_similar_study_that_rests_on_nothing_is_caught(
+    project: Path, old: str, new: str, said: list
+) -> None:
+    """Basile, 2026-10-21: a method's words not its study's, a judgement that names no
+    standard or one nothing holds, a decision a model signed, and a method taken into the
+    plan that the plan does not cite."""
+    _reviewed(project, old, new)
+    assert _methods_review_findings(project) == said
+
+
+def test_an_adopted_method_the_plan_cites_with_its_standard_is_clean(project: Path) -> None:
+    _reviewed(project, _PROPOSED, _DECIDED + "          decided_by: Ada Example\n"
+              "          decided_on: 2026-10-21\n")  # fmt: skip
+    _reviewed(project, "studies:\n", "standards:\n  - id: encepp-guide\n    citekey: encepp2023\n"
+              "\nstudies:\n")  # fmt: skip
+    plan = project / "design" / "plan.md"
+    plan.write_text(plan.read_text(encoding="utf-8") + "\nThe case definition follows "
+                    "[@fictionalHepaticCohort2021], validated as [@encepp2023] advises.\n",
+                    encoding="utf-8")  # fmt: skip
+    assert _methods_review_findings(project) == []
 
 
 # ------------------------------------------------------------- what a change makes stale
@@ -4939,6 +5069,19 @@ variables:
     type: binary
     code_list: yes_no
     reason: the proportion of the cases that were serious
+  - {name: drug, label: Drug, definition: The suspected drug the report names., type: text}
+  - {name: event, label: Event, definition: The event term the report names., type: text}
+  # The corruptions below replace `    type: binary` and `    code_list: yes_no` wherever
+  # they stand, so these entries keep both off the start of a line: one entry is broken.
+  - {name: exposed, type: binary, code_list: yes_no, label: Exposed, derived_from: [drug],
+     definition: The report names example-drug., derivation: drug is example-drug}
+  - {name: hepatic, type: binary, code_list: yes_no, label: Hepatic injury,
+     definition: The event is hepatic injury., derived_from: [event], derivation: by its term}
+  - {name: sex, label: Sex, definition: Sex as reported., type: categorical,
+     values: [{code: F, label: Female}, {code: M, label: Male}]}
+  - {name: age_group, label: Age group, definition: The age group as reported.,
+     type: categorical, values: [{code: 18-44, label: 18 to 44}, {code: 45-64, label: 45 to 64},
+     {code: 65-74, label: 65 to 74}, {code: 75+, label: 75 and over}]}
 """
 
 
@@ -5003,12 +5146,15 @@ def test_a_variable_the_plan_uses_and_nobody_collects_is_warned_of(
 
 @pytest.mark.parametrize("stage", ["design", "submission"])
 def test_an_entry_nothing_needs_is_warned_of(project: Path, stage: str) -> None:
+    """The example's plan names `serious`, so its entry needs no reason; one for the year,
+    which the plan does not name, does."""
     unneeded = _EXAMPLE_DICTIONARY.replace(
         "    reason: the proportion of the cases that were serious\n", ""
-    )
+    ) + "  - {name: year, label: Year, definition: The year of the report., type: continuous}\n"
     failed, warned = _collection_said(project, unneeded, stage)
     assert failed == [] and warned == ["dictionary-entry-unused"]
-    _plan_edited(project, "Seriousness is reported", "Seriousness, `serious`, is reported")
+    _plan_edited(project, "carry unique identifiers",
+                 "carry their year (`year`) and unique identifiers")
     assert _collection_said(project, unneeded, stage) == ([], [])
 
 
@@ -5949,8 +6095,10 @@ def test_a_gate_not_taught_latex_reads_nothing_and_fails_at_submission(project: 
     _as_latex(project)
     drafting, _project, _stage, _deferred = _run_gates(project, stage="drafting")
     unread = sorted(f.gate for f in drafting.findings if f.code == "not-read-in-latex")
-    # G2 reads LaTeX but for its pointers to tables and figures, and says so (step 4).
-    expected = ["BUILD", "G13", "G14", "G15", "G2", "G4", "G6", "G7", "G8", "G8r", "G9"]
+    # G2 reads LaTeX but for its pointers to tables and figures, and says so (step 4). G4
+    # reads it from step 6 but for the data sources its statements name, G14 and G6 from
+    # step 7.
+    expected = ["BUILD", "G13", "G15", "G2", "G4", "G7", "G8", "G8r", "G9"]
     assert unread == expected, drafting.render(project)
     assert "not-read-in-latex" not in codes(drafting)
     said = {f.code for f in drafting.findings}
@@ -5964,23 +6112,29 @@ def test_a_gate_not_taught_latex_reads_nothing_and_fails_at_submission(project: 
 
 #: The checks that read the manuscript only as Markdown, and those that do not read it.
 _MARKDOWN_ONLY = (
-    "check_related",
-    "check_citations", "check_prose_quotations", "check_journal", "check_reporting",
-    "check_writing", "check_methods", "check_reported", "check_recomputed", "check_revision",
-    "check_language", "check_models", "check_shapes", "check_tex", "check_passages",
+    "check_statement_sources", "check_related",
+    "check_prose_quotations", "check_reporting",
+    "check_methods", "check_reported", "check_recomputed", "check_revision",
+    "check_models", "check_shapes", "check_tex", "check_passages",
+    "check_recycling",
 )  # fmt: skip
 _NOT_THE_MANUSCRIPT = (
     "check_review", "check_freshness", "check_figures", "check_figure_reviews",
     "check_literature_chain", "check_shortlist", "check_design", "check_design_rounds",
-    "check_consistency", "check_restricted_inputs", "check_relations", "check_datasets",
+    "check_consistency", "check_restricted_inputs", "check_relations", "check_data_sources",
+    "check_datasets",
+    "check_method_passages", "check_methods_review",
     # It finds the figures placed in the Markdown sources, so it reads nothing of a LaTeX
     # manuscript and says nothing of one; it runs, as G3's other check does (round 1 of #387).
     "check_figure_alt",
+    # The same, for the colours each figure paints.
+    "check_figure_colours",
 )  # fmt: skip
 #: The checks that read LaTeX: they run on a LaTeX manuscript as on any.
 _READS_LATEX = (
     "check_latex", "check_numbers", "check_bound_units", "check_small_cells",
-    "check_synthetic_inputs",
+    "check_synthetic_inputs", "check_citations", "check_journal", "check_language",
+    "check_writing", "check_values",
 )  # fmt: skip
 
 
@@ -6079,6 +6233,42 @@ def _into_results(entry: Path, snippet: str) -> None:
     text = entry.read_text(encoding="utf-8")
     entry.write_text(text.replace("\\section{Discussion}", snippet + "\n\n\\section{Discussion}"),
                      encoding="utf-8")  # fmt: skip
+
+
+def test_g1_holds_the_twins_values_file_to_the_results(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The twin loads `mgvalues.sty`: missing, it is said; written by `values`, nothing is;
+    edited, it is stale; and a value it binds that the file cannot print is said (step 4b)."""
+    from manuscript_guard.build import latex_values
+    from manuscript_guard.cli import main
+
+    entry = _twin(project)
+
+    def codes() -> list[str]:
+        projekt = load_project(project)[0]
+        namespace, results, _literature, _rest = load_namespace(projekt)
+        return [f.code for f in latex_values.check_values(projekt, namespace, results).findings]
+
+    # The paper's and the supplement's, each loading it.
+    assert codes() == ["values-file-missing", "values-file-missing"]
+    assert main(["values", str(project)]) == 0
+    assert codes() == []
+    written = entry.parent / "mgvalues.sty"
+    text = written.read_text(encoding="utf-8")
+    written.write_text(text.replace("mg@results.cohort.n_reports\\endcsname#1{",
+                                    "mg@results.cohort.n_reports\\endcsname#1{9", 1),
+                       encoding="utf-8")  # fmt: skip
+    assert codes() == ["values-file-stale"]
+    escaped = latex_values.escaped
+
+    def refusing(display: str, ref: str) -> str:
+        if ref == "results.cohort.n_reports":
+            raise latex_values.NotPrintable(ref, "\N{ALMOST EQUAL TO}")
+        return escaped(display, ref)
+
+    monkeypatch.setattr(latex_values, "escaped", refusing)
+    assert "value-not-printable" in codes()
 
 
 def test_every_binding_of_the_twin_when_inlined_is_caught(project: Path) -> None:
@@ -6220,6 +6410,148 @@ def test_the_custodian_and_g1_read_the_twins_bindings(project: Path) -> None:
                 if "\\mg{results.case.n_serious}" in text)  # fmt: skip
     assert _small(project) == [("results.case.n_serious", line)]
     assert "results.case.n_serious" in quoted_refs(load_project(project)[0])
+
+
+def test_g7_reads_the_twins_citations_as_the_examples(project: Path) -> None:
+    """The twin's citations pass G7 as the example's do; a key cited in a group with another,
+    and wrapped onto the next line, that is in no bibliography is said (step 5)."""
+    entry = _twin(project)
+    clean = {(f.code, f.severity) for f in _g7(project).findings}
+    _into_results(entry, "A claim \\citep[p.~2]{ghostKey2020,\n  fictionalHepaticCohort2021}.")
+    text = entry.read_text(encoding="utf-8")
+    found = [f for f in _g7(project).failures if "ghostKey2020" in f.message]
+    line = text.count("\n", 0, text.index("ghostKey2020")) + 1
+    assert [f.line for f in found] == [line], _g7(project).render(project)
+    assert not [f for f in _g7(project).failures if "fictionalHepaticCohort2021" in f.message]
+    assert clean <= {(f.code, f.severity) for f in _g7(project).findings}
+
+
+def _g4(root: Path) -> set[str]:
+    from manuscript_guard.gates import check_journal
+
+    return {f.code for f in check_journal(load_project(root)[0]).findings}
+
+
+@pytest.mark.parametrize(
+    ("before", "after", "code"),
+    [
+        ("\\section{Methods}", "\\section{Approach}", "missing-required-section"),
+        ("\\section{Funding}", "\\textbf{Funding}", "missing-required-statement"),
+        ("\\end{abstract}", " ".join(["word"] * 320) + "\n\\end{abstract}",
+         "over-journal-limit"),
+    ],
+)
+def test_g4_reads_the_twins_sections_statements_and_limits(
+    project: Path, before: str, after: str, code: str
+) -> None:
+    """A required section renamed, a required statement left without its heading, an
+    abstract over its limit: each is found in the twin as in the example (step 6)."""
+    entry = _twin(project)
+    assert code not in _g4(project)
+    text = entry.read_text(encoding="utf-8")
+    assert before in text
+    entry.write_text(text.replace(before, after, 1), encoding="utf-8")
+    assert code in _g4(project)
+
+
+def test_g4_counts_no_word_of_a_float_a_formula_or_the_preamble_in_the_twin(
+    project: Path,
+) -> None:
+    """A caption, a displayed formula and the preamble print no word of the text, as a journal
+    counts it: 4,000 of them in each leave the main text under its limit (step 6)."""
+    entry = _twin(project)
+    words = " ".join(["word"] * 4000)
+    text = entry.read_text(encoding="utf-8")
+    text = text.replace("\\begin{document}", f"\\author{{{words}}}\n\\begin{{document}}", 1)
+    entry.write_text(text, encoding="utf-8")
+    _into_results(entry, f"\\begin{{figure}}\\caption{{{words}}}\\end{{figure}}\n"
+                         f"\\[ {words} \\]")  # fmt: skip
+    assert "over-journal-limit" not in _g4(project)
+
+
+def _g14(root: Path) -> list:
+    from manuscript_guard.gates import check_language
+
+    return list(check_language(load_project(root)[0]).findings)
+
+
+@pytest.mark.parametrize(
+    ("snippet", "code", "word"),
+    [
+        ("The hazard ratio was HR here.", "abbreviation-undefined", "HR is used once"),
+        ("The color of the reports.", "spelling-variant", "'color'"),
+        ("The caf\\'e reports.", "tex-words-not-read", "caf\\\\'e"),
+        ("The SSRI rose. The SSRI (selective serotonin reuptake inhibitor) class.",
+         "abbreviation-used-before-defined", "SSRI"),
+    ],
+)
+def test_g14_finds_in_the_twin_what_it_finds_in_the_example(
+    project: Path, snippet: str, code: str, word: str
+) -> None:
+    """An abbreviation never defined, an American spelling in a British paper, a word an
+    accent command splits, and a use before the definition, each written into the twin's
+    Results, are found there, on the line it is written on (step 7)."""
+    entry = _twin(project)
+    _into_results(entry, snippet)
+    found = [f for f in _g14(project) if f.code == code and word in f.message]
+    assert found and found[0].path == entry, [(f.code, f.message) for f in _g14(project)]
+    text = entry.read_text(encoding="utf-8")
+    assert found[0].line == text.count("\n", 0, text.index(snippet)) + 1
+
+
+def _g6_findings(root: Path) -> list:
+    from manuscript_guard.gates import check_writing
+
+    return list(check_writing(load_project(root)[0]).findings)
+
+
+@pytest.mark.parametrize(
+    ("snippet", "code"),
+    [
+        ("Studies have shown that reporting is low.", "vague-attribution"),
+        ("We delve into the reports here.", "ai-phrasing"),
+        ("% TODO check the counts", "model-artefact"),
+        ("As requested by Reviewer 2, we added the counts.", "revision-residue"),
+    ],
+)
+def test_g6_finds_in_the_twin_what_it_finds_in_the_example(
+    project: Path, snippet: str, code: str
+) -> None:
+    """A claim with no citation near it, a phrase G6 reports, a placeholder left in a
+    comment and words to a reviewer, each written into the twin's Results, are found there,
+    on the line they are written on (step 7). A comment's placeholder is found as typed, as
+    one in a Markdown comment is."""
+    entry = _twin(project)
+    assert not [f for f in _g6_findings(project) if f.code == code]
+    # At the head of the Results, which no citation stands within reach of.
+    text = entry.read_text(encoding="utf-8")
+    heading = "\\section{Results}\n"
+    entry.write_text(text.replace(heading, heading + snippet + "\n", 1), encoding="utf-8")
+    found = [f for f in _g6_findings(project) if f.code == code]
+    assert found and found[0].path == entry, [(f.code, f.message) for f in _g6_findings(project)]
+    text = entry.read_text(encoding="utf-8")
+    assert found[0].line == text.count("\n", 0, text.index(snippet)) + 1
+
+
+def test_g6_takes_a_latex_citation_beside_a_claim_for_its_support(project: Path) -> None:
+    """Judged against where the twin's citation commands stand, as `[@...]` in Markdown; and
+    a claim in a comment is no claim of the paper's (step 7)."""
+    entry = _twin(project)
+    claim = "Studies have shown that reporting is low \\citep{fictionalHepaticCohort2021}."
+    _into_results(entry, claim + "\n% Studies have shown it is high.")
+    assert not [f for f in _g6_findings(project) if f.code == "vague-attribution"]
+
+
+def test_g6_names_the_line_of_a_typed_reference_lists_entry(project: Path) -> None:
+    """A placeholder in a typed reference list's sixth entry is named at that entry's line, and
+    a Spanish title's "Todo" is no placeholder (rounds 2 and 3 of step 7b)."""
+    entry = _twin(project)
+    entries = "".join(f"\\bibitem{{e{n}}} Garcia {n}. Todo lo que hay. 2020.\n" for n in range(5))
+    _into_results(entry, "\\begin{thebibliography}{9}\n" + entries
+                  + "\\bibitem{t} TODO find the journal.\n\\end{thebibliography}")  # fmt: skip
+    found = [f for f in _g6_findings(project) if f.code == "model-artefact"]
+    text = entry.read_text(encoding="utf-8")
+    assert [f.line for f in found] == [text.count("\n", 0, text.index("\\bibitem{t}")) + 1]
 
 
 @pytest.mark.parametrize("encoding", ["cp1252", "utf-16", "utf-32"])
@@ -8656,6 +8988,339 @@ def test_the_warning_says_what_a_listing_is_evidence_of(project: Path) -> None:
     assert "never" not in found.hint and "evidence" in found.hint
 
 
+# ---------------------------------------------- the datasets considered, and the one chosen
+
+
+def _sources_said(root: Path, document=None, *, stage: str = "drafting", pages: bool = True):
+    """What G12 and G4 say of the record of data sources, by code and severity, with the
+    record written as `document` (the whole one of tests/test_data_sources.py by default)."""
+    from test_data_sources import write_record
+
+    from manuscript_guard.gates.data_sources import check_data_sources, check_statement_sources
+
+    write_record(root, document, pages=pages)
+    project, _ = load_project(root)
+    said = check_data_sources(project, stage).merge(check_statement_sources(project))
+    return [(f.code, f.severity) for f in said.findings]
+
+
+def _named_everywhere(root: Path, name: str = "Open Reports Archive") -> None:
+    from test_data_sources import name_in_plan, set_statement
+
+    name_in_plan(root, f"All reports in the {name}, quarterly extracts 2015 to 2025.")
+    set_statement(root, f"The {name} is publicly available at https://ora.invalid/ "
+                        "(doi:10.5555/ora.2026).")  # fmt: skip
+
+
+def test_a_record_whole_sourced_and_followed_says_nothing(project: Path) -> None:
+    """The baseline: every claim sourced and on its page, the chosen source named in the plan
+    and the statement, paper.yaml asked nothing of it. And no record, nothing at all."""
+    from manuscript_guard.gates.data_sources import check_data_sources, check_statement_sources
+
+    loaded, _ = load_project(project)
+    assert not check_data_sources(loaded, "submission").findings
+    assert not check_statement_sources(loaded).findings
+    _named_everywhere(project)
+    assert _sources_said(project) == []
+    assert _sources_said(project, stage="submission") == []
+
+
+def test_a_record_out_of_shape_is_a_warning(project: Path) -> None:
+    from test_data_sources import record
+
+    document = record()
+    document["candidates"][0]["access"]["route"] = "ask nicely"
+    assert set(_sources_said(project, document)) == {("data-sources-schema", "warn")}
+    (project / "design" / "data_sources.yaml").write_bytes(b"candidates: [\n")
+    loaded, _ = load_project(project)
+    from manuscript_guard.gates.data_sources import check_data_sources
+
+    said = [(f.code, f.severity) for f in check_data_sources(loaded, "drafting").findings]
+    assert said == [("data-sources-schema", "warn")]
+
+
+def test_a_source_the_record_names_and_does_not_consider_is_said(project: Path) -> None:
+    from test_data_sources import record
+
+    _named_everywhere(project)
+    for where in ("ranking", "rejected", "history", "chosen"):
+        document = record()
+        if where == "ranking":
+            document["ranking"][1]["source"] = "faers"
+        elif where == "rejected":
+            document["decision"]["rejected"] = [{"source": "faers", "why": "too slow"}]
+        elif where == "history":
+            document["history"] = [{"source": "faers", "event": "applied", "date": "2026-10-22"}]
+        else:
+            document["decision"]["chosen"] = ["ora", "faers"]
+        assert _sources_said(project, document) == [("data-source-unknown", "warn")], where
+    document = record()
+    document["candidates"][1]["id"] = "ora"
+    assert ("data-source-id-repeated", "warn") in _sources_said(project, document)
+
+
+def test_a_model_named_where_a_person_states_chooses_or_sends_is_said(project: Path) -> None:
+    from test_data_sources import record
+
+    _named_everywhere(project)
+    for change in (
+        lambda d: d["question"].update(stated_by="Claude"),
+        lambda d: d["decision"].update(decided_by="GPT-5 assistant"),
+        lambda d: d["candidates"][1]["claims"][4].update(stated_by="an AI"),
+        lambda d: d["candidates"][1].update(messages=[{
+            "to": "the committee", "file": "encd.md", "drafted_on": "2026-10-21",
+            "sent_on": "2026-10-22", "sent_by": "Copilot"}]),
+    ):  # fmt: skip
+        document = record()
+        change(document)
+        assert _sources_said(project, document) == [("data-source-not-a-person", "warn")]
+    document = record()
+    document["decision"]["decided_by"] = "Ai Tanaka"  # a name, not a machine
+    assert _sources_said(project, document) == []
+
+
+def test_an_access_claim_with_nothing_behind_it_is_said(project: Path) -> None:
+    from test_data_sources import record
+
+    _named_everywhere(project)
+    document = record()
+    del document["candidates"][1]["claims"][2]  # the minimum cell count's
+    document["candidates"][0]["access"]["steps"] = "download the zip files"
+    said = _sources_said(project, document)
+    assert said == [("data-source-unsourced", "warn")] * 2
+    loaded, _ = load_project(project)
+    from manuscript_guard.gates.data_sources import check_data_sources
+
+    messages = sorted(f.message for f in check_data_sources(loaded, "drafting").findings)
+    assert messages == ["Example National Claims Database: no claim backs minimum_cell_count",
+                        "Open Reports Archive: no claim backs steps"]  # fmt: skip
+
+
+def test_a_quote_not_on_its_stored_page_is_said(project: Path) -> None:
+    from test_data_sources import record
+
+    _named_everywhere(project)
+    document = record()
+    # "fewer than 11" read as "fewer than 10": the quote is not what the page says.
+    claim = document["candidates"][1]["claims"][2]
+    claim["quote"] = claim["quote"].replace("11", "10")
+    assert _sources_said(project, document) == [("data-source-quote-not-on-page", "warn")]
+    # A quote is folded for case, spacing, a line break and curly quotes, as G7 folds one.
+    document = record()
+    document["candidates"][0]["claims"][2]["quote"] = (
+        "new extracts appear  within three months of each quarter’s end"
+    )
+    assert _sources_said(project, document) == []
+    # A quote that is the end of a longer number on the page is not on it.
+    document = record()
+    document["candidates"][1]["claims"][1]["quote"] = "00 EUR is charged"
+    assert _sources_said(project, document) == [("data-source-quote-not-on-page", "warn")]
+
+
+def test_a_page_not_stored_is_said_once_and_its_quotes_are_not_checked(project: Path) -> None:
+    from manuscript_guard.gates.data_sources import check_data_sources
+
+    _named_everywhere(project)
+    said = _sources_said(project, pages=False)
+    assert said == [("data-source-page-not-stored", "warn")] * 2
+    loaded, _ = load_project(project)
+    messages = [f.message for f in check_data_sources(loaded, "drafting").findings]
+    assert all("is not stored" in message for message in messages), messages
+    # A page saved in a code page is read by nothing, and said so; the gate goes on.
+    _sources_said(project)
+    (project / "design" / "data_sources" / "pages" / "ora-access.txt").write_bytes(b"caf\xe9")
+    [found] = check_data_sources(loaded, "drafting").findings
+    assert found.code == "data-source-page-not-stored" and "cannot be read: " in found.message
+
+
+def test_a_chosen_source_reached_nobody_knows_how_is_said(project: Path) -> None:
+    from test_data_sources import record
+
+    _named_everywhere(project)
+    document = record()
+    del document["candidates"][0]["access"]["route"]
+    document["candidates"][0]["claims"][0]["about"] = "cost"
+    assert _sources_said(project, document) == [("data-source-route-unknown", "warn")]
+    # A source not chosen may wait.
+    document = record()
+    del document["candidates"][1]["access"]["route"]
+    document["candidates"][1]["claims"][0]["about"] = "steps"
+    document["candidates"][1]["access"]["steps"] = "apply to the committee"
+    assert _sources_said(project, document) == []
+
+
+def test_a_record_with_no_decision_says_so_in_a_note(project: Path) -> None:
+    from test_data_sources import record
+
+    document = record()
+    del document["decision"]
+    assert _sources_said(project, document) == [("data-source-undecided", "info")]
+
+
+def test_a_custodian_rule_paper_yaml_lacks_warns_then_fails_from_internal_review(
+    project: Path,
+) -> None:
+    """Basile, 2026-10-21: G2's small-count check and `review --run`'s refusal read paper.yaml
+    only, so a rule the record holds and paper.yaml lacks is a check that never runs."""
+    from test_data_sources import record, set_statement
+
+    from manuscript_guard.cli import _run_gates
+
+    _named_everywhere(project, "Example National Claims Database")
+    set_statement(project, "The Example National Claims Database is available on application "
+                           "to its scientific committee.")  # fmt: skip
+    document = record()
+    document["decision"]["chosen"] = ["encd"]
+    said = _sources_said(project, document)
+    assert said == [("custodian-rule-undeclared", "warn")] * 2
+    for stage in ("internal-review", "submission"):
+        said = _sources_said(project, document, stage=stage)
+        assert said == [("custodian-rule-undeclared", "fail")] * 2
+    report, _project, _stage, _deferred = _run_gates(project, stage="internal-review")
+    assert {f.code for f in report.failures} >= {"custodian-rule-undeclared"}
+    paper = project / "paper.yaml"
+    text = paper.read_bytes().decode("utf-8")
+    # A smaller minimum than the custodian's is not theirs.
+    paper.write_bytes((text + "custodian:\n  minimum_cell_count: 5\n").encode())
+    assert _sources_said(project, document, stage="submission") == [
+        ("custodian-rule-undeclared", "fail")] * 2  # fmt: skip
+    paper.write_bytes((text + "custodian:\n  minimum_cell_count: 11\n").encode())
+    assert _sources_said(project, document, stage="submission") == [
+        ("custodian-rule-undeclared", "fail")]  # fmt: skip
+    paper.write_bytes((text + "custodian:\n  minimum_cell_count: 20\n"
+                              "  restricts_sending: true\n").encode())  # fmt: skip
+    assert _sources_said(project, document, stage="submission") == []
+
+
+def test_a_plan_that_does_not_name_the_chosen_source_is_said(project: Path) -> None:
+    from test_data_sources import set_statement
+
+    set_statement(project, "The Open Reports Archive is publicly available.")
+    assert _sources_said(project) == [("plan-source-unnamed", "warn")]
+    # Named in a subsection of the section, it is named.
+    plan = project / "design" / "plan.md"
+    text = plan.read_bytes().decode("utf-8")
+    heading = "## Exposure\n"
+    plan.write_bytes(text.replace(heading, f"### Source\n\nThe ORA.\n\n{heading}").encode())
+    assert _sources_said(project) == []
+    # A plan with no such section is plan-section-missing's, not this.
+    plan.write_bytes(text.replace("## Population and data source", "## Cohort").encode())
+    assert _sources_said(project) == []
+
+
+def test_a_plan_s_data_sources_section_is_read_as_its_population_is(project: Path) -> None:
+    """Round 1 of #384: G12's own pattern for the population section leaves out "Data
+    sources", STROBE's heading, so a plan that named the source there was said not to."""
+    from test_data_sources import set_statement
+
+    set_statement(project, "The Open Reports Archive is publicly available.")
+    plan = project / "design" / "plan.md"
+    text = plan.read_bytes().decode("utf-8")
+    for heading in ("## Data sources", "## Data", "## Source of data", "## Setting and data",
+                    "## 3. Data", "## 2.1 Data sources"):
+        moved = text.replace("## Exposure\n", f"{heading}\n\nThe ORA, 2015 to 2025.\n\n"
+                                              "## Exposure\n")  # fmt: skip
+        plan.write_bytes(moved.encode())
+        assert _sources_said(project) == [], heading
+
+
+def test_a_record_written_as_yaml_is_written_by_hand_is_read(project: Path) -> None:
+    """Round 1 of #384: YAML 1.1 reads `on`, `yes` and `no` as true and false, so a history
+    entry dated with `on:`, or a variable `provided: yes`, failed the schema, the record was
+    put aside, and the custodian rule it held was never asked of paper.yaml."""
+    from test_data_sources import PAGES, record
+
+    from manuscript_guard.cli import _run_gates
+
+    _named_everywhere(project, "ENCD")
+    document = record()
+    document["decision"]["chosen"] = ["encd"]
+    text = yaml.safe_dump(document, sort_keys=False)
+    text = text.replace("provided: 'yes'", "provided: yes").replace("provided: partly",
+                                                                    "provided: no")  # fmt: skip
+    text += "history:\n- {source: encd, event: applied, date: 2026-11-02}\n"
+    text += "- {source: encd, event: approved, date: 2026-12-01}\n"
+    path = project / "design" / "data_sources.yaml"
+    path.write_bytes(text.encode("utf-8"))
+    pages = project / "design" / "data_sources" / "pages"
+    pages.mkdir(parents=True, exist_ok=True)
+    for name, page in PAGES.items():
+        (pages / name).write_bytes(page.encode("utf-8"))
+    assert "provided: yes" in text and "provided: no" in text
+    loaded, _ = load_project(project)
+    from manuscript_guard.gates.data_sources import check_data_sources
+
+    said = [(f.code, f.severity) for f in check_data_sources(loaded, "internal-review").findings]
+    assert said == [("custodian-rule-undeclared", "fail")] * 2, said
+    report, _project, _stage, _deferred = _run_gates(project, stage="internal-review")
+    assert "custodian-rule-undeclared" in {f.code for f in report.failures}
+    # A redistribution answered "no" is an answer, not a broken record.
+    path.write_bytes(text.replace("  terms:\n    minimum_cell_count: 11",
+                                  "  terms:\n    redistribution: no\n    minimum_cell_count: 11")
+                     .encode("utf-8"))  # fmt: skip
+    said = {f.code for f in check_data_sources(loaded, "internal-review").findings}
+    assert "data-sources-schema" not in said and "custodian-rule-undeclared" in said
+
+
+def test_a_statement_that_does_not_name_the_chosen_source_is_said(project: Path) -> None:
+    from test_data_sources import name_in_plan, set_statement
+
+    name_in_plan(project, "All reports in the Open Reports Archive.")
+    set_statement(project, "The data are publicly available from the agency.")
+    assert _sources_said(project) == [("data-statement-source-unnamed", "warn")]
+    # Cited by key as a dataset, it is named by the DOI the reference list gives it.
+    bib = project / "literature" / "references.bib"
+    bib.write_bytes(bib.read_bytes() + b"\n@misc{ora2026,\n  title = {Open extracts},\n"
+                    b"  type = {dataset},\n  doi = {10.5555/ora.2026},\n  year = {2026}\n}\n")
+    set_statement(project, "The data are publicly available [@ora2026].")
+    assert _sources_said(project) == []
+
+
+def test_a_finding_of_the_statement_is_placed_in_the_file_that_holds_it(project: Path) -> None:
+    """Round 1 of #384: the main text is several files read as one, and every finding was
+    placed in main.md."""
+    from test_data_sources import name_in_plan
+
+    from manuscript_guard.gates.data_sources import check_statement_sources
+
+    name_in_plan(project, "All reports in the Open Reports Archive.")
+    _sources_said(project)
+    main = project / "manuscript" / "main.md"
+    text = main.read_bytes().decode("utf-8")
+    start = text.index("# Data availability\n")
+    end = text.index("\n# ", start + 1)
+    main.write_bytes((text[:start] + text[end + 1 :]).encode("utf-8"))
+    back = project / "manuscript" / "z-back.md"
+    back.write_bytes(b"# Data availability\n\nThe data are publicly available from the agency.\n")
+    [found] = check_statement_sources(load_project(project)[0]).findings
+    assert found.code == "data-statement-source-unnamed" and found.path == back
+    # Of two matching headings, the outermost is the statement, as G4 reads it (round 2).
+    main.write_bytes(main.read_bytes() + b"\n### Data sharing between sites\n\nBy file.\n")
+    [found] = check_statement_sources(load_project(project)[0]).findings
+    assert found.path == back
+
+
+def test_a_statement_that_says_otherwise_than_the_route_is_said(project: Path) -> None:
+    from test_data_sources import name_in_plan, record, set_statement
+
+    name_in_plan(project, "All reports in the Open Reports Archive.")
+    set_statement(project, "Data from the Open Reports Archive are available from the "
+                           "corresponding author on reasonable request.")  # fmt: skip
+    assert _sources_said(project) == [("data-statement-route-differs", "warn")]
+    document = record()
+    document["decision"]["chosen"] = ["encd"]
+    document["candidates"][1]["terms"] = {}
+    for claim in document["candidates"][1]["claims"]:
+        if claim["about"] in ("minimum_cell_count", "restricts_sending"):
+            claim["about"] = "route"
+    name_in_plan(project, "Claims of the ENCD.")
+    set_statement(project, "The ENCD data are publicly available.")
+    assert _sources_said(project, document) == [("data-statement-route-differs", "warn")]
+    set_statement(project, "The ENCD data are not publicly available; they can be had on "
+                           "application to its committee.")  # fmt: skip
+    assert _sources_said(project, document) == []
+
+
 #: What G4 says of the figure files.
 _ARTWORK_CODES = ("figure-format", "figure-resolution", "figure-height", "figure-file-size",
                   "figure-shrinks", "legend-words")  # fmt: skip
@@ -9567,6 +10232,262 @@ def test_a_result_quoted_in_the_alternative_text_alone_is_quoted_from_synthetic_
 
 def test_a_journal_profile_with_an_alt_text_rule_out_of_shape_is_refused(project: Path) -> None:
     _alt(project, "Text.", alt_text="mandatory")
+    assert "schema-violation" in codes(_journal(project))
+
+
+# ------------------------------------------------------------ a figure's colours, as seen
+
+#: matplotlib's red and green, which deuteranopia makes one colour; Okabe and Ito's orange
+#: and sky blue, which stay apart for every deficiency and are one grey.
+_RED, _GREEN, _ORANGE, _SKY = "#d62728", "#2ca02c", "#e69f00", "#56b4e9"
+
+
+def _painted(root: Path, *marks: str, svg: bool = True) -> None:
+    """The example's figure redrawn as lines in `marks`, each a colour or `text:<colour>`
+    for a text in that colour; as an SVG, or as a PDF in its place."""
+    figures = root / "figures"
+    for stale in ("forest.svg", "forest.pdf"):
+        (figures / stale).unlink(missing_ok=True)
+    if svg:
+        body = "".join(
+            f'<text x="5" y="{10 + 12 * n}" fill="{m[5:]}">label</text>' if m.startswith("text:")
+            else f'<path d="M0 {10 * n}L90 {10 * n}" style="fill: none; stroke: {m}"/>'
+            for n, m in enumerate(marks)
+        )
+        (figures / "forest.svg").write_text(
+            '<svg xmlns="http://www.w3.org/2000/svg" width="100pt" height="80pt" '
+            f'viewBox="0 0 100 80"><rect width="100" height="80" fill="#ffffff"/>{body}</svg>',
+            encoding="utf-8",
+        )
+        return
+    from generated import pdf_document
+
+    def rgb(code: str) -> bytes:
+        return b" ".join(b"%.4f" % (int(code[i : i + 2], 16) / 255) for i in (1, 3, 5))
+
+    ops = []
+    for n, m in enumerate(marks):
+        if m.startswith("text:"):
+            ops.append(b"%s rg BT /F1 9 Tf 5 %d Td (label) Tj ET" % (rgb(m[5:]), 10 + 12 * n))
+        else:
+            ops.append(b"%s RG 0 %d m 90 %d l S" % (rgb(m), 10 * n, 10 * n))
+    (figures / "forest.pdf").write_bytes(pdf_document(b"\n".join(ops)))
+
+
+def _colours_said(root: Path) -> list[tuple[str, str]]:
+    from manuscript_guard.gates.figure_colours import check_figure_colours
+
+    report = check_figure_colours(load_project(root)[0])
+    return [(f.code, f.severity) for f in report.findings]
+
+
+def _guarded(root: Path, **fields) -> None:
+    sidecar = root / "figures" / "forest.guard.yaml"
+    guard = yaml.safe_load(sidecar.read_text(encoding="utf-8"))
+    sidecar.write_text(yaml.safe_dump({**guard, **fields}, sort_keys=False, allow_unicode=True),
+                       encoding="utf-8")  # fmt: skip
+
+
+def test_the_examples_figure_keeps_its_colours_apart(project: Path) -> None:
+    """Black, grey and white: no deficiency moves a grey, and grey keeps them apart."""
+    from manuscript_guard.gates.figure_colours import check_figure_colours
+
+    report = check_figure_colours(load_project(project)[0])
+    assert report.findings == () and report.counts["figures_colour_checked"] == 1
+
+
+@pytest.mark.parametrize("svg", [True, False], ids=["svg", "pdf"])
+def test_two_colours_a_deficiency_makes_one_are_a_warning(project: Path, svg: bool) -> None:
+    """Basile, 2026-10-21: read from the figure itself, simulated with Machado et al. (2009)
+    and compared by CIEDE2000; a warning, never a failure. matplotlib's default red and
+    green are 72 apart to normal vision and under 5 apart with deuteranopia."""
+    _painted(project, _RED, _GREEN, svg=svg)
+    assert _colours_said(project) == [("figure-colours-confused", "warn")]
+    from manuscript_guard.gates.figure_colours import check_figure_colours
+
+    [found] = check_figure_colours(load_project(project)[0]).findings
+    assert "deuteranopia" in found.message and _GREEN in found.message and _RED in found.message
+
+
+def test_a_palette_drawn_for_deficiencies_is_said_only_of_grey(project: Path) -> None:
+    """Okabe and Ito's orange and sky blue are one grey: a note, and a warning where the
+    journal prints its figures in grey or the figure's guard file asks."""
+    _painted(project, _ORANGE, _SKY)
+    assert _colours_said(project) == [("figure-greyscale-confused", "info")]
+    _guarded(project, greyscale=True)
+    assert _colours_said(project) == [("figure-greyscale-confused", "warn")]
+    _guarded(project, greyscale=False)
+    profile = project / "profiles" / "journals" / "demo-journal.yaml"
+    document = yaml.safe_load(profile.read_text(encoding="utf-8"))
+    document["figures"] = {"source_url": "https://journal.example/artwork",
+                           "read_on": "2026-10-21", "confirmed": True, "print": "greyscale"}
+    profile.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    assert _colours_said(project) == [("figure-greyscale-confused", "warn")]
+
+
+def test_a_supplementary_figure_s_colours_are_checked_as_the_paper_s(project: Path) -> None:
+    """Basile, 2026-10-21: the supplement is held to the main text's rules. A figure only the
+    supplement places is read and warned of as one the paper places, and a `print` under the
+    journal's `supplementary:` replaces the main one for it, and for no figure the paper
+    places."""
+    main = main_md(project)
+    placed = main.read_text(encoding="utf-8")
+    main.write_text(placed.replace("{{figure.forest}}\n", ""), encoding="utf-8")
+    (project / "manuscript" / "supplementary" / "figures.md").write_text(
+        "# Supplementary figure\n\n{{figure.forest}}\n", encoding="utf-8"
+    )
+    _painted(project, _RED, _GREEN)
+    assert _colours_said(project) == [("figure-colours-confused", "warn")]
+    _painted(project, _ORANGE, _SKY)
+    assert _colours_said(project) == [("figure-greyscale-confused", "info")]
+    profile = project / "profiles" / "journals" / "demo-journal.yaml"
+    document = yaml.safe_load(profile.read_text(encoding="utf-8"))
+    document["figures"] = {"source_url": "https://journal.example/artwork",
+                           "read_on": "2026-10-21", "confirmed": True, "print": "colour",
+                           "supplementary": {"print": "greyscale"}}  # fmt: skip
+    profile.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    assert _colours_said(project) == [("figure-greyscale-confused", "warn")]
+    main.write_text(placed, encoding="utf-8")
+    assert _colours_said(project) == [("figure-greyscale-confused", "info")]
+
+
+@pytest.mark.parametrize(
+    ("value", "why", "said"),
+    [
+        (f"{_RED} {_GREEN}", "the two series also differ by line style", "info"),
+        (_GREEN, "the treated group is also drawn dashed", "info"),
+        (f"{_RED} {_GREEN}", "", "warn"),
+        (f"{_RED} #000000", "another pair", "warn"),
+    ],
+)
+def test_a_pair_the_guard_gives_a_reason_for_is_a_note(
+    project: Path, value: str, why: str, said: str
+) -> None:
+    """With a reason for the pair, or for one colour of it, the warning is a note that
+    quotes it; with none, or for another pair, it stays a warning."""
+    _painted(project, _RED, _GREEN)
+    _guarded(project, allow_colours=[{"value": value, "why": why}])
+    assert _colours_said(project) == [("figure-colours-confused", said)]
+    if said == "info":
+        from manuscript_guard.gates.figure_colours import check_figure_colours
+
+        [found] = check_figure_colours(load_project(project)[0]).findings
+        assert why in found.hint
+
+
+@pytest.mark.parametrize("svg", [True, False], ids=["svg", "pdf"])
+def test_a_texts_colour_is_not_a_series(project: Path, svg: bool) -> None:
+    """A label in red beside a green line confuses no data."""
+    _painted(project, f"text:{_RED}", _GREEN, svg=svg)
+    assert _colours_said(project) == []
+
+
+def _ramp_codes(steps: int) -> list[str]:
+    """`steps` shades from ggplot2's dark blue to its light one, as a continuous colour scale
+    draws its points."""
+    start, end = (0x13, 0x2B, 0x43), (0x56, 0xB1, 0xF7)
+    return ["#" + "".join(f"{round(a + (b - a) * i / (steps - 1)):02x}" for a, b in
+                          zip(start, end, strict=True)) for i in range(steps)]  # fmt: skip
+
+
+def test_a_figure_that_draws_a_scale_is_said_not_to_be_compared(project: Path) -> None:
+    """Rounds 1 to 3 of #398: a scale's shades sit just over the threshold apart and grey
+    brought every pair under it, and each rule for telling its shades from series failed one
+    way or the other. Basile, 2026-10-21: such a figure is not compared, and is said not to
+    be, the series beside the scale with it."""
+    _painted(project, *_ramp_codes(64))
+    assert _colours_said(project) == [("figure-colours-scale", "info")]
+    _painted(project, *_ramp_codes(64), _RED, _GREEN)
+    assert _colours_said(project) == [("figure-colours-scale", "info")]
+
+
+def test_a_line_plot_with_light_bands_is_compared(project: Path) -> None:
+    """The review of #398: three series' bands at an opacity of 0.1 chain by hue at one
+    lightness; taken for a scale, they switched the check off, and red and green, one colour
+    with deuteranopia, went unsaid."""
+    _painted(project, _RED, "#ff7f0e", "#bcbd22", _GREEN, "#fbe9e9", "#fff2e7", "#f8f8e9")
+    assert ("figure-colours-confused", "warn") in _colours_said(project)
+
+
+def test_a_default_figures_greys_make_no_scale(project: Path) -> None:
+    """matplotlib's black, its grid's grey, a legend's frame and white chain within the
+    threshold; they make no scale, and the figure's red and green are compared."""
+    _painted(project, "#000000", "#b0b0b0", "#cccccc", "#d6d6d6", "#ffffff", _RED, _GREEN)
+    assert ("figure-colours-confused", "warn") in _colours_said(project)
+    assert ("figure-colours-scale", "info") not in _colours_said(project)
+
+
+def test_a_figure_of_more_colours_than_are_compared_is_said_so(project: Path) -> None:
+    from manuscript_guard.gates.figure_colours import MANY
+
+    # A grid of reds and greens, as a heat map drawn as vectors paints one.
+    side = int(MANY**0.5) + 2
+    _painted(project, *(f"#{i * 11:02x}{j * 11:02x}80" for i in range(side) for j in range(side)))
+    assert _colours_said(project) == [("figure-colours-many", "info")]
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["rgb(214, 39, 40) and rgb(44, 160, 44)", f"{_RED}, {_GREEN}, #000000",
+     "tab red: #d62728; tab green: #2ca02c"],
+)  # fmt: skip
+def test_a_pair_is_found_however_the_guard_writes_its_colours(project: Path, value: str) -> None:
+    """Round 1 of #398: `rgb(214, 39, 40)` was cut at its commas and matched nothing, and a
+    value of three colours matched no pair."""
+    _painted(project, _RED, _GREEN)
+    _guarded(project, allow_colours=[{"value": value, "why": "they differ by line style"}])
+    assert _colours_said(project) == [("figure-colours-confused", "info")]
+
+
+def _heat_codes() -> list[str]:
+    """A heat map's shades, black to red to yellow to white, three hundred and more of them
+    distinct, as a map drawn as vectors paints them."""
+    stops = ((0, 0, 0), (255, 0, 0), (255, 255, 0), (255, 255, 255))
+    out = []
+    for (a, b) in zip(stops, stops[1:], strict=False):
+        for i in range(150):
+            out.append("#" + "".join(f"{round(x + (y - x) * i / 150):02x}"
+                                     for x, y in zip(a, b, strict=True)))  # fmt: skip
+    return list(dict.fromkeys(out))
+
+
+def test_a_heat_map_of_many_colours_is_said_not_to_be_compared(project: Path) -> None:
+    """Past three hundred colours nothing is compared, the series beside the heat map with
+    it, and the note says so (a known gap, in DESIGN.md)."""
+    from manuscript_guard.gates.figure_colours import MANY
+
+    assert len(_heat_codes()) > MANY
+    _painted(project, *_heat_codes(), _RED, _GREEN)
+    assert _colours_said(project) == [("figure-colours-many", "info")]
+
+
+def test_an_svg_that_cannot_be_read_gives_way_to_the_pdf_beside_it(project: Path) -> None:
+    _painted(project, _RED, _GREEN, svg=False)
+    (project / "figures" / "forest.svg").write_text("<svg><unclosed", encoding="utf-8")
+    assert _colours_said(project) == [("figure-colours-confused", "warn")]
+
+
+def test_a_figure_with_only_a_raster_is_said_to_be_unread(project: Path) -> None:
+    _painted(project)
+    (project / "figures" / "forest.svg").unlink()
+    assert _colours_said(project) == [("figure-colours-unread", "info")]
+
+
+def test_confused_colours_warn_and_never_fail(project: Path) -> None:
+    from manuscript_guard.cli import _run_gates
+
+    _painted(project, _RED, _GREEN)
+    report, _project, _chosen, _deferred = _run_gates(project, submission=True)
+    said = [(f.code, f.severity) for f in report.findings if f.code.startswith("figure-colours")]
+    assert said == [("figure-colours-confused", "warn")]
+
+
+def test_a_journal_profile_with_a_print_rule_out_of_shape_is_refused(project: Path) -> None:
+    profile = project / "profiles" / "journals" / "demo-journal.yaml"
+    document = yaml.safe_load(profile.read_text(encoding="utf-8"))
+    document["figures"] = {"source_url": "https://journal.example/artwork",
+                           "read_on": "2026-10-21", "confirmed": True, "print": "sepia"}
+    profile.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
     assert "schema-violation" in codes(_journal(project))
 
 

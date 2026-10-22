@@ -76,7 +76,10 @@ front matter and comments and with its feasibility results printed into it, and 
 feasibility results.
 Where `paper.yaml` declares a `study_type`, it is also sent what a plan for that design has
 to settle, each item with the guideline it comes from: the reviewers ask the plan about
-those risks. Not the manuscript, and no result but a feasibility one. Each reply is filed under `review/design/round-<n>/`, and G12 reads it:
+those risks. Where the project keeps `design/methods_review.yaml`, the methods of similar
+studies are sent too, each in the study's words with its appraisals and the author's
+decisions, for the reviewers to check each appraisal against its standard; a reading's digest
+holds the record, so one changed since is stale. Not the manuscript, and no result but a feasibility one. Each reply is filed under `review/design/round-<n>/`, and G12 reads it:
 
 ```bash
 manuscript-guard review --design --run --dry-run   # what would be sent where; sends nothing

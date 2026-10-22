@@ -152,6 +152,17 @@ again and compares it byte for byte. A row that is wrong is put right in the scr
 the authority for it. The derived file carries VarCon's notices and so does
 ATTRIBUTION.md, and both have to keep them.
 
+The palettes, `src/manuscript_guard/data/palettes.json`, and their licences beside them, are
+derived from each collection's own files at pinned commits and never edited by hand; the R
+package's copies are written with them:
+
+```bash
+python tools/derive_palettes.py path/to/folder --fetch   # downloads the files, then derives
+```
+
+A palette that is wrong is put right in the script. With `MANUSCRIPT_GUARD_PALETTE_SOURCES`
+naming the folder, a test derives both files again and compares them byte for byte.
+
 Reporting checklists are generated, not committed:
 
 ```bash

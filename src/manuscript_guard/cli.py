@@ -14,7 +14,7 @@ import contextlib
 import hashlib
 import re
 import sys
-from collections.abc import Collection
+from collections.abc import Callable, Collection
 from datetime import date
 from pathlib import Path
 
@@ -32,6 +32,7 @@ from manuscript_guard.build import (
 from manuscript_guard.build.assemble import check_shapes
 from manuscript_guard.build.document import abbreviations
 from manuscript_guard.build.latex_check import check_latex
+from manuscript_guard.build.latex_values import check_values
 from manuscript_guard.build.tex_check import check_tex
 from manuscript_guard.classify import UNCLASSIFIED, Classifier
 from manuscript_guard.contracts import (
@@ -60,6 +61,7 @@ from manuscript_guard.gates import (
     check_passages,
     check_prose_quotations,
     check_recomputed,
+    check_recycling,
     check_relations,
     check_reported,
     check_reporting,
@@ -75,9 +77,12 @@ from manuscript_guard.gates import (
     sync_bib,
 )
 from manuscript_guard.gates.custodian import check_restricted_inputs, check_small_cells
+from manuscript_guard.gates.data_sources import check_data_sources, check_statement_sources
 from manuscript_guard.gates.design_review import check_design_rounds
 from manuscript_guard.gates.figure_alt import check_figure_alt
+from manuscript_guard.gates.figure_colours import check_figure_colours
 from manuscript_guard.gates.formats import check_format, not_read_in_latex
+from manuscript_guard.gates.methods_review import check_method_passages, check_methods_review
 from manuscript_guard.gates.numbers import chosen_rules, typed_choice, why_no_manuscript
 from manuscript_guard.gates.related import check_related
 from manuscript_guard.gates.shortlist import check_shortlist
@@ -151,23 +156,30 @@ def _run_gates(
         ("G2", lambda: check_bound_units(project, results)),
         ("G3", lambda: check_figures(project, results)),
         ("G3", lambda: check_figure_alt(project, namespace, chosen)),
+        ("G3", lambda: check_figure_colours(project)),
         ("G10", lambda: check_figure_reviews(project, content_digest)),
         ("G7", lambda: check_citations(project, literature)),
         ("G7", lambda: check_literature_chain(project, literature)),
         ("G7", lambda: check_prose_quotations(project)),
         ("G7", lambda: check_passages(project, chosen)),
+        ("G7", lambda: check_recycling(project, chosen)),
         ("G4", lambda: check_journal(project)),
         ("G4", lambda: check_shortlist(project)),
+        ("G4", lambda: check_statement_sources(project)),
         ("G8r", lambda: check_reporting(project)),
         ("G6", lambda: check_writing(project, results, submission=at_submission)),
         ("G9", lambda: check_methods(project, namespace, results)),
         ("G12", lambda: check_design(project, results, chosen).merge(
             check_design_rounds(project, submission=at_submission))),
+        ("G12", lambda: check_data_sources(project, chosen)),
+        ("G7", lambda: check_method_passages(project)),
+        ("G12", lambda: check_methods_review(project)),
         ("G8", lambda: check_consistency(results)),
         ("G2", lambda: check_small_cells(project, results)),
         ("G1", lambda: check_restricted_inputs(project, results)),
         ("G1", lambda: check_synthetic_inputs(project, results, submission=at_submission)),
         ("G1", lambda: check_datasets(project, results)),
+        ("G1", lambda: check_values(project, namespace, results)),
         ("G8", lambda: check_reported(project, results)),
         ("G8", lambda: check_relations(results)),
         ("G8", lambda: check_recomputed(project, namespace, results)),
@@ -204,11 +216,12 @@ def _run_gates(
 #: "LaTeX manuscripts", Order of work).
 _NOT_READ_IN_LATEX = frozenset(
     {
-        "check_related",
-        "check_citations", "check_prose_quotations", "check_journal", "check_reporting",
-        "check_writing", "check_methods", "check_reported", "check_recomputed",
-        "check_revision", "check_language", "check_models", "check_shapes", "check_tex",
+        "check_statement_sources", "check_related",
+        "check_prose_quotations", "check_reporting",
+        "check_methods", "check_reported", "check_recomputed",
+        "check_revision", "check_models", "check_shapes", "check_tex",
         "check_passages",
+        "check_recycling",
     }
 )  # fmt: skip
 
@@ -2197,6 +2210,47 @@ def cmd_stages(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_palettes(args: argparse.Namespace) -> int:
+    """List the palettes shipped with the toolkit, with what the colour check says of each,
+    or show one. Reads nothing of a project."""
+    import json as json_module
+
+    from manuscript_guard import palettes
+
+    if args.show:
+        try:
+            found = palettes.palette(args.show)
+            codes = palettes.colours(args.show, args.colours)
+        except palettes.PaletteError as exc:
+            print(f"manuscript-guard: {exc}", file=sys.stderr)
+            return 2
+        if args.json:
+            print(json_module.dumps({"name": found.name, "colours": codes,
+                                     "collection": found.collection, "kind": found.kind,
+                                     "distinct": found.distinct, "lightness": found.lightness,
+                                     "lightness_kept": found.lightness_kept,
+                                     "claims_cvd": found.claims_cvd}, indent=1))  # fmt: skip
+            return 0
+        for line in palettes.describe(found, codes):
+            print(line)
+        return 0
+    try:
+        rows = palettes.chosen(kind=args.kind, colours=args.colours, safe=args.safe,
+                               collection=args.collection)  # fmt: skip
+    except palettes.PaletteError as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json_module.dumps([palettes.row(found) for found in rows], indent=1))
+        return 0
+    if not rows:
+        print("no palette answers that; `manuscript-guard palettes` lists them all")
+        return 1
+    for line in palettes.table(rows, args.colours):
+        print(line)
+    return 0
+
+
 def cmd_impact(args: argparse.Namespace) -> int:
     """Everything that depends on each file named, or on each file changed since a commit.
 
@@ -2424,6 +2478,33 @@ def cmd_reworded(args: argparse.Namespace) -> int:
     return 0 if report.ok else 1
 
 
+def cmd_proof(args: argparse.Namespace) -> int:
+    """Compare the publisher's proof with the document sent, and list the corrections.
+
+    Exit 1 where the proof needs a correction, 0 where it needs none, and 2 where there is
+    nothing to compare: no proof that can be read, no document sent, or a proof that reads
+    as too little of it. Nothing is sent, and nothing is written but `--out`."""
+    from manuscript_guard.proof import NotSent, NotThisProof, UnreadableProof, check_proof
+    from manuscript_guard.proof.report import as_json, markdown, render
+
+    if not args.proof.is_file():
+        print(f"manuscript-guard proof: {args.proof} does not exist", file=sys.stderr)
+        return 2
+    project, _ = load_project(args.path)
+    try:
+        report = check_proof(project, args.proof, against=args.against,
+                             supplementary=args.supplementary)  # fmt: skip
+    except (NotSent, UnreadableProof, NotThisProof) as exc:
+        print(f"manuscript-guard proof: {exc}", file=sys.stderr)
+        return 2
+    print(as_json(report) if args.json else render(report, project.root))
+    if args.out is not None:
+        args.out.write_text(markdown(report), encoding="utf-8", newline="\n")
+        if not args.json:
+            print(f"\nThe corrections are written to {args.out}, to paste into your reply.")
+    return 1 if report.corrections else 0
+
+
 def cmd_render(args: argparse.Namespace) -> int:
     """Substitute bindings into build/, without producing a document yet."""
     project, _ = load_project(args.path)
@@ -2452,6 +2533,35 @@ def cmd_render(args: argparse.Namespace) -> int:
         count += 1
     print(f"rendered {count} file{'' if count == 1 else 's'} to {out_dir}")
     return 0
+
+
+def cmd_values(args: argparse.Namespace) -> int:
+    """Write each LaTeX document's values file, `mgvalues.sty`, beside its entry file, from the
+    results as they stand (DESIGN.md, "LaTeX manuscripts", "The values file")."""
+    from manuscript_guard.build.latex_values import bound_refs, values_files
+
+    project, _ = load_project(args.path)
+    namespace, results, _literature, load_report = load_namespace(project)
+    if not load_report.ok:
+        print(load_report.render(project.root))
+        return 2
+    written = values_files(project, namespace, results)
+    if not written:
+        folder = project.path("manuscript")
+        print("manuscript-guard: values writes a LaTeX manuscript's values file, and "
+              f"{folder} holds no LaTeX entry file", file=sys.stderr)  # fmt: skip
+        return 2
+    bound = bound_refs(project)
+    for each in written:
+        each.path.write_text(each.text, encoding="utf-8", newline="\n")
+        entries = each.text.count(r"\expandafter\def")
+        print(f"wrote {each.path} ({entries} entr{'y' if entries == 1 else 'ies'})")
+    # A value it has no way to print is left out; one a document binds prints `??` there.
+    refused = [found for each in written for found in each.refused
+               if found.ref in bound.get(each.path.parent, set())]  # fmt: skip
+    for found in refused:
+        print(f"manuscript-guard: {found}; the document prints ?? for it", file=sys.stderr)
+    return 1 if refused else 0
 
 
 
@@ -3064,12 +3174,13 @@ def cmd_sign(args: argparse.Namespace) -> int:
 
 def cmd_sync_bib(args: argparse.Namespace) -> int:
     """Rewrite literature/references.bib from what the manuscript cites."""
+    from manuscript_guard.text.reader import CitationsUnknown
     from manuscript_guard.zotero import ZoteroUnavailable
 
     project, _ = load_project(args.path)
     try:
         path, count = sync_bib(project)
-    except ZoteroUnavailable as exc:
+    except (ZoteroUnavailable, CitationsUnknown) as exc:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
     print(f"wrote {count} reference{'' if count == 1 else 's'} to {path}")
@@ -3292,6 +3403,51 @@ def cmd_search(args: argparse.Namespace) -> int:
         raise RuntimeError("the search's answer would have printed a key or the contact address")
     print(said)
     return 0 if proposals.answered(result) else 1
+
+
+def cmd_dictionary(args: argparse.Namespace) -> int:
+    """Write the data dictionary out for whoever builds the form: REDCap's data dictionary,
+    a plain CSV, or the form's outline. Each is written only where the dictionary reads and
+    the shape can hold it; nothing is written on a refusal."""
+    import os
+
+    from manuscript_guard.contracts.dictionary import DICTIONARY, load_dictionary
+    from manuscript_guard.dictionary_export import ExportRefused, outline, plain_csv, redcap
+
+    wanted = [(target, make) for target, make in
+              ((args.redcap, redcap), (args.csv, plain_csv), (args.outline, outline))
+              if target is not None]  # fmt: skip
+    if not wanted:
+        print("say what to write: --redcap, --csv or --outline", file=sys.stderr)
+        return 2
+    # One file under two spellings, out.csv and OUT.csv on Windows, is one file (round 2).
+    if len({os.path.normcase(target.resolve()) for target, _make in wanted}) < len(wanted):
+        print("each of --redcap, --csv and --outline needs a file of its own", file=sys.stderr)
+        return 2
+    project, _ = load_project(args.path)
+    dictionary, report = load_dictionary(project)
+    if dictionary is None:
+        if report.ok:
+            print(f"there is no {DICTIONARY.as_posix()} to write out", file=sys.stderr)
+            return 2
+        print(report.render(project.root))
+        return 1
+    try:
+        written = [(target, make(dictionary)) for target, make in wanted]
+    except ExportRefused as refused:
+        print(f"nothing written: {refused}", file=sys.stderr)
+        return 1
+    for target, made in written:
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(made.text.encode("utf-8"))
+        except OSError as exc:
+            print(f"cannot write {target}: {exc.strerror or exc}", file=sys.stderr)
+            return 1
+        print(f"wrote {target}")
+        for said in made.left_out:
+            print(f"  left out {said}")
+    return 0
 
 
 def cmd_style(args: argparse.Namespace) -> int:
@@ -4083,6 +4239,20 @@ def build_parser() -> argparse.ArgumentParser:
     stages = sub.add_parser("stages", help="what each stage means and what binds at it")
     stages.set_defaults(func=cmd_stages)
 
+    palettes_ = sub.add_parser(
+        "palettes",
+        help="list the palettes shipped, with what the colour check says of each, or show one",
+    )
+    palettes_.add_argument("--kind", choices=("qualitative", "sequential", "diverging",
+                                              "multi-sequential", "cyclic"))  # fmt: skip
+    palettes_.add_argument("--colours", type=int, help="how many colours the figure needs")
+    palettes_.add_argument("--safe", action="store_true",
+                           help="only those every reader can read for that use")  # fmt: skip
+    palettes_.add_argument("--collection", help="e.g. MetBrewer, Crameri, ColorBrewer")
+    palettes_.add_argument("--show", metavar="NAME", help="one palette's colours and licence")
+    palettes_.add_argument("--json", action="store_true")
+    palettes_.set_defaults(func=cmd_palettes)
+
     hook = sub.add_parser("hook", help="handle a Claude Code hook event (reads stdin)")
     hook.add_argument(
         "event",
@@ -4288,6 +4458,33 @@ def build_parser() -> argparse.ArgumentParser:
     explain.add_argument("file", type=Path)
     explain.set_defaults(func=cmd_explain)
 
+    proof = sub.add_parser(
+        "proof",
+        help="compare the publisher's proof with the document sent, and list the corrections",
+        description="Reads the typeset proof (PDF, JATS XML, HTML or text) and holds it to "
+        "the document in the submission pack, part by part and table cell by cell, and its "
+        "title page to authors.yaml. A changed number, sign, decimal mark, unit, citation, "
+        "reference, name, affiliation, ORCID iD or e-mail address, or a part the proof "
+        "leaves out, is a correction; a copy-editor's change of words is shown for you to "
+        "accept or query. Nothing is sent.",
+    )
+    proof.add_argument("proof", type=Path, help="the proof: .pdf, .xml, .html or .txt")
+    proof.add_argument("path", nargs="?", type=Path, default=Path.cwd())
+    proof.add_argument(
+        "--against", type=Path, metavar="DOCX",
+        help="the document to compare with, where it is not the submission pack's",
+    )  # fmt: skip
+    proof.add_argument(
+        "--supplementary", action="store_true",
+        help="the proof is of the supplement, typeset as its own document",
+    )  # fmt: skip
+    proof.add_argument(
+        "--out", type=Path, metavar="FILE",
+        help="also write the corrections as a numbered list, to paste into the reply",
+    )  # fmt: skip
+    proof.add_argument("--json", action="store_true", help="the report as JSON")
+    proof.set_defaults(func=cmd_proof)
+
     impact = sub.add_parser(
         "impact",
         help="list what depends on a file: results, sentences, figures, Methods, readings "
@@ -4361,6 +4558,12 @@ def build_parser() -> argparse.ArgumentParser:
     render = sub.add_parser("render", help="substitute bindings into build/rendered")
     render.add_argument("path", nargs="?", type=Path, default=Path.cwd())
     render.set_defaults(func=cmd_render)
+
+    values = sub.add_parser(
+        "values", help="write a LaTeX manuscript's values file, mgvalues.sty, from the results"
+    )
+    values.add_argument("path", nargs="?", type=Path, default=Path.cwd())
+    values.set_defaults(func=cmd_values)
 
     build = sub.add_parser("build", help="produce the .docx")
     build.add_argument("path", nargs="?", type=Path, default=Path.cwd())
@@ -4505,6 +4708,17 @@ def build_parser() -> argparse.ArgumentParser:
         "folder is in, if any",
     )
     search.set_defaults(func=cmd_search)
+
+    dictionary = sub.add_parser(
+        "dictionary",
+        help="write the data dictionary out: REDCap's data dictionary, a plain CSV or the "
+        "form's outline",
+    )
+    dictionary.add_argument("path", nargs="?", type=Path, default=Path.cwd())
+    dictionary.add_argument("--redcap", type=Path, help="REDCap's data dictionary, as CSV")
+    dictionary.add_argument("--csv", type=Path, help="one row per variable, as CSV")
+    dictionary.add_argument("--outline", type=Path, help="the form's outline, as Markdown")
+    dictionary.set_defaults(func=cmd_dictionary)
 
     style = sub.add_parser(
         "style",
@@ -4695,11 +4909,95 @@ def _survive_the_console() -> None:
             stream._manuscript_guard_folded = True
 
 
+def _always(_args: argparse.Namespace) -> bool:
+    return True
+
+
+#: The commands that read the manuscript only as Markdown, and when an invocation reads it.
+#: On a LaTeX manuscript each refuses with a sentence and exits 2 (DESIGN.md, "LaTeX
+#: manuscripts", step 1): it read nothing of one, and said it found nothing, "rendered 0
+#: files", "cites nothing", or read the `.tex` as Markdown. A command leaves this table in the
+#: step that teaches it LaTeX.
+_MARKDOWN_COMMANDS: dict[str, Callable[[argparse.Namespace], bool]] = {
+    # `checker` draws its items from the manuscript for every verb, `import` and `status`
+    # too, which match answers against them (round 2 of #404).
+    **dict.fromkeys(
+        ("bind", "build", "checker", "explain", "impact", "import", "init", "methods",
+         "models", "passages", "proof", "render", "respond", "reworded", "submit"),
+        _always,
+    ),
+    # Its comparison reads the manuscript; taking an earlier output's copy does not.
+    "related": lambda args: args.take is None,
+    # A design round reads the plan, not the manuscript (round 1 of #404).
+    "review": lambda args: bool((args.run or args.dry_run) and not args.design
+                                or args.suggestions),
+    # G15's findings come from the manuscript; a design round's overrides do not.
+    "sign": lambda args: args.finding.startswith("G15/"),
+}  # fmt: skip
+#: The commands refused a `.tex` named whatever the project's format, since they read the
+#: file given as Markdown; `impact` follows the records of any file, a header's included.
+_READ_AS_MARKDOWN = frozenset({"explain", "reworded"})
+
+
+def _named_paths(args: argparse.Namespace) -> list[Path]:
+    """The files a command was given, by whichever of these names it takes them. A flag
+    that shares the name, `review --files`, gives none (a list of `True` was read as one)."""
+    found: list[Path] = []
+    for name in ("file", "files", "paths", "paper"):
+        value = getattr(args, name, None)
+        values = value if isinstance(value, (list, tuple)) else [value]
+        found += [Path(path) for path in values if isinstance(path, (str, Path))]
+    return found
+
+
+def _refused_for_latex(args: argparse.Namespace) -> str | None:
+    """Why this command does not run here, where the manuscript, or a file it is given, is
+    LaTeX; None where it runs."""
+    command = args.command
+    named = _named_paths(args)
+    if command == "audit":
+        typed = [path for path in named if path.suffix.lower() == ".tex"]
+        return f"audit does not read LaTeX yet: {typed[0]} is not read" if typed else None
+    reads = _MARKDOWN_COMMANDS.get(command)
+    if reads is None or not reads(args):
+        return None
+    typed = [path for path in named if path.suffix.lower() == ".tex"]
+    if typed and command in _READ_AS_MARKDOWN:
+        return (f"{command} does not read LaTeX yet: {typed[0]} is a LaTeX file; "
+                "`manuscript-guard check` says what is read of a LaTeX manuscript")  # fmt: skip
+    start = getattr(args, "path", None) or (named[0] if named else Path.cwd())
+    start = start.parent if start.is_file() else start
+    folder = _manuscript_folder(start, command)
+    if folder is None or manuscript_format(folder) != LATEX:
+        return None
+    if command == "init":
+        return (f"init writes a Markdown manuscript, and {folder / 'main.tex'} is a LaTeX "
+                "one's; it does not set up a LaTeX project yet")  # fmt: skip
+    return (f"{command} does not read a LaTeX manuscript yet, and {folder} holds one: "
+            "`manuscript-guard check` says what is read of it")  # fmt: skip
+
+
+def _manuscript_folder(start: Path, command: str) -> Path | None:
+    """The manuscript folder of the project at `start`; for `init`, of the one it would make
+    there. None where there is no project to read, which the command says itself."""
+    if command == "init":
+        return start / "manuscript"
+    try:
+        project, _ = load_project(start)
+    except ContractError:
+        return None
+    return project.path("manuscript")
+
+
 def main(argv: list[str] | None = None) -> int:
     from manuscript_guard.roundtrip import RoundTripError
 
     args = build_parser().parse_args(argv)
     _survive_the_console()
+    refused = _refused_for_latex(args)
+    if refused is not None:
+        print(f"manuscript-guard: {refused}", file=sys.stderr)
+        return 2
     # Every error this toolkit raises on purpose says what went wrong in words. Catching
     # only the contract errors here meant `import` without pandoc, or `respond --from` a
     # file that is not a .docx, ended in a traceback instead of that sentence.

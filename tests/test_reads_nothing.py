@@ -91,6 +91,8 @@ COMMANDS = {
                     argv=("checker", "build", "{project}")),
     "checklist": Zero("the reporting guidelines the paper declares", exits=2,
                       argv=("checklist", "{project}")),
+    "dictionary": Zero("the data dictionary", exits=2,
+                       argv=("dictionary", "{project}", "--csv", "{project}/out.csv")),
     "explain": Zero("the numbers of the file it is given",
                     why="it explains one file and says when that file holds no number"),
     "fetch": Zero("a reporting guideline's published checklist",
@@ -108,12 +110,16 @@ COMMANDS = {
                    argv=("lookup", "{project}")),
     "methods": Zero("the analysis files", why="it prints `analysis_files`, 0 included"),
     "models": Zero("the models the analysis fitted", why="it says when there are none"),
+    "palettes": Zero("the palettes shipped with the toolkit, nothing of a project",
+                     why="it lists them all, and says so when a filter leaves none (exit 1)"),
     "passages": Zero("the sentences that cite, and the passages recorded for them",
                      why="it prints how many cited statements carry a passage, 0 of 0 "
                      "included"),
     "related": Zero("the earlier outputs in literature/related.yaml", exits=2,
                     argv=("related", "{project}")),
     "render": Zero("the manuscript", why="it says how many files it rendered, 0 included"),
+    "values": Zero("the results, for a LaTeX manuscript's values file", exits=2,
+                   argv=("values", "{project}")),
     "respond": Zero("the rounds of revision", exits=1, argv=("respond", "{project}")),
     "review": Zero("the review panels", why="it says there are none, and G11 says `no-review`"),
     "reworded": Zero("the manuscript now and as it was",
@@ -125,6 +131,8 @@ COMMANDS = {
     "stages": Zero("nothing: it prints the stages", why="it reads the policy table only"),
     "style": Zero("the citation style the journal's profile names", exits=2,
                   argv=("style", "{project}")),
+    "proof": Zero("the proof given, against the document in the submission pack", exits=2,
+                  argv=("proof", "{project}/paper.yaml", "{project}")),
     "submit": Zero("every gate at the submission stage, then the build", exits=1,
                    argv=("submit", "{project}")),
     "sync-bib": Zero("the citations in the manuscript", exits=2, argv=("sync-bib", "{project}")),
@@ -208,3 +216,120 @@ def test_a_command_that_reads_nothing_exits_as_the_table_says(
     zero = COMMANDS[name]
     argv = [part.format(project=empty) for part in zero.argv]
     assert main(argv) == zero.exits, capsys.readouterr()
+
+
+# ---------------------------------------------------------------------------- LaTeX
+
+#: What each command does with a LaTeX manuscript (DESIGN.md, "LaTeX manuscripts", step 1),
+#: and how it is run to show it. A command that reads the manuscript only as Markdown read
+#: nothing of one and said it found nothing, "rendered 0 files" or "cites nothing", or read the
+#: `.tex` as Markdown: it refuses with a sentence and exits 2. One that reads it does so
+#: through the reader, `check` with `not-read-in-latex` for each check not taught LaTeX yet.
+#: `{tex}` is the project's `main.tex`. A command leaves "refuses" in the step that teaches it.
+LATEX = {
+    "approve": ("reads", ("approve", "{project}", "--as", "Nobody Listed")),
+    "audit": ("refuses", ("audit", "{tex}", "--against", "{project}/results")),
+    "bind": ("refuses", ("bind", "{project}")),
+    "build": ("refuses", ("build", "{project}")),
+    "check": ("reads", ("check", "{project}")),
+    "checker": ("refuses", ("checker", "build", "{project}")),
+    "checklist": ("no manuscript", ("checklist", "{project}")),
+    "dictionary": ("no manuscript", ("dictionary", "{project}")),
+    "explain": ("refuses", ("explain", "{tex}")),
+    "fetch": ("no manuscript", ("fetch", "STROBE")),
+    "hook": ("reads", ("hook", "session-start")),
+    "impact": ("refuses", ("impact", "{project}/paper.yaml")),
+    "import": ("refuses", ("import", "{project}/returned.docx", "{project}")),
+    "init": ("refuses", ("init", "{project}")),
+    "install-skills": ("no manuscript", ("install-skills",)),
+    "journal": ("no manuscript", ("journal",)),
+    # They find the citations through the reader's `citation_uses` (step 5).
+    "lookup": ("reads", ("lookup", "{project}", "--dry-run")),
+    "methods": ("refuses", ("methods", "{project}")),
+    "models": ("refuses", ("models", "{project}")),
+    "palettes": ("no manuscript", ("palettes",)),
+    "passages": ("refuses", ("passages", "{project}")),
+    "proof": ("refuses", ("proof", "{project}/proof.pdf", "{project}")),
+    "related": ("refuses", ("related", "{project}")),
+    "render": ("refuses", ("render", "{project}")),
+    "respond": ("refuses", ("respond", "{project}")),
+    "review": ("refuses", ("review", "{project}", "--run")),
+    "reworded": ("refuses", ("reworded", "{project}")),
+    "search": ("no manuscript", ("search", "hepatic injury")),
+    "sign": ("refuses", ("sign", "{project}", "--as", "Nobody Listed", "--finding", "G15/x/y")),
+    "stages": ("no manuscript", ("stages",)),
+    "style": ("no manuscript", ("style", "{project}")),
+    "submit": ("refuses", ("submit", "{project}")),
+    "sync-bib": ("reads", ("sync-bib", "{project}")),
+    "sync-sources": ("reads", ("sync-sources", "{project}")),
+    "transcribe": ("no manuscript", ("transcribe",)),
+    "values": ("reads", ("values", "{project}")),
+    "verify": ("no manuscript", ("verify", "{project}")),
+}
+
+
+@pytest.fixture
+def latex(empty: Path) -> Path:
+    """The empty project with a LaTeX manuscript in it."""
+    (empty / "manuscript" / "main.tex").write_text(
+        "\\documentclass{article}\n\\begin{document}\nOf 4100 reports.\n\\end{document}\n",
+        encoding="utf-8",
+    )
+    return empty
+
+
+def _parsed(argv: tuple[str, ...], root: Path):
+    tex = root / "manuscript" / "main.tex"
+    return build_parser().parse_args([part.format(project=root, tex=tex) for part in argv])
+
+
+def test_every_command_says_what_it_does_with_latex() -> None:
+    assert set(LATEX) == _subcommands()
+    # The table says what the code does: the refusing ones are those the guard holds.
+    refusing = {name for name, (kind, _argv) in LATEX.items() if kind == "refuses"}
+    assert refusing == set(cli._MARKDOWN_COMMANDS) | {"audit"}
+
+
+@pytest.mark.parametrize("name", sorted(n for n, (kind, _) in LATEX.items() if kind == "refuses"))
+def test_a_command_that_reads_only_markdown_refuses_a_latex_manuscript(
+    latex: Path, name: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _kind, argv = LATEX[name]
+    tex = latex / "manuscript" / "main.tex"
+    assert main([part.format(project=latex, tex=tex) for part in argv]) == 2
+    said = capsys.readouterr().err
+    assert "LaTeX" in said and said.count("\n") == 1, said
+    assert not (latex / "manuscript" / "main.md").exists()
+
+
+@pytest.mark.parametrize("name", sorted(n for n, (kind, _) in LATEX.items() if kind != "refuses"))
+def test_a_command_that_reads_latex_or_no_manuscript_is_not_refused(latex: Path, name: str) -> None:
+    _kind, argv = LATEX[name]
+    assert cli._refused_for_latex(_parsed(argv, latex)) is None
+
+
+def test_the_refusal_is_for_a_latex_manuscript_only(empty: Path) -> None:
+    """A Markdown manuscript, a review that only shows where it stands, and lookup's journals
+    are read as before."""
+    (empty / "manuscript" / "main.md").write_text("# Results\n", encoding="utf-8")
+    for argv in (("render", "{project}"), ("bind", "{project}"), ("init", "{project}")):
+        assert cli._refused_for_latex(_parsed(argv, empty)) is None, argv
+    # A header pandoc includes, named `main.tex` and declaring no class, beside it, and a
+    # `.tex` named to `impact`, which follows the records of any file (round 1 of #404).
+    (empty / "manuscript" / "main.tex").write_text("\\usepackage{booktabs}\n", "utf-8")
+    for argv in (("render", "{project}"), ("impact", "{tex}")):
+        assert cli._refused_for_latex(_parsed(argv, empty)) is None, argv
+    (empty / "manuscript" / "main.md").unlink()
+    (empty / "manuscript" / "main.tex").write_text("\\documentclass{article}\n", "utf-8")
+    for argv in (
+        ("review", "{project}"), ("lookup", "{project}", "--journals"),
+        # A design round reads the plan, and a design override is no G15 finding (round 1 of
+        # #404).
+        ("review", "{project}", "--design", "--run"),
+        ("sign", "{project}", "--as", "A", "--finding", "G12/design-override/1/x"),
+        # Taking an earlier output's copy reads no manuscript.
+        ("related", "{project}", "--take"),
+        # `--files` is a flag here, no list of files (main's `review --files`).
+        ("review", "{project}", "--files"),
+    ):  # fmt: skip
+        assert cli._refused_for_latex(_parsed(argv, empty)) is None, argv

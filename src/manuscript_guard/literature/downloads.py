@@ -26,7 +26,7 @@ from pathlib import Path
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.gates.identifiers import BIB_FILE, doi_of
 from manuscript_guard.literature.bibfile import read_entries
-from manuscript_guard.literature.copies import FROM_FOLDER, Candidate, digest
+from manuscript_guard.literature.copies import FROM_FOLDER, Candidate, digest, wanted_keys
 from manuscript_guard.literature.sources import filed_name
 
 #: Where auto-paper-harvester saves what its browser passes fetched.
@@ -226,16 +226,14 @@ def _choose(
 
 
 def offer(project: Project, folder: Path) -> Offer:
-    """What the folder holds for each work the manuscript cites."""
-    from manuscript_guard.lookup.run import cited_keys
-
+    """What the folder holds for each work the manuscript cites or the methods review names."""
     try:
         if not folder.is_dir():
             raise FolderUnreadable(f"{folder} is not a folder")
         found, unread = found_in(folder)
     except OSError as exc:
         raise FolderUnreadable(f"{folder} could not be read ({exc.strerror or exc})") from exc
-    dois, why = _cited_dois(project, cited_keys(project))
+    dois, why = _cited_dois(project, wanted_keys(project))
     (own, shared), unmatched = _match(found, set(dois.values()))
     locked = {said.split("/", 1)[0].lower(): said for said in unread}
     chosen: dict[str, list[Candidate]] = {}

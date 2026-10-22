@@ -38,10 +38,11 @@ from __future__ import annotations
 
 import re
 from bisect import bisect_left, bisect_right
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import yaml
 
@@ -63,6 +64,9 @@ from manuscript_guard.text.blocks import Heading, find_headings
 from manuscript_guard.text.inline import code_spans, equation_spans
 from manuscript_guard.text.masking import NUL, front_matter_end, mask
 from manuscript_guard.text.sections import Section
+
+if TYPE_CHECKING:
+    from manuscript_guard.text.latex.structure import Source
 
 GATE = "G14"
 DATA = Path(__file__).parent.parent / "data"
@@ -413,13 +417,7 @@ def _regions(
     heading continues the section the last one ended in."""
 
     def here(start: int) -> _Region:
-        if any(section.is_references for section in chain):
-            return _Region(start, None, True)
-        quiet = any(_QUIET.search(section.title) for section in chain)
-        if supplementary:
-            return _Region(start, SUPPLEMENT, quiet)
-        abstract = any(section.names_abstract(abstract_title) for section in chain)
-        return _Region(start, ABSTRACT if abstract else BODY, quiet)
+        return _region(start, chain, supplementary=supplementary, abstract_title=abstract_title)
 
     regions = [here(0)]
     for heading in headings:
@@ -428,6 +426,57 @@ def _regions(
         chain.append(Section(title=heading.title, level=heading.level, body="", line=0))
         regions.append(here(heading.start))
     return regions
+
+
+def _region(
+    start: int,
+    chain: list[Section],
+    *,
+    supplementary: bool,
+    abstract_title: str | None,
+    abstract: bool = False,
+    references: bool = False,
+) -> _Region:
+    """The text a stretch under `chain` belongs to; `abstract` and `references` where a LaTeX
+    environment says so, which no heading in the chain does."""
+    if references or any(section.is_references for section in chain):
+        return _Region(start, None, True)
+    quiet = any(_QUIET.search(section.title) for section in chain)
+    if supplementary:
+        return _Region(start, SUPPLEMENT, quiet)
+    abstract = abstract or any(section.names_abstract(abstract_title) for section in chain)
+    return _Region(start, ABSTRACT if abstract else BODY, quiet)
+
+
+def _latex_regions(
+    source: Source, *, supplementary: bool, abstract_title: str | None = None
+) -> list[_Region]:
+    """Which text each stretch of a LaTeX file belongs to: the headings in force at each
+    place, as the include tree gives them, a file input after a heading under it; the
+    abstract where an abstract runs, or where the file is input inside one; and no text in a
+    reference list typed in `thebibliography`.
+
+    The heading the reader gives an abstract is in force past its end until the next
+    heading, so it is left out of every chain, and the abstract's own span says where it
+    runs (`Reading.abstracts`)."""
+    reading = source.reading
+    spans = (*reading.abstracts, *reading.references)
+    edges = {0, *(heading.start for heading in reading.headings),
+             *(end for end, _after in source.resumes),
+             *(edge for span in spans for edge in span)}  # fmt: skip
+    regions = []
+    for start in sorted(edges):
+        chain = [Section(title=heading.title, level=heading.level, body="", line=0)
+                 for heading in source.chain_at(start + 1) if heading.end != -1]  # fmt: skip
+        inside = "abstract" in source.environments or _within(reading.abstracts, start)
+        regions.append(_region(start, chain, supplementary=supplementary,
+                               abstract_title=abstract_title, abstract=inside,
+                               references=_within(reading.references, start)))  # fmt: skip
+    return regions
+
+
+def _within(spans: Iterable[tuple[int, int]], offset: int) -> bool:
+    return any(start <= offset < end for start, end in spans)
 
 
 def _stem(short: str, long: str) -> str:
@@ -624,10 +673,20 @@ class _File:
     spelt: str = ""
     starts: list[int] = field(default_factory=list)
     breaks: list[int] = field(default_factory=list)
+    #: The stretch of the file this reads, where a LaTeX file is read in stretches, the text
+    #: up to a file it inputs and the text after it; the whole file otherwise.
+    stretch: tuple[int, int] | None = None
+    #: Where each word stands that the LaTeX reader could not read, an accent command in it.
+    unread: tuple[tuple[int, int], ...] = ()
+    #: A LaTeX file as typed, where `text` is the file as Markdown writes it.
+    typed: str = ""
 
     def __post_init__(self) -> None:
         self.starts = [region.start for region in self.regions]
-        self.breaks = [index for index, char in enumerate(self.text) if char == "\n"]
+        if not self.breaks:
+            self.breaks = [index for index, char in enumerate(self.text) if char == "\n"]
+        if self.stretch is None:
+            self.stretch = (0, len(self.text))
 
     def region_at(self, offset: int) -> _Region:
         return self.regions[bisect_right(self.starts, offset) - 1]
@@ -652,6 +711,13 @@ def _file(
         NUL, " "
     )
     regions = _regions(headings, chain, supplementary=supplementary, abstract_title=abstract_title)
+    return _assembled(order, path, text, hidden, prose, regions)
+
+
+def _assembled(
+    order: int, path: Path, text: str, hidden: str, prose: str, regions: list[_Region], **more
+) -> _File:
+    """A file read: its regions, its definitions, and the texts each reading reads in."""
     ends = [*(region.start for region in regions[1:]), len(text)]
     spans = list(zip(regions, ends, strict=True))
     references = [(region.start, end) for region, end in spans if region.scope is None]
@@ -666,7 +732,110 @@ def _file(
         prose=prose,
         printed=_hide(hidden, references),
         spelt=_hide(hidden, quiet),
+        **more,
     )
+
+
+def _latex_read(root: Path, abstract_title: str | None) -> list[_File]:
+    """A LaTeX manuscript as a reader meets it: the main text's document, then the
+    supplement's, each in stretches in the order the build prints them, a file input where
+    its `\\input` ends. So a word in the entry file after an `\\input` is read after the
+    words of the file input there, as LaTeX prints it."""
+    from manuscript_guard.text.latex.structure import read_document
+
+    files: list[_File] = []
+    for supplementary in (False, True):
+        read: dict[str, _LatexFile] = {}
+        document = read_document(root, supplementary=supplementary)
+        for source, start, end in _stretches(document.sources):
+            if source.path not in read:
+                read[source.path] = _latex_file(source, supplementary, abstract_title)
+            whole = read[source.path]
+            outside = ((0, start), (end, len(source.text)))
+            files.append(_assembled(
+                len(files), root / source.path, whole.view, _hide(whole.words, outside),
+                _hide(whole.untitled, outside).replace(NUL, " "), whole.regions,
+                breaks=whole.breaks, stretch=(start, end), typed=source.text,
+                unread=tuple(span for span in whole.unread if start <= span[0] < end),
+            ))  # fmt: skip
+    return files
+
+
+@dataclass(frozen=True)
+class _LatexFile:
+    """What G14 reads of a LaTeX file, worked out once for each of its stretches: the file as
+    Markdown writes it, `\\mg{results.key}` as `{{results.key}}`, which the notation reads a
+    bound value in and a finding quotes; its words (`text/latex/words.py`), and less its
+    headings' titles; its regions; where its lines break; and the words it cannot read."""
+
+    view: str
+    words: str
+    untitled: str
+    regions: list[_Region]
+    breaks: list[int]
+    unread: tuple[tuple[int, int], ...]
+
+
+def _latex_file(source: Source, supplementary: bool, abstract_title: str | None) -> _LatexFile:
+    from manuscript_guard.text.latex.views import bindings, markdown_view
+    from manuscript_guard.text.latex.words import words
+
+    seen = words(source)
+    titles = [(heading.start, max(heading.end, heading.start))
+              for heading in source.reading.headings]  # fmt: skip
+    regions = _latex_regions(source, supplementary=supplementary, abstract_title=abstract_title)
+    # A word in a reference list is none G14 skips: it reads no word there, and a typed
+    # list's accented names were said unread (round 1 of step 7).
+    starts = [region.start for region in regions]
+    unread = tuple(span for span in seen.unread
+                   if regions[bisect_right(starts, span[0]) - 1].scope is not None)  # fmt: skip
+    return _LatexFile(
+        view=markdown_view(source, bindings(source)[0]),
+        words=seen.text,
+        untitled=_hide(seen.text, titles),
+        regions=regions,
+        breaks=[index for index, char in enumerate(source.text) if char == "\n"],
+        unread=unread,
+    )
+
+
+def _stretches(sources) -> Iterator[tuple[Source, int, int]]:
+    """Each stretch of each file, `(source, start, end)`, in the order the build prints them:
+    a file up to an `\\input` it holds, the file input there, then the rest of it. `sources`
+    are in the include tree's order, each file before the files it inputs; the author's
+    packages, which no `\\input` reads, come last."""
+    # A file input is text whatever the case of its suffix: `Methods.TEX`, which the file
+    # list holds where the file system's names are not case-sensitive, is read as
+    # `methods.tex` is (round 1 of step 7).
+    texts = [source for source in sources if not _package(source)]
+    queue = iter(texts)
+
+    def of(source: Source) -> Iterator[tuple[Source, int, int]]:
+        at = 0
+        for cut in _input_ends(source):
+            yield source, at, cut
+            following = next(queue, None)
+            if following is not None:
+                yield from of(following)
+            at = cut
+        yield source, at, len(source.text)
+
+    for source in queue:
+        yield from of(source)
+    for source in sources:
+        if _package(source):
+            yield source, 0, len(source.text)
+
+
+def _package(source: Source) -> bool:
+    """Whether a source is the author's package, `macros.sty`, which no `\\input` reads."""
+    return source.path.lower().endswith(".sty")
+
+
+def _input_ends(source: Source) -> list[int]:
+    """Where each file the source inputs ends its `\\input`, in order: the include tree reads
+    each file there, and lists it next."""
+    return [end for end, _after in source.resumes]
 
 
 def _read(project: Project) -> list[_File]:
@@ -674,9 +843,12 @@ def _read(project: Project) -> list[_File]:
     supplement's. The abstract is the section the journal's profile names as one, where it
     names one ("Summary"), as G4 reads it."""
     from manuscript_guard.gates.journal import abstract_title
+    from manuscript_guard.text.reader import LATEX, manuscript_format
 
     named = abstract_title(project)
     root = project.path("manuscript")
+    if manuscript_format(root) == LATEX:
+        return _latex_read(root, named)
     sources = source_files(root)
     paper = printed_order(
         [p for p in sources if not is_supplementary(root, p)], supplementary=False
@@ -872,6 +1044,47 @@ def check_language(project: Project) -> Report:
         )
         # A P value in an acknowledgement is the author's, so this one reads them all.
         .merge(judge_notation(passages))
-        # And where the prose is in a script none of the readings is written for.
-        .merge(judge_scripts(passages))
+        # And where the prose is in a script none of the readings is written for, said once
+        # for each file, which a LaTeX file read in stretches is again here.
+        .merge(judge_scripts(_whole(files)))
+        .merge(_not_read(files))
     )
+
+
+def _whole(files: list[_File]) -> list[Passage]:
+    """Each file once, in the order it is first read, its stretches put back together."""
+    stretches: dict[Path, list[_File]] = {}
+    for file in files:
+        stretches.setdefault(file.path, []).append(file)
+    passages = []
+    for path, parts in stretches.items():
+        printed = "".join(part.printed[part.stretch[0] : part.stretch[1]]
+                          for part in sorted(parts, key=lambda part: part.stretch))  # fmt: skip
+        passages.append(Passage(path, parts[0].text, printed, parts[0].line_of))
+    return passages
+
+
+def _not_read(files: list[_File]) -> Report:
+    """Once for each LaTeX file, how many of its words hold an accent command or `\\-`, which
+    the reader cannot write with their letters side by side, and so G14 does not read."""
+    unread: dict[Path, list[tuple[_File, tuple[int, int]]]] = {}
+    for file in files:
+        unread.setdefault(file.path, []).extend((file, span) for span in file.unread)
+    findings = []
+    for path, found in unread.items():
+        if not found:
+            continue
+        file, (start, end) = min(found, key=lambda each: each[1])
+        typed = file.typed or file.text
+        count = len(found)
+        many = count != 1
+        findings.append(Finding(
+            gate=GATE, code="tex-words-not-read", severity=WARN, path=path,
+            message=f"{count} word{'s' if many else ''} here hold{'' if many else 's'} an accent "
+            f"command or \\-, and G14 does not read {'them' if many else 'it'}: the first is "
+            f"{typed[start:end]!r}",
+            line=file.line_of(start), context=context(typed, start, end - start),
+            hint="the file is read as UTF-8, so type an accented letter as itself rather than "
+            "as an accent command, and leave the hyphenation to LaTeX",
+        ))  # fmt: skip
+    return Report(tuple(findings))

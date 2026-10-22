@@ -751,7 +751,10 @@ with none is a note while drafting, a warning from internal review, and a failur
 submission where the journal's profile requires one (`figures.alt_text: required`); a text
 longer than the profile's `alt_text_max_chars`, counted as printed, warns. The check reads
 the stage itself, since the policy table gives a code one stage to fail from and this one
-warns before it fails.
+warns before it fails. A figure the supplement places is held to the same, and written
+into `supplementary.docx` as the paper's are into `manuscript.docx`; a rule under the
+profile's `figures.supplementary` replaces the main one for a figure only the supplement
+places, as every artwork rule of G4 does.
 
 The build writes it as the picture's description. Pandoc makes an image alone in its
 paragraph a figure and prints its description under it as a caption, so the image is placed
@@ -778,6 +781,139 @@ as G4 gives, and so does a text too long.
 
 Whether the text says what the figure shows is not checked by any gate. The figure review
 reads it under `readable-and-accessible`, and the figure-review skill says how to write one.
+
+## A figure's colours stay apart for every reader
+
+About one man in twelve and one woman in two hundred of European descent see colour with a
+deficiency, most of them red and green nearer than others do. A figure whose two series are
+told apart by colour alone can be one series to them, and to anyone reading it printed in
+grey. The figure review asked whether "any information depends on colour alone", a question
+a reviewer answers by eye, for one kind of vision, their own.
+
+So G3 reads each colour a figure the manuscript places paints its marks in, from the figure
+itself (`gates/figure_colours.py`, decided 2026-10-21): from its SVG, every fill and stroke
+as the element, its stylesheet or its groups set it, `currentColor` the `color` it inherits,
+laid over white at the opacity it is drawn at, its own and its groups' multiplied
+(`gates/figure_svg.py`); from its PDF, every path filled or stroked and every text shown,
+in the colour `rg`, `g`, `k`, their stroking twins or `sc` and `scn` set, at the opacity of
+its graphics state, `q` and `Q` saving and restoring them, a form drawing in its drawer's
+(`gates/figure_pdf.py`). A text's colour is kept apart and not compared: text rarely tells
+one series from another, and black text beside a dark mark confuses no data. A raster is
+not read: its colours blend at every edge of every mark, and guessing which are the marks'
+is a heuristic that would warn of colours nobody chose. A figure with no SVG or PDF is
+said to be unread (`figure-colours-unread`, a note).
+
+Each pair of the colours is taken through what each dichromacy makes of it, Machado,
+Oliveira and Fernandes's model at full severity (IEEE TVCG 2009; the matrices of their
+Table 1, applied to linear RGB as colorspacious and R's colorspace apply them), and through
+grey, the grey of the same relative luminance. Two colours are far enough apart where their
+CIEDE2000 difference is at least 10. No standard sets that number: about 2 is the least an
+observer sees between large patches side by side, a figure's lines and points need far more
+(Szafir 2018), and Adobe's Leonardo passes a simulated pair at 11. A pair at least 10 apart
+to normal vision and less than 10 after is said: `figure-colours-confused` for a deficiency,
+a warning and never a failure; `figure-greyscale-confused` for grey, a note, and a warning
+where the journal's profile says its figures print in grey (`figures.print: greyscale`) or
+the figure's guard file asks (`greyscale: true`). Basile chose both on 2026-10-21. A pair
+already less than 10 apart to normal vision is not said, since no deficiency made it so.
+
+**A figure that draws a continuous scale is not compared.** A colormap, or points coloured
+by a variable, has neighbours just over 10 apart, and grey, which keeps lightness alone, or a
+deficiency, which takes chroma away, brings them under it: every such figure warned (round 1
+of #398). Which of a figure's colours are a scale's shades and which a series' is not known
+from the colours, and each rule tried for it was wrong one way or the other: leaving a scale
+out took in a series near one of its shades (round 2: tab:red beside a heat map in reds, and
+tab:green with it, went unsaid); comparing a series with the shades compared two scales with
+each other, and two series near one scale's shades still went uncompared (the round on the
+fix). Basile chose to narrow the check to what it can decide (2026-10-21): a figure whose
+colours chain within 10 of one another, three or more, greys apart, and run through 10 of
+lightness or more, is said to draw a scale (`figure-colours-scale`, a note), and its colours
+are not compared; nor are a figure's of more
+than 300 colours (`figure-colours-many`), since finding a scale among them takes time in their
+square. Its review looks at it, and a scale and its series drawn as figures of their own have
+the series compared. The two conditions on a chain keep an ordinary figure compared: greys
+chain easily (a panel's background, its grid, a legend's frame) and are never confused with
+one another; and the light bands of several series, each laid over white at one opacity,
+chain by hue at one lightness, where a colormap runs through it (the round on the
+narrowing: tab:red, tab:orange and tab:olive at 0.1 are 6.6 and 7.1 apart).
+
+Where two series are told apart by more than colour, a line style or a label on each line,
+the figure's guard file says so under `allow_colours`, the pair (or one colour of it) and
+the reason, and the warning is a note that quotes it.
+
+A figure the supplement places is read and compared as the paper's are (Basile, 2026-10-21:
+the supplement is held to the main text's rules). A `print` under the profile's
+`figures.supplementary` replaces the main one for a figure only the supplement places, so a
+journal that prints the paper in grey and puts its supplement online in colour is said so.
+
+The implementation is the standard library's (`colour.py`): sRGB's transfer function and
+matrix, CIELAB under D65, CIEDE2000 as Sharma, Wu and Dalal write it out, and the three
+matrices. `tests/test_colour.py` holds CIEDE2000 to the 34 pairs Sharma, Wu and Dalal publish,
+in both orders, and the simulation to what colorspacious, which implements Machado's model on
+its own, makes of four colours. Okabe and Ito's eight have no pair any deficiency makes one,
+and matplotlib's default red and green, 72 apart, are under 5 apart with deuteranopia: the
+model says what the literature says of both.
+
+## Palettes are other people's, and each says what the check makes of it
+
+A figure's colours are its author's choice, and the toolkit never draws the figure. What it
+can do is hand the author palettes by name and say, for each, what the colour check makes
+of it (decided 2026-10-21: every palette of the collections asked for, derived, with Python
+and R helpers, a `palettes` command and a `figure-design` skill).
+
+**The palettes.** MetBrewer, MoMAColors, NatParksPalettes, PNWColors and wesanderson, the
+artists' and photographers' palettes Basile asked for; Okabe and Ito's eight; ColorBrewer's
+schemes, each for every number of classes it offers; viridis, magma, inferno and plasma;
+cividis; and Crameri's scientific colour maps, version 8: 260 palettes. Each collection's
+licence was read at its source before any colour was copied (CC0, MIT, Apache 2.0 and
+Battelle's BSD-style licence all allow it with their notices), and each is credited in
+ATTRIBUTION.md with its notice beside the data, `data/palettes_LICENSES.txt`.
+
+**Derived, never typed.** `tools/derive_palettes.py` reads each collection's colours from its
+own file at a pinned commit, refusing a file whose SHA-256 is not the one written beside it,
+as the spelling list is derived from VarCon: the R lists of MetBrewer, MoMAColors,
+NatParksPalettes, PNWColors and wesanderson, ColorBrewer's JSON export, the CC0 source of
+viridis, PNNL's cividis table and cmcrameri's copy of Crameri's tables. It writes the licence
+file from the collections' own licence files the same way. Only Okabe and Ito's eight colours
+are typed, as the numbers their page publishes. With the files in a folder named by
+`MANUSCRIPT_GUARD_PALETTE_SOURCES`, a test derives both files again and compares them byte for
+byte. The R package carries the same two files, held equal by a test.
+
+**What the check makes of each** (`palettes.assess`), written into the file when it is
+derived and recomputed by a test, so a change to the check that changes a verdict has the
+file derived again: for a set of colours, how many of them, taken as its collection takes
+them for that many, stay at least 10 apart (CIEDE2000) to normal vision, for every reader
+with protanopia, deuteranopia or tritanopia, and in grey; for every palette, whether its
+lightness runs one way, turns once or neither, judged at eleven points along a continuous
+map (its 256 colours, rounded to 8 bits, step back and forth by a fraction of a unit), and
+whether each deficiency keeps that. Beside it, what the collection claims where it claims
+anything. MetBrewer calls Archambault colour-blind friendly; three of its colours stay 10
+apart for every reader. Both are shown, and the skill says both.
+
+**Taking n colours** follows each collection's own rule, so a palette here gives what its
+own package gives: ColorBrewer's scheme of n, and for fewer than its smallest scheme of
+three, n evenly spaced along that one, its two ends for two, where `scale_colour_brewer`
+takes the first two, one arm and the middle of a diverging scheme; MetBrewer's, MoMAColors', NatParksPalettes' and
+PNWColors' colours whose rank in the palette's order is at most n, in the palette's
+sequence (`met.brewer`'s `palette[[1]][which(palette[[2]] %in% c(1:n))]`); otherwise the first
+n; and n evenly spaced along a continuous map. More than a set has is refused, and `ramp`
+interpolates, in a straight line through sRGB as R's `colorRampPalette` does (a channel that
+falls on a half may round the other way). Python: `palettes.colours`, `cycle`, `use`,
+`cmap`, and `figure_style`, matplotlib settings sized to the target journal: its width, its
+smallest text and thinnest line or more (7 pt and 0.5 pt where the journal's least is less),
+and fonts kept as text in an SVG and embedded in a PDF, as G3 and G4 read them. R:
+`mg_palette`, `mg_palettes`, `scale_colour_mg`, `scale_fill_mg`, `mg_theme` and
+`mg_figure_size`, from the same file.
+
+**Choosing** is the author's, with the `figure-design` skill: it proposes two or three
+layouts for the figure's kind and two or three palettes for the number of colours it needs,
+says which every reader can read, offers an artist's palette the check does not pass only
+with that said, and applies the choice to the author's script. `manuscript-guard palettes`
+lists and filters (`--kind`, `--colours`, `--safe`, `--collection`) and shows one with its
+licence (`--show`). With `--colours n`, `--safe` holds the n colours the palette gives, a
+continuous map's evenly spaced along it, apart for every reader, as G3 holds a figure of n
+classes (rounds 2 and 3 of #406: PuOr's seven and viridis's seven do not stay apart, though
+PuOr's ten do and viridis runs one way). The check that counts is still G3's, on the
+rendered figure, the supplement's figures as the paper's.
 
 ## The journal's citation style is used by every build
 
@@ -985,9 +1121,9 @@ duplicated key, where both keep the last.
 
 Status: designed 2026-10-20. Built: the first half of step 1, the format, the reader's file
 list, `two-formats`, `other-format-file` and `not-read-in-latex`; step 2, the scanner and
-its mask; step 3, the include tree and its refusals under BUILD; and the first half of step
-4, the bindings, G2 but for its pointers to tables and figures, the custodian's counts and
-G1's synthetic inputs, held to the example by its LaTeX twin. Where the design depends on
+its mask; step 3, the include tree and its refusals under BUILD; and step 4, the bindings,
+G2 but for its pointers to tables and figures, the custodian's counts and G1's synthetic
+inputs, held to the example by its LaTeX twin, and the values file with G1's hold on it. Where the design depends on
 what LaTeX does, the pull request that relies on it checks the statement against TeX Live and
 MiKTeX and records the measurement. On the author's machine, 2026-10-20: MiKTeX 24.4 and
 latexmk 4.88, with pdfLaTeX, LuaLaTeX, XeLaTeX, BibTeX and Biber on PATH.
@@ -999,7 +1135,9 @@ design's reviews named them, Basile chose to settle them there):
   (step 9);
 - the commands pandoc writes under `link-citations`, and whether it still wraps a section in
   `\hypertarget` (step 11);
-- how Overleaf resolves `\input` and figure paths (step 4, for the values file);
+- how Overleaf resolves `\input` and figure paths (step 10, for the submission folder: no
+  Overleaf project could be had to measure it in step 4, whose values file writes a figure's
+  path from the entry file's folder, `../figures/forest.pdf`, as pdfLaTeX finds it);
 - whether `check` writes nothing in a LaTeX project as it writes nothing in a Markdown one
   (each step that moves a gate).
 
@@ -1081,7 +1219,10 @@ finding, `not-read-in-latex`, naming the gate. That finding fails from `submissi
 it is shown as a note, as any finding not yet due is. Each pull request then ships on its own,
 and a half-taught `check` cannot pass a submission. `tests/test_reads_nothing.py` gets a row
 for each such gate. The commands not yet moved refuse a LaTeX project with a sentence and exit
-2: `explain`, `bind`, `audit`, `reworded`, `checker`, the panel's prompt and the hooks.
+2: every command that reads the manuscript only as Markdown, `explain`, `bind`, `reworded`,
+`checker` and the panel's prompt among them (step 1, `_MARKDOWN_COMMANDS`), and `audit`
+given a `.tex`, which it holds apart since it reads no project. A hook stops nothing, and the
+hooks are taught in step 12.
 
 ### What the LaTeX reader reads
 
@@ -1256,9 +1397,12 @@ from a stale file shows the old number.
   spaces, and Greek letters, the mathematical ones also with `\ensuremath`. A `$...$` would
   close the maths that a binding stands in, as in `$p = \mg{results.p}$`.
 
-A value holding any other character outside Latin-1 is refused
-(`value-not-printable`), not guessed at. The pull request that builds the table compiles each
-entry under OT1 and T1 and compares the printed text with the value.
+A value holding any other character outside Latin-1 is refused, not guessed at: it is left
+out of the file, so `\mg` prints `??` for it and LaTeX warns, and G1 says so
+(`value-not-printable`) where a document binds it; one nothing binds stops nothing. A dash is
+written as a command, and two hyphens apart, so that no dash TeX joins from them takes a
+minus sign after it. The pull request that builds the table compiles each entry under OT1
+and T1 and compares the printed text with the value.
 
 **The submission copy** replaces each binding with what the file defines for it and removes
 `\usepackage{mgvalues}`, so it needs no macro file.
@@ -1430,18 +1574,15 @@ The result is compiled and packed by the code above, and checked three times:
   (`other-format-file`): a project written before LaTeX was read may keep a `.tex` beside its
   Markdown for pandoc's header, and refusing it would fail a paper that passed. It is read by
   no gate. Whether to warn of it is left for later.
-- Until the second half of step 1, the commands other than `check` do not yet know a LaTeX
-  manuscript (round 1 of #370):
-  - `bind`, `lookup` and `build` stop on it, as on a folder with no Markdown, and so does the
-    panel's prompt ("no manuscript to review");
-  - `explain manuscript/main.tex` reads the file as Markdown and labels its numbers;
-  - `reworded` and `checker` read only Markdown, and so does `audit` given a folder; `audit`
-    given a `.tex` by name reads it as text, as `explain` does;
-  - `review` and `respond --open` digest the `.tex` files, as G11 does, but `respond --open`
-    keeps no copy of them;
-  - the submission refusal and the status line run the gates, so they see
-    `not-read-in-latex` as `check` does; the note on a saved file reads only Markdown, and
-    says nothing when a `.tex` is saved (round 2 of #370).
+- The hooks are not refused with the commands: a hook never stops the tool that called it.
+  The submission refusal and the status line run the gates, so they see `not-read-in-latex`
+  as `check` does; the note on a saved file reads only Markdown, and says nothing when a
+  `.tex` is saved (round 2 of #370), until step 12 teaches the hooks.
+- `audit` is not tied to a project: given a folder of `.tex` it says it found nothing to
+  audit, and only a `.tex` named is refused.
+- On a LaTeX project, `sign` of an id that stands nowhere lists G15's ids among those that
+  stand, though `sign` refuses them there; and `review --suggestions --design`, a misuse, is
+  told LaTeX is not read rather than that `--suggestions` stands alone (round 2 of #404).
 - An author's macro is not expanded where it is used, so a word its body prints there is in no
   sentence that G6 or G14 reads; its body is read once, at the definition.
 - An `\input` records the environments open around it, not the command whose argument it is
@@ -1490,6 +1631,69 @@ The result is compiled and packed by the code above, and checked three times:
 - physics' `\qty[a = b]` holds an `=`, so it is taken for siunitx's option list and blanked
   (round 2 of #400). A siunitx key with no `=`, `\qty[sticky-per]`, is taken for a value and
   read as prose words; it holds no number (round 3).
+- A multi-citation's global notes, `\cites(see)(p.~5)[...]{a}{b}`, are blanked, so a number in
+  one is read by no gate; its per-group notes are read (step 5). A global note is looked for
+  up to 300 characters on, and not past a blank line; one longer is refused (round 2 of step
+  5). A `)` in a comment inside a global note is taken for its end. A comment in the middle of
+  a key, `\cite{smi%` with `th}` on the next line, leaves a space in the key, where TeX joins
+  it, and `\\%` in a key list is taken for an escaped `%`.
+- apacite's `\citeA` and `\citeNP`, and an author's own command whose name holds `cite`, are
+  refused where they are used, as the design asks: the reader knows natbib's and biblatex's
+  (step 5). In the preamble such a command is not refused, since natbib's and biblatex's
+  settings stand there, `\setcitestyle` and `\DeclareCiteCommand` among them, and nothing of
+  it prints; biblatex's `\volcite` family is refused in the body (round 1 of step 5).
+  natbib's `\citetext`, `\defcitealias` and biblatex's `\citereset` and `\notecite` family
+  are read (round 2).
+- A citation in a hook's body, `\AtBeginDocument{\nocite{smith2019}}`, is not recorded, as one
+  in a definition's body is not, and G7 warns that its key is cited nowhere (round 1 of
+  step 5).
+- `sync-bib` refuses a LaTeX manuscript the reader refuses anywhere, since the keys after the
+  refusal are not read; `lookup` looks up the keys before it (round 1 of step 5).
+- `\nocite{*}` cites what `literature/references.bib` holds, not a bibliography a class or a
+  `\bibliography{}` names elsewhere (step 5).
+- G4 counts an inline formula as one word and a displayed one as none; Markdown's count reads
+  a formula's tokens as words. A LaTeX paper and its Markdown twin with maths in their prose
+  count differently by that much (step 6).
+- The heading with no title that closes an abstract is a section of its own to G4, which
+  counts it as text and finds no required section in it (step 6).
+- A float counts as a display item only where it places a `\mg{figure.key}` or
+  `\mg{table.key}`; a figure placed with `\includegraphics` alone counts as none. Markdown
+  has the same gap for `![](...)`, met far less often (round 1 of step 6).
+- A title, affiliations and keywords written in the body, as elsarticle's `frontmatter` holds
+  them, are counted as main text (round 1 of step 6), and G14 reads them as the text's: an
+  abbreviation in the title is used before its definition, and an institute's acronym in an
+  affiliation is undefined (round 1 of step 7). In the preamble they are not read.
+- Past a refusal G14 reads a LaTeX file as typed, its commands and comments as words; `check`
+  fails on the refusal already (round 1 of step 7).
+- `\~{}` before a number, written for "about", is taken for an accent on the word after it,
+  which is then not read (round 1 of step 7).
+- G6 looks for a placeholder in a LaTeX file's body as typed, as in a Markdown file:
+  `\todo{...}` and a `% TODO` comment each fail as a TODO in the text does. Its preamble is
+  read as the reader reads it, without a definition's body, so a package or a definition
+  named for a note does not; nor do `\author`, `\date` or a comment in the preamble, which
+  the reader blanks, though Markdown's front matter is read as typed. Past `\end{document}`
+  nothing is read. A phrase G6 reports is not read in a comment, but past a refusal, where
+  the file is read as typed (rounds 1 and 2 of step 7b).
+- In a LaTeX body as typed, an optional argument that reads as a placeholder fails as one in
+  a Markdown raw block does: TikZ's `\draw[fill]`, a description list's `\item[Repository]`
+  (round 1 of step 7b).
+- G6 reads no definition's body in a LaTeX preamble for a placeholder, used or not, so a
+  placeholder a macro prints, `\newcommand{\ncohort}{[TO BE CONFIRMED]}`, is not found where
+  it is used either; its phrases and residue rules still read such a body as prose; and a
+  definition written in the body is read as typed (round 3 of step 7b).
+- A typed reference list is judged entry by entry as a cited entry's fields are, capitals
+  only: a todonotes `\todo{...}` or a lower-case `% todo` in it passes (round 3 of step 7b).
+  A finding in an entry is named at its `\bibitem` line, one above a placeholder on the next
+  line (round 4).
+- G6's boldface rate counts `**...**` and so never counts LaTeX's `\textbf{...}`, which the
+  reader blanks. A typed table's cells are not read by G6's rates, phrases, residue or vague
+  attributions (round 1 of step 7b).
+- G4 does not hold a LaTeX figure's legend, its float's caption, to the profile's
+  `legend_words`, and says so (`not-read-in-latex`) where a figure is placed (round 1 of
+  step 6).
+- An abstract input from a file inside the abstract environment in the preamble, as a class
+  that prints a preamble abstract allows, is not counted: the file is read as preamble. In
+  the body the same shape is counted (round 2 of step 6).
 - Past a refusal a file's bindings are found by their shape, in a comment too, so that a
   result quoted there is not said to be quoted nowhere.
 - A class or package that changes how a character is read, beyond those refused, is not seen.
@@ -1498,7 +1702,17 @@ The result is compiled and packed by the code above, and checked three times:
 - A profile's LaTeX template is read by no gate, so text or digits it prints after
   `\begin{document}` are compared with nothing in `build --latex`.
 - `\date` is read by no gate, since a Markdown build prints no date to compare it with.
-- A word holding an accent command is not read by G14.
+- A word holding an accent command or `\-` is not read by G14, which says how many there are
+  in each file. `\=`, `\'` and `\-` are tab commands in `tabbing`, where the word after one is
+  taken for an accented word all the same (step 7).
+- G14 does not read a figure's caption, as it does not read an image's caption in Markdown; a
+  table's caption it reads (step 7).
+- A P value or another symbol written in maths, `$P < 0.05$`, is not read by G14's notation,
+  as one in Markdown's `$...$` is not. A LaTeX paper writes them in maths more often, so G14
+  says less of its notation (step 7).
+- Only `$_2$`, `$_{12}$` and `\textsubscript{2}` straight after a letter are read as a
+  formula's count; `\(_2\)` and `$_{\mathrm{2}}$` are maths, and `CO` before them is read as
+  an abbreviation (step 7).
 - The author block is written in the class's own commands, and is not compared with
   authors.yaml. A number typed into the author block or `\date` is read by no gate.
 - The Word round trip, `annotate`, `reworded` and `audit` do not read `.tex`.
@@ -1509,6 +1723,21 @@ The result is compiled and packed by the code above, and checked three times:
 - `\appendix` sections count as main text.
 - Only numbered headings are compared with LaTeX's own.
 - How Overleaf resolves `\input` and figure paths has not been measured.
+- How `\mg` prints beside siunitx's own `\mg`, its milligram, is not measured: MiKTeX's
+  siunitx 3.6.4 fails on its own against LaTeX 2024-06 on the author's machine. Step 9
+  measures it under CI's TeX Live (step 4).
+- The values file writes no other pair TeX joins apart: `''`, two backticks, `!` or `?` and a
+  backtick, and under T1 `,,` print as the mark TeX joins them into, `12' 30''` with a
+  closing quote. Nor is a value's last hyphen kept from one the text types after `\mg`, so
+  "5-" before `-3` prints an en dash (round 3 of step 4b).
+- A dash a display holds is `\textendash{}`, which LaTeX warns of in maths, where `\mg`
+  inside `$...$` prints it all the same (round 1 of step 4b).
+- The values file takes a figure's file by a lower-case suffix, and the PDF before a PNG,
+  which G3 orders otherwise: a stale `forest.pdf` beside a fresh `forest.png` is the one
+  included (round 1 of step 4b).
+- The results' digest in the values file is of their bytes, so results checked out with CRLF
+  line ends, where `.gitattributes` does not hold them to LF, read as other results and the
+  file as stale (round 1 of step 4b).
 - MiKTeX's limits on reading files are not set by the build.
 
 ### Order of work
@@ -1519,9 +1748,20 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
 1. The seam, in two pull requests. The first, built: `text/reader.py` with the format and the
    files; G11's digests and the unreadable-file check through it; format detection,
    `two-formats` and `other-format-file`; `not-read-in-latex`, given by `_run_gates` for each
-   check in `_NOT_READ_IN_LATEX`, a set each later step takes its check out of. The second:
-   the refusing commands, after the open pull requests that change the same commands. Tests:
-   the differential unchanged, the corruption cases, rows in `test_reads_nothing.py`.
+   check in `_NOT_READ_IN_LATEX`, a set each later step takes its check out of. The second,
+   built: the refusing commands. `main` refuses, before a command runs, each one in
+   `_MARKDOWN_COMMANDS` whose invocation reads the manuscript, where the project's manuscript
+   or a file it is given is LaTeX: a sentence, and exit 2. They had read nothing and said so
+   as of an empty manuscript, "rendered 0 files", "cites nothing", or read the `.tex` as
+   Markdown, and `init` wrote a `main.md` beside `main.tex`, two formats. Some are refused in
+   part: `review` with `--run` or `--dry-run`, but for a design round, which reads the plan,
+   and with `--suggestions`; `lookup` but with `--journals`; `sign` of a G15 finding, and not
+   of a design round's override. `checker` is refused whole: every verb draws its items from
+   the manuscript, and `import` and `status` match answers against them (round 2 of #404).
+   A `.tex` named is refused by `explain` and
+   `reworded`, which read the file they are given, whatever the project's format. Tests:
+   the differential unchanged, and in `test_reads_nothing.py` a table, `LATEX`, of what each
+   command does with a LaTeX manuscript, each refusing one run on one.
 2. The scanner and `mask`, built: `commands.py` and `mask.py`, which scans as it reads, so
    that no `scan.py` stands apart. `read(text, body=...)` gives the masked text and the first
    refusal. Tests: `latex_texts()`, `latex_planted()`, `latex mask` and `latex refusals`,
@@ -1556,16 +1796,86 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
    `\enlargethispage` are in the table. `\qty` and `\unit` read what their brackets hold
    where it is no option list, since physics and the units package give those names other
    meanings (`[o]`, round 2). `uncommented` waits
-   for G7's quotations and G9, which read it. The second: `mgvalues.sty` and its escape table,
-   `values` and its README row, `values-file-stale` and `values-file-missing`. The escape
-   table's compile test needs LaTeX, so it skips on CI until step 9 installs TeX Live, and its
-   first measurement is recorded in the pull request.
-5. Citations and G7. `cite.py`; G7, `lookup` and G6's citation positions moved; the twin's
+   for G7's quotations and G9, which read it. The second, built: `values` writes
+   `mgvalues.sty` beside each entry file (`build/latex_values.py`), one definition for each
+   value, table, figure and anchor the results hold, in the order of their keys, under a
+   first line that names the results' digest; `\mg` prints the one its key names, and `??`
+   with LaTeX's warning for one it lacks. A display is written with TeX's ten specials
+   escaped, the signs pdfLaTeX prints only in maths in `\ensuremath`, Greek in maths, a dash
+   as `\textendash{}` and never a ligature, so a minus after it stays one; a character outside
+   the table is refused and left out, and G1 says so (`value-not-printable`) only where a
+   document binds it. A table is a `tabular`, a row that opens with `[` or `*` guarded; a
+   figure is the file pdfLaTeX includes, PDF first, then PNG and JPEG. G1 says
+   `values-file-missing` where a document loads the file, in its entry file or a file its
+   preamble inputs, and none is written, and `values-file-stale` where it differs from what
+   `values` writes. Tests: `tests/test_latex_values.py`, G1's cases on the twin,
+   `latex escaped`, and a display holding each character the table writes over
+   `latex_displays()` with two `BROKEN` rules. The escape table's compile test needs LaTeX,
+   so it skips on CI until step 9 installs TeX Live; it was run under MiKTeX 24.4 on
+   2026-10-21, under OT1 and T1, and the pull request records what pdftotext read.
+5. Citations and G7, built in its first part: the scanner records each key a citation command
+   names, where its braces stand (`Reading.cited`), outside a definition's body, and refuses a
+   command whose name holds `cite` that it does not know; `cite.py` gives them as
+   `CitationUse` records, `\nocite{*}` as each key of `references.bib`; `reader.citation_uses`
+   gives either format's, and G7's citation check, `sync-bib` and `lookup` read it, which
+   takes `check_citations` out of `_NOT_READ_IN_LATEX`. The multi-citation forms are in the
+   table, their global notes blanked. Tests: `tests/test_latex_cite.py`, the twin's citations
+   against the example's, G7 on the twin, `latex citations`, `latex_cited()` with four
+   `BROKEN` rules. G6's citation positions move with G6 (step 7). The plan as written: `cite.py`;
+   G7, `lookup` and G6's citation positions moved; the twin's
    comparison with the example takes in the citations. Tests: `latex citations`, G7's cases on
    the twin.
-6. G4. The counts, sections and statements, and the profile's `latex:` block. Tests: G4's
-   cases on the twin.
-7. G6 and G14. `words`, accents, both gates moved. Tests: `latex words`, planted terms and
+6. G4, built in two parts. The first: `printed.py` writes the main text's document
+   as Markdown would print it, the design's `printed_view`: each heading as a `#` line, the
+   body only, an abstract closed where it ends, bindings as `{{...}}` and citations as
+   `[@...]`, a float as the bindings it places, maths and typed tables as nothing but an
+   inline formula's one word, `\verb` and `\texttt` as code spans, and each file input
+   where its `\input` ends, so that an abstract input inside its environment is the
+   abstract; a reference list typed in `thebibliography` as nothing, an abstract written in
+   the preamble under Abstract, and a single opening quote as a typographic one, which opens
+   no code span. G4's `main_text` gives it
+   for a LaTeX manuscript, so its counts, required sections and statements read the twin as
+   they read the example, which takes `check_journal` out of `_NOT_READ_IN_LATEX`. The
+   scanner records the spans it needs (`maths`, `floats`, `code`, `body_start`, each
+   heading's end). Tests: the twin's counts and findings against the example's, G4's cases on
+   the twin, `latex_printed()` with five `BROKEN` rules, and the order a document of several
+   files prints in over `latex_trees()` with one. The second: the profile's `latex:`
+   block in the schema, each of its parts a rule quoted as `latex.<part>`; the scanner
+   records the class and its options, `\bibliographystyle` and biblatex's options
+   (`Reading.declared`), outside a comment; G4 warns `latex-class-differs` and
+   `latex-bibliography-differs` (`gates/journal_latex.py`). Tests:
+   `tests/test_journal_latex.py`, `latex printed`, `latex_declared()` with two `BROKEN`
+   rules. The engine and the files the profile names are the build's, steps 9 and 10. The
+   plan as written: the counts, sections and statements, and the profile's `latex:` block.
+   Tests: G4's cases on the twin.
+7. G6 and G14, built in two parts. The first: `words.py` gives a file's words as
+   `language._hidden` gives a Markdown file's, the design's `words`: NUL where the reader
+   blanks, in the preamble but an abstract written there, in maths, in code and in a
+   figure's caption; a word an accent command or `\-` splits is NUL as well, and given as
+   unread, which G14 says once a file (`tex-words-not-read`); a count written as a subscript
+   straight after a letter, `CO$_2$`, is written as Markdown's `CO~2~`. G14 reads a LaTeX
+   document in stretches in the order it prints, a file input where its `\input` ends, so
+   that a definition and a use are met in the order a reader meets them; the headings in
+   force are the include tree's, the abstract is where its environment runs or where a file
+   is input inside it, and a reference list typed in `thebibliography` is not read. A file's
+   passages are its Markdown view, so the notation reads a bound value in an interval or a
+   percentage as it does in Markdown. That takes `check_language` out of
+   `_NOT_READ_IN_LATEX`. The scanner records each float that holds a figure
+   (`Reading.figures`) and each typed reference list (`Reading.references`), and the include
+   tree the environments a file is input inside (`Source.environments`). Tests:
+   `tests/test_latex_words.py`, G14 on the twin, `latex words`, `latex_words()` with seven
+   `BROKEN` rules, and the order G14 reads a document of several files in over
+   `latex_trees()` with one. The second: G6 reads each LaTeX file of both documents, the
+   author's packages aside: as typed for the artefacts and placeholders, in a comment too,
+   as in a Markdown comment; as the reader masks it for the phrases, the residue and the
+   rates; a vague attribution against where its citation commands stand (`Reading.cited`);
+   and the words as G4 counts them in the printed view. `\nocite{*}` cites every entry whose
+   printed fields G6 reads, and supports no claim beside it. Its preamble is read as the reader
+   reads it, and a reference list typed in `thebibliography` and a table's cells are no prose
+   of the paper: the list is read as a cited entry's fields in `references.bib` are. That takes `check_writing` out of `_NOT_READ_IN_LATEX`. Tests: G6
+   on the twin, its cases on the twin, `latex writing`, `latex_writing()` with three
+   `BROKEN` rules. The plan as
+   written: `words`, accents, both gates moved. Tests: `latex words`, planted terms and
    spellings.
 8. `substituted`, with TeX's specials escaped; G5, G8, G9, G13 and G15 moved. Tests:
    each gate's cases on the twin, and a display holding `%` through G8.
@@ -2257,6 +2567,150 @@ saw, and the item is outstanding again. Neither what G7 found of it nor the auth
 judgement is shown or digested. The first depends on the PDF reader of the machine that
 built the page, which a digest must not; the second would tell a co-author the answer before
 they read.
+
+## Text from the authors' earlier papers is found before the journal finds it
+
+A journal puts each submission through a similarity check (Crossref Similarity Check, which
+iThenticate runs), and the editor reads a report of every run of words the manuscript shares
+with a published paper, the authors' own papers among them. Reusing one's own words in a new
+paper is text recycling, and its norms are published:
+
+- The Text Recycling Research Project, *Text Recycling: Best Practices for Researchers*,
+  version 1.1, April 2021 (textrecycling.org, CC BY 4.0). Recycling is most defensible in the
+  Methods, where a standard description kept as it was lets a reader see where two studies
+  differ. It is disclosed, to the editor in the covering letter and to readers in the paper. A
+  synonym put in to hide it is no rewriting. The venue's policy and the publisher's contract
+  decide what is allowed, and the guide sets no number of words.
+- COPE's text recycling guidelines for editors, written with BioMed Central's editors.
+  Overlap in the Methods may be appropriate when the earlier article is cited; undisclosed
+  overlap, or overlap in the results, discussion or conclusions, is unlikely to be acceptable;
+  the editor judges each case by how much is reused, where, and whether its source is
+  acknowledged. Harriman and Patel give the same reasons in *BMC Medicine* 2014;12:148
+  (doi:10.1186/s12916-014-0148-8).
+
+So G7 runs that check before the journal does, on this machine and on the authors' own
+copies. Basile chose its four parts on 2026-10-21.
+
+**Which papers.** The earlier outputs `literature/related.yaml` lists, the one list G8 holds
+the paper's numbers to ("An earlier output of the same data is held to this paper"), each that shares authors with this paper (`shares:
+[authors]`); text recycling is the reuse of one's own words, and an output of the same data
+by others is not compared here. Its citation key names the stored copy,
+`literature/sources/<citekey>.*`, kept and read as a cited work's source is, out of git by
+default; an earlier paper the manuscript does not cite still has a key and a copy. Basile
+chose a shared list over a second one in `paper.yaml`, which this check first proposed.
+Nothing is looked up. An author's ORCID iD could list their works, but this makes no registry
+call, and the list is the record. A copy is read here and sent nowhere, to a model provider
+least of all.
+
+A preprint, an abstract or a protocol of this same study (`kind: preprint`, `abstract` or
+`protocol`, with `study` among what it shares) is an earlier form of this paper, and the
+manuscript repeats much of it. The TRRP counts reuse of one's own preprint or poster as
+commonly accepted where it is disclosed, the journal's preprint policy decides, and a results
+paper is expected to repeat its own protocol's methods. So it is compared like any other, and
+reported once, however much the manuscript repeats: `recycled-earlier-version`, a note at the
+output's line of the list, with the number of passages and words and where the first stands
+(Basile, 2026-10-21; the protocol in round 1 of the review, where it warned once for each
+paragraph of the Methods that did not cite it).
+
+**How it compares.** By words. A word is a run of letters and digits in lower case. A hyphen,
+an en dash or an apostrophe inside it joins its parts, and so does a hyphen at the end of a
+line, so that "drug-induced" set as "drug-\ninduced" in a PDF, and "pharmaco-\nvigilance"
+broken by the PDF's hyphenation, are one word each. A number is no word, and neither are the
+digits at the end of a word, which is where a PDF leaves a reference's number ("risk12",
+"risk²"); so a binding, a reference's number and a count the new paper updated are no
+difference. A ligature is its letters. A run of eight words that the earlier paper has in the
+same order marks its words shared. Shared words that stand together are one passage, and so
+are two runs at most three words apart here whose places in the earlier paper are at most four
+apart, so that a word changed for another does not cut the sentence in two. A passage of
+twelve shared words or more is reported. "Adjusted for age and sex" is five words and never a
+run; a sentence of the Discussion repeated with one word changed, eight words or more from
+either end, is a passage of every other word in it. A word changed nearer an end leaves the
+words beyond it in no run, so they are not counted (round 1 of the review).
+
+A PDF is read in reading order, `pdftotext` without `-layout`, where the literature chain
+reads it laid out to find a quote. Laid out, each line of a page of two columns holds a line
+of each column, and every sentence of the left column is cut by the right one. pypdf is the
+fallback, as it is for the chain.
+
+**The supplement is compared as the main text is** (Basile, 2026-10-21: supplementary
+material is held to the same rules). Every Markdown file under `manuscript/supplementary/`
+is read with the rest, as every gate that reads the manuscript reads it; a LaTeX manuscript
+is not read by this check yet, and G7 says so (`not-read-in-latex`). The supplement's
+headings name its parts as the main text's do: a title that is a supplement's name for a part
+and nothing else, "Supplementary discussion", "Supplemental results", JAMA's "eResults", is
+that part (round 7 of the review: they named none). Only the whole title: "Online discussion
+forums" or "eConsent" names no part (round 8: a prefix taken off any heading read "Online
+discussion forums" under the Methods as the Discussion, which unnamed the Methods). Its Supplementary Methods are the Methods: a
+description reused there with its source cited in the paragraph is a note, and one that does
+not cite it warns from internal-review. A similarity check reads the supplement as it reads
+the paper.
+
+**What is not compared.** The front matter, where an abstract already fails
+(`front-matter-abstract`) and the build prints nothing; the headings, which are also a bound
+no passage crosses; listings, tables and comments; and the reference list, which a similarity
+check is asked to leave out.
+
+**The statements a journal asks for are compared, and noted.** Funding and the funder's role,
+competing interests, acknowledgements, data and code availability, ethics and consent, patient
+and public involvement, the authors' contributions (CRediT), transparency, the use of
+generative AI, the abbreviations: these are the same from one paper to the next, a journal
+expects them to be, and a warning of each would bury the ones that matter. A passage under a
+statement's heading is `recycled-statement`, a note at every stage. A statement's heading is
+known by its whole title, which names one statement or several and nothing else: "Funding",
+"Data availability statement", "Ethics approval and consent to participate", "Conflicts of
+interest/Competing interests", "Funding, competing interests, and data availability",
+"CRediT author statement" (the heading the submission pack writes). It is a statement's
+wherever it stands, at the end, under the Methods, the Discussion or the abstract, except
+under the Results, whose themes may be named so ("Data sharing", "Consent") and are the
+Results' own. A title that only opens with such words is the paper's own matter: "Funding
+sources of the included trials", "Data sharing in pharmacovigilance".
+
+Four rounds of the review went into this, and Basile chose the note on 2026-10-21. Read by
+the part of the paper over it, "Ethics approval" under the Methods was the Methods', and its
+standard words warned (round 1). The statements were then set apart, not compared, and every
+heading read wrong hid recycled text: a heading of the Results read by its first words (round
+2), a commentary's title (round 3), a theme of the Results named as a statement is (round 4);
+and every statement title missing from the list warned (rounds 3 and 4). Compared and noted,
+a heading read wrong turns a warning into a note at worst, and hides nothing. A statement's
+heading is not counted as a part of the paper when a heading over several parts is taken for
+a title over the paper, so that the Methods over "Statistical methods" and "Ethics approval"
+stay the Methods (round 2), and the conclusions are counted with the Discussion, so that the
+Discussion over "Interpretation" and "Conclusions" stays the Discussion (round 4).
+
+Words in quotation marks, straight or curly, double or single, or in a block
+quotation, are quoted and not recycled. A passage is recycled text where twelve of its words
+or more stand outside quotation marks, and a quotation (`recycled-quotation`, a note) where as
+many stand inside them.
+
+**What a passage is told.** Its part of the paper is the one the outermost heading over it
+names: the Introduction, the Methods, the Results, the Discussion, the conclusions or the
+abstract, named as the other gates name them, the Methods being the sections
+`methods_sections` takes for them. A heading over headings that name two parts or more is a
+title over the paper and names none.
+
+- In the Methods, where the passage's paragraph cites the earlier paper:
+  `recycled-methods-cited`, a note at every stage, which says to mention it in the covering
+  letter.
+- In a statement the journal asks for: `recycled-statement`, a note at every stage.
+- Anywhere else: `recycled-text`, a note while drafting and a warning from internal-review,
+  never a failure. In the Methods with no citation in the paragraph, it says to cite the paper
+  there or write the passage afresh; in the Results, the Discussion, the conclusions or the
+  abstract, to write it afresh; in the Introduction or under no heading that names a part,
+  that the journal decides.
+- An earlier output with no citation key, or no copy that can be read:
+  `earlier-output-not-compared`, a note at its line of the list.
+
+Never a failure, because the journal's policy decides and neither guide forbids anything
+outright. A journal profile may state that policy as `text_recycling:`, with the page's words
+under `quotes.text_recycling`, which G4 holds to the stored page as it holds every rule's
+quote; each `recycled-text` and `recycled-methods-cited` finding then gives those words. The
+notes of a quotation, of an earlier form of the study and of an output not compared do not,
+since none of them asks the author to change the text.
+
+Each finding gives the manuscript's lines, how many words are shared, the part of the paper,
+and where the earlier paper has the passage: the page of a PDF, which is the PDF's own count
+and not the number printed on it, or the line of a text file or of a page saved as HTML.
+`check` counts `earlier_outputs_compared` and `recycled_passages`.
 
 ## Only a person can sign an attestation
 
@@ -4959,6 +5413,115 @@ drafts the dictionary with the author from the plan, and names a validated instr
 its licence rather than writing its items. The reading is held over generated plans
 (`plan variables` in `tests/readings.py`), one section of every kind in each.
 
+**The dictionary is written out for whoever builds the form, and is not changed by it.**
+`manuscript-guard dictionary` writes three copies of it, each a function of the file alone
+and written again whenever it changes (Basile asked for the export with the rest,
+2026-10-21). `--redcap` is REDCap's data dictionary, the CSV its Online Designer imports:
+the eighteen columns of its template in its order (as REDCap writes them in a dictionary it
+downloads, and as REDCapR and ReproNim's reproschema-py read them, read 2026-10-21), each
+variable on the instrument its `form` names, a coded one as a radio field with its codes
+and its missing codes as choices (`1, Male | 2, Female`), the others as text fields with
+REDCap's validation for their type (`number`, `integer`, `date_ymd`, `datetime_ymd`,
+`time`) and their range as its minimum and maximum, `applies_if` as branching logic, the
+definition as the field annotation and the unit as the field note. REDCap takes the first
+field for each record's identifier, so the first `identifier` variable comes first, and
+its form first. A derived variable is left out and said: the analysis computes it, and
+REDCap's calculated fields are a language of their own. A name REDCap cannot take, one
+with a capital or a dot, is refused rather than changed, since a renamed field would no
+longer be the variable the plan and the data checks name; so is a dictionary with no
+identifier or with a coded variable whose codes are not decided, and nothing is written.
+`--csv` is one row per variable and one column per key of an entry, for any other system;
+`--outline` is the form in Markdown, form by form, each question with its responses, its
+skip and whether it is required, a validated instrument's items marked as the licensed
+instrument's wording, and what is derived and not asked.
+
+## A plan learns from how others answered its question
+
+A plan is better for knowing how studies of the same question chose their comparator, their
+time zero, their case definition and their adjustment set. It is not better for taking what
+most of them did. A design used often can carry a bias often: immortal time was found in one
+published cohort study of drug effects after another (Suissa, *Am J Epidemiol* 2008), each
+following the last. So a method is judged against a published methodological standard and
+never by how many studies used it, the judgement is a proposal, and the author decides what
+the plan takes (Basile, 2026-10-21).
+
+**The record.** `design/methods_review.yaml` (`methods_review.py`; schema
+`manuscript-guard/methods-review/1`) holds the question the studies were chosen for, how
+they were searched for, and one entry per study: its citation key, what it shares with this
+study (`similar`: question, exposure, outcome, population, data source, design) and why it
+was chosen. Under each study, one entry per field it reports (`FIELDS`: design, data source,
+population, case definition, exposure, outcome, comparator, time zero and follow-up,
+confounding, model, missing data, sensitivity analyses, or `other` with a label), each with
+the study's own words (`passage`) and where they are (`locator`); an appraisal, or several;
+and the author's decision. A file of its own beside the plan, at the stage the plan is
+written, before there is a manuscript to cite the studies from. The date a search was run is
+`searched_on`, not `on`, which YAML reads as `true`.
+
+**The words are the study's.** G7 looks for each passage in the study's stored files as it
+looks for a supporting passage (`looked_for`, shared with `literature/passages.py`): each file
+read once, words left out read as in a quotation. One that is in none of them is
+`similar-passage-not-in-source`, a note at the design stage and a failure from the analysis
+stage on, the stage the plan built on it is frozen at (Basile, 2026-10-21). A study with no
+stored copy that can be read is a warning (`similar-passage-unchecked`), and a passage of
+fewer than four words is a warning (`similar-passage-too-short`). `sync-sources` copies the
+studies the review names, and the standards it gives a key to, as it copies the works the
+manuscript cites (`copies.wanted_keys`): at the design stage there is no manuscript, and
+before this it refused with nothing cited.
+
+**A judgement says what it rests on.** An appraisal names the standard (`standard`) and the
+standard's domain the judgement is of (`domain`), how far the method departs from it
+(`concern`: low, some, serious, unclear), what the risk is (`says`), and who proposed it
+(`proposed_by`): an agent may. The built-in standards are a table, `data/method_standards.yaml`,
+as the study types are: each with its domains in its own words, the study types it is for,
+where it is published and the day it was read, every one read on its own page (2026-10-21):
+the ENCePP Guide's chapters, the components of a target trial's protocol (Hernán and
+Robins), the domains of ROBINS-I, ROBINS-E, RoB 2, PROBAST+AI and ROBIS, the assumptions of
+the self-controlled case series, immortal time (Suissa), and the Methods items of READUS-PV,
+STROBE and RECORD-PE. A standard the table does not hold is described in the record, with its
+name, domains and citation key; one the table holds is given only its key there, and one
+described again keeps the table's domains (`standard-redescribed`). An appraisal with no
+standard (`appraisal-without-standard`), one neither holds (`appraisal-standard-unknown`) or a
+domain the standard does not have (`appraisal-domain-unknown`) is a warning, each, as the rest
+of G12 is (Basile, 2026-10-21). A domain is matched loosely: case, hyphens, underscores, slashes and runs of space.
+Whether the judgement is right is not checked, and cannot be; what is checked is that a
+reader can go to the place it rests on. The methods with no appraisal are counted in a note
+(`similar-unappraised`), and so are those appraised and not decided (`similar-undecided`).
+
+**A decision is a person's.** `decision` holds the choice (adopt, adapt, reject), why, who
+decided and when. A model's name may not sign it (`similar-decision-not-human`, the deny-list
+G7 reads `attested_by` with), failing from the analysis stage on. The plugin's write guard
+puts to the person an agent's edit after which the decided methods are not the ones the file
+held before, word for word in their study, field, label, passage and decision, and as many:
+a decision recorded, changed or taken away, or the method under one changed. Where the file
+before an edit or after it is a text YAML cannot read, a date that is not one among them,
+what a decision there is of cannot be told, and the edit is put to the person wherever
+either text names a decider, named where the line gives a plain or quoted name (rounds 1 and
+2 of #386: `2026-02-30` raised past the guard, and #374's judgements with it). An appraisal changed beside it is the
+agent's to make. A Codex patch to a review that holds a decision outside a comment is put to
+the person, and refused where the tool cannot ask, as for a passage's judgement.
+
+**What is taken is cited.** A method decided `adopt` or `adapt` is cited by its study's key in
+the plan, or in the manuscript's Methods, and by the key of each standard it was judged
+against: a method taken from another paper is that paper's, and the methodological source is
+where the reasons are (Basile, 2026-10-21). Each is a warning where it is not:
+`adopted-method-uncited`, `adopted-standard-uncited`, the second also where the review gives
+the standard no key. A citation in a comment of the plan is not one, and one elsewhere in the
+manuscript, the Introduction citing the study for its incidence, does not credit the method.
+On a LaTeX manuscript the Methods are not read yet, so only the plan's citations count, and
+the finding says so. When the Methods are drafted, the sentence citing the study is a cited
+statement like any other, and its supporting passage goes in `literature/passages.yaml`.
+
+**The design round reads it.** `prompt.gather_design` sends the record with the plan, under
+"The methods of similar studies": each study, each method in its words, each appraisal with
+its standard and its proposer, and each decision, with an instruction to check each appraisal
+against its standard. `plan_digest` takes in the record's bytes where there is one, so an
+appraisal or a decision changed after a design reading leaves it stale, as a changed plan
+does; a project with no record has the digest it had before. A record that cannot be read
+stops the round, since the readings would be filed with a digest of a file they never read.
+The `methods-review` skill drives the steps, from the search to the citation; how many
+studies is the author's choice, the most relevant five to ten usually, and nothing counts
+them.
+
 ## Stages: not every gate binds on day one
 
 The first version of `check` ran all twelve gates unconditionally, which meant that someone
@@ -5431,7 +5994,7 @@ other than the one run.
     a copy.
 
 **After that run** (Basile's choice, 2026-10-19), a routing case whose prompt speaks of a
-finished project starts in one. 12 of the 15 do: `tools/run_skill_evals.py` puts a copy of
+finished project starts in one. 12 of the 16 do: `tools/run_skill_evals.py` puts a copy of
 the worked example beside the cases in the copy of the suite it runs, as `evals/_project/`.
 Each such case's `case.yaml` names a `scaffold.sh` that copies it into the folder the run
 starts in, and the command is given `--scaffold`. The copy names no skill: it leaves out
@@ -5441,13 +6004,16 @@ this over keeping them and saying so). With them, the arm without the plugin cou
 several criteria ask for. A file whose data would read otherwise without its comments is
 refused. What the project is made of, its bindings and its emitter calls, still shows the
 toolkit in use to either arm, as any project made with it would, so the difference between
-the arms is what a skill adds to a model reading such a project. Three routing cases still
+the arms is what a skill adds to a model reading such a project. Four routing cases still
 start empty, and so do the near misses and the requests no skill is for:
 - project-setup starts a project, and may give the `init` command where it has no shell to
   run it;
 - manuscript-writing carries its own paragraph, and invents no finding, since its prompt
   gives none;
 - analysis-plan is about the plan before any analysis code, and the example has both.
+- data-sources asks which data could answer a question before any are chosen, and the
+  example has its own (added with the skill, 2026-10-21, with a near miss each way against
+  analysis-plan; not yet run).
 
 The example is a finished project, and some prompts ask for what it lacks: paper-audit and
 word-roundtrip speak of a .docx, reviewer-response of reviewers' comments, and review-panel
@@ -6143,6 +6709,85 @@ name one source alike. Nothing reads the record yet (Known gaps). The example de
 simulated reports as a dataset generated on 3 August 2026 to cover 2015 to 2024, its
 reports' years held to them, and its Methods print both that and the years the reports run
 over.
+
+## The datasets considered are a record, and the one chosen is held to it
+
+A project chose its data before anything in the toolkit spoke: the custodian's rules were
+declared in `paper.yaml` once someone remembered them, the plan named a source in its own
+words, and the Data availability statement was written at the end from memory. What the
+choice rested on, which datasets could answer the question, how each is reached, at what
+cost and delay, on what terms, was nowhere. A source chosen for its variables and found
+afterwards to take nine months and a committee, or to forbid a count below eleven, costs a
+project its schedule or a table, and both were on the custodian's page before the choice.
+
+`design/data_sources.yaml` is that record, written with the author by the data-sources skill
+and modelled on the journal shortlist (Basile, 2026-10-21, question box, every option as
+recommended and the plan check besides). It is held to a schema
+(`contracts/schemas/data-sources.schema.json`): the question and what the data must hold,
+stated by the author first, with their name and the date; the candidates, each with its
+custodian, what it covers (the variables by the names `design/data_dictionary.yaml` gives,
+where the project keeps one; nothing reads the dictionary, so neither depends on the other),
+its route (`open-download`, `registration`, `application`, `data-use-agreement`, `authors`,
+`commercial-licence`), its cost, delay and terms; the ranking, the decision and who made it,
+the reasons for the candidates rejected, the messages drafted for the author to send, and
+what came of each request. The skill searches catalogues and custodians' pages, proposes, and
+drafts; it never chooses, applies, accepts terms or sends.
+
+**Each access claim has its source.** A claim names the fields it is the evidence for
+(`about:`) and carries either the page's words, its URL, the date it was read and the page
+stored as text in `design/data_sources/pages/`, or the person who said it and when, from a
+call or a letter. G12 holds a quote to its stored page as G4 holds a journal profile's
+(`_on_page`: folded for case, spacing and typography, and not part of a longer word or
+number), and says a quote that is not there (`data-source-quote-not-on-page`), a page not
+stored (`data-source-page-not-stored`), and the fields of a candidate's `access:` and
+`terms:` that no claim names (`data-source-unsourced`). A chosen source whose route is not
+known is said (`data-source-route-unknown`): the choice was to be made with it known. An id
+named where no candidate has it (`data-source-unknown`), one given twice
+(`data-source-id-repeated`), a model named where a person states, chooses or sends
+(`data-source-not-a-person`, by G7's list of names) and a record out of shape
+(`data-sources-schema`) are warnings; a record with no decision is a note
+(`data-source-undecided`), since nothing is then held to it.
+
+**The choice is held to the rest of the paper.** Three things read it, each built in the
+first pull request as Basile chose:
+
+* `paper.yaml`'s `custodian:`. G2's small-count check reads the minimum only from there, and
+  `review --run`'s refusal reads `restricts_sending` only from there, so a rule the record
+  holds for a chosen source and `paper.yaml` lacks is a check that never runs.
+  `custodian-rule-undeclared` says so, for the largest minimum among the chosen sources and
+  for any of them that forbids sending; a minimum smaller than the record's is not the
+  custodian's. It is the one finding here that fails: a warning while the paper is written,
+  a failure from `internal-review`, the stage at which `count-below-minimum` fails. The gate
+  is told the stage and gives the severity itself, since a failure demoted before its stage
+  is a note, and this is to be seen from the start.
+* The plan. Its Population or Data source section, subsections included, names a chosen
+  source by its name, another name or an identifier, or G12 warns (`plan-source-unnamed`).
+  A plan without the section is `plan-section-missing`'s.
+* The Data availability statement, in G4: it names each chosen source, or a cited dataset's
+  DOI names it (`data-statement-source-unnamed`), and it does not say the data are had on
+  request where anyone may download them, nor that they are publicly available where
+  somebody decides access (`data-statement-route-differs`). The statement is read sentence
+  by sentence for "on request" and "from the corresponding author", and for "publicly",
+  "openly" or "freely" available and their like. A warning rests on a strict reading: the
+  phrase, with no denial anywhere before it in its sentence ("not", "cannot", "never",
+  "neither", "nor", "no", "none", "nothing", "without", "-n't"; "at no cost" and "no-cost" deny
+  nothing). Three rounds of review each found a denial that a clause boundary or a window of
+  words cut off, "are not, however, publicly available" (round 1), "generated no new data,
+  and the archive is publicly available" (round 2), "None of the claims, prescriptions, and
+  records are publicly available" (round 3), and each was a warning given wrongly; read
+  strictly, a denial of something else silences the phrase too, a warning missed; a denial
+  in other words, or after the phrase, still warns (Known gaps). A sentence is said of the sources it names; one that names none and
+  speaks of data is said of every chosen source, where all are reached one way. A statement
+  that speaks of an open source as openly available at all, denied or not, is taken to ask
+  for something else, the analysis files or the code, when it also says "on request": that
+  reading is lenient, because it excuses a warning. Read wherever a source is chosen, with or
+  without a journal profile's data policy, and not in a LaTeX manuscript until G4 reads one.
+
+All of it but the custodian rule is a warning, as the shortlist's are: what a record says is
+the author's and the custodian's to settle, and a gate that blocked on a quote would block on
+a page that moved. The reading of the statement is held over generated inputs: every
+phrasing, denied and not, under an open and a restricted source, and every rendering of a
+source's name, in drawn text (`tests/test_properties.py`); the limits are in Known gaps.
 
 ## What a change makes stale
 
@@ -6964,7 +7609,9 @@ reference; and, whole, a field, a link or an equation. An equation is compared b
 structure: each element of it, the values of its own properties and its text, its runs' Word
 formatting left out, so that `x^2` made `x_2`, or an accent or a root taken off, is a change
 (round 1 of #396: compared by its letters, it was none, and the check, which reads no inline
-maths, passed the copy). A short unchanged stretch between two
+maths, passed the copy). A switch set as OMML reads it left out, off but for a phantom's
+`show` and a delimiter's `grow`, is the switch left out; a box's `noBreak` is compared as
+written (Known gaps). A short unchanged stretch between two
 changes is taken into them, as diff-match-patch's clean-up does, where it holds no word or is
 shorter than the change on each side; two numbers apart stay two changes.
 
@@ -6975,7 +7622,9 @@ in `w:del`, and what it points at is carried into the copy's package under names
 a picture, the numbering of its list (a copy, so that a deleted item joins none of the
 revision's lists), a style the revision lacks, a footnote. A link deleted is written as its
 words. A word whose formatting alone changed keeps the revision's and records the old in
-`w:rPrChange`; a paragraph whose style or numbering changed records the old in `w:pPrChange`,
+`w:rPrChange`, once for each part whose old runs differ in look, language or being hidden,
+and Word's proofing mark and script hint are the first run's; a paragraph whose style or
+numbering changed records the old in `w:pPrChange`,
 a list's numbering compared by what it draws, since two builds number their lists in their
 own order. A table of the same columns is merged row by row and cell by cell, a row added or
 removed tracked as a row; a table of other columns, or whose cells span or merge, is replaced
@@ -8193,6 +8842,138 @@ The file is a page, the answers are JSON, the record is a CSV. No model, no prov
 tool appears anywhere in the path, and none is needed to run a round. That is deliberate: a
 co-author's reading is the one part of this toolkit that must not depend on anyone's subscription.
 
+## The publisher's proof is held to what was sent
+
+Every guarantee here stops at the document the author sends. The journal then has it typeset,
+by people and programs that can change a digit, set a decimal comma, drop a minus, swap two
+cells, renumber a reference or lose an affiliation, and sends back a proof that the author
+reads by eye, usually within two days. `manuscript-guard proof <proof> [path]` reads the
+proof's text and holds it to the document sent, and lists what the author has to ask the
+production office to correct. It sends nothing. Basile chose each of the four points below on
+2026-10-21, of the options put to him.
+
+**What it is compared with.** The paper in the submission pack, `build/submission/`, or the
+document named with `--against` (`proof.sent`). The pack's copy is what the journal was sent,
+and its manifest says so: the report says whether the manifest lists the file with these
+bytes, for which round; whether every author's approval is of the build it came from, by the
+stamp the document carries; and whether the source has changed since, in which case a
+correction may already be in the source. What changed after the pack is not compared, so a
+revision's accepted changes are kept out the same way: rebuild and pack the version the journal
+accepted, and the proof is held to that. `--supplementary` compares a supplement typeset as a
+document of its own with the pack's supplement.
+
+The document is read as the build reads it when it writes its record of what each block
+printed (`docxtext.blocks`, "The build records what each paragraph printed"), from the
+document itself rather than from the record. The record is that reading, made on the machine
+that built the document; the document is what was sent, and reading it gives the same blocks
+anywhere. Each block is a part. A table is its cells, each a part with its row's label and its
+column's header, read as `audit` reads a table (`text.docx.read_docx_text`). A figure's picture
+and a displayed equation are not compared, and the report says so.
+
+**Reading the proof** (`proof.reading`). A PDF is read by `pdftotext` where it is installed, in
+two orders: the order of the page's layout, which poppler and Xpdf each work out their own way,
+and the order the PDF draws its text in (`-raw`). Neither is right for every proof. On a proof
+written by `tests/proof_pdf.py`, Xpdf 4.00's layout order read two columns with a narrow gutter
+a line of each in turn, and poppler 24.04's gave the margin's line numbers as a column of their
+own and joined a compound broken at its own hyphen ("example-" and "drug" became
+"exampledrug"); the drawing order of both, and pypdf's, kept the columns. So both orders are
+read, and the comparison keeps the one that lines up most of what was sent, less what it adds
+that was not sent: a reading with the line numbers among the words finds every word and adds a
+number between each line. Without `pdftotext`, pypdf reads the drawing order. A proof sent as
+JATS XML or HTML is read by pattern, one line to a paragraph, cell or heading, and not parsed,
+so an entity it declares is not expanded and nothing it names is fetched; an author's JATS
+name, in `<contrib>`, is turned given name first, as a title page prints it, and a
+reference's is left as its style prints it, "Smith A". A proof saved as text is read with its pages parted by
+form feeds, as `pdftotext` writes them. A proof with no text, a scan, is refused (exit 2).
+
+What every page repeats is taken out first, from the top and the bottom of each page (its first
+and last four lines, a fifth of a short page and two lines at least): a line that, its digits
+aside, stands once on half the pages or more, on the same side of each, the top for a head and
+the bottom for a foot, its numbers alike on every page but for one, the page's own (a running
+head or foot: a table's rows share a shape and stand many to a page, and differ in many
+numbers); and a number alone on its line that counts up with the pages on most of them (the
+page number). Read anywhere on the page, a line of a generated proof's text that happened to
+stand on half the pages, "reports records.", was taken for a running head, and the end of
+each paragraph it closed was reported as words the proof left out; read on either side, a line
+two paragraphs shared stood at the top of one page and the foot of the next, and was taken out
+of both. A proof's line numbers are judged over the whole proof: they
+count up by one, five or ten nearly always, stand on enough of its lines, and start each page
+at one or on from the page before, so a column of years is none and a first page of four
+lines is no exception. They are kept where they stand at the start of a line, so that a
+correction names its line, and dropped where a reader gives them as a column.
+
+**Comparing** (`proof.tokens`, `proof.align`, `proof.compare`). Both texts are read in Unicode's
+compatibility form, so that a ligature is its letters and a thin space a space, and cut into
+numbers, words and marks. A number is read with its sign where a sign can stand, as `audit`
+reads one, and with its decimal mark. They are lined up with every number standing for any
+number, so that a number changed in place lines up with the number it was. difflib's matcher is
+exact and quadratic: an article of eleven thousand tokens took eleven seconds, three times that
+took ninety. So runs of keys found once on each side are anchors, the longest chain of them in
+order on both sides is kept, and only the gaps between, once small, go to difflib, as a
+patience diff does. Where no run stands once on each side, a table of numbers alone or a
+passage the paper repeats, runs that stand as often on each side, up to eight times, are paired
+first with first. Two readings that line up as many tokens are not alike to the author, so two
+rules choose between them. A stretch printed and not sent, or sent and not printed, is slid
+along the tokens alike on both sides of it to start where a part starts, where it can: a
+paragraph left out of the proof would otherwise take the full stop of the one before it. And a
+part left out next to a part the proof changed is left out whole, where that lines up as many
+(`align.whole_parts`): the words two paragraphs end with were lined up with the second's end,
+and the paragraph left out read as part of a copy-edit of the first, which is a correction
+not counted. A run the chain leaves out and the proof prints elsewhere, a table set where the
+page had room or a statement the journal's template moves, is found there and compared there.
+
+Each difference is then one of these:
+
+- **A correction** (exit 1, and the list `--out` writes): a number's digits, sign or decimal
+  mark changed, or a number gone or come within a part; a unit, a percent or degree sign or a
+  comparator changed beside a number, or after a number and a hyphen, "5-mg" (a unit's case is
+  kept, so "mM" is not "mm"; the two spellings of a litre and of a microgram are one); a
+  unit of time spelt out and printed as another there, "12 weeks" as "12 months" or
+  "12-week" as "12-month" ("12 wk" and "12 week" are copy-edits); any change inside a citation
+  (brackets, parentheses that hold a year, a short number set against a word as a superscript
+  is) or an entry of the reference list; a part the proof does not print at all, or a
+  paragraph, a caption or a reference of six tokens or more none of which it prints in place,
+  whatever stands there instead; on the title page, an author's name (with its affiliation
+  marks set against it, "Example1,2", it is the name), the authors' order, an affiliation, an
+  ORCID iD or the corresponding author's e-mail address. A correction of a number names the binding that printed it and the line of
+  the source, or says it was typed (`proof.origin`); a cell names its table's binding. Two
+  corrections that trade what they print are said to be swapped.
+- **Typography**, shown and not counted: the same number set otherwise, grouped ("19 950"), a
+  true minus or a minus set as a hyphen or a dash, a leading zero dropped (".001"), a middle
+  dot for the point; a name printed with its initials.
+- **A copy-edit**, shown for the author to accept or query: any other change of words.
+- **Moved**, shown: a paragraph or heading set elsewhere. A table's cells and a caption move
+  as floats do, and are not shown.
+- **Added**, shown: text the proof prints between parts that was not sent. The title page's
+  lines, once found to be the title page, are not.
+
+The title page is not in the document sent: the pack writes it from `authors.yaml`. So it is
+held to `authors.yaml` (`proof.front`), anywhere in the proof's text: each name letter for
+letter, accents kept, case and the shape of quotation marks aside; each affiliation; each ORCID
+iD, where the proof prints any; and the corresponding author's address.
+
+**The report** is on the screen, in the proof's order: the corrections with the page and the
+line number the proof prints, the copy-edits, then what was shown and what was not compared.
+`--out <file>` writes the corrections as a numbered list to paste into the reply to the
+production office, and `--json` writes everything. Nothing is written without `--out`, and
+nothing is sent. A proof that reads as less than 30% of the document is not compared (exit 2):
+it is another paper's, or its text could not be read in order, and a report of every part
+missing would say nothing.
+
+`tests/test_proof.py` plants each kind of change in a proof of a few parts, and runs the
+command on proofs of the example's own pack typeset as two-column PDFs with running heads.
+The PDFs are written by `tests/proof_pdf.py`, in Helvetica with a map from each code to its
+character as a typesetter's fonts carry one, and read by pypdf, pinned in the development
+dependencies, and by each `pdftotext` on the machine. `tests/test_properties.py` holds the
+comparison over proofs `tests/generated.py` draws (`proofs`): the parts' words, their order,
+the width the proof wraps to, the length of its pages and whether it numbers its lines, with a
+long word and a compound broken at a line's end. A proof of the parts as sent reads as them;
+one with one of every change of `PROOF_CORRECTIONS`, every setting of `PROOF_TYPOGRAPHY`, a
+word copy-edited, a unit of time abbreviated and a part left out, each in a part of its own,
+reports each once, in its part, on its page and its line. Eleven rules broken in place each
+fail one of the two, under a dozen seeds. The two rules above that choose between
+readings were found by them.
+
 ## Known gaps
 
 Recorded because a gate whose limits are undocumented gets trusted beyond them.
@@ -8542,7 +9323,12 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   not once for every cycle in it. A plan written in `#` sections with no title, opening
   with `# Amendment history` over a `## Version 2` that names a dropped variable, takes the
   history for a title and reads it, so the dropped variable is not said to be unused (round
-  2; `test_a_history_at_the_title_s_level_is_read_as_a_title`). A title followed by a
+  2; `test_a_history_at_the_title_s_level_is_read_as_a_title`). The other side of the level
+  chosen: a title at level 2, or a setext title over `---`, that names an amendment is the
+  Deviations of the plan, and nothing under it is read
+  (`test_a_level_2_title_naming_an_amendment_is_read_as_the_deviations`). The generated
+  plans all have a level-1 title, so only these tests hold the rule for a plan with none
+  (round 3 of #393). A title followed by a
   heading at its own level is the Deviations of its text up to that heading, where it
   names an amendment. The Deviations are left out whole, so a variable named
   only there is unused even where the change kept it. That an entry is needed is all that
@@ -8550,6 +9336,23 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   `variable()` declarations agree with the dictionary, or that an instrument's `citation` is
   in `references.bib`. An entry for an existing dataset's column the study does not use
   needs its reason like any other.
+- **The REDCap export writes what a data dictionary can say, and no more.** A missing code
+  of a number is written in the field note, not as one of REDCap's missing data codes,
+  which a project sets for itself, so a value of -99 is refused by the field's range until
+  the project's codes are set. No field is flagged as an identifier, since the dictionary
+  does not say which fields identify a person. A `pattern` is not written as a validation
+  (REDCap's own are a fixed list), and is said. A name over 26 characters, which REDCap
+  advises against and accepts, is written as it is. A code with a comma, a bar, a quotation
+  mark or a space, or a label with a bar or a line break, is refused, since it would not
+  read back from REDCap's choices (round 1); a code REDCap refuses for another reason,
+  `N/A`, is written, and REDCap's import says so. A bound with seconds is truncated to the
+  minute, and one with a time zone is written without it; a `count`'s bound is written as
+  given, `0.5` included. A failure to write the second or third file leaves the first
+  written (round 2). A name REDCap reserves for itself, or `<form>_complete`, which it makes,
+  is not refused, and a definition holding an action tag, `@HIDDEN`, acts as one in the
+  field annotation. The REDCap file has not been imported
+  into a REDCap server by these tests: its columns, types, validations, choices and
+  branching logic are held to the template as the packages above read it.
 - **A statistic is held to what it belongs to by which bindings share its sentence, and by
   nothing else.** An estimate with intervals at two levels is asked to be quoted whole at
   each, though a paper quotes the one it means. An interval quoted whole only in a table the
@@ -8869,6 +9672,40 @@ Added by the adversarial review, verified and **not** fixed:
   the document's stamp, the custodian's minimum and the synthetic-data check, as the
   manuscript's are; G2's other readings of bindings do not see it, so a value quoted there
   alone is still one the manuscript does not quote.
+- **A figure's colours are read from its SVG or PDF, and compared all with all.** A raster
+  figure's are not, nor an image inside an SVG or a PDF (a heat map matplotlib embeds as one),
+  nor a gradient, a pattern, a shading, or a PDF colour in a separation, an indexed or a Lab
+  colour space. A figure that draws a continuous scale is not compared at all, its series
+  beside the scale included, and neither is one of more than 300 colours: both are said in a
+  note, and left to the figure's review. A scale drawn with neighbours more than 10 apart, or
+  through less than 10 of lightness (a colormap's narrow slice, a correlation map's pale
+  middle under fixed limits), is no scale to the check, and its shades are compared as
+  series; a rainbow colormap a deficiency scrambles is not said. The bands of one series at
+  three opacities or more chain through lightness and are taken for a scale, so such a
+  figure is not compared. A text drawn as glyphs is known for one where
+  matplotlib (`text_` groups) or Cairo (`glyph` symbols) draws it so, and is a mark where
+  another program does. A text's colour is left out, so data told apart only
+  by coloured labels is not checked. Every colour painted is compared with every other, the
+  background and the grid's among them: the check does not know which colours encode data, so
+  a series and a grid line made one by a deficiency are said, and `allow_colours` is how a
+  figure says that pair does not matter. A colour laid at an opacity is laid over white, not
+  over what is under it. A PDF's CMYK is taken to RGB without its profile, and any colour
+  space of three numbers is read as sRGB. The deficiencies are simulated at full severity
+  only, the dichromacies; the anomalous trichromacies, commoner and milder, are not, and
+  Machado's model is less sure of tritanopia than of the other two. The threshold of 10 is a
+  convention, not a standard. A LaTeX manuscript's figures are not read.
+- **A palette's verdict is the check's, at its threshold, on its colours as written.** The
+  number of a set's colours that stay apart is counted in the collection's order for that
+  many, so a set whose first colours are close is rated low though a figure could take
+  others of it. A continuous map's lightness is judged at eleven points, so a wiggle between
+  them is not seen. What a collection claims is copied as its file states it (MetBrewer,
+  MoMAColors and NatParksPalettes) or as its makers' documentation states it (viridis,
+  cividis, Crameri, Okabe and Ito), not tested. `figure_style` and `mg_theme` size text and
+  lines to the journal's least or 7 pt and 0.5 pt, sizes many artwork guides give, which the
+  journal's own guide may set otherwise; `size` overrides. `mg_theme` sets ggplot2's `line`
+  and `rect`, and an element a base theme draws at a multiple of them keeps it: `theme_bw`'s
+  minor grid is drawn at half the journal's least. A palette's colours are not
+  checked against the figure that uses them: G3 reads the rendered figure.
 - **`stage:` is declared, not detected.** Writing `stage: analysis` demotes every G2 finding
   to INFO. It is printed, counted and summarised — never hidden — but CI reading the exit
   code sees green.
@@ -11477,6 +12314,47 @@ Open, recorded as each change landed:
   where the statement names its archive too. A dataset's DOI counts as cited when an entry of
   `references.bib` holds it, whether the text cites that entry or not. A regular expression
   in the profile that does not compile stops G4, as one in its required statements does.
+- **The record of data sources is read for what it says, and the statement for a few
+  phrases.** A quote is held to the page stored beside the record, and nothing holds that
+  page to the custodian's site: a page saved wrong, or edited to hold a quote, passes, and a
+  page that has changed since it was read is not noticed (the journal profile records its
+  page's digest; this record does not). A claim said by a person is their word, and a name
+  in `stated_by` or `decided_by` is refused only where G7's list of model names finds it. A
+  field with a claim about it is backed whatever the claim says: "free" backed by a quote
+  about the licence passes. Only the access and terms fields are asked for a claim; what a
+  source covers, its population, period and variables, may be written with none. A source
+  is named in the plan or the statement by its name, another name or an identifier, folded
+  for case, spacing and typography, as the words they are: an abbreviation the record does
+  not list is not found, and a name that is also a common word ("Sentinel") is found in any
+  sentence that uses the word. The statement is read for "on request" and "from the
+  corresponding author", and for "publicly", "openly" or "freely" available and their
+  like, and a warning is given only where no "not", "cannot", "never", "neither", "nor",
+  "no", "none", "nothing", "without" or "-n't" (either apostrophe) stands anywhere before the phrase in its sentence ("at
+  no cost", "for no fee" and "no-cost" aside); another way of saying either is not read.
+  So a denial of something else silences the phrase: "The data cannot be shared, but
+  summaries are publicly available" beside a claims database, "This study generated no new
+  data, and the archive is available on request" beside an open archive, and "No cost or
+  claims data are publicly available" all say nothing, where the first two should warn. A sentence is said of the sources it names, or, naming none and speaking of
+  data, of every chosen source where all are reached one way; so "The code used to analyse
+  the data is available on request" is read as said of an open source, and warns, and a
+  sentence of the statement about summary data or analysis files that names no source warns
+  too, "Aggregated data underlying the figures are publicly available" beside a claims
+  database (round 1 of #384), and so does a denial in other words or after the phrase:
+  "held by the custodian rather than publicly available", "Publicly available datasets
+  could not answer the question, so the claims were obtained under an agreement". A
+  statement that speaks of an open source as openly available anywhere, denied or not, is
+  taken to ask for something else when it says "on request": "The ORA data are not
+  publicly available. They are available on request" says nothing, and so, in one
+  sentence, "Summaries of the ORA are publicly available; ORA data are available on request"
+  says nothing. Sentences are split at a stop and a space before
+  anything but a small letter, so an abbreviation followed by a capital ends one. A custodian
+  rule is held to `paper.yaml` only for the sources chosen, by the largest minimum among
+  them; a rule of a source not chosen is not read. YAML reads a bare `yes`, `no`, `on` or
+  `off` as true or false: the record dates its history with `date:`, not `on:`, and takes a
+  variable's `provided` and a source's `redistribution` either way, but any other field of
+  text answered with a bare `no` breaks the schema, and the record is set aside with a
+  warning (round 1 of #384). The journal shortlist's history is dated with `on:` and breaks
+  in the same way, on `main`.
 - **A placeholder is found by its kind, and only in the text the gate reads.** In the
   manuscript TODO and TBD count in any case, as they always did, so a Spanish "todo" quoted
   in the prose is one. A slot in brackets in a form the rules do not name, "[Name of the
@@ -11930,6 +12808,9 @@ Open, recorded as each change landed:
   - *How a word looks is its run's properties less its language, proofing, Word's script
     hint and revision ids.* A document sent after Word saved it, with properties Word adds
     of its own, can show a change of formatting nobody made.
+  - *A box's `noBreak` is compared as written*, unlike an equation's other switches:
+    ISO/IEC 29500-1 reads it off where it is left out and gives its default as on, so a box
+    one build writes with it and the other without shows as changed (#410, pinned).
   - *A citation of a live build is compared by what it cites and the words it shows*, so
     a document sent after Zotero refreshed it shows every citation changed against a fresh
     live build, and its reference list, a field across paragraphs, deleted whole beside the
@@ -13583,6 +14464,92 @@ Open, recorded as each change landed:
   contrived). A DOI that `references.bib` writes with a TeX escape, `10.1000/abc\_def`, is
   looked for under `10.1000_abc__def` and not found, as G7 reads the same DOI with its
   backslash (round 1).
+- **A proof is compared as far as its text can be read, and no further.** `proof` reads what
+  `pdftotext` or pypdf gives. A figure's picture, the text inside a figure, an equation and
+  emphasis (an italic P, a gene's name) are not read; a figure is held to its caption alone. A
+  proof whose columns neither reader puts in order is either refused, under 30% found, or
+  reported with parts moved and missing that are not. A superscript loses its raise: a
+  citation number set against a word is told from a number by its shape (three digits at most,
+  set against a letter or a stop), so a change in "ICD10" or "H2O" is called a citation's, and
+  "10" with a raised minus and "3", an exponent, is read as "10-3" and shown as typography. A
+  minus left at the end of a line, apart from its number, is reported as the sign lost. A
+  range's dash a reader spaces on one side only, "0.71 –0.89", reads as a minus,
+  and the bound is reported as a sign changed (round 1 of #397).
+- **The document's footnotes are not compared.** The document is read as `docxtext.blocks`
+  reads its body, so a note's text is not among the parts, and the proof's notes are shown as
+  added text.
+- **What a page repeats is found by rule.** A line at the top or bottom of the page that stands
+  there once on half the pages or more, its numbers alike but one, is taken out: a table's
+  header repeated at the top of half the pages of a short proof is taken out with the running
+  heads, and its cells are then reported missing, and so is a line of the text that happens to
+  stand there as often. A running head a reader puts in the middle of the page is shown as
+  added. A proof of one page has none taken out, and its running head and number are shown as
+  added. A proof's line numbers are read only at the start of a line, counting from one or on
+  from the page before, by one, five or ten, and on five lines at least; given as a column by
+  poppler's layout order they are dropped and the correction is named by its page. A proof
+  with no line numbers names each correction by its page and a quotation.
+- **Numbers stand for any number in the alignment.** A number dropped beside another, "12 15"
+  printed "15", may be read as the first changed and the second dropped. Both are corrections,
+  and the quotation shows which; but the binding named is the first's. A decimal comma before
+  exactly three digits reads as grouping, so "3.845" printed "3,845" is a correction of the
+  number and not of its decimal mark.
+- **The title page is held to `authors.yaml` by its words, not its layout.** Which superscript
+  ties an author to an affiliation, and which author is marked as the corresponding one, are not
+  read. An ORCID iD is compared only where the proof prints one as text: shown as a linked icon,
+  none is. An affiliation the journal rewords, a country moved or a department dropped, is
+  reported as printed otherwise, a correction the author may find is not one. A name printed
+  in capitals is found; a particle the journal sets otherwise ("van der" for "Van der") is
+  found, case aside, but one it drops is reported. A word broken at a line's end keeps its
+  hyphen where the word before or after holds the "@", as "nagoya-" and "u.ac.jp" need; an
+  address with no hyphen that the typesetter breaks with one, "jean-" and
+  "pierre.example@uni.example" for jeanpierre.example@uni.example, is then read with a
+  hyphen it never had, and its e-mail address is reported printed otherwise. The text does
+  not tell the two apart (review of 6104326, #397).
+- **A supplement is compared in its own run.** The supplement is held to the same rules as the
+  paper: `proof --supplementary` compares a supplement the journal typesets as a document of
+  its own with the pack's `supplementary.docx`, part by part and cell by cell, and names the
+  bindings of `manuscript/supplementary/`. Its proof is not held to the title page, which is
+  the paper's. A proof that holds the paper and its supplement in one file is compared with
+  one of them at a time: the other's text is shown as added, and its changes go unseen until
+  the same file is compared again with `--supplementary` (or without it). Where a journal
+  typesets the supplement as it was sent, a PDF made from the .docx, the comparison holds it
+  like any proof.
+- **A citation is compared as the document printed it.** The build prints citations in the
+  journal's style where `manuscript-guard style` keeps it, and the proof is then held to the
+  same style. A pack built in another style, author-year where the journal numbers its
+  references, or "and" where it sets "&", has every citation and every reference entry
+  reported as a correction; the report does not tell a style apart from a fault. Build the
+  pack in the journal's style, and compare again.
+- **A case change and a style's synonym are not seen.** Words are compared case aside, so a
+  heading set in capitals is no change, and neither is a name whose case changed in the body.
+  Of units, only a litre's and a microgram's two spellings are read as one: "hours" printed "h"
+  beside a number is a correction. A unit of time spelt out is read as a unit only against
+  another spelt out: "12 weeks" printed "12 months" is a correction, and "12 wk", as the AMA
+  sets it, a copy-edit. An abbreviation G14 does not know is a word, so "12 weeks" printed
+  "12 mo" or "12 d" is a copy-edit too, though it names another unit (round 2 of #397). A
+  unit is read only beside its number or after it and a hyphen, so "12 consecutive weeks"
+  printed "12 consecutive months", "two weeks" printed "two months", and "day-28" printed
+  "month-28" are copy-edits. A stretch that starts after a number and a hyphen is read as a
+  unit's change if a unit stands anywhere in it (review of #408).
+- **What a proof adds between two parts is shown, not counted, in a table too.** Every cell is
+  a part, so a value the proof adds between two cells, or a row it prints twice, is added
+  text. Counted as a correction, "Table 1 (continued)" over a table broken across a page, and a
+  header row set again, were corrections of a proof that prints what was sent (round 2 of
+  #397); the two cannot be told apart from a row repeated by their text alone.
+- **The alignment chooses between readings within limits.** A part left out next to a part
+  changed is left out whole only where the stretch is 400 tokens or fewer: a paragraph of about
+  330 words or more left out beside one that ends in its last words reads as a copy-edit of
+  that one. A run the proof sets elsewhere is found by runs of four keys it shares there: a
+  short paragraph moved with a word changed every four tokens or fewer reads as missing, and
+  its text as added (round 2 of #397).
+- **Affiliation marks are read as digits and signs.** "Example1,2", "Example1-3,*" and a
+  dagger are the name; marks set as letters, "Examplea,b", are not, and the name is reported
+  as printed otherwise. Letters are not taken for marks because "Paula" would then be "Paul".
+- **A source is named as it stands now.** The binding a correction names is the one in the
+  source paragraph now whose value prints the number sent; where the source has changed since
+  the pack the report says so, and the binding may be another. A table's binding is named by
+  the order of `{{table.…}}` in the source, which a table the build printed otherwise than in
+  that order would put out of step.
 - **A supplement's Methods are what their headings say.** G9 reads, in a file of the
   supplement, a section whose heading holds "methods", and G2 and G15 the names of
   `classify.SUPPLEMENT_METHODS`; under either, only the sections whose own titles name a
@@ -13626,6 +14593,27 @@ Open, recorded as each change landed:
   by the names they are sold under and not every name an agent could sign. G7 reads a
   work's stored files once for the passages and once for the quotations in the prose, so a
   PDF goes through `pdftotext` twice a `check`.
+- **An appraisal of a similar study's method is judgement, not a guarantee.** G12 holds it
+  to a standard and a domain that exist, and nothing more: that the method departs from the
+  standard as the appraisal says, that the concern is the right one, and that the studies
+  chosen are the relevant ones and not the convenient ones, are the design round's and the
+  author's to judge. A study is credited by its key anywhere in the plan, so a citation in
+  the Population section counts for a method of its comparator, and so does one inside a
+  fenced block of code, where a comment is no comment and is not blanked; and a method
+  rejected after it was cited leaves the citation, which nothing asks about. A standard is
+  known by its id and its domains by their labels; that the version read is the one the
+  author meant, the ENCePP Guide being revised chapter by chapter, is in `read_on` and in
+  nobody's check. The built-in table holds the standards read on 2026-10-21 and not TARGET's
+  items, nor ROBINS-I V2, a draft. The write guard reads a decision as #374's reads a
+  judgement, with the same limits: an edit made by a shell command, and a patch that deletes
+  the review, are not put to the person. On a LaTeX manuscript the Methods are not read for
+  the citation, so a method cited there and not in the plan is said to be cited nowhere (a
+  warning). `sync-sources --from` finds a study's file by the DOI in `references.bib`, which
+  at the design stage may not yet hold it. The deny-list a decision's `decided_by` is read
+  with is #374's, and it refuses a person whose name is a model's: `Claude Martin` fails
+  `similar-decision-not-human`, as it fails `attested_by` and `judged_by`, and only a guess
+  at which Claude is meant would tell them apart (round 1 of #386; pinned in
+  `tests/test_methods_review.py`).
 
 - **A suggested edit is placed only where it can be written exactly.** `review
   --suggestions` writes an edit only where its words are found once and, written into the
@@ -13719,6 +14707,62 @@ Open, recorded as each change landed:
   of no words finds one match at every character of the manuscript, a list that is then
   thrown away; and an edit to be dropped in a supplement paragraph has the supplement built,
   then deleted. Both come out right.
+- **Text recycled from an earlier paper is found as runs of words, and a paraphrase is not.**
+  A sentence rewritten with its words in another order, or with one word in three changed,
+  shares no run of eight and is not reported, though a reader of both papers would know it.
+  What is found is what the journal's similarity check finds, and no more.
+- **A PDF's columns, running heads and footnotes are its reader's.** In reading order
+  `pdftotext` reads one column after the other on most pages; a page whose columns it does not
+  see, a caption set inside a column, a running head or a footnote puts words of its own into
+  a sentence, and a passage across them is cut in two, each half reported only where it has
+  twelve shared words. pypdf, where `pdftotext` is not installed, reads a page in the order
+  its content draws it.
+- **A reference the earlier paper cites by author and year cuts a passage there.** "(Smith et
+  al., 2019)" is three words the manuscript does not have beside its citation key. A number,
+  "[12]" or "12", is no word and cuts nothing.
+- **A Methods passage counts as cited only where its own paragraph cites the earlier paper.**
+  "As described previously [@key]" heading a subsection, with the description two paragraphs
+  on, is reported as uncited, a warning from internal-review.
+- **Digits at a word's end are dropped on both sides,** so that a reference's number glued to
+  a word in a PDF is no difference. "CYP3A4" and "CYP3A5", or "phase2" and "phase3", are then
+  one word to this check, and a passage that differs only there is reported whole.
+- **An earlier form of the study is a preprint, an abstract or a protocol, and nothing
+  else.** A thesis chapter or a report of this study (`kind: report` or `other`) is compared
+  as an earlier paper is, and each paragraph it shares outside a cited Methods description
+  warns from internal-review, though its reuse is disclosed and accepted as a preprint's is.
+- **A statement is known by its heading's whole title, from a list.** A funding statement
+  under a title the list does not hold ("Grant support", "Funding and support of the
+  registry") is reported as the part the heading stands in reports it, a warning from
+  internal-review where a note is due. So is a statement written as a bold label inside a
+  paragraph, as a structured abstract's "**Funding:**", which has no heading. The other way,
+  a theme of the Discussion named as a statement is ("Data sharing") is noted where a
+  warning is due; under the Results it is the Results'. So is a subsection of the Methods
+  that happens to bear a back-matter title, "Article information" in a review's data
+  extraction (round 6 of the review; rare).
+- **The Methods are the sections whose title holds "methods", in the supplement as in the
+  main text.** A supplement's "eAppendix 1. Data source" or "Appendix S1: Definitions"
+  names no part, so a description reused there, cited or not, warns from internal-review as
+  under no heading. And a section titled "Methods and results", or "Supplementary methods
+  and results", is the Methods throughout, so Results reused there with the earlier paper
+  cited in the paragraph are noted where a warning is due (round 7 of the review). A
+  supplement's title names a part only where it is a supplement's name for one and nothing
+  more, numbered or not ("eResults 1", "Supplementary results and discussion"): one that says
+  more, "Supplementary results of the sensitivity analyses", names none, and a passage under
+  it is given the advice for text under no heading (round 9).
+- **A title over the Discussion and its conclusions alone is not taken for a title over the
+  paper.** The conclusions count as the Discussion's when the parts under a heading are
+  counted, so that the Discussion over "Interpretation" and "Conclusions" stays the
+  Discussion. A file whose only top heading names a part, over a Discussion and Conclusions
+  and nothing else ("# Background to hepatic injury" over them), therefore names its
+  passages by that heading: the Introduction's advice, or a statement's note under "# Data
+  sharing", where the Discussion's warning is due (round 5 of the review; rare).
+- **In single curly marks, a closing mark before a letter is an apostrophe.** An apostrophe at
+  a word's end inside such a quotation ("the patients' notes", typed curly) closes it early,
+  and the rest of it is read as recycled text.
+- **The earlier outputs are those the author lists.** No ORCID iD is looked up; an earlier
+  paper left off `literature/related.yaml` is not compared, and the journal's check still
+  finds it. An output of the same data by other authors is not compared either: overlap with
+  it is not text recycling, and nothing here reports it.
 - **A journal template's instruction is found only in the words of the templates read on
   2026-10-21.** G6 holds the opening of each instruction in the manuscript templates of
   MDPI, Frontiers, PLOS, BMC, Springer Nature, Elsevier and Wiley, and Word's prompt in an

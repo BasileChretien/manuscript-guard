@@ -169,6 +169,19 @@ def _latex_sections() -> Reading:
     return sections
 
 
+@reading("latex escaped")
+def _latex_escaped() -> Reading:
+    from manuscript_guard.build.latex_values import NotPrintable, escaped
+
+    def written(text: str) -> dict[str, Any]:
+        try:
+            return {"written": escaped(text, "results.x")}
+        except NotPrintable as found:
+            return {"refused": found.character}
+
+    return written
+
+
 @reading("latex bindings")
 def _latex_bindings() -> Reading:
     from manuscript_guard.text.latex.mask import read
@@ -188,6 +201,61 @@ def _latex_bindings() -> Reading:
         }
 
     return bound
+
+
+@reading("latex citations")
+def _latex_citations() -> Reading:
+    from manuscript_guard.text.latex.cite import citations
+    from manuscript_guard.text.latex.mask import read
+    from manuscript_guard.text.latex.structure import Source
+
+    def cited(text: str) -> list[list[Any]]:
+        uses = citations(Source("main.tex", text, read(text)), Path("main.tex"), ("every",))
+        return [[use.citekey, use.start, use.line, use.narrative, use.raw] for use in uses]
+
+    return cited
+
+
+@reading("latex printed")
+def _latex_printed() -> Reading:
+    from manuscript_guard.text.latex.mask import read
+    from manuscript_guard.text.latex.printed import printed_view
+    from manuscript_guard.text.latex.structure import Source
+
+    def printed(text: str) -> dict[str, Any]:
+        reading = read(text)
+        return {"view": printed_view([Source("main.tex", text, reading)]),
+                "declared": [list(each) for each in reading.declared]}  # fmt: skip
+
+    return printed
+
+
+@reading("latex writing")
+def _latex_writing() -> Reading:
+    from manuscript_guard.gates.writing import _read_latex
+    from manuscript_guard.text.latex.mask import read
+    from manuscript_guard.text.latex.structure import Source
+
+    def judged(text: str) -> dict[str, Any]:
+        texts, words, cited = _read_latex(Path("m"), [[Source("main.tex", text, read(text))]])
+        ((_path, typed, prose),) = texts
+        return {"typed": typed == text, "prose": prose, "words": words,
+                "cited": [list(cited[Path("m") / "main.tex"])]}  # fmt: skip
+
+    return judged
+
+
+@reading("latex words")
+def _latex_words() -> Reading:
+    from manuscript_guard.text.latex.mask import read
+    from manuscript_guard.text.latex.structure import Source
+    from manuscript_guard.text.latex.words import words
+
+    def seen(text: str) -> dict[str, Any]:
+        found = words(Source("main.tex", text, read(text)))
+        return {"words": found.text, "unread": [list(span) for span in found.unread]}
+
+    return seen
 
 
 @reading("hidden")
@@ -429,6 +497,44 @@ def _data_statement() -> Reading:
         """What G4 says of a Data availability statement under a policy that requires an
         identifier, with nothing cited."""
         return _told(judge_statement(text, policy, set(), MAIN))
+
+    return read
+
+
+#: Two chosen sources, one anyone may download and one a committee decides on, as the record
+#: of data sources gives them.
+DATA_SOURCES = (
+    {"id": "ora", "name": "Open Reports Archive", "also_known_as": ["ORA"],
+     "access": {"route": "open-download"}},
+    {"id": "encd", "name": "Example National Claims Database", "also_known_as": ["ENCD"],
+     "access": {"route": "application"}},
+)  # fmt: skip
+
+
+@reading("data sources statement")
+def _data_sources_statement() -> Reading:
+    from manuscript_guard.data_sources import (
+        ON_REQUEST,
+        OPENLY,
+        named,
+        route_differs,
+        says,
+        sentences,
+    )
+
+    sources = [dict(source) for source in DATA_SOURCES]
+
+    def read(text: str) -> dict[str, Any]:
+        """What the statement says of each source, and what each sentence says: asked for,
+        openly had, and which sources it names."""
+        return {
+            "differs": route_differs(text, sources),
+            "sentences": [
+                [says(sentence, ON_REQUEST), says(sentence, OPENLY),
+                 [source["id"] for source in sources if named(sentence, source)]]
+                for sentence in sentences(text)
+            ],  # fmt: skip
+        }
 
     return read
 
@@ -892,6 +998,34 @@ def _passages() -> Reading:
         ]
 
     return passages
+
+
+@reading("plan citations")
+def _plan_citations() -> Reading:
+    """The citation keys a plan's text credits a study by: what G12 asks of a method taken
+    from a study of `design/methods_review.yaml` (Basile, 2026-10-21)."""
+    from manuscript_guard.gates.methods_review import plan_citations
+
+    def credited(given: dict[str, Any]) -> list[str]:
+        return sorted(plan_citations(given["text"]))
+
+    return credited
+
+
+@reading("recycled passages")
+def _recycled_passages() -> Reading:
+    """The passages of a manuscript file an earlier paper of its authors has too, with their
+    lines, how many words are shared and how many of them quoted, the part of the paper they
+    stand in and whether they cite it: what G7 reports before a similarity check does."""
+    from manuscript_guard.gates.recycling import recycled_in
+
+    def recycled(given: dict[str, str]) -> list[list[Any]]:
+        return [
+            [p.first_line, p.last_line, p.shared, p.quoted, p.kind, p.cited, p.excerpt]
+            for p in recycled_in(given["text"], given["source"], "earlier")
+        ]
+
+    return recycled
 
 
 @reading("checker sentences")

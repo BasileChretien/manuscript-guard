@@ -22,6 +22,7 @@ from manuscript_guard.findings import INFO, WARN, Finding, Report
 from manuscript_guard.gates.citation_style import check_style
 from manuscript_guard.gates.data_statement import check_data_statement
 from manuscript_guard.gates.figure_files import check_figure_files
+from manuscript_guard.gates.journal_latex import check_latex_profile
 from manuscript_guard.gates.journal_quotes import check_quotes, manual_signable
 from manuscript_guard.gates.numbers import source_files
 from manuscript_guard.paths import SHIPPED_JOURNALS
@@ -65,8 +66,23 @@ def main_text(project: Project) -> str:
     heading. `title: Methods of the online appendix` satisfied a required Methods section.
     The build strips every file's block, so the gate reads none of them, and a `# Funding`
     comment in the YAML no longer stands in for a funding statement either.
+
+    A LaTeX manuscript's main text is its document as Markdown would write what it prints
+    (`text/latex/printed.py`), the files the build prints in their order: a file nothing
+    inputs and the author's packages are not the text.
     """
-    sources = source_files(project.path("manuscript"), main_text_only=True)
+    from manuscript_guard.text.reader import LATEX, manuscript_format
+
+    folder = project.path("manuscript")
+    if manuscript_format(folder) == LATEX:
+        from manuscript_guard.text.latex.printed import printed_view
+        from manuscript_guard.text.latex.structure import read_document
+
+        # The author's packages are no text; a file input is, `Methods.TEX` as `methods.tex`.
+        document = read_document(folder, supplementary=False)
+        return printed_view([source for source in document.sources if not source.loose
+                             and not source.path.lower().endswith(".sty")])  # fmt: skip
+    sources = source_files(folder, main_text_only=True)
     return "\n\n".join(without_front_matter(read_text(p)) for p in sources)
 
 
@@ -126,6 +142,7 @@ def check_journal(project: Project) -> Report:
     report = report.merge(_check_variant(document, project))
     report = report.merge(check_style(project, document, path))
     report = report.merge(check_figure_files(project, document, path))
+    report = report.merge(check_latex_profile(project, document, path))
 
     return report.with_counts(
         abstract_words=counts.abstract_words,
@@ -162,6 +179,16 @@ def figure_rules(project: Project) -> dict:
     document = _profile(project)
     rules = None if document is None else document.get("figures")
     return rules if isinstance(rules, dict) else {}
+
+
+def text_recycling(project: Project) -> str | None:
+    """What the target journal says of text reused from its authors' earlier papers, in its
+    page's words where the profile quotes them (`quotes.text_recycling`), else as the
+    profile states it. None where the profile says nothing, or cannot be read."""
+    document = _profile(project)
+    if document is None or not document.get("text_recycling"):
+        return None
+    return (document.get("quotes") or {}).get("text_recycling") or document["text_recycling"]
 
 
 def _profile(project: Project) -> dict | None:

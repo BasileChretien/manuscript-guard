@@ -8,9 +8,10 @@ Description: Writes the results fragment that a manuscript-guard project reads, 
     with the provenance needed to tell whether it is still current: the script that
     produced it, hashes of every input file, the git commit, and the session. The
     manuscript quotes these values by key, so a number can never be carried across by
-    hand.
+    hand. It also gives the palettes manuscript-guard ships, by name, for a figure
+    script and its ggplot2 scales, with what the toolkit's colour check says of each.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Imports: jsonlite, digest
-Suggests: testthat (>= 3.0.0)
+Suggests: testthat (>= 3.0.0), ggplot2 (>= 3.5.0), yaml
 RoxygenNote: 7.3.2

@@ -2,10 +2,9 @@
 
 A manuscript can be written in LaTeX instead of Markdown. The gates read it as they read a
 Markdown one: each number is bound, cited or a convention, and the check says where one is
-not. A few checks do not read LaTeX yet, and until they do, a LaTeX manuscript does not pass
-`check --submission` ("Not yet for LaTeX" below). This page says what changes. The design,
-and every known limit, is in
-[DESIGN.md](../DESIGN.md), under "LaTeX manuscripts".
+not. A few commands do not read LaTeX yet ("Not yet for LaTeX" below). This page says what
+changes. The design, and every known limit, is in [DESIGN.md](../DESIGN.md), under "LaTeX
+manuscripts".
 
 ## Starting
 
@@ -30,8 +29,12 @@ its own.
 | `{{figure.key}}` | `\mg[width=\linewidth]{figure.key}`, the options `\includegraphics`'s |
 | `{{method.step}}` | `\mg{method.step}`, which prints nothing |
 
-A table or a figure is pointed at with `\ref`, since LaTeX numbers them itself; G2's check of
-typed pointers is Markdown's only.
+Put each table and figure in a float with a `\caption` and a `\label`: LaTeX numbers it by
+its caption, and a `\mg{table.key}` outside a float is a table it does not number. Point at
+one with `\ref` to its label, or type "Table 2": G2 holds a typed pointer to what the
+document's captions number, and the main text's tables and figures to the order ICMJE asks
+for, a `\ref` counting as a citation. A figure's legend is its caption, and G4 holds it to
+the journal's limit on a legend's words.
 
 `manuscript-guard values` writes `mgvalues.sty` from the results. The entry file loads it
 with `\usepackage{mgvalues}`, so the `.tex` compiles in any editor with the numbers in.
@@ -61,9 +64,11 @@ one the journal's profile names under `latex: {engine: ...}`, pdfLaTeX otherwise
 is named at the manuscript's file and line, and an undefined citation or reference fails at
 `--submission`.
 
-`submit` packs the source a journal compiles, in one folder, `latex/` in the pack. Until
-the checks below read LaTeX it refuses a LaTeX manuscript, as `check --submission` fails it,
-and `submit --skip-checks` packs it and says so in the pack's manifest:
+BUILD's checks of the Markdown build do not run on a LaTeX manuscript, whose build is
+checked by its compile.
+
+`submit` packs the source a journal compiles, in one folder, `latex/` in the pack, where
+`check --submission` passes, as it packs a Markdown manuscript:
 
 - each document is one file, `manuscript.tex` and `supplementary.tex`, with its inputs
   written in, its values written in and the text of its comments taken out;
@@ -102,15 +107,9 @@ printed copy only.
 
 ## Not yet for LaTeX
 
-These checks do not read a LaTeX manuscript yet, and each says so with `not-read-in-latex`
-where it would apply:
-
-- G2's pointers to tables and figures, which LaTeX numbers itself;
-- G4's figure legends.
-
-The finding is a note before `submission` and a failure from it, so that a manuscript only
-part of the checks read is never passed for submission. BUILD's checks of the Markdown build
-do not run on a LaTeX manuscript, whose build is checked by its compile, and say nothing.
+Every check reads a LaTeX manuscript. A check added later that reads Markdown only says so
+with `not-read-in-latex`, a note before `submission` and a failure from it, so that a
+manuscript only part of the checks read is never passed for submission.
 
 These commands read Markdown only, and refuse a LaTeX manuscript with a sentence: `render`,
 `reworded`, `checker`, `import` (the Word round trip), `proof`, `impact`, `audit` of a `.tex`

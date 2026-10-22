@@ -99,13 +99,10 @@ def test_g2_counts_and_judges_the_twin_as_it_does_the_example(
     assert {key: latex.counts[key] for key in _COUNTED} == {
         key: example.counts[key] for key in _COUNTED
     }
-    # The one finding G2 has of the twin alone: it does not read LaTeX's pointers yet.
-    found = Counter((f.code, f.severity) for f in latex.findings if f.code != "not-read-in-latex")
+    # G2 reads the twin's pointers to tables and figures too, from step 13, and finds what it
+    # finds in the example's.
+    found = Counter((f.code, f.severity) for f in latex.findings)
     assert found == Counter((f.code, f.severity) for f in example.findings)
-    assert [f.message for f in latex.findings if f.code == "not-read-in-latex"] == [
-        "G2 does not read pointers to tables and figures in LaTeX yet, so it did not check them "
-        "here"
-    ]
 
 
 def test_g4_counts_the_twins_words_sections_and_display_items_as_the_examples(

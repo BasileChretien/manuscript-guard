@@ -352,13 +352,14 @@ def check_numbers(
             )
         )
     # A pointer to a table or a figure is let through above as a cross-reference; what it
-    # points at is held here (`gates/pointers.py`). It reads Markdown's tables and figures
-    # only, and says so of a LaTeX manuscript, which fails at submission until it reads them.
-    from manuscript_guard.gates.formats import not_read_in_latex
+    # points at is held here: a Markdown manuscript's in `gates/pointers.py`, a LaTeX one's
+    # in `gates/pointers_latex.py` (step 13).
     from manuscript_guard.gates.pointers import check_pointers
 
     if _is_latex(project):
-        report = report.with_findings(not_read_in_latex(GATE, "pointers to tables and figures"))
+        from manuscript_guard.gates.pointers_latex import check_pointers_latex
+
+        report = report.merge(check_pointers_latex(project))
     else:
         report = report.merge(check_pointers(project, results))
     return report.with_counts(

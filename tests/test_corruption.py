@@ -7032,21 +7032,25 @@ def test_markdown_in_a_latex_manuscript_is_refused(project: Path) -> None:
     assert [f.path for f in found] == [notes], report.render(project)
 
 
-def test_a_gate_not_taught_latex_reads_nothing_and_fails_at_submission(project: Path) -> None:
+def test_a_gate_not_taught_latex_reads_nothing_and_fails_at_submission(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Each gate that reads only Markdown would read nothing of a LaTeX manuscript and pass.
     It does not run, and says so: a note while the paper is written, a failure at
     submission. What it would have said of a folder with no Markdown is not said."""
+    from manuscript_guard import cli
     from manuscript_guard.cli import _run_gates
 
     _as_latex(project)
+    # Every gate reads LaTeX from step 13, G2's pointers to tables and figures the last
+    # (`gates/pointers_latex.py`): none says it does not.
+    drafting, _project, _stage, _deferred = _run_gates(project, stage="drafting")
+    assert not [f for f in drafting.findings if f.code == "not-read-in-latex"]
+    # The mechanism stays for a check added later that reads Markdown only, here G14's.
+    monkeypatch.setattr(cli, "_NOT_READ_IN_LATEX", frozenset({"check_language"}))
     drafting, _project, _stage, _deferred = _run_gates(project, stage="drafting")
     unread = sorted(f.gate for f in drafting.findings if f.code == "not-read-in-latex")
-    # G2 reads LaTeX but for its pointers to tables and figures, and says so (step 4). G4
-    # reads it from step 6, G14 and G6 from step 7, G7, G8, G8r, G9, G13 and G15 from step
-    # 8, and the data sources G4's statements name and G7's text recycling from step 13.
-    # BUILD's Markdown checks do not run on LaTeX, whose build `check_latex` reads. G16's
-    # count reported reads it from step 13 too.
-    expected = ["G2"]
+    expected = ["G14"]
     assert unread == expected, drafting.render(project)
     assert "not-read-in-latex" not in codes(drafting)
     said = {f.code for f in drafting.findings}
@@ -10652,6 +10656,24 @@ def test_a_finding_of_the_statement_is_placed_in_the_file_that_holds_it(project:
     assert found.path == back
 
 
+def test_a_latex_pointer_to_a_table_its_floats_do_not_number_fails(project: Path) -> None:
+    """Step 13: G2 holds a LaTeX manuscript's typed pointer to what its floats' captions
+    number, as it holds a Markdown one's to what its bindings place."""
+    from manuscript_guard.gates.pointers_latex import check_pointers_latex
+
+    shutil.rmtree(project / "manuscript")
+    shutil.copytree(TWIN, project / "manuscript")
+    assert check_pointers_latex(load_project(project)[0]).failures == ()
+    main = project / "manuscript" / "main.tex"
+    text = main.read_text(encoding="utf-8")
+    main.write_text(text.replace("in Table~2, so", "in Table~2 and Table~3, so"),
+                    encoding="utf-8")  # fmt: skip
+    failing = check_pointers_latex(load_project(project)[0]).failures
+    assert [(f.gate, f.code, f.path, f.line) for f in failing] == [
+        ("G2", "pointer-to-nothing", main, 93)
+    ]
+
+
 def test_a_latex_statement_that_does_not_name_the_chosen_source_is_said_in_its_file(
     project: Path,
 ) -> None:
@@ -11021,6 +11043,22 @@ def test_a_legend_longer_than_the_journal_takes_is_a_warning(project: Path) -> N
         "{{figure.forest}}\n", "{{figure.forest}}\n\n" + legend + "\n"), encoding="utf-8")
     assert _artwork_said(project, legend_words=20) == [("legend-words", "warn")]
     assert _artwork_said(project, legend_words=40) == []
+
+
+def test_a_latex_legend_longer_than_the_journal_takes_is_a_warning(project: Path) -> None:
+    """Step 13: a LaTeX figure's legend is the caption its float numbers it by, its words
+    counted as a Markdown legend's are: a citation and a binding are none, and the label
+    LaTeX prints, "Figure 1", two (round 2)."""
+    shutil.rmtree(project / "manuscript")
+    shutil.copytree(TWIN, project / "manuscript")
+    main = project / "manuscript" / "main.tex"
+    caption = "\\caption{The estimate and its interval.}"
+    longer = ("\\caption{" + " ".join(["The reporting odds ratio and its interval."] * 4)
+              + " \\cite{fictionalClassSignal2019} \\mg{results.ror.point}}")  # fmt: skip
+    main.write_text(main.read_text(encoding="utf-8").replace(caption, longer),
+                    encoding="utf-8")  # fmt: skip
+    assert _artwork_said(project, legend_words=29) == [("legend-words", "warn")]
+    assert _artwork_said(project, legend_words=30) == []
 
 
 def test_a_second_files_front_matter_is_not_a_required_section(project: Path) -> None:

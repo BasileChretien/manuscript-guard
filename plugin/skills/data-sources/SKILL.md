@@ -1,6 +1,6 @@
 ---
 name: data-sources
-description: Find with the author the datasets that could answer a research question, read how each is reached and on what terms, and record them in design/data_sources.yaml so the choice is made with the access route known. Use when asked which database, registry, cohort or trial data could answer a question, how to get access to a dataset, or when check reports data-sources-schema, data-source-unknown, data-source-id-repeated, data-source-not-a-person, data-source-unsourced, data-source-quote-not-on-page, data-source-page-not-stored, data-source-route-unknown, data-source-undecided, custodian-rule-undeclared, plan-source-unnamed, data-statement-source-unnamed or data-statement-route-differs. Not for writing the analysis plan once the data are chosen (use analysis-plan).
+description: Find with the author the datasets that could answer a research question, read how each is reached and on what terms, and record them in design/data_sources.yaml so the choice is made with the access route known. Use when asked which database, registry, cohort or trial data could answer a question, how to get access to a dataset, or when check reports data-sources-schema, data-source-unknown, data-source-id-repeated, data-source-not-a-person, data-source-unsourced, data-source-quote-not-on-page, data-source-page-not-stored, data-source-route-unknown, data-source-undecided, custodian-rule-undeclared, plan-source-unnamed, data-statement-source-unnamed, data-statement-route-differs or dataset-not-chosen. Not for writing the analysis plan once the data are chosen (use analysis-plan).
 ---
 
 # Finding the data, and knowing how they are reached before choosing
@@ -170,7 +170,12 @@ Once a source is chosen, `check` holds the paper to the record:
   saying the data are had on request where anyone may download them, or publicly available
   where somebody decides access (`data-statement-route-differs`). Write the statement from
   the record: the source, its custodian, the route and its identifier, and cite a dataset
-  with a DOI in the reference list.
+  with a DOI in the reference list;
+- a dataset the analysis declares with `dataset()` under a name that is none of the ids
+  under `decision.chosen` (`dataset-not-chosen`). The name is the id as the record writes
+  it, hyphens and all. If the analysis read another source than the one chosen, that is the
+  author's to settle: either the analysis or the decision changes, and a new decision is
+  written with who made it and when.
 
 The record's own checks: its schema (`data-sources-schema`), an id named where no candidate
 has it (`data-source-unknown`) or given twice (`data-source-id-repeated`), a model named as

@@ -81,6 +81,8 @@ class LatexPack:
     files: tuple[Path, ...]
     documents: tuple[Path, ...]
     undefined: tuple[str, ...]
+    #: Each document's compile, its PDF and what LaTeX left undefined in it (step 11).
+    each: tuple[Compiled, ...] = ()
 
 
 def pack_latex(project, namespace, results, *, engine: str = "pdflatex") -> LatexPack:
@@ -99,7 +101,8 @@ def pack_latex(project, namespace, results, *, engine: str = "pdflatex") -> Late
     documents_made = {f"{name}.pdf" for name, _ in written}
     files = tuple(sorted(path for path in folder.iterdir() if path.name not in documents_made))
     undefined = tuple(dict.fromkeys(left for compiled in alone for left in compiled.undefined))
-    return LatexPack(folder, files, tuple(compiled.pdf for compiled in alone), undefined)
+    return LatexPack(folder, files, tuple(compiled.pdf for compiled in alone), undefined,
+                     tuple(alone))  # fmt: skip
 
 
 def _documents(project) -> list:
@@ -150,10 +153,12 @@ def written_documents(project, namespace, results) -> Written:
         return Written(documents, tuple(writer.unbound))
 
 
-def _alone(project, folder: Path, names: list[str], engine: str) -> list[Compiled]:
+def _alone(project, folder: Path, names: list[str], engine: str, *,
+           headings: bool = True) -> list[Compiled]:  # fmt: skip
     """Each document of `folder` compiled in a copy of it in an empty folder, its PDF and its
     `.bbl` put in `folder`; or `BuildError` where LaTeX stops, does not find a file, or reads
-    one of the project's, as MiKTeX lets it by a path written out in full."""
+    one of the project's, as MiKTeX lets it by a path written out in full. `headings` holds
+    LaTeX's to the reader's, which a document pandoc wrote from Markdown has none of."""
     programs = _programs(engine)
     compiled = []
     with tempfile.TemporaryDirectory(prefix="manuscript-guard-",
@@ -166,7 +171,7 @@ def _alone(project, folder: Path, names: list[str], engine: str) -> list[Compile
             entry = root / STAGED / f"{name}.tex"
             try:
                 done = _compile(project, copy, entry, programs, engine,
-                                supplementary=name == SUPPLEMENT)  # fmt: skip
+                                supplementary=name == SUPPLEMENT, headings=headings)  # fmt: skip
             except BuildError as exc:
                 raise BuildError(f"the submission folder {folder} does not compile alone, in "
                                  f"an empty folder: {exc}") from exc  # fmt: skip

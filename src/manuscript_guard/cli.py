@@ -77,7 +77,11 @@ from manuscript_guard.gates import (
     sync_bib,
 )
 from manuscript_guard.gates.custodian import check_restricted_inputs, check_small_cells
-from manuscript_guard.gates.data_sources import check_data_sources, check_statement_sources
+from manuscript_guard.gates.data_sources import (
+    check_data_sources,
+    check_declared_datasets,
+    check_statement_sources,
+)
 from manuscript_guard.gates.data_statement import check_package_doi
 from manuscript_guard.gates.design_review import check_design_rounds
 from manuscript_guard.gates.figure_alt import check_figure_alt
@@ -178,6 +182,7 @@ def _run_gates(
         # it and not the plan's.
         ("G12", lambda: check_registration(project, results, chosen)),
         ("G12", lambda: check_data_sources(project, chosen)),
+        ("G12", lambda: check_declared_datasets(project, results)),
         ("G7", lambda: check_method_passages(project)),
         ("G12", lambda: check_methods_review(project)),
         ("G8", lambda: check_consistency(results)),
@@ -626,7 +631,12 @@ def _bind_pointers(args: argparse.Namespace, project) -> int:
     that prints it as it reads now (`binding.typed_pointers`). A typed pointer is not a
     defect, so finding some is no failure: the exit is 0 either way."""
     from manuscript_guard.binding import SelectionError, apply, label, select, typed_pointers
+    from manuscript_guard.gates.numbers import _is_latex
 
+    if _is_latex(project):
+        print("manuscript-guard bind: LaTeX numbers a LaTeX manuscript's tables and figures "
+              "itself; point to one with `Table~\\ref{...}`", file=sys.stderr)  # fmt: skip
+        return 2
     items = typed_pointers(project)
     if not items:
         print("no typed pointer to a table or a figure that a binding could print as it reads.")
@@ -661,9 +671,11 @@ def cmd_bind(args: argparse.Namespace) -> int:
     typed instead of bound. That case is detected and offered as a replacement.
     """
     from manuscript_guard.binding import SelectionError, apply, label, routes, select, unbound
+    from manuscript_guard.gates.numbers import _is_latex
 
     project, _ = load_project(args.path)
-    empty = why_no_manuscript(project)
+    # A LaTeX manuscript has its entry file, and the gates read it (step 12).
+    empty = None if _is_latex(project) else why_no_manuscript(project)
     if empty is not None:
         # "every number in the manuscript is accounted for" was said of no manuscript.
         print(f"manuscript-guard bind: {empty}", file=sys.stderr)
@@ -2388,6 +2400,10 @@ def cmd_explain(args: argparse.Namespace) -> int:
     with a finding needs to see which rule fired rather than guess.
     """
     project, _ = load_project(args.file.parent)
+    from manuscript_guard.gates.numbers import _is_latex
+
+    if _is_latex(project) or args.file.suffix.lower() == ".tex":
+        return _explain_latex(project, args.file)
     classifier = Classifier.load(project.extra_conventions, project.extra_terms)
     text = read_text(args.file)
     # The same section chain G2 uses. Without it every `methods_only` rule fired everywhere,
@@ -2412,6 +2428,11 @@ def cmd_explain(args: argparse.Namespace) -> int:
         failed = verdict.kind == UNCLASSIFIED or typed is not None
         rows.append((atom.line, atom.text, verdict.kind, rule, failed))
     rows += _explained_refs(project, text)
+    return _explained(rows)
+
+
+def _explained(rows: list[tuple[int, str, str, str, bool]]) -> int:
+    """`explain`'s table: each number's line, text, kind and the rule that decided it."""
     if not rows:
         print("no numeric atoms outside masked regions")
         return 0
@@ -2421,6 +2442,39 @@ def cmd_explain(args: argparse.Namespace) -> int:
         marker = "FAIL" if failed else "ok  "
         print(f"{marker} {line:>5}  {atom_text:<{width}}  {kind:<12} {rule}")
     return 0
+
+
+def _explain_latex(project, file: Path) -> int:
+    """`explain` of a LaTeX manuscript's file: each number as G2 classifies it there, read
+    through the include tree under the headings over it, a binding written `\\mg{...}`
+    (step 12). G2's check of pointers to tables and figures is Markdown's only."""
+    from manuscript_guard.gates.numbers import _files_read, _is_latex
+
+    if not _is_latex(project):
+        print(f"manuscript-guard explain: {file} is a LaTeX file in a Markdown manuscript, "
+              "which no gate reads", file=sys.stderr)  # fmt: skip
+        return 2
+    wanted = file.resolve()
+    read = next((each for each in _files_read(project) if each.path.resolve() == wanted), None)
+    if read is None:
+        print(f"manuscript-guard explain: {file} is no file of the manuscript's include tree, "
+              "which is what the gates read", file=sys.stderr)  # fmt: skip
+        return 2
+    classifier = Classifier.load(project.extra_conventions, project.extra_terms)
+    namespace, _results, _literature, _loaded = load_namespace(project)
+    choices = [value for value in namespace.values() if value.role]
+    chosen = chosen_rules(classifier)
+    scan = classifier.scan(read.scanned, blocks=read.blocks)
+    rows = []
+    for atom in find_atoms(read.text, read.masked):
+        verdict = classifier.classify_under(atom, read.chains(atom.start), scan)
+        typed = typed_choice(atom.text, verdict, choices, chosen)
+        rule = verdict.rule or "-"
+        if typed is not None:
+            rule = f"{rule}, typed: write {read.spell(typed.reference)}"
+        failed = verdict.kind == UNCLASSIFIED or typed is not None
+        rows.append((atom.line, atom.text, verdict.kind, rule, failed))
+    return _explained(rows)
 
 
 def _explained_refs(project, text: str) -> list[tuple[int, str, str, str, bool]]:
@@ -2909,6 +2963,13 @@ def _build_latex(project, report, args: argparse.Namespace) -> int:
     except OSError as exc:
         print(f"manuscript-guard: the PDF is not built: {exc}", file=sys.stderr)
         return 2
+    return _pdfs_built(project, report, args, compiled)
+
+
+def _pdfs_built(project, report, args: argparse.Namespace, compiled) -> int:
+    """The PDFs compiled given as `build/manuscript.pdf` and `build/supplementary.pdf`, an
+    unchecked one named so, each citation or reference LaTeX left undefined listed, and any
+    failing at `--submission` (steps 9 and 11)."""
     mark = "" if report.ok else ".UNCHECKED"
     names = ("manuscript", "supplementary")
     project.path("build").mkdir(parents=True, exist_ok=True)
@@ -2936,6 +2997,52 @@ def _build_latex(project, report, args: argparse.Namespace) -> int:
     return 0
 
 
+def _latex_from_markdown(project, args: argparse.Namespace):
+    """The LaTeX folder and PDFs of a Markdown manuscript, as `latex_pack.LatexPack`, or the
+    exit status where it could not be made, said (step 11)."""
+    from manuscript_guard.build.latex import LatexMissing
+    from manuscript_guard.build.latex_out import build_from_markdown
+
+    namespace, results, _literature, _ = load_namespace(project)
+    assembled, assemble_report = assemble(project, namespace, results)
+    if not assemble_report.ok:
+        print(assemble_report.render(project.root))
+        return 1
+    _print_assembly_warnings(assemble_report, project)
+    # Citeproc formats offline, with the journal's style kept by `style` or the one given.
+    style = _journal_style(project, argparse.Namespace(csl=args.csl, offline=True))
+    try:
+        return build_from_markdown(project, assembled, engine=_latex_engine(project), csl=style)
+    except LatexMissing as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 2
+    except BuildError as exc:
+        print(f"manuscript-guard: the LaTeX is not built: {exc}", file=sys.stderr)
+        return 1
+    except OSError as exc:
+        print(f"manuscript-guard: the LaTeX is not built: {exc}", file=sys.stderr)
+        return 2
+
+
+def _build_markdown_latex(project, report, args: argparse.Namespace) -> int:
+    """`build --latex` for a Markdown manuscript: the LaTeX source pandoc writes, checked
+    against the Markdown, in one folder, and its PDFs (step 11)."""
+    if getattr(args, "marked_up", False) or getattr(args, "annotated", False):
+        print("manuscript-guard: --marked-up and --annotated make Word copies; build them "
+              "without --latex", file=sys.stderr)  # fmt: skip
+        return 2
+    if not report.ok and not args.skip_checks:
+        print(report.render(project.root))
+        print(f"\n{len(report.failures)} failing; not building. Use --skip-checks to override.")
+        return 1
+    packed = _latex_from_markdown(project, args)
+    if isinstance(packed, int):
+        return packed
+    print(f"the LaTeX source: {packed.folder}")
+    # Each document with what LaTeX left undefined in it (round 1 of step 11).
+    return _pdfs_built(project, report, args, list(packed.each))
+
+
 def cmd_build(args: argparse.Namespace) -> int:
     """Produce the .docx. Gates run first unless the author insists otherwise.
 
@@ -2958,6 +3065,8 @@ def cmd_build(args: argparse.Namespace) -> int:
     )
     if manuscript_format(project.path("manuscript")) == LATEX:
         return _build_latex(project, report, args)
+    if getattr(args, "latex", False):
+        return _build_markdown_latex(project, report, args)
     if marked_up:
         refused = _refused_inputs([args.since, args.since_supplement])
         if refused is not None:
@@ -3124,7 +3233,7 @@ def cmd_submit(args: argparse.Namespace) -> int:
 
     from manuscript_guard.text.reader import LATEX, manuscript_format
 
-    if manuscript_format(project.path("manuscript")) == LATEX:
+    if manuscript_format(project.path("manuscript")) == LATEX or getattr(args, "latex", False):
         return _submit_latex(project, report, args)
     namespace, results, _literature, _ = load_namespace(project)
     assembled, assemble_report = assemble(project, namespace, results)
@@ -3223,8 +3332,9 @@ def cmd_submit(args: argparse.Namespace) -> int:
 
 
 def _submit_latex(project, report, args: argparse.Namespace) -> int:
-    """`submit` for a LaTeX manuscript: its source as one folder, `latex/`, compiled alone,
-    and that compile's PDFs as the documents (step 10)."""
+    """`submit` for a LaTeX manuscript, or `submit --latex` for a Markdown one: the source as
+    one folder, `latex/`, compiled alone, and that compile's PDFs as the documents (steps 10
+    and 11)."""
     from manuscript_guard.build import SubmissionError, assemble_pack
     from manuscript_guard.build.blinding import check_blinded_latex
     from manuscript_guard.build.latex import LatexMissing
@@ -3235,18 +3345,25 @@ def _submit_latex(project, report, args: argparse.Namespace) -> int:
         print("manuscript-guard: --document packs a Word document a co-author edited, and a "
               "LaTeX manuscript is packed from its source", file=sys.stderr)  # fmt: skip
         return 2
-    namespace, results, _literature, _ = load_namespace(project)
-    try:
-        packed = pack_latex(project, namespace, results, engine=_latex_engine(project))
-    except LatexMissing as exc:
-        print(f"manuscript-guard: {exc}", file=sys.stderr)
-        return 2
-    except BuildError as exc:
-        print(f"manuscript-guard: the pack is not assembled: {exc}", file=sys.stderr)
-        return 1
-    except OSError as exc:
-        print(f"manuscript-guard: the pack is not assembled: {exc}", file=sys.stderr)
-        return 2
+    from manuscript_guard.text.reader import LATEX, manuscript_format
+
+    if manuscript_format(project.path("manuscript")) != LATEX:
+        packed = _latex_from_markdown(project, args)
+        if isinstance(packed, int):
+            return packed
+    else:
+        namespace, results, _literature, _ = load_namespace(project)
+        try:
+            packed = pack_latex(project, namespace, results, engine=_latex_engine(project))
+        except LatexMissing as exc:
+            print(f"manuscript-guard: {exc}", file=sys.stderr)
+            return 2
+        except BuildError as exc:
+            print(f"manuscript-guard: the pack is not assembled: {exc}", file=sys.stderr)
+            return 1
+        except OSError as exc:
+            print(f"manuscript-guard: the pack is not assembled: {exc}", file=sys.stderr)
+            return 2
     if packed.undefined:
         for left in packed.undefined:
             print(f"LaTeX left the {left} undefined")
@@ -3261,8 +3378,8 @@ def _submit_latex(project, report, args: argparse.Namespace) -> int:
         return 1
     notes = []
     if rounds(project):
-        notes.append("no marked-up copy is packed: `build --marked-up` makes Word copies, and "
-                     "a LaTeX manuscript has none yet")  # fmt: skip
+        notes.append("no marked-up copy is packed: `build --marked-up` makes Word copies, "
+                     "and the LaTeX source is packed without one")  # fmt: skip
     try:
         pack = assemble_pack(project, packed.documents[0], checked=report.ok,
                              extra=[(path, f"latex/{path.name}") for path in packed.files],
@@ -4349,10 +4466,14 @@ def _note_stale_skills(start: Path) -> None:
 def cmd_init(args: argparse.Namespace) -> int:
     from manuscript_guard.contracts.results import HOW_TO_EMIT
 
-    created = init_project(args.path, title=args.title)
+    try:
+        created = init_project(args.path, title=args.title, latex=args.latex)
+    except ContractError as exc:
+        print(f"manuscript-guard init: {exc}", file=sys.stderr)
+        return 2
     for path in created:
         print(f"created {path}")
-    rules = rules_to_add(args.path)
+    rules = rules_to_add(args.path, latex=args.latex)
     if rules:
         print(
             "\nAGENTS.md was already there and says nothing of manuscript-guard, so it was "
@@ -4860,6 +4981,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="the version you send anywhere: unanswered review findings fail the build",
     )
     build.add_argument(
+        "--latex",
+        action="store_true",
+        help="a Markdown manuscript as LaTeX: the source pandoc writes, checked against the "
+        "Markdown, in build/latex/submission/, and its PDF",
+    )
+    build.add_argument(
         "--marked-up",
         action="store_true",
         help="also write build/marked-up/: the revision with every change since the document "
@@ -5018,6 +5145,11 @@ def build_parser() -> argparse.ArgumentParser:
     submit.add_argument("--offline", action="store_true")
     submit.add_argument("--csl", type=Path)
     submit.add_argument("--document", type=Path, help="use an existing .docx instead of building")
+    submit.add_argument(
+        "--latex",
+        action="store_true",
+        help="pack a Markdown manuscript as LaTeX: the source in latex/ and its PDF",
+    )
     submit.add_argument("--skip-checks", action="store_true")
     submit.add_argument(
         "--highlight",
@@ -5082,6 +5214,11 @@ def build_parser() -> argparse.ArgumentParser:
     init = sub.add_parser("init", help="scaffold a new manuscript project")
     init.add_argument("path", nargs="?", type=Path, default=Path.cwd())
     init.add_argument("--title", default="Untitled manuscript")
+    init.add_argument(
+        "--latex",
+        action="store_true",
+        help="start the manuscript in LaTeX: manuscript/main.tex, with its values file",
+    )
     init.set_defaults(func=cmd_init)
 
     skills = sub.add_parser(
@@ -5196,13 +5333,14 @@ _MARKDOWN_COMMANDS: dict[str, Callable[[argparse.Namespace], bool]] = {
     # `checker` draws its items from the manuscript for every verb, `import` and `status`
     # too, which match answers against them (round 2 of #404).
     **dict.fromkeys(
-        ("bind", "checker", "explain", "impact", "import", "init", "proof", "render",
-         "reworded"),
+        ("checker", "impact", "import", "proof", "render", "reworded"),
         _always,
     ),
     # A round opened and checked reads a LaTeX manuscript (step 8); one seeded from a returned
     # .docx reads the Word copy a Markdown manuscript is built to.
     "respond": lambda args: args.source is not None,
+    # `init --latex` sets up a LaTeX manuscript; without it, `main.md` would go beside one.
+    "init": lambda args: not args.latex,
     # A design round reads the plan, not the manuscript (round 1 of #404).
     # A panel reads a LaTeX manuscript as the submission folder writes it (step 12); Word's
     # suggestions are a Markdown manuscript's.
@@ -5210,7 +5348,7 @@ _MARKDOWN_COMMANDS: dict[str, Callable[[argparse.Namespace], bool]] = {
 }  # fmt: skip
 #: The commands refused a `.tex` named whatever the project's format, since they read the
 #: file given as Markdown; `impact` follows the records of any file, a header's included.
-_READ_AS_MARKDOWN = frozenset({"explain", "reworded"})
+_READ_AS_MARKDOWN = frozenset({"reworded"})
 
 
 def _named_paths(args: argparse.Namespace) -> list[Path]:
@@ -5246,7 +5384,7 @@ def _refused_for_latex(args: argparse.Namespace) -> str | None:
         return None
     if command == "init":
         return (f"init writes a Markdown manuscript, and {folder / 'main.tex'} is a LaTeX "
-                "one's; it does not set up a LaTeX project yet")  # fmt: skip
+                "one's; give --latex to set up a LaTeX project")  # fmt: skip
     return (f"{command} does not read a LaTeX manuscript yet, and {folder} holds one: "
             "`manuscript-guard check` says what is read of it")  # fmt: skip
 

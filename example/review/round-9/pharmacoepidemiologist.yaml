@@ -5,24 +5,22 @@ round: 9
 reviewer: pharmacoepidemiologist
 reviewed_by: Claude Code
 reviewed_on: '2026-10-21'
-manuscript_sha256: 5ea56595beff74152070f86c1b26c8da639ef92c1dd107473532701ae02025ee
+manuscript_sha256: 69852257b065e3c846ca59f703582153b48aba71cb06de58908483355c56a105
 file_sha256:
-  main.md: 012dda200f1980db7268c1067853f3b28aa6f44cf6d0b808d7b53559c0d09f1b
+  main.md: bc8dca5406e9fd9878c9eee941e044ca13771050270276cb720fc0a4204b12df
   supplementary/S1_code_lists.md: 8c462c203bf3c08ac5ced6eaf25d38b56f2239502952f8d8e6b3d23cbb05b9b3
 verdict: pass
-summary: 'The Methods now give, beside the statement that the generator emits no duplicate
-  cases, what the checks against the data dictionary found: the reports checked, those that
-  repeated another''s identifier and those with no age group. The count of repeated identifiers
-  is not offered as evidence of no duplicate cases, so round 1''s r1-pe-02 stands as it was
-  answered: no de-duplication step was applied because the data are synthetic, and a real
-  database would need one.'
+summary: The Methods now say when the data were made and what years they were made to cover,
+  bound from what the analysis declares with the data and pins to the file, beside the years
+  the reports actually run over. The two periods agree here because the generator draws within
+  its own years; a reader can see which is the source's coverage and which is the sample's.
+  Nothing from the earlier rounds is reopened.
 findings:
 - id: r9-pe-01
   severity: comment
-  where: Methods
-  finding: The count of repeated identifiers finds a report entered twice, not the same case
-    sent by two reporters, which carries two identifiers. The sentence does not ask it to;
-    it keeps the generator as the reason no de-duplication step was applied, and a real
-    database as needing one, as round 1's r1-pe-02 was answered. A real study would report
-    its case-level de-duplication beside this count.
-reading_sha256: 0c13748c53f07650f2e061a35c97f74c3b14fd100375d7ebdb89a5394694ac37
+  where: Methods, first paragraph
+  finding: The data were generated rather than extracted, and the generator has no version.
+    A reader copying the example for VigiBase, FAERS or a national database should give the
+    date of their own extract and the release the custodian names, where it names one; the
+    analysis then pins that date to the file, and the sentence prints it.
+reading_sha256: 7512f965a380633a7a28e2c7485acda5116c7c68a33a5b0ead56b9303a2772e1

@@ -2,16 +2,16 @@
   "schema": "manuscript-guard/results/1",
   "provenance": {
     "generated_by": "analysis/01_disproportionality.py",
-    "generated_by_sha256": "c4a3717650e99b33861e8c60c3710c23cfdff8b3d1ecf3ed6868701d51b2383a",
-    "generated_at": "2026-10-21T08:07:19+00:00",
+    "generated_by_sha256": "325cab07d2c2beec58eb4a17452ee7c284a41cf1a873cfbc41249ef53e7bd6a0",
+    "generated_at": "2026-10-21T03:16:04+00:00",
     "tool": {
       "name": "manuscript-guard",
-      "version": "0.2.454"
+      "version": "0.2.453"
     },
     "vcs": {
-      "sha": "f943786887d7d2721eed8f124913c26a2dba4b43",
+      "sha": "9854e70648a86e2091bedd86989514b2d9c06c19",
       "dirty": true,
-      "branch": "claude/goofy-swanson-8680f2"
+      "branch": "claude/gracious-kalam-946701"
     },
     "inputs": [
       {
@@ -20,12 +20,6 @@
         "raw_sha256": "55aa913a7f8cbc6c432e263e04fa12f3e148809dbd4ddc6fc8fd5b10c916886c",
         "bytes": 172822,
         "synthetic": true
-      },
-      {
-        "path": "design/data_dictionary.yaml",
-        "sha256": "e1524095cdb2be0e37bcef224d837f1ed2f1a525b8272b7d9a4251ba53c55fe1",
-        "raw_sha256": "e1524095cdb2be0e37bcef224d837f1ed2f1a525b8272b7d9a4251ba53c55fe1",
-        "bytes": 2489
       },
       {
         "path": "data/event_terms.txt",
@@ -42,100 +36,23 @@
     }
   },
   "values": {
-    "quality.rows": {
-      "value": 4000,
-      "display": "4000",
-      "quoted": false
+    "dataset.reports.extracted": {
+      "value": "2026-08-03",
+      "display": "3 August 2026",
+      "label": true,
+      "role": "dataset"
     },
-    "quality.report_id.missing": {
-      "value": 0,
-      "display": "0",
-      "quoted": false
+    "dataset.reports.covers_from": {
+      "value": "2015",
+      "display": "2015",
+      "label": true,
+      "role": "dataset"
     },
-    "quality.report_id.not_matching": {
-      "value": 0,
-      "display": "0",
-      "quoted": false
-    },
-    "quality.year.missing": {
-      "value": 0,
-      "display": "0",
-      "quoted": false
-    },
-    "quality.year.wrong_type": {
-      "value": 0,
-      "display": "0",
-      "quoted": false
-    },
-    "quality.year.out_of_range": {
-      "value": 0,
-      "display": "0",
-      "quoted": false
-    },
-    "quality.drug.missing": {
-      "value": 0,
-      "display": "0",
-      "quoted": false
-    },
-    "quality.event.missing": {
-      "value": 0,
-      "display": "0",
-      "quoted": false
-    },
-    "quality.serious.missing": {
-      "value": 0,
-      "display": "0",
-      "quoted": false
-    },
-    "quality.serious.not_allowed": {
-      "value": 0,
-      "display": "0",
-      "quoted": false
-    },
-    "quality.sex.missing": {
-      "value": 0,
-      "display": "0",
-      "quoted": false
-    },
-    "quality.sex.not_allowed": {
-      "value": 0,
-      "display": "0",
-      "quoted": false
-    },
-    "quality.age_group.missing": {
-      "value": 0,
-      "display": "0",
-      "quoted": false
-    },
-    "quality.age_group.not_allowed": {
-      "value": 0,
-      "display": "0",
-      "quoted": false
-    },
-    "quality.hepatic.missing": {
-      "value": 0,
-      "display": "0",
-      "quoted": false
-    },
-    "quality.hepatic.not_allowed": {
-      "value": 0,
-      "display": "0",
-      "quoted": false
-    },
-    "quality.exposed.missing": {
-      "value": 0,
-      "display": "0",
-      "quoted": false
-    },
-    "quality.exposed.not_allowed": {
-      "value": 0,
-      "display": "0",
-      "quoted": false
-    },
-    "quality.rule.one_row_per_report": {
-      "value": 0,
-      "display": "0",
-      "quoted": false
+    "dataset.reports.covers_to": {
+      "value": "2024",
+      "display": "2024",
+      "label": true,
+      "role": "dataset"
     },
     "param.alpha": {
       "value": 0.05,
@@ -783,29 +700,29 @@
   "steps": {
     "ror": {
       "lines": [
-        64,
-        68
+        68,
+        72
       ],
       "digest": "43994ea0f861fd9c11dd95e974d11a8092dac8245846d047087c06a0e4464051"
     },
     "ci": {
       "lines": [
-        72,
-        77
+        76,
+        81
       ],
       "digest": "341304bd156666d20b98966338e40a99de96809c7d95a808720cc8043ee94978"
     },
     "signal": {
       "lines": [
-        89,
-        91
+        93,
+        95
       ],
       "digest": "d2537ffaa2c3277dcd94b7608b1cc89116a4e9ad3860b5712e804e73052db159"
     },
     "adjusted": {
       "lines": [
-        100,
-        128
+        104,
+        132
       ],
       "digest": "ffe9e3b0807b5cd1744bf856bd5ad0b90a3081b0f3f2bc256583f4b4c43aa2cf"
     }
@@ -861,6 +778,24 @@
     "primary": {
       "method": "none",
       "reason": "one prespecified estimate, the reporting odds ratio"
+    }
+  },
+  "datasets": {
+    "reports": {
+      "inputs": [
+        "data/reports.csv"
+      ],
+      "fingerprint": "55aa913a7f8cbc6c",
+      "extracted": "2026-08-03",
+      "covers": {
+        "from": "2015",
+        "to": "2024"
+      },
+      "observed": {
+        "earliest": "2015",
+        "latest": "2024",
+        "count": 4000
+      }
     }
   }
 }

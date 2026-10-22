@@ -8,7 +8,7 @@ reconciled_on: '2026-10-21'
 parameters: {}
 analysis:
   analysis/00_simulate.py: d659615319950d736c797fbada143b40ca8861ba8df8ef2c00c660a3aae184ca
-  analysis/01_disproportionality.py: c4a3717650e99b33861e8c60c3710c23cfdff8b3d1ecf3ed6868701d51b2383a
+  analysis/01_disproportionality.py: 325cab07d2c2beec58eb4a17452ee7c284a41cf1a873cfbc41249ef53e7bd6a0
 pairs:
 - step: adjusted
   claim: 'Adjusted for age group and sex, the two patient characteristics the database records for every report, the reporting odds ratio was also estimated by {{results.model.adjusted.kind}} of hepatic injury on exposure to example-drug, with both characteristics entered as categories. The reporting year, which every report also carries, was not adjusted for: calendar time is a common adjustment in disproportionality analyses, but the data generator draws the year independently of the drug, so here it cannot confound the estimate. Its interval is the model''s Wald interval for the exposure coefficient, at the same alpha. Table S2 describes the model as it was fitted.'

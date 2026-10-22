@@ -162,6 +162,32 @@ Events were coded with MedDRA version {{results.dictionary.meddra}} and drugs wi
 
 G2 fails a declared release typed beside the dictionary's name (`typed-dictionary-release`).
 
+## Naming the data
+
+The Methods say which data were analysed: the date they were extracted or downloaded, the
+period they cover, and the source's version where it has one. Many databases have one
+version, or none a user can name; then the date and the file are what identify the data.
+Declare them where the analysis reads the file, and bind them:
+
+```python
+em.dataset("vigibase", "data/vigibase_extract.csv", extracted="2024-03-01",
+           covers=("1968", "2023-12-31"), fingerprint="3f9a1c2b7e4d5a60",
+           dates=frame["received"])
+```
+
+```markdown
+Reports were extracted from VigiBase on {{results.dataset.vigibase.extracted}}, covering
+reports received to {{results.dataset.vigibase.covers_to}}.
+```
+
+Ask the author for the date of the extract and the period their query covered, and for the
+release only where the custodian names one: do not take a date from a file's modification
+time, which a copy resets, nor invent a version. The first run without `fingerprint` is
+refused and prints the pin to paste. A new extract is refused under the old pin, so the date
+changes with the data. A date of the data typed into the script as a string, rather than
+declared this way, is warned of where the sentence dates the data (`data-date-not-declared`).
+Use the name the source has in `design/data_sources.yaml` where the project keeps one.
+
 ## Describing a model
 
 Record the model from its fit and declare every variable it reads, in the analysis:

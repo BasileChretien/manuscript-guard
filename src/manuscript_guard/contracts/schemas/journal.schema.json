@@ -377,6 +377,41 @@
         "numbered": { "type": "boolean" }
       }
     },
+    "latex": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "How the journal takes a LaTeX source, each part quoted under `quotes:` as latex.<part>. G4 warns where a LaTeX manuscript's \\documentclass, \\bibliographystyle or biblatex's style= differ from it.",
+      "properties": {
+        "class": { "type": "string", "minLength": 1, "description": "The document class the journal asks for (elsarticle)." },
+        "class_options": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "bibliography": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": {
+            "kind": { "enum": ["bibtex", "biblatex"] },
+            "bst": { "type": "string", "minLength": 1, "description": "BibTeX's style, for \\bibliographystyle." },
+            "style": { "type": "string", "minLength": 1, "description": "biblatex's style=." }
+          }
+        },
+        "engine": { "enum": ["pdflatex", "xelatex", "lualatex"] },
+        "files": {
+          "type": "array",
+          "description": "The class and style files the journal hands out, each with its address. The build is to fetch them once into profiles/journals/latex/<slug>/ with their digest and licence, as CSL styles are (DESIGN.md, LaTeX manuscripts, steps 9 and 10); no command fetches them yet. None ships with the package.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["url"],
+            "properties": {
+              "url": { "type": "string", "minLength": 1 },
+              "name": { "type": "string", "minLength": 1 },
+              "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+              "licence": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
     "reporting_guidelines": {
       "type": "array",
       "items": { "type": "string" },

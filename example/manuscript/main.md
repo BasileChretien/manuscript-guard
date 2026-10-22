@@ -28,7 +28,9 @@ Whether the signal extends to example-drug specifically has not been examined.
 
 # Methods
 
-We analysed a synthetic spontaneous reporting database covering
+We analysed a synthetic spontaneous reporting database, generated on
+{{results.dataset.reports.extracted}} to cover {{results.dataset.reports.covers_from}} to
+{{results.dataset.reports.covers_to}}. Its reports run from
 {{results.cohort.period_start}} to {{results.cohort.period_end}}, a period of
 {{results.cohort.n_years}} years. Reports were included without restriction on age or sex.
 Each record carries a unique report identifier; checked against the data dictionary, {{results.quality.rule.one_row_per_report}} of the {{results.quality.rows}}

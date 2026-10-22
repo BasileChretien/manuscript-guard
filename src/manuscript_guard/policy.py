@@ -55,6 +55,10 @@ BINDS_AT = {
     "script-missing": ANALYSIS,
     "script-newer": ANALYSIS,
     "results-edited": ANALYSIS,
+    # A dataset dated as extracted on one day, and the results computed from other data.
+    "dataset-pin-mismatch": ANALYSIS,
+    "dataset-read-differs": ANALYSIS,
+    "dataset-value-unrecorded": ANALYSIS,
     "no-digest": ANALYSIS,
     # A parameter the analysis declares and never reads is wrong as soon as it is written.
     "parameter-unread": ANALYSIS,
@@ -74,6 +78,11 @@ BINDS_AT = {
     "model-empty-level": ANALYSIS,
     "variable-level-undeclared": ANALYSIS,
     "variable-not-binary": ANALYSIS,
+    # A methods review is a design record, read while the plan is written; the plan built on
+    # it is frozen at the first results, and from then a passage not in its study, or a
+    # decision a model signed, fails (Basile, 2026-10-21).
+    "similar-passage-not-in-source": ANALYSIS,
+    "similar-decision-not-human": ANALYSIS,
     # -- drafting ---------------------------------------------------------------
     # Numbers in prose only exist once there is prose.
     "no-results-dir": DRAFTING,

@@ -40,8 +40,20 @@ def main() -> None:
         rows = list(csv.DictReader(handle))
 
     em = Emitter(__file__, ci_level="95%")
-    # Simulated: the paper is a demonstration, and says so (paper.yaml, `demonstration`).
-    em.add_input(DATA, synthetic=True)
+    # The data by what identifies them: the day they were made, the years they were made to
+    # cover, and the file itself, pinned by its digest, so that data made again need a date
+    # of their own. Every report's year is held to the years covered. A real extract is
+    # named as its source is, and given the source's version where it has one. Simulated:
+    # the paper is a demonstration, and says so (paper.yaml, `demonstration`).
+    em.dataset(
+        "reports",
+        DATA,
+        extracted="2026-08-03",
+        covers=("2015", "2024"),
+        fingerprint="55aa913a7f8cbc6c",
+        dates=[int(r["year"]) for r in rows],
+        synthetic=True,
+    )
 
     # The reports held to the data dictionary (design/data_dictionary.yaml), with the two
     # variables the model reads derived first so that they are checked too. Each count is a

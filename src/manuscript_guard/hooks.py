@@ -40,6 +40,7 @@ import json
 import os
 import re
 import sys
+from collections import Counter
 from pathlib import Path
 
 # Paths that no editor should write, relative to the project root. Each is generated, and
@@ -623,6 +624,9 @@ def guard_write(payload: dict) -> int:
     named += [
         said for path in paths if (said := _or_nothing(lambda file: _judges(file, payload), path))
     ]
+    named += [
+        said for path in paths if (said := _or_nothing(lambda file: _decides(file, payload), path))
+    ]
     named += [said for path in paths if (said := _or_nothing(_an_approval, path))]
     if not named:
         return 0
@@ -744,6 +748,10 @@ def _judges(path: Path, payload: dict) -> str | None:
         if not any(_JUDGED_BY.search(text) for text in before):
             return None
         names = "a judgement it touches or keeps"
+    elif (unread := _unread(_JUDGED_BY, after, before[0])) is not None:
+        if not unread:
+            return None
+        names = unread
     else:
         judged = _judgements(after) ^ _judgements(before[0])
         if not judged:
@@ -761,6 +769,42 @@ def _judges(path: Path, payload: dict) -> str | None:
 _JUDGED_BY = re.compile(r"""(?m)^(?![ \t]*#).*?\bjudged_by["']?[ \t]*:""")
 
 
+def _unread(named_by: re.Pattern[str], *texts: str) -> str | None:
+    """Where a text before or after an edit is one YAML cannot read, who the texts name by
+    `named_by`, or "" where they name nobody: the edit is put to them, since what a decision
+    or a judgement there is of cannot be told (round 2 of #386). None where both can be read."""
+    import yaml
+
+    def unreadable(text: str) -> bool:
+        try:
+            yaml.safe_load(text)
+        except Exception:  # noqa: BLE001 - `2026-02-30` is a ValueError, not a YAML error
+            return True
+        return False
+
+    if not any(unreadable(text) for text in texts):
+        return None
+    found = [(text, match) for text in texts for match in named_by.finditer(text)]
+    return ", ".join(dict.fromkeys(
+        _named_after(text, match, "a person named in a text YAML cannot read")
+        for text, match in found
+    ))  # fmt: skip
+
+
+def _named_after(text: str, match: re.Match[str], otherwise: str) -> str:
+    """Who a `judged_by:` or `decided_by:` that `match` found names, read off the rest of its
+    line, for a text YAML cannot read: the person is told it is their name (round 1 of
+    #386). A quoted scalar is read whole, a plain one up to a comma, a closing brace or a
+    comment; anything else, a block scalar or an anchor, is `otherwise` (round 2)."""
+    rest = text[match.end():].split("\n", 1)[0].strip()
+    quoted = re.match(r"""(["'])(.*?)\1""", rest)
+    if quoted:
+        return quoted[2].strip() or otherwise
+    if rest[:1] in ("", ">", "|", "&", "*", "!", "[", "{"):
+        return otherwise
+    return re.split(r"[,}]|\s#", rest, maxsplit=1)[0].strip() or otherwise
+
+
 def _judgements(text: str) -> set[tuple]:
     """Each judged entry of a passages.yaml text, as the words it judges and who judged them
     when. A text YAML cannot read is taken to judge whatever it names a judge in, so that an
@@ -769,11 +813,12 @@ def _judgements(text: str) -> set[tuple]:
 
     try:
         document = yaml.safe_load(text)
-    except yaml.YAMLError:
+    except Exception:  # noqa: BLE001 - `2026-02-30` is a ValueError (round 1 of #386)
         return {
-            ("", "", str(match.start()), "", "a judge in a text YAML cannot read", "")
+            ("", "", str(match.start()), "",
+             _named_after(text, match, "a judge in a text YAML cannot read"), "")
             for match in _JUDGED_BY.finditer(text)
-        }
+        }  # fmt: skip
     entries = document.get("passages") if isinstance(document, dict) else None
     judged = set()
     for entry in entries if isinstance(entries, list) else []:
@@ -784,6 +829,82 @@ def _judgements(text: str) -> set[tuple]:
             ("sentence", "citekey", "passage", "support", "judged_by", "judged_on")
         ))  # fmt: skip
     return judged
+
+
+def _decides(path: Path, payload: dict) -> str | None:
+    """Why an edit of the project's design/methods_review.yaml is a person's to make, or None
+    where it leaves every decision as it was, over the method it was of.
+
+    Whether this study takes a method from another is the decision of the person
+    `decided_by` names. G12 refuses a model's name there, and cannot tell a person's name
+    typed by an agent from the person's own; nor a decision left standing while an agent
+    changes the method it was of, nor one taken away. So an edit after which the decided
+    methods are not the ones the file held before, word for word, is put to the person, as an
+    edit of a passage's judgement is (`_judges`)."""
+    from manuscript_guard.methods_review import REVIEW
+
+    found = _relative_to_project(path)
+    if found is None or found[1] != REVIEW.as_posix():
+        return None
+    relative = found[1]
+    before, after = _whole_texts(payload, path)
+    if after is None:
+        if not any(_DECIDED_BY.search(text) for text in before):
+            return None
+        names = "a decision it touches or keeps"
+    elif (unread := _unread(_DECIDED_BY, after, before[0])) is not None:
+        if not unread:
+            return None
+        names = unread
+    else:
+        now, then = _decisions(after), _decisions(before[0])
+        decided = (now - then) + (then - now)
+        if not decided:
+            return None
+        names = ", ".join(dict.fromkeys(str(entry[-2]) for entry in sorted(decided)))
+    return (
+        f"{relative}: this edit records, takes away, or leaves standing over a method it "
+        f"changes, a person's decision to adopt, adapt or reject a method of another study "
+        f"({names}). That is the person's decision, and G12 cannot tell a name an agent typed "
+        f"from theirs."
+    )
+
+
+#: A decider named in a methods review, in block or flow style, on a line that is not a
+#: comment.
+_DECIDED_BY = re.compile(r"""(?m)^(?![ \t]*#).*?\bdecided_by["']?[ \t]*:""")
+
+
+def _decisions(text: str) -> Counter:
+    """Each decided method of a methods review's text, as the study, the method's field,
+    label and words, and the decision, counted: two like methods are two (round 1 of #386).
+    A text YAML cannot read, a date that is not one among them, is taken to decide whatever
+    it names a decider in."""
+    import yaml
+
+    try:
+        document = yaml.safe_load(text)
+    except Exception:  # noqa: BLE001 - `2026-02-30` is a ValueError, not a YAML error
+        return Counter(
+            ("", "", "", str(match.start()), "", "",
+             _named_after(text, match, "a decider in a text YAML cannot read"), "")
+            for match in _DECIDED_BY.finditer(text)
+        )  # fmt: skip
+    studies = document.get("studies") if isinstance(document, dict) else None
+    decided: Counter = Counter()
+    for study in studies if isinstance(studies, list) else []:
+        methods = study.get("methods") if isinstance(study, dict) else None
+        for method in methods if isinstance(methods, list) else []:
+            decision = method.get("decision") if isinstance(method, dict) else None
+            if not isinstance(decision, dict) or decision.get("decided_by") in (None, ""):
+                continue
+            decided[(
+                str(study.get("citekey")), str(method.get("field")), str(method.get("label")),
+                str(method.get("passage")), str(decision.get("choice")),
+                str(decision.get("why")), str(decision.get("decided_by")),
+                str(decision.get("decided_on")),
+            )] += 1  # fmt: skip
+    return decided
 
 
 def _whole_texts(payload: dict, path: Path) -> tuple[list[str], str | None]:

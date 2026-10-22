@@ -203,6 +203,61 @@ def _latex_bindings() -> Reading:
     return bound
 
 
+@reading("latex citations")
+def _latex_citations() -> Reading:
+    from manuscript_guard.text.latex.cite import citations
+    from manuscript_guard.text.latex.mask import read
+    from manuscript_guard.text.latex.structure import Source
+
+    def cited(text: str) -> list[list[Any]]:
+        uses = citations(Source("main.tex", text, read(text)), Path("main.tex"), ("every",))
+        return [[use.citekey, use.start, use.line, use.narrative, use.raw] for use in uses]
+
+    return cited
+
+
+@reading("latex printed")
+def _latex_printed() -> Reading:
+    from manuscript_guard.text.latex.mask import read
+    from manuscript_guard.text.latex.printed import printed_view
+    from manuscript_guard.text.latex.structure import Source
+
+    def printed(text: str) -> dict[str, Any]:
+        reading = read(text)
+        return {"view": printed_view([Source("main.tex", text, reading)]),
+                "declared": [list(each) for each in reading.declared]}  # fmt: skip
+
+    return printed
+
+
+@reading("latex writing")
+def _latex_writing() -> Reading:
+    from manuscript_guard.gates.writing import _read_latex
+    from manuscript_guard.text.latex.mask import read
+    from manuscript_guard.text.latex.structure import Source
+
+    def judged(text: str) -> dict[str, Any]:
+        texts, words, cited = _read_latex(Path("m"), [[Source("main.tex", text, read(text))]])
+        ((_path, typed, prose),) = texts
+        return {"typed": typed == text, "prose": prose, "words": words,
+                "cited": [list(cited[Path("m") / "main.tex"])]}  # fmt: skip
+
+    return judged
+
+
+@reading("latex words")
+def _latex_words() -> Reading:
+    from manuscript_guard.text.latex.mask import read
+    from manuscript_guard.text.latex.structure import Source
+    from manuscript_guard.text.latex.words import words
+
+    def seen(text: str) -> dict[str, Any]:
+        found = words(Source("main.tex", text, read(text)))
+        return {"words": found.text, "unread": [list(span) for span in found.unread]}
+
+    return seen
+
+
 @reading("hidden")
 def _hidden() -> Reading:
     from manuscript_guard.gates.language import _hidden as hidden
@@ -547,6 +602,46 @@ def labels_namespace() -> dict[str, Any]:
             value("age.mean"),
             value("age.sd", spread="sd", of="age.mean"),
             value("age.se", spread="se", of="age.mean"),
+        ]
+    )
+
+
+@reading("data dates")
+def _data_dates() -> Reading:
+    # The gate's function first: where the source has none, the reading is newer than it.
+    from manuscript_guard.gates.data_dates import data_dates
+    from manuscript_guard.gates.numbers import in_sentences
+    from manuscript_guard.text.placeholders import parse
+
+    namespace = data_dates_namespace()
+
+    def read(text: str) -> dict[str, Any]:
+        """What G2 says of the dates of the data a text binds, typed into the analysis."""
+        placeholders, _malformed = parse(text)
+        return _told(data_dates([(MAIN, text, in_sentences(placeholders, text))], namespace))
+
+    return read
+
+
+def data_dates_namespace() -> dict[str, Any]:
+    """Results that hold dates: two typed into the analysis, one an ISO date and one a date
+    only its display writes; one a dataset declared, one a parameter, a dictionary's release
+    named by a year, a year computed from the data as a number, and a count."""
+    from manuscript_guard.contracts.values import RESULTS, Value
+
+    def value(key: str, held: object, display: str, role: str | None = None) -> tuple[str, Any]:
+        return f"results.{key}", Value(key=key, value=held, display=display, origin=RESULTS,
+                                       role=role)  # fmt: skip
+
+    return dict(
+        [
+            value("old.extracted", "2024-03-01", "1 March 2024"),
+            value("old.label", "1 March 2024", "1 March 2024"),
+            value("dataset.vb.extracted", "2024-03-01", "1 March 2024", "dataset"),
+            value("param.start", "2010-01-01", "1 January 2010", "parameter"),
+            value("dictionary.icd_10", "2019", "2019", "dictionary"),
+            value("cohort.first_year", 2010, "2010"),
+            value("n", 12, "12"),
         ]
     )
 
@@ -903,6 +998,18 @@ def _passages() -> Reading:
         ]
 
     return passages
+
+
+@reading("plan citations")
+def _plan_citations() -> Reading:
+    """The citation keys a plan's text credits a study by: what G12 asks of a method taken
+    from a study of `design/methods_review.yaml` (Basile, 2026-10-21)."""
+    from manuscript_guard.gates.methods_review import plan_citations
+
+    def credited(given: dict[str, Any]) -> list[str]:
+        return sorted(plan_citations(given["text"]))
+
+    return credited
 
 
 @reading("recycled passages")

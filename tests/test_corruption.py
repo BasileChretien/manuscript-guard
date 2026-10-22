@@ -32,6 +32,7 @@ from manuscript_guard.emit import write_digest
 from manuscript_guard.findings import merge_all
 from manuscript_guard.gates import (
     check_consistency,
+    check_datasets,
     check_figures,
     check_freshness,
     check_models,
@@ -48,6 +49,7 @@ def gate_report(root: Path):
             contract_report,
             load_report,
             check_freshness(project, results),
+            check_datasets(project, results),
             check_numbers(project, namespace, results, literature),
             check_figures(project, results),
             check_consistency(results),
@@ -2182,6 +2184,76 @@ def test_a_passage_whose_sentence_changed_is_stale(
 def test_a_passage_of_a_work_with_no_stored_copy_is_unchecked(project: Path) -> None:
     (project / "literature" / "sources" / "fictionalClassSignal2019.txt").unlink()
     assert _passage_findings(project) == [("passage-unchecked", "warn")]
+
+
+# ------------------------------------------------- the methods of a similar study
+
+
+def _methods_review_findings(project: Path) -> list[tuple[str, str]]:
+    from manuscript_guard.gates.methods_review import check_method_passages, check_methods_review
+
+    loaded = load_project(project)[0]
+    found = check_method_passages(loaded).merge(check_methods_review(loaded)).findings
+    return [(f.code, f.severity) for f in found if f.code != "similar-undecided"]
+
+
+def _reviewed(project: Path, old: str, new: str) -> None:
+    path = project / "design" / "methods_review.yaml"
+    text = path.read_text(encoding="utf-8")
+    assert old in text, old
+    path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+
+#: The example's appraisal, and a decision a person recorded after it.
+_PROPOSED = "          proposed_on: 2026-10-21\n"
+_DECIDED = (
+    _PROPOSED + "        decision:\n          choice: adopt\n"
+    "          why: the enzyme criterion only\n"
+)
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "said"),
+    [
+        pytest.param("toxic liver disease,\n", "liver disease,\n",
+                     [("similar-passage-not-in-source", "fail")], id="a passage retyped"),
+        pytest.param("          standard: encepp-guide\n", "",
+                     [("appraisal-without-standard", "warn")], id="a judgement with no standard"),
+        pytest.param("standard: encepp-guide", "standard: most-studies-do-it",
+                     [("appraisal-standard-unknown", "warn")], id="a standard nothing holds"),
+        pytest.param("domain: Definition and validation", "domain: Validation",
+                     [("appraisal-domain-unknown", "warn")], id="a domain the standard lacks"),
+        pytest.param(_PROPOSED, _DECIDED + "          decided_by: Claude\n"
+                     "          decided_on: 2026-10-21\n",
+                     [("similar-decision-not-human", "fail"), ("adopted-method-uncited", "warn"),
+                      ("adopted-standard-uncited", "warn")], id="decided by a model"),
+        pytest.param(_PROPOSED, _DECIDED + "          decided_by: Ada Example\n"
+                     "          decided_on: 2026-10-21\n",
+                     [("adopted-method-uncited", "warn"), ("adopted-standard-uncited", "warn")],
+                     id="an adopted method with no citation"),
+        pytest.param("proposed_on", "proposed_on", [], id="as recorded"),
+    ],
+)  # fmt: skip
+def test_a_method_of_a_similar_study_that_rests_on_nothing_is_caught(
+    project: Path, old: str, new: str, said: list
+) -> None:
+    """Basile, 2026-10-21: a method's words not its study's, a judgement that names no
+    standard or one nothing holds, a decision a model signed, and a method taken into the
+    plan that the plan does not cite."""
+    _reviewed(project, old, new)
+    assert _methods_review_findings(project) == said
+
+
+def test_an_adopted_method_the_plan_cites_with_its_standard_is_clean(project: Path) -> None:
+    _reviewed(project, _PROPOSED, _DECIDED + "          decided_by: Ada Example\n"
+              "          decided_on: 2026-10-21\n")  # fmt: skip
+    _reviewed(project, "studies:\n", "standards:\n  - id: encepp-guide\n    citekey: encepp2023\n"
+              "\nstudies:\n")  # fmt: skip
+    plan = project / "design" / "plan.md"
+    plan.write_text(plan.read_text(encoding="utf-8") + "\nThe case definition follows "
+                    "[@fictionalHepaticCohort2021], validated as [@encepp2023] advises.\n",
+                    encoding="utf-8")  # fmt: skip
+    assert _methods_review_findings(project) == []
 
 
 # ------------------------------------------------------------- what a change makes stale
@@ -6263,8 +6335,10 @@ def test_a_gate_not_taught_latex_reads_nothing_and_fails_at_submission(project: 
     _as_latex(project)
     drafting, _project, _stage, _deferred = _run_gates(project, stage="drafting")
     unread = sorted(f.gate for f in drafting.findings if f.code == "not-read-in-latex")
-    # G2 reads LaTeX but for its pointers to tables and figures, and says so (step 4).
-    expected = ["BUILD", "G13", "G14", "G15", "G16", "G2", "G4", "G6", "G7", "G8", "G8r", "G9"]
+    # G2 reads LaTeX but for its pointers to tables and figures, and says so (step 4). G4
+    # reads it from step 6 but for the data sources its statements name, G14 and G6 from
+    # step 7.
+    expected = ["BUILD", "G13", "G15", "G16", "G2", "G4", "G7", "G8", "G8r", "G9"]
     assert unread == expected, drafting.render(project)
     assert "not-read-in-latex" not in codes(drafting)
     said = {f.code for f in drafting.findings}
@@ -6279,9 +6353,9 @@ def test_a_gate_not_taught_latex_reads_nothing_and_fails_at_submission(project: 
 #: The checks that read the manuscript only as Markdown, and those that do not read it.
 _MARKDOWN_ONLY = (
     "check_statement_sources", "check_related",
-    "check_citations", "check_prose_quotations", "check_journal", "check_reporting",
-    "check_writing", "check_methods", "check_reported", "check_recomputed", "check_revision",
-    "check_language", "check_models", "check_shapes", "check_tex", "check_passages",
+    "check_prose_quotations", "check_reporting",
+    "check_methods", "check_reported", "check_recomputed", "check_revision",
+    "check_models", "check_shapes", "check_tex", "check_passages",
     "check_quality_reported",
     "check_recycling",
 )  # fmt: skip
@@ -6290,6 +6364,8 @@ _NOT_THE_MANUSCRIPT = (
     "check_literature_chain", "check_shortlist", "check_design", "check_design_rounds",
     "check_consistency", "check_restricted_inputs", "check_relations", "check_data_sources",
     "check_data_quality",
+    "check_datasets",
+    "check_method_passages", "check_methods_review",
     # It finds the figures placed in the Markdown sources, so it reads nothing of a LaTeX
     # manuscript and says nothing of one; it runs, as G3's other check does (round 1 of #387).
     "check_figure_alt",
@@ -6299,7 +6375,8 @@ _NOT_THE_MANUSCRIPT = (
 #: The checks that read LaTeX: they run on a LaTeX manuscript as on any.
 _READS_LATEX = (
     "check_latex", "check_numbers", "check_bound_units", "check_small_cells",
-    "check_synthetic_inputs", "check_values",
+    "check_synthetic_inputs", "check_citations", "check_journal", "check_language",
+    "check_writing", "check_values",
 )  # fmt: skip
 
 
@@ -6575,6 +6652,148 @@ def test_the_custodian_and_g1_read_the_twins_bindings(project: Path) -> None:
                 if "\\mg{results.case.n_serious}" in text)  # fmt: skip
     assert _small(project) == [("results.case.n_serious", line)]
     assert "results.case.n_serious" in quoted_refs(load_project(project)[0])
+
+
+def test_g7_reads_the_twins_citations_as_the_examples(project: Path) -> None:
+    """The twin's citations pass G7 as the example's do; a key cited in a group with another,
+    and wrapped onto the next line, that is in no bibliography is said (step 5)."""
+    entry = _twin(project)
+    clean = {(f.code, f.severity) for f in _g7(project).findings}
+    _into_results(entry, "A claim \\citep[p.~2]{ghostKey2020,\n  fictionalHepaticCohort2021}.")
+    text = entry.read_text(encoding="utf-8")
+    found = [f for f in _g7(project).failures if "ghostKey2020" in f.message]
+    line = text.count("\n", 0, text.index("ghostKey2020")) + 1
+    assert [f.line for f in found] == [line], _g7(project).render(project)
+    assert not [f for f in _g7(project).failures if "fictionalHepaticCohort2021" in f.message]
+    assert clean <= {(f.code, f.severity) for f in _g7(project).findings}
+
+
+def _g4(root: Path) -> set[str]:
+    from manuscript_guard.gates import check_journal
+
+    return {f.code for f in check_journal(load_project(root)[0]).findings}
+
+
+@pytest.mark.parametrize(
+    ("before", "after", "code"),
+    [
+        ("\\section{Methods}", "\\section{Approach}", "missing-required-section"),
+        ("\\section{Funding}", "\\textbf{Funding}", "missing-required-statement"),
+        ("\\end{abstract}", " ".join(["word"] * 320) + "\n\\end{abstract}",
+         "over-journal-limit"),
+    ],
+)
+def test_g4_reads_the_twins_sections_statements_and_limits(
+    project: Path, before: str, after: str, code: str
+) -> None:
+    """A required section renamed, a required statement left without its heading, an
+    abstract over its limit: each is found in the twin as in the example (step 6)."""
+    entry = _twin(project)
+    assert code not in _g4(project)
+    text = entry.read_text(encoding="utf-8")
+    assert before in text
+    entry.write_text(text.replace(before, after, 1), encoding="utf-8")
+    assert code in _g4(project)
+
+
+def test_g4_counts_no_word_of_a_float_a_formula_or_the_preamble_in_the_twin(
+    project: Path,
+) -> None:
+    """A caption, a displayed formula and the preamble print no word of the text, as a journal
+    counts it: 4,000 of them in each leave the main text under its limit (step 6)."""
+    entry = _twin(project)
+    words = " ".join(["word"] * 4000)
+    text = entry.read_text(encoding="utf-8")
+    text = text.replace("\\begin{document}", f"\\author{{{words}}}\n\\begin{{document}}", 1)
+    entry.write_text(text, encoding="utf-8")
+    _into_results(entry, f"\\begin{{figure}}\\caption{{{words}}}\\end{{figure}}\n"
+                         f"\\[ {words} \\]")  # fmt: skip
+    assert "over-journal-limit" not in _g4(project)
+
+
+def _g14(root: Path) -> list:
+    from manuscript_guard.gates import check_language
+
+    return list(check_language(load_project(root)[0]).findings)
+
+
+@pytest.mark.parametrize(
+    ("snippet", "code", "word"),
+    [
+        ("The hazard ratio was HR here.", "abbreviation-undefined", "HR is used once"),
+        ("The color of the reports.", "spelling-variant", "'color'"),
+        ("The caf\\'e reports.", "tex-words-not-read", "caf\\\\'e"),
+        ("The SSRI rose. The SSRI (selective serotonin reuptake inhibitor) class.",
+         "abbreviation-used-before-defined", "SSRI"),
+    ],
+)
+def test_g14_finds_in_the_twin_what_it_finds_in_the_example(
+    project: Path, snippet: str, code: str, word: str
+) -> None:
+    """An abbreviation never defined, an American spelling in a British paper, a word an
+    accent command splits, and a use before the definition, each written into the twin's
+    Results, are found there, on the line it is written on (step 7)."""
+    entry = _twin(project)
+    _into_results(entry, snippet)
+    found = [f for f in _g14(project) if f.code == code and word in f.message]
+    assert found and found[0].path == entry, [(f.code, f.message) for f in _g14(project)]
+    text = entry.read_text(encoding="utf-8")
+    assert found[0].line == text.count("\n", 0, text.index(snippet)) + 1
+
+
+def _g6_findings(root: Path) -> list:
+    from manuscript_guard.gates import check_writing
+
+    return list(check_writing(load_project(root)[0]).findings)
+
+
+@pytest.mark.parametrize(
+    ("snippet", "code"),
+    [
+        ("Studies have shown that reporting is low.", "vague-attribution"),
+        ("We delve into the reports here.", "ai-phrasing"),
+        ("% TODO check the counts", "model-artefact"),
+        ("As requested by Reviewer 2, we added the counts.", "revision-residue"),
+    ],
+)
+def test_g6_finds_in_the_twin_what_it_finds_in_the_example(
+    project: Path, snippet: str, code: str
+) -> None:
+    """A claim with no citation near it, a phrase G6 reports, a placeholder left in a
+    comment and words to a reviewer, each written into the twin's Results, are found there,
+    on the line they are written on (step 7). A comment's placeholder is found as typed, as
+    one in a Markdown comment is."""
+    entry = _twin(project)
+    assert not [f for f in _g6_findings(project) if f.code == code]
+    # At the head of the Results, which no citation stands within reach of.
+    text = entry.read_text(encoding="utf-8")
+    heading = "\\section{Results}\n"
+    entry.write_text(text.replace(heading, heading + snippet + "\n", 1), encoding="utf-8")
+    found = [f for f in _g6_findings(project) if f.code == code]
+    assert found and found[0].path == entry, [(f.code, f.message) for f in _g6_findings(project)]
+    text = entry.read_text(encoding="utf-8")
+    assert found[0].line == text.count("\n", 0, text.index(snippet)) + 1
+
+
+def test_g6_takes_a_latex_citation_beside_a_claim_for_its_support(project: Path) -> None:
+    """Judged against where the twin's citation commands stand, as `[@...]` in Markdown; and
+    a claim in a comment is no claim of the paper's (step 7)."""
+    entry = _twin(project)
+    claim = "Studies have shown that reporting is low \\citep{fictionalHepaticCohort2021}."
+    _into_results(entry, claim + "\n% Studies have shown it is high.")
+    assert not [f for f in _g6_findings(project) if f.code == "vague-attribution"]
+
+
+def test_g6_names_the_line_of_a_typed_reference_lists_entry(project: Path) -> None:
+    """A placeholder in a typed reference list's sixth entry is named at that entry's line, and
+    a Spanish title's "Todo" is no placeholder (rounds 2 and 3 of step 7b)."""
+    entry = _twin(project)
+    entries = "".join(f"\\bibitem{{e{n}}} Garcia {n}. Todo lo que hay. 2020.\n" for n in range(5))
+    _into_results(entry, "\\begin{thebibliography}{9}\n" + entries
+                  + "\\bibitem{t} TODO find the journal.\n\\end{thebibliography}")  # fmt: skip
+    found = [f for f in _g6_findings(project) if f.code == "model-artefact"]
+    text = entry.read_text(encoding="utf-8")
+    assert [f.line for f in found] == [text.count("\n", 0, text.index("\\bibitem{t}")) + 1]
 
 
 @pytest.mark.parametrize("encoding", ["cp1252", "utf-16", "utf-32"])
@@ -20443,6 +20662,141 @@ def test_a_typed_dictionary_release_fails_and_only_beside_its_name(
     found = [f for f in gate_report(project).failures if f.code == "typed-dictionary-release"]
     assert [f.message.split(" is ")[0] for f in found] == typed
     assert all("{{results.dictionary." in f.hint for f in found)
+
+
+# ----------------------------------------------------- the data the paper analysed, named
+
+
+def test_the_example_names_its_data_by_their_date_and_its_file(project: Path) -> None:
+    """The example declares its data with `dataset()`: its date and the years it covers are
+    values the Methods bind, and the fragment pins them to the file."""
+    namespace, results, *_ = load_namespace(load_project(project)[0])
+    assert namespace["results.dataset.reports.extracted"].display == "3 August 2026"
+    assert namespace["results.dataset.reports.covers_to"].role == "dataset"
+    (fragment,) = results.fragments
+    assert fragment.datasets["reports"]["inputs"] == ["data/reports.csv"]
+    assert fragment.datasets["reports"]["observed"]["count"] == 4000
+
+
+def test_a_typed_extraction_date_fails(project: Path) -> None:
+    _replace_once(main_md(project), "{{results.dataset.reports.extracted}}", "3 August 2026")
+    report = gate_report(project)
+    assert "unclassified-number" in codes(report)
+    assert "unquoted-result" in codes(report)
+
+
+def test_a_date_typed_into_the_script_is_warned_where_the_methods_date_the_data(
+    project: Path,
+) -> None:
+    """The way out G2's hint offered before `dataset()`: a string emitted with its display,
+    typed into the script and tied to nothing."""
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"]["data.extracted"] = {"value": "2026-08-03", "display": "3 August 2026"}
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    main = main_md(project)
+    main.write_text(main.read_text(encoding="utf-8") + "\nThe data were downloaded on "
+                    "{{results.data.extracted}}.\n", encoding="utf-8")  # fmt: skip
+    report = gate_report(project)
+    assert report.ok, report.render(project)
+    assert [f.code for f in report.findings if f.code.startswith("data-date")] == [
+        "data-date-not-declared"
+    ]
+
+
+def test_a_period_printed_as_another_than_the_one_declared_fails(project: Path) -> None:
+    """The fragment's display says the data cover to 2023, its value to 2024: read with the
+    emitter's rule, from either language or by hand."""
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"]["dataset.reports.covers_to"]["display"] = "2023"
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    report = gate_report(project)
+    assert "no-display" in codes(report)
+    assert "unresolved-binding" in codes(report)
+
+
+def test_the_data_made_again_make_the_date_stale(project: Path) -> None:
+    """New data at the path: G1 names the date it makes stale, and the analysis run again
+    with the old date is refused."""
+    data = project / "data" / "reports.csv"
+    data.write_text(data.read_text(encoding="utf-8") + "R99999,2024,example-drug,rash,N,F,75+\n",
+                    encoding="utf-8", newline="")  # fmt: skip
+    found = [f for f in gate_report(project).failures if f.code == "input-changed"]
+    assert any("dataset.reports.extracted dates the data as they were" in f.message
+               for f in found)  # fmt: skip
+    import subprocess
+    import sys
+
+    out = subprocess.run([sys.executable, str(_analysis(project))], capture_output=True,
+                         text=True, cwd=project)  # fmt: skip
+    assert out.returncode != 0
+    assert "is not the data pinned as extracted on 2026-08-03" in out.stderr
+
+
+def test_a_dataset_pinned_to_other_data_fails(project: Path) -> None:
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["datasets"]["reports"]["fingerprint"] = "0123456789abcdef"
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    assert "dataset-pin-mismatch" in codes(gate_report(project))
+
+
+def test_a_report_dated_outside_the_years_covered_is_refused(project: Path) -> None:
+    _replace_once(_analysis(project), 'covers=("2015", "2024")', 'covers=("2016", "2024")')
+    import subprocess
+    import sys
+
+    out = subprocess.run([sys.executable, str(_analysis(project))], capture_output=True,
+                         text=True, cwd=project)  # fmt: skip
+    assert out.returncode != 0
+    assert "dates lie outside the period the data are declared to cover (2016 to 2024)" in (
+        out.stderr
+    )
+
+
+#: The example's supplement, which every gate that reads prose reads as it reads the main text.
+_SUPPLEMENT = "manuscript/supplementary/S1_code_lists.md"
+
+
+@pytest.mark.parametrize("where", ["manuscript/main.md", _SUPPLEMENT])
+def test_a_date_of_the_data_in_the_supplement_is_held_as_in_the_methods(
+    project: Path, where: str
+) -> None:
+    """The supplement is held to the rules of the main text (Basile, 2026-10-21): an
+    extraction date typed in Supplementary Methods fails as one typed in the Methods does,
+    and one typed into the script is warned of there too, at the file it stands in."""
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"]["data.extracted"] = {"value": "2026-08-03", "display": "3 August 2026"}
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    page = project / where
+    page.write_text(page.read_text(encoding="utf-8") + "\n\nThe data were extracted on 3 August "
+                    "2026. They were downloaded on {{results.data.extracted}}.\n",
+                    encoding="utf-8")  # fmt: skip
+    report = gate_report(project)
+    typed = {f.message.split(" is ")[0] for f in report.failures
+             if f.code == "unclassified-number" and f.path.name == page.name}  # fmt: skip
+    assert typed == {"'3'", "'2026'"}, report.render(project)
+    warned = [f for f in report.findings if f.code == "data-date-not-declared"]
+    assert [f.path.name for f in warned] == [page.name]
+
+
+def test_a_dataset_date_bound_in_the_supplement_alone_is_quoted(project: Path) -> None:
+    """The date bound only in Supplementary Methods is quoted, as one bound in the Methods
+    is: direction two reads the supplement too."""
+    _replace_once(main_md(project), "generated on\n{{results.dataset.reports.extracted}} to cover",
+                  "made to cover")  # fmt: skip
+    page = project / _SUPPLEMENT
+    page.write_text(page.read_text(encoding="utf-8") + "\n\nThe database was generated on "
+                    "{{results.dataset.reports.extracted}}.\n", encoding="utf-8")  # fmt: skip
+    report = gate_report(project)
+    assert report.ok, report.render(project)
+    assert "unquoted-result" not in {f.code for f in report.findings}
 
 
 def test_a_parameter_declared_and_never_read_fails(project: Path) -> None:

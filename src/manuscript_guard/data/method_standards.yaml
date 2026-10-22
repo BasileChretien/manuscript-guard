@@ -1,0 +1,216 @@
+schema: manuscript-guard/method-standards/1
+
+# The published methodological standards a method of a similar study is judged against, at
+# the design stage (design/methods_review.yaml). An appraisal names one of these by its id,
+# and one of its domains as the standard names it; G12 warns where it names none, or one
+# this table does not hold and the record does not describe.
+#
+# Each standard:
+#   name        as it names itself;
+#   domains     its domains, components, chapters or Methods items, in its own order and in
+#               its own words, labels only: what a judgement is "of";
+#   applies_to  the study types of data/study_types.yaml it is for;
+#   doi / url   where it is published, and the page it was read on, on the date in read_on.
+#
+# A standard is cited by the key the project gives it, never quoted from here: the domains
+# are labels, read to name what a judgement is of. A reporting guideline's items say what a
+# report must state, not how a study should be done; its explanation and elaboration paper
+# is where the reasons are, and a judgement against it names the item.
+#
+# Not here: TARGET (Cashin AG et al. BMJ 2025;390:e087179), which says how a target trial
+# emulation is reported and whose items are not yet listed here; and ROBINS-I V2, a draft at
+# riskofbias.info (revised 20 November 2025, read 2026-10-21) whose domains may change. A
+# project that judges against either describes it in its own record. ENCePP's Guide is a
+# living document: each chapter carries the date it was last revised, and a judgement
+# against it is of the chapter as it stood when read.
+
+standards:
+  encepp-guide:
+    name: ENCePP Guide on Methodological Standards in Pharmacoepidemiology
+    version: Revision 11, July 2023, revised chapter by chapter since
+    url: https://encepp.europa.eu/encepp-toolkit/methodological-guide_en
+    read_on: 2026-10-21
+    applies_to: [cohort, case-control, self-controlled, disproportionality, systematic-review]
+    domains:
+      - Formulating the research question and objectives and assessing study feasibility
+      - Development of the study protocol
+      - Study design
+      - Definition and validation of drug exposure, outcomes and covariates
+      - Methods to address bias and confounding
+      - Effect modification and interaction
+      - Approaches to data collection
+      - Research networks for multi-database studies
+      - Systematic reviews and meta-analysis
+      - Signal detection methodology and application
+      - Statistical analyses
+
+  target-trial:
+    name: Target trial emulation (Hernán and Robins)
+    citation: Hernán MA, Robins JM. Am J Epidemiol 2016;183(8):758-764
+    doi: 10.1093/aje/kwv254
+    url: https://pmc.ncbi.nlm.nih.gov/articles/PMC4832051/
+    read_on: 2026-10-21
+    applies_to: [cohort, case-control]
+    # The components of a target trial's protocol, as the paper's Table 1 names them: time
+    # zero is where eligibility, assignment and the start of follow-up meet.
+    domains:
+      - Eligibility criteria
+      - Treatment strategies
+      - Assignment procedures
+      - Follow-up period
+      - Outcome
+      - Causal contrasts of interest
+      - Analysis plan
+
+  robins-i:
+    name: ROBINS-I (risk of bias in non-randomised studies of interventions)
+    citation: Sterne JAC et al. BMJ 2016;355:i4919
+    doi: 10.1136/bmj.i4919
+    url: https://www.riskofbias.info/welcome/home
+    read_on: 2026-10-21
+    applies_to: [cohort, case-control, self-controlled]
+    domains:
+      - Bias due to confounding
+      - Bias in selection of participants into the study
+      - Bias in classification of interventions
+      - Bias due to deviations from intended interventions
+      - Bias due to missing data
+      - Bias in measurement of outcomes
+      - Bias in selection of the reported result
+
+  robins-e:
+    name: ROBINS-E (risk of bias in non-randomised studies of exposures)
+    citation: Higgins JPT et al. Environment International 2024;186:108602
+    doi: 10.1016/j.envint.2024.108602
+    url: https://www.riskofbias.info/welcome/robins-e-tool
+    read_on: 2026-10-21
+    applies_to: [cohort, case-control]
+    domains:
+      - Bias due to confounding
+      - Bias arising from measurement of the exposure
+      - Bias in selection of participants into the study
+      - Bias due to post-exposure interventions
+      - Bias due to missing data
+      - Bias in measurement of the outcome
+      - Bias in selection of the reported result
+
+  sccs:
+    name: Self-controlled case series methods (Petersen, Douglas and Whitaker)
+    citation: Petersen I, Douglas I, Whitaker H. BMJ 2016;354:i4515
+    doi: 10.1136/bmj.i4515
+    url: https://www.bmj.com/content/354/bmj.i4515
+    read_on: 2026-10-21
+    applies_to: [self-controlled]
+    # The assumptions of the design the paper sets out, in short.
+    domains:
+      - An event should not affect subsequent exposures
+      - Event rates are constant within intervals
+      - Events are independently recurrent or rare
+
+  immortal-time:
+    name: Immortal time bias in pharmacoepidemiology (Suissa)
+    citation: Suissa S. Am J Epidemiol 2008;167(4):492-499
+    doi: 10.1093/aje/kwm324
+    read_on: 2026-10-21
+    applies_to: [cohort, case-control]
+    domains:
+      - Immortal time
+
+  readus-pv:
+    name: READUS-PV (reporting of disproportionality analyses in pharmacovigilance)
+    citation: >-
+      Fusaroli M et al. Drug Saf 2024;47(6):575-584 (statement), and 585-599 (explanation and
+      elaboration, doi 10.1007/s40264-024-01423-7)
+    doi: 10.1007/s40264-024-01421-9
+    url: https://pmc.ncbi.nlm.nih.gov/articles/PMC11116242/
+    read_on: 2026-10-21
+    applies_to: [disproportionality]
+    # The Methods items of its Table 1.
+    domains:
+      - Study design
+      - Data description, access, and pre-processing
+      - Variables definition
+      - Statistical methods
+
+  strobe:
+    name: STROBE, with its explanation and elaboration
+    citation: Vandenbroucke JP et al. PLoS Med 2007;4(10):e297
+    doi: 10.1371/journal.pmed.0040297
+    url: https://journals.plos.org/plosmedicine/article?id=10.1371/journal.pmed.0040297
+    read_on: 2026-10-21
+    applies_to: [cohort, case-control]
+    # The Methods items, 4 to 12.
+    domains:
+      - Study design
+      - Setting
+      - Participants
+      - Variables
+      - Data sources/measurement
+      - Bias
+      - Study size
+      - Quantitative variables
+      - Statistical methods
+
+  record-pe:
+    name: RECORD-PE (pharmacoepidemiological research on routinely collected data)
+    citation: Langan SM et al. BMJ 2018;363:k3532
+    doi: 10.1136/bmj.k3532
+    url: https://pmc.ncbi.nlm.nih.gov/articles/PMC6234471/
+    read_on: 2026-10-21
+    applies_to: [cohort, case-control, self-controlled]
+    # The Methods headings of its checklist: STROBE's, and RECORD's two of its own.
+    domains:
+      - Study design
+      - Setting
+      - Participants
+      - Variables
+      - Data sources/measurement
+      - Bias
+      - Study size
+      - Quantitative variables
+      - Statistical methods
+      - Data access and cleaning methods
+      - Linkage
+
+  rob-2:
+    name: RoB 2 (risk of bias in randomised trials)
+    citation: Sterne JAC et al. BMJ 2019;366:l4898
+    doi: 10.1136/bmj.l4898
+    url: https://www.riskofbias.info/welcome/rob-2-0-tool/current-version-of-rob-2
+    read_on: 2026-10-21
+    applies_to: [trial]
+    domains:
+      - Bias arising from the randomisation process
+      - Bias due to deviations from intended interventions
+      - Bias due to missing outcome data
+      - Bias in measurement of the outcome
+      - Bias in selection of the reported result
+
+  probast-ai:
+    name: PROBAST+AI (risk of bias and applicability of prediction model studies)
+    citation: Moons KGM et al. BMJ 2025;388:e082505
+    doi: 10.1136/bmj-2024-082505
+    url: https://www.probast.org/
+    read_on: 2026-10-21
+    applies_to: [prediction-model]
+    # It updates PROBAST (Wolff RF et al. Ann Intern Med 2019;170(1):51-58,
+    # doi 10.7326/M18-1376), whose four domains were participants, predictors, outcome and
+    # analysis.
+    domains:
+      - Participants and data sources
+      - Predictors
+      - Outcomes
+      - Analyses
+
+  robis:
+    name: ROBIS (risk of bias in systematic reviews)
+    citation: Whiting P et al. J Clin Epidemiol 2016;69:225-234
+    doi: 10.1016/j.jclinepi.2015.06.005
+    url: https://www.bristol.ac.uk/population-health-sciences/projects/robis/
+    read_on: 2026-10-21
+    applies_to: [systematic-review]
+    domains:
+      - Study eligibility criteria
+      - Identification and selection of studies
+      - Data collection and study appraisal
+      - Synthesis and findings

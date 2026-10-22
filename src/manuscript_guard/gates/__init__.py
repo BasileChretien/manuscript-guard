@@ -8,6 +8,7 @@ git hook and a CI job without any of the three disagreeing about the verdict.
 from manuscript_guard.gates.bound_units import check_bound_units
 from manuscript_guard.gates.citations import check_citations, sync_bib
 from manuscript_guard.gates.consistency import check_consistency
+from manuscript_guard.gates.datasets import check_datasets
 from manuscript_guard.gates.design import check_design
 from manuscript_guard.gates.figure_review import check_figure_reviews, review_path
 from manuscript_guard.gates.figure_source import check_figure_source
@@ -73,6 +74,7 @@ __all__ = [
     "check_passages",
     "check_prose_quotations",
     "check_consistency",
+    "check_datasets",
     "check_relations",
     "check_reported",
     "check_design",

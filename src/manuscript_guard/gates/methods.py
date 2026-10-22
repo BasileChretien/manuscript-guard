@@ -386,21 +386,22 @@ _PADDED = re.compile(r"\{\{ +")
 
 def _anchored_in(read: _Read) -> tuple[list[Claim], list[Paragraph]]:
     """A file's claims and its Methods paragraphs that point at no step."""
-    path, text, chains = read.path, read.text, read.chains
+    path, text = read.path, read.text
     found, bare = claims_in(text, read.cuts, read.typed)
     shown = blank_comments(text) if "<!--" in text else text
 
     def said(words: str) -> str:
         return _collapsed(words) if read.chains is None else _PADDED.sub("{{", _collapsed(words))
 
-    if chains is None:
-        headings, notes = heading_index(text), footnote_index(text)
+    own = read.chains is None
+    headings, notes = (heading_index(text), footnote_index(text)) if own else ([], [])
 
-        def chains(at: int):
-            return chains_at(headings, notes, at)
+    def over(at: int):
+        """The headings over `at`: the file's own, or those `read` gives."""
+        return chains_at(headings, notes, at) if own else read.chains(at)
 
     def methods(at: int) -> bool:
-        return any(is_methods(chain) for chain in chains(at))
+        return any(is_methods(chain) for chain in over(at))
 
     def line(at: int) -> int:
         return text.count("\n", 0, at) + 1

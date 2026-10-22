@@ -387,7 +387,7 @@ PLAN = Path("design") / "plan.md"
 FROZEN_PLAN = Path("design") / "plan.frozen.yaml"
 
 
-def freeze_plan(root: Path, script: Path | str) -> Path | None:
+def freeze_plan(root: Path, script: Path | str, *, synthetic: bool = False) -> Path | None:
     """Keep the plan as it stands, the first time the analysis writes results, and never again.
 
     A plan rewritten after the results are known is how a hypothesis comes to fit its
@@ -403,6 +403,11 @@ def freeze_plan(root: Path, script: Path | str) -> Path | None:
     (`plan-not-utf8`) where its bytes do not decode; UTF-16 with no byte-order mark, of
     ASCII text, decodes, NULs and all, and is not said to be. R cannot hold a NUL in a
     string, and stopped there with the results already written (round 1 of #271).
+
+    `synthetic` says every input of that first write was declared synthetic: a dry run on
+    simulated data. The copy says so, and G12 then does not date the study's first results
+    by it, which a registration made after the dry run would otherwise be held to (Basile's
+    choice, 2026-10-21, round 1 of #390).
     """
     plan, frozen = root / PLAN, root / FROZEN_PLAN
     if not plan.is_file() or frozen.exists():
@@ -422,6 +427,8 @@ def freeze_plan(root: Path, script: Path | str) -> Path | None:
         "sha256": source_digest(plan),
         "plan": text,
     }
+    if synthetic:
+        record["synthetic"] = True
     frozen.write_text(
         json.dumps(record, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n"
     )
@@ -2110,5 +2117,6 @@ class Emitter:
         payload = json.dumps(self.document(), indent=2, ensure_ascii=False, sort_keys=False)
         path.write_text(payload + "\n", encoding="utf-8", newline="\n")
         write_digest(path)
-        freeze_plan(root, self.script)
+        every = bool(self.inputs) and all(str(i) in self._synthetic for i in self.inputs)
+        freeze_plan(root, self.script, synthetic=every)
         return path

@@ -77,6 +77,7 @@ from generated import (
     count_cells,
     credited_plans,
     deposit_statements,
+    dictionary_pairs,
     generated,
     holds,
     laid_out,
@@ -5850,6 +5851,22 @@ def test_a_section_of_two_plans_differs_only_where_its_words_do(
     assert READINGS["plan sections"]()(given) == changed, given
 
 
+@holds(150, dictionary_pairs())
+def test_a_variable_of_two_data_dictionaries_differs_only_where_it_is_recorded_otherwise(
+    drawn: tuple[dict[str, str], list[list[Any]]],
+) -> None:
+    """G8 says which variables an earlier data dictionary and this one both have that are
+    recorded otherwise, and in which part. A definition re-wrapped or in capitals, codes
+    named by their list, inputs in another order, a bound written with a point, a time
+    bound quoted or in another zone's notation, a term or a label in capitals is the same
+    variable recorded alike; each other edit changes the one part it names, a code dropped
+    and a code added among them, and a date made a time is its type alone; a variable one
+    dictionary lacks is compared with nothing; and a study period given otherwise is said.
+    Each example holds every edit."""
+    given, changed = drawn
+    assert READINGS["data dictionaries"]()(given) == changed, given
+
+
 # ------------------------------------------------------------- scripts the gates do not read
 
 #: Characters of each script the gates do not read, from the blocks of Unicode that hold it,
@@ -9248,6 +9265,73 @@ def _only_the_first_words_are_compared(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(related_methods_gate, "_words", lambda text: real(text)[:3])
 
 
+def _a_definition_is_compared_in_its_case(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(related_methods_gate, "_text_words", lambda text: text.split())
+
+
+def _a_definition_keeps_its_line_breaks(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(related_methods_gate, "_text_words", lambda text: text.casefold().split(" "))
+
+
+def _only_a_definition_s_first_words_are_compared(patch: pytest.MonkeyPatch) -> None:
+    real = related_methods_gate._text_words
+    patch.setattr(related_methods_gate, "_text_words", lambda text: real(text)[:3])
+
+
+def _codes_are_compared_by_their_list_s_name(patch: pytest.MonkeyPatch) -> None:
+    real = related_methods_gate._codes_compared
+
+    def by_name(then, now) -> list:
+        named = then.code_list != now.code_list
+        return real(then, now) + [related_methods_gate.Differs(
+            "list of codes", str(then.code_list), str(now.code_list))] * named
+
+    patch.setattr(related_methods_gate, "_codes_compared", by_name)
+
+
+def _a_label_or_a_term_is_compared_in_its_case(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(related_methods_gate, "_folded", lambda text: " ".join((text or "").split()))
+
+
+def _an_ordinal_scale_s_order_is_not_compared(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(related_methods_gate, "_order_compared", lambda there, here: [])
+
+
+def _a_bound_is_compared_as_written(patch: pytest.MonkeyPatch) -> None:
+    def written(variable, read) -> tuple[str, str]:
+        return str(variable.minimum), str(variable.maximum)
+
+    patch.setattr(related_methods_gate, "_bounds", written)
+
+
+def _a_time_bound_is_compared_as_text(patch: pytest.MonkeyPatch) -> None:
+    """The rule of #415 before its first round: a bound no number is the loader's string."""
+    patch.setattr(related_methods_gate, "_BOUND_READERS", {})
+
+
+def _each_bound_is_read_by_its_own_type(patch: pytest.MonkeyPatch) -> None:
+    """The rule of #415 after its first round: a date there and a datetime here never equal."""
+    real = related_methods_gate._bounds
+
+    def own(variable, read) -> tuple:
+        return real(variable, related_methods_gate._BOUND_READERS.get(variable.type, str))
+
+    patch.setattr(related_methods_gate, "_bounds", own)
+
+
+def _inputs_are_compared_in_their_order(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(related_methods_gate, "_inputs",
+                  lambda variable: ", ".join(variable.derived_from))  # fmt: skip
+
+
+def _only_a_standard_s_release_is_compared(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(related_methods_gate, "_STANDARD_PARTS", (("version", False),))
+
+
+def _the_study_period_is_not_compared(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(related_methods_gate, "period_compared", lambda then, now: None)
+
+
 def _a_printed_value_is_text(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(related_gate, "_printed", lambda text: None)
 
@@ -10628,6 +10712,54 @@ BROKEN = {
     "only a section's first words are compared": (
         _only_the_first_words_are_compared,
         test_a_section_of_two_plans_differs_only_where_its_words_do,
+    ),
+    "a dictionary's definition is compared in its case": (
+        _a_definition_is_compared_in_its_case,
+        test_a_variable_of_two_data_dictionaries_differs_only_where_it_is_recorded_otherwise,
+    ),
+    "a dictionary's definition keeps its line breaks": (
+        _a_definition_keeps_its_line_breaks,
+        test_a_variable_of_two_data_dictionaries_differs_only_where_it_is_recorded_otherwise,
+    ),
+    "only a definition's first words are compared": (
+        _only_a_definition_s_first_words_are_compared,
+        test_a_variable_of_two_data_dictionaries_differs_only_where_it_is_recorded_otherwise,
+    ),
+    "codes are compared by their list's name": (
+        _codes_are_compared_by_their_list_s_name,
+        test_a_variable_of_two_data_dictionaries_differs_only_where_it_is_recorded_otherwise,
+    ),
+    "a code's label or a standard's term is compared in its case": (
+        _a_label_or_a_term_is_compared_in_its_case,
+        test_a_variable_of_two_data_dictionaries_differs_only_where_it_is_recorded_otherwise,
+    ),
+    "an ordinal scale's order is not compared": (
+        _an_ordinal_scale_s_order_is_not_compared,
+        test_a_variable_of_two_data_dictionaries_differs_only_where_it_is_recorded_otherwise,
+    ),
+    "a range's bound is compared as written": (
+        _a_bound_is_compared_as_written,
+        test_a_variable_of_two_data_dictionaries_differs_only_where_it_is_recorded_otherwise,
+    ),
+    "a range's time bound is compared as text": (
+        _a_time_bound_is_compared_as_text,
+        test_a_variable_of_two_data_dictionaries_differs_only_where_it_is_recorded_otherwise,
+    ),
+    "a range's bound is read by its own side's type": (
+        _each_bound_is_read_by_its_own_type,
+        test_a_variable_of_two_data_dictionaries_differs_only_where_it_is_recorded_otherwise,
+    ),
+    "a derived variable's inputs are compared in their order": (
+        _inputs_are_compared_in_their_order,
+        test_a_variable_of_two_data_dictionaries_differs_only_where_it_is_recorded_otherwise,
+    ),
+    "only a standard's release is compared": (
+        _only_a_standard_s_release_is_compared,
+        test_a_variable_of_two_data_dictionaries_differs_only_where_it_is_recorded_otherwise,
+    ),
+    "the study period is not compared": (
+        _the_study_period_is_not_compared,
+        test_a_variable_of_two_data_dictionaries_differs_only_where_it_is_recorded_otherwise,
     ),
     "a printed value is compared as text only": (
         _a_printed_value_is_text,

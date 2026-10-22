@@ -98,11 +98,25 @@
                 "$ref": "#/$defs/text",
                 "description": "A heading both plans have, once each, as either writes it."
               },
+              "variable": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9_.]*$",
+                "description": "A variable both data dictionaries have under this name, its case included."
+              },
+              "dictionary": {
+                "enum": ["study_period"],
+                "description": "A part of the data dictionary that is no variable: its study period."
+              },
               "because": { "$ref": "#/$defs/text" }
             },
-            "oneOf": [{ "required": ["model"] }, { "required": ["plan_section"] }]
+            "oneOf": [
+              { "required": ["model"] },
+              { "required": ["plan_section"] },
+              { "required": ["variable"] },
+              { "required": ["dictionary"] }
+            ]
           },
-          "description": "Why a model or a section of the plan differs from the earlier output's, where it rightly does: the difference is then a note."
+          "description": "Why a model, a section of the plan, a variable of the data dictionary or its study period differs from the earlier output's, where it rightly does: the difference is then a note."
         },
         "disclosed_by": {
           "$ref": "#/$defs/text",

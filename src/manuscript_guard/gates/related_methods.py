@@ -1,18 +1,31 @@
 """G8 — the methods of an earlier output of the same data, beside this paper's.
 
 What two Methods sections mean is not for a gate. What both projects record as data is: the
-models they fitted, read from their cards, and the sections of their plans that bear one
-heading. A difference is said and never judged: a method may rightly change between two
-papers, and the panel weighs whether the paper says so.
+models they fitted, read from their cards, the sections of their plans that bear one
+heading, and the variables of their data dictionaries that bear one name. A difference is
+said and never judged: a method may rightly change between two papers, and the panel weighs
+whether the paper says so.
 """
 
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 from manuscript_guard.contracts._schema import ContractError, read_structured
+from manuscript_guard.contracts.dictionary import _BOUNDS as _BOUND_READERS
+from manuscript_guard.contracts.dictionary import (
+    Code,
+    Dictionary,
+    Standard,
+    Variable,
+    dictionary_path,
+    load_dictionary,
+)
 from manuscript_guard.contracts.models import Model
+from manuscript_guard.contracts.project import Project
 from manuscript_guard.gates.design import PLANNED, REQUIRED, _plan_sections, _read_plan
 from manuscript_guard.gates.revision import as_quoted
 from manuscript_guard.text.sections import subsections
@@ -202,3 +215,214 @@ def _parting(a: list[str], b: list[str]) -> int:
     while at < min(len(a), len(b)) and a[at] == b[at]:
         at += 1
     return at
+
+
+# ----------------------------------------------------------------------- the data dictionary
+
+#: What is said of a part a dictionary leaves out.
+_NOT_GIVEN = "not given"
+#: How many words before the end of the shorter of two texts the words shown start, where
+#: one only adds to the other: "'start, in days' there and 'start, in days rounded' here"
+#: rather than "'' there and 'rounded' here".
+_BEFORE_THE_END = 3
+
+
+@dataclass(frozen=True)
+class Differs:
+    """One part of a variable, or of the dictionary, recorded otherwise: what the part is,
+    and each side as it reads."""
+
+    part: str
+    then: str
+    now: str
+    verb: str = "is"
+
+    @property
+    def said(self) -> str:
+        return f"its {self.part} {self.verb} {self.then} there and {self.now} here"
+
+
+def read_dictionaries(
+    folder: Path, project: Project
+) -> tuple[tuple[Dictionary, Dictionary] | None, str | None]:
+    """The copy's data dictionary and this paper's, where both are kept and both read; or
+    why one does not read. Where either project keeps none, there is nothing to compare and
+    nothing to say."""
+    if not (dictionary_path(folder).is_file() and dictionary_path(project).is_file()):
+        return None, None
+    (then, then_read), (now, _now_read) = load_dictionary(folder), load_dictionary(project)
+    if then is not None and now is not None:
+        return (then, now), None
+    said = []
+    if then is None:
+        # The loader says "cannot be read: <the parser's lines>" of a file YAML cannot
+        # parse: said once, every line kept on one (rounds 1 and 2 of #415).
+        why = then_read.findings[0].message if then_read.findings else ""
+        why = " ".join(why.removeprefix("cannot be read: ").split()) or "no reason is given"
+        said.append(f"its copied data dictionary cannot be read ({why})")
+    if now is None:
+        said.append("this paper's data dictionary cannot be read (G12 says why)")
+    return None, " and ".join(said)
+
+
+def shown(differs: list[Differs]) -> tuple[str, str]:
+    """Each side of what is recorded otherwise, as `related` lists it."""
+    return ("; ".join(f"{d.part} {d.then}" for d in differs),
+            "; ".join(f"{d.part} {d.now}" for d in differs))  # fmt: skip
+
+
+def variables_compared(then: Dictionary, now: Dictionary) -> list[tuple[str, list[Differs]]]:
+    """Each variable both dictionaries have under one name that is recorded otherwise, in
+    this dictionary's order, with each part that differs: its definition, type, codes, unit,
+    range, standard, and what it is derived from and how. A variable one of the two lacks is
+    compared with nothing: a variable renamed since is two variables."""
+    found = []
+    for variable in now.variables:
+        earlier = then.variable(variable.name)
+        differs = _variable_differences(earlier, variable) if earlier is not None else []
+        if differs:
+            found.append((variable.name, differs))
+    return found
+
+
+def period_compared(then: Dictionary, now: Dictionary) -> Differs | None:
+    """The study period, where the two dictionaries give other ones, or one gives none."""
+    if then.study_period == now.study_period:
+        return None
+    return Differs("study period", _period(then.study_period), _period(now.study_period))
+
+
+def _period(period: tuple[str, str] | None) -> str:
+    return f"{period[0]} to {period[1]}" if period else _NOT_GIVEN
+
+
+def _variable_differences(then: Variable, now: Variable) -> list[Differs]:
+    found = []
+    if _text_words(then.definition) != _text_words(now.definition):
+        found.append(_reworded("definition", then.definition, now.definition))
+    if then.type != now.type:
+        found.append(Differs("type", then.type, now.type))
+    found += _codes_compared(then, now)
+    if _unit(then) != _unit(now):
+        found.append(Differs("unit", _unit(then) or _NOT_GIVEN, _unit(now) or _NOT_GIVEN))
+    # A date there and a datetime here of one written bound are no two bounds: each type's
+    # reader only where both give the variable one type (round 2 of #415).
+    read = _BOUND_READERS.get(now.type, str) if then.type == now.type else str
+    if _bounds(then, read) != _bounds(now, read):
+        found.append(Differs("range", _range(then), _range(now)))
+    found += _standards_compared(then.standard, now.standard)
+    if _inputs(then) != _inputs(now):
+        found.append(Differs("inputs", _inputs(then), _inputs(now), verb="are"))
+    if _text_words(then.derivation or "") != _text_words(now.derivation or ""):
+        found.append(_reworded("derivation", then.derivation, now.derivation))
+    return found
+
+
+def _text_words(text: str) -> list[str]:
+    """A dictionary's text as two are compared by: its words, in either case, line breaks
+    aside. It is YAML and not Markdown, so a `*` or a backtick in it is read as written."""
+    return text.casefold().split()
+
+
+def _reworded(part: str, then: str | None, now: str | None) -> Differs:
+    """A few words of each side from where they part, or from a little before where one
+    only runs on past the other."""
+    if then is None or now is None:
+        shown = (f"'{' '.join(_text_words(text)[:SHOWN])}'" if text else _NOT_GIVEN
+                 for text in (then, now))  # fmt: skip
+        return Differs(part, *shown)
+    a, b = _text_words(then), _text_words(now)
+    start = min(_parting(a, b), max(0, min(len(a), len(b)) - _BEFORE_THE_END))
+    return Differs(part, f"'{' '.join(a[start:start + SHOWN])}'",
+                   f"'{' '.join(b[start:start + SHOWN])}'")  # fmt: skip
+
+
+def _folded(text: str | None) -> str:
+    return " ".join((text or "").split()).casefold()
+
+
+def _codes_compared(then: Variable, now: Variable) -> list[Differs]:
+    """Each code one side has and the other lacks, each code labelled otherwise, and an
+    ordinal scale's codes in another order. A list of codes named and the same codes
+    written out are the same codes."""
+    there, here = _labels(then.values), _labels(now.values)
+    found = []
+    for code in [*there, *(c for c in here if c not in there)]:
+        if _folded(there.get(code)) != _folded(here.get(code)):
+            found.append(Differs(f"code {code}", there.get(code) or _NOT_GIVEN,
+                                 here.get(code) or _NOT_GIVEN))  # fmt: skip
+    if then.type == now.type == "ordinal":
+        found += _order_compared(list(there), list(here))
+    return found
+
+
+def _order_compared(there: list[str], here: list[str]) -> list[Differs]:
+    """An ordinal scale's codes both sides have, where they run in another order."""
+    order_then = [code for code in there if code in here]
+    order_now = [code for code in here if code in there]
+    if order_then == order_now:
+        return []
+    return [Differs("order of codes", ", ".join(order_then), ", ".join(order_now))]
+
+
+def _labels(codes: tuple[Code, ...]) -> dict[str, str]:
+    return {code.code: code.label for code in codes}
+
+
+def _unit(variable: Variable) -> str:
+    """A unit as written, its case included: mg and Mg are two units."""
+    return " ".join((variable.unit or "").split())
+
+
+def _bounds(variable: Variable, read: Callable[[str], object]) -> tuple:
+    """A range's bounds as numbers where they are, so that 110 and 110.0 are one bound,
+    and otherwise by `read`: a date or a time read as the loader reads it, since YAML gives
+    an unquoted timestamp in ISO form and a quoted one as typed, and `2015-01-01 10:00:00Z`
+    and `2015-01-01T10:00:00+00:00` are one instant (round 1 of #415)."""
+    return tuple(None if bound is None else float(bound) if _number(bound) else read(bound)
+                 for bound in (variable.minimum, variable.maximum))  # fmt: skip
+
+
+def _number(value: object) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _range(variable: Variable) -> str:
+    low, high = variable.minimum, variable.maximum
+    if low is not None and high is not None:
+        return f"{low} to {high}"
+    if low is not None:
+        return f"from {low}"
+    return f"up to {high}" if high is not None else _NOT_GIVEN
+
+
+#: The parts of a standard compared one by one where both follow one system, and whether
+#: each is read in either case: a term or a level is the same in capitals, a release or a
+#: code is compared as written.
+_STANDARD_PARTS = (("version", False), ("level", True), ("term", True), ("code", False))
+
+
+def _standards_compared(then: Standard | None, now: Standard | None) -> list[Differs]:
+    if then is None and now is None:
+        return []
+    if then is None or now is None or _folded(then.system) != _folded(now.system):
+        return [Differs("standard", _standard(then), _standard(now))]
+    found = []
+    for part, folded in _STANDARD_PARTS:
+        a, b = getattr(then, part), getattr(now, part)
+        read = _folded if folded else (lambda text: " ".join((text or "").split()))
+        if read(a) != read(b):
+            found.append(Differs(f"{now.system} {part}", a or _NOT_GIVEN, b or _NOT_GIVEN))
+    return found
+
+
+def _standard(standard: Standard | None) -> str:
+    if standard is None:
+        return _NOT_GIVEN
+    parts = (standard.system, standard.version, standard.level, standard.term)
+    shown = " ".join(part for part in parts if part)
+    return f"{shown} ({standard.code})" if standard.code else shown
+
+
+def _inputs(variable: Variable) -> str:
+    return ", ".join(sorted(variable.derived_from)) or "none"

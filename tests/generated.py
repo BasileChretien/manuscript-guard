@@ -40,11 +40,13 @@ import os
 import re
 import textwrap
 from collections.abc import Callable, Iterable
+from datetime import datetime, timezone
 from decimal import ROUND_HALF_DOWN, ROUND_HALF_UP, Decimal
 from fractions import Fraction
 from functools import cache
 from typing import Any, TypeVar
 
+import yaml
 from hypothesis import HealthCheck, Phase, given, seed, settings
 from hypothesis import strategies as st
 from hypothesis.internal.conjecture import providers
@@ -3684,6 +3686,165 @@ def plan_pairs(draw: st.DrawFn) -> tuple[dict[str, str], list[str]]:
     return {"then": "\n".join(then), "now": "\n".join(now)}, changed
 
 
+# ---------------------------------------------- two data dictionaries of one data, by variable
+
+#: What an edit of one variable of a data dictionary may be, and the part of it that then
+#: reads otherwise, or None where it reads the same: a definition re-wrapped or in capitals,
+#: codes named by their list rather than written out, a derived variable's inputs in another
+#: order, a bound written with a point, a time bound quoted where it was not and in another
+#: zone's notation (round 1 of #415), a standard's term or a code's label in capitals, and a
+#: variable the earlier dictionary has and this one does not. Each other edit changes the one
+#: part it names: a code dropped and a code added are a code one side lacks, either way, and
+#: a date made a time is its type alone, its range written alike (round 2 of #415).
+VARIABLE_EDITS = {
+    "as it is": None,
+    "rewrapped": None,
+    "in capitals": None,
+    "codes from a list": None,
+    "inputs in another order": None,
+    "a bound with a point": None,
+    "a time bound quoted": None,
+    "a term in capitals": None,
+    "a label in capitals": None,
+    "there only": None,
+    "word added": "definition",
+    "type": "type",
+    "a date made a time": "type",
+    "code relabelled": "code 2",
+    "code dropped": "code 3",
+    "code added": "code 4",
+    "codes reordered": "order of codes",
+    "unit": "unit",
+    "range": "range",
+    "release": "MedDRA version",
+    "level": "MedDRA level",
+    "standard code": "MedDRA code",
+    "input dropped": "inputs",
+    "derivation reworded": "derivation",
+}
+#: The study period of this dictionary beside the earlier one's, 2015 to 2024.
+STUDY_PERIODS = ("the same", "a later end", "none here")
+
+
+#: A time of day a report was received, with its zone.
+_RECEIVED = datetime(2015, 1, 1, 10, 0, tzinfo=timezone.utc)
+
+
+def _yes_no() -> list[dict[str, Any]]:
+    """Yes and no, a list of its own each time, so that YAML writes it out and not as an
+    alias of another."""
+    return [{"code": 1, "label": "Yes"}, {"code": 0, "label": "No"}]
+
+
+def _dictionary_variable(kind: str, name: str, words: list[str]) -> tuple[dict, dict]:
+    """One variable as the earlier dictionary has it and as this one does, after `kind`."""
+    text = " ".join(words)
+    label = words[0].capitalize()
+    then: dict[str, Any] = {"name": name, "label": label, "definition": text, "type": "text"}
+    if kind in ("codes from a list", "release", "level", "standard code", "a term in capitals"):
+        then.update(type="binary", values=_yes_no())
+    if kind in ("release", "level", "standard code", "a term in capitals"):
+        then["standard"] = {"system": "MedDRA", "version": "27.1", "level": "PT",
+                            "term": f"{label} {words[-1]}", "code": "10019851"}  # fmt: skip
+    if kind in ("a label in capitals", "code relabelled", "code dropped", "code added",
+                "codes reordered"):
+        then.update(type="ordinal", values=[{"code": at, "label": f"{word.capitalize()} {at}"}
+                                            for at, word in enumerate(words[:3], 1)])  # fmt: skip
+    if kind in ("type", "unit", "range", "a bound with a point"):
+        then.update(type="continuous", unit="days", range={"min": 0, "max": 110})
+    if kind == "a date made a time":
+        then.update(type="date", range={"min": "2015-01-01", "max": "2024-12-31"})
+    if kind == "a time bound quoted":
+        # YAML writes a time unquoted and reads it back as one; a string it quotes.
+        then.update(type="datetime", range={"min": _RECEIVED, "max": "2024-12-31T23:59:00Z"})
+    if kind in ("inputs in another order", "input dropped", "derivation reworded"):
+        then.update(type="count", unit="days", derived_from=["start", "onset"],
+                    derivation=f"onset minus start, {text}")  # fmt: skip
+    now = {key: (dict(value) if isinstance(value, dict) else value) for key, value in then.items()}
+    if kind == "rewrapped":
+        now["definition"] = text.replace(" ", "\n", 2)
+    elif kind == "in capitals":
+        now["definition"] = text.upper()
+    elif kind == "word added":
+        now["definition"] = f"{text} restricted"
+    elif kind == "codes from a list":
+        del now["values"]
+        now["code_list"] = "yes_no"
+    elif kind == "a label in capitals":
+        now["values"] = [{**code, "label": code["label"].upper()} for code in then["values"]]
+    elif kind == "code relabelled":
+        now["values"] = [{**code, "label": code["label"] + " later" if code["code"] == 2 else
+                          code["label"]} for code in then["values"]]  # fmt: skip
+    elif kind == "code dropped":
+        now["values"] = then["values"][:2]
+    elif kind == "code added":
+        now["values"] = [*then["values"], {"code": 4, "label": f"{label} 4"}]
+    elif kind == "codes reordered":
+        now["values"] = then["values"][::-1]
+    elif kind == "type":
+        now["type"] = "count"
+    elif kind == "a date made a time":
+        now["type"] = "datetime"
+    elif kind == "unit":
+        now["unit"] = "weeks"
+    elif kind == "range":
+        now["range"] = {"min": 0, "max": 120}
+    elif kind == "a bound with a point":
+        now["range"] = {"min": 0.0, "max": 110.0}
+    elif kind == "a time bound quoted":
+        now["range"] = {"min": "2015-01-01 10:00:00Z",
+                        "max": datetime(2024, 12, 31, 23, 59, tzinfo=timezone.utc)}  # fmt: skip
+    elif kind == "release":
+        now["standard"]["version"] = "26.0"
+    elif kind == "level":
+        now["standard"]["level"] = "LLT"
+    elif kind == "standard code":
+        now["standard"]["code"] = "10019852"
+    elif kind == "a term in capitals":
+        now["standard"]["term"] = now["standard"]["term"].upper()
+    elif kind == "inputs in another order":
+        now["derived_from"] = ["onset", "start"]
+    elif kind == "input dropped":
+        now.update(derived_from=["onset"], derivation=f"days to onset, {text}")
+        then["derivation"] = f"days to onset, {text}"
+    elif kind == "derivation reworded":
+        now["derivation"] = f"{then['derivation']} rounded"
+    return then, now
+
+
+@st.composite
+def dictionary_pairs(draw: st.DrawFn) -> tuple[dict[str, str], list[list[Any]]]:
+    """An earlier data dictionary and this one, one variable for each kind of edit, in drawn
+    order, and the variables both have that read otherwise, in this dictionary's order, each
+    with the part that does; then the study period, where the two give other ones."""
+    kinds = draw(st.permutations(tuple(VARIABLE_EDITS)))
+    dates = [{"name": name, "label": name.capitalize(), "definition": f"The {name} date.",
+              "type": "date"} for name in ("start", "onset")]  # fmt: skip
+    then, now, changed = list(dates), list(dates), []
+    for at, kind in enumerate(kinds):
+        name = f"v_{TAGS[at % len(TAGS)]}" + "x" * (at // len(TAGS))
+        words = draw(st.lists(st.sampled_from(FILLER), min_size=4, max_size=12))
+        earlier, here = _dictionary_variable(kind, name, words)
+        then.append(earlier)
+        if kind != "there only":
+            now.append(here)
+        if VARIABLE_EDITS[kind] is not None:
+            changed.append([name, [VARIABLE_EDITS[kind]]])
+    period = draw(st.sampled_from(STUDY_PERIODS))
+    dictionaries = []
+    for variables, end in ((then, "2024-12-31"), (now, "2025-06-30" if period == "a later end"
+                                                   else "2024-12-31")):  # fmt: skip
+        document: dict[str, Any] = {"schema": "manuscript-guard/data-dictionary/1"}
+        if variables is then or period != "none here":
+            document["study_period"] = {"start": "2015-01-01", "end": end}
+        document["code_lists"] = {"yes_no": _yes_no()}
+        document["variables"] = variables
+        dictionaries.append(yaml.safe_dump(document, sort_keys=False, allow_unicode=True))
+    if period != "the same":
+        changed.append(["the data dictionary", ["study period"]])
+    return {"then": dictionaries[0], "now": dictionaries[1]}, changed
+
+
 # ---------------------------------------------------------------------- what an edit holds
 
 #: A binding, a citation and a number in each of the ways one is written: what `reworded`
@@ -4252,6 +4413,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     ),
     "printed value": printings(),
     "plan sections": plan_pairs().map(lambda drawn: drawn[0]),
+    "data dictionaries": dictionary_pairs().map(lambda drawn: drawn[0]),
     "units after": texts(BOUND_UNITS),
     "limit stated": st.fixed_dictionaries(
         {"text": texts(QUOTED_LIMITS), "value": st.sampled_from((3500, 4, 14, 35000, 500))}

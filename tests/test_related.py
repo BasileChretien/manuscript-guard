@@ -614,6 +614,292 @@ def test_the_listing_shows_a_method_changed(project: Path, earlier: Path, capsys
     assert "model adjusted: " in capsys.readouterr().out
 
 
+# ---------------------------------------------------------------------- the data dictionary
+
+DICTIONARY = """\
+schema: manuscript-guard/data-dictionary/1
+study_period: {start: 2015-01-01, end: 2024-12-31}
+code_lists:
+  yes_no:
+    - {code: 1, label: "Yes"}
+    - {code: 0, label: "No"}
+variables:
+  - name: hepatic
+    label: Hepatic injury
+    definition: >-
+      A report coded to a term of the hepatic disorders query.
+    type: binary
+    values: [{code: 1, label: "Yes"}, {code: 0, label: "No"}]
+    standard: {system: MedDRA, version: "26.0", level: SMQ, term: Drug related hepatic disorders}
+  - name: sex
+    label: Sex
+    definition: Sex as reported.
+    type: categorical
+    values: [{code: F, label: Female}, {code: M, label: Male}]
+  - name: severity
+    label: Severity
+    definition: How severe the reaction was, as reported.
+    type: ordinal
+    values: [{code: 1, label: Mild}, {code: 2, label: Moderate}, {code: 3, label: Severe}]
+  - name: age
+    label: Age
+    definition: Age in completed years at the reaction.
+    type: continuous
+    unit: years
+    range: {min: 0, max: 110}
+  - name: onset
+    label: Onset
+    definition: The date the reaction began.
+    type: date
+  - name: start
+    label: Start
+    definition: The date the drug was started.
+    type: date
+  - name: latency
+    label: Latency
+    definition: Days from the start of the drug to the reaction.
+    type: count
+    unit: days
+    derived_from: [start, onset]
+    derivation: onset minus start, in days
+  - name: received
+    label: Received
+    definition: When the report was received.
+    type: datetime
+    range: {min: 2015-01-01 10:00:00Z, max: 2024-12-31T23:59:00Z}
+"""
+
+
+def _dictionary(root: Path, *edits: tuple[str, str]) -> None:
+    """Write the data dictionary into a project, each edit made to it as a later one would."""
+    text = DICTIONARY
+    for old, new in edits:
+        assert old in text, old
+        text = text.replace(old, new)
+    (root / "design" / "data_dictionary.yaml").write_bytes(text.encode("utf-8"))
+
+
+def _dictionaries(project: Path, earlier: Path, *edits: tuple[str, str], **entry) -> None:
+    """This paper's dictionary as it is, the earlier project's with the edits, copied in."""
+    _dictionary(project)
+    _dictionary(earlier, *edits)
+    _declare(project, _entry(project="../earlier", **entry))
+    _take(project)
+
+
+def test_the_same_dictionary_compares_clean(project: Path, earlier: Path) -> None:
+    _dictionaries(project, earlier)
+    assert (project / "literature" / "related" / "abstract" / "design" / "data_dictionary.yaml"
+            ).is_file()  # fmt: skip
+    report = _check(project)
+    assert _found(report) == []
+    assert report.counts["related_values_differ"] == 0
+
+
+def test_a_variable_defined_otherwise_is_a_method_said_and_never_failed(
+    project: Path, earlier: Path
+) -> None:
+    _dictionaries(project, earlier, ("A report coded", "A serious report coded"))
+    (finding,) = _check(project, submission=True).findings
+    assert (finding.code, finding.severity) == ("related-method-differs", WARN)
+    assert ("variable hepatic: its definition is 'serious report coded to a term of the' there "
+            "and 'report coded to a term of the hepatic' here") in finding.message
+    why = [{"variable": "hepatic", "because": "all reports, as the journal asked"}]
+    _declare(project, _entry(project="../earlier", methods=why))
+    (finding,) = _check(project).findings
+    assert (finding.code, finding.severity) == ("related-method-explained", INFO)
+    assert finding.message.endswith(": all reports, as the journal asked")
+
+
+def test_a_changed_meddra_version_is_said(project: Path, earlier: Path) -> None:
+    _dictionaries(project, earlier, ('version: "26.0"', 'version: "25.1"'))
+    (finding,) = _check(project, submission=True).findings
+    assert (finding.code, finding.severity) == ("related-method-differs", WARN)
+    assert "variable hepatic: its MedDRA version is 25.1 there and 26.0 here" in finding.message
+
+
+def test_a_changed_study_period_is_said_and_explained_by_its_reason(
+    project: Path, earlier: Path
+) -> None:
+    _dictionaries(project, earlier, ("end: 2024-12-31", "end: 2023-06-30"))
+    (finding,) = _check(project, submission=True).findings
+    assert (finding.code, finding.severity) == ("related-method-differs", WARN)
+    assert ("the data dictionary: its study period is 2015-01-01 to 2023-06-30 there and "
+            "2015-01-01 to 2024-12-31 here") in finding.message
+    why = [{"dictionary": "study_period", "because": "re-extracted with a later cut-off"}]
+    _declare(project, _entry(project="../earlier", methods=why))
+    assert _found(_check(project)) == [("related-method-explained", INFO)]
+
+
+def test_each_field_recorded_otherwise_is_said(project: Path, earlier: Path) -> None:
+    _dictionaries(
+        project,
+        earlier,
+        ("type: categorical", "type: text\n    pattern: '^[FM]$'"),
+        ("values: [{code: F, label: Female}, {code: M, label: Male}]", ""),
+        ("{code: 2, label: Moderate}, {code: 3", "{code: 3, label: Severe}, {code: 2"),
+        ("label: Severe}]", "label: Moderate}]"),
+        ("unit: years", "unit: months"),
+        ("max: 110", "max: 120"),
+        ("level: SMQ, term: Drug related hepatic disorders",
+         "level: PT, term: Hepatotoxicity, code: '10019851'"),
+        ("derived_from: [start, onset]", "derived_from: [onset, age]"),
+        ("onset minus start", "onset minus the start"),
+    )
+    said = {f.message.split(": ", 2)[1]: f.message.split(": ", 2)[2]
+            for f in _check(project).findings}  # fmt: skip
+    assert said == {
+        "variable sex": "its type is text there and categorical here; its code F is not given "
+        "there and Female here; its code M is not given there and Male here",
+        "variable severity": "its order of codes is 1, 3, 2 there and 1, 2, 3 here",
+        "variable age": "its unit is months there and years here; its range is 0 to 120 there "
+        "and 0 to 110 here",
+        "variable hepatic": "its MedDRA level is PT there and SMQ here; its MedDRA term is "
+        "Hepatotoxicity there and Drug related hepatic disorders here; its MedDRA code is "
+        "10019851 there and not given here",
+        "variable latency": "its inputs are age, onset there and onset, start here; its "
+        "derivation is 'the start, in days' there and 'start, in days' here",
+    }
+
+
+def test_a_code_relabelled_or_added_is_said(project: Path, earlier: Path) -> None:
+    _dictionaries(project, earlier, ("{code: 2, label: Moderate}", "{code: 2, label: Marked}"),
+                  ("label: Severe}]", "label: Severe}, {code: 4, label: Fatal}]"))  # fmt: skip
+    (finding,) = _check(project).findings
+    assert finding.message.endswith(
+        "variable severity: its code 2 is Marked there and Moderate here; its code 4 is Fatal "
+        "there and not given here"
+    )
+
+
+def test_what_reads_the_same_is_not_said(project: Path, earlier: Path) -> None:
+    """Rewrapped, in capitals, from a list of codes rather than inline, its inputs in
+    another order, a bound written with a point, a term in another case: the same."""
+    _dictionaries(
+        project,
+        earlier,
+        ("A report coded to a term", "A REPORT\n      coded to   a term"),
+        ('values: [{code: 1, label: "Yes"}, {code: 0, label: "No"}]', "code_list: yes_no"),
+        ("derived_from: [start, onset]", "derived_from: [onset, start]"),
+        ("max: 110", "max: 110.0"),
+        ("Drug related hepatic disorders", "drug related HEPATIC disorders"),
+        ("label: Mild", "label: mild"),
+    )
+    assert _found(_check(project)) == []
+
+
+def test_a_time_bound_quoted_or_written_with_another_zone_is_the_same_bound(
+    project: Path, earlier: Path
+) -> None:
+    """Round 1 of #415: YAML makes an unquoted timestamp a time, which the loader writes in
+    ISO form, and leaves a quoted one as typed; one instant read two ways was a difference."""
+    _dictionaries(project, earlier, ("min: 2015-01-01 10:00:00Z", 'min: "2015-01-01 10:00:00Z"'),
+                  ("max: 2024-12-31T23:59:00Z", 'max: "2024-12-31T23:59:00Z"'))  # fmt: skip
+    assert _found(_check(project)) == []
+    _dictionary(earlier, ("min: 2015-01-01 10:00:00Z", "min: 2015-01-01 11:00:00Z"))
+    _take(project)
+    (finding,) = _check(project).findings
+    assert "variable received: its range is 2015-01-01T11:00:00+00:00 to " in finding.message
+
+
+def test_a_variable_whose_type_changed_keeps_a_range_written_alike(
+    project: Path, earlier: Path
+) -> None:
+    """Round 2 of #415: read by each side's own type, a date and a datetime of one written
+    bound never compared equal, and the range was said to differ and shown the same."""
+    zoned = "type: datetime\n    range: {min: 2015-01-01 10:00:00Z, max: 2024-12-31T23:59:00Z}"
+    days = 'range: {min: "2015-01-01", max: "2024-12-31"}'
+    _dictionaries(project, earlier, (zoned, f"type: date\n    {days}"))
+    _dictionary(project, (zoned, f"type: datetime\n    {days}"))
+    (finding,) = _check(project).findings
+    assert finding.message.endswith("variable received: its type is date there and datetime here")
+
+
+def test_a_copy_yaml_cannot_parse_is_said_once_on_one_line(project: Path, earlier: Path) -> None:
+    """Rounds 1 and 2 of #415: the loader's own "cannot be read:" was said again, with the
+    parser's line breaks inside the note; then its first line alone dropped the problem."""
+    _dictionaries(project, earlier)
+    (earlier / "design" / "data_dictionary.yaml").write_bytes(b"variables: [\n")
+    _take(project)
+    (finding,) = _check(project).findings
+    assert finding.code == "related-dictionary-unreadable"
+    assert "cannot be read (cannot be read" not in finding.message
+    assert "\n" not in finding.message
+    assert "expected the node content" in finding.message
+
+
+def test_a_variable_one_dictionary_lacks_is_not_compared_nor_named(
+    project: Path, earlier: Path
+) -> None:
+    gone = DICTIONARY[DICTIONARY.index("  - name: sex"):DICTIONARY.index("  - name: severity")]
+    why = [{"variable": "sex", "because": "x"}, {"variable": "Sex", "because": "y"}]
+    _dictionaries(project, earlier, (gone, gone.replace("Sex as", "Sex, as")), methods=why)
+    _dictionary(project, (gone, ""))
+    found = _check(project, submission=True)
+    assert _found(found) == [("related-pair-unmatched", FAIL)] * 2
+    assert "variable sex" in found.findings[0].message
+
+
+def test_a_study_period_neither_dictionary_gives_explains_nothing(
+    project: Path, earlier: Path
+) -> None:
+    no_period = ("study_period: {start: 2015-01-01, end: 2024-12-31}\n", "")
+    why = [{"dictionary": "study_period", "because": "x"}]
+    _dictionaries(project, earlier, no_period, methods=why)
+    _dictionary(project, no_period)
+    (finding,) = _check(project).findings
+    assert finding.code == "related-pair-unmatched"
+    assert "the data dictionary's study period" in finding.message
+
+
+def test_a_study_period_one_dictionary_gives_is_a_difference(
+    project: Path, earlier: Path
+) -> None:
+    _dictionaries(project, earlier, ("study_period: {start: 2015-01-01, end: 2024-12-31}\n", ""))
+    (finding,) = _check(project).findings
+    assert "its study period is not given there and 2015-01-01 to 2024-12-31 here" in (
+        finding.message
+    )
+
+
+@pytest.mark.parametrize("side", ["earlier", "here"])
+def test_a_dictionary_that_cannot_be_read_is_said_and_compares_nothing(
+    project: Path, earlier: Path, side: str
+) -> None:
+    broken = ("type: continuous", "type: decimal")
+    why = [{"variable": "age", "because": "x"}]
+    _dictionaries(project, earlier, *([broken] if side == "earlier" else []), methods=why)
+    if side == "here":
+        _dictionary(project, broken, ("A report coded", "Another"))
+    found = _check(project, submission=True).findings
+    assert [(f.code, f.severity) for f in found] == [("related-dictionary-unreadable", INFO),
+                                                     ("related-pair-unmatched", FAIL)]  # fmt: skip
+    said = "its copied data dictionary" if side == "earlier" else "this paper's data dictionary"
+    assert said in found[0].message
+
+
+def test_a_dictionary_on_one_side_only_is_not_compared(project: Path, earlier: Path) -> None:
+    (project / "design" / "data_dictionary.yaml").unlink(missing_ok=True)
+    _dictionary(earlier, ("type: continuous", "type: decimal"))
+    _declare(project, _entry(project="../earlier"))
+    _take(project)
+    assert _found(_check(project)) == []
+    (earlier / "design" / "data_dictionary.yaml").unlink()
+    _take(project)
+    _dictionary(project, ("Sex as", "Sex, as"))
+    assert _found(_check(project)) == []
+
+
+def test_the_listing_shows_a_variable_recorded_otherwise(
+    project: Path, earlier: Path, capsys
+) -> None:
+    _dictionaries(project, earlier, ('version: "26.0"', 'version: "25.1"'))
+    assert main(["related", str(project)]) == 0
+    printed = capsys.readouterr().out
+    assert ("variable hepatic: MedDRA version 25.1 there, MedDRA version 26.0 here: method "
+            "changed") in printed
+
+
 # ---------------------------------------------------------------------- the copy
 
 
@@ -875,6 +1161,10 @@ def test_a_printed_value_that_is_no_number_is_text() -> None:
         (_entry(pairs=[{"earlier": "a", "here": "b", "manuscript_says": "It."}]), "because"),
         ({"id": "a", "kind": "abstract", "shares": ["data"]}, "any of the given schemas"),
         (_entry(shares=[]), "shares"),
+        (_entry(project="../x", methods=[{"dictionary": "rules", "because": "x"}]),
+         "is not one of"),
+        (_entry(project="../x", methods=[{"variable": "a", "model": "a", "because": "x"}]),
+         "valid under each of"),
     ],
 )
 def test_a_record_out_of_shape_is_refused(project: Path, entry: dict, said: str) -> None:

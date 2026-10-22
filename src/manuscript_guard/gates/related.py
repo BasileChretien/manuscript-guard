@@ -29,6 +29,7 @@ from fnmatch import fnmatchcase
 from pathlib import Path
 
 from manuscript_guard.contracts._schema import read_text
+from manuscript_guard.contracts.dictionary import Dictionary
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import Results, load_results
 from manuscript_guard.contracts.values import Value
@@ -40,9 +41,13 @@ from manuscript_guard.gates.related_methods import (
     earlier_plan,
     folded_title,
     models_compared,
+    period_compared,
+    read_dictionaries,
     section_keys,
     sections_compared,
+    shown,
     this_plan,
+    variables_compared,
 )
 from manuscript_guard.gates.revision import as_quoted, quoted_in, rendered_manuscript
 from manuscript_guard.literature.related import (
@@ -387,8 +392,9 @@ def _methods(
     strict: str,
     seen: _Seen,
 ) -> Report:
-    """The models both fitted under one key, and the sections both plans have under one
-    heading: each that differs is a change of method, said and never judged."""
+    """The models both fitted under one key, the sections both plans have under one
+    heading, and the variables both data dictionaries have under one name, with the study
+    period: each that differs is a change of method, said and never judged."""
     (related, output), (earlier, results) = entry, both
     report = Report()
     for key, said in models_compared(earlier.models, results.models):
@@ -415,26 +421,99 @@ def _methods(
                      severity=INFO, line=output.line,
                      hint="give each section a heading of its own in both plans")  # fmt: skip
         )
-    # A reason that names no model both fitted, or no section both plans have, explains
-    # nothing, as a pair naming a key nobody emits compares nothing (round 1 of #402).
-    keys = section_keys(plans[0]) & section_keys(plans[1]) if plans else set()
-    for changed in output.methods:
-        if changed.model is not None:
-            named = changed.model in earlier.models and changed.model in results.models
-        else:
-            named = folded_title(str(changed.plan_section)) in keys
-        if not named:
-            what = f"model {changed.model}" if changed.model else f"section {changed.plan_section}"
-            report = report.with_findings(
-                _finding(related, "related-pair-unmatched",
-                         f"{output.name}: `methods:` names the {what}, which is not compared "
-                         f"in both projects (missing from one, or standing twice), so its "
-                         f"reason explains nothing",
-                         severity=strict, line=output.line,
-                         hint="name a model both fitted, or a heading both plans have "
-                         "once")  # fmt: skip
-            )
+    dictionaries, unread = _dictionaries(project, folder, (related, output))
+    report = report.merge(unread).merge(_dictionary_methods((related, output), dictionaries, seen))
+    compared = {
+        "model": set(earlier.models) & set(results.models),
+        "plan_section": section_keys(plans[0]) & section_keys(plans[1]) if plans else set(),
+        "variable": set(dictionaries[0].names) & set(dictionaries[1].names)
+        if dictionaries
+        else set(),
+        "dictionary": {"study_period"}
+        if dictionaries and any(d.study_period for d in dictionaries)
+        else set(),
+    }
+    return report.merge(_unmatched(related, output, compared, strict))
+
+
+def _dictionaries(
+    project: Project, folder: Path, entry: tuple[Related, Output]
+) -> tuple[tuple[Dictionary, Dictionary] | None, Report]:
+    """Both data dictionaries, where both projects keep one and both read. One that does
+    not read is said, as a note, and nothing of either is compared: this paper's own is
+    failed by G12 already, and the copy's is what the earlier project held then."""
+    related, output = entry
+    both, unread = read_dictionaries(folder, project)
+    if unread is None:
+        return both, Report()
+    found = _finding(related, "related-dictionary-unreadable",
+                     f"{output.name}: {unread}, so the two dictionaries were not compared",
+                     severity=INFO, line=output.line,
+                     hint="put this paper's right where G12 says; the copy's is the earlier "
+                     "project's as it stood, and is compared once a revision whose "
+                     "dictionary reads is taken")  # fmt: skip
+    return None, Report((found,))
+
+
+def _dictionary_methods(
+    entry: tuple[Related, Output],
+    dictionaries: tuple[Dictionary, Dictionary] | None,
+    seen: _Seen,
+) -> Report:
+    """Each variable both dictionaries have that is recorded otherwise, and the study
+    period: each a change of method, said and never judged."""
+    if dictionaries is None:
+        return Report()
+    related, output = entry
+    report = Report()
+    for name, differs in variables_compared(*dictionaries):
+        because = next((c.because for c in output.methods if c.variable == name), None)
+        said = "; ".join(d.said for d in differs)
+        report = report.merge(
+            _method(related, output, f"variable {name}", said, because, shown(differs), seen)
+        )
+    period = period_compared(*dictionaries)
+    if period is not None:
+        because = next((c.because for c in output.methods if c.dictionary == "study_period"),
+                       None)  # fmt: skip
+        report = report.merge(
+            _method(related, output, "the data dictionary", period.said, because,
+                    shown([period]), seen)  # fmt: skip
+        )
     return report
+
+
+#: How a finding names what a reason under `methods:` names.
+_NAMED = {
+    "model": "model {}",
+    "plan_section": "section {}",
+    "variable": "variable {}",
+    "dictionary": "data dictionary's study period",
+}
+
+
+def _unmatched(
+    related: Related, output: Output, compared: dict[str, set[str]], strict: str
+) -> Report:
+    """A reason that names no model both fitted, no section both plans have, no variable
+    both dictionaries have, or a study period neither gives, explains nothing, as a pair
+    naming a key nobody emits compares nothing (round 1 of #402)."""
+    findings = []
+    for changed in output.methods:
+        part, name = changed.named
+        if (folded_title(name) if part == "plan_section" else name) in compared[part]:
+            continue
+        findings.append(
+            _finding(related, "related-pair-unmatched",
+                     f"{output.name}: `methods:` names the {_NAMED[part].format(name)}, which "
+                     f"is not compared in both projects (missing from one, or standing twice), "
+                     f"so its reason explains nothing",
+                     severity=strict, line=output.line,
+                     hint="name a model both fitted, a heading both plans have once, a "
+                     "variable both data dictionaries have, or a study period one of them "
+                     "gives")  # fmt: skip
+        )
+    return Report(tuple(findings))
 
 
 def _method(

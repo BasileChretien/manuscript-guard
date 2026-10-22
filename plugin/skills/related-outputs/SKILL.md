@@ -1,6 +1,6 @@
 ---
 name: related-outputs
-description: Record the earlier outputs of the same study or data (a conference abstract, a preprint, a protocol paper, an earlier article on the same cohort or database extraction), copy in the earlier project's results where an author of this paper made it, and explain or put right each number that differs. Use when a paper reuses data or a cohort an earlier output used, before submission, or when check reports related-number-differs, related-reason-not-in-text, related-method-differs, related-undisclosed, related-files-missing, related-not-taken, related-snapshot-edited, related-pair-unmatched or related-quote-not-in-source.
+description: Record the earlier outputs of the same study or data (a conference abstract, a preprint, a protocol paper, an earlier article on the same cohort or database extraction), copy in the earlier project's results where an author of this paper made it, and explain or put right each number that differs. Use when a paper reuses data or a cohort an earlier output used, before submission, or when check reports related-number-differs, related-reason-not-in-text, related-method-differs, related-undisclosed, related-files-missing, related-not-taken, related-snapshot-edited, related-pair-unmatched, related-dictionary-unreadable or related-quote-not-in-source.
 ---
 
 # Earlier outputs of the same data
@@ -144,9 +144,12 @@ it fails at submission (`related-undisclosed`). Declare it in the covering lette
 
 With a copy, `check` also compares each model both projects fitted under one key, by its
 card, and each section both plans have under one heading, word by word: the earlier plan as
-it stood when its results were first written, this paper's as it stands. Each that differs
-is `related-method-differs`. Where the change is right, say so in the Methods and record
-why:
+it stood when its results were first written, this paper's as it stands. Where both projects
+keep a data dictionary (`design/data_dictionary.yaml`), each variable both have under one
+name is compared part by part: its definition, type, codes, unit, range, standard (its
+release, level, term and code) and how it is derived; and so is the study period. Each that
+differs is `related-method-differs`. Where the change is right, say so in the Methods and
+record why:
 
 ```yaml
     methods:
@@ -154,7 +157,17 @@ why:
         because: the later guideline's definition of drug-induced liver injury
       - model: adjusted
         because: sex is now recorded for every report
+      - variable: hepatic
+        because: coded with MedDRA 27.1, the release current at the second extraction
+      - dictionary: study_period
+        because: re-extracted in March 2026 with a later cut-off
 ```
+
+A variable is named as both dictionaries write it, its case included; one renamed since is
+two variables, and neither is compared. A dictionary that does not read, this paper's or the
+copy's, is said (`related-dictionary-unreadable`), and the two are not compared: put this
+paper's right where G12 says (the data-dictionary skill), and for the copy's, take a revision
+of the earlier project whose dictionary reads, or leave it.
 
 A heading that stands twice in either plan is not compared, and `check` says so
 (`related-section-ambiguous`): give each section a heading of its own words, and name it once

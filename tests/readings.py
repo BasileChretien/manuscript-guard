@@ -1068,6 +1068,33 @@ def _plan_sections_compared() -> Reading:
     return compared
 
 
+@reading("data dictionaries")
+def _data_dictionaries_compared() -> Reading:
+    """The variables two data dictionaries both have that read otherwise, each with the
+    parts that do, and the study period where the two give other ones, as G8 compares an
+    earlier output's dictionary with this paper's. Each is read by the loader, from a file,
+    as `check` reads it."""
+    from manuscript_guard.contracts.dictionary import load_dictionary
+    from manuscript_guard.gates.related_methods import period_compared, variables_compared
+
+    def compared(given: dict[str, str]) -> list[list[Any]]:
+        read = []
+        with tempfile.TemporaryDirectory() as folder:
+            for side in ("then", "now"):
+                path = Path(folder, side, "design", "data_dictionary.yaml")
+                path.parent.mkdir(parents=True)
+                path.write_bytes(given[side].encode("utf-8"))
+                dictionary, report = load_dictionary(path.parent.parent)
+                if dictionary is None:
+                    return [["unreadable", side, [f.message for f in report.findings]]]
+                read.append(dictionary)
+        found = [[name, [d.part for d in differs]] for name, differs in variables_compared(*read)]
+        period = period_compared(*read)
+        return found + ([["the data dictionary", [period.part]]] if period else [])
+
+    return compared
+
+
 @reading("abbreviations")
 def _abbreviations() -> Reading:
     from manuscript_guard.gates.language import _judge, _Known, _shipped

@@ -62,9 +62,10 @@ GATES = {
                why="with no analysis code there is nothing to read the Methods against"),
     "G10": Zero("the review of each figure", "figures_reviewed", why="no figure, no review"),
     "G11": Zero("the review panels and their readings", "review_rounds", finding="no-review"),
-    "G12": Zero("the analysis plan", "design_sections",
+    "G12": Zero("the analysis plan, and the registrations paper.yaml lists", "design_sections",
                 why="with no analysis code no plan is asked for; with code and no plan it "
-                "is `no-analysis-plan`"),
+                "is `no-analysis-plan`; a paper may list no registration, and a trial that "
+                "lists none is `registration-missing`"),
     "G13": Zero("the rounds of revision", "revision_rounds",
                 why="before a journal has answered there is nothing to respond to"),
     "G14": Zero("the manuscript's words", "abbreviations_read", why=_NO_MANUSCRIPT),

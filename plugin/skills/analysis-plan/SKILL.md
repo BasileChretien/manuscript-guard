@@ -1,6 +1,6 @@
 ---
 name: analysis-plan
-description: Write the analysis plan in design/plan.md before the analysis exists, and record every deviation from it as it happens. Use at the start of a paper project, when check reports no-analysis-plan, plan-section-missing, plan-section-empty, feasibility-not-run, planned-result-missing, planned-result-unquoted, planned-results-unkeyed or plan-changed-after-results, or when the analysis is about to do something the plan did not say. Not for finding which dataset could answer the question or how it is reached (use data-sources).
+description: Write the analysis plan in design/plan.md before the analysis exists, record every deviation from it as it happens, and hold the paper to the study's registration. Use at the start of a paper project, when check reports no-analysis-plan, plan-section-missing, plan-section-empty, feasibility-not-run, planned-result-missing, planned-result-unquoted, planned-results-unkeyed, plan-changed-after-results, registration-missing, registration-not-looked-up, registration-late, registration-outcomes-undeclared, registration-outcome-not-registered, registration-outcome-role-changed, registration-outcome-dropped or registration-primary-unquoted, or when the analysis is about to do something the plan did not say. Not for finding which dataset could answer the question or how it is reached (use data-sources).
 ---
 
 # Writing down what you meant to do, before you do it
@@ -10,10 +10,12 @@ is not because departing from a plan is wrong. A departure that was declared is 
 a reader can weigh; one that nobody recorded looks exactly like having tried several
 analyses and reported the one that worked.
 
-G12 warns and never blocks, at any stage, including submission. That is deliberate:
-exploratory work is real work, and a gate that stopped you writing code until a plan was
-agreed would be bypassed the first afternoon it cost something. It also means the gate's
-approval is worth very little. All the value is in what gets written.
+G12 warns about the plan and never blocks, at any stage, including submission. That is
+deliberate: exploratory work is real work, and a gate that stopped you writing code until a
+plan was agreed would be bypassed the first afternoon it cost something. It also means the
+gate's approval is worth very little. All the value is in what gets written. A registration
+is different, because it is a promise made in public: where the paper is not the study
+registered, G12 warns while it is drafted and fails it at submission (below).
 
 ## Where it lives
 
@@ -136,6 +138,48 @@ analysis script, or a registration with whatever registry the field uses. Tell t
 which is available to them. Registering is their decision and their account, not yours.
 
 Fill in the `Agreed <date>` line with the real date.
+
+## Holding the paper to its registration
+
+Once the study is registered, list the registration in `paper.yaml` and quote, under it, each
+outcome the registry holds, in the registry's words, with its role there and the planned
+result that reports it:
+
+```yaml
+registration:
+  - id: EUPAS1000000417          # or NCT04368728, ISRCTN17072692, osf.io/abcde
+    outcomes:
+      - registered: "Overall NDDs, including autism spectrum disorder"
+        role: primary
+        reported_as: nnd.*        # a key the plan's Planned results lists
+      - registered: "Individuals NDDs"
+        role: secondary            # not reported: no reported_as, and the same words
+                                   # quoted under Deviations from the plan with why
+```
+
+Then run `manuscript-guard lookup --registrations`. It asks ClinicalTrials.gov, OSF and
+ISRCTN through their APIs and reads the EU PAS register's study pages, and keeps what each
+said in `design/registrations/<id>.yaml`. PROSPERO and other registries are not asked: their
+record is copied by hand, with `source: by-hand`, `copied_by` and `copied_on`, from the page
+the author has open.
+
+G12 then checks that the manuscript gives the identifier, that the registry knows it, that it
+was registered before the study's actual start, the start of its data analysis and the first
+results (a later one needs `retrospective:` with the reason, and the manuscript saying it was
+registered retrospectively), and that each quote is word for word in the registry's record,
+in the role given where the registry keeps primary and secondary apart. A registered outcome
+reported in another role, one not reported, and a reported one nobody registered are each
+named under Deviations, by the result's key, or for one not reported by its quoted words.
+Where the registry lists its outcomes apart (ClinicalTrials.gov, ISRCTN), every primary one
+must be quoted.
+
+The quotes prove that the words are the registry's, not that they mean the outcome the paper
+measures. That is for the co-authors and the panel to judge.
+
+Quote from the record in `design/registrations/`, never from memory or from the protocol's
+later version: the registry's first words are the ones that count. Do not write a by-hand
+record yourself from what a registry probably says; ask the author to open the page, and copy
+what it shows, with their name on it.
 
 ## Recording a deviation
 

@@ -835,6 +835,42 @@ def test_r_and_python_keep_the_plan_alike(tmp_path: Path) -> None:
     assert from_python["plan"] == written, "kept without its byte-order mark"
 
 
+FROZEN_SYNTHETIC_R = """
+if (!requireNamespace("jsonlite", quietly = TRUE) || !requireNamespace("digest", quietly = TRUE)) {
+  cat("MISSING_DEPS\\n"); quit(status = 3)
+}
+source("%(emit)s")
+em <- mg_emitter("%(script)s")
+em$add_input("simulated.csv", synthetic = TRUE)
+em$add_input("codes.csv", synthetic = %(codes)s)
+em$value("n", 412L)
+em$write()
+"""
+
+
+@pytest.mark.parametrize("real", [False, True])
+def test_r_marks_a_plan_frozen_on_synthetic_inputs_as_python_does(
+    tmp_path: Path, real: bool
+) -> None:
+    """Round 1 of #390: both emitters say when the first results came from synthetic
+    inputs only, which G12 then does not take for the study's first results. Python's
+    mark is held by `test_a_plan_frozen_on_synthetic_inputs_only_says_so`, on the same
+    inputs."""
+    root = _parameter_project(tmp_path)
+    (root / "design").mkdir()
+    (root / "design" / "plan.md").write_text("# Analysis plan\n", encoding="utf-8")
+    for name in ("simulated.csv", "codes.csv"):
+        (root / name).write_text("x\n1\n", encoding="utf-8")
+    script = root / "analysis" / "synthetic.R"
+    codes = "FALSE" if real else "TRUE"
+    script.write_text(FROZEN_SYNTHETIC_R % {"emit": EMIT_R.as_posix(), "script": script.as_posix(),
+                                     "codes": codes}, encoding="utf-8")  # fmt: skip
+    out = _run_r(script, root)
+    assert out.returncode == 0, out.stderr
+    kept = json.loads((root / "design" / "plan.frozen.yaml").read_text(encoding="utf-8"))
+    assert kept.get("synthetic") is (None if real else True)
+
+
 @pytest.mark.parametrize(
     "written",
     [

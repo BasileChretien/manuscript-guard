@@ -59,6 +59,7 @@ GATES = {
     "read is said",
     "G15": "each model is the model its variables call for, and the Methods name the model "
     "fitted",
+    "G16": "the data were held to the data dictionary, and the paper says what they held",
 }
 
 __all__ = [

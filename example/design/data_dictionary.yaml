@@ -1,0 +1,76 @@
+# What each variable of the simulated reports is, and what values it may take. The analysis
+# holds the reports to it (`em.check_data` in analysis/01_disproportionality.py), and each
+# count is a result under quality. that the Methods bind. G16 says where a variable the
+# analysis uses has no entry here, or an entry no count covers.
+schema: manuscript-guard/data-dictionary/1
+title: Simulated spontaneous reports of a fictional drug
+variables:
+  - name: report_id
+    label: Report
+    definition: The report's identifier in the database, R and five digits.
+    type: identifier
+    pattern: "R[0-9]{5}"
+    required: true
+    reason: the record's own identifier, which the duplicates are counted by
+  - name: year
+    label: Year
+    definition: The year the report was received.
+    type: count
+    range: {min: 2015, max: 2024}
+    required: true
+    reason: places each report in the period the Methods give
+  - name: drug
+    label: Drug
+    definition: The suspect drug, as reported.
+    type: text
+    required: true
+  - name: event
+    label: Event
+    definition: The reaction, as reported, one event term for each report.
+    type: text
+    required: true
+  - name: serious
+    label: Serious
+    definition: The report was classed as serious by its reporter.
+    type: binary
+    values:
+      - {code: "Y", label: "Yes"}
+      - {code: "N", label: "No"}
+  - name: sex
+    label: Sex
+    definition: Sex as reported.
+    type: binary
+    values:
+      - {code: "F", label: Female}
+      - {code: "M", label: Male}
+  - name: age_group
+    label: Age group
+    definition: Age at the reaction, in the database's four groups.
+    type: categorical
+    values:
+      - {code: "18-44", label: 18 to 44 years}
+      - {code: "45-64", label: 45 to 64 years}
+      - {code: "65-74", label: 65 to 74 years}
+      - {code: "75+", label: 75 years or more}
+  - name: hepatic
+    label: Hepatic injury
+    definition: The reported event is hepatic injury.
+    type: binary
+    values:
+      - {code: 1, label: "Yes"}
+      - {code: 0, label: "No"}
+    derived_from: [event]
+    derivation: 1 where the event is hepatic injury, else 0.
+  - name: exposed
+    label: Exposed
+    definition: The suspect drug is example-drug.
+    type: binary
+    values:
+      - {code: 1, label: "Yes"}
+      - {code: 0, label: "No"}
+    derived_from: [drug]
+    derivation: 1 where the drug is example-drug, else 0.
+rules:
+  - id: one_row_per_report
+    says: Each report is one row.
+    unique: [report_id]

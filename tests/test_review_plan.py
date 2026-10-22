@@ -416,7 +416,7 @@ def test_a_panel_naming_one_reviewer_twice_is_not_sent(mixed: Path) -> None:
 
 def test_the_round_is_the_first_one_somebody_has_not_reported_in(mixed: Path) -> None:
     project = loaded(mixed)
-    assert plan.next_round(project) == 10  # the example's nine rounds are complete
+    assert plan.next_round(project) == 11  # the example's ten rounds are complete
     (mixed / "review" / "round-2" / "clinical-reader.yaml").unlink()
     assert plan.next_round(project) == 2
     # A file the panel does not name is not a reading, to G11 or here: the round waits.
@@ -428,7 +428,7 @@ def test_the_round_is_the_first_one_somebody_has_not_reported_in(mixed: Path) ->
         if reviewer["id"] == "clinical-reader":
             reviewer["readers"] = ["mistral/model-b"]
     panel.write_bytes(yaml.safe_dump(document, sort_keys=False).encode("utf-8"))
-    assert plan.next_round(project) == 10
+    assert plan.next_round(project) == 11
     shutil.rmtree(mixed / "review")
     assert plan.next_round(project) == 1
 

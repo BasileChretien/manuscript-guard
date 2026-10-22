@@ -50,6 +50,9 @@ DESIGN_DIR = "design"
 SCHEMA = "manuscript-guard/design-review/1"
 #: What every key a feasibility script emits opens with, as G12 asks for them.
 FEASIBILITY = "feasibility."
+#: What every count of the data checks opens with (G16): what the data hold, as the
+#: feasibility counts say it, read and sent with them.
+QUALITY = "quality."
 
 
 def design_root(project: Project) -> Path:
@@ -79,14 +82,16 @@ def design_panels(project: Project) -> list[tuple[int, Path]]:
     return sorted(found)
 
 
-def plan_digest(project: Project) -> str:
-    """What a design round reads: the plan's bytes, and each feasibility result's value and
-    display, by key, and the methods review's bytes where there is one. A plan edited, the
-    data counted again, or a method appraised or decided again is another plan to read. A
-    project with no methods review has the digest it had before there was one."""
+def plan_digest(project: Project, *, checks: bool = True) -> str:
+    """What a design round reads: the plan's bytes, each feasibility result's and each
+    data check's value and display, by key, and the methods review's bytes where there is
+    one. A plan edited, the data counted again, or a method appraised or decided again is
+    another plan to read. A project with no methods review has the digest it had before
+    there was one. `checks=False` leaves the data checks' counts out."""
     from manuscript_guard.gates.design import plan_path
     from manuscript_guard.methods_review import review_path
 
+    wanted = (FEASIBILITY, QUALITY) if checks else (FEASIBILITY,)
     digest = hashlib.sha256()
     plan = plan_path(project)
     digest.update(plan.read_bytes() if plan.is_file() else b"")
@@ -102,10 +107,19 @@ def plan_digest(project: Project) -> str:
             continue
         values = document.get("values") if isinstance(document, dict) else None
         for key, spec in (values or {}).items() if isinstance(values, dict) else ():
-            if key.startswith(FEASIBILITY) and isinstance(spec, dict):
+            if key.startswith(wanted) and isinstance(spec, dict):
                 counted[key] = [spec.get("value"), spec.get("display")]
     digest.update(json.dumps(counted, sort_keys=True, ensure_ascii=False).encode("utf-8"))
     return digest.hexdigest()
+
+
+def plan_digests(project: Project) -> frozenset[str]:
+    """The digests a reading of the plan as it stands may carry: with the data checks'
+    counts, and without them. A round read before any data was checked read the plan and
+    the feasibility results alone, and the counts the analysis makes later are nothing it
+    read (round 1 of #389: each such reading was said to be of a plan changed since). A
+    round that read counts carries the first, and is held to them."""
+    return frozenset({plan_digest(project), plan_digest(project, checks=False)})
 
 
 def check_design_rounds(project: Project, *, submission: bool = False) -> Report:
@@ -116,7 +130,7 @@ def check_design_rounds(project: Project, *, submission: bool = False) -> Report
         # Nothing, counts included: a project with no design round reads as it did before.
         return Report()
     severity = FAIL if submission else WARN
-    current = plan_digest(project)
+    current = plan_digests(project)
     report = Report()
     open_major = 0
     readings: list[tuple[int, tuple[str, str], str, Report, bool]] = []
@@ -237,7 +251,7 @@ def _asked(
 
 
 def _readings(
-    project: Project, number: int, reviewer: dict, current: str, severity: str
+    project: Project, number: int, reviewer: dict, current: frozenset[str], severity: str
 ) -> tuple[Report, list[tuple[tuple[str, str], str, Report, bool, int]]]:
     """What is wrong with one remit's names and the files beside it, and each reading the
     round asks for: who made it, as (reviewer, reader's file name) and as it is shown, what
@@ -322,7 +336,12 @@ def _read(path: Path) -> dict:
 
 
 def _reading(
-    project: Project, number: int, name: str, reader: str | None, current: str, severity: str
+    project: Project,
+    number: int,
+    name: str,
+    reader: str | None,
+    current: frozenset[str],
+    severity: str,
 ) -> tuple[Report, bool, int]:
     """What one reading says: the report, whether it read the plan as it stands, and how
     many of its major findings are open."""
@@ -353,7 +372,7 @@ def _reading(
             hint="a reading is filed under its reviewer and its reader, and says the same "
             "inside; it is not counted until it does",
         )), False, 0  # fmt: skip
-    fresh = document["plan_sha256"] == current
+    fresh = document["plan_sha256"] in current
     if not fresh:
         report = report.with_findings(_finding(
             "design-review-stale",

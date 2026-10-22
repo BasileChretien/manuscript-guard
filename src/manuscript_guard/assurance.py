@@ -59,6 +59,11 @@ DIMENSIONS = (
         "whether the design supports the conclusion",
     ),
     Dimension(
+        "data", ("G16",),
+        "whether a value is right: one the data dictionary allows can still be wrong, and "
+        "a check the dictionary does not declare is not made",
+    ),
+    Dimension(
         "literature", ("G7",),
         "whether a source supports what the paper says of it, beyond the words quoted from "
         "it",

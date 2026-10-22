@@ -77,6 +77,7 @@ from manuscript_guard.gates import (
     sync_bib,
 )
 from manuscript_guard.gates.custodian import check_restricted_inputs, check_small_cells
+from manuscript_guard.gates.data_quality import check_data_quality, check_quality_reported
 from manuscript_guard.gates.data_sources import (
     check_data_sources,
     check_declared_datasets,
@@ -198,6 +199,9 @@ def _run_gates(
         ("G13", lambda: check_revision(project, submission=at_submission)),
         ("G14", lambda: check_language(project)),
         ("G15", lambda: check_models(project, results)),
+        ("G16", lambda: check_data_quality(project, results, chosen, submission=at_submission)),
+        ("G16", lambda: check_quality_reported(
+            project, results, chosen, submission=at_submission)),
         ("BUILD", lambda: check_shapes(project).merge(check_tex(project, namespace, results))),
         ("BUILD", lambda: check_latex(project)),
     ):
@@ -228,6 +232,7 @@ def _run_gates(
 _NOT_READ_IN_LATEX = frozenset(
     {
         "check_statement_sources", "check_shapes", "check_tex", "check_recycling",
+        "check_quality_reported",
     }
 )  # fmt: skip
 

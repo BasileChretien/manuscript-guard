@@ -61,6 +61,9 @@ REQUIRED = (
 
 #: What every key a feasibility script emits opens with: `feasibility.n_reports`.
 FEASIBILITY = "feasibility."
+#: What every count of the data checks opens with (`check_data`, G16): they say what the
+#: data hold as the feasibility counts do, and quiet `feasibility-not-run` as they do.
+QUALITY = "quality."
 
 #: The heading of the plan's list of the results the paper will report. Not one of the seven:
 #: a plan without it says nothing to hold the results to.
@@ -531,12 +534,13 @@ def _check_plan(project: Project, results: Results | None, stage: str | None) ->
                 code="feasibility-not-run",
                 severity=WARN,
                 message="the plan sets out an analysis, and no result says what the data can "
-                f"answer: nothing is emitted under {FEASIBILITY}",
+                f"answer: nothing is emitted under {FEASIBILITY} or {QUALITY}",
                 path=path,
                 hint="write a feasibility script, analysis/00_feasibility.py or .R, that emits "
                 "the cohort at each selection step, the outcome's events, each planned "
                 "variable's missing values, the date range and the duplicates found, as "
-                f"{FEASIBILITY}<name>; the analysis-plan skill has the outline",
+                f"{FEASIBILITY}<name>, or hand the data to check_data against the data "
+                "dictionary; the analysis-plan skill has the outline",
             )
         )
 
@@ -553,4 +557,4 @@ def _feasibility_unknown(results: Results | None, stage: str | None) -> bool:
 
     if results is None or stage != DESIGN:
         return False
-    return not any(key.startswith(FEASIBILITY) for key in results.values)
+    return not any(key.startswith((FEASIBILITY, QUALITY)) for key in results.values)

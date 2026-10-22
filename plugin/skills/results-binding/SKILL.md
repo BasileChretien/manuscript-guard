@@ -1,6 +1,6 @@
 ---
 name: results-binding
-description: Publish values from the analysis through the Python or R emitter, write them into the manuscript as bindings, and get an unbound number out of the red. Use when writing or changing an analysis script in a manuscript-guard project, when putting a result, table or figure into the text, or when check reports unclassified-number, unresolved-binding, value-splits-paragraph, unquoted-result, typed-parameter, typed-software-version, typed-dictionary-release, parameter-unread, hand-authored-table, results-edited, script-newer, input-changed, duplicate-quantity, pointer-to-nothing, display-not-cited, cited-out-of-order, pointer-word-mismatch, ref-number-unknown or caption-names-another. Not for prose style (use manuscript-writing), the Methods against the code (use methods-writer), or a paper written outside manuscript-guard (use paper-audit).
+description: Publish values from the analysis through the Python or R emitter, write them into the manuscript as bindings, and get an unbound number out of the red. Use when writing or changing an analysis script in a manuscript-guard project, when putting a result, table or figure into the text, or when check reports unclassified-number, unresolved-binding, value-splits-paragraph, unquoted-result, typed-parameter, typed-software-version, typed-dictionary-release, parameter-unread, hand-authored-table, results-edited, script-newer, input-changed, duplicate-quantity, pointer-to-nothing, display-not-cited, cited-out-of-order, pointer-word-mismatch, ref-number-unknown, caption-names-another, quality-not-run, entry-unchecked or rule-unchecked. Not for prose style (use manuscript-writing), the Methods against the code (use methods-writer), or a paper written outside manuscript-guard (use paper-audit).
 ---
 
 # Binding the numbers
@@ -94,6 +94,12 @@ the counts of a flow diagram, with `em.flow()`, and only that. When a paper decl
 results relate (a sum, a difference, a ratio, an upper bound or an order), draws a CONSORT or
 PRISMA flow, or `check` warns under G8, read
 [references/arithmetic-and-flows.md](references/arithmetic-and-flows.md).
+
+### The data, held to the data dictionary
+
+With a `design/data_dictionary.yaml`, hand each table read to `em.check_data(table)` (R:
+`em$check_data(table)`); [references/data-quality.md](references/data-quality.md) has the
+counts and their findings.
 
 **Never edit `results/`.** The fragments are machine-written and digested. An edited one is
 `results-edited`, the write guard refuses the edit where the hooks run, and

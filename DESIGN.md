@@ -261,7 +261,7 @@ All deterministic, all runnable in CI without Claude.
 
 | | Gate | Fails when |
 |---|---|---|
-| G1 | Results freshness | a results file whose script, or an input that script declared, has changed since it was written |
+| G1 | Results freshness | a results file whose script, or an input that script declared, has changed since it was written; a dataset's date pinned to other data than the results were computed from |
 | G2 | Number classification | a numeric token is unclassified, or a display value has no bound claim |
 | G3 | Figures | a number in a figure's output or in its source is not traceable to results |
 | G4 | Journal profile | word counts, structure, reference style, required statements |
@@ -1883,7 +1883,11 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
    `latex escaped`, and a display holding each character the table writes over
    `latex_displays()` with two `BROKEN` rules. The escape table's compile test needs LaTeX,
    so it skips on CI until step 9 installs TeX Live; it was run under MiKTeX 24.4 on
-   2026-10-21, under OT1 and T1, and the pull request records what pdftotext read.
+   2026-10-21, under OT1 and T1, and the pull request records what pdftotext read. A document
+   that loads the file is compiled too, with a title, a value, a table and a figure: the
+   file's `\ProvidesPackage` names no description, which LaTeX 2024-06 read as a date and
+   which stopped the next `\title`, and it loads graphicx for its figures (#416, measured
+   under MiKTeX 24.4 on 2026-10-22).
 5. Citations and G7, built in its first part: the scanner records each key a citation command
    names, where its braces stand (`Reading.cited`), outside a definition's body, and refuses a
    command whose name holds `cite` that it does not know; `cite.py` gives them as
@@ -5475,6 +5479,158 @@ none of them is declared; the reporting-checklist skill shows the table, and a t
 the two to one another. A project that names no design is asked for the seven, as before.
 What the sections say is the author's and the panel's to judge, never a gate's.
 
+## A registration is looked up once, and the paper is held to it
+
+A registration is the plan made public before the study: what it will measure, in whom, and
+how. Outcome switching is the paper then reporting something else, with nothing said: a
+registered primary outcome dropped or reported as secondary, a secondary one promoted, an
+outcome nobody registered reported as though it had been. COMPare followed the 67 trials
+five general medical journals published over six weeks of 2015, and found outcomes other
+than those prespecified, with nothing said, in 58 of them (Goldacre and colleagues,
+Trials, 2019). Observational studies registered in the EU PAS register, on
+ClinicalTrials.gov or on OSF are open to it in the same way. A registration made
+after the study started, or after its first results, registered nothing in advance. Until
+this, a registration number was a structural token to G2 (`data/structural.yaml`) and
+nothing more.
+
+**The registry is asked once, and the answer kept.** The pattern is the lookup's. `paper.yaml`
+lists the registrations under `registration`, each by its identifier, and `manuscript-guard
+lookup --registrations` asks each one's registry and writes what it said to
+`design/registrations/<id>.yaml`: the registered date, the study's actual start and the start
+of its analysis where the registry gives them, its type and design, each field of the record
+under the registry's own label (outcomes among them, with their role where the registry keeps
+primary and secondary apart), the day it was asked, and an `answers_sha256` that catches an
+edit by hand (`registration-record-edited`, failing from drafting). Asked again are a
+registration with no record, one whose answer did not come, and one whose record was edited;
+`--again` asks for all, and `--dry-run` sends nothing. Nothing of the manuscript is sent: the
+identifier is the whole of each request. G12 reads the records, and asks nobody.
+
+Which registries, as Basile chose on 2026-10-21, and the shapes they answered in that day:
+
+- **ClinicalTrials.gov**, API v2 (2.0.5), `/studies/{nctId}?fields=protocolSection&
+  markupFormat=legacy`, which gives the descriptions as plain text where the default is
+  Markdown with its characters escaped, and a 120 kB answer where the whole record with its
+  results is 2 MB. The registered date is `statusModule.studyFirstSubmitDate`; the start is
+  `startDateStruct.date` where its `type` is `ACTUAL`, a day or a month; the outcomes are
+  `outcomesModule.primaryOutcomes`, `secondaryOutcomes` and `otherOutcomes`, each with a
+  `measure`, a `description` and a `timeFrame`. Its OpenAPI document gives the identifier as
+  `^[Nn][Cc][Tt]0*[1-9]\d{0,7}$`, so `NCT123` is answered as NCT00000123: only NCT and eight
+  digits is taken as an identifier, and an answer for another study than the one asked is
+  no answer. An unknown study is a 404 with "NCT number … not found" as plain text; an alias
+  is a 301 to the study it stands for, and is said, not followed. The API serves no earlier
+  version of a record: the history the site shows is behind `/api/int/`, which answered 403.
+- **OSF Registries**, API v2, `/registrations/{guid}/`, JSON:API: `date_registered`, the
+  answers in `registration_responses` keyed by the template's question ids, which
+  `/schemas/registrations/{id}/schema_blocks/` names (each `question-label` block's text
+  labels the inputs after it), and `original_response` and `latest_response`, which differ
+  where the registration was updated; `/schema_responses/{id}/` gives what each version said,
+  and the later one's `revision_justification`. A 404 or a 410 is a registration OSF does
+  not hold, a 401 or 403 one it does not show. A question whose label names an outcome, an
+  endpoint or a dependent variable is kept as the registration's outcomes. 44 templates were
+  listed that day, one of them the joint ISPE and ISPOR "Real World Evidence Recommended
+  Minimum Study Registration Template".
+- **ISRCTN**, its query API, `/api/query/format/default?q=<id>`, in XML
+  (`http://www.67bricks.com/isrctn`): `allTrials@totalCount`, each `fullTrial/trial` with its
+  `isrctn@dateAssigned`, `primaryOutcome`, `secondaryOutcome`, `recruitmentStart` and
+  `primaryStudyDesign`. The trial is the one whose number is the one asked, among those the
+  query answers. Its single-trial path, `/api/trial/<id>/format/default`, answers an unknown
+  number with HTTP 500 and a web page, and is not used. Parsed by `safexml`, which refuses a
+  document type declaration.
+- **The EU PAS register**, now the HMA-EMA Catalogue of real-world data studies, has no API:
+  it is a Drupal 11 site, a `?_format=json` is redirected back to the page, and its export of
+  search results is a server-side batch that needs a session. So its pages are read, by the
+  labels and classes they carried that day, which the module's docstring lists. `/study/<n>`
+  answers 302 to `/node/<k>/administrative-details` for the study whose Study ID is `<n>`,
+  and 404 for one it does not have. A number of the catalogue's own scheme, begun in 2024
+  (EUPAS1000000417), is its Study ID; an older one is not (EUPAS11379 is Study ID 23396), and
+  is found by the catalogue's search, whose results link `/study/<n>`. The page a number is
+  read from has to give that number, or it is another study's. The registered date is the
+  page's "First published"; the starts are the actual start of data collection and of data
+  analysis, each a `<time datetime>`; the outcomes are the methodological page's "Outcomes"
+  field, which holds primary and secondary as one text. A page without its title, its date or
+  its number is not of the shape read, and the answer is `unresolvable`, never read as the
+  study having none. The site is asked at most once a second, and its `robots.txt` was read:
+  it closes `/search/`, with the slash, and not the study pages.
+- **Not asked.** PROSPERO's record page is a script that reads an internal API
+  (`/PROSPERO/api/record/view/?code=`), which answers "header value undefined" without a
+  `prospero-auth-token` header that the page makes from the clock; that header is the
+  registry's choice of who reads its API, and it is not made here. The WHO ICTRP's web
+  service is for partners under an agreement, with its costs recovered. A registration with
+  either, or with ANZCTR, DRKS, jRCT and the rest, has a record copied by hand
+  (`source: by-hand`, `copied_by`, `copied_on`, no digest): G12 holds it as it holds any other
+  and notes once that what it says is that person's word (`registration-by-hand`). `lookup`
+  never writes over a record copied by hand, nor over one it cannot read.
+
+**What G12 holds a paper to** (`gates/registration.py`), each registration in turn:
+
+- *That there is one to hold it to.* A study `paper.yaml` names a trial with no registration
+  fails from internal-review (`registration-missing`). Where none is listed and the
+  manuscript gives an NCT, ISRCTN, EU PAS or PROSPERO number, that is a warning
+  (`registration-undeclared`): it may be this study's or another's, and only the author can
+  say. Where one is listed, the other identifiers the manuscript gives are taken to be other
+  studies', as they are in a review.
+- *That it is the registration the paper says.* An identifier whose shape names no registry
+  and that names none under `registry` (`registration-id-malformed`), one the manuscript
+  does not give (`registration-not-in-manuscript`), one with no record
+  (`registration-not-looked-up`), and one the registry does not know (`registration-unknown`)
+  fail from internal-review, as a cited work the registries do not know does. A record that
+  is not one, that is another registration's or that is dated in the future fails from
+  internal-review too. An answer that did not come is a warning, and nothing else is said of
+  that registration: nothing is known of it.
+- *That it was made in advance.* The registered date is held to the study's actual start and
+  the actual start of its data analysis, as the registry gives them, and to the day the first
+  results were written, which is `frozen_at` of `design/plan.frozen.yaml`. First results
+  written from synthetic inputs only, a dry run on simulated data, date nothing of the study:
+  both emitters mark such a copy `synthetic: true`, and a registration after it is a note
+  (`registration-after-dry-run`), as Basile chose in round 1 of #390. Two dates are
+  compared as far as the less precise goes, so a study registered on 27 April that started in
+  April may have started after it and is not said to have; a start dated after the day the
+  registry was asked is a plan, and is not compared. A registration after any of them
+  (`registration-late`) warns, and fails at submission unless `paper.yaml` gives the reason
+  under `retrospective` and the manuscript says the study was registered retrospectively
+  ("retrospectively registered", "registered retrospectively", "retrospective
+  registration", "registration was retrospective", a line break between the words allowed,
+  and never "registry": "a retrospective registry-based cohort" says nothing of the
+  registration, round 1 of #390); then it is a note. With the reason and not the words, it is
+  `registration-retrospective-unsaid`.
+- *That it is the study.* A registry's interventional study for a paper whose `study_type` is
+  observational, or the other way round, is `registration-design-differs`; a withdrawn
+  registration is `registration-withdrawn`.
+- *That the outcomes are the registered ones.* Under each registration the author quotes each
+  outcome the registry holds, `registered`, in its words, with the `role` it has there and the
+  planned result that reports it, `reported_as`, written as the plan's Planned results write a
+  key. A quote is held word for word to the record: to a field of its role where the registry
+  keeps them apart, to the fields of outcomes where it has them and to any field where it has
+  none, and to the first version of an OSF registration updated since. Case, spacing, line
+  breaks, compatibility forms, dashes and quotation marks are folded and nothing else. Not
+  found, it is `registration-outcome-not-registered`, or `registration-outcome-added-later`
+  where only the later version has it; found in the other role, `registration-outcome-role-
+  changed` (a registered secondary reported as primary, or a registered primary as
+  secondary; ClinicalTrials.gov's other pre-specified outcomes count as secondary ones); with no `reported_as`, the outcome is not reported, and the plan's Deviations
+  section has to quote the same words (`registration-outcome-dropped`); with a key the plan
+  does not list, `registration-outcome-unplanned`; with one that emits nothing quoted,
+  `registration-outcome-unreported`. A change the Deviations section names by the result's
+  key, as it names a planned result it drops, stands each of these down. No quote at all is
+  `registration-outcomes-undeclared`.
+- *That nothing registered is left out.* Where the registry lists its outcomes apart, each
+  primary one has to be quoted (`registration-primary-unquoted`), and the others not quoted
+  are one warning (`registration-secondary-unquoted`): a trial may register thirty, and
+  report some elsewhere. A quote stands for one registered outcome only, assigned so that as
+  many are covered as can be: one vague quote found in five primary outcomes covers one. Where
+  the registry gives its outcomes as one text, as the EU PAS register and OSF do, neither the
+  role of a quote nor whether every outcome is quoted can be read, and G12 says so once
+  (`registration-roles-unchecked`).
+
+Each finding of the last four kinds warns while the paper is drafted and fails at submission,
+as Basile decided: a draft can still change, and a paper sent with a switched outcome not said
+is the failure this is for. Three are less: `registration-secondary-unquoted` is a warning at
+every stage, and `registration-roles-unchecked` and `registration-after-dry-run` are notes.
+
+**What it does not decide.** That the words quoted mean the outcome the paper measures, that
+the population, the exposure and the analysis are the registered ones, and that a reason given
+for a change is a good one: these are the co-authors' and the panel's, read against the record
+kept. A remit for the panel and the co-author checker's items that put the record beside the
+Methods are the next step, not yet built.
 ## The data dictionary is one contract with three readers
 
 A plan that sets out an analysis of data that do not exist yet (a survey, a chart review, a
@@ -6754,6 +6910,106 @@ LFS pointer with an extension (whose oid is of the content after it), or results
 before `raw_sha256`, is a warning that the input is not fetched (`input-not-fetched`), where
 `input-missing` had failed. A file over 1024 bytes, or one that reads as neither, is the
 data, hashed as before.
+
+## The data a paper analysed are named by the analysis
+
+"Data were extracted from VigiBase on 1 March 2024, covering reports to 31 December 2023" is
+a claim like any number. A date typed in the Methods already failed G2, each of its digits
+unbound, and the way out G2's hint gave was a string emitted with its display,
+`em.value("period.start", "2015-01-01", display="1 January 2015")`. That route had two
+holes. Nothing compared a string value with its display, so the display could be another
+year; and the call raised, the digits of an ISO date being taken for a measurement. Neither
+tied the date to the data: the extract could be replaced and the analysis run again, and the
+old date went out with every gate green.
+
+Many databases have one version, or none a user can name (Basile, 2026-10-21), so a version
+cannot be what identifies the data. The date of the extraction can, with the file. The
+analysis declares both where it reads the file, in either emitter:
+
+    em.dataset("vigibase", "data/vigibase.csv", extracted="2024-03-01",
+               covers=("1968", "2023-12-31"), version=None,
+               fingerprint="3f9a1c2b7e4d5a60", dates=frame["received"])
+
+It declares the files as inputs and emits `dataset.<name>.extracted`, `.covers_from`,
+`.covers_to`, and `.version` only where the source has one, each with the role `dataset`.
+The fragment carries a `datasets` record: the files, the pin, the dates and what the data's
+own dates were found to span. Dates are ISO 8601 to a year, a month or a day, and each is a
+span of days: data covering "2023" end on 31 December 2023. They are printed in the English
+`paper.yaml` declares, "1 March 2024" or "March 1, 2024", a month as "March 2024" in both.
+Direction two holds the Methods to binding each one, as it holds every value.
+
+**The date is pinned to the file** (Basile's choice of four, 2026-10-21). `fingerprint` is
+twelve or more characters from the start of the file's digest, the one G1 records with line
+endings left out or the one `sha256sum` prints; for several files it is the SHA-256 of a
+line `<digest>  <path>` for each, in the order of their paths (`datasets.dataset_digest`),
+so that a FAERS quarter in seven files is one dataset. A call without a pin is refused, and
+the refusal prints the pin to paste. A run on other files is refused and prints the new
+digest: data extracted again need the date of the new extraction. The other choices were a
+pin that only warned while it was missing, a ledger the tool would write and the author
+commit, and no pin. A ledger is state, and deleted it accepts anything again. A missing pin
+left the date free for as long as nobody pinned it.
+
+**What is on disk is held to it, whoever wrote it.** G1 fails a dataset whose pin is not the
+start of the digest its own fragment recorded for its files, or that names a file the run
+did not record reading (`dataset-pin-mismatch`). And it fails any other fragment that read
+one of those files with another digest (`dataset-read-differs`): a model fitted on the new
+extract beside a script that dates the old one. And it fails a value under the role
+`dataset` that its fragment's record does not hold, there or with that date
+(`dataset-value-unrecorded`, round 1 of #392): G2 does not warn of a dataset's date, so a
+value that says it is one, typed into a fragment, would be tied to nothing. All three read
+the records alone, so they hold in CI and in a co-author's clone, where restricted data are
+not. An input that changed since the results were written was `input-changed` already, and
+now names the date it makes stale.
+
+**The data's own dates are held to what the call states.** `dates` is a column of them:
+dates, date-times, pandas and NumPy values, ISO text with a time after the day, or whole
+years. A date wholly outside the period covered, or wholly after the extraction, is refused,
+with the first three named and the rest counted. "Wholly": a report dated "2023" may lie
+within data covered to 2023-06-30, and only one that cannot is refused. The period itself is
+refused where it runs backwards or ends after the extraction, and the extraction where it is
+after today.
+
+**A date's display is the date.** A string value that is an ISO date may be printed as that
+date or a coarser statement of it, "1 March 2015", "March 2015" or "2015", or in figures,
+"01/03/2015", "01.03.2015" or "2015/03/01", and never another date nor a finer one
+(`dates.display_problem`). Figures with the day and the month apart are read both ways, and
+pass where either reading is the date (round 1 of #392: a display in figures loaded on
+main). Only a day is a date beyond doubt: "2010-12" is also the period 2010 to 2012 written
+short, so a year or a month is held only to a display that reads as a date, and "2010 to
+2012" passes as it did. The Python emitter refuses a display that breaks the rule as it
+runs, and so does R's; the loader reads every fragment with the same rule and reports
+`no-display` for one that breaks it. An ISO date is no longer refused as a string carrying a
+number, a month or a day: four digits alone outside 1900 to 2099, the years `_LABELLIKE` takes for a label, are still a number until a label says otherwise,
+since "1520" read from a CSV is a count as often as a year (round 1 of #392). So
+`em.parameter("period.start", "2015-01-01", display="1 January 2015")`, a study period the
+analysis chose, can be written as G2's hint now says.
+
+**G2 warns where a sentence dates the data with a date the analysis typed**
+(`data-date-not-declared`, Basile, 2026-10-21). The sentence says the data were extracted,
+downloaded, retrieved, queried, accessed, obtained, locked, snapshotted or frozen, or given
+a cut-off, or what period they cover, span, run until or through, in any form of those
+words, and binds a string value that is a date, as its value or its display, under none of
+the roles that say what a value is. A dataset's date, a parameter's, a software version and
+a dictionary's release are not warned of (round 1 of #392: ICD-10's release is "2019"), nor
+a number, which the analysis may have computed from the data as the example computes its
+first and last year. The words are read in the binding's sentence, as `labels` reads one,
+with every binding, comment and citation in it blanked: a key named `extracted`, a step
+named `extraction` and a citekey `extracted2020` say nothing. The property is
+`test_a_date_typed_into_the_analysis_is_warned_where_its_sentence_dates_the_data`, over the
+reading `data dates`, with a planted sentence for each word, and twelve broken rules each
+caught under seeds 1 to 12. The supplement is held to the rules of the main text (Basile,
+2026-10-21), and G2 reads it as it reads the main text (`source_files`): an extraction date
+typed in Supplementary Methods fails, one typed into the script is warned of there, at that
+file, and a dataset's date bound only there is quoted. One more warning reads no text: a
+dataset's date printed in another English than `paper.yaml` declares now
+(`dataset-date-english`), since the emitter reads it when the analysis runs.
+
+The name is the source's id in `design/data_sources.yaml` where the project keeps one, so
+that the record of how the data were found and reached, and the analysis that read them,
+name one source alike. Nothing reads the record yet (Known gaps). The example declares its
+simulated reports as a dataset generated on 3 August 2026 to cover 2015 to 2024, its
+reports' years held to them, and its Methods print both that and the years the reports run
+over.
 
 ## The datasets considered are a record, and the one chosen is held to it
 
@@ -10428,6 +10684,61 @@ Open, recorded as each change landed:
   carry is not in the record, and the record is as old as the day it was asked. Requests
   are paced at fixed intervals rather than by the limits each answer states in its
   headers.
+- **A registration is held to the record as it stood the day it was asked.**
+  ClinicalTrials.gov's API serves the record as it is now, not as it was registered: an
+  outcome changed in the registry before the paper was written is held as registered. Only
+  OSF gives its first version, and only OSF's is held to it; the EU PAS register says when a
+  record was last updated and not what it said before. A registration's own history, which
+  ClinicalTrials.gov's site shows, is for the co-authors and the panel to read (2026-10-21).
+- **A quote proves its words are the registry's, and no more.** Whether "hepatic injury" as
+  registered is the outcome the paper measures as hepatic injury is not compared, nor are the
+  population, the exposure and the analysis: free text cannot be compared past its words.
+  Where the registry gives its outcomes as one text (the EU PAS register, OSF, most copies by
+  hand), the role of a quote is not checked and a registered outcome nobody quotes is not
+  seen; G12 says so once for each such registration. A short quote is accepted as readily as
+  a long one, though it stands for one registered outcome only.
+- **The EU PAS register is read from its pages.** It has no API, so a change of the
+  catalogue's page layout makes every answer `unresolvable` until the reader is taught the new
+  one; it never makes a study pass. A number older than the 2024 scheme is found through the
+  catalogue's search, which a change of the search page would break the same way.
+- **A paper that calls an outcome primary is only seen through `paper.yaml`.** An outcome the
+  paper reports as its primary one and `paper.yaml` does not quote is not compared with the
+  registry: the plan's Planned results give keys, not roles. The quotes are the author's
+  statement of which result answers which registered outcome, and a co-author can hold them to
+  the Results.
+- **Which identifiers in the manuscript are this study's is the author's to say.** Where
+  `paper.yaml` lists no registration, every NCT, ISRCTN, EU PAS or PROSPERO number the
+  manuscript gives is one warning, since a review or a discussion names other studies'; an
+  OSF link is not looked for at all, since most name a project's data or code. Where it lists
+  one, the others are not reported. A LaTeX manuscript's `%` comments are read with the rest
+  of it, so an identifier given only in one counts as given; Markdown's HTML comments are
+  not read.
+- **The first results are dated by the plan's frozen copy.** A study analysed before the
+  project used manuscript-guard, or whose `design/plan.frozen.yaml` was written later than its
+  first results, is held to that later date, and a registration made in between is not seen
+  as late. The date is this machine's clock when the emitter first wrote results.
+- **A record copied by hand is the copier's word, and has no digest.** A fetched record
+  edited and then marked `source: by-hand`, with a name and a day, is read as a copy: G12
+  notes it and holds the paper to what it says, and `lookup` does not write over it. That is
+  an edit made on purpose, as running the digest again is, and the note is what shows it
+  (round 1 of #390).
+- **Only all-synthetic first results are set aside.** A first run on simulated data marks
+  the frozen plan, and the real data's first results, which come later, are dated by nobody:
+  such a project's registration is held to the registry's own start dates only. A first run
+  with one real input among simulated ones dates the study's first results. The mark, like
+  `frozen_at`, is in no digest: added by hand to the frozen copy of a real first run, it
+  turns a late registration into a note (round 2 of #390). The write hook keeps an agent
+  from that edit, and a person's is theirs to answer for.
+- **A change to the protocol is read from the plan, not from the paper.** A registered
+  outcome dropped, demoted or replaced is stood down only by the plan's Deviations section, as
+  Basile decided. A "Changes to the protocol" statement in the manuscript does not stand it
+  down, whether in the main text or in a table of the supplement's eMethods; it is the panel's
+  and the co-authors' to hold to the plan. Otherwise the supplement is read as the main text
+  is: an identifier, the words of a late registration and an identifier `paper.yaml` does not
+  list count there as anywhere.
+- **PROSPERO is not asked.** Its records reach its own page through an API that wants a
+  header the page makes; a review registered there has a record copied by hand, which G12
+  notes as the copier's word and holds like any other.
 - **`search` orders by the registries' relevance, which knows nothing of the claim.** A work
   at the top can be off the point, or weak evidence for it; whether it supports the claim is
   the author's to judge with the work read. The kinds are the registries' indexing, which
@@ -14807,6 +15118,48 @@ Open, recorded as each change landed:
   kept, is not found. The Word templates were not opened: their words were read in the LaTeX
   templates and in the papers printed with them. A Word drop-down's "Choose an item." is not
   read, since a paper writes that participants "choose an item".
+
+- **The extraction date is the author's word, pinned to a file.** No format the sources
+  export in carries the date in one place, so the emitter reads it from the call, never from
+  the data, and never from a file's modification time, which a copy resets. A date typed
+  wrongly with the right pin passes. What the pin holds is that the date changes when the
+  data do, and that a re-run cannot keep it unawares. A version is the author's word too,
+  checked for nothing but being text.
+- **A file derived from the extract is another input.** A script that cleans the extract and
+  writes `data/cohort.parquet` for the next to read hands on a file with its own digest, and
+  G1 records no outputs, so nothing ties the derived file to the extraction dated. Declare
+  the dataset in the script that reads the extract. `dataset-read-differs` compares
+  fragments that record the same path, and data copied to another path are another file to
+  it.
+- **The words that date the data are a list.** `data-date-not-declared` reads the forms of
+  extract, download, retrieve, query, access, obtain, lock, cut-off, snapshot, freeze, cover
+  and span, and until, through and "up to", in the binding's sentence. A sentence that dates
+  the data in other words, "as of", "received by", "data cut", is not read, and one that
+  uses those words of something else and binds a typed date is warned of. A year typed into
+  the script as a number is never warned of, since it cannot be told from one the analysis
+  computed. The sentence is the one `in_sentences` gives the binding, with its limit: a stop
+  typed against a binding with no space after it ends no sentence.
+- **A display is read in English, in three orders, or in figures.** "1 March 2024", "March
+  1, 2024", "March 2024", the ISO forms, three-letter months, "Sept", an ordinal day, a day
+  as strftime's `%d-%b-%Y` and SAS's DATE9 write it ("31-Dec-2023", "31DEC2023"), and
+  figures with a four-digit year first or last, the day and the month taken either way, and
+  neither a month nor a day of 0. A
+  two-digit year, a day of the week, a month in another language and a date with words
+  around it are no dates to it: as the display of an ISO day they are refused, and as the
+  display of a year or a month they pass unread, since "2010-12" is also a period written
+  short. "Spring 2025" for the value "2024" passes so. Years are of four digits, 0001 to
+  9999, in the Gregorian calendar.
+- **R counts the data's dates from one.** A refusal of `dates` names the first entries that
+  lie outside as `dates[1]` in R and `dates[0]` in Python, each its language's way.
+- **The English a dataset's date is printed in is read when the analysis runs.** A
+  `paper.yaml` changed afterwards is warned of (`dataset-date-english`), not failed. R reads
+  `english_variant` from its own line of `paper.yaml`, not as YAML, and takes British
+  English where it finds none there: a value in a flow mapping is not seen.
+- **`design/data_sources.yaml` is not read.** A dataset whose name is not a source the
+  record chose is not said, and the record's coverage is not compared with the declared one.
+  That waits for the record to be on main (Basile, 2026-10-21).
+- **"After today" is the machine's today.** An extraction dated today in one timezone may be
+  tomorrow on the machine that runs the analysis, and is refused there.
 
 - **What filing a co-author's comments does not do.** Each is non-blocking under the bar,
   and none is reached by a document Word 16 saves from a build:

@@ -50,8 +50,9 @@ expected:
       against it ends one, so the bounds on either side of it are no longer compared
   - reading: check
     why: >-
-      G11 counts the co-authors' Word comments `import` filed, `review_comments` and
-      `review_comments_open`, which are 0 in a project with none filed
+      G1 counts the datasets the results name, `datasets_checked`, which is 0 in a project
+      that names none; and the hint for an unbound number beside a month's name says that the
+      date of the data is declared with `dataset()` and a date the study chose is a parameter
   - reading: numbers
     why: >-
       a supplement's name of the Methods, "Supplementary methods", "eMethods 1. Data

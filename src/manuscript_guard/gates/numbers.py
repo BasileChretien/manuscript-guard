@@ -33,6 +33,7 @@ from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import Results
 from manuscript_guard.contracts.values import Value, number_in
 from manuscript_guard.findings import INFO, WARN, Finding, Report
+from manuscript_guard.gates.data_dates import data_dates, dates_in_english
 from manuscript_guard.gates.labels import labelled, sentence_stops
 from manuscript_guard.roundtrip import splits_a_paragraph
 from manuscript_guard.text.latex import views as latex_views
@@ -307,6 +308,8 @@ def check_numbers(
 
     report = report.merge(quoted_whole(sentenced, namespace))
     report = report.merge(labelled(sentenced, namespace))
+    report = report.merge(data_dates(sentenced, namespace))
+    report = report.merge(dates_in_english(namespace, project.english_variant))
     report = report.merge(_paper_yaml_prose(project, classifier))
     report = report.merge(_replies(project, classifier, namespace))
     report = report.merge(_emitted_tables(results, classifier))
@@ -1349,10 +1352,12 @@ def _hint_for(atom) -> str:
     window = atom.window
     if _DATE.search(window):
         return (
-            "a date is one placeholder, not one per number in it: emit it as a string with "
-            'a display — em.value("period.start", "2015-01-01", display="1 January 2015") — '
-            "and write {{results.period.start}}. A study period is a fact about the data, so "
-            "it should come from the data"
+            "a date is one placeholder, not one per number in it. The date the data were "
+            "extracted and the period they cover are declared with the data, "
+            'em.dataset("<name>", "<file>", extracted="2024-03-01", covers=("2010", '
+            '"2023-12-31"), fingerprint=...), and bound as {{results.dataset.<name>.extracted}}; '
+            "a date the study chose is a parameter, "
+            'em.parameter("period.start", "2015-01-01", display="1 January 2015")'
         )
     if _DURATION.search(window):
         return (

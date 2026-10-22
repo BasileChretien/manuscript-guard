@@ -1771,6 +1771,79 @@ def test_a_label_is_said_where_it_differs_from_what_was_emitted_and_nowhere_else
         assert message.startswith(start), (message, start, text)
 
 
+# ------------------------------------------------------- a date of the data, typed or declared
+
+#: Sentences that bind a date and say nothing of it G2 warns of, each set to catch one way of
+#: reading them wrong: a dataset's own date, a parameter's, a year computed as a number, a
+#: sentence that does not date the data, the words of a binding's key, of the next sentence
+#: and of a comment, and a key no value has.
+_DATED_RIGHT = (
+    "Data were extracted on {{results.dataset.vb.extracted}}.",
+    "Reports were retrieved from {{results.param.start}}.",
+    "Reports from {{results.cohort.first_year}} were extracted.",
+    "Ethics approval was given on {{results.old.extracted}}.",
+    "Approval came on {{results.old.extracted}}.",
+    "Approval came on {{results.old.label}}. The data were extracted later.",
+    "Approval came on {{results.old.extracted}} <!-- extracted -->.",
+    "Data were extracted on {{results.none.such}}.",
+    # Round 1 of #392: a dictionary's release named by a year, and the words of another
+    # binding and of a citation.
+    "Codes were obtained from ICD-10 {{results.dictionary.icd_10}}.",
+    "Approval came on {{results.old.extracted}} ({{method.extraction}}).",
+    "Approval came on {{results.old.label}} [@extracted2020].",
+)
+#: Sentences that date the data with a date typed into the analysis, and the binding G2
+#: names in each.
+_DATED_WRONG = (
+    ("Data were extracted on {{results.old.extracted}}.", "{{results.old.extracted}}"),
+    ("We downloaded the files on {{results.old.label}}.", "{{results.old.label}}"),
+    ("Reports up to {{results.old.extracted}} were kept.", "{{results.old.extracted}}"),
+    ("The snapshot of {{results.old.label}} held {{results.n}} reports.",
+     "{{results.old.label}}"),
+    ("Data were\nretrieved on {{results.old.extracted}}.", "{{results.old.extracted}}"),
+    # Round 1 of #392: one sentence for each word, so that a rule which drops one fails.
+    ("Reports covering {{results.old.label}} were kept.", "{{results.old.label}}"),
+    ("The database was locked on {{results.old.extracted}}.", "{{results.old.extracted}}"),
+    ("Reports until {{results.old.label}} were read.", "{{results.old.label}}"),
+    ("The reports span {{results.old.extracted}} onwards.", "{{results.old.extracted}}"),
+    ("Reports through {{results.old.label}} were read.", "{{results.old.label}}"),
+    ("A cut-off of {{results.old.extracted}} applied.", "{{results.old.extracted}}"),
+    ("A frozen copy of {{results.old.label}} was read.", "{{results.old.label}}"),
+    ("Records were accessed on {{results.old.extracted}}.", "{{results.old.extracted}}"),
+    ("Records were obtained on {{results.old.label}}.", "{{results.old.label}}"),
+    ("Queries run on {{results.old.extracted}} found them.", "{{results.old.extracted}}"),
+)  # fmt: skip
+
+
+@st.composite
+def _dated_apart(draw: st.DrawFn) -> str:
+    """A text with each planted sentence, in an order drawn and apart in ways drawn, before
+    drawn words: so that nothing drawn after them can put them in a comment it left open."""
+    planted = draw(st.permutations([*_DATED_RIGHT, *(said for said, _ in _DATED_WRONG)]))
+    gaps = [draw(st.sampled_from((" ", "\n", "\n\n"))) for _ in planted[1:]]
+    after = zip(gaps, planted[1:], strict=True)
+    return planted[0] + "".join(gap + sentence for gap, sentence in after) + "\n\n" + draw(texts())
+
+
+@holds(200, _dated_apart())
+def test_a_date_typed_into_the_analysis_is_warned_where_its_sentence_dates_the_data(
+    text: str,
+) -> None:
+    """Whatever the sentences around them, a date the analysis typed rather than declared
+    with `dataset()` is warned of where its sentence says the data were extracted or what
+    they cover, once for each such sentence, and nowhere else."""
+    from readings import data_dates_namespace
+
+    from manuscript_guard.gates.data_dates import data_dates
+    from manuscript_guard.gates.numbers import in_sentences
+
+    placeholders, _malformed = parse_bindings(text)
+    said = data_dates([(Path("main.md"), text, in_sentences(placeholders, text))],
+                      data_dates_namespace())  # fmt: skip
+    found = sorted(f.message.split(" is ")[0] for f in said.findings)
+    assert found == sorted(named for _sentence, named in _DATED_WRONG), (found, text)
+
+
 # ------------------------------------------------------------------- a data statement
 
 
@@ -1945,6 +2018,140 @@ def test_a_planned_result_is_read_from_its_own_item_and_nowhere_else(
     read = planned_results(plan)
     assert read is not None, plan
     assert [(found.key, found.group) for found in read] == listed, plan
+
+
+# ------------------------------------------------- a registration and its outcomes
+
+# Imported here, not at the top, to keep clear of the import block other branches edit.
+from generated import (  # noqa: E402
+    NAMED_LOOKALIKES,
+    registered_quotes,
+    registration_texts,
+    retrospective_texts,
+)
+
+
+@holds(100, registration_texts())
+def test_a_registration_is_found_where_the_manuscript_gives_it_and_no_lookalike_is(
+    drawn: tuple[str, list[tuple[str, str, str | None, str]]],
+) -> None:
+    """G12 finds a registration's identifier in every way a manuscript gives it, in any case
+    and inside a link, and not where the manuscript gives only one with a digit more, a
+    letter before it or a longer OSF name."""
+    from manuscript_guard.gates import registration as gate
+    from manuscript_guard.registrations import Declared, identify
+
+    plain, given = drawn
+    for written, kept, _found, text in given:
+        registry, identifier = identify(kept)
+        entry = Declared(kept, identifier, registry, None, (), False, 0)
+        assert gate.named_in(text, entry), (written, text)
+        assert not gate.named_in(plain, entry), (kept, plain)
+
+
+@holds(100, registration_texts())
+def test_each_identifier_a_manuscript_gives_is_found_as_written_and_nothing_else(
+    drawn: tuple[str, list[tuple[str, str, str | None, str]]],
+) -> None:
+    """Where paper.yaml lists no registration, G12 names each NCT, ISRCTN, EU PAS and
+    PROSPERO number the manuscript gives, as it is written, once for each time; what is one
+    only inside a longer word or number is not one."""
+    from manuscript_guard import registrations
+
+    plain, given = drawn
+    found = registrations.NAMED_IN_TEXT.findall
+    assert sorted(found(plain)) == sorted(NAMED_LOOKALIKES), plain
+    for written, _kept, named, text in given:
+        more = Counter(found(text)) - Counter(found(plain))
+        assert sorted(more.elements()) == ([named] if named else []), (written, text)
+
+
+@holds(150, registered_quotes())
+def test_a_registered_outcome_is_found_however_it_was_copied_and_not_with_a_word_changed(
+    drawn: tuple[str, str, str],
+) -> None:
+    """A quote of a registered outcome is found in the registry's record however the author
+    copied it, typed, in capitals and wrapped by YAML, the page's ligatures, dashes, curly
+    marks and spaces against the keyboard's; with one of its words changed it is not."""
+    from manuscript_guard.gates import registration as gate
+
+    record, copied, changed = drawn
+    assert gate.fold(copied) in gate.fold(record), (copied, record)
+    assert gate.fold(changed) not in gate.fold(record), (changed, record)
+
+
+@holds(100, retrospective_texts())
+def test_a_late_registration_is_said_in_every_way_a_manuscript_says_it_and_no_other(
+    drawn: tuple[str, list[str]],
+) -> None:
+    """A manuscript says the study was registered retrospectively in either order of the
+    words, with a line break between them, in capitals; registered prospectively, analysed
+    retrospectively, or a retrospective cohort does not say it."""
+    from manuscript_guard.gates import registration as gate
+
+    plain, said = drawn
+    assert not gate.says_retrospective(plain), plain
+    for text in said:
+        assert gate.says_retrospective(text), text
+
+
+def _registration_found_inside_another(monkeypatch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import registration as gate
+
+    def anywhere(text: str, entry: Any) -> bool:
+        return entry.id.rsplit("/", 1)[-1].casefold() in text.casefold()
+
+    monkeypatch.setattr(gate, "named_in", anywhere)
+
+
+def _identifier_read_inside_a_word(monkeypatch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import registrations
+
+    loose = re.compile(
+        r"(?i)(?:NCT\d{8}|ISRCTN\d{8}|EU ?PAS ?\d{3,12}|CRD\d{11,12})(?![A-Za-z0-9])"
+    )
+    monkeypatch.setattr(registrations, "NAMED_IN_TEXT", loose)
+
+
+def _fold_keeps_case(monkeypatch: pytest.MonkeyPatch) -> None:
+    import unicodedata
+
+    from manuscript_guard.gates import registration as gate
+
+    def cased(text: str) -> str:
+        text = unicodedata.normalize("NFKC", text).translate(gate._DASHES)
+        return " ".join(text.translate(gate._QUOTES).split())
+
+    monkeypatch.setattr(gate, "fold", cased)
+
+
+def _fold_keeps_dashes(monkeypatch: pytest.MonkeyPatch) -> None:
+    import unicodedata
+
+    from manuscript_guard.gates import registration as gate
+
+    def dashed(text: str) -> str:
+        text = unicodedata.normalize("NFKC", text).translate(gate._QUOTES)
+        return " ".join(text.casefold().split())
+
+    monkeypatch.setattr(gate, "fold", dashed)
+
+
+def _retrospective_any_regist_word(monkeypatch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import registration as gate
+
+    loose = re.compile(r"(?i)\bretrospectiv\w*\s+regist\w*|\bregist\w*\s+retrospectiv\w*")
+    monkeypatch.setattr(gate, "RETROSPECTIVE", loose)
+
+
+def _retrospective_on_one_line(monkeypatch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import registration as gate
+
+    one_line = re.compile(
+        r"(?i)\bretrospective(?:ly)? regist(?:ered|ration)\b"
+        r"|\bregist(?:ered|ration) (?:was )?retrospective(?:ly)?\b"
+    )
+    monkeypatch.setattr(gate, "RETROSPECTIVE", one_line)
 
 
 # ------------------------------------------------------------ the variables a plan names
@@ -7140,6 +7347,91 @@ def _a_level_after_the_letters_is_not_read(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(labels, "_LEVEL", re.compile(before_only))
 
 
+def _every_sentence_dates_the_data(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import data_dates
+
+    patch.setattr(data_dates, "_SAYS", re.compile(r""))
+
+
+def _no_sentence_dates_the_data(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import data_dates
+
+    patch.setattr(data_dates, "_SAYS", re.compile(r"(?!)"))
+
+
+def _the_words_of_the_whole_text_are_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import data_dates
+
+    patch.setattr(data_dates, "_words", lambda read, stops, placeholders: read)
+
+
+def _a_binding_s_key_is_read_as_its_sentence_s_words(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import data_dates
+
+    real = data_dates._words
+
+    def with_keys(read, stops, placeholders):
+        return real(read, stops, placeholders) + " " + " ".join(p.raw for p in placeholders)
+
+    patch.setattr(data_dates, "_words", with_keys)
+
+
+def _a_dataset_s_date_is_taken_for_a_typed_one(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import data_dates
+
+    patch.setattr(data_dates, "_DECLARED", frozenset({"parameter"}))
+
+
+def _a_parameter_s_date_is_taken_for_a_typed_one(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import data_dates
+
+    patch.setattr(data_dates, "_DECLARED", frozenset({"dataset"}))
+
+
+def _a_date_only_its_display_writes_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.dates import parse_iso
+    from manuscript_guard.gates import data_dates
+
+    patch.setattr(data_dates, "is_typed_date", lambda value: value.role is None
+                  and parse_iso(value.value) is not None)  # fmt: skip
+
+
+def _a_comment_s_words_are_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import data_dates
+
+    patch.setattr(data_dates, "blank_comments", lambda text: text)
+
+
+def _a_dictionary_s_release_is_taken_for_a_typed_date(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import data_dates
+
+    patch.setattr(data_dates, "_DECLARED", frozenset({"dataset", "parameter", "software"}))
+
+
+def _other_bindings_and_citations_are_read_as_words(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import data_dates
+
+    patch.setattr(data_dates, "_NOT_WORDS", re.compile(r"(?!)"))
+
+
+def _the_words_of_a_period_covered_are_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import data_dates
+
+    patch.setattr(data_dates, "_SAYS", re.compile(
+        r"(?i)\b(?:extract\w*|download\w*|retriev\w*|snapshots?|quer\w*|access\w*|"
+        r"obtain\w*|lock\w*|cut[- ]?offs?|froze\w*|freez\w*)\b"))
+
+
+def _only_the_forms_first_written_are_read(patch: pytest.MonkeyPatch) -> None:
+    """The rule as round 1 of #392 found it: `queries`, `obtaining`, `retrieving` unread."""
+    from manuscript_guard.gates import data_dates
+
+    patch.setattr(data_dates, "_SAYS", re.compile(
+        r"(?i)\b(?:extract(?:s|ed|ing|ion|ions)?|download(?:s|ed|ing)?|retriev(?:e|ed|al)|"
+        r"snapshots?|quer(?:y|ied)|accessed|obtained|locked|lock|cut[- ]?off|frozen|freeze|"
+        r"cover(?:s|ed|ing|age)?|span(?:s|ned|ning)?|until|through|up\s+to)\b"))
+
+
 def _every_stop_is_in_one_sentence(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import numbers
 
@@ -8684,6 +8976,30 @@ def _a_key_credits_the_keys_it_begins(patch: pytest.MonkeyPatch) -> None:
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
+    "a registration is found inside a longer identifier": (
+        _registration_found_inside_another,
+        test_a_registration_is_found_where_the_manuscript_gives_it_and_no_lookalike_is,
+    ),
+    "an identifier is read inside a longer word": (
+        _identifier_read_inside_a_word,
+        test_each_identifier_a_manuscript_gives_is_found_as_written_and_nothing_else,
+    ),
+    "a registered outcome keeps its case": (
+        _fold_keeps_case,
+        test_a_registered_outcome_is_found_however_it_was_copied_and_not_with_a_word_changed,
+    ),
+    "a registered outcome keeps its dashes": (
+        _fold_keeps_dashes,
+        test_a_registered_outcome_is_found_however_it_was_copied_and_not_with_a_word_changed,
+    ),
+    "a registry is read as a registration": (
+        _retrospective_any_regist_word,
+        test_a_late_registration_is_said_in_every_way_a_manuscript_says_it_and_no_other,
+    ),
+    "a late registration is said on one line only": (
+        _retrospective_on_one_line,
+        test_a_late_registration_is_said_in_every_way_a_manuscript_says_it_and_no_other,
+    ),
     "every stop ends a sentence, after et al. and Suppl. too": (
         _every_stop_ends_a_sentence,
         test_every_citation_lies_in_the_sentence_of_its_own_clause,
@@ -10027,6 +10343,54 @@ BROKEN = {
     "a label is read across sentences": (
         _a_label_is_read_across_sentences,
         test_a_label_is_said_where_it_differs_from_what_was_emitted_and_nowhere_else,
+    ),
+    "every sentence dates the data": (
+        _every_sentence_dates_the_data,
+        test_a_date_typed_into_the_analysis_is_warned_where_its_sentence_dates_the_data,
+    ),
+    "no sentence dates the data": (
+        _no_sentence_dates_the_data,
+        test_a_date_typed_into_the_analysis_is_warned_where_its_sentence_dates_the_data,
+    ),
+    "the words of the whole text are read as a date's sentence": (
+        _the_words_of_the_whole_text_are_read,
+        test_a_date_typed_into_the_analysis_is_warned_where_its_sentence_dates_the_data,
+    ),
+    "a binding's key is read as its sentence's words": (
+        _a_binding_s_key_is_read_as_its_sentence_s_words,
+        test_a_date_typed_into_the_analysis_is_warned_where_its_sentence_dates_the_data,
+    ),
+    "a dataset's date is taken for a typed one": (
+        _a_dataset_s_date_is_taken_for_a_typed_one,
+        test_a_date_typed_into_the_analysis_is_warned_where_its_sentence_dates_the_data,
+    ),
+    "a parameter's date is taken for a typed one": (
+        _a_parameter_s_date_is_taken_for_a_typed_one,
+        test_a_date_typed_into_the_analysis_is_warned_where_its_sentence_dates_the_data,
+    ),
+    "a date only its display writes is not read": (
+        _a_date_only_its_display_writes_is_not_read,
+        test_a_date_typed_into_the_analysis_is_warned_where_its_sentence_dates_the_data,
+    ),
+    "a comment's words date the data": (
+        _a_comment_s_words_are_read,
+        test_a_date_typed_into_the_analysis_is_warned_where_its_sentence_dates_the_data,
+    ),
+    "a dictionary's release is taken for a typed date": (
+        _a_dictionary_s_release_is_taken_for_a_typed_date,
+        test_a_date_typed_into_the_analysis_is_warned_where_its_sentence_dates_the_data,
+    ),
+    "other bindings and citations are read as words": (
+        _other_bindings_and_citations_are_read_as_words,
+        test_a_date_typed_into_the_analysis_is_warned_where_its_sentence_dates_the_data,
+    ),
+    "the words of a period covered are not read": (
+        _the_words_of_a_period_covered_are_not_read,
+        test_a_date_typed_into_the_analysis_is_warned_where_its_sentence_dates_the_data,
+    ),
+    "only the forms first written are read": (
+        _only_the_forms_first_written_are_read,
+        test_a_date_typed_into_the_analysis_is_warned_where_its_sentence_dates_the_data,
     ),
     "the first level in a sentence is read": (
         _the_first_level_is_read,

@@ -37,6 +37,23 @@ def emitter(scratch: Path) -> Emitter:
     return Emitter(scratch / "analysis" / "run.py", root=scratch)
 
 
+@pytest.mark.parametrize("real", [False, True])
+def test_a_plan_frozen_on_synthetic_inputs_only_says_so(scratch: Path, real: bool) -> None:
+    """Round 1 of #390: a dry run on simulated data froze the plan like any other, and G12
+    took its day for the study's first results."""
+    (scratch / "design").mkdir()
+    (scratch / "design" / "plan.md").write_text("# Analysis plan\n", encoding="utf-8")
+    for name in ("simulated.csv", "codes.csv"):
+        (scratch / name).write_text("x\n1\n", encoding="utf-8")
+    em = emitter(scratch)
+    em.add_input("simulated.csv", synthetic=True)
+    em.add_input("codes.csv", synthetic=not real)
+    em.value("n", 1)
+    em.write()
+    kept = json.loads((scratch / "design" / "plan.frozen.yaml").read_text(encoding="utf-8"))
+    assert kept.get("synthetic") is (None if real else True)
+
+
 # ---------------------------------------------------------------- display
 
 

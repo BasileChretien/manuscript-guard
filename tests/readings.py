@@ -661,6 +661,46 @@ def labels_namespace() -> dict[str, Any]:
     )
 
 
+@reading("data dates")
+def _data_dates() -> Reading:
+    # The gate's function first: where the source has none, the reading is newer than it.
+    from manuscript_guard.gates.data_dates import data_dates
+    from manuscript_guard.gates.numbers import in_sentences
+    from manuscript_guard.text.placeholders import parse
+
+    namespace = data_dates_namespace()
+
+    def read(text: str) -> dict[str, Any]:
+        """What G2 says of the dates of the data a text binds, typed into the analysis."""
+        placeholders, _malformed = parse(text)
+        return _told(data_dates([(MAIN, text, in_sentences(placeholders, text))], namespace))
+
+    return read
+
+
+def data_dates_namespace() -> dict[str, Any]:
+    """Results that hold dates: two typed into the analysis, one an ISO date and one a date
+    only its display writes; one a dataset declared, one a parameter, a dictionary's release
+    named by a year, a year computed from the data as a number, and a count."""
+    from manuscript_guard.contracts.values import RESULTS, Value
+
+    def value(key: str, held: object, display: str, role: str | None = None) -> tuple[str, Any]:
+        return f"results.{key}", Value(key=key, value=held, display=display, origin=RESULTS,
+                                       role=role)  # fmt: skip
+
+    return dict(
+        [
+            value("old.extracted", "2024-03-01", "1 March 2024"),
+            value("old.label", "1 March 2024", "1 March 2024"),
+            value("dataset.vb.extracted", "2024-03-01", "1 March 2024", "dataset"),
+            value("param.start", "2010-01-01", "1 January 2010", "parameter"),
+            value("dictionary.icd_10", "2019", "2019", "dictionary"),
+            value("cohort.first_year", 2010, "2010"),
+            value("n", 12, "12"),
+        ]
+    )
+
+
 @reading("deviations")
 def _deviations() -> Reading:
     from manuscript_guard.gates.design import deviations_said
@@ -677,6 +717,46 @@ def _planned_results() -> Reading:
         line; None where the plan has no such section."""
         found = planned_results(plan)
         return None if found is None else [[p.key, p.group, p.line] for p in found]
+
+    return read
+
+
+@reading("registration named")
+def _registration_named() -> Reading:
+    from manuscript_guard.gates.registration import named_in
+    from manuscript_guard.registrations import Declared, identify
+    from manuscript_guard.text.masking import blank_comments
+
+    def read(given: dict[str, str]) -> bool:
+        """Whether the manuscript gives the registration, as G12 reads it: comments out."""
+        registry, kept = identify(given["id"])
+        entry = Declared(given["id"], kept, registry, None, (), False, 0)
+        return named_in(blank_comments(given["text"]), entry)
+
+    return read
+
+
+@reading("registration identifiers")
+def _registration_identifiers() -> Reading:
+    from manuscript_guard.registrations import NAMED_IN_TEXT
+
+    return NAMED_IN_TEXT.findall
+
+
+@reading("retrospective said")
+def _retrospective_said() -> Reading:
+    from manuscript_guard.gates.registration import says_retrospective
+
+    return says_retrospective
+
+
+@reading("registered quote")
+def _registered_quote() -> Reading:
+    from manuscript_guard.gates.registration import fold
+
+    def read(given: dict[str, str]) -> bool:
+        """Whether a quote of a registered outcome is in the registry's record of it."""
+        return fold(given["quote"]) in fold(given["record"])
 
     return read
 

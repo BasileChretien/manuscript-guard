@@ -383,7 +383,7 @@ def test_passages_lists_each_statement_and_writes_nothing(project: Path, capsys)
 def test_passages_missing_lists_the_statements_with_none(project: Path, capsys) -> None:
     assert main(["passages", str(project), "--missing", "--json"]) == 0
     listed = json.loads(capsys.readouterr().out)
-    assert [s["line"] for s in listed["statements"]] == [111, 116]
+    assert [s["line"] for s in listed["statements"]] == [113, 118]
     assert all(not c["passages"] for s in listed["statements"] for c in s["cites"])
     assert listed["statements"][0]["sentence"].startswith("The reporting odds ratio")
 

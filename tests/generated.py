@@ -2457,6 +2457,112 @@ def planned_plans(draw: st.DrawFn) -> tuple[str, list[tuple[str, bool]]]:
     return plan, [*listed, (secondary, False)]
 
 
+#: Each way a manuscript gives a registration: as written, the identifier `paper.yaml` lists
+#: for it, and what `NAMED_IN_TEXT` finds of it where `paper.yaml` lists none (an OSF link is
+#: not looked for there). What G12 looks for, in each case, spacing and form a registry has.
+REGISTERED = (
+    ("NCT01234567", "NCT01234567", "NCT01234567"),
+    ("(NCT01234567)", "NCT01234567", "NCT01234567"),
+    ("ClinicalTrials.gov, NCT01234567.", "NCT01234567", "NCT01234567"),
+    ("nct01234567", "NCT01234567", "nct01234567"),
+    ("EUPAS1000000417", "EUPAS1000000417", "EUPAS1000000417"),
+    ("EU PAS 11379", "EUPAS11379", "EU PAS 11379"),
+    ("ISRCTN17072692", "ISRCTN17072692", "ISRCTN17072692"),
+    ("https://osf.io/abcde/", "osf.io/abcde", None),
+    ("https://doi.org/10.17605/OSF.IO/ABCDE", "osf.io/abcde", None),
+    ("CRD42020182366", "CRD42020182366", "CRD42020182366"),
+)
+#: What looks like one of those and is not it: a digit more, a letter before, a longer OSF
+#: name, a number of the old EU PAS scheme with a digit more.
+NOT_REGISTERED = (
+    "NCT012345678", "XNCT01234567", "EUPAS113790", "osf.io/abcdef", "CRD420201823661",
+    "ISRCTN170726921", "EUPAS10000004170",
+)  # fmt: skip
+#: What `NAMED_IN_TEXT` finds among those, as written: an EU PAS or PROSPERO number with a
+#: digit more is another registration's, and one of ClinicalTrials.gov or ISRCTN is none.
+NAMED_LOOKALIKES = ("EUPAS113790", "CRD420201823661", "EUPAS10000004170")
+
+
+def _among(draw: st.DrawFn, planted: list[str]) -> str:
+    """`planted` in the order given, each a sentence of its own, between pieces of the pool."""
+    between = _in_a_row(_pool(()), few=2, many=6)
+    gaps = [draw(between) for _ in planted]
+    return "".join(f"{gap}\n\n{piece}.\n\n" for gap, piece in zip(gaps, planted, strict=True))
+
+
+@st.composite
+def registration_texts(
+    draw: st.DrawFn,
+) -> tuple[str, list[tuple[str, str, str | None, str]]]:
+    """A manuscript giving every lookalike of `NOT_REGISTERED`, in an order drawn each time;
+    and for each way of `REGISTERED`, the same manuscript with it given too, at a place
+    drawn: a rule broken for one form is seen whatever the seed."""
+    order = draw(st.permutations(NOT_REGISTERED))
+    plain = _among(draw, list(order))
+    given = []
+    for written, kept, found in REGISTERED:
+        at = draw(st.integers(0, len(order)))
+        text = _among(draw, [*order[:at], written, *order[at:]])
+        given.append((written, kept, found, text))
+    return plain, given
+
+
+#: How a manuscript says a registration was late, and what reads like it and does not.
+RETROSPECTIVE_SAID = (
+    "retrospectively registered", "Retrospectively\nregistered", "registered retrospectively",
+    "retrospective registration", "REGISTERED RETROSPECTIVELY", "retrospectively\r\nregistered",
+    "the registration was retrospective",
+)  # fmt: skip
+#: Round 1 of #390: "registry" was read as "registered".
+RETROSPECTIVE_NOT = (
+    "prospectively registered", "registered prospectively", "retrospectively analysed",
+    "registered in retrospect", "a retrospective cohort", "a retrospective registry-based cohort",
+    "data from registries retrospectively",
+)  # fmt: skip
+
+
+@st.composite
+def retrospective_texts(draw: st.DrawFn) -> tuple[str, list[str]]:
+    """A manuscript with every lookalike of `RETROSPECTIVE_NOT`, and for each way of
+    `RETROSPECTIVE_SAID`, the same manuscript saying it too."""
+    order = list(draw(st.permutations(RETROSPECTIVE_NOT)))
+    said = []
+    for written in RETROSPECTIVE_SAID:
+        at = draw(st.integers(0, len(order)))
+        said.append(_among(draw, [*order[:at], written, *order[at:]]))
+    return _among(draw, order), said
+
+
+#: The words a registry's record of an outcome is made of, among them what the page prints
+#: and a person types otherwise: a ligature, a curly quotation mark, a dash.
+_PLANTED_OUTCOME = (
+    "e\N{LATIN SMALL LIGATURE FF}ect", "events\N{EM DASH}all", "0.21\N{EN DASH}0.63",
+    "\N{LEFT DOUBLE QUOTATION MARK}serious\N{RIGHT DOUBLE QUOTATION MARK}",
+)  # fmt: skip
+
+
+@st.composite
+def registered_quotes(draw: st.DrawFn) -> tuple[str, str, str]:
+    """A registry's record of an outcome; words of it in a row as an author copies them into
+    `paper.yaml`: typed, in capitals, wrapped by YAML; and those words with one changed."""
+    words = list(draw(st.lists(st.sampled_from(SOURCE_WORDS), min_size=2, max_size=10)))
+    for planted in draw(st.permutations(_PLANTED_OUTCOME)):
+        words.insert(draw(st.integers(0, len(words))), planted)
+    held = [i for i, word in enumerate(words) if word in _PLANTED_OUTCOME]
+    first = draw(st.integers(0, min(held)))
+    last = draw(st.integers(max(held), len(words) - 1))
+    gaps = [draw(st.sampled_from(SOURCE_GAPS)) for _ in words]
+    record = "".join(word + gap for word, gap in zip(words, gaps, strict=True))
+    copied = typed(" ".join(words[first : last + 1])).upper().split(" ")
+    wrapped = "".join(
+        word + (draw(st.sampled_from((" ", " ", "\n", "  "))) if i < len(copied) - 1 else "")
+        for i, word in enumerate(copied)
+    )
+    changed = list(copied)
+    changed[draw(st.integers(0, len(changed) - 1))] = "UNREGISTERED"
+    return record, wrapped, " ".join(changed)
+
+
 # ------------------------------------------------------------ the variables a plan names
 
 #: Names a dictionary gives its variables, a dotted one and one with capitals among them,
@@ -2749,6 +2855,17 @@ LABELLED = (
     "{{results.hr.ci_high}}", "{{results.age.mean}}", "{{results.age.sd}}",
     "{{results.age.se}}", "95% CI", "90% CI", "95.0% CI", "CI 95%", "SD", "SE", "SEM",
     "standard error", "standard deviation", "(SD)", "±", "s.d.", "s.e.", "(s.d.)",
+)  # fmt: skip
+
+
+#: The bindings of dates, as `data_dates_namespace` in tests/readings.py declares them, and
+#: the words a sentence dates the data with: what the reading of a typed date compares.
+DATED = (
+    "{{results.old.extracted}}", "{{results.old.label}}", "{{results.dataset.vb.extracted}}",
+    "{{results.param.start}}", "{{results.cohort.first_year}}", "{{results.n}}", "extracted",
+    "downloaded", "covering", "up to", "until", "retrieved", "snapshot", "<!-- extracted -->",
+    "{{results.dictionary.icd_10}}", "{{method.extraction}}", "[@extracted2020]", "queries",
+    "obtaining", "locked", "through",
 )  # fmt: skip
 
 
@@ -3951,8 +4068,22 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "pointers": numbered_displays().map(lambda drawn: {"files": drawn[0]}),
     "quoted whole": texts(WHOLE),
     "labels": texts(LABELLED),
+    "data dates": texts(DATED),
     "deviations": texts(),
     "planned results": planned_plans().map(lambda drawn: drawn[0]),
+    "registration named": st.fixed_dictionaries(
+        {
+            "text": texts(tuple(written for written, _kept, _found in REGISTERED) + NOT_REGISTERED),
+            "id": st.sampled_from(tuple(dict.fromkeys(kept for _w, kept, _f in REGISTERED))),
+        }
+    ),
+    "registration identifiers": texts(
+        tuple(written for written, _kept, _found in REGISTERED) + NOT_REGISTERED
+    ),
+    "retrospective said": texts(RETROSPECTIVE_SAID + RETROSPECTIVE_NOT),
+    "registered quote": registered_quotes().map(
+        lambda drawn: {"record": drawn[0], "quote": drawn[1]}
+    ),
     "plan variables": collection_plans().map(lambda drawn: {"plan": drawn[0],
                                                             "names": drawn[1]}),
     "vocabulary": st.fixed_dictionaries({"text": texts(TERMS), "entries": vocabularies()}),

@@ -146,7 +146,9 @@ manuscript-guard build --offline     # the same from references.bib, for CI and 
 Publishing values and binding them is the [results-binding](../results-binding/SKILL.md)
 skill. In a LaTeX manuscript, run `manuscript-guard values` after the analysis, which writes
 `mgvalues.sty` from the results, and `explain manuscript/main.tex`; `build` compiles the PDF
-with latexmk, which TeX Live and MiKTeX provide. `build` refuses while anything fails at the current stage. `--skip-checks` writes
+with latexmk, which TeX Live and MiKTeX provide, and `--skip-checks` writes
+`manuscript.UNCHECKED.pdf`. A few checks do not read LaTeX yet and say so
+(`not-read-in-latex`), which fails at `submission`: tell the authors before they choose. `build` refuses while anything fails at the current stage. `--skip-checks` writes
 `manuscript.UNCHECKED.docx` instead, which is for reading, not for sending.
 
 `build` needs Zotero running for live fields; the first live build also downloads Better

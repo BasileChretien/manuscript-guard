@@ -2,7 +2,8 @@
 
 A manuscript can be written in LaTeX instead of Markdown. The gates read it as they read a
 Markdown one: each number is bound, cited or a convention, and the check says where one is
-not. This page says what changes. The design, and every known limit, is in
+not. A few checks do not read LaTeX yet, and until they do, a LaTeX manuscript does not pass
+`check --submission` ("Not yet for LaTeX" below). This page says what changes. The design, and every known limit, is in
 [DESIGN.md](../DESIGN.md), under "LaTeX manuscripts".
 
 ## Starting
@@ -13,7 +14,8 @@ manuscript-guard init my-paper --title "Working title" --latex
 
 This writes `manuscript/main.tex`, which declares its class and loads `mgvalues`, and
 `manuscript/mgvalues.sty` beside it. A manuscript is LaTeX when `manuscript/main.tex`
-declares a class. It is one format or the other: `init --latex` makes nothing where
+declares a class and there is no `main.md` beside it, which `check` fails (`two-formats`). It
+is one format or the other: `init --latex` makes nothing where
 `manuscript/` holds Markdown, and `check` fails a Markdown file in a LaTeX manuscript
 (`other-format-file`). A supplement is `manuscript/supplementary/main.tex`, a document of
 its own.
@@ -58,7 +60,9 @@ one the journal's profile names under `latex: {engine: ...}`, pdfLaTeX otherwise
 is named at the manuscript's file and line, and an undefined citation or reference fails at
 `--submission`.
 
-`submit` packs the source a journal compiles, in one folder, `latex/` in the pack:
+`submit` packs the source a journal compiles, in one folder, `latex/` in the pack. Until
+the checks below read LaTeX it refuses a LaTeX manuscript, as `check --submission` fails it,
+and `submit --skip-checks` packs it and says so in the pack's manifest:
 
 - each document is one file, `manuscript.tex` and `supplementary.tex`, with its inputs
   written in, its values written in and the text of its comments taken out;
@@ -67,8 +71,9 @@ is named at the manuscript's file and line, and an undefined citation or referen
 
 The folder is compiled alone, in an empty folder, before it is packed, and refused if it
 needs anything outside itself. The PDFs are at the pack's root. Where the journal's review
-is blind, a name, an address, an ORCID iD or an institution of `authors.yaml` in the
-folder's files fails the pack, a reference list typed in `thebibliography` apart.
+is blind, a name, an address, an ORCID iD or an institution of `authors.yaml` fails the pack
+where it stands in the folder's `.tex` or `.sty` files, as LaTeX types it too, or in a PDF or
+SVG picture's text; a reference list typed in `thebibliography` is passed over.
 
 ## From Markdown to LaTeX
 
@@ -89,12 +94,25 @@ names the line of each.
 A review panel (`review --run`) is sent each document as the submission folder writes it,
 from its `\begin{document}`, with no comment's text. The preamble stays on the machine, and
 each name, address, ORCID iD and institution of `authors.yaml` is sent as `[withheld]` where
-the body holds it. `respond --open` keeps that source of the round in
-`revision/round-N/submitted/latex/`, beside the printed copy G13 reads.
+the body holds it, a reference list typed in `thebibliography` apart. `respond --open` keeps
+that source of the round in `revision/round-N/submitted/latex/`, beside the printed copy G13
+reads; where the submission folder's writer refuses the source, it says so and keeps the
+printed copy only.
 
 ## Not yet for LaTeX
 
-These read Markdown only, and refuse a LaTeX manuscript with a sentence: `render`,
+These checks do not read a LaTeX manuscript yet, and each says so with `not-read-in-latex`:
+
+- G2's pointers to tables and figures, which LaTeX numbers itself;
+- G4's figure legends, and its check that the data availability statement names each data
+  source;
+- G7's passages repeated from the authors' earlier papers;
+- BUILD's checks of the Markdown build.
+
+The finding is a note before `submission` and a failure from it, so that a manuscript only
+part of the checks read is never passed for submission.
+
+These commands read Markdown only, and refuse a LaTeX manuscript with a sentence: `render`,
 `reworded`, `checker`, `import` (the Word round trip), `proof`, `impact`, `audit` of a `.tex`
 file, `respond --open --from` a returned Word document, `review --suggestions`, and
 `build --annotated` and `--marked-up`, which make Word copies.

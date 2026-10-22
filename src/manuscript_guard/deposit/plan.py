@@ -74,6 +74,9 @@ JUNK_SUFFIXES = (".pyc", ".pyo")
 REVIEW_RECORD = ".review.yaml"
 #: Why an input that is itself a results file of the project goes in: as the results it is.
 RESULTS_INPUT = "a results file of this project, deposited with the rest"
+#: Why an input that is one of `DESIGN_FILES` goes in: as the record it is, which the package
+#: takes whoever reads it. The data checks read the data dictionary, and it is no data.
+DESIGN_INPUT = "the analysis plan or its record, deposited with the rest"
 #: The files a package writes of its own, at its root.
 WRITTEN = ("README.md", "CITATION.cff", "BOUND.md", "INPUTS.md", "paper.yaml", "MANIFEST.yaml",
            "SHA256SUMS")  # fmt: skip
@@ -407,6 +410,7 @@ def _inputs(project: Project, results: Results) -> tuple[list[Input], list[Findi
     refused = _share_findings(project, declared, shared)
     out = []
     produced = {_key(f.path.relative_to(project.root).as_posix()) for f in results.fragments}
+    records = {_key(f"design/{name}") for name in DESIGN_FILES}
     for key, seen in sorted(declared.items(), key=lambda item: item[1]["path"]):
         path, record = seen["path"], seen["record"]
         digest = str(record.get("raw_sha256") or record.get("sha256") or "")
@@ -427,6 +431,8 @@ def _inputs(project: Project, results: Results) -> tuple[list[Input], list[Findi
             included, why = False, "declared restricted"
         elif key in produced:
             included, why = True, RESULTS_INPUT
+        elif key in records:
+            included, why = True, DESIGN_INPUT
         elif not (seen["synthetic"] or key in shared):
             included, why = False, "not declared shareable"
         elif not file.is_file():
@@ -502,7 +508,8 @@ def plan_package(project: Project, results: Results, *, with_manuscript: bool = 
                            "package; run the analysis first")  # fmt: skip
     inputs, refused = _inputs(project, results)
     tracked = tracked_files(project.root)
-    collect = _Collector(project, tracked, {i.path for i in inputs if i.why != RESULTS_INPUT})
+    collect = _Collector(project, tracked, {i.path for i in inputs
+                                            if i.why not in (RESULTS_INPUT, DESIGN_INPUT)})
     licence = _collect(collect, project, results, inputs, with_manuscript)
     findings = refused + collect.refused + _licence_findings(project, licence)
     if git_unanswered(project.root, tracked):
@@ -543,7 +550,7 @@ def _collect(collect: _Collector, project: Project, results: Results, inputs: li
              with_manuscript: bool) -> Path | None:  # fmt: skip
     """Every file the rules let go, into `collect`; the licence file, where there is one."""
     for found in inputs:
-        if found.included and found.why != RESULTS_INPUT:
+        if found.included and found.why not in (RESULTS_INPUT, DESIGN_INPUT):
             collect.entries[found.path] = copied(project.root / found.path, found.path,
                                                  f"an input the analysis read, {found.why}")
     for fragment in sorted(results.fragments, key=lambda f: f.path.name):

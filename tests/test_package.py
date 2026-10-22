@@ -247,6 +247,24 @@ def test_an_input_neither_synthetic_nor_shared_is_withheld(project: Path) -> Non
     assert "data/reports.csv" in held  # declared synthetic
 
 
+def test_a_design_record_the_analysis_reads_goes_as_the_record(project: Path) -> None:
+    """The data checks declare the data dictionary as an input. It is a record of the design,
+    which the package takes, and not data withheld for want of a declaration; declared
+    restricted, it is held back like any input."""
+    assert "design/data_dictionary.yaml" in {
+        record["path"] for record in json.loads(fragment(project).read_text("utf-8"))[
+            "provenance"]["inputs"]}  # fmt: skip
+    ready(project)
+    assert refused(project) == set()
+    assert main(["package", str(project)]) == 0
+    folder = built(project)
+    assert "design/data_dictionary.yaml" in contents(folder)
+    manifest = yaml.safe_load((folder / "MANIFEST.yaml").read_text(encoding="utf-8"))
+    assert all(w["path"] != "design/data_dictionary.yaml" for w in manifest["withheld"])
+    declare_input(project, "design/data_dictionary.yaml", restricted=True)
+    assert "package-request-missing" in refused(project)
+
+
 def test_a_withheld_input_with_no_way_to_request_it_is_refused(project: Path, capsys) -> None:
     ready(project)
     with_package(project, share=[])

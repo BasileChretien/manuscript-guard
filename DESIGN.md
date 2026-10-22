@@ -6868,7 +6868,9 @@ itself is refused, since it would take every file of the project (round 1 of #38
 a file collected at a name the package writes of its own, `paper.yaml` or `README.md`. A
 declared input is held out of the folders by its name and by the file it is: another name for
 the same file, a hard link, or its name in another case where the system ignores case, is the
-input all the same (round 1). Declared paths are compared in one spelling, so that
+input all the same (round 1). One of those records declared as an input, the data
+dictionary the data checks read, goes as the record it is, unless it is declared
+restricted. Declared paths are compared in one spelling, so that
 `./data/raw.csv` declared restricted by one script and `data/raw.csv` declared shared by
 another are one input, and restricted (round 2); a path that steps up, "data/../x.csv", is
 held to be outside the project as written. An input that goes is held to the files of those

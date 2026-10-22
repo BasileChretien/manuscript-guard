@@ -1,0 +1,57 @@
+schema: manuscript-guard/methods-review/1
+
+# The methods of studies of the same question, read before the plan was settled. For each
+# study, why it is similar and, field by field, its own words, copied from its stored copy
+# under literature/sources/: G7 looks for each passage there. An appraisal judges the method
+# against a published standard and its domain (data/method_standards.yaml in the package
+# lists the built-in ones), never by how many studies used it, and names who proposed it. A
+# decision to adopt, adapt or reject it is a person's, recorded by them, and a method taken
+# into the plan is cited there.
+#
+# The study below is invented, as its stored copy says.
+
+question: >-
+  Is hepatic injury reported disproportionately often for example-drug, relative to all
+  other drugs in the same database?
+
+searched:
+  - with: manuscript-guard search
+    query: drug-induced hepatic injury case definition
+    searched_on: 2026-10-21
+    note: The worked example's study is invented; a real search proposes real ones.
+
+# The key the plan cites a standard under, once it is in references.bib, and any standard of
+# the project's own, with its name and domains:
+# standards:
+#   - id: encepp-guide
+#     citekey: encepp2023guide
+
+studies:
+  - citekey: fictionalHepaticCohort2021
+    similar: [outcome]
+    why: >-
+      A cohort of the same outcome, whose case definition this analysis could take for the
+      reports it counts.
+    methods:
+      - field: case definition
+        summary: a discharge diagnosis, confirmed by a liver enzyme criterion
+        passage: >-
+          Hepatic injury was defined as a hospital discharge diagnosis of toxic liver disease,
+          confirmed by an alanine aminotransferase above three times the upper limit of normal
+        locator: "Methods, Outcome"
+        appraisal:
+          standard: encepp-guide
+          domain: Definition and validation of drug exposure, outcomes and covariates
+          concern: some
+          says: >-
+            A diagnosis confirmed by a laboratory criterion is more specific than a diagnosis
+            alone, but the definition's validity is not reported; and a spontaneous report
+            carries no discharge diagnosis, so the criterion could be taken only in part.
+          proposed_by: an agent, drafting the worked example
+          proposed_on: 2026-10-21
+        # The decision is the author's, recorded by them:
+        # decision:
+        #   choice: adapt          # adopt | adapt | reject
+        #   why: the enzyme criterion only, where a report gives it
+        #   decided_by: "A Person"
+        #   decided_on: 2026-10-21

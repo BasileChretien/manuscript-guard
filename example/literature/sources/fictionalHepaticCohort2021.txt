@@ -11,3 +11,9 @@ Results, paragraph 2
 --------------------
 The crude incidence of drug-induced hepatic injury was 14 per 100 000 person-years.
 Incidence rose with age and did not differ meaningfully by sex.
+
+Methods, Outcome
+----------------
+Hepatic injury was defined as a hospital discharge diagnosis of toxic liver disease,
+confirmed by an alanine aminotransferase above three times the upper limit of normal
+within 30 days of the admission.

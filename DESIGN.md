@@ -1769,6 +1769,11 @@ The result is compiled and packed by the code above, and checked three times:
   `.bbl` (step 10).
 - At a revision, a LaTeX manuscript's pack has no marked-up copy: `build --marked-up` makes
   Word copies, and `submit` says so in a note (step 10).
+- A LaTeX manuscript's `\title` is not compared with paper.yaml's title, where a Markdown
+  file's header title is (`two-titles`), and the PDF prints the `\title` (round 1 of step
+  13).
+- G7's text recycling places a passage that runs on past an `\input` at its first file only,
+  ending on its first line there (step 13).
 - `build --latex` refuses Markdown that G2's Markdown reader and pandoc read otherwise, and
   says where the digits part: measured, 38 of 180 of the suite's generated files (`texts()`),
   which hold fences closed by a line separator, `:::` divs and a YAML block left open at the
@@ -2264,14 +2269,19 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
     as it prints (`main_text`), and places its finding in the `.tex` file the statement's
     heading is typed in. G7's text recycling reads each document as it prints
     (`printed_of`), the main text and the supplement, by its parts as Markdown's headings
-    give them, a `\cite` as `[@key]`. A passage is placed at the `.tex` file its first word
-    is typed in, and at the lines there of its first and last words; where the last is in
-    another file, the passage ends on its first line. BUILD's Markdown checks
+    give them, a `\cite` as `[@key]`, in the view `printed(..., compared=True)` writes: a
+    float's caption as a paragraph of its own, which the word counts' view leaves out, and a
+    quotation `\enquote{}` or a `quote`, `quotation` or `displayquote` environment marks
+    between `QUOTE_OPEN` and `QUOTE_CLOSE`, which the comparison counts as quoted. A file
+    nothing inputs is compared on its own, as G2 reads it (round 1). A passage is placed at
+    the `.tex` file its first word is typed in, and at the lines there of its first and last
+    words; where the last is in another file, the passage ends on its first line. BUILD's Markdown checks
     (`check_shapes`, `check_tex`) do not run on a LaTeX manuscript, and nothing is said: its
     build is checked by `check_latex`, which reads it as the reader does, and by its compile
-    (`_MARKDOWN_BUILD`). `_NOT_READ_IN_LATEX` is then empty. Left: G4's figure legends, which
-    are a float's caption, and G2's pointers to tables and figures, each a `not-read-in-latex`
-    for its part. Tests: `tests/test_recycling.py`, `tests/test_corruption.py`, and
+    (`_MARKDOWN_BUILD`); its `\title` against paper.yaml's is a known gap.
+    `_NOT_READ_IN_LATEX` is then empty. Left: G4's figure legends, which are a float's
+    caption, and G2's pointers to tables and figures, each a `not-read-in-latex` for its
+    part. Tests: `tests/test_recycling.py`, `tests/test_corruption.py`, and
     `_planted_latex_recycling` in `tests/test_properties.py`, with `BROKEN` rules for the
     file and the lines.
 

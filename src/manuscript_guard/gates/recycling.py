@@ -69,6 +69,7 @@ from manuscript_guard.literature.sources import (
 )
 from manuscript_guard.policy import DRAFTING, INTERNAL_REVIEW, stage_index
 from manuscript_guard.text.blocks import find_headings
+from manuscript_guard.text.latex.printed import QUOTE_CLOSE, QUOTE_OPEN
 from manuscript_guard.text.masking import blank_comments, fenced_blocks, front_matter_end, mask
 from manuscript_guard.text.reader import LATEX, manuscript_format
 from manuscript_guard.text.section_names import (
@@ -102,6 +103,8 @@ _APART = "\x01"
 _TABLE_LINE = re.compile(r"^[ \t]*(?:\||\+[-=:+]+)[^\n]*", re.MULTILINE)
 #: A line of a block quotation.
 _BLOCK_QUOTE = re.compile(r"^[ \t]{0,3}>[^\n]*", re.MULTILINE)
+#: A quotation a LaTeX document marks with a command, as its view writes it.
+_MARKED = re.compile(f"{QUOTE_OPEN}[^{QUOTE_CLOSE}]*{QUOTE_CLOSE}")
 #: A quotation in single curly marks; a closing mark before a letter is an apostrophe.
 _SINGLE_QUOTED = re.compile(
     "\N{LEFT SINGLE QUOTATION MARK}"
@@ -390,10 +393,12 @@ def _prepared(text: str, parts: list[tuple[int, int, str]]) -> str:
 
 def _quoted_spans(seen: str) -> list[tuple[int, int]]:
     """Where the manuscript quotes, as spans none of which overlaps another: in double
-    marks, straight or curly, in single curly marks, and in a block quotation."""
+    marks, straight or curly, in single curly marks, and in a block quotation; in a LaTeX
+    document's view, also where LaTeX marks a quotation with a command (round 1 of step
+    13)."""
     spans = sorted(
         (m.start(), m.end())
-        for pattern in (_QUOTED, _SINGLE_QUOTED, _BLOCK_QUOTE)
+        for pattern in (_QUOTED, _SINGLE_QUOTED, _BLOCK_QUOTE, _MARKED)
         for m in pattern.finditer(seen)
     )
     merged: list[tuple[int, int]] = []
@@ -544,9 +549,17 @@ def _manuscript(folder: Path, named: str | None) -> list[tuple[object, _Manuscri
     file by `_placed` (step 13)."""
     if manuscript_format(folder) != LATEX:
         return [(path, _read(read_text(path), named)) for path in source_files(folder)]
-    from manuscript_guard.text.latex.printed import printed_of
+    from manuscript_guard.text.latex.printed import printed
+    from manuscript_guard.text.latex.structure import read_document
 
-    views = [printed_of(folder, supplementary=part) for part in (False, True)]
+    views = []
+    for part in (False, True):
+        sources = [source for source in read_document(folder, supplementary=part).sources
+                   if not source.path.lower().endswith(".sty")]  # fmt: skip
+        # A file nothing inputs is compared on its own, as G2 reads it (round 1 of step 13):
+        # a supplement with no `main.tex` is all such files.
+        views.append(printed([s for s in sources if not s.loose], compared=True))
+        views += [printed([source], compared=True) for source in sources if source.loose]
     return [(view, _read(view.text, named)) for view in views if view.text.strip()]
 
 

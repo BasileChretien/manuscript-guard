@@ -230,9 +230,11 @@ def _run_gates(
 #: `not-read-in-latex`. A check leaves this set in the step that teaches it LaTeX (DESIGN.md,
 #: "LaTeX manuscripts", Order of work).
 _NOT_READ_IN_LATEX: frozenset[str] = frozenset()
-#: The Markdown build's own checks, of the shapes it refuses and of TeX in its text. A LaTeX
-#: manuscript has neither: its build is checked by `check_latex`, which reads it as the reader
-#: does, and by its compile, so these do not run on one and nothing is said (step 13).
+#: The Markdown build's own checks: of the shapes it refuses, of TeX in its text, and of the
+#: title a Markdown file's header gives against paper.yaml's. A LaTeX manuscript has none of
+#: them: its build is checked by `check_latex`, which reads it as the reader does, and by its
+#: compile, so these do not run on one and nothing is said (step 13). Its `\title` is not
+#: compared with paper.yaml's (DESIGN.md, the LaTeX known gaps).
 _MARKDOWN_BUILD = frozenset({"check_shapes", "check_tex"})
 
 

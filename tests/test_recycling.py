@@ -232,6 +232,50 @@ def test_a_latex_manuscript_is_compared_as_it_prints_and_placed_at_its_file(
     assert "in the Methods" in found_[1].message
 
 
+def test_a_latex_caption_is_compared_at_its_line(project: Path) -> None:
+    """Round 1 of step 13: a float's caption is read as Markdown's legend is, where the view
+    the word counts read leaves it out."""
+    stored(project)
+    entry = _as_latex(project)
+    line = _typed_before(entry, "\\section{Discussion}",
+                         "\\begin{figure}\n\\caption{" + CAVEAT + "}\n\\end{figure}") + 1
+    assert said(project, "internal-review") == [("recycled-text", WARN, line)]
+
+
+@pytest.mark.parametrize(
+    "typed",
+    [
+        "As \\enquote{" + DESCRIPTION[:-1] + "} \\cite{" + KEY + "}.",
+        "\\begin{quote}\n" + DESCRIPTION + "\n\\end{quote}",
+        "\\begin{quotation}\n" + DESCRIPTION + " \\cite{" + KEY + "}\n\\end{quotation}",
+    ],
+)
+def test_a_quotation_latex_marks_with_a_command_is_a_quotation(project: Path, typed: str) -> None:
+    """Round 1 of step 13: `\\enquote{}` and a quotation environment quote, as Markdown's
+    quotation marks and `>` do."""
+    stored(project)
+    entry = _as_latex(project)
+    _typed_before(entry, "\\section{Results}", typed)
+    assert [code for code, _severity, _line in said(project, "submission")] == [
+        "recycled-quotation"
+    ]
+
+
+def test_a_latex_file_nothing_inputs_is_compared_on_its_own(project: Path) -> None:
+    """Round 1 of step 13: a supplement with no `main.tex` is files nothing inputs, which G2
+    reads on their own, and so does G7."""
+    stored(project)
+    _as_latex(project)
+    folder = project / "manuscript" / "supplementary"
+    shutil.rmtree(folder)
+    folder.mkdir()
+    (folder / "methods.tex").write_text(f"Words first.\n\n{DESCRIPTION}\n", encoding="utf-8")
+    [finding] = found(project, "internal-review")
+    assert (finding.code, finding.path, finding.line) == (
+        "recycled-text", folder / "methods.tex", 3
+    )
+
+
 def test_a_latex_description_that_cites_its_paper_is_a_note(project: Path) -> None:
     """A `\\cite` is the citation G7 reads, as `[@key]` is in Markdown (step 13)."""
     stored(project)

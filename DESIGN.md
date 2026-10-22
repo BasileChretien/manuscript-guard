@@ -1769,6 +1769,33 @@ The result is compiled and packed by the code above, and checked three times:
   `.bbl` (step 10).
 - At a revision, a LaTeX manuscript's pack has no marked-up copy: `build --marked-up` makes
   Word copies, and `submit` says so in a note (step 10).
+- `build --latex` refuses Markdown that G2's Markdown reader and pandoc read otherwise, and
+  says where the digits part: measured, 38 of 180 of the suite's generated files (`texts()`),
+  which hold fences closed by a line separator, `:::` divs and a YAML block left open at the
+  end. It is a refusal, never a misprint (step 11).
+- `build --latex` compares digits, not numbers: a raw TeX that moves a decimal point or a
+  sign, `1\iffalse.\fi5` printing 15 where the gates read 1.5, passes, and a digit moved
+  between a table's caption and its rows passes. Raw TeX in the text fails `tex-in-the-text`
+  from `drafting` on, so this needs an earlier stage or `--skip-checks` (round 1 of step 11).
+- `build --latex` reads a `[^n]:` line directly under a paragraph's line as a note's
+  definition, as G2 does, where pandoc may read it as the paragraph's text: with a digit in
+  its label the build is refused, and with none, `[^a]:`, it builds, and pandoc may print the
+  note in the paragraph, its mark included, with no footnote (round 5 of step 11). A tilde
+  pair in an address, written `\textsubscript`, ends the address; and an `@` right after a
+  `/`, as in an address, is taken for a citation's key. Each of these two is a refusal of the
+  build, never a misprint (round 4).
+- Under citeproc, a narrative citation whose key starts with a digit, `@2020who`, is not
+  passed over as one, and its digits refuse the build (round 5 of step 11).
+- Under citeproc, the digits of a citation are compared on neither side, so raw TeX in its
+  locator that hides a digit, `[@key, p. \iffalse 1\fi 2]`, is not found; raw TeX in the
+  text fails `tex-in-the-text` from `drafting` on (round 2 of step 11).
+- A YAML block in the body is passed over on both sides, but the template prints its
+  `abstract:` and `date:`: their digits are not compared, and raw TeX in them is not read
+  (round 1 of step 11).
+- `build --latex` writes a figure as the Word build does, a picture in its own paragraph
+  with its caption as the next one, not as a float with `\caption`; the title page is the
+  template's, with the authors' names and no affiliations, identifiers or corresponding
+  author (step 11).
 - Under MiKTeX, which reads a file by a path written out in full whatever `openin_any` says,
   the compile alone reads one outside the project, and the folder is not refused: only a read
   of the project's files is seen (round 1 of step 10).
@@ -2158,7 +2185,60 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
     since no command fetches them yet (see "The journal profile" above). Tests:
     `tests/test_latex_submit.py`.
 11. Markdown to LaTeX. `build --latex`, the template, the reading back and the comparison
-    of digits.
+    of digits. Built in `build/latex_out.py`, measured against pandoc 3.9.0.2. `build
+    --latex` assembles the Markdown as the Word build does. Pandoc then writes it as LaTeX,
+    code as `verbatim` (`--no-highlight`):
+    - with the profile's class and options;
+    - with pandoc's template, or the project's `profiles/journals/latex/<slug>/template.latex`
+      where it keeps one;
+    - with natbib or biblatex as `bibliography:` says, with its `bst` or `style`, or else with
+      citeproc and the journal's citation style kept by `style`;
+    - with the title, the keywords and, where review is not blind, the authors' names as the
+      template's variables.
+    Pandoc 3.9's template quotes each keyword with `\xmpquote`, which hyperref defines only
+    in its recent versions; MiKTeX's of 2024-06 does not, so the build gives it with
+    `\providecommand`. The body checked is written from the same Markdown, header included,
+    since citeproc writes the reference list in the document's language. Check 2: the reader
+    reads that body and refuses what it refuses. Citeproc's `\citeproc{ref-x}` and its
+    reference list, pandoc's commands that the author-facing reader refuses as unknown
+    citation commands, are blanked first. Check 3: the digits the reader keeps there are
+    compared in order with those the Markdown reader keeps in the assembled Markdown. What
+    pandoc changes on purpose is put right on one side:
+    - a figure's alternative text in the build's `[![...](...)]{.mg-figure}`, which LaTeX
+      holds in `\includegraphics`'s options, is taken out of the Markdown;
+    - so is the number of each ordered list's item, found by G2's own block reader
+      (`list_items`), which LaTeX prints from its counter;
+    - so is a YAML block in the body, which pandoc reads as metadata;
+    - a footnote's digits are read at each of its marks (`footnote_index`), where pandoc
+      writes `\footnote` with the note's text again each time (round 1);
+    - an address or a DOI that pandoc writes as text, `https://doi.org/10.5281/...`, which
+      the Markdown mask blanks, is passed over in the LaTeX too, found by the mask's own
+      pattern in the reader's view (round 1);
+    - a note's mark that has no definition, which pandoc prints as typed, is read;
+    - a `longtable`'s header, written again between `\endfirsthead` and `\endhead` for the
+      pages it runs on to, is passed over;
+    - its caption, which pandoc writes first, may stand before or after its rows;
+    - under citeproc, the citations with their locators and the reference list are passed
+      over on both sides. Measured with pandoc's default style and with a numeric one:
+      pandoc writes the number and the locator inside `\citeproc`'s text (round 1).
+    A difference refuses the build (`MisreadError`) and names the line of each where the
+    digits part. The commands pandoc writes round a heading and a table are in the reader's
+    table: `\texorpdfstring`'s second argument, a bookmark's text, and the three of
+    `\addcontentsline`, a contents entry, are blanked; so are `\hypertarget`'s anchor and
+    `\real`'s width. The source goes in `build/latex/submission/`, as step 10's folder does,
+    with each picture under its name and the `.bib` cut to the cited entries. It is compiled
+    alone, as step 10's is, but without comparing headings, which the gates read in the
+    Markdown, and the PDFs are `build/manuscript.pdf` and `build/supplementary.pdf`. `submit
+    --latex` packs that folder in `latex/` with the PDFs as the documents. The comparison is
+    held over generated documents in `tests/test_properties.py`, which hold one of each thing
+    above in an order drawn, a YAML block and a note's mark with no definition among them
+    (round 2). It finds nothing under natbib or citeproc, and a digit changed anywhere the
+    reader reads is found. Each normalisation, broken, fails the first property under a dozen
+    seeds: the figure's text, the list's numbers, the YAML block, the note at each mark, the
+    mark with no note, the address, the repeated header, the caption, and the narrative
+    citation's locator under citeproc. Tests: `tests/test_latex_from_markdown.py`. The comparison has no
+    reading in `tests/readings.py`: it is new, and a reading there runs in the differential
+    job against a base that has none.
 12. The rest. `init --latex`, the hooks, `explain` and `bind`, the panel's prompt, the
     round's copy in `revision/`, the skills and the README. First part, `explain` and `bind`:
     each reads a LaTeX manuscript's file as G2 reads it, through `numbers._files_read`, the

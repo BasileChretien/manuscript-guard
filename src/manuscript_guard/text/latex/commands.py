@@ -126,6 +126,14 @@ COMMANDS = _specs(
         "addlinespace": "[b]",
         **dict.fromkeys(("setstretch", "enlargethispage"), "*{b}"),
         "captionsetup": "[b]{b}",
+        # What pandoc writes round a heading and a table, measured against pandoc 3.9 (step
+        # 11): a heading's text for the PDF's bookmarks and its entry in the contents, which
+        # the page does not print where the command stands; a link's anchor, whose content
+        # prints; and a column's width.
+        "texorpdfstring": "{p}{b}",
+        "addcontentsline": "{b}{b}{b}",
+        "hypertarget": "{b}{p}",
+        "real": "{b}",
         "color": "[b]{b}",
         "cmidrule": "[b](b){b}",
         "rule": "[b]{b}{b}",

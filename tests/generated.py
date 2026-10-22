@@ -576,6 +576,57 @@ _LATEX_SIGNS = (
 _PREAMBLE = "\\documentclass{article}\n\\begin{document}\n"
 
 
+@st.composite
+def markdown_for_latex(draw: st.DrawFn) -> str:
+    """A Markdown document as the build assembles one, for `build --latex` (step 11): one of
+    each thing pandoc writes in LaTeX otherwise than the Markdown has it, in an order drawn,
+    and numbers in each. A table whose caption stands after its rows or before them, and
+    whose header pandoc writes again for the pages it runs on to; a footnote defined at the
+    end; an ordered list, whose numbers LaTeX prints from its counter; a figure as the build
+    writes one, its alternative text in `\\includegraphics`'s options; citations with
+    locators; a formula; a heading; and prose."""
+
+    def words() -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=2, max_size=5)))
+
+    def number() -> str:
+        whole = draw(st.integers(0, 99_999))
+        return draw(st.sampled_from((str(whole), f"{whole}.{draw(st.integers(0, 99)):02d}")))
+
+    caption = f"Table {number()}. {words()} {number()}"
+    rows = [f"| {words()} | {number()} | {number()} |" for _ in range(draw(st.integers(1, 3)))]
+    table = "\n".join([f"| Group {number()} | A | B |", "|---|--:|--:|", *rows])
+    after = draw(st.booleans())
+    table = f"{table}\n\n: {caption}" if after else f"Table: {caption}\n\n{table}"
+    start, mark = draw(st.integers(1, 9)), draw(st.sampled_from((".", ")")))
+    items = [f"{start + at}{mark} {words()} {number()}" for at in range(draw(st.integers(2, 3)))]
+    blocks = [
+        f"{words().capitalize()} {number()} {words()}.",
+        table,
+        "\n".join(items),
+        f"[![{words()} {number()} {words()}](figures/x.png)]{{.mg-figure}}",
+        f"{words()} [see @smith2020, p. {number()}] and @jones2019 [p. {number()}] {words()}.",
+        f"{words()} $x = {number()}$ {words()}.",
+        # A note pandoc writes at each of its marks, and a DOI it writes as text, which the
+        # Markdown mask blanks (round 1 of step 11).
+        f"{words()} {number()}[^a1] {words()} and again[^a1].",
+        f"## {words().capitalize()} {number()}",
+        # An address with a sign pandoc writes as a command, and one a note's mark follows
+        # (round 3 of step 11).
+        f"{words()} https://doi.org/10.{draw(st.integers(1000, 99_999))}/zenodo.{number()} "
+        f"and doi:10.{draw(st.integers(1000, 99_999))}/x{number()} {number()} {words()} and "
+        f"https://example.edu/~a_b/{number()}[^a1].",
+        # A YAML block pandoc reads as metadata, and a note's mark with no definition, which
+        # it prints as typed (round 2 of step 11).
+        f"---\nnote: {words()} {number()}\n---",
+        f"{words()} [^n{draw(st.integers(1, 99))}] {words()}.",
+    ]
+    order = draw(st.permutations(blocks))
+    # A note nothing marks, which pandoc drops (round 3 of step 11).
+    notes = [f"[^a1]: {words()} {number()}.", f"[^z9]: {words()} {number()}."]
+    return "\n\n".join([*order, *notes]) + "\n"
+
+
 def latex_texts() -> st.SearchStrategy[str]:
     """A LaTeX file, drawn as `texts` draws a Markdown one: whole pieces among words, and the
     bare signs once each. Some open with a preamble and `\\begin{document}`."""

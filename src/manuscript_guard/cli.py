@@ -4924,17 +4924,16 @@ _MARKDOWN_COMMANDS: dict[str, Callable[[argparse.Namespace], bool]] = {
     # `checker` draws its items from the manuscript for every verb, `import` and `status`
     # too, which match answers against them (round 2 of #404).
     **dict.fromkeys(
-        ("bind", "build", "checker", "explain", "impact", "import", "init", "methods",
-         "models", "passages", "proof", "render", "respond", "reworded", "submit"),
+        ("bind", "build", "checker", "explain", "impact", "import", "init", "proof",
+         "render", "reworded", "submit"),
         _always,
     ),
-    # Its comparison reads the manuscript; taking an earlier output's copy does not.
-    "related": lambda args: args.take is None,
+    # A round opened and checked reads a LaTeX manuscript (step 8); one seeded from a returned
+    # .docx reads the Word copy a Markdown manuscript is built to.
+    "respond": lambda args: args.source is not None,
     # A design round reads the plan, not the manuscript (round 1 of #404).
     "review": lambda args: bool((args.run or args.dry_run) and not args.design
                                 or args.suggestions),
-    # G15's findings come from the manuscript; a design round's overrides do not.
-    "sign": lambda args: args.finding.startswith("G15/"),
 }  # fmt: skip
 #: The commands refused a `.tex` named whatever the project's format, since they read the
 #: file given as Markdown; `impact` follows the records of any file, a header's included.

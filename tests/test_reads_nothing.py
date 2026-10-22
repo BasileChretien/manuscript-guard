@@ -245,18 +245,19 @@ LATEX = {
     "journal": ("no manuscript", ("journal",)),
     # They find the citations through the reader's `citation_uses` (step 5).
     "lookup": ("reads", ("lookup", "{project}", "--dry-run")),
-    "methods": ("refuses", ("methods", "{project}")),
-    "models": ("refuses", ("models", "{project}")),
+    # G9, G15, G7's passages, G8's earlier outputs and G13 read LaTeX from step 8.
+    "methods": ("reads", ("methods", "{project}")),
+    "models": ("reads", ("models", "{project}")),
     "palettes": ("no manuscript", ("palettes",)),
-    "passages": ("refuses", ("passages", "{project}")),
+    "passages": ("reads", ("passages", "{project}")),
     "proof": ("refuses", ("proof", "{project}/proof.pdf", "{project}")),
-    "related": ("refuses", ("related", "{project}")),
+    "related": ("reads", ("related", "{project}")),
     "render": ("refuses", ("render", "{project}")),
-    "respond": ("refuses", ("respond", "{project}")),
+    "respond": ("refuses", ("respond", "{project}", "--from", "{project}/returned.docx")),
     "review": ("refuses", ("review", "{project}", "--run")),
     "reworded": ("refuses", ("reworded", "{project}")),
     "search": ("no manuscript", ("search", "hepatic injury")),
-    "sign": ("refuses", ("sign", "{project}", "--as", "Nobody Listed", "--finding", "G15/x/y")),
+    "sign": ("reads", ("sign", "{project}", "--as", "Nobody Listed", "--finding", "G15/x/y")),
     "stages": ("no manuscript", ("stages",)),
     "style": ("no manuscript", ("style", "{project}")),
     "submit": ("refuses", ("submit", "{project}")),
@@ -331,5 +332,7 @@ def test_the_refusal_is_for_a_latex_manuscript_only(empty: Path) -> None:
         ("related", "{project}", "--take"),
         # `--files` is a flag here, no list of files (main's `review --files`).
         ("review", "{project}", "--files"),
+        # A round opened, and one checked, read a LaTeX manuscript (step 8).
+        ("respond", "{project}", "--open"), ("respond", "{project}"),
     ):  # fmt: skip
         assert cli._refused_for_latex(_parsed(argv, empty)) is None, argv

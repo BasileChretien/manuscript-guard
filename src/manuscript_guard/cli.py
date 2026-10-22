@@ -78,6 +78,7 @@ from manuscript_guard.gates import (
 )
 from manuscript_guard.gates.custodian import check_restricted_inputs, check_small_cells
 from manuscript_guard.gates.data_sources import check_data_sources, check_statement_sources
+from manuscript_guard.gates.data_statement import check_package_doi
 from manuscript_guard.gates.design_review import check_design_rounds
 from manuscript_guard.gates.figure_alt import check_figure_alt
 from manuscript_guard.gates.figure_colours import check_figure_colours
@@ -166,6 +167,7 @@ def _run_gates(
         ("G7", lambda: check_recycling(project, chosen)),
         ("G4", lambda: check_journal(project)),
         ("G4", lambda: check_shortlist(project)),
+        ("G4", lambda: check_package_doi(project, submission=at_submission)),
         ("G4", lambda: check_statement_sources(project)),
         ("G8r", lambda: check_reporting(project)),
         ("G6", lambda: check_writing(project, results, submission=at_submission)),
@@ -2199,6 +2201,64 @@ def cmd_verify(args: argparse.Namespace) -> int:
     return 0 if result.ok else 1
 
 
+def cmd_package(args: argparse.Namespace) -> int:
+    """Write the package an author deposits: the code, the results and what they ran with,
+    and never the data a custodian keeps. It refuses while G1 fails, since a package of
+    results the analysis no longer writes is the wrong package, and it uploads nothing."""
+    from manuscript_guard.deposit import PackageError, deposit_steps, plan_package, write_package
+
+    project, contract_report = load_project(args.path)
+    _namespace, results, _literature, load_report = load_namespace(project)
+    stage = resolve_stage(project, None, False)
+    checks, _deferred = apply_stage(
+        merge_all([contract_report, load_report, check_freshness(project, results),
+                   check_restricted_inputs(project, results)]), stage)  # fmt: skip
+    try:
+        plan = plan_package(project, results, with_manuscript=args.with_manuscript)
+    except PackageError as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 2
+    if args.dry_run:
+        print(_package_listing(project, plan))
+        if not checks.ok:
+            print(f"\n{checks.render(project.root)}\n\nIt would not be written while these fail.")
+        return 0 if plan.report.ok and checks.ok else 1
+    if not checks.ok and not args.skip_checks:
+        print(checks.render(project.root))
+        print(f"\n{len(checks.failures)} failing. A package is what others will run again, so "
+              "it is not written while the results are not what the analysis writes.\n"
+              "Use --skip-checks only to see what it would hold; MANIFEST.yaml says so.")
+        return 1
+    if not plan.report.ok:
+        print(plan.report.render(project.root))
+        print("\nThe package is not written.")
+        return 1
+    if plan.report.findings:
+        print(plan.report.render(project.root))
+    try:
+        written = write_package(project, plan, checked=checks.ok)
+    except PackageError as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 2
+    print(f"{len(plan.entries) + 2} files, {sum(not i.included for i in plan.inputs)} input(s) "
+          f"withheld.\n{deposit_steps(project, written)}")  # fmt: skip
+    return 0
+
+
+def _package_listing(project, plan) -> str:
+    """What `package --dry-run` says: each file that would go and why, each file left out
+    and why, and what stops the package."""
+    lines = [f"manuscript-guard package --dry-run — {project.root}",
+             f"would write build/package/{plan.name}/ and {plan.name}.zip", ""]  # fmt: skip
+    width = max((len(entry.path) for entry in plan.entries), default=0)
+    lines += [f"  in   {entry.path.ljust(width)}  {entry.why}" for entry in plan.entries]
+    lines += ["  in   MANIFEST.yaml, SHA256SUMS", ""]
+    lines += [f"  out  {held.path}  {held.why}" for held in plan.withheld]
+    if plan.report.findings:
+        lines += ["", plan.report.render(project.root)]
+    return "\n".join(lines)
+
+
 def cmd_stages(args: argparse.Namespace) -> int:
     """What each stage means, and what starts to bind at it."""
     from manuscript_guard.policy import BINDS_AT
@@ -3128,6 +3188,7 @@ def cmd_approve(args: argparse.Namespace) -> int:
 def cmd_sign(args: argparse.Namespace) -> int:
     """Record a named person's sign-off of a finding only they may close. Their own act."""
     from manuscript_guard.approvals import NoSuchAuthor
+    from manuscript_guard.deposit import package_signables
     from manuscript_guard.gates.design_review import override_signables
     from manuscript_guard.gates.journal_quotes import manual_signables
     from manuscript_guard.gates.models import signables
@@ -3138,6 +3199,10 @@ def cmd_sign(args: argparse.Namespace) -> int:
     _namespace, results, _literature, _loaded = load_namespace(project)
     standing = signables(project, results) + override_signables(project) + \
         manual_signables(project) + send_signables(project)  # fmt: skip
+    # The package's, only where a sign-off of one is asked for: they are worked out from
+    # every file the package would hold.
+    if args.finding.startswith("PACKAGE/"):
+        standing += package_signables(project, results)
     found = [signable for signable in standing if signable.id == args.finding]
     if not found:
         ids = ", ".join(signable.id for signable in standing) or "none"
@@ -4249,6 +4314,30 @@ def build_parser() -> argparse.ArgumentParser:
         help="verify only these fragments, by stem (e.g. 01_disproportionality)",
     )
     verify.set_defaults(func=cmd_verify)
+
+    package = sub.add_parser(
+        "package",
+        help="write the package to deposit for reproducibility: the code, the results and "
+        "what they ran with, never the data a custodian keeps",
+        description="Writes build/package/<name>/ and its .zip: the analysis scripts, the "
+        "results and their digests, the figure scripts and figures, the plan, the literature "
+        "ledger, the lockfiles and the licence, with a README that says how to run it again "
+        "and what `verify` checks, CITATION.cff, the results the paper binds (BOUND.md), the "
+        "inputs and where each is (INPUTS.md), and every file's SHA-256. An input goes in "
+        "only when it is declared synthetic or listed in paper.yaml's package.share; a "
+        "restricted one never does. Refused while G1 fails, while a fragment holds a count "
+        "below the custodian's minimum, and, where the custodian restricts sending, until "
+        "they sign the package off. It uploads nothing.",
+    )
+    package.add_argument("path", nargs="?", type=Path, default=Path.cwd())
+    package.add_argument("--dry-run", action="store_true",
+                         help="list what would go in and what would be left out, and write "
+                         "nothing")  # fmt: skip
+    package.add_argument("--with-manuscript", action="store_true",
+                         help="add the manuscript's source; BOUND.md is there either way")
+    package.add_argument("--skip-checks", action="store_true",
+                         help="write it although G1 fails, and say so in MANIFEST.yaml")
+    package.set_defaults(func=cmd_package)
 
     journal = sub.add_parser(
         "journal",

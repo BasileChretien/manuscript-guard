@@ -42,6 +42,7 @@ from generated import (
     CLAIMED,
     CREDITING,
     DATA_IDENTIFIERS,
+    DEPOSIT_DOI,
     EDIT_GAPS,
     EDIT_WORDS,
     FILLER,
@@ -72,7 +73,9 @@ from generated import (
     claim_edits,
     collection_plans,
     commented,
+    count_cells,
     credited_plans,
+    deposit_statements,
     generated,
     holds,
     laid_out,
@@ -121,7 +124,9 @@ from manuscript_guard.build.blinding import names_in, sought
 from manuscript_guard.classify import CONVENTION, STRUCTURAL, TERM, UNCLASSIFIED, Classifier
 from manuscript_guard.contracts.project import outside_maths
 from manuscript_guard.contracts.values import RESULTS, Value, number_in
+from manuscript_guard.deposit import counts as deposit_counts
 from manuscript_guard.gates import bound_units as bound_units_gate
+from manuscript_guard.gates import data_statement
 from manuscript_guard.gates import journal_quotes as journal_quotes_gate
 from manuscript_guard.gates import language as language_gate
 from manuscript_guard.gates import methods as methods_gate
@@ -1503,6 +1508,42 @@ def test_each_identifier_names_data_and_each_temporary_link_is_found(
     before = judge_statement(text, {}, set(), Path("x")).findings
     drawn_links = sorted(f.message.split("'")[1] for f in before if f.code == "data-link-temporary")
     assert temporary == sorted(drawn_links + list(TEMPORARY_LINKS)), (temporary, linked)
+
+
+# ------------------------------------------------------- the deposit a data statement names
+
+
+@holds(100, deposit_statements())
+def test_a_deposit_is_named_by_its_doi_however_written_and_by_no_other(
+    drawn: tuple[str, list[str], list[str]],
+) -> None:
+    """Whatever the words around it, the statement names the deposit wherever its DOI is
+    written, bare or in a link, in any case, in brackets or emphasis or before a stop; and a
+    DOI that begins as the deposit's and is another names nothing the words did not."""
+    from manuscript_guard.gates.data_statement import names_doi
+
+    text, named, others = drawn
+    for written in named:
+        assert names_doi(written, DEPOSIT_DOI), written
+    before = names_doi(text, DEPOSIT_DOI)
+    for written in others:
+        assert names_doi(written, DEPOSIT_DOI) == before, written
+
+
+# ------------------------------------------------------------- a count in a deposited table
+
+
+@holds(100, count_cells())
+def test_a_cell_is_read_as_a_count_only_where_it_states_one(
+    drawn: list[tuple[str, int | None]],
+) -> None:
+    """A cell that is a count alone, with its share in brackets or over its denominator, is
+    read as that count, whatever the spaces; one with a point, a bound, a label, a range or
+    a sign is read as none."""
+    from manuscript_guard.deposit.counts import count_in_cell
+
+    for cell, count in drawn:
+        assert count_in_cell(cell) == count, cell
 
 
 # ------------------------------------------------- the data sources a statement names and says
@@ -8467,6 +8508,51 @@ def _each_anchors_line_is_its_own_run(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(methods_gate, "_runs", lambda numbers: [(number, number) for number in numbers])
 
 
+def _a_doi_is_named_by_its_letters_anywhere(patch: pytest.MonkeyPatch) -> None:
+    """The rule a first reading would write: the DOI's letters anywhere in the statement."""
+    patch.setattr(data_statement, "names_doi",
+                  lambda text, doi: doi.lower() in text.lower())  # fmt: skip
+
+
+def _a_doi_is_named_in_its_own_case_only(patch: pytest.MonkeyPatch) -> None:
+    real = data_statement._plain_doi
+    patch.setattr(data_statement, "_plain_doi", lambda written: real(written).swapcase()
+                  if any(c.isupper() for c in written) else real(written))  # fmt: skip
+
+
+def _a_cell_counts_by_its_first_digits(patch: pytest.MonkeyPatch) -> None:
+    def first(text: str) -> int | None:
+        found = re.match(r"\s*(\d+)", text)
+        return int(found.group(1)) if found else None
+
+    patch.setattr(deposit_counts, "count_in_cell", first)
+
+
+def _a_share_is_digits_and_a_point(patch: pytest.MonkeyPatch) -> None:
+    """The rule as it stood at 45348fe9 (round 1 of #388): a share or a denominator, never
+    both, and the share plain digits with a point."""
+    old = r"\s*(?P<count>\d+)\s*(?:\(\s*\d+(?:\.\d+)?\s*%?\s*\)|/\s*\d+)?\s*"
+    patch.setattr(deposit_counts, "_COUNT_CELL", re.compile(old))
+
+
+def _a_cell_ends_at_its_brackets(patch: pytest.MonkeyPatch) -> None:
+    """The rule as it stood at def0e2f1 (round 2 of #388): no footnote mark, no square
+    brackets, and a share with a digit before its point."""
+    share = r"[<>]?\s*\d+(?:[.,]\d+)?\s*%?"
+    old = rf"\s*(?P<count>\d+)\s*(?:/\s*\d+\s*)?(?:\(\s*{share}\s*\))?\s*"
+    patch.setattr(deposit_counts, "_COUNT_CELL", re.compile(old))
+
+
+def _a_doi_begins_only_after_a_word_boundary(patch: pytest.MonkeyPatch) -> None:
+    """The reading as it stood at 45348fe9 (round 1 of #388): the DOIs `_DOI` finds."""
+    patch.setattr(data_statement, "_NAMED_DOI", data_statement._DOI)
+
+
+def _a_cell_counts_before_any_brackets(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(deposit_counts, "_COUNT_CELL",
+                  re.compile(r"\s*(?P<count>\d+)\s*(?:\(.*\)|/\s*\d+)?\s*"))  # fmt: skip
+
+
 def _an_alternative_text_escapes_only_its_brackets(patch: pytest.MonkeyPatch) -> None:
     """Escaped only where a mark would end the description: emphasis, a citation, maths and
     raw HTML in it are read as markup."""
@@ -9129,6 +9215,34 @@ BROKEN = {
     "a mean is assessable wherever n is under 10 to the power of its places": (
         _a_mean_is_assessable_below_the_power_of_its_places,
         test_a_mean_of_whole_numbers_in_a_table_is_held_to_its_column_s_n,
+    ),
+    "a DOI is named by its letters anywhere in the statement": (
+        _a_doi_is_named_by_its_letters_anywhere,
+        test_a_deposit_is_named_by_its_doi_however_written_and_by_no_other,
+    ),
+    "a DOI is named only in the case paper.yaml writes it": (
+        _a_doi_is_named_in_its_own_case_only,
+        test_a_deposit_is_named_by_its_doi_however_written_and_by_no_other,
+    ),
+    "a cell counts by the digits it begins with": (
+        _a_cell_counts_by_its_first_digits,
+        test_a_cell_is_read_as_a_count_only_where_it_states_one,
+    ),
+    "a cell's share is plain digits and a point, and goes with no denominator": (
+        _a_share_is_digits_and_a_point,
+        test_a_cell_is_read_as_a_count_only_where_it_states_one,
+    ),
+    "a cell ends at its round brackets, with no footnote mark": (
+        _a_cell_ends_at_its_brackets,
+        test_a_cell_is_read_as_a_count_only_where_it_states_one,
+    ),
+    "a deposit's DOI begins only after a word boundary": (
+        _a_doi_begins_only_after_a_word_boundary,
+        test_a_deposit_is_named_by_its_doi_however_written_and_by_no_other,
+    ),
+    "a cell counts before whatever its brackets hold": (
+        _a_cell_counts_before_any_brackets,
+        test_a_cell_is_read_as_a_count_only_where_it_states_one,
     ),
     "a named label is matched in the case the auditor typed": (
         _a_named_label_is_matched_in_its_case,

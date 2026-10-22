@@ -660,6 +660,23 @@ def test_another_doi_that_begins_with_the_deposits_is_not_it(project: Path) -> N
     assert "package-doi-not-named" in _doi_codes(project, submission=False)
 
 
+def test_a_latex_statement_is_held_to_the_deposits_doi(project: Path) -> None:
+    """Since #414 G4 reads a LaTeX manuscript as it prints, and this check with it: the
+    example's LaTeX twin is held to the DOI as the Markdown manuscript is."""
+    twin = Path(__file__).parent / "data" / "latex" / "manuscript"
+    shutil.rmtree(project / "manuscript")
+    shutil.copytree(twin, project / "manuscript")
+    with_package(project, doi="10.5281/zenodo.1234567")
+    assert _doi_codes(project, submission=True) == {"package-doi-not-named": "fail"}
+    entry = project / "manuscript" / "main.tex"
+    text = entry.read_text(encoding="utf-8")
+    named = text.replace("are all in\nthis repository.",
+                         "are all in this repository, deposited as 10.5281/zenodo.1234567.")
+    assert named != text
+    entry.write_text(named, encoding="utf-8")
+    assert _doi_codes(project, submission=True) == {}
+
+
 def test_no_doi_declared_asks_nothing(project: Path) -> None:
     _statement(project, "The code is available from the corresponding author.")
     assert _doi_codes(project, submission=True) == {}

@@ -24,13 +24,14 @@ would write the wrong binding into the manuscript.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from dataclasses import replace as _replaced
 from pathlib import Path
 
 from manuscript_guard.classify import UNCLASSIFIED, Classifier
 from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.values import Value
-from manuscript_guard.gates.numbers import _hint_for, source_files
+from manuscript_guard.gates.numbers import _hint_for, _is_latex, source_files
 from manuscript_guard.text.masking import mask
 from manuscript_guard.text.sections import chains_at, footnote_index, heading_index
 from manuscript_guard.text.tokens import find_atoms
@@ -47,15 +48,31 @@ class Unbound:
     text: str
     hint: str
     candidates: tuple[str, ...]
+    #: Whether the file is a LaTeX manuscript's, where a binding is `\\mg{key}` (step 12).
+    latex: bool = False
+    #: Why the one key that reads the same is not offered, where the reader would refuse the
+    #: binding written there: in a siunitx command, or past the file's first refusal. The
+    #: manuscript's folder, to read the edit in, for a LaTeX file (round 1 of step 12).
+    not_offered: str = ""
+    manuscript: Path | None = None
 
     @property
     def certain(self) -> str | None:
         """The one key this could be replaced by, when there is exactly one."""
+        if self.not_offered:
+            return None
         return self.candidates[0] if len(self.candidates) == 1 else None
 
+    def binding(self, key: str) -> str:
+        """`key` as a binding is written in this file."""
+        return f"\\mg{{{key}}}" if self.latex else f"{{{{{key}}}}}"
 
-def unbound(project: Project, namespace: dict[str, Value]) -> list[Unbound]:
-    """Every number in the manuscript that nothing accounts for, with its way out."""
+
+def unbound(project: Project, namespace: dict[str, Value], *,
+            offers: bool = True) -> list[Unbound]:  # fmt: skip
+    """Every number in the manuscript that nothing accounts for, with its way out. Without
+    `offers`, a LaTeX binding is not read in its file to see whether it can be offered, which
+    the note on a saved file does not need (round 2 of step 12)."""
     classifier = Classifier.load(project.extra_conventions, project.extra_terms)
 
     # Display strings first, then the same with separators stripped, so a literal typed
@@ -67,6 +84,8 @@ def unbound(project: Project, namespace: dict[str, Value]) -> list[Unbound]:
                 by_display.setdefault(form, []).append(key)
 
     found: list[Unbound] = []
+    if _is_latex(project):
+        return _latex_unbound(project, classifier, by_display, offers=offers)
     for path in source_files(project.path("manuscript")):
         text = read_text(path)
         headings = heading_index(text)
@@ -76,20 +95,92 @@ def unbound(project: Project, namespace: dict[str, Value]) -> list[Unbound]:
             chains = chains_at(headings, notes, atom.start)
             if classifier.classify_under(atom, chains, scan).kind != UNCLASSIFIED:
                 continue
-            plain = atom.text.replace(",", "").replace(" ", "")
-            candidates = sorted({*by_display.get(atom.text, ()), *by_display.get(plain, ())})
-            found.append(
-                Unbound(
-                    path=path,
-                    line=atom.line,
-                    start=atom.start,
-                    end=atom.end,
-                    text=atom.text,
-                    hint=_hint_for(atom),
-                    candidates=tuple(candidates),
-                )
-            )
+            found.append(_found(path, atom, by_display, _hint_for(atom)))
     return found
+
+
+def _latex_unbound(project: Project, classifier: Classifier, by_display: dict[str, list[str]],
+                   *, offers: bool = True) -> list[Unbound]:  # fmt: skip
+    """Each file of a LaTeX manuscript as G2 reads it, through the include tree, with its
+    rules' scan. A number with one key that reads the same is offered only where the reader
+    reads the binding written there (round 1 of step 12)."""
+    from manuscript_guard.gates.numbers import _latex_read
+    from manuscript_guard.text.latex import views as latex_views
+
+    manuscript = project.path("manuscript")
+    found: list[Unbound] = []
+    for file in latex_views.files(manuscript):
+        read = _latex_read(file)
+        refused = file.source.reading.refusals
+        stop = refused[0].offset if refused else None
+        scan = classifier.scan(read.scanned, blocks=read.blocks)
+        for atom in find_atoms(read.text, read.masked):
+            if classifier.classify_under(atom, read.chains(atom.start), scan).kind != UNCLASSIFIED:
+                continue
+            item = _found(read.path, atom, by_display, read.spell(_hint_for(atom)), latex=True,
+                          manuscript=manuscript)  # fmt: skip
+            if item.certain is None:
+                found.append(item)
+                continue
+            if stop is not None and atom.start >= stop:
+                why = ("it stands past the file's first refusal, where the reader reads the "
+                       "file as typed")  # fmt: skip
+            elif offers and not _reads(item, read.text):
+                why = "the reader would refuse it there, as it refuses one in siunitx"
+            else:
+                why = ""
+            found.append(_replaced(item, not_offered=why) if why else item)
+    return found
+
+
+def _found(path: Path, atom, by_display: dict[str, list[str]], hint: str, *,
+           latex: bool = False, manuscript: Path | None = None) -> Unbound:  # fmt: skip
+    """An unbound number, with the published values that read as it does."""
+    plain = atom.text.replace(",", "").replace(" ", "")
+    candidates = sorted({*by_display.get(atom.text, ()), *by_display.get(plain, ())})
+    return Unbound(path=path, line=atom.line, start=atom.start, end=atom.end, text=atom.text,
+                   hint=hint, candidates=tuple(candidates), latex=latex,
+                   manuscript=manuscript)  # fmt: skip
+
+
+def _reads(item: Unbound, text: str) -> bool:
+    """Whether the reader reads `text` with `item`'s binding written in it as it reads it
+    without: its file's first refusal, if it has one, no earlier, read in the include tree
+    with the context it is input in (round 1 of step 12)."""
+    binding = item.binding(item.candidates[0])
+    changed = f"{text[: item.start]}{binding}{text[item.end :]}"
+    before = _first_refusal(item, text)
+    after = _first_refusal(item, changed)
+    if before is None:
+        return after is None
+    # A refusal of the tree above the number, an `\\input` of a file set aside, stays where
+    # it is; one below it moves with the binding (round 2 of step 12).
+    if before < item.start:
+        return after == before
+    return after == before + len(binding) - (item.end - item.start)
+
+
+def _first_refusal(item: Unbound, text: str) -> int | None:
+    """Where the reader first refuses `item`'s file holding `text`, read in its document."""
+    from manuscript_guard.gates.numbers import is_supplementary
+    from manuscript_guard.text.latex.structure import (
+        ENTRY,
+        SUPPLEMENT_ENTRY,
+        read_document,
+        read_tree,
+    )
+
+    manuscript = item.manuscript
+    supplementary = is_supplementary(manuscript, item.path)
+    document = read_document(manuscript, supplementary=supplementary)
+    relative = item.path.resolve().relative_to(manuscript.resolve()).as_posix()
+    files = {source.path: source.text for source in document.sources
+             if not source.path.lower().endswith(".sty")}  # fmt: skip
+    packages = {source.path: source.text for source in document.sources
+                if source.path.lower().endswith(".sty")}  # fmt: skip
+    (packages if relative in packages else files)[relative] = text
+    tree = read_tree(files, SUPPLEMENT_ENTRY if supplementary else ENTRY, packages=packages)
+    return next((refusal.offset for path, refusal in tree.refusals if path == relative), None)
 
 
 def typed_pointers(project: Project) -> list[Unbound]:
@@ -156,19 +247,22 @@ def typed_pointers(project: Project) -> list[Unbound]:
 def routes(item: Unbound) -> list[str]:
     """The ways to give this number a source, likeliest first."""
     out: list[str] = []
-    if item.certain:
-        out.append(f"replace it with {{{{{item.certain}}}}}  — `bind --apply` does this")
+    if item.not_offered:
+        out.append(f"{item.binding(item.candidates[0])} reads the same, but {item.not_offered}: "
+                   "write it by hand where a binding can stand")  # fmt: skip
+    elif item.certain:
+        out.append(f"replace it with {item.binding(item.certain)}  — `bind --apply` does this")
     elif item.candidates:
-        listed = ", ".join(f"{{{{{key}}}}}" for key in item.candidates)
+        listed = ", ".join(item.binding(key) for key in item.candidates)
         out.append(
             f"{len(item.candidates)} published values read the same: {listed}. "
             f"Pick one by hand — guessing would write the wrong binding"
         )
     out += [
         f'emit it from the analysis:  em.value("<key>", {item.text})  '
-        f"then write {{{{results.<key>}}}}",
+        f"then write {item.binding('results.<key>')}",
         "record it from a source:    add an entry to literature/ledger.yaml, "
-        "then write {{lit.<key>}}",
+        f"then write {item.binding('lit.<key>')}",
         "attest it:                  add an entry to literature/attested.yaml if the "
         "source cannot be stored",
         "declare it a convention:    add it to `conventions:` in paper.yaml with a reason",
@@ -214,9 +308,14 @@ def select(items: list[Unbound], wanted: list[str], root: Path) -> list[Unbound]
         if not found:
             near = ", ".join(sorted(by_label)[:6]) or "none"
             raise SelectionError(f"nothing to bind at {selector!r}. Suggestions here: {near}")
+        refused = next((item for item in found if item.not_offered), None)
+        if refused is not None:
+            raise SelectionError(f"{selector} is not applied: {refused.not_offered}. Write the "
+                                 "binding by hand where a binding can stand")  # fmt: skip
         undecided = [item for item in found if not item.certain]
         if undecided:
-            listed = ", ".join(f"{{{{{key}}}}}" for key in undecided[0].candidates) or "nothing"
+            listed = ", ".join(undecided[0].binding(key)
+                               for key in undecided[0].candidates) or "nothing"  # fmt: skip
             raise SelectionError(
                 f"{selector} has no single answer ({listed}), so it cannot be applied. "
                 f"Write the binding you mean by hand"
@@ -248,10 +347,16 @@ def apply(items: list[Unbound]) -> tuple[list[tuple[Unbound, str]], list[Unbound
     for path, entries in by_file.items():
         text = read_text(path)
         for item in sorted(entries, key=lambda i: i.start, reverse=True):
-            binding = f"{{{{{item.certain}}}}}"
+            binding = item.binding(item.certain)
+            # A LaTeX binding the reader would refuse is not written, each read with those
+            # written after it in the file (round 1 of step 12).
+            if item.latex and not _reads(item, text):
+                accepted.discard((item.path, item.start))
+                continue
             text = f"{text[: item.start]}{binding}{text[item.end :]}"
             applied.append((item, binding))
         path.write_text(text, encoding="utf-8", newline="\n")
 
     applied.sort(key=lambda pair: (pair[0].path.name, pair[0].start))
     return applied, [item for item in items if (item.path, item.start) not in accepted]
+

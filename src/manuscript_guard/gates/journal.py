@@ -57,7 +57,7 @@ def available_profiles(project: Project) -> list[str]:
     return sorted(found - {TEMPLATE})
 
 
-def main_text(project: Project) -> str:
+def main_text(project: Project, *, formula: str = "") -> str:
     """The main text as G4 reads it: every main-text source, less its front matter.
 
     One string, so a section can run on from one file into the next. Only the first file's
@@ -81,7 +81,8 @@ def main_text(project: Project) -> str:
         # The author's packages are no text; a file input is, `Methods.TEX` as `methods.tex`.
         document = read_document(folder, supplementary=False)
         return printed_view([source for source in document.sources if not source.loose
-                             and not source.path.lower().endswith(".sty")])  # fmt: skip
+                             and not source.path.lower().endswith(".sty")],
+                            formula=formula)  # fmt: skip
     sources = source_files(folder, main_text_only=True)
     return "\n\n".join(without_front_matter(read_text(p)) for p in sources)
 

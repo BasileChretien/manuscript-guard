@@ -646,7 +646,9 @@ def abstract_text(project: Project) -> tuple[str | None, str | None]:
     from manuscript_guard.text.placeholders import substitute
     from manuscript_guard.text.sections import split_sections
 
-    text = main_text(project)
+    # A LaTeX manuscript's inline formula as one pandoc reads as maths, which the abstract is
+    # left out for: the printed view's word for it is no text to paste (round 2 of step 10).
+    text = main_text(project, formula="$x$")
     if not any(section.is_abstract for section in split_sections(text)):
         return None, None
     if shutil.which("pandoc") is None:
@@ -685,11 +687,14 @@ def assemble_pack(
     *,
     checked: bool = True,
     extra: Sequence[tuple[Path, str]] = (),
+    supplements: Sequence[Path] | None = None,
 ) -> Pack:
     """Copy or generate every part of the submission into build/submission/.
 
-    `extra` is further documents to pack, each under the name given: at a revision, the
-    marked-up copies that show what changed since the round's document.
+    `extra` is further documents to pack, each under the name given, which may be in a folder:
+    at a revision, the marked-up copies that show what changed since the round's document, and
+    a LaTeX manuscript's source in `latex/`. `supplements` are the supplement's documents,
+    where the caller made them, a LaTeX manuscript's PDF; None looks for the Word one.
 
     `checked=False` records in the manifest that the submission check was overridden. A
     pack assembled with `--skip-checks` was previously byte-indistinguishable from one that
@@ -721,6 +726,7 @@ def assemble_pack(
         files.append(target)
     for path, name in extra:
         target = directory / name
+        target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(path, target)
         files.append(target)
 
@@ -756,15 +762,18 @@ def assemble_pack(
     # Gated on the project still having supplementary sources, not on the file existing: a
     # `supplementary.docx` left in build/ from a layout the author has since abandoned would
     # otherwise be sent to a journal with nothing in the project to check it against.
-    supplement = supplement_for(project, document)
-    has_supplement = any(
-        is_supplementary(project.path("manuscript"), p)
-        for p in source_files(project.path("manuscript"))
-    )
-    if has_supplement and supplement.exists() and supplement != document:
-        target = directory / supplement.name
-        shutil.copy2(supplement, target)
-        files.append(target)
+    if supplements is None:
+        supplement = supplement_for(project, document)
+        has_supplement = any(
+            is_supplementary(project.path("manuscript"), p)
+            for p in source_files(project.path("manuscript"))
+        )
+        supplements = [supplement] if has_supplement and supplement != document else []
+    for supplement in supplements:
+        if supplement.exists():
+            target = directory / supplement.name
+            shutil.copy2(supplement, target)
+            files.append(target)
 
     checklists = project.root / "reporting"
     if checklists.exists():

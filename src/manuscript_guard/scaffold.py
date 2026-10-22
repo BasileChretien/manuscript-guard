@@ -137,6 +137,38 @@ would be a reported finding, and reporting one means binding it.
 # Discussion
 """
 
+#: The manuscript `init --latex` starts, its title written as the values file writes text
+#: (step 12). The bibliography is left in a comment: BibTeX stops on a document that cites
+#: nothing yet, and the build with it.
+LATEX_MANUSCRIPT = """\
+\\documentclass{{article}}
+\\usepackage{{mgvalues}}
+\\title{{{latex_title}}}
+
+\\begin{{document}}
+\\maketitle
+
+\\section{{Introduction}}
+
+% Write here. Any number you quote must be a binding: \\mg{{results.some_key}} for something
+% your analysis computed, or \\mg{{lit.some_key}} for something taken from the literature. A
+% bare number in this file is a defect unless it is a recognised convention, such as a
+% threshold chosen in the Methods, or a pointer such as Table 1. A comment is not printed,
+% and `submit` takes its text out of the source it packs.
+
+\\section{{Methods}}
+
+\\section{{Results}}
+
+\\section{{Discussion}}
+
+% Once the manuscript cites, its references are those of literature/references.bib:
+% \\bibliographystyle{{plain}}
+% \\bibliography{{references}}
+
+\\end{{document}}
+"""
+
 GITIGNORE = """\
 build/
 .Rproj.user/
@@ -303,8 +335,10 @@ def _header(title: str) -> str:
     return ""
 
 
-def init_project(root: Path, title: str = "Untitled manuscript") -> list[Path]:
-    """Create the project layout. Existing files are never overwritten."""
+def init_project(root: Path, title: str = "Untitled manuscript", *,
+                 latex: bool = False) -> list[Path]:  # fmt: skip
+    """Create the project layout. Existing files are never overwritten. With `latex`, the
+    manuscript is `manuscript/main.tex`, with the values file beside it (step 12)."""
     root = Path(root).resolve()
     created: list[Path] = []
     # On one line, and a tab as a space: what the build prints for each. Written into
@@ -334,10 +368,26 @@ def init_project(root: Path, title: str = "Untitled manuscript") -> list[Path]:
             f"the title is not taken, so nothing was made: {said}. Note that {KEEP_THE_TEX}"
         )
 
+    latex_title = ""
+    if latex:
+        from manuscript_guard.build.latex_values import NotPrintable, escaped
+
+        try:
+            latex_title = escaped(title, "title")
+        except NotPrintable as exc:
+            raise ContractError(f"the title is not taken, so nothing was made: {exc}") from exc
+    manuscript = root / "manuscript"
+    if latex and manuscript.is_dir() and any(manuscript.rglob("*.md")):
+        raise ContractError(f"{manuscript} holds a Markdown manuscript, and a LaTeX one beside "
+                            "it would be read by no gate; nothing was made")  # fmt: skip
+    files = dict(_FILES)
+    if latex:
+        del files["manuscript/main.md"]
+        files["manuscript/main.tex"] = LATEX_MANUSCRIPT
     for name in _DIRS:
         (root / name).mkdir(parents=True, exist_ok=True)
 
-    for name, template in _FILES.items():
+    for name, template in files.items():
         path = root / name
         if path.exists():
             continue
@@ -351,7 +401,10 @@ def init_project(root: Path, title: str = "Untitled manuscript") -> list[Path]:
             title=title,
             quoted=json.dumps(title, ensure_ascii=False),
             header=_header(title),
+            latex_title=latex_title,
         )
+        if name == "AGENTS.md" and latex:
+            written = _in_latex(written)
         path.write_text(written, encoding="utf-8", newline="\n")
         created.append(path)
 
@@ -359,10 +412,35 @@ def init_project(root: Path, title: str = "Untitled manuscript") -> list[Path]:
     if not keep.exists():
         keep.write_text("", encoding="utf-8", newline="\n")
 
+    if latex:
+        created += _values_written(root)
     return created
 
 
-def rules_to_add(root: Path) -> str | None:
+def _values_written(root: Path) -> list[Path]:
+    """The values file beside a LaTeX manuscript's entry file, from the results as they stand,
+    none yet, so that the manuscript compiles and `check` finds it current (step 12)."""
+    from manuscript_guard.build.latex_values import values_files
+    from manuscript_guard.contracts import load_namespace, load_project
+
+    project, _ = load_project(root)
+    namespace, results = load_namespace(project)[:2]
+    written = []
+    for values in values_files(project, namespace, results):
+        if not values.path.exists():
+            values.path.write_text(values.text, encoding="utf-8", newline="\n")
+            written.append(values.path)
+    return written
+
+
+def _in_latex(rules: str) -> str:
+    """The rules with each binding written as a LaTeX manuscript writes it (step 12)."""
+    for key in ("results.<key>", "lit.<key>"):
+        rules = rules.replace(f"{{{{{key}}}}}", f"\\mg{{{key}}}")
+    return rules
+
+
+def rules_to_add(root: Path, *, latex: bool = False) -> str | None:
     """The rules for an agent, where the project's AGENTS.md does not have them.
 
     `init` never overwrites, so a repository that already has an AGENTS.md keeps its own. An
@@ -376,4 +454,5 @@ def rules_to_add(root: Path) -> str | None:
         return None
     if "manuscript-guard" in present:
         return None
-    return AGENTS.format(title="").split("\n", 1)[1].strip()
+    rules = AGENTS.format(title="").split("\n", 1)[1].strip()
+    return _in_latex(rules) if latex else rules

@@ -244,6 +244,7 @@ LATEX = {
     "hook": ("reads", ("hook", "session-start")),
     "impact": ("refuses", ("impact", "{project}/paper.yaml")),
     "import": ("refuses", ("import", "{project}/returned.docx", "{project}")),
+    # Without `--latex` it would put `main.md` beside `main.tex` (step 12).
     "init": ("refuses", ("init", "{project}")),
     "install-skills": ("no manuscript", ("install-skills",)),
     "journal": ("no manuscript", ("journal",)),

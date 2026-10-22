@@ -50,6 +50,13 @@ FORBIDDEN = (
     ("results/", ".sha256", "the digest is written with the fragment it covers"),
     ("build/", "", "everything in build/ is regenerated; edit the source instead"),
     (
+        # Beside each LaTeX entry file (step 12).
+        "manuscript/",
+        "/mgvalues.sty",
+        "the values file is written from the results by `manuscript-guard values`; change "
+        "the analysis and run it again",
+    ),
+    (
         "profiles/reporting/",
         ".yaml",
         "checklist profiles are transcribed from the official document; "
@@ -1025,6 +1032,8 @@ def after_edit(payload: dict) -> int:
 
 def _note_on(path: Path) -> str | None:
     """What to say about a file that was just written, or None where there is nothing."""
+    if path.suffix.lower() == ".tex":
+        return _latex_note(path)
     if path.suffix.lower() != ".md":
         return _analysis_note(path)
     found = _relative_to_project(path)
@@ -1059,6 +1068,36 @@ def _note_on(path: Path) -> str | None:
     return (
         f"{relative} has {len(loose)} number(s) bound to nothing — {listed}{more}. "
         f"Bind each with {{{{results.<key>}}}} or {{{{lit.<key>}}}}, or add it to "
+        f"`conventions:` in paper.yaml with a reason."
+    )
+
+
+def _latex_note(path: Path) -> str | None:
+    """What to say of a LaTeX manuscript's file just saved: its numbers bound to nothing, as
+    G2 reads them through the include tree (step 12)."""
+    found = _relative_to_project(path)
+    if found is None:
+        return None
+    root, relative = found
+
+    from manuscript_guard.binding import unbound
+    from manuscript_guard.contracts import load_namespace, load_project
+    from manuscript_guard.gates.numbers import _is_latex
+
+    project, _ = load_project(root)
+    if not _is_latex(project):
+        return None
+    wanted = path.resolve()
+    namespace = load_namespace(project)[0]
+    loose = [(item.line, item.text) for item in unbound(project, namespace)
+             if item.path.resolve() == wanted]  # fmt: skip
+    if not loose:
+        return None
+    listed = "; ".join(f"line {line}: {text!r}" for line, text in loose[:6])
+    more = f" (+{len(loose) - 6} more)" if len(loose) > 6 else ""
+    return (
+        f"{relative} has {len(loose)} number(s) bound to nothing — {listed}{more}. "
+        f"Bind each with \\mg{{results.<key>}} or \\mg{{lit.<key>}}, or add it to "
         f"`conventions:` in paper.yaml with a reason."
     )
 

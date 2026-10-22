@@ -2045,7 +2045,15 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
     `--apply` writes that, except where the reader would then refuse the file, as it refuses
     a binding in a siunitx command: that number is left as typed and listed. `bind
     --pointers` refuses a LaTeX manuscript (exit 2), whose tables and figures LaTeX numbers
-    itself. Tests: `tests/test_latex_bind.py`.
+    itself. `init --latex` makes `manuscript/main.tex`, its title escaped as the values file
+    escapes text, with the values file beside it from the results as they stand, so that a
+    new project fails `check` on what a new Markdown one fails on and no more; the
+    bibliography is in a comment, since BibTeX stops on a document that cites nothing yet,
+    and AGENTS.md writes a binding `\mg{...}`. Over a Markdown manuscript it makes nothing
+    (exit 2), and `init` without it over a LaTeX one is still refused. The hooks: the write
+    guard refuses a hand edit of `mgvalues.sty`, which `values` writes, and the note on a
+    saved `.tex` lists its numbers bound to nothing as `bind` reads them, with the LaTeX
+    binding. Tests: `tests/test_latex_bind.py`.
 
 ## Zotero is never on the critical path
 

@@ -4260,10 +4260,14 @@ def _note_stale_skills(start: Path) -> None:
 def cmd_init(args: argparse.Namespace) -> int:
     from manuscript_guard.contracts.results import HOW_TO_EMIT
 
-    created = init_project(args.path, title=args.title)
+    try:
+        created = init_project(args.path, title=args.title, latex=args.latex)
+    except ContractError as exc:
+        print(f"manuscript-guard init: {exc}", file=sys.stderr)
+        return 2
     for path in created:
         print(f"created {path}")
-    rules = rules_to_add(args.path)
+    rules = rules_to_add(args.path, latex=args.latex)
     if rules:
         print(
             "\nAGENTS.md was already there and says nothing of manuscript-guard, so it was "
@@ -4993,6 +4997,11 @@ def build_parser() -> argparse.ArgumentParser:
     init = sub.add_parser("init", help="scaffold a new manuscript project")
     init.add_argument("path", nargs="?", type=Path, default=Path.cwd())
     init.add_argument("--title", default="Untitled manuscript")
+    init.add_argument(
+        "--latex",
+        action="store_true",
+        help="start the manuscript in LaTeX: manuscript/main.tex, with its values file",
+    )
     init.set_defaults(func=cmd_init)
 
     skills = sub.add_parser(
@@ -5107,13 +5116,14 @@ _MARKDOWN_COMMANDS: dict[str, Callable[[argparse.Namespace], bool]] = {
     # `checker` draws its items from the manuscript for every verb, `import` and `status`
     # too, which match answers against them (round 2 of #404).
     **dict.fromkeys(
-        ("build", "checker", "impact", "import", "init", "proof", "render", "reworded",
-         "submit"),
+        ("build", "checker", "impact", "import", "proof", "render", "reworded", "submit"),
         _always,
     ),
     # A round opened and checked reads a LaTeX manuscript (step 8); one seeded from a returned
     # .docx reads the Word copy a Markdown manuscript is built to.
     "respond": lambda args: args.source is not None,
+    # `init --latex` sets up a LaTeX manuscript; without it, `main.md` would go beside one.
+    "init": lambda args: not args.latex,
     # A design round reads the plan, not the manuscript (round 1 of #404).
     "review": lambda args: bool((args.run or args.dry_run) and not args.design
                                 or args.suggestions),
@@ -5156,7 +5166,7 @@ def _refused_for_latex(args: argparse.Namespace) -> str | None:
         return None
     if command == "init":
         return (f"init writes a Markdown manuscript, and {folder / 'main.tex'} is a LaTeX "
-                "one's; it does not set up a LaTeX project yet")  # fmt: skip
+                "one's; give --latex to set up a LaTeX project")  # fmt: skip
     return (f"{command} does not read a LaTeX manuscript yet, and {folder} holds one: "
             "`manuscript-guard check` says what is read of it")  # fmt: skip
 

@@ -8228,11 +8228,12 @@ def _a_name_is_one_space_apart(patch: pytest.MonkeyPatch) -> None:
 
 def _an_institution_is_in_its_own_case(patch: pytest.MonkeyPatch) -> None:
     real = blinding._words
-    patch.setattr(blinding, "_words", lambda piece, flags=0: real(piece))
+    patch.setattr(blinding, "_words",
+                  lambda piece, flags=0, *, latex=False: real(piece, latex=latex))  # fmt: skip
 
 
 def _an_initial_needs_no_stop(patch: pytest.MonkeyPatch) -> None:
-    def name(given: str, family: str) -> re.Pattern[str]:
+    def name(given: str, family: str, *, latex: bool = False) -> re.Pattern[str]:
         initial, surname = re.escape(given[0]), blinding._spaced(family)
         return re.compile(
             rf"(?<!\w)(?:{blinding._spaced(given)}\s+{surname}|{initial}(?:\.\s*|\s+)"
@@ -8244,12 +8245,13 @@ def _an_initial_needs_no_stop(patch: pytest.MonkeyPatch) -> None:
 
 def _an_apostrophe_is_matched_as_typed(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(
-        blinding, "_spaced", lambda words: r"\s+".join(re.escape(w) for w in words.split())
+        blinding, "_spaced",
+        lambda words, *, latex=False: r"\s+".join(re.escape(w) for w in words.split()),
     )
 
 
 def _a_name_is_not_read_family_name_first(patch: pytest.MonkeyPatch) -> None:
-    def name(given: str, family: str) -> re.Pattern[str]:
+    def name(given: str, family: str, *, latex: bool = False) -> re.Pattern[str]:
         initial, surname = re.escape(given[0]), blinding._spaced(family)
         return re.compile(
             rf"(?<!\w)(?:{blinding._spaced(given)}\s+{surname}|{initial}\.\s*{surname})(?!\w)"

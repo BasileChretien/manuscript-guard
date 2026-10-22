@@ -1037,8 +1037,9 @@ mg_declare <- function(name, extracted, covers, version, dates) {
 
 # Keep the plan as it stands the first time the analysis writes results, and never again,
 # mirroring the Python emitter's `freeze_plan`: design/plan.frozen.yaml holds the plan's
-# text, its digest, the day and the script, written as JSON, which is YAML too.
-mg_freeze_plan <- function(project_root, script) {
+# text, its digest, the day and the script, written as JSON, which is YAML too. `synthetic`
+# says every input of that first write was declared synthetic, as in Python.
+mg_freeze_plan <- function(project_root, script, synthetic = FALSE) {
   plan <- file.path(project_root, "design", "plan.md")
   frozen <- file.path(project_root, "design", "plan.frozen.yaml")
   if (!file.exists(plan) || file.exists(frozen)) return(invisible(NULL))
@@ -1062,6 +1063,7 @@ mg_freeze_plan <- function(project_root, script) {
     sha256 = mg_source_digest(plan),
     plan = text
   )
+  if (isTRUE(synthetic)) record$synthetic <- TRUE
   json <- jsonlite::toJSON(record, auto_unbox = TRUE, pretty = 2)
   mg_write_lf(as.character(json), frozen)
   invisible(frozen)
@@ -1940,7 +1942,8 @@ mg_emitter <- function(script, inputs = character(), root = NULL, ci_level = NUL
     # you just wrote, so a later hand-edit cannot pass unnoticed.
     checksum <- digest::digest(file = path, algo = "sha256")
     mg_write_lf(paste0(checksum, "  ", basename(path)), paste0(path, ".sha256"))
-    mg_freeze_plan(project_root, relative(script_path))
+    every <- length(state$inputs) > 0 && all(state$inputs %in% state$synthetic)
+    mg_freeze_plan(project_root, relative(script_path), every)
     invisible(path)
   }
 

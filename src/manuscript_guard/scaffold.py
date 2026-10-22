@@ -153,8 +153,7 @@ LATEX_MANUSCRIPT = """\
 % Write here. Any number you quote must be a binding: \\mg{{results.some_key}} for something
 % your analysis computed, or \\mg{{lit.some_key}} for something taken from the literature. A
 % bare number in this file is a defect unless it is a recognised convention, such as a
-% threshold chosen in the Methods, or a pointer such as Table 1. A comment is not printed,
-% and `submit` takes its text out of the source it packs.
+% threshold chosen in the Methods, or a pointer such as Table 1. A comment is not printed.
 
 \\section{{Methods}}
 
@@ -376,8 +375,11 @@ def init_project(root: Path, title: str = "Untitled manuscript", *,
             latex_title = escaped(title, "title")
         except NotPrintable as exc:
             raise ContractError(f"the title is not taken, so nothing was made: {exc}") from exc
+    from manuscript_guard.gates.numbers import source_files
+
     manuscript = root / "manuscript"
-    if latex and manuscript.is_dir() and any(manuscript.rglob("*.md")):
+    # The files the gates read: a draft set aside under `_drafts/` is none (round 1 of step 12).
+    if latex and source_files(manuscript):
         raise ContractError(f"{manuscript} holds a Markdown manuscript, and a LaTeX one beside "
                             "it would be read by no gate; nothing was made")  # fmt: skip
     files = dict(_FILES)
@@ -434,10 +436,14 @@ def _values_written(root: Path) -> list[Path]:
 
 
 def _in_latex(rules: str) -> str:
-    """The rules with each binding written as a LaTeX manuscript writes it (step 12)."""
+    """The rules with each binding written as a LaTeX manuscript writes it, and its values
+    file among the files written by a command (step 12 and its round 1)."""
     for key in ("results.<key>", "lit.<key>"):
         rules = rules.replace(f"{{{{{key}}}}}", f"\\mg{{{key}}}")
-    return rules
+    return rules.replace(
+        "`results/` is written by the analysis, ",
+        "`results/` is written by the analysis, `manuscript/mgvalues.sty` by\n   "
+        "`manuscript-guard values` from it, ", 1)
 
 
 def rules_to_add(root: Path, *, latex: bool = False) -> str | None:

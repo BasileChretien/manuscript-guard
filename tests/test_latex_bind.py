@@ -80,10 +80,27 @@ def test_bind_offers_and_writes_a_latex_binding(
     assert main(["bind", str(project)]) == 1
     said = capsys.readouterr().out
     assert "replace it with \\mg{results.ror.point}" in said, said
+    # Not offered where the reader would refuse it (round 1 of step 12).
+    assert "the reader would refuse it there" in said, said
     main(["bind", str(project), "--apply"])
     written = twin.read_text(encoding="utf-8")
     assert "The estimate was \\mg{results.ror.point} again" in written, written
     assert f"\\num{{{point}}}" in written, written
+
+
+def test_bind_writes_nothing_past_a_files_first_refusal(
+    project: Path, twin: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Past a refusal the reader reads the file as typed, comments and options among it: a
+    number there is not offered, nor written (round 1 of step 12)."""
+    point = _display(project, "results.ror.point")
+    typed = f"\\ifdefined\\x\\fi\nThe estimate was {point} again.% old: {point}\n"
+    _typed_before(twin, "\\section{Discussion}", typed)
+    before = twin.read_text(encoding="utf-8")
+    main(["bind", str(project)])
+    assert "past the file's first refusal" in capsys.readouterr().out
+    main(["bind", str(project), "--apply"])
+    assert twin.read_text(encoding="utf-8") == before
 
 
 def test_bind_pointers_says_latex_numbers_its_tables(
@@ -119,6 +136,16 @@ def test_init_latex_makes_a_project_that_fails_as_a_markdown_one_does(tmp_path: 
     assert _failing(tmp_path / "tex") == _failing(tmp_path / "md")
 
 
+def test_init_latex_passes_over_drafts_set_aside(tmp_path: Path) -> None:
+    """A Markdown draft under `_drafts/` is no manuscript the gates read (round 1 of step
+    12); and the LaTeX rules name the values file as written by a command."""
+    assert main(["init", str(tmp_path), "--latex"]) == 0
+    (tmp_path / "manuscript" / "_drafts").mkdir()
+    (tmp_path / "manuscript" / "_drafts" / "notes.md").write_text("Notes.\n", encoding="utf-8")
+    assert main(["init", str(tmp_path), "--latex"]) == 0
+    assert "`manuscript/mgvalues.sty` by" in (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
+
+
 def test_init_latex_beside_a_markdown_manuscript_makes_nothing(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -149,3 +176,28 @@ def test_the_hooks_refuse_the_values_file_and_note_a_typed_number(
     _typed_before(twin, "\\section{Discussion}", "Of 4100 reports typed.\n")
     noted = run("after-edit", twin)["hookSpecificOutput"]["additionalContext"]
     assert "4100" in noted and "\\mg{results.<key>}" in noted, noted
+    # A `.tex` under `analysis/` is noted as any file there (round 1 of step 12).
+    template = project / "analysis" / "table.tex"
+    template.write_text("x\n", encoding="utf-8")
+    assert "stale" in run("after-edit", template)["hookSpecificOutput"]["additionalContext"]
+
+
+def test_the_write_guard_follows_the_manuscript_where_paper_yaml_puts_it(
+    project: Path, twin: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Round 1 of step 12: `_relocated` moved `results/` and `build/` only."""
+    import json
+
+    import yaml
+
+    from manuscript_guard.hooks import dispatch
+
+    shutil.move(str(project / "manuscript"), str(project / "paper"))
+    paper = project / "paper.yaml"
+    document = yaml.safe_load(paper.read_text(encoding="utf-8"))
+    document["paths"] = {**document.get("paths", {}), "manuscript": "paper"}
+    paper.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    payload = {"tool_input": {"file_path": str(project / "paper" / "mgvalues.sty")}}
+    assert dispatch("guard-write", payload) == 0
+    said = json.loads(capsys.readouterr().out)
+    assert said["hookSpecificOutput"]["permissionDecision"] == "deny", said

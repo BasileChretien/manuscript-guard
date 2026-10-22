@@ -363,7 +363,8 @@ def _relocated(root: Path) -> dict[str, str]:
         # had always raised this one: there the guard was switched off.
         return {}
     moved: dict[str, str] = {}
-    for name in ("results", "build"):
+    # The manuscript's too, where the values file is written (round 1 of step 12).
+    for name in ("results", "build", "manuscript"):
         try:
             configured = str(project.path(name).relative_to(root)).replace("\\", "/")
         except (ValueError, OSError):
@@ -1033,7 +1034,9 @@ def after_edit(payload: dict) -> int:
 def _note_on(path: Path) -> str | None:
     """What to say about a file that was just written, or None where there is nothing."""
     if path.suffix.lower() == ".tex":
-        return _latex_note(path)
+        # A `.tex` outside the manuscript, under `analysis/`, is noted as any file there is
+        # (round 1 of step 12).
+        return _latex_note(path) or _analysis_note(path)
     if path.suffix.lower() != ".md":
         return _analysis_note(path)
     found = _relative_to_project(path)

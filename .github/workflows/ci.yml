@@ -66,6 +66,38 @@ jobs:
       - run: pytest -q -rs -n auto -m "not timing"
       - run: pytest -q -rs -m timing
 
+  latex:
+    # The PDF of a LaTeX manuscript (step 9 of DESIGN.md's LaTeX plan): the tests that compile
+    # with latexmk, the values file's, and LuaLaTeX's digits against the mask's, against the TeX Live Ubuntu 24.04 packages, which
+    # MANUSCRIPT_GUARD_REQUIRE_LATEX names: with it set, tests/conftest.py refuses to start
+    # unless that TeX Live is the one on PATH, so a compile test never skips here. One job,
+    # after `first`, so the runners the other repositories share are held only as long as
+    # the install and these files take.
+    needs: first
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      MANUSCRIPT_GUARD_REQUIRE_LATEX: "TeX Live 2023"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - uses: r-lib/actions/setup-pandoc@v2
+        with:
+          pandoc-version: ${{ env.MANUSCRIPT_GUARD_REQUIRE_PANDOC }}
+      - run: >-
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends latexmk
+          texlive-latex-base texlive-latex-recommended texlive-fonts-recommended cm-super-minimal
+          texlive-luatex poppler-utils
+      - run: pdflatex --version && latexmk -v
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e ".[dev]"
+      - run: pytest -q -rs tests/test_latex_build.py tests/test_latex_values.py tests/test_latex_agreement.py
+
   test:
     # The gates must hold on the platforms other scientists actually use, and only Windows
     # is available to the author, so the other two are covered here rather than assumed.

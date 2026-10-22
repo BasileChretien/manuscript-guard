@@ -234,7 +234,8 @@ LATEX = {
     "audit": ("refuses", ("audit", "{tex}", "--against", "{project}/results")),
     # It reads each file as G2 does and offers `\\mg{...}` (step 12).
     "bind": ("reads", ("bind", "{project}")),
-    "build": ("refuses", ("build", "{project}")),
+    # It compiles the PDF with latexmk (step 9).
+    "build": ("reads", ("build", "{project}")),
     "check": ("reads", ("check", "{project}")),
     "checker": ("refuses", ("checker", "build", "{project}")),
     "checklist": ("no manuscript", ("checklist", "{project}")),

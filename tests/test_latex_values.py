@@ -98,10 +98,12 @@ _PRINTED = (
     "-0.80\N{EN DASH}-0.12", "a\N{EM DASH}-b", "-0.80--0.12",
 )  # fmt: skip
 #: What pdftotext reads otherwise, measured under MiKTeX 24.4 (2026-10-21), and why: OT1 draws
-#: `\\_` as a rule, which holds no character, and T1's dash has no Unicode in the font's map.
-_READ_AS = {"OT1": {"A_B": "AB"}, "T1": {"2.10\N{EN DASH}7.02": "2.10\x157.02",
-                                        "-0.80\N{EN DASH}-0.12": "-0.80\x15-0.12",
-                                        "a\N{EM DASH}-b": "a\x16-b"}}  # fmt: skip
+#: `\\_` as a rule, which holds no character.
+_READ_AS = {"OT1": {"A_B": "AB"}, "T1": {}}
+#: T1's dashes, as pdftotext reads them where the font's map gives them no Unicode: their codes
+#: in T1. MiKTeX 24.4's fonts give none and TeX Live 2023's cm-super does (step 9's CI): either
+#: is the dash printed.
+_T1_CODES = {"\x15": "\N{EN DASH}", "\x16": "\N{EM DASH}"}
 
 
 @pytest.mark.skipif(not (_PDFLATEX and _PDFTOTEXT), reason="pdflatex and pdftotext are needed")
@@ -126,6 +128,9 @@ def test_pdflatex_prints_each_escape_as_the_value(tmp_path: Path, encoding: str)
     read = subprocess.run([_PDFTOTEXT, "-enc", "UTF-8", "probe.pdf", "-"], cwd=tmp_path,
                           capture_output=True, timeout=60, check=False)  # fmt: skip
     printed = [page.strip() for page in read.stdout.decode("utf-8").split("\f") if page.strip()]
+    if encoding == "T1":
+        printed = ["".join(_T1_CODES.get(character, character) for character in page)
+                   for page in printed]  # fmt: skip
     assert printed == [_READ_AS[encoding].get(display, display) for display in _PRINTED]
 
 

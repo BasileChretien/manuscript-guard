@@ -2908,6 +2908,68 @@ def _shown_path(project, path: Path) -> str:
         return str(path)
 
 
+def _build_latex(project, report, args: argparse.Namespace) -> int:
+    """`build` for a LaTeX manuscript: its PDF, and its supplement's, compiled in a copy in
+    `build/latex/` and given as `build/manuscript.pdf` and `build/supplementary.pdf`, an
+    unchecked one named so, as the Word build names its documents (step 9)."""
+    from manuscript_guard.build.latex import LatexMissing, build_latex
+
+    if getattr(args, "marked_up", False) or getattr(args, "annotated", False):
+        print("manuscript-guard: --marked-up and --annotated make Word copies, and a LaTeX "
+              "manuscript is built as a PDF", file=sys.stderr)  # fmt: skip
+        return 2
+    if not report.ok and not args.skip_checks:
+        print(report.render(project.root))
+        print(f"\n{len(report.failures)} failing; not building. Use --skip-checks to override.")
+        return 1
+    from manuscript_guard.gates.journal import _profile, profile_path
+
+    # The engine the journal's profile names, as `latex: {engine: ...}`.
+    profile = _profile(project)
+    engine = ((profile or {}).get("latex") or {}).get("engine", "pdflatex")
+    slug = project.target_journal
+    if profile is None and slug and profile_path(project, slug) is not None:
+        print(f"the journal's profile {slug} does not validate, so the engine it may name is "
+              "not read: building with pdfLaTeX (round 3 of step 9)", file=sys.stderr)  # fmt: skip
+    namespace, results, _literature, _ = load_namespace(project)
+    try:
+        compiled = build_latex(project, namespace, results, engine=engine)
+    except LatexMissing as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 2
+    except BuildError as exc:
+        print(f"manuscript-guard: the PDF is not built: {exc}", file=sys.stderr)
+        return 1
+    except OSError as exc:
+        print(f"manuscript-guard: the PDF is not built: {exc}", file=sys.stderr)
+        return 2
+    mark = "" if report.ok else ".UNCHECKED"
+    names = ("manuscript", "supplementary")
+    project.path("build").mkdir(parents=True, exist_ok=True)
+    for name, document in zip(names, compiled, strict=False):
+        target = project.path("build") / f"{name}{mark}.pdf"
+        if name == "manuscript" and args.output is not None:
+            target = Path(args.output)
+        try:
+            target.write_bytes(document.pdf.read_bytes())
+        except OSError as exc:
+            # A PDF open in a reader that locks it, on Windows (round 2 of step 9).
+            print(f"manuscript-guard: {target} could not be written: {exc}", file=sys.stderr)
+            return 2
+        print(f"built {target}" + ("" if name == "manuscript" else
+                                   " (supplementary material, its own document)"))  # fmt: skip
+        for left in document.undefined:
+            print(f"  LaTeX left the {left} undefined")
+    if not report.ok:
+        print(f"{len(report.failures)} check(s) were failing, so this is named UNCHECKED. "
+              "Fix them and rebuild before sending it anywhere.")  # fmt: skip
+    if args.submission and any(document.undefined for document in compiled):
+        print("an undefined citation or reference fails at submission: the PDF prints `?` "
+              "where it stands")  # fmt: skip
+        return 1
+    return 0
+
+
 def cmd_build(args: argparse.Namespace) -> int:
     """Produce the .docx. Gates run first unless the author insists otherwise.
 
@@ -2928,6 +2990,8 @@ def cmd_build(args: argparse.Namespace) -> int:
     report, project, _stage, _deferred = _run_gates(
         args.path, submission=args.submission, stage=getattr(args, "stage", None)
     )
+    if manuscript_format(project.path("manuscript")) == LATEX:
+        return _build_latex(project, report, args)
     if marked_up:
         refused = _refused_inputs([args.since, args.since_supplement])
         if refused is not None:
@@ -5116,7 +5180,7 @@ _MARKDOWN_COMMANDS: dict[str, Callable[[argparse.Namespace], bool]] = {
     # `checker` draws its items from the manuscript for every verb, `import` and `status`
     # too, which match answers against them (round 2 of #404).
     **dict.fromkeys(
-        ("build", "checker", "impact", "import", "proof", "render", "reworded", "submit"),
+        ("checker", "impact", "import", "proof", "render", "reworded", "submit"),
         _always,
     ),
     # A round opened and checked reads a LaTeX manuscript (step 8); one seeded from a returned

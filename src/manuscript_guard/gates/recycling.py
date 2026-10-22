@@ -52,7 +52,7 @@ from __future__ import annotations
 import re
 from bisect import bisect_right
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from manuscript_guard.contracts._schema import read_text
@@ -70,6 +70,7 @@ from manuscript_guard.literature.sources import (
 from manuscript_guard.policy import DRAFTING, INTERNAL_REVIEW, stage_index
 from manuscript_guard.text.blocks import find_headings
 from manuscript_guard.text.masking import blank_comments, fenced_blocks, front_matter_end, mask
+from manuscript_guard.text.reader import LATEX, manuscript_format
 from manuscript_guard.text.section_names import (
     methods_sections,
     names_abstract,
@@ -503,9 +504,8 @@ def check_recycling(project: Project, stage: str = DRAFTING) -> Report:
     stored = project.path("literature") / "sources"
     due = stage_index(stage) >= stage_index(INTERNAL_REVIEW)
     named, policy = abstract_title(project), text_recycling(project)
-    manuscript = [
-        (path, _read(read_text(path), named)) for path in source_files(project.path("manuscript"))
-    ]
+    folder = project.path("manuscript")
+    manuscript = _manuscript(folder, named)
     report, compared, reported = Report(), 0, 0
     for output in outputs:
         key = output.citekey
@@ -517,8 +517,8 @@ def check_recycling(project: Project, stage: str = DRAFTING) -> Report:
         texts = dict(copies)
         read = [(copy, words(source)) for copy, source in copies]
         found = [
-            (path, copy, passage)
-            for path, prepared in manuscript
+            _placed(folder, where, copy, passage)
+            for where, prepared in manuscript
             for copy, passage in _kept(
                 (copy, passage)
                 for copy, source in read
@@ -535,6 +535,38 @@ def check_recycling(project: Project, stage: str = DRAFTING) -> Report:
                 _finding(path, key, copy, texts[copy], passage, due, policy)
             )
     return report.with_counts(earlier_outputs_compared=compared, recycled_passages=reported)
+
+
+def _manuscript(folder: Path, named: str | None) -> list[tuple[object, _Manuscript]]:
+    """Each manuscript file, read for the passages it repeats. A LaTeX manuscript's documents
+    are read as they print (`printed_of`), the main text and the supplement, with its
+    headings as Markdown's and a citation `[@key]`; a passage is placed back at its `.tex`
+    file by `_placed` (step 13)."""
+    if manuscript_format(folder) != LATEX:
+        return [(path, _read(read_text(path), named)) for path in source_files(folder)]
+    from manuscript_guard.text.latex.printed import printed_of
+
+    views = [printed_of(folder, supplementary=part) for part in (False, True)]
+    return [(view, _read(view.text, named)) for view in views if view.text.strip()]
+
+
+def _placed(
+    folder: Path, where: object, copy: Path, passage: Recycled
+) -> tuple[Path, Path, Recycled]:
+    """A passage with the file and the lines it is typed on: a Markdown file's own, or, for
+    a LaTeX document's printed view, the `.tex` file its first word is typed in, and the
+    lines there of its first word and, in that file, its last (step 13)."""
+    if isinstance(where, Path):
+        return where, copy, passage
+    first = where.place(passage.start)
+    if first is None:
+        from manuscript_guard.text.latex.structure import ENTRY
+
+        return folder / ENTRY, copy, passage
+    source, line = first
+    last = where.place(max(passage.end - 1, passage.start))
+    end = last[1] if last is not None and last[0] is source else line
+    return folder / source.path, copy, replace(passage, first_line=line, last_line=end)
 
 
 def _copies(stored: Path, key: str) -> tuple[list[tuple[Path, str]], list[str]]:

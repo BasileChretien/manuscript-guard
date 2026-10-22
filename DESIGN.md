@@ -2258,6 +2258,22 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
     guard refuses a hand edit of `mgvalues.sty`, which `values` writes, and the note on a
     saved `.tex` lists its numbers bound to nothing as `bind` reads them, with the LaTeX
     binding. Tests: `tests/test_latex_bind.py`.
+13. The last checks. Until each reads LaTeX, a LaTeX manuscript fails `check --submission` on
+    its `not-read-in-latex`. Built in parts. The first: the checks merged after step 8 read
+    it. G4's check of the sources the Data availability statement names reads the main text
+    as it prints (`main_text`), and places its finding in the `.tex` file the statement's
+    heading is typed in. G7's text recycling reads each document as it prints
+    (`printed_of`), the main text and the supplement, by its parts as Markdown's headings
+    give them, a `\cite` as `[@key]`. A passage is placed at the `.tex` file its first word
+    is typed in, and at the lines there of its first and last words; where the last is in
+    another file, the passage ends on its first line. BUILD's Markdown checks
+    (`check_shapes`, `check_tex`) do not run on a LaTeX manuscript, and nothing is said: its
+    build is checked by `check_latex`, which reads it as the reader does, and by its compile
+    (`_MARKDOWN_BUILD`). `_NOT_READ_IN_LATEX` is then empty. Left: G4's figure legends, which
+    are a float's caption, and G2's pointers to tables and figures, each a `not-read-in-latex`
+    for its part. Tests: `tests/test_recycling.py`, `tests/test_corruption.py`, and
+    `_planted_latex_recycling` in `tests/test_properties.py`, with `BROKEN` rules for the
+    file and the lines.
 
 ## Zotero is never on the critical path
 

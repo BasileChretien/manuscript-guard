@@ -5565,6 +5565,95 @@ def test_a_passage_of_an_earlier_paper_is_found_where_it_stands_however_it_is_se
     assert found == expected, (text, source)
 
 
+#: Where a LaTeX document repeats a run of an earlier paper, whether G7's text recycling reads
+#: it there, and the file it is typed in (step 13): `<>` is the run. A place in `part.tex` is
+#: in the file the entry inputs, where a paragraph drawn of `main.tex` stands.
+_LATEX_RECYCLED_PLACES = (
+    ("<>.\n", True, "main.tex"),
+    ("A note.\\footnote{<>.}\n", True, "main.tex"),
+    ("% <>.\n", False, "main.tex"),
+    ("\\iffalse <>. \\fi\n", False, "main.tex"),
+    ("% a line of comment\n<>.\n", True, "main.tex"),
+    ("<>.\n", True, "part.tex"),
+    ("\\section{Discussion}\n<>.\n", True, "part.tex"),
+)  # fmt: skip
+
+
+@st.composite
+def _planted_latex_recycling(draw: st.DrawFn) -> tuple[dict[str, str], str, set[tuple]]:
+    """A LaTeX document, `main.tex` and the `part.tex` it inputs, with a run of fourteen words
+    of an earlier paper in each place of `_LATEX_RECYCLED_PLACES`, in an order drawn, each its
+    own paragraph after words drawn and its lines wrapped as drawn; the earlier paper; and,
+    for each run the reading reads, its file and the lines of its first and last words."""
+    pool = list(draw(st.permutations(_EARLIER_WORDS)))
+    pieces: dict[str, list[str]] = {"main.tex": [], "part.tex": []}
+    source, runs = "", []
+    for index in draw(st.permutations(range(len(_LATEX_RECYCLED_PLACES)))):
+        template, read, name = _LATEX_RECYCLED_PLACES[index]
+        run, pool = pool[:14], pool[14:]
+        own = draw(st.lists(st.sampled_from(_ITS_OWN), min_size=_APART_BY, max_size=8))
+        source += " ".join(own) + "\n" + " ".join(run) + "\n"
+        joints = [draw(st.sampled_from((" ", " ", "\n"))) for _ in run[1:]]
+        # A comment ends at its line's end: the run it holds is on its one line.
+        if template.startswith("%"):
+            joints = [" "] * len(joints)
+        written = run[0] + "".join(j + w for j, w in zip(joints, run[1:], strict=True))
+        filler = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
+        pieces[name].append(f"\n{filler.capitalize()}.\n\n" + template.replace("<>", written))
+        runs.append((run, read, name))
+    main = pieces["main.tex"]
+    main.insert(draw(st.integers(0, len(main))), "\n\\input{part}\n")
+    texts = {
+        "main.tex": "\\documentclass{article}\n\\begin{document}\n" + "".join(main)
+        + "\n\\end{document}\n",
+        "part.tex": "".join(pieces["part.tex"]),
+    }
+    expected = set()
+    for run, read, name in runs:
+        if read:
+            found = re.search(r"\s+".join(run), texts[name])
+            assert found is not None, run
+            text = texts[name]
+            expected.add((name, text.count("\n", 0, found.start()) + 1,
+                          text.count("\n", 0, found.end()) + 1))  # fmt: skip
+    return texts, source, expected
+
+
+@holds(60, _planted_latex_recycling())
+def test_a_latex_passage_of_an_earlier_paper_is_placed_at_its_file_and_lines(
+    planted: tuple[dict[str, str], str, set[tuple]],
+) -> None:
+    """G7's text recycling reads a LaTeX document as it prints, and names each passage at
+    the file it is typed in and the lines there of its first and last words: in a paragraph,
+    in a footnote, past a comment's line, and in the file the entry inputs, under a heading
+    of its own too; a run in a comment or left out by `\\iffalse` is not read (step 13)."""
+    texts, source, expected = planted
+    view = latex_print.printed(list(latex_structure.read_tree(texts).sources))
+    read = recycling_gate._read(view.text, None)
+    placed = [
+        recycling_gate._placed(Path("m"), view, Path("c"), passage)
+        for passage in recycling_gate._recycled(read, recycling_gate.words(source), "k")
+    ]
+    found = {(path.name, p.first_line, p.last_line) for path, _copy, p in placed}
+    assert found == expected, (found, expected, texts)
+
+
+def _a_recycled_passage_s_lines_are_the_printed_view_s(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print.Printed, "place",
+                  lambda self, offset: (self.origins[0][1],
+                                        self.text.count("\n", 0, offset) + 1))  # fmt: skip
+
+
+def _a_recycled_passage_ends_on_its_first_line(patch: pytest.MonkeyPatch) -> None:
+    placed = recycling_gate._placed
+
+    def first_line_only(folder, where, copy, passage):
+        path, copy, passage = placed(folder, where, copy, passage)
+        return path, copy, dataclasses.replace(passage, last_line=passage.first_line)
+
+    patch.setattr(recycling_gate, "_placed", first_line_only)
+
+
 @holds(150, plan_pairs())
 def test_a_section_of_two_plans_differs_only_where_its_words_do(
     drawn: tuple[dict[str, str], list[str]],
@@ -9505,6 +9594,14 @@ BROKEN = {
     "in LaTeX, a quotation's line is the printed view's": (
         _a_quotation_s_line_is_the_printed_view_s,
         test_a_latex_quotation_is_read_at_its_line_and_nowhere_else,
+    ),
+    "in LaTeX, a recycled passage's lines are the printed view's": (
+        _a_recycled_passage_s_lines_are_the_printed_view_s,
+        test_a_latex_passage_of_an_earlier_paper_is_placed_at_its_file_and_lines,
+    ),
+    "in LaTeX, a recycled passage ends on its first line": (
+        _a_recycled_passage_ends_on_its_first_line,
+        test_a_latex_passage_of_an_earlier_paper_is_placed_at_its_file_and_lines,
     ),
     "in LaTeX's printed view, dashes are printed as typed": (
         _latex_dashes_are_printed_as_typed,

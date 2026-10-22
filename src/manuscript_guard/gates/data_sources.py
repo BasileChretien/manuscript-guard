@@ -215,13 +215,18 @@ def _not_chosen(name: str, fragment: Fragment, document: dict[str, Any],
 
 def _holding(project: Project, heading: str | None):
     """The main-text file that holds the statement's heading: of several that match, the
-    outermost, and the first of those, as `statement_text` chooses (round 2 of #384)."""
+    outermost, and the first of those, as `statement_text` chooses (round 2 of #384). In a
+    LaTeX manuscript, the `.tex` file the heading is typed in (step 13)."""
     from manuscript_guard.gates.data_statement import HEADING
     from manuscript_guard.gates.numbers import source_files
     from manuscript_guard.text.masking import without_front_matter
+    from manuscript_guard.text.reader import LATEX, manuscript_format
     from manuscript_guard.text.sections import scannable, split_sections
 
     wanted = re.compile(heading or HEADING, re.IGNORECASE)
+    folder = project.path("manuscript")
+    if manuscript_format(folder) == LATEX:
+        return _holding_latex(folder, wanted)
     files = source_files(project.path("manuscript"), main_text_only=True)
     best: tuple[int, Any] | None = None
     for file in files:
@@ -232,6 +237,19 @@ def _holding(project: Project, heading: str | None):
     if best is not None:
         return best[1]
     return files[0] if files else project.path("manuscript") / "main.md"
+
+
+def _holding_latex(folder, wanted: re.Pattern[str]):
+    """`_holding` of a LaTeX manuscript, read as its main text prints (`main_text`): the file
+    of the outermost heading that matches, or the entry file where none does."""
+    from manuscript_guard.text.latex.printed import printed_of
+    from manuscript_guard.text.latex.structure import ENTRY
+    from manuscript_guard.text.sections import scannable, split_sections
+
+    view = printed_of(folder, supplementary=False)
+    found = [s for s in split_sections(scannable(view.text)) if s.title and wanted.search(s.title)]
+    placed = view.place_line(min(found, key=lambda s: s.level).line) if found else None
+    return folder / placed[0].path if placed is not None else folder / ENTRY
 
 
 #: What the statement said, as a finding says it, and what to do about it.

@@ -25,6 +25,8 @@ from manuscript_guard.gates import recycling as recycling_gate
 from manuscript_guard.literature import sources
 
 KEY = "fictionalEarlierAnalysis2020"
+#: The example's manuscript written in LaTeX.
+TWIN = Path(__file__).parent / "data" / "latex" / "manuscript"
 
 #: Methods of the earlier paper: a standard description, 35 words.
 DESCRIPTION = (
@@ -189,6 +191,54 @@ def test_the_supplement_is_held_to_the_norms_the_main_text_is(
     assert part in finding.message
     assert finding.path.name == "S2_recycled.md"
     assert finding.line == written_as.count("\n") + 1  # the passage is the file's last line
+
+
+def _as_latex(root: Path) -> Path:
+    """The example's manuscript as its LaTeX twin; the entry file."""
+    shutil.rmtree(root / "manuscript")
+    shutil.copytree(TWIN, root / "manuscript")
+    return root / "manuscript" / "main.tex"
+
+
+def _typed_before(entry: Path, heading: str, typed: str) -> int:
+    """`typed` written into `entry` before the heading; the line it starts on."""
+    text = entry.read_text(encoding="utf-8")
+    at = text.index(heading)
+    entry.write_text(text[:at] + typed + "\n\n" + text[at:], encoding="utf-8")
+    return text.count("\n", 0, at) + 1
+
+
+def test_a_latex_manuscript_is_compared_as_it_prints_and_placed_at_its_file(
+    project: Path,
+) -> None:
+    """Step 13: G7 reads a LaTeX manuscript's documents as they print, by their parts, and
+    names each passage at the `.tex` file and the lines it is typed on: a file the entry
+    inputs, and the entry itself past a comment, where the passage's first line is not the
+    view's."""
+    stored(project)
+    entry = _as_latex(project)
+    (entry.parent / "reused.tex").write_text(f"{DESCRIPTION}\n", encoding="utf-8")
+    _typed_before(entry, "\\section{Results}", "\\input{reused}")
+    broken = CAVEAT.replace("so a ", "so a\n")
+    line = _typed_before(entry, "\\section{Data availability}", f"% from before\n{broken}") + 1
+    found_ = sorted(found(project, "internal-review"), key=lambda f: f.path.name)
+    assert [(f.code, f.severity, f.path.name, f.line) for f in found_] == [
+        ("recycled-text", WARN, "main.tex", line),
+        ("recycled-text", WARN, "reused.tex", 1),
+    ]
+    assert "in the Discussion" in found_[0].message and f"lines {line}-{line + 1}" in (
+        found_[0].message
+    )
+    assert "in the Methods" in found_[1].message
+
+
+def test_a_latex_description_that_cites_its_paper_is_a_note(project: Path) -> None:
+    """A `\\cite` is the citation G7 reads, as `[@key]` is in Markdown (step 13)."""
+    stored(project)
+    entry = _as_latex(project)
+    line = _typed_before(entry, "\\section{Results}", f"{DESCRIPTION[:-1]}, as before "
+                         f"\\cite{{{KEY}}}.")  # fmt: skip
+    assert said(project, "submission") == [("recycled-methods-cited", INFO, line)]
 
 
 def test_a_heading_that_only_opens_like_a_supplement_s_part_names_none() -> None:

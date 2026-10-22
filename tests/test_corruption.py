@@ -6780,9 +6780,10 @@ def test_a_gate_not_taught_latex_reads_nothing_and_fails_at_submission(project: 
     drafting, _project, _stage, _deferred = _run_gates(project, stage="drafting")
     unread = sorted(f.gate for f in drafting.findings if f.code == "not-read-in-latex")
     # G2 reads LaTeX but for its pointers to tables and figures, and says so (step 4). G4
-    # reads it from step 6 but for the data sources its statements name, G14 and G6 from
-    # step 7, G7 but for its text recycling, G8, G8r, G9, G13 and G15 from step 8.
-    expected = ["BUILD", "G2", "G4", "G7"]
+    # reads it from step 6, G14 and G6 from step 7, G7, G8, G8r, G9, G13 and G15 from step
+    # 8, and the data sources G4's statements name and G7's text recycling from step 13.
+    # BUILD's Markdown checks do not run on LaTeX, whose build `check_latex` reads.
+    expected = ["G2"]
     assert unread == expected, drafting.render(project)
     assert "not-read-in-latex" not in codes(drafting)
     said = {f.code for f in drafting.findings}
@@ -6795,9 +6796,10 @@ def test_a_gate_not_taught_latex_reads_nothing_and_fails_at_submission(project: 
 
 
 #: The checks that read the manuscript only as Markdown, and those that do not read it.
-_MARKDOWN_ONLY = (
-    "check_statement_sources", "check_shapes", "check_tex", "check_recycling",
-)  # fmt: skip
+_MARKDOWN_ONLY: tuple[str, ...] = ()
+#: The Markdown build's own checks, which a LaTeX manuscript's build has no use for: they do
+#: not run on one, and nothing is said (step 13).
+_MARKDOWN_BUILD = ("check_shapes", "check_tex")
 _NOT_THE_MANUSCRIPT = (
     "check_review", "check_freshness", "check_figures", "check_figure_reviews",
     "check_literature_chain", "check_shortlist", "check_design", "check_design_rounds",
@@ -6822,6 +6824,8 @@ _READS_LATEX = (
     # It reads the main text through G4's `main_text`, which gives a LaTeX manuscript as it
     # prints (#414).
     "check_package_doi",
+    # They read the documents as they print, and place a finding in its `.tex` file (step 13).
+    "check_statement_sources", "check_recycling",
 )  # fmt: skip
 
 
@@ -6838,7 +6842,7 @@ def test_each_check_not_taught_latex_is_not_run_and_the_others_are(
     def recorder(name: str):
         return lambda *_args, **_kwargs: called.append(name) or Report()
 
-    for name in _MARKDOWN_ONLY + _NOT_THE_MANUSCRIPT + _READS_LATEX:
+    for name in _MARKDOWN_ONLY + _MARKDOWN_BUILD + _NOT_THE_MANUSCRIPT + _READS_LATEX:
         monkeypatch.setattr(cli, name, recorder(name))
     _as_latex(project)
     cli._run_gates(project, stage="drafting")
@@ -6847,6 +6851,7 @@ def test_each_check_not_taught_latex_is_not_run_and_the_others_are(
     # check an entry of the runner's table gains must be put in one of the tuples, and
     # the one the runner calls in its own body is `check_format` (round 3).
     assert set(_MARKDOWN_ONLY) == cli._NOT_READ_IN_LATEX
+    assert set(_MARKDOWN_BUILD) == cli._MARKDOWN_BUILD
     body = {name for name in cli._run_gates.__code__.co_names if name.startswith("check_")}
     assert body == {"check_format"}
     runner = {
@@ -6856,7 +6861,7 @@ def test_each_check_not_taught_latex_is_not_run_and_the_others_are(
         for name in code.co_names
         if name.startswith("check_")
     }
-    assert runner == set(_MARKDOWN_ONLY + _NOT_THE_MANUSCRIPT + _READS_LATEX)
+    assert runner == set(_MARKDOWN_ONLY + _MARKDOWN_BUILD + _NOT_THE_MANUSCRIPT + _READS_LATEX)
 
 
 def test_a_main_tex_without_a_class_leaves_a_markdown_manuscript_markdown(project: Path) -> None:
@@ -10380,6 +10385,33 @@ def test_a_finding_of_the_statement_is_placed_in_the_file_that_holds_it(project:
     main.write_bytes(main.read_bytes() + b"\n### Data sharing between sites\n\nBy file.\n")
     [found] = check_statement_sources(load_project(project)[0]).findings
     assert found.path == back
+
+
+def test_a_latex_statement_that_does_not_name_the_chosen_source_is_said_in_its_file(
+    project: Path,
+) -> None:
+    """Step 13: G4 reads a LaTeX manuscript's statement as its main text prints, and places
+    the finding in the `.tex` file the statement is typed in, here one the entry inputs."""
+    from test_data_sources import name_in_plan
+
+    from manuscript_guard.gates.data_sources import check_statement_sources
+
+    name_in_plan(project, "All reports in the Open Reports Archive.")
+    _sources_said(project)
+    shutil.rmtree(project / "manuscript")
+    shutil.copytree(TWIN, project / "manuscript")
+    main = project / "manuscript" / "main.tex"
+    text = main.read_text(encoding="utf-8")
+    start, end = text.index("\\section{Data availability}"), text.index("\\section{Funding}")
+    main.write_text(text[:start] + "\\input{back}\n\n" + text[end:], encoding="utf-8")
+    back = project / "manuscript" / "back.tex"
+    back.write_text("\\section{Data availability}\nThe data are publicly available from the "
+                    "agency.\n", encoding="utf-8")  # fmt: skip
+    [found] = check_statement_sources(load_project(project)[0]).findings
+    assert found.code == "data-statement-source-unnamed" and found.path == back
+    back.write_text("\\section{Data availability}\nThe data are publicly available from the "
+                    "Open Reports Archive.\n", encoding="utf-8")  # fmt: skip
+    assert not check_statement_sources(load_project(project)[0]).findings
 
 
 def test_a_statement_that_says_otherwise_than_the_route_is_said(project: Path) -> None:

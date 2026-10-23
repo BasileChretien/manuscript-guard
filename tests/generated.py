@@ -713,6 +713,8 @@ LATEX_PLACES = (
     # siunitx's `\\unit`, which the document does not load, defined as the author's; and a
     # parameter text with no parameter, which prints its body.
     ("$\\unit{{{}}}$ ", (True,)),
+    # apacite's citation, its prenote in angle brackets read as a note is (round 1 of #442).
+    ("\\citeA<see {}>[p.~{}]{{k}} ", (True, True)),
     ("\\def\\eg/{{e.g. {}}}\\eg/ ", (True,)),
 )  # fmt: skip
 #: Where a number stands in the preamble, before `\\begin{document}`.
@@ -852,8 +854,11 @@ def latex_refusal_trees(draw: st.DrawFn) -> list[LatexCase]:
     """Small LaTeX manuscripts, each holding one thing the reader refuses or reads that 17
     papers from arXiv showed (2026-10-23), every kind in every example, among words drawn:
 
-    - a command whose name begins with `cite`, ends with `cite`, or ends with `cites`, refused
-      where it is used, since it would hide its keys from G7;
+    - a command the reader does not know whose name holds `cite`, at its start, at its end or
+      inside it, refused where it is used, since it would hide its keys from G7, in a typed
+      reference list's entry too, where `\\citeauthoryear`, a label's, is read (round 1 of
+      #442);
+    - a conditional in a typed reference list's header, read, and one in its entries, refused;
     - `\\providecommand` of a command the reader knows, in the preamble or the body, which
       defines nothing; `\\renewcommand` of one, and a `\\def` after a `\\providecommand`,
       refused at the command;
@@ -864,7 +869,8 @@ def latex_refusal_trees(draw: st.DrawFn) -> list[LatexCase]:
       the file that sets it or another file of the tree is not ASCII;
     - a `\\def` with a parameter text and no parameter, in the author's package or the entry
       file, whose uses in the entry file and in a file it inputs are followed by that text,
-      each passed over, and a use it does not follow, refused;
+      each passed over, and a use it does not follow, refused; a space after a control word
+      in that text is none of it, `\\def\\x\\relax /{a}` then `\\x\\relax/`;
     - a comment between a command and its argument, passed over and recorded."""
 
     def words() -> str:
@@ -872,12 +878,25 @@ def latex_refusal_trees(draw: st.DrawFn) -> list[LatexCase]:
 
     head, begin, end = "\\documentclass{article}\n", "\\begin{document}\n", "\\end{document}\n"
     cases: list[LatexCase] = []
-    for names in (("citeA", "citeNP", "citeauthoryear"), ("mycite", "shortcite", "owncite"),
-                  ("mycites", "shortcites")):  # fmt: skip
+    for names in (("citeauthoryear", "citewith", "citeZ"), ("mycite", "owncite", "ourcite"),
+                  ("mycites", "owncites"), ("mycitep", "posscitealias", "owncitet")):  # fmt: skip
+        name = draw(st.sampled_from(names))
         main = head + begin + words() + " "
         at = len(main)
-        main += f"\\{draw(st.sampled_from(names))}{{k}} {words()}.\n" + end
+        main += f"\\{name}{{k}} {words()}.\n" + end
         cases.append(({"main.tex": main}, {}, [("main.tex", at)], [], []))
+        listed = (head + begin + "\\begin{thebibliography}{9}\n"
+                  + "\\bibitem[{\\citeauthoryear{Smith}{2011}}]{a} " + words() + " ")  # fmt: skip
+        at = len(listed)
+        # `\\citeauthoryear` is a label's in a reference list, and no citation there.
+        cited = "citewith" if name == "citeauthoryear" else name
+        listed += f"\\{cited}{{k}}.\n\\end{{thebibliography}}\n" + end
+        cases.append(({"main.tex": listed}, {}, [("main.tex", at)], [], []))
+    header = "\\expandafter\\ifx\\csname urlstyle\\endcsname\\relax\\else\\fi\n"
+    listed = head + begin + "\\begin{thebibliography}{9}\n" + header + "\\bibitem{a} " + words()
+    at = len(listed) + 1
+    listed += " \\ifx\\a\\b x\\fi.\n\\end{thebibliography}\n" + end
+    cases.append(({"main.tex": listed}, {}, [("main.tex", at)], [], []))
 
     known = draw(st.sampled_from(("url", "emph", "textbf", "caption")))
     star = draw(st.sampled_from(("", "*")))
@@ -938,6 +957,11 @@ def latex_refusal_trees(draw: st.DrawFn) -> list[LatexCase]:
     stopped = part.replace("\\eg" + delimiter, "\\eg ;")
     cases.append(({"main.tex": main, "part.tex": stopped}, packages,
                   [("part.tex", stopped.index("\\eg"))], hidden[:2], []))  # fmt: skip
+    # The spaces after a control word in a parameter text are no token (round 1 of #442).
+    main = head + "\\def\\x\\relax /{a}\n" + begin + words() + " \\x"
+    hidden = [("main.tex", len(main), len(main) + len("\\relax/"))]
+    main += "\\relax/ " + words() + "\n" + end
+    cases.append(({"main.tex": main}, {}, [], hidden, []))
 
     note = draw(st.sampled_from((" % note\n", "\n% note\n  ", " %\n\t")))
     main = (head + f"\\newenvironment{{refs}}[1]{note}{{\\begin{{list}}{{}}{{}}}}"
@@ -999,6 +1023,13 @@ LATEX_CITATION_PLACES = (
     ("\\cites(see the reviews of this question in)(){{{}}}{{{}}} ", ("cited", "cited")),
     ("\\citetalias{{{}}} ", ("narrative",)),
     ("\\footfullcite{{{}}} ", ("cited",)),
+    # apacite's, with its prenote in angle brackets, and chicago's; biblatex's
+    # `\\footcitetexts`; and a citation in a typed reference list's entry (round 1 of #442).
+    ("\\citeA<see the review>[p.~3]{{{}}} ", ("narrative",)),
+    ("\\shortciteNP{{{},{}}} \\citeN{{{}}} ", ("cited", "cited", "narrative")),
+    ("\\footcitetexts{{{}}}{{{}}} ", ("cited", "cited")),
+    ("\\begin{{thebibliography}}{{9}}\n\\bibitem[{{\\citenamefont{{Smith}}}}]{{zz}} See "
+     "\\citeA{{{}}}.\n\\end{{thebibliography}}\n", ("narrative",)),
 )  # fmt: skip
 #: A preamble that sets natbib's and biblatex's styles, which cite nothing.
 LATEX_CITATION_PREAMBLE = (

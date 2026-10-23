@@ -32,9 +32,11 @@ def test_nocite_of_every_key_cites_each_entry_of_the_bibliography() -> None:
     assert _cited(text, ("x2019", "y2020")) == [("x2019", 3, False), ("y2020", 3, False)]
 
 
-@pytest.mark.parametrize("command", ["citeA", "citeNP", "mycite", "Citeyearpar"])
+@pytest.mark.parametrize("command", ["mycite", "mycitep", "posscite", "citeZ", "Citeyearpar"])
 def test_a_citation_command_the_reader_does_not_know_is_refused(command: str) -> None:
-    """apacite's `\\citeA`, or an author's own: its keys would be hidden from G7."""
+    """An author's own, whose name holds `cite` anywhere: its keys would be hidden from G7
+    (round 1 of #442: `\\mycitep` passed unread under a rule for names that begin or end
+    with it)."""
     text = DOC + f"As \\{command}{{smith2019}} found.\n" + END
     refusals = read(text).refusals
     if command == "Citeyearpar":
@@ -42,6 +44,36 @@ def test_a_citation_command_the_reader_does_not_know_is_refused(command: str) ->
         return
     (refusal,) = refusals
     assert refusal.code == "tex-refused" and f"\\{command}" in refusal.message
+
+
+@pytest.mark.parametrize(
+    ("used", "expected"),
+    [
+        ("\\citeA<see>[p.~3]{a}", [("a", True)]),
+        ("\\citeNP{a, b}", [("a", False), ("b", False)]),
+        ("\\shortciteNP{a}", [("a", False)]),
+        ("\\shortciteA{a}", [("a", True)]),
+        ("\\fullciteNP{a}", [("a", False)]),
+        ("\\fullciteauthorNP{a}", [("a", True)]),
+        ("\\citeyearNP{a}", [("a", False)]),
+        ("\\citeN{a}", [("a", True)]),
+        ("\\shortciteN{a}", [("a", True)]),
+        ("\\nocitemeta{a}", [("a", False)]),
+        ("\\footcitetexts{a}{b}", [("a", False), ("b", False)]),
+    ],
+)
+def test_apacite_s_chicago_s_and_biblatex_s_citations_are_read(
+    used: str, expected: list[tuple[str, bool]]
+) -> None:
+    """apacite's and chicago's commands, read from their `.sty`, and biblatex's
+    `\\footcitetexts`, cite their keys; apacite's prenote is read as a note (round 1 of
+    #442: they were refused, then passed unread)."""
+    text = DOC + f"As {used} found.\n" + END
+    reading = read(text)
+    assert reading.refusals == ()
+    assert [(found.key, found.narrative) for found in reading.cited] == expected
+    if "<see>" in used:
+        assert "see" in reading.masked and "p. 3" in reading.masked
 
 
 def test_a_citation_command_defined_by_the_author_is_refused_where_it_is_used() -> None:
@@ -105,7 +137,7 @@ def test_sync_bib_refuses_a_manuscript_its_reader_refuses(
     entry.write_text(DOC + "\\citep{a} and \\citep{b}.\n" + END, encoding="utf-8")
     sync_bib(load_project(project)[0])
     assert asked == [["a", "b"]]
-    entry.write_text(DOC + "\\citep{a}, \\citeA{x}, \\citep{b}.\n" + END, encoding="utf-8")
+    entry.write_text(DOC + "\\citep{a}, \\mycitep{x}, \\citep{b}.\n" + END, encoding="utf-8")
     with pytest.raises(CitationsUnknown, match=r"manuscript/main\.tex:3 is refused"):
         sync_bib(load_project(project)[0])
     assert asked == [["a", "b"]]

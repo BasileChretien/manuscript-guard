@@ -412,10 +412,11 @@ PANDOC = ("\\documentclass{article}\n\\NewDocumentCommand\\citeproctext{}{}\n"
         ("\\IEEEcompsocitemizethanks{\\IEEEcompsocthanksitem Unit 7.}", ""),
         ("We \\excite{electrons 7}", ""),
         ("As Smith (\\citeproc{ref-smith2020}{2020}) says 7", ""),
-        # A name that begins or ends as a citation's is one, its keys hidden from G7.
+        # A name that holds `cite` anywhere else is a citation's, its keys hidden from G7
+        # (round 1 of #442: `\mycitep` passed under a rule for its start and end).
         ("As \\mycite{smith2020} says", "\\mycite"),
-        ("As \\citeA{smith2020} says", "\\citeA"),
-        ("As \\shortcite{smith2020} says", "\\shortcite"),
+        ("As \\citeZ{smith2020} says", "\\citeZ"),
+        ("As \\mycitep{smith2020} says", "\\mycitep"),
         ("As \\mycites{a}{b} say", "\\mycites"),
     ],
 )
@@ -497,6 +498,17 @@ def test_a_reference_list_bibtex_wrote_is_read_with_its_header() -> None:
     # Outside a definition's body there, `\catcode` changes what is read, and is refused.
     changed = "\\begin{thebibliography}{9}\n\\catcode`\\@=11\n\\end{thebibliography}"
     assert [r.code for r in read(changed, body=True).refusals] == ["tex-refused"]
+    # Round 1 of #442: the header ends at the first `\bibitem`, past which a conditional is
+    # refused; a citation in an entry is one, and one the reader does not know is refused.
+    entries = "\\begin{thebibliography}{9}\n\\bibitem{a} A.\n{} \n\\end{thebibliography}"
+    for entry, refused in (("\\ifx\\a\\b x\\fi", "\\ifx"), ("See \\mycitep{b}", "\\mycitep"),
+                           ("See \\citeA{b}", "")):  # fmt: skip
+        text = entries.replace("{} ", entry)
+        reading = read(text, body=True)
+        assert [r.offset for r in reading.refusals] == ([text.index(refused)] if refused
+                                                        else []), entry  # fmt: skip
+        if not refused:
+            assert [(found.key, found.narrative) for found in reading.cited] == [("b", True)]
     # Outside the list, the header's commands are refused as before.
     for outside in ("\\expandafter\\x", "\\ifx\\a\\b\\fi", "\\makeatletter"):
         assert [r.code for r in read(outside, body=True).refusals] == ["tex-refused"], outside
@@ -586,3 +598,8 @@ def test_a_parameter_text_with_no_parameter_prints_its_body_and_is_passed_over()
     ((_path, refusal),) = read_tree({"main.tex": stopped},
                                     packages={"shortcuts.sty": package}).refusals  # fmt: skip
     assert refusal.offset == stopped.index("\\half")
+    # Round 1 of #442: a space after a control word in the parameter text is no token, so
+    # `\def\x\relax /{a}` is followed by `\relax/`, as TeX reads it.
+    relaxed = "\\def\\x\\relax /{a}\nUse \\x\\relax/ here, \\x\\relax\n  / there.\n"
+    reading = read(relaxed, body=True)
+    assert reading.refusals == () and "/" not in reading.masked

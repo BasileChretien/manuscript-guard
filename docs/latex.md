@@ -66,14 +66,15 @@ number and a value prints as text.
 The reader reads LaTeX under TeX's default category codes, one pass per file, through the
 include tree that `\input`, `\include` and the import package's `\import` and `\subimport`
 make. What it cannot read exactly, it refuses, naming the line. A conditional in the body,
-`\makeatletter` in the body and a command whose name begins or ends as a citation's,
-`\citeA` or `\mycite`, are refused: cite with `\cite` or natbib's and biblatex's commands. So
+`\makeatletter` in the body and a citation command the reader does not know, one whose name
+holds `cite` such as `\mycitep`, are refused: cite with `\cite` or natbib's, biblatex's,
+apacite's or chicago's commands. So
 is a command defined with `\def` and delimited parameters, `\def\x#1.{...}`, where the
 document prints it, since what it takes there is not known: define it with `\newcommand`.
 One whose parameter text holds no parameter, `\def\eg/{e.g.\@}`, takes nothing and is read,
 the `/` after each use passed over. A reference list BibTeX wrote, pasted into
-`thebibliography`, is read with its header, the conditionals and `\makeatletter` in it
-too. `\providecommand` of a command already defined defines
+`thebibliography`, is read with its header, the conditionals and `\makeatletter` before
+its first `\bibitem` too. `\providecommand` of a command already defined defines
 nothing. A command a package gives, siunitx's `\unit` say, is yours where you define it
 and no file loads that package. A comment between a command and its argument is passed over,
 as TeX passes it. An input encoding other than UTF-8 is refused, unless every file is plain

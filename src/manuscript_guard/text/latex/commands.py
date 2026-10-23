@@ -21,14 +21,14 @@ from __future__ import annotations
 
 import re
 
-_ITEM = re.compile(r"\*|\[[pbo]\]|\(b\)|\{[pbrdc]\}")
+_ITEM = re.compile(r"\*|\[[pbo]\]|\(b\)|<p>|\{[pbrdc]\}")
 
 
 def _specs(table: dict[str, str]) -> dict[str, tuple[str, ...]]:
     return {name: tuple(_ITEM.findall(spec)) for name, spec in table.items()}
 
 
-_CITE = "*[p][p]{b}"
+_CITE = "*<p>[p][p]{b}"
 #: natbib's and biblatex's citation commands, and whether each prints the authors' names in
 #: the sentence (narrative), as `@key` does in Markdown; `\\cite` does not. Each has a
 #: capitalised form.
@@ -41,19 +41,31 @@ _CITATIONS = {
     "citefullauthor": True, "footfullcite": False, "citeurl": False, "citedate": False,
     "citeurldate": False, "notecite": False, "pnotecite": False, "fnotecite": False,
 }  # fmt: skip
+#: apacite's and chicago's, read from their `.sty` (apacite 6.03, chicago of 1992 in MiKTeX
+#: 24.4): apacite's take a prenote in angle brackets, `\\citeA<see>[p.~3]{key}`
+#: (2026-10-23, round 1 of #442: they were refused, then passed unread).
+_APACITE_CITATIONS = {
+    "citeA": True, "citeNP": False, "citeauthorNP": True, "citeyearNP": False,
+    "shortcite": False, "shortciteA": True, "shortciteNP": False, "shortciteauthor": True,
+    "shortciteauthorNP": True, "fullciteA": True, "fullciteNP": False, "fullciteauthor": True,
+    "fullciteauthorNP": True, "nocitemeta": False, "citeN": True, "citeANP": True,
+    "shortciteN": True, "shortciteANP": True,
+}  # fmt: skip
 _MULTI_CITATIONS = {
     "cites": False, "parencites": False, "textcites": True, "autocites": False,
-    "footcites": False, "smartcites": False, "supercites": False,
+    "footcites": False, "footcitetexts": False, "smartcites": False, "supercites": False,
 }  # fmt: skip
 #: Every citation command the reader reads, the multi-citation forms among them.
+_TABLES = (_CITATIONS, _APACITE_CITATIONS, _MULTI_CITATIONS)
 CITATIONS = {
-    **{name: narrative for table in (_CITATIONS, _MULTI_CITATIONS)
-       for name, narrative in table.items()},
-    **{name[0].upper() + name[1:]: narrative for table in (_CITATIONS, _MULTI_CITATIONS)
-       for name, narrative in table.items() if name != "nocite"},
+    **{name: narrative for table in _TABLES for name, narrative in table.items()},
+    **{name[0].upper() + name[1:]: narrative for table in _TABLES
+       for name, narrative in table.items() if not name.startswith("nocite")},
 }  # fmt: skip
-_CITATION_NAMES = [name for name in CITATIONS if name.lower() not in _MULTI_CITATIONS]
-_MULTI_CITATION_NAMES = [name for name in CITATIONS if name.lower() in _MULTI_CITATIONS]
+_CITATION_NAMES = [name for name in CITATIONS
+                   if name[0].lower() + name[1:] not in _MULTI_CITATIONS]  # fmt: skip
+_MULTI_CITATION_NAMES = [name for name in CITATIONS
+                         if name[0].lower() + name[1:] in _MULTI_CITATIONS]  # fmt: skip
 _REF = "{b}"
 _SECTION = "*[p]{p}"
 _DEFINE = "*{c}[b][p]{d}"
@@ -125,7 +137,8 @@ COMMANDS = _specs(
              "cpageref", "labelcref", "input", "include", "includeonly", "bibliography",
              "setcitestyle", "citereset", "defcitealias",
              "bibliographystyle", "graphicspath", "linespread", "hypersetup", "geometry",
-             "newgeometry", "pagestyle", "thispagestyle", "pagenumbering", "nocite", "cline",
+             "newgeometry", "pagestyle", "thispagestyle", "pagenumbering", "nocite",
+             "nocitemeta", "cline",
              "newlength", "date"),
             _REF,
         ),
@@ -178,7 +191,8 @@ COMMANDS = _specs(
         "si": "[b]{b}",
         "unit": "[o]{b}",
         # Citations: the notes are read, the keys are not (`CITATIONS`).
-        **dict.fromkeys((name for name in _CITATION_NAMES if name != "nocite"), _CITE),
+        **dict.fromkeys((name for name in _CITATION_NAMES if not name.startswith("nocite")),
+                        _CITE),
         # pandoc's, under citeproc, measured against pandoc 3.9: `\\citeproc{ref-key}{Smith
         # 2020, 3}` is a citation as citeproc printed it, its key the typed list's and not
         # the library's, and `\\citeproctext` the empty label of each `\\bibitem`. pandoc's

@@ -731,6 +731,40 @@ def test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_
             assert start in {at for at, _end in readings[path].comments}, (path, start, files)
 
 
+def _a_citation_s_name_begins_or_ends_with_cite(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_cites", lambda name: name.lower().startswith("cite")
+                  or name.lower().endswith(("cite", "cites")))  # fmt: skip
+
+
+def _apacite_s_citations_are_unknown(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "COMMANDS", {name: spec for name, spec in latex_mask.COMMANDS.items()
+                                           if name not in ("citeA", "shortciteNP", "citeN")})
+
+
+def _an_apacite_prenote_is_not_taken(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "COMMANDS", {name: tuple(item for item in spec if item != "<p>")
+                                           for name, spec in latex_mask.COMMANDS.items()})
+
+
+def _a_reference_list_s_entries_are_its_header(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask._Reader, "_list_header",
+                  lambda self: latex_mask.REFERENCES in self.environments)  # fmt: skip
+
+
+def _a_space_after_a_control_word_in_a_parameter_text_is_kept(patch: pytest.MonkeyPatch) -> None:
+    def broken(written: str, letters: re.Pattern[str]) -> re.Pattern[str]:
+        pattern = []
+        for token in re.finditer(rf"\\{letters.pattern}|\\.|\s+|.", written, re.DOTALL):
+            found = token.group(0)
+            if found.isspace():
+                pattern.append(r"(?:[ \t]+(?:\r?\n[ \t]*)?|\r?\n[ \t]*)")
+            else:
+                pattern.append(re.escape(found) + latex_mask._SKIPPED.pattern)
+        return re.compile("".join(pattern))
+
+    patch.setattr(latex_mask, "_delimiter", broken)
+
+
 def _a_name_holding_cite_is_a_citation(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(latex_mask, "_cites", lambda name: "cite" in name.lower())
 
@@ -10316,6 +10350,26 @@ BROKEN = {
     "in LaTeX, a name holding cite inside a word is a citation's": (
         _a_name_holding_cite_is_a_citation,
         test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a citation's name begins or ends with cite, and no other holds it": (
+        _a_citation_s_name_begins_or_ends_with_cite,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, apacite's and chicago's citations are unknown": (
+        _apacite_s_citations_are_unknown,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, apacite's prenote is not taken": (
+        _an_apacite_prenote_is_not_taken,
+        test_a_latex_citation_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a reference list's entries are read as its header": (
+        _a_reference_list_s_entries_are_its_header,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, a space after a control word in a parameter text is kept": (
+        _a_space_after_a_control_word_in_a_parameter_text_is_kept,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
     ),
     "in LaTeX, an English word ending in cite is a citation's name": (
         _an_english_word_ending_in_cite_is_a_citation,

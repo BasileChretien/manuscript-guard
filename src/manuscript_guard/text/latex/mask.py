@@ -264,19 +264,26 @@ _BOUND_IN_SIUNITX = ("a binding in a siunitx command is not read: siunitx parses
                      "and a value prints as text; write \\mg{...} outside it")  # fmt: skip
 
 
-#: English words that end as a citation's name does, which an author may name a command.
-_CITE_WORDS = frozenset({"excite", "incite", "recite", "overexcite", "anthracite",
-                         "plebiscite"})  # fmt: skip
+#: Words that hold `cite` and cite nothing, which an author may name a command with: English
+#: words, `\\excite`, `\\solicited`, and `item`, as IEEE's `\\IEEEcompsocitemizethanks` holds
+#: it after `compso`.
+_CITE_WORDS = ("anthracite", "plebiscite", "excite", "incite", "recite", "solicite", "elicite",
+               "lucite", "citem")  # fmt: skip
+#: A reference list's helpers that hold `cite`, which BibTeX's styles write in its entries'
+#: labels: REVTeX's `\\citenamefont`, harvard's and apacite's `\\citeauthoryear`.
+_LIST_HELPERS = frozenset({"citenamefont", "citeauthoryear"})
 
 
 def _cites(name: str) -> bool:
-    """Whether a command's name is a citation's: it begins with `cite`, as apacite's `\\citeA`
-    does, or ends with `cite` or `cites`, as `\\shortcite` and an author's `\\mycite` do, and
-    is no English word, `\\excite`. Not `cite` inside a word, as IEEE's
-    `\\IEEEcompsocitemizethanks` holds it (2026-10-23: it was refused)."""
+    """Whether a command's name is a citation's: it holds `cite`, as `\\citeA`, `\\mycite` and
+    `\\mycitep` do, but in a word that cites nothing (`_CITE_WORDS`): IEEE's
+    `\\IEEEcompsocitemizethanks` and an author's `\\excite` were refused (2026-10-23), and a
+    rule for names that begin or end with `cite` let `\\mycitep` pass unread (round 1 of
+    #442)."""
     low = name.lower()
-    citing = low.startswith("cite") or low.endswith(("cite", "cites"))
-    return citing and low.removesuffix("s") not in _CITE_WORDS
+    for word in _CITE_WORDS:
+        low = low.replace(word, " ")
+    return "cite" in low
 
 
 def _near_binding(name: str) -> bool:
@@ -312,6 +319,8 @@ class _Frame:
     siunitx: bool = False
     #: What a letter was where a reference list opened, which its `\\end` puts back.
     letters: re.Pattern[str] | None = None
+    #: Whether a reference list has reached its first `\\bibitem`, past its header.
+    items: bool = False
 
 
 def mask(text: str, *, body: bool | None = None) -> str:
@@ -418,16 +427,19 @@ def _delimiter(written: str, letters: re.Pattern[str]) -> re.Pattern[str]:
     """What a use of a command defined with the parameter text `written` and no parameter is
     followed by, as TeX matches it token by token: a control word not run on by a letter and
     the spaces after it skipped, a run of spaces as one space, and a line break, not a blank
-    line, as a space too."""
-    pattern = []
+    line, as a space too. The spaces after a control word are no token, in the parameter text
+    as at a use, so `\\def\\x\\relax /{a}` is followed by `\\relax/` (round 1 of #442)."""
+    pattern, word = [], False
     for token in re.finditer(rf"\\{letters.pattern}|\\.|\s+|.", written, re.DOTALL):
         found = token.group(0)
         if found.isspace():
-            pattern.append(r"(?:[ \t]+(?:\r?\n[ \t]*)?|\r?\n[ \t]*)")
+            if not word:
+                pattern.append(r"(?:[ \t]+(?:\r?\n[ \t]*)?|\r?\n[ \t]*)")
         elif found.startswith("\\") and letters.fullmatch(found[1:]):
             pattern.append(re.escape(found) + f"(?!{letters.pattern[:-1]})" + _SKIPPED.pattern)
         else:
             pattern.append(re.escape(found))
+        word = found.startswith("\\") and letters.fullmatch(found[1:]) is not None
     return re.compile("".join(pattern))
 
 
@@ -661,6 +673,13 @@ class _Reader:
                     return True
                 self.pending = self.pending[1:]
                 continue
+            if spec[0] == "<":
+                # apacite's prenote, `\citeA<see>[p.~3]{key}`, read as a citation's note is.
+                if here == "<":
+                    self._open("opt", spec[1], at, ">")
+                    return True
+                self.pending = self.pending[1:]
+                continue
             if spec[0] == "(":
                 # A trim such as `(lr)` is a few letters: looked for that far, on its line. A
                 # multi-citation's global note is a phrase, and may wrap (round 1 of step 5).
@@ -810,7 +829,9 @@ class _Reader:
             self.pos = at + 1
         elif character == "}":
             self._close_group(at)
-        elif character == "]" and self.stack and self.stack[-1].kind == "opt":
+        elif character in "]>" and self.stack and self.stack[-1].kind == "opt" and (
+            self.stack[-1].closer == character
+        ):
             self._close(at, 1)
         elif character == "$":
             self._dollar(at)
@@ -826,6 +847,10 @@ class _Reader:
         else:
             run = _TEXT.match(self.text, at)
             end = run.end() if run else at + 1
+            if self.stack and self.stack[-1].closer == ">":
+                # An apacite prenote ends at its `>`, which a run of text would pass.
+                stop = self.text.find(">", at, end)
+                end = stop if stop > at else end
             self._keep_or_blank(at, end)
             self.pos = end
 
@@ -946,8 +971,8 @@ class _Reader:
             if not self._machinery(name):
                 self._refuse("tex-refused", at, f"\\{name} is not read: {REFUSED[name]}")
         elif name in ("makeatletter", "makeatother"):
-            listed = REFERENCES in self.environments
-            if name == "makeatletter" and self.body and not self.loose and not listed:
+            header = self._list_header()
+            if name == "makeatletter" and self.body and not self.loose and not header:
                 self._refuse("tex-refused", at, "\\makeatletter in the body changes how "
                              "characters are read")  # fmt: skip
             self.letters = _LETTERS_AT if name == "makeatletter" else _LETTERS
@@ -956,7 +981,7 @@ class _Reader:
         elif name.startswith("if") and name not in COMMANDS and name not in NOT_CONDITIONALS:
             # A reference list's header tests what is loaded, and both branches are read, as
             # in the preamble (2026-10-23: natbib's `\\ifx\\csname urlstyle\\endcsname`).
-            if self.body and not self.loose and REFERENCES not in self.environments:
+            if self.body and not self.loose and not self._list_header():
                 said = "a conditional in the body prints one branch, and which is not read"
                 self._refuse("tex-refused", at, f"\\{name} is not read: {said}")
         elif name in ("input", "include") and not self.definitions:
@@ -991,6 +1016,8 @@ class _Reader:
                 self.citation_at = at
             if name in POINTERS:
                 self.pointer_at = at
+            if name == "bibitem":
+                self._past_header()
             if name == "includegraphics":
                 self.graphics_at = at
             if name in ("documentclass", "bibliographystyle"):
@@ -1016,7 +1043,7 @@ class _Reader:
         `thebibliography`, whose header BibTeX's styles write with `\\expandafter` and
         `\\csname`, and with `\\catcode` in a definition's body, which prints nothing where it
         stands (2026-10-23: natbib's and REVTeX's lists were refused at their header)."""
-        if REFERENCES not in self.environments:
+        if not self._list_header():
             return False
         return name in REFERENCE_MACHINERY or (name in CATEGORY and self.definitions > 0)
 
@@ -1033,6 +1060,13 @@ class _Reader:
             said = ("what its definition says follows it does not, and TeX stops there; "
                     "define it with \\newcommand")
             self._refuse("tex-refused", at, f"\\{name} is not read: {said}")
+
+    def _past_header(self) -> None:
+        """Mark the innermost reference list as past its header, at its first `\\bibitem`."""
+        for frame in reversed(self.stack):
+            if frame.kind == "env" and frame.closer == REFERENCES:
+                frame.items = True
+                return
 
     def _loaded(self, packages: tuple[str, ...]) -> bool:
         """Whether one of `packages` is loaded, before here in this file or in another file of
@@ -1053,8 +1087,17 @@ class _Reader:
         `\\DeclareCiteCommand` among them (round 1 of step 5), and outside a reference list
         typed in `thebibliography`, whose labels REVTeX writes with `\\citenamefont` and
         harvard with `\\citeauthoryear`, and which cites nothing (2026-10-23)."""
-        listed = REFERENCES in self.environments
-        return _cites(name) and not self.definitions and self._role() != PREAMBLE and not listed
+        helper = name in _LIST_HELPERS and REFERENCES in self.environments
+        return _cites(name) and not self.definitions and self._role() != PREAMBLE and not helper
+
+    def _list_header(self) -> bool:
+        """Whether this stands in a reference list's header, between `\\begin{thebibliography}`
+        and its first `\\bibitem`, where BibTeX's styles write what the list needs (round 1 of
+        #442: in the entries, a conditional was read through)."""
+        for frame in reversed(self.stack):
+            if frame.kind == "env" and frame.closer == REFERENCES:
+                return not frame.items and not frame.inherited
+        return False
 
     def _binding(self, at: int, end: int) -> None:
         """Record a `\\mg` where it stands, with what its braces hold. In a siunitx command

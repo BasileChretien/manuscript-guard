@@ -1380,8 +1380,10 @@ A `\def` whose parameter text holds no parameter, only what must follow each use
 what follows it, the `/`, is TeX's, passed over as a run of spaces is one space and a line
 break, not a blank line, a space. A use it does not follow is refused where it prints, as a
 use of delimited parameters is, since TeX stops there: `\def\bSig\mathbf{\Sigma}`, then
-`$\bSig$`. The tree tells each file of these too (2026-10-23: a paper's package of such
-shortcuts, `\eg/` and `\wm/` among them, was refused at the first use).
+`$\bSig$`. The spaces after a control word in the parameter text are no token, as at a use,
+so `\def\x\relax /{a}` is followed by `\relax/` (round 1 of #442). The tree tells each file
+of these too (2026-10-23: a paper's package of such shortcuts, `\eg/` and `\wm/` among them,
+was refused at the first use).
 
 `\providecommand` of a command that is defined defines nothing, so one of a command the reader
 reads is read as before, in the preamble and in the body. A command that a package gives
@@ -1401,14 +1403,29 @@ the next line, was read as a group, and a brace after it closed nothing).
 A reference list typed in `thebibliography` is often BibTeX's `.bbl` pasted in, whose header
 tests what is loaded and defines what the style needs: natbib's
 `\expandafter\ifx\csname urlstyle\endcsname` and `\providecommand{\url}`, REVTeX's
-`\makeatletter` and its `\providecommand \@ifx`. In such a list the reader reads a conditional
-as in the preamble, both branches, and accepts `\makeatletter`, `@` a letter to the list's end,
-where TeX's group puts it back; `\expandafter` and `\csname`; and `\catcode` and the rest of
-what changes how characters are read in a definition's body only, where it prints nothing. A
-command whose name is a citation's is no citation there, REVTeX's `\citenamefont` and
-harvard's `\citeauthoryear` being the labels of its entries (2026-10-23: three papers' lists
-were refused at their header, and with the span of the list unrecorded, G6, the pack and the
-blind check read it as text).
+`\makeatletter` and its `\providecommand \@ifx`. In such a list's header, from its `\begin` to
+its first `\bibitem`, the reader reads a conditional as in the preamble, both branches, and
+accepts `\makeatletter`, `@` a letter to the list's end, where TeX's group puts it back;
+`\expandafter` and `\csname`; and `\catcode` and the rest of what changes how characters are
+read in a definition's body only, where it prints nothing. In its entries each is refused as
+in the body (round 1 of #442). REVTeX's `\citenamefont` and harvard's and apacite's
+`\citeauthoryear`, the labels of its entries, are no citations anywhere in the list; a
+citation in an entry, `\bibitem{a} See \citeA{b}`, is one, and one the reader does not know is
+refused there as elsewhere (2026-10-23: three papers' lists were refused at their header, and
+with the span of the list unrecorded, G6, the pack and the blind check read it as text).
+
+A command whose name holds `cite` is a citation's: one the reader does not know is refused
+where it prints, since its keys would not reach G7, however the name holds it, `\citeZ`,
+`\mycite`, `\mycitep`. Not in a word that cites nothing: English words, `\excite`,
+`\recite`, `\solicited`, `\elicited`, `\anthracite`, `\plebiscite`, and `item`, which IEEE's
+`\IEEEcompsocitemizethanks` holds after `compso` (2026-10-23: it was refused). The reader
+knows natbib's and biblatex's commands, biblatex's multi-citations `\footcitetexts` among
+them, and apacite's and chicago's, read from their `.sty`: `\citeA`, `\citeNP`,
+`\citeauthorNP`, `\citeyearNP`, `\shortcite` and `\fullcite` with their `A`, `NP`, `author`
+and `authorNP` forms, `\nocitemeta`, and chicago's `\citeN`, `\citeANP`, `\shortciteN` and
+`\shortciteANP`. apacite's prenote in angle brackets, `\citeA<see>[p.~3]{key}`, is read as a
+citation's note (round 1 of #442: a rule that read only a name's start and end let
+`\shortciteNP` and `\mycitep` pass unread, their keys hidden from G7).
 
 Refused:
 - a definition, in a file of the author's, of any command the reader reads, `\mg` among them,
@@ -1778,21 +1795,27 @@ The result is compiled and packed by the code above, and checked three times:
   5). A `)` in a comment inside a global note is taken for its end. A comment in the middle of
   a key, `\cite{smi%` with `th}` on the next line, leaves a space in the key, where TeX joins
   it, and `\\%` in a key list is taken for an escaped `%`.
-- apacite's `\citeA` and `\citeNP`, and an author's own command whose name begins with `cite`
-  or ends with `cite` or `cites`, `\mycite`, are refused where they are used, as the design
-  asks: the reader knows natbib's and biblatex's (step 5). In the preamble such a command is
-  not refused, since natbib's and biblatex's settings stand there, `\setcitestyle` and
-  `\DeclareCiteCommand` among them, and nothing of it prints; biblatex's `\volcite` family is
-  refused in the body (round 1 of step 5). natbib's `\citetext`, `\defcitealias` and
-  biblatex's `\citereset` and `\notecite` family are read (round 2). A name with `cite`
-  inside a word, IEEE's `\IEEEcompsocitemizethanks`, or an English word ending in it,
-  `\excite`, `\recite`, is read as an unknown command, so an author's citing command so named,
-  `\citingthis` or `\recite`, hides its keys from G7; and in a reference list typed in
-  `thebibliography` no name is a citation's (2026-10-23).
+- A citation command the reader does not know, an author's own whose name holds `cite`,
+  `\mycite` or `\mycitep`, is refused where it is used, as the design asks: the reader knows
+  natbib's, biblatex's, apacite's and chicago's (step 5; round 1 of #442). In the preamble
+  such a command is not refused, since natbib's and biblatex's settings stand there,
+  `\setcitestyle` and `\DeclareCiteCommand` among them, and nothing of it prints; biblatex's
+  `\volcite` family is refused in the body (round 1 of step 5). natbib's `\citetext`,
+  `\defcitealias` and biblatex's `\citereset` and `\notecite` family are read (round 2). A
+  name whose `cite` is in a word that cites nothing (`_CITE_WORDS`), `\excite`, `\recite` or
+  IEEE's `\IEEEcompsocitemizethanks`, is read as an unknown command, so an author's citing
+  command so named, `\recite`, hides its keys from G7; so do `\citenamefont` and
+  `\citeauthoryear` in a typed reference list, labels there by BibTeX's styles (2026-10-23).
+  apacite's `<...>` prenote is taken after any citation command, so a `<` typed right after
+  natbib's `\citep`, before its options and braces, is read as one, where LaTeX prints it
+  (round 1 of #442).
 - pandoc's `\citeproc{ref-smith2020}{Smith 2020, 3}`, which it writes for a citation under
-  citeproc, is read as a citation is, both arguments blanked: its key names an entry of the
-  typed list, not of the library, so G7 does not see it, and a locator in its text is read by
-  no gate, where Markdown's is (2026-10-23).
+  citeproc, is read as a citation is, both arguments blanked, but not recorded as one: its key
+  names an entry of the typed list, `ref-` and the library's key, so G7 does not see it, and a
+  locator in its text is read by no gate, where Markdown's is (2026-10-23).
+- A reference list opened in one file and closed in another, `\input` between, is refused as
+  left open, so what `\makeatletter` changed in its header is never carried past its
+  `\end` (round 1 of #442).
 - `\providecommand` of a command the reader reads is taken to define nothing, though one a
   package gives that is not loaded, `\providecommand{\url}[1]{\texttt{#1}}` with no url
   package, defines it: the reader reads it as the package's, its address blanked where LaTeX

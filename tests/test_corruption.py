@@ -7238,6 +7238,36 @@ def test_a_delimited_command_where_it_prints_and_an_import_of_nothing_fail_build
     assert not [f for f in report.findings if f.code == "tex-not-input"]
 
 
+def test_a_classs_own_file_is_not_main_text_and_a_second_document_fails_build(
+    project: Path,
+) -> None:
+    """A file the paper's class inputs, kept with the class in a folder of its own, is the
+    class's: none of its numbers is the paper's, and it is no file nothing inputs. A document
+    of its own beside `main.tex` fails BUILD at its `\\begin{document}`, and none of its
+    numbers is read as the main text's (2026-10-23: a journal's list of its journals, and a
+    supplement kept as a second document, were both read as main text)."""
+    from manuscript_guard.cli import _run_gates
+
+    entry = _as_latex(project)
+    folder = entry.parent
+    (folder / "style").mkdir()
+    entry.write_text(entry.read_text("utf-8").replace("{article}", "{style/journal}"), "utf-8")
+    (folder / "style" / "journal.cls").write_text("\\input{style/names}\n", "utf-8")
+    (folder / "style" / "names.tex").write_text("Volume 2731 of 1987.\n", "utf-8")
+    (folder / "supplement.tex").write_text(
+        "\\documentclass{article}\n\\begin{document}\nOf 9183 patients.\n\\end{document}\n",
+        "utf-8",
+    )
+    report, _project, _stage, _deferred = _run_gates(project, stage="submission")
+    named = {(f.code, f.path.name if f.path else None) for f in report.findings}
+    assert "names.tex" not in {name for _code, name in named}, report.render(project)
+    assert {code for code, name in named if name == "supplement.tex"} == {
+        "tex-second-document"
+    }, report.render(project)
+    (refused,) = [f for f in report.failures if f.code == "tex-second-document"]
+    assert (refused.gate, refused.line) == ("BUILD", 2)
+
+
 # --------------------------------------------------------------- G2 on the LaTeX twin
 
 TWIN = Path(__file__).parent / "data" / "latex" / "manuscript"

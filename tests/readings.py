@@ -169,6 +169,32 @@ def _latex_sections() -> Reading:
     return sections
 
 
+@reading("latex documents")
+def _latex_documents() -> Reading:
+    from manuscript_guard.text.latex.structure import read_document
+
+    def documents(files: dict[str, str]) -> dict[str, Any]:
+        """Which files each document of a manuscript folder reads, which it reads loose, and
+        what it refuses where: the folder written out as the files give it."""
+        with tempfile.TemporaryDirectory() as folder:
+            manuscript = Path(folder) / "manuscript"
+            for name, text in files.items():
+                path = manuscript / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(text.encode("utf-8"))
+            read = {}
+            for supplementary in (False, True):
+                document = read_document(manuscript, supplementary=supplementary)
+                read["supplement" if supplementary else "main text"] = {
+                    "sources": [s.path for s in document.sources if not s.loose],
+                    "loose": list(document.loose),
+                    "refusals": [[path, r.code, r.offset] for path, r in document.refusals],
+                }
+            return read
+
+    return documents
+
+
 @reading("latex escaped")
 def _latex_escaped() -> Reading:
     from manuscript_guard.build.latex_values import NotPrintable, escaped

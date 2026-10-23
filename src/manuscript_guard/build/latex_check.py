@@ -7,13 +7,17 @@ stage: past a refusal the rest of the file is read as prose, so the gates read i
 LaTeX prints it. A `.tex` file that no `\\input` the reader follows names is a warning
 (`tex-not-input`): it is read as loose body under no heading. That is a file nothing inputs,
 and also one input past a refusal or from inside a definition, which LaTeX may still print.
-A Markdown manuscript has none of these.
+A `.tex` file that holds a document of its own, its own `\\begin{document}`, beside a
+document's entry file is another document, which is never read as part of that one
+(`tex-second-document`): it fails at every stage, as a file of the other format does, since
+no gate reads it and no build prints it. A file a class or a package inputs is neither: it
+is the class's. A Markdown manuscript has none of these.
 """
 
 from __future__ import annotations
 
 from manuscript_guard.findings import WARN, Finding, Report
-from manuscript_guard.text.latex.structure import SUPPLEMENT_ENTRY, read_document
+from manuscript_guard.text.latex.structure import SECOND_DOCUMENT, SUPPLEMENT_ENTRY, read_document
 from manuscript_guard.text.reader import LATEX, manuscript_format
 
 GATE = "BUILD"
@@ -21,6 +25,8 @@ _HINTS = {
     "tex-unbalanced": "close it where it should close, or take out what closes nothing",
     "tex-refused": "write it so that it can be read, or take it out; the rest of the file is "
     "read as prose until then",
+    SECOND_DOCUMENT: f"if it is the supplement, make it manuscript/{SUPPLEMENT_ENTRY}; if it is "
+    "not, move it out of manuscript/ or into a folder whose name starts with '_'",
 }
 
 
@@ -36,7 +42,9 @@ def check_latex(project) -> Report:
         document = read_document(folder, supplementary=supplementary)
         texts = {source.path: source.text for source in document.sources}
         for path, refusal in document.refusals:
-            text = texts.get(path, "")
+            # A document of its own is no source of this one, and is read here for its line.
+            text = texts.get(path) or (folder / path).read_text(encoding="utf-8",
+                                                                 errors="replace")  # fmt: skip
             findings.append(
                 Finding(
                     gate=GATE,

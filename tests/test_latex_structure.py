@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import posixpath
 from pathlib import Path
 
 import pytest
@@ -106,6 +107,76 @@ def test_a_file_nothing_inputs_is_read_loose_and_accepts_what_a_preamble_does() 
     files = {"main.tex": DOC + "x\n" + END, "old.tex": "\\makeatletter loose 7\n"}
     document = read_tree(files)
     assert document.loose == ("old.tex",) and document.refusals == ()
+
+
+def test_a_file_a_class_or_a_package_inputs_is_theirs_and_not_read() -> None:
+    """A class kept in a folder of its own inputs a list it ships beside the paper, which the
+    paper never inputs: it is the class's, not loose main text (2026-10-23: a journal's
+    class did, and its list's numbers and words reached the gates). So is a file a package
+    the class loads inputs, one the author's package inputs, and one those input in turn.
+    A file named only in a class's comment, or by a path the class does not write out, is
+    still loose, and one the paper inputs too is read where the paper inputs it."""
+    main = ("\\documentclass[a4]{style/journal}\n\\usepackage{mine}\n\\begin{document}\n"
+            "\\input{style/shared}\nText.\n" + END)  # fmt: skip
+    classes = {
+        "style/journal.cls": "\\input{style/names}% \\input{style/commented}\n"
+        "\\RequirePackage[x]{style/extra}\n\\input{\\@names}\n\\input{style/shared}\n",
+        "style/unused.cls": "\\input{style/unloaded}\n",
+    }
+    packages = {"mine.sty": "\\input macros\n",
+                "style/extra.sty": "\\InputIfFileExists{style/more}{}{}\n"}  # fmt: skip
+    files = {
+        "main.tex": main,
+        "style/names.tex": "\\def\\journalname{Annals 2024}\n\\input{style/deeper}\n",
+        "style/deeper.tex": "Volume 12.\n",
+        "style/more.tex": "Issue 3.\n",
+        "macros.tex": "\\newcommand{\\n}{4100}\n",
+        "style/shared.tex": "Shared 5.\n",
+        "style/commented.tex": "Commented 6.\n",
+        "style/unloaded.tex": "Unloaded 7.\n",
+    }
+    document = read_tree(files, packages=packages, classes=classes)
+    assert document.classes == ("macros.tex", "style/deeper.tex", "style/more.tex",
+                                "style/names.tex")  # fmt: skip
+    read = [s.path for s in document.sources]
+    assert not set(document.classes) & set(read), read
+    assert document.loose == ("style/commented.tex", "style/unloaded.tex")
+    assert "style/shared.tex" in read and document.refusals == ()
+
+
+def test_a_class_the_manuscript_holds_but_the_paper_does_not_load_inputs_nothing() -> None:
+    """A class from the distribution is not read, and a file only a class the paper does not
+    load inputs is loose as before."""
+    files = {"main.tex": "\\documentclass{article}\n\\begin{document}\n" + END,
+             "names.tex": "Annals 2024.\n"}  # fmt: skip
+    document = read_tree(files, classes={"other.cls": "\\input{names}\n"})
+    assert document.classes == () and document.loose == ("names.tex",)
+
+
+@pytest.mark.parametrize("entry", ["main.tex", "supplementary/main.tex"])
+def test_a_second_document_beside_an_entry_is_refused_and_never_read_as_its_text(
+    entry: str,
+) -> None:
+    """A supplement kept as a document of its own beside the main text's entry file, or a
+    second document in the supplement's folder, is refused, and none of it is read as the
+    entry's document (2026-10-23: a paper's separate supplement was read as its main text). A
+    `\\begin{document}` in a comment, a listing or an `\\iffalse` block opens no document."""
+    folder = posixpath.dirname(entry)
+    second = posixpath.join(folder, "supplement.tex")
+    notes = posixpath.join(folder, "notes.tex")
+    files = {
+        entry: DOC + "Of 4100.\n" + END,
+        second: "\\documentclass{article}\n\\usepackage{x}\n\\title{More}\n\\begin{document}\n"
+        "Of 42 patients.\n" + END,
+        notes: "% \\begin{document}\n\\begin{verbatim}\n\\begin{document}\n\\end{verbatim}\n"
+        "\\iffalse\\begin{document}\\fi\nNotes 3.\n",
+    }
+    document = read_tree(files, entry)
+    assert [s.path for s in document.sources] == [entry, notes]
+    (refused,) = document.refusals
+    assert refused[0] == second and refused[1].code == "tex-second-document"
+    assert files[second][refused[1].offset :].startswith("\\begin{document}")
+    assert document.loose == (notes,)
 
 
 @pytest.mark.parametrize(

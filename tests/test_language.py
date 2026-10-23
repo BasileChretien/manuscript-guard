@@ -525,6 +525,89 @@ def test_the_long_form_is_matched_letter_by_letter() -> None:
     assert _long_form("ROR", "the ROR") is None, "a short form does not define itself"
 
 
+@pytest.mark.parametrize(
+    "value", [": 0.41", ":0.41", " = 0.41", "=0.41", " 0.41", ": {{results.aor}}"]
+)
+def test_a_statistic_in_brackets_is_not_a_definition(project: Path, value: str) -> None:
+    """A short form followed by a colon, an equals sign or a number is a statistic. Read as
+    a definition, the words before it whose letters spell it were taken for a second
+    meaning: "AOR is defined as 'and older adults'"."""
+    report = written(
+        project,
+        "# Results\n\nThe adjusted odds ratio (AOR) was computed for each group. Use was "
+        f"lower among the young and older adults (AOR{value}, 95% CI 0.22 to 0.77).\n",
+    )
+    assert not report.findings, found(report)
+
+
+def test_a_statistic_in_brackets_does_not_stand_in_for_a_definition(project: Path) -> None:
+    report = written(
+        project,
+        "# Results\n\nUse was lower among older adults (AOR: 0.41). The AOR was stable.\n",
+    )
+    assert codes(report) == {"abbreviation-undefined"}, found(report)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "A warning score was taken at entry (WSE1) and 40 (12.5%) had a second WSE (WSE2).",
+        "A warning score was taken at entry (WSE1) and 40 [12.5%] had a second WSE (WSE2).",
+    ],
+)
+def test_a_long_form_takes_no_letter_from_inside_a_bracket_it_opens(text: str) -> None:
+    """The letters of `WSE2` are all there before its bracket, its `2` in a percentage and
+    the rest in another short form: the long form would run into an aside."""
+    assert "WSE2" not in [short for _at, short, _long in _definitions(text)]
+    assert _long_form("WSE2", text[: text.rindex("(")]) is None
+
+
+@pytest.mark.parametrize(
+    ("text", "short", "long"),
+    [
+        # A short form made from another: the WSE taken after two hours.
+        ("The score was taken at entry (WSE1) and after 2 hours (WSE2).", "WSE2",
+         "WSE1) and after 2 hours"),
+        ("A warning score (WSE) at 15 minutes (WSE1) was taken.", "WSE1",
+         "WSE) at 15 minutes"),
+        # A whole bracket none of the letters is in.
+        ("The adjusted (for sex) relative risk (aRR) was low.", "aRR",
+         "adjusted (for sex) relative risk"),
+    ],
+)  # fmt: skip
+def test_a_long_form_may_close_a_bracket_or_hold_a_whole_one(
+    text: str, short: str, long: str
+) -> None:
+    assert (short, long) in [(found, words) for _at, found, words in _definitions(text)]
+
+
+def test_the_limits_of_the_bracket_rules_are_as_design_md_says() -> None:
+    """Known gaps, held where they stand: a colon makes a statistic whatever follows it, a
+    comma does not, and a letter inside a bracket the long form opens refuses a definition
+    a reader would see."""
+
+    def shorts(text: str) -> list[str]:
+        return [short for _at, short, _long in _definitions(text)]
+
+    assert shorts("Physical activity (PA: walking or cycling) was low.") == []
+    assert shorts("The reporting odds ratio (ROR: 3.84) was high.") == []
+    assert shorts("Use was lower in the young and older adults (AOR, 0.41).") == ["AOR"]
+    assert shorts("Programmed cell death protein 1 (PD-1) or its ligand (PD-L1).") == ["PD-1"]
+
+
+def test_what_follows_the_long_form_may_hold_a_bracket(project: Path) -> None:
+    """A citation between the long form and its short form is masked to an empty bracket,
+    and the long form's letters do not cross it; a definition nested in a bracket that also
+    gives a statistic is read, and so is a short form with a separator after it."""
+    report = written(
+        project,
+        "# Results\n\nThe reporting odds ratio [@smith2020] (ROR) was raised. The ROR was "
+        "high (Adjusted odds ratio (AOR): 0.52, 95% CI 0.30 to 0.88), and the AOR was "
+        "stable. The proportional reporting ratio (PRR, 2.1) agreed, as the PRR did.\n",
+    )
+    assert not report.findings, found(report)
+
+
 # ---------------------------------------------------------------- what must stay quiet
 
 
@@ -580,6 +663,61 @@ def test_what_is_not_an_abbreviation_is_not_reported(project: Path, sentence: st
 def test_what_only_looks_exempt_is_still_reported(project: Path, sentence: str) -> None:
     report = written(project, f"# Methods\n\n{sentence}\n")
     assert codes(report) == {"abbreviation-undefined"}, found(report)
+
+
+def test_a_clock_time_is_not_an_abbreviation(project: Path) -> None:
+    """`11:00AM` is read as the words `11` and `00AM`, and `10:00 PM` has `PM` in it: both
+    are the time of day."""
+    report = written(
+        project,
+        "# Methods\n\nVisits ran from 8:30AM to 5:45PM. Doses were given at 10:00 PM, at "
+        "12:30:15PM or at 7:15\nAM.\n",
+    )
+    assert not report.findings, found(report)
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        "The PM was high at 10:00.",  # particulate matter, with a time of day near it
+        "The dose was given at 9 AM.",  # a time with no minutes: a known gap
+    ],
+)
+def test_what_is_near_a_clock_time_is_still_read(project: Path, sentence: str) -> None:
+    report = written(project, f"# Methods\n\n{sentence}\n")
+    assert codes(report) == {"abbreviation-undefined"}, found(report)
+
+
+def test_a_heading_typed_in_capitals_is_not_an_abbreviation(project: Path) -> None:
+    """A manuscript converted from Word has its headings as paragraphs, often in capitals
+    and bold, and its tables' labels in cells: none of their words is an abbreviation."""
+    report = written(
+        project,
+        f"**TITLE PAGE**\n\nA study of reports.\n\n**ABSTRACT**\n\n{PLAIN}\n\n"
+        "SUPPLEMENTARY APPENDIX 2\n\n**MATERIALS AND\nMETHODS**\n\n"
+        "| Group | n |\n|---|---|\n| women | 3 |\n| TOTAL | 12 |\n\n"
+        "+-------+----+\n| MODEL | 1  |\n+=======+====+\n| men   | 3  |\n+-------+----+\n",
+    )
+    assert not report.findings, found(report)
+
+
+def test_a_cell_or_a_line_with_small_letters_is_still_read(project: Path) -> None:
+    report = written(
+        project,
+        "# Results\n\n| Group | n |\n|---|---|\n| ICU stay | 12 |\n\nThe PRR was raised.\n",
+    )
+    assert sorted(f.message.split()[0] for f in report.findings) == ["ICU", "PRR"]
+
+
+def test_a_defined_abbreviation_in_a_cell_in_capitals_is_a_use(project: Path) -> None:
+    """The cell is not hidden: the abbreviation in it is used. What nobody defined goes
+    unreported there, `HIV` here, which is a known gap."""
+    report = written(
+        project,
+        "# Results\n\nThe relative risk (RR) was computed.\n\n| RR | HIV |\n|---|---|\n"
+        "| 1.2 | 3 |\n",
+    )
+    assert not report.findings, found(report)
 
 
 def test_a_word_in_capitals_too_long_for_a_short_form_is_not_reported(project: Path) -> None:
@@ -797,7 +935,7 @@ Supported by INSERM and the ANR (grant ANR-21-CE17).
 
 
 def test_a_realistic_manuscript_is_reported_as_design_md_says(project: Path) -> None:
-    """The measurement behind "every finding is a warning": 22 findings, 20 of them
+    """The measurement behind "every finding is a warning": 21 findings, 19 of them
     abbreviations a copy-editor would query and two of them names, a trial and a package.
     What the list leaves out matters as much: the title, the surnames and product names,
     the numerals, `P`, `R`, the initials and the funders."""
@@ -831,13 +969,14 @@ def test_a_realistic_manuscript_is_reported_as_design_md_says(project: Path) -> 
         ("undefined", "RUCAM"),
         ("undefined", "SAS"),  # a name, not an abbreviation
         ("unused", "DILI"),  # in the main text; the abstract uses its own
-        ("unused", "PD-L1"),
         ("unused", "T2DM"),
         ("unused", "WHO"),  # in the abstract
         ("used-before-defined", "mAb"),
     ]
-    assert report.counts["abbreviations_read"] == 31
-    assert report.counts["abbreviations_defined"] == 15
+    # "protein 1 (PD-1) or its ligand (PD-L1)" is no definition: the 1 of PD-L1 is found
+    # only inside the bracket of PD-1. PD-L1 is a name `terms.yaml` lists.
+    assert report.counts["abbreviations_read"] == 30
+    assert report.counts["abbreviations_defined"] == 14
 
 
 # ---------------------------------------------------------------- one reading, two texts

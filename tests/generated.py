@@ -555,6 +555,108 @@ def signs() -> st.SearchStrategy[str]:
     return _in_a_row(_SIGNS, few=12, many=50)
 
 
+# ----------------------------------------------------------------- abbreviations, G14
+
+#: Brackets G14 reads as a definition, each with what finds its short form in it and the
+#: short form: both orders, square brackets, a separator after the short form, a definition
+#: nested in a bracket that gives a statistic, a citation before the short form's bracket,
+#: and two long forms that run across a bracket without taking a letter from inside one,
+#: the WSE taken after two hours and a risk adjusted for something said in brackets.
+DEFINING = (
+    ("the reporting odds ratio (ROR)", "(ROR", "ROR"),
+    ("the PRR (proportional reporting ratio)", "PRR (", "PRR"),
+    ("the hazard ratio [HR]", "[HR", "HR"),
+    ("the information component (IC; a measure of disproportion)", "(IC", "IC"),
+    ("the signal detection ratio (SDR, 2.4)", "(SDR", "SDR"),
+    ("high (adjusted odds ratio (AOR): 0.41, 95% CI 0.22 to 0.77)", "(AOR", "AOR"),
+    ("the empirical Bayes geometric mean [@smith2020] (EBGM)", "(EBGM", "EBGM"),
+    ("a score at entry (SCE1) and after 2 hours (SCE2)", "(SCE2", "SCE2"),
+    ("the adjusted (for sex) relative risk (aRR)", "(aRR", "aRR"),
+)  # fmt: skip
+
+#: Brackets that are no definition, though the words before each spell its short form: a
+#: statistic, its short form followed by a colon, an equals sign or a number; and a short
+#: form whose letters are found only by going into another bracket, "(12.5%)".
+NOT_DEFINING = (
+    ("lower in only adult residents (OAR: 0.41, 95% CI 0.22 to 0.77)", "(OAR", "OAR"),
+    ("lower in only adult residents (OAR:0.41)", "(OAR", "OAR"),
+    ("lower in only adult residents (OAR: {{results.oar}})", "(OAR", "OAR"),
+    ("lower in only adult residents (OAR = 0.41)", "(OAR", "OAR"),
+    ("lower in only adult residents (OAR 0.41)", "(OAR", "OAR"),
+    ("a warning score at entry (WSE1) and 40 (12.5%) had a second WSE (WSE2)", "(WSE2",
+     "WSE2"),
+    ("a warning score at entry (WSE1) and 40 [12.5%] had a second WSE (WSE2)", "(WSE2",
+     "WSE2"),
+)  # fmt: skip
+
+#: What has capitals together and is no abbreviation: a time of day, `11:00AM` read as
+#: `00AM`, a heading typed in capitals as a paragraph of its own, and a table's label in
+#: capitals, the cell of a pipe table and of a grid table; and a defined abbreviation in
+#: such a cell, which is still a use of it.
+NOT_ABBREVIATIONS = (
+    "visits ran from 8:30AM to 5:45PM", "doses were given at 10:00 PM",
+    "the round began at 7:15\nAM", "the last dose was at 12:30:15PM", "**SUMMARY**",
+    "SUPPLEMENTARY APPENDIX 2", "**MATERIALS AND\nMETHODS**",
+    "| Group | n |\n|---|---|\n| women | 3 |\n| TOTAL | 12 |",
+    "+-------+----+\n| MODEL | 1  |\n+=======+====+\n| men   | 3  |\n+-------+----+",
+    "the relative risk (RR) was computed\n\n| RR | n |\n|---|---|\n| 1.2 | 3 |",
+)  # fmt: skip
+
+#: Abbreviations beside those, each still reported as undefined: one near a time of day,
+#: one in a cell with small letters in it, one in a sentence.
+STILL_ABBREVIATIONS = (
+    ("the PM was high at 10:00", "PM"),
+    ("| Group | n |\n|---|---|\n| ICU stay | 12 |", "ICU"),
+    ("the NIH paid for the second year", "NIH"),
+)
+
+
+def _paragraphs(draw: st.DrawFn, pieces: Iterable[str]) -> tuple[str, list[int]]:
+    """`pieces` each a paragraph of its own between paragraphs of words, and where each
+    starts. The words are plain, so that nothing between them hides a piece or defines."""
+    between = _in_a_row((*_spaced(FILLER), *_PHRASES), few=2, many=6)
+    text, starts = "", []
+    for piece in pieces:
+        text += draw(between) + "\n\n"
+        starts.append(len(text))
+        text += piece + "\n\n"
+    return text, starts
+
+
+@st.composite
+def bracketed(draw: st.DrawFn) -> tuple[str, list[tuple[int, str, bool]]]:
+    """A manuscript with every bracket of `DEFINING` and `NOT_DEFINING`, in an order drawn,
+    and for each where its short form stands, the short form, and whether it is defined
+    there."""
+    planted = draw(st.permutations([*((*each, True) for each in DEFINING),
+                                    *((*each, False) for each in NOT_DEFINING)]))  # fmt: skip
+    text, starts = _paragraphs(draw, (written for written, *_rest in planted))
+    found = []
+    for start, (written, needle, short, defines) in zip(starts, planted, strict=True):
+        found.append((start + written.rindex(needle) + needle.index(short), short, defines))
+    return text, found
+
+
+@st.composite
+def capitalised(draw: st.DrawFn) -> tuple[str, list[str]]:
+    """A manuscript with every piece of `NOT_ABBREVIATIONS` and `STILL_ABBREVIATIONS`, in an
+    order drawn, and the abbreviations it leaves undefined, in order of the alphabet."""
+    still = [written for written, _short in STILL_ABBREVIATIONS]
+    planted = draw(st.permutations([*NOT_ABBREVIATIONS, *still]))
+    text, _starts = _paragraphs(draw, planted)
+    return text, sorted(short for _written, short in STILL_ABBREVIATIONS)
+
+
+#: The same pieces, as blocks a manuscript of the pool is drawn with.
+ABBREVIATION_BLOCKS = tuple(
+    f"\n\n{written}\n\n"
+    for written in (
+        *(each[0] for each in (*DEFINING, *NOT_DEFINING, *STILL_ABBREVIATIONS)),
+        *NOT_ABBREVIATIONS,
+    )
+)
+
+
 # ------------------------------------------------------------------------------- LaTeX
 
 #: LaTeX as an author writes it, each piece whole: numbers as LaTeX writes them, the commands
@@ -4551,7 +4653,10 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         {"text": texts(QUOTED_LIMITS), "value": st.sampled_from((3500, 4, 14, 35000, 500))}
     ),
     "abbreviations": st.fixed_dictionaries(
-        {"text": texts(), "known": st.lists(st.sampled_from(("ROR", "CI", "II")), max_size=2)}
+        {
+            "text": texts((), ABBREVIATION_BLOCKS),
+            "known": st.lists(st.sampled_from(("ROR", "CI", "II")), max_size=2),
+        }
     ),
     "tex outside maths": lines(),
     "title": lines(),

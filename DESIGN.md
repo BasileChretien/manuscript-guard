@@ -3737,6 +3737,16 @@ capitals, or one that is not the capital of a word (`mL`), or a capital and a di
 plural defines its singular: `RORs` defines `ROR`, and `mAbs` after "monoclonal antibodies"
 defines `mAb`.
 
+Two brackets that look like definitions are not. A short form followed by a colon, an
+equals sign or a number is a statistic: in "use was lower in the young and older adults
+(AOR: 0.41, 95% CI ...)" the words before the bracket hold the letters A, O and R in
+order, and read as a definition they made AOR "defined as 'and older adults'", a second
+meaning beside the real one. And a long form takes no letter from inside a bracket it
+opens: in "(WSE1) and 40 (12.5%) had a second WSE (WSE2)" the `2` of WSE2 is found only in
+"(12.5%)". A long form may still close a bracket, "warning score (WSE) at 1 hour (WSE1)",
+where WSE1 is the WSE at one hour, and hold a whole one none of its letters is in,
+"adjusted (for age) relative risk (aRR)". Both were found on manuscripts written in Word.
+
 **An abbreviation nobody defined is read by its capitals.** A word met with no definition
 is taken for one only when two capitals stand side by side, which keeps `McNemar`,
 `DeLong` and `PhD` out of the report. Three things with two capitals together are not
@@ -3749,7 +3759,8 @@ somewhere. The count is what tells the two apart. `CO2`, `H2SO4` and `NaHCO3` ar
 (serum creatinine), which the first version of this rule let through as formulas. A count
 is from two to twelve: nobody writes a count of one, which keeps `HSV1` in the report, and
 none runs to fifty, which keeps `IC50`. A count typeset as pandoc's subscript, `CO~2~`, or
-in subscript digits, is read as the count it is.
+in subscript digits, is read as the count it is. A time of day is not read either:
+`11:00AM` is the words `11` and `00AM`, and `10:00 PM` holds a `PM`.
 
 **A hyphenated word is one abbreviation where it reads as one.** `SARS-CoV-2` is read
 whole when it is defined or known, and so is a name that holds an ordinary word:
@@ -3772,8 +3783,12 @@ section the one before it ended in.
 
 **What is not a sentence is not read.** Listings, comments, bindings, citation keys and
 link targets go with `mask`, and inline code, equations, image captions, front matter and
-headings go after them: a heading in capitals is not an abbreviation. A reference list is
-not read at all. In a contributions, acknowledgements, funding or competing-interests
+headings go after them: a heading in capitals is not an abbreviation. Nor is one typed as
+a paragraph: a manuscript converted from Word has a heading only where a heading style was
+used, and "**ABSTRACT**", "TITLE PAGE" or "APPENDIX 1" are paragraphs. So in a paragraph
+whose letters are all capitals, and in a table's cell whose letters are ("TOTAL", "MODEL
+1"), nothing is reported as undefined; what the manuscript defines is still used there. A
+reference list is not read at all. In a contributions, acknowledgements, funding or competing-interests
 section, capitals are people and institutions, so nothing there is reported as undefined,
 and a funder named once with its acronym is not reported as unused. Those sections are
 found by a word anywhere in their title, since each publisher words the heading its own
@@ -3794,7 +3809,7 @@ that the manuscript defines anyway is still held to that definition.
 **Every finding is a warning, at every stage.** The reading of a definition is good and not
 exact, and a name in capitals is not an abbreviation. The first plan for this gate had an
 undefined abbreviation fail a submission build. Run on the realistic manuscript kept in
-`tests/test_language.py` it gives 22 findings, of which two are names: a trial and a
+`tests/test_language.py` it gives 21 findings, of which two are names: a trial and a
 statistics package. The first review's probes in chemistry and physics added formulas
 and unit symbols to what it got wrong, and the rules for those are a reading too. A check that is wrong that often may advise; it may not stop a build.
 
@@ -15095,10 +15110,20 @@ Open, recorded as each change landed:
   - A definition written as a sentence is not seen: "hereafter ROR", "which we call the
     ROR", "ROR stands for". Its short form is then reported as undefined.
   - A short form followed by a citation inside the bracket, `(ROR [@key])`, is not read as
-    a definition; `(ROR; ...)`, `(ROR, ...)` and `(ROR: ...)` are.
+    a definition; `(ROR; ...)` and `(ROR, ...)` are.
+  - A short form followed by a colon, an equals sign or a number is a statistic, whatever
+    stands before it: "reporting odds ratio (ROR: 3.84)" and "physical activity (PA:
+    walking or cycling)" define nothing, and ROR and PA are then reported as undefined.
+    A comma does not make a statistic, so "and older adults (AOR, 0.41)" is still read as
+    defining AOR, with that long form, where the words before it spell it.
   - Brackets inside brackets are not read: in "(reporting odds ratio (ROR) 3.84)" the inner
-    bracket is read and the outer is not, and a definition whose long form holds a bracket
-    is missed.
+    bracket is read and the outer is not, and a definition whose long form is in the
+    bracket and holds a bracket of its own is missed.
+  - A long form before its short form takes no letter from inside a bracket it opens. A
+    definition whose letters are in such a bracket is missed: "protein 1 (PD-1) or its
+    ligand (PD-L1)" finds the `1` of PD-L1 only in "(PD-1)", and defines nothing. One that
+    takes its letters from a bracket it closes is read, the elliptical "at entry (WSE1)
+    and after 2 hours (WSE2)" among them, with the long form "WSE1) and after 2 hours".
   - The long form is matched by letters, so it can start a word late or early: "the ratio
     as before (ROR)" is read as a definition whose long form is "ratio as before". The
     definition is still counted; the long form quoted in a message can be wrong, and two
@@ -15149,7 +15174,16 @@ Open, recorded as each change landed:
     `Figure legends` section are main text, so a definition repeated in the Introduction
     after one of them, or in a legend that has to stand alone, is reported as
     `abbreviation-redefined`.
-  - A word typed in capitals for emphasis is reported as an undefined abbreviation.
+  - A word typed in capitals for emphasis is reported as an undefined abbreviation, unless
+    its paragraph has no small letter in it.
+  - In a paragraph or a table's cell with no small letter, read as a heading typed in
+    capitals, nothing is reported as undefined. An abbreviation nobody defined that stands
+    only in such places is missed: a column headed `HIV`, a cell `(DM)`, a line "ORCID ID:
+    <link>". A table is told by a line that opens with `|`; a simple table's cells, set
+    out with spaces, are not read one by one. A defined abbreviation is used there, and a
+    use above its definition is still reported.
+  - A time of day is read as one only with its minutes and a colon: `11:00AM`, `10:00 PM`.
+    "9 AM" and "11.00 AM" are read as words, and `AM` is then reported as undefined.
   - Tables and figures are not read, since both are generated from results. An abbreviation
     defined in the text for a table's sake is reported as unused, and one used only in a
     caption is not seen. The hint on `abbreviation-unused` says so.

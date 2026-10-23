@@ -137,3 +137,10 @@ expected:
       its parameter text blanked and its body read, and a use refused only where it
       prints; a `\let` of a command to one the reader reads the same way and a doubled
       parameter in a nested body are no longer refused either (real templates, part 1)
+  - reading: abbreviations
+    why: >-
+      a short form followed by a colon, an equals sign or a number in its bracket is a
+      statistic and defines nothing, and a long form takes no letter from inside a bracket
+      it opens; a time of day, "8:30AM", "10:00 PM", is not read as an abbreviation, and
+      nothing is reported as undefined in a paragraph or a table's cell with no small letter,
+      a heading typed in capitals; the inputs now hold such brackets, times and headings

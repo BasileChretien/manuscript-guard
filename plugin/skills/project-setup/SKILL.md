@@ -47,7 +47,15 @@ hook says once when that release is newer than the installed tool, with the upgr
 manuscript-guard init my-paper --title "Working title"   # a new project
 manuscript-guard init . --title "Working title"          # an existing analysis repository
 manuscript-guard init my-paper --title "Working title" --latex   # the manuscript in LaTeX
+manuscript-guard init my-paper --from paper.docx         # a paper written in Word
 ```
+
+`--from` writes the Word paper as `manuscript/main.md`: each table a pipe table where its
+cells hold only paragraphs, the pictures in `manuscript/media/`, the title from Word's Title
+style in `paper.yaml`, each name of its Author style in `authors.yaml`, unsplit, and what
+stands before the first heading in a comment at the top, which no gate reads. Read what it
+prints with the authors: the tables it left as grid tables, and whether the comment holds
+an abstract or text that belongs to the paper. A `.doc` is refused; save it as `.docx`.
 
 Ask the authors whether they write the manuscript in Markdown or in LaTeX before running it.
 With `--latex` the manuscript is `manuscript/main.tex`, which declares its class and loads

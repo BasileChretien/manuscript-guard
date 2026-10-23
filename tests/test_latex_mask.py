@@ -179,6 +179,38 @@ def test_a_command_let_to_one_read_the_same_way_is_read_as_before() -> None:
     assert "of 12 sites" in reading.masked and "endnote" not in reading.masked
 
 
+def test_a_classs_front_matter_is_passed_over_and_its_abstract_read() -> None:
+    """Elsevier's `frontmatter` holds the title, the addresses, the abstract and the keywords,
+    Wiley's template types its issue and dates in the body, and an article's preamble often
+    defines `\\keywords`: each is passed over, as Markdown's YAML header is, but the abstract,
+    read under its heading (Basile, 2026-10-23). So is an abstract in a box inside the front
+    matter, BMC's `abstractbox`; one in a blanked argument is not lifted."""
+    text = ("\\documentclass{elsarticle}\n\\newcommand{\\keywords}[1]{Keywords: #1}\n"
+            "\\begin{document}\n\\begin{frontmatter}\n\\title{A 10-year cohort}\n"
+            "\\address[a]{Unit 1181}\n\\begin{abstractbox}\\begin{abstract}\nOf 4100 cases.\n"
+            "\\end{abstract}\\end{abstractbox}\n\\begin{keyword}\nkey 77\n\\end{keyword}\n"
+            "\\end{frontmatter}\n\\Volume{46}\\pagespan{1}{9}\\affil*[2]{Unit 1182}\n"
+            "\\keywords{dose 5}\n\\section{Intro}\nBody 3.\n\\end{document}\n")  # fmt: skip
+    reading = read(text)
+    assert reading.refusals == ()
+    for hidden in ("10-year", "1181", "77", "46", "9}", "1182", "dose 5"):
+        start = text.index(hidden)
+        assert set(reading.masked[start : start + len(hidden)]) <= {NUL, "}"}, hidden
+    assert "Of 4100 cases." in reading.masked and "Body 3." in reading.masked
+    assert [heading.title for heading in reading.headings] == ["Abstract", "Intro"]
+    assert "Of 12" not in read("\\author{\\begin{abstract}Of 12\\end{abstract}}",
+                               body=True).masked  # fmt: skip
+
+
+def test_a_file_input_inside_the_front_matter_is_read_as_it_is() -> None:
+    """A file input from inside `frontmatter` starts there: passed over, but an abstract."""
+    reading = read("\\address{Unit 1181}\n\\begin{abstract}Of 4100.\\end{abstract}\n",
+                   body=True, environments=("frontmatter",))  # fmt: skip
+    assert "1181" not in reading.masked and "Of 4100." in reading.masked
+    abstract = read("Of 4100.\n", body=True, environments=("frontmatter", "abstract"))
+    assert "Of 4100." in abstract.masked
+
+
 def test_an_input_encoding_other_than_utf8_is_refused() -> None:
     text = "\\documentclass{article}\n\\usepackage[latin1]{inputenc}\n\\begin{document}\n"
     assert [r.code for r in read(text + "\\end{document}").refusals] == ["tex-refused"]

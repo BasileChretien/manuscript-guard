@@ -27,6 +27,8 @@ from manuscript_guard.text.latex.commands import (
     ENVIRONMENTS,
     FIGURES,
     FLOATS,
+    FRONT_MATTER,
+    FRONT_MATTER_COMMANDS,
     IMPORTS,
     LISTINGS,
     MATHS,
@@ -222,8 +224,9 @@ LEVELS = {"part": -1, "chapter": 0, "section": 1, "subsection": 2, "subsubsectio
 #: A path in braces after `\input`, which TeX finds past spaces and one line break.
 _BRACED_PATH = re.compile(r"[ \t]*(?:\r?\n[ \t]*)?\{([^{}\n]*)\}")
 #: Commands the reader knows that an author may define again, which it then reads as before:
-#: `\abstract` was an unknown command, its arguments read, until it was given a heading.
-_REDEFINABLE = frozenset({"abstract"})
+#: `\abstract` was an unknown command, its arguments read, until it was given a heading; a
+#: class's front matter, `\keywords` among it, is passed over however it is defined.
+_REDEFINABLE = frozenset({"abstract"}) | FRONT_MATTER_COMMANDS
 _PACKAGES = re.compile(r"\s*(?:\[([^\]]{0,300})\])?\s*\{([^{}]{0,300})\}")
 _NAMESPACE = "(?:" + "|".join(NAMESPACES) + r")\."
 #: What TeX passes over before an argument: spaces, and one line break (round 1 of #400).
@@ -427,7 +430,7 @@ class _Reader:
         self.defined_delimited: list[str] = []
         self.heading_at = -1
         for name in environments:
-            role = MATHS_READ if name in MATHS else self._role()
+            role = MATHS_READ if name in MATHS else self._entered(name, self._role())
             self.stack.append(_Frame("env", role, 0, name, table=name in TABLES, inherited=True))
             self.environments.append(name)
 
@@ -1169,7 +1172,7 @@ class _Reader:
             if bound is not None:
                 self._refuse("tex-refused", bound.start(), _bound_as_typed(name))
         else:
-            role = self._role()
+            role = self._entered(name, self._role())
             if role == PREAMBLE and self._printed_from_preamble(name):
                 role = PROSE
             maths = name in MATHS and role in (PROSE, MATHS_READ)
@@ -1179,6 +1182,22 @@ class _Reader:
             if name == "abstract" and role == PROSE:
                 self.headings.append(Heading(at, 1, "Abstract"))
             self.command, self.pending = "begin", ENVIRONMENTS.get(name, ())
+
+    def _entered(self, name: str, role: str) -> str:
+        """How an environment opened where `role` is read is read: a class's front matter is
+        passed over, and an abstract in it, inside environments only, is read as what holds
+        the front matter is."""
+        if name in FRONT_MATTER:
+            return BLANK
+        if name != "abstract":
+            return role
+        for index in range(len(self.stack) - 1, -1, -1):
+            frame = self.stack[index]
+            if frame.kind != "env":
+                return role
+            if frame.closer in FRONT_MATTER:
+                return self.stack[index - 1].role if index else PROSE if self.body else PREAMBLE
+        return role
 
     def _end(self, name: str, at: int) -> None:
         opened = [frame for frame in self.stack if not frame.inherited]

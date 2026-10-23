@@ -681,6 +681,13 @@ LATEX_PLACES = (
     # macro's uses are read (round 1).
     ("\\def\\jn {{Lancet {}}}\\jn{{x}} ", (True,)),
     ("\\def\\jc%\n  {{Lancet {}}}\\jc{{x}} ", (True,)),
+    # A class's front matter, which the title page prints, passed over as Markdown's YAML
+    # header is, but for its abstract; and Wiley's and Springer's commands for it (Basile,
+    # 2026-10-23).
+    ("\\begin{{frontmatter}}\\title{{A {}}}\\address[a]{{Unit {}}}\\begin{{abstract}}Of {}"
+     "\\end{{abstract}}\\begin{{keyword}}k {}\\end{{keyword}}\\end{{frontmatter}}\n",
+     (False, False, True, False)),
+    ("\\Volume{{{}}}\\pagespan{{{}}}{{{}}}\\affil*[1]{{Unit {}}} ", (False, False, False, False)),
 )  # fmt: skip
 #: Where a number stands in the preamble, before `\\begin{document}`.
 LATEX_PREAMBLE_PLACES = (
@@ -693,6 +700,8 @@ LATEX_PREAMBLE_PLACES = (
     # (round 2 of #385: the first was refused, and so was the second).
     ("\\let\\oldabstract\\abstract\n\\abstract{{Of {}}}\n", (True,)),
     ("\\begin{{abstract}}Of {}\\end{{abstract}}\n", (True,)),
+    # An article's own `\\keywords`, defined again as the class's front matter may be.
+    ("\\newcommand{{\\keywords}}[1]{{Keywords {} #1}}\n", (True,)),
 )  # fmt: skip
 
 

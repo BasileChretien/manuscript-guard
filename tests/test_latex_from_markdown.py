@@ -161,6 +161,22 @@ def test_the_template_names_no_author_where_review_is_blind(project: Path) -> No
     assert "author:" not in latex_out._header(load_project(project)[0], False)
 
 
+@pytest.mark.parametrize(
+    ("declared", "lang"), [("en-GB", "en-GB"), ("en-US", "en-US"), (None, "en")]
+)
+def test_the_template_is_given_the_english_declared_or_english_with_no_region(
+    project: Path, declared: str | None, lang: str
+) -> None:
+    """Declaring none, the document is English with no region (Basile, 2026-10-23)."""
+    path = project / "paper.yaml"
+    text = path.read_text(encoding="utf-8")
+    assert text.count("english_variant: en-GB\n") == 1, "the example changed under this test"
+    line = "" if declared is None else f"english_variant: {declared}\n"
+    path.write_text(text.replace("english_variant: en-GB\n", line), encoding="utf-8")
+    header = latex_out._header(load_project(project)[0], False)
+    assert f"\nlang: {lang}\n" in header
+
+
 @needs_pandoc
 def test_tex_in_the_markdown_the_reader_refuses_is_not_built(
     project: Path, capsys: pytest.CaptureFixture[str]

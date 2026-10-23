@@ -7,6 +7,14 @@ reading finds them by list: the words one usage writes and the other does not, f
 (Kevin Atkinson and Benjamin Titze), cut down to what a check needs by
 `tools/derive_spelling_variants.py`.
 
+**A paper that declares no English is held to the one most of its words are in** (Basile,
+2026-10-23). Of fourteen American papers checked under the `en-GB` that `init` used to
+write for everyone, seven were told they broke it. The words each English writes and the
+other does not are counted, the paper takes the English of the more, and where they are
+level, the English of the first; an `-ize` both write counts for neither. The words of the
+fewer are then reported as in a paper that declared the more, and `spelling-not-as-declared`
+is never given, since nothing was declared.
+
 Three findings, all warnings:
 
 * `spelling-variant`: a word in the other usage's spelling, once for the word, where it
@@ -153,29 +161,14 @@ def _most_used(counts: dict[str, int], limit: int) -> list[str]:
     return sorted(counts, key=lambda word: -counts[word])[:limit]
 
 
-def judge_spelling(
-    passages: Iterable[Passage], variant: str, accepted: Iterable[str], paper: Path
-) -> Report:
-    """The findings of the spelling reading, for a paper in `variant`. `accepted` are the
-    spellings the project keeps whatever the list says; `paper` is the file that names the
-    variant, for the finding that is about it."""
-    if not isinstance(variant, str) or variant not in _NAMES:
-        # The schema reports an `english_variant` that is neither; a list is not even a
-        # key to look up, and the gate's other readings are not to fall with this one.
-        return Report((), {"spelling_own": 0, "spelling_other": 0})
+def _spellings(
+    passages: Iterable[Passage], kept: set[str]
+) -> list[tuple[int, Passage, int, str, str]]:
+    """Each word of the list the paper writes as its own, in the order the reader meets
+    them: the passage's place, the passage, the offset, the word in lower case, and its
+    kind, "" for an `-ize` spelling both usages write."""
     words, with_ize = _variants()
-    kept = {word.lower() for word in accepted if isinstance(word, str)}
-    british = variant == BRITISH
-    other_variant = AMERICAN if british else BRITISH
-    others = _KINDS[other_variant]
-
-    first: dict[str, tuple[Passage, int]] = {}
-    times: dict[str, int] = {}
-    own = 0
-    endings: dict[str, dict[str, int]] = {"ise": {}, "ize": {}}
-    # For each ending, where it first stands: the passage's place, the offset, the word.
-    ending_first: dict[str, tuple[int, int, Passage, str]] = {}
-
+    spelt = []
     for place, passage in enumerate(passages):
         text = _prose(passage.printed)
         for found in _WORD.finditer(text):
@@ -190,24 +183,90 @@ def judge_spelling(
                 continue
             if _in_an_identifier(text, found.start(), found.end()):
                 continue
-            kind = row[0] if row is not None else ""
-            if kind in others:
-                times[key] = times.get(key, 0) + 1
-                first.setdefault(key, (passage, found.start()))
-                continue
-            own += kind != ""
-            # Only a British paper comes this far with a word in -ise: in an American
-            # one it is the other usage's, and was counted above.
-            ending = "ise" if kind == "ise" else ("ize" if key in with_ize else "")
-            if ending:
-                endings[ending][key] = endings[ending].get(key, 0) + 1
-                ending_first.setdefault(ending, (place, found.start(), passage, key))
+            spelt.append((place, passage, found.start(), key, row[0] if row is not None else ""))
+    return spelt
+
+
+def _majority(spelt: list[tuple[int, Passage, int, str, str]]) -> tuple[str, bool] | None:
+    """The English most of the words are in, and whether the two are level, in which case
+    the English of the first word is taken. None where no word is either's: an `-ize`
+    spelling both usages write says nothing."""
+    counts = {
+        variant: sum(kind in _KINDS[variant] for *_, kind in spelt) for variant in _NAMES
+    }
+    if not any(counts.values()):
+        return None
+    if counts[BRITISH] != counts[AMERICAN]:
+        return max(counts, key=lambda variant: counts[variant]), False
+    first = next(kind for *_, kind in spelt if kind)
+    return (BRITISH if first in _KINDS[BRITISH] else AMERICAN), True
+
+
+def judge_spelling(
+    passages: Iterable[Passage], variant: str | None, accepted: Iterable[str], paper: Path
+) -> Report:
+    """The findings of the spelling reading, for a paper in `variant`, or where that is
+    None, a paper that declares no English: it is then held to the one most of its words
+    are in (Basile, 2026-10-23). `accepted` are the spellings the project keeps whatever
+    the list says; `paper` is the file that names the variant, for the finding about it."""
+    nothing = Report((), {"spelling_own": 0, "spelling_other": 0})
+    declared = variant is not None
+    if declared and (not isinstance(variant, str) or variant not in _NAMES):
+        # The schema reports an `english_variant` that is neither; a list is not even a
+        # key to look up, and the gate's other readings are not to fall with this one.
+        return nothing
+    words, with_ize = _variants()
+    kept = {word.lower() for word in accepted if isinstance(word, str)}
+    spelt = _spellings(passages, kept)
+    level = False
+    if not declared:
+        taken = _majority(spelt)
+        if taken is None:
+            return nothing
+        variant, level = taken
+    british = variant == BRITISH
+    other_variant = AMERICAN if british else BRITISH
+    others = _KINDS[other_variant]
+
+    first: dict[str, tuple[Passage, int]] = {}
+    times: dict[str, int] = {}
+    own = 0
+    endings: dict[str, dict[str, int]] = {"ise": {}, "ize": {}}
+    # For each ending, where it first stands: the passage's place, the offset, the word.
+    ending_first: dict[str, tuple[int, int, Passage, str]] = {}
+
+    for place, passage, start, key, kind in spelt:
+        if kind in others:
+            times[key] = times.get(key, 0) + 1
+            first.setdefault(key, (passage, start))
+            continue
+        own += kind != ""
+        # Only a British paper comes this far with a word in -ise: in an American
+        # one it is the other usage's, and was counted above.
+        ending = "ise" if kind == "ise" else ("ize" if key in with_ize else "")
+        if ending:
+            endings[ending][key] = endings[ending].get(key, 0) + 1
+            ending_first.setdefault(ending, (place, start, passage, key))
 
     findings: list[Finding] = []
     other = sum(times.values())
     theirs, ours = _NAMES[other_variant], _NAMES[variant]
+    if declared:
+        english = f"this paper is in {ours} English"
+    elif level:
+        english = (
+            f"paper.yaml declares no English, and the paper has as many words in {ours} "
+            f"spelling as in {theirs}, the first in {ours}"
+        )
+    else:
+        english = (
+            f"paper.yaml declares no English, and the paper has {own} words in {ours} "
+            f"spelling to {other} in {theirs}"
+        )
 
-    if len(times) >= MANY and other > own:
+    # Declaring none, the paper's English is the one most of its words are in, so the
+    # other's are never the more: no setting to be told of.
+    if declared and len(times) >= MANY and other > own:
         listed = _most_used(times, LISTED)
         respell = ", ".join(
             f"{word} ({words[word][1].replace('/', ' or ')}, {_times(times[word])})"
@@ -242,7 +301,7 @@ def judge_spelling(
                     severity=WARN,
                     message=(
                         f"{key!r} is the {theirs} spelling of {instead}, used "
-                        f"{_times(times[key])}; this paper is in {ours} English"
+                        f"{_times(times[key])}; {english}"
                     ),
                     path=passage.path,
                     line=passage.line_of(offset),
@@ -250,7 +309,13 @@ def judge_spelling(
                     hint="respell it, or list that one word under `language: "
                     "accepted_spellings:` in paper.yaml if it is this field's spelling or a "
                     "word of a name. This is its first use; the count is of the whole "
-                    "manuscript",
+                    "manuscript"
+                    + (
+                        ""
+                        if declared
+                        else f". If the paper is in {theirs} English, set english_variant: "
+                        f"{other_variant} in paper.yaml"
+                    ),
                 )
             )
 

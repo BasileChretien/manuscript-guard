@@ -4580,6 +4580,64 @@ def test_a_word_in_the_other_english_is_found_where_it_stands_and_a_name_is_not(
     assert report.counts["spelling_other"] == sum(len(places) for places in stands.values())
 
 
+#: The three papers each example of the property below holds: mostly British, mostly
+#: American, and as many of each.
+_LEANINGS = ("en-GB", "en-US", "level")
+
+
+@st.composite
+def _undeclared_papers(draw: st.DrawFn) -> list[tuple[str, str, dict[str, int], int, int]]:
+    """Papers that declare no English, one of each leaning in every example: filler with
+    words of both Englishes planted in an order drawn. Each comes with the English it is to
+    be held to, the words of the other with where each first stands, and how many of each."""
+    papers = []
+    for leaning in _LEANINGS:
+        more = draw(st.integers(2, 6))
+        if leaning == "level":
+            # The first word's English is the paper's; the rest are drawn in any order.
+            held = draw(st.sampled_from(("en-GB", "en-US")))
+            stray = "en-US" if held == "en-GB" else "en-GB"
+            planted = [held, *draw(st.permutations([held] * (more - 1) + [stray] * more))]
+        else:
+            held = leaning
+            stray = "en-US" if held == "en-GB" else "en-GB"
+            fewer = draw(st.integers(1, more - 1))
+            planted = list(draw(st.permutations([held] * more + [stray] * fewer)))
+        sentences: list[str] = []
+        stands: dict[str, int] = {}
+        for english in planted:
+            word = draw(st.sampled_from(BRITISH if english == "en-GB" else AMERICAN))
+            before = _words(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
+            after = _words(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
+            sentence = f"{before.capitalize()} {word} {after}."
+            if english != held:
+                stands.setdefault(word, len(sentences))
+            sentences.append(sentence)
+        own = planted.count(held)
+        papers.append(("\n".join(sentences) + "\n", held, stands, own, len(planted) - own))
+    return papers
+
+
+@holds(100, _undeclared_papers())
+def test_a_paper_that_declares_no_english_is_held_to_the_one_most_of_its_words_are_in(
+    papers: list[tuple[str, str, dict[str, int], int, int]],
+) -> None:
+    """Basile, 2026-10-23. The words of the fewer English are each said where they first
+    stand, those of the more never, and nothing about a setting nobody made; where the two
+    are level, the English of the first word is the paper's."""
+    names = {"en-GB": "British", "en-US": "American"}
+    for text, held, stands, own, other in papers:
+        file = _file(0, MAIN, text, [], False)
+        passage = Passage(file.path, file.text, file.printed, file.line_of)
+        report = judge_spelling([passage], None, (), PAPER)
+        assert {f.code for f in report.findings} <= {"spelling-variant"}, text
+        theirs = names["en-US" if held == "en-GB" else "en-GB"]
+        found = {(f.message.split("'")[1], f.line) for f in report.findings}
+        assert found == {(word, line + 1) for word, line in stands.items()}, (text, held)
+        assert all(f"is the {theirs} spelling of" in f.message for f in report.findings), text
+        assert (report.counts["spelling_own"], report.counts["spelling_other"]) == (own, other)
+
+
 # ------------------------------------------------------------------------- placeholders
 
 
@@ -8231,6 +8289,24 @@ def _a_variables_name_is_a_word(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(spelling_gate, "_in_an_identifier", lambda text, start, end: False)
 
 
+def _no_english_declared_is_british(patch: pytest.MonkeyPatch) -> None:
+    """The rule before 2026-10-23: a paper that declared nothing was British."""
+    patch.setattr(
+        spelling_gate, "_majority", lambda spelt: (spelling_gate.BRITISH, False) if spelt else None
+    )
+
+
+def _level_englishes_are_british(patch: pytest.MonkeyPatch) -> None:
+    """As many of each, and the first word's English not looked at."""
+    majority = spelling_gate._majority
+
+    def broken(spelt: list) -> tuple[str, bool] | None:
+        taken = majority(spelt)
+        return (spelling_gate.BRITISH, True) if taken and taken[1] else taken
+
+    patch.setattr(spelling_gate, "_majority", broken)
+
+
 def _a_list_of_pointers_is_its_first(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import pointers
 
@@ -11431,6 +11507,14 @@ BROKEN = {
     "a variable's name is read as a word": (
         _a_variables_name_is_a_word,
         test_a_word_in_the_other_english_is_found_where_it_stands_and_a_name_is_not,
+    ),
+    "a paper that declares no English is held to British": (
+        _no_english_declared_is_british,
+        test_a_paper_that_declares_no_english_is_held_to_the_one_most_of_its_words_are_in,
+    ),
+    "two Englishes level are taken for British": (
+        _level_englishes_are_british,
+        test_a_paper_that_declares_no_english_is_held_to_the_one_most_of_its_words_are_in,
     ),
     "a list of tables is read as its first": (
         _a_list_of_pointers_is_its_first,

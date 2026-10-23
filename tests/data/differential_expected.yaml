@@ -48,11 +48,6 @@ expected:
       blanked, as the bindings are: a stop inside a comment ends no sentence, so a reversal
       with such a comment between its bounds is reported, and a stop with a comment typed
       against it ends one, so the bounds on either side of it are no longer compared
-  - reading: check
-    why: >-
-      G1 counts the datasets the results name, `datasets_checked`, which is 0 in a project
-      that names none; and the hint for an unbound number beside a month's name says that the
-      date of the data is declared with `dataset()` and a date the study chose is a parameter
   - reading: numbers
     why: >-
       a supplement's name of the Methods, "Supplementary methods", "eMethods 1. Data
@@ -80,3 +75,15 @@ expected:
       a sentence that opens with a typographic quotation mark is a sentence of its own, as
       one that opens with a straight one is, so its quotation is held to its own citation
       and not to the one of the sentence before (step 8, G7)
+  - reading: spelling
+    why: >-
+      a paper that declares no English, `variant` None, is held to the English most of its
+      words are in, the first word's where they are level, and the words of the other are
+      reported (Basile, 2026-10-23); the base judged nothing for it, and the inputs now draw
+      such papers
+  - reading: check
+    why: >-
+      `init` writes no `english_variant` unless given `--english`, and in its place a comment
+      of three lines saying what the key is for, so a line of paper.yaml after it is two
+      lines further down than in the base, as a message that cannot parse it says; and a
+      project made so is held by G14 to the English most of its words are in

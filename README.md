@@ -258,7 +258,7 @@ number in the file and the rule that classified it.
 
 | Command | What it does |
 |---|---|
-| `init` | scaffold a new manuscript project; `--latex` starts the manuscript in LaTeX, `--english en-US` declares American spelling (`en-GB` unless told) |
+| `init` | scaffold a new manuscript project; `--latex` starts the manuscript in LaTeX, `--english en-GB` or `en-US` declares the paper's English (none unless told) |
 | `check` | run every gate; `--submission` holds the manuscript to submission standards |
 | `bind` | show every unbound number and how to give it a source; `--pointers` offers the `{{ref.…}}` binding that prints each typed "Table 2" |
 | `explain` | show how each number in a file was classified |

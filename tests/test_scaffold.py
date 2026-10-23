@@ -467,6 +467,22 @@ def test_init_declares_the_english_it_is_given(tmp_path: Path, english: str, lat
 
 
 @pytest.mark.parametrize("latex", [False, True], ids=["markdown", "latex"])
+def test_init_declares_no_english_unless_told(tmp_path: Path, latex: bool) -> None:
+    """Basile, 2026-10-23: the `en-GB` init wrote for everyone told seven of fourteen
+    American papers they broke it. Declaring none, G14 holds the paper to the English most
+    of its words are in; the line is there, as a comment, to be filled in."""
+    from manuscript_guard.cli import main
+
+    root = tmp_path / "paper"
+    assert main(["init", str(root)] + ["--latex"] * latex) == 0
+    project, report = load_project(root)
+    assert {each.path.name for each in report.failures} == {"authors.yaml"}, "to be filled in"
+    assert "english_variant" not in project.paper
+    assert project.english_variant is None
+    assert "# english_variant: " in (root / "paper.yaml").read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("latex", [False, True], ids=["markdown", "latex"])
 @pytest.mark.parametrize("english", ["en-AU", "en-gb", "British", ""])
 def test_init_refuses_an_english_paper_yaml_cannot_declare_before_it_makes_anything(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], english: str, latex: bool

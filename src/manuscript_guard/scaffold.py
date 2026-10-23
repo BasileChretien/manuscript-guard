@@ -27,13 +27,17 @@ from manuscript_guard.contracts.project import (
 ENGLISHES: tuple[str, ...] = tuple(
     load_schema("paper")["properties"]["english_variant"]["enum"]
 )
-#: What `init` declares when it is not told.
-DEFAULT_ENGLISH = "en-GB"
+#: What `paper.yaml` says of its English when `init` is not told one (Basile, 2026-10-23: the
+#: `en-GB` it wrote for everyone told seven of fourteen American papers they broke it).
+UNDECLARED = """\
+# The English the paper is in, en-GB or en-US, which G14 holds its spelling to. Left out,
+# the paper is held to the one most of its words are in.
+# english_variant: en-GB"""
 
 PAPER = """\
 schema: manuscript-guard/paper/1
 title: {quoted}
-english_variant: {english}
+{english}
 
 # Where the work has got to. Move it along as you go; `manuscript-guard stages` lists what
 # each one starts to enforce. Written here rather than left to the default, because the
@@ -344,11 +348,12 @@ def _header(title: str) -> str:
 
 
 def init_project(root: Path, title: str = "Untitled manuscript", *,
-                 latex: bool = False, english: str = DEFAULT_ENGLISH) -> list[Path]:  # fmt: skip
+                 latex: bool = False, english: str | None = None) -> list[Path]:  # fmt: skip
     """Create the project layout. Existing files are never overwritten. With `latex`, the
     manuscript is `manuscript/main.tex`, with the values file beside it (step 12).
-    `english` is the `english_variant` written into `paper.yaml`, one of `ENGLISHES`."""
-    if english not in ENGLISHES:
+    `english` is the `english_variant` written into `paper.yaml`, one of `ENGLISHES`; with
+    None, none is declared."""
+    if english is not None and english not in ENGLISHES:
         raise ContractError(
             f"{english!r} is not an English paper.yaml can declare, so nothing was made; "
             f"give one of {', '.join(ENGLISHES)}"
@@ -419,7 +424,7 @@ def init_project(root: Path, title: str = "Untitled manuscript", *,
             quoted=json.dumps(title, ensure_ascii=False),
             header=_header(title),
             latex_title=latex_title,
-            english=english,
+            english=UNDECLARED if english is None else f"english_variant: {english}",
         )
         if name == "AGENTS.md" and latex:
             written = _in_latex(written)

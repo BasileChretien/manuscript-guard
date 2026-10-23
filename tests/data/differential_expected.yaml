@@ -140,7 +140,9 @@ expected:
   - reading: abbreviations
     why: >-
       a short form followed by a colon, an equals sign or a number in its bracket is a
-      statistic and defines nothing, and a long form takes no letter from inside a bracket
-      it opens; a time of day, "8:30AM", "10:00 PM", is not read as an abbreviation, and
-      nothing is reported as undefined in a paragraph or a table's cell with no small letter,
-      a heading typed in capitals; the inputs now hold such brackets, times and headings
+      statistic, and defines only where the words right before it are its initials; a long
+      form takes no letter from inside a bracket it opens, and looks for it before that
+      bracket; a time of day, "8:30AM", "10:00 PM", is not read as an abbreviation, and
+      nothing is reported as undefined in a paragraph set in bold with no small letter or a
+      cell of a table's header row with none, a heading typed in capitals; the inputs now
+      hold such brackets, times, headings and tables

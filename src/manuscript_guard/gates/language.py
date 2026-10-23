@@ -100,14 +100,19 @@ _QUOTES = (
 )
 #: What may cling to either end of a long form and is no part of it.
 _EDGES = _QUOTES + ".,;:()[]"
-# The short form opening a bracket: alone, or before a separator ("ROR; 95% CI ...").
+# The short form opening a bracket: alone, before a separator ("ROR; 95% CI ..."), or before
+# a statistic ("ROR: 3.84", "ROR = 3.84", "ROR 3.84").
 _OPENS_WITH = re.compile(
-    rf"[\s{re.escape(_QUOTES)}]*(?P<short>[^\W_]+(?:-[^\W_]+)*)[\s{re.escape(_QUOTES)}]*(?:$|[;,:])"
+    rf"[\s{re.escape(_QUOTES)}]*(?P<short>[^\W_]+(?:-[^\W_]+)*)[\s{re.escape(_QUOTES)}]*"
+    r"(?:$|[;,:=]|(?=\d))"
 )
-# What makes a bracket a statistic and not a definition: its short form followed by a colon,
-# an equals sign or a number, "(AOR: 0.41, 95% CI ...)". The words before such a bracket
-# are no long form, though their letters may spell the short form ("and older adults").
+# What makes a bracket a statistic: its short form followed by a colon, an equals sign or a
+# number, "(AOR: 0.41, 95% CI ...)". Such a bracket defines its short form only where the
+# words right before it begin with its letters (`_initials`): "reporting odds ratio (ROR:
+# 3.84)" does, "and older adults (AOR: 0.41)" does not, though its letters are there.
 _STATISTIC = re.compile(rf"[\s{re.escape(_QUOTES)}]*(?:[:=]|\d)")
+#: A word, or a part of a hyphenated one, for `_initials`: `drug`, `induced`, `2`.
+_PART = re.compile(r"[^\W_]+")
 #: The brackets a long form opens and closes, round and square: a letter of its short form
 #: is not found inside one it opens (`_inside_a_bracket`).
 _OPENING = "(["
@@ -115,8 +120,12 @@ _CLOSING = ")]"
 # A time of day: `11:00AM`, `10:00 PM`, `7:15` at the end of a line and `AM` on the next.
 # Read as words it is `11` and `00AM`, or a `PM`, which are abbreviations to the gate.
 _CLOCK = re.compile(r"(?<![\d:])\d{1,2}:[0-5]\d(?::[0-5]\d)?\s?(?:AM|PM)(?![^\W_])")
-# A line of a table, pipe or grid, whose cells are read one by one.
-_TABLE_LINE = re.compile(r"(?m)^[ \t]{0,3}\|.*$")
+# A paragraph set entirely in bold, `**TITLE PAGE**` or `__RESULTS__`: a heading typed in Word.
+_BOLD = re.compile(r"\s*(\*\*|__)(?:(?!\1).)+\1\s*", re.DOTALL)
+# The rule under a table's header row: a pipe table's dashes, a grid table's `=` line.
+_HEADER_RULE = re.compile(
+    r"\+[:+]*=[=:+]*|(?=.*\|)\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?"
+)
 # The word standing against an opening bracket: "ROR (reporting odds ratio)".
 _BEFORE_PAREN = re.compile(r"(?P<short>[^\W_]+(?:-[^\W_]+)*)[ \t]?$")
 # An image with its caption: `![caption](target)` or `![caption][label]`, a bracket inside
@@ -340,7 +349,33 @@ def _long_form(short: str, before: str) -> str | None:
 
     Schwartz and Hearst's rule (Pac Symp Biocomput 2003;8:451-62): going backwards, each
     letter or digit of the short form is found in turn, and the first must begin a word.
+    A letter is not taken from inside a bracket the long form would open: where the nearest
+    is, the bracket is passed over and its letters looked for before it, so the `S` of
+    "Depression Scale (French version) (HADS)" is the one of "Scale".
     """
+    searched = before
+    while True:
+        matched = _letters(short, searched)
+        if matched is None:
+            return None
+        opened = _inside_a_bracket(searched, matched)
+        if opened is None:
+            break
+        searched = _passed_over(searched, opened)
+    found = before[matched[-1] :].strip().strip(_EDGES).strip()
+    if len(found) <= len(short):
+        return None
+    # A short form does not define itself, nor through its plural: in "expressed as ORs
+    # (OR, 95% CI)" the letters of OR are all in "ORs".
+    words = {_singular(word.strip(_EDGES)).lower() for word in found.split()}
+    if _singular(short).lower() in words:
+        return None
+    return found
+
+
+def _letters(short: str, before: str) -> list[int] | None:
+    """Where each letter or digit of `short` is found going back from the end of `before`,
+    the nearest each time, the last letter first; None where one is not there."""
     at = len(before) - 1
     matched: list[int] = []
     for position in range(len(short) - 1, -1, -1):
@@ -356,40 +391,55 @@ def _long_form(short: str, before: str) -> str | None:
             return None
         matched.append(at)
         at -= 1
-    if _inside_a_bracket(before, matched):
-        return None
-    found = before[at + 1 :].strip().strip(_EDGES).strip()
-    if len(found) <= len(short):
-        return None
-    # A short form does not define itself, nor through its plural: in "expressed as ORs
-    # (OR, 95% CI)" the letters of OR are all in "ORs".
-    words = {_singular(word.strip(_EDGES)).lower() for word in found.split()}
-    if _singular(short).lower() in words:
-        return None
-    return found
+    return matched or None
 
 
-def _inside_a_bracket(before: str, matched: list[int]) -> bool:
-    """Is a letter of the short form found inside a bracket the long form opens? `matched`
-    are where its letters were found, the last letter first.
+def _inside_a_bracket(before: str, matched: list[int]) -> int | None:
+    """Where a bracket opens that the long form would open and a letter of the short form is
+    found inside, the outermost; None where there is none. `matched` are where its letters
+    were found, the last letter first.
 
     "(WSE1) and 40 (12.5%) had a second WSE (WSE2)" has the `2` of WSE2 inside "(12.5%)",
     which is no part of a long form. A bracket closing one opened before the long form is,
     "warning score (WSE) at 1 hour (WSE1)", where WSE1 is the WSE at one hour, and so is a
     whole bracket none of the letters is in, "adjusted (for age) relative risk (aRR)"."""
-    if not matched:
-        return False
     letters = set(matched)
-    opened = 0
+    opened: list[int] = []
     for at in range(matched[-1], matched[0] + 1):
         char = before[at]
         if char in _OPENING:
-            opened += 1
+            opened.append(at)
         elif char in _CLOSING and opened:
-            opened -= 1
+            opened.pop()
         elif opened and at in letters:
-            return True
-    return False
+            return opened[0]
+    return None
+
+
+def _passed_over(before: str, opened: int) -> str:
+    """`before` with the bracket that opens at `opened` blanked to its close, or to the end
+    where it does not close, so that no letter is found in it."""
+    depth, at = 0, opened
+    while at < len(before):
+        depth += (before[at] in _OPENING) - (before[at] in _CLOSING)
+        if depth == 0:
+            break
+        at += 1
+    return before[:opened] + " " * (min(at, len(before) - 1) + 1 - opened) + before[at + 1 :]
+
+
+def _initials(short: str, before: str) -> str | None:
+    """The words right before a bracket, where they begin with the letters and digits of
+    `short` in order, one word each, and nothing but marks and spaces follows them: "the
+    reporting odds ratio" for ROR, "drug-induced liver injury" for DILI, "type 2 diabetes
+    mellitus" for T2DM. The stricter reading a statistic's bracket is held to."""
+    wanted = [char.lower() for char in short if char.isalnum()]
+    parts = list(_PART.finditer(before))[-len(wanted) :] if wanted else []
+    if len(parts) != len(wanted) or before[parts[-1].end() :].strip(_EDGES + " \t\r\n"):
+        return None
+    if [part.group()[0].lower() for part in parts] != wanted:
+        return None
+    return " ".join(before[parts[0].start() : parts[-1].end()].split())
 
 
 def _window(short: str) -> int:
@@ -520,33 +570,71 @@ def _within(spans: Iterable[tuple[int, int]], offset: int) -> bool:
 
 
 def _in_capitals(prose: str) -> list[tuple[int, int]]:
-    """Where `prose` holds a heading typed in capitals: a paragraph whose letters are all
-    capitals, "**ABSTRACT**", "APPENDIX 1", and a cell of a table whose letters are, the
-    "TOTAL" of a row and the "MODEL 1" of a column. A manuscript converted from Word has
-    its headings as such paragraphs, since pandoc makes a heading only of a heading style.
-    In order, and none inside another."""
+    """Where `prose` holds a heading typed in capitals: a paragraph set entirely in bold
+    whose letters are all capitals, "**ABSTRACT**", which is how a manuscript converted from
+    Word writes a heading, pandoc making one only of a heading style; and a cell of a
+    table's header row whose letters are, "MODEL 1". Not a table's body, whose cells name
+    what the rows count, `COPD` among them, nor a plain paragraph or a list item. In order,
+    and none inside another."""
     spans: list[tuple[int, int]] = []
     start = 0
     for gap in (*_BLANK_LINE.finditer(prose), None):
         end = len(prose) if gap is None else gap.start()
-        if prose[start:end].isupper():
+        paragraph = prose[start:end]
+        if _BOLD.fullmatch(paragraph) and paragraph.isupper():
             spans.append((start, end))
         else:
-            spans += _cells_in_capitals(prose, start, end)
+            spans += _header_cells(prose, start, end)
         if gap is not None:
             start = gap.end()
-    return spans
+    return sorted(spans)
 
 
-def _cells_in_capitals(prose: str, start: int, end: int) -> list[tuple[int, int]]:
-    """The cells of the table lines between `start` and `end` whose letters are all
-    capitals, a line's cells read one by one between its bars."""
+def _header_cells(prose: str, start: int, end: int) -> list[tuple[int, int]]:
+    """The cells of the header rows of the tables between `start` and `end` whose letters
+    are all capitals: the rows above a pipe table's dashes or a grid table's `=` rule."""
+    lines = []
+    at = start
+    for line in prose[start:end].split("\n"):
+        lines.append((at, line))
+        at += len(line) + 1
     cells = []
-    for line in _TABLE_LINE.finditer(prose, start, end):
-        bars = [at for at in range(line.start(), line.end()) if prose[at] == "|"]
-        for left, right in zip(bars, [*bars[1:], line.end()], strict=True):
-            if prose[left + 1 : right].isupper():
-                cells.append((left + 1, right))
+    for index, (_at, line) in enumerate(lines):
+        if not _HEADER_RULE.fullmatch(line.strip()):
+            continue
+        header = []
+        for above in reversed(lines[:index]):
+            if not above[1].lstrip().startswith("|"):
+                break
+            header.insert(0, above)
+        for row in _rows(header):
+            cells += _capitals_in_row(prose, row)
+    return cells
+
+
+def _rows(header: list[tuple[int, str]]) -> list[list[tuple[int, str]]]:
+    """The lines of a header as its rows: one row, a grid table's cell running over
+    several lines, where each line has its bars where the first has them; else a row for
+    each line."""
+    if not header:
+        return []
+    bars = [index for index, char in enumerate(header[0][1]) if char == "|"]
+    if all(len(line) > bars[-1] and all(line[bar] == "|" for bar in bars)
+           for _at, line in header):  # fmt: skip
+        return [header]
+    return [[line] for line in header]
+
+
+def _capitals_in_row(prose: str, row: list[tuple[int, str]]) -> list[tuple[int, int]]:
+    """The cells of one row whose letters are all capitals, a cell read whole over all the
+    lines of the row: "Patients with" over "COPD" is one cell, and has small letters."""
+    bars = [index for index, char in enumerate(row[0][1]) if char == "|"]
+    cells = []
+    for left, right in zip(bars, [*bars[1:], None], strict=True):
+        pieces = [(at + left + 1, at + (len(line) if right is None else right))
+                  for at, line in row]  # fmt: skip
+        if " ".join(prose[low:high] for low, high in pieces).isupper():
+            cells += pieces
     return cells
 
 
@@ -572,11 +660,14 @@ def _short_inside(prose: str, bracket: re.Match[str]) -> tuple[int, str, str] | 
     opening = _OPENS_WITH.match(bracket.group(1))
     if opening is None or not _may_be_defined(opening.group("short")):
         return None
-    if _STATISTIC.match(bracket.group(1), opening.end("short")):
-        return None
     short = opening.group("short")
     before = prose[max(0, bracket.start() - 400) : bracket.start()]
     before = _BLANK_LINE.split(before)[-1]
+    if _STATISTIC.match(bracket.group(1), opening.end("short")):
+        long = _initials(_singular(short), before)
+        if long is None:
+            return None
+        return bracket.start(1) + opening.start("short"), _stem(short, long), long
     words = " ".join(before.split()[-_window(short) :])
     long = _long_form(short, words)
     if long is None and short != _singular(short):

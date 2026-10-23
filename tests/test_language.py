@@ -9,6 +9,7 @@ everything in attention: the quiet half is what keeps the warnings read.
 
 from __future__ import annotations
 
+import re
 import shutil
 from pathlib import Path
 
@@ -529,15 +530,73 @@ def test_the_long_form_is_matched_letter_by_letter() -> None:
     "value", [": 0.41", ":0.41", " = 0.41", "=0.41", " 0.41", ": {{results.aor}}"]
 )
 def test_a_statistic_in_brackets_is_not_a_definition(project: Path, value: str) -> None:
-    """A short form followed by a colon, an equals sign or a number is a statistic. Read as
-    a definition, the words before it whose letters spell it were taken for a second
-    meaning: "AOR is defined as 'and older adults'"."""
+    """A short form followed by a colon, an equals sign or a number is a statistic, and it
+    defines its short form only where the words right before it are its initials. Read as a
+    definition by its letters, "AOR: 0.41" was "AOR is defined as 'and older adults'", a
+    second meaning. An equals sign and a number were never read as a definition before;
+    now they are where the initials are there."""
     report = written(
         project,
         "# Results\n\nThe adjusted odds ratio (AOR) was computed for each group. Use was "
         f"lower among the young and older adults (AOR{value}, 95% CI 0.22 to 0.77).\n",
     )
     assert not report.findings, found(report)
+
+
+@pytest.mark.parametrize(
+    ("text", "long"),
+    [
+        ("The reporting odds ratio (ROR: 3.84, 95% CI 2.10 to 7.02) was high.",
+         "reporting odds ratio"),
+        ("The reporting odds ratio (ROR = 3.84) was high.", "reporting odds ratio"),
+        ("The reporting odds ratio (ROR 3.84) was high.", "reporting odds ratio"),
+        ("The *reporting odds ratio* (ROR: 3.84) was high.", "reporting odds ratio"),
+        ("The estimated glomerular filtration rate (eGFR: ml/min/1.73 m2) fell.",
+         "estimated glomerular filtration rate"),
+        ("Drug-induced liver injury (DILI: 12 cases) was rare.", "Drug-induced liver injury"),
+        ("Type 2 diabetes mellitus (T2DM: 40%) was common.", "Type 2 diabetes mellitus"),
+        ("Their reporting odds ratios (RORs: 3.8 and 4.1) were high.",
+         "reporting odds ratios"),
+    ],
+)  # fmt: skip
+def test_a_statistic_defines_where_the_words_before_it_are_its_initials(
+    text: str, long: str
+) -> None:
+    """How pharmacovigilance writes a first estimate: "reporting odds ratio (ROR: 3.84)".
+    Where the words right before the bracket begin with the short form's letters, in order
+    and one word each, the bracket defines it, a statistic or not."""
+    short = re.match(r"[^\W_]+", text[text.index("(") + 1 :])[0]
+    definitions = [(found, words) for _at, found, words in _definitions(text)]
+    assert definitions == [(short.removesuffix("s"), long)], definitions
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Use was lower in the young and older adults (AOR: 0.41).",
+        "Use was lower in the young and older adults (AOR = 0.41).",
+        "Use was lower in the young and older adults (AOR 0.41).",
+        "Use was lower after adjusted odds ratio analysis (AOR: 0.41).",
+    ],
+)
+def test_a_statistic_whose_words_are_not_its_initials_defines_nothing(text: str) -> None:
+    """The letters of AOR are in "and older adults" in order, which is how a definition is
+    found; for a statistic the words right before it have to begin with them."""
+    assert _definitions(text) == []
+
+
+@pytest.mark.parametrize(
+    ("text", "short"),
+    [
+        ("The Hospital Anxiety and Depression Scale (French version) (HADS) was used.", "HADS"),
+        ("The body mass index (in kg/m2) (BMI) was recorded.", "BMI"),
+        ("Programmed cell death protein 1 (PD-1) or its ligand (PD-L1) was raised.", "PD-L1"),
+    ],
+)
+def test_a_long_form_steps_back_past_a_bracket_it_would_open(text: str, short: str) -> None:
+    """The nearest `S` of HADS is in "version", inside a bracket the long form would open:
+    the bracket is passed over and the letter looked for before it, in "Scale"."""
+    assert short in [found for _at, found, _long in _definitions(text)]
 
 
 def test_a_statistic_in_brackets_does_not_stand_in_for_a_definition(project: Path) -> None:
@@ -582,17 +641,18 @@ def test_a_long_form_may_close_a_bracket_or_hold_a_whole_one(
 
 
 def test_the_limits_of_the_bracket_rules_are_as_design_md_says() -> None:
-    """Known gaps, held where they stand: a colon makes a statistic whatever follows it, a
-    comma does not, and a letter inside a bracket the long form opens refuses a definition
-    a reader would see."""
+    """Known gaps, held where they stand: a statistic whose long form holds a word its
+    initials skip defines nothing, a colon before words is read as a statistic's, and a
+    comma makes no statistic."""
 
     def shorts(text: str) -> list[str]:
         return [short for _at, short, _long in _definitions(text)]
 
-    assert shorts("Physical activity (PA: walking or cycling) was low.") == []
-    assert shorts("The reporting odds ratio (ROR: 3.84) was high.") == []
+    assert shorts("The Medical Dictionary for Regulatory Activities (MedDRA: 26.0).") == []
+    assert shorts("Physical activity (PA: walking or cycling) was low.") == ["PA"]
     assert shorts("Use was lower in the young and older adults (AOR, 0.41).") == ["AOR"]
-    assert shorts("Programmed cell death protein 1 (PD-1) or its ligand (PD-L1).") == ["PD-1"]
+    # Past the aside, the 2 of a count before it is a letter like any other.
+    assert shorts("Scored at entry (WSE1) and 20 (12%) had a second WSE (WSE2).") == ["WSE2"]
 
 
 def test_what_follows_the_long_form_may_hold_a_bracket(project: Path) -> None:
@@ -689,16 +749,43 @@ def test_what_is_near_a_clock_time_is_still_read(project: Path, sentence: str) -
 
 
 def test_a_heading_typed_in_capitals_is_not_an_abbreviation(project: Path) -> None:
-    """A manuscript converted from Word has its headings as paragraphs, often in capitals
-    and bold, and its tables' labels in cells: none of their words is an abbreviation."""
+    """A manuscript converted from Word has its headings as bold paragraphs, often in
+    capitals, and its tables' column labels in a header row: none of their words is an
+    abbreviation. A grid table's header cell may run over two lines."""
     report = written(
         project,
         f"**TITLE PAGE**\n\nA study of reports.\n\n**ABSTRACT**\n\n{PLAIN}\n\n"
-        "SUPPLEMENTARY APPENDIX 2\n\n**MATERIALS AND\nMETHODS**\n\n"
-        "| Group | n |\n|---|---|\n| women | 3 |\n| TOTAL | 12 |\n\n"
-        "+-------+----+\n| MODEL | 1  |\n+=======+====+\n| men   | 3  |\n+-------+----+\n",
+        "**MATERIALS AND\nMETHODS**\n\n__RESULTS__\n\n"
+        "| GROUP | MODEL 1 |\n|---|---|\n| women | 3 |\n\n"
+        "+-------+----+\n| MODEL | N  |\n| 1     |    |\n+=======+====+\n| men   | 3  |\n"
+        "+-------+----+\n",
     )
     assert not report.findings, found(report)
+
+
+@pytest.mark.parametrize(
+    ("text", "reported"),
+    [
+        # A table's body: a baseline table's conditions are abbreviations.
+        ("| Group | n |\n|---|---|\n| COPD | 12 |\n| CKD | 4 |\n", ["CKD", "COPD"]),
+        ("+-------+----+\n| Group | n  |\n+=======+====+\n| COPD  | 3  |\n+-------+----+\n",
+         ["COPD"]),
+        # A list item and a plain paragraph in capitals.
+        ("- COPD\n- CKD\n", ["CKD", "COPD"]),
+        ("ICU\n", ["ICU"]),
+        # A paragraph only partly bold.
+        ("**ICU** stays were short.\n", ["ICU"]),
+        # A header cell over two lines, read as one cell, which has small letters.
+        ("+---------------+----+\n| Patients with | n  |\n| COPD          |    |\n"
+         "+===============+====+\n| 3             | 4  |\n+---------------+----+\n",
+         ["COPD"]),
+    ],
+)  # fmt: skip
+def test_what_is_not_a_heading_in_capitals_is_still_read(
+    project: Path, text: str, reported: list[str]
+) -> None:
+    report = written(project, f"# Results\n\n{text}")
+    assert sorted(f.message.split()[0] for f in report.findings) == reported, found(report)
 
 
 def test_a_cell_or_a_line_with_small_letters_is_still_read(project: Path) -> None:
@@ -935,7 +1022,7 @@ Supported by INSERM and the ANR (grant ANR-21-CE17).
 
 
 def test_a_realistic_manuscript_is_reported_as_design_md_says(project: Path) -> None:
-    """The measurement behind "every finding is a warning": 21 findings, 19 of them
+    """The measurement behind "every finding is a warning": 22 findings, 20 of them
     abbreviations a copy-editor would query and two of them names, a trial and a package.
     What the list leaves out matters as much: the title, the surnames and product names,
     the numerals, `P`, `R`, the initials and the funders."""
@@ -969,14 +1056,13 @@ def test_a_realistic_manuscript_is_reported_as_design_md_says(project: Path) -> 
         ("undefined", "RUCAM"),
         ("undefined", "SAS"),  # a name, not an abbreviation
         ("unused", "DILI"),  # in the main text; the abstract uses its own
+        ("unused", "PD-L1"),
         ("unused", "T2DM"),
         ("unused", "WHO"),  # in the abstract
         ("used-before-defined", "mAb"),
     ]
-    # "protein 1 (PD-1) or its ligand (PD-L1)" is no definition: the 1 of PD-L1 is found
-    # only inside the bracket of PD-1. PD-L1 is a name `terms.yaml` lists.
-    assert report.counts["abbreviations_read"] == 30
-    assert report.counts["abbreviations_defined"] == 14
+    assert report.counts["abbreviations_read"] == 31
+    assert report.counts["abbreviations_defined"] == 15
 
 
 # ---------------------------------------------------------------- one reading, two texts

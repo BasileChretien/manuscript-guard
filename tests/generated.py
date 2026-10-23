@@ -561,7 +561,10 @@ def signs() -> st.SearchStrategy[str]:
 #: short form: both orders, square brackets, a separator after the short form, a definition
 #: nested in a bracket that gives a statistic, a citation before the short form's bracket,
 #: and two long forms that run across a bracket without taking a letter from inside one,
-#: the WSE taken after two hours and a risk adjusted for something said in brackets.
+#: the WSE taken after two hours and a risk adjusted for something said in brackets; a
+#: statistic after a colon, an equals sign or a number whose words right before it are its
+#: initials; and two whose nearest letter is inside a bracket the long form would open,
+#: found again before it.
 DEFINING = (
     ("the reporting odds ratio (ROR)", "(ROR", "ROR"),
     ("the PRR (proportional reporting ratio)", "PRR (", "PRR"),
@@ -572,17 +575,27 @@ DEFINING = (
     ("the empirical Bayes geometric mean [@smith2020] (EBGM)", "(EBGM", "EBGM"),
     ("a score at entry (SCE1) and after 2 hours (SCE2)", "(SCE2", "SCE2"),
     ("the adjusted (for sex) relative risk (aRR)", "(aRR", "aRR"),
+    # A statistic whose words right before it are its initials.
+    ("the relative reporting ratio (RRR: 3.84, 95% CI 2.10 to 7.02)", "(RRR", "RRR"),
+    ("the mean arterial pressure (MAP = 90 mmHg)", "(MAP", "MAP"),
+    ("the mean daily dose (MDD 40 mg)", "(MDD", "MDD"),
+    ("the case fatality rate (CFR: {{results.cfr}})", "(CFR", "CFR"),
+    # The nearest letter inside a bracket the long form would open, another before it.
+    ("the brief pain scale (Spanish version) (BPS)", "(BPS", "BPS"),
+    ("the lean mass index (in kg/m2) (LMI)", "(LMI", "LMI"),
 )  # fmt: skip
 
-#: Brackets that are no definition, though the words before each spell its short form: a
-#: statistic, its short form followed by a colon, an equals sign or a number; and a short
-#: form whose letters are found only by going into another bracket, "(12.5%)".
+#: Brackets that are no definition, though the words before each hold its letters in order:
+#: a statistic, its short form followed by a colon, an equals sign or a number, whose words
+#: right before it are not its initials; and a short form whose letters are found only by
+#: going into another bracket, "(12.5%)".
 NOT_DEFINING = (
-    ("lower in only adult residents (OAR: 0.41, 95% CI 0.22 to 0.77)", "(OAR", "OAR"),
-    ("lower in only adult residents (OAR:0.41)", "(OAR", "OAR"),
-    ("lower in only adult residents (OAR: {{results.oar}})", "(OAR", "OAR"),
-    ("lower in only adult residents (OAR = 0.41)", "(OAR", "OAR"),
-    ("lower in only adult residents (OAR 0.41)", "(OAR", "OAR"),
+    ("lower in the young and older adults (AOR: 0.41, 95% CI 0.22 to 0.77)", "(AOR",
+     "AOR"),
+    ("lower in the young and older adults (AOR:0.41)", "(AOR", "AOR"),
+    ("lower in the young and older adults (AOR: {{results.aor}})", "(AOR", "AOR"),
+    ("lower in the young and older adults (AOR = 0.41)", "(AOR", "AOR"),
+    ("lower in the young and older adults (AOR 0.41)", "(AOR", "AOR"),
     ("a warning score at entry (WSE1) and 40 (12.5%) had a second WSE (WSE2)", "(WSE2",
      "WSE2"),
     ("a warning score at entry (WSE1) and 40 [12.5%] had a second WSE (WSE2)", "(WSE2",
@@ -590,25 +603,34 @@ NOT_DEFINING = (
 )  # fmt: skip
 
 #: What has capitals together and is no abbreviation: a time of day, `11:00AM` read as
-#: `00AM`, a heading typed in capitals as a paragraph of its own, and a table's label in
-#: capitals, the cell of a pipe table and of a grid table; and a defined abbreviation in
-#: such a cell, which is still a use of it.
+#: `00AM`; a heading typed in capitals as a paragraph set in bold; and a column's label in
+#: capitals in a table's header row, a pipe table's and a grid table's, over two lines; and
+#: a defined abbreviation in such a cell, which is still a use of it.
 NOT_ABBREVIATIONS = (
     "visits ran from 8:30AM to 5:45PM", "doses were given at 10:00 PM",
     "the round began at 7:15\nAM", "the last dose was at 12:30:15PM", "**SUMMARY**",
-    "SUPPLEMENTARY APPENDIX 2", "**MATERIALS AND\nMETHODS**",
-    "| Group | n |\n|---|---|\n| women | 3 |\n| TOTAL | 12 |",
-    "+-------+----+\n| MODEL | 1  |\n+=======+====+\n| men   | 3  |\n+-------+----+",
+    "__SUPPLEMENTARY APPENDIX 2__", "**MATERIALS AND\nMETHODS**",
+    "| GROUP | TOTAL |\n|---|---|\n| women | 3 |",
+    "+-------+----+\n| MODEL | N  |\n| 1     |    |\n+=======+====+\n| men   | 3  |\n"
+    "+-------+----+",
     "the relative risk (RR) was computed\n\n| RR | n |\n|---|---|\n| 1.2 | 3 |",
 )  # fmt: skip
 
 #: Abbreviations beside those, each still reported as undefined: one near a time of day,
-#: one in a cell with small letters in it, one in a sentence.
+#: one in a cell with small letters in it, one in a sentence; one in a table's body, pipe
+#: and grid, in a list item and in a plain paragraph, all in capitals; and one in a header
+#: cell that runs over two lines and has small letters on the other.
 STILL_ABBREVIATIONS = (
     ("the PM was high at 10:00", "PM"),
     ("| Group | n |\n|---|---|\n| ICU stay | 12 |", "ICU"),
     ("the NIH paid for the second year", "NIH"),
-)
+    ("| Group | n |\n|---|---|\n| COPD | 12 |", "COPD"),
+    ("+-------+----+\n| Group | n  |\n+=======+====+\n| CKD   | 3  |\n+-------+----+", "CKD"),
+    ("- HIV\n- women", "HIV"),
+    ("ECG", "ECG"),
+    ("+---------------+----+\n| Patients with | n  |\n| AKI           |    |\n"
+     "+===============+====+\n| 3             | 4  |\n+---------------+----+", "AKI"),
+)  # fmt: skip
 
 
 def _paragraphs(draw: st.DrawFn, pieces: Iterable[str]) -> tuple[str, list[int]]:

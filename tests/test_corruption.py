@@ -20342,11 +20342,11 @@ def test_a_statistic_in_brackets_does_not_stand_in_for_a_deleted_definition(
 def test_a_short_form_spelt_from_inside_an_aside_is_undefined(project: Path) -> None:
     """A revision splits the estimate in two and names each part, the second with nothing
     before it to define it but another short form and a percentage in brackets. Both are
-    undefined: the second is not defined as "ROR1) and 20 (12%) had a second ROR"."""
+    undefined: the second is not defined as "ROR1) and 40 (12%) had a second ROR"."""
     mended = with_ror_defined(project)
     split = mended.replace(
         "A signal was defined",
-        "The ROR was computed for the first half (ROR1) and 20 (12%) had a second ROR "
+        "The ROR was computed for the first half (ROR1) and 40 (12%) had a second ROR "
         "(ROR2). A signal was defined",
     )
     main_md(project).write_text(split, encoding="utf-8")
@@ -20360,18 +20360,65 @@ def test_a_short_form_spelt_from_inside_an_aside_is_undefined(project: Path) -> 
 def test_a_heading_in_capitals_and_a_time_of_day_hide_no_undefined_abbreviation(
     project: Path,
 ) -> None:
-    """A manuscript pasted from Word: an appendix headed in capitals, a table with a TOTAL
-    row, the time the reports were extracted; and the definition tidied away. Only the
-    undefined ROR is reported."""
+    """A manuscript pasted from Word: an appendix headed in bold capitals, a table whose
+    header row is in capitals, the time the reports were extracted; and the definition
+    tidied away. Only the undefined ROR is reported."""
     mended = with_ror_defined(project)
     pasted = mended.replace("ratio (ROR) of", "ratio of").replace(
         "The analysis was run in Python",
-        "APPENDIX\n\n| Group | Reports |\n|---|---|\n| TOTAL | 12 |\n\nReports were extracted "
-        "at 9:30AM.\n\nThe analysis was run in Python",
+        "**APPENDIX**\n\n| GROUP | TOTAL |\n|---|---|\n| women | 12 |\n\nReports were "
+        "extracted at 9:30AM.\n\nThe analysis was run in Python",
     )
     main_md(project).write_text(pasted, encoding="utf-8")
     assert language_findings(project) == [
         ("abbreviation-undefined", line_of(pasted, ABBREVIATED))
+    ]
+
+
+def test_a_condition_in_a_table_s_body_is_still_undefined(project: Path) -> None:
+    """A baseline table pasted into the Methods, its rows the conditions it counts, in
+    capitals as conditions are written. A table's body is not a heading: COPD is undefined."""
+    mended = with_ror_defined(project)
+    pasted = mended.replace(
+        "The analysis was run in Python",
+        "| Condition | Reports |\n|---|---|\n| COPD | 12 |\n\nThe analysis was run in Python",
+    )
+    main_md(project).write_text(pasted, encoding="utf-8")
+    assert language_findings(project) == [
+        ("abbreviation-undefined", line_of(pasted, "| COPD"))
+    ]
+
+
+def test_a_definition_given_again_with_its_estimate_is_caught(project: Path) -> None:
+    """The definition is pasted a second time, this time with the estimate after a colon,
+    as pharmacovigilance reports one. Its words are the short form's initials, so it is a
+    definition, and a second one."""
+    mended = with_ror_defined(project)
+    again = mended.replace(
+        "The reporting odds ratio observed here",
+        "The reporting odds ratio (ROR: {{results.ror.point}}) observed here",
+    )
+    assert again != mended
+    main_md(project).write_text(again, encoding="utf-8")
+    assert language_findings(project) == [
+        ("abbreviation-redefined", line_of(again, "ratio (ROR: {{"))
+    ]
+
+
+def test_a_definition_with_an_aside_given_again_is_caught(project: Path) -> None:
+    """The definition says what the ratio compares in brackets before its short form, and
+    is pasted again further on. The R of ROR nearest the bracket is in the aside; the one of
+    "ratio" is the long form's, so both are definitions."""
+    mended = with_ror_defined(project)
+    aside = mended.replace(
+        "a reporting odds ratio (ROR) of", "a reporting odds ratio (cases versus others) (ROR) of"
+    ).replace(
+        "The reporting odds ratio observed here",
+        "The reporting odds ratio (cases versus others) (ROR) observed here",
+    )
+    main_md(project).write_text(aside, encoding="utf-8")
+    assert language_findings(project) == [
+        ("abbreviation-redefined", line_of(aside, "others) (ROR) observed"))
     ]
 
 

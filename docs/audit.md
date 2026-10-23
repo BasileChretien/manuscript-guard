@@ -76,4 +76,40 @@ value in the literature ledger, which takes both (`mean_of_whole_numbers: {n: 28
 For a paper still being written, bind the numbers instead — then a stale one is impossible
 rather than merely searched for.
 
+## Bringing a Word paper into a project
+
+```bash
+manuscript-guard init my-paper --from paper.docx
+```
+
+This makes a project whose manuscript is the paper, read by pandoc with tracked changes
+accepted, and prints what it did. Converting with `pandoc paper.docx -t markdown` instead
+writes most Word tables as multiline tables, whose lines of dashes `check` refuses at every
+stage; on fifteen real papers it did so for seven. `init --from` changes three things:
+
+- **Tables.** A table whose cells hold only paragraphs is written as a pipe table. A cell's
+  paragraphs and line breaks are joined with spaces, a merged cell's text stands in its
+  first row and column with the cells it covered left empty, and a second header row or a
+  footer row becomes a row of the body. A table with a list, another table or a block of
+  code in a cell is written as a grid table and named in what `init` prints: `check` reads
+  its rows, and the audit does not read its cells.
+- **Pictures** are saved in `manuscript/media/`, and each image points there.
+- **The title page**, what stands before the first heading, is set aside in one HTML
+  comment at the top of `main.md`, where it is kept and no gate reads it. Only up to 600
+  words: a longer run is taken for the paper's own text, an introduction with no heading
+  over it, and stays where it is. A paper with no paragraph in a heading style has nothing
+  set aside, and its bold-text headings are no sections to any gate.
+
+What Word's Title, Author, Date and Abstract styles hold is what pandoc reads as the
+document's metadata. The title goes to `paper.yaml` unless `--title` gives another, each
+name of an Author paragraph to `authors.yaml` as the paper writes it, for you to split into
+given and family name, and the abstract becomes the section `# Abstract`. An Author
+paragraph holding several names, a comma, a number or a superscript, and the date, go into
+the comment. Nothing is guessed from how a line looks, so names typed in capitals on the
+title page stay in the comment. Read it: an abstract there hides its numbers from every
+gate until you move it out.
+
+A `.doc` is refused: open it in Word and save it as `.docx`. `--from` makes nothing where
+`manuscript/` already holds a manuscript, and is refused with `--latex`.
+
 [Back to the README](../README.md)

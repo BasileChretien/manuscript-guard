@@ -6847,6 +6847,65 @@ predecessor:
 Verified end to end: the example's built document audits clean against its own outputs, and
 one digit changed in the reporting odds ratio is reported with its line and context.
 
+## A paper written in Word is brought in through pandoc's tree
+
+The route the skills gave for moving a Word paper into a project was `pandoc paper.docx -t
+markdown`. Tried on fifteen openly licensed Word papers (2026-10-23), it wrote tables of
+seven as multiline tables, whose lines of dashes `check` refuses at every stage
+(`rule-opens-a-block`), so those seven failed whole, and those of four more as grid tables; and each title page landed in the
+text, names, affiliations and all. `init --from paper.docx` (Basile's choice, 2026-10-23)
+has pandoc read the document into its JSON tree, with tracked changes accepted, changes
+three things in the tree (`from_word.py`), and has pandoc write the rest as it would.
+
+**Tables.** A table whose cells hold only paragraphs, line blocks, headings or quotations of
+those is rewritten so that pandoc writes it as a pipe table: each cell's paragraphs and line
+breaks joined with spaces, inside emphasis too but not inside a note; every column's width
+left to its cells; a merged cell's text in its first row and column, the cells it covered
+left empty; a second header row and the footer's rows made rows of the body. No text is
+added or left out. Simple and multiline tables are switched off in the writer, so that a
+table of one-line cells is a pipe table and any other a grid table, and the line is made
+long enough that a table of more than nine columns is not written as raw HTML, which
+pandoc's default of 72 columns did. A table with anything else in a cell, a list, a table
+or code, is left a grid table and named in what `init` prints. `check` reads a grid table's
+rows as a table's (a line that starts with a pipe), and the audit does not read its cells.
+The tree, not a Lua filter: the change is a function of pandoc's tree and is tested on trees
+built by hand, without pandoc.
+
+**Pictures** go to `manuscript/media/`, and each image points there from the project's root,
+where the build runs pandoc. Not `figures/`: every file there is taken for a figure an
+analysis rendered, and a picture from Word would be reported as one with no text layer and
+no review.
+
+**The title page.** pandoc reads Word's Title, Subtitle, Author, Date and Abstract styles as
+the document's metadata, and nothing else is taken as a title or a name: no line is judged
+by its capitals or its place. The title goes to `paper.yaml` (where `--title` gives none),
+as plain text. Each Author paragraph that is one name goes to `authors.yaml`, in a comment
+over an entry whose given and family names are left empty, since which part is the family
+name cannot be read from the name; one holding a comma, a semicolon, "and", a digit, a
+superscript or a link is several names or carries a mark, and goes to the comment. The
+abstract becomes `# Abstract`. pandoc puts the Abstract style in the metadata only when it
+follows the Title, Author and Date paragraphs, and its own writer puts an "Abstract" title
+paragraph in between, so an abstract is often read as text instead. What stands before the
+first heading, with the metadata no file takes, is set aside in one HTML comment at the top
+of `main.md`, where no gate reads it and the build prints nothing of it; a `-->` in it, which
+pandoc leaves in code, is written `--&gt;`.
+
+Before the first heading is not always a title page. Of the fifteen papers, six had no
+paragraph in a heading style, one's first heading was an entry of its reference list, after
+10,106 words, one's was an empty paragraph near the end, and one's an APA paper's "Method"
+after its introduction (2,064 words). Set aside, each of those would have hidden the paper
+from every gate. So the run is set aside only up to 600 words, which a title, a long author
+list and a 300-word abstract stay under; the two title pages among the fifteen held 18 and
+375 words. A longer run stays in the text, as does everything in a paper with no heading.
+
+Measured on the fifteen: the seven that failed now pass `check` at the stage `init` sets,
+with 39 tables written as pipe tables and 2 left as grid tables (a numbered list in a cell,
+and a layout table holding two others); five titles came from a Title paragraph, one of
+them the journal's name; no
+paper's Author style was used, three having put their authors in the Subtitle style; two
+title pages were set aside, and three runs before the first heading were left in the text.
+The three `.doc` papers are refused, with "save it as .docx".
+
 ## What an adversarial review found, 2026-08-03
 
 Four reviews were run against the finished toolkit — security, Python correctness,
@@ -15883,6 +15942,38 @@ Open, recorded as each change landed:
 - **`quality-not-reported` is not read in a LaTeX manuscript.** It reads the Methods as
   Markdown, and on a LaTeX manuscript G16 says `not-read-in-latex`, as the other checks not
   yet taught LaTeX do.
+- **A Word table's rows stacked in one cell become one row.** A table that lists a
+  characteristic's categories one paragraph to a line inside a single row, "Male" over
+  "Female" and "36" over "24", is written by `init --from` as one row whose cells read "Male
+  Female" and "36 24": a cell's paragraphs are joined, as Basile chose. No text is lost, but
+  the counts run together in a cell, the audit does not pair a count with its share there,
+  and a reader of the Markdown sees one row. Rewrite such a table by hand, or emit it from
+  the analysis.
+- **A merged cell's text stands in its first column only.** A header spanning a count's and a
+  share's columns, "Cases (n = 120)", heads the first of them in the pipe table, and the
+  audit reads its denominator for that column alone.
+- **What `init --from` sets aside is chosen by a count of words.** The run before the first
+  heading is set aside up to 600 words. A short introduction with no heading over it, after a
+  short title page, 600 words in all, is set aside with it, and no gate reads its numbers; a
+  title page over 600 words stays in the text, where its names and affiliations are read.
+  `init` prints which it did and how many words.
+- **An abstract `init --from` does not find in Word's metadata is not a section.** pandoc
+  reads the Abstract style as metadata only straight after the Title, Author and Date
+  paragraphs. An abstract elsewhere before the first heading goes into the comment with the
+  title page, and its numbers are read by no gate until it is moved out; one under a heading
+  of its own stays in the text.
+- **A Word paper's bold-text headings are no headings.** `init --from` takes as a heading only
+  a paragraph in one of Word's heading styles, as pandoc does; six of fifteen papers had none.
+  Their sections are paragraphs to every gate, so a Methods section's thresholds are not read
+  as chosen in advance, and nothing is set aside as a title page.
+- **`init --from` reads no affiliation, ORCID or e-mail address, and splits no name.** Each
+  name from an Author paragraph goes into `authors.yaml` in a comment over an empty entry; the
+  rest of the title page is in the comment in `main.md`.
+- **A table `init --from` leaves as a grid table keeps pandoc's numbering.** A numbered list
+  in a cell is written with its numbers, "1.", "2.", and `check` reports them as numbers
+  typed in a table, as it reports the rest of the grid table's rows.
+- **Word comments are not brought in by `init --from`.** pandoc drops them when it accepts
+  tracked changes; the audit and `import` read comments, `init` does not.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

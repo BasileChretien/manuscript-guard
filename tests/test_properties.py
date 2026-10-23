@@ -85,6 +85,7 @@ from generated import (
     latex_cited,
     latex_claims,
     latex_declared,
+    latex_delimited_uses,
     latex_displays,
     latex_methods,
     latex_model_names,
@@ -591,6 +592,72 @@ def _the_preamble_ends_at_the_first_begin(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(latex_mask._Reader, "_environment", broken)
 
 
+def _a_delimited_definition_is_refused(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask._Reader, "_delimited_body", lambda self, at: -1)
+
+
+def _a_parameter_in_a_body_is_one_hash(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_PARAMETERS", re.compile(r"(?:#[1-9])*"))
+
+
+def _a_command_let_is_always_defined_again(patch: pytest.MonkeyPatch) -> None:
+    def broken(self, defined: str, start: int, name_end: int) -> None:
+        self._defines(defined, start)
+        self.defining = ""
+        self._blank(start, name_end)
+        self.pos = name_end
+
+    patch.setattr(latex_mask._Reader, "_let", broken)
+
+
+@holds(100, latex_delimited_uses())
+def test_a_command_with_delimited_parameters_is_refused_where_it_prints_and_nowhere_else(
+    drawn: tuple[str, int],
+) -> None:
+    """A command defined with `\\def` and delimited parameters, used in the preamble and at
+    every place of the body among whole pieces, is refused at the first use whose output
+    LaTeX prints, in prose, maths, a caption, a note, an argument printed and a heading, and
+    at none before it: a blanked argument, a comment, an `\\iffalse` block, code and another
+    definition's body print nothing (2026-10-23)."""
+    text, first = drawn
+    refusals = latex_mask.read(text).refusals
+    assert [(r.code, r.offset) for r in refusals] == [("tex-refused", first)], (refusals, text)
+    assert "delimited parameters" in refusals[0].message
+
+
+def _a_delimited_use_is_refused_wherever_it_stands(patch: pytest.MonkeyPatch) -> None:
+    word = latex_mask._Reader._word
+
+    def broken(self, name: str, at: int, end: int) -> None:
+        if name in self.delimited:
+            self._refuse("tex-refused", at, f"\\{name} has delimited parameters")
+            return
+        word(self, name, at, end)
+
+    patch.setattr(latex_mask._Reader, "_word", broken)
+
+
+def _a_delimited_use_is_read_as_an_unknown_command(patch: pytest.MonkeyPatch) -> None:
+    definition = latex_mask._Reader._definition
+
+    def broken(self, name: str, at: int, end: int) -> None:
+        definition(self, name, at, end)
+        self.delimited.clear()
+
+    patch.setattr(latex_mask._Reader, "_definition", broken)
+
+
+def _a_delimited_use_in_maths_is_let_be(patch: pytest.MonkeyPatch) -> None:
+    word = latex_mask._Reader._word
+
+    def broken(self, name: str, at: int, end: int) -> None:
+        if name in self.delimited and self._role() == latex_mask.MATHS_READ:
+            return
+        word(self, name, at, end)
+
+    patch.setattr(latex_mask._Reader, "_word", broken)
+
+
 @holds(60, latex_trees())
 def test_each_latex_file_starts_under_the_headings_in_force_where_it_is_input(
     drawn: tuple[dict[str, str], dict[str, list[str]], dict[str, list[str]]],
@@ -639,6 +706,38 @@ def _a_heading_where_an_input_ends_comes_before_it(patch: pytest.MonkeyPatch) ->
 
 def _a_chapter_closes_its_part(patch: pytest.MonkeyPatch) -> None:
     patch.setitem(latex_mask.LEVELS, "part", 0)
+
+
+def _a_subimport_names_its_folder_from_the_entry_files(patch: pytest.MonkeyPatch) -> None:
+    target = latex_structure._target
+
+    def broken(entry, put, imported, files):
+        if put.via == "subimport":
+            put = dataclasses.replace(put, via="import")
+        return target(entry, put, imported, files)
+
+    patch.setattr(latex_structure, "_target", broken)
+
+
+def _an_imported_file_keeps_the_folder_its_importer_was_imported_from(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    target = latex_structure._target
+
+    def broken(entry, put, imported, files):
+        found, why, _folder = target(entry, put, imported, files)
+        return found, why, imported
+
+    patch.setattr(latex_structure, "_target", broken)
+
+
+def _an_input_is_not_looked_for_in_the_folder_imported_from(patch: pytest.MonkeyPatch) -> None:
+    target = latex_structure._target
+
+    def broken(entry, put, imported, files):
+        return target(entry, put, "" if put.via == "input" else imported, files)
+
+    patch.setattr(latex_structure, "_target", broken)
 
 
 def _an_abstract_in_the_preamble_is_blanked(patch: pytest.MonkeyPatch) -> None:
@@ -9768,6 +9867,42 @@ BROKEN = {
     "in LaTeX, a chapter closes its part": (
         _a_chapter_closes_its_part,
         test_each_latex_file_starts_under_the_headings_in_force_where_it_is_input,
+    ),
+    "in LaTeX, a \\subimport names its folder from the entry file's": (
+        _a_subimport_names_its_folder_from_the_entry_files,
+        test_each_latex_file_starts_under_the_headings_in_force_where_it_is_input,
+    ),
+    "in LaTeX, an imported file keeps the folder its importer was imported from": (
+        _an_imported_file_keeps_the_folder_its_importer_was_imported_from,
+        test_each_latex_file_starts_under_the_headings_in_force_where_it_is_input,
+    ),
+    "in LaTeX, an \\input is not looked for in the folder imported from": (
+        _an_input_is_not_looked_for_in_the_folder_imported_from,
+        test_each_latex_file_starts_under_the_headings_in_force_where_it_is_input,
+    ),
+    "in LaTeX, a definition with delimited parameters is refused": (
+        _a_delimited_definition_is_refused,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a parameter in a definition's body is one #": (
+        _a_parameter_in_a_body_is_one_hash,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a command let to another is always defined again": (
+        _a_command_let_is_always_defined_again,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a delimited command is refused wherever it stands": (
+        _a_delimited_use_is_refused_wherever_it_stands,
+        test_a_command_with_delimited_parameters_is_refused_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a delimited command is read as an unknown one": (
+        _a_delimited_use_is_read_as_an_unknown_command,
+        test_a_command_with_delimited_parameters_is_refused_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a delimited command in maths is let be": (
+        _a_delimited_use_in_maths_is_let_be,
+        test_a_command_with_delimited_parameters_is_refused_where_it_prints_and_nowhere_else,
     ),
     "in LaTeX, an abstract in the preamble is blanked": (
         _an_abstract_in_the_preamble_is_blanked,

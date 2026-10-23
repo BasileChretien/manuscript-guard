@@ -97,9 +97,13 @@ def test_a_file_with_no_document_is_body_and_one_whose_document_is_commented_too
         ("x \\ifdefined\\y 1\\fi", "tex-refused", 2),
         ("\\makeatletter", "tex-refused", 0),
         ("\\lstinputlisting{code.R}", "tex-refused", 0),
-        ("\\def\\x[#1]{#1}", "tex-refused", 0),
+        ("\\def\\x[#1]{#1} use \\x[2]", "tex-refused", 19),
+        ("\\def\\x}{1}", "tex-refused", 0),
         ("\\renewcommand{\\emph}[1]{#1}", "tex-refused", 13),
+        ("\\let\\emph\\relax", "tex-refused", 4),
+        ("\\let\\footnote=\\textbf", "tex-refused", 4),
         ("\\begin{minted}{r}\n1\n\\end{minted}", "tex-refused", 0),
+        ("\\inputfrom{a/}{b}", "tex-refused", 0),
     ],
 )
 def test_what_is_not_read_exactly_is_refused_and_the_rest_left_as_typed(
@@ -108,6 +112,47 @@ def test_what_is_not_read_exactly_is_refused_and_the_rest_left_as_typed(
     reading = read(text, body=True)
     assert [(r.code, r.offset) for r in reading.refusals] == [(code, at)]
     assert reading.masked[at:] == text[at:]
+
+
+def test_a_delimited_definition_is_read_and_each_use_where_it_prints_refused() -> None:
+    """Two real papers' templates (2026-10-23): `\\def\\bSig\\mathbf{\\Sigma}` and natbib's
+    `\\def` of a delimited macro were refused, and the rest of the file read as typed. The
+    definition is read, its parameter text blanked, and a use refused only where it would
+    print, not in a blanked argument, the preamble or another definition's body."""
+    preamble = ("\\documentclass{article}\n\\def\\bSig\\mathbf{\\Sigma}\n"
+                "\\def\\pair(#1,#2){#1 to #2}\n\\newcommand{\\both}{\\bSig}\n\\bSig\n")  # fmt: skip
+    quiet = preamble + "\\begin{document}\nNo use \\label{\\bSig} of 12.\n\\end{document}\n"
+    reading = read(quiet)
+    assert reading.refusals == () and reading.delimited == ("bSig", "pair")
+    for used, name in (("in maths $\\bSig$", "\\bSig"), ("in prose \\pair(1,2)", "\\pair"),
+                       ("in a caption \\caption{\\bSig}", "\\bSig")):  # fmt: skip
+        text = preamble + f"\\begin{{document}}\nUsed {used}.\n\\end{{document}}\n"
+        (refusal,) = read(text).refusals
+        assert refusal.offset == text.rindex(name), used
+        assert "delimited parameters" in refusal.message
+    # In the body the parameter text is blanked, and the definition's body is prose there.
+    body = "\\def\\pair(#1,#2){#1 to #2}\n"
+    masked = read(body, body=True).masked
+    assert set(masked[body.index("(") : body.index("{")]) == {NUL} and " to " in masked
+
+
+def test_a_parameter_of_a_definition_inside_a_body_is_doubled_and_blanked() -> None:
+    """natbib's `\\gdef\\NAT@biblabelnum##1{##1.}` in a body was read as delimited."""
+    text = "\\newcommand{\\x}{\\gdef\\y##1{##1 is 5}}\n"
+    reading = read(text, body=True)
+    assert reading.refusals == () and reading.delimited == ()
+    assert set(reading.masked[text.index("##1 is") : text.index(" is 5")]) == {NUL}
+    assert "5" in reading.masked
+
+
+def test_a_command_let_to_one_read_the_same_way_is_read_as_before() -> None:
+    """`\\let\\footnote=\\endnote` in an Elsevier template was refused as `\\footnote`
+    defined again; the endnotes package's note is the same prose, printed at the end."""
+    text = ("\\documentclass{article}\n\\usepackage{endnotes}\n\\let\\footnote=\\endnote\n"
+            "\\begin{document}\nA claim\\footnote{of 12 sites}.\n\\end{document}\n")  # fmt: skip
+    reading = read(text)
+    assert reading.refusals == ()
+    assert "of 12 sites" in reading.masked and "endnote" not in reading.masked
 
 
 def test_an_input_encoding_other_than_utf8_is_refused() -> None:

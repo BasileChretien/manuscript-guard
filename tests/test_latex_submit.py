@@ -202,6 +202,29 @@ def test_an_input_file_ends_its_last_line_and_stops_at_endinput(
     assert "DRAFTF" not in written and "\\endinput" not in written
 
 
+def test_a_file_the_import_package_names_is_written_in_where_it_stands(
+    project: Path, twin: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The file an `\\import` or a `\\subimport` names is the one the tree found, in its
+    folder, and not one of the same name in the entry file's; a picture an imported file
+    names is found in the folder it was imported from, as LaTeX finds it (2026-10-23)."""
+    (twin.parent / "sections" / "parts").mkdir(parents=True)
+    (twin.parent / "sections" / "intro.tex").write_text(
+        "Imported words.\n\\subimport{parts/}{deep}\n\\includegraphics{pic}\n",
+        encoding="utf-8")  # fmt: skip
+    (twin.parent / "sections" / "parts" / "deep.tex").write_text("Deep words.\n",
+                                                                 encoding="utf-8")  # fmt: skip
+    (twin.parent / "deep.tex").write_text("Wrong DRAFTG.\n", encoding="utf-8")
+    picture = shutil.copyfile(project / "figures" / "forest.png",
+                              twin.parent / "sections" / "pic.png")  # fmt: skip
+    _typed_before(twin, "\\section{Discussion}", "\\import{sections/}{intro}\n")
+    folder = _written(project, monkeypatch, read=(Path(picture),))
+    written = (folder / "manuscript.tex").read_text(encoding="utf-8")
+    assert "Imported words.\nDeep words.\n\\includegraphics{pic.png}" in written, written
+    assert "DRAFTG" not in written and "import{" not in written
+    assert (folder / "pic.png").is_file()
+
+
 def test_what_filecontents_writes_and_a_commented_bibliography_are_kept(
     project: Path, twin: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

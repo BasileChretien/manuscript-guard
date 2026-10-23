@@ -147,6 +147,74 @@ def test_a_bare_name_input_from_the_preamble_is_the_distributions() -> None:
     assert refusal.offset == text.rindex("\\input")
 
 
+def test_the_import_package_names_a_file_in_a_folder_and_subimport_one_under_it() -> None:
+    """An Elsevier template's `\\import{./}{intro}` was refused, and every section it named
+    read loose (2026-10-23). `\\import`'s folder is the manuscript's, `\\subimport`'s is under
+    the one the file it stands in was imported from, and an `\\input` in an imported file is
+    found from the entry file's folder first, then from the folder it was imported from."""
+    files = {
+        "main.tex": DOC + "\\section{Methods}\n\\import{./}{intro}\n\\import{sections/}{data}\n"
+                    + END,
+        "intro.tex": "i\n",
+        "sections/data.tex": "\\subimport{parts/}{cohort}\n\\input{table}\n\\input{shared}\n",
+        "sections/parts/cohort.tex": "\\input{note}\n",
+        "sections/parts/note.tex": "n\n",
+        "sections/table.tex": "t\n",
+        "shared.tex": "s\n",
+        "sections/shared.tex": "not this one\n",
+    }
+    document = read_tree(files)
+    assert [s.path for s in document.sources if not s.loose] == [
+        "main.tex", "intro.tex", "sections/data.tex", "sections/parts/cohort.tex",
+        "sections/parts/note.tex", "sections/table.tex", "shared.tex"]  # fmt: skip
+    assert titles(document, "sections/parts/note.tex") == ["Methods"]
+    (data,) = [s for s in document.sources if s.path == "sections/data.tex"]
+    text = files["sections/data.tex"]
+    assert data.targets == ((0, "sections/parts/cohort.tex"),
+                            (text.index("\\input{table}"), "sections/table.tex"),
+                            (text.index("\\input{shared}"), "shared.tex"))  # fmt: skip
+    assert document.refusals == ()
+
+
+@pytest.mark.parametrize(
+    ("written", "said"),
+    [
+        ("\\import{./}{missing}", "missing.tex is not in the manuscript folder"),
+        ("\\import{../}{out}", "is outside the manuscript folder"),
+        ("\\subimport{/abs/}{x}", "is outside the manuscript folder"),
+        ("\\import{\\dir}{x}", "is not written out in full"),
+        ("\\import{intro}", "a folder and a file are not both written in braces"),
+    ],
+)
+def test_an_import_that_cannot_be_followed_is_refused_where_it_stands(
+    written: str, said: str
+) -> None:
+    """In the preamble too: a file an `\\import` names is the author's, never the
+    distribution's, as a bare `\\input` there may be."""
+    for text in (DOC + written + "\n" + END,
+                 "\\documentclass{article}\n" + written + "\n\\begin{document}\n" + END):
+        ((path, refusal),) = read_tree({"main.tex": text, "intro.tex": "i\n"}).refusals
+        assert path == "main.tex" and said in refusal.message, refusal
+        assert refusal.offset == text.index(written)
+
+
+def test_a_command_defined_with_delimited_parameters_is_refused_where_any_file_uses_it() -> None:
+    """The definition is read wherever it stands; a use is refused where it would print, in
+    another file of the tree as in its own, and in a file read loose."""
+    files = {
+        "main.tex": "\\documentclass{article}\n\\usepackage{macros}\n\\def\\bSig\\mathbf{\\Sigma}\n"
+                    "\\begin{document}\n\\input{a}\n" + END,
+        "a.tex": "We use $\\bSig$ of 12.\n",
+        "b.tex": "Loose \\pair(1,2).\n",
+    }
+    packages = {"macros.sty": "\\def\\pair(#1,#2){#1 to #2}\n"}
+    document = read_tree(files, packages=packages)
+    assert [(path, refusal.offset) for path, refusal in document.refusals] == [
+        ("a.tex", files["a.tex"].index("\\bSig")), ("b.tex", files["b.tex"].index("\\pair"))]
+    assert read_tree({**files, "a.tex": "No use.\n", "b.tex": "None.\n"},
+                     packages=packages).refusals == ()  # fmt: skip
+
+
 def test_an_input_without_braces_is_named_so_and_one_past_a_line_break_is_followed() -> None:
     text = DOC + "\\input methods\n\\input\n  {results}\n" + END
     document = read_tree({"main.tex": text, "methods.tex": "m\n", "results.tex": "r\n"})

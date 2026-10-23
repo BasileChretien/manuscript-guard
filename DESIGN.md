@@ -1270,6 +1270,14 @@ number such as `2em`, never as a hidden claim.
 order is `printed_order`.
 - A path resolves as TeX resolves it: from the entry file's folder, not from the folder of the
   file that includes it, with `.tex` added to a path that has none.
+- The import package's `\import{folder}{file}` names the file in that folder of the
+  manuscript's, and `\subimport{folder}{file}` the file in that folder under the one the file
+  it stands in was imported from, as the package resolves them. An `\input` in an imported
+  file is looked for in the entry file's folder, then in the folder the file was imported
+  from, which the package adds to LaTeX's path. The submission folder writes the file in
+  where the command stands, and looks for a picture an imported file names in the same two
+  folders (2026-10-23: an Elsevier template's `\import{./}{intro}` was refused, and every
+  section read as a file nothing inputs).
 - Each file is read on its own, so a finding names that file's line.
 - A file starts in the state its `\input` stands in. One input from the body is body, and one
   input from the preamble is preamble. The headings in force there stand before the file's first
@@ -1296,7 +1304,8 @@ order is `printed_order`.
   - a missing file, or a cycle. A bare name input from the preamble that `manuscript/` does not
     hold, such as `\input{glyphtounicode}`, is the distribution's and is passed over, as a
     package is, and so is TeX's form without braces there, `\input glyphtounicode`;
-  - `\import`, `\subfile` and `\InputIfFileExists`;
+  - `\subfile`, `\InputIfFileExists`, and the import package's `\inputfrom` and
+    `\includefrom` and their `sub` forms;
   - a command that prints a file no gate reads: `\lstinputlisting` and its kin,
     `\verbatiminput`, csvsimple's `\csvautotabular` and `\csvreader`, pgfplotstable's
     `\pgfplotstabletypeset` with a file name, datatool's `\DTLloaddb` and its displays, and
@@ -1331,11 +1340,24 @@ each number of `\ci{1.2}{3.4}` at the use. Nothing is
 expanded, because an expansion is text at a place the file does not hold, with no offset to
 give a finding.
 
+A `\def` with delimited parameters, `\def\x#1.{...}`, is read where it is written, its
+parameter text blanked and its body read as any body is. A use of it is refused where the
+document prints what it makes, in prose, maths or a printed argument, since what it takes
+there is not known; in a blanked argument, the preamble, a comment or another definition's
+body it prints nothing, and is let be. The definition may stand in another file of the tree
+or in the author's package, so a tree that holds one is read a second time, each file told
+of it. A parameter of a definition inside a body is doubled, `##1`, and is a parameter all
+the same. `\let` of a command the reader reads to another it reads the same way is read as
+before: `\let\footnote=\endnote`, with the endnotes package, prints each note at the end,
+and its text is the same prose. Let to anything else, the command is defined again (Basile,
+2026-10-23, after two journals' templates: the first two were refused at the definition,
+and the rest of each file read as typed).
+
 Refused:
 - a definition, in a file of the author's, of any command the reader reads, `\mg` among them,
   but `\abstract`, which the reader read as an unknown command before it opened a section and
   which an author restyles;
-- `\def` with delimited parameters;
+- a use of a command defined with delimited parameters, where it prints (above);
 - anything that changes how characters are read: `\catcode`, `\makeatletter` in the body,
   `\csname`, `\expandafter`, and `babel` with a language whose shorthands make a character
   active;
@@ -1590,6 +1612,19 @@ The result is compiled and packed by the code above, and checked three times:
 - An `\input` records the environments open around it, not the command whose argument it is
   in, so `\title{\input{title}}` reads `title.tex` as preamble, blanked, though LaTeX prints it
   (round 1 of #385).
+- A command whose body uses one defined with delimited parameters, or one let to it, is not
+  refused where it is used, though LaTeX prints that use there: only the delimited
+  command's own uses are. One defined again without delimited parameters is still
+  refused where it prints (2026-10-23).
+- A note let to the endnotes package's, `\let\footnote=\endnote`, is read where it is
+  typed, under the heading in force there, though LaTeX prints the notes together at the
+  end of the document (2026-10-23).
+- The import package's `\inputfrom`, `\includefrom` and their `sub` forms are refused, not
+  followed (2026-10-23).
+- A distribution's package shipped beside the entry file, as an arXiv source often ships
+  `natbib.sty`, is read as the author's, and refused at the first construct the reader
+  does not read, natbib's `\csname`. Taken out of `manuscript/`, it is the
+  distribution's again (2026-10-23).
 - A file input past a refusal in the file that inputs it, from inside a definition, or from
   `\AtBeginDocument{\input{x}}` is not followed. It is warned of as `tex-not-input`, whose
   message says no `\input` the reader follows names it, and is read under no heading (round 1
@@ -2374,6 +2409,25 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
     `BROKEN` rules for a starred caption counted, a subfigure's caption taken for the
     figure's or its label naming nothing, a continued float counted, a float that inputs its
     caption left uncounted, a cross-reference citing nothing, and the line.
+14. Real templates (2026-10-23). Two papers from arXiv, written in an Elsevier and a Wiley
+    template, were put through `check` as they stand, never compiled. What they found is
+    built in three parts. The first, the reader: the import package's `\import` and
+    `\subimport` are followed; a `\def` with delimited parameters is read and its uses
+    refused where they print; a definition inside a body, its parameters doubled, is no
+    delimited one; and `\let\footnote=\endnote` is read as before; G6 still reads a comment
+    as typed for a placeholder, as it reads a Markdown one, since a journal or arXiv takes the
+    source with its comments. Tests: `tests/test_latex_mask.py`,
+    `tests/test_latex_structure.py`, `tests/test_latex_submit.py`, `tests/test_corruption.py`,
+    `latex_trees()`, which names each file in each of four ways, `latex_planted()`, and
+    `latex_delimited_uses()` in `tests/test_properties.py`, with `BROKEN` rules for a
+    `\subimport` named from the entry file's folder, an imported file kept under its
+    importer's folder, an `\input` not looked for in the folder imported from, a delimited
+    definition refused, a doubled parameter read as delimited, a `\let` always a definition,
+    and a delimited command refused wherever it stands, read as an unknown one, or let be in
+    maths. The second, front matter: a `frontmatter` environment's title, authors, addresses
+    and keywords and the major classes' metadata commands are passed over, its abstract read.
+    The third, appendix displays: a table or figure after `\appendix`, or under a heading
+    named for a supplement or an appendix, is the supplement's.
 
 ## Zotero is never on the critical path
 

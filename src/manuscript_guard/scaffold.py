@@ -310,6 +310,9 @@ _FILES = {
     "AGENTS.md": AGENTS,
 }
 
+#: The title a project is given where none is.
+UNTITLED = "Untitled manuscript"
+
 _DIRS = ("analysis", "results", "literature/sources", "figures", "review", "build")
 
 
@@ -347,12 +350,14 @@ def _header(title: str) -> str:
     return ""
 
 
-def init_project(root: Path, title: str = "Untitled manuscript", *,
-                 latex: bool = False, english: str | None = None) -> list[Path]:  # fmt: skip
+def init_project(root: Path, title: str = UNTITLED, *, latex: bool = False,
+                 english: str | None = None, text: str | None = None,
+                 authors: str | None = None) -> list[Path]:  # fmt: skip
     """Create the project layout. Existing files are never overwritten. With `latex`, the
     manuscript is `manuscript/main.tex`, with the values file beside it (step 12).
     `english` is the `english_variant` written into `paper.yaml`, one of `ENGLISHES`; with
-    None, none is declared."""
+    None, none is declared. With `text`, `main.md` is that text under its header, and with
+    `authors`, `authors.yaml` is that text: what `init --from` made of a Word paper."""
     if english is not None and english not in ENGLISHES:
         raise ContractError(
             f"{english!r} is not an English paper.yaml can declare, so nothing was made; "
@@ -426,6 +431,11 @@ def init_project(root: Path, title: str = "Untitled manuscript", *,
             latex_title=latex_title,
             english=UNDECLARED if english is None else f"english_variant: {english}",
         )
+        # Not through format(): a paper's text holds braces of its own.
+        if name == "manuscript/main.md" and text is not None:
+            written = _header(title) + text
+        if name == "authors.yaml" and authors is not None:
+            written = authors
         if name == "AGENTS.md" and latex:
             written = _in_latex(written)
         path.write_text(written, encoding="utf-8", newline="\n")

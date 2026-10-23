@@ -258,7 +258,7 @@ number in the file and the rule that classified it.
 
 | Command | What it does |
 |---|---|
-| `init` | scaffold a new manuscript project; `--latex` starts the manuscript in LaTeX, `--english en-GB` or `en-US` declares the paper's English (none unless told) |
+| `init` | scaffold a new manuscript project; `--latex` starts the manuscript in LaTeX; `--from paper.docx` brings a paper written in Word in, its tables as pipe tables and its title page set aside; `--english en-GB` or `en-US` declares the paper's English (none unless told) |
 | `check` | run every gate; `--submission` holds the manuscript to submission standards |
 | `bind` | show every unbound number and how to give it a source; `--pointers` offers the `{{ref.…}}` binding that prints each typed "Table 2" |
 | `explain` | show how each number in a file was classified |
@@ -386,7 +386,7 @@ everywhere.
 | [Agent tools](docs/agent-tools.md) | Claude Code, Codex and the others: installing, updating, what each enforces |
 | [A review panel read by several models](docs/review-panel.md) | internal review by people, an agent, or models from several providers |
 | [LaTeX manuscripts](docs/latex.md) | writing in LaTeX, or sending a Markdown manuscript as LaTeX, and what does not read LaTeX yet |
-| [Auditing a paper you already wrote](docs/audit.md) | one command for a manuscript with no bindings, and how little a match means |
+| [Auditing a paper you already wrote](docs/audit.md) | one command for a manuscript with no bindings, how little a match means, and bringing a Word paper into a project |
 | [DESIGN.md](DESIGN.md) | the architecture, the reasons for its decisions, and the known gaps |
 | [ATTRIBUTION.md](ATTRIBUTION.md) | the reporting guidelines' licences, and the one data file derived from another work |
 | [SECURITY.md](SECURITY.md) | reporting a vulnerability, and what is in scope |

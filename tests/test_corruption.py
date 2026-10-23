@@ -7416,6 +7416,22 @@ def test_siunitx_s_milligram_in_the_twin_is_no_binding(project: Path) -> None:
     assert found == [("unclassified-number", "'5' is not bound to any source")], found
 
 
+def test_the_twins_front_matter_is_passed_over_and_its_abstract_read(project: Path) -> None:
+    """A journal's front matter in the body, Elsevier's `frontmatter` with an address and
+    keywords and Wiley's issue: its numbers are none of the paper's, as Markdown's YAML header
+    holds none; a number typed in the abstract inside it is still unbound (Basile,
+    2026-10-23)."""
+    entry = _twin(project)
+    text = entry.read_text(encoding="utf-8")
+    text = text.replace("\\begin{abstract}\n", "\\begin{frontmatter}\n\\address[a]{Unit 1181, "
+                        "Caen}\n\\Volume{46}\\Issue{1}\n\\begin{abstract}\nOf 4371 reports.\n")
+    text = text.replace("\\end{abstract}\n", "\\end{abstract}\n\\begin{keyword}\ncohort 2019\n"
+                        "\\end{keyword}\n\\end{frontmatter}\n")  # fmt: skip
+    entry.write_text(text, encoding="utf-8")
+    found = [(f.code, f.message) for f in _twin_failures(project)]
+    assert found == [("unclassified-number", "'4371' is not bound to any source")], found
+
+
 def test_layout_in_the_twin_is_no_number_g2_reads(project: Path) -> None:
     """A LaTeX parameter defined again, a font's size, columns and a table's spacing print no
     number (round 1 of #400: each failed G2 once G2 read LaTeX)."""

@@ -611,6 +611,32 @@ def _a_command_let_is_always_defined_again(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(latex_mask._Reader, "_let", broken)
 
 
+def _a_classs_front_matter_is_read(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "FRONT_MATTER", frozenset())
+
+
+def _an_abstract_in_front_matter_is_passed_over_with_it(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask._Reader, "_entered", lambda self, name, role:
+                  latex_mask.BLANK if name in latex_mask.FRONT_MATTER else role)  # fmt: skip
+
+
+def _front_matter_commands_are_unknown(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "COMMANDS", {name: spec for name, spec in latex_mask.COMMANDS.items()
+                                           if name not in latex_mask.FRONT_MATTER_COMMANDS})
+
+
+def _front_matter_commands_are_defined_again(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_REDEFINABLE", frozenset({"abstract"}))
+
+
+def _highlights_in_front_matter_are_passed_over(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "READ_IN_FRONT_MATTER", frozenset({"abstract"}))
+
+
+def _an_author_s_front_matter_command_is_passed_over(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "FRONT_MATTER_COMMANDS", frozenset())
+
+
 @holds(100, latex_delimited_uses())
 def test_a_command_with_delimited_parameters_is_refused_where_it_prints_and_nowhere_else(
     drawn: tuple[str, int],
@@ -9912,6 +9938,30 @@ BROKEN = {
     ),
     "in LaTeX, a command let to another is always defined again": (
         _a_command_let_is_always_defined_again,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a class's front matter is read": (
+        _a_classs_front_matter_is_read,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, an abstract in the front matter is passed over with it": (
+        _an_abstract_in_front_matter_is_passed_over_with_it,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, the front matter's commands are unknown": (
+        _front_matter_commands_are_unknown,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a front matter command defined again is refused": (
+        _front_matter_commands_are_defined_again,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, highlights in the front matter are passed over": (
+        _highlights_in_front_matter_are_passed_over,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a front matter command the author defines is passed over": (
+        _an_author_s_front_matter_command_is_passed_over,
         test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
     ),
     "in LaTeX, a delimited command is refused wherever it stands": (

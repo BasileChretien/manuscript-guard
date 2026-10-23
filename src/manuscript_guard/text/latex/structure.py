@@ -173,15 +173,18 @@ def read_tree(
 ) -> Document:
     """The document `entry` begins, its files given by path; `packages` the author's `.sty`
     files; `unreadable` files that could not be read, reported elsewhere and passed over. A
-    command one file defines with delimited parameters is refused where another uses it, so
-    a tree that defines one is read twice, the second time with every file told of it."""
-    document = _read_tree(files, entry, packages or {}, unreadable, frozenset())
-    # A file nothing inputs defines nothing the document uses (round 2).
-    delimited = frozenset(name for source in document.sources if not source.loose
+    command one file defines with delimited parameters is refused where another uses it, and
+    a command of a class's front matter one file defines is the author's in another, so a
+    tree that defines either is read twice, the second time with every file told of them. A
+    file nothing inputs defines nothing the document uses (round 2)."""
+    document = _read_tree(files, entry, packages or {}, unreadable, frozenset(), frozenset())
+    tree = [source for source in document.sources if not source.loose]
+    delimited = frozenset(name for source in tree
                           for name in source.reading.delimited)  # fmt: skip
-    if not delimited:
+    own = frozenset(name for source in tree for name in source.reading.own)
+    if not delimited and not own:
         return document
-    return _read_tree(files, entry, packages or {}, unreadable, delimited)
+    return _read_tree(files, entry, packages or {}, unreadable, delimited, own)
 
 
 def _read_tree(
@@ -190,8 +193,9 @@ def _read_tree(
     packages: Mapping[str, str],
     unreadable: frozenset[str],
     delimited: frozenset[str],
+    own: frozenset[str],
 ) -> Document:
-    """`read_tree`, each file told of the commands `delimited` names."""
+    """`read_tree`, each file told of the commands `delimited` and `own` name."""
     known = {**files, **dict.fromkeys(unreadable, "")}
     sources: list[Source] = []
     refusals: list[tuple[str, Refusal]] = []
@@ -208,7 +212,8 @@ def _read_tree(
         """Read one file and the files it inputs, where they stand, and give the headings
         in force at its end; `imported` the folder it was imported from (`_target`)."""
         text = files[path]
-        reading = read(text, body=body, environments=environments, delimited=delimited)
+        reading = read(text, body=body, environments=environments, delimited=delimited,
+                       own=own)  # fmt: skip
         place = len(sources)
         sources.append(Source(path, text, reading, under, environments=environments,
                               imported=imported))  # fmt: skip
@@ -217,7 +222,8 @@ def _read_tree(
             style = posixpath.join(posixpath.dirname(entry), f"{name}.sty")
             if name != VALUES and style in packages and style not in seen:
                 seen.add(style)
-                package = read(packages[style], body=False, package=True, delimited=delimited)
+                package = read(packages[style], body=False, package=True, delimited=delimited,
+                               own=own)  # fmt: skip
                 sources.append(Source(style, packages[style], package))
                 refusals.extend((style, refusal) for refusal in package.refusals)
         events = sorted(
@@ -259,7 +265,7 @@ def _read_tree(
     for path in sorted(files):
         if path not in seen:
             text = files[path]
-            reading = read(text, body=True, loose=True, delimited=delimited)
+            reading = read(text, body=True, loose=True, delimited=delimited, own=own)
             sources.append(Source(path, text, reading, loose=True))
             refusals.extend((path, refusal) for refusal in reading.refusals)
     return Document(tuple(sources), tuple(refusals))

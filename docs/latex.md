@@ -68,6 +68,10 @@ the endnotes package's note stand for the footnote, but not between headings, ci
 cross-references, which print a level, a kind of citation or a name of their own, nor
 where either is an input, an import, `\texttt` or `\mg`; defined again otherwise, it is
 refused.
+A journal class's front matter in the body, Elsevier's `frontmatter` with its title,
+authors, addresses and keywords, or Wiley's issue and dates, is passed over as a Markdown
+manuscript's YAML header is; an abstract or Elsevier's highlights in it are read. A command
+of that front matter you define yourself, `\keywords` say, is read as your own.
 Past a refusal the rest of the file is read as typed, so nothing it did not understand is
 hidden. Write a number the reader cannot see as a binding, or move the construct to the
 preamble.

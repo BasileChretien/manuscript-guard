@@ -179,6 +179,63 @@ def test_a_command_let_to_one_read_the_same_way_is_read_as_before() -> None:
     assert "of 12 sites" in reading.masked and "endnote" not in reading.masked
 
 
+def test_a_classs_front_matter_is_passed_over_and_its_abstract_read() -> None:
+    """Elsevier's `frontmatter` holds the title, the addresses, the abstract, the highlights
+    and the keywords, and Wiley's template types its issue and dates in the body: each is
+    passed over, as Markdown's YAML header is, but the abstract, read under its heading, and
+    the highlights, the paper's claims (Basile, 2026-10-23; round 1). So is an abstract in a
+    box inside the front matter, BMC's `abstractbox`; one in a blanked argument is not
+    lifted. A front matter command the author defines, as an article's preamble often defines
+    `\\keywords`, is the author's, read as an unknown command is (round 1)."""
+    text = ("\\documentclass{elsarticle}\n\\newcommand{\\keywords}[1]{Keywords: #1}\n"
+            "\\begin{document}\n\\begin{frontmatter}\n\\title{A 10-year cohort}\n"
+            "\\address[a]{Unit 1181}\n\\begin{abstractbox}\\begin{abstract}\nOf 4100 cases.\n"
+            "\\end{abstract}\\end{abstractbox}\n\\begin{highlights}\n\\item Of 4371, 12\\%.\n"
+            "\\end{highlights}\n\\begin{keyword}\nkey 77\n\\end{keyword}\n"
+            "\\end{frontmatter}\n\\Volume{46}\\pagespan{1}{9}\\affil*[2]{Unit 1182}\n"
+            "\\keywords{dose 5}\n\\section{Intro}\nBody 3.\n\\end{document}\n")  # fmt: skip
+    reading = read(text)
+    assert reading.refusals == () and reading.own == ("keywords",)
+    for hidden in ("10-year", "1181", "77", "46", "9}", "1182"):
+        start = text.index(hidden)
+        assert set(reading.masked[start : start + len(hidden)]) <= {NUL, "}"}, hidden
+    for printed in ("Of 4100 cases.", "Of 4371, 12", "dose 5", "Body 3."):
+        assert printed in reading.masked, printed
+    assert [heading.title for heading in reading.headings] == ["Abstract", "Intro"]
+    assert "Of 12" not in read("\\author{\\begin{abstract}Of 12\\end{abstract}}",
+                               body=True).masked  # fmt: skip
+    # Round 2: in a group inside the front matter, `{\small ...}`, it is read all the same.
+    grouped = ("\\begin{frontmatter}{\\small\\begin{abstract}Of 4100.\\end{abstract}}"
+               "\\end{frontmatter}")  # fmt: skip
+    assert "Of 4100." in read(grouped, body=True).masked
+
+
+def test_a_file_input_inside_the_front_matter_is_read_as_it_is() -> None:
+    """A file input from inside `frontmatter` starts there: passed over, but an abstract."""
+    reading = read("\\address{Unit 1181}\n\\begin{abstract}Of 4100.\\end{abstract}\n",
+                   body=True, environments=("frontmatter",))  # fmt: skip
+    assert "1181" not in reading.masked and "Of 4100." in reading.masked
+    abstract = read("Of 4100.\n", body=True, environments=("frontmatter", "abstract"))
+    assert "Of 4100." in abstract.masked
+
+
+def test_a_front_matter_command_the_author_defines_in_another_file_is_the_author_s() -> None:
+    """Round 1 of real templates, part 2: an article's own `\\journal`, defined in its package
+    and used in a file the entry inputs, prints what its definition says; its argument is
+    read, as before the table held the name. One the class defines is passed over."""
+    from manuscript_guard.text.latex.structure import read_tree
+
+    files = {"main.tex": "\\documentclass{article}\n\\usepackage{macros}\n\\begin{document}\n"
+                         "\\input{a}\n\\Volume{46}\n\\end{document}\n",
+             "a.tex": "As in \\journal{Lancet 2019}.\n"}  # fmt: skip
+    document = read_tree(files, packages={"macros.sty": "\\newcommand{\\journal}[1]{#1}\n"})
+    (main, macros, inputs) = document.sources
+    assert "Lancet 2019" in inputs.reading.masked and "46" not in main.reading.masked
+    assert document.refusals == ()
+    # Round 2: the file that defines it says so, on the tree's second reading too.
+    assert macros.reading.own == ("journal",)
+
+
 def test_an_input_encoding_other_than_utf8_is_refused() -> None:
     text = "\\documentclass{article}\n\\usepackage[latin1]{inputenc}\n\\begin{document}\n"
     assert [r.code for r in read(text + "\\end{document}").refusals] == ["tex-refused"]

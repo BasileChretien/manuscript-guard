@@ -275,7 +275,7 @@
         },
         "accepted_spellings": {
           "type": "array",
-          "description": "Single words this paper keeps although G14's list gives them to the other English: a field's own spelling, as orthopaedic is for American orthopaedics, or one word of a name. Letters only, in any case: a word is what G14 reads, so an entry with a space or a hyphen in it would match nothing. G14 reports any other word that is spelt the way the paper's English does not spell it: the one english_variant declares, or where it declares none, the one most of the paper's words are in.",
+          "description": "Single words this paper keeps although G14's list gives them to the other English: a field's own spelling, as orthopaedic is for American orthopaedics, or one word of a name. Letters only, in any case: a word is what G14 reads, so an entry with a space or a hyphen in it would match nothing. G14 reports any other word that is spelt the way the paper's English does not spell it: the one english_variant declares, or where it declares none, the one most of the paper's words are in, and where they are level, the first word's.",
           "items": { "type": "string", "minLength": 2, "pattern": "^[A-Za-z]+$" }
         },
         "vocabulary": {

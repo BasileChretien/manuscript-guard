@@ -10814,6 +10814,27 @@ def test_a_latex_pointer_to_a_table_its_floats_do_not_number_fails(project: Path
     ]
 
 
+def test_a_latex_appendix_s_table_is_not_held_to_the_main_text_s_order(project: Path) -> None:
+    """A table in the appendix, cited first in the Methods as "Supplementary Table", is the
+    supplement's and passes; the same table outside the appendix is cited out of order and
+    fails (2026-10-23, an Elsevier paper)."""
+    from manuscript_guard.gates.pointers_latex import check_pointers_latex
+
+    shutil.rmtree(project / "manuscript")
+    shutil.copytree(TWIN, project / "manuscript")
+    main = project / "manuscript" / "main.tex"
+    cited = "\\section{Methods}\nCodes are in Supplementary Table~\\ref{codes}.\n"
+    codes = "\\begin{table}\\caption{Codes.}\\label{codes}\\end{table}\n"
+    text = main.read_text(encoding="utf-8").replace("\\section{Methods}\n", cited).replace(
+        "\\bibliographystyle{plain}", "\\appendix\n\\section{Codes}\n" + codes
+        + "\\bibliographystyle{plain}")  # fmt: skip
+    main.write_text(text, encoding="utf-8")
+    assert check_pointers_latex(load_project(project)[0]).failures == ()
+    main.write_text(text.replace("\\appendix\n", ""), encoding="utf-8")
+    failing = check_pointers_latex(load_project(project)[0]).failures
+    assert [(f.code, f.line) for f in failing] == [("cited-out-of-order", 33)], failing
+
+
 def test_a_latex_statement_that_does_not_name_the_chosen_source_is_said_in_its_file(
     project: Path,
 ) -> None:
@@ -12915,6 +12936,78 @@ def test_a_rule_with_a_line_under_it_is_refused(project: Path, block: str, capsy
     assert "pandoc may read as a heading's underline, YAML metadata or a table" in (
         capsys.readouterr().out
     )
+
+
+_WORD_TABLE = """\
+# Results
+
+The counts are in Table 1.
+
+| Group    | Cases |
+|----------|-------|
+| Exposed  | 41    |
+| Others   | 17    |
+
+: Table 1. Counts.
+
++----------+-------------+
+| Group    | Deaths      |
++==========+=============+
+| Exposed  | 29          |
+|          |             |
+|          | in 2019     |
++----------+-------------+
+
+: Table 2. Deaths.
+"""
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_number_typed_in_a_word_table_is_read_once_the_paper_is_brought_in(
+    tmp_path: Path, capsys
+) -> None:
+    """A Word table as `pandoc paper.docx -t markdown` writes it is a multiline table, whose
+    lines of dashes `check` refuses at every stage, so a paper brought in that way was refused
+    whole. `init --from` writes it as a pipe table, and the 41 typed in it is reported for
+    what it is, a number in a table typed by hand. So is a table with a cell of two
+    paragraphs, which pandoc writes as a grid table until they are joined."""
+    import subprocess
+
+    from manuscript_guard.cli import main
+
+    folder = tmp_path / "word"
+    folder.mkdir()
+    (folder / "paper.md").write_text(_WORD_TABLE, encoding="utf-8")
+    subprocess.run(["pandoc", "paper.md", "-o", "paper.docx"], cwd=folder, check=True,
+                   timeout=120)  # fmt: skip
+    paper = folder / "paper.docx"
+
+    def failures_and_tables(root: Path) -> tuple[set[str], list[str]]:
+        capsys.readouterr()
+        main(["check", str(root), "--json", "--stage", "drafting"])
+        found = json.loads(capsys.readouterr().out)["findings"]
+        tables = [f["message"] for f in found if f["code"] == "hand-authored-table"]
+        return {f["code"] for f in found if f["severity"] == "fail"}, tables
+
+    plain = tmp_path / "plain"
+    assert main(["init", str(plain)]) == 0
+    subprocess.run(["pandoc", str(paper), "-t", "markdown", "-o", "main.md"],
+                   cwd=plain / "manuscript", check=True, timeout=120)  # fmt: skip
+    refused, _ = failures_and_tables(plain)
+    assert "rule-opens-a-block" in refused
+
+    root = tmp_path / "brought-in"
+    assert main(["init", str(root), "--from", str(paper)]) == 0
+    refused, tables = failures_and_tables(root)
+    assert "rule-opens-a-block" not in refused
+    assert any("'41'" in message for message in tables), tables
+    # A pipe table, so the audit reads its cells too: a grid table's rows are only text to it.
+    from manuscript_guard.build.assemble import strip_front_matter
+    from manuscript_guard.text.tables import markdown_tables
+
+    text = strip_front_matter((root / "manuscript" / "main.md").read_text(encoding="utf-8"))[0]
+    cells = [cell.text.strip() for table in markdown_tables(text) for row in table for cell in row]
+    assert "41" in cells and "29 in 2019" in cells
 
 
 @pytest.mark.skipif(

@@ -169,11 +169,16 @@ found. Never tell the author the numbers were verified.
 
 ## 6. Moving the paper into a project
 
-There is no converter. `import` refuses a `.docx` this toolkit did not build. For a paper
-still being written, the route is:
+`import` refuses a `.docx` this toolkit did not build. For a paper still being written, the
+route is:
 
-1. `manuscript-guard init`, then convert the text into `manuscript/*.md`, for example with
-   `pandoc paper.docx -t markdown -o manuscript/main.md`. A paper written in LaTeX needs no
+1. `manuscript-guard init my-paper --from paper.docx`. It writes the paper as
+   `manuscript/main.md`, each table as a pipe table where its cells hold only paragraphs, the
+   pictures in `manuscript/media/`, and the title page in a comment at the top that no gate
+   reads. Read what it prints: a table with a list or another table in a cell is left as a
+   grid table, and a comment that holds the abstract hides its numbers until it is moved out.
+   Do not convert with `pandoc paper.docx -t markdown`: it writes most Word tables as
+   multiline tables, which `check` refuses at every stage. A paper written in LaTeX needs no
    conversion: `manuscript-guard init --latex`, then its files go in `manuscript/`, the
    entry file as `main.tex`, loading `mgvalues`.
 2. Make the analysis publish its values. The [results-binding](../results-binding/SKILL.md)

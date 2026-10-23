@@ -20,6 +20,14 @@ is one format or the other: `init --latex` makes nothing where
 (`other-format-file`). A supplement is `manuscript/supplementary/main.tex`, a document of
 its own.
 
+A paper already written goes in `manuscript/` as it is, the file that holds `\documentclass`
+named `main.tex`, with its class, style and picture files where they were. Its citations
+are checked against the library, `literature/references.bib`, which `build` puts beside the
+entry file as `references.bib` and compiles with. Bring the paper's `.bib` into it, through
+Zotero and `sync-bib` or by copying the file there, and have the document name it,
+`\bibliography{references}`. Then run `check`: a refusal names a line the reader cannot
+read exactly ("What the reader reads" below).
+
 ## Bindings
 
 | Markdown | LaTeX |
@@ -50,11 +58,19 @@ number and a value prints as text.
 ## What the reader reads
 
 The reader reads LaTeX under TeX's default category codes, one pass per file, through the
-include tree that `\input` and `\include` make. What it cannot read exactly, it refuses,
-naming the line. A conditional in the body, `\makeatletter` in the body and a macro that
-prints a citation are refused. Past a refusal the rest of the file is read as typed, so
-nothing it did not understand is hidden. Write a number the reader cannot see as a binding,
-or move the construct to the preamble.
+include tree that `\input`, `\include` and the import package's `\import` and `\subimport`
+make. What it cannot read exactly, it refuses, naming the line. A conditional in the body,
+`\makeatletter` in the body and a macro that prints a citation are refused. So is a command
+defined with `\def` and delimited parameters, `\def\x#1.{...}`, where the document prints
+it, since what it takes there is not known: define it with `\newcommand`. A command the
+reader reads may be let to another it reads the same way, as `\let\footnote=\endnote` lets
+the endnotes package's note stand for the footnote, but not between headings, citations or
+cross-references, which print a level, a kind of citation or a name of their own, nor
+where either is an input, an import, `\texttt` or `\mg`; defined again otherwise, it is
+refused.
+Past a refusal the rest of the file is read as typed, so nothing it did not understand is
+hidden. Write a number the reader cannot see as a binding, or move the construct to the
+preamble.
 
 ## Building and submitting
 
@@ -62,7 +78,8 @@ or move the construct to the preamble.
 and no write outside the copy. It needs TeX Live or MiKTeX, with latexmk. The engine is the
 one the journal's profile names under `latex: {engine: ...}`, pdfLaTeX otherwise. An error
 is named at the manuscript's file and line, and an undefined citation or reference fails at
-`--submission`.
+`--submission`. Under MiKTeX the build turns its installer off, so a package that is not
+installed stops the compile and is named, rather than installed then.
 
 BUILD's checks of the Markdown build do not run on a LaTeX manuscript, whose build is
 checked by its compile.

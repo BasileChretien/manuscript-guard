@@ -7212,6 +7212,32 @@ def test_what_the_latex_reader_refuses_fails_build_at_its_file_and_line(project:
     assert "tex-not-input" not in codes(report)
 
 
+def test_a_delimited_command_where_it_prints_and_an_import_of_nothing_fail_build(
+    project: Path,
+) -> None:
+    """A command defined with delimited parameters fails BUILD where a file the document
+    imports prints it, not where it is defined; an `\\import` of a file that is not there fails
+    it where it stands, and one of a file that is there is followed (2026-10-23: two journals'
+    templates)."""
+    from manuscript_guard.cli import _run_gates
+
+    entry = _as_latex(project)
+    (entry.parent / "sections").mkdir()
+    entry.write_text(
+        "\\documentclass{article}\n\\def\\bSig\\mathbf{\\Sigma}\n\\begin{document}\n"
+        "\\import{sections/}{methods}\n\\import{sections/}{gone}\n\\end{document}\n",
+        encoding="utf-8",
+    )
+    (entry.parent / "sections" / "methods.tex").write_text("Of 4100.\nWe use $\\bSig$.\n",
+                                                           encoding="utf-8")  # fmt: skip
+    report, _project, _stage, _deferred = _run_gates(project, stage="design")
+    found = {(f.code, f.path.name, f.line) for f in report.failures if f.gate == "BUILD"}
+    assert ("tex-refused", "methods.tex", 2) in found, report.render(project)
+    assert ("tex-refused", "main.tex", 5) in found, report.render(project)
+    assert ("tex-refused", "main.tex", 2) not in found, report.render(project)
+    assert not [f for f in report.findings if f.code == "tex-not-input"]
+
+
 # --------------------------------------------------------------- G2 on the LaTeX twin
 
 TWIN = Path(__file__).parent / "data" / "latex" / "manuscript"

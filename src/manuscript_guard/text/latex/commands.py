@@ -82,6 +82,9 @@ COMMANDS = _specs(
         "caption": "[p]{p}",
         "footnote": "[b]{p}",
         "footnotetext": "[b]{p}",
+        # The endnotes package's, which prints the note at the end of the document.
+        "endnote": "[b]{p}",
+        "endnotetext": "[b]{p}",
         "item": "[p]",
         "bibitem": "[p]{b}",
         "makebox": "[b][b]{p}",
@@ -110,6 +113,8 @@ COMMANDS = _specs(
              "newlength", "date"),
             _REF,
         ),
+        # The import package's: a folder and a file, followed as an input is (`IMPORTS`).
+        **dict.fromkeys(("import", "subimport"), "{b}{b}"),
         "url": "{r}",
         "author": "[b]{b}",
         "includegraphics": "*[b][b]{b}",
@@ -175,6 +180,10 @@ COMMANDS = _specs(
     }
 )  # fmt: skip
 
+#: The import package's commands the include tree follows, each a folder and a file:
+#: `\\import`'s folder is the manuscript's, and `\\subimport`'s is under the folder the
+#: file it stands in was imported from (`structure.py`).
+IMPORTS = frozenset({"import", "subimport"})
 #: Commands that print a space, written as one.
 SPACES = frozenset({"quad", "qquad", "enspace", "thinspace", "space", "enskip", "nobreakspace"})
 #: The commands that print one character, which the mask writes where the command stands: a
@@ -273,7 +282,8 @@ REFUSED = {
     **dict.fromkeys(("lstinputlisting", "verbatiminput", "VerbatimInput", "csvautotabular",
                      "csvautobooktabular", "csvreader", "pgfplotstabletypeset", "DTLloaddb",
                      "DTLdisplaydb", "DTLdisplaylongdb", "includepdf"), _FILE),
-    **dict.fromkeys(("import", "subimport", "subfile", "InputIfFileExists"),
+    **dict.fromkeys(("subfile", "InputIfFileExists", "inputfrom", "subinputfrom", "includefrom",
+                     "subincludefrom"),
                     "its file is not followed; \\input it by a path written out in full"),
     "inputminted": "it needs shell escape, which the build does not allow",
 }  # fmt: skip

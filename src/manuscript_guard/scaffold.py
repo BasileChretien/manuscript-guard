@@ -298,6 +298,9 @@ _FILES = {
     "AGENTS.md": AGENTS,
 }
 
+#: The title a project is given where none is.
+UNTITLED = "Untitled manuscript"
+
 _DIRS = ("analysis", "results", "literature/sources", "figures", "review", "build")
 
 
@@ -335,10 +338,12 @@ def _header(title: str) -> str:
     return ""
 
 
-def init_project(root: Path, title: str = "Untitled manuscript", *,
-                 latex: bool = False) -> list[Path]:  # fmt: skip
+def init_project(root: Path, title: str = UNTITLED, *, latex: bool = False,
+                 text: str | None = None, authors: str | None = None) -> list[Path]:  # fmt: skip
     """Create the project layout. Existing files are never overwritten. With `latex`, the
-    manuscript is `manuscript/main.tex`, with the values file beside it (step 12)."""
+    manuscript is `manuscript/main.tex`, with the values file beside it (step 12). With
+    `text`, `main.md` is that text under its header, and with `authors`, `authors.yaml`
+    is that text: what `init --from` made of a Word paper."""
     root = Path(root).resolve()
     created: list[Path] = []
     # On one line, and a tab as a space: what the build prints for each. Written into
@@ -406,6 +411,11 @@ def init_project(root: Path, title: str = "Untitled manuscript", *,
             header=_header(title),
             latex_title=latex_title,
         )
+        # Not through format(): a paper's text holds braces of its own.
+        if name == "manuscript/main.md" and text is not None:
+            written = _header(title) + text
+        if name == "authors.yaml" and authors is not None:
+            written = authors
         if name == "AGENTS.md" and latex:
             written = _in_latex(written)
         path.write_text(written, encoding="utf-8", newline="\n")

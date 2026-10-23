@@ -1343,6 +1343,26 @@ order is `printed_order`.
   an Elsevier and a Wiley template, whose title, addresses and issue were read as main
   text). The title is still read where it stands outside the front matter, in the preamble
   as before.
+- The title page the classes write outside such an environment is passed over too, each
+  arity read from the class (2026-10-23, after 17 papers from arXiv): `\title`'s option,
+  the running head's short title in Springer's `sn-jnl` and amsart and an option list in
+  Elsevier's CAS classes, `\title [mode = title]{...}`, a space before it as LaTeX allows;
+  Springer's `\author*`, the corresponding author's; CAS's option list after the author's
+  name and after an address, `\author{...}[orcid=...]` (`O{} m O{}` in `cas-common.sty`),
+  its marks, `\cormark[1]`, `\fnmark`, `\tnotemark` (`O{}`), its CRediT roles, `\credit`,
+  a note with no mark and the running heads (`m`); elsarticle's `\fnref`, `\corref` and
+  `\tnoteref`; and acmart's CCS concepts, the `CCSXML` environment, which the class
+  excludes as the comment package's, read to its `\end` and blanked as `comment` is, and
+  `\ccsdesc[300]{...}` with its weight (`\ccsdesc[2][100]`). The XML is the publisher's
+  metadata and no note of the author's, so the submission folder keeps it, where it takes a
+  comment's text out.
+- A TikZ picture, `tikzpicture`, is passed over whole, its options, its code and its nodes'
+  text, as `\includegraphics` passes over a picture's file; so are `\tikzset`,
+  `\pgfplotsset` and the old `\tikzstyle{name} = [...]`, which style it. In a definition's
+  body, where an environment is otherwise text expanded at each use, a picture whose `\end`
+  stands in the same body is a picture there, as a command that draws a circled letter
+  holds one (2026-10-23: their sizes and shifts, `minimum size=1em`, `xshift=-4cm`, were
+  numbers of the text).
 - An environment not in the table is read as an unknown command is, and so is its body.
 
 **Definitions.** A `\newcommand`, `\renewcommand`, `\providecommand`,
@@ -1356,6 +1376,16 @@ read. So with `\newcommand{\ci}[2]{95\% CI #1--#2}`, the `95` is found at the de
 each number of `\ci{1.2}{3.4}` at the use. Nothing is
 expanded, because an expansion is text at a place the file does not hold, with no offset to
 give a finding.
+
+A length in a definition's body, typed as TeX reads one with its unit against its number, in
+a unit TeX measures the page in, `pt`, `bp`, `sp`, `pc`, `dd`, `cc`, `em`, `ex` or `mu`, is
+layout: G2 lets it through as `tex-length`, `\def\bibhang{24pt}` and `\lower.5ex`
+(2026-10-23, after two papers from arXiv whose preambles gave 24pt and .5ex as numbers). The
+reader reads the body as before, and the classifier decides, given the bodies' spans by the
+file's read (`_Read.layout`, `Classifier.scan(..., layout=...)`), so `check`, `explain` and
+`bind` judge the number alike. In the text a length is a number like any other, since
+"500bp" is base pairs and "24pt" may be a scale's points; and one in millimetres,
+centimetres or inches, which may be the paper's own measure, is a number anywhere.
 
 A `\def` with delimited parameters, `\def\x#1.{...}`, is read where it is written, its
 parameter text blanked and its body read as any body is. A use of it is refused where the
@@ -1767,6 +1797,21 @@ The result is compiled and packed by the code above, and checked three times:
   main text, and an abbreviation in it is used before its definition to G14. A class's
   front matter command not in `FRONT_MATTER_COMMANDS` is read as an unknown command is, its
   arguments as prose (rounds 1 of steps 6 and 7; the front matter itself since 2026-10-23).
+- `\title`'s option is passed over in every class, so a word or a number that only a running
+  head's short title holds is read by no gate. `\author{...}` followed by an opening bracket,
+  past spaces and one line break, takes it for CAS's option list in any class: in one whose
+  `\author` takes none, text that opens with a bracket there is passed over (2026-10-23).
+- No gate reads what a TikZ picture prints: its nodes' text, `\node {n = 412};`, its axes'
+  labels and its plotted coordinates, where G3 reads a picture file's text layer. Bind such a
+  number with `\mg`, or draw the figure from a script. TikZ's inline `\tikz[...]`, PGF's
+  `pgfpicture` and circuitikz's environment are read as unknown commands are, their options
+  as prose; and a picture opened in one definition's body and closed in another,
+  `\newenvironment{pic}{\begin{tikzpicture}}{\end{tikzpicture}}`, passes over its options
+  only, and what `\begin{pic}` holds is read (2026-10-23).
+- A TeX length is layout only in a definition's body, not in a hook's, and only in its
+  units' small letters without TeX's `true`: so `\vskip 6pt` in the body, `24 pt` with a
+  space, `24PT` and `24truept` are numbers. And a length a definition prints as text, where
+  it is used, `\newcommand{\insert}{500bp}` for base pairs, passes as layout (2026-10-23).
 - Past a refusal G14 reads a LaTeX file as typed, its commands and comments as words; `check`
   fails on the refusal already (round 1 of step 7).
 - `\~{}` before a number, written for "about", is taken for an accent on the word after it,

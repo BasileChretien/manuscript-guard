@@ -113,7 +113,7 @@ def _latex_unbound(project: Project, classifier: Classifier, by_display: dict[st
         read = _latex_read(file)
         refused = file.source.reading.refusals
         stop = refused[0].offset if refused else None
-        scan = classifier.scan(read.scanned, blocks=read.blocks)
+        scan = read.scan(classifier)
         for atom in find_atoms(read.text, read.masked):
             if classifier.classify_under(atom, read.chains(atom.start), scan).kind != UNCLASSIFIED:
                 continue

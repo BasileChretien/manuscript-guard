@@ -6977,7 +6977,7 @@ as plain text. A Title paragraph that holds what plain text loses, a note, a sup
 link or a picture, goes into the comment as well, as it does when `--title` gives the title:
 a note on the title is where a paper often names its funder or its corresponding author, and
 taken as plain text it was written nowhere. A superscript at the title's end made of digits
-or the usual signs (`*`, `†`, `‡`, `§`), several with commas between, is the mark of such a
+or the usual signs (`*`, `†`, `‡`, `§`, `¶`, `‖`, `#`), several with commas between, is the mark of such a
 note and is left out of the plain title, which kept its text and read "a fall1"; it stays in
 the comment with the title, and `init` names it. A superscript inside the title, or of
 anything else, "CD4^+^ T cells" or "Na^+^", is the title's. A unit's power at the end, "per
@@ -16089,8 +16089,12 @@ Open, recorded as each change landed:
 - **Word comments are not brought in by `init --from`.** pandoc drops them when it accepts
   tracked changes; the audit and `import` read comments, `init` does not.
 - **A power at the end of a Word title is taken for a note's mark.** `init --from` leaves a
-  superscript of digits or `*`, `†`, `‡`, `§` at the title's end out of `paper.yaml`, so "per
+  superscript of digits or `*`, `†`, `‡`, `§`, `¶`, `‖`, `#` at the title's end out of `paper.yaml`, so "per
   m^2^" becomes "per m". It names what it left out, and the Title paragraph is in the comment.
+- **A Word title's mark inside a wrapper stays in the title.** `init --from` looks for the
+  mark among the title's own pieces, so one that pandoc reads inside bold or italic, or one
+  followed by an empty bookmark, is printed as part of the title, "a fall1"; the Title
+  paragraph is in the comment, where the author can see it.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

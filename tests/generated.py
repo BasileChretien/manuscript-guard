@@ -1802,8 +1802,14 @@ INTERLEUKINS = (
     "IL-4", "IL-13", "IL-33", "interleukin-4", "interleukin-31", "IL-4/IL-13",
     "IL-4R\N{GREEK SMALL LETTER ALPHA}", "IL-1\N{GREEK SMALL LETTER BETA}",
 )  # fmt: skip
+#: Terms inside a longer atom: after a prefix with no letter at its end, "anti-IL-6" and
+#: "CD4+CD8+"; after a lower-case prefix, at the term's capital, "sIL-2R" and "ppFEV1"; and
+#: two with nothing between, "PaO2FiO2" and "CD8CD4", each the other way round from the
+#: order of the terms.
+NAMES_IN_WORDS = ("anti-IL-6", "CD4+CD8+", "sIL-2R", "ppFEV1", "PaO2FiO2", "CD8CD4")
 #: A word that ends in an interleukin's letters, "April-12" and "Brazil-3", holds no name.
-NOT_NAMES = ("12", "3.4", "12@3.5", "40@lab", "April-12", "Brazil-3", "until-15")
+TERM_LOOKALIKES = ("April-12", "Brazil-3", "until-15")
+NOT_NAMES = ("12", "3.4", "12@3.5", "40@lab", *TERM_LOOKALIKES)
 #: Words to put between them: none names a class or a time, which a number after it is a
 #: label of ("cohort 12", "week 12").
 _BETWEEN_NAMES = ("reports", "were", "included", "the", "of", "and", "found", "among")
@@ -1815,7 +1821,7 @@ def named_numbers(draw: st.DrawFn) -> tuple[str, dict[str, str]]:
     words and a separator drawn between them; and what each is: "address", "name" or
     "number"."""
     planted = [(text, "address") for text in ADDRESSES]
-    planted += [(text, "name") for text in INTERLEUKINS]
+    planted += [(text, "name") for text in (*INTERLEUKINS, *NAMES_IN_WORDS)]
     planted += [(text, "number") for text in NOT_NAMES]
     gaps = st.sampled_from((" ", ", ", "; ", " and ", " (", ") ", ". "))
     # Words first, so that no number opens the line, where it is a list's numbering.
@@ -4549,7 +4555,9 @@ def _quotation_asked(drawn: tuple[tuple[str, str], str, str]) -> dict[str, str]:
 
 
 #: An address and an interleukin, where G2 reads every number: what it reads as no number.
-NAMED_BLOCKS = tuple(f" {name} " for name in (*ADDRESSES, *INTERLEUKINS))
+NAMED_BLOCKS = tuple(
+    f" {name} " for name in (*ADDRESSES, *INTERLEUKINS, *NAMES_IN_WORDS, *TERM_LOOKALIKES)
+)
 #: What a paper converted from Word has that `check` reads: bold in its tables and in its
 #: prose, and a reference list titled in another language.
 CONVERTED_BLOCKS = (

@@ -2060,6 +2060,7 @@ def cmd_audit(args: argparse.Namespace) -> int:
         PAPER_SUFFIXES,
         audit,
         doc_passed_over,
+        is_lock_file,
         measure_discrimination,
         render,
     )
@@ -2084,7 +2085,7 @@ def cmd_audit(args: argparse.Namespace) -> int:
         for folder in args.paper
         if folder.is_dir()
         for p in sorted(folder.rglob("*"))
-        if p.is_file() and p.suffix.lower() == ".doc"
+        if p.is_file() and p.suffix.lower() == ".doc" and not is_lock_file(p)
     ]
 
     # A path that is not there is a typo, and auditing without it answers a different
@@ -2118,7 +2119,7 @@ def cmd_audit(args: argparse.Namespace) -> int:
         # "Audited 0 file(s) … 0 not found" read as a clean report, and exited 0 under
         # --strict, when every paper given was unreadable.
         print("nothing given could be audited:", file=sys.stderr)
-        for item in report.unreadable:
+        for item in (*report.unreadable, *report.passed_over):
             print(f"  {item}", file=sys.stderr)
         return 2
     print(render(report, measure_discrimination(report.backing_values), Path.cwd()))

@@ -5051,6 +5051,24 @@ def _a_term_is_found_inside_a_word(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(classify, "_terms_covering", anywhere)
 
 
+def _a_hyphen_or_a_plus_is_part_of_a_word(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import classify
+
+    real = classify._term_may_start
+
+    def may_start(text: str, at: int) -> bool:
+        return real(text, at) and not (at and text[at - 1] in "-+")
+
+    patch.setattr(classify, "_term_may_start", may_start)
+
+
+def _a_capital_after_a_lower_case_letter_opens_no_term(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import classify
+
+    patch.setattr(classify, "_term_may_start",
+                  lambda text, at: at == 0 or not text[at - 1].isalnum())  # fmt: skip
+
+
 # ------------------------------------------------------------------- a suggested edit
 
 
@@ -11733,6 +11751,14 @@ BROKEN = {
     ),
     "a term is found inside a word": (
         _a_term_is_found_inside_a_word,
+        test_an_address_and_an_interleukin_are_no_numbers_and_a_number_beside_them_is,
+    ),
+    "a hyphen or a plus is part of a word": (
+        _a_hyphen_or_a_plus_is_part_of_a_word,
+        test_an_address_and_an_interleukin_are_no_numbers_and_a_number_beside_them_is,
+    ),
+    "a capital after a lower-case letter opens no term": (
+        _a_capital_after_a_lower_case_letter_opens_no_term,
         test_an_address_and_an_interleukin_are_no_numbers_and_a_number_beside_them_is,
     ),
     "filler before a list item is not read": (

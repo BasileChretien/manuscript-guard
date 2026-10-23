@@ -594,47 +594,78 @@ def _names_covering(text: str, terms: tuple[str, ...]) -> list[str] | None:
     return _terms_covering(text, terms)
 
 
+def _term_may_start(text: str, at: int) -> bool:
+    """Whether a term may begin at `at` of `text`, as written: where a word opens, after
+    no letter and no digit, or where a capital follows a lower-case letter, as in "sIL-2R",
+    "ppFEV1" and "pCO2". A term may also begin where another ends (`_terms_covering`)."""
+    if at == 0 or not text[at - 1].isalnum():
+        return True
+    return text[at].isupper() and text[at - 1].islower()
+
+
+@lru_cache(maxsize=16)
+def _by_first_letter(terms: tuple[str, ...]) -> dict[str, tuple[tuple[int, str], ...]]:
+    """The terms by their first character, each with its place in `terms`."""
+    found: dict[str, list[tuple[int, str]]] = {}
+    for rank, term in enumerate(terms):
+        if term:
+            found.setdefault(term[0], []).append((rank, term))
+    return {first: tuple(ranked) for first, ranked in found.items()}
+
+
 def _terms_covering(text: str, terms: tuple[str, ...]) -> list[str] | None:
     """Terms that between them account for every digit in `text`, or None. A term counts
-    only where it opens a word, with no letter and no digit before it, or stands directly
-    after the same term.
-
-    The terms are gone through once, longest first, so cyp2c19 is consumed before cyp2c9
-    could nibble at it. Of two names typed with nothing between, the second is matched
-    only where the first was taken out before it: it is the longer, or as long and before
-    it by its letters. Going through them again for as long as one was taken out was
-    tried: it took time by the square of the atom for names alternating with nothing
-    between, and did not end for a declared term of one space.
+    where `_term_may_start`, or directly after another term; the terms used are given in
+    the order of `terms`.
 
     A term was found anywhere in an atom as it is written, and only a name read without its
     signs was held to a word's start: taking the signs out puts the digits of a superscript
     hard against the word before it, and `risk^1^`, a citation's number, was `risk1`, which
     holds the term `k1`. As written, a word was taken for a name in the same way: with the
     interleukins among the terms, "April-12" held `il-12` and "Brazil-3" `il-3`, and their
-    numbers went unchecked. A term inside a word, "sIL-2R" for one, is a number unless a
-    project declares it.
+    numbers went unchecked. Held to a word's start alone, a name after a lower-case prefix,
+    "sIL-2R", was a number; a capital after a lower-case letter opens a name as well.
 
-    The text is made anew once for each term that is found, and not once for each place
-    it stands: one atom of `h~2~/` 160,000 times over took seven seconds."""
-    rest = text.lower()
-    used: list[str] = []
-    for term in terms:
-        at = rest.find(term) if term else -1
-        if at == -1:
-            continue
-        kept: list[str] = []
-        cut = 0
-        while at != -1:
-            # `cut` is where the text opens, and then where the term last found ended.
-            if at == cut or not rest[at - 1].isalnum():
-                kept += (rest[cut:at], " ")
-                cut = at + len(term)
-                at = rest.find(term, cut)
-            else:
-                at = rest.find(term, at + 1)
-        if kept:
-            rest = "".join((*kept, rest[cut:]))
-            used.append(term)
-            if not any(ch.isdigit() for ch in rest):
-                return used
-    return None
+    The terms were gone through once, longest first, each taken out where it stood, and a
+    term directly after another counted only where that one came first among the terms:
+    "PaO2FiO2" was a number for terms in one order. Going through them again for as long
+    as one was taken out took time by the square of the atom for names alternating with
+    nothing between, and did not end for a declared term of one space. So the text is read
+    once from its end: at each place, whether what follows can be covered, opening there
+    or after a term. Where a term or a step past a character could each cover the rest, a
+    term with a digit is taken first, then the step, so a term with no digit is named only
+    where it is needed; among terms, the one first in `terms`, so cyp2c19 before cyp2c9."""
+    low = "".join(ch.lower() if len(ch.lower()) == 1 else ch for ch in text)
+    size = len(low)
+    by_first = _by_first_letter(terms)
+    found = [
+        tuple((rank, term) for rank, term in by_first.get(low[at], ()) if low.startswith(term, at))
+        for at in range(size)
+    ]
+    opens = [_term_may_start(text, at) for at in range(size)]
+    # `plain[at]`: what follows `at` can be covered, `at` being no term's end; `after[at]`:
+    # the same where a term ends at `at`, so that another may open there.
+    plain = [False] * size + [True]
+    after = [False] * size + [True]
+    for at in range(size - 1, -1, -1):
+        step = not low[at].isdigit() and plain[at + 1]
+        take = any(after[at + len(term)] for _rank, term in found[at])
+        plain[at] = step or (opens[at] and take)
+        after[at] = step or take
+    if not plain[0]:
+        return None
+    used: set[int] = set()
+    at, ended = 0, False
+    while at < size:
+        if opens[at] or ended:
+            fits = [(rank, term) for rank, term in found[at] if after[at + len(term)]]
+            digits = [(rank, term) for rank, term in fits if any(ch.isdigit() for ch in term)]
+            step = not low[at].isdigit() and plain[at + 1]
+            chosen = digits or ([] if step else fits)
+            if chosen:
+                rank, term = chosen[0]
+                used.add(rank)
+                at, ended = at + len(term), True
+                continue
+        at, ended = at + 1, False
+    return [terms[rank] for rank in sorted(used)] or None

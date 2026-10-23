@@ -8786,8 +8786,11 @@ the zip, since a zip is read from its end and a .doc with an embedded object can
 A .doc in a folder given to the audit was passed over without a word, as any file the audit
 does not read is, and the paper in it went unaudited with nothing to say so. Each one is now
 named under "Passed over in a folder", with the same advice, as a note: the papers beside it
-were audited, so `--strict` does not count it, and a folder holding nothing else has nothing
-to audit and says which .doc it passed over.
+were audited, so `--strict` does not count it, and a folder holding nothing else, or
+nothing else that could be read, has nothing to audit and says which .doc it passed over.
+A file named .doc that is no compound file, Rich Text saved under that name, is named as
+no Word 97-2003 document; and Word's lock file beside an open document, "~$" and the rest
+of its name, is no paper and is not named.
 G6 counted the bold of a table's cells towards the rate of bold in the prose, and where a
 cell's bold ran on to its next line, paired `**` across the cells; pandoc writes a Word
 table as a simple or a multiline table where it can, which no rate passed over. The bold
@@ -10581,19 +10584,15 @@ Added by the adversarial review, verified and **not** fixed:
   `year^-1^` declared `year-1`; so a name's superscripts are taken out whatever they
   hold. An isotope is declared by its mass and its element, `terms: [68Ga]` for
   `^68^Ga-DOTATATE`, and its hint does not say so: what opens with a digit is told
-  nothing of terms, since a count typed between the signs opens the same way. And of two
-  names typed with nothing between, the second is matched only where the first was taken
-  out before it, the terms being gone through once, longest first and then by their
-  letters: `FiO~2~PaO~2~` is two terms and `PaO~2~FiO~2~` an unbound number, on every
-  run. Terms of one length came in the order of a set, so it was one or the other from
-  one run to the next. The order settles an atom with no sign in it as well, where two
-  terms of one length overlap in it, and that was by the run too: `April-1` is reported
-  on every run, `apri` coming before `il-1`, and `MERS-COVID-19` is a term on every
-  run, `covid-19` coming before `mers-cov`. Going through the terms again for as long
-  as one was taken out was tried, and it took time by the square of the atom and did
-  not end for a declared term of one space (found by the review of that change). With
-  a sign between, as the ratio is written, `PaO~2~/FiO~2~`, both are terms either way
-  round. The
+  nothing of terms, since a count typed between the signs opens the same way. Terms of
+  one length came in the order of a set, so a name was a term on one run and a number
+  on the next; they come in one order now, longest first and then by their letters. Two
+  names typed with nothing between, `FiO~2~PaO~2~` and `PaO~2~FiO~2~`, are two terms
+  in either order: a term counts where another ends (#438). Where terms overlap, the
+  atom is a term if some of them cover its digits: `MERS-COVID-19` is `covid-19`. The
+  terms were once gone through again for as long as one was taken out, which took time
+  by the square of the atom and did not end for a declared term of one space; the atom
+  is now read once from its end. The
   conventions still read the text with its signs in: `75th percentile` is a convention
   and `75^th^ percentile` is none, and under Methods `I² > 50%` is one where `I^2^ > 50%`
   leaves the 50% reported. Both allowances hold wherever the tokenizer and the classifier
@@ -16017,9 +16016,12 @@ What papers converted from Word showed (see "What papers converted from Word sho
   the interleukins HGNC names, abbreviated with a hyphen and written out with one: "IL4",
   "interleukin 4" and a chemokine such as CXCL10 are numbers to G2 and to the audit alike.
   A project declares them in `terms:`; the audit reads no `paper.yaml`, so for it they stay
-  numbers. A term counts only where it opens a word, so that "April-12" and "Brazil-3" are
-  numbers and not `il-12` and `il-3`: a name with a letter before a term, "sIL-2R" or
-  "rhIL-2", is a number too until a project declares it.
+  numbers. A term counts where it opens a word, where another term ends, or where its
+  first letter as written is a capital after a lower-case letter: "sIL-2R", "ppFEV1" and,
+  with CO2 declared, "pCO2" are terms, and "April-12", "Brazil-3" and "BRAZIL-3" numbers,
+  not `il-12` and `il-3`. A name written in lower case after a lower-case prefix,
+  "sil-2r", is a number; and any word with a capital before a term's letters is read as a
+  name, so "preCO2", with CO2 declared, is a term.
 - **An e-mail address is one whose domain ends in letters.** "name@host" with no dot, or an
   address at a bare IP number, is read as a number.
 

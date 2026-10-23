@@ -34,7 +34,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from manuscript_guard.classify import UNCLASSIFIED, Classifier
-from manuscript_guard.safexml import compound_file_said, is_compound_file
+from manuscript_guard.safexml import COMPOUND_FILE, compound_file_said, is_compound_file
 from manuscript_guard.stats.granularity import described as described_mean
 from manuscript_guard.stats.granularity import names, possible, table_means
 from manuscript_guard.stats.intervals import (
@@ -722,8 +722,26 @@ def _intervals(text: str) -> list[tuple[int, int]]:
 
 def doc_passed_over(path: Path) -> str:
     """What the report says of a .doc found in a folder given as a paper: the advice a .doc
-    named on its own is refused with, under the path it was found at."""
-    return compound_file_said(path.as_posix())
+    named on its own is refused with, under the path it was found at, where it is a compound
+    file. A file named .doc that is none, Rich Text or a web page saved under that name, is
+    not called a Word 97-2003 document."""
+    try:
+        with path.open("rb") as handle:
+            opening = handle.read(len(COMPOUND_FILE))
+    except OSError as exc:
+        return f"{path.as_posix()} could not be read ({exc}), and was not audited"
+    if is_compound_file(opening):
+        return compound_file_said(path.as_posix())
+    return (
+        f"{path.as_posix()} is named .doc but is no Word 97-2003 document, and is not read: "
+        "open it in Word and save it as a Word document (.docx)"
+    )
+
+
+def is_lock_file(path: Path) -> bool:
+    """Whether `path` is the file Word keeps beside a document while it is open, "~$" and
+    the rest of the document's name, which holds no paper."""
+    return path.name.startswith("~$")
 
 
 def audit(

@@ -22688,12 +22688,19 @@ def test_a_doc_in_a_folder_given_to_audit_is_named_and_strict_still_passes(
     folder = tmp_path / "papers"
     (folder / "old").mkdir(parents=True)
     (folder / "old" / "first.doc").write_bytes(_COMPOUND + bytes(504))
+    # Word's lock file beside an open document is no paper, and is not named.
+    (folder / "old" / "~$first.doc").write_bytes(bytes(162))
+    # A .doc that is no compound file, Rich Text saved under that name, is named as that.
+    (folder / "notes.doc").write_bytes(b"{\\rtf1\\ansi We saw 412 reports.}")
     _docx(folder / "paper.docx", _p("We saw 412 reports."))
     outputs = _outputs(tmp_path, '{"n": 412}')
     assert main(["audit", str(folder), "--against", str(outputs), "--strict"]) == 0
     out = capsys.readouterr().out
     assert "old/first.doc is a Word 97-2003 document" in out, out
     assert "save it as a Word document (.docx)" in out, out
+    assert "~$" not in out, out
+    assert "notes.doc is named .doc but is no Word 97-2003 document" in out, out
+    assert "notes.doc is a Word 97-2003" not in out, out
     assert "Could not read" not in out, out
 
     # In the report as well, apart from what could not be read.
@@ -22701,10 +22708,18 @@ def test_a_doc_in_a_folder_given_to_audit_is_named_and_strict_still_passes(
     report = audit([folder / "paper.docx"], [outputs], passed_over=[doc])
     assert report.unreadable == [] and len(report.passed_over) == 1
     assert "first.doc" in report.passed_over[0]
+    (folder / "notes.doc").unlink()
 
     # A number the outputs lack still fails --strict beside the note.
     _docx(folder / "paper.docx", _p("We saw 413 reports."))
     assert main(["audit", str(folder), "--against", str(outputs), "--strict"]) == 1
+
+    # Where every paper found is unreadable, nothing could be audited, and the .doc passed
+    # over is named with what could not be read.
+    (folder / "paper.docx").write_bytes(b"not a zip")
+    assert main(["audit", str(folder), "--against", str(outputs), "--strict"]) == 2
+    said = capsys.readouterr().err
+    assert "paper.docx" in said and "old/first.doc is a Word 97-2003 document" in said, said
 
     # A folder with nothing but a .doc has nothing to audit, and says why.
     (folder / "paper.docx").unlink()
@@ -22850,6 +22865,26 @@ def test_a_term_inside_a_word_leaves_its_number_a_number(tmp_path: Path) -> None
         kinds = {a.text: classifier.classify(a).kind for a in find_atoms(text, mask(text))}
         assert kinds == {"April-12": UNCLASSIFIED, "Brazil-3": UNCLASSIFIED,
                          "until-15": UNCLASSIFIED, "IL-4": TERM, "interleukin-6": TERM}
+
+
+def test_a_name_after_a_lower_case_prefix_or_another_name_is_a_term() -> None:
+    """Held to a word's start, a shipped term after a lower-case prefix, "sIL-2R" or
+    "ppFEV1", and two terms run together, "PaO2FiO2" when the terms came in the other order,
+    were numbers G2 failed, where main read them as terms. With CO2 declared, so were
+    "pCO2" and "EtCO2", typed or with their subscripts."""
+    from manuscript_guard.classify import TERM, UNCLASSIFIED, Classifier
+    from manuscript_guard.text.masking import mask
+    from manuscript_guard.text.tokens import find_atoms
+
+    names = ("sIL-2R", "rhIL-2", "sPD-L1", "ppFEV1", "PaO2FiO2", "CD8CD4", "pCO2", "EtCO2",
+             "pCO~2~", "EtCO~2~")  # fmt: skip
+    text = f"We read {', '.join(names)} and April-12 and BRAZIL-3.\n"
+    for classifier in (Classifier.load(extra_terms=("CO2",)),
+                       Classifier.load(rendered=True, extra_terms=("CO2",))):  # fmt: skip
+        kinds = {a.text: classifier.classify(a).kind for a in find_atoms(text, mask(text))}
+        kinds = {name.rstrip("~"): kind for name, kind in kinds.items()}
+        expected = {name.rstrip("~"): TERM for name in names}
+        assert kinds == {**expected, "April-12": UNCLASSIFIED, "BRAZIL-3": UNCLASSIFIED}
 
 
 @pytest.mark.parametrize(

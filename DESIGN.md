@@ -8790,7 +8790,8 @@ were audited, so `--strict` does not count it, and a folder holding nothing else
 nothing else that could be read, has nothing to audit and says which .doc it passed over.
 A file named .doc that is no compound file, Rich Text saved under that name, is named as
 no Word 97-2003 document; and Word's lock file beside an open document, "~$" and the rest
-of its name, is no paper and is not named.
+of its name, is no paper: a folder's "~$x.docx" was read as one, could not be read, and
+failed `--strict`. Neither it nor a "~$x.doc" is read or named.
 G6 counted the bold of a table's cells towards the rate of bold in the prose, and where a
 cell's bold ran on to its next line, paired `**` across the cells; pandoc writes a Word
 table as a simple or a multiline table where it can, which no rate passed over. The bold

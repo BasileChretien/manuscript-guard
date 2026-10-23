@@ -2072,7 +2072,8 @@ def cmd_audit(args: argparse.Namespace) -> int:
                 found += [
                     p
                     for p in sorted(path.rglob("*"))
-                    if p.is_file() and p.suffix.lower() in suffixes
+                    # Word's lock file beside an open document, "~$x.docx", is no paper.
+                    if p.is_file() and p.suffix.lower() in suffixes and not is_lock_file(p)
                 ]
             elif path.is_file():
                 found.append(path)

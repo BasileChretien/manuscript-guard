@@ -22727,6 +22727,26 @@ def test_a_doc_in_a_folder_given_to_audit_is_named_and_strict_still_passes(
     assert "first.doc" in capsys.readouterr().err
 
 
+def test_word_s_lock_file_in_a_folder_given_to_audit_is_no_paper(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Word keeps "~$paper.docx" beside paper.docx while it is open, and the audit read it
+    as a paper: it is no zip, so it could not be read, and --strict failed on a folder
+    whose one paper matched its outputs."""
+    from manuscript_guard.cli import main
+
+    folder = tmp_path / "papers"
+    folder.mkdir()
+    _docx(folder / "paper.docx", _p("We saw 412 reports."))
+    (folder / "~$paper.docx").write_bytes(b"B" + b" author" * 23)
+    assert len((folder / "~$paper.docx").read_bytes()) == 162
+    outputs = _outputs(tmp_path, '{"n": 412}')
+    assert main(["audit", str(folder), "--against", str(outputs), "--strict"]) == 0
+    out = capsys.readouterr().out
+    assert "Could not read" not in out and "~$" not in out, out
+    assert "Audited 1 file(s)" in out, out
+
+
 _PROSE_200 = " ".join(["Reports were included after review of each site and its records."] * 25)
 
 _MULTILINE = """

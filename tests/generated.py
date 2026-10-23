@@ -4431,6 +4431,137 @@ def sessions(draw: st.DrawFn) -> dict[str, Any]:
     }
 
 
+# ---------------------------------------------- a reference list under a line that is no heading
+
+#: The lines a reference list stands under where it has no heading, as a paper converted from
+#: Word has them and as the audit takes them: the word alone on its line, in bold or not.
+REFERENCE_LINES = (
+    "**References**", "**References:**", "References", "__Bibliography__", "*Literature cited*",
+)  # fmt: skip
+#: Lines that only look like one: a sentence, the word in small letters, the word with a full
+#: stop; `IN_A_PARAGRAPH`, the word alone on a line a hard wrap made inside a paragraph;
+#: `IN_A_LIST`, "3. References" in a loose list; and `IN_AN_ITEM`, the word as the second
+#: paragraph of a list item.
+NOT_REFERENCE_LINES = (
+    "**References** were read by two pharmacists.", "**references**", "**References.**",
+)  # fmt: skip
+IN_A_PARAGRAPH = "in a paragraph"
+IN_A_LIST = "in a list"
+IN_AN_ITEM = "in an item"
+#: What ends a list under a line that is no heading: a heading, a paragraph all in bold, a
+#: caption, a line shaped like a heading that pandoc prints as text, and a table.
+LIST_ENDS = ("a heading", "a bold title", "a legend", "printed as text", "a table")
+#: Whole blocks for the readings that pass a reference list over (`INPUTS`).
+REFERENCE_BLOCKS = ("\n\n**References**\n\n", "\n\n**References:**\n\n", "\n\nReferences\n\n")
+#: Spellings of the other English, and journals whose names are in capitals.
+_OTHER_ENGLISH = ("color", "tumor", "behavior", "center", "fiber")
+_JOURNALS = ("PLoS ONE", "BMC Med", "JAMA Netw Open")
+
+
+def passed_over(text: str) -> str:
+    """`text` with nothing in it to read: each character a NUL, its line breaks and spaces
+    kept, so that its lines are the same and a blank one stays blank."""
+    return re.sub(r"\S", chr(0), text)
+
+
+@st.composite
+def reference_lists(draw: st.DrawFn) -> tuple[str, str]:
+    """A manuscript with a reference list under each of `REFERENCE_LINES`, each ended by one
+    of `LIST_ENDS`, and text under each of `NOT_REFERENCE_LINES`, `IN_A_PARAGRAPH`,
+    `IN_A_LIST` and `IN_AN_ITEM`, in an order drawn; and the same manuscript with each list,
+    its line included, `passed_over`, and each lookalike's word made "Remarks": what the
+    gates that pass a list over are to read.
+
+    Every kind in every example, and in each entry, after each list's end and after each
+    lookalike a spelling of the other English, a journal's name in capitals and a run of
+    words an earlier paper has (`RECYCLED`): a rule that misses one kind of line, takes one
+    lookalike for a list, or runs a list on past one kind of end, reads otherwise than the
+    manuscript passed over in every example."""
+    filler = st.lists(st.sampled_from(FILLER), min_size=3, max_size=8)
+
+    def prose() -> str:
+        return " ".join(draw(filler)).capitalize() + "."
+
+    def cited() -> str:
+        word, journal = draw(st.sampled_from(_OTHER_ENGLISH)), draw(st.sampled_from(_JOURNALS))
+        return f"The {word} of {draw(st.sampled_from(RECYCLED))}. {journal}. 2019;14:e0213."
+
+    kinds = draw(st.permutations(
+        (*REFERENCE_LINES, *NOT_REFERENCE_LINES, IN_A_PARAGRAPH, IN_A_LIST, IN_AN_ITEM)
+    ))  # fmt: skip
+    ends = iter(draw(st.permutations(LIST_ENDS)))
+    opening = f"# Introduction\n\n{prose()}"
+    listed, passed = [opening], [opening]
+    for number, kind in enumerate(kinds, start=1):
+        if kind in REFERENCE_LINES:
+            entries = f"{kind}\n\n1. Doe HA, Roe MB. {cited()}\n\n2. Poe RM. {cited()}"
+            after = {
+                "a heading": f"\n\n# Section {number}\n\n{cited()}",
+                "a bold title": f"\n\n**Figure legends**\n\n{cited()}",
+                "a legend": f"\n\nFigure {number}. {cited()}",
+                "printed as text": f"\n# Appendix {number}\n{cited()}",
+                "a table": f"\n\n| Group | Count |\n|---|---|\n| A | {number} |\n\n{cited()}",
+            }[next(ends)]
+            listed.append(f"\n\n{entries}{after}")
+            passed.append(f"\n\n{passed_over(entries)}{after}")
+            continue
+        piece = {
+            IN_A_PARAGRAPH: f"\n\n{prose()} Listed in the\nReferences\n{cited()}",
+            IN_A_LIST: f"\n\nSources:\n\n1. Databases\n\n2. Registries\n\n3. References\n\n"
+                       f"{cited()}",
+            IN_AN_ITEM: f"\n\n- Sources searched\n\n  References\n\n{cited()}",
+        }.get(kind, f"\n\n{kind}\n\n{cited()}")  # fmt: skip
+        listed.append(piece)
+        # A word no rule takes for a list's, so that a lookalike taken for one there hides
+        # what is read here.
+        passed.append(piece.replace("References", "Remarks").replace("references", "remarks"))
+    return "".join(listed) + "\n", "".join(passed) + "\n"
+
+
+# --------------------------------------------------- e-mail addresses beside citations
+
+#: An e-mail address as a manuscript gives one: in brackets, in a mailto link as Word writes
+#: it, in a span, in text and autolinked. `{a}@{h}`: no citation, in a group or out of one.
+ADDRESSES = (
+    "[{a}@{h}]", "[*{a}@{h}*](mailto:{a}@{h})", "[Centre. {a}@{h}]{{.mark}}", "{a}@{h}",
+    "<{a}@{h}>",
+)  # fmt: skip
+#: A citation of `{k}`, and two beside an address in one group.
+CITED = (
+    "[@{k}]", "[see @{k}, p. 4]", "@{k}", "[-@{k}]", "[x-@{k}]", "[{a}@{h}; @{k}]",
+    "[@{k}; {a}@{h}]",
+)  # fmt: skip
+#: Whole blocks for the reading of citations (`INPUTS`).
+ADDRESS_BLOCKS = (
+    " [name@gmail.com] ", " [*first.last@gmail.com*](mailto:first.last@gmail.com) ",
+    " [Centre. someone@ciesar.org.gt]{.mark} ", " someone@example.org ",
+    " [someone@example.org; @smith2020] ",
+)  # fmt: skip
+
+
+@st.composite
+def addressed(draw: st.DrawFn) -> tuple[str, list[str]]:
+    """Text with an e-mail address written each way of `ADDRESSES` and a citation each way of
+    `CITED`, in an order drawn among drawn words, and the keys cited. Every way in every
+    example, so that a rule reading the host of one kind of address as a key fails under any
+    seed."""
+    local = st.sampled_from(("name", "first.last", "a-b", "x2", "team"))
+    host = st.sampled_from(("gmail.com", "ciesar.org.gt", "example.org"))
+    after = st.sampled_from((" ", ". ", ", ", "\n", "\n\n"))
+    keys, pieces = [], []
+    for number, shape in enumerate(ADDRESSES + CITED):
+        key = f"key{number}{draw(st.sampled_from(('a', 'b')))}"
+        if "{k}" in shape:
+            keys.append(key)
+        pieces.append(shape.format(a=draw(local), h=draw(host), k=key))
+    text = "".join(
+        f"{' '.join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))} "
+        f"{piece}{draw(after)}"
+        for piece in draw(st.permutations(pieces))
+    )
+    return text, keys
+
+
 # ------------------------------------------------------------------------------ inputs
 
 
@@ -4451,6 +4582,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "prose quotations": texts(QUOTED),
     "passages": passage_files().map(lambda drawn: drawn[0]),
     "plan citations": credited_plans().map(lambda drawn: drawn[0]),
+    "citations": texts((), ADDRESS_BLOCKS),
     "mask": texts(TERMS),
     "latex mask": latex_texts(),
     "latex refusals": latex_texts(),
@@ -4513,11 +4645,11 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "suggested edit": suggested_edits(),
     "suggestion written": suggestion_writes(),
     "recycled passages": st.fixed_dictionaries(
-        {"text": texts(RECYCLED), "source": earlier_papers()}
+        {"text": texts(RECYCLED, REFERENCE_BLOCKS), "source": earlier_papers()}
     ),
     "spelling": st.fixed_dictionaries(
         {
-            "text": texts(SPELT),
+            "text": texts(SPELT, REFERENCE_BLOCKS),
             "variant": st.sampled_from(("en-GB", "en-US")),
             "accepted": st.lists(st.sampled_from(("color", "Tumour", "centre")), max_size=2),
         }
@@ -4551,7 +4683,10 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         {"text": texts(QUOTED_LIMITS), "value": st.sampled_from((3500, 4, 14, 35000, 500))}
     ),
     "abbreviations": st.fixed_dictionaries(
-        {"text": texts(), "known": st.lists(st.sampled_from(("ROR", "CI", "II")), max_size=2)}
+        {
+            "text": texts((), REFERENCE_BLOCKS),
+            "known": st.lists(st.sampled_from(("ROR", "CI", "II")), max_size=2),
+        }
     ),
     "tex outside maths": lines(),
     "title": lines(),

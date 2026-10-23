@@ -137,3 +137,25 @@ expected:
       its parameter text blanked and its body read, and a use refused only where it
       prints; a `\let` of a command to one the reader reads the same way and a doubled
       parameter in a nested body are no longer refused either (real templates, part 1)
+  - reading: spelling
+    why: >-
+      a reference list under a line that is no heading, `**References**`, `**References:**`
+      or "References" alone on a line that opens a paragraph, is passed over as the list
+      under `# References` is, so the spelling of the cited titles is not read; the inputs
+      now hold such lines
+  - reading: abbreviations
+    why: >-
+      a reference list under a line that is no heading, `**References**`, `**References:**`
+      or "References" alone on a line that opens a paragraph, is passed over as the list
+      under `# References` is, so a journal's name or an author's initials there are no
+      abbreviation; the inputs now hold such lines
+  - reading: recycled passages
+    why: >-
+      a reference list under a line that is no heading, `**References**`, `**References:**`
+      or "References" alone on a line that opens a paragraph, is not compared with an
+      earlier paper, as the list under `# References` is not; the inputs now hold such lines
+  - reading: citations
+    why: >-
+      a new reading; an `@` glued to the word before it, or to full stops that are not whole
+      ellipses, is an e-mail address's, as pandoc reads it, so "[name@gmail.com]", a mailto
+      link and a span holding an address are no citation group and their hosts no keys

@@ -12849,6 +12849,22 @@ Open, recorded as each change landed:
   headings and a text file is read as Markdown. A listing pasted into Word as plain
   paragraphs is text, so a numpydoc `References` section in one starts a list. The cut is
   named under "Not audited".
+- **A reference list under a line that is no heading ends where its shape does, and only a
+  paragraph opens one.** `check` passes over a list under `**References**`,
+  `**References:**` or "References" alone on a line, as the audit does
+  (`text/reference_lists.py`): G14, the word count and the comparison with earlier papers.
+  The list ends at the next heading of any level, at a line shaped like a heading that
+  pandoc prints as text, at a paragraph all in bold, and at a caption ("Figure 1.", "Table
+  2", "Supplementary Figure S1"), a table or an image. So a `## Books` inside it ends it,
+  where a list under `# References` runs on through the headings below its own, and so does
+  a bold title over a second list, "**Additional references**": the entries after either
+  are read as prose. An entry that opens with "Table 1" ends it too. What follows the list
+  under no title of its own, an appendix of plain paragraphs, is passed over with it. The
+  line has to open a paragraph, which the audit does not ask: the word alone on a line
+  inside a paragraph is a hard wrap, and an item of a list ("3. References" after "2.
+  Registries"), an indented line, a line in a block quote and one ending in a full stop
+  ("**References.**") open none. A list carried on into the next file of the manuscript is
+  read there as prose.
 - **A header pandoc cannot read is read as prose until it is fixed.** A `---` block at the
   top that is not YAML at all, such as one opening on an HTML comment or one never closed
   before a later rule, stops G2 and the build, which name the YAML's error. Meanwhile the
@@ -15982,6 +15998,12 @@ Open, recorded as each change landed:
   blanked as a key is, so its "extraction" dates the data, and a typed date beside it is
   warned of (`test_a_braced_citation_key_is_read_as_words`). No rule in the project reads a
   braced key.
+- **A narrative key after an underscore or a backquote is not read.** Pandoc cites `@key` in
+  `x_@key` and in `` `x`@key ``; the reader takes the underscore for part of a word and the
+  backquote for code, and reads no citation in either. An `@` after a letter, a digit or
+  full stops that are not whole ellipses is an e-mail address's to both, in a group or out
+  of one (`test_the_toolkit_reads_the_citations_pandoc_reads`); a run of more than fourteen
+  dots is read as ellipses whatever its length.
 - **A display is read in English, in three orders, or in figures.** "1 March 2024", "March
   1, 2024", "March 2024", the ISO forms, three-letter months, "Sept", an ordinal day, a day
   as strftime's `%d-%b-%Y` and SAS's DATE9 write it ("31-Dec-2023", "31DEC2023"), and

@@ -1648,6 +1648,12 @@ The result is compiled and packed by the code above, and checked three times:
   prints. A file input from inside a definition is read as one nothing inputs, warned of,
   and the commands it defines with delimited parameters reach no other file, so a use of
   one is not refused (2026-10-23, the fix-only round of part 1).
+- An appendix's tables and figures are the supplement's to G2 only: G4 still counts one
+  placed with a binding toward the journal's limit on the main text's display items. An
+  appendix that numbers its own, `\renewcommand{\thetable}{S\arabic{table}}` after
+  `\setcounter{table}{0}`, is still counted on from the main text's, so a pointer typed to
+  its "Table S1" is read as one to the supplementary document's, and one to "Table A1" is
+  read as no pointer (2026-10-23).
 - A distribution's package shipped beside the entry file, as an arXiv source often ships
   `natbib.sty`, is read as the author's, and refused at the first construct the reader
   does not read, natbib's `\csname`. Taken out of `manuscript/`, it is the
@@ -2463,8 +2469,20 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
     abstract in it read (above, "Environments"). Tests: `tests/test_latex_mask.py`,
     `tests/test_corruption.py`, and `latex_planted()` with `BROKEN` rules for the front
     matter read, its abstract passed over with it, its commands unknown, and one defined
-    again refused. The third, appendix displays: a table or figure after `\appendix`, or under a heading
-    named for a supplement or an appendix, is the supplement's.
+    again refused. The third, appendix displays (Basile's choice of 2026-10-23): a table or
+    a figure the main document prints after `\appendix` or in the appendix package's
+    `appendices`, or under a heading that names a supplement, an appendix or supporting
+    information, to the next heading of its level, is the supplement's. G2 holds it neither
+    to ICMJE's order nor to being cited; LaTeX numbers it with the others, and a pointer
+    typed to it is held to that number. The pointing view marks where the appendix begins
+    (`printed.APPENDIX`), not in a comment or a definition's body, and `_in_order` in
+    `gates/pointers.py` takes the numbers to pass over. An Elsevier paper had cited its
+    "Supplementary Table" first in its Methods, a table of its own appendix, and was told it
+    was out of order. Tests: `tests/test_latex_pointers.py`, `tests/test_corruption.py`, and
+    `_planted_latex_appendix` in `tests/test_properties.py`, with `BROKEN` rules for the
+    appendix opening nothing, the package's environment opening nothing, an `\appendix` in a
+    comment or a body opening it, a supplement's heading holding nothing, its part running
+    to the end or ending at any heading, and the appendix's tables left out of the count.
 
 ## Zotero is never on the critical path
 

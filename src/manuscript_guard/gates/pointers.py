@@ -746,24 +746,28 @@ def _in_order(
     total: dict[tuple[bool, str], int],
     by_hand: set[tuple[bool, str]],
     root: Path,
+    apart: dict[tuple[bool, str], set[int]] | None = None,
 ) -> Report:
     """Each of the main text's tables and figures cited, and first cited in order: those
-    sent as files are numbered with the others, so the numbers run from 1 to all of them."""
+    sent as files are numbered with the others, so the numbers run from 1 to all of them.
+    The numbers `apart` gives are displays the main document prints as its supplement's, a
+    LaTeX one's appendix, held to neither (`pointers_latex.py`)."""
     report = Report()
     for kind in (TABLE, FIGURE):
         count = total[(False, kind)]
         if not count or (False, kind) in by_hand:
             continue
+        skipped = (apart or {}).get((False, kind), set())
+        numbers = [number for number in range(1, count + 1) if number not in skipped]
         cited = [
             p
             for p in pointers
-            if p.kind == kind and not p.supplementary and p.cites and 1 <= p.number <= count
+            if p.kind == kind and not p.supplementary and p.cites and p.number in numbers
         ]
         first: dict[int, Pointer] = {}
         for pointer in cited:
             first.setdefault(pointer.number, pointer)
-        expected = 1
-        for number, pointer in first.items():
+        for expected, (number, pointer) in zip(numbers, first.items(), strict=False):
             if number != expected:
                 report = report.with_findings(
                     Finding(
@@ -778,8 +782,7 @@ def _in_order(
                     )
                 )
                 break
-            expected += 1
-        for number in range(1, count + 1):
+        for number in numbers:
             if number not in first:
                 report = report.with_findings(
                     Finding(

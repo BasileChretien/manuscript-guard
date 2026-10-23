@@ -207,3 +207,46 @@ def test_a_pointer_in_a_captionof_s_caption_cites_nothing(twin: Path) -> None:
 def test_a_page_a_pdf_puts_in_leaves_tables_and_figures_unchecked(twin: Path) -> None:
     _replaced(twin, "\\section{Discussion}", "\\includepdf{form.pdf}\n\n\\section{Discussion}")
     assert [code for code, *_rest in _said(twin)] == ["pointers-unchecked"] * 2
+
+
+_CODES = "\\begin{table}\\caption{Codes.}\\label{tab:codes}\\end{table}\n"
+
+
+@pytest.mark.parametrize(
+    "opened",
+    ["\\appendix\n\\section{Codes}\n", "\\begin{appendices}\n\\section{Codes}\n",
+     "\\section{Supplementary materials}\n\\subsection{Codes}\n"],
+)
+def test_a_table_in_the_appendix_is_the_supplement_s(twin: Path, opened: str) -> None:
+    """An Elsevier paper cited its "Supplementary Table" in the Methods, a table its own
+    appendix holds, and was told it was out of order (2026-10-23): a table after
+    `\\appendix`, in the appendix package's `appendices` or under a heading that names a
+    supplement is the supplement's, held neither to ICMJE's order nor to being cited, and a
+    pointer typed past it is still held to what the document numbers."""
+    closed = "\\end{appendices}\n" if "appendices" in opened else ""
+    _replaced(twin, "\\bibliographystyle{plain}", opened + _CODES + _CODES.replace("codes", "more")
+              + closed + "\\bibliographystyle{plain}")  # fmt: skip
+    _replaced(twin, "\\section{Methods}\n", "\\section{Methods}\nThe codes are in Supplementary "
+              "Table~\\ref{tab:codes}.\n")  # fmt: skip
+    assert _said(twin) == []
+    _replaced(twin, "in Table~2, so", "in Table~2, Table~4 and Table~5, so")
+    assert _said(twin) == [("pointer-to-nothing", "fail", "main.tex", _line(twin, "Table~5"))]
+
+
+def test_a_supplement_s_heading_holds_its_part_and_no_further(twin: Path) -> None:
+    """The part a heading that names a supplement holds runs to the next heading of its level:
+    a table after that is the main text's again, and cited out of order where it is."""
+    _replaced(twin, "\\section{Data availability}", "\\section{Supplementary analysis}\n"
+              "\\subsection{Detail}\n" + _CODES + "\\section{Late}\n"
+              + _CODES.replace("codes", "late") + "\\section{Data availability}")  # fmt: skip
+    assert [code for code, *_rest in _said(twin)] == ["display-not-cited"]
+    _replaced(twin, "\\section{Methods}\n", "\\section{Methods}\nSee Table~\\ref{tab:late}.\n")
+    assert _said(twin) == [("cited-out-of-order", "fail", "main.tex",
+                            _line(twin, "Table~\\ref{tab:late}"))]  # fmt: skip
+
+
+def test_an_appendix_in_a_comment_or_a_definition_opens_none(twin: Path) -> None:
+    _replaced(twin, "\\section{Results}", "% \\appendix\n\\newcommand{\\appx}{\\appendix}\n"
+              "\\section{Results}")  # fmt: skip
+    _replaced(twin, "\\section{Methods}\n", "\\section{Methods}\nSee Table~\\ref{tab:counts}.\n")
+    assert [code for code, *_rest in _said(twin)] == ["cited-out-of-order"]

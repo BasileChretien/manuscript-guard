@@ -41,8 +41,11 @@ Put each table and figure in a float with a `\caption` and a `\label`: LaTeX num
 its caption, and a `\mg{table.key}` outside a float is a table it does not number. Point at
 one with `\ref` to its label, or type "Table 2": G2 holds a typed pointer to what the
 document's captions number, and the main text's tables and figures to the order ICMJE asks
-for, a `\ref` counting as a citation. A figure's legend is its caption, and G4 holds it to
-the journal's limit on a legend's words.
+for, a `\ref` counting as a citation. A table or figure in the appendix, after `\appendix`
+or in the appendix package's `appendices`, or under a heading that names a supplement, an
+appendix or supporting information, is the supplement's: it is held neither to that order
+nor to being cited, and a pointer typed to it is still held to its number. A figure's legend
+is its caption, and G4 holds it to the journal's limit on a legend's words.
 
 `manuscript-guard values` writes `mgvalues.sty` from the results. The entry file loads it
 with `\usepackage{mgvalues}`, so the `.tex` compiles in any editor with the numbers in.

@@ -122,6 +122,10 @@ _QUOTATION = re.compile(r"\\(begin|end)\s*\{(?:quote|quotation|displayquote)\}")
 #: `F` where the view cannot say what LaTeX numbers: a float with no `\\caption` it reads, a
 #: `\\captionof`, a `longtable`'s caption, a page `\\includepdf` takes in.
 DISPLAY, REFERENCE, MARK_END = chr(0xE003), chr(0xE004), chr(0xE005)
+#: What that view writes where the appendix begins, at `\\appendix` or the appendix package's
+#: `appendices`, to `MARK_END`: the displays after it are the supplement's (2026-10-23).
+APPENDIX = chr(0xE006)
+_APPENDIX = re.compile(r"\\appendix(?![A-Za-z@])|\\begin\s*\{appendices\}")
 #: A label, which a caption before it in its float gives the number of.
 _LABEL = re.compile(r"\\label\s*\{([^{}]*)\}")
 #: What numbers a display the view cannot count, by the kinds it may number.
@@ -380,6 +384,11 @@ def _pointing_events(source: Source) -> list[tuple[int, int, str]]:
             continue
         labels = ",".join(label.strip() for label in typed[opened + 1 : -1].split(","))
         events.append((start, end, REFERENCE + command[1] + ":" + labels + MARK_END))
+    # Not in a definition's body, which opens the appendix where it is used.
+    for found in _APPENDIX.finditer(text, max(reading.body_start, 0)):
+        if read(found.start()) and not any(low <= found.start() < high
+                                           for low, high in reading.bodies):  # fmt: skip
+            events.append((found.start(), found.end(), APPENDIX + MARK_END))
     return events
 
 

@@ -19,6 +19,13 @@ reads, a `\\captionof`, a `longtable`'s caption or a page `\\includepdf` takes i
 kind uncounted, and one note says so, as `pointers.py` does of a table placed by hand. A
 `\\mg{table.key}` outside a float is a table LaTeX does not number. A table or a figure sent
 to the journal as a file of its own is declared in paper.yaml (`displays:`), as for Markdown.
+
+**The appendix is the supplement's.** A table or a figure the main document prints after
+`\\appendix` or the appendix package's `appendices`, or under a heading that names a
+supplement, an appendix or supporting information, to the next heading of its level, is not
+held to ICMJE's order or to being cited, as a supplement's is not; LaTeX numbers it with
+the others, and a pointer typed to it is held to that number (Basile, 2026-10-23, after an
+Elsevier paper cited its "Supplementary Table" first and was told it was out of order).
 """
 
 from __future__ import annotations
@@ -40,6 +47,13 @@ from manuscript_guard.gates.pointers import (
 from manuscript_guard.text.blocks import find_headings
 
 GATE = "G2"
+#: A heading the main document's supplement stands under: "Supplementary materials",
+#: "Supplemental tables", "Appendix A", "Appendices", "Supporting information", "S1 Appendix".
+_SUPPLEMENT_HEADING = re.compile(
+    r"\s*(?:[A-Z]?\d+(?:\.\d+)*[.):]?\s+)?(?:supplement(?:ary|al)?|e?appendi(?:x|ces)"
+    r"|supporting\s+information|S\d+\s+appendix)\b",
+    re.IGNORECASE,
+)
 #: The cross-references that cite what they point at: not a page's, which `\\pageref` prints.
 _PAGES = frozenset({"pageref", "cpageref"})
 
@@ -77,12 +91,12 @@ def pointers_in_documents(documents: dict, folder: Path, as_files: dict) -> Repo
     from manuscript_guard.text.latex.structure import ENTRY
 
     views = {part: printed(sources, pointing=True) for part, sources in documents.items()}
-    bound, labels, uncounted = _numbered(views)
+    bound, labels, uncounted, apart = _numbered(views)
     pointers, typed = _cited(views, labels, folder)
     total = {key: bound[key] + as_files[key] for key in AS_FILES}
     report = _to_nothing(typed, total, bound, as_files, uncounted)
     report = report.merge(_unchecked(pointers, total, uncounted, folder / ENTRY))
-    report = report.merge(_in_order(pointers, total, uncounted, folder / ENTRY))
+    report = report.merge(_in_order(pointers, total, uncounted, folder / ENTRY, apart))
     return report.with_counts(
         pointers=len(pointers),
         pointers_checked=sum(
@@ -95,22 +109,42 @@ def pointers_in_documents(documents: dict, folder: Path, as_files: dict) -> Repo
 
 
 def _marks():
-    """A display's or a cross-reference's mark in the view: its kind, and what it holds."""
-    from manuscript_guard.text.latex.printed import DISPLAY, MARK_END, REFERENCE
+    """A display's, a cross-reference's or the appendix's mark in the view: its kind, and what
+    it holds."""
+    from manuscript_guard.text.latex.printed import APPENDIX, DISPLAY, MARK_END, REFERENCE
 
-    return re.compile(f"([{DISPLAY}{REFERENCE}])([^{MARK_END}]*){MARK_END}")
+    return re.compile(f"([{DISPLAY}{REFERENCE}{APPENDIX}])([^{MARK_END}]*){MARK_END}")
+
+
+def _supplement_parts(text: str) -> list[tuple[int, int]]:
+    """Where each heading that names a supplement runs in the view, to the next heading of
+    its level or above."""
+    headings = find_headings(text)
+    parts = []
+    for index, heading in enumerate(headings):
+        if _SUPPLEMENT_HEADING.match(heading.title):
+            end = next((later.start for later in headings[index + 1 :]
+                        if later.level <= heading.level), len(text))  # fmt: skip
+            parts.append((heading.start, end))
+    return parts
 
 
 def _numbered(views: dict):
-    """How many tables and figures each document numbers, the display each label names, and
-    the kinds a document numbers in a way the view cannot count."""
-    from manuscript_guard.text.latex.printed import DISPLAY
+    """How many tables and figures each document numbers, the display each label names, the
+    kinds a document numbers in a way the view cannot count, and the numbers of the main
+    document's displays that are its supplement's, in its appendix or under a heading that
+    names one."""
+    from manuscript_guard.text.latex.printed import APPENDIX, DISPLAY
 
     labels: dict[tuple[bool, str], _Numbered] = {}
     bound: dict[tuple[bool, str], int] = {key: 0 for key in AS_FILES}
     uncounted: set[tuple[bool, str]] = set()
+    apart: dict[tuple[bool, str], set[int]] = {key: set() for key in AS_FILES}
     for supplementary, view in views.items():
+        parts = _supplement_parts(view.text)
+        appendix = False
         for found in _marks().finditer(view.text):
+            appendix = appendix or found[1] == APPENDIX
             if found[1] != DISPLAY:
                 continue
             code, named = found[2][:1], found[2][1:]
@@ -120,9 +154,11 @@ def _numbered(views: dict):
                 continue
             bound[supplementary, kind] += 1
             display = _Numbered(kind, supplementary, bound[supplementary, kind])
+            if appendix or any(low <= found.start() < high for low, high in parts):
+                apart[supplementary, kind].add(display.number)
             for label in filter(None, named.split(",")):
                 labels.setdefault((supplementary, label), display)
-    return bound, labels, uncounted
+    return bound, labels, uncounted, apart
 
 
 def _cited(views: dict, labels: dict, folder: Path) -> tuple[list[Pointer], list[Pointer]]:

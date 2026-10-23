@@ -1133,9 +1133,11 @@ class _Reader:
 
     def _defines(self, name: str, at: int) -> None:
         self.defining = name
-        if name in FRONT_MATTER_COMMANDS and name not in self.own:
+        if name in FRONT_MATTER_COMMANDS:
+            # Told of it by the tree or not, the file that defines it says so (round 2).
             self.own.add(name)
-            self.defined_own.append(name)
+            if name not in self.defined_own:
+                self.defined_own.append(name)
         if name in _REDEFINABLE:
             return
         if name in COMMANDS or name in ("begin", "end", "verb", "def"):
@@ -1198,17 +1200,18 @@ class _Reader:
 
     def _entered(self, name: str, role: str) -> str:
         """How an environment opened where `role` is read is read: a class's front matter is
-        passed over, and an abstract or highlights in it, inside environments only, are read
-        as what holds the front matter is."""
+        passed over, and an abstract or highlights in it, inside environments and groups only,
+        `{\\small ...}` say, are read as what holds the front matter is; not in an argument,
+        which is blanked whatever holds it (round 2)."""
         if name in FRONT_MATTER:
             return BLANK
         if name not in READ_IN_FRONT_MATTER:
             return role
         for index in range(len(self.stack) - 1, -1, -1):
             frame = self.stack[index]
-            if frame.kind != "env":
+            if frame.kind not in ("env", "group"):
                 return role
-            if frame.closer in FRONT_MATTER:
+            if frame.kind == "env" and frame.closer in FRONT_MATTER:
                 return self.stack[index - 1].role if index else PROSE if self.body else PREAMBLE
         return role
 

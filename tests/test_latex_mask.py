@@ -204,6 +204,10 @@ def test_a_classs_front_matter_is_passed_over_and_its_abstract_read() -> None:
     assert [heading.title for heading in reading.headings] == ["Abstract", "Intro"]
     assert "Of 12" not in read("\\author{\\begin{abstract}Of 12\\end{abstract}}",
                                body=True).masked  # fmt: skip
+    # Round 2: in a group inside the front matter, `{\small ...}`, it is read all the same.
+    grouped = ("\\begin{frontmatter}{\\small\\begin{abstract}Of 4100.\\end{abstract}}"
+               "\\end{frontmatter}")  # fmt: skip
+    assert "Of 4100." in read(grouped, body=True).masked
 
 
 def test_a_file_input_inside_the_front_matter_is_read_as_it_is() -> None:
@@ -225,9 +229,11 @@ def test_a_front_matter_command_the_author_defines_in_another_file_is_the_author
                          "\\input{a}\n\\Volume{46}\n\\end{document}\n",
              "a.tex": "As in \\journal{Lancet 2019}.\n"}  # fmt: skip
     document = read_tree(files, packages={"macros.sty": "\\newcommand{\\journal}[1]{#1}\n"})
-    (main, _macros, inputs) = document.sources
+    (main, macros, inputs) = document.sources
     assert "Lancet 2019" in inputs.reading.masked and "46" not in main.reading.masked
     assert document.refusals == ()
+    # Round 2: the file that defines it says so, on the tree's second reading too.
+    assert macros.reading.own == ("journal",)
 
 
 def test_an_input_encoding_other_than_utf8_is_refused() -> None:

@@ -1743,6 +1743,10 @@ The result is compiled and packed by the code above, and checked three times:
 - A float counts as a display item only where it places a `\mg{figure.key}` or
   `\mg{table.key}`; a figure placed with `\includegraphics` alone counts as none. Markdown
   has the same gap for `![](...)`, met far less often (round 1 of step 6).
+- A class's front matter command an author provides for portability, `\providecommand` or
+  `\@ifundefined`, is the author's though the class keeps its own, and its argument is read
+  as prose, as before the table held it. Highlights, read in the front matter, count as main
+  text to G4 and are a first use to G14, as before (2026-10-23, round 2 of part 2).
 - A title written in the body outside a class's front matter, as Wiley's and Springer's
   templates write it, is read as the text's, as one in the preamble is: G4 counts it as
   main text, and an abbreviation in it is used before its definition to G14. A class's

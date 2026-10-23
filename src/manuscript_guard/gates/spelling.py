@@ -1,11 +1,11 @@
 """G14, its third reading — one English.
 
-A paper is in British or in American spelling, and `paper.yaml` says which. A manuscript
-written by several hands, or revised from a draft in the other spelling, ends up with
-"colour" on one page and "color" on the next, and a copy-editor finds each one by eye. This
-reading finds them by list: the words one usage writes and the other does not, from VarCon
-(Kevin Atkinson and Benjamin Titze), cut down to what a check needs by
-`tools/derive_spelling_variants.py`.
+A paper is in British or in American spelling, and `paper.yaml` says which, or where it
+says none, most of the paper's words do. A manuscript written by several hands, or revised
+from a draft in the other spelling, ends up with "colour" on one page and "color" on the
+next, and a copy-editor finds each one by eye. This reading finds them by list: the words
+one usage writes and the other does not, from VarCon (Kevin Atkinson and Benjamin Titze),
+cut down to what a check needs by `tools/derive_spelling_variants.py`.
 
 **A paper that declares no English is held to the one most of its words are in** (Basile,
 2026-10-23). Of fourteen American papers checked under the `en-GB` that `init` used to

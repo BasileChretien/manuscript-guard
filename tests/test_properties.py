@@ -4727,9 +4727,13 @@ def test_a_word_in_the_other_english_is_found_where_it_stands_and_a_name_is_not(
     assert report.counts["spelling_other"] == sum(len(places) for places in stands.values())
 
 
-#: The three papers each example of the property below holds: mostly British, mostly
-#: American, and as many of each.
-_LEANINGS = ("en-GB", "en-US", "level")
+#: The papers each example of the property below holds: mostly British, mostly American,
+#: as many of each, British by its -ise words alone, and British with as many -ize words
+#: both Englishes write as it has British ones, which count for neither.
+_LEANINGS = ("en-GB", "en-US", "level", "-ise", "-ize")
+#: The -ise spellings British usage writes, and the -ize ones both usages write.
+WITH_ISE = ("randomised", "organised", "summarised", "categorised")
+WITH_IZE = ("randomized", "organized", "summarized", "categorized")
 
 
 @st.composite
@@ -4746,22 +4750,28 @@ def _undeclared_papers(draw: st.DrawFn) -> list[tuple[str, str, dict[str, int], 
             stray = "en-US" if held == "en-GB" else "en-GB"
             planted = [held, *draw(st.permutations([held] * (more - 1) + [stray] * more))]
         else:
-            held = leaning
+            held = "en-GB" if leaning.startswith("-") else leaning
             stray = "en-US" if held == "en-GB" else "en-GB"
             fewer = draw(st.integers(1, more - 1))
-            planted = list(draw(st.permutations([held] * more + [stray] * fewer)))
+            both = ["both"] * more * (leaning == "-ize")
+            planted = list(draw(st.permutations([held] * more + [stray] * fewer + both)))
+        pools = {
+            "en-GB": WITH_ISE if leaning == "-ise" else BRITISH,
+            "en-US": AMERICAN,
+            "both": WITH_IZE,
+        }
         sentences: list[str] = []
         stands: dict[str, int] = {}
         for english in planted:
-            word = draw(st.sampled_from(BRITISH if english == "en-GB" else AMERICAN))
+            word = draw(st.sampled_from(pools[english]))
             before = _words(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
             after = _words(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
             sentence = f"{before.capitalize()} {word} {after}."
-            if english != held:
+            if english == stray:
                 stands.setdefault(word, len(sentences))
             sentences.append(sentence)
-        own = planted.count(held)
-        papers.append(("\n".join(sentences) + "\n", held, stands, own, len(planted) - own))
+        own, other = planted.count(held), planted.count(stray)
+        papers.append(("\n".join(sentences) + "\n", held, stands, own, other))
     return papers
 
 
@@ -8454,6 +8464,26 @@ def _level_englishes_are_british(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(spelling_gate, "_majority", broken)
 
 
+def _ise_counts_for_neither(patch: pytest.MonkeyPatch) -> None:
+    """An -ise spelling taken for one both Englishes write."""
+    majority = spelling_gate._majority
+
+    def broken(spelt: list) -> tuple[str, bool] | None:
+        return majority([(*each[:-1], "" if each[-1] == "ise" else each[-1]) for each in spelt])
+
+    patch.setattr(spelling_gate, "_majority", broken)
+
+
+def _ize_counts_as_american(patch: pytest.MonkeyPatch) -> None:
+    """An -ize spelling both Englishes write taken for American."""
+    majority = spelling_gate._majority
+    patch.setattr(
+        spelling_gate,
+        "_majority",
+        lambda spelt: majority([(*each[:-1], each[-1] or "us") for each in spelt]),
+    )
+
+
 def _a_list_of_pointers_is_its_first(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import pointers
 
@@ -11729,6 +11759,14 @@ BROKEN = {
     ),
     "two Englishes level are taken for British": (
         _level_englishes_are_british,
+        test_a_paper_that_declares_no_english_is_held_to_the_one_most_of_its_words_are_in,
+    ),
+    "an -ise spelling counts for neither English": (
+        _ise_counts_for_neither,
+        test_a_paper_that_declares_no_english_is_held_to_the_one_most_of_its_words_are_in,
+    ),
+    "an -ize both write counts as American": (
+        _ize_counts_as_american,
         test_a_paper_that_declares_no_english_is_held_to_the_one_most_of_its_words_are_in,
     ),
     "a list of tables is read as its first": (

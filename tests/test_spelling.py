@@ -360,6 +360,27 @@ def test_declaring_none_a_mostly_american_paper_hears_of_its_ise(project: Path) 
     assert [f.code for f in found] == ["spelling-variant"]
 
 
+def test_declaring_none_an_ise_counts_for_british(project: Path) -> None:
+    """Two -ise words to one American: the paper is British, and its American word is the
+    one told of."""
+    _, found = written(
+        project, "# Methods\n\nWe randomised and summarised the data. The color was noted.\n", None
+    )
+    assert reported(found) == ["color"]
+
+
+def test_declaring_none_an_ize_both_write_counts_for_neither(project: Path) -> None:
+    """One British word to one American, and -ize words both Englishes write: level, so the
+    first word's English is the paper's, whatever the -ize words would add to American."""
+    _, found = written(
+        project,
+        "# Methods\n\nThe colour was noted. We randomized, organized and summarized the "
+        "color.\n",
+        None,
+    )
+    assert reported(found) == ["color"]
+
+
 def test_declaring_none_a_paper_with_no_word_of_either_hears_nothing(project: Path) -> None:
     """An -ize both write is no evidence, and with no word of either English there is no
     English to hold the paper to."""

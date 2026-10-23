@@ -179,6 +179,12 @@ COMMANDS = _specs(
         "unit": "[o]{b}",
         # Citations: the notes are read, the keys are not (`CITATIONS`).
         **dict.fromkeys((name for name in _CITATION_NAMES if name != "nocite"), _CITE),
+        # pandoc's, under citeproc, measured against pandoc 3.9: `\\citeproc{ref-key}{Smith
+        # 2020, 3}` is a citation as citeproc printed it, its key the typed list's and not
+        # the library's, and `\\citeproctext` the empty label of each `\\bibitem`. pandoc's
+        # template defines both (`CITEPROC`).
+        "citeproc": "{b}{b}",
+        "citeproctext": "",
         # The multi-citation forms: a global prenote and postnote in parentheses, blanked,
         # then groups of notes and keys, as many as follow.
         **dict.fromkeys(_MULTI_CITATION_NAMES, "(b)(b)" + "[p][p]{b}" * 16),
@@ -302,13 +308,35 @@ SIUNITX = frozenset(
      "qtylist", "SIlist", "qtyproduct", "complexqty", "qtyrange", "SIrange", "unit", "si"}
 )  # fmt: skip
 
+#: The packages that give each of the commands above that LaTeX itself does not: one of
+#: them is the reader's only where a package that gives it is loaded, and an author's
+#: definition of it elsewhere makes it the author's command, read as an unknown one is
+#: (2026-10-23: an article's own `\\unit`, with no siunitx, was refused as defined again).
+PACKAGE_COMMANDS = {
+    **dict.fromkeys(SIUNITX, ("siunitx",)),
+    "unit": ("siunitx", "units"),
+    "qty": ("siunitx", "physics"),
+}  # fmt: skip
+#: The definers that define nothing where the command is defined already.
+PROVIDERS = frozenset({"providecommand", "ProvideDocumentCommand"})
+#: pandoc's commands under citeproc, which its template defines.
+CITEPROC = frozenset({"citeproc", "citeproctext"})
+#: The commands that change how characters are read or what a name means, accepted in a
+#: reference list typed in `thebibliography`, whose header BibTeX's styles write with them:
+#: `\\expandafter\\ifx\\csname urlstyle\\endcsname` (natbib's), REVTeX's `\\makeatletter`. The
+#: others of `REFUSED`'s first row only in a definition's body there, where they print
+#: nothing (2026-10-23).
+REFERENCE_MACHINERY = frozenset({"expandafter", "csname"})
+
 #: Why a command is refused, by the command. Past a refusal the rest of the file is read as
 #: prose, so that nothing the reader did not understand is hidden.
 _CATEGORY = "it changes how characters are read"
+#: The commands refused as `_CATEGORY` says.
+CATEGORY = frozenset({"catcode", "csname", "expandafter", "uccode", "lccode", "mathcode",
+                      "scantokens"})  # fmt: skip
 _FILE = "it prints a file no gate reads; bind a table with \\mg{table.key} instead"
 REFUSED = {
-    **dict.fromkeys(("catcode", "csname", "expandafter", "uccode", "lccode", "mathcode",
-                     "scantokens"), _CATEGORY),
+    **dict.fromkeys(sorted(CATEGORY), _CATEGORY),
     **dict.fromkeys(("lstinputlisting", "verbatiminput", "VerbatimInput", "csvautotabular",
                      "csvautobooktabular", "csvreader", "pgfplotstabletypeset", "DTLloaddb",
                      "DTLdisplaydb", "DTLdisplaylongdb", "includepdf"), _FILE),

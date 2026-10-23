@@ -22,7 +22,9 @@ from dataclasses import dataclass
 
 from manuscript_guard.text.latex.commands import (
     AMSMATH,
+    CATEGORY,
     CITATIONS,
+    CITEPROC,
     COMMANDS,
     ENVIRONMENTS,
     FIGURES,
@@ -32,10 +34,13 @@ from manuscript_guard.text.latex.commands import (
     IMPORTS,
     LISTINGS,
     MATHS,
+    PACKAGE_COMMANDS,
     PARAMETERS,
     POINTERS,
+    PROVIDERS,
     RAW,
     READ_IN_FRONT_MATTER,
+    REFERENCE_MACHINERY,
     REFUSED,
     REFUSED_ENVIRONMENTS,
     SIUNITX,
@@ -218,6 +223,13 @@ class Reading:
     delimited: tuple[str, ...] = ()
     #: Each command of a class's front matter the file defines, which is then the author's.
     own: tuple[str, ...] = ()
+    #: Each command the file defines with a parameter text and no parameter,
+    #: `\\def\\eg/{e.g.}`, with that text: a use prints the body, and the text after it is
+    #: passed over.
+    literal: tuple[tuple[str, str], ...] = ()
+    #: Where the file sets an input encoding other than UTF-8, accepted since it is ASCII: the
+    #: tree refuses it where another of its files is not (`structure.py`).
+    encodings: tuple[int, ...] = ()
 
 
 #: The level of each sectioning command, as Markdown's `#` counts it; a part stands over a
@@ -228,8 +240,9 @@ LEVELS = {"part": -1, "chapter": 0, "section": 1, "subsection": 2, "subsubsectio
 _BRACED_PATH = re.compile(r"[ \t]*(?:\r?\n[ \t]*)?\{([^{}\n]*)\}")
 #: Commands the reader knows that an author may define again, which it then reads as before:
 #: `\abstract` was an unknown command, its arguments read, until it was given a heading; a
-#: class's front matter, `\keywords` among it, is passed over however it is defined.
-_REDEFINABLE = frozenset({"abstract"}) | FRONT_MATTER_COMMANDS
+#: class's front matter, `\keywords` among it, is passed over however it is defined; and
+#: pandoc's citeproc commands, which its template defines.
+_REDEFINABLE = frozenset({"abstract"}) | FRONT_MATTER_COMMANDS | CITEPROC
 _PACKAGES = re.compile(r"\s*(?:\[([^\]]{0,300})\])?\s*\{([^{}]{0,300})\}")
 _NAMESPACE = "(?:" + "|".join(NAMESPACES) + r")\."
 #: What TeX passes over before an argument: spaces, and one line break (round 1 of #400).
@@ -249,6 +262,21 @@ _LISTING_OPTIONS = re.compile(r"[ \t]*\[([^\]\n]*)\]")
 _LANGUAGE = re.compile(r"language\s*=\s*\{?\s*(?:\[[^\]]*\])?\s*([A-Za-z][A-Za-z0-9+#]*)")
 _BOUND_IN_SIUNITX = ("a binding in a siunitx command is not read: siunitx parses its number, "
                      "and a value prints as text; write \\mg{...} outside it")  # fmt: skip
+
+
+#: English words that end as a citation's name does, which an author may name a command.
+_CITE_WORDS = frozenset({"excite", "incite", "recite", "overexcite", "anthracite",
+                         "plebiscite"})  # fmt: skip
+
+
+def _cites(name: str) -> bool:
+    """Whether a command's name is a citation's: it begins with `cite`, as apacite's `\\citeA`
+    does, or ends with `cite` or `cites`, as `\\shortcite` and an author's `\\mycite` do, and
+    is no English word, `\\excite`. Not `cite` inside a word, as IEEE's
+    `\\IEEEcompsocitemizethanks` holds it (2026-10-23: it was refused)."""
+    low = name.lower()
+    citing = low.startswith("cite") or low.endswith(("cite", "cites"))
+    return citing and low.removesuffix("s") not in _CITE_WORDS
 
 
 def _near_binding(name: str) -> bool:
@@ -282,6 +310,8 @@ class _Frame:
     inherited: bool = False
     #: An argument of a siunitx command.
     siunitx: bool = False
+    #: What a letter was where a reference list opened, which its `\\end` puts back.
+    letters: re.Pattern[str] | None = None
 
 
 def mask(text: str, *, body: bool | None = None) -> str:
@@ -299,6 +329,8 @@ def read(
     package: bool = False,
     delimited: frozenset[str] = frozenset(),
     own: frozenset[str] = frozenset(),
+    literal: tuple[tuple[str, str], ...] = (),
+    loaded: frozenset[str] = frozenset(),
 ) -> Reading:
     """The masked text, the first refusal, and what the file inputs, heads and loads. With
     `body` None, a file with a `\\begin{document}` outside a comment opens in the preamble,
@@ -307,12 +339,15 @@ def read(
     listing say, is read again as body; one refused in its preamble keeps that refusal (round
     2). A file input from another opens inside the `environments` its `\\input` stood in. A
     `loose` file, which nothing inputs, is body that accepts what a preamble accepts. A
-    `package` of the author's is read as LaTeX reads a package, with `@` a letter."""
+    `package` of the author's is read as LaTeX reads a package, with `@` a letter. The tree
+    tells each file of what the others define, `delimited`, `own` and `literal`, and of the
+    packages they load, `loaded`."""
     opens_in_body = not _has_document(text) if body is None else body
-    reader = _Reader(text, opens_in_body, environments, loose, package, delimited, own)
+    told = (delimited, own, literal, loaded)
+    reader = _Reader(text, opens_in_body, environments, loose, package, *told)
     reading = reader.run()
     if body is None and not reader.body and reader.refused is None:
-        return _Reader(text, True, environments, loose, package, delimited, own).run()
+        return _Reader(text, True, environments, loose, package, *told).run()
     return reading
 
 
@@ -366,6 +401,62 @@ def _comment_end(text: str, at: int) -> int:
     return len(text) if end < 0 else end
 
 
+def _parameter_tokens(text: str, start: int, end: int, word: bool) -> str:
+    """A definition's parameter text, from past its command to its body's brace, as TeX
+    reads it: past the spaces after a control word, and without its comments, each with its
+    line's break and the next line's spaces (`_Reader._parameter_text`)."""
+    if word:
+        start = min(_SKIPPED.match(text, start).end(), end)
+    return _IN_PARAMETERS.sub("", text[start:end])
+
+
+#: A comment in a parameter text, with its line's break and the next line's spaces.
+_IN_PARAMETERS = re.compile(r"(?<!\\)%[^\n]*(?:\n[ \t]*)?")
+
+
+def _delimiter(written: str, letters: re.Pattern[str]) -> re.Pattern[str]:
+    """What a use of a command defined with the parameter text `written` and no parameter is
+    followed by, as TeX matches it token by token: a control word not run on by a letter and
+    the spaces after it skipped, a run of spaces as one space, and a line break, not a blank
+    line, as a space too."""
+    pattern = []
+    for token in re.finditer(rf"\\{letters.pattern}|\\.|\s+|.", written, re.DOTALL):
+        found = token.group(0)
+        if found.isspace():
+            pattern.append(r"(?:[ \t]+(?:\r?\n[ \t]*)?|\r?\n[ \t]*)")
+        elif found.startswith("\\") and letters.fullmatch(found[1:]):
+            pattern.append(re.escape(found) + f"(?!{letters.pattern[:-1]})" + _SKIPPED.pattern)
+        else:
+            pattern.append(re.escape(found))
+    return re.compile("".join(pattern))
+
+
+#: A comment, to its line's end, among what TeX passes over before an argument.
+_COMMENT = re.compile(r"%[^\n]*")
+
+
+def _before_argument(text: str, at: int) -> int:
+    """Where TeX looks for the next argument from `at`: past spaces and one line break, and
+    past a comment, whose line's break goes with it, and the next line's spaces; not past a
+    blank line, which is a paragraph's end (2026-10-23: pandoc's
+    `\\newenvironment{CSLReferences}[2] % #1 hanging-indent`, its body on the next line, was
+    read as a group, and the brace after it closed nothing)."""
+    line_start = False
+    while at < len(text):
+        character = text[at]
+        if character == "\n":
+            if line_start:
+                return at
+            line_start = True
+        elif character == "%":
+            at = _comment_end(text, at)
+            line_start = True
+        elif character not in " \t\r":
+            return at
+        at += 1
+    return min(at, len(text))
+
+
 def _maths_keeps(character: str) -> bool:
     """Whether maths keeps a character of its text: all of it, as Markdown's `mask` keeps
     `$...$`; its commands, braces and delimiters are blanked apart."""
@@ -387,6 +478,8 @@ class _Reader:
         package: bool = False,
         delimited: frozenset[str] = frozenset(),
         own: frozenset[str] = frozenset(),
+        literal: tuple[tuple[str, str], ...] = (),
+        loaded: frozenset[str] = frozenset(),
     ) -> None:
         self.text = text
         self.n = len(text)
@@ -437,6 +530,13 @@ class _Reader:
         #: read as unknown commands are; and those defined here (round 1, part 2).
         self.own = set(own)
         self.defined_own: list[str] = []
+        #: The commands defined with a parameter text and no parameter, here and in the files
+        #: `literal` names, with what their uses are followed by; and those defined here.
+        self.literal = {name: _delimiter(written, self.letters) for name, written in literal}
+        self.defined_literal: list[tuple[str, str]] = []
+        #: The packages the other files of the tree load.
+        self.loaded = loaded
+        self.encodings: list[int] = []
         self.heading_at = -1
         for name in environments:
             role = MATHS_READ if name in MATHS else self._entered(name, self._role())
@@ -473,7 +573,8 @@ class _Reader:
                  tuple(sorted(references)), self.body_end, tuple(self.bodies),
                  tuple(self.pointers), tuple(self.comments), tuple(self.unprinted),
                  tuple(self.graphics), tuple(self.defined_delimited),
-                 tuple(self.defined_own))  # fmt: skip
+                 tuple(self.defined_own), tuple(self.defined_literal),
+                 tuple(self.encodings))  # fmt: skip
         if self.refused is None:
             return Reading(masked, (), *found)
         at = self.refused.offset
@@ -526,7 +627,18 @@ class _Reader:
         amsmath = self.command == "\\" and bool(self.environments) and (
             self.environments[-1] in AMSMATH
         )
-        at = self.pos if amsmath else self._after_space(self.pos)
+        start = self.pos
+        at = self.pos if amsmath else _before_argument(self.text, self.pos)
+        taken = self._take(at)
+        if taken:
+            # A comment passed over on the way is one, blanked and recorded where it stands.
+            for comment in _COMMENT.finditer(self.text, start, at):
+                self._blank(comment.start(), comment.end())
+                self.comments.append(comment.span())
+        return taken
+
+    def _take(self, at: int) -> bool:
+        """`_argument` at `at`, where TeX finds the next argument."""
         here = self.text[at : at + 1]
         while self.pending:
             spec = self.pending[0]
@@ -831,16 +943,20 @@ class _Reader:
 
     def _word(self, name: str, at: int, end: int) -> None:
         if name in REFUSED:
-            self._refuse("tex-refused", at, f"\\{name} is not read: {REFUSED[name]}")
+            if not self._machinery(name):
+                self._refuse("tex-refused", at, f"\\{name} is not read: {REFUSED[name]}")
         elif name in ("makeatletter", "makeatother"):
-            if name == "makeatletter" and self.body and not self.loose:
+            listed = REFERENCES in self.environments
+            if name == "makeatletter" and self.body and not self.loose and not listed:
                 self._refuse("tex-refused", at, "\\makeatletter in the body changes how "
                              "characters are read")  # fmt: skip
             self.letters = _LETTERS_AT if name == "makeatletter" else _LETTERS
         elif name == "iffalse":
             self._skip_false(at)
         elif name.startswith("if") and name not in COMMANDS and name not in NOT_CONDITIONALS:
-            if self.body and not self.loose:
+            # A reference list's header tests what is loaded, and both branches are read, as
+            # in the preamble (2026-10-23: natbib's `\\ifx\\csname urlstyle\\endcsname`).
+            if self.body and not self.loose and REFERENCES not in self.environments:
                 said = "a conditional in the body prints one branch, and which is not read"
                 self._refuse("tex-refused", at, f"\\{name} is not read: {said}")
         elif name in ("input", "include") and not self.definitions:
@@ -884,6 +1000,8 @@ class _Reader:
             said = ("it is defined with delimited parameters, and what it prints is not read; "
                     "define it with \\newcommand")
             self._refuse("tex-refused", at, f"\\{name} is not read: {said}")
+        elif name in self.literal:
+            self._past_delimiter(name, at, end)
         elif self._unknown_citation(name):
             # A citation command the reader does not know would hide its keys from G7 (DESIGN.md,
             # "Citations"); one an author defines is refused where it is used.
@@ -893,6 +1011,35 @@ class _Reader:
         elif _near_binding(name) and _LOOKS_BOUND.match(self.text, end):
             self.suspects.append((at, self._suspect_end(at)))
 
+    def _machinery(self, name: str) -> bool:
+        """Whether a command refused elsewhere is accepted here: in a reference list typed in
+        `thebibliography`, whose header BibTeX's styles write with `\\expandafter` and
+        `\\csname`, and with `\\catcode` in a definition's body, which prints nothing where it
+        stands (2026-10-23: natbib's and REVTeX's lists were refused at their header)."""
+        if REFERENCES not in self.environments:
+            return False
+        return name in REFERENCE_MACHINERY or (name in CATEGORY and self.definitions > 0)
+
+    def _past_delimiter(self, name: str, at: int, end: int) -> None:
+        """Pass over what follows a use of a command defined with a parameter text and no
+        parameter, `\\eg/`: TeX takes it with the command, and the body prints in its place.
+        Where it does not follow, TeX stops at the use, which is refused where it prints, as
+        a use of delimited parameters is (`\\def\\bSig\\mathbf{\\Sigma}`, then `$\\bSig$`)."""
+        written = self.literal[name].match(self.text, _SKIPPED.match(self.text, end).end())
+        if written is not None:
+            self._blank(end, written.end())
+            self.pos = written.end()
+        elif self._prints():
+            said = ("what its definition says follows it does not, and TeX stops there; "
+                    "define it with \\newcommand")
+            self._refuse("tex-refused", at, f"\\{name} is not read: {said}")
+
+    def _loaded(self, packages: tuple[str, ...]) -> bool:
+        """Whether one of `packages` is loaded, before here in this file or in another file of
+        the tree."""
+        named = {name for _at, name in self.packages} | self.loaded
+        return any(package in named for package in packages)
+
     def _prints(self) -> bool:
         """Whether what stands here prints where it stands: read, and in no definition's body,
         though it may be in a hook's, which LaTeX runs where it stands (round 1)."""
@@ -901,10 +1048,13 @@ class _Reader:
 
     def _unknown_citation(self, name: str) -> bool:
         """Whether a command the reader does not know is one that cites, where what it cites
-        would print: its name holds `cite`, outside a definition's body and outside the
-        preamble, where natbib's and biblatex's settings stand, `\\setcitestyle` and
-        `\\DeclareCiteCommand` among them (round 1 of step 5)."""
-        return "cite" in name.lower() and not self.definitions and self._role() != PREAMBLE
+        would print: its name is a citation's (`_cites`), outside a definition's body, outside
+        the preamble, where natbib's and biblatex's settings stand, `\\setcitestyle` and
+        `\\DeclareCiteCommand` among them (round 1 of step 5), and outside a reference list
+        typed in `thebibliography`, whose labels REVTeX writes with `\\citenamefont` and
+        harvard with `\\citeauthoryear`, and which cites nothing (2026-10-23)."""
+        listed = REFERENCES in self.environments
+        return _cites(name) and not self.definitions and self._role() != PREAMBLE and not listed
 
     def _binding(self, at: int, end: int) -> None:
         """Record a `\\mg` where it stands, with what its braces hold. In a siunitx command
@@ -983,12 +1133,18 @@ class _Reader:
 
     def _encoding(self, at: int) -> None:
         """Refuse an input encoding other than UTF-8, set by a package's option or by
-        `\\inputencoding` (round 1 of #380: only `\\usepackage` was read)."""
+        `\\inputencoding` (round 1 of #380: only `\\usepackage` was read), in a file that is
+        not ASCII, which reads the same in each of them (2026-10-23: `latin9` was refused in a
+        file all of ASCII). Where the file is, the tree holds the others to it."""
         found = _INPUTENC.match(self.text, at)
         named = (found.group(1) or found.group(2) or "") if found else ""
-        if found and not {o.strip() for o in named.split(",")} & {"utf8", "utf8x"}:
-            self._refuse("tex-refused", at, "the input encoding is not UTF-8, in which the file "
-                         "is read")  # fmt: skip
+        if not found or {o.strip() for o in named.split(",")} & {"utf8", "utf8x"}:
+            return
+        if self.text.isascii():
+            self.encodings.append(at)
+            return
+        self._refuse("tex-refused", at, "the input encoding is not UTF-8, in which the file is "
+                     "read")  # fmt: skip
 
     def _skip_false(self, at: int) -> None:
         """Blank an `\\iffalse` block to its `\\fi`, or to its `\\else`, whose branch TeX
@@ -1047,6 +1203,8 @@ class _Reader:
             self._refuse("tex-refused", bound.start(), _bound_as_typed("\\verb"))
 
     def _definition(self, name: str, at: int, end: int) -> None:
+        # The definer is this one, not the command read last, a `\providecommand` (`_defines`).
+        self.command = name
         start = self._after_space(end)
         if self.text[start : start + 1] != "\\":
             return
@@ -1058,12 +1216,20 @@ class _Reader:
         self._defines(defined, start)
         self._blank(start, name_end)
         self.pos = name_end
-        parameters, delimited = self._parameter_text(name_end, bool(self.letters.match(defined)))
+        word = bool(self.letters.match(defined))
+        parameters, delimited = self._parameter_text(name_end, word)
         if parameters < 0:
             said = f"the body of \\{defined} is not found within {_DELIMITED_REACH} characters"
             self._refuse("tex-refused", at, f"\\{name} is not read: {said}")
             return
-        if delimited:
+        written = _parameter_tokens(self.text, name_end, parameters, word)
+        if delimited and not _PARAMETER.search(written):
+            # A parameter text and no parameter, `\def\eg/{e.g.\@}`: each use prints the body,
+            # a known text, and the text after it is passed over (2026-10-23: refused as
+            # delimited parameters, though it takes nothing).
+            self.literal[defined] = _delimiter(written, self.letters)
+            self.defined_literal.append((defined, written))
+        elif delimited:
             # Delimited parameters, `\def\x#1.{...}`: the definition is read, and each use
             # where it would print is refused, since what it takes there is not known.
             self.delimited.add(defined)
@@ -1133,12 +1299,18 @@ class _Reader:
 
     def _defines(self, name: str, at: int) -> None:
         self.defining = name
-        if name in FRONT_MATTER_COMMANDS:
-            # Told of it by the tree or not, the file that defines it says so (round 2).
+        unloaded = name in PACKAGE_COMMANDS and not self._loaded(PACKAGE_COMMANDS[name])
+        if name in FRONT_MATTER_COMMANDS or unloaded:
+            # Told of it by the tree or not, the file that defines it says so (round 2). A
+            # package's command where no package gives it is the author's too (2026-10-23).
             self.own.add(name)
             if name not in self.defined_own:
                 self.defined_own.append(name)
-        if name in _REDEFINABLE:
+        if name in _REDEFINABLE or unloaded:
+            return
+        if self.command in PROVIDERS and name in COMMANDS:
+            # `\providecommand` of a command that is defined defines nothing (2026-10-23:
+            # `\providecommand{\url}` in a reference list BibTeX wrote was refused).
             return
         if name in COMMANDS or name in ("begin", "end", "verb", "def"):
             self._refuse("tex-refused", at, f"\\{name} is defined again, and the reader reads "
@@ -1191,8 +1363,10 @@ class _Reader:
             if role == PREAMBLE and self._printed_from_preamble(name):
                 role = PROSE
             maths = name in MATHS and role in (PROSE, MATHS_READ)
+            # A reference list is a group, which puts back what `\makeatletter` in it changed.
+            letters = self.letters if name == REFERENCES else None
             self.stack.append(_Frame("env", MATHS_READ if maths else role, at, name,
-                                     table=name in TABLES))  # fmt: skip
+                                     table=name in TABLES, letters=letters))  # fmt: skip
             self.environments.append(name)
             if name == "abstract" and role == PROSE:
                 self.headings.append(Heading(at, 1, "Abstract"))
@@ -1245,6 +1419,8 @@ class _Reader:
             self.figures.append((0 if top.inherited else top.start, self.pos))
         if name == REFERENCES:
             self.references.append((0 if top.inherited else top.start, self.pos))
+            if top.letters is not None:
+                self.letters = top.letters
 
     def _listing(self, name: str, end: int) -> None:
         """Record what a listing holds, and the language an `lstlisting`'s options name."""

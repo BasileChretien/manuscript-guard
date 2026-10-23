@@ -30,6 +30,7 @@ from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
 
+from manuscript_guard.text.latex.commands import PACKAGE_COMMANDS
 from manuscript_guard.text.latex.mask import Heading, Input, Reading, Refusal, read
 
 ENTRY = "main.tex"
@@ -177,14 +178,51 @@ def read_tree(
     a command of a class's front matter one file defines is the author's in another, so a
     tree that defines either is read twice, the second time with every file told of them. A
     file nothing inputs defines nothing the document uses (round 2)."""
-    document = _read_tree(files, entry, packages or {}, unreadable, frozenset(), frozenset())
+    document = _read_tree(files, entry, packages or {}, unreadable, _Told())
     tree = [source for source in document.sources if not source.loose]
     delimited = frozenset(name for source in tree
                           for name in source.reading.delimited)  # fmt: skip
     own = frozenset(name for source in tree for name in source.reading.own)
-    if not delimited and not own:
+    literal = tuple(pair for source in tree for pair in source.reading.literal)
+    if not delimited and not own and not literal:
+        return _encoded(document)
+    # A package's command a file defines is the author's only where no file loads the
+    # package: one loaded in another file makes it defined again (2026-10-23).
+    loaded = frozenset(name for source in tree for _at, name in source.reading.packages)
+    own = frozenset(name for name in own
+                    if not set(PACKAGE_COMMANDS.get(name, ())) & loaded)  # fmt: skip
+    told = _Told(delimited, own, literal, loaded)
+    return _encoded(_read_tree(files, entry, packages or {}, unreadable, told))
+
+
+@dataclass(frozen=True)
+class _Told:
+    """What each file of a tree is told of the others: the commands they define with
+    delimited parameters, the commands that are the author's, those defined with a parameter
+    text and no parameter, and the packages they load."""
+
+    delimited: frozenset[str] = frozenset()
+    own: frozenset[str] = frozenset()
+    literal: tuple[tuple[str, str], ...] = ()
+    loaded: frozenset[str] = frozenset()
+
+    def read(self, text: str, **given) -> Reading:
+        return read(text, delimited=self.delimited, own=self.own, literal=self.literal,
+                    loaded=self.loaded, **given)  # fmt: skip
+
+
+def _encoded(document: Document) -> Document:
+    """`document` with an input encoding other than UTF-8 that a file of its tree sets, which
+    the reader accepts since that file is ASCII, refused where another file of the tree is
+    not: TeX reads every file in it (2026-10-23)."""
+    tree = [source for source in document.sources if not source.loose]
+    other = next((source.path for source in tree if not source.text.isascii()), None)
+    if other is None:
         return document
-    return _read_tree(files, entry, packages or {}, unreadable, delimited, own)
+    said = f"the input encoding is not UTF-8, in which {other} is read"
+    refused = [(source.path, Refusal("tex-refused", at, said))
+               for source in tree for at in source.reading.encodings]  # fmt: skip
+    return Document(document.sources, (*document.refusals, *refused)) if refused else document
 
 
 def _read_tree(
@@ -192,10 +230,9 @@ def _read_tree(
     entry: str,
     packages: Mapping[str, str],
     unreadable: frozenset[str],
-    delimited: frozenset[str],
-    own: frozenset[str],
+    told: _Told,
 ) -> Document:
-    """`read_tree`, each file told of the commands `delimited` and `own` name."""
+    """`read_tree`, each file told what `told` holds."""
     known = {**files, **dict.fromkeys(unreadable, "")}
     sources: list[Source] = []
     refusals: list[tuple[str, Refusal]] = []
@@ -212,8 +249,7 @@ def _read_tree(
         """Read one file and the files it inputs, where they stand, and give the headings
         in force at its end; `imported` the folder it was imported from (`_target`)."""
         text = files[path]
-        reading = read(text, body=body, environments=environments, delimited=delimited,
-                       own=own)  # fmt: skip
+        reading = told.read(text, body=body, environments=environments)
         place = len(sources)
         sources.append(Source(path, text, reading, under, environments=environments,
                               imported=imported))  # fmt: skip
@@ -222,8 +258,7 @@ def _read_tree(
             style = posixpath.join(posixpath.dirname(entry), f"{name}.sty")
             if name != VALUES and style in packages and style not in seen:
                 seen.add(style)
-                package = read(packages[style], body=False, package=True, delimited=delimited,
-                               own=own)  # fmt: skip
+                package = told.read(packages[style], body=False, package=True)
                 sources.append(Source(style, packages[style], package))
                 refusals.extend((style, refusal) for refusal in package.refusals)
         events = sorted(
@@ -265,7 +300,7 @@ def _read_tree(
     for path in sorted(files):
         if path not in seen:
             text = files[path]
-            reading = read(text, body=True, loose=True, delimited=delimited, own=own)
+            reading = told.read(text, body=True, loose=True)
             sources.append(Source(path, text, reading, loose=True))
             refusals.extend((path, refusal) for refusal in reading.refusals)
     return Document(tuple(sources), tuple(refusals))

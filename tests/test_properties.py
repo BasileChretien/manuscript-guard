@@ -94,6 +94,7 @@ from generated import (
     latex_pointers,
     latex_printed,
     latex_quotations,
+    latex_refusal_trees,
     latex_texts,
     latex_trees,
     latex_words,
@@ -704,6 +705,162 @@ def _a_hook_s_body_is_a_definition_s(patch: pytest.MonkeyPatch) -> None:
 
 def _the_spaces_after_a_control_word_delimit(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(latex_mask, "_SKIPPED", re.compile(r""))
+
+
+@holds(40, latex_refusal_trees())
+def test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else(
+    drawn: list[tuple[dict[str, str], dict[str, str], list[tuple[str, int]],
+                      list[tuple[str, int, int]], list[tuple[str, int]]]],
+) -> None:
+    """What 17 papers from arXiv held, each kind in a manuscript of its own (2026-10-23): a
+    command named as a citation is refused, and `\\providecommand` of a known command, an
+    article's own command named as a package's where no file loads the package, an encoding
+    other than UTF-8 in a tree of ASCII, and a definition with a parameter text and no
+    parameter are read, the text after each use passed over; and where the package is
+    loaded, a file is not ASCII, or the text does not follow a use, the reader refuses where
+    TeX would read otherwise. A comment between a command and its argument is recorded."""
+    for files, packages, refused, hidden, comments in drawn:
+        document = latex_structure.read_tree(files, packages=packages)
+        found = [(path, refusal.offset) for path, refusal in document.refusals]
+        assert found == refused, (found, refused, files, packages)
+        readings = {source.path: source.reading for source in document.sources}
+        for path, start, end in hidden:
+            seen = readings[path].masked[start:end]
+            assert set(seen) <= {NUL, "\n"}, (path, seen, files)
+        for path, start in comments:
+            assert start in {at for at, _end in readings[path].comments}, (path, start, files)
+
+
+def _a_name_holding_cite_is_a_citation(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_cites", lambda name: "cite" in name.lower())
+
+
+def _an_english_word_ending_in_cite_is_a_citation(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_CITE_WORDS", frozenset())
+
+
+def _no_name_is_a_citation_s(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_cites", lambda name: False)
+
+
+def _pandoc_s_citeproc_is_unknown(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "COMMANDS", {name: spec for name, spec in latex_mask.COMMANDS.items()
+                                           if name not in latex_mask.CITEPROC})  # fmt: skip
+
+
+def _a_reference_list_s_header_is_refused(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask._Reader, "_machinery", lambda self, name: False)
+
+
+def _a_reference_list_s_labels_are_citations(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask._Reader, "_unknown_citation", lambda self, name:
+                  latex_mask._cites(name) and not self.definitions
+                  and self._role() != latex_mask.PREAMBLE)  # fmt: skip
+
+
+def _a_reference_list_keeps_at_a_letter(patch: pytest.MonkeyPatch) -> None:
+    end = latex_mask._Reader._end
+
+    def broken(self, name: str, at: int) -> None:
+        letters = self.letters
+        end(self, name, at)
+        self.letters = letters
+
+    patch.setattr(latex_mask._Reader, "_end", broken)
+
+
+def _providecommand_of_a_known_command_is_refused(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "PROVIDERS", frozenset())
+
+
+def _every_definer_of_a_known_command_provides(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "PROVIDERS", frozenset({"providecommand", "renewcommand",
+                                                      "newcommand", "DeclareRobustCommand",
+                                                      "def"}))  # fmt: skip
+
+
+def _a_package_s_command_is_always_the_reader_s(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "PACKAGE_COMMANDS", {})
+
+
+def _a_package_s_command_is_the_author_s_where_it_is_loaded(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask._Reader, "_loaded", lambda self, packages: False)
+
+
+def _what_the_tree_loads_is_not_told(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask._Reader, "_loaded", lambda self, packages:
+                  bool({name for _at, name in self.packages} & set(packages)))  # fmt: skip
+
+
+def _no_comment_stands_before_an_argument(patch: pytest.MonkeyPatch) -> None:
+    def broken(text: str, at: int) -> int:
+        seen_break = False
+        while at < len(text) and text[at] in " \t\r\n":
+            if text[at] == "\n":
+                if seen_break:
+                    return at
+                seen_break = True
+            at += 1
+        return at
+
+    patch.setattr(latex_mask, "_before_argument", broken)
+
+
+def _a_blank_line_after_a_comment_is_passed_over(patch: pytest.MonkeyPatch) -> None:
+    def broken(text: str, at: int) -> int:
+        while at < len(text) and (text[at] in " \t\r\n" or text[at] == "%"):
+            at = latex_mask._comment_end(text, at) + 1 if text[at] == "%" else at + 1
+        return min(at, len(text))
+
+    patch.setattr(latex_mask, "_before_argument", broken)
+
+
+def _a_comment_before_an_argument_is_not_recorded(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_COMMENT", re.compile("(?!)"))
+
+
+def _any_other_encoding_is_refused(patch: pytest.MonkeyPatch) -> None:
+    def broken(self, at: int) -> None:
+        if latex_mask._INPUTENC.match(self.text, at) and "utf8" not in self.text[at : at + 40]:
+            self._refuse("tex-refused", at, "the input encoding is not UTF-8")
+
+    patch.setattr(latex_mask._Reader, "_encoding", broken)
+
+
+def _no_other_encoding_is_refused(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask._Reader, "_encoding", lambda self, at: None)
+
+
+def _an_encoding_is_held_to_its_own_file_only(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_structure, "_encoded", lambda document: document)
+
+
+def _a_parameter_text_with_no_parameter_delimits(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_parameter_tokens", lambda text, start, end, word: "#1")
+
+
+def _the_text_after_a_use_is_read(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_delimiter", lambda written, letters: re.compile(""))
+
+
+def _a_use_the_text_does_not_follow_is_read(patch: pytest.MonkeyPatch) -> None:
+    def broken(self, name: str, at: int, end: int) -> None:
+        start = latex_mask._SKIPPED.match(self.text, end).end()
+        written = self.literal[name].match(self.text, start)
+        if written is not None:
+            self._blank(end, written.end())
+            self.pos = written.end()
+
+    patch.setattr(latex_mask._Reader, "_past_delimiter", broken)
+
+
+def _a_parameter_text_is_not_told_the_tree(patch: pytest.MonkeyPatch) -> None:
+    run = latex_mask._Reader.run
+
+    def broken(self) -> latex_mask.Reading:
+        return dataclasses.replace(run(self), literal=())
+
+    patch.setattr(latex_mask._Reader, "run", broken)
 
 
 @holds(60, latex_trees())
@@ -10155,6 +10312,94 @@ BROKEN = {
     "in LaTeX, the spaces after a control word delimit a definition's parameters": (
         _the_spaces_after_a_control_word_delimit,
         test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a name holding cite inside a word is a citation's": (
+        _a_name_holding_cite_is_a_citation,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, an English word ending in cite is a citation's name": (
+        _an_english_word_ending_in_cite_is_a_citation,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, no name is a citation's": (
+        _no_name_is_a_citation_s,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, pandoc's citeproc commands are unknown": (
+        _pandoc_s_citeproc_is_unknown,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a reference list's header is refused": (
+        _a_reference_list_s_header_is_refused,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a reference list's labels are citations": (
+        _a_reference_list_s_labels_are_citations,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, @ stays a letter past a reference list": (
+        _a_reference_list_keeps_at_a_letter,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, \\providecommand of a known command is refused": (
+        _providecommand_of_a_known_command_is_refused,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, every definer of a known command defines nothing": (
+        _every_definer_of_a_known_command_provides,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, a package's command is the reader's where no package gives it": (
+        _a_package_s_command_is_always_the_reader_s,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a package's command is the author's where the package is loaded": (
+        _a_package_s_command_is_the_author_s_where_it_is_loaded,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, a file is not told what the others of its tree load": (
+        _what_the_tree_loads_is_not_told,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, a comment ends the search for an argument": (
+        _no_comment_stands_before_an_argument,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a blank line after a comment is passed over to an argument": (
+        _a_blank_line_after_a_comment_is_passed_over,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a comment before an argument is not recorded": (
+        _a_comment_before_an_argument_is_not_recorded,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, any encoding but UTF-8 is refused, in a file of ASCII too": (
+        _any_other_encoding_is_refused,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, no encoding is refused": (
+        _no_other_encoding_is_refused,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, an encoding is held to its own file only": (
+        _an_encoding_is_held_to_its_own_file_only,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, a parameter text with no parameter is refused as delimited": (
+        _a_parameter_text_with_no_parameter_delimits,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, the text after a use of a parameter text is read": (
+        _the_text_after_a_use_is_read,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, a use its parameter text does not follow is read": (
+        _a_use_the_text_does_not_follow_is_read,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
+    ),
+    "in LaTeX, a parameter text is not told the tree": (
+        _a_parameter_text_is_not_told_the_tree,
+        test_the_latex_reader_refuses_what_tex_does_not_read_as_it_does_and_nothing_else,
     ),
     "in LaTeX, an abstract in the preamble is blanked": (
         _an_abstract_in_the_preamble_is_blanked,

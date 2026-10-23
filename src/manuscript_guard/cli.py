@@ -4484,6 +4484,12 @@ def cmd_init(args: argparse.Namespace) -> int:
         return 2
     for path in created:
         print(f"created {path}")
+    paper = (Path(args.path) / "paper.yaml").resolve()
+    if args.english and paper not in {path.resolve() for path in created}:
+        print(
+            f"\npaper.yaml was already there and was left as it was, so english_variant: "
+            f"{args.english} was not written into it: set it there"
+        )
     rules = rules_to_add(args.path, latex=args.latex)
     if rules:
         print(

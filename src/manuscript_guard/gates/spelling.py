@@ -256,7 +256,7 @@ def judge_spelling(
     elif level:
         english = (
             f"paper.yaml declares no English, and the paper has as many words in {ours} "
-            f"spelling as in {theirs}, the first in {ours}"
+            f"spelling as in {theirs}, {own} of each, the first in {ours}"
         )
     else:
         english = (

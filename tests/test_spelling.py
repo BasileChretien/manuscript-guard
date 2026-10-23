@@ -337,6 +337,7 @@ def test_declaring_none_with_as_many_of_each_the_first_sets_the_english(
     _, found = written(project, f"# Methods\n\n{text}\n", None)
     assert reported(found) == [stray]
     assert "as many words in" in found[0].message
+    assert "1 of each" in found[0].message, "both counts, as the others give them"
 
 
 def test_declaring_none_a_mostly_british_paper_is_told_its_endings_are_mixed(

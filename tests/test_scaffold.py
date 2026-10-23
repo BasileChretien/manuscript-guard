@@ -482,6 +482,24 @@ def test_init_declares_no_english_unless_told(tmp_path: Path, latex: bool) -> No
     assert "# english_variant: " in (root / "paper.yaml").read_text(encoding="utf-8")
 
 
+def test_init_says_the_english_was_not_written_into_a_paper_yaml_it_kept(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An existing `paper.yaml` is kept, as every file init finds is; an author who gave
+    `--english` was told nothing and believed the English declared."""
+    from manuscript_guard.cli import main
+
+    root = tmp_path / "paper"
+    root.mkdir()
+    kept = 'title: "Kept"\n'
+    (root / "paper.yaml").write_text(kept, encoding="utf-8")
+    assert main(["init", str(root), "--english", "en-US"]) == 0
+    assert (root / "paper.yaml").read_text(encoding="utf-8") == kept
+    assert "english_variant: en-US was not written" in capsys.readouterr().out
+    assert main(["init", str(tmp_path / "new"), "--english", "en-US"]) == 0
+    assert "was not written" not in capsys.readouterr().out
+
+
 @pytest.mark.parametrize("latex", [False, True], ids=["markdown", "latex"])
 @pytest.mark.parametrize("english", ["en-AU", "en-gb", "British", ""])
 def test_init_refuses_an_english_paper_yaml_cannot_declare_before_it_makes_anything(

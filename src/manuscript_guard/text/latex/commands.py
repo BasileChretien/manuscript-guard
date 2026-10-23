@@ -202,8 +202,13 @@ COMMANDS = _specs(
 #: Markdown passes over its YAML header and reads the abstract; and a list of keywords
 #: (Basile, 2026-10-23).
 FRONT_MATTER = frozenset({"frontmatter", "fmbox", "keyword", "keywords", "IEEEkeywords"})
+#: What the front matter holds that the paper prints as its text, read as it is outside it:
+#: the abstract, and Elsevier's highlights, the paper's claims with its numbers, and graphical
+#: abstract (round 1 of real templates, part 2).
+READ_IN_FRONT_MATTER = frozenset({"abstract", "highlights", "graphicalabstract"})
 #: The commands of that front matter, each argument passed over. An author may define one
-#: again, as an article's preamble often defines `\\keywords`.
+#: again, as an article's preamble often defines `\\keywords`, and it is then the author's
+#: command, read as an unknown command is, as it was before the table held it.
 FRONT_MATTER_COMMANDS = frozenset(_FRONT_MATTER_SPECS)
 #: The import package's commands the include tree follows, each a folder and a file:
 #: `\\import`'s folder is the manuscript's, and `\\subimport`'s is under the folder the

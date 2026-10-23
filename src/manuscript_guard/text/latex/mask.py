@@ -35,6 +35,7 @@ from manuscript_guard.text.latex.commands import (
     PARAMETERS,
     POINTERS,
     RAW,
+    READ_IN_FRONT_MATTER,
     REFUSED,
     REFUSED_ENVIRONMENTS,
     SIUNITX,
@@ -215,6 +216,8 @@ class Reading:
     #: Each command the file defines with delimited parameters, `\\def\\x#1.{...}`, whose
     #: uses are refused where they would print, in this file and in the others of its tree.
     delimited: tuple[str, ...] = ()
+    #: Each command of a class's front matter the file defines, which is then the author's.
+    own: tuple[str, ...] = ()
 
 
 #: The level of each sectioning command, as Markdown's `#` counts it; a part stands over a
@@ -295,6 +298,7 @@ def read(
     loose: bool = False,
     package: bool = False,
     delimited: frozenset[str] = frozenset(),
+    own: frozenset[str] = frozenset(),
 ) -> Reading:
     """The masked text, the first refusal, and what the file inputs, heads and loads. With
     `body` None, a file with a `\\begin{document}` outside a comment opens in the preamble,
@@ -305,10 +309,10 @@ def read(
     `loose` file, which nothing inputs, is body that accepts what a preamble accepts. A
     `package` of the author's is read as LaTeX reads a package, with `@` a letter."""
     opens_in_body = not _has_document(text) if body is None else body
-    reader = _Reader(text, opens_in_body, environments, loose, package, delimited)
+    reader = _Reader(text, opens_in_body, environments, loose, package, delimited, own)
     reading = reader.run()
     if body is None and not reader.body and reader.refused is None:
-        return _Reader(text, True, environments, loose, package, delimited).run()
+        return _Reader(text, True, environments, loose, package, delimited, own).run()
     return reading
 
 
@@ -382,6 +386,7 @@ class _Reader:
         loose: bool = False,
         package: bool = False,
         delimited: frozenset[str] = frozenset(),
+        own: frozenset[str] = frozenset(),
     ) -> None:
         self.text = text
         self.n = len(text)
@@ -428,6 +433,10 @@ class _Reader:
         #: names, each use of which is refused where it would print; and those defined here.
         self.delimited = set(delimited)
         self.defined_delimited: list[str] = []
+        #: The front matter's commands the author defines, here and in the files `own` names,
+        #: read as unknown commands are; and those defined here (round 1, part 2).
+        self.own = set(own)
+        self.defined_own: list[str] = []
         self.heading_at = -1
         for name in environments:
             role = MATHS_READ if name in MATHS else self._entered(name, self._role())
@@ -463,7 +472,8 @@ class _Reader:
                  tuple(self.code), tuple(self.declared), tuple(sorted(figures)),
                  tuple(sorted(references)), self.body_end, tuple(self.bodies),
                  tuple(self.pointers), tuple(self.comments), tuple(self.unprinted),
-                 tuple(self.graphics), tuple(self.defined_delimited))  # fmt: skip
+                 tuple(self.graphics), tuple(self.defined_delimited),
+                 tuple(self.defined_own))  # fmt: skip
         if self.refused is None:
             return Reading(masked, (), *found)
         at = self.refused.offset
@@ -858,7 +868,7 @@ class _Reader:
         elif name == "mg":
             self._binding(at, end)
             self.command, self.pending = name, COMMANDS[name]
-        elif name in COMMANDS:
+        elif name in COMMANDS and name not in self.own:
             if name in LEVELS or name == "abstract":
                 self.heading_at = at
             if name in CITATIONS:
@@ -1123,6 +1133,9 @@ class _Reader:
 
     def _defines(self, name: str, at: int) -> None:
         self.defining = name
+        if name in FRONT_MATTER_COMMANDS and name not in self.own:
+            self.own.add(name)
+            self.defined_own.append(name)
         if name in _REDEFINABLE:
             return
         if name in COMMANDS or name in ("begin", "end", "verb", "def"):
@@ -1185,11 +1198,11 @@ class _Reader:
 
     def _entered(self, name: str, role: str) -> str:
         """How an environment opened where `role` is read is read: a class's front matter is
-        passed over, and an abstract in it, inside environments only, is read as what holds
-        the front matter is."""
+        passed over, and an abstract or highlights in it, inside environments only, are read
+        as what holds the front matter is."""
         if name in FRONT_MATTER:
             return BLANK
-        if name != "abstract":
+        if name not in READ_IN_FRONT_MATTER:
             return role
         for index in range(len(self.stack) - 1, -1, -1):
             frame = self.stack[index]

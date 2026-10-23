@@ -685,9 +685,12 @@ LATEX_PLACES = (
     # header is, but for its abstract; and Wiley's and Springer's commands for it (Basile,
     # 2026-10-23).
     ("\\begin{{frontmatter}}\\title{{A {}}}\\address[a]{{Unit {}}}\\begin{{abstract}}Of {}"
-     "\\end{{abstract}}\\begin{{keyword}}k {}\\end{{keyword}}\\end{{frontmatter}}\n",
-     (False, False, True, False)),
+     "\\end{{abstract}}\\begin{{highlights}}\\item Of {}\\end{{highlights}}"
+     "\\begin{{keyword}}k {}\\end{{keyword}}\\end{{frontmatter}}\n",
+     (False, False, True, True, False)),
     ("\\Volume{{{}}}\\pagespan{{{}}}{{{}}}\\affil*[1]{{Unit {}}} ", (False, False, False, False)),
+    # A front matter command the author defines is the author's, read as before (round 1).
+    ("\\newcommand{{\\journal}}[1]{{#1}}\\journal{{Lancet {}}} ", (True,)),
 )  # fmt: skip
 #: Where a number stands in the preamble, before `\\begin{document}`.
 LATEX_PREAMBLE_PLACES = (

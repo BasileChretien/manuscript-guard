@@ -1330,13 +1330,16 @@ order is `printed_order`.
   `frontmatter` and BMC's `fmbox`, with the title, the authors and the addresses they hold,
   and a list of keywords, `keyword`, `keywords` or `IEEEkeywords`. An abstract in the front
   matter, inside environments only, BMC's `abstractbox` among them, is read as one outside
-  it is. So are the commands the major classes give the front matter, each argument
+  it is, and so are Elsevier's `highlights`, the paper's claims with its numbers, and
+  `graphicalabstract` (round 1). So are the commands the major classes give the front matter, each argument
   blanked: addresses and affiliations (`\address`, `\affiliation`, `\affil`), notes on the
   authors (`\cortext`, `\fntext`, `\email`, `\corresp`), `\keywords`, and Wiley's, Oxford's
   and Springer's issue, dates and running heads (`\Volume`, `\Issue`, `\DOIsuffix`,
   `\pagespan`, `\Receiveddate`, `\copyrightyear`, `\titlerunning` and the rest of
   `FRONT_MATTER_COMMANDS`). An author may define one of these again, as an article's
-  preamble often defines `\keywords`, and it is still passed over (Basile, 2026-10-23, after
+  preamble often defines `\keywords`: it is then the author's command, here and in every
+  file of the tree, read as an unknown command is, as it was before the table held it
+  (round 1: an author's `\journal` printed text that was hidden) (Basile, 2026-10-23, after
   an Elsevier and a Wiley template, whose title, addresses and issue were read as main
   text). The title is still read where it stands outside the front matter, in the preamble
   as before.

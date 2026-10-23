@@ -35,7 +35,8 @@ from manuscript_guard.text.blocks import (
     section_breaks,
 )
 from manuscript_guard.text.fences import blank_fences
-from manuscript_guard.text.masking import mask, without_front_matter
+from manuscript_guard.text.masking import NUL, mask, without_front_matter
+from manuscript_guard.text.reference_lists import unmarked_reference_lists
 from manuscript_guard.text.section_names import names_abstract
 
 # `scannable` moved to `text.blocks` with the heading walk, and `strip_attributes` to
@@ -607,6 +608,11 @@ def measure(text: str, abstract_title: str | None = None) -> Counts:
     # that newline `count_words` no longer recognised the block: every word of the YAML,
     # keys included, counted as main text.
     printed = without_front_matter(text)
+    # A reference list under a line that is no heading, `**References**`, is not counted, as
+    # the list under `# References` is not. Its characters are made NULs, which count no
+    # word: not spaces, which would make a line blank and a `#` line under it a heading.
+    for start, end in unmarked_reference_lists(printed):
+        printed = printed[:start] + re.sub(r"[^\n]", NUL, printed[start:end]) + printed[end:]
     sections = split_sections(printed)
     abstract = main = 0
     # Each section counts where its enclosing sections put it. Judged by its own title

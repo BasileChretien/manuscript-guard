@@ -1,0 +1,146 @@
+"""Where a reference list starts: a heading that names one, and a line that only looks like
+one.
+
+The audit cuts a paper's reference list at its heading, and a line with a heading's shape
+counts there: "References" alone on its line, in bold or not. `check` knew only the heading,
+`# References`. A paper converted from Word has its list under a bold paragraph as often as
+under a heading, `**References**` or `**References:**`, and G14 read that list as prose: it
+checked the spelling of the cited titles and took journal names and authors' initials for
+abbreviations ("PLoS", "BMC", "HA MB RM"). The audit's rule is said once, here, and both read
+by it: `is_bibliography_heading` for a line, `unmarked_reference_lists` for where such a
+line's list runs in a Markdown file.
+"""
+
+from __future__ import annotations
+
+import re
+from bisect import bisect_right
+
+from manuscript_guard.text.attributes import strip_attributes
+from manuscript_guard.text.blocks import find_headings, scannable
+
+# A line that is nothing but a bibliography heading, perhaps numbered, perhaps in bold. From
+# there to the next heading is page ranges, volume numbers and years belonging to other
+# people's papers: not the author's claims, and reporting them buries the findings that
+# matter.
+#
+# Everything after the heading word is one character class under one quantifier. The first
+# version had five optional whitespace runs in a row there, and a line that began with the
+# word and failed later backtracked through every way of dividing its spaces between them:
+# 26 s for one line of the kind `pdftotext -layout` writes.
+#
+# And every run of whitespace before the word has exactly one quantifier that can take it:
+# the line is stripped first, and a number takes the spaces after it. With `^\s*` beside
+# `[\s*_]*` a failing line was still quadratic in its indentation, and `pdftotext -layout`
+# indents a right-hand column by a hundred spaces: 20 s for 3,000 such lines.
+#
+# A pandoc attribute block after the word, `{-}` or `{#refs .unnumbered}`, is not matched
+# here. It is taken off a marked heading before the match, by `strip_attributes`, which reads
+# it item by item, so this pattern keeps one quantifier after the word.
+_BIBLIOGRAPHY = re.compile(
+    r"^(?P<hashes>#+)?[\s*_]*"
+    r"(?:(?P<numbered>\d+[.)])[\s*_]*|(?P<bare>\d+)\s[\s*_]*)?"
+    r"(?P<word>references(?:\s+cited)?|reference\s+list|list\s+of\s+references"
+    r"|cited\s+references|bibliography|works\s+cited|literature\s+cited|cited\s+literature)"
+    r"(?P<tail>[\s*_:.|]*)$",
+    re.IGNORECASE,
+)
+
+
+def is_bibliography_heading(
+    line: str, *, marked: bool = False, markdown: bool = True
+) -> bool:
+    """A bibliography heading: a line that is marked as a heading, or has a heading's shape.
+
+    `marked` is for a line the document itself calls a heading, a Markdown `#` or setext
+    heading or a styled paragraph in a .docx. Any other line has to look like one:
+    capitalised, and not ending in a full stop. "12 references." and "references." are where
+    a hard wrap left the end of a sentence, and taking either for a heading hid the rest of
+    the section.
+
+    A marked line is read without the attribute block at its end, as pandoc reads it.
+    Pandoc users write an unnumbered reference heading as `# References {-}`, and the audit
+    found no heading there: it cut nothing, and every number in a book or a web page in the
+    list was reported among the findings. On an unmarked line the braces are printed, so
+    "References {-}" there is text. Only spaces and tabs may follow the block: `strip()`
+    takes every Unicode space, and a no-break space after `{-}`, which pandoc prints braces
+    and all, cut a list.
+
+    `markdown` says whether the marks are Markdown's. There a marked line opening with `#`
+    is an ATX heading and loses its closing `#`s. A setext heading reading "References #"
+    prints the `#`, and so does a .docx, where a style marks the heading and Word prints
+    every `#` in "# References #".
+
+    An unmarked line starting with `#` is not one at all. `#` opens a comment in R, Python
+    and YAML, and `# References` in a code listing cut everything after it; where `#` does
+    make a heading, the document has marked it.
+    """
+    text = line.strip()
+    if marked:
+        text = strip_attributes(line.lstrip().rstrip(" \t"))
+        if markdown and text.startswith("#"):
+            text = text.rstrip("#").rstrip(" \t")
+        text = text.strip()
+    found = _BIBLIOGRAPHY.match(text)
+    if not found:
+        return False
+    if marked:
+        return True
+    if found.group("hashes"):
+        return False
+    return found.group("word")[0].isupper() and "." not in found.group("tail")
+
+
+# An indented line under a blank one is a listing, and a tab indents as four spaces do.
+_INDENTED = re.compile(r"^(?: {4}| {0,3}\t)")
+
+
+def unmarked_reference_lists(text: str) -> list[tuple[int, int]]:
+    """Where a Markdown file's reference lists run under a line that is no heading, as offsets
+    `[start, end)`: from the line to the next heading (`find_headings`), or to the end of
+    the file, as the list under `# References` runs for the gates that pass it over.
+
+    The line is one `is_bibliography_heading` takes unmarked, as the audit takes it: the word
+    alone on its line, in bold or not, capitalised and not ending in a full stop. And it opens
+    a paragraph, under a blank line, a heading or nothing, where the audit takes it anywhere:
+    a sentence a hard wrap broke before "References" and after it has the word alone on a
+    line, and taken for a list it would hide the rest of the section from every gate that
+    passes a list over. A line in a listing, an HTML comment or the front matter opens none,
+    and an indented one is a listing.
+
+    A heading ends the list whatever its level: the bold line has none to compare. A heading
+    that names the reference list, `# References`, is not found here;
+    `Section.is_references` reads it."""
+    headings = find_headings(text)
+    starts = [heading.start for heading in headings]
+    newlines = [found.start() for found in re.finditer("\n", text)]
+    offsets = [0, *(index + 1 for index in newlines)]
+
+    def line_of(offset: int) -> int:
+        return bisect_right(newlines, offset - 1)
+
+    heading_lines = {line_of(heading.start) for heading in headings}
+    # The line after a heading opens a paragraph; after a setext heading, the line after its
+    # rule.
+    under_headings = {line_of(heading.start) + heading.setext for heading in headings}
+    lines = scannable(text).split("\n")
+    spans: list[tuple[int, int]] = []
+    for number, line in enumerate(lines):
+        if number in heading_lines or _INDENTED.match(line):
+            continue
+        if not _opens_a_paragraph(lines, number, under_headings):
+            continue
+        if not is_bibliography_heading(line):
+            continue
+        start = offsets[number]
+        if spans and start < spans[-1][1]:
+            continue
+        after = bisect_right(starts, start)
+        spans.append((start, starts[after] if after < len(starts) else len(text)))
+    return spans
+
+
+def _opens_a_paragraph(lines: list[str], number: int, under: set[int]) -> bool:
+    """Whether line `number` opens a paragraph: it is the first, or the line above is blank or
+    ends a heading (`under`)."""
+    return not number or not lines[number - 1].strip() or number - 1 in under

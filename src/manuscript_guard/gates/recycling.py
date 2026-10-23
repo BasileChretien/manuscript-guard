@@ -72,6 +72,7 @@ from manuscript_guard.text.blocks import find_headings
 from manuscript_guard.text.latex.printed import QUOTE_CLOSE, QUOTE_OPEN
 from manuscript_guard.text.masking import blank_comments, fenced_blocks, front_matter_end, mask
 from manuscript_guard.text.reader import LATEX, manuscript_format
+from manuscript_guard.text.reference_lists import unmarked_reference_lists
 from manuscript_guard.text.section_names import (
     methods_sections,
     names_abstract,
@@ -396,6 +397,8 @@ def _prepared(text: str, parts: list[tuple[int, int, str]]) -> str:
     apart = [(0, front_matter_end(text))]
     apart += [(fence.start, fence.end) for fence in fenced_blocks(text)]
     apart += [(match.start(), match.end()) for match in _TABLE_LINE.finditer(text)]
+    # The reference list under a line that is no heading, `**References**`, as under one.
+    apart += unmarked_reference_lists(text)
     for index, (start, ends, kind) in enumerate(parts):
         apart.append((start, ends))
         if kind == SET_APART:

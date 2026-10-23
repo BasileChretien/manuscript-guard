@@ -9314,6 +9314,26 @@ def test_a_wrapped_citation_to_a_missing_item_is_caught(project: Path, monkeypat
     )
 
 
+def test_an_e_mail_address_is_no_citation_and_a_key_beside_one_still_is(project: Path) -> None:
+    """A corresponding author's address, in a mailto link as Word writes one and in a span:
+    `check` read the host of each as a key, "@gmail.com matches nothing in the library",
+    and failed the submission on it. Pandoc reads neither as a citation. A key the library
+    does not hold, in a group beside an address, is still caught."""
+    main = main_md(project)
+    addresses = (
+        "\n*Corresponding author*:\n[*first.last@gmail.com*](mailto:first.last@gmail.com)\n\n"
+        "1\\. [Research Centre. someone@centre.org.gt]{.mark}\n\n"
+        "Write to someone@centre.org.gt or [name@example.org].\n"
+    )
+    main.write_text(main.read_text(encoding="utf-8") + addresses, encoding="utf-8")
+    assert "citation-unresolved" not in codes(_g7(project))
+
+    main.write_text(main.read_text(encoding="utf-8") + "\nAs shown [name@example.org; "
+                    "@ghostKey2020].\n", encoding="utf-8")  # fmt: skip
+    unresolved = [f.message for f in _g7(project).failures if f.code == "citation-unresolved"]
+    assert unresolved == ["@ghostKey2020 matches nothing in the library"]
+
+
 # A literature value with a blank field. `source_file: ""` was passed over by both gates:
 # `check --stage drafting` added no finding, and the value was simply not counted as
 # verified, so the run claimed every value it had checked was verified.
@@ -21609,6 +21629,55 @@ def test_a_paragraph_pasted_from_a_paper_in_the_other_english_is_caught(project:
         ("hemoglobin", "haemoglobin"),
     ):
         assert f"{word} ({instead}, once)" in finding.hint
+
+
+#: A reference list as a paper converted from Word has it, under a line that is no heading:
+#: its titles in the other English, a journal's name and the authors' initials in capitals.
+_CITED_TITLE = (
+    "The color of the tumor and its organization in a national register of spontaneous reports"
+)
+_LISTED = (
+    "{line}\n\n"
+    f"1. Doe HA, Roe MB. {_CITED_TITLE}. PLoS ONE. 2019;14:e0213.\n\n"
+    "2. Poe RM, Low DL. Behavior in the pediatric center. BMC Med. 2020;18:12.\n\n"
+)
+
+
+@pytest.mark.parametrize(
+    "line", ["**References**", "**References:**", "References", "__Bibliography__"]
+)
+def test_a_reference_list_under_a_bold_line_is_passed_over_as_under_a_heading(
+    project: Path, line: str
+) -> None:
+    """Papers converted from Word put the list under `**References**` as often as under a
+    heading, and G14 read it as prose: "both endings are used" for the cited titles, and
+    "PLoS", "BMC" and the authors' initials taken for abbreviations; the word count and the
+    comparison with an earlier paper took it for the Discussion. Under `# References` none
+    of it is read, and the audit already took the bold line for the list's start. The text
+    under the next heading is read again: a slip there is still caught."""
+    from manuscript_guard.gates.recycling import recycled_in
+    from manuscript_guard.text.sections import measure
+
+    text = main_md(project).read_text(encoding="utf-8")
+    end = text.index("# Data availability")
+    listed = text[:end] + _LISTED.format(line=line) + text[end:]
+    main_md(project).write_text(listed, encoding="utf-8")
+    assert spelling_findings(project) == []
+    assert language_findings(project) == [("abbreviation-undefined", line_of(text, "(ROR "))]
+    assert measure(listed).main_text_words == measure(text).main_text_words
+    assert recycled_in(listed, f"An earlier paper cited it: {_CITED_TITLE}.", "earlier") == []
+
+    slipped = listed.replace("# Data availability", "# Appendix\n\nThe color of each group "
+                             "was noted.\n\n# Data availability")  # fmt: skip
+    main_md(project).write_text(slipped, encoding="utf-8")
+    assert spelling_findings(project) == [
+        (
+            "spelling-variant",
+            line_of(slipped, "The color of each"),
+            "'color' is the American spelling of 'colour', used once; this paper is in "
+            "British English",
+        )
+    ]
 
 
 def test_a_name_a_quotation_and_a_citation_key_in_the_other_spelling_are_left_alone(

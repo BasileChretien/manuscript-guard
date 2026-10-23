@@ -4580,6 +4580,79 @@ def test_a_word_in_the_other_english_is_found_where_it_stands_and_a_name_is_not(
     assert report.counts["spelling_other"] == sum(len(places) for places in stands.values())
 
 
+# ------------------------------------------ a reference list under a line that is no heading
+
+# Imported here, not at the top, to keep clear of the import block other branches edit.
+from generated import RECYCLED, addressed, reference_lists  # noqa: E402
+
+from manuscript_guard.text import reference_lists as reference_lists_module  # noqa: E402
+from manuscript_guard.text import sections as sections_module  # noqa: E402
+from manuscript_guard.zotero import citations as citations_module  # noqa: E402
+
+
+def _passed_over(text: str) -> dict[str, Any]:
+    """What the gates that pass a reference list over make of `text`: G14's spelling and
+    abbreviations, the word counts a journal's limits are held to, and the passages an
+    earlier paper has too."""
+    file = _file(0, MAIN, text, [], False)
+    spelt = judge_spelling([Passage(file.path, file.text, file.spelt, file.line_of)], "en-GB",
+                           [], PAPER)  # fmt: skip
+    exact, lowered = language_gate._shipped()
+    named = language_gate._judge([file], language_gate._Known(exact, lowered), Path("."))
+    counts = sections_module.measure(text)
+    return {
+        "spelling": [(f.code, f.line, f.message) for f in spelt.findings],
+        "abbreviations": [(f.code, f.line, f.message) for f in named.findings],
+        "words": (counts.abstract_words, counts.main_text_words),
+        "recycled": [(p.first_line, p.last_line, p.shared, p.kind)
+                     for p in recycling_gate.recycled_in(text, " ".join(RECYCLED), "earlier")],
+    }  # fmt: skip
+
+
+@holds(60, reference_lists())
+def test_a_reference_list_under_a_bold_line_is_passed_over_as_under_a_heading(
+    drawn: tuple[str, str],
+) -> None:
+    """A list under `**References**`, `References` alone or another line the audit takes for
+    a list's start is read as the list under `# References` is, by every gate that passes a
+    list over; a sentence, a full stop, small letters or a hard wrap that left the word alone
+    in a paragraph start none (`reference_lists`)."""
+    listed, headed = drawn
+    assert _passed_over(listed) == _passed_over(headed), listed
+
+
+def _no_list_under_a_line(patch: pytest.MonkeyPatch) -> None:
+    for module in (language_gate, sections_module, recycling_gate):
+        patch.setattr(module, "unmarked_reference_lists", lambda text: [])
+
+
+def _a_list_opens_inside_a_paragraph(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reference_lists_module, "_opens_a_paragraph", lambda lines, number, under: True)
+
+
+# --------------------------------------------------- e-mail addresses beside citations
+
+
+@holds(100, addressed())
+def test_an_e_mail_address_is_no_citation_and_every_key_beside_one_is(
+    drawn: tuple[str, list[str]],
+) -> None:
+    """An `@` glued to the word before it is an address's, as pandoc reads it
+    (`test_the_toolkit_reads_the_citations_pandoc_reads`): in brackets, a mailto link, a span
+    or text it is no citation, and a key in a group beside one is."""
+    text, keys = drawn
+    found = [use.citekey for use in citations_module.find_citations(text, MAIN)]
+    assert sorted(found) == sorted(keys), text
+
+
+def _an_address_in_brackets_is_a_citation(patch: pytest.MonkeyPatch) -> None:
+    key = r"-?@(?P<key>[A-Za-z][\w:.#$%&+?<>~/-]*)"
+    group = r"(?:[^\]\n]|\n(?![ \t]*\n))"
+    patch.setattr(citations_module, "KEY_IN_BODY", re.compile(key))
+    patch.setattr(citations_module, "_SIGN", re.compile("@"))
+    patch.setattr(citations_module, "BRACKETED", re.compile(rf"\[(?P<body>{group}*@{group}*)\]"))
+
+
 # ------------------------------------------------------------------------- placeholders
 
 
@@ -9716,6 +9789,18 @@ BROKEN = {
     "no abbreviation is known": (
         _no_abbreviation_is_known,
         test_every_citation_lies_in_the_sentence_of_its_own_clause,
+    ),
+    "no reference list stands under a line that is no heading": (
+        _no_list_under_a_line,
+        test_a_reference_list_under_a_bold_line_is_passed_over_as_under_a_heading,
+    ),
+    "a reference list opens inside a paragraph": (
+        _a_list_opens_inside_a_paragraph,
+        test_a_reference_list_under_a_bold_line_is_passed_over_as_under_a_heading,
+    ),
+    "an e-mail address in brackets is a citation": (
+        _an_address_in_brackets_is_a_citation,
+        test_an_e_mail_address_is_no_citation_and_every_key_beside_one_is,
     ),
     "in LaTeX, an escaped percent opens a comment": (
         _an_escaped_percent_opens_a_comment,

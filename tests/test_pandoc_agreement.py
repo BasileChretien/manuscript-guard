@@ -1947,3 +1947,50 @@ def test_a_footnote_s_text_ends_no_later_than_pandoc_s(name: str) -> None:
         for word in re.findall(r"w\d+", text[note.start : note.end])
     }
     assert ours <= pandoc, (ours - pandoc, pandoc)
+
+
+# Where an `@` opens a citation and where it is an e-mail address's. `check` read the host of
+# an address in a mailto link, `[name@gmail.com](mailto:...)`, and of one in a span, as a key
+# that matched nothing in the library, and failed a submission on each. A key glued to the
+# word before it is no citation to pandoc, in a group or out of one.
+CITATION_CASES = {
+    "an address in a mailto link": "[*first.last@gmail.com*](mailto:first.last@gmail.com)\n",
+    "an address in a span": "1\\. [Research Centre. someone@centre.org.gt]{.mark}\n",
+    "an address in brackets": "Write to [first.last@example.org].\n",
+    "an address in text": "Write to someone@centre.org.gt today.\n",
+    "an autolinked address": "Write to <someone@example.org>.\n",
+    "an address before a key": "As shown [someone@example.org; @smith2020].\n",
+    "an address after a key": "As shown [@smith2020; someone@example.org].\n",
+    "an address in a group's prefix": "As shown [see a@b.org; @smith2020, p. 4].\n",
+    "a key after a digit": "[2020@smith] and 2020@jones\n",
+    "a key after a letter not in English": "[\N{LATIN SMALL LETTER E WITH ACUTE}@smith]\n",
+    "a key after a full stop": "[x.@smith] and x.@jones\n",
+    "a key after an ellipsis": "[x...@smith]\n",
+    "a key after a hyphen": "[x-@smith] and x-@jones\n",
+    "a key after other signs": "[(@smith)], [x;@jones], x/@doe and x)@roe\n",
+    "a key after a space": "[see @smith2020, p. 4] and @jones2019 said\n",
+    "a suppressed key": "[-@smith2020]\n",
+    "a key after an underscore in a group": "[see_@smith2020]\n",
+}
+
+
+def _cited(node, out: list[str]) -> None:
+    if isinstance(node, list):
+        for item in node:
+            _cited(item, out)
+    elif isinstance(node, dict):
+        if node.get("t") == "Cite":
+            out.extend(citation["citationId"] for citation in node["c"][0])
+        for value in node.values():
+            _cited(value, out)
+
+
+@pytest.mark.parametrize("name", list(CITATION_CASES))
+def test_the_toolkit_reads_the_citations_pandoc_reads(name: str) -> None:
+    from manuscript_guard.zotero.citations import find_citations
+
+    text = CITATION_CASES[name]
+    pandoc: list[str] = []
+    _cited(pandoc_ast(text), pandoc)
+    ours = [use.citekey for use in find_citations(text, Path("main.md"))]
+    assert sorted(ours) == sorted(pandoc)

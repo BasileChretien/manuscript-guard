@@ -80,3 +80,25 @@ expected:
       a sentence that opens with a typographic quotation mark is a sentence of its own, as
       one that opens with a straight one is, so its quotation is held to its own citation
       and not to the one of the sentence before (step 8, G7)
+  - reading: spelling
+    why: >-
+      a reference list under a line that is no heading, `**References**`, `**References:**`
+      or "References" alone on a line that opens a paragraph, is passed over as the list
+      under `# References` is, so the spelling of the cited titles is not read; the inputs
+      now hold such lines
+  - reading: abbreviations
+    why: >-
+      a reference list under a line that is no heading, `**References**`, `**References:**`
+      or "References" alone on a line that opens a paragraph, is passed over as the list
+      under `# References` is, so a journal's name or an author's initials there are no
+      abbreviation; the inputs now hold such lines
+  - reading: recycled passages
+    why: >-
+      a reference list under a line that is no heading, `**References**`, `**References:**`
+      or "References" alone on a line that opens a paragraph, is not compared with an
+      earlier paper, as the list under `# References` is not; the inputs now hold such lines
+  - reading: citations
+    why: >-
+      a new reading; an `@` glued to the word before it is an e-mail address's, as pandoc
+      reads it, so "[name@gmail.com]", a mailto link and a span holding an address are no
+      citation group and their hosts no keys

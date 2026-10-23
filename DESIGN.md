@@ -1326,6 +1326,23 @@ order is `printed_order`.
   design first refused it, as an `abstract:` in Markdown's front matter is refused. Round 2
   of #385 found that this failed such a class, and failed `\let\oldabstract\abstract`, which
   only names the command. Where a class does not print it, the compile fails (step 9).
+- A class's front matter in the body is passed over, as Markdown's YAML header is: Elsevier's
+  `frontmatter` and BMC's `fmbox`, with the title, the authors and the addresses they hold,
+  and a list of keywords, `keyword`, `keywords` or `IEEEkeywords`. An abstract in the front
+  matter, inside environments only, BMC's `abstractbox` among them, is read as one outside
+  it is, and so are Elsevier's `highlights`, the paper's claims with its numbers, and
+  `graphicalabstract` (round 1). So are the commands the major classes give the front matter, each argument
+  blanked: addresses and affiliations (`\address`, `\affiliation`, `\affil`), notes on the
+  authors (`\cortext`, `\fntext`, `\email`, `\corresp`), `\keywords`, and Wiley's, Oxford's
+  and Springer's issue, dates and running heads (`\Volume`, `\Issue`, `\DOIsuffix`,
+  `\pagespan`, `\Receiveddate`, `\copyrightyear`, `\titlerunning` and the rest of
+  `FRONT_MATTER_COMMANDS`). An author may define one of these again, as an article's
+  preamble often defines `\keywords`: it is then the author's command, here and in every
+  file of the tree, read as an unknown command is, as it was before the table held it
+  (round 1: an author's `\journal` printed text that was hidden) (Basile, 2026-10-23, after
+  an Elsevier and a Wiley template, whose title, addresses and issue were read as main
+  text). The title is still read where it stands outside the front matter, in the preamble
+  as before.
 - An environment not in the table is read as an unknown command is, and so is its body.
 
 **Definitions.** A `\newcommand`, `\renewcommand`, `\providecommand`,
@@ -1726,10 +1743,15 @@ The result is compiled and packed by the code above, and checked three times:
 - A float counts as a display item only where it places a `\mg{figure.key}` or
   `\mg{table.key}`; a figure placed with `\includegraphics` alone counts as none. Markdown
   has the same gap for `![](...)`, met far less often (round 1 of step 6).
-- A title, affiliations and keywords written in the body, as elsarticle's `frontmatter` holds
-  them, are counted as main text (round 1 of step 6), and G14 reads them as the text's: an
-  abbreviation in the title is used before its definition, and an institute's acronym in an
-  affiliation is undefined (round 1 of step 7). In the preamble they are not read.
+- A class's front matter command an author provides for portability, `\providecommand` or
+  `\@ifundefined`, is the author's though the class keeps its own, and its argument is read
+  as prose, as before the table held it. Highlights, read in the front matter, count as main
+  text to G4 and are a first use to G14, as before (2026-10-23, round 2 of part 2).
+- A title written in the body outside a class's front matter, as Wiley's and Springer's
+  templates write it, is read as the text's, as one in the preamble is: G4 counts it as
+  main text, and an abbreviation in it is used before its definition to G14. A class's
+  front matter command not in `FRONT_MATTER_COMMANDS` is read as an unknown command is, its
+  arguments as prose (rounds 1 of steps 6 and 7; the front matter itself since 2026-10-23).
 - Past a refusal G14 reads a LaTeX file as typed, its commands and comments as words; `check`
   fails on the refusal already (round 1 of step 7).
 - `\~{}` before a number, written for "about", is taken for an accent on the word after it,
@@ -2435,10 +2457,13 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
     a delimited definition refused, a doubled parameter read as delimited, a `\let` always a
     definition, the spaces after a control word taken for parameter text, and a delimited
     command refused wherever it stands, read as an unknown one, or let be in maths or in a
-    hook's body (rounds 1 and 2). The second, front matter: a `frontmatter` environment's
-    title, authors, addresses and keywords and the major classes' metadata commands are
-    passed over, its abstract read.
-    The third, appendix displays: a table or figure after `\appendix`, or under a heading
+    hook's body (rounds 1 and 2).
+    The second, front matter: a class's front matter environment, its title, authors,
+    addresses and keywords, and the major classes' commands for it are passed over, an
+    abstract in it read (above, "Environments"). Tests: `tests/test_latex_mask.py`,
+    `tests/test_corruption.py`, and `latex_planted()` with `BROKEN` rules for the front
+    matter read, its abstract passed over with it, its commands unknown, and one defined
+    again refused. The third, appendix displays: a table or figure after `\appendix`, or under a heading
     named for a supplement or an appendix, is the supplement's.
 
 ## Zotero is never on the critical path

@@ -8893,6 +8893,29 @@ styles, read by style name because a French Word's heading style id is `Titre1`.
 read after the cut rather than through it, and the report names the lines it did not audit,
 so a cut in the wrong place shows.
 
+**What papers converted from Word showed.** Papers downloaded as Word files were audited,
+and checked as projects pandoc converted them into (2026-10-23).
+A Word 97-2003 document, a compound file with NULs among its bytes, was refused with "if it
+is UTF-16, save it as UTF-8"; it is now named as a .doc to be saved as .docx, by the audit
+and by every reader that opens a .docx, which looks for the compound file's signature before
+the zip, since a zip is read from its end and a .doc with an embedded object can end in one.
+A .doc in a folder given to the audit was passed over without a word, as any file the audit
+does not read is, and the paper in it went unaudited with nothing to say so. Each one is now
+named under "Passed over in a folder", with the same advice, as a note: the papers beside it
+were audited, so `--strict` does not count it, and a folder holding nothing else, or
+nothing else that could be read, has nothing to audit and says which .doc it passed over.
+A file named .doc that is no compound file, Rich Text saved under that name, is named as
+no Word 97-2003 document; and Word's lock file beside an open document, "~$" and the rest
+of its name, is no paper and is not named.
+G6 counted the bold of a table's cells towards the rate of bold in the prose, and where a
+cell's bold ran on to its next line, paired `**` across the cells; pandoc writes a Word
+table as a simple or a multiline table where it can, which no rate passed over. The bold
+rate now leaves out a table of each kind. A Turkish paper's "Kaynakça" was no reference
+list title, so the audit fell back to telling its entries by their shape; the titles in
+seven more languages are now known wherever a reference list is found by its title. And an
+e-mail address and "IL-4" were listed as numbers: G2 reads them the same way, so the fix is
+in what both read, an address as structural and the interleukins among the shipped terms.
+
 ## A move, the way Word makes one
 
 A review of the Word round trip reported that a paragraph cut and pasted with Track Changes
@@ -10677,19 +10700,15 @@ Added by the adversarial review, verified and **not** fixed:
   `year^-1^` declared `year-1`; so a name's superscripts are taken out whatever they
   hold. An isotope is declared by its mass and its element, `terms: [68Ga]` for
   `^68^Ga-DOTATATE`, and its hint does not say so: what opens with a digit is told
-  nothing of terms, since a count typed between the signs opens the same way. And of two
-  names typed with nothing between, the second is matched only where the first was taken
-  out before it, the terms being gone through once, longest first and then by their
-  letters: `FiO~2~PaO~2~` is two terms and `PaO~2~FiO~2~` an unbound number, on every
-  run. Terms of one length came in the order of a set, so it was one or the other from
-  one run to the next. The order settles an atom with no sign in it as well, where two
-  terms of one length overlap in it, and that was by the run too: `April-1` is reported
-  on every run, `apri` coming before `il-1`, and `MERS-COVID-19` is a term on every
-  run, `covid-19` coming before `mers-cov`. Going through the terms again for as long
-  as one was taken out was tried, and it took time by the square of the atom and did
-  not end for a declared term of one space (found by the review of that change). With
-  a sign between, as the ratio is written, `PaO~2~/FiO~2~`, both are terms either way
-  round. The
+  nothing of terms, since a count typed between the signs opens the same way. Terms of
+  one length came in the order of a set, so a name was a term on one run and a number
+  on the next; they come in one order now, longest first and then by their letters. Two
+  names typed with nothing between, `FiO~2~PaO~2~` and `PaO~2~FiO~2~`, are two terms
+  in either order: a term counts where another ends (#438). Where terms overlap, the
+  atom is a term if some of them cover its digits: `MERS-COVID-19` is `covid-19`. The
+  terms were once gone through again for as long as one was taken out, which took time
+  by the square of the atom and did not end for a declared term of one space; the atom
+  is now read once from its end. The
   conventions still read the text with its signs in: `75th percentile` is a convention
   and `75^th^ percentile` is none, and under Methods `I² > 50%` is one where `I^2^ > 50%`
   leaves the 50% reported. Both allowances hold wherever the tokenizer and the classifier
@@ -13565,9 +13584,13 @@ Open, recorded as each change landed:
   of them by rate, so its 98.9% is not independent of that choice. A percentile of 291 is
   set by the three or four papers at the top: the em-dash threshold was 13.9 while one
   paper's table notes were counted, and is 4.7 without them. The papers were measured with
-  their tables left out, and so is a pipe table's row in a manuscript, but not a simple or a
-  multiline table's; and an em dash typed as `---` at the start of a line that holds only
-  masked text after it, `--- [^1]`, is taken for a rule's line (round 1 of #352).
+  their tables left out. The em-dash rate leaves out a pipe table's row in a manuscript, but
+  not a simple or a multiline table's; and an em dash typed as `---` at the start of a line
+  that holds only masked text after it, `--- [^1]`, is taken for a rule's line (round 1 of
+  #352). The bold rate leaves out a table of each of pandoc's four kinds
+  (`text.tables.table_lines`), but reads as prose a table with one column, and a headless
+  multiline table opened by a line of dashes in one run, which pandoc reads as a table:
+  their bold is counted.
 - **A small count is found where it is bound, by its value.** A count printed in an emitted
   table, a percentage that gives a small count away with its denominator, and a count typed
   rather than bound are not read; G2 fails a typed count for being typed. A whole number
@@ -16129,6 +16152,33 @@ Open, recorded as each change landed:
   mark among the title's own pieces, so one that pandoc reads inside bold or italic, or one
   followed by an empty bookmark, is printed as part of the title, "a fall1"; the Title
   paragraph is in the comment, where the author can see it.
+
+What papers converted from Word showed (see "What papers converted from Word showed"):
+
+- **A reference list is known by its title in eight languages.** English, and Spanish,
+  Portuguese, French, German, Italian, Turkish and Indonesian, as pandoc 3.9.0.2 titles the
+  list in each (`text.section_names.REFERENCE_TITLES_ELSEWHERE`). A list titled in another
+  language is prose to the audit, G4's count and the recycling check, and the audit tells
+  its entries by their shape. A title typed with a combining accent, "c" and a combining
+  cedilla for "ç", is not matched. A title in another language names the list only where
+  it is the whole title, with nothing after it but punctuation, as the audit and the
+  recycling check read every title: "Literatur und Forschungsstand" is a section of the
+  paper. G4's count and the other checks that ask `Section.is_references` still read an
+  English title by its opening word, as they did before these languages were added, so
+  "References and notes" is the list to them, and so is "Bibliography of the trials
+  searched"; the audit and the recycling check take neither.
+- **An interleukin is a term, and other names with digits are not.** The shipped terms hold
+  the interleukins HGNC names, abbreviated with a hyphen and written out with one: "IL4",
+  "interleukin 4" and a chemokine such as CXCL10 are numbers to G2 and to the audit alike.
+  A project declares them in `terms:`; the audit reads no `paper.yaml`, so for it they stay
+  numbers. A term counts where it opens a word, where another term ends, or where its
+  first letter as written is a capital after a lower-case letter: "sIL-2R", "ppFEV1" and,
+  with CO2 declared, "pCO2" are terms, and "April-12", "Brazil-3" and "BRAZIL-3" numbers,
+  not `il-12` and `il-3`. A name written in lower case after a lower-case prefix,
+  "sil-2r", is a number; and any word with a capital before a term's letters is read as a
+  name, so "preCO2", with CO2 declared, is a term.
+- **An e-mail address is one whose domain ends in letters.** "name@host" with no dot, or an
+  address at a bare IP number, is read as a number.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

@@ -31,6 +31,32 @@ MAX_PART_BYTES = 120 * 1024 * 1024
 MAX_RATIO = 200  # decompressed:compressed, past which a member is a bomb rather than prose
 
 
+#: The first eight bytes of a compound file, the container Word 97-2003 saves a .doc in,
+#: and Word saves a .docx in once it has a password ([MS-CFB] 2.2, the header signature).
+COMPOUND_FILE = bytes.fromhex("d0cf11e0a1b11ae1")
+
+
+def is_compound_file(data: bytes) -> bool:
+    """Whether `data` opens as a compound file does: a .doc, or a .docx with a password."""
+    return data.startswith(COMPOUND_FILE)
+
+
+def compound_file_said(name: str) -> str:
+    """What to say of a compound file given as a document. Read as text, a .doc is bytes
+    with NULs among them, and the audit said "if it is UTF-16, save it as UTF-8"; opened as
+    a zip, it is "not a readable archive". Neither says what the file is or what to do."""
+    if name.lower().endswith(".docx"):
+        return (
+            f"{name} is a .docx with a password, or a Word 97-2003 document (.doc) renamed, "
+            "which is not read: open it in Word, take off any password, and save it as a "
+            "Word document (.docx)"
+        )
+    return (
+        f"{name} is a Word 97-2003 document (.doc), which is not read: open it in Word and "
+        "save it as a Word document (.docx)"
+    )
+
+
 class UnsafeDocument(Exception):
     """The document is malformed, implausibly large, or contains a DTD."""
 
@@ -56,6 +82,14 @@ def parse_xml(data: bytes, *, what: str = "XML") -> ET.Element:
         raise UnsafeDocument(f"{what} is malformed: {exc}") from exc
 
 
+def _opens_as_compound_file(path: Path) -> bool:
+    try:
+        with path.open("rb") as file:
+            return is_compound_file(file.read(len(COMPOUND_FILE)))
+    except OSError:
+        return False
+
+
 def open_archive(path: Path) -> zipfile.ZipFile:
     """Open a zip, refusing one that is too large or whose members inflate implausibly."""
     try:
@@ -66,6 +100,11 @@ def open_archive(path: Path) -> zipfile.ZipFile:
         raise UnsafeDocument(
             f"{path.name} is {size // 1024 // 1024} MB; a manuscript or checklist is not"
         )
+    # Before the zip is looked for, and not when it is not found: a zip is read from its end,
+    # and a .doc that holds an embedded object can end in one. Such a .doc renamed .docx was
+    # opened, and said to have "no word/document.xml".
+    if _opens_as_compound_file(path):
+        raise UnsafeDocument(compound_file_said(path.name))
     try:
         archive = zipfile.ZipFile(path)
     except (zipfile.BadZipFile, OSError) as exc:

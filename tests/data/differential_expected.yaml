@@ -50,15 +50,16 @@ expected:
       against it ends one, so the bounds on either side of it are no longer compared
   - reading: check
     why: >-
-      G1 counts the datasets the results name, `datasets_checked`, which is 0 in a project
-      that names none; and the hint for an unbound number beside a month's name says that the
-      date of the data is declared with `dataset()` and a date the study chose is a parameter
+      a reference list titled in Spanish, Portuguese, French, German, Italian, Turkish or
+      Indonesian, "Daftar pustaka" say, is the reference list, so G14 reads no abbreviation
+      under it and G4 counts none of its words in the main text; and
+      G6's bold rate leaves out a simple, multiline, grid or pipe table; the inputs now hold
+      such titles, and bold in tables and in prose under lines of dashes that open none
   - reading: numbers
     why: >-
-      a supplement's name of the Methods, "Supplementary methods", "eMethods 1. Data
-      source", "S1 Methods" or "Appendix 1: Methods", is a place the Methods are, so a
-      Methods-only convention under one, "p < 0.05", is the convention it is there and no
-      longer a number nothing classifies; the inputs now hold such headings
+      an e-mail address is structural, `email-address`, and an interleukin, "IL-4",
+      "interleukin-31", "IL-4/IL-13", is a shipped term, so neither is a number nothing
+      classifies; the inputs now hold such addresses and names
   - reading: reported tests
     why: >-
       a P above 1, "P = 4.1 x 10^5", is not judged; a number with a middle dot or a comma

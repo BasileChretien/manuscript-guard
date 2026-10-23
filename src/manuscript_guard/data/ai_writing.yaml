@@ -676,6 +676,11 @@ density:
     per_1000: 9.4
     pattern: '\*\*[^*\n]+\*\*'
     why: Emphasis scattered through prose rather than reserved for structure
+    # Not in a table, pipe, grid, simple or multiline (`text.tables.table_lines`): the papers
+    # were measured with their tables left out, and a table's header row is bold by its
+    # style. Read as prose, each bold cell counted, and where a cell's bold ran on to the
+    # cell's next line, `**` paired across the cells: "**   | **", "1**   2**".
+    in_tables: false
     exempt:
       # A structured abstract's labels are bold by requirement, not by habit. Journals
       # specify them, so counting them would flag the journal's own house style.

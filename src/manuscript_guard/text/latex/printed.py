@@ -504,6 +504,21 @@ _NUMBERED = re.compile(r"\\caption(?![A-Za-z*])\s*(?:\[[^\[\]]*\]\s*)?\{")
 _ANY_CAPTION = re.compile(r"\\caption\*?(?![A-Za-z])")
 
 
+def caption_spans(source: Source) -> list[tuple[int, int]]:
+    """Where the text of each caption of a file runs, numbered or starred, inside its braces,
+    in the file as typed: G14 reads a definition there as one a legend may restate. A caption
+    in a comment or code is none."""
+    read, comments = _passed_over(source.reading)
+    return [(opened + 1, closed)
+            for begun, opened, closed in _arguments(source.text, _ANY_CAPTION_ARGUMENT, 0,
+                                                    len(source.text), comments)
+            if read(begun)]  # fmt: skip
+
+
+#: A caption, numbered or starred, with the short form a list of figures prints.
+_ANY_CAPTION_ARGUMENT = re.compile(r"\\caption\*?(?![A-Za-z])\s*(?:\[[^\[\]]*\]\s*)?\{")
+
+
 def _arguments(text: str, pattern: re.Pattern[str], start: int, end: int, comments: dict):
     """Where each command of `pattern` between `start` and `end` starts, and where the
     argument it opens runs, from its opening brace to its closing one, where that closes

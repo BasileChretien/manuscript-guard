@@ -50,9 +50,10 @@ expected:
       against it ends one, so the bounds on either side of it are no longer compared
   - reading: check
     why: >-
-      G1 counts the datasets the results name, `datasets_checked`, which is 0 in a project
-      that names none; and the hint for an unbound number beside a month's name says that the
-      date of the data is declared with `dataset()` and a date the study chose is a parameter
+      G14 notes a Markdown manuscript whose main text has no heading, `no-headings`, and
+      reports no `abbreviation-redefined` in it; reads a glossary's entries as definitions,
+      lets a caption restate one, and leaves SD, ANOVA, RMSE and RMSD undefined unless the
+      journal's profile asks for them
   - reading: numbers
     why: >-
       a supplement's name of the Methods, "Supplementary methods", "eMethods 1. Data
@@ -145,4 +146,8 @@ expected:
       bracket; a time of day, "8:30AM", "10:00 PM", is not read as an abbreviation, and
       nothing is reported as undefined in a paragraph set in bold with no small letter or a
       cell of a table's header row with none, a heading typed in capitals; the inputs now
-      hold such brackets, times, headings and tables
+      hold such brackets, times, headings and tables. Then: a glossary under its heading
+      defines its entries and its lines are no uses, a caption or a legend restates a
+      definition without giving it twice, and a manuscript with no heading is read as one
+      text, with a `no-headings` note and no `abbreviation-redefined`; the inputs hold a
+      glossary and captions, and many have no heading

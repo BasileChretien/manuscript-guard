@@ -3818,6 +3818,47 @@ guidelines the toolkit has a recipe for, the ones the project declares, and what
 project lists under `language: known_abbreviations:` in `paper.yaml`. A listed abbreviation
 that the manuscript defines anyway is still held to that definition.
 
+**A few statistical abbreviations stand undefined, unless the journal asks.**
+`data/statistical_abbreviations.yaml` holds ANOVA, RMSD, RMSE and SD (Basile's decision of
+2026-10-23: a short list, from what journals let stand, and nothing the evidence leaves in
+doubt). Its source is the one published style manual found that says so of statistics: the
+ASA, CSSA and SSSA Publications Handbook and Style Manual, whose Table 4-1 of "widely used
+statistical abbreviations and symbols" "do not require definition" in those journals
+(chapter 4, read 2026-10-23). Of that table, SE, SEM, CV and LSD are left out, being status
+epilepticus, scanning electron microscopy, cardiovascular and the drug in clinical prose.
+CI, OR, RR, HR and IQR are not on the list: JAMA's instructions ask for every abbreviation
+to be expanded at first mention, and the Cochrane Style Manual's list of abbreviations that
+need no definition holds none of them, so a project whose journal lets them stand lists them
+itself. The journal's profile turns the list off, `abbreviations: define_statistics: true`,
+or names what is to be defined, `abbreviations: define: [CI]`, which is then reported where
+it is undefined whatever exempts it, `paper.yaml`'s list included. Both are rules of the
+page, quoted under `quotes.abbreviations.<key>` and held to it by G4.
+
+**A glossary defines its entries.** Under a heading titled Abbreviations, List of
+abbreviations, Glossary, Acronyms or List of acronyms, in any case, each line that gives a
+short form and its long form is a definition where it stands: "ROR = reporting odds ratio",
+"ROR: ...", "ROR – ...", as a list item or not, and the short form and the long
+form side by side in a table's row or a definition list's item (in LaTeX, a `tabular` row or
+a `description` item). A use above the glossary is used before its definition, as above any.
+The glossary's lines are not uses, so an entry nothing else uses is unused. Journals often
+ask for the list and for the expansion at first use as well, so a definition in the text that
+gives the glossary's meaning again is not reported as given twice; a second one in the text
+is, and one that gives another meaning is reported as two meanings.
+
+**A caption may restate a definition.** A legend has to be read alone. A definition in a
+Markdown table's caption (`Table: ...`, or `: ...` beside a table), in a paragraph that opens
+with the display it captions and a stop, a colon or a dash ("Figure 1. ...", "**Table 2.**
+..."), or in a LaTeX `\caption`, is not reported as given twice where it gives the meaning
+the text gave; another meaning is reported. A Markdown figure's caption, the text of its
+image, is not read at all.
+
+**A paper with no heading is read as one text.** A Markdown manuscript converted from Word
+with its headings as bold lines has no section G14 can tell apart: the abstract is read with
+the main text, so a definition the abstract and the Introduction both give would be reported
+as given twice. Where the main text has no heading at all, G14 says so once, as a note,
+`no-headings`, and does not report `abbreviation-redefined` in it. A bold line is not taken
+for a heading.
+
 **Every finding is a warning, at every stage.** The reading of a definition is good and not
 exact, and a name in capitals is not an abbreviation. The first plan for this gate had an
 undefined abbreviation fail a submission build. Run on the realistic manuscript kept in
@@ -15187,10 +15228,20 @@ Open, recorded as each change landed:
   - The unit symbols exempt are the nine shipped. `MW`, `MJ`, `MV`, `MDa`, `TWh`, `IU` and
     `HU` are reported: several have a second meaning, and the list is the project's to
     extend.
-  - Only a section titled "Abstract" is read apart. A `Summary`, a `Key points` box and a
-    `Figure legends` section are main text, so a definition repeated in the Introduction
-    after one of them, or in a legend that has to stand alone, is reported as
-    `abbreviation-redefined`.
+  - Only a section titled "Abstract" is read apart. A `Summary` and a `Key points` box are
+    main text, so a definition repeated in the Introduction after one of them is reported
+    as `abbreviation-redefined`. A legend is a caption only where it opens with the display
+    and a stop, a colon or a dash: "Figure 1 The odds by year" is text, and a definition it
+    repeats is reported.
+  - A glossary is found only under a heading. One under a bold line, in a manuscript with
+    no heading, is read as text. Its entries are read one to a line, and "ROR reporting odds
+    ratio" only in a table or a definition list: a paragraph of "ROR, reporting odds ratio;
+    PRR, ..." is not read, and a grid table's long form over several lines keeps its first.
+    A glossary whose section runs on into the next file is cut at the end of its own.
+  - A glossary's or a caption's long form is compared with the text's as written: "CI =
+    95% confidence interval" beside "confidence interval (CI)" is reported as two meanings.
+  - SD on the statistical list hides an undefined SD that means stable disease.
+  - `no-headings` is said of a Markdown manuscript only; a LaTeX one has its sections.
   - A word typed in capitals for emphasis is reported as an undefined abbreviation, unless
     its paragraph is set entirely in bold and has no small letter in it.
   - A heading typed in capitals in a plain paragraph, "APPENDIX 1", and a row label in a

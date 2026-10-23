@@ -178,6 +178,9 @@ article_type: "Original Research Article"
 english_variant: en-GB          # only if the journal insists; overrides paper.yaml
 blinding: double                # how its peer review is blinded, where the page says
 text_recycling: "Methods only, cited"  # its policy on authors' reuse of their own text
+abbreviations:                  # only where the page asks for what G14 lets stand undefined
+  define_statistics: true       # "expand every abbreviation": SD, ANOVA, RMSE, RMSD too
+  define: [CI]                  # the ones it names
 
 limits:                         # omit anything the journal does not state
   abstract_words: 250

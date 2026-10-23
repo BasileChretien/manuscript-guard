@@ -669,12 +669,81 @@ def capitalised(draw: st.DrawFn) -> tuple[str, list[str]]:
     return text, sorted(short for _written, short in STILL_ABBREVIATIONS)
 
 
+#: Statistical abbreviations: those G14's list lets stand undefined, and some it does not.
+STATISTICS_EXEMPT = ("ANOVA", "RMSD", "RMSE", "SD")
+STATISTICS_NOT = ("CI", "HR", "IQR", "OR", "SE", "SEM")
+
+
+@st.composite
+def statistics_used(draw: st.DrawFn) -> tuple[str, list[str]]:
+    """A manuscript using every abbreviation of `STATISTICS_EXEMPT` and `STATISTICS_NOT`,
+    none defined, in an order drawn; and the names a journal is drawn to ask defined, one
+    of each list at least."""
+    planted = draw(st.permutations([*STATISTICS_EXEMPT, *STATISTICS_NOT]))
+    text, _starts = _paragraphs(draw, (f"the {short} was given" for short in planted))
+    named = [draw(st.sampled_from(STATISTICS_EXEMPT)), draw(st.sampled_from(STATISTICS_NOT))]
+    return "# Results\n\n" + text, sorted(set(named))
+
+
+#: A glossary's entries in each form it is written in, each its own short form: a line with
+#: `=`, `:` or a dash, a list item with the short form in bold, a definition list's term, and
+#: a table's rows.
+GLOSSARY_FORMS = (
+    "ROR = reporting odds ratio\nPRR: proportional reporting ratio",
+    "IC \N{EN DASH} information component",
+    "- **EBGM**: empirical Bayes geometric mean\n- SDR - signal detection ratio",
+    "BCPNN\n:   Bayesian confidence propagation neural network",
+    "| Abbreviation | Meaning |\n|---|---|\n| GPS | gamma Poisson shrinker |\n"
+    "| MGPS | multi-item gamma Poisson shrinker |",
+)
+GLOSSARY_USED = ("ROR", "PRR", "IC", "EBGM", "SDR", "BCPNN", "GPS", "MGPS")
+#: An entry nothing else uses, and an abbreviation the glossary does not list.
+GLOSSARY_UNUSED = ("WHO-ART: WHO adverse reaction terminology", "WHO-ART")
+GLOSSARY_MISSING = "UMC"
+#: What restates a definition the text gives: the text's first use after the glossary, a
+#: table's caption and a typed legend; and a second definition in the text, which is one.
+RESTATED = (
+    "the reporting odds ratio (ROR) was the main measure",
+    "| Drug | n |\n|---|---|\n| one | 3 |\n\nTable: Reports; the reporting odds ratio (ROR).",
+    "Figure 1. The reporting odds ratio (ROR) by year.",
+    "**Table 2.** The reporting odds ratio (ROR) by drug.",
+)
+DEFINED_AGAIN = "in short, the reporting odds ratio (ROR) agreed"
+
+
+@st.composite
+def defined_elsewhere(draw: st.DrawFn) -> dict[str, Any]:
+    """A manuscript with a glossary in every form, under a heading drawn among those that
+    name one, its entries in an order drawn; then a Methods section that uses each entry,
+    an abbreviation the glossary does not list, restates a definition in a caption, a
+    legend and a first use, and defines one entry a second time. And the same manuscript
+    with no heading, its headings typed as bold lines, read as one text."""
+    heading = draw(st.sampled_from(("Abbreviations", "List of abbreviations", "Glossary",
+                                    "Acronyms", "LIST OF ACRONYMS")))  # fmt: skip
+    entries = draw(st.permutations([*GLOSSARY_FORMS, GLOSSARY_UNUSED[0]]))
+    glossary, _starts = _paragraphs(draw, entries)
+    uses = [f"the {short} was computed" for short in (*GLOSSARY_USED, GLOSSARY_MISSING)]
+    methods, _starts = _paragraphs(draw, draw(st.permutations([*uses, *RESTATED])))
+    # The second definition comes after the first use's restating one.
+    second, _starts = _paragraphs(draw, [DEFINED_AGAIN])
+    headed = f"# {heading}\n\n{glossary}# Methods\n\n{methods}# Discussion\n\n{second}"
+    plain = f"**{heading}**\n\n{glossary}**Methods**\n\n{methods}**Discussion**\n\n{second}"
+    return {
+        "headed": headed,
+        "headless": plain,
+        "found": sorted([("abbreviation-redefined", "ROR"), ("abbreviation-undefined", "UMC"),
+                         ("abbreviation-unused", GLOSSARY_UNUSED[1])]),
+    }  # fmt: skip
+
+
 #: The same pieces, as blocks a manuscript of the pool is drawn with.
 ABBREVIATION_BLOCKS = tuple(
     f"\n\n{written}\n\n"
     for written in (
         *(each[0] for each in (*DEFINING, *NOT_DEFINING, *STILL_ABBREVIATIONS)),
         *NOT_ABBREVIATIONS,
+        *RESTATED,
+        "# Abbreviations\n\n" + "\n\n".join(GLOSSARY_FORMS),
     )
 )
 

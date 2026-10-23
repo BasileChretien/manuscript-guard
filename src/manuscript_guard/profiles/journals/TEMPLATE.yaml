@@ -75,6 +75,16 @@ english_variant: either
 # where the page does not say.
 # text_recycling: "Methods may repeat an earlier description of ours if it is cited."
 
+# The abbreviations the journal asks to be defined though G14 lets them stand. G14 exempts a
+# short list of statistical ones that style manuals let stand undefined (SD, ANOVA, RMSE,
+# RMSD); `define_statistics: true` where the page asks every abbreviation to be expanded at
+# first use, and `define:` for the ones it names. Quote the page under
+# `quotes.abbreviations.define_statistics` or `quotes.abbreviations.define`. Delete the
+# block where the page does not say.
+# abbreviations:
+#   define_statistics: true
+#   define: [CI]
+
 # ── Limits ───────────────────────────────────────────────────────────────────────────────
 #
 # Numbers only, and only the ones the journal states. Delete every line you cannot point at a
@@ -304,7 +314,7 @@ reporting_guidelines:
 # them, under the rule's key: limits.<name>, structure.required_sections,
 # structure.abstract_structured, structure.abstract_headings, structure.abstract_title,
 # required_statements.<id>, references, english_variant, blinding, text_recycling,
-# reporting_guidelines, pointers.<kind>.
+# abbreviations.<key>, reporting_guidelines, pointers.<kind>.
 # G4 names every rule that has none. A limit's number must be in its quote, as digits
 # ("3500", "3,500") or as a word up to twenty ("four").
 #

@@ -83,6 +83,8 @@ def rules_of(document: dict) -> dict[str, object]:
     for name in ("english_variant", "blinding", "text_recycling"):
         if name in document:
             rules[name] = document[name]
+    for name, value in (document.get("abbreviations") or {}).items():
+        rules[f"abbreviations.{name}"] = value
     if document.get("reporting_guidelines"):
         rules["reporting_guidelines"] = document["reporting_guidelines"]
     for name, form in (document.get("pointers") or {}).items():

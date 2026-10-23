@@ -21722,6 +21722,74 @@ def test_a_reference_list_under_a_bold_line_is_passed_over_as_under_a_heading(
     ]
 
 
+_LEGEND = "Figure 1. The color of each tumor group by ABC."
+
+
+@pytest.mark.parametrize(
+    "after",
+    [
+        f"\n\n**Figure legends**\n\n{_LEGEND}\n\n",
+        f"\n\n{_LEGEND}\n\n",
+        f"\n\n__Supplementary material__\n\n{_LEGEND}\n\n",
+        f"\n# Appendix\n{_LEGEND}\n\n",
+        f"\n\n| Group | Count |\n|---|---|\n| A | 1 |\n\n{_LEGEND}\n\n",
+    ],
+    ids=["a bold title", "a legend", "a bold title in underscores", "a heading printed as text",
+         "a table"],  # fmt: skip
+)
+def test_what_follows_a_reference_list_under_a_bold_line_is_read(project: Path, after: str) -> None:
+    """In a paper converted from Word the titles after the list are bold paragraphs too, and
+    journals ask for the figure legends and the tables after the references. Run on to the
+    next heading or the end of the file, the list hid them from G14: "color", "tumor" and ABC
+    in a legend were reported before the list was passed over and not after. It ends at a
+    paragraph all in bold, at a caption, a table or an image, and, as the audit's cut does,
+    at a line shaped like a heading that pandoc prints as text."""
+    text = main_md(project).read_text(encoding="utf-8")
+    end = text.index("# Data availability")
+    listed = text[:end] + _LISTED.format(line="**References**").rstrip("\n") + after + text[end:]
+    main_md(project).write_text(listed, encoding="utf-8")
+    legend = line_of(listed, _LEGEND)
+    assert [(code, line) for code, line, _m in spelling_findings(project)] == [
+        ("spelling-variant", legend), ("spelling-variant", legend)
+    ]  # fmt: skip
+    assert ("abbreviation-undefined", legend) in language_findings(project)
+
+
+@pytest.mark.parametrize(
+    "lookalike",
+    [
+        "Sources searched:\n\n1. Databases\n\n2. Registries\n\n3. References\n\n",
+        "- Sources searched\n\n  References\n\n",
+    ],
+    ids=["an item of a numbered list", "an item's paragraph"],
+)
+def test_references_as_an_item_of_a_list_opens_no_reference_list(
+    project: Path, lookalike: str
+) -> None:
+    """"3. References" in a loose list of sources searched, or "References" as a paragraph of
+    a list item, is a list's text and not the title of a reference list; taken for one, it
+    hid the rest of the Methods from G14."""
+    text = main_md(project).read_text(encoding="utf-8")
+    end = text.index("# Results")
+    sentence = "We searched the color atlas."
+    edited = text[:end] + lookalike + sentence + "\n\n" + text[end:]
+    main_md(project).write_text(edited, encoding="utf-8")
+    assert [(code, line) for code, line, _m in spelling_findings(project)] == [
+        ("spelling-variant", line_of(edited, sentence))
+    ]
+
+
+def test_a_blank_line_of_spaces_in_a_reference_list_still_ends_a_paragraph() -> None:
+    """The word count makes the list's characters NULs so that it counts none of its words.
+    A line of spaces made NULs was no longer blank, and the `#` line under it was no longer a
+    heading: the Data availability section was gone from the count."""
+    from manuscript_guard.text.sections import measure
+
+    text = "**References**\n\n1. Doe J. Title. 2019.\n  \n# Data availability\n\nText here.\n"
+    assert measure(text).sections == ("Data availability",)
+    assert measure(text).main_text_words == 4
+
+
 def test_a_name_a_quotation_and_a_citation_key_in_the_other_spelling_are_left_alone(
     project: Path,
 ) -> None:

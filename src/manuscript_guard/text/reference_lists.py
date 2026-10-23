@@ -17,7 +17,7 @@ import re
 from bisect import bisect_right
 
 from manuscript_guard.text.attributes import strip_attributes
-from manuscript_guard.text.blocks import find_headings, scannable
+from manuscript_guard.text.blocks import find_headings, heading_shaped, scannable
 
 # A line that is nothing but a bibliography heading, perhaps numbered, perhaps in bold. From
 # there to the next heading is page ranges, volume numbers and years belonging to other
@@ -91,52 +91,55 @@ def is_bibliography_heading(
     return found.group("word")[0].isupper() and "." not in found.group("tail")
 
 
-# An indented line under a blank one is a listing, and a tab indents as four spaces do.
-_INDENTED = re.compile(r"^(?: {4}| {0,3}\t)")
-
-
 def unmarked_reference_lists(text: str) -> list[tuple[int, int]]:
     """Where a Markdown file's reference lists run under a line that is no heading, as offsets
-    `[start, end)`: from the line to the next heading (`find_headings`), or to the end of
-    the file, as the list under `# References` runs for the gates that pass it over.
+    `[start, end)`.
 
     The line is one `is_bibliography_heading` takes unmarked, as the audit takes it: the word
     alone on its line, in bold or not, capitalised and not ending in a full stop. And it opens
     a paragraph, under a blank line, a heading or nothing, where the audit takes it anywhere:
     a sentence a hard wrap broke before "References" and after it has the word alone on a
     line, and taken for a list it would hide the rest of the section from every gate that
-    passes a list over. A line in a listing, an HTML comment or the front matter opens none,
-    and an indented one is a listing.
+    passes a list over. Nor is it an item of a list (`_in_a_list`). A line in a listing, an
+    HTML comment or the front matter opens none.
 
-    A heading ends the list whatever its level: the bold line has none to compare. A heading
-    that names the reference list, `# References`, is not found here;
-    `Section.is_references` reads it."""
+    The list ends at the next heading whatever its level, since the bold line has none to
+    compare; at a line shaped like a heading that pandoc prints as text, where the audit's cut
+    ends too, since running on past it would hide what follows; and at a paragraph that is
+    no entry (`_ends_a_list`). A paper converted from Word has its other titles in bold as
+    well, and journals ask for the figure legends and the tables after the references: run on
+    to the next heading, the list hid them from G14. A heading that names the reference list,
+    `# References`, is not found here; `Section.is_references` reads it."""
     headings = find_headings(text)
-    starts = [heading.start for heading in headings]
     newlines = [found.start() for found in re.finditer("\n", text)]
     offsets = [0, *(index + 1 for index in newlines)]
 
     def line_of(offset: int) -> int:
         return bisect_right(newlines, offset - 1)
 
+    lines = scannable(text).split("\n")
     heading_lines = {line_of(heading.start) for heading in headings}
+    breaks = heading_lines | heading_shaped(lines)
     # The line after a heading opens a paragraph; after a setext heading, the line after its
     # rule.
-    under_headings = {line_of(heading.start) + heading.setext for heading in headings}
-    lines = scannable(text).split("\n")
+    under = {line_of(heading.start) + heading.setext for heading in headings}
     spans: list[tuple[int, int]] = []
-    for number, line in enumerate(lines):
-        if number in heading_lines or _INDENTED.match(line):
+    number = 0
+    while number < len(lines):
+        if (
+            number in heading_lines
+            or not _opens_a_paragraph(lines, number, under)
+            or _in_a_list(lines, number)
+            or not is_bibliography_heading(lines[number])
+        ):
+            number += 1
             continue
-        if not _opens_a_paragraph(lines, number, under_headings):
-            continue
-        if not is_bibliography_heading(line):
-            continue
-        start = offsets[number]
-        if spans and start < spans[-1][1]:
-            continue
-        after = bisect_right(starts, start)
-        spans.append((start, starts[after] if after < len(starts) else len(text)))
+        start, number = number, number + 1
+        while number < len(lines) and number not in breaks and not (
+            _opens_a_paragraph(lines, number, under) and _ends_a_list(lines, number)
+        ):
+            number += 1
+        spans.append((offsets[start], offsets[number] if number < len(lines) else len(text)))
     return spans
 
 
@@ -144,3 +147,51 @@ def _opens_a_paragraph(lines: list[str], number: int, under: set[int]) -> bool:
     """Whether line `number` opens a paragraph: it is the first, or the line above is blank or
     ends a heading (`under`)."""
     return not number or not lines[number - 1].strip() or number - 1 in under
+
+
+#: A list item's marker: "3." or "3)" of an ordered list, "-", "*" or "+" of another.
+_ITEM = re.compile(r"[ ]{0,3}(?:[0-9]{1,9}[.)]|[-*+])(?:[ \t]|$)")
+
+
+def _in_a_list(lines: list[str], number: int) -> bool:
+    """Whether line `number` is a list's: indented, as an item's second paragraph is, or an
+    item whose paragraph before is an item too. "3. References" after "2. Registries" in a
+    list of sources searched is the list's third item; "6. References" after a paragraph of
+    the Discussion is the title of the reference list, numbered."""
+    line = lines[number]
+    if line[:1] in (" ", "\t"):
+        return True
+    if not _ITEM.match(line):
+        return False
+    above = number - 1
+    while above >= 0 and not lines[above].strip():
+        above -= 1
+    while above > 0 and lines[above - 1].strip():
+        above -= 1
+    return above >= 0 and bool(_ITEM.match(lines[above]))
+
+
+#: A paragraph all in bold, a title in a paper converted from Word: "**Figure legends**",
+#: "__Supplementary material__", "**Table 2**:".
+_BOLD = re.compile(r"[ ]{0,3}(\*\*|__)(?=\S)(?:(?!\1).)+(?<=\S)\1[\s:.]*")
+#: A paragraph that is no entry of a reference list: a figure's or a table's caption, a
+#: table, an image.
+_NO_ENTRY = re.compile(
+    r"[ ]{0,3}(?:!\[|\||\+[-=]|Table:|[*_]{0,2}(?:Supplementa(?:ry|l)\s+|e)?"
+    r"(?:Figure|Fig\.|Table|Box|Appendix)s?\s*S?[0-9IVX])"
+)
+
+
+def _ends_a_list(lines: list[str], number: int) -> bool:
+    """Whether the paragraph that line `number` opens ends a reference list: a paragraph all
+    in bold, or one that is no entry (`_NO_ENTRY`). An entry that opens with "Table" or
+    "Figure" and a number, which no style writes, would end it too, and the entries after it
+    are then read as prose: a false alarm, where running on hides the paper."""
+    if _NO_ENTRY.match(lines[number]):
+        return True
+    paragraph = []
+    for line in lines[number:]:
+        if not line.strip():
+            break
+        paragraph.append(line.strip())
+    return bool(_BOLD.fullmatch(" ".join(paragraph)))

@@ -156,6 +156,6 @@ expected:
       earlier paper, as the list under `# References` is not; the inputs now hold such lines
   - reading: citations
     why: >-
-      a new reading; an `@` glued to the word before it is an e-mail address's, as pandoc
-      reads it, so "[name@gmail.com]", a mailto link and a span holding an address are no
-      citation group and their hosts no keys
+      a new reading; an `@` glued to the word before it, or to full stops that are not whole
+      ellipses, is an e-mail address's, as pandoc reads it, so "[name@gmail.com]", a mailto
+      link and a span holding an address are no citation group and their hosts no keys

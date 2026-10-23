@@ -4757,15 +4757,16 @@ def _passed_over(text: str) -> dict[str, Any]:
 
 
 @holds(60, reference_lists())
-def test_a_reference_list_under_a_bold_line_is_passed_over_as_under_a_heading(
+def test_a_reference_list_under_a_bold_line_is_passed_over_to_where_it_ends(
     drawn: tuple[str, str],
 ) -> None:
     """A list under `**References**`, `References` alone or another line the audit takes for
-    a list's start is read as the list under `# References` is, by every gate that passes a
-    list over; a sentence, a full stop, small letters or a hard wrap that left the word alone
-    in a paragraph start none (`reference_lists`)."""
-    listed, headed = drawn
-    assert _passed_over(listed) == _passed_over(headed), listed
+    a list's start is passed over by every gate that passes a list over, to the next heading,
+    bold title, caption, table or line shaped like a heading, and no further; a sentence, a
+    full stop, small letters, a hard wrap that left the word alone in a paragraph and an item
+    of a list start none (`reference_lists`)."""
+    listed, passed = drawn
+    assert _passed_over(listed) == _passed_over(passed), listed
 
 
 def _no_list_under_a_line(patch: pytest.MonkeyPatch) -> None:
@@ -4775,6 +4776,18 @@ def _no_list_under_a_line(patch: pytest.MonkeyPatch) -> None:
 
 def _a_list_opens_inside_a_paragraph(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(reference_lists_module, "_opens_a_paragraph", lambda lines, number, under: True)
+
+
+def _a_list_runs_on_to_the_next_heading(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reference_lists_module, "_ends_a_list", lambda lines, number: False)
+
+
+def _a_heading_printed_as_text_ends_no_list(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reference_lists_module, "heading_shaped", lambda lines: set())
+
+
+def _an_item_of_a_list_opens_one(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reference_lists_module, "_in_a_list", lambda lines, number: False)
 
 
 # --------------------------------------------------- e-mail addresses beside citations
@@ -9939,11 +9952,23 @@ BROKEN = {
     ),
     "no reference list stands under a line that is no heading": (
         _no_list_under_a_line,
-        test_a_reference_list_under_a_bold_line_is_passed_over_as_under_a_heading,
+        test_a_reference_list_under_a_bold_line_is_passed_over_to_where_it_ends,
     ),
     "a reference list opens inside a paragraph": (
         _a_list_opens_inside_a_paragraph,
-        test_a_reference_list_under_a_bold_line_is_passed_over_as_under_a_heading,
+        test_a_reference_list_under_a_bold_line_is_passed_over_to_where_it_ends,
+    ),
+    "a reference list runs on to the next heading": (
+        _a_list_runs_on_to_the_next_heading,
+        test_a_reference_list_under_a_bold_line_is_passed_over_to_where_it_ends,
+    ),
+    "a heading printed as text ends no reference list": (
+        _a_heading_printed_as_text_ends_no_list,
+        test_a_reference_list_under_a_bold_line_is_passed_over_to_where_it_ends,
+    ),
+    "an item of a list opens a reference list": (
+        _an_item_of_a_list_opens_one,
+        test_a_reference_list_under_a_bold_line_is_passed_over_to_where_it_ends,
     ),
     "an e-mail address in brackets is a citation": (
         _an_address_in_brackets_is_a_citation,

@@ -22,20 +22,25 @@ from pathlib import Path
 _IN_GROUP = r"(?:[^\]\n]|\n(?![ \t]*\n))"
 # An `@` glued to the word before it is an e-mail address's, and pandoc reads no citation
 # there, in a group or out of one: "[name@example.org]", "[*name@example.org*](mailto:...)",
-# "write to name@example.org". Glued is after a letter or a digit, or after a full stop that
-# is not an ellipsis's, as pandoc's word runs on through one ("x.@key" is no citation, and
-# "x...@key" is one). `check` read the host of each address as a key that "matches nothing
-# in the library", which fails a submission.
-_NOT_GLUED = r"(?<![^\W_])(?<!(?<!\.\.)\.)"
+# "write to name@example.org". Glued is after a letter or a digit, or after full stops that
+# are not whole ellipses, as pandoc's word runs on through a full stop and "..." is an
+# ellipsis: "x.@key" and "x....@key" are no citation, "x...@key" and "x......@key" are one.
+# A run of dots is counted up to fourteen; a longer one is read as ellipses. `check` read
+# the host of each address as a key that "matches nothing in the library", which fails a
+# submission. Each pattern asks first whether an `@` follows, so that the assertions are
+# made at the signs only.
+_NOT_GLUED = r"(?<![^\W_])" + "".join(
+    rf"(?<!(?<!\.)\.{{{dots}}})" for dots in range(1, 15) if dots % 3
+)
 # A group holds an `@` no word is glued to: "[name@example.org]" is text to pandoc.
-BRACKETED = re.compile(rf"\[(?P<body>{_IN_GROUP}*{_NOT_GLUED}@{_IN_GROUP}*)\]")
+BRACKETED = re.compile(rf"\[(?P<body>{_IN_GROUP}*(?=@){_NOT_GLUED}@{_IN_GROUP}*)\]")
 # A narrative @key, not preceded by a word character, a backtick or a bracket, nor glued.
 NARRATIVE = re.compile(
-    rf"(?<![\w`\[]){_NOT_GLUED}(?P<suppress>-?)@(?P<key>[A-Za-z][\w:.#$%&+?<>~/-]*)"
+    rf"(?=-?@)(?<![\w`\[]){_NOT_GLUED}(?P<suppress>-?)@(?P<key>[A-Za-z][\w:.#$%&+?<>~/-]*)"
 )
-KEY_IN_BODY = re.compile(rf"{_NOT_GLUED}-?@(?P<key>[A-Za-z][\w:.#$%&+?<>~/-]*)")
+KEY_IN_BODY = re.compile(rf"(?=-?@){_NOT_GLUED}-?@(?P<key>[A-Za-z][\w:.#$%&+?<>~/-]*)")
 # An `@` that can open a key: what makes a bracketed span a citation group.
-_SIGN = re.compile(rf"{_NOT_GLUED}@")
+_SIGN = re.compile(rf"(?=@){_NOT_GLUED}@")
 # A line break that `_IN_GROUP` does not take: one with a blank line after it.
 _BLANK_BREAK = re.compile(r"\n(?=[ \t]*\n)")
 

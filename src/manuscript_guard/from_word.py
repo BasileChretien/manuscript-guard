@@ -19,8 +19,9 @@ changed in the tree before pandoc writes it as Markdown, and nothing else:
 
 What pandoc reads from Word's Title, Author, Date and Abstract styles is its metadata. The
 title goes to `paper.yaml`, each author's name to `authors.yaml` as the paper gives it, and
-the abstract becomes the manuscript's `# Abstract`. Nothing is guessed from how a line
-looks: a name in capitals is a line of the title page like any other.
+the abstract becomes the manuscript's `# Abstract`. A Title paragraph holding a note, a mark,
+a link or a picture, which its plain text loses, is in the comment as well. Nothing is
+guessed from how a line looks: a name in capitals is a line of the title page like any other.
 """
 
 from __future__ import annotations
@@ -81,6 +82,8 @@ class Converted:
     tables_left: tuple[str, ...]
     title_page: str
     headings: int
+    #: The Title paragraph holds what its plain text leaves out, and is in the comment too.
+    title_noted: bool = False
 
 
 def refused(path: Path) -> str | None:
@@ -110,7 +113,13 @@ def convert(path: Path, *, titled: bool = False) -> Converted:
                                    f"--extract-media={folder}"], None, path))  # fmt: skip
         media = _pictures(tree, Path(folder))
     meta = tree.get("meta", {})
-    title = None if titled else _plain_title(meta.pop("title", None))
+    title = None if titled else _plain_title(meta.get("title"))
+    # The Title paragraph stays in the metadata, and so goes into the comment, where `--title`
+    # gives the title or where its plain text leaves something out: a note on the title names
+    # the funder or the corresponding author, and was written nowhere.
+    noted = not titled and "title" in meta and _marked(meta["title"])
+    if not titled and not noted:
+        meta.pop("title", None)
     names, others = _names(meta.pop("author", None))
     abstract = _as_blocks(meta.pop("abstract", None))
     blocks = tree["blocks"]
@@ -125,7 +134,7 @@ def convert(path: Path, *, titled: bool = False) -> Converted:
     text = _comment(_write(tree, aside, path)) + _write(tree, body, path)
     return Converted(title=title, authors=names, abstract=bool(abstract), text=text,
                      media=media, tables=converted, tables_left=left, title_page=title_page,
-                     headings=headings)  # fmt: skip
+                     headings=headings, title_noted=noted)  # fmt: skip
 
 
 def _pandoc(arguments: list[str], given: str | None, path: Path) -> str:
@@ -173,17 +182,27 @@ def _comment(markdown: str) -> str:
 
 def _pictures(tree: dict, folder: Path) -> tuple[tuple[str, bytes], ...]:
     """Each picture pandoc saved under `folder`, by its path in the project, with every image
-    pointed at that path."""
+    pointed at that path. pandoc saves them in `media/`, which the path in the project leaves
+    out; one saved elsewhere in `folder` keeps the rest of its path, so that no image points
+    into `folder`, which is deleted once read. An image that points outside `folder`, a web
+    address, was not saved by pandoc and is left as it is."""
+    base = folder.resolve()
     found: dict[str, bytes] = {}
+    whence: dict[str, Path] = {}
     for image in _walk([*tree.get("meta", {}).values(), tree["blocks"]], "Image"):
         target = Path(image["c"][2][0])
         try:
-            inside = target.resolve().relative_to(folder.resolve() / "media")
-        except ValueError:
+            inside = target.resolve().relative_to(base)
+        except (ValueError, OSError):
             continue
-        name = f"{MEDIA}/{inside.as_posix()}"
+        parts = inside.parts[1:] if inside.parts[:1] == ("media",) else inside.parts
+        name = "/".join([MEDIA, *parts])
         if name not in found:
             found[name] = target.read_bytes()
+            whence[name] = inside
+        elif whence[name] != inside:
+            raise ContractError(f"pandoc saved two pictures of the Word paper that would both "
+                                f"be {name}; nothing was made")  # fmt: skip
         image["c"][2][0] = name
     return tuple(sorted(found.items()))
 
@@ -235,6 +254,16 @@ def _plain_title(value: dict | None) -> str | None:
     return title or None
 
 
+#: What `text_of` leaves out of a paragraph, or keeps only part of: a note, a picture, a
+#: link's address. A superscript is kept as text, but stands for a mark.
+_DROPPED = ("Superscript", "Note", "Image", "Link")
+
+
+def _marked(value: object) -> bool:
+    """Whether `value` holds something its plain text does not carry whole."""
+    return any(next(_walk(value, kind), None) for kind in _DROPPED)
+
+
 #: What a name does not hold: a list of several, an affiliation's number or mark, a note.
 _NOT_A_NAME = re.compile(r"[,;&*†‡§\d]|\band\b", re.IGNORECASE)
 
@@ -249,11 +278,9 @@ def _names(value: dict | None) -> tuple[tuple[str, ...], list]:
     others: list = []
     for entry in entries:
         said = " ".join(text_of(entry).split())
-        marked = any(next(_walk(entry, kind), None) for kind in ("Superscript", "Note", "Image",
-                                                                 "Link"))  # fmt: skip
         if not said:
             continue
-        if marked or _NOT_A_NAME.search(said):
+        if _marked(entry) or _NOT_A_NAME.search(said):
             others.append(entry)
         else:
             names.append(said)
@@ -462,6 +489,9 @@ def what_was_done(docx: Path, converted: Converted) -> str:
     lines = [f"from {name}:"]
     lines.append(f"  title: {converted.title!r}, from its Title paragraph" if converted.title
                  else "  title: none taken from a Title paragraph")  # fmt: skip
+    if converted.title_noted:
+        lines.append("    paper.yaml has it as plain text, and the Title paragraph is in the "
+                     "comment too, with the notes, marks, links or pictures it holds")  # fmt: skip
     if converted.authors:
         lines.append(f"  authors: {len(converted.authors)} named in Author paragraphs, in "
                      "authors.yaml; split each name into given and family")  # fmt: skip
@@ -514,14 +544,21 @@ def authors_yaml(names: tuple[str, ...]) -> str:
 def init_from_word(root: Path, docx: Path, title: str | None = None
                    ) -> tuple[list[Path], Converted]:  # fmt: skip
     """Make a project at `root` whose manuscript is the Word paper `docx`. Nothing is made
-    where the paper cannot be read, or where `root` already has a manuscript or a picture of
-    the same name: `init` writes over nothing."""
+    where the paper cannot be read, or where `root` already has a manuscript, `paper.yaml`,
+    `authors.yaml` or a picture of the same name: `init` writes over nothing, and would keep
+    the file that is there while saying it took the paper's title or names."""
     from manuscript_guard.gates.numbers import source_files
     from manuscript_guard.scaffold import UNTITLED, init_project
 
     root = Path(root).resolve()
     manuscript = root / "manuscript"
-    there = source_files(manuscript) + source_files(manuscript, glob="*.tex")
+    there = (source_files(manuscript) + source_files(manuscript, glob="*.tex")
+             + [path for path in (root / "paper.yaml", root / "authors.yaml")
+                if path.exists()])  # fmt: skip
+    if there and there[0].parent == root:
+        raise ContractError(f"{there[0].name} is already there, and init --from writes the "
+                            "Word paper's title and authors into a new one, over nothing; "
+                            "nothing was made")  # fmt: skip
     if there:
         raise ContractError(f"{there[0]} is already there, and init --from writes the paper as "
                             "manuscript/main.md over nothing; nothing was made")  # fmt: skip

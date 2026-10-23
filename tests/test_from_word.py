@@ -19,7 +19,14 @@ import pytest
 import yaml
 
 from manuscript_guard.cli import main
-from manuscript_guard.from_word import TITLE_PAGE_WORDS, _flatten, _names, _one_line, text_of
+from manuscript_guard.from_word import (
+    TITLE_PAGE_WORDS,
+    _flatten,
+    _names,
+    _one_line,
+    _pictures,
+    text_of,
+)
 
 needs_pandoc = pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
 
@@ -161,6 +168,29 @@ def test_a_title_given_is_taken_and_the_title_paragraph_is_kept(tmp_path: Path, 
 
 
 @needs_pandoc
+def test_a_note_on_the_title_is_kept_in_the_comment(tmp_path: Path, capsys) -> None:
+    """paper.yaml takes the title as plain text, without its note: a funder or the
+    corresponding author named there was written nowhere."""
+    markdown = PAPER.replace('title: "Outcomes after a fall"',
+                             'title: "Outcomes after a fall^[Funded by Grant X-12.]"')  # fmt: skip
+    root = tmp_path / "project"
+    assert main(["init", str(root), "--from", str(word(tmp_path / "word", markdown))]) == 0
+    said = capsys.readouterr().out
+    assert yaml.safe_load((root / "paper.yaml").read_text(encoding="utf-8"))["title"] == (
+        "Outcomes after a fall"
+    )
+    text = (root / "manuscript" / "main.md").read_text(encoding="utf-8")
+    comment = text[text.index("<!--") : text.index("-->")]
+    assert "Title: Outcomes after a fall" in comment and "Grant X-12" in comment
+    assert "the Title paragraph is in the comment too" in said
+    # A title with nothing left out is not in the comment.
+    plain = (tmp_path / "plain" / "manuscript" / "main.md")
+    assert main(["init", str(tmp_path / "plain"), "--from", str(word(tmp_path / "w2", PAPER))]) == 0
+    assert "Title:" not in plain.read_text(encoding="utf-8")
+    assert "in the comment too" not in capsys.readouterr().out
+
+
+@needs_pandoc
 def test_a_title_init_does_not_take_is_refused_with_how_to_give_one(tmp_path: Path, capsys) -> None:
     backslash = chr(92)
     markdown = f"---\ntitle: 'IFN-{backslash * 2}gamma release assays'\n---\n\n# Methods\n\nText.\n"
@@ -255,6 +285,44 @@ def test_a_project_with_a_manuscript_is_not_written_over(tmp_path: Path, capsys)
     assert main(["init", str(root), "--from", str(paper)]) == 2
     assert "nothing was made" in capsys.readouterr().err
     assert (root / "manuscript" / "main.md").read_bytes() == before
+
+
+@pytest.mark.parametrize("kept", ["paper.yaml", "authors.yaml"])
+def test_a_project_file_the_word_paper_fills_is_not_kept_silently(tmp_path: Path, capsys,
+                                                                   kept: str) -> None:  # fmt: skip
+    """init keeps a file that is there, and would have said the Word title or names were
+    written into it."""
+    root = tmp_path / "project"
+    root.mkdir()
+    (root / kept).write_text("mine\n", encoding="utf-8")
+    paper = tmp_path / "paper.docx"
+    paper.write_bytes(b"PK\x03\x04" + bytes(100))
+    assert main(["init", str(root), "--from", str(paper)]) == 2
+    err = capsys.readouterr().err
+    assert f"{kept} is already there" in err and "nothing was made" in err
+    assert sorted(path.name for path in root.iterdir()) == [kept]
+    assert (root / kept).read_text(encoding="utf-8") == "mine\n"
+
+
+def test_a_picture_pandoc_saved_outside_its_media_folder_is_brought_in_too(
+        tmp_path: Path) -> None:  # fmt: skip
+    """No image is left pointing into the temporary folder, which is gone once read."""
+    folder = tmp_path / "extracted"
+    (folder / "media").mkdir(parents=True)
+    (folder / "word").mkdir()
+    (folder / "media" / "a.png").write_bytes(b"a")
+    (folder / "word" / "b.png").write_bytes(b"b")
+
+    def image(target: str) -> dict:
+        return {"t": "Image", "c": [_ATTR, [], [target, ""]]}
+
+    images = [image(str(folder / "media" / "a.png")), image(str(folder / "word" / "b.png")),
+              image("https://example.org/c.png")]  # fmt: skip
+    tree = {"meta": {}, "blocks": [{"t": "Para", "c": images}]}
+    assert _pictures(tree, folder) == (
+        ("manuscript/media/a.png", b"a"), ("manuscript/media/word/b.png", b"b"))
+    assert [one["c"][2][0] for one in images] == [
+        "manuscript/media/a.png", "manuscript/media/word/b.png", "https://example.org/c.png"]
 
 
 # The rewriting of a table, on pandoc's tree as pandoc 3 writes it, with no pandoc.

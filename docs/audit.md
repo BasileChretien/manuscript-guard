@@ -105,11 +105,14 @@ document's metadata. The title goes to `paper.yaml` unless `--title` gives anoth
 name of an Author paragraph to `authors.yaml` as the paper writes it, for you to split into
 given and family name, and the abstract becomes the section `# Abstract`. An Author
 paragraph holding several names, a comma, a number or a superscript, and the date, go into
-the comment. Nothing is guessed from how a line looks, so names typed in capitals on the
+the comment. So does the Title paragraph, as well as `paper.yaml`'s plain title, where it
+holds a note, a superscript, a link or a picture: a note on the title often names the funder
+or the corresponding author. Nothing is guessed from how a line looks, so names typed in capitals on the
 title page stay in the comment. Read it: an abstract there hides its numbers from every
 gate until you move it out.
 
 A `.doc` is refused: open it in Word and save it as `.docx`. `--from` makes nothing where
-`manuscript/` already holds a manuscript, and is refused with `--latex`.
+`manuscript/` already holds a manuscript or the folder already has a `paper.yaml` or an
+`authors.yaml`, and is refused with `--latex`.
 
 [Back to the README](../README.md)

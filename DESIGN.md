@@ -6963,14 +6963,20 @@ The tree, not a Lua filter: the change is a function of pandoc's tree and is tes
 built by hand, without pandoc.
 
 **Pictures** go to `manuscript/media/`, and each image points there from the project's root,
-where the build runs pandoc. Not `figures/`: every file there is taken for a figure an
+where the build runs pandoc. A picture pandoc saves elsewhere than its `media/` folder keeps
+the rest of its path under `manuscript/media/`, so that no image points into the temporary
+folder pandoc saved it in, which is deleted once the paper is read; an image pointing at a web
+address is left as it is. Not `figures/`: every file there is taken for a figure an
 analysis rendered, and a picture from Word would be reported as one with no text layer and
 no review.
 
 **The title page.** pandoc reads Word's Title, Subtitle, Author, Date and Abstract styles as
 the document's metadata, and nothing else is taken as a title or a name: no line is judged
 by its capitals or its place. The title goes to `paper.yaml` (where `--title` gives none),
-as plain text. Each Author paragraph that is one name goes to `authors.yaml`, in a comment
+as plain text. A Title paragraph that holds what plain text loses, a note, a superscript, a
+link or a picture, goes into the comment as well, as it does when `--title` gives the title:
+a note on the title is where a paper often names its funder or its corresponding author, and
+taken as plain text it was written nowhere. Each Author paragraph that is one name goes to `authors.yaml`, in a comment
 over an entry whose given and family names are left empty, since which part is the family
 name cannot be read from the name; one holding a comma, a semicolon, "and", a digit, a
 superscript or a link is several names or carries a mark, and goes to the comment. The
@@ -6988,6 +6994,12 @@ after its introduction (2,064 words). Set aside, each of those would have hidden
 from every gate. So the run is set aside only up to 600 words, which a title, a long author
 list and a 300-word abstract stay under; the two title pages among the fifteen held 18 and
 375 words. A longer run stays in the text, as does everything in a paper with no heading.
+
+**Over nothing.** `init` keeps a file that is already there, and so would have kept a
+`paper.yaml` or an `authors.yaml` while saying it wrote the Word paper's title and names into
+them. `init --from` refuses before reading the paper where `paper.yaml`, `authors.yaml` or a
+manuscript is there, and where a picture would land on a file of the same name, and makes
+nothing.
 
 Measured on the fifteen: the seven that failed now pass `check` at the stage `init` sets,
 with 39 tables written as pipe tables and 2 left as grid tables (a numbered list in a cell,

@@ -701,14 +701,22 @@ LATEX_PLACES = (
      (False, True, *(False,) * 13)),
     ("\\begin{{CCSXML}}\n<c>{}</c>\n\\end{{CCSXML}}\n\\ccsdesc[{}]{{C {}}} ",
      (False, False, False)),
-    # A TikZ picture, passed over whole as a picture's file is, the styles set for it, and
-    # one drawn in a definition's body (2026-10-23).
-    ("\\begin{{tikzpicture}}[x={}cm]\\node[minimum size={}em] {{n {}}};\\end{{tikzpicture}} ",
-     (False, False, False)),
+    # A TikZ picture, passed over as a picture's file is, its options, coordinates and paths,
+    # and the styles set for it; but what it prints as text, read: a node's, one in a path, a
+    # label's and a pin's past their angle, pgfplots' axis label and legend; in a definition's
+    # body too (2026-10-23; round 1 of #443).
+    ("\\begin{{tikzpicture}}[x={}cm]\\node[minimum size={}em] (n) at ({},1) {{n = {}}};"
+     "\\draw (0,{}) -- (1,1) node[above] {{excluded {}}};"
+     "\\node[label={{[red]{}:Label {}}}, pin={}:Pin {}] {{ }};"
+     "\\begin{{axis}}[xmin={}, xlabel={{Day {}}}]\\addplot coordinates {{(1,{})}};"
+     "\\addlegendentry{{Arm {}}}\\end{{axis}}\\node[node contents={{Box {}}}];"
+     "\\matrix[matrix of nodes, row sep={}mm] {{ M {} & N {} \\\\ }};\\end{{tikzpicture}} ",
+     (False, False, False, True, False, True, False, True, False, True, False, True, False,
+      True, True, False, True, True)),
     ("\\tikzset{{a/.style={{line width={}mm}}}}\\tikzstyle{{b}} = [inner sep={}pt] ",
      (False, False)),
-    ("\\newcommand{{\\pic}}[1]{{\\begin{{tikzpicture}}\\node[size={}em] {{#1}};"
-     "\\end{{tikzpicture}}}} ", (False,)),
+    ("\\newcommand{{\\pic}}[1]{{\\begin{{tikzpicture}}\\node[size={}em] {{#1 of {}}};"
+     "\\end{{tikzpicture}}}} ", (False, True)),
 )  # fmt: skip
 #: Where a number stands in the preamble, before `\\begin{document}`.
 LATEX_PREAMBLE_PLACES = (
@@ -772,9 +780,11 @@ LATEX_LENGTH_PLACES = (
     ("\\emph{{{}}} ", False),
     ("$x = {}$ ", False),
 )
-#: TeX's units that measure the page, and those a paper measures in too.
-TEX_UNITS = ("pt", "bp", "sp", "pc", "dd", "cc", "em", "ex", "mu")
-PAPER_UNITS = ("mm", "cm", "in")
+#: TeX's units that measure the page, and those a paper measures in too: its millimetres,
+#: centimetres and inches, and TeX's big points, Cicero and picas, a paper's base pairs,
+#: cubic centimetres and parsecs (round 1 of #443).
+TEX_UNITS = ("pt", "sp", "dd", "em", "ex", "mu")
+PAPER_UNITS = ("mm", "cm", "in", "bp", "cc", "pc")
 
 
 @st.composite

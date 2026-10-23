@@ -291,22 +291,33 @@ def test_springer_s_running_title_and_corresponding_author_are_passed_over() -> 
 def test_a_tikz_picture_is_passed_over_as_a_picture_file_is() -> None:
     """2311.00579, 2401.04687 and 2405.21051: a TikZ picture's options, its sizes and shifts,
     and the old `\\tikzstyle{name} = [...]` were read as the text (2026-10-23). The picture is
-    passed over, its nodes' text too, as `\\includegraphics` passes over a picture's file; and
-    so is one in a definition's body, whose `\\end` stands in the same body."""
+    passed over as `\\includegraphics` passes over a picture's file, and so is one in a
+    definition's body, whose `\\end` stands in the same body. What it prints as text is read:
+    a node's, in a path too, a label's and a pin's past their angle, and pgfplots' axis labels
+    and legend (round 1 of #443: a flow diagram's 4371 was seen by no gate)."""
     text = ("\\tikzset{>={Latex[width=2mm]}}\n\\tikzstyle{latent} = [circle, line width=0.35mm]\n"
             "\\tikzstyle{data}=[draw,\n  minimum height=2em]\n"
             "\\newcommand{\\dot}[1]{\\begin{tikzpicture}[baseline={(0,-0.5ex)}]\n"
-            "  \\node[minimum size=1em, inner sep=1pt] {#1};\\end{tikzpicture}}\n"
+            "  \\node[minimum size=1em, inner sep=1pt] {#1 of 77};\\end{tikzpicture}}\n"
             "\\begin{tikzpicture}[remember picture, shift={(1,2)}]\n"
-            "\\node[anchor=north east,xshift=-4cm] {n = 412 $x^3$};\n"
-            "\\begin{axis}[xmin=5]\\addplot coordinates {(1,6)};\\end{axis}\n"
+            "\\node[anchor=north east,xshift=-4cm] (box) at (3,4) {n = 412 $x^3$};\n"
+            "\\draw (5,6) -- (7,8) node[above, pos=0.25] {excluded 61}; % node {99}\n"
+            "\\node[label={[red]270:Label 33}, pin=45:Pin 44] {};\n"
+            "\\begin{axis}[xmin=5, xlabel={Day 21}, title=Arm 22]\n"
+            "\\addplot coordinates {(1,6)};\\addlegendentry{Dose 23}\\end{axis}\n"
+            "\\node[node contents={Box 24}, minimum width=9mm];\n"
+            "\\matrix[matrix of nodes, row sep=8mm] { Cell 25 \\\\ };\n"
+            "\\matrix[row sep=7mm] { \\node {Node 26}; \\\\ };\n"
             "\\end{tikzpicture}\nOf 4100 \\dot{a}.\n")  # fmt: skip
     reading = read(text, body=True)
     assert reading.refusals == ()
-    for typed in ("2mm", "0.35mm", "2em", "0.5ex", "1em", "1pt", "(1,2)", "-4cm", "n = 412",
-                  "x^3", "xmin=5", "(1,6)"):  # fmt: skip
+    for typed in ("2mm", "0.35mm", "2em", "0.5ex", "1em", "1pt", "(1,2)", "-4cm", "(3,4)",
+                  "(5,6)", "(7,8)", "pos=0.25", "{99}", "270:", "45:", "xmin=5", "(1,6)", "9mm",
+                  "8mm", "7mm"):  # fmt: skip
         assert _hidden(text, reading.masked, typed), typed
-    assert "Of 4100" in reading.masked
+    for printed in ("of 77", "n = 412", "x^3", "excluded 61", "Label 33", "Pin 44", "Day 21",
+                    "Arm 22", "Dose 23", "Box 24", "Cell 25", "Node 26", "Of 4100"):  # fmt: skip
+        assert printed in reading.masked, printed
     # A picture opened in one definition and closed in another is text expanded at each use,
     # as any environment in a body is: its options are passed over, and nothing is left open.
     split = ("\\newenvironment{pic}{\\begin{tikzpicture}[x=2cm]}{\\end{tikzpicture}}\n"
@@ -319,9 +330,9 @@ def test_a_tikz_picture_is_passed_over_as_a_picture_file_is() -> None:
     reading = read(commented, body=True)
     assert reading.refusals == () and _hidden(commented, reading.masked, "3cm")
     assert "Of 4100." in reading.masked
-    # A file input inside a picture starts there, passed over.
-    assert "412" not in read("\\node {412};\n", body=True,
-                             environments=("tikzpicture",)).masked  # fmt: skip
+    # A file input inside a picture starts there: passed over, but what it prints.
+    inside = read("\\node[xshift=5cm] {412};\n", body=True, environments=("tikzpicture",))
+    assert "412" in inside.masked and "5cm" not in inside.masked
 
 
 def test_an_input_encoding_other_than_utf8_is_refused() -> None:

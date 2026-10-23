@@ -37,13 +37,15 @@ CONVENTION = "convention"
 UNCLASSIFIED = "unclassified"
 
 #: A length as TeX reads one, its unit typed against its number, in a unit TeX measures the
-#: page in and no paper measures anything in: points, big points, scaled points, picas,
-#: Didot and Cicero, a font's em and ex, maths units. A LaTeX file's definitions set such
-#: lengths, `\\def\\bibhang{24pt}`, `\\lower.5ex` (2026-10-23, from 2601.04966 and
-#: 2412.11273). Millimetres, centimetres and inches may be the paper's own measure, and are
-#: left out. Layout only in a definition's body (`Classifier.scan`'s `layout`): in the text
-#: "500bp" is base pairs and "24pt" may be a scale's points.
-TEX_LENGTH = re.compile(r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:pt|bp|sp|pc|dd|cc|em|ex|mu)")
+#: page in and no paper measures anything in: points, scaled points, Didot points, a font's
+#: em and ex, maths units. A LaTeX file's definitions set such lengths,
+#: `\\def\\bibhang{24pt}`, `\\lower.5ex` (2026-10-23, from 2601.04966 and 2412.11273). TeX's
+#: big points, Cicero and picas are left out, since a paper writes base pairs `bp`, cubic
+#: centimetres `cc` and parsecs `pc` with the same letters (round 1 of #443), and so are
+#: millimetres, centimetres and inches, which may be the paper's own measure. Layout only in
+#: a definition's body (`Classifier.scan`'s `layout`): in the text "24pt" may be a scale's
+#: points.
+TEX_LENGTH = re.compile(r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:pt|sp|dd|em|ex|mu)")
 TEX_LENGTH_WHY = "A TeX length a definition's body sets the page with, which measures nothing."
 
 

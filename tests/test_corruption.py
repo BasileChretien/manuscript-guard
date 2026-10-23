@@ -7452,7 +7452,7 @@ def test_a_journal_classs_title_page_in_the_twin_is_passed_over(project: Path) -
 
 
 def test_a_tikz_picture_in_the_twin_is_passed_over_as_a_picture_file_is(project: Path) -> None:
-    """A TikZ picture's options, its sizes and shifts, its nodes' text and the styles set for
+    """A TikZ picture's options, its sizes and shifts, its coordinates and the styles set for
     it are no numbers of the paper's, in the body or in a definition's body; a number typed
     beside the picture is still unbound (2026-10-23, from 2311.00579, 2401.04687 and
     2405.21051)."""
@@ -7464,9 +7464,26 @@ def test_a_tikz_picture_in_the_twin_is_passed_over_as_a_picture_file_is(project:
                                   "\\node[minimum size=1em] {#1};\\end{tikzpicture}}\n"
                                   "\\begin{document}", 1), encoding="utf-8")  # fmt: skip
     _into_results(entry, "\\tikzstyle{latent} = [circle, line width=0.35mm]\n"
-                  "\\begin{tikzpicture}[shift={(1,2)}]\n\\node[xshift=-4cm] {n = 412};\n"
-                  "\\end{tikzpicture}\nOf 4371 \\dot{a} reports.")  # fmt: skip
+                  "\\begin{tikzpicture}[shift={(1,2)}]\n\\node[xshift=-4cm] at (3,4) {Reports};"
+                  "\n\\draw (0,0) -- (5,6);\n\\end{tikzpicture}\nOf 4371 \\dot{a} reports.")
     found = [(f.code, f.message) for f in _twin_failures(project)]
+    assert found == [("unclassified-number", "'4371' is not bound to any source")], found
+
+
+def test_a_number_a_tikz_flow_diagram_prints_in_the_twin_is_unbound(project: Path) -> None:
+    """A flow diagram drawn in TikZ, as a cohort's or a trial's often is, prints its counts in
+    its nodes: one typed there is unbound, as it was before pictures were passed over; its
+    options and coordinates are not numbers of the paper's, and a count bound there is
+    bound (round 1 of #443: passed over whole, the 4371 was seen by no gate)."""
+    entry = _twin(project)
+    _into_results(entry, "\\begin{figure}\n\\begin{tikzpicture}[node distance=2cm]\n"
+                  "\\node[draw] (a) {Reports screened (n = 4371)};\n"
+                  "\\node[draw, below of=a] (b) {Cases (n = \\mg{results.case.n_cases})};\n"
+                  "\\draw[->] (a) -- (b) node[midway, right] {excluded};\n"
+                  "\\end{tikzpicture}\n\\caption{Flow of reports.}\\label{fig:flow}\n"
+                  "\\end{figure}\nFigure~\\ref{fig:flow} shows the flow.")  # fmt: skip
+    found = [(f.code, f.message) for f in _twin_failures(project)
+             if f.code == "unclassified-number"]  # fmt: skip
     assert found == [("unclassified-number", "'4371' is not bound to any source")], found
 
 

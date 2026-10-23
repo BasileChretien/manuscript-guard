@@ -1356,13 +1356,23 @@ order is `printed_order`.
   `\ccsdesc[300]{...}` with its weight (`\ccsdesc[2][100]`). The XML is the publisher's
   metadata and no note of the author's, so the submission folder keeps it, where it takes a
   comment's text out.
-- A TikZ picture, `tikzpicture`, is passed over whole, its options, its code and its nodes'
-  text, as `\includegraphics` passes over a picture's file; so are `\tikzset`,
-  `\pgfplotsset` and the old `\tikzstyle{name} = [...]`, which style it. In a definition's
-  body, where an environment is otherwise text expanded at each use, a picture whose `\end`
-  stands in the same body is a picture there, as a command that draws a circled letter
-  holds one (2026-10-23: their sizes and shifts, `minimum size=1em`, `xshift=-4cm`, were
-  numbers of the text).
+- A TikZ picture, `tikzpicture`, is passed over, its options, coordinates, styles and paths,
+  as `\includegraphics` passes over a picture's file; so are `\tikzset`, `\pgfplotsset` and
+  the old `\tikzstyle{name} = [...]`, which style it (2026-10-23: their sizes and shifts,
+  `minimum size=1em`, `xshift=-4cm`, were numbers of the text). What the picture prints as
+  text is read as prose where it stands (`text/latex/pictures.py`; round 1 of #443: passed
+  over whole, a flow diagram's `\node[draw] {Reports screened (n = 4371)};` was seen by no
+  gate): a node's text, the braces after `\node` or after `node` in a path, past the node's
+  name, options and `at (x,y)`; a label's and a pin's, `label={[red]above:Text}` or
+  `pin=above:Text`, past its options and its angle, to the first colon as TikZ reads it;
+  `node contents=`; a `matrix of nodes`, its cells; pgfplots' `xlabel`, `ylabel`, `zlabel`,
+  `title` and `legend entries`, and the text of `\addlegendentry` and `\legend`. A text
+  without braces runs to the next comma, bracket or
+  brace of its options, or its line's end, and is read as typed. A picture is found to its
+  first `\end{tikzpicture}` outside a comment, and a file input inside one is read as one.
+  In a definition's body, where an environment is otherwise text expanded at each use, a
+  picture whose `\end` stands in the same body is a picture there, as a command that draws
+  a circled letter holds one.
 - An environment not in the table is read as an unknown command is, and so is its body.
 
 **Definitions.** A `\newcommand`, `\renewcommand`, `\providecommand`,
@@ -1378,14 +1388,15 @@ expanded, because an expansion is text at a place the file does not hold, with n
 give a finding.
 
 A length in a definition's body, typed as TeX reads one with its unit against its number, in
-a unit TeX measures the page in, `pt`, `bp`, `sp`, `pc`, `dd`, `cc`, `em`, `ex` or `mu`, is
-layout: G2 lets it through as `tex-length`, `\def\bibhang{24pt}` and `\lower.5ex`
+a unit TeX measures the page in and a paper does not, `pt`, `sp`, `dd`, `em`, `ex` or `mu`,
+is layout: G2 lets it through as `tex-length`, `\def\bibhang{24pt}` and `\lower.5ex`
 (2026-10-23, after two papers from arXiv whose preambles gave 24pt and .5ex as numbers). The
 reader reads the body as before, and the classifier decides, given the bodies' spans by the
 file's read (`_Read.layout`, `Classifier.scan(..., layout=...)`), so `check`, `explain` and
 `bind` judge the number alike. In the text a length is a number like any other, since
-"500bp" is base pairs and "24pt" may be a scale's points; and one in millimetres,
-centimetres or inches, which may be the paper's own measure, is a number anywhere.
+"24pt" may be a scale's points. TeX's big points, Cicero and picas are a paper's base pairs,
+cubic centimetres and parsecs, `500bp`, `20cc`, `8pc`, and are numbers anywhere, as are
+millimetres, centimetres and inches, which may be the paper's own measure (round 1 of #443).
 
 A `\def` with delimited parameters, `\def\x#1.{...}`, is read where it is written, its
 parameter text blanked and its body read as any body is. A use of it is refused where the
@@ -1798,20 +1809,30 @@ The result is compiled and packed by the code above, and checked three times:
   front matter command not in `FRONT_MATTER_COMMANDS` is read as an unknown command is, its
   arguments as prose (rounds 1 of steps 6 and 7; the front matter itself since 2026-10-23).
 - `\title`'s option is passed over in every class, so a word or a number that only a running
-  head's short title holds is read by no gate. `\author{...}` followed by an opening bracket,
-  past spaces and one line break, takes it for CAS's option list in any class: in one whose
-  `\author` takes none, text that opens with a bracket there is passed over (2026-10-23).
-- No gate reads what a TikZ picture prints: its nodes' text, `\node {n = 412};`, its axes'
-  labels and its plotted coordinates, where G3 reads a picture file's text layer. Bind such a
-  number with `\mg`, or draw the figure from a script. TikZ's inline `\tikz[...]`, PGF's
-  `pgfpicture` and circuitikz's environment are read as unknown commands are, their options
-  as prose; and a picture opened in one definition's body and closed in another,
+  head's short title holds is read by no gate. `\author{...}`, `\address{...}` and
+  `\affiliation{...}` followed by an opening bracket, past spaces and one line break, take
+  it for CAS's option list in any class: in one whose command takes none, text that opens
+  with a bracket there is passed over (2026-10-23; round 1 of #443).
+- A TikZ picture's text is read where the source types it, among the paper's prose, so G14
+  and G9 read a node's words as a sentence there. What the picture prints otherwise is read
+  by no gate, where G3 reads a picture file's text layer: pgfplots' tick labels, `nodes near
+  coords` and what else it computes from the coordinates; a node's text given by a `\pic`,
+  by a `\foreach` variable or by a command of the author's that writes the node; a style's
+  label, `every node/.style={label=...}`, set outside the picture; and, in a picture that
+  holds another in a node, what the outer prints after the inner's `\end`. A `matrix of
+  nodes` is read whole, its cells' options `|[draw]|` as prose. Bind such a number with
+  `\mg`, or draw the figure from a script. TikZ's inline `\tikz[...]`, PGF's `pgfpicture` and circuitikz's environment are
+  read as unknown commands are, their options as prose; and a picture opened in one
+  definition's body and closed in another,
   `\newenvironment{pic}{\begin{tikzpicture}}{\end{tikzpicture}}`, passes over its options
-  only, and what `\begin{pic}` holds is read (2026-10-23).
-- A TeX length is layout only in a definition's body, not in a hook's, and only in its
-  units' small letters without TeX's `true`: so `\vskip 6pt` in the body, `24 pt` with a
-  space, `24PT` and `24truept` are numbers. And a length a definition prints as text, where
-  it is used, `\newcommand{\insert}{500bp}` for base pairs, passes as layout (2026-10-23).
+  only, and what `\begin{pic}` holds is read (2026-10-23; round 1 of #443).
+- A TeX length is layout only in a definition's body: not in a hook's,
+  `\AtBeginDocument{\kern2pt}`, nor in a definition's default argument,
+  `\newcommand{\x}[1][2pt]{...}`, which prints where the definition is used and is read as
+  prose; and only in its units' small letters without TeX's `true`: so `\vskip 6pt` in the
+  body, `24 pt` with a space, `24PT` and `24truept` are numbers. A length in points a
+  definition prints as text where it is used, `\newcommand{\font}{12pt}`, passes as layout
+  (2026-10-23; round 1 of #443).
 - Past a refusal G14 reads a LaTeX file as typed, its commands and comments as words; `check`
   fails on the refusal already (round 1 of step 7).
 - `\~{}` before a number, written for "about", is taken for an accent on the word after it,

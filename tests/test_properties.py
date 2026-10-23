@@ -691,6 +691,22 @@ def _a_tikz_style_s_name_is_an_argument(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(latex_mask, "_STYLE_NAME", re.compile("(?!)"))
 
 
+def _a_tikz_picture_prints_no_text(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask.pictures, "printed_in", lambda text, start, end: ({}, []))
+
+
+def _a_node_is_only_a_node_command(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask.pictures, "_NODE", re.compile(r"\\node(?![A-Za-z@])"))
+
+
+def _a_tikz_label_prints_no_text(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask.pictures, "_KEYS", re.compile("(?!)"))
+
+
+def _a_matrix_of_nodes_prints_no_text(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask.pictures, "_MATRIX", re.compile("(?!)"))
+
+
 def _a_tex_length_is_layout_in_the_text_too(patch: pytest.MonkeyPatch) -> None:
     read = numbers_gate._latex_read
     patch.setattr(numbers_gate, "_latex_read", lambda found: dataclasses.replace(
@@ -10230,6 +10246,22 @@ BROKEN = {
     ),
     "in LaTeX, a TikZ style's name is taken for its options": (
         _a_tikz_style_s_name_is_an_argument,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a TikZ node's text is blanked with its picture": (
+        _a_tikz_picture_prints_no_text,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a node in a TikZ path is no node": (
+        _a_node_is_only_a_node_command,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a TikZ label's and an axis's text are blanked": (
+        _a_tikz_label_prints_no_text,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a TikZ matrix of nodes is blanked": (
+        _a_matrix_of_nodes_prints_no_text,
         test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
     ),
     "in LaTeX, a TeX length is layout in the text too": (

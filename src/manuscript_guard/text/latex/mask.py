@@ -67,13 +67,14 @@ _LETTERS_AT = re.compile(r"[A-Za-z@]+")
 _TEXT = re.compile(r"[^\\%{}\[\]$&~#`'\n]+")
 _ENVIRONMENT_NAME = re.compile(r"[ \t]*\n?[ \t]*\{([^{}\n]*)\}")
 _BRACED_NAME = re.compile(r"\{\s*\\([A-Za-z@]+|[^A-Za-z@\s])\s*\}")
-_PARAMETERS = re.compile(r"(?:#+[1-9])*")
 #: A parameter token in a definition's body: `#1`, or `##1` in a definition inside it.
 _PARAMETER = re.compile(r"#+\d")
 #: How far a delimited definition's parameter text is looked through for its body's brace.
 _DELIMITED_REACH = 300
 #: What stands between `\\let`'s two commands: spaces and an equals sign, both optional.
 _LET_GAP = re.compile(r"[ \t]*=?[ \t]*")
+#: What TeX passes over after a control word: spaces, and one line's end with the spaces after.
+_SKIPPED = re.compile(r"[ \t]*(?:\r?\n[ \t]*)?")
 #: An input encoding set by a package's option or by `\\inputencoding`, a few hundred
 #: characters at most, so that an option never closed is not read to the file's end.
 _INPUTENC = re.compile(
@@ -863,7 +864,7 @@ class _Reader:
             if name in ("documentclass", "bibliographystyle"):
                 self._declares(name, end)
             self.command, self.pending = name, COMMANDS[name]
-        elif name in self.delimited and not self.definitions and self._reads():
+        elif name in self.delimited and self._prints():
             said = ("it is defined with delimited parameters, and what it prints is not read; "
                     "define it with \\newcommand")
             self._refuse("tex-refused", at, f"\\{name} is not read: {said}")
@@ -875,6 +876,12 @@ class _Reader:
             self._refuse("tex-refused", at, f"\\{name} is not read: {said}")
         elif _near_binding(name) and _LOOKS_BOUND.match(self.text, end):
             self.suspects.append((at, self._suspect_end(at)))
+
+    def _prints(self) -> bool:
+        """Whether what stands here prints where it stands: read, and in no definition's body,
+        though it may be in a hook's, which LaTeX runs where it stands (round 1)."""
+        return self._reads() and not any(frame.definition and frame.command not in HOOKS
+                                         for frame in self.stack)  # fmt: skip
 
     def _unknown_citation(self, name: str) -> bool:
         """Whether a command the reader does not know is one that cites, where what it cites
@@ -921,7 +928,12 @@ class _Reader:
     def _import(self, name: str, at: int, end: int) -> None:
         """Record the import package's `\\import{folder}{file}` or `\\subimport{folder}{file}`
         as an `\\input` of the file in that folder, which the tree finds (`structure.py`). A
-        folder or a file not written in braces leaves the file unnamed, refused there."""
+        folder or a file not written in braces leaves the file unnamed, refused there. The
+        starred forms are refused by name (round 1)."""
+        if self.text.startswith("*", end):
+            said = f"it is not followed; write \\{name} without the star"
+            self._refuse("tex-refused", at, f"\\{name}* is not read: {said}")
+            return
         folder = _BRACED_PATH.match(self.text, end)
         named = _BRACED_PATH.match(self.text, folder.end()) if folder else None
         path = named.group(1) if named else ""
@@ -1030,34 +1042,49 @@ class _Reader:
         self._defines(defined, start)
         self._blank(start, name_end)
         self.pos = name_end
-        parameters = _PARAMETERS.match(self.text, name_end).end()
-        if self.text[parameters : parameters + 1] != "{":
+        parameters, delimited = self._parameter_text(name_end, bool(self.letters.match(defined)))
+        if parameters < 0:
+            said = f"the body of \\{defined} is not found within {_DELIMITED_REACH} characters"
+            self._refuse("tex-refused", at, f"\\{name} is not read: {said}")
+            return
+        if delimited:
             # Delimited parameters, `\def\x#1.{...}`: the definition is read, and each use
             # where it would print is refused, since what it takes there is not known.
-            parameters = self._delimited_body(name_end)
-            if parameters < 0:
-                said = f"its body is not found within {_DELIMITED_REACH} characters"
-                self._refuse("tex-refused", at, f"\\{name} with delimited parameters: {said}")
-                return
             self.delimited.add(defined)
             self.defined_delimited.append(defined)
         self._blank(name_end, parameters)
         self.command = name
         self._open("arg", "d", parameters, "}")
 
-    def _delimited_body(self, at: int) -> int:
-        """Where the body of a definition with delimited parameters opens: at the first brace
-        of its parameter text, as TeX reads it, a control sequence such as `\\{` being none;
-        -1 where a closing brace or a comment comes first, or none is found within reach."""
-        stop = min(self.n, at + _DELIMITED_REACH)
+    def _parameter_text(self, at: int, word: bool) -> tuple[int, bool]:
+        """Where a definition's body opens, past its parameter text, and whether that text
+        delimits its parameters, as TeX reads it: the spaces after a control word are skipped,
+        a comment runs to its line's end and the next line's spaces with it, `#1` is a
+        parameter, and anything else delimits, a control sequence such as `\\{` no brace.
+        -1 where a closing brace comes first, or no brace is found within reach (round 1 of
+        real templates: `\\def\\x {1}` and `\\def\\x%` with `{1}` on the next line were
+        taken for delimited)."""
+        stop, delimited = min(self.n, at + _DELIMITED_REACH), False
+        if word:
+            at = _SKIPPED.match(self.text, at).end()
         while at < stop:
             character = self.text[at]
             if character == "{":
-                return at
-            if character in "}%":
-                return -1
+                return at, delimited
+            if character == "}":
+                return -1, delimited
+            if character == "%":
+                end = _comment_end(self.text, at)
+                self.comments.append((at, end))
+                at = _SKIPPED.match(self.text, end).end()
+                continue
+            parameter = _PARAMETER.match(self.text, at)
+            if parameter:
+                at = parameter.end()
+                continue
+            delimited = True
             at = self._name_end(at) if character == "\\" else at + 1
-        return -1
+        return -1, delimited
 
     def _let(self, defined: str, start: int, name_end: int) -> None:
         """`\\let\\a=\\b`: `\\a` comes to mean what `\\b` means. A command the reader reads, let
@@ -1067,7 +1094,10 @@ class _Reader:
         gap = _LET_GAP.match(self.text, name_end).end()
         target_end = self._name_end(gap) if self.text[gap : gap + 1] == "\\" else -1
         target = self.text[gap + 1 : target_end] if target_end > 0 else ""
-        alias = defined in COMMANDS and COMMANDS.get(target) == COMMANDS[defined]
+        # Not a heading, a citation or a cross-reference, of one form each but for what they
+        # print, a level, a citation's kind, a name: `\let\chapter\section` (round 1).
+        alias = (defined in COMMANDS and COMMANDS.get(target) == COMMANDS[defined]
+                 and not {defined, target} & (set(LEVELS) | set(CITATIONS) | POINTERS))
         if not alias:
             self._defines(defined, start)
         self.defining = ""

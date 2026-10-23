@@ -593,11 +593,11 @@ def _the_preamble_ends_at_the_first_begin(patch: pytest.MonkeyPatch) -> None:
 
 
 def _a_delimited_definition_is_refused(patch: pytest.MonkeyPatch) -> None:
-    patch.setattr(latex_mask._Reader, "_delimited_body", lambda self, at: -1)
+    patch.setattr(latex_mask._Reader, "_parameter_text", lambda self, at, word: (-1, True))
 
 
 def _a_parameter_in_a_body_is_one_hash(patch: pytest.MonkeyPatch) -> None:
-    patch.setattr(latex_mask, "_PARAMETERS", re.compile(r"(?:#[1-9])*"))
+    patch.setattr(latex_mask, "_PARAMETER", re.compile(r"#\d"))
 
 
 def _a_command_let_is_always_defined_again(patch: pytest.MonkeyPatch) -> None:

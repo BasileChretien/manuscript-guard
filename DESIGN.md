@@ -1305,7 +1305,7 @@ order is `printed_order`.
     hold, such as `\input{glyphtounicode}`, is the distribution's and is passed over, as a
     package is, and so is TeX's form without braces there, `\input glyphtounicode`;
   - `\subfile`, `\InputIfFileExists`, and the import package's `\inputfrom` and
-    `\includefrom` and their `sub` forms;
+    `\includefrom` and their `sub` forms, and its starred `\import*` and `\subimport*`;
   - a command that prints a file no gate reads: `\lstinputlisting` and its kin,
     `\verbatiminput`, csvsimple's `\csvautotabular` and `\csvreader`, pgfplotstable's
     `\pgfplotstabletypeset` with a file name, datatool's `\DTLloaddb` and its displays, and
@@ -1343,15 +1343,20 @@ give a finding.
 A `\def` with delimited parameters, `\def\x#1.{...}`, is read where it is written, its
 parameter text blanked and its body read as any body is. A use of it is refused where the
 document prints what it makes, in prose, maths or a printed argument, since what it takes
-there is not known; in a blanked argument, the preamble, a comment or another definition's
-body it prints nothing, and is let be. The definition may stand in another file of the tree
-or in the author's package, so a tree that holds one is read a second time, each file told
-of it. A parameter of a definition inside a body is doubled, `##1`, and is a parameter all
-the same. `\let` of a command the reader reads to another it reads the same way is read as
-before: `\let\footnote=\endnote`, with the endnotes package, prints each note at the end,
-and its text is the same prose. Let to anything else, the command is defined again (Basile,
-2026-10-23, after two journals' templates: the first two were refused at the definition,
-and the rest of each file read as typed).
+there is not known, and in a hook's body, which LaTeX runs where it stands; in a blanked
+argument, the preamble, a comment or another definition's body it prints nothing, and is
+let be. The parameter text is read as TeX reads it: the spaces after a control word are
+skipped, and a comment to its line's end with the next line's spaces, so `\def\x {...}` and
+a `\def\x%` whose body opens the next line delimit nothing (round 1). The definition may
+stand in another file of the tree or in the author's package, so a tree that holds one is
+read a second time, each file told of it. A parameter of a definition inside a body is
+doubled, `##1`, and is a parameter all the same. `\let` of a command the reader reads to
+another it reads the same way is read as before: `\let\footnote=\endnote`, with the
+endnotes package, prints each note at the end, and its text is the same prose. Not between
+headings, citations or cross-references, whose one form prints a level, a kind of citation
+or a name, `\let\chapter\section` (round 1). Let to anything else, the command is defined
+again (Basile, 2026-10-23, after two journals' templates: the first two were refused at the
+definition, and the rest of each file read as typed).
 
 Refused:
 - a definition, in a file of the author's, of any command the reader reads, `\mg` among them,

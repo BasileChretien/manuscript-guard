@@ -220,7 +220,8 @@ def test_a_file_the_import_package_names_is_written_in_where_it_stands(
     _typed_before(twin, "\\section{Discussion}", "\\import{sections/}{intro}\n")
     folder = _written(project, monkeypatch, read=(Path(picture),))
     written = (folder / "manuscript.tex").read_text(encoding="utf-8")
-    assert "Imported words.\nDeep words.\n\\includegraphics{pic.png}" in written, written
+    # The file a `\subimport` names ends its last line, as one `\input` names does.
+    assert "Imported words.\nDeep words.\n\n\\includegraphics{pic.png}" in written, written
     assert "DRAFTG" not in written and "import{" not in written
     assert (folder / "pic.png").is_file()
 

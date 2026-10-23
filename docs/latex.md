@@ -42,10 +42,12 @@ its caption, and a `\mg{table.key}` outside a float is a table it does not numbe
 one with `\ref` to its label, or type "Table 2": G2 holds a typed pointer to what the
 document's captions number, and the main text's tables and figures to the order ICMJE asks
 for, a `\ref` counting as a citation. A range, `Figures~\ref{a}--\ref{b}` with any dash,
-or cleveref's `\crefrange{a}{b}`, cites every figure from a to b, as "Figures 2-4" does;
-`\ref{a} to \ref{b}` cites its two ends only. The floats of a `subfigures` or a `subtables`
-(the subfloat package's) are one figure or table, Figure 3a and 3b, and a `\ref` to the
-label after `\begin` or to one of the floats' cites it. A table or figure in the appendix, after `\appendix`
+`Figures~\ref{a} to~\ref{b}`, or cleveref's `\crefrange{a}{b}`, cites every figure from a
+to b, as "Figures 2-4" and "Figures 2 to 4" do; after "Figure", "to" joins nothing, as in
+"Figure 2 to 4", and the two cite their ends only. The floats of a `subfigures` or a
+`subtables` (the subfloat package's) of its kind are one figure or table, Figure 3a and 3b,
+in the group's file or each in a file it inputs, and a `\ref` to the label after `\begin` or
+to one of the floats' cites it; a table in a `subfigures` is numbered as any table. A table or figure in the appendix, after `\appendix`
 or IEEEtran's `\appendices`, or in an `appendices` or `appendix` environment, is the
 supplement's, and so is one under a heading whose title names a supplement ("Supplementary
 material", "Appendix A", "Supporting information", "Additional file 1") up to the next

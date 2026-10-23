@@ -1690,13 +1690,16 @@ The result is compiled and packed by the code above, and checked three times:
   `\thetable` prints; a typed "Figure 1a" points at Figure 1, `\subfloat`'s letters unread; a
   pointer typed in a float's caption or a `\captionof`'s is not read; and a label defined
   twice names the first display it labels. A range of cross-references is read where a dash
-  joins two, or in a `\crefrange`: `\ref{a} to \ref{b}` and `\ref{a}, \dots, \ref{b}` cite
-  their ends only, so a display between them first cited later is said out of order; a range
-  whose ends are more than 50 apart, of two kinds, or of the main text and the supplement
-  cites its ends only (corpus round, 2026-10-23). A group of the subfloat package, `subfigures` or
-  `subtables`, is one display however its floats' captions are written; a label in a file
-  read inside one names nothing, as in a `subfigure`, and a group that is not closed leaves its
-  floats numbered each. Where a document numbers a kind in a way the view cannot
+  joins two, where "to" does after "Tables", "Figures" or "Figs." typed before the first or
+  before a list it ends, or in a `\crefrange`, as `pointers.py` reads a typed one: "to" after
+  a plural a command of the author's prints, `\Figs~\ref{a} to~\ref{b}`, and `\ref{a},
+  \dots, \ref{b}` cite their ends only, so a display between them first cited later is said
+  out of order; a range whose ends are more than 50 apart, of two kinds, or of the main text
+  and the supplement cites its ends only. Unlike Markdown's, the join may have a line's end
+  on either side, which TeX reads as a space (corpus round, 2026-10-23, and fix round 1). A
+  group of the subfloat package, `subfigures` or `subtables`, is one display however its
+  floats' captions are written, and a group that is not closed leaves its floats numbered
+  each. Where a document numbers a kind in a way the view cannot
   count, a `\captionof`, a `longtable`'s caption, or a float whose caption a command of the
   author's writes, that kind's pointers are not checked, and a note says so; a page
   `\includepdf` takes in, or a `\caption` in a float the reader does not know, `SCfigure` or
@@ -2519,11 +2522,22 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
     `\cpagerefrange` a page's; the reader had not known them and printed their labels as
     words. A paper that cited a range of figures with two `\ref`s a dash joins, and a figure
     inside the range alone after it, was told the range's last figure was cited before it.
+    Review found three more (fix round 1). With one file a float, `\input` in the group, the
+    labels in the files named nothing, and main, which counted each float, had passed the
+    paper: a file read inside a group now writes its floats' labels as a mark of its own
+    (`printed.JOINED`), which the display the view marked last of the group's kind, the
+    group's, takes on. LaTeX numbers a `table` in a `subfigures` as any table, so only the
+    floats of the group's kind are its parts. And "to" between two cross-references after
+    "Tables", "Figures" or "Figs." is a range, as `_JOIN` in `pointers.py` reads "Figures 2 to
+    4", and no join after a singular; a list's join carries the plural on.
     Tests: `tests/test_latex_pointers.py`, `tests/test_corruption.py`, `latex_pointers()`,
     which holds a `\crefrange`, and `latex_display_groups()` with the reading `latex displays
-    cited`, with `BROKEN` rules for a group numbering each of its floats or its labels naming
-    nothing, a range cited at its ends, read with an en dash only or on one line, cleveref's
-    range cited at its ends, and its span recorded at each label.
+    cited`, which plants a group's floats in files of their own, a figure in the table group,
+    and pairs that make no range beside every form of range, with `BROKEN` rules for a group
+    numbering each of its floats, its labels or its files' naming nothing, a float of the other
+    kind joining it, a range cited at its ends, read with an en dash only, on one line, or
+    across anything, "to" making no range or one after a singular, cleveref's range cited at
+    its ends, and its span recorded at each label.
 
 ## Zotero is never on the critical path
 
@@ -16162,7 +16176,8 @@ Closed since, and why each mattered (an open gap goes above this line):
   later, was cited out of order, and one cited only by a `\crefrange` not cited at all; the
   reader did not know cleveref's ranges and printed their labels as words. A range cites
   every display from its first end to its last now, as a typed one does in Markdown, and the
-  floats of a `subfigures` or a `subtables` are one display (corpus round, 2026-10-23).
+  floats of a `subfigures` or a `subtables` are one display, in the group's file or in files
+  it inputs (corpus round, 2026-10-23, and fix round 1).
 
 - **A dataset's name was not held to the record of data sources.** The name was meant to be
   the id of its source in `design/data_sources.yaml`, and nothing said where it was not: an

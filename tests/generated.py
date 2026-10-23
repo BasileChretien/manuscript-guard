@@ -1086,51 +1086,81 @@ def latex_pointers(draw: st.DrawFn) -> tuple[str, list[tuple[str, bool]]]:
 
 #: Each way a LaTeX document cites a range of tables, from label `{a}` to label `{b}`: two
 #: cross-references a dash joins, an en dash, a hyphen, an em dash, with spaces or a line's
-#: end around it, and cleveref's `\\crefrange` and `\\Crefrange` (corpus round, 2026-10-23).
+#: end around it, "to" after a plural (fix round 1), and cleveref's `\\crefrange` and
+#: `\\Crefrange` (corpus round, 2026-10-23).
 LATEX_RANGES = (
     "Tables~\\ref{{{a}}}--\\ref{{{b}}}", "Tables \\ref{{{a}}}-\\ref{{{b}}}",
     "Tables~\\ref{{{a}}}~--~\\ref{{{b}}}", "Tables \\ref{{{a}}}---\\ref{{{b}}}",
-    "Tables~\\ref{{{a}}}--%\n\\ref{{{b}}}", "\\crefrange{{{a}}}{{{b}}}",
-    "\\Crefrange{{{a}}}{{{b}}}",
+    "Tables~\\ref{{{a}}}--%\n\\ref{{{b}}}", "Tables~\\ref{{{a}}} to~\\ref{{{b}}}",
+    "\\crefrange{{{a}}}{{{b}}}", "\\Crefrange{{{a}}}{{{b}}}",
+)  # fmt: skip
+#: Two cross-references to tables that make no range, from label `{a}` to label `{b}`: a list
+#: joined by "and" or a comma, "to" after a singular, which Markdown reads as no join, and a
+#: paragraph's end (fix round 1).
+LATEX_NOT_RANGES = (
+    "Tables~\\ref{{{a}}} and~\\ref{{{b}}}", "Tables~\\ref{{{a}}}, \\ref{{{b}}}",
+    "Table~\\ref{{{a}}} to~\\ref{{{b}}}", "Tables~\\ref{{{a}}}\n\n\\ref{{{b}}}",
 )  # fmt: skip
 
 
 @st.composite
-def latex_display_groups(draw: st.DrawFn) -> tuple[str, set[tuple[str, int]]]:
-    """A LaTeX document that numbers tables and figures with captioned floats, one of each
-    kind a group of two or three floats the subfloat package numbers as one, `subtables` and
-    `subfigures`, at a place drawn; that cites its tables in ranges of every form of
-    `LATEX_RANGES`, in an order drawn, each range from the last one's end to the table two
-    past it, so that the table between is cited by the range alone, the group a range's end
-    named by the label of one of its floats; that cites its figures each in order, the group by
-    the label after `\\begin`, the others by `\\ref` or typed; and that points at one table and
-    one figure more than it numbers. What G2 says of it: those two pointers, at their lines
-    (corpus round, 2026-10-23)."""
-    forms = draw(st.permutations(LATEX_RANGES))
-    counts = {"table": 2 * len(forms) + 1, "figure": draw(st.integers(1, 3))}
-    grouped = {"table": 2 * draw(st.integers(0, len(forms))) + 1,
-               "figure": draw(st.integers(1, counts["figure"]))}  # fmt: skip
+def latex_display_groups(
+    draw: st.DrawFn,
+) -> tuple[dict[str, str], set[tuple[str, int | None]], set[int]]:
+    """A LaTeX document, `main.tex` and the files it inputs, that numbers tables and figures
+    with captioned floats, one of each kind a group of floats the subfloat package numbers as
+    one, `subtables` and `subfigures`, at a place drawn, and points at one table and one
+    figure more than it numbers.
 
-    def named(kind: str, number: int) -> str:
-        return f"{kind[:3]}{number}" + ("b" if (kind, number) == ("table", grouped[kind]) else "")
+    Its tables: it cites them in ranges of every form of `LATEX_RANGES`, in an order drawn,
+    each from the last one's end to the table two past it, so that the table between is cited
+    by the range alone; then in pairs of every form of `LATEX_NOT_RANGES`, the table between
+    each pair's two cited nowhere. The table group is the end of one range, named by its
+    second float's label, and the start of the next, named by the label after `\\begin`.
 
-    floats = []
-    for kind, count in counts.items():
-        for number in range(1, count + 1):
-            caption = f"\\caption{{The {kind}.}}\\label{{{kind[:3]}{number}"
-            if number != grouped[kind]:
-                floats.append(f"\\begin{{{kind}}}{caption}}}\\end{{{kind}}}")
-                continue
-            group = "subtables" if kind == "table" else "subfigures"
-            floats += [f"\\begin{{{group}}}\\label{{{kind[:3]}{number}}}",
-                       *(f"\\begin{{{kind}}}{caption}{part}}}\\end{{{kind}}}"
-                         for part in "abc"[: draw(st.integers(2, 3))]),
-                       f"\\end{{{group}}}"]  # fmt: skip
+    Its figures: the table group holds a figure too, which LaTeX numbers Figure 1; the figure
+    group's floats are each in a file of its own, `\\input` in the group, and it is cited by a
+    label in one of them (fix round 1); each figure is cited in order, by `\\ref` or typed; and
+    the last figure is pointed at by its number at the end.
+
+    What G2 says of it, and the tables cited nowhere: the two pointers to nothing, at their
+    lines; the first pair's second table, cited before the table between, out of order there;
+    and each table between a pair."""
+    forms, pairs = draw(st.permutations(LATEX_RANGES)), draw(st.permutations(LATEX_NOT_RANGES))
+    ranged = 2 * len(forms) + 1
+    counts = {"table": ranged + 2 * len(pairs), "figure": draw(st.integers(1, 3)) + 1}
+    grouped = {"table": 2 * draw(st.integers(1, len(forms) - 1)) + 1,
+               "figure": draw(st.integers(2, counts["figure"]))}  # fmt: skip
+    files: dict[str, str] = {}
+
+    def named(number: int, end: bool) -> str:
+        return f"tab{number}" + ("b" if end and number == grouped["table"] else "")
+
+    def placed(kind: str, number: int) -> list[str]:
+        caption = f"\\caption{{The {kind}.}}\\label{{{kind[:3]}{number}"
+        if number != grouped[kind]:
+            return [f"\\begin{{{kind}}}{caption}}}\\end{{{kind}}}"]
+        parts = [f"\\begin{{{kind}}}{caption}{part}}}\\end{{{kind}}}"
+                 for part in "abc"[: draw(st.integers(2, 3))]]  # fmt: skip
+        if kind == "table":
+            inside = [*parts, "\\begin{figure}\\caption{Inside.}\\label{fig1}\\end{figure}"]
+            return ["\\begin{subtables}\\label{tab" + str(number) + "}", *inside,
+                    "\\end{subtables}"]  # fmt: skip
+        for index, part in enumerate(parts):
+            files[f"part{index}.tex"] = part + "\n"
+        return ["\\begin{subfigures}\\label{fig" + str(number) + "}",
+                *(f"\\input{{part{index}}}" for index in range(len(parts))), "\\end{subfigures}"]
+
+    floats = [line for number in range(1, counts["table"] + 1) for line in placed("table", number)]
+    floats += [line for number in range(2, counts["figure"] + 1)
+               for line in placed("figure", number)]  # fmt: skip
     cited = {
-        "table": [form.format(a=named("table", 2 * index + 1), b=named("table", 2 * index + 3))
-                  + " show it." for index, form in enumerate(forms)],
-        "figure": [f"As Figure~\\ref{{fig{number}}} shows."
-                   if number == grouped["figure"] or draw(st.booleans())
+        "table": [form.format(a=named(2 * index + 1, False), b=named(2 * index + 3, True))
+                  + " show it." for index, form in enumerate(forms)]
+        + [form.format(a=f"tab{ranged + 2 * index}", b=f"tab{ranged + 2 * index + 2}")
+           + " show it." for index, form in enumerate(pairs)],
+        "figure": [f"As Figure~\\ref{{fig{number}a}} shows." if number == grouped["figure"]
+                   else f"As Figure~\\ref{{fig{number}}} shows." if draw(st.booleans())
                    else f"As Figure~{number} shows." for number in range(1, counts["figure"] + 1)],
     }  # fmt: skip
     lines = ["\\documentclass{article}", "\\begin{document}",
@@ -1138,10 +1168,16 @@ def latex_display_groups(draw: st.DrawFn) -> tuple[str, set[tuple[str, int]]]:
     while cited["table"] or cited["figure"]:
         kind = draw(st.sampled_from([kind for kind in cited if cited[kind]]))
         lines.append(cited[kind].pop(0))
+    lines.append(f"Figure~{counts['figure']} is the last.")
     over = "\n".join(lines).count("\n") + 2
     lines += [f"Nothing is Table~{counts['table'] + 1}.",
               f"Nothing is Figure~{counts['figure'] + 1}.", *floats, "\\end{document}"]
-    return "\n".join(lines) + "\n", {("pointer-to-nothing", over), ("pointer-to-nothing", over + 1)}
+    text = "\n".join(lines) + "\n"
+    early = text.count("\n", 0, text.index(f"\\ref{{tab{ranged + 2}}}")) + 1
+    files["main.tex"] = text
+    expected = {("pointer-to-nothing", over), ("pointer-to-nothing", over + 1),
+                ("cited-out-of-order", early), ("display-not-cited", None)}  # fmt: skip
+    return files, expected, {ranged + 2 * index + 1 for index in range(len(pairs))}
 
 
 #: A cross-reference as the quoting view writes it, `{}` for `printed.POINTER`, with what

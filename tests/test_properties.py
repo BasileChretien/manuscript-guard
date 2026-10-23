@@ -5884,19 +5884,25 @@ def test_a_latex_pointer_is_held_to_what_latex_numbers(
 
 @holds(60, latex_display_groups())
 def test_a_latex_group_of_floats_is_one_display_and_a_range_cites_what_it_takes_in(
-    planted: tuple[str, set[tuple[str, int]]],
+    planted: tuple[dict[str, str], set[tuple[str, int | None]], set[int]],
 ) -> None:
-    """The floats of a `subtables` or a `subfigures` share the group's one number, and a
-    cross-reference to one of them, or to the label after `\\begin`, cites it; a range of
-    cross-references, two a dash joins or cleveref's `\\crefrange`, cites every table from
-    its first end to its last (corpus round, 2026-10-23)."""
-    text, expected = planted
-    sources = list(latex_structure.read_tree({"main.tex": text}).sources)
+    """The floats of a `subtables` or a `subfigures` of the group's kind share its one number,
+    and a cross-reference to one of them, in the group's file or in a file it inputs, or to the
+    label after `\\begin`, cites it; a float of the other kind is numbered as any. A range of
+    cross-references, two a dash joins, two "to" joins after a plural or cleveref's
+    `\\crefrange`, cites every table from its first end to its last; two a list's join, "to"
+    after a singular or a paragraph's end join cite their ends only (corpus round, 2026-10-23,
+    and fix round 1)."""
+    texts, expected, uncited = planted
+    sources = list(latex_structure.read_tree(texts).sources)
     report = pointers_latex_gate.pointers_in_documents(
         {False: sources, True: []}, Path("m"), dict.fromkeys(pointers_latex_gate.AS_FILES, 0)
     )
     found = {(f.code, f.line) for f in report.findings}
-    assert found == expected, (found, expected, text)
+    assert found == expected, (found, expected, texts)
+    missing = {int(re.match(r"Table (\d+) ", f.message)[1]) for f in report.findings
+               if f.code == "display-not-cited"}  # fmt: skip
+    assert missing == uncited, (missing, uncited, texts)
 
 
 def _a_group_of_floats_numbers_each(patch: pytest.MonkeyPatch) -> None:
@@ -5904,7 +5910,27 @@ def _a_group_of_floats_numbers_each(patch: pytest.MonkeyPatch) -> None:
 
 
 def _a_group_s_labels_name_nothing(patch: pytest.MonkeyPatch) -> None:
-    patch.setattr(latex_print, "_group_labels", lambda _text, _low, _high, _read: [])
+    patch.setattr(latex_print, "_group_labels", lambda _source, _low, _high, _kind, _read: [])
+
+
+def _a_group_s_input_files_labels_name_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print, "_labels_read_in_a_group", lambda _text, _start, _end, _read: [])
+
+
+def _a_float_of_the_other_kind_joins_a_group(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print, "_joins", lambda _kind, _grouped: True)
+
+
+def _anything_between_two_cross_references_makes_a_range(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(pointers_latex_gate, "_RANGE_DASH", re.compile(r"[\s\S]*"))
+
+
+def _to_makes_no_range(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(pointers_latex_gate, "_RANGE_TO", re.compile(r"(?!)"))
+
+
+def _to_makes_a_range_after_a_singular(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(pointers_latex_gate, "_PLURAL_BEFORE", re.compile(r""))
 
 
 def _a_range_of_cross_references_cites_its_ends(patch: pytest.MonkeyPatch) -> None:
@@ -10345,6 +10371,26 @@ BROKEN = {
     ),
     "in LaTeX, a subfigures group's labels name nothing": (
         _a_group_s_labels_name_nothing,
+        test_a_latex_group_of_floats_is_one_display_and_a_range_cites_what_it_takes_in,
+    ),
+    "in LaTeX, the labels of a file read inside a group name nothing": (
+        _a_group_s_input_files_labels_name_nothing,
+        test_a_latex_group_of_floats_is_one_display_and_a_range_cites_what_it_takes_in,
+    ),
+    "in LaTeX, a float of the other kind joins a subfigures group": (
+        _a_float_of_the_other_kind_joins_a_group,
+        test_a_latex_group_of_floats_is_one_display_and_a_range_cites_what_it_takes_in,
+    ),
+    "in LaTeX, anything between two cross-references makes a range": (
+        _anything_between_two_cross_references_makes_a_range,
+        test_a_latex_group_of_floats_is_one_display_and_a_range_cites_what_it_takes_in,
+    ),
+    "in LaTeX, to between two cross-references makes no range": (
+        _to_makes_no_range,
+        test_a_latex_group_of_floats_is_one_display_and_a_range_cites_what_it_takes_in,
+    ),
+    "in LaTeX, to after a singular makes a range": (
+        _to_makes_a_range_after_a_singular,
         test_a_latex_group_of_floats_is_one_display_and_a_range_cites_what_it_takes_in,
     ),
     "in LaTeX, two cross-references a dash joins cite their ends only": (

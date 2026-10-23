@@ -275,8 +275,10 @@ def _latex_displays_cited() -> Reading:
     from manuscript_guard.gates.pointers_latex import AS_FILES, pointers_in_documents
     from manuscript_guard.text.latex.structure import read_tree
 
-    def said(text: str) -> dict[str, Any]:
-        sources = list(read_tree({"main.tex": text}).sources)
+    def said(given: str | dict[str, str]) -> dict[str, Any]:
+        """`given` is `main.tex`'s text, or the files' texts by name, `main.tex` among them."""
+        texts = given if isinstance(given, dict) else {"main.tex": given}
+        sources = list(read_tree(texts).sources)
         report = pointers_in_documents({False: sources, True: []}, Path("m"),
                                        dict.fromkeys(AS_FILES, 0))  # fmt: skip
         return {"findings": [[f.code, f.line, f.message] for f in report.findings],

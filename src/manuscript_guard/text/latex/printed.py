@@ -122,6 +122,9 @@ _QUOTATION = re.compile(r"\\(begin|end)\s*\{(?:quote|quotation|displayquote)\}")
 #: `F` where the view cannot say what LaTeX numbers: a float with no `\\caption` it reads, a
 #: `\\captionof`, a `longtable`'s caption, a page `\\includepdf` takes in.
 DISPLAY, REFERENCE, MARK_END = chr(0xE003), chr(0xE004), chr(0xE005)
+#: Before a display's kind, where a file read inside a group of the subfloat package writes
+#: the labels of its floats: the group's display takes them on (fix round 1).
+JOINED = "+"
 #: What that view writes where the appendix begins, at `\\appendix` or IEEEtran's
 #: `\\appendices`, to `MARK_END`; `environment` before it where the appendix package's
 #: `appendices` or an `appendix` environment opens, and `end` where it ends: the displays
@@ -357,13 +360,11 @@ def _pointing_events(source: Source) -> list[tuple[int, int, str]]:
     # display, "Figure 3a" and "Figure 3b": one mark where the group begins, with every label
     # in it, and none for its floats (corpus round, 2026-10-23).
     groups = _groups(source, read)
-    events = [(start, end, "" if any(low <= start < high for low, high, _kind in groups)
-               else _float_marks(source, start, end, read, comments))
-              for start, end in reading.floats]  # fmt: skip
+    events = _float_events(source, groups, read, comments)
     for low, high, kind in groups:
         opened = _GROUP.match(text, low)
         events.append((low, opened.end() if opened else low,
-                       DISPLAY + kind + ",".join(_group_labels(text, low, high, read))
+                       DISPLAY + kind + ",".join(_group_labels(source, low, high, kind, read))
                        + MARK_END))  # fmt: skip
     # A caption outside the floats the reader knows numbers a display of a float it does not,
     # `SCfigure` or a `\\newfloat`, of a kind the view cannot tell (round 2 of step 13, part 2).
@@ -374,7 +375,7 @@ def _pointing_events(source: Source) -> list[tuple[int, int, str]]:
               if not _ENVIRONMENT.search(text, low, high)]  # fmt: skip
     known = [*reading.floats, *reading.tables, *bodies,
              *_spans(text, _OTHER_FLOATS, 0, len(text), read)]  # fmt: skip
-    if not _read_in_a_part(source) and not _read_in_a_group(source):
+    if not _read_in_a_part(source) and not _group_read_in(source):
         for begun, _opened, closed in _arguments(text, _NUMBERED, 0, len(text), comments):
             if read(begun) and not any(low <= begun < high for low, high in known):
                 events.append((begun, closed + 1,
@@ -444,7 +445,7 @@ def _float_marks(source: Source, start: int, end: int, read, comments: dict) -> 
     kind = "f" if (start, end) in set(source.reading.figures) else "t"
     captions = [begun for begun, _opened, _closed
                 in _numbered_captions(text, start, end, read, comments)]  # fmt: skip
-    if _read_in_a_part(source) or _read_in_a_group(source) or any(
+    if _read_in_a_part(source) or any(
         read(found.start()) for found in _CONTINUED.finditer(text, start, end)
     ):
         return ""
@@ -487,10 +488,42 @@ def _read_in_a_part(source: Source) -> bool:
     return bool(set(source.environments) & _PARTS)
 
 
-def _read_in_a_group(source: Source) -> bool:
-    """Whether `source` is a file input inside a `subfigures` or a `subtables`, whose floats
-    number parts of the group's one display (corpus round, 2026-10-23)."""
-    return bool(set(source.environments) & _GROUPED)
+def _group_read_in(source: Source) -> str:
+    """The kind, `f` or `t`, of the innermost `subfigures` or `subtables` `source` is a file
+    input inside, whose floats of that kind number parts of the group's one display; "" for
+    none (corpus round, 2026-10-23)."""
+    grouped = [name for name in source.environments if name in _GROUPED]
+    return ("t" if grouped[-1] == "subtables" else "f") if grouped else ""
+
+
+def _float_events(source: Source, groups, read, comments: dict) -> list[tuple[int, int, str]]:
+    """The events of the floats of `source`: none for one of the kind of a group of this file
+    it is in, whose labels the group's mark holds; for one of the kind of the group the file is
+    read inside, `JOINED`, its kind and its labels, which the group's display takes on (fix
+    round 1: they named nothing); and each other float's displays (`_float_marks`). A float of
+    the other kind in a group is numbered as LaTeX numbers it, outside the group (fix round 1).
+    A label of a file read inside a group, outside its floats, is the group's too."""
+    reading, text = source.reading, source.text
+    figures, outer = set(reading.figures), _group_read_in(source)
+    events = []
+    for start, end in reading.floats:
+        kind = "f" if (start, end) in figures else "t"
+        if any(low <= start < high and _joins(kind, grouped) for low, high, grouped in groups):
+            events.append((start, end, ""))
+        elif outer and _joins(kind, outer) and not any(low <= start < high
+                                                       for low, high, _kind in groups):
+            labels = _labels_read_in_a_group(text, start, end, read)
+            events.append((start, end, DISPLAY + JOINED + kind + ",".join(labels) + MARK_END))
+        else:
+            events.append((start, end, _float_marks(source, start, end, read, comments)))
+    if outer:
+        spans = [*reading.floats, *((low, high) for low, high, _kind in groups)]
+        for found in _LABEL.finditer(text):
+            if read(found.start()) and not any(low <= found.start() < high for low, high in spans):
+                labels = _labels_read_in_a_group(text, found.start(), found.end(), read)
+                events.append((found.start(), found.end(),
+                               DISPLAY + JOINED + outer + ",".join(labels) + MARK_END))  # fmt: skip
+    return events
 
 
 def _groups(source: Source, read) -> list[tuple[int, int, str]]:
@@ -503,10 +536,28 @@ def _groups(source: Source, read) -> list[tuple[int, int, str]]:
             if not any(start <= low < end for start, end in bodies)]  # fmt: skip
 
 
-def _group_labels(text: str, low: int, high: int, read) -> list[str]:
-    """The labels of the group from `low` to `high`, each naming its one display: the one
-    after its `\\begin`, and its floats', which print "3a"."""
-    return [found[1].strip() for found in _LABEL.finditer(text, low, high) if read(found.start())]
+def _group_labels(source: Source, low: int, high: int, kind: str, read) -> list[str]:
+    """The labels of the group of `kind` from `low` to `high`, each naming its one display: the
+    one after its `\\begin`, and its floats', which print "3a"; not a label of a float of the
+    other kind, which LaTeX numbers apart (fix round 1)."""
+    figures = set(source.reading.figures)
+    apart = [(start, end) for start, end in source.reading.floats
+             if low <= start < high
+             and not _joins("f" if (start, end) in figures else "t", kind)]  # fmt: skip
+    return [found[1].strip() for found in _LABEL.finditer(source.text, low, high)
+            if read(found.start()) and not any(a <= found.start() < b for a, b in apart)]
+
+
+def _joins(kind: str, grouped: str) -> bool:
+    """Whether a float of `kind` in a group of `grouped` is a part of the group's display:
+    LaTeX numbers a table in a `subfigures` as any table (fix round 1)."""
+    return kind == grouped
+
+
+def _labels_read_in_a_group(text: str, start: int, end: int, read) -> list[str]:
+    """The labels from `start` to `end` of a file read inside a group, which name the group's
+    display (fix round 1)."""
+    return [found[1].strip() for found in _LABEL.finditer(text, start, end) if read(found.start())]
 
 
 def _parts(text: str, start: int, end: int, read) -> list[tuple[int, int]]:

@@ -138,8 +138,10 @@ expected:
       as words (corpus round of 2026-10-23)
   - reading: latex displays cited
     why: >-
-      the floats of the subfloat package's `subfigures` or `subtables` are one display, and
-      a label in the group names it; a range of cross-references, two a dash joins or
-      `\crefrange`, cites every display from its first end to its last; the inputs hold
-      both, which were counted one display a float and cited at their ends only, and said
-      cited out of order or nowhere (corpus round of 2026-10-23)
+      the floats of the subfloat package's `subfigures` or `subtables` of its kind are one
+      display, in the group's file or each in a file it inputs, and a label in the group or
+      in those files names it; a float of the other kind is numbered as any; a range of
+      cross-references, two a dash joins, two "to" joins after a plural, or `\crefrange`,
+      cites every display from its first end to its last; the inputs hold all of these,
+      which were counted one display a float and cited at their ends only, and said cited
+      out of order or nowhere (corpus round of 2026-10-23, and its fix round 1)

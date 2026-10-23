@@ -20279,6 +20279,60 @@ def test_a_definition_whose_brackets_were_deleted_is_caught(project: Path) -> No
     ]
 
 
+def test_a_statistic_in_brackets_does_not_stand_in_for_a_deleted_definition(
+    project: Path,
+) -> None:
+    """The definition is tidied away, and the Methods now give the estimate in brackets
+    after words whose letters spell ROR. A statistic is no definition: ROR is undefined
+    where it is first used, and not defined as "older reporters" below that."""
+    mended = with_ror_defined(project)
+    tidied = mended.replace("ratio (ROR) of", "ratio of").replace(
+        "A signal was defined",
+        "Reports were fewer among older reporters (ROR: {{results.ror.point}}). A signal was "
+        "defined",
+    )
+    main_md(project).write_text(tidied, encoding="utf-8")
+    assert language_findings(project) == [
+        ("abbreviation-undefined", line_of(tidied, ABBREVIATED))
+    ]
+
+
+def test_a_short_form_spelt_from_inside_an_aside_is_undefined(project: Path) -> None:
+    """A revision splits the estimate in two and names each part, the second with nothing
+    before it to define it but another short form and a percentage in brackets. Both are
+    undefined: the second is not defined as "ROR1) and 20 (12%) had a second ROR"."""
+    mended = with_ror_defined(project)
+    split = mended.replace(
+        "A signal was defined",
+        "The ROR was computed for the first half (ROR1) and 20 (12%) had a second ROR "
+        "(ROR2). A signal was defined",
+    )
+    main_md(project).write_text(split, encoding="utf-8")
+    line = line_of(split, "(ROR1)")
+    assert language_findings(project) == [
+        ("abbreviation-undefined", line),
+        ("abbreviation-undefined", line_of(split, "(ROR2)")),
+    ]
+
+
+def test_a_heading_in_capitals_and_a_time_of_day_hide_no_undefined_abbreviation(
+    project: Path,
+) -> None:
+    """A manuscript pasted from Word: an appendix headed in capitals, a table with a TOTAL
+    row, the time the reports were extracted; and the definition tidied away. Only the
+    undefined ROR is reported."""
+    mended = with_ror_defined(project)
+    pasted = mended.replace("ratio (ROR) of", "ratio of").replace(
+        "The analysis was run in Python",
+        "APPENDIX\n\n| Group | Reports |\n|---|---|\n| TOTAL | 12 |\n\nReports were extracted "
+        "at 9:30AM.\n\nThe analysis was run in Python",
+    )
+    main_md(project).write_text(pasted, encoding="utf-8")
+    assert language_findings(project) == [
+        ("abbreviation-undefined", line_of(pasted, ABBREVIATED))
+    ]
+
+
 # --------------------------------------------------------------------------------------
 # A round read by models through `review --run`. What a run files is a set of records like
 # any other. What it must not do is leave a round that passes a submission with less than

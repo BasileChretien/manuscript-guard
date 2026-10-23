@@ -80,3 +80,10 @@ expected:
       a sentence that opens with a typographic quotation mark is a sentence of its own, as
       one that opens with a straight one is, so its quotation is held to its own citation
       and not to the one of the sentence before (step 8, G7)
+  - reading: abbreviations
+    why: >-
+      a short form followed by a colon, an equals sign or a number in its bracket is a
+      statistic and defines nothing, and a long form takes no letter from inside a bracket
+      it opens; a time of day, "8:30AM", "10:00 PM", is not read as an abbreviation, and
+      nothing is reported as undefined in a paragraph or a table's cell with no small letter,
+      a heading typed in capitals; the inputs now hold such brackets, times and headings

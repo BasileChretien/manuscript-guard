@@ -972,6 +972,69 @@ def _a_file_input_is_read_after_its_parent(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate, "_input_ends", lambda source: [])
 
 
+# ------------------------------------------------- G14: what is a definition, what an abbreviation
+
+# Imported here, not at the top, to keep clear of the import block other branches edit.
+from generated import bracketed, capitalised  # noqa: E402
+
+
+@holds(60, bracketed())
+def test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not(
+    drawn: tuple[str, list[tuple[int, str, bool]]],
+) -> None:
+    """G14 reads a definition in both orders, in square brackets, with a separator or a
+    citation beside it, nested in a bracket that gives a statistic, and with a long form that
+    closes a bracket or holds a whole one. A short form followed by a colon, an equals sign or
+    a number is a statistic, and one whose letters are found only inside a bracket its long
+    form would open defines nothing, though the words before each spell it."""
+    text, planted = drawn
+    read = _file(0, Path("main.md"), text, [], False)
+    defined = {at: short for at, short, _long in read.definitions}
+    for at, short, defines in planted:
+        if defines:
+            assert defined.get(at) == short, (short, text)
+        else:
+            assert at not in defined, (short, text)
+
+
+@holds(60, capitalised())
+def test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations(
+    drawn: tuple[str, list[str]],
+) -> None:
+    """A time of day, `8:30AM`, `10:00 PM`, and a heading or a table's label typed in capitals
+    are not reported as undefined abbreviations, and an abbreviation the manuscript defines is
+    used in such a cell; one beside a time of day, in a cell with small letters or in a
+    sentence still is reported."""
+    text, undefined = drawn
+    nothing = language_gate._Known(frozenset(), frozenset())
+    report = language_gate._judge([_file(0, Path("main.md"), text, [], False)], nothing, Path("."))
+    found = sorted((f.code, f.message.split()[0]) for f in report.findings)
+    assert found == [("abbreviation-undefined", short) for short in undefined], text
+
+
+def _a_statistic_in_brackets_is_a_definition(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_STATISTIC", re.compile("(?!)"))
+
+
+def _a_long_form_takes_a_letter_from_inside_a_bracket(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_inside_a_bracket", lambda before, matched: False)
+
+
+def _a_long_form_crosses_no_bracket(patch: pytest.MonkeyPatch) -> None:
+    def crosses(before: str, matched: list[int]) -> bool:
+        return any(char in "()[]" for char in before[matched[-1] : matched[0]])
+
+    patch.setattr(language_gate, "_inside_a_bracket", crosses)
+
+
+def _a_time_of_day_is_words(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_CLOCK", re.compile("(?!)"))
+
+
+def _a_heading_in_capitals_is_words(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_in_capitals", lambda prose: [])
+
+
 @holds(60, latex_writing())
 def test_g6_judges_a_latex_document_where_it_prints_and_by_its_citations(
     drawn: tuple[str, list[tuple[str, str]]],
@@ -10224,6 +10287,26 @@ BROKEN = {
     "the Methods report nothing": (
         _the_methods_report_nothing,
         test_a_number_a_summary_gives_is_found_unreported_whatever_the_headings_are_called,
+    ),
+    "a statistic in brackets is read as a definition": (
+        _a_statistic_in_brackets_is_a_definition,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a long form takes a letter from inside a bracket it opens": (
+        _a_long_form_takes_a_letter_from_inside_a_bracket,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a long form crosses no bracket": (
+        _a_long_form_crosses_no_bracket,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a time of day is read as words": (
+        _a_time_of_day_is_words,
+        test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
+    ),
+    "a heading typed in capitals is read as words": (
+        _a_heading_in_capitals_is_words,
+        test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
     ),
     "a statistic is read at its printed value, not over what its last digit allows": (
         _a_statistic_is_read_at_its_printed_value,

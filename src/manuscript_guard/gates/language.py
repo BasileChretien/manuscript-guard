@@ -104,6 +104,19 @@ _EDGES = _QUOTES + ".,;:()[]"
 _OPENS_WITH = re.compile(
     rf"[\s{re.escape(_QUOTES)}]*(?P<short>[^\W_]+(?:-[^\W_]+)*)[\s{re.escape(_QUOTES)}]*(?:$|[;,:])"
 )
+# What makes a bracket a statistic and not a definition: its short form followed by a colon,
+# an equals sign or a number, "(AOR: 0.41, 95% CI ...)". The words before such a bracket
+# are no long form, though their letters may spell the short form ("and older adults").
+_STATISTIC = re.compile(rf"[\s{re.escape(_QUOTES)}]*(?:[:=]|\d)")
+#: The brackets a long form opens and closes, round and square: a letter of its short form
+#: is not found inside one it opens (`_inside_a_bracket`).
+_OPENING = "(["
+_CLOSING = ")]"
+# A time of day: `11:00AM`, `10:00 PM`, `7:15` at the end of a line and `AM` on the next.
+# Read as words it is `11` and `00AM`, or a `PM`, which are abbreviations to the gate.
+_CLOCK = re.compile(r"(?<![\d:])\d{1,2}:[0-5]\d(?::[0-5]\d)?\s?(?:AM|PM)(?![^\W_])")
+# A line of a table, pipe or grid, whose cells are read one by one.
+_TABLE_LINE = re.compile(r"(?m)^[ \t]{0,3}\|.*$")
 # The word standing against an opening bracket: "ROR (reporting odds ratio)".
 _BEFORE_PAREN = re.compile(r"(?P<short>[^\W_]+(?:-[^\W_]+)*)[ \t]?$")
 # An image with its caption: `![caption](target)` or `![caption][label]`, a bracket inside
@@ -329,6 +342,7 @@ def _long_form(short: str, before: str) -> str | None:
     letter or digit of the short form is found in turn, and the first must begin a word.
     """
     at = len(before) - 1
+    matched: list[int] = []
     for position in range(len(short) - 1, -1, -1):
         wanted = short[position].lower()
         if not wanted.isalnum():
@@ -340,7 +354,10 @@ def _long_form(short: str, before: str) -> str | None:
             at -= 1
         if at < 0:
             return None
+        matched.append(at)
         at -= 1
+    if _inside_a_bracket(before, matched):
+        return None
     found = before[at + 1 :].strip().strip(_EDGES).strip()
     if len(found) <= len(short):
         return None
@@ -350,6 +367,29 @@ def _long_form(short: str, before: str) -> str | None:
     if _singular(short).lower() in words:
         return None
     return found
+
+
+def _inside_a_bracket(before: str, matched: list[int]) -> bool:
+    """Is a letter of the short form found inside a bracket the long form opens? `matched`
+    are where its letters were found, the last letter first.
+
+    "(WSE1) and 40 (12.5%) had a second WSE (WSE2)" has the `2` of WSE2 inside "(12.5%)",
+    which is no part of a long form. A bracket closing one opened before the long form is,
+    "warning score (WSE) at 1 hour (WSE1)", where WSE1 is the WSE at one hour, and so is a
+    whole bracket none of the letters is in, "adjusted (for age) relative risk (aRR)"."""
+    if not matched:
+        return False
+    letters = set(matched)
+    opened = 0
+    for at in range(matched[-1], matched[0] + 1):
+        char = before[at]
+        if char in _OPENING:
+            opened += 1
+        elif char in _CLOSING and opened:
+            opened -= 1
+        elif opened and at in letters:
+            return True
+    return False
 
 
 def _window(short: str) -> int:
@@ -479,6 +519,37 @@ def _within(spans: Iterable[tuple[int, int]], offset: int) -> bool:
     return any(start <= offset < end for start, end in spans)
 
 
+def _in_capitals(prose: str) -> list[tuple[int, int]]:
+    """Where `prose` holds a heading typed in capitals: a paragraph whose letters are all
+    capitals, "**ABSTRACT**", "APPENDIX 1", and a cell of a table whose letters are, the
+    "TOTAL" of a row and the "MODEL 1" of a column. A manuscript converted from Word has
+    its headings as such paragraphs, since pandoc makes a heading only of a heading style.
+    In order, and none inside another."""
+    spans: list[tuple[int, int]] = []
+    start = 0
+    for gap in (*_BLANK_LINE.finditer(prose), None):
+        end = len(prose) if gap is None else gap.start()
+        if prose[start:end].isupper():
+            spans.append((start, end))
+        else:
+            spans += _cells_in_capitals(prose, start, end)
+        if gap is not None:
+            start = gap.end()
+    return spans
+
+
+def _cells_in_capitals(prose: str, start: int, end: int) -> list[tuple[int, int]]:
+    """The cells of the table lines between `start` and `end` whose letters are all
+    capitals, a line's cells read one by one between its bars."""
+    cells = []
+    for line in _TABLE_LINE.finditer(prose, start, end):
+        bars = [at for at in range(line.start(), line.end()) if prose[at] == "|"]
+        for left, right in zip(bars, [*bars[1:], line.end()], strict=True):
+            if prose[left + 1 : right].isupper():
+                cells.append((left + 1, right))
+    return cells
+
+
 def _stem(short: str, long: str) -> str:
     """The form a definition defines: `RORs` defines `ROR`, and `mAbs` after "monoclonal
     antibodies" defines `mAb`, since a plural long form says the `s` is the plural's."""
@@ -500,6 +571,8 @@ def _short_inside(prose: str, bracket: re.Match[str]) -> tuple[int, str, str] | 
     """A definition with its short form in the bracket: "reporting odds ratio (ROR)"."""
     opening = _OPENS_WITH.match(bracket.group(1))
     if opening is None or not _may_be_defined(opening.group("short")):
+        return None
+    if _STATISTIC.match(bracket.group(1), opening.end("short")):
         return None
     short = opening.group("short")
     before = prose[max(0, bracket.start() - 400) : bracket.start()]
@@ -882,18 +955,24 @@ def _collect(files: list[_File], known: _Known) -> dict[str, _Scope]:
             )
 
     for file in files:
-        for word in _WORD.finditer(file.prose):
+        capitals = _in_capitals(file.prose)
+        starts = [start for start, _end in capitals]
+        for word in _WORD.finditer(_CLOCK.sub(lambda time: " " * len(time[0]), file.prose)):
             token = word.group(0)
             if token.islower() or token.isdigit():
                 continue
             region = file.region_at(word.start())
             if region.scope is None:
                 continue
+            at = bisect_right(starts, word.start()) - 1
+            shouted = at >= 0 and word.start() < capitals[at][1]
             for within, short, is_defined in _forms(token, defined, known):
                 offset = word.start() + within
                 if (file.order, offset) in defining:
                     continue
-                if not is_defined and region.quiet:
+                # A word of a heading typed in capitals, or of a table's label, is a use of
+                # what the manuscript defines and is not reported as undefined.
+                if not is_defined and (region.quiet or shouted):
                     continue
                 if not is_defined:
                     # `CO~2~`: the word is `CO`, and with its subscript it is a formula.

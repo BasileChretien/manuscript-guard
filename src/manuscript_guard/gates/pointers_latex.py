@@ -56,17 +56,20 @@ GATE = "G2"
 #: "eMethods"; "Supplementary tables and figures", "Supplementary material for the online
 #: version", and a label's title after it, "Appendix A Proofs", "Appendix 1 — Search" (fix
 #: round). Not one the word only describes, "Supplementary analyses", "Supplementary data
-#: sources", "Supplemental oxygen" or "Appendix diameter", whose tables are the main text's
-#: (rounds 1 and 2).
+#: sources", "Supplemental oxygen", "Appendix diameter", "Supplement-related events" or
+#: "Supplement A arm": a title goes on after an appendix's label only, and a hyphen parts it
+#: only with a space on each side (rounds 1 and 2, and the fix rounds).
 _SUPPLEMENT_HEADING = re.compile(
     r"\s*(?:[A-Z]?\d+(?:\.\d+)*[.):]?\s+)?(?:"
-    r"(?:online\s+|electronic\s+)?(?:supplementary|supplemental)(?:\s+(?:materials?\s+and"
+    r"(?:(?:e|web\s+)?appendi(?:x|ces)|S\d+\s+appendix)"
+    r"(?:\s+(?:S?\d+[A-Z]?|[A-Z](?:\.\d+)?)(?:\s+.*)?)?"
+    r"|(?:(?:online\s+|electronic\s+)?(?:supplementary|supplemental)(?:\s+(?:materials?\s+and"
     r"\s+methods|(?:tables?|figures?)(?:\s+and\s+(?:tables?|figures?))?|materials?|information"
     r"|data|files?|appendi(?:x|ces)|text|content|methods|notes)(?:\s+(?:for|to)\s.*)?)?"
-    r"|(?:online\s+|data\s+)?supplement|(?:e|web\s+)?appendi(?:x|ces)|supporting\s+information"
-    r"|S\d+\s+(?:appendix|text|file)|additional\s+files?|e(?:methods|tables?|figures?))"
-    r"(?:\s+(?:S?\d+[A-Z]?|[A-Z](?:\.\d+)?)(?:\s+.*)?)?"
-    r"\s*(?:[.:\N{EN DASH}\N{EM DASH}-].*)?$",
+    r"|(?:online\s+|data\s+)?supplement|supporting\s+information|S\d+\s+(?:text|file)"
+    r"|additional\s+files?|e(?:methods|tables?|figures?))"
+    r"(?:\s+(?:S?\d+[A-Z]?|[A-Z](?:\.\d+)?))?)"
+    r"(?:(?:\s*[.:\N{EN DASH}\N{EM DASH}]|\s+-\s).*)?\s*$",
     re.IGNORECASE,
 )
 #: The cross-references that cite what they point at: not a page's, which `\\pageref` prints.

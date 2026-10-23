@@ -253,7 +253,8 @@ def test_a_supplement_s_heading_holds_its_part_and_no_further(twin: Path) -> Non
 
 @pytest.mark.parametrize(
     "heading", ["Supplementary analyses", "Supplemental oxygen", "Supplement use",
-                "Supplementary data sources", "Appendix diameter"]  # round 2
+                "Supplementary data sources", "Appendix diameter",  # round 2
+                "Supplement-related adverse events", "Supplement A arm"]  # fix round
 )
 def test_a_heading_the_word_only_describes_holds_the_main_text_s_tables(
     twin: Path, heading: str

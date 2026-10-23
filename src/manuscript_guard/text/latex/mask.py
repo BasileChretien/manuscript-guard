@@ -74,8 +74,8 @@ _DELIMITED_REACH = 300
 #: What stands between `\\let`'s two commands: spaces and an equals sign, both optional.
 _LET_GAP = re.compile(r"[ \t]*=?[ \t]*")
 #: Commands the reader reads apart from the rest of their form, which no `\\let` makes one of
-#: another: an input, code the printed view passes over, and a binding (round 2).
-_READ_APART = frozenset({"input", "include", "texttt", "mg"})
+#: another: an input, an import, code the printed view passes over, and a binding (round 2).
+_READ_APART = frozenset({"input", "include", "import", "subimport", "texttt", "mg"})
 #: What TeX passes over after a control word: spaces, and one line's end with the spaces after.
 _SKIPPED = re.compile(r"[ \t]*(?:\r?\n[ \t]*)?")
 #: An input encoding set by a package's option or by `\\inputencoding`, a few hundred

@@ -65,8 +65,9 @@ defined with `\def` and delimited parameters, `\def\x#1.{...}`, where the docume
 it, since what it takes there is not known: define it with `\newcommand`. A command the
 reader reads may be let to another it reads the same way, as `\let\footnote=\endnote` lets
 the endnotes package's note stand for the footnote, but not between headings, citations or
-cross-references, which print a level, a kind of citation or a name of their own; defined
-again otherwise, it is refused.
+cross-references, which print a level, a kind of citation or a name of their own, nor
+where either is an input, an import, `\texttt` or `\mg`; defined again otherwise, it is
+refused.
 Past a refusal the rest of the file is read as typed, so nothing it did not understand is
 hidden. Write a number the reader cannot see as a binding, or move the construct to the
 preamble.

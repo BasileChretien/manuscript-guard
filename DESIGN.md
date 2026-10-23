@@ -1626,6 +1626,11 @@ The result is compiled and packed by the code above, and checked three times:
   end of the document (2026-10-23).
 - The import package's `\inputfrom`, `\includefrom` and their `sub` forms are refused, not
   followed (2026-10-23).
+- `\let\include\input`, which an author writes to drop `\include`'s page breaks, is refused:
+  the submission folder would write the file in between the `\clearpage`s TeX no longer
+  prints. A file input from inside a definition is read as one nothing inputs, warned of,
+  and the commands it defines with delimited parameters reach no other file, so a use of
+  one is not refused (2026-10-23, the fix-only round of part 1).
 - A distribution's package shipped beside the entry file, as an arXiv source often ships
   `natbib.sty`, is read as the author's, and refused at the first construct the reader
   does not read, natbib's `\csname`. Taken out of `manuscript/`, it is the

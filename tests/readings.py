@@ -268,6 +268,23 @@ def _latex_pointers() -> Reading:
     return lambda text: [list(span) for span in read(text).pointers]
 
 
+@reading("latex displays cited")
+def _latex_displays_cited() -> Reading:
+    """What G2 says of a LaTeX document's pointers to the tables and figures it numbers, and
+    its counts (step 13; the corpus round of 2026-10-23)."""
+    from manuscript_guard.gates.pointers_latex import AS_FILES, pointers_in_documents
+    from manuscript_guard.text.latex.structure import read_tree
+
+    def said(text: str) -> dict[str, Any]:
+        sources = list(read_tree({"main.tex": text}).sources)
+        report = pointers_in_documents({False: sources, True: []}, Path("m"),
+                                       dict.fromkeys(AS_FILES, 0))  # fmt: skip
+        return {"findings": [[f.code, f.line, f.message] for f in report.findings],
+                "counts": dict(report.counts)}  # fmt: skip
+
+    return said
+
+
 @reading("latex methods")
 def _latex_methods() -> Reading:
     from manuscript_guard.gates.methods import _anchored_in, _latex_read

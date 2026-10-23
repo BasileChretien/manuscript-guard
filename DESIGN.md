@@ -1688,9 +1688,15 @@ The result is compiled and packed by the code above, and checked three times:
 - G2 holds a LaTeX manuscript's typed pointers to what a float's `\caption` numbers (step
   13). A supplement's numbering is taken to be Table S1, as in Markdown, whatever its
   `\thetable` prints; a typed "Figure 1a" points at Figure 1, `\subfloat`'s letters unread; a
-  pointer typed in a float's caption or a `\captionof`'s is not read; a `\crefrange` cites
-  nothing, so a display cited only by one is said not cited; and a label defined twice names
-  the first display it labels. Where a document numbers a kind in a way the view cannot
+  pointer typed in a float's caption or a `\captionof`'s is not read; and a label defined
+  twice names the first display it labels. A range of cross-references is read where a dash
+  joins two, or in a `\crefrange`: `\ref{a} to \ref{b}` and `\ref{a}, \dots, \ref{b}` cite
+  their ends only, so a display between them first cited later is said out of order; a range
+  whose ends are more than 50 apart, of two kinds, or of the main text and the supplement
+  cites its ends only (corpus round, 2026-10-23). A group of the subfloat package, `subfigures` or
+  `subtables`, is one display however its floats' captions are written; a label in a file
+  read inside one names nothing, as in a `subfigure`, and a group that is not closed leaves its
+  floats numbered each. Where a document numbers a kind in a way the view cannot
   count, a `\captionof`, a `longtable`'s caption, or a float whose caption a command of the
   author's writes, that kind's pointers are not checked, and a note says so; a page
   `\includepdf` takes in, or a `\caption` in a float the reader does not know, `SCfigure` or
@@ -2499,6 +2505,25 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
     appendix opening nothing, the package's environment opening nothing, an `\appendix` in a
     comment or a body opening it, a supplement's heading holding nothing, its part running
     to the end or ending at any heading, and the appendix's tables left out of the count.
+    Then a round on seventeen openly licensed arXiv papers (2026-10-23) found two more of
+    G2's. The subfloat package's `subfigures` and `subtables` number the floats they hold as
+    one display, "Figure 3a" and "Figure 3b": the pointing view writes one mark where the
+    group begins, with every label in it, the one after `\begin` and its floats', and none for
+    its floats, whose captions number parts, as a `subfigure`'s do; a file read inside a group
+    numbers no display of its own. A paper was told its group's figures were cited nowhere
+    and the next one out of order. And a range of cross-references, `\ref{a}--\ref{b}` with
+    any dash, spaces or a line's end around it, cites every display from a to b, as
+    `pointers.py` reads "Figures 2-4" typed in Markdown and two nums a dash joins: of one kind
+    and one document, the first numbered before the last, at most 50 apart. cleveref's
+    `\crefrange{a}{b}` and `\Crefrange` are cross-references now, read the same way, and
+    `\cpagerefrange` a page's; the reader had not known them and printed their labels as
+    words. A paper that cited a range of figures with two `\ref`s a dash joins, and a figure
+    inside the range alone after it, was told the range's last figure was cited before it.
+    Tests: `tests/test_latex_pointers.py`, `tests/test_corruption.py`, `latex_pointers()`,
+    which holds a `\crefrange`, and `latex_display_groups()` with the reading `latex displays
+    cited`, with `BROKEN` rules for a group numbering each of its floats or its labels naming
+    nothing, a range cited at its ends, read with an en dash only or on one line, cleveref's
+    range cited at its ends, and its span recorded at each label.
 
 ## Zotero is never on the critical path
 
@@ -16131,6 +16156,13 @@ Open, recorded as each change landed:
   paragraph is in the comment, where the author can see it.
 
 Closed since, and why each mattered (an open gap goes above this line):
+
+- **A LaTeX `\crefrange` cited nothing, and a range of `\ref`s cited its ends only.** G2
+  said a figure that `\ref{a}--\ref{b}` or `\crefrange{a}{b}` took in, cited by itself only
+  later, was cited out of order, and one cited only by a `\crefrange` not cited at all; the
+  reader did not know cleveref's ranges and printed their labels as words. A range cites
+  every display from its first end to its last now, as a typed one does in Markdown, and the
+  floats of a `subfigures` or a `subtables` are one display (corpus round, 2026-10-23).
 
 - **A dataset's name was not held to the record of data sources.** The name was meant to be
   the id of its source in `design/data_sources.yaml`, and nothing said where it was not: an

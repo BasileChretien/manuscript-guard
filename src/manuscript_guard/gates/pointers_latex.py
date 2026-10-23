@@ -39,6 +39,7 @@ from pathlib import Path
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.findings import INFO, Finding, Report
 from manuscript_guard.gates.pointers import (
+    _DASHES,
     AS_FILES,
     FIGURE,
     TABLE,
@@ -73,7 +74,14 @@ _SUPPLEMENT_HEADING = re.compile(
     re.IGNORECASE,
 )
 #: The cross-references that cite what they point at: not a page's, which `\\pageref` prints.
-_PAGES = frozenset({"pageref", "cpageref"})
+_PAGES = frozenset({"pageref", "cpageref", "cpagerefrange", "Cpagerefrange"})
+#: cleveref's ranges, `\\crefrange{a}{b}`, which cite what LaTeX numbers from a to b.
+_RANGES = frozenset({"crefrange", "Crefrange"})
+#: What joins two cross-references into a range in the view, `\\ref{a}--\\ref{b}`: a dash,
+#: with spaces or a line's end around it, as a typed range's in `pointers.py`.
+_RANGE_DASH = re.compile(r"[^\S\n]*\n?[^\S\n]*[" + _DASHES + r"][^\S\n]*\n?[^\S\n]*")
+#: How far apart a range's ends may be, as `pointers.py` reads one typed.
+_RANGE = 50
 
 
 @dataclass(frozen=True)
@@ -205,15 +213,24 @@ def _cited(views: dict, labels: dict, folder: Path) -> tuple[list[Pointer], list
             if placed is not None:
                 found.append((at, placed))
                 typed.append(placed)
+        last: tuple[int, _Numbered | None] = (-1, None)
         for mark in _marks().finditer(view.text):
             command, _colon, named = mark[2].partition(":")
             if mark[1] != REFERENCE or command in _PAGES:
                 continue
-            for label in filter(None, named.split(",")):
-                display = labels.get((supplementary, label)) or labels.get(
-                    (not supplementary, label)
-                )
-                line = view.text.count("\n", 0, mark.start()) + 1
+            line = view.text.count("\n", 0, mark.start()) + 1
+            shown = [(label, labels.get((supplementary, label))
+                      or labels.get((not supplementary, label)))
+                     for label in filter(None, named.split(","))]  # fmt: skip
+            # A typed range, `\\ref{a}--\\ref{b}`, cites what LaTeX numbers between the two,
+            # as "Figures 2-4" does in Markdown (corpus round, 2026-10-23).
+            after, before = last
+            if shown and after >= 0 and _RANGE_DASH.fullmatch(view.text, after, mark.start()):
+                shown[:0] = _between(before, shown[0][1])
+            if command in _RANGES and len(shown) == 2:
+                shown[1:1] = _between(shown[0][1], shown[1][1])
+            last = (mark.end(), shown[-1][1] if shown else None)
+            for label, display in shown:
                 if display is None:
                     continue
                 reference = Pointer(
@@ -226,6 +243,20 @@ def _cited(views: dict, labels: dict, folder: Path) -> tuple[list[Pointer], list
                     found.append((mark.start(), placed))
         pointers += [pointer for _at, pointer in sorted(found, key=lambda pair: pair[0])]
     return pointers, typed
+
+
+def _between(first: _Numbered | None, last: _Numbered | None) -> list[tuple[str, _Numbered]]:
+    """The displays a range from `first` to `last` takes in between them: of one kind and one
+    document, the first numbered before the last, at most `_RANGE` apart, as `pointers.py`
+    reads a typed range."""
+    if (
+        first is None
+        or last is None
+        or (first.kind, first.supplementary) != (last.kind, last.supplementary)
+        or not first.number < last.number <= first.number + _RANGE
+    ):
+        return []
+    return [("", replace(first, number=number)) for number in range(first.number + 1, last.number)]
 
 
 def _to_nothing(typed, total, bound, as_files, uncounted) -> Report:

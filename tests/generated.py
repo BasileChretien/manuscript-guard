@@ -1057,6 +1057,8 @@ LATEX_POINTER_PLACES = (
     ("see \\autoref{{t{}}} ", True),
     ("by \\eqref{{e{}}} ", True),
     ("in \\cref{{t{}}} ", True),
+    # cleveref's range, one cross-reference to its second label (corpus round, 2026-10-23).
+    ("in \\crefrange{{t{}}}{{u{}}} ", True),
     ("% see \\ref{{t{}}}\n", False),
     ("\\begin{{verbatim}}\n\\ref{{t{}}}\n\\end{{verbatim}}\n", False),
     ("\\iffalse \\ref{{t{}}} \\fi ", False),
@@ -1080,6 +1082,66 @@ def latex_pointers(draw: st.DrawFn) -> tuple[str, list[tuple[str, bool]]]:
         text += " ".join(words) + " " + template.replace("{{", "{").replace("}}", "}").replace(
             "{}", key)
     return text + "\n\\end{document}\n", planted
+
+
+#: Each way a LaTeX document cites a range of tables, from label `{a}` to label `{b}`: two
+#: cross-references a dash joins, an en dash, a hyphen, an em dash, with spaces or a line's
+#: end around it, and cleveref's `\\crefrange` and `\\Crefrange` (corpus round, 2026-10-23).
+LATEX_RANGES = (
+    "Tables~\\ref{{{a}}}--\\ref{{{b}}}", "Tables \\ref{{{a}}}-\\ref{{{b}}}",
+    "Tables~\\ref{{{a}}}~--~\\ref{{{b}}}", "Tables \\ref{{{a}}}---\\ref{{{b}}}",
+    "Tables~\\ref{{{a}}}--%\n\\ref{{{b}}}", "\\crefrange{{{a}}}{{{b}}}",
+    "\\Crefrange{{{a}}}{{{b}}}",
+)  # fmt: skip
+
+
+@st.composite
+def latex_display_groups(draw: st.DrawFn) -> tuple[str, set[tuple[str, int]]]:
+    """A LaTeX document that numbers tables and figures with captioned floats, one of each
+    kind a group of two or three floats the subfloat package numbers as one, `subtables` and
+    `subfigures`, at a place drawn; that cites its tables in ranges of every form of
+    `LATEX_RANGES`, in an order drawn, each range from the last one's end to the table two
+    past it, so that the table between is cited by the range alone, the group a range's end
+    named by the label of one of its floats; that cites its figures each in order, the group by
+    the label after `\\begin`, the others by `\\ref` or typed; and that points at one table and
+    one figure more than it numbers. What G2 says of it: those two pointers, at their lines
+    (corpus round, 2026-10-23)."""
+    forms = draw(st.permutations(LATEX_RANGES))
+    counts = {"table": 2 * len(forms) + 1, "figure": draw(st.integers(1, 3))}
+    grouped = {"table": 2 * draw(st.integers(0, len(forms))) + 1,
+               "figure": draw(st.integers(1, counts["figure"]))}  # fmt: skip
+
+    def named(kind: str, number: int) -> str:
+        return f"{kind[:3]}{number}" + ("b" if (kind, number) == ("table", grouped[kind]) else "")
+
+    floats = []
+    for kind, count in counts.items():
+        for number in range(1, count + 1):
+            caption = f"\\caption{{The {kind}.}}\\label{{{kind[:3]}{number}"
+            if number != grouped[kind]:
+                floats.append(f"\\begin{{{kind}}}{caption}}}\\end{{{kind}}}")
+                continue
+            group = "subtables" if kind == "table" else "subfigures"
+            floats += [f"\\begin{{{group}}}\\label{{{kind[:3]}{number}}}",
+                       *(f"\\begin{{{kind}}}{caption}{part}}}\\end{{{kind}}}"
+                         for part in "abc"[: draw(st.integers(2, 3))]),
+                       f"\\end{{{group}}}"]  # fmt: skip
+    cited = {
+        "table": [form.format(a=named("table", 2 * index + 1), b=named("table", 2 * index + 3))
+                  + " show it." for index, form in enumerate(forms)],
+        "figure": [f"As Figure~\\ref{{fig{number}}} shows."
+                   if number == grouped["figure"] or draw(st.booleans())
+                   else f"As Figure~{number} shows." for number in range(1, counts["figure"] + 1)],
+    }  # fmt: skip
+    lines = ["\\documentclass{article}", "\\begin{document}",
+             " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=3))) + "."]
+    while cited["table"] or cited["figure"]:
+        kind = draw(st.sampled_from([kind for kind in cited if cited[kind]]))
+        lines.append(cited[kind].pop(0))
+    over = "\n".join(lines).count("\n") + 2
+    lines += [f"Nothing is Table~{counts['table'] + 1}.",
+              f"Nothing is Figure~{counts['figure'] + 1}.", *floats, "\\end{document}"]
+    return "\n".join(lines) + "\n", {("pointer-to-nothing", over), ("pointer-to-nothing", over + 1)}
 
 
 #: A cross-reference as the quoting view writes it, `{}` for `printed.POINTER`, with what
@@ -4463,6 +4525,9 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "latex escaped": latex_texts(),
     "latex places": latex_texts(),
     "latex pointers": st.one_of(latex_texts(), latex_pointers().map(lambda drawn: drawn[0])),
+    "latex displays cited": st.one_of(
+        latex_texts(), latex_display_groups().map(lambda drawn: drawn[0])
+    ),
     "latex methods": st.one_of(latex_texts(), latex_methods().map(lambda drawn: drawn[0])),
     "latex models": st.one_of(latex_texts(), latex_model_names().map(lambda drawn: drawn[0])),
     "hidden": texts(TERMS),

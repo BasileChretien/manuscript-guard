@@ -353,8 +353,18 @@ def _pointing_events(source: Source) -> list[tuple[int, int, str]]:
     command and its labels (step 13)."""
     reading, text = source.reading, source.text
     read, comments = _passed_over(reading)
-    events = [(start, end, _float_marks(source, start, end, read, comments))
+    # The subfloat package's `subfigures` and `subtables` number the floats they hold as one
+    # display, "Figure 3a" and "Figure 3b": one mark where the group begins, with every label
+    # in it, and none for its floats (corpus round, 2026-10-23).
+    groups = _groups(source, read)
+    events = [(start, end, "" if any(low <= start < high for low, high, _kind in groups)
+               else _float_marks(source, start, end, read, comments))
               for start, end in reading.floats]  # fmt: skip
+    for low, high, kind in groups:
+        opened = _GROUP.match(text, low)
+        events.append((low, opened.end() if opened else low,
+                       DISPLAY + kind + ",".join(_group_labels(text, low, high, read))
+                       + MARK_END))  # fmt: skip
     # A caption outside the floats the reader knows numbers a display of a float it does not,
     # `SCfigure` or a `\\newfloat`, of a kind the view cannot tell (round 2 of step 13, part 2).
     # Not one in an `algorithm` or a `listing`, which number neither, nor in a definition's
@@ -364,7 +374,7 @@ def _pointing_events(source: Source) -> list[tuple[int, int, str]]:
               if not _ENVIRONMENT.search(text, low, high)]  # fmt: skip
     known = [*reading.floats, *reading.tables, *bodies,
              *_spans(text, _OTHER_FLOATS, 0, len(text), read)]  # fmt: skip
-    if not _read_in_a_part(source):
+    if not _read_in_a_part(source) and not _read_in_a_group(source):
         for begun, _opened, closed in _arguments(text, _NUMBERED, 0, len(text), comments):
             if read(begun) and not any(low <= begun < high for low, high in known):
                 events.append((begun, closed + 1,
@@ -387,10 +397,11 @@ def _pointing_events(source: Source) -> list[tuple[int, int, str]]:
     for start, end in reading.pointers:
         typed = text[start:end]
         command = re.match(r"\\([A-Za-z]+)", typed)
-        opened = typed.find("{")
-        if command is None or opened < 0:
+        # Each group's labels: cleveref's `\\crefrange{a}{b}` has two (corpus round).
+        groups = _LABELS.findall(typed, command.end() if command else 0)
+        if command is None or not groups:
             continue
-        labels = ",".join(label.strip() for label in typed[opened + 1 : -1].split(","))
+        labels = ",".join(label.strip() for group in groups for label in group.split(","))
         events.append((start, end, REFERENCE + command[1] + ":" + labels + MARK_END))
     # Not in a definition's body, which opens the appendix where it is used.
     for found in _APPENDIX.finditer(text, max(reading.body_start, 0)):
@@ -433,7 +444,7 @@ def _float_marks(source: Source, start: int, end: int, read, comments: dict) -> 
     kind = "f" if (start, end) in set(source.reading.figures) else "t"
     captions = [begun for begun, _opened, _closed
                 in _numbered_captions(text, start, end, read, comments)]  # fmt: skip
-    if _read_in_a_part(source) or any(
+    if _read_in_a_part(source) or _read_in_a_group(source) or any(
         read(found.start()) for found in _CONTINUED.finditer(text, start, end)
     ):
         return ""
@@ -476,6 +487,28 @@ def _read_in_a_part(source: Source) -> bool:
     return bool(set(source.environments) & _PARTS)
 
 
+def _read_in_a_group(source: Source) -> bool:
+    """Whether `source` is a file input inside a `subfigures` or a `subtables`, whose floats
+    number parts of the group's one display (corpus round, 2026-10-23)."""
+    return bool(set(source.environments) & _GROUPED)
+
+
+def _groups(source: Source, read) -> list[tuple[int, int, str]]:
+    """Where each outermost `subfigures` or `subtables` of `source` runs, and the kind of the
+    display it numbers, `f` or `t`: not one in a definition's body, which prints where it is
+    used."""
+    text, bodies = source.text, source.reading.bodies
+    return [(low, high, "t" if text.startswith("subtables", text.index("{", low) + 1) else "f")
+            for low, high in _spans(text, _GROUP, 0, len(text), read)
+            if not any(start <= low < end for start, end in bodies)]  # fmt: skip
+
+
+def _group_labels(text: str, low: int, high: int, read) -> list[str]:
+    """The labels of the group from `low` to `high`, each naming its one display: the one
+    after its `\\begin`, and its floats', which print "3a"."""
+    return [found[1].strip() for found in _LABEL.finditer(text, low, high) if read(found.start())]
+
+
 def _parts(text: str, start: int, end: int, read) -> list[tuple[int, int]]:
     """Where each outermost `subfigure` or `subtable` between `start` and `end` runs."""
     return _spans(text, _SUBFLOAT, start, end, read)
@@ -511,6 +544,12 @@ def _numbered_captions(text: str, start: int, end: int, read, comments: dict):
 #: The environments of subcaption whose `\\caption` numbers a part of a float, not a float.
 _PARTS = frozenset({"subfigure", "subtable"})
 _SUBFLOAT = re.compile(r"\\(begin|end)\s*\{(?:subfigure|subtable)\}")
+#: The subfloat package's environments, whose floats share one number, each a part of it
+#: (corpus round, 2026-10-23).
+_GROUPED = frozenset({"subfigures", "subtables"})
+_GROUP = re.compile(r"\\(begin|end)\s*\{(?:subfigures|subtables)\}")
+#: Each group of a cross-reference's labels.
+_LABELS = re.compile(r"\{([^{}]*)\}")
 #: A float that continues the last of its kind, numbered as it is.
 _CONTINUED = re.compile(r"\\ContinuedFloat(?![A-Za-z])")
 #: The floats packages give that number neither a table nor a figure: an algorithm, and

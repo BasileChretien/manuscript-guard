@@ -21,11 +21,13 @@ kind uncounted, and one note says so, as `pointers.py` does of a table placed by
 to the journal as a file of its own is declared in paper.yaml (`displays:`), as for Markdown.
 
 **The appendix is the supplement's.** A table or a figure the main document prints after
-`\\appendix` or the appendix package's `appendices`, or under a heading that names a
+`\\appendix` or in the appendix package's `appendices`, or under a heading that names a
 supplement, an appendix or supporting information, to the next heading of its level, is not
-held to ICMJE's order or to being cited, as a supplement's is not; LaTeX numbers it with
-the others, and a pointer typed to it is held to that number (Basile, 2026-10-23, after an
-Elsevier paper cited its "Supplementary Table" first and was told it was out of order).
+held to ICMJE's order or to being cited, as a supplement's is not. A pointer typed to it is
+held to its place among the document's tables or figures, counted on from the main text's,
+which is the number LaTeX prints unless the class or the author numbers the appendix apart
+(Known gaps) (Basile, 2026-10-23, after an Elsevier paper cited its "Supplementary Table"
+first and was told it was out of order).
 """
 
 from __future__ import annotations
@@ -47,11 +49,18 @@ from manuscript_guard.gates.pointers import (
 from manuscript_guard.text.blocks import find_headings
 
 GATE = "G2"
-#: A heading the main document's supplement stands under: "Supplementary materials",
-#: "Supplemental tables", "Appendix A", "Appendices", "Supporting information", "S1 Appendix".
+#: A heading that names the main document's supplement: "Supplementary materials",
+#: "Supplemental tables", "Supplement 2", "Appendix A", "Appendices", "Supporting
+#: information", "S1 Appendix", "Electronic supplementary material", "Additional files". Not
+#: one the word only describes, "Supplementary analyses", "Supplemental oxygen" or
+#: "Supplement use", whose tables are the main text's (round 1).
 _SUPPLEMENT_HEADING = re.compile(
-    r"\s*(?:[A-Z]?\d+(?:\.\d+)*[.):]?\s+)?(?:supplement(?:ary|al)?|e?appendi(?:x|ces)"
-    r"|supporting\s+information|S\d+\s+appendix)\b",
+    r"\s*(?:[A-Z]?\d+(?:\.\d+)*[.):]?\s+)?(?:"
+    r"(?:online\s+|electronic\s+)?(?:supplementary|supplemental)\s+(?:materials?|information"
+    r"|data|tables?|figures?|files?|appendi(?:x|ces)|text|content)\b"
+    r"|(?:online\s+)?supplement(?:\s+(?:S?\d+[A-Z]?|[A-Z]))?\s*(?:[.:]|$)"
+    r"|e?appendi(?:x|ces)\b|supporting\s+information\b|S\d+\s+(?:appendix|text|file)\b"
+    r"|additional\s+files?\b)",
     re.IGNORECASE,
 )
 #: The cross-references that cite what they point at: not a page's, which `\\pageref` prints.
@@ -144,7 +153,8 @@ def _numbered(views: dict):
         parts = _supplement_parts(view.text)
         appendix = False
         for found in _marks().finditer(view.text):
-            appendix = appendix or found[1] == APPENDIX
+            if found[1] == APPENDIX:
+                appendix = found[2] != "end"
             if found[1] != DISPLAY:
                 continue
             code, named = found[2][:1], found[2][1:]

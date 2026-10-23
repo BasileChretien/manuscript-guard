@@ -1653,7 +1653,12 @@ The result is compiled and packed by the code above, and checked three times:
   appendix that numbers its own, `\renewcommand{\thetable}{S\arabic{table}}` after
   `\setcounter{table}{0}`, is still counted on from the main text's, so a pointer typed to
   its "Table S1" is read as one to the supplementary document's, and one to "Table A1" is
-  read as no pointer (2026-10-23).
+  read as no pointer. So is an appendix a class numbers apart: elsarticle's `\appendix`
+  prints "Table A.1", and a "Table 3" typed for the appendix's first table after two in
+  the main text is taken as pointing at it. An `\appendix` in an author's macro opens no
+  appendix where the macro is used, so a table there cited first is out of order to G2.
+  Springer's and BMC's headings for files sent apart are read; a journal's other wording
+  for a supplement's heading is not (2026-10-23, round 1).
 - A distribution's package shipped beside the entry file, as an arXiv source often ships
   `natbib.sty`, is read as the author's, and refused at the first construct the reader
   does not read, natbib's `\csname`. Taken out of `manuscript/`, it is the
@@ -2473,9 +2478,11 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
     a figure the main document prints after `\appendix` or in the appendix package's
     `appendices`, or under a heading that names a supplement, an appendix or supporting
     information, to the next heading of its level, is the supplement's. G2 holds it neither
-    to ICMJE's order nor to being cited; LaTeX numbers it with the others, and a pointer
-    typed to it is held to that number. The pointing view marks where the appendix begins
-    (`printed.APPENDIX`), not in a comment or a definition's body, and `_in_order` in
+    to ICMJE's order nor to being cited; a pointer typed to it is held to its place among
+    the document's displays, counted on from the main text's. A heading the word only
+    describes, "Supplementary analyses", holds the main text's (round 1). The pointing view
+    marks where the appendix begins (`printed.APPENDIX`) and where `appendices` ends, not in a
+    comment or a definition's body, and `_in_order` in
     `gates/pointers.py` takes the numbers to pass over. An Elsevier paper had cited its
     "Supplementary Table" first in its Methods, a table of its own appendix, and was told it
     was out of order. Tests: `tests/test_latex_pointers.py`, `tests/test_corruption.py`, and

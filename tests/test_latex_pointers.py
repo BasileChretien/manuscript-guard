@@ -236,13 +236,36 @@ def test_a_table_in_the_appendix_is_the_supplement_s(twin: Path, opened: str) ->
 def test_a_supplement_s_heading_holds_its_part_and_no_further(twin: Path) -> None:
     """The part a heading that names a supplement holds runs to the next heading of its level:
     a table after that is the main text's again, and cited out of order where it is."""
-    _replaced(twin, "\\section{Data availability}", "\\section{Supplementary analysis}\n"
+    _replaced(twin, "\\section{Data availability}", "\\section{Supplementary material}\n"
               "\\subsection{Detail}\n" + _CODES + "\\section{Late}\n"
               + _CODES.replace("codes", "late") + "\\section{Data availability}")  # fmt: skip
     assert [code for code, *_rest in _said(twin)] == ["display-not-cited"]
     _replaced(twin, "\\section{Methods}\n", "\\section{Methods}\nSee Table~\\ref{tab:late}.\n")
     assert _said(twin) == [("cited-out-of-order", "fail", "main.tex",
                             _line(twin, "Table~\\ref{tab:late}"))]  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    "heading", ["Supplementary analyses", "Supplemental oxygen", "Supplement use"]
+)
+def test_a_heading_the_word_only_describes_holds_the_main_text_s_tables(
+    twin: Path, heading: str
+) -> None:
+    """Round 1: a heading that uses "supplementary" of what it holds names no supplement, and
+    a table under it cited nowhere is said, as any of the main text's is."""
+    _replaced(twin, "\\section{Data availability}", f"\\subsection{{{heading}}}\n" + _CODES
+              + "\\section{Data availability}")  # fmt: skip
+    assert [code for code, *_rest in _said(twin)] == ["display-not-cited"]
+
+
+def test_the_appendix_package_s_appendices_end_where_the_environment_does(twin: Path) -> None:
+    """Round 1: a table after `\\end{appendices}` is the main text's again."""
+    _replaced(twin, "\\bibliographystyle{plain}", "\\begin{appendices}\n\\section{Codes}\n"
+              + _CODES + "\\end{appendices}\n" + _CODES.replace("codes", "after")
+              + "\\bibliographystyle{plain}")  # fmt: skip
+    said = check_pointers_latex(load_project(twin.parent.parent)[0]).findings
+    assert [(f.code, f.message.split(" is ")[0]) for f in said] == [
+        ("display-not-cited", "Table 4")]
 
 
 def test_an_appendix_in_a_comment_or_a_definition_opens_none(twin: Path) -> None:

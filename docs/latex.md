@@ -44,8 +44,9 @@ document's captions number, and the main text's tables and figures to the order 
 for, a `\ref` counting as a citation. A table or figure in the appendix, after `\appendix`
 or in the appendix package's `appendices`, or under a heading that names a supplement, an
 appendix or supporting information, is the supplement's: it is held neither to that order
-nor to being cited, and a pointer typed to it is still held to its number. A figure's legend
-is its caption, and G4 holds it to the journal's limit on a legend's words.
+nor to being cited, and a pointer typed to it is still held to its place among the
+document's. A figure's legend is its caption, and G4 holds it to the journal's limit on a
+legend's words.
 
 `manuscript-guard values` writes `mgvalues.sty` from the results. The entry file loads it
 with `\usepackage{mgvalues}`, so the `.tex` compiles in any editor with the numbers in.

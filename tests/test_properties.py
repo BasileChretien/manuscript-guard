@@ -5879,16 +5879,17 @@ def test_a_latex_pointer_is_held_to_what_latex_numbers(
 
 
 @st.composite
-def _planted_latex_appendix(draw: st.DrawFn) -> tuple[str, set[tuple], int]:
+def _planted_latex_appendix(draw: st.DrawFn) -> tuple[str, set[tuple], set[int]]:
     """A LaTeX document whose Methods cite its appendix's first table; whose Results number
     tables in captioned floats, each cited in order, then a subsection named for a supplement,
-    a deeper heading in it, holding a table cited nowhere, and a subsection after it whose
-    table is cited nowhere; and whose appendix, opened by `\\appendix` or the appendix
-    package's `appendices`, holds a table or two. An `\\appendix` in a comment and one in a
-    definition's body stand before the Results, and open nothing. A pointer is typed to the
-    appendix's last table, and one to a table more. What G2 says of it: the table after the
-    supplement's part cited nowhere, and the pointer to nothing at its line; and the number
-    of that table (2026-10-23)."""
+    a deeper heading in it, holding a table cited nowhere, and a subsection after it that the
+    word only describes, "Supplementary analyses", whose table is cited nowhere; and whose
+    appendix, opened by `\\appendix` or the appendix package's `appendices`, holds a table or
+    two, the environment followed by one more table cited nowhere. An `\\appendix` in a
+    comment and one in a definition's body stand before the Results, and open nothing. A
+    pointer is typed to the appendix's last table, and one to a table more than all. What G2
+    says of it: the main text's tables cited nowhere, and the pointer to nothing at its line;
+    and the numbers of those tables (2026-10-23; round 1)."""
 
     def table(label: str) -> str:
         return f"\\begin{{table}}\\caption{{The table.}}\\label{{{label}}}\\end{{table}}"
@@ -5898,36 +5899,41 @@ def _planted_latex_appendix(draw: st.DrawFn) -> tuple[str, set[tuple], int]:
 
     mains, appended = draw(st.integers(1, 3)), draw(st.integers(1, 2))
     opened = draw(st.sampled_from(("\\appendix", "\\begin{appendices}")))
-    heading = draw(st.sampled_from(("Supplementary analysis", "Supplemental tables",
+    heading = draw(st.sampled_from(("Supplementary material", "Supplemental tables",
                                     "Appendix: sensitivity", "Supporting information",
-                                    "S1 Appendix")))  # fmt: skip
+                                    "S1 Appendix", "Electronic supplementary material",
+                                    "Additional files", "Supplement 2")))  # fmt: skip
     lines = ["\\documentclass{article}", "\\begin{document}", "\\section{Methods}", words(),
              "The codes are in Supplementary Table~\\ref{app1}.", "% \\appendix",
              "\\newcommand{\\appx}{\\appendix}", "\\section{Results}"]  # fmt: skip
     for number in range(1, mains + 1):
         lines += [table(f"tab{number}"), words(), f"As Table~\\ref{{tab{number}}} shows."]
     lines += [f"\\subsection{{{heading}}}", words(), "\\subsubsection{Detail}", table("part"),
-              "\\subsection{Further}", words(), table("late"), "\\section{Discussion}"]  # fmt: skip
-    total = mains + 2 + appended
-    lines += [f"The last is Table~{total}, not Table~{total + 1}.", opened, "\\section{Codes}"]
+              "\\subsection{Supplementary analyses}", words(), table("late"),
+              "\\section{Discussion}"]  # fmt: skip
+    last = mains + 2 + appended
+    environment = opened == "\\begin{appendices}"
+    count = last + environment
+    lines += [f"The last is Table~{last}, not Table~{count + 1}.", opened, "\\section{Codes}"]
     lines += [table(f"app{number}") for number in range(1, appended + 1)]
-    lines += ["\\end{appendices}"] * (opened == "\\begin{appendices}") + ["\\end{document}"]
+    lines += ["\\end{appendices}", table("after")] * environment + ["\\end{document}"]
     pointed = next(index for index, line in enumerate(lines) if line.startswith("The last")) + 1
     expected = {("display-not-cited", "main.tex", None),
                 ("pointer-to-nothing", "main.tex", pointed)}
-    return "\n".join(lines) + "\n", expected, mains + 2
+    return "\n".join(lines) + "\n", expected, {mains + 2} | ({count} if environment else set())
 
 
 @holds(60, _planted_latex_appendix())
 def test_a_latex_appendix_s_tables_are_the_supplement_s(
-    planted: tuple[str, set[tuple], int],
+    planted: tuple[str, set[tuple], set[int]],
 ) -> None:
     """A table after `\\appendix` or in `appendices`, or under a heading that names a
     supplement to the next heading of its level, is the supplement's: held neither to ICMJE's
     order nor to being cited, and still counted for a pointer typed to it; a table after that
-    part is the main text's again; an `\\appendix` in a comment or a definition's body opens
-    nothing (Basile, 2026-10-23)."""
-    text, expected, late = planted
+    part, under a heading the word only describes or past `appendices`, is the main text's;
+    an `\\appendix` in a comment or a definition's body opens nothing (Basile, 2026-10-23;
+    round 1)."""
+    text, expected, uncited = planted
     sources = list(latex_structure.read_tree({"main.tex": text}).sources)
     report = pointers_latex_gate.pointers_in_documents(
         {False: sources, True: []}, Path("m"), dict.fromkeys(pointers_latex_gate.AS_FILES, 0)
@@ -5935,8 +5941,9 @@ def test_a_latex_appendix_s_tables_are_the_supplement_s(
     found = {(f.code, f.path.name, f.line) for f in report.findings}
     assert found == expected, (found, expected, text)
     # A table cited nowhere is said at the entry file and no line: by its number, then.
-    missing = [f.message for f in report.findings if f.code == "display-not-cited"]
-    assert len(missing) == 1 and f"Table {late} " in missing[0], (missing, text)
+    missing = [int(re.match(r"Table (\d+) ", f.message)[1]) for f in report.findings
+               if f.code == "display-not-cited"]  # fmt: skip
+    assert sorted(missing) == sorted(uncited), (missing, uncited, text)
 
 
 def _the_appendix_opens_nothing(patch: pytest.MonkeyPatch) -> None:
@@ -5944,7 +5951,18 @@ def _the_appendix_opens_nothing(patch: pytest.MonkeyPatch) -> None:
 
 
 def _the_appendix_package_s_environment_opens_nothing(patch: pytest.MonkeyPatch) -> None:
-    patch.setattr(latex_print, "_APPENDIX", re.compile(r"\\appendix(?![A-Za-z@])"))
+    patch.setattr(latex_print, "_APPENDIX", re.compile(r"\\appendix(?![A-Za-z@])(?P<end>(?!))?"))
+
+
+def _the_appendix_package_s_environment_never_ends(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print, "_APPENDIX",
+                  re.compile(r"\\appendix(?![A-Za-z@])|\\(?P<end>begin)\s*\{appendices\}"))
+
+
+def _a_heading_the_word_only_describes_names_a_supplement(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(pointers_latex_gate, "_SUPPLEMENT_HEADING", re.compile(
+        r"\s*(?:supplement(?:ary|al)?|e?appendi(?:x|ces)|supporting\s+information"
+        r"|S\d+\s+appendix|electronic|additional)\b", re.IGNORECASE))  # fmt: skip
 
 
 def _an_appendix_opened_where(spans) -> object:
@@ -10248,6 +10266,14 @@ BROKEN = {
     ),
     "in LaTeX, the appendix package's appendices open nothing": (
         _the_appendix_package_s_environment_opens_nothing,
+        test_a_latex_appendix_s_tables_are_the_supplement_s,
+    ),
+    "in LaTeX, the appendix package's appendices never end": (
+        _the_appendix_package_s_environment_never_ends,
+        test_a_latex_appendix_s_tables_are_the_supplement_s,
+    ),
+    "in LaTeX, a heading the word supplementary only describes names a supplement": (
+        _a_heading_the_word_only_describes_names_a_supplement,
         test_a_latex_appendix_s_tables_are_the_supplement_s,
     ),
     "in LaTeX, an \\appendix in a comment opens the appendix": (

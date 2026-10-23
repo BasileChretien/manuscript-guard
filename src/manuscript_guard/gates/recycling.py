@@ -73,6 +73,7 @@ from manuscript_guard.text.latex.printed import QUOTE_CLOSE, QUOTE_OPEN
 from manuscript_guard.text.masking import blank_comments, fenced_blocks, front_matter_end, mask
 from manuscript_guard.text.reader import LATEX, manuscript_format
 from manuscript_guard.text.section_names import (
+    REFERENCE_WORDS_ELSEWHERE,
     methods_sections,
     names_abstract,
     names_conclusion,
@@ -164,8 +165,10 @@ _STATEMENTS = re.compile(
     re.IGNORECASE,
 )
 #: The reference list, which a similarity check is asked to leave out, and this check does.
-_REFERENCES = re.compile(r"(?:references|bibliography|(?:literature|works)\s+cited)\W*$",
-                         re.IGNORECASE)  # fmt: skip
+_REFERENCES = re.compile(
+    rf"(?:references|bibliography|(?:literature|works)\s+cited|{REFERENCE_WORDS_ELSEWHERE})\W*$",
+    re.IGNORECASE,
+)
 #: A footnote's mark in a heading, which is no part of its title.
 _FOOTNOTE_MARK = re.compile(r"\[\^[^\]\n]*\]")
 #: A supplement's heading that names a part and nothing else: "Supplementary discussion",

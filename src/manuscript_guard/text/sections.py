@@ -36,7 +36,7 @@ from manuscript_guard.text.blocks import (
 )
 from manuscript_guard.text.fences import blank_fences
 from manuscript_guard.text.masking import mask, without_front_matter
-from manuscript_guard.text.section_names import names_abstract
+from manuscript_guard.text.section_names import REFERENCE_WORDS_ELSEWHERE, names_abstract
 
 # `scannable` moved to `text.blocks` with the heading walk, and `strip_attributes` to
 # `text.attributes` so the walk can title headings with it; both are re-exported for the
@@ -63,7 +63,9 @@ __all__ = [
 # no sections at all as far as G2, G4 and the reporting gate were concerned: no
 # required-section check, no abstract, and every `methods_only` rule silently inapplicable.
 
-_REFERENCES = re.compile(r"^\s*(?:references|bibliography|works cited)\b", re.IGNORECASE)
+_REFERENCES = re.compile(
+    rf"^\s*(?:references|bibliography|works cited|{REFERENCE_WORDS_ELSEWHERE})\b", re.IGNORECASE
+)
 
 _TABLE_ROW = re.compile(r"^\s*\|.*\|\s*$", re.MULTILINE)
 _TABLE_CAPTION = re.compile(r"^\s*:\s+.+$", re.MULTILINE)

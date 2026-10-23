@@ -71,6 +71,7 @@ from generated import (
     WRITTEN_WORDS,
     alt_texts,
     bindings,
+    bold_planted,
     claim_edits,
     collection_plans,
     commented,
@@ -99,6 +100,7 @@ from generated import (
     lines,
     markdown_for_latex,
     mean_tables,
+    named_numbers,
     numbered_displays,
     painted_pdfs,
     painted_svgs,
@@ -110,6 +112,7 @@ from generated import (
     proofs,
     quotations,
     quoted_references,
+    reference_titled,
     revisions,
     share_tables,
     signs,
@@ -4723,6 +4726,156 @@ def _a_rule_or_a_table_s_dashes_are_em_dashes(patch: pytest.MonkeyPatch) -> None
 
 def _any_run_of_hyphens_is_an_em_dash(patch: pytest.MonkeyPatch) -> None:
     _em_dash_rule(patch, pattern="\N{EM DASH}|-{2,}")
+
+
+# ------------------------------------------------------------------ bold in a table
+
+@holds(100, bold_planted())
+def test_bold_is_counted_in_the_prose_and_not_in_a_table(planted: tuple[str, int]) -> None:
+    """Pandoc writes a Word table as a simple, multiline, grid or pipe table, and G6 counted
+    the bold of each cell, and `**` paired across cells, towards the rate of bold in the
+    prose. Bold in a table of any of those kinds is not counted, nor a structured abstract's
+    label; bold in prose is, under a rule, a setext heading's underline or spaced dashes
+    too, which open no table."""
+    from manuscript_guard.gates.writing import _hits, _prose, load_rules
+
+    text, count = planted
+    rule = next(rule for rule in load_rules().density if rule["id"] == "boldface")
+    [(_path, _text, prose)] = _prose([(Path("main.md"), text)])
+    assert len(_hits(rule, prose)) == count, text
+
+
+def _bold_in_a_table_is_counted(patch: pytest.MonkeyPatch) -> None:
+    from dataclasses import replace
+
+    from manuscript_guard.gates import writing
+
+    rules = writing.load_rules()
+    density = tuple({**rule, "in_tables": True} if rule["id"] == "boldface" else rule
+                    for rule in rules.density)  # fmt: skip
+    patch.setattr(writing, "load_rules", lambda: replace(rules, density=density))
+
+
+def _any_line_of_dashes_is_a_table_s(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import tables
+
+    real = tables._dash_runs
+
+    def runs(line: str) -> int:
+        dashes = line.strip() and not line.strip(" \t-")
+        return max(real(line), 2) if dashes else real(line)
+
+    patch.setattr(tables, "_dash_runs", runs)
+
+
+# ------------------------------------------------- a reference list titled in another language
+
+
+@holds(100, reference_titled())
+def test_a_reference_list_is_known_by_its_title_in_each_language(
+    titled: list[tuple[str, bool]],
+) -> None:
+    """A paper in Turkish titles its reference list "Kaynakça", and the audit, G4's count of
+    the main text and the recycling check read the list under it as prose. Each knows the
+    list by its title in the languages `text.section_names` names, in any case, and none
+    takes a title that only opens with such a word for one."""
+    from manuscript_guard.audit import is_bibliography_heading
+    from manuscript_guard.gates.recycling import SET_APART, _kind_of
+    from manuscript_guard.text.sections import split_sections
+
+    text = "".join(f"# {title}\n\nText {n}.\n\n" for n, (title, _is) in enumerate(titled))
+    sections = split_sections(text)
+    assert len(sections) == len(titled), text
+    for section, (title, is_list) in zip(sections, titled, strict=True):
+        assert section.is_references == is_list, title
+        assert is_bibliography_heading(f"# {title}", marked=True) == is_list, title
+        assert (_kind_of(title, False, None) == SET_APART) == is_list, title
+
+
+def _english_only(patch: pytest.MonkeyPatch, module: Any) -> None:
+    from manuscript_guard.text.section_names import REFERENCE_WORDS_ELSEWHERE
+
+    found = next(name for name in ("_BIBLIOGRAPHY", "_REFERENCES") if hasattr(module, name))
+    pattern = getattr(module, found)
+    english = pattern.pattern.replace(f"|{REFERENCE_WORDS_ELSEWHERE}", "")
+    assert english != pattern.pattern
+    patch.setattr(module, found, re.compile(english, pattern.flags))
+
+
+def _the_audit_knows_english_titles_only(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import audit
+
+    _english_only(patch, audit)
+
+
+def _the_sections_know_english_titles_only(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import sections
+
+    _english_only(patch, sections)
+
+
+def _the_recycling_check_knows_english_titles_only(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import recycling
+
+    _english_only(patch, recycling)
+
+
+# ------------------------------------------------ an address and an interleukin are names
+
+
+@holds(100, named_numbers())
+def test_an_address_and_an_interleukin_are_no_numbers_and_a_number_beside_them_is(
+    drawn: tuple[str, dict[str, str]],
+) -> None:
+    """A paper converted from Word keeps its correspondence line, and `check` and the audit
+    alike read "someone1989@example.org", "IL-4" and "interleukin-4" as numbers. An e-mail
+    address is structural and an interleukin a term, for `check` and for the audit; a count
+    beside them, and digits round an `@` with no domain, are numbers still."""
+    from manuscript_guard.classify import STRUCTURAL, TERM, UNCLASSIFIED
+
+    text, kinds = drawn
+    expected = {"address": STRUCTURAL, "name": TERM, "number": UNCLASSIFIED}
+    atoms = find_atoms(text, mask(text))
+    assert sorted(atom.text for atom in atoms) == sorted(kinds), text
+    for classifier in (Classifier.load(), Classifier.load(rendered=True)):
+        scan = classifier.scan(text)
+        for atom in atoms:
+            verdict = classifier.classify(atom, None, scan)
+            assert verdict.kind == expected[kinds[atom.text]], (text, atom.text, verdict)
+
+
+def _shipped_with(patch: pytest.MonkeyPatch, structural=None, terms=None) -> None:
+    from manuscript_guard import classify
+
+    conventions, shipped_structural, shipped_terms = classify._shipped()
+    changed = (
+        conventions,
+        shipped_structural if structural is None else structural(shipped_structural),
+        shipped_terms if terms is None else terms(shipped_terms),
+    )
+    patch.setattr(classify, "_shipped", lambda: changed)
+
+
+def _an_email_address_is_a_number(patch: pytest.MonkeyPatch) -> None:
+    _shipped_with(patch, structural=lambda rules: tuple(
+        rule for rule in rules if rule.id != "email-address"))  # fmt: skip
+
+
+def _any_at_sign_makes_an_address(patch: pytest.MonkeyPatch) -> None:
+    _shipped_with(patch, structural=lambda rules: tuple(
+        dataclasses.replace(rule, pattern=re.compile(r"\S+@\S+"))
+        if rule.id == "email-address" else rule
+        for rule in rules
+    ))  # fmt: skip
+
+
+def _an_interleukin_is_a_number(patch: pytest.MonkeyPatch) -> None:
+    earlier = {"il-1", "il-1\N{GREEK SMALL LETTER BETA}", "il-2", "il-6", "il-10", "il-17",
+               "il-23"}  # fmt: skip
+    _shipped_with(patch, terms=lambda terms: tuple(
+        term for term in terms
+        if term in earlier or not term.startswith(("il-", "interleukin-"))
+    ))  # fmt: skip
 
 
 # ------------------------------------------------------------------- a suggested edit
@@ -11300,6 +11453,38 @@ BROKEN = {
     "any run of hyphens is an em dash": (
         _any_run_of_hyphens_is_an_em_dash,
         test_an_em_dash_is_counted_however_it_is_typed,
+    ),
+    "bold in a table is counted": (
+        _bold_in_a_table_is_counted,
+        test_bold_is_counted_in_the_prose_and_not_in_a_table,
+    ),
+    "any line of dashes is a table's": (
+        _any_line_of_dashes_is_a_table_s,
+        test_bold_is_counted_in_the_prose_and_not_in_a_table,
+    ),
+    "the audit knows a reference list's English titles only": (
+        _the_audit_knows_english_titles_only,
+        test_a_reference_list_is_known_by_its_title_in_each_language,
+    ),
+    "a section knows a reference list's English titles only": (
+        _the_sections_know_english_titles_only,
+        test_a_reference_list_is_known_by_its_title_in_each_language,
+    ),
+    "the recycling check knows a reference list's English titles only": (
+        _the_recycling_check_knows_english_titles_only,
+        test_a_reference_list_is_known_by_its_title_in_each_language,
+    ),
+    "an e-mail address is a number": (
+        _an_email_address_is_a_number,
+        test_an_address_and_an_interleukin_are_no_numbers_and_a_number_beside_them_is,
+    ),
+    "any at sign makes an address": (
+        _any_at_sign_makes_an_address,
+        test_an_address_and_an_interleukin_are_no_numbers_and_a_number_beside_them_is,
+    ),
+    "an interleukin is a number": (
+        _an_interleukin_is_a_number,
+        test_an_address_and_an_interleukin_are_no_numbers_and_a_number_beside_them_is,
     ),
     "filler before a list item is not read": (
         _filler_ends_only_at_a_stop_a_blank_line_or_the_end,

@@ -22595,3 +22595,155 @@ def test_an_anchor_deleted_leaves_its_step_described_by_nothing(project: Path) -
     assert [f.message for f in report.warnings if f.code == "method-step-undescribed"] == [
         "step 'signal' ran, and no text in the manuscript points at it"
     ]
+
+
+# --------------------------------------------------------------------------------------
+# What papers converted from Word showed the audit and G6 doing wrong
+# --------------------------------------------------------------------------------------
+
+_COMPOUND = bytes.fromhex("d0cf11e0a1b11ae1")
+
+
+def test_a_word_97_2003_document_is_named_and_not_taken_for_utf16(tmp_path: Path) -> None:
+    """A .doc given to `audit` is a compound file, with NULs among its bytes, and was refused
+    with "if it is UTF-16, save it as UTF-8", which is no help: it has to be saved as .docx."""
+    from manuscript_guard.audit import audit
+
+    doc = tmp_path / "paper.doc"
+    doc.write_bytes(_COMPOUND + bytes(504) + "We saw 412 reports.".encode("utf-16-le"))
+    report = audit([doc], [_outputs(tmp_path, '{"n": 412}')])
+    [said] = report.unreadable
+    assert "Word 97-2003" in said and ".docx" in said, said
+    assert "UTF-16" not in said and "UTF-8" not in said, said
+
+
+def test_a_doc_renamed_docx_is_named_although_a_zip_ends_it(tmp_path: Path) -> None:
+    """A zip is read from its end, and a .doc that holds an embedded object can end in one: a
+    .doc renamed .docx was opened as a zip and said to have "no word/document.xml"."""
+    from manuscript_guard.audit import audit
+    from manuscript_guard.text.docx import NotADocx, read_docx_text
+
+    embedded = _docx(tmp_path / "embedded.docx", _p("We saw 412 reports."))
+    renamed = tmp_path / "paper.docx"
+    renamed.write_bytes(_COMPOUND + bytes(504) + embedded.read_bytes())
+    with pytest.raises(NotADocx, match="Word 97-2003") as raised:
+        read_docx_text(renamed)
+    assert "password" in str(raised.value)
+    [said] = audit([renamed], [_outputs(tmp_path, '{"n": 412}')]).unreadable
+    assert "Word 97-2003" in said and "word/document.xml" not in said, said
+
+
+_PROSE_200 = " ".join(["Reports were included after review of each site and its records."] * 25)
+
+_MULTILINE = """
+  ----------------------------------------------------------
+  **Variable**         **Monotherapy    **Combination
+                       (%)**            therapy (%)**
+  -------------------- ---------------- --------------------
+  **Dizziness**        12 (20)          8 (13)
+
+  **Headache**         5 (8)            **9 (15)**
+  ----------------------------------------------------------
+"""
+_SIMPLE = """
+  **Group**   **N**   **Sites**
+  ----------- ------- ---------
+  exposed     **412**  1**   2**
+"""
+_GRID = """
++-----------+-------+
+| **Group   | N**   |
++===========+=======+
+| **a**     | **b** |
++-----------+-------+
+"""
+_PIPE = """
+**Group** | **N**
+---|---
+**a** | **1**
+"""
+
+
+def test_bold_in_a_table_is_no_cadence_of_the_prose() -> None:
+    """Pandoc writes a Word table as a simple, multiline, grid or pipe table, and G6 counted
+    each bold cell of it, and `**` paired across cells, "**   | **" and "1**   2**", towards
+    the rate of bold in the prose: a paper with a bold header row warned for it."""
+    from manuscript_guard.gates.writing import _hits, _prose, judge_texts, load_rules
+
+    tables = "\n".join((_MULTILINE, _SIMPLE, _GRID, _PIPE))
+    text = f"{_PROSE_200}\n\nOne **word** is bold.\n{tables}\nThe end of the prose.\n"
+    corpus = [(Path("main.md"), text)]
+    rule = next(rule for rule in load_rules().density if rule["id"] == "boldface")
+    [(_path, _text, prose)] = _prose(corpus)
+    assert [hit.group(0) for hit in _hits(rule, prose)] == ["**word**"]
+    report, _totals = judge_texts(corpus)
+    assert not [f for f in report.findings if "boldface" in f.message]
+    # The same bold in the prose is the cadence the rate is for.
+    prose = f"{_PROSE_200}\n\n" + " and ".join(["**bold**"] * 12) + "\n"
+    report, _totals = judge_texts([(Path("main.md"), prose)])
+    assert [f for f in report.findings if "boldface" in f.message]
+
+
+@pytest.mark.parametrize(
+    "title",
+    ["Kaynakça", "Kaynaklar", "Referencias", "Bibliografía", "Referências", "Références",
+     "Bibliographie", "Literatur", "Literaturverzeichnis", "Riferimenti bibliografici",
+     "Bibliografia", "Daftar Pustaka", "Pustaka", "Bibliografi"],
+)  # fmt: skip
+def test_a_reference_list_under_a_title_in_another_language_is_the_list(
+    tmp_path: Path, title: str
+) -> None:
+    """The reference list of a paper in Turkish, "Kaynakça", was read as prose: the audit
+    fell back to telling entries by their shape and listed the rest, G4 counted its words
+    in the main text, and the recycling check read it as the paper's own words."""
+    from manuscript_guard.audit import audit
+    from manuscript_guard.gates.recycling import SET_APART, _kind_of
+    from manuscript_guard.text.sections import measure
+
+    entry = "Yılmaz A, Kaya B. Uzaktan eğitim. Eğitim ve Bilim 2021, cilt 46, sayı 207, s. 1-23."
+    outputs = _outputs(tmp_path, '{"n": 412}')
+    text = f"# Results\n\nWe saw 412 reports.\n\n# {title}\n\n{entry}\n"
+    paper = tmp_path / "paper.md"
+    paper.write_text(text, encoding="utf-8")
+    assert audit([paper], [outputs]).unmatched == []
+    word = _docx(tmp_path / "paper.docx", _p("We saw 412 reports.") + _p(title) + _p(entry))
+    assert audit([word], [outputs]).unmatched == []
+    counts = measure(text)
+    assert counts.main_text_words == 5, counts
+    assert _kind_of(title, False, None) == SET_APART
+
+
+@pytest.mark.parametrize("title", ["Literature review", "Literaturübersicht", "Pustakawan"])
+def test_a_title_that_opens_with_the_word_names_no_reference_list(title: str) -> None:
+    from manuscript_guard.audit import is_bibliography_heading
+    from manuscript_guard.text.sections import split_sections
+
+    assert not is_bibliography_heading(f"# {title}", marked=True)
+    [section] = split_sections(f"# {title}\n\nText.\n")
+    assert not section.is_references
+
+
+def test_an_email_address_and_an_interleukin_are_no_numbers(tmp_path: Path) -> None:
+    """A paper converted from Word keeps its correspondence line, and the audit listed
+    "someone1989@example.org" among the numbers to check, and "IL-4", "interleukin-13" and
+    "IL-4/IL-13" with it. G2 classified them the same way, so both now read them as `check`
+    reads a name: an address is structural, and an interleukin a term."""
+    from manuscript_guard.audit import audit
+    from manuscript_guard.classify import STRUCTURAL, TERM, Classifier
+    from manuscript_guard.text.masking import mask
+    from manuscript_guard.text.tokens import find_atoms
+
+    alpha = "\N{GREEK SMALL LETTER ALPHA}"
+    names = ("IL-4", f"IL-4R{alpha}", "interleukin-13", "IL-4/IL-13")
+    text = (
+        "Correspondence: someone1989@example.org or a.b2@uni-3.edu.tr. "
+        f"{', '.join(names)} rose in 12 of 40, and 12@3.5 was typed.\n"
+    )
+    paper = tmp_path / "paper.md"
+    paper.write_text(text, encoding="utf-8")
+    found = audit([paper], [_outputs(tmp_path, '{"n": 1}')]).unmatched
+    assert sorted(c.text for c in found) == ["12", "12@3.5", "40"]
+    for classifier in (Classifier.load(), Classifier.load(rendered=True)):
+        kinds = {a.text: classifier.classify(a).kind for a in find_atoms(text, mask(text))}
+        assert kinds["someone1989@example.org"] == kinds["a.b2@uni-3.edu.tr"] == STRUCTURAL
+        assert {kinds[name] for name in names} == {TERM}, kinds

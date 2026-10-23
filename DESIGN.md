@@ -8686,6 +8686,21 @@ styles, read by style name because a French Word's heading style id is `Titre1`.
 read after the cut rather than through it, and the report names the lines it did not audit,
 so a cut in the wrong place shows.
 
+**What papers converted from Word showed.** Papers downloaded as Word files were audited,
+and checked as projects pandoc converted them into (2026-10-23).
+A Word 97-2003 document, a compound file with NULs among its bytes, was refused with "if it
+is UTF-16, save it as UTF-8"; it is now named as a .doc to be saved as .docx, by the audit
+and by every reader that opens a .docx, which looks for the compound file's signature before
+the zip, since a zip is read from its end and a .doc with an embedded object can end in one.
+G6 counted the bold of a table's cells towards the rate of bold in the prose, and where a
+cell's bold ran on to its next line, paired `**` across the cells; pandoc writes a Word
+table as a simple or a multiline table where it can, which no rate passed over. The bold
+rate now leaves out a table of each kind. A Turkish paper's "Kaynakça" was no reference
+list title, so the audit fell back to telling its entries by their shape; the titles in
+seven more languages are now known wherever a reference list is found by its title. And an
+e-mail address and "IL-4" were listed as numbers: G2 reads them the same way, so the fix is
+in what both read, an address as structural and the interleukins among the shipped terms.
+
 ## A move, the way Word makes one
 
 A review of the Word round trip reported that a paragraph cut and pasted with Track Changes
@@ -13358,9 +13373,13 @@ Open, recorded as each change landed:
   of them by rate, so its 98.9% is not independent of that choice. A percentile of 291 is
   set by the three or four papers at the top: the em-dash threshold was 13.9 while one
   paper's table notes were counted, and is 4.7 without them. The papers were measured with
-  their tables left out, and so is a pipe table's row in a manuscript, but not a simple or a
-  multiline table's; and an em dash typed as `---` at the start of a line that holds only
-  masked text after it, `--- [^1]`, is taken for a rule's line (round 1 of #352).
+  their tables left out. The em-dash rate leaves out a pipe table's row in a manuscript, but
+  not a simple or a multiline table's; and an em dash typed as `---` at the start of a line
+  that holds only masked text after it, `--- [^1]`, is taken for a rule's line (round 1 of
+  #352). The bold rate leaves out a table of each of pandoc's four kinds
+  (`text.tables.table_lines`), but reads as prose a table with one column, and a headless
+  multiline table opened by a line of dashes in one run, which pandoc reads as a table:
+  their bold is counted.
 - **A small count is found where it is bound, by its value.** A count printed in an emitted
   table, a percentage that gives a small count away with its denominator, and a count typed
   rather than bound are not read; G2 fails a typed count for being typed. A whole number
@@ -15883,6 +15902,25 @@ Open, recorded as each change landed:
 - **`quality-not-reported` is not read in a LaTeX manuscript.** It reads the Methods as
   Markdown, and on a LaTeX manuscript G16 says `not-read-in-latex`, as the other checks not
   yet taught LaTeX do.
+
+What papers converted from Word showed (see "What papers converted from Word showed"):
+
+- **A reference list is known by its title in eight languages.** English, and Spanish,
+  Portuguese, French, German, Italian, Turkish and Indonesian, as pandoc 3.9.0.2 titles the
+  list in each (`text.section_names.REFERENCE_TITLES_ELSEWHERE`). A list titled in another
+  language is prose to the audit, G4's count and the recycling check, and the audit tells
+  its entries by their shape. A title typed with a combining accent, "c" and a combining
+  cedilla for "ç", is not matched.
+- **An interleukin is a term, and other names with digits are not.** The shipped terms hold
+  the interleukins HGNC names, abbreviated with a hyphen and written out with one: "IL4",
+  "interleukin 4" and a chemokine such as CXCL10 are numbers to G2 and to the audit alike.
+  A project declares them in `terms:`; the audit reads no `paper.yaml`, so for it they stay
+  numbers.
+- **A .doc in a folder given to `audit` is passed over.** The audit takes a folder's .docx,
+  .md, .markdown and .txt files; a .doc named on its own is refused with the advice to save
+  it as .docx, and one in a folder is not named.
+- **An e-mail address is one whose domain ends in letters.** "name@host" with no dot, or an
+  address at a bare IP number, is read as a number.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

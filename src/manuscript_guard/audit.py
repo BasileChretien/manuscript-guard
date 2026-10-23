@@ -34,6 +34,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from manuscript_guard.classify import UNCLASSIFIED, Classifier
+from manuscript_guard.safexml import compound_file_said, is_compound_file
 from manuscript_guard.stats.granularity import described as described_mean
 from manuscript_guard.stats.granularity import names, possible, table_means
 from manuscript_guard.stats.intervals import (
@@ -54,6 +55,7 @@ from manuscript_guard.text.comments import unclear_comment_lines
 from manuscript_guard.text.docx import NotADocx, is_docx, read_docx_text
 from manuscript_guard.text.fences import unclear_fence_lines
 from manuscript_guard.text.masking import front_matter_end, mask
+from manuscript_guard.text.section_names import REFERENCE_WORDS_ELSEWHERE
 from manuscript_guard.text.sections import strip_attributes
 from manuscript_guard.text.tables import Table, markdown_tables
 from manuscript_guard.text.tokens import DIGIT, Atom, find_atoms, trim
@@ -260,9 +262,13 @@ def read_text(path: Path) -> str:
     its `>` and default `Out-File` UTF-16. Read as UTF-8, a UTF-8 mark stopped a .json
     parsing, and UTF-16 put a NUL after every character, so "8393,3.84" went into the
     backing set as 8, 3, 9 and 4 — and a paper printing 3 for anything matched. NUL bytes
-    with no mark could be UTF-16 or binary, so they are refused rather than guessed at.
+    with no mark could be UTF-16 or binary, so they are refused rather than guessed at. A
+    Word 97-2003 document is one such binary, and is named as one: the advice to save it as
+    UTF-8 was wrong for it.
     """
     data = path.read_bytes()
+    if is_compound_file(data):
+        raise UnreadableText(compound_file_said(path.name))
     encoding = next((name for bom, name in _BOMS if data.startswith(bom)), None)
     if encoding is None and b"\x00" in data:
         raise UnreadableText(
@@ -367,7 +373,8 @@ _BIBLIOGRAPHY = re.compile(
     r"^(?P<hashes>#+)?[\s*_]*"
     r"(?:(?P<numbered>\d+[.)])[\s*_]*|(?P<bare>\d+)\s[\s*_]*)?"
     r"(?P<word>references(?:\s+cited)?|reference\s+list|list\s+of\s+references"
-    r"|cited\s+references|bibliography|works\s+cited|literature\s+cited|cited\s+literature)"
+    r"|cited\s+references|bibliography|works\s+cited|literature\s+cited|cited\s+literature"
+    rf"|{REFERENCE_WORDS_ELSEWHERE})"
     r"(?P<tail>[\s*_:.|]*)$",
     re.IGNORECASE,
 )

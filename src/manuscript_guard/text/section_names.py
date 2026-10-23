@@ -37,6 +37,30 @@ _CONCLUSION = re.compile(
 )
 
 
+#: The reference list's title in the languages besides English that papers are most often
+#: written in, lower case. Each is the title pandoc 3.9.0.2 gives a reference list and a
+#: bibliography in that language (`data/translations/<code>.yaml`, the keys `References`
+#: and `Bibliography`), and Indonesian's "Daftar pustaka" is the list in full (Indonesian
+#: Wikipedia, "Daftar pustaka"). Unknown, a list under "Kaynakça" was read as prose, and the
+#: audit fell back to telling its entries by their shape.
+REFERENCE_TITLES_ELSEWHERE = (
+    "referencias", "bibliografía",                # Spanish (es)
+    "referências", "bibliografia",                # Portuguese (pt); Italian's Bibliography
+    "références", "bibliographie",                # French (fr)
+    "literatur", "literaturverzeichnis",          # German (de)
+    "riferimenti bibliografici",                  # Italian (it)
+    "kaynaklar", "kaynakça",                      # Turkish (tr)
+    "pustaka", "daftar pustaka", "bibliografi",   # Indonesian (id)
+)  # fmt: skip
+
+#: `REFERENCE_TITLES_ELSEWHERE` as one alternation for a pattern: longest first, so that
+#: "literaturverzeichnis" is not read as "literatur", and any space between words.
+REFERENCE_WORDS_ELSEWHERE = "|".join(
+    re.escape(title).replace(r"\ ", r"\s+")
+    for title in sorted(REFERENCE_TITLES_ELSEWHERE, key=len, reverse=True)
+)
+
+
 def bare(title: str) -> str:
     """A heading's title without its number."""
     return _NUMBER.sub("", title, count=1).strip()

@@ -150,6 +150,16 @@ structural:
       measured shares. Every author of a real paper contributed one unexplained number here.
     pattern: '\b\d{4}-\d{4}-\d{4}-\d{3}[\dXx]\b'
 
+  - id: email-address
+    why: >-
+      An e-mail address is how to reach an author, and a digit in it is part of a name:
+      "someone1989@example.org" holds no year. Converted from Word, a paper's correspondence
+      line is text, and the audit listed its address among the numbers to check.
+    # The whole address: a name, `@`, and a domain whose last label is letters, so that
+    # "12@3.5" is no address. The name starts where its run of name characters does, which
+    # the lookbehind says: tried from inside a long run, each start read to its end.
+    pattern: '(?<![\w.+%-])[\w.+%-]+@(?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,}\b'
+
   - id: age-band
     why: An age or duration band is a category label, not a measured value.
     # The last branch used to end `(?:years?)?` — optional, so a bare `<digits>+` anywhere

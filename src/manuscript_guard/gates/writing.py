@@ -601,6 +601,8 @@ def _hits(rule: dict, joined: str) -> list[re.Match[str]]:
         for expression in rule.get("exempt", [])
         for span in _spans(re.compile(expression), joined)
     ]
+    if rule.get("in_tables") is False:
+        spans += _table_spans(joined)
     if "terms" in rule or "verbs" in rule:
         words = rule.get("terms") or rule["verbs"]
         pattern = re.compile(r"(?i)\b(?:" + "|".join(re.escape(w) for w in words) + r")\b")
@@ -611,6 +613,24 @@ def _hits(rule: dict, joined: str) -> list[re.Match[str]]:
         for m in pattern.finditer(joined)
         if not any(start <= m.start() < end for start, end in spans)
     ]
+
+
+def _table_spans(text: str) -> list[tuple[int, int]]:
+    """Where the tables of `text` stand, a run of their lines as one span: what a rate with
+    `in_tables: false` does not count."""
+    from manuscript_guard.text.tables import table_lines
+
+    lines = text.split("\n")
+    starts = [0]
+    for line in lines:
+        starts.append(starts[-1] + len(line) + 1)
+    spans: list[tuple[int, int]] = []
+    for number in sorted(table_lines(text)):
+        if spans and spans[-1][1] == starts[number]:
+            spans[-1] = (spans[-1][0], starts[number + 1])
+        else:
+            spans.append((starts[number], starts[number + 1]))
+    return spans
 
 
 def _spans(pattern: re.Pattern[str], text: str) -> list[tuple[int, int]]:

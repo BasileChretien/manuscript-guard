@@ -3883,8 +3883,8 @@ that hid LaTeX commands, and a macro named `center` read as a word.
 **Three findings.** `spelling-variant` is one word in the other spelling: once for the
 word, where it first stands, with how many times it is used and what to write. When the
 other usage's spellings are five or more and are used more often than the paper's own, the
-likelier mistake is the line in `paper.yaml`, which `init` writes as `en-GB` for everyone,
-and one `spelling-not-as-declared` at `paper.yaml` takes the place of them all, with the
+likelier mistake is the line in `paper.yaml`, which `init` writes as `en-GB` unless given
+`--english en-US`, and one `spelling-not-as-declared` at `paper.yaml` takes the place of them all, with the
 twelve most used listed. `spelling-mixed` is for a British paper alone. British usage
 takes `-ise` or `-ize`, Oxford's being `-ize`, and a paper takes one: the finding is given
 once, at the first word in the ending used less, with both counts. An American paper has

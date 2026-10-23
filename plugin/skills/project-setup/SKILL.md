@@ -47,9 +47,12 @@ hook says once when that release is newer than the installed tool, with the upgr
 manuscript-guard init my-paper --title "Working title"   # a new project
 manuscript-guard init . --title "Working title"          # an existing analysis repository
 manuscript-guard init my-paper --title "Working title" --latex   # the manuscript in LaTeX
+manuscript-guard init my-paper --title "Working title" --english en-US   # American spelling
 ```
 
-Ask the authors whether they write the manuscript in Markdown or in LaTeX before running it.
+Ask the authors whether they write the manuscript in Markdown or in LaTeX, and in British
+(`en-GB`) or American (`en-US`) spelling, before running it. Without `--english`, `init`
+declares `en-GB`.
 With `--latex` the manuscript is `manuscript/main.tex`, which declares its class and loads
 `mgvalues`, with `mgvalues.sty` beside it, in place of `main.md`. A project is one or the
 other: `init --latex` makes nothing where `manuscript/` holds Markdown, and `check` fails a
@@ -98,7 +101,8 @@ Then fill in, in this order:
    warning left standing is theirs to sign off, with `manuscript-guard sign --as <them>
    --finding <id>` as its hint says. Never run `sign` for them.
 2. **`paper.yaml`**: the title, `english_variant` (`en-GB` or `en-US`; ask, do not
-   assume: G14 holds the manuscript's spelling to it), and the reporting
+   assume: G14 holds the manuscript's spelling to it. `init --english en-US` writes it at
+   the start, and `init` writes `en-GB` when not told), and the reporting
    guideline under the key `reporting_guideline` (singular, a list). Any key the schema does
    not know is a failure at every stage. The title, the short title and the keywords are
    read as Markdown, and TeX in them is kept only between dollar signs: write

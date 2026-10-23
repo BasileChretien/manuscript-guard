@@ -13,7 +13,7 @@ from pathlib import Path
 
 import yaml
 
-from manuscript_guard.contracts._schema import ContractError
+from manuscript_guard.contracts._schema import ContractError, load_schema
 from manuscript_guard.contracts.project import (
     KEEP_THE_TEX,
     named,
@@ -22,10 +22,18 @@ from manuscript_guard.contracts.project import (
     unprintable_character,
 )
 
+#: The Englishes `init --english` declares: the ones `paper.yaml`'s schema takes, so that the
+#: two cannot come apart.
+ENGLISHES: tuple[str, ...] = tuple(
+    load_schema("paper")["properties"]["english_variant"]["enum"]
+)
+#: What `init` declares when it is not told.
+DEFAULT_ENGLISH = "en-GB"
+
 PAPER = """\
 schema: manuscript-guard/paper/1
 title: {quoted}
-english_variant: en-GB
+english_variant: {english}
 
 # Where the work has got to. Move it along as you go; `manuscript-guard stages` lists what
 # each one starts to enforce. Written here rather than left to the default, because the
@@ -336,9 +344,15 @@ def _header(title: str) -> str:
 
 
 def init_project(root: Path, title: str = "Untitled manuscript", *,
-                 latex: bool = False) -> list[Path]:  # fmt: skip
+                 latex: bool = False, english: str = DEFAULT_ENGLISH) -> list[Path]:  # fmt: skip
     """Create the project layout. Existing files are never overwritten. With `latex`, the
-    manuscript is `manuscript/main.tex`, with the values file beside it (step 12)."""
+    manuscript is `manuscript/main.tex`, with the values file beside it (step 12).
+    `english` is the `english_variant` written into `paper.yaml`, one of `ENGLISHES`."""
+    if english not in ENGLISHES:
+        raise ContractError(
+            f"{english!r} is not an English paper.yaml can declare, so nothing was made; "
+            f"give one of {', '.join(ENGLISHES)}"
+        )
     root = Path(root).resolve()
     created: list[Path] = []
     # On one line, and a tab as a space: what the build prints for each. Written into
@@ -405,6 +419,7 @@ def init_project(root: Path, title: str = "Untitled manuscript", *,
             quoted=json.dumps(title, ensure_ascii=False),
             header=_header(title),
             latex_title=latex_title,
+            english=english,
         )
         if name == "AGENTS.md" and latex:
             written = _in_latex(written)

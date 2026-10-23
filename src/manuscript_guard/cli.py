@@ -104,7 +104,7 @@ from manuscript_guard.policy import (
 )
 from manuscript_guard.record import FIGURE_VERDICTS
 from manuscript_guard.record import VERDICTS as RECORD_VERDICTS
-from manuscript_guard.scaffold import init_project, rules_to_add
+from manuscript_guard.scaffold import DEFAULT_ENGLISH, ENGLISHES, init_project, rules_to_add
 from manuscript_guard.text.masking import mask
 from manuscript_guard.text.placeholders import parse, substitute
 from manuscript_guard.text.reader import LATEX, manuscript_files, manuscript_format
@@ -4477,7 +4477,8 @@ def cmd_init(args: argparse.Namespace) -> int:
     from manuscript_guard.contracts.results import HOW_TO_EMIT
 
     try:
-        created = init_project(args.path, title=args.title, latex=args.latex)
+        created = init_project(args.path, title=args.title, latex=args.latex,
+                               english=args.english)  # fmt: skip
     except ContractError as exc:
         print(f"manuscript-guard init: {exc}", file=sys.stderr)
         return 2
@@ -5228,6 +5229,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--latex",
         action="store_true",
         help="start the manuscript in LaTeX: manuscript/main.tex, with its values file",
+    )
+    init.add_argument(
+        "--english",
+        default=DEFAULT_ENGLISH,
+        help=f"the English paper.yaml declares, whose spelling G14 holds the manuscript to: "
+        f"{' or '.join(ENGLISHES)} (default {DEFAULT_ENGLISH})",
     )
     init.set_defaults(func=cmd_init)
 

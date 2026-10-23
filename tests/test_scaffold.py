@@ -450,3 +450,39 @@ def test_init_takes_a_title_with_its_tex_between_dollar_signs(tmp_path: Path, ca
     assert main(["check", str(root)]) == 0, capsys.readouterr().out
     project, _report = load_project(root)
     assert project.paper["title"] == title
+
+
+@pytest.mark.parametrize("latex", [False, True], ids=["markdown", "latex"])
+@pytest.mark.parametrize("english", ["en-GB", "en-US"])
+def test_init_declares_the_english_it_is_given(tmp_path: Path, english: str, latex: bool) -> None:
+    """`--english` is written into `paper.yaml` as `english_variant`, which G14 holds the
+    manuscript's spelling to, in a LaTeX project as in a Markdown one."""
+    from manuscript_guard.cli import main
+
+    root = tmp_path / "paper"
+    assert main(["init", str(root), "--english", english] + ["--latex"] * latex) == 0
+    project, report = load_project(root)
+    assert {each.path.name for each in report.failures} == {"authors.yaml"}, "to be filled in"
+    assert project.paper["english_variant"] == english
+
+
+@pytest.mark.parametrize("latex", [False, True], ids=["markdown", "latex"])
+@pytest.mark.parametrize("english", ["en-AU", "en-gb", "British", ""])
+def test_init_refuses_an_english_paper_yaml_cannot_declare_before_it_makes_anything(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], english: str, latex: bool
+) -> None:
+    from manuscript_guard.cli import main
+
+    root = tmp_path / "paper"
+    assert main(["init", str(root), "--english", english] + ["--latex"] * latex) == 2
+    said = capsys.readouterr().err
+    assert "en-GB" in said and "en-US" in said, "the refusal lists the ones it takes"
+    assert not root.exists()
+
+
+def test_the_englishes_init_takes_are_the_ones_paper_yaml_may_declare() -> None:
+    from manuscript_guard.contracts._schema import load_schema
+    from manuscript_guard.scaffold import ENGLISHES
+
+    enum = load_schema("paper")["properties"]["english_variant"]["enum"]
+    assert tuple(enum) == ENGLISHES

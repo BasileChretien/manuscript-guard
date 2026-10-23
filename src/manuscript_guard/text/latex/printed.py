@@ -126,12 +126,13 @@ DISPLAY, REFERENCE, MARK_END = chr(0xE003), chr(0xE004), chr(0xE005)
 #: `\\appendices`, to `MARK_END`; `environment` before it where the appendix package's
 #: `appendices` or an `appendix` environment opens, and `end` where it ends: the displays
 #: between are the supplement's (2026-10-23; rounds 1 and 2). And `references` where the
-#: reference list stands, which ends a supplement's part a heading opened (round 2).
+#: reference list stands, which ends a supplement's part a heading opened (round 2): where
+#: a typed `thebibliography` ends, since the view writes the list over from its `\\begin`.
 APPENDIX = chr(0xE006)
 _APPENDIX = re.compile(
     r"\\(?:appendix|appendices)(?![A-Za-z@])|\\(?P<end>begin|end)\s*\{(?:appendices|appendix)\}"
     r"|(?P<references>\\(?:bibliography|printbibliography)(?![A-Za-z@])"
-    r"|\\begin\s*\{thebibliography\})"
+    r"|\\end\s*\{thebibliography\})"
 )
 #: A label, which a caption before it in its float gives the number of.
 _LABEL = re.compile(r"\\label\s*\{([^{}]*)\}")
@@ -397,7 +398,10 @@ def _pointing_events(source: Source) -> list[tuple[int, int, str]]:
                                            for low, high in reading.bodies):  # fmt: skip
             kind = ("references" if found["references"] else "end" if found["end"] == "end"
                     else "environment" if found["end"] else "")  # fmt: skip
-            events.append((found.start(), found.end(), APPENDIX + kind + MARK_END))
+            # A typed list's mark goes where it ends, past the list's own event (fix round).
+            typed = (found["references"] or "").startswith("\\end")
+            start = found.end() if typed else found.start()
+            events.append((start, found.end(), APPENDIX + kind + MARK_END))
     return events
 
 

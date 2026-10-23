@@ -1660,7 +1660,9 @@ The result is compiled and packed by the code above, and checked three times:
   Springer's and BMC's headings for files sent apart are read; a journal's other wording
   for a supplement's heading is not (2026-10-23, round 1). A heading that is the word alone,
   "Supplement", is taken for the supplement's even in a trial of a dietary supplement
-  (round 2).
+  (round 2). A reference list a supplement holds of its own, biblatex's `refsection`
+  printed before its tables, ends the part there, and the tables after it are the main
+  text's (the fix-only round).
 - A distribution's package shipped beside the entry file, as an arXiv source often ships
   `natbib.sty`, is read as the author's, and refused at the first construct the reader
   does not read, natbib's `\csname`. Taken out of `manuscript/`, it is the

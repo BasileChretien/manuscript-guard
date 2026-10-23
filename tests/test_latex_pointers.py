@@ -218,7 +218,9 @@ _CODES = "\\begin{table}\\caption{Codes.}\\label{tab:codes}\\end{table}\n"
     ["\\appendix\n\\section{Codes}\n", "\\begin{appendices}\n\\section{Codes}\n",
      "\\section{Supplementary materials}\n\\subsection{Codes}\n",
      # Round 2: IEEEtran's command and an `appendix` environment.
-     "\\appendices\n\\section{Codes}\n", "\\begin{appendix}\n\\section{Codes}\n"],
+     "\\appendices\n\\section{Codes}\n", "\\begin{appendix}\n\\section{Codes}\n",
+     # The fix round: two nouns, and a label's title after it.
+     "\\section{Supplementary tables and figures}\n", "\\section{Appendix A Proofs}\n"],
 )
 def test_a_table_in_the_appendix_is_the_supplement_s(twin: Path, opened: str) -> None:
     """An Elsevier paper cited its "Supplementary Table" in the Methods, a table its own
@@ -281,17 +283,21 @@ def test_an_appendix_command_holds_past_the_end_of_an_environment(twin: Path) ->
     assert _said(twin) == []
 
 
-def test_a_supplement_s_part_ends_at_the_reference_list(twin: Path) -> None:
+@pytest.mark.parametrize(
+    "listed", ["\\bibliography{references}\n",
+               "\\begin{thebibliography}{1}\n\\bibitem{a} A.\n\\end{thebibliography}\n"],
+)
+def test_a_supplement_s_part_ends_at_the_reference_list(twin: Path, listed: str) -> None:
     """Round 2: a paper that places its floats after the reference list, as medical
     submissions do, may end its text with a heading for its supplement: the floats after the
-    list are the main text's, and held to ICMJE's order."""
+    list are the main text's, and held to ICMJE's order; after a typed list too (fix round)."""
     text = twin.read_text(encoding="utf-8")
     floats = re.findall(r"\\begin\{(?:table|figure)\}.*?\\end\{(?:table|figure)\}", text, re.S)
     for typed in floats:
         text = text.replace(typed, "")
     text = text.replace("\\bibliographystyle{plain}", "\\section*{Supplementary data}\nSee "
                         "online.\n\n\\bibliographystyle{plain}").replace(
-        "\\bibliography{references}\n", "\\bibliography{references}\n" + "\n".join(floats) + "\n")
+        "\\bibliography{references}\n", listed + "\n".join(floats) + "\n")
     twin.write_text(text, encoding="utf-8")
     assert _said(twin) == []
     _replaced(twin, "\\section{Methods}\n", "\\section{Methods}\nSee Table~\\ref{tab:counts}.\n")

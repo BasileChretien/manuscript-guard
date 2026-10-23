@@ -53,17 +53,20 @@ GATE = "G2"
 #: a colon or a stop: "Supplementary materials", "Supplementary Table S1", "Supplement 2",
 #: "Appendix A: Proofs", "Appendices", "Supporting information", "S1 Appendix", "Electronic
 #: supplementary material", "Additional file 1", "Web appendix", "Data supplement",
-#: "eMethods". Not one the word only describes, "Supplementary analyses", "Supplementary data
+#: "eMethods"; "Supplementary tables and figures", "Supplementary material for the online
+#: version", and a label's title after it, "Appendix A Proofs", "Appendix 1 — Search" (fix
+#: round). Not one the word only describes, "Supplementary analyses", "Supplementary data
 #: sources", "Supplemental oxygen" or "Appendix diameter", whose tables are the main text's
 #: (rounds 1 and 2).
 _SUPPLEMENT_HEADING = re.compile(
     r"\s*(?:[A-Z]?\d+(?:\.\d+)*[.):]?\s+)?(?:"
     r"(?:online\s+|electronic\s+)?(?:supplementary|supplemental)(?:\s+(?:materials?\s+and"
-    r"\s+methods|materials?|information|data|tables?|figures?|files?|appendi(?:x|ces)|text"
-    r"|content|methods|notes))?"
+    r"\s+methods|(?:tables?|figures?)(?:\s+and\s+(?:tables?|figures?))?|materials?|information"
+    r"|data|files?|appendi(?:x|ces)|text|content|methods|notes)(?:\s+(?:for|to)\s.*)?)?"
     r"|(?:online\s+|data\s+)?supplement|(?:e|web\s+)?appendi(?:x|ces)|supporting\s+information"
     r"|S\d+\s+(?:appendix|text|file)|additional\s+files?|e(?:methods|tables?|figures?))"
-    r"(?:\s+(?:S?\d+[A-Z]?|[A-Z](?:\.\d+)?))?\s*(?:[.:].*)?$",
+    r"(?:\s+(?:S?\d+[A-Z]?|[A-Z](?:\.\d+)?)(?:\s+.*)?)?"
+    r"\s*(?:[.:\N{EN DASH}\N{EM DASH}-].*)?$",
     re.IGNORECASE,
 )
 #: The cross-references that cite what they point at: not a page's, which `\\pageref` prints.

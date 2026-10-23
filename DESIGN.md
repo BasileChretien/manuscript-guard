@@ -2424,13 +2424,15 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
     source with its comments. Tests: `tests/test_latex_mask.py`,
     `tests/test_latex_structure.py`, `tests/test_latex_submit.py`, `tests/test_corruption.py`,
     `latex_trees()`, which names each file in each of four ways, `latex_planted()`, and
-    `latex_delimited_uses()` in `tests/test_properties.py`, with `BROKEN` rules for a
-    `\subimport` named from the entry file's folder, an imported file kept under its
-    importer's folder, an `\input` not looked for in the folder imported from, a delimited
-    definition refused, a doubled parameter read as delimited, a `\let` always a definition,
-    and a delimited command refused wherever it stands, read as an unknown one, or let be in
-    maths. The second, front matter: a `frontmatter` environment's title, authors, addresses
-    and keywords and the major classes' metadata commands are passed over, its abstract read.
+    `latex_delimited_uses()` and `latex_hooked_uses()` in `tests/test_properties.py`, with
+    `BROKEN` rules for a `\subimport` named from the entry file's folder, an imported file
+    kept under its importer's folder, an `\input` not looked for in the folder imported from,
+    a delimited definition refused, a doubled parameter read as delimited, a `\let` always a
+    definition, the spaces after a control word taken for parameter text, and a delimited
+    command refused wherever it stands, read as an unknown one, or let be in maths or in a
+    hook's body (rounds 1 and 2). The second, front matter: a `frontmatter` environment's
+    title, authors, addresses and keywords and the major classes' metadata commands are
+    passed over, its abstract read.
     The third, appendix displays: a table or figure after `\appendix`, or under a heading
     named for a supplement or an appendix, is the supplement's.
 

@@ -73,6 +73,9 @@ _PARAMETER = re.compile(r"#+\d")
 _DELIMITED_REACH = 300
 #: What stands between `\\let`'s two commands: spaces and an equals sign, both optional.
 _LET_GAP = re.compile(r"[ \t]*=?[ \t]*")
+#: Commands the reader reads apart from the rest of their form, which no `\\let` makes one of
+#: another: an input, code the printed view passes over, and a binding (round 2).
+_READ_APART = frozenset({"input", "include", "texttt", "mg"})
 #: What TeX passes over after a control word: spaces, and one line's end with the spaces after.
 _SKIPPED = re.compile(r"[ \t]*(?:\r?\n[ \t]*)?")
 #: An input encoding set by a package's option or by `\\inputencoding`, a few hundred
@@ -1095,9 +1098,11 @@ class _Reader:
         target_end = self._name_end(gap) if self.text[gap : gap + 1] == "\\" else -1
         target = self.text[gap + 1 : target_end] if target_end > 0 else ""
         # Not a heading, a citation or a cross-reference, of one form each but for what they
-        # print, a level, a citation's kind, a name: `\let\chapter\section` (round 1).
+        # print, a level, a citation's kind, a name: `\let\chapter\section` (round 1); nor
+        # a command the reader reads apart, an input, code or a binding (round 2).
         alias = (defined in COMMANDS and COMMANDS.get(target) == COMMANDS[defined]
-                 and not {defined, target} & (set(LEVELS) | set(CITATIONS) | POINTERS))
+                 and not {defined, target} & (set(LEVELS) | set(CITATIONS) | POINTERS
+                                              | _READ_APART))  # fmt: skip
         if not alias:
             self._defines(defined, start)
         self.defining = ""

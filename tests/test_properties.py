@@ -87,6 +87,7 @@ from generated import (
     latex_declared,
     latex_delimited_uses,
     latex_displays,
+    latex_hooked_uses,
     latex_methods,
     latex_model_names,
     latex_planted,
@@ -625,6 +626,18 @@ def test_a_command_with_delimited_parameters_is_refused_where_it_prints_and_nowh
     assert "delimited parameters" in refusals[0].message
 
 
+@holds(60, latex_hooked_uses())
+def test_a_command_with_delimited_parameters_is_refused_in_a_hook_s_body(
+    drawn: tuple[str, int],
+) -> None:
+    """A use of a command defined with delimited parameters in the body of a hook LaTeX runs
+    where it stands, `\\AtBeginDocument` and its kin, prints though it stands in the preamble,
+    and is refused at the first (round 1 of real templates)."""
+    text, first = drawn
+    refusals = latex_mask.read(text).refusals
+    assert [(r.code, r.offset) for r in refusals] == [("tex-refused", first)], (refusals, text)
+
+
 def _a_delimited_use_is_refused_wherever_it_stands(patch: pytest.MonkeyPatch) -> None:
     word = latex_mask._Reader._word
 
@@ -656,6 +669,15 @@ def _a_delimited_use_in_maths_is_let_be(patch: pytest.MonkeyPatch) -> None:
         word(self, name, at, end)
 
     patch.setattr(latex_mask._Reader, "_word", broken)
+
+
+def _a_hook_s_body_is_a_definition_s(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask._Reader, "_prints",
+                  lambda self: self._reads() and not self.definitions)  # fmt: skip
+
+
+def _the_spaces_after_a_control_word_delimit(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_SKIPPED", re.compile(r""))
 
 
 @holds(60, latex_trees())
@@ -9903,6 +9925,14 @@ BROKEN = {
     "in LaTeX, a delimited command in maths is let be": (
         _a_delimited_use_in_maths_is_let_be,
         test_a_command_with_delimited_parameters_is_refused_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a delimited command in a hook's body is let be": (
+        _a_hook_s_body_is_a_definition_s,
+        test_a_command_with_delimited_parameters_is_refused_in_a_hook_s_body,
+    ),
+    "in LaTeX, the spaces after a control word delimit a definition's parameters": (
+        _the_spaces_after_a_control_word_delimit,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
     ),
     "in LaTeX, an abstract in the preamble is blanked": (
         _an_abstract_in_the_preamble_is_blanked,

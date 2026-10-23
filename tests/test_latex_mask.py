@@ -111,6 +111,9 @@ def test_a_file_with_no_document_is_body_and_one_whose_document_is_commented_too
         ("\\let\\cite\\citet", "tex-refused", 4),
         ("\\def\\p(#1){#1}\\AtBeginDocument{\\p(12)}", "tex-refused", 31),
         ("\\import*{sec/}{a}", "tex-refused", 0),
+        # Round 2: let between commands the reader reads apart, an input or code.
+        ("\\let\\include\\input", "tex-refused", 4),
+        ("\\let\\texttt\\textrm", "tex-refused", 4),
     ],
 )
 def test_what_is_not_read_exactly_is_refused_and_the_rest_left_as_typed(

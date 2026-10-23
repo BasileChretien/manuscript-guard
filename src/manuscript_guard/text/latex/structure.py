@@ -176,7 +176,8 @@ def read_tree(
     command one file defines with delimited parameters is refused where another uses it, so
     a tree that defines one is read twice, the second time with every file told of it."""
     document = _read_tree(files, entry, packages or {}, unreadable, frozenset())
-    delimited = frozenset(name for source in document.sources
+    # A file nothing inputs defines nothing the document uses (round 2).
+    delimited = frozenset(name for source in document.sources if not source.loose
                           for name in source.reading.delimited)  # fmt: skip
     if not delimited:
         return document

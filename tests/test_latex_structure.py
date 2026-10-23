@@ -213,6 +213,10 @@ def test_a_command_defined_with_delimited_parameters_is_refused_where_any_file_u
         ("a.tex", files["a.tex"].index("\\bSig")), ("b.tex", files["b.tex"].index("\\pair"))]
     assert read_tree({**files, "a.tex": "No use.\n", "b.tex": "None.\n"},
                      packages=packages).refusals == ()  # fmt: skip
+    # Round 2: a file nothing inputs defines nothing the document uses.
+    loose = read_tree({"main.tex": DOC + "\\newcommand{\\R}{x}\n$\\R$\n" + END,
+                       "old.tex": "\\def\\R#1.{#1}\n"})  # fmt: skip
+    assert loose.refusals == ()
 
 
 def test_an_input_without_braces_is_named_so_and_one_past_a_line_break_is_followed() -> None:

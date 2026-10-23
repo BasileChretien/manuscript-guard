@@ -677,6 +677,10 @@ LATEX_PLACES = (
     ("\\def\\pair(#1,#2){{#1 to {}}}\\label{{\\pair(a,b)}} ", (True,)),
     ("\\newcommand{{\\nat}}{{\\gdef\\y##1{{##1 of {}}}}}\\nat\\y{{2}} ", (True,)),
     ("\\let\\footnote=\\endnote\\footnote{{note {}}} ", (True,)),
+    # Spaces after a control word, and a comment to the line's end, delimit nothing: the
+    # macro's uses are read (round 1).
+    ("\\def\\jn {{Lancet {}}}\\jn{{x}} ", (True,)),
+    ("\\def\\jc%\n  {{Lancet {}}}\\jc{{x}} ", (True,)),
 )  # fmt: skip
 #: Where a number stands in the preamble, before `\\begin{document}`.
 LATEX_PREAMBLE_PLACES = (
@@ -768,6 +772,30 @@ def latex_delimited_uses(draw: st.DrawFn) -> tuple[str, int]:
             first = len(text)
         text += use + after
     return text + between[-1] + "\\end{document}\n", first
+
+
+#: The hooks whose body LaTeX runs where it stands, each `{}` a use of a command defined with
+#: delimited parameters, which prints there though it stands in the preamble (round 1 of real
+#: templates).
+LATEX_HOOKS = ("\\AtBeginDocument{{{}}}", "\\AtEndDocument{{{}}}", "\\AfterEndPreamble{{{}}}",
+               "\\AddToHook{{begindocument}}{{{}}}")  # fmt: skip
+
+
+@st.composite
+def latex_hooked_uses(draw: st.DrawFn) -> tuple[str, int]:
+    """A LaTeX document that defines `\\pair` with delimited parameters and uses it in the
+    body of every hook of `LATEX_HOOKS`, in its preamble, in an order drawn, among words; and
+    where the first use stands, where the reader stops."""
+    use = "\\pair(1,2)"
+    text, first = "\\documentclass{article}\n\\def\\pair(#1,#2){#1 to #2}\n", -1
+    for template in draw(st.permutations(LATEX_HOOKS)):
+        words = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=3)))
+        before, after = (part.replace("{{", "{").replace("}}", "}")
+                         for part in template.split("{}"))  # fmt: skip
+        text += before + words + " "
+        first = len(text) if first < 0 else first
+        text += use + after + "\n"
+    return text + "\\begin{document}\nBody.\n\\end{document}\n", first
 
 
 #: Where a binding stands in LaTeX, and what it is there: each `{}` holds the key's last part,

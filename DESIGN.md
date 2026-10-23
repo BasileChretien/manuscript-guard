@@ -6976,7 +6976,12 @@ by its capitals or its place. The title goes to `paper.yaml` (where `--title` gi
 as plain text. A Title paragraph that holds what plain text loses, a note, a superscript, a
 link or a picture, goes into the comment as well, as it does when `--title` gives the title:
 a note on the title is where a paper often names its funder or its corresponding author, and
-taken as plain text it was written nowhere. Each Author paragraph that is one name goes to `authors.yaml`, in a comment
+taken as plain text it was written nowhere. A superscript at the title's end made of digits
+or the usual signs (`*`, `†`, `‡`, `§`), several with commas between, is the mark of such a
+note and is left out of the plain title, which kept its text and read "a fall1"; it stays in
+the comment with the title, and `init` names it. A superscript inside the title, or of
+anything else, "CD4^+^ T cells" or "Na^+^", is the title's. A unit's power at the end, "per
+m^2^", is taken for a mark too, and named, for the author to put back. Each Author paragraph that is one name goes to `authors.yaml`, in a comment
 over an entry whose given and family names are left empty, since which part is the family
 name cannot be read from the name; one holding a comma, a semicolon, "and", a digit, a
 superscript or a link is several names or carries a mark, and goes to the comment. The
@@ -6997,9 +7002,15 @@ list and a 300-word abstract stay under; the two title pages among the fifteen h
 
 **Over nothing.** `init` keeps a file that is already there, and so would have kept a
 `paper.yaml` or an `authors.yaml` while saying it wrote the Word paper's title and names into
-them. `init --from` refuses before reading the paper where `paper.yaml`, `authors.yaml` or a
-manuscript is there, and where a picture would land on a file of the same name, and makes
-nothing.
+them. `init --from` refuses before reading the paper where a manuscript is there. Once it has
+read the paper, it refuses where `paper.yaml` is there and the Word title would go into it
+(no `--title` given), and where `authors.yaml` is there and the paper's Author paragraphs
+name someone; where nothing from the paper would go into the file, it keeps the file, as
+plain `init` does. It refuses as well where a picture cannot be written: something already
+at its path, a file where the project or one of its folders goes, or two pictures whose
+paths differ only by case, which Windows and macOS take for one file. The pictures are
+written after the rest of the project, and an error then left half a project. Each refusal
+makes nothing.
 
 Measured on the fifteen: the seven that failed now pass `check` at the stage `init` sets,
 with 39 tables written as pipe tables and 2 left as grid tables (a numbered list in a cell,
@@ -16077,6 +16088,9 @@ Open, recorded as each change landed:
   typed in a table, as it reports the rest of the grid table's rows.
 - **Word comments are not brought in by `init --from`.** pandoc drops them when it accepts
   tracked changes; the audit and `import` read comments, `init` does not.
+- **A power at the end of a Word title is taken for a note's mark.** `init --from` leaves a
+  superscript of digits or `*`, `†`, `‡`, `§` at the title's end out of `paper.yaml`, so "per
+  m^2^" becomes "per m". It names what it left out, and the Title paragraph is in the comment.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

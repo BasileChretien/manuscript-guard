@@ -20,7 +20,8 @@ changed in the tree before pandoc writes it as Markdown, and nothing else:
 What pandoc reads from Word's Title, Author, Date and Abstract styles is its metadata. The
 title goes to `paper.yaml`, each author's name to `authors.yaml` as the paper gives it, and
 the abstract becomes the manuscript's `# Abstract`. A Title paragraph holding a note, a mark,
-a link or a picture, which its plain text loses, is in the comment as well. Nothing is
+a link or a picture, which its plain text loses, is in the comment as well; the marks of
+notes raised at its end are left out of the title, and kept there with it. Nothing is
 guessed from how a line looks: a name in capitals is a line of the title page like any other.
 """
 
@@ -84,6 +85,8 @@ class Converted:
     headings: int
     #: The Title paragraph holds what its plain text leaves out, and is in the comment too.
     title_noted: bool = False
+    #: The footnote marks at the Title paragraph's end, left out of `title`.
+    title_marks: str = ""
 
 
 def refused(path: Path) -> str | None:
@@ -113,7 +116,8 @@ def convert(path: Path, *, titled: bool = False) -> Converted:
                                    f"--extract-media={folder}"], None, path))  # fmt: skip
         media = _pictures(tree, Path(folder))
     meta = tree.get("meta", {})
-    title = None if titled else _plain_title(meta.get("title"))
+    unmarked, marks = (None, "") if titled else _without_marks(meta.get("title"))
+    title = _plain_title(unmarked)
     # The Title paragraph stays in the metadata, and so goes into the comment, where `--title`
     # gives the title or where its plain text leaves something out: a note on the title names
     # the funder or the corresponding author, and was written nowhere.
@@ -134,7 +138,8 @@ def convert(path: Path, *, titled: bool = False) -> Converted:
     text = _comment(_write(tree, aside, path)) + _write(tree, body, path)
     return Converted(title=title, authors=names, abstract=bool(abstract), text=text,
                      media=media, tables=converted, tables_left=left, title_page=title_page,
-                     headings=headings, title_noted=noted)  # fmt: skip
+                     headings=headings, title_noted=noted,
+                     title_marks=marks)  # fmt: skip
 
 
 def _pandoc(arguments: list[str], given: str | None, path: Path) -> str:
@@ -252,6 +257,52 @@ def _plain_title(value: dict | None) -> str | None:
         return None
     title = " ".join(text_of(value).split())
     return title or None
+
+
+#: A superscript that is a footnote's mark: digits or the usual signs, several with commas.
+_MARK = re.compile(r"[\d*†‡§¶‖#]+(?:\s*,\s*[\d*†‡§¶‖#]+)*")
+#: What stands between two marks, in the line rather than raised with them.
+_BETWEEN = re.compile(r"\s*,\s*")
+_GAPS = frozenset({"Space", "SoftBreak", "LineBreak"})
+
+
+def _without_marks(value: dict | None) -> tuple[dict | None, str]:
+    """The Title paragraph without the footnote marks at its end, and those marks as they
+    read. `text_of` keeps a superscript's text and glues it on, and "a fall¹" was the title
+    "a fall1". Only a superscript at the end, of digits or the usual signs, is taken for a
+    mark: "CD4⁺ T cells", "Na⁺" and a superscript inside the title are the title's."""
+    if value is None:
+        return None, ""
+    value = json.loads(json.dumps(value))
+    if value.get("t") == "MetaInlines":
+        inlines = value["c"]
+    elif value.get("t") == "MetaBlocks" and value["c"] and value["c"][-1]["t"] in ("Para", "Plain"):
+        inlines = value["c"][-1]["c"]
+    else:
+        return value, ""
+    end = _trimmed(inlines, len(inlines))
+    cut = end
+    while cut and _is_mark(inlines[cut - 1]):
+        cut = _trimmed(inlines, cut - 1)
+        if cut and inlines[cut - 1]["t"] == "Str" and _BETWEEN.fullmatch(inlines[cut - 1]["c"]):
+            further = _trimmed(inlines, cut - 1)
+            if further and _is_mark(inlines[further - 1]):
+                cut = further
+    if cut == end or not text_of(inlines[:cut]).strip():
+        return value, ""
+    marks = text_of(inlines[cut:end]).strip()
+    del inlines[cut:]
+    return value, marks
+
+
+def _trimmed(inlines: list, end: int) -> int:
+    while end and inlines[end - 1]["t"] in _GAPS:
+        end -= 1
+    return end
+
+
+def _is_mark(inline: dict) -> bool:
+    return inline["t"] == "Superscript" and bool(_MARK.fullmatch(text_of(inline).strip()))
 
 
 #: What `text_of` leaves out of a paragraph, or keeps only part of: a note, a picture, a
@@ -492,6 +543,10 @@ def what_was_done(docx: Path, converted: Converted) -> str:
     if converted.title_noted:
         lines.append("    paper.yaml has it as plain text, and the Title paragraph is in the "
                      "comment too, with the notes, marks, links or pictures it holds")  # fmt: skip
+    if converted.title_marks:
+        lines.append(f"    the superscript {converted.title_marks!r} at its end was taken for "
+                     "the mark of a note and left out of it; if it is part of the title, put "
+                     "it back in paper.yaml and in main.md's header")  # fmt: skip
     if converted.authors:
         lines.append(f"  authors: {len(converted.authors)} named in Author paragraphs, in "
                      "authors.yaml; split each name into given and family")  # fmt: skip
@@ -543,30 +598,34 @@ def authors_yaml(names: tuple[str, ...]) -> str:
 
 def init_from_word(root: Path, docx: Path, title: str | None = None
                    ) -> tuple[list[Path], Converted]:  # fmt: skip
-    """Make a project at `root` whose manuscript is the Word paper `docx`. Nothing is made
-    where the paper cannot be read, or where `root` already has a manuscript, `paper.yaml`,
-    `authors.yaml` or a picture of the same name: `init` writes over nothing, and would keep
-    the file that is there while saying it took the paper's title or names."""
+    """Make a project at `root` whose manuscript is the Word paper `docx`. `init` writes over
+    nothing, so nothing is made where the paper cannot be read, where `root` already has a
+    manuscript, where a picture cannot be written, or where `paper.yaml` or `authors.yaml`
+    is there and the paper's title or names would go into neither. A file that is there and
+    that nothing from the paper goes into is kept, as plain `init` keeps it."""
     from manuscript_guard.gates.numbers import source_files
     from manuscript_guard.scaffold import UNTITLED, init_project
 
     root = Path(root).resolve()
     manuscript = root / "manuscript"
-    there = (source_files(manuscript) + source_files(manuscript, glob="*.tex")
-             + [path for path in (root / "paper.yaml", root / "authors.yaml")
-                if path.exists()])  # fmt: skip
-    if there and there[0].parent == root:
-        raise ContractError(f"{there[0].name} is already there, and init --from writes the "
-                            "Word paper's title and authors into a new one, over nothing; "
-                            "nothing was made")  # fmt: skip
+    there = source_files(manuscript) + source_files(manuscript, glob="*.tex")
     if there:
         raise ContractError(f"{there[0]} is already there, and init --from writes the paper as "
                             "manuscript/main.md over nothing; nothing was made")  # fmt: skip
     converted = convert(docx, titled=title is not None)
-    clash = next((name for name, _ in converted.media if (root / name).exists()), None)
-    if clash is not None:
-        raise ContractError(f"{root / clash} is already there, and init --from writes over "
-                            "nothing; nothing was made")  # fmt: skip
+    if converted.title is not None and (root / "paper.yaml").exists():
+        raise ContractError("paper.yaml is already there, and init keeps it, so the Word "
+                            "paper's title would be written nowhere; move it aside, or give "
+                            "--title to keep paper.yaml as it is; nothing was made")  # fmt: skip
+    if converted.authors and (root / "authors.yaml").exists():
+        named = len(converted.authors)
+        raise ContractError(f"authors.yaml is already there, and init keeps it, so the "
+                            f"{'name' if named == 1 else f'{named} names'} of the Word paper's "
+                            "Author paragraphs would be written nowhere; move it aside; "
+                            "nothing was made")  # fmt: skip
+    why = _in_the_way(root, [name for name, _ in converted.media])
+    if why is not None:
+        raise ContractError(f"{why}, and init --from writes over nothing; nothing was made")
     created = init_project(
         root, title if title is not None else converted.title or UNTITLED, text=converted.text,
         authors=authors_yaml(converted.authors) if converted.authors else None,
@@ -578,3 +637,31 @@ def init_from_word(root: Path, docx: Path, title: str | None = None
             handle.write(data)
         created.append(path)
     return created, converted
+
+
+def _in_the_way(root: Path, names: list[str]) -> str | None:
+    """Why the pictures cannot all be written, asked before anything is made: a file where
+    the project or a folder of a picture goes, something already at a picture's path, or two
+    pictures whose paths differ only by case, which Windows and macOS take for one file."""
+    folders = {"/".join(steps[:depth]).casefold(): "/".join(steps[:depth])
+               for steps in (name.split("/") for name in names)
+               for depth in range(1, len(steps))}  # fmt: skip
+    files: dict[str, str] = {}
+    for name in names:
+        key = name.casefold()
+        if key in files:
+            return (f"two pictures of the Word paper, {files[key]} and {name}, differ only by "
+                    "case, which Windows and macOS take for one file")  # fmt: skip
+        if key in folders:
+            return f"a picture of the Word paper, {name}, would be the folder {folders[key]}"
+        files[key] = name
+        steps = name.split("/")[:-1]
+        for depth in range(len(steps) + 1):
+            folder = root.joinpath(*steps[:depth])
+            if folder.exists() and not folder.is_dir():
+                return f"{folder} is a file where init --from puts a folder"
+        if (root / name).exists() or (root / name).is_symlink():
+            return f"{root / name} is already there"
+    if root.exists() and not root.is_dir():
+        return f"{root} is a file where init --from puts the project"
+    return None

@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from manuscript_guard import from_word
 from manuscript_guard.cli import main
 from manuscript_guard.from_word import (
     TITLE_PAGE_WORDS,
@@ -25,6 +26,8 @@ from manuscript_guard.from_word import (
     _names,
     _one_line,
     _pictures,
+    _plain_title,
+    _without_marks,
     text_of,
 )
 
@@ -190,6 +193,75 @@ def test_a_note_on_the_title_is_kept_in_the_comment(tmp_path: Path, capsys) -> N
     assert "in the comment too" not in capsys.readouterr().out
 
 
+def _title(*parts: str) -> dict:
+    """A Title paragraph as pandoc reads it: `^x^` a superscript, " " a space, else a word."""
+    inlines: list = []
+    for part in parts:
+        if part == " ":
+            inlines.append({"t": "Space"})
+        elif part.startswith("^") and part.endswith("^"):
+            inlines.append({"t": "Superscript", "c": [{"t": "Str", "c": part[1:-1]}]})
+        else:
+            inlines.append({"t": "Str", "c": part})
+    return {"t": "MetaInlines", "c": inlines}
+
+
+@pytest.mark.parametrize(
+    ("parts", "title", "marks"),
+    [
+        (("a", " ", "fall", "^1^"), "a fall", "1"),
+        (("a", " ", "fall", "^1,2^"), "a fall", "1,2"),
+        (("a", " ", "fall", "^1^", ",", "^†^"), "a fall", "1,†"),
+        (("a", " ", "fall", "^*^", " "), "a fall", "*"),
+        (("a", " ", "fall", "^‡^"), "a fall", "‡"),
+        (("a", " ", "fall", "^§^"), "a fall", "§"),
+        # The title's own superscripts: of a sign that marks no note, or inside it.
+        (("CD4", "^+^", " ", "T", " ", "cells"), "CD4+ T cells", ""),
+        (("serum", " ", "Na", "^+^"), "serum Na+", ""),
+        (("a", "^1^", " ", "fall"), "a1 fall", ""),
+        (("a", " ", "fall", "^1a^"), "a fall1a", ""),
+        (("a", " ", "fall", ","), "a fall,", ""),
+        (("^1^",), "1", ""),
+    ],
+)
+def test_a_footnote_mark_at_the_end_of_the_title_is_no_part_of_it(
+        parts: tuple[str, ...], title: str, marks: str) -> None:  # fmt: skip
+    value = _title(*parts)
+    before = json.dumps(value)
+    unmarked, said = _without_marks(value)
+    assert (_plain_title(unmarked), said) == (title, marks)
+    assert json.dumps(value) == before
+
+
+@needs_pandoc
+def test_a_title_s_footnote_mark_is_left_out_of_paper_yaml_and_kept_in_the_comment(
+        tmp_path: Path, capsys) -> None:  # fmt: skip
+    """`text_of` kept a superscript's text, and "a fall¹" was "a fall1" in paper.yaml and in
+    the header the build prints."""
+    marked = PAPER.replace('title: "Outcomes after a fall"',
+                           'title: "Outcomes after a fall^1^,^†^"')  # fmt: skip
+    root = tmp_path / "project"
+    assert main(["init", str(root), "--from", str(word(tmp_path / "word", marked))]) == 0
+    said = capsys.readouterr().out
+    assert yaml.safe_load((root / "paper.yaml").read_text(encoding="utf-8"))["title"] == (
+        "Outcomes after a fall"
+    )
+    text = (root / "manuscript" / "main.md").read_text(encoding="utf-8")
+    header = text[: text.index("<!--")]
+    assert "Outcomes after a fall" in header and "fall1" not in header
+    comment = text[text.index("<!--") : text.index("-->")]
+    assert "Title: Outcomes after a fall^1^,^†^" in comment
+    assert "the superscript '1,†' at its end was taken for the mark of a note" in said
+    # A superscript that is part of the title stays in it.
+    kept = PAPER.replace('title: "Outcomes after a fall"', 'title: "CD4^+^ T cells after a fall"')
+    other = tmp_path / "other"
+    assert main(["init", str(other), "--from", str(word(tmp_path / "w2", kept))]) == 0
+    assert yaml.safe_load((other / "paper.yaml").read_text(encoding="utf-8"))["title"] == (
+        "CD4+ T cells after a fall"
+    )
+    assert "taken for the mark of a note" not in capsys.readouterr().out
+
+
 @needs_pandoc
 def test_a_title_init_does_not_take_is_refused_with_how_to_give_one(tmp_path: Path, capsys) -> None:
     backslash = chr(92)
@@ -287,21 +359,89 @@ def test_a_project_with_a_manuscript_is_not_written_over(tmp_path: Path, capsys)
     assert (root / "manuscript" / "main.md").read_bytes() == before
 
 
-@pytest.mark.parametrize("kept", ["paper.yaml", "authors.yaml"])
-def test_a_project_file_the_word_paper_fills_is_not_kept_silently(tmp_path: Path, capsys,
-                                                                   kept: str) -> None:  # fmt: skip
-    """init keeps a file that is there, and would have said the Word title or names were
-    written into it."""
+def _as_read(monkeypatch, *, title: str | None = None, authors: tuple[str, ...] = (),
+             media: tuple = ()) -> None:  # fmt: skip
+    """`convert` replaced by one that returns a paper with this title, these authors and these
+    pictures, so that what init does with them is tested with no pandoc."""
+
+    def read(path: Path, *, titled: bool = False) -> from_word.Converted:
+        return from_word.Converted(
+            title=None if titled else title, authors=authors, abstract=False,
+            text="# Methods\n\nWe counted.\n", media=media, tables=0, tables_left=(),
+            title_page="the document opens on a heading, so nothing was set aside", headings=1,
+        )  # fmt: skip
+
+    monkeypatch.setattr(from_word, "convert", read)
+
+
+@pytest.mark.parametrize(
+    ("kept", "given", "title", "authors", "refused"),
+    [
+        ("paper.yaml", None, "Outcomes after a fall", (), True),
+        ("paper.yaml", "Another title", "Outcomes after a fall", (), False),
+        ("paper.yaml", None, None, (), False),
+        ("authors.yaml", None, None, ("Anne Example",), True),
+        ("authors.yaml", None, "Outcomes after a fall", (), False),
+    ],
+)
+def test_a_project_file_is_refused_only_where_the_word_paper_would_fill_it(
+        tmp_path: Path, capsys, monkeypatch, kept: str, given: str | None, title: str | None,
+        authors: tuple[str, ...], refused: bool) -> None:  # fmt: skip
+    """init keeps a file that is there. Where the Word title or names would go into it, it
+    would have kept them nowhere; where nothing from the paper goes into it, it is kept."""
+    _as_read(monkeypatch, title=title, authors=authors)
     root = tmp_path / "project"
     root.mkdir()
     (root / kept).write_text("mine\n", encoding="utf-8")
     paper = tmp_path / "paper.docx"
     paper.write_bytes(b"PK\x03\x04" + bytes(100))
-    assert main(["init", str(root), "--from", str(paper)]) == 2
-    err = capsys.readouterr().err
-    assert f"{kept} is already there" in err and "nothing was made" in err
-    assert sorted(path.name for path in root.iterdir()) == [kept]
+    asked = ["init", str(root), "--from", str(paper)]
+    if given is not None:
+        asked += ["--title", given]
+    if refused:
+        assert main(asked) == 2
+        err = capsys.readouterr().err
+        assert f"{kept} is already there, and init keeps it" in err and "nothing was made" in err
+        assert sorted(path.name for path in root.iterdir()) == [kept]
+    else:
+        assert main(asked) == 0
+        out = capsys.readouterr().out
+        assert (root / "manuscript" / "main.md").exists()
+        # Nothing said of the kept file is false: init neither made it nor wrote into it.
+        assert f"created {root / kept}" not in out
+        assert "named in Author paragraphs" not in out
+        if kept == "paper.yaml":
+            assert "title: none taken from a Title paragraph" in out
     assert (root / kept).read_text(encoding="utf-8") == "mine\n"
+
+
+@pytest.mark.parametrize(
+    ("media", "there"),
+    [
+        ((("manuscript/media/word/b.png", b"b"),), "manuscript/media/word"),
+        ((("manuscript/media/word/b.png", b"b"),), "manuscript"),
+        ((("manuscript/media/a.png", b"a"),), "manuscript/media/a.png"),
+        ((("manuscript/media/A.png", b"a"), ("manuscript/media/a.png", b"b")), None),
+        ((("manuscript/media/a", b"a"), ("manuscript/media/A/b.png", b"b")), None),
+    ],
+)
+def test_a_picture_that_cannot_be_written_is_refused_before_anything_is_made(
+        tmp_path: Path, capsys, monkeypatch, media: tuple, there: str | None) -> None:  # fmt: skip
+    """The pictures are written after the project is made: an error then was a traceback
+    and half a project."""
+    _as_read(monkeypatch, media=media)
+    root = tmp_path / "project"
+    if there is not None:
+        (root / there).parent.mkdir(parents=True, exist_ok=True)
+        (root / there).write_bytes(b"mine")
+    paper = tmp_path / "paper.docx"
+    paper.write_bytes(b"PK\x03\x04" + bytes(100))
+    assert main(["init", str(root), "--from", str(paper)]) == 2
+    assert "nothing was made" in capsys.readouterr().err
+    made = sorted(path.relative_to(root).as_posix() for path in root.rglob("*")) if (
+        root.exists()) else []  # fmt: skip
+    assert made == ([] if there is None else
+                    sorted({there, *(p.as_posix() for p in Path(there).parents if p.name)}))
 
 
 def test_a_picture_pandoc_saved_outside_its_media_folder_is_brought_in_too(

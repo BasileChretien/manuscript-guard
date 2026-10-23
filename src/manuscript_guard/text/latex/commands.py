@@ -58,6 +58,22 @@ _REF = "{b}"
 _SECTION = "*[p]{p}"
 _DEFINE = "*{c}[b][p]{d}"
 
+#: The commands of the front matter of the major journals' classes, which the title page
+#: prints and Markdown keeps in its YAML header: addresses, affiliations, notes on the
+#: authors, keywords, and Wiley's, Oxford's and Springer's issue, dates and running heads,
+#: each argument passed over, as that header is (Basile, 2026-10-23).
+_FRONT_MATTER_SPECS = {
+    **dict.fromkeys(("address", "affiliation", "altaffiliation", "cortext", "fntext",
+                     "tnotetext", "ead", "email", "homepage", "corresp"), "[b]{b}"),
+    "affil": "*[b]{b}",
+    **dict.fromkeys(("keywords", "journal", "institute", "titlerunning", "authorrunning",
+                     "orcidID", "inst", "equalcont", "corres", "pacs", "DOIsuffix", "Volume",
+                     "Issue", "Year", "Receiveddate", "Reviseddate", "Accepteddate",
+                     "Dateposted", "dedicatory", "pretitle", "DOI", "journaltitle",
+                     "copyrightyear", "pubyear", "access", "appnotes", "firstpage",
+                     "authormark", "editor"), "{b}"),
+    "pagespan": "{b}{b}",
+}  # fmt: skip
 #: Commands and their arguments.
 COMMANDS = _specs(
     {
@@ -82,6 +98,9 @@ COMMANDS = _specs(
         "caption": "[p]{p}",
         "footnote": "[b]{p}",
         "footnotetext": "[b]{p}",
+        # The endnotes package's, which prints the note at the end of the document.
+        "endnote": "[b]{p}",
+        "endnotetext": "[b]{p}",
         "item": "[p]",
         "bibitem": "[p]{b}",
         "makebox": "[b][b]{p}",
@@ -110,8 +129,11 @@ COMMANDS = _specs(
              "newlength", "date"),
             _REF,
         ),
+        # The import package's: a folder and a file, followed as an input is (`IMPORTS`).
+        **dict.fromkeys(("import", "subimport"), "{b}{b}"),
         "url": "{r}",
         "author": "[b]{b}",
+        **_FRONT_MATTER_SPECS,
         "includegraphics": "*[b][b]{b}",
         "addbibresource": "[b]{b}",
         "usepackage": "[b]{b}[b]",
@@ -175,6 +197,23 @@ COMMANDS = _specs(
     }
 )  # fmt: skip
 
+#: The front matter of the major journals' classes, which the title page prints: Elsevier's
+#: `frontmatter` and BMC's `fmbox`, whose content is passed over but for an abstract, as
+#: Markdown passes over its YAML header and reads the abstract; and a list of keywords
+#: (Basile, 2026-10-23).
+FRONT_MATTER = frozenset({"frontmatter", "fmbox", "keyword", "keywords", "IEEEkeywords"})
+#: What the front matter holds that the paper prints as its text, read as it is outside it:
+#: the abstract, and Elsevier's highlights, the paper's claims with its numbers, and graphical
+#: abstract (round 1 of real templates, part 2).
+READ_IN_FRONT_MATTER = frozenset({"abstract", "highlights", "graphicalabstract"})
+#: The commands of that front matter, each argument passed over. An author may define one
+#: again, as an article's preamble often defines `\\keywords`, and it is then the author's
+#: command, read as an unknown command is, as it was before the table held it.
+FRONT_MATTER_COMMANDS = frozenset(_FRONT_MATTER_SPECS)
+#: The import package's commands the include tree follows, each a folder and a file:
+#: `\\import`'s folder is the manuscript's, and `\\subimport`'s is under the folder the
+#: file it stands in was imported from (`structure.py`).
+IMPORTS = frozenset({"import", "subimport"})
 #: Commands that print a space, written as one.
 SPACES = frozenset({"quad", "qquad", "enspace", "thinspace", "space", "enskip", "nobreakspace"})
 #: The commands that print one character, which the mask writes where the command stands: a
@@ -273,7 +312,8 @@ REFUSED = {
     **dict.fromkeys(("lstinputlisting", "verbatiminput", "VerbatimInput", "csvautotabular",
                      "csvautobooktabular", "csvreader", "pgfplotstabletypeset", "DTLloaddb",
                      "DTLdisplaydb", "DTLdisplaylongdb", "includepdf"), _FILE),
-    **dict.fromkeys(("import", "subimport", "subfile", "InputIfFileExists"),
+    **dict.fromkeys(("subfile", "InputIfFileExists", "inputfrom", "subinputfrom", "includefrom",
+                     "subincludefrom"),
                     "its file is not followed; \\input it by a path written out in full"),
     "inputminted": "it needs shell escape, which the build does not allow",
 }  # fmt: skip

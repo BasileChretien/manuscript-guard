@@ -7212,6 +7212,32 @@ def test_what_the_latex_reader_refuses_fails_build_at_its_file_and_line(project:
     assert "tex-not-input" not in codes(report)
 
 
+def test_a_delimited_command_where_it_prints_and_an_import_of_nothing_fail_build(
+    project: Path,
+) -> None:
+    """A command defined with delimited parameters fails BUILD where a file the document
+    imports prints it, not where it is defined; an `\\import` of a file that is not there fails
+    it where it stands, and one of a file that is there is followed (2026-10-23: two journals'
+    templates)."""
+    from manuscript_guard.cli import _run_gates
+
+    entry = _as_latex(project)
+    (entry.parent / "sections").mkdir()
+    entry.write_text(
+        "\\documentclass{article}\n\\def\\bSig\\mathbf{\\Sigma}\n\\begin{document}\n"
+        "\\import{sections/}{methods}\n\\import{sections/}{gone}\n\\end{document}\n",
+        encoding="utf-8",
+    )
+    (entry.parent / "sections" / "methods.tex").write_text("Of 4100.\nWe use $\\bSig$.\n",
+                                                           encoding="utf-8")  # fmt: skip
+    report, _project, _stage, _deferred = _run_gates(project, stage="design")
+    found = {(f.code, f.path.name, f.line) for f in report.failures if f.gate == "BUILD"}
+    assert ("tex-refused", "methods.tex", 2) in found, report.render(project)
+    assert ("tex-refused", "main.tex", 5) in found, report.render(project)
+    assert ("tex-refused", "main.tex", 2) not in found, report.render(project)
+    assert not [f for f in report.findings if f.code == "tex-not-input"]
+
+
 # --------------------------------------------------------------- G2 on the LaTeX twin
 
 TWIN = Path(__file__).parent / "data" / "latex" / "manuscript"
@@ -7388,6 +7414,22 @@ def test_siunitx_s_milligram_in_the_twin_is_no_binding(project: Path) -> None:
     _into_results(entry, "A dose of \\qty{5}{\\mg} was given.")
     found = [(f.code, f.message) for f in _twin_failures(project)]
     assert found == [("unclassified-number", "'5' is not bound to any source")], found
+
+
+def test_the_twins_front_matter_is_passed_over_and_its_abstract_read(project: Path) -> None:
+    """A journal's front matter in the body, Elsevier's `frontmatter` with an address and
+    keywords and Wiley's issue: its numbers are none of the paper's, as Markdown's YAML header
+    holds none; a number typed in the abstract inside it is still unbound (Basile,
+    2026-10-23)."""
+    entry = _twin(project)
+    text = entry.read_text(encoding="utf-8")
+    text = text.replace("\\begin{abstract}\n", "\\begin{frontmatter}\n\\address[a]{Unit 1181, "
+                        "Caen}\n\\Volume{46}\\Issue{1}\n\\begin{abstract}\nOf 4371 reports.\n")
+    text = text.replace("\\end{abstract}\n", "\\end{abstract}\n\\begin{keyword}\ncohort 2019\n"
+                        "\\end{keyword}\n\\end{frontmatter}\n")  # fmt: skip
+    entry.write_text(text, encoding="utf-8")
+    found = [(f.code, f.message) for f in _twin_failures(project)]
+    assert found == [("unclassified-number", "'4371' is not bound to any source")], found
 
 
 def test_layout_in_the_twin_is_no_number_g2_reads(project: Path) -> None:

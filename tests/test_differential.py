@@ -41,7 +41,7 @@ import shutil
 import subprocess
 import tarfile
 import warnings
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
@@ -130,33 +130,39 @@ def _skip_where_it_cannot_be_made(name: str, *readers: Reader) -> None:
             pytest.skip(reader.absent[name])
 
 
-def differences(name: str, old: Reader, new: Reader, examples: int) -> list[tuple[Any, str]]:
-    """Every generated input the two read differently, each with where the answers part."""
-    found: list[tuple[Any, str]] = []
+def _over_inputs(
+    name: str, old: Reader, new: Reader, examples: int, differed: Callable[[Any, str], None]
+) -> None:
+    """`differed` called on each generated input the two read differently. One function draws
+    them for `differences` and `assert_alike` both, since a test's inputs are drawn from its
+    own source: drawn by two, a difference one met on a rare input the other never saw, and
+    an entry that said so was refused as differing nowhere (real templates, part 1)."""
 
     @generated(examples)
     @given(INPUTS[name])
-    def collect(given: Any) -> None:
+    def each(given: Any) -> None:
         where = first_difference(_asked(old, name, given), _asked(new, name, given))
         if where is not None:
-            found.append((given, where))
+            differed(given, where)
 
     with _unless_lost():
-        collect()
+        each()
+
+
+def differences(name: str, old: Reader, new: Reader, examples: int) -> list[tuple[Any, str]]:
+    """Every generated input the two read differently, each with where the answers part."""
+    found: list[tuple[Any, str]] = []
+    _over_inputs(name, old, new, examples, lambda given, where: found.append((given, where)))
     return found
 
 
 def assert_alike(name: str, old: Reader, new: Reader, examples: int, *, sides: str) -> None:
     """Fail on the first input the two read differently, cut down to the smallest."""
 
-    @generated(examples)
-    @given(INPUTS[name])
-    def alike(given: Any) -> None:
-        where = first_difference(_asked(old, name, given), _asked(new, name, given))
-        assert where is None, f"{name!r} reads {given!r} differently in {sides}: {where}"
+    def alike(given: Any, where: str) -> None:
+        raise AssertionError(f"{name!r} reads {given!r} differently in {sides}: {where}")
 
-    with _unless_lost():
-        alike()
+    _over_inputs(name, old, new, examples, alike)
 
 
 # ----------------------------------------------------------- the comparison is a comparison

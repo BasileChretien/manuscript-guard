@@ -5,7 +5,11 @@ first: that order is the order the build prints. A file starts in the state its 
 stands in: body or preamble, inside the environments open there, and under the headings in
 force there, so that `p < 0.05` in a file input under `\\section{Methods}` is read under
 Methods. A path resolves from the entry file's folder, as TeX resolves it, with `.tex` added
-where it has no suffix.
+where it has no suffix. The import package's `\\import{folder}{file}` names the file in that
+folder of the manuscript's, and `\\subimport{folder}{file}` the file in that folder under the
+one the file it stands in was imported from. An `\\input` in an imported file that the entry
+file's folder does not hold is looked for in the folder it was imported from, as the package
+has LaTeX look for it.
 
 Refused, where the `\\input` stands: a path not written out in full, one outside the
 manuscript or under a folder set aside, a file that is not there, and a file that inputs
@@ -38,8 +42,10 @@ _NOT_WRITTEN_OUT = set("\\#$%{}~")
 @dataclass(frozen=True)
 class Source:
     """One file of the document: its text, how it reads, the headings over its start, the
-    headings in force after each file it inputs, which that file's own headings change, and
-    the environments its `\\input` stands in, which it is read inside."""
+    headings in force after each file it inputs, which that file's own headings change, the
+    environments its `\\input` stands in, which it is read inside, the file each of its
+    inputs names, by where the input stands, as the tree resolved it, and the folder the
+    import package imported it from, "" where it imported none (`_target`)."""
 
     path: str
     text: str
@@ -48,6 +54,8 @@ class Source:
     loose: bool = False
     resumes: tuple[tuple[int, tuple[Heading, ...]], ...] = ()
     environments: tuple[str, ...] = ()
+    targets: tuple[tuple[int, str], ...] = ()
+    imported: str = ""
 
     def chain_at(self, offset: int) -> tuple[Heading, ...]:
         """The headings in force at `offset` of this file: those it started under, its own,
@@ -98,7 +106,30 @@ def _distributed(put: Input) -> bool:
     `\\input glyphtounicode`, whose path the reader does not take."""
     name = put.path.strip()
     bare = not set(name) & (_NOT_WRITTEN_OUT | {"/"}) and not name.startswith(("_", "."))
-    return not put.body and bare
+    return not put.body and bare and put.via == "input"
+
+
+def _target(
+    entry: str, put: Input, imported: str, files: Mapping[str, str]
+) -> tuple[str | None, str, str]:
+    """The file an input names, or None and why not, and the folder the file it names is
+    imported from: `imported` is the one the file the input stands in was imported from, ""
+    for the entry file's. An `\\input` keeps it, and is looked for there where the entry
+    file's folder does not hold it; an `\\import` and a `\\subimport` name a new one."""
+    if put.via == "input":
+        target, why = resolve(entry, put.path, files)
+        if target is None and imported and put.path.strip():
+            found, _why = resolve(entry, posixpath.join(imported, put.path), files)
+            if found is not None:
+                return found, "", imported
+        return target, why, imported
+    if not put.path.strip():
+        said = "a folder and a file are not both written in braces after it"
+        return None, f"{said}: write \\{put.via}{{folder}}{{file}}", imported
+    folder = put.folder if put.via == "import" else posixpath.join(imported, put.folder)
+    target, why = resolve(entry, posixpath.join(folder, put.path), files)
+    under = posixpath.normpath(folder)
+    return target, why, "" if under == "." else under
 
 
 @dataclass(frozen=True)
@@ -141,8 +172,30 @@ def read_tree(
     unreadable: frozenset[str] = frozenset(),
 ) -> Document:
     """The document `entry` begins, its files given by path; `packages` the author's `.sty`
-    files; `unreadable` files that could not be read, reported elsewhere and passed over."""
-    packages = packages or {}
+    files; `unreadable` files that could not be read, reported elsewhere and passed over. A
+    command one file defines with delimited parameters is refused where another uses it, and
+    a command of a class's front matter one file defines is the author's in another, so a
+    tree that defines either is read twice, the second time with every file told of them. A
+    file nothing inputs defines nothing the document uses (round 2)."""
+    document = _read_tree(files, entry, packages or {}, unreadable, frozenset(), frozenset())
+    tree = [source for source in document.sources if not source.loose]
+    delimited = frozenset(name for source in tree
+                          for name in source.reading.delimited)  # fmt: skip
+    own = frozenset(name for source in tree for name in source.reading.own)
+    if not delimited and not own:
+        return document
+    return _read_tree(files, entry, packages or {}, unreadable, delimited, own)
+
+
+def _read_tree(
+    files: Mapping[str, str],
+    entry: str,
+    packages: Mapping[str, str],
+    unreadable: frozenset[str],
+    delimited: frozenset[str],
+    own: frozenset[str],
+) -> Document:
+    """`read_tree`, each file told of the commands `delimited` and `own` name."""
     known = {**files, **dict.fromkeys(unreadable, "")}
     sources: list[Source] = []
     refusals: list[tuple[str, Refusal]] = []
@@ -154,19 +207,23 @@ def read_tree(
         environments: tuple[str, ...],
         under: tuple[Heading, ...],
         chain: tuple[str, ...],
+        imported: str = "",
     ) -> tuple[Heading, ...]:
         """Read one file and the files it inputs, where they stand, and give the headings
-        in force at its end."""
+        in force at its end; `imported` the folder it was imported from (`_target`)."""
         text = files[path]
-        reading = read(text, body=body, environments=environments)
+        reading = read(text, body=body, environments=environments, delimited=delimited,
+                       own=own)  # fmt: skip
         place = len(sources)
-        sources.append(Source(path, text, reading, under, environments=environments))
+        sources.append(Source(path, text, reading, under, environments=environments,
+                              imported=imported))  # fmt: skip
         refusals.extend((path, refusal) for refusal in reading.refusals)
         for _at, name in reading.packages:
             style = posixpath.join(posixpath.dirname(entry), f"{name}.sty")
             if name != VALUES and style in packages and style not in seen:
                 seen.add(style)
-                package = read(packages[style], body=False, package=True)
+                package = read(packages[style], body=False, package=True, delimited=delimited,
+                               own=own)  # fmt: skip
                 sources.append(Source(style, packages[style], package))
                 refusals.extend((style, refusal) for refusal in package.refusals)
         events = sorted(
@@ -174,12 +231,12 @@ def read_tree(
             + [(put.offset, None, put) for put in reading.inputs],
             key=lambda event: event[0],
         )
-        current, resumes = under, []
+        current, resumes, targets = under, [], []
         for _start, heading, put in events:
             if heading is not None:
                 current = _folded(current, heading)
                 continue
-            target, why = resolve(entry, put.path, known)
+            target, why, folder = _target(entry, put, imported, known)
             if target in unreadable or (target is None and _distributed(put)):
                 continue
             if target is None:
@@ -189,15 +246,17 @@ def read_tree(
                 said = f"{target} inputs itself, through {' > '.join((*chain, target))}"
                 refusals.append((path, Refusal("tex-refused", put.offset, said)))
                 continue
+            targets.append((put.offset, target))
             if target in seen:
                 continue
             seen.add(target)
             after = visit(target, put.body, put.environments, _starts_under(current),
-                          (*chain, target))  # fmt: skip
+                          (*chain, target), folder)  # fmt: skip
             current = _resumed(current, after)
             resumes.append((put.end, current))
         sources[place] = Source(path, text, reading, under, resumes=tuple(resumes),
-                               environments=environments)
+                               environments=environments, targets=tuple(targets),
+                               imported=imported)  # fmt: skip
         return current
 
     if entry in files:
@@ -206,7 +265,7 @@ def read_tree(
     for path in sorted(files):
         if path not in seen:
             text = files[path]
-            reading = read(text, body=True, loose=True)
+            reading = read(text, body=True, loose=True, delimited=delimited, own=own)
             sources.append(Source(path, text, reading, loose=True))
             refusals.extend((path, refusal) for refusal in reading.refusals)
     return Document(tuple(sources), tuple(refusals))

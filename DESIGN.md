@@ -1270,6 +1270,14 @@ number such as `2em`, never as a hidden claim.
 order is `printed_order`.
 - A path resolves as TeX resolves it: from the entry file's folder, not from the folder of the
   file that includes it, with `.tex` added to a path that has none.
+- The import package's `\import{folder}{file}` names the file in that folder of the
+  manuscript's, and `\subimport{folder}{file}` the file in that folder under the one the file
+  it stands in was imported from, as the package resolves them. An `\input` in an imported
+  file is looked for in the entry file's folder, then in the folder the file was imported
+  from, which the package adds to LaTeX's path. The submission folder writes the file in
+  where the command stands, and looks for a picture an imported file names in the same two
+  folders (2026-10-23: an Elsevier template's `\import{./}{intro}` was refused, and every
+  section read as a file nothing inputs).
 - Each file is read on its own, so a finding names that file's line.
 - A file starts in the state its `\input` stands in. One input from the body is body, and one
   input from the preamble is preamble. The headings in force there stand before the file's first
@@ -1296,7 +1304,8 @@ order is `printed_order`.
   - a missing file, or a cycle. A bare name input from the preamble that `manuscript/` does not
     hold, such as `\input{glyphtounicode}`, is the distribution's and is passed over, as a
     package is, and so is TeX's form without braces there, `\input glyphtounicode`;
-  - `\import`, `\subfile` and `\InputIfFileExists`;
+  - `\subfile`, `\InputIfFileExists`, and the import package's `\inputfrom` and
+    `\includefrom` and their `sub` forms, and its starred `\import*` and `\subimport*`;
   - a command that prints a file no gate reads: `\lstinputlisting` and its kin,
     `\verbatiminput`, csvsimple's `\csvautotabular` and `\csvreader`, pgfplotstable's
     `\pgfplotstabletypeset` with a file name, datatool's `\DTLloaddb` and its displays, and
@@ -1317,6 +1326,23 @@ order is `printed_order`.
   design first refused it, as an `abstract:` in Markdown's front matter is refused. Round 2
   of #385 found that this failed such a class, and failed `\let\oldabstract\abstract`, which
   only names the command. Where a class does not print it, the compile fails (step 9).
+- A class's front matter in the body is passed over, as Markdown's YAML header is: Elsevier's
+  `frontmatter` and BMC's `fmbox`, with the title, the authors and the addresses they hold,
+  and a list of keywords, `keyword`, `keywords` or `IEEEkeywords`. An abstract in the front
+  matter, inside environments only, BMC's `abstractbox` among them, is read as one outside
+  it is, and so are Elsevier's `highlights`, the paper's claims with its numbers, and
+  `graphicalabstract` (round 1). So are the commands the major classes give the front matter, each argument
+  blanked: addresses and affiliations (`\address`, `\affiliation`, `\affil`), notes on the
+  authors (`\cortext`, `\fntext`, `\email`, `\corresp`), `\keywords`, and Wiley's, Oxford's
+  and Springer's issue, dates and running heads (`\Volume`, `\Issue`, `\DOIsuffix`,
+  `\pagespan`, `\Receiveddate`, `\copyrightyear`, `\titlerunning` and the rest of
+  `FRONT_MATTER_COMMANDS`). An author may define one of these again, as an article's
+  preamble often defines `\keywords`: it is then the author's command, here and in every
+  file of the tree, read as an unknown command is, as it was before the table held it
+  (round 1: an author's `\journal` printed text that was hidden) (Basile, 2026-10-23, after
+  an Elsevier and a Wiley template, whose title, addresses and issue were read as main
+  text). The title is still read where it stands outside the front matter, in the preamble
+  as before.
 - An environment not in the table is read as an unknown command is, and so is its body.
 
 **Definitions.** A `\newcommand`, `\renewcommand`, `\providecommand`,
@@ -1331,11 +1357,29 @@ each number of `\ci{1.2}{3.4}` at the use. Nothing is
 expanded, because an expansion is text at a place the file does not hold, with no offset to
 give a finding.
 
+A `\def` with delimited parameters, `\def\x#1.{...}`, is read where it is written, its
+parameter text blanked and its body read as any body is. A use of it is refused where the
+document prints what it makes, in prose, maths or a printed argument, since what it takes
+there is not known, and in a hook's body, which LaTeX runs where it stands; in a blanked
+argument, the preamble, a comment or another definition's body it prints nothing, and is
+let be. The parameter text is read as TeX reads it: the spaces after a control word are
+skipped, and a comment to its line's end with the next line's spaces, so `\def\x {...}` and
+a `\def\x%` whose body opens the next line delimit nothing (round 1). The definition may
+stand in another file of the tree or in the author's package, so a tree that holds one is
+read a second time, each file told of it. A parameter of a definition inside a body is
+doubled, `##1`, and is a parameter all the same. `\let` of a command the reader reads to
+another it reads the same way is read as before: `\let\footnote=\endnote`, with the
+endnotes package, prints each note at the end, and its text is the same prose. Not between
+headings, citations or cross-references, whose one form prints a level, a kind of citation
+or a name, `\let\chapter\section` (round 1). Let to anything else, the command is defined
+again (Basile, 2026-10-23, after two journals' templates: the first two were refused at the
+definition, and the rest of each file read as typed).
+
 Refused:
 - a definition, in a file of the author's, of any command the reader reads, `\mg` among them,
   but `\abstract`, which the reader read as an unknown command before it opened a section and
   which an author restyles;
-- `\def` with delimited parameters;
+- a use of a command defined with delimited parameters, where it prints (above);
 - anything that changes how characters are read: `\catcode`, `\makeatletter` in the body,
   `\csname`, `\expandafter`, and `babel` with a language whose shorthands make a character
   active;
@@ -1590,6 +1634,24 @@ The result is compiled and packed by the code above, and checked three times:
 - An `\input` records the environments open around it, not the command whose argument it is
   in, so `\title{\input{title}}` reads `title.tex` as preamble, blanked, though LaTeX prints it
   (round 1 of #385).
+- A command whose body uses one defined with delimited parameters, or one let to it, is not
+  refused where it is used, though LaTeX prints that use there: only the delimited
+  command's own uses are. One defined again without delimited parameters is still
+  refused where it prints (2026-10-23).
+- A note let to the endnotes package's, `\let\footnote=\endnote`, is read where it is
+  typed, under the heading in force there, though LaTeX prints the notes together at the
+  end of the document (2026-10-23).
+- The import package's `\inputfrom`, `\includefrom` and their `sub` forms are refused, not
+  followed (2026-10-23).
+- `\let\include\input`, which an author writes to drop `\include`'s page breaks, is refused:
+  the submission folder would write the file in between the `\clearpage`s TeX no longer
+  prints. A file input from inside a definition is read as one nothing inputs, warned of,
+  and the commands it defines with delimited parameters reach no other file, so a use of
+  one is not refused (2026-10-23, the fix-only round of part 1).
+- A distribution's package shipped beside the entry file, as an arXiv source often ships
+  `natbib.sty`, is read as the author's, and refused at the first construct the reader
+  does not read, natbib's `\csname`. Taken out of `manuscript/`, it is the
+  distribution's again (2026-10-23).
 - A file input past a refusal in the file that inputs it, from inside a definition, or from
   `\AtBeginDocument{\input{x}}` is not followed. It is warned of as `tex-not-input`, whose
   message says no `\input` the reader follows names it, and is read under no heading (round 1
@@ -1681,10 +1743,15 @@ The result is compiled and packed by the code above, and checked three times:
 - A float counts as a display item only where it places a `\mg{figure.key}` or
   `\mg{table.key}`; a figure placed with `\includegraphics` alone counts as none. Markdown
   has the same gap for `![](...)`, met far less often (round 1 of step 6).
-- A title, affiliations and keywords written in the body, as elsarticle's `frontmatter` holds
-  them, are counted as main text (round 1 of step 6), and G14 reads them as the text's: an
-  abbreviation in the title is used before its definition, and an institute's acronym in an
-  affiliation is undefined (round 1 of step 7). In the preamble they are not read.
+- A class's front matter command an author provides for portability, `\providecommand` or
+  `\@ifundefined`, is the author's though the class keeps its own, and its argument is read
+  as prose, as before the table held it. Highlights, read in the front matter, count as main
+  text to G4 and are a first use to G14, as before (2026-10-23, round 2 of part 2).
+- A title written in the body outside a class's front matter, as Wiley's and Springer's
+  templates write it, is read as the text's, as one in the preamble is: G4 counts it as
+  main text, and an abbreviation in it is used before its definition to G14. A class's
+  front matter command not in `FRONT_MATTER_COMMANDS` is read as an unknown command is, its
+  arguments as prose (rounds 1 of steps 6 and 7; the front matter itself since 2026-10-23).
 - Past a refusal G14 reads a LaTeX file as typed, its commands and comments as words; `check`
   fails on the refusal already (round 1 of step 7).
 - `\~{}` before a number, written for "about", is taken for an accent on the word after it,
@@ -2374,6 +2441,30 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
     `BROKEN` rules for a starred caption counted, a subfigure's caption taken for the
     figure's or its label naming nothing, a continued float counted, a float that inputs its
     caption left uncounted, a cross-reference citing nothing, and the line.
+14. Real templates (2026-10-23). Two papers from arXiv, written in an Elsevier and a Wiley
+    template, were put through `check` as they stand, never compiled. What they found is
+    built in three parts. The first, the reader: the import package's `\import` and
+    `\subimport` are followed; a `\def` with delimited parameters is read and its uses
+    refused where they print; a definition inside a body, its parameters doubled, is no
+    delimited one; and `\let\footnote=\endnote` is read as before; G6 still reads a comment
+    as typed for a placeholder, as it reads a Markdown one, since a journal or arXiv takes the
+    source with its comments. Tests: `tests/test_latex_mask.py`,
+    `tests/test_latex_structure.py`, `tests/test_latex_submit.py`, `tests/test_corruption.py`,
+    `latex_trees()`, which names each file in each of four ways, `latex_planted()`, and
+    `latex_delimited_uses()` and `latex_hooked_uses()` in `tests/test_properties.py`, with
+    `BROKEN` rules for a `\subimport` named from the entry file's folder, an imported file
+    kept under its importer's folder, an `\input` not looked for in the folder imported from,
+    a delimited definition refused, a doubled parameter read as delimited, a `\let` always a
+    definition, the spaces after a control word taken for parameter text, and a delimited
+    command refused wherever it stands, read as an unknown one, or let be in maths or in a
+    hook's body (rounds 1 and 2).
+    The second, front matter: a class's front matter environment, its title, authors,
+    addresses and keywords, and the major classes' commands for it are passed over, an
+    abstract in it read (above, "Environments"). Tests: `tests/test_latex_mask.py`,
+    `tests/test_corruption.py`, and `latex_planted()` with `BROKEN` rules for the front
+    matter read, its abstract passed over with it, its commands unknown, and one defined
+    again refused. The third, appendix displays: a table or figure after `\appendix`, or under a heading
+    named for a supplement or an appendix, is the supplement's.
 
 ## Zotero is never on the critical path
 

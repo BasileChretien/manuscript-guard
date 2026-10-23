@@ -97,9 +97,23 @@ def test_a_file_with_no_document_is_body_and_one_whose_document_is_commented_too
         ("x \\ifdefined\\y 1\\fi", "tex-refused", 2),
         ("\\makeatletter", "tex-refused", 0),
         ("\\lstinputlisting{code.R}", "tex-refused", 0),
-        ("\\def\\x[#1]{#1}", "tex-refused", 0),
+        ("\\def\\x[#1]{#1} use \\x[2]", "tex-refused", 19),
+        ("\\def\\x}{1}", "tex-refused", 0),
         ("\\renewcommand{\\emph}[1]{#1}", "tex-refused", 13),
+        ("\\let\\emph\\relax", "tex-refused", 4),
+        ("\\let\\footnote=\\textbf", "tex-refused", 4),
         ("\\begin{minted}{r}\n1\n\\end{minted}", "tex-refused", 0),
+        ("\\inputfrom{a/}{b}", "tex-refused", 0),
+        # Round 1 of real templates: let to a command of the same form that prints another
+        # level or another kind of citation; a delimited use in a hook, which LaTeX runs
+        # where it stands; the import package's starred form, named.
+        ("\\let\\chapter\\section", "tex-refused", 4),
+        ("\\let\\cite\\citet", "tex-refused", 4),
+        ("\\def\\p(#1){#1}\\AtBeginDocument{\\p(12)}", "tex-refused", 31),
+        ("\\import*{sec/}{a}", "tex-refused", 0),
+        # Round 2: let between commands the reader reads apart, an input or code.
+        ("\\let\\include\\input", "tex-refused", 4),
+        ("\\let\\texttt\\textrm", "tex-refused", 4),
     ],
 )
 def test_what_is_not_read_exactly_is_refused_and_the_rest_left_as_typed(
@@ -108,6 +122,118 @@ def test_what_is_not_read_exactly_is_refused_and_the_rest_left_as_typed(
     reading = read(text, body=True)
     assert [(r.code, r.offset) for r in reading.refusals] == [(code, at)]
     assert reading.masked[at:] == text[at:]
+
+
+def test_a_delimited_definition_is_read_and_each_use_where_it_prints_refused() -> None:
+    """Two real papers' templates (2026-10-23): `\\def\\bSig\\mathbf{\\Sigma}` and natbib's
+    `\\def` of a delimited macro were refused, and the rest of the file read as typed. The
+    definition is read, its parameter text blanked, and a use refused only where it would
+    print, not in a blanked argument, the preamble or another definition's body."""
+    preamble = ("\\documentclass{article}\n\\def\\bSig\\mathbf{\\Sigma}\n"
+                "\\def\\pair(#1,#2){#1 to #2}\n\\newcommand{\\both}{\\bSig}\n\\bSig\n")  # fmt: skip
+    quiet = preamble + "\\begin{document}\nNo use \\label{\\bSig} of 12.\n\\end{document}\n"
+    reading = read(quiet)
+    assert reading.refusals == () and reading.delimited == ("bSig", "pair")
+    for used, name in (("in maths $\\bSig$", "\\bSig"), ("in prose \\pair(1,2)", "\\pair"),
+                       ("in a caption \\caption{\\bSig}", "\\bSig")):  # fmt: skip
+        text = preamble + f"\\begin{{document}}\nUsed {used}.\n\\end{{document}}\n"
+        (refusal,) = read(text).refusals
+        assert refusal.offset == text.rindex(name), used
+        assert "delimited parameters" in refusal.message
+    # In the body the parameter text is blanked, and the definition's body is prose there.
+    body = "\\def\\pair(#1,#2){#1 to #2}\n"
+    masked = read(body, body=True).masked
+    assert set(masked[body.index("(") : body.index("{")]) == {NUL} and " to " in masked
+
+
+def test_a_definition_whose_parameter_text_is_spaces_or_a_comment_delimits_nothing() -> None:
+    """Round 1 of real templates: TeX skips the spaces after a control word, and a comment to
+    its line's end with the next line's spaces, so `\\def\\journal {Lancet}` and a `\\def` whose
+    body is on the line after a `%` are ordinary macros; their uses are read, not refused."""
+    for defined in ("\\def\\journal {Lancet}", "\\def\\journal%\n  {Lancet}",
+                    "\\def\\journal#1 %note\n{#1}"):  # fmt: skip
+        text = f"{defined}\n\\begin{{document}}\nIn \\journal{{x}} 12.\n\\end{{document}}\n"
+        reading = read(text)
+        delimited = defined.endswith("{#1}")
+        assert reading.delimited == (("journal",) if delimited else ()), defined
+        assert bool(reading.refusals) == delimited, defined
+    assert read("\\def\\x%note\n{1}\n", body=True).comments == ((6, 11),)
+
+
+def test_a_parameter_of_a_definition_inside_a_body_is_doubled_and_blanked() -> None:
+    """natbib's `\\gdef\\NAT@biblabelnum##1{##1.}` in a body was read as delimited."""
+    text = "\\newcommand{\\x}{\\gdef\\y##1{##1 is 5}}\n"
+    reading = read(text, body=True)
+    assert reading.refusals == () and reading.delimited == ()
+    assert set(reading.masked[text.index("##1 is") : text.index(" is 5")]) == {NUL}
+    assert "5" in reading.masked
+
+
+def test_a_command_let_to_one_read_the_same_way_is_read_as_before() -> None:
+    """`\\let\\footnote=\\endnote` in an Elsevier template was refused as `\\footnote`
+    defined again; the endnotes package's note is the same prose, printed at the end."""
+    text = ("\\documentclass{article}\n\\usepackage{endnotes}\n\\let\\footnote=\\endnote\n"
+            "\\begin{document}\nA claim\\footnote{of 12 sites}.\n\\end{document}\n")  # fmt: skip
+    reading = read(text)
+    assert reading.refusals == ()
+    assert "of 12 sites" in reading.masked and "endnote" not in reading.masked
+
+
+def test_a_classs_front_matter_is_passed_over_and_its_abstract_read() -> None:
+    """Elsevier's `frontmatter` holds the title, the addresses, the abstract, the highlights
+    and the keywords, and Wiley's template types its issue and dates in the body: each is
+    passed over, as Markdown's YAML header is, but the abstract, read under its heading, and
+    the highlights, the paper's claims (Basile, 2026-10-23; round 1). So is an abstract in a
+    box inside the front matter, BMC's `abstractbox`; one in a blanked argument is not
+    lifted. A front matter command the author defines, as an article's preamble often defines
+    `\\keywords`, is the author's, read as an unknown command is (round 1)."""
+    text = ("\\documentclass{elsarticle}\n\\newcommand{\\keywords}[1]{Keywords: #1}\n"
+            "\\begin{document}\n\\begin{frontmatter}\n\\title{A 10-year cohort}\n"
+            "\\address[a]{Unit 1181}\n\\begin{abstractbox}\\begin{abstract}\nOf 4100 cases.\n"
+            "\\end{abstract}\\end{abstractbox}\n\\begin{highlights}\n\\item Of 4371, 12\\%.\n"
+            "\\end{highlights}\n\\begin{keyword}\nkey 77\n\\end{keyword}\n"
+            "\\end{frontmatter}\n\\Volume{46}\\pagespan{1}{9}\\affil*[2]{Unit 1182}\n"
+            "\\keywords{dose 5}\n\\section{Intro}\nBody 3.\n\\end{document}\n")  # fmt: skip
+    reading = read(text)
+    assert reading.refusals == () and reading.own == ("keywords",)
+    for hidden in ("10-year", "1181", "77", "46", "9}", "1182"):
+        start = text.index(hidden)
+        assert set(reading.masked[start : start + len(hidden)]) <= {NUL, "}"}, hidden
+    for printed in ("Of 4100 cases.", "Of 4371, 12", "dose 5", "Body 3."):
+        assert printed in reading.masked, printed
+    assert [heading.title for heading in reading.headings] == ["Abstract", "Intro"]
+    assert "Of 12" not in read("\\author{\\begin{abstract}Of 12\\end{abstract}}",
+                               body=True).masked  # fmt: skip
+    # Round 2: in a group inside the front matter, `{\small ...}`, it is read all the same.
+    grouped = ("\\begin{frontmatter}{\\small\\begin{abstract}Of 4100.\\end{abstract}}"
+               "\\end{frontmatter}")  # fmt: skip
+    assert "Of 4100." in read(grouped, body=True).masked
+
+
+def test_a_file_input_inside_the_front_matter_is_read_as_it_is() -> None:
+    """A file input from inside `frontmatter` starts there: passed over, but an abstract."""
+    reading = read("\\address{Unit 1181}\n\\begin{abstract}Of 4100.\\end{abstract}\n",
+                   body=True, environments=("frontmatter",))  # fmt: skip
+    assert "1181" not in reading.masked and "Of 4100." in reading.masked
+    abstract = read("Of 4100.\n", body=True, environments=("frontmatter", "abstract"))
+    assert "Of 4100." in abstract.masked
+
+
+def test_a_front_matter_command_the_author_defines_in_another_file_is_the_author_s() -> None:
+    """Round 1 of real templates, part 2: an article's own `\\journal`, defined in its package
+    and used in a file the entry inputs, prints what its definition says; its argument is
+    read, as before the table held the name. One the class defines is passed over."""
+    from manuscript_guard.text.latex.structure import read_tree
+
+    files = {"main.tex": "\\documentclass{article}\n\\usepackage{macros}\n\\begin{document}\n"
+                         "\\input{a}\n\\Volume{46}\n\\end{document}\n",
+             "a.tex": "As in \\journal{Lancet 2019}.\n"}  # fmt: skip
+    document = read_tree(files, packages={"macros.sty": "\\newcommand{\\journal}[1]{#1}\n"})
+    (main, macros, inputs) = document.sources
+    assert "Lancet 2019" in inputs.reading.masked and "46" not in main.reading.masked
+    assert document.refusals == ()
+    # Round 2: the file that defines it says so, on the tree's second reading too.
+    assert macros.reading.own == ("journal",)
 
 
 def test_an_input_encoding_other_than_utf8_is_refused() -> None:

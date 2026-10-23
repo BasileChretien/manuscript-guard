@@ -66,15 +66,72 @@ expected:
       place captions, and two tables one after the other with a caption between them
   - reading: latex printed
     why: >-
-      a binding in LaTeX prose is printed where it stands, `{{results.key}}` with no space
-      added before or after it, as LaTeX prints its value: a sentence quoted from the paper
-      that ends after a binding is found in it (step 8, G13); and `--` and `---` in prose are
-      the dashes LaTeX prints, `\ldots` its ellipsis (step 8, G7)
+      a `\def` with delimited parameters, `\def\x\begin{verbatim}` among the inputs, was
+      refused and the rest of the file read as typed; it is read now, as TeX reads it,
+      its parameter text blanked and its body read, and a use refused only where it
+      prints; a `\let` of a command to one the reader reads the same way and a doubled
+      parameter in a nested body are no longer refused either (real templates, part 1)
   - reading: prose quotations
     why: >-
       a sentence that opens with a typographic quotation mark is a sentence of its own, as
       one that opens with a straight one is, so its quotation is held to its own citation
       and not to the one of the sentence before (step 8, G7)
+  - reading: latex bindings
+    why: >-
+      a `\def` with delimited parameters, `\def\x\begin{verbatim}` among the inputs, was
+      refused and the rest of the file read as typed; it is read now, as TeX reads it,
+      its parameter text blanked and its body read, and a use refused only where it
+      prints; a `\let` of a command to one the reader reads the same way and a doubled
+      parameter in a nested body are no longer refused either (real templates, part 1)
+  - reading: latex mask
+    why: >-
+      a `\def` with delimited parameters, `\def\x\begin{verbatim}` among the inputs, was
+      refused and the rest of the file read as typed; it is read now, as TeX reads it,
+      its parameter text blanked and its body read, and a use refused only where it
+      prints; a `\let` of a command to one the reader reads the same way and a doubled
+      parameter in a nested body are no longer refused either (real templates, part 1)
+  - reading: latex places
+    why: >-
+      a `\def` with delimited parameters, `\def\x\begin{verbatim}` among the inputs, was
+      refused and the rest of the file read as typed; it is read now, as TeX reads it,
+      its parameter text blanked and its body read, and a use refused only where it
+      prints; a `\let` of a command to one the reader reads the same way and a doubled
+      parameter in a nested body are no longer refused either (real templates, part 1)
+  - reading: latex refusals
+    why: >-
+      a `\def` with delimited parameters, `\def\x\begin{verbatim}` among the inputs, was
+      refused and the rest of the file read as typed; it is read now, as TeX reads it,
+      its parameter text blanked and its body read, and a use refused only where it
+      prints; a `\let` of a command to one the reader reads the same way and a doubled
+      parameter in a nested body are no longer refused either (real templates, part 1)
+  - reading: latex sections
+    why: >-
+      a `\def` with delimited parameters, `\def\x\begin{verbatim}` among the inputs, was
+      refused and the rest of the file read as typed; it is read now, as TeX reads it,
+      its parameter text blanked and its body read, and a use refused only where it
+      prints; a `\let` of a command to one the reader reads the same way and a doubled
+      parameter in a nested body are no longer refused either (real templates, part 1)
+  - reading: latex words
+    why: >-
+      a `\def` with delimited parameters, `\def\x\begin{verbatim}` among the inputs, was
+      refused and the rest of the file read as typed; it is read now, as TeX reads it,
+      its parameter text blanked and its body read, and a use refused only where it
+      prints; a `\let` of a command to one the reader reads the same way and a doubled
+      parameter in a nested body are no longer refused either (real templates, part 1)
+  - reading: latex writing
+    why: >-
+      a `\def` with delimited parameters, `\def\x\begin{verbatim}` among the inputs, was
+      refused and the rest of the file read as typed; it is read now, as TeX reads it,
+      its parameter text blanked and its body read, and a use refused only where it
+      prints; a `\let` of a command to one the reader reads the same way and a doubled
+      parameter in a nested body are no longer refused either (real templates, part 1)
+  - reading: latex pointers
+    why: >-
+      a `\def` with delimited parameters, `\def\x\begin{verbatim}` among the inputs, was
+      refused and the rest of the file read as typed; it is read now, as TeX reads it,
+      its parameter text blanked and its body read, and a use refused only where it
+      prints; a `\let` of a command to one the reader reads the same way and a doubled
+      parameter in a nested body are no longer refused either (real templates, part 1)
   - reading: spelling
     why: >-
       a paper that declares no English, `variant` None, is held to the English most of its

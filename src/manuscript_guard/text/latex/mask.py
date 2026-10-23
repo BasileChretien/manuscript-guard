@@ -27,11 +27,15 @@ from manuscript_guard.text.latex.commands import (
     ENVIRONMENTS,
     FIGURES,
     FLOATS,
+    FRONT_MATTER,
+    FRONT_MATTER_COMMANDS,
+    IMPORTS,
     LISTINGS,
     MATHS,
     PARAMETERS,
     POINTERS,
     RAW,
+    READ_IN_FRONT_MATTER,
     REFUSED,
     REFUSED_ENVIRONMENTS,
     SIUNITX,
@@ -66,7 +70,17 @@ _LETTERS_AT = re.compile(r"[A-Za-z@]+")
 _TEXT = re.compile(r"[^\\%{}\[\]$&~#`'\n]+")
 _ENVIRONMENT_NAME = re.compile(r"[ \t]*\n?[ \t]*\{([^{}\n]*)\}")
 _BRACED_NAME = re.compile(r"\{\s*\\([A-Za-z@]+|[^A-Za-z@\s])\s*\}")
-_PARAMETERS = re.compile(r"(?:#[1-9])*")
+#: A parameter token in a definition's body: `#1`, or `##1` in a definition inside it.
+_PARAMETER = re.compile(r"#+\d")
+#: How far a delimited definition's parameter text is looked through for its body's brace.
+_DELIMITED_REACH = 300
+#: What stands between `\\let`'s two commands: spaces and an equals sign, both optional.
+_LET_GAP = re.compile(r"[ \t]*=?[ \t]*")
+#: Commands the reader reads apart from the rest of their form, which no `\\let` makes one of
+#: another: an input, an import, code the printed view passes over, and a binding (round 2).
+_READ_APART = frozenset({"input", "include", "import", "subimport", "texttt", "mg"})
+#: What TeX passes over after a control word: spaces, and one line's end with the spaces after.
+_SKIPPED = re.compile(r"[ \t]*(?:\r?\n[ \t]*)?")
 #: An input encoding set by a package's option or by `\\inputencoding`, a few hundred
 #: characters at most, so that an option never closed is not read to the file's end.
 _INPUTENC = re.compile(
@@ -96,6 +110,10 @@ class Input:
     path: str
     body: bool
     environments: tuple[str, ...]
+    #: The command: `input` for `\\input` and `\\include`, or the import package's `import` or
+    #: `subimport`, whose folder is written before the file.
+    via: str = "input"
+    folder: str = ""
 
 
 @dataclass(frozen=True)
@@ -195,6 +213,11 @@ class Reading:
     #: Each `\\includegraphics`, from the command to past its path's closing brace, and where
     #: its path's braces open (step 10).
     graphics: tuple[tuple[int, int, int], ...] = ()
+    #: Each command the file defines with delimited parameters, `\\def\\x#1.{...}`, whose
+    #: uses are refused where they would print, in this file and in the others of its tree.
+    delimited: tuple[str, ...] = ()
+    #: Each command of a class's front matter the file defines, which is then the author's.
+    own: tuple[str, ...] = ()
 
 
 #: The level of each sectioning command, as Markdown's `#` counts it; a part stands over a
@@ -204,8 +227,9 @@ LEVELS = {"part": -1, "chapter": 0, "section": 1, "subsection": 2, "subsubsectio
 #: A path in braces after `\input`, which TeX finds past spaces and one line break.
 _BRACED_PATH = re.compile(r"[ \t]*(?:\r?\n[ \t]*)?\{([^{}\n]*)\}")
 #: Commands the reader knows that an author may define again, which it then reads as before:
-#: `\abstract` was an unknown command, its arguments read, until it was given a heading.
-_REDEFINABLE = frozenset({"abstract"})
+#: `\abstract` was an unknown command, its arguments read, until it was given a heading; a
+#: class's front matter, `\keywords` among it, is passed over however it is defined.
+_REDEFINABLE = frozenset({"abstract"}) | FRONT_MATTER_COMMANDS
 _PACKAGES = re.compile(r"\s*(?:\[([^\]]{0,300})\])?\s*\{([^{}]{0,300})\}")
 _NAMESPACE = "(?:" + "|".join(NAMESPACES) + r")\."
 #: What TeX passes over before an argument: spaces, and one line break (round 1 of #400).
@@ -273,6 +297,8 @@ def read(
     environments: tuple[str, ...] = (),
     loose: bool = False,
     package: bool = False,
+    delimited: frozenset[str] = frozenset(),
+    own: frozenset[str] = frozenset(),
 ) -> Reading:
     """The masked text, the first refusal, and what the file inputs, heads and loads. With
     `body` None, a file with a `\\begin{document}` outside a comment opens in the preamble,
@@ -283,10 +309,10 @@ def read(
     `loose` file, which nothing inputs, is body that accepts what a preamble accepts. A
     `package` of the author's is read as LaTeX reads a package, with `@` a letter."""
     opens_in_body = not _has_document(text) if body is None else body
-    reader = _Reader(text, opens_in_body, environments, loose, package)
+    reader = _Reader(text, opens_in_body, environments, loose, package, delimited, own)
     reading = reader.run()
     if body is None and not reader.body and reader.refused is None:
-        return _Reader(text, True, environments, loose, package).run()
+        return _Reader(text, True, environments, loose, package, delimited, own).run()
     return reading
 
 
@@ -359,6 +385,8 @@ class _Reader:
         environments: tuple[str, ...] = (),
         loose: bool = False,
         package: bool = False,
+        delimited: frozenset[str] = frozenset(),
+        own: frozenset[str] = frozenset(),
     ) -> None:
         self.text = text
         self.n = len(text)
@@ -401,9 +429,17 @@ class _Reader:
         self.siunitx = 0
         #: The command a definition being read defines, until its body opens.
         self.defining = ""
+        #: The commands defined with delimited parameters, here and in the files `delimited`
+        #: names, each use of which is refused where it would print; and those defined here.
+        self.delimited = set(delimited)
+        self.defined_delimited: list[str] = []
+        #: The front matter's commands the author defines, here and in the files `own` names,
+        #: read as unknown commands are; and those defined here (round 1, part 2).
+        self.own = set(own)
+        self.defined_own: list[str] = []
         self.heading_at = -1
         for name in environments:
-            role = MATHS_READ if name in MATHS else self._role()
+            role = MATHS_READ if name in MATHS else self._entered(name, self._role())
             self.stack.append(_Frame("env", role, 0, name, table=name in TABLES, inherited=True))
             self.environments.append(name)
 
@@ -436,7 +472,8 @@ class _Reader:
                  tuple(self.code), tuple(self.declared), tuple(sorted(figures)),
                  tuple(sorted(references)), self.body_end, tuple(self.bodies),
                  tuple(self.pointers), tuple(self.comments), tuple(self.unprinted),
-                 tuple(self.graphics))  # fmt: skip
+                 tuple(self.graphics), tuple(self.defined_delimited),
+                 tuple(self.defined_own))  # fmt: skip
         if self.refused is None:
             return Reading(masked, (), *found)
         at = self.refused.offset
@@ -667,9 +704,10 @@ class _Reader:
             self._dollar(at)
         elif character in "&~":
             self._space(at, 1, table_only=character == "&")
-        elif character == "#" and self.definitions and self.text[at + 1 : at + 2].isdigit():
-            self._blank(at, at + 2)
-            self.pos = at + 2
+        elif character == "#" and self.definitions and _PARAMETER.match(self.text, at):
+            end = _PARAMETER.match(self.text, at).end()
+            self._blank(at, end)
+            self.pos = end
         elif character in "`'" and self.text[at + 1 : at + 2] == character:
             self._quote(at, "\N{LEFT DOUBLE QUOTATION MARK}" if character == "`"
                         else "\N{RIGHT DOUBLE QUOTATION MARK}")  # fmt: skip
@@ -807,6 +845,8 @@ class _Reader:
                 self._refuse("tex-refused", at, f"\\{name} is not read: {said}")
         elif name in ("input", "include") and not self.definitions:
             self._input(at, end)
+        elif name in IMPORTS and not self.definitions:
+            self._import(name, at, end)
         elif name == "verb":
             self._verb(at, end)
         elif name in ("begin", "end"):
@@ -828,7 +868,7 @@ class _Reader:
         elif name == "mg":
             self._binding(at, end)
             self.command, self.pending = name, COMMANDS[name]
-        elif name in COMMANDS:
+        elif name in COMMANDS and name not in self.own:
             if name in LEVELS or name == "abstract":
                 self.heading_at = at
             if name in CITATIONS:
@@ -840,6 +880,10 @@ class _Reader:
             if name in ("documentclass", "bibliographystyle"):
                 self._declares(name, end)
             self.command, self.pending = name, COMMANDS[name]
+        elif name in self.delimited and self._prints():
+            said = ("it is defined with delimited parameters, and what it prints is not read; "
+                    "define it with \\newcommand")
+            self._refuse("tex-refused", at, f"\\{name} is not read: {said}")
         elif self._unknown_citation(name):
             # A citation command the reader does not know would hide its keys from G7 (DESIGN.md,
             # "Citations"); one an author defines is refused where it is used.
@@ -848,6 +892,12 @@ class _Reader:
             self._refuse("tex-refused", at, f"\\{name} is not read: {said}")
         elif _near_binding(name) and _LOOKS_BOUND.match(self.text, end):
             self.suspects.append((at, self._suspect_end(at)))
+
+    def _prints(self) -> bool:
+        """Whether what stands here prints where it stands: read, and in no definition's body,
+        though it may be in a hook's, which LaTeX runs where it stands (round 1)."""
+        return self._reads() and not any(frame.definition and frame.command not in HOOKS
+                                         for frame in self.stack)  # fmt: skip
 
     def _unknown_citation(self, name: str) -> bool:
         """Whether a command the reader does not know is one that cites, where what it cites
@@ -890,6 +940,23 @@ class _Reader:
         stop = braced.end() if braced else end
         self.inputs.append(Input(at, stop, path, self.body, tuple(self.environments)))
         self.command, self.pending = "input", COMMANDS["input"]
+
+    def _import(self, name: str, at: int, end: int) -> None:
+        """Record the import package's `\\import{folder}{file}` or `\\subimport{folder}{file}`
+        as an `\\input` of the file in that folder, which the tree finds (`structure.py`). A
+        folder or a file not written in braces leaves the file unnamed, refused there. The
+        starred forms are refused by name (round 1)."""
+        if self.text.startswith("*", end):
+            said = f"it is not followed; write \\{name} without the star"
+            self._refuse("tex-refused", at, f"\\{name}* is not read: {said}")
+            return
+        folder = _BRACED_PATH.match(self.text, end)
+        named = _BRACED_PATH.match(self.text, folder.end()) if folder else None
+        path = named.group(1) if named else ""
+        stop = named.end() if named else folder.end() if folder else end
+        self.inputs.append(Input(at, stop, path, self.body, tuple(self.environments), name,
+                                 folder.group(1) if folder else ""))  # fmt: skip
+        self.command, self.pending = name, COMMANDS[name]
 
     def _packages(self, at: int, end: int) -> None:
         listed = _PACKAGES.match(self.text, end)
@@ -984,19 +1051,77 @@ class _Reader:
         if self.text[start : start + 1] != "\\":
             return
         name_end = self._name_end(start)
-        self._defines(self.text[start + 1 : name_end], start)
+        defined = self.text[start + 1 : name_end]
+        if name == "let":
+            self._let(defined, start, name_end)
+            return
+        self._defines(defined, start)
         self._blank(start, name_end)
         self.pos = name_end
-        if name == "let":
-            self.defining = ""
+        parameters, delimited = self._parameter_text(name_end, bool(self.letters.match(defined)))
+        if parameters < 0:
+            said = f"the body of \\{defined} is not found within {_DELIMITED_REACH} characters"
+            self._refuse("tex-refused", at, f"\\{name} is not read: {said}")
             return
-        parameters = _PARAMETERS.match(self.text, name_end).end()
-        if self.text[parameters : parameters + 1] != "{":
-            self._refuse("tex-refused", at, f"\\{name} with delimited parameters is not read")
-            return
+        if delimited:
+            # Delimited parameters, `\def\x#1.{...}`: the definition is read, and each use
+            # where it would print is refused, since what it takes there is not known.
+            self.delimited.add(defined)
+            self.defined_delimited.append(defined)
         self._blank(name_end, parameters)
         self.command = name
         self._open("arg", "d", parameters, "}")
+
+    def _parameter_text(self, at: int, word: bool) -> tuple[int, bool]:
+        """Where a definition's body opens, past its parameter text, and whether that text
+        delimits its parameters, as TeX reads it: the spaces after a control word are skipped,
+        a comment runs to its line's end and the next line's spaces with it, `#1` is a
+        parameter, and anything else delimits, a control sequence such as `\\{` no brace.
+        -1 where a closing brace comes first, or no brace is found within reach (round 1 of
+        real templates: `\\def\\x {1}` and `\\def\\x%` with `{1}` on the next line were
+        taken for delimited)."""
+        stop, delimited = min(self.n, at + _DELIMITED_REACH), False
+        if word:
+            at = _SKIPPED.match(self.text, at).end()
+        while at < stop:
+            character = self.text[at]
+            if character == "{":
+                return at, delimited
+            if character == "}":
+                return -1, delimited
+            if character == "%":
+                end = _comment_end(self.text, at)
+                self.comments.append((at, end))
+                at = _SKIPPED.match(self.text, end).end()
+                continue
+            parameter = _PARAMETER.match(self.text, at)
+            if parameter:
+                at = parameter.end()
+                continue
+            delimited = True
+            at = self._name_end(at) if character == "\\" else at + 1
+        return -1, delimited
+
+    def _let(self, defined: str, start: int, name_end: int) -> None:
+        """`\\let\\a=\\b`: `\\a` comes to mean what `\\b` means. A command the reader reads, let
+        to another it reads the same way, is read as before: with the endnotes package,
+        `\\let\\footnote=\\endnote` prints each note at the end rather than at the foot, and
+        its text is the same prose. Let to anything else, it is defined again."""
+        gap = _LET_GAP.match(self.text, name_end).end()
+        target_end = self._name_end(gap) if self.text[gap : gap + 1] == "\\" else -1
+        target = self.text[gap + 1 : target_end] if target_end > 0 else ""
+        # Not a heading, a citation or a cross-reference, of one form each but for what they
+        # print, a level, a citation's kind, a name: `\let\chapter\section` (round 1); nor
+        # a command the reader reads apart, an input, code or a binding (round 2).
+        alias = (defined in COMMANDS and COMMANDS.get(target) == COMMANDS[defined]
+                 and not {defined, target} & (set(LEVELS) | set(CITATIONS) | POINTERS
+                                              | _READ_APART))  # fmt: skip
+        if not alias:
+            self._defines(defined, start)
+        self.defining = ""
+        stop = target_end if alias else name_end
+        self._blank(start, stop)
+        self.pos = stop
 
     def _printed_from_preamble(self, name: str) -> bool:
         """Whether what `name` takes is printed though it stands in the preamble: the title
@@ -1008,6 +1133,11 @@ class _Reader:
 
     def _defines(self, name: str, at: int) -> None:
         self.defining = name
+        if name in FRONT_MATTER_COMMANDS:
+            # Told of it by the tree or not, the file that defines it says so (round 2).
+            self.own.add(name)
+            if name not in self.defined_own:
+                self.defined_own.append(name)
         if name in _REDEFINABLE:
             return
         if name in COMMANDS or name in ("begin", "end", "verb", "def"):
@@ -1057,7 +1187,7 @@ class _Reader:
             if bound is not None:
                 self._refuse("tex-refused", bound.start(), _bound_as_typed(name))
         else:
-            role = self._role()
+            role = self._entered(name, self._role())
             if role == PREAMBLE and self._printed_from_preamble(name):
                 role = PROSE
             maths = name in MATHS and role in (PROSE, MATHS_READ)
@@ -1067,6 +1197,23 @@ class _Reader:
             if name == "abstract" and role == PROSE:
                 self.headings.append(Heading(at, 1, "Abstract"))
             self.command, self.pending = "begin", ENVIRONMENTS.get(name, ())
+
+    def _entered(self, name: str, role: str) -> str:
+        """How an environment opened where `role` is read is read: a class's front matter is
+        passed over, and an abstract or highlights in it, inside environments and groups only,
+        `{\\small ...}` say, are read as what holds the front matter is; not in an argument,
+        which is blanked whatever holds it (round 2)."""
+        if name in FRONT_MATTER:
+            return BLANK
+        if name not in READ_IN_FRONT_MATTER:
+            return role
+        for index in range(len(self.stack) - 1, -1, -1):
+            frame = self.stack[index]
+            if frame.kind not in ("env", "group"):
+                return role
+            if frame.kind == "env" and frame.closer in FRONT_MATTER:
+                return self.stack[index - 1].role if index else PROSE if self.body else PREAMBLE
+        return role
 
     def _end(self, name: str, at: int) -> None:
         opened = [frame for frame in self.stack if not frame.inherited]

@@ -263,7 +263,6 @@ class _Writer:
             name = SUPPLEMENT if supplementary else MAIN
             self.document, self.entry = document, document.sources[0].path
             self.sources = {source.path: source for source in document.sources}
-            self.files = {source.path: source.text for source in document.sources}
             for source in document.sources:
                 if source.loose:
                     continue
@@ -357,7 +356,6 @@ class _Writer:
         return written if not depth or written.endswith("\n") else written + "\n"
 
     def _edits(self, source, depth: int) -> list[tuple[int, int, str]]:
-        from manuscript_guard.text.latex.structure import resolve
         from manuscript_guard.text.latex.views import bindings
 
         text, reading = source.text, source.reading
@@ -369,8 +367,10 @@ class _Writer:
                  if not any(low <= start < high for low, high in kept)]  # fmt: skip
         edits += [(start, end, "") for start, end in reading.unprinted]
         edits += [(found.start, found.end, self._value(found)) for found in bindings(source)[0]]
+        # The file each input names as the tree found it, an `\\import`'s in its folder.
+        targets = dict(source.targets)
         for put in reading.inputs:
-            target, _why = resolve(self.entry, put.path, self.files)
+            target = targets.get(put.offset)
             if target is None or target not in self.sources:
                 continue
             body = self._text(self.sources[target], depth=depth + 1)
@@ -488,8 +488,16 @@ class _Writer:
                              f"{path}, outside the manuscript's folder, which the submission "
                              "folder cannot hold; put the file in the manuscript's "
                              "folder")  # fmt: skip
-        tried = [joined] if posixpath.splitext(joined)[1] in _GRAPHICS else []
-        tried += [joined + extension for extension in _GRAPHICS]
+        bases = [joined]
+        if source.imported:
+            # In a file the import package imported, LaTeX looks in the folder it was
+            # imported from after the entry file's.
+            under = posixpath.normpath(posixpath.join(folder, source.imported, path))
+            if under != ".." and not under.startswith("../"):
+                bases.append(under)
+        tried = [each for base in bases
+                 for each in ([base] if posixpath.splitext(base)[1] in _GRAPHICS else [])
+                 + [base + extension for extension in _GRAPHICS]]  # fmt: skip
         # A file the build read first, then a figure it rendered, named by the path it has
         # beside the entry file, which is none of the manuscript's (round 2 of step 10).
         for relative in [*(each for each in tried if each in self.read), *tried]:

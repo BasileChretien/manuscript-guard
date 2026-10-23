@@ -236,6 +236,94 @@ def test_a_front_matter_command_the_author_defines_in_another_file_is_the_author
     assert macros.reading.own == ("journal",)
 
 
+def _hidden(text: str, masked: str, typed: str) -> bool:
+    start = text.index(typed)
+    return set(masked[start : start + len(typed)]) == {NUL}
+
+
+def test_acmart_s_ccs_xml_is_passed_over_as_the_class_excludes_it() -> None:
+    """2311.00579: acmart excludes `CCSXML` as the comment package's environment, and its
+    concepts' ids and weights were numbers; `\\ccsdesc[300]{...}`, the concept the title page
+    prints, is front matter, its weight none of the paper's (2026-10-23)."""
+    text = ("\\begin{CCSXML}\n<ccs2012>\n <concept_id>10002978.10003001</concept_id>\n"
+            " <concept_significance>300</concept_significance>\n</ccs2012>\n\\end{CCSXML}\n"
+            "\\ccsdesc[500]{Security and privacy~Embedded systems}\nOf 4100.\n")  # fmt: skip
+    reading = read(text, body=True)
+    assert reading.refusals == () and reading.listings == () and reading.unprinted == ()
+    for typed in ("10002978.10003001", "300", "500", "Embedded systems"):
+        assert _hidden(text, reading.masked, typed), typed
+    assert "Of 4100." in reading.masked
+
+
+def test_elsevier_s_cas_title_page_is_passed_over_but_the_title() -> None:
+    """2604.24157, Elsevier's CAS double column: the title's option list with a space before
+    it, an ORCID iD in an option after the author's name, the marks of the title page's notes,
+    the CRediT roles and the running heads were read as the text (2026-10-23). The title is
+    read, as before."""
+    text = ("\\title [mode = title]{OxyPOM in 2024}\n\\tnotemark[1]\n"
+            "\\shorttitle{Oxygen 7}\n\\shortauthors{A and B 8}\n"
+            "\\author{Ovidio}[%type=editor,\n   orcid=0000-0001-6060-2001]\n\\cormark[1]\n"
+            "\\fnmark[2]\n\\credit{Writing 3}\n\\nonumnote{Grant 4}\n"
+            "\\affiliation[1]{organization={Hereon}, postcode={21502}}[type=alt]\n"
+            "\\author[1,3]{Carsten}[orcid=0000-0003-3483-6036]\nOf 4100.\n")  # fmt: skip
+    reading = read(text, body=True)
+    assert reading.refusals == ()
+    for typed in ("mode = title", "[1]", "Oxygen 7", "A and B 8", "0000-0001-6060-2001",
+                  "[2]", "Writing 3", "Grant 4", "21502", "type=alt", "1,3",
+                  "0000-0003-3483-6036"):  # fmt: skip
+        assert _hidden(text, reading.masked, typed), typed
+    assert "OxyPOM in 2024" in reading.masked and "Of 4100." in reading.masked
+    # elsarticle's marks name a note's label inside the title and the author.
+    marked = "\\title{A cohort\\tnoteref{t1}}\\author{A\\corref{c1}\\fnref{f2}}"
+    assert _hidden(marked, read(marked, body=True).masked, "t1")
+
+
+def test_springer_s_running_title_and_corresponding_author_are_passed_over() -> None:
+    """2112.07039, Springer's `sn-jnl`: `\\title[short]{long}` read the title twice, its
+    short form being the running head, and `\\author*[1]` read a 1 (2026-10-23)."""
+    text = "\\title[Limits 12]{Limits of 4100}\n\\author*[1]{Omar}\n\\affil*[1]{Duke}\n"
+    reading = read(text, body=True)
+    assert reading.refusals == ()
+    assert _hidden(text, reading.masked, "Limits 12") and _hidden(text, reading.masked, "*[1]")
+    assert "Limits of 4100" in reading.masked
+
+
+def test_a_tikz_picture_is_passed_over_as_a_picture_file_is() -> None:
+    """2311.00579, 2401.04687 and 2405.21051: a TikZ picture's options, its sizes and shifts,
+    and the old `\\tikzstyle{name} = [...]` were read as the text (2026-10-23). The picture is
+    passed over, its nodes' text too, as `\\includegraphics` passes over a picture's file; and
+    so is one in a definition's body, whose `\\end` stands in the same body."""
+    text = ("\\tikzset{>={Latex[width=2mm]}}\n\\tikzstyle{latent} = [circle, line width=0.35mm]\n"
+            "\\tikzstyle{data}=[draw,\n  minimum height=2em]\n"
+            "\\newcommand{\\dot}[1]{\\begin{tikzpicture}[baseline={(0,-0.5ex)}]\n"
+            "  \\node[minimum size=1em, inner sep=1pt] {#1};\\end{tikzpicture}}\n"
+            "\\begin{tikzpicture}[remember picture, shift={(1,2)}]\n"
+            "\\node[anchor=north east,xshift=-4cm] {n = 412 $x^3$};\n"
+            "\\begin{axis}[xmin=5]\\addplot coordinates {(1,6)};\\end{axis}\n"
+            "\\end{tikzpicture}\nOf 4100 \\dot{a}.\n")  # fmt: skip
+    reading = read(text, body=True)
+    assert reading.refusals == ()
+    for typed in ("2mm", "0.35mm", "2em", "0.5ex", "1em", "1pt", "(1,2)", "-4cm", "n = 412",
+                  "x^3", "xmin=5", "(1,6)"):  # fmt: skip
+        assert _hidden(text, reading.masked, typed), typed
+    assert "Of 4100" in reading.masked
+    # A picture opened in one definition and closed in another is text expanded at each use,
+    # as any environment in a body is: its options are passed over, and nothing is left open.
+    split = ("\\newenvironment{pic}{\\begin{tikzpicture}[x=2cm]}{\\end{tikzpicture}}\n"
+             "\\begin{pic}Of 4100\\end{pic}\n")  # fmt: skip
+    reading = read(split, body=True)
+    assert reading.refusals == () and _hidden(split, reading.masked, "2cm")
+    # So is one whose `\end` in the same body stands in a comment.
+    commented = ("\\newcommand{\\pa}{\\begin{tikzpicture}[x=3cm]% \\end{tikzpicture}\n}"
+                 "\\newcommand{\\pb}{\\end{tikzpicture}}\nOf 4100.\n")  # fmt: skip
+    reading = read(commented, body=True)
+    assert reading.refusals == () and _hidden(commented, reading.masked, "3cm")
+    assert "Of 4100." in reading.masked
+    # A file input inside a picture starts there, passed over.
+    assert "412" not in read("\\node {412};\n", body=True,
+                             environments=("tikzpicture",)).masked  # fmt: skip
+
+
 def test_an_input_encoding_other_than_utf8_is_refused() -> None:
     text = "\\documentclass{article}\n\\usepackage[latin1]{inputenc}\n\\begin{document}\n"
     assert [r.code for r in read(text + "\\end{document}").refusals] == ["tex-refused"]

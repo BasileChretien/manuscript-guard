@@ -691,6 +691,24 @@ LATEX_PLACES = (
     ("\\Volume{{{}}}\\pagespan{{{}}}{{{}}}\\affil*[1]{{Unit {}}} ", (False, False, False, False)),
     # A front matter command the author defines is the author's, read as before (round 1).
     ("\\newcommand{{\\journal}}[1]{{#1}}\\journal{{Lancet {}}} ", (True,)),
+    # A journal class's title page in the body (2026-10-23): Springer's running title and
+    # corresponding author; Elsevier's CAS option lists, the title's after a space, the marks
+    # of its notes, its CRediT roles, a note with no mark and its running heads; and acmart's
+    # CCS concepts, the XML its class excludes and each concept's weight. The title is read.
+    ("\\title[Short {}]{{Long {}}}\\title [mode = {}]{{T}}\\author*[{}]{{A}}[orcid={}]"
+     "\\cormark[{}]\\fnmark[{}]\\tnotemark[{}]\\credit{{Role {}}}\\shorttitle{{S {}}}"
+     "\\shortauthors{{A {}}}\\nonumnote{{N {}}}\\affiliation[{}]{{org={}}}[type={}] ",
+     (False, True, *(False,) * 13)),
+    ("\\begin{{CCSXML}}\n<c>{}</c>\n\\end{{CCSXML}}\n\\ccsdesc[{}]{{C {}}} ",
+     (False, False, False)),
+    # A TikZ picture, passed over whole as a picture's file is, the styles set for it, and
+    # one drawn in a definition's body (2026-10-23).
+    ("\\begin{{tikzpicture}}[x={}cm]\\node[minimum size={}em] {{n {}}};\\end{{tikzpicture}} ",
+     (False, False, False)),
+    ("\\tikzset{{a/.style={{line width={}mm}}}}\\tikzstyle{{b}} = [inner sep={}pt] ",
+     (False, False)),
+    ("\\newcommand{{\\pic}}[1]{{\\begin{{tikzpicture}}\\node[size={}em] {{#1}};"
+     "\\end{{tikzpicture}}}} ", (False,)),
 )  # fmt: skip
 #: Where a number stands in the preamble, before `\\begin{document}`.
 LATEX_PREAMBLE_PLACES = (
@@ -739,6 +757,48 @@ def latex_planted(draw: st.DrawFn) -> tuple[str, list[tuple[int, str, bool]]]:
     text += between[-1] + "\\end{document}\n"
     plant("after {}\n", (False,))
     return text, planted
+
+
+#: Where a length stands in LaTeX, each `{}` a length, and whether it sets the page there: in
+#: a definition's body, the whole of it, after a primitive or among words, a length in a unit
+#: TeX measures the page in is layout; in the text, the body's prose, a note, emphasis or
+#: maths, it is a number (2026-10-23).
+LATEX_LENGTH_PLACES = (
+    ("\\def\\h{{{}}}%\n", True),
+    ("\\newcommand{{\\k}}{{\\kern{} x}}\n", True),
+    ("\\def\\l{{\\lower{}\\hbox{{x}} and {} y}}\n", True),
+    ("prose {} ", False),
+    ("\\footnote{{in {}}} ", False),
+    ("\\emph{{{}}} ", False),
+    ("$x = {}$ ", False),
+)
+#: TeX's units that measure the page, and those a paper measures in too.
+TEX_UNITS = ("pt", "bp", "sp", "pc", "dd", "cc", "em", "ex", "mu")
+PAPER_UNITS = ("mm", "cm", "in")
+
+
+@st.composite
+def latex_lengths(draw: st.DrawFn) -> tuple[str, list[tuple[int, str, bool]]]:
+    """A LaTeX document with a length at every place of `LATEX_LENGTH_PLACES`, twice, once in
+    a unit TeX measures the page in and once in one a paper measures in too, each written as
+    TeX reads a length, its sign and its point drawn; and where each stands, and whether it is
+    layout there. Every kind is in every document."""
+    places = draw(st.permutations([(template, layout, units) for template, layout in
+                                   LATEX_LENGTH_PLACES for units in (TEX_UNITS, PAPER_UNITS)]))
+    # A file with no `\\begin{document}` is body, definitions and prose alike.
+    text, planted, count = "", [], 0
+    for template, layout, units in places:
+        pieces = [piece.replace("{{", "{").replace("}}", "}") for piece in template.split("{}")]
+        for piece in pieces[:-1]:
+            number = str(4101 + count)
+            count += 1
+            shape = draw(st.sampled_from(("{}", "-{}", "{}.5", ".{}")))
+            length = shape.format(number) + draw(st.sampled_from(units))
+            text += piece
+            planted.append((len(text), length, layout and units is TEX_UNITS))
+            text += length
+        text += pieces[-1]
+    return text + "\n", planted
 
 
 #: Where a command defined with delimited parameters is used, each `{}` the use, and whether

@@ -7432,6 +7432,60 @@ def test_the_twins_front_matter_is_passed_over_and_its_abstract_read(project: Pa
     assert found == [("unclassified-number", "'4371' is not bound to any source")], found
 
 
+def test_a_journal_classs_title_page_in_the_twin_is_passed_over(project: Path) -> None:
+    """Springer's running title and corresponding author, Elsevier's CAS ORCID iD, marks,
+    CRediT roles and running heads, and acmart's CCS concepts, typed in the body, are none of
+    the paper's numbers; a number typed in the abstract beside them is still unbound
+    (2026-10-23, from 2112.07039, 2604.24157 and 2311.00579)."""
+    entry = _twin(project)
+    text = entry.read_text(encoding="utf-8")
+    text = text.replace("\\title{", "\\title [Hepatic injury 12]{", 1)
+    text = text.replace("\\begin{abstract}\n", "\\author*[1]{A. Author}\n\\author{B. Author}"
+                        "[orcid=0000-0001-6060-2001]\n\\cormark[1]\\fnmark[2]\\tnotemark[3]\n"
+                        "\\credit{Writing 4}\\shorttitle{Hepatic 5}\\shortauthors{Author 6}\n"
+                        "\\begin{CCSXML}\n<concept_id>10002978.10003001</concept_id>\n"
+                        "\\end{CCSXML}\n\\ccsdesc[300]{Applied computing~Health}\n"
+                        "\\begin{abstract}\nOf 4371 reports.\n", 1)  # fmt: skip
+    entry.write_text(text, encoding="utf-8")
+    found = [(f.code, f.message) for f in _twin_failures(project)]
+    assert found == [("unclassified-number", "'4371' is not bound to any source")], found
+
+
+def test_a_tikz_picture_in_the_twin_is_passed_over_as_a_picture_file_is(project: Path) -> None:
+    """A TikZ picture's options, its sizes and shifts, its nodes' text and the styles set for
+    it are no numbers of the paper's, in the body or in a definition's body; a number typed
+    beside the picture is still unbound (2026-10-23, from 2311.00579, 2401.04687 and
+    2405.21051)."""
+    entry = _twin(project)
+    text = entry.read_text(encoding="utf-8")
+    entry.write_text(text.replace("\\begin{document}", "\\usepackage{tikz}\n"
+                                  "\\tikzset{>={Latex[width=2mm]}}\n\\newcommand{\\dot}[1]{"
+                                  "\\begin{tikzpicture}[baseline={(0,-0.5ex)}]\n"
+                                  "\\node[minimum size=1em] {#1};\\end{tikzpicture}}\n"
+                                  "\\begin{document}", 1), encoding="utf-8")  # fmt: skip
+    _into_results(entry, "\\tikzstyle{latent} = [circle, line width=0.35mm]\n"
+                  "\\begin{tikzpicture}[shift={(1,2)}]\n\\node[xshift=-4cm] {n = 412};\n"
+                  "\\end{tikzpicture}\nOf 4371 \\dot{a} reports.")  # fmt: skip
+    found = [(f.code, f.message) for f in _twin_failures(project)]
+    assert found == [("unclassified-number", "'4371' is not bound to any source")], found
+
+
+def test_a_tex_length_in_the_twin_s_definitions_is_layout(project: Path) -> None:
+    """A length in a unit TeX measures the page in, in a definition's body, is layout and no
+    number of the paper's; in inches it may be the paper's own measure, and in the text a
+    length is a number like any other (2026-10-23, from 2601.04966 and 2412.11273)."""
+    entry = _twin(project)
+    text = entry.read_text(encoding="utf-8")
+    entry.write_text(text.replace("\\begin{document}", "\\def\\bibhang{24pt}%\n"
+                                  "\\def\\simgt{\\lower.5ex\\hbox{$>$}}\n"
+                                  "\\def\\jump{\\hskip 0.2in}\n\\begin{document}", 1),
+                     encoding="utf-8")  # fmt: skip
+    _into_results(entry, "The tables are set in 9pt type.")
+    found = sorted((f.code, f.message) for f in _twin_failures(project))
+    assert found == [("unclassified-number", "'0.2in' is not bound to any source"),
+                     ("unclassified-number", "'9pt' is not bound to any source")], found
+
+
 def test_layout_in_the_twin_is_no_number_g2_reads(project: Path) -> None:
     """A LaTeX parameter defined again, a font's size, columns and a table's spacing print no
     number (round 1 of #400: each failed G2 once G2 read LaTeX)."""

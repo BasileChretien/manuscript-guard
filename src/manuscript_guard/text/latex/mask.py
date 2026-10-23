@@ -33,6 +33,7 @@ from manuscript_guard.text.latex.commands import (
     LISTINGS,
     MATHS,
     PARAMETERS,
+    PICTURES,
     POINTERS,
     RAW,
     READ_IN_FRONT_MATTER,
@@ -249,6 +250,9 @@ _LISTING_OPTIONS = re.compile(r"[ \t]*\[([^\]\n]*)\]")
 _LANGUAGE = re.compile(r"language\s*=\s*\{?\s*(?:\[[^\]]*\])?\s*([A-Za-z][A-Za-z0-9+#]*)")
 _BOUND_IN_SIUNITX = ("a binding in a siunitx command is not read: siunitx parses its number, "
                      "and a value prints as text; write \\mg{...} outside it")  # fmt: skip
+#: TikZ's old `\\tikzstyle{name} = [options]`: its name, and the sign before its options,
+#: `=` or `+=`, or none.
+_STYLE_NAME = re.compile(_GAP + r"\{[^{}\n]*\}[ \t]*\+?=?")
 
 
 def _near_binding(name: str) -> bool:
@@ -868,6 +872,11 @@ class _Reader:
         elif name == "mg":
             self._binding(at, end)
             self.command, self.pending = name, COMMANDS[name]
+        elif name == "tikzstyle" and (style := _STYLE_NAME.match(self.text, end)):
+            # Its name passed over, then its options as a command's, past the sign between.
+            self._blank(end, style.end())
+            self.pos = style.end()
+            self.command, self.pending = name, COMMANDS[name]
         elif name in COMMANDS and name not in self.own:
             if name in LEVELS or name == "abstract":
                 self.heading_at = at
@@ -1151,7 +1160,7 @@ class _Reader:
         name = named.group(1).strip()
         self._blank(at, named.end())
         self.pos = named.end()
-        if self.definitions:
+        if self.definitions and not self._picture_in_body(which, name):
             # In a definition's body an environment is text to be expanded at each use, not
             # one that opens here (round 1 of #380: `\newenvironment{tight}{\begin{itemize}}
             # {\end{itemize}}` was refused). Its arguments are still taken: a minipage's width
@@ -1198,12 +1207,33 @@ class _Reader:
                 self.headings.append(Heading(at, 1, "Abstract"))
             self.command, self.pending = "begin", ENVIRONMENTS.get(name, ())
 
+    def _picture_in_body(self, which: str, name: str) -> bool:
+        """Whether a picture opens or closes in a definition's body as it does outside one:
+        one whose `\\end` stands in the same body is a picture there, passed over, as
+        2311.00579's `\\newcommand{\\redcircleletter}[1]{\\begin{tikzpicture}...}` draws one
+        (2026-10-23). One opened in a body and closed in another is text expanded at each
+        use, as any environment in a body is, so that nothing is left open."""
+        if name not in PICTURES:
+            return False
+        top = self.stack[-1] if self.stack else None
+        if which == "end":
+            return top is not None and top.kind == "env" and top.closer == name
+        body = next(frame for frame in reversed(self.stack) if frame.definition)
+        ends = self._group_end(body.start, comments=True)
+        ending = re.compile(r"\\end\s*\{" + re.escape(name) + r"\}")
+        for closing in ending.finditer(self.text, self.pos, max(ends, self.pos)):
+            # One in a comment closes nothing.
+            line = self.text.rfind("\n", 0, closing.start()) + 1
+            if not _opens_comment(self.text, max(line, self.pos), closing.start()):
+                return True
+        return False
+
     def _entered(self, name: str, role: str) -> str:
         """How an environment opened where `role` is read is read: a class's front matter is
         passed over, and an abstract or highlights in it, inside environments and groups only,
         `{\\small ...}` say, are read as what holds the front matter is; not in an argument,
-        which is blanked whatever holds it (round 2)."""
-        if name in FRONT_MATTER:
+        which is blanked whatever holds it (round 2). A picture is passed over whole."""
+        if name in FRONT_MATTER or name in PICTURES:
             return BLANK
         if name not in READ_IN_FRONT_MATTER:
             return role

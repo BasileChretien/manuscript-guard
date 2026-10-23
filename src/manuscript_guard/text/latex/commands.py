@@ -63,8 +63,21 @@ _DEFINE = "*{c}[b][p]{d}"
 #: authors, keywords, and Wiley's, Oxford's and Springer's issue, dates and running heads,
 #: each argument passed over, as that header is (Basile, 2026-10-23).
 _FRONT_MATTER_SPECS = {
-    **dict.fromkeys(("address", "affiliation", "altaffiliation", "cortext", "fntext",
-                     "tnotetext", "ead", "email", "homepage", "corresp"), "[b]{b}"),
+    **dict.fromkeys(("altaffiliation", "cortext", "fntext", "tnotetext", "ead", "email",
+                     "homepage", "corresp"), "[b]{b}"),
+    # Elsevier's CAS classes take an option list after an address, `\\affiliation[1]{...}
+    # [...]`, `O{} m O{}` in their `cas-common.sty`; and give marks that number a note on the
+    # title page, `\\cormark[1]`, `\\fnmark[2]`, `\\tnotemark[1]`, `O{}`, the CRediT roles
+    # `\\credit{...}` prints in a statement of its own, a note with no mark and the running
+    # heads, `m` (2026-10-23, from 2604.24157). elsarticle's `\\fnref`, `\\corref` and
+    # `\\tnoteref` name a note's label inside `\\author` and `\\title`, as its template writes
+    # them. acmart's `\\ccsdesc[300]{...}` is a CCS concept the title page prints, with its
+    # weight, `\\newcommand\\ccsdesc[2][100]` in acmart.cls (from 2311.00579).
+    **dict.fromkeys(("address", "affiliation"), "[b]{b}[b]"),
+    **dict.fromkeys(("cormark", "fnmark", "tnotemark"), "[b]"),
+    **dict.fromkeys(("credit", "nonumnote", "shorttitle", "shortauthors", "fnref", "corref",
+                     "tnoteref"), "{b}"),
+    "ccsdesc": "[b]{b}",
     "affil": "*[b]{b}",
     **dict.fromkeys(("keywords", "journal", "institute", "titlerunning", "authorrunning",
                      "orcidID", "inst", "equalcont", "corres", "pacs", "DOIsuffix", "Volume",
@@ -91,7 +104,11 @@ COMMANDS = _specs(
              "subparagraph"),
             _SECTION,
         ),
-        "title": "[p]{p}",
+        # The title is read. Its option is the short title of a running head, which
+        # Springer's `sn-jnl` and amsart print over the pages, or an option list, Elsevier's
+        # CAS `\\title[mode = title]{...}`: passed over as `\\titlerunning` is (2026-10-23,
+        # from 2112.07039, which read the title twice, and 2604.24157).
+        "title": "[b]{p}",
         "thanks": "{p}",
         # A class's `\\abstract{...}`: a section titled Abstract, as the environment is.
         "abstract": "{p}",
@@ -132,7 +149,15 @@ COMMANDS = _specs(
         # The import package's: a folder and a file, followed as an input is (`IMPORTS`).
         **dict.fromkeys(("import", "subimport"), "{b}{b}"),
         "url": "{r}",
-        "author": "[b]{b}",
+        # Springer's `\\author*[1]{...}`, its star the corresponding author's, and Elsevier's
+        # CAS `\\author[1]{...}[orcid=...]`, with an option list after the name (2026-10-23).
+        "author": "*[b]{b}[b]",
+        # TikZ's and pgfplots' settings, which style a picture and print nothing where they
+        # stand (2026-10-23, from 2401.04687). The old `\\tikzstyle{name} = [...]` has an
+        # equals sign between its name and its options, and `mask.py` takes the name first.
+        **dict.fromkeys(("tikzset", "pgfplotsset", "usetikzlibrary", "usepgfplotslibrary"),
+                        "{b}"),
+        "tikzstyle": "[b]",
         **_FRONT_MATTER_SPECS,
         "includegraphics": "*[b][b]{b}",
         "addbibresource": "[b]{b}",
@@ -240,8 +265,14 @@ ENVIRONMENTS = _specs(
         "array": "[b]{b}",
         "alignat": "{b}",
         "alignat*": "{b}",
+        "tikzpicture": "[b]",
     }
 )  # fmt: skip
+
+#: A picture drawn in the source, passed over whole, its options, its code and its nodes'
+#: text, as `\\includegraphics` passes over a picture's file (2026-10-23: a TikZ picture's
+#: sizes and shifts were numbers of the text).
+PICTURES = frozenset({"tikzpicture"})
 
 #: Environments whose `&` and `\\\\` separate cells: each is a space.
 TABLES = frozenset(
@@ -267,10 +298,13 @@ AMSMATH = frozenset(
 )  # fmt: skip
 
 #: Environments read to their `\\end` as characters and blanked whole: a listing, read by G2's
-#: code check as a fenced block is, and a comment.
-RAW = frozenset({"verbatim", "verbatim*", "Verbatim", "lstlisting", "comment"})
+#: code check as a fenced block is, and a comment: the comment package's, and acmart's
+#: `CCSXML`, the XML of the CCS concepts, which the class excludes as one (2026-10-23, from
+#: 2311.00579, whose concepts' ids were numbers of the text).
+COMMENTS = frozenset({"comment", "CCSXML"})
+RAW = frozenset({"verbatim", "verbatim*", "Verbatim", "lstlisting"}) | COMMENTS
 #: The listings among them, which print what they hold as typed.
-LISTINGS = RAW - {"comment"}
+LISTINGS = RAW - COMMENTS
 
 #: The cross-references, which print a number only the compiled document knows (step 8).
 POINTERS = frozenset({"ref", "eqref", "pageref", "autoref", "nameref", "cref", "Cref", "vref",

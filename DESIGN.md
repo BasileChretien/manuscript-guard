@@ -1658,7 +1658,9 @@ The result is compiled and packed by the code above, and checked three times:
   the main text is taken as pointing at it. An `\appendix` in an author's macro opens no
   appendix where the macro is used, so a table there cited first is out of order to G2.
   Springer's and BMC's headings for files sent apart are read; a journal's other wording
-  for a supplement's heading is not (2026-10-23, round 1).
+  for a supplement's heading is not (2026-10-23, round 1). A heading that is the word alone,
+  "Supplement", is taken for the supplement's even in a trial of a dietary supplement
+  (round 2).
 - A distribution's package shipped beside the entry file, as an arXiv source often ships
   `natbib.sty`, is read as the author's, and refused at the first construct the reader
   does not read, natbib's `\csname`. Taken out of `manuscript/`, it is the
@@ -2480,7 +2482,12 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
     information, to the next heading of its level, is the supplement's. G2 holds it neither
     to ICMJE's order nor to being cited; a pointer typed to it is held to its place among
     the document's displays, counted on from the main text's. A heading the word only
-    describes, "Supplementary analyses", holds the main text's (round 1). The pointing view
+    describes, "Supplementary analyses" or "Supplementary data sources", holds the main
+    text's: the heading's title must name the supplement, alone or before a label, a colon
+    or a stop (rounds 1 and 2). A part a heading opens ends at the next heading of its level
+    or at the reference list, past which a paper may place its floats; IEEEtran's
+    `\appendices` and an `appendix` environment open the appendix too, and `\appendix` holds
+    past the end of an environment (round 2). The pointing view
     marks where the appendix begins (`printed.APPENDIX`) and where `appendices` ends, not in a
     comment or a definition's body, and `_in_order` in
     `gates/pointers.py` takes the numbers to pass over. An Elsevier paper had cited its

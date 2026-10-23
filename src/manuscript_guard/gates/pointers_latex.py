@@ -49,18 +49,21 @@ from manuscript_guard.gates.pointers import (
 from manuscript_guard.text.blocks import find_headings
 
 GATE = "G2"
-#: A heading that names the main document's supplement: "Supplementary materials",
-#: "Supplemental tables", "Supplement 2", "Appendix A", "Appendices", "Supporting
-#: information", "S1 Appendix", "Electronic supplementary material", "Additional files". Not
-#: one the word only describes, "Supplementary analyses", "Supplemental oxygen" or
-#: "Supplement use", whose tables are the main text's (round 1).
+#: A heading that names the main document's supplement, its whole title or before a label,
+#: a colon or a stop: "Supplementary materials", "Supplementary Table S1", "Supplement 2",
+#: "Appendix A: Proofs", "Appendices", "Supporting information", "S1 Appendix", "Electronic
+#: supplementary material", "Additional file 1", "Web appendix", "Data supplement",
+#: "eMethods". Not one the word only describes, "Supplementary analyses", "Supplementary data
+#: sources", "Supplemental oxygen" or "Appendix diameter", whose tables are the main text's
+#: (rounds 1 and 2).
 _SUPPLEMENT_HEADING = re.compile(
     r"\s*(?:[A-Z]?\d+(?:\.\d+)*[.):]?\s+)?(?:"
-    r"(?:online\s+|electronic\s+)?(?:supplementary|supplemental)\s+(?:materials?|information"
-    r"|data|tables?|figures?|files?|appendi(?:x|ces)|text|content)\b"
-    r"|(?:online\s+)?supplement(?:\s+(?:S?\d+[A-Z]?|[A-Z]))?\s*(?:[.:]|$)"
-    r"|e?appendi(?:x|ces)\b|supporting\s+information\b|S\d+\s+(?:appendix|text|file)\b"
-    r"|additional\s+files?\b)",
+    r"(?:online\s+|electronic\s+)?(?:supplementary|supplemental)(?:\s+(?:materials?\s+and"
+    r"\s+methods|materials?|information|data|tables?|figures?|files?|appendi(?:x|ces)|text"
+    r"|content|methods|notes))?"
+    r"|(?:online\s+|data\s+)?supplement|(?:e|web\s+)?appendi(?:x|ces)|supporting\s+information"
+    r"|S\d+\s+(?:appendix|text|file)|additional\s+files?|e(?:methods|tables?|figures?))"
+    r"(?:\s+(?:S?\d+[A-Z]?|[A-Z](?:\.\d+)?))?\s*(?:[.:].*)?$",
     re.IGNORECASE,
 )
 #: The cross-references that cite what they point at: not a page's, which `\\pageref` prints.
@@ -127,14 +130,18 @@ def _marks():
 
 def _supplement_parts(text: str) -> list[tuple[int, int]]:
     """Where each heading that names a supplement runs in the view, to the next heading of
-    its level or above."""
+    its level or above, or to the reference list, past which a paper may place its floats
+    (round 2)."""
+    from manuscript_guard.text.latex.printed import APPENDIX, MARK_END
+
     headings = find_headings(text)
+    lists = [found.start() for found in re.finditer(f"{APPENDIX}references{MARK_END}", text)]
     parts = []
     for index, heading in enumerate(headings):
         if _SUPPLEMENT_HEADING.match(heading.title):
-            end = next((later.start for later in headings[index + 1 :]
-                        if later.level <= heading.level), len(text))  # fmt: skip
-            parts.append((heading.start, end))
+            ends = [later.start for later in headings[index + 1 :] if later.level <= heading.level]
+            ends += [at for at in lists if at > heading.start]
+            parts.append((heading.start, min(ends, default=len(text))))
     return parts
 
 
@@ -151,12 +158,15 @@ def _numbered(views: dict):
     apart: dict[tuple[bool, str], set[int]] = {key: set() for key in AS_FILES}
     for supplementary, view in views.items():
         parts = _supplement_parts(view.text)
-        appendix = False
+        # `\\appendix` holds to the end; an environment to where it ends (round 2).
+        command = environment = False
         for found in _marks().finditer(view.text):
             if found[1] == APPENDIX:
-                appendix = found[2] != "end"
+                command = command or found[2] == ""
+                environment = {"environment": True, "end": False}.get(found[2], environment)
             if found[1] != DISPLAY:
                 continue
+            appendix = command or environment
             code, named = found[2][:1], found[2][1:]
             kind = TABLE if code.lower() == "t" else FIGURE
             if code.isupper():

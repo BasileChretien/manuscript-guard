@@ -7,6 +7,7 @@ numbers.
 
 from __future__ import annotations
 
+import re
 import shutil
 from pathlib import Path
 
@@ -215,7 +216,9 @@ _CODES = "\\begin{table}\\caption{Codes.}\\label{tab:codes}\\end{table}\n"
 @pytest.mark.parametrize(
     "opened",
     ["\\appendix\n\\section{Codes}\n", "\\begin{appendices}\n\\section{Codes}\n",
-     "\\section{Supplementary materials}\n\\subsection{Codes}\n"],
+     "\\section{Supplementary materials}\n\\subsection{Codes}\n",
+     # Round 2: IEEEtran's command and an `appendix` environment.
+     "\\appendices\n\\section{Codes}\n", "\\begin{appendix}\n\\section{Codes}\n"],
 )
 def test_a_table_in_the_appendix_is_the_supplement_s(twin: Path, opened: str) -> None:
     """An Elsevier paper cited its "Supplementary Table" in the Methods, a table its own
@@ -223,7 +226,8 @@ def test_a_table_in_the_appendix_is_the_supplement_s(twin: Path, opened: str) ->
     `\\appendix`, in the appendix package's `appendices` or under a heading that names a
     supplement is the supplement's, held neither to ICMJE's order nor to being cited, and a
     pointer typed past it is still held to what the document numbers."""
-    closed = "\\end{appendices}\n" if "appendices" in opened else ""
+    environment = re.match(r"\\begin\{(\w+)\}", opened)
+    closed = f"\\end{{{environment[1]}}}\n" if environment else ""
     _replaced(twin, "\\bibliographystyle{plain}", opened + _CODES + _CODES.replace("codes", "more")
               + closed + "\\bibliographystyle{plain}")  # fmt: skip
     _replaced(twin, "\\section{Methods}\n", "\\section{Methods}\nThe codes are in Supplementary "
@@ -246,7 +250,8 @@ def test_a_supplement_s_heading_holds_its_part_and_no_further(twin: Path) -> Non
 
 
 @pytest.mark.parametrize(
-    "heading", ["Supplementary analyses", "Supplemental oxygen", "Supplement use"]
+    "heading", ["Supplementary analyses", "Supplemental oxygen", "Supplement use",
+                "Supplementary data sources", "Appendix diameter"]  # round 2
 )
 def test_a_heading_the_word_only_describes_holds_the_main_text_s_tables(
     twin: Path, heading: str
@@ -266,6 +271,31 @@ def test_the_appendix_package_s_appendices_end_where_the_environment_does(twin: 
     said = check_pointers_latex(load_project(twin.parent.parent)[0]).findings
     assert [(f.code, f.message.split(" is ")[0]) for f in said] == [
         ("display-not-cited", "Table 4")]
+
+
+def test_an_appendix_command_holds_past_the_end_of_an_environment(twin: Path) -> None:
+    """Round 2: `\\appendix` holds to the end of the document, whatever ends after it."""
+    _replaced(twin, "\\bibliographystyle{plain}", "\\appendix\n\\begin{appendices}\n"
+              "\\section{Codes}\n" + _CODES + "\\end{appendices}\n"
+              + _CODES.replace("codes", "after") + "\\bibliographystyle{plain}")  # fmt: skip
+    assert _said(twin) == []
+
+
+def test_a_supplement_s_part_ends_at_the_reference_list(twin: Path) -> None:
+    """Round 2: a paper that places its floats after the reference list, as medical
+    submissions do, may end its text with a heading for its supplement: the floats after the
+    list are the main text's, and held to ICMJE's order."""
+    text = twin.read_text(encoding="utf-8")
+    floats = re.findall(r"\\begin\{(?:table|figure)\}.*?\\end\{(?:table|figure)\}", text, re.S)
+    for typed in floats:
+        text = text.replace(typed, "")
+    text = text.replace("\\bibliographystyle{plain}", "\\section*{Supplementary data}\nSee "
+                        "online.\n\n\\bibliographystyle{plain}").replace(
+        "\\bibliography{references}\n", "\\bibliography{references}\n" + "\n".join(floats) + "\n")
+    twin.write_text(text, encoding="utf-8")
+    assert _said(twin) == []
+    _replaced(twin, "\\section{Methods}\n", "\\section{Methods}\nSee Table~\\ref{tab:counts}.\n")
+    assert [code for code, *_rest in _said(twin)] == ["cited-out-of-order"]
 
 
 def test_an_appendix_in_a_comment_or_a_definition_opens_none(twin: Path) -> None:

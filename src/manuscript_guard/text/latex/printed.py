@@ -122,11 +122,17 @@ _QUOTATION = re.compile(r"\\(begin|end)\s*\{(?:quote|quotation|displayquote)\}")
 #: `F` where the view cannot say what LaTeX numbers: a float with no `\\caption` it reads, a
 #: `\\captionof`, a `longtable`'s caption, a page `\\includepdf` takes in.
 DISPLAY, REFERENCE, MARK_END = chr(0xE003), chr(0xE004), chr(0xE005)
-#: What that view writes where the appendix begins, at `\\appendix` or the appendix package's
-#: `appendices`, to `MARK_END`, and `end` before it where that environment ends: the
-#: displays between are the supplement's (2026-10-23; round 1).
+#: What that view writes where the appendix begins, at `\\appendix` or IEEEtran's
+#: `\\appendices`, to `MARK_END`; `environment` before it where the appendix package's
+#: `appendices` or an `appendix` environment opens, and `end` where it ends: the displays
+#: between are the supplement's (2026-10-23; rounds 1 and 2). And `references` where the
+#: reference list stands, which ends a supplement's part a heading opened (round 2).
 APPENDIX = chr(0xE006)
-_APPENDIX = re.compile(r"\\appendix(?![A-Za-z@])|\\(?P<end>begin|end)\s*\{appendices\}")
+_APPENDIX = re.compile(
+    r"\\(?:appendix|appendices)(?![A-Za-z@])|\\(?P<end>begin|end)\s*\{(?:appendices|appendix)\}"
+    r"|(?P<references>\\(?:bibliography|printbibliography)(?![A-Za-z@])"
+    r"|\\begin\s*\{thebibliography\})"
+)
 #: A label, which a caption before it in its float gives the number of.
 _LABEL = re.compile(r"\\label\s*\{([^{}]*)\}")
 #: What numbers a display the view cannot count, by the kinds it may number.
@@ -389,8 +395,9 @@ def _pointing_events(source: Source) -> list[tuple[int, int, str]]:
     for found in _APPENDIX.finditer(text, max(reading.body_start, 0)):
         if read(found.start()) and not any(low <= found.start() < high
                                            for low, high in reading.bodies):  # fmt: skip
-            ended = "end" if found["end"] == "end" else ""
-            events.append((found.start(), found.end(), APPENDIX + ended + MARK_END))
+            kind = ("references" if found["references"] else "end" if found["end"] == "end"
+                    else "environment" if found["end"] else "")  # fmt: skip
+            events.append((found.start(), found.end(), APPENDIX + kind + MARK_END))
     return events
 
 

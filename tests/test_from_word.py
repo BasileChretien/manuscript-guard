@@ -160,6 +160,20 @@ def test_the_built_document_carries_the_picture(tmp_path: Path, capsys) -> None:
 
 
 @needs_pandoc
+@pytest.mark.parametrize("english", [None, "en-US"])
+def test_a_word_paper_declares_the_english_it_is_given_and_none_unless_told(
+    tmp_path: Path, capsys, english: str | None
+) -> None:
+    root = tmp_path / "project"
+    paper = word(tmp_path / "word", PAPER)
+    told = ["--english", english] if english else []
+    assert main(["init", str(root), "--from", str(paper), *told]) == 0
+    assert yaml.safe_load((root / "paper.yaml").read_text(encoding="utf-8")).get(
+        "english_variant"
+    ) == english
+
+
+@needs_pandoc
 def test_a_title_given_is_taken_and_the_title_paragraph_is_kept(tmp_path: Path, capsys) -> None:
     root = tmp_path / "project"
     paper = word(tmp_path / "word", PAPER)

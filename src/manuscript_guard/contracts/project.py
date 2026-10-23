@@ -92,8 +92,10 @@ class Project:
         return tuple(str(entry) for entry in value) if isinstance(value, (list, dict)) else ()
 
     @property
-    def english_variant(self) -> str:
-        return self.paper.get("english_variant", "en-GB")
+    def english_variant(self) -> str | None:
+        """The English `paper.yaml` declares, or None where it declares none: each reader
+        then has its own rule for a paper that has not said (Basile, 2026-10-23)."""
+        return self.paper.get("english_variant")
 
     @property
     def target_journal(self) -> str | None:

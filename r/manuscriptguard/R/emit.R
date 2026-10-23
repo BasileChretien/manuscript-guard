@@ -935,16 +935,16 @@ mg_date_display_problem <- function(value, display) {
   NULL
 }
 
-# The English paper.yaml declares, read from its own line, and British English where none is:
-# the emitter reads no YAML. As Python's `_english`.
+# The English paper.yaml declares, read from its own line, and NA where none is: the emitter
+# reads no YAML. A date is then printed day, month, year. As Python's `_english`.
 mg_english <- function(project_root) {
   paper <- file.path(project_root, "paper.yaml")
-  if (!file.exists(paper)) return("en-GB")
+  if (!file.exists(paper)) return(NA_character_)
   lines <- readLines(paper, warn = FALSE, encoding = "UTF-8")
   found <- regmatches(lines, regexec(
     "^english_variant:[[:space:]]*[\"']?(en-GB|en-US)[\"']?[[:space:]]*(#.*)?$", lines))
   found <- Filter(length, found)
-  if (length(found) == 0) "en-GB" else found[[1]][2]
+  if (length(found) == 0) NA_character_ else found[[1]][2]
 }
 
 # The digest that identifies a dataset, as Python's `dataset_digest`: one file's own, or the

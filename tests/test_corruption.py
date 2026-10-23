@@ -22675,6 +22675,43 @@ def test_a_doc_renamed_docx_is_named_although_a_zip_ends_it(tmp_path: Path) -> N
     assert "Word 97-2003" in said and "word/document.xml" not in said, said
 
 
+def test_a_doc_in_a_folder_given_to_audit_is_named_and_strict_still_passes(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The audit takes a folder's .docx, .md, .markdown and .txt files, and passed over a
+    .doc beside them without a word: the paper in it went unaudited, and nothing said so.
+    Each .doc passed over is named, with the advice a .doc named on its own gets. It is a
+    note: the papers that were read were audited, so --strict passes on it."""
+    from manuscript_guard.audit import audit
+    from manuscript_guard.cli import main
+
+    folder = tmp_path / "papers"
+    (folder / "old").mkdir(parents=True)
+    (folder / "old" / "first.doc").write_bytes(_COMPOUND + bytes(504))
+    _docx(folder / "paper.docx", _p("We saw 412 reports."))
+    outputs = _outputs(tmp_path, '{"n": 412}')
+    assert main(["audit", str(folder), "--against", str(outputs), "--strict"]) == 0
+    out = capsys.readouterr().out
+    assert "old/first.doc is a Word 97-2003 document" in out, out
+    assert "save it as a Word document (.docx)" in out, out
+    assert "Could not read" not in out, out
+
+    # In the report as well, apart from what could not be read.
+    doc = folder / "old" / "first.doc"
+    report = audit([folder / "paper.docx"], [outputs], passed_over=[doc])
+    assert report.unreadable == [] and len(report.passed_over) == 1
+    assert "first.doc" in report.passed_over[0]
+
+    # A number the outputs lack still fails --strict beside the note.
+    _docx(folder / "paper.docx", _p("We saw 413 reports."))
+    assert main(["audit", str(folder), "--against", str(outputs), "--strict"]) == 1
+
+    # A folder with nothing but a .doc has nothing to audit, and says why.
+    (folder / "paper.docx").unlink()
+    assert main(["audit", str(folder), "--against", str(outputs), "--strict"]) == 2
+    assert "first.doc" in capsys.readouterr().err
+
+
 _PROSE_200 = " ".join(["Reports were included after review of each site and its records."] * 25)
 
 _MULTILINE = """
@@ -22755,7 +22792,11 @@ def test_a_reference_list_under_a_title_in_another_language_is_the_list(
     assert _kind_of(title, False, None) == SET_APART
 
 
-@pytest.mark.parametrize("title", ["Literature review", "Literaturübersicht", "Pustakawan"])
+@pytest.mark.parametrize(
+    "title",
+    ["Literature review", "Literaturübersicht", "Pustakawan", "Literatur und Forschungsstand",
+     "Referencias teóricas", "Bibliografia e metodi"],
+)  # fmt: skip
 def test_a_title_that_opens_with_the_word_names_no_reference_list(title: str) -> None:
     from manuscript_guard.audit import is_bibliography_heading
     from manuscript_guard.text.sections import split_sections
@@ -22789,3 +22830,46 @@ def test_an_email_address_and_an_interleukin_are_no_numbers(tmp_path: Path) -> N
         kinds = {a.text: classifier.classify(a).kind for a in find_atoms(text, mask(text))}
         assert kinds["someone1989@example.org"] == kinds["a.b2@uni-3.edu.tr"] == STRUCTURAL
         assert {kinds[name] for name in names} == {TERM}, kinds
+
+
+def test_a_term_inside_a_word_leaves_its_number_a_number(tmp_path: Path) -> None:
+    """A term was found anywhere in an atom, so with "il-12" and "il-3" among the terms,
+    "April-12" and "Brazil-3" were terms and their numbers went unchecked, by G2 and by the
+    audit. A term counts where it opens a word."""
+    from manuscript_guard.audit import audit
+    from manuscript_guard.classify import TERM, UNCLASSIFIED, Classifier
+    from manuscript_guard.text.masking import mask
+    from manuscript_guard.text.tokens import find_atoms
+
+    text = "Sites opened April-12 in Brazil-3 until-15, and IL-4 and interleukin-6 rose.\n"
+    paper = tmp_path / "paper.md"
+    paper.write_text(text, encoding="utf-8")
+    found = audit([paper], [_outputs(tmp_path, '{"n": 1}')]).unmatched
+    assert sorted(c.text for c in found) == ["April-12", "Brazil-3", "until-15"]
+    for classifier in (Classifier.load(), Classifier.load(rendered=True)):
+        kinds = {a.text: classifier.classify(a).kind for a in find_atoms(text, mask(text))}
+        assert kinds == {"April-12": UNCLASSIFIED, "Brazil-3": UNCLASSIFIED,
+                         "until-15": UNCLASSIFIED, "IL-4": TERM, "interleukin-6": TERM}
+
+
+@pytest.mark.parametrize(
+    "title", ["Literatur und Forschungsstand", "Referencias teóricas", "Bibliografia e metodi"]
+)
+def test_a_title_that_only_opens_with_a_list_s_title_elsewhere_is_prose(
+    tmp_path: Path, title: str
+) -> None:
+    """A reference list's title in another language was matched as the opening of the
+    title, so a German "Literatur und Forschungsstand" was the reference list: G4 dropped
+    its words from the main text, and the recycling check set it apart."""
+    from manuscript_guard.audit import is_bibliography_heading
+    from manuscript_guard.gates.recycling import SET_APART, _kind_of
+    from manuscript_guard.text.sections import measure, split_sections
+
+    text = f"# Results\n\nWe saw 412 reports.\n\n# {title}\n\nThree more words.\n"
+    [_results, section] = split_sections(text)
+    assert not section.is_references
+    # The headings are counted, the reference list's apart: "Results", four words, the
+    # title and three.
+    assert measure(text).main_text_words == 8 + len(title.split())
+    assert not is_bibliography_heading(f"# {title}", marked=True)
+    assert _kind_of(title, False, None) != SET_APART

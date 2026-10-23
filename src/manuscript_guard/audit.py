@@ -131,6 +131,10 @@ class AuditReport:
     unreadable: list[str] = field(default_factory=list)
     #: Outputs named in --against that were not read, or not read as what they claimed to be.
     skipped: list[str] = field(default_factory=list)
+    #: Each Word 97-2003 document (.doc) found in a folder given as a paper, which is not
+    #: read, with what to do about it. A note: the papers beside it were audited, so
+    #: --strict does not count it. A .doc named on its own is in `unreadable`.
+    passed_over: list[str] = field(default_factory=list)
     #: Stretches of a paper that were read and deliberately not audited: the reference list.
     not_audited: list[str] = field(default_factory=list)
     #: Numbers found nowhere, on lines taken for reference entries by their shape. Listed
@@ -716,6 +720,12 @@ def _intervals(text: str) -> list[tuple[int, int]]:
     ]
 
 
+def doc_passed_over(path: Path) -> str:
+    """What the report says of a .doc found in a folder given as a paper: the advice a .doc
+    named on its own is refused with, under the path it was found at."""
+    return compound_file_said(path.as_posix())
+
+
 def audit(
     papers: list[Path],
     backing: list[Path],
@@ -723,9 +733,11 @@ def audit(
     figures: list[Path] | None = None,
     classifier: Classifier | None = None,
     whole_numbers: tuple[str, ...] = (),
+    passed_over: list[Path] | None = None,
 ) -> AuditReport:
     """`whole_numbers` names the rows of the papers' tables whose cells are means of whole
-    numbers, which are held to their column's n (`stats/granularity.py`)."""
+    numbers, which are held to their column's n (`stats/granularity.py`). `passed_over` is
+    each .doc a folder given as a paper held, which is named in the report and not read."""
     # `rendered=True`: an existing paper has been through citeproc, so its citations are
     # "(Smith 2019)" rather than [@key]. That is the one place the audit-only rules apply.
     classifier = classifier or Classifier.load(rendered=True)
@@ -733,6 +745,7 @@ def audit(
     report = AuditReport(
         backing_values=values, backing_files=tuple(used), skipped=skipped,
         whole_numbers=whole_numbers, whole_numbers_unfound=list(whole_numbers),
+        passed_over=[doc_passed_over(path) for path in passed_over or []],
     )  # fmt: skip
 
     # Each source, whether a line may be taken for a reference entry by its shape, and
@@ -973,6 +986,7 @@ def render(report: AuditReport, discrimination: Discrimination, root: Path | Non
     for heading, items in (
         ("Could not read:", report.unreadable),
         ("Outputs not read as given:", report.skipped),
+        ("Passed over in a folder (a note, not counted by --strict):", report.passed_over),
         ("Not audited:", report.not_audited),
     ):
         if items:

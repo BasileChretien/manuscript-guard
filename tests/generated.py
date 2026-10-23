@@ -1776,7 +1776,8 @@ REFERENCE_TITLES = (
 )  # fmt: skip
 NOT_REFERENCE_TITLES = (
     "Literature review", "Literaturübersicht", "Pustakawan", "Bibliographic search",
-    "Referenced cohorts", "Kaynak", "Riferimenti", "Daftar",
+    "Referenced cohorts", "Kaynak", "Riferimenti", "Daftar", "Literatur und Forschungsstand",
+    "Referencias teóricas", "Bibliografia e metodi",
 )  # fmt: skip
 
 
@@ -1801,7 +1802,8 @@ INTERLEUKINS = (
     "IL-4", "IL-13", "IL-33", "interleukin-4", "interleukin-31", "IL-4/IL-13",
     "IL-4R\N{GREEK SMALL LETTER ALPHA}", "IL-1\N{GREEK SMALL LETTER BETA}",
 )  # fmt: skip
-NOT_NAMES = ("12", "3.4", "12@3.5", "40@lab")
+#: A word that ends in an interleukin's letters, "April-12" and "Brazil-3", holds no name.
+NOT_NAMES = ("12", "3.4", "12@3.5", "40@lab", "April-12", "Brazil-3", "until-15")
 #: Words to put between them: none names a class or a time, which a number after it is a
 #: label of ("cohort 12", "week 12").
 _BETWEEN_NAMES = ("reports", "were", "included", "the", "of", "and", "found", "among")

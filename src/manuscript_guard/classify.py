@@ -590,19 +590,29 @@ def declarable(atom: Atom) -> str | None:
 
 
 def _names_covering(text: str, terms: tuple[str, ...]) -> list[str] | None:
-    """`_terms_covering` for a name read without its signs: a term counts only where it
-    opens a word, with no letter and no digit before it, or stands directly after the
-    same term.
+    """`_terms_covering` for a name read without its signs, which is read the same way."""
+    return _terms_covering(text, terms)
 
-    The terms are gone through once, longest first. So of two names typed with nothing
-    between, the second is matched only where the first was taken out before it: it is
-    the longer, or as long and before it by its letters. Going through them again for as
-    long as one was taken out was tried: it took time by the square of the atom for names
-    alternating with nothing between, and did not end for a declared term of one space.
 
-    A term is found anywhere in an atom as it is written, and that stays. But taking the
-    signs out puts the digits of a superscript hard against the word before it, and
-    `risk^1^`, a citation's number, was `risk1`, which holds the term `k1`.
+def _terms_covering(text: str, terms: tuple[str, ...]) -> list[str] | None:
+    """Terms that between them account for every digit in `text`, or None. A term counts
+    only where it opens a word, with no letter and no digit before it, or stands directly
+    after the same term.
+
+    The terms are gone through once, longest first, so cyp2c19 is consumed before cyp2c9
+    could nibble at it. Of two names typed with nothing between, the second is matched
+    only where the first was taken out before it: it is the longer, or as long and before
+    it by its letters. Going through them again for as long as one was taken out was
+    tried: it took time by the square of the atom for names alternating with nothing
+    between, and did not end for a declared term of one space.
+
+    A term was found anywhere in an atom as it is written, and only a name read without its
+    signs was held to a word's start: taking the signs out puts the digits of a superscript
+    hard against the word before it, and `risk^1^`, a citation's number, was `risk1`, which
+    holds the term `k1`. As written, a word was taken for a name in the same way: with the
+    interleukins among the terms, "April-12" held `il-12` and "Brazil-3" `il-3`, and their
+    numbers went unchecked. A term inside a word, "sIL-2R" for one, is a number unless a
+    project declares it.
 
     The text is made anew once for each term that is found, and not once for each place
     it stands: one atom of `h~2~/` 160,000 times over took seven seconds."""
@@ -624,22 +634,6 @@ def _names_covering(text: str, terms: tuple[str, ...]) -> list[str] | None:
                 at = rest.find(term, at + 1)
         if kept:
             rest = "".join((*kept, rest[cut:]))
-            used.append(term)
-            if not any(ch.isdigit() for ch in rest):
-                return used
-    return None
-
-
-def _terms_covering(text: str, terms: tuple[str, ...]) -> list[str] | None:
-    """Terms that between them account for every digit in `text`, or None.
-
-    Longest first, so cyp2c19 is consumed before cyp2c9 could nibble at it.
-    """
-    rest = text.lower()
-    used: list[str] = []
-    for term in terms:
-        if term and term in rest:
-            rest = rest.replace(term, " ")
             used.append(term)
             if not any(ch.isdigit() for ch in rest):
                 return used

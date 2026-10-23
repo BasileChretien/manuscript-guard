@@ -63,8 +63,14 @@ __all__ = [
 # no sections at all as far as G2, G4 and the reporting gate were concerned: no
 # required-section check, no abstract, and every `methods_only` rule silently inapplicable.
 
+# An English title is read by its opening word, as it always was: "References and notes"
+# is the list. A title in another language is read whole, with only punctuation after it,
+# as the audit and the recycling check read every title: German "Literatur" opens
+# "Literatur und Forschungsstand", a review of the literature, and Italian's "Bibliografia"
+# opens a section on how the literature was searched.
 _REFERENCES = re.compile(
-    rf"^\s*(?:references|bibliography|works cited|{REFERENCE_WORDS_ELSEWHERE})\b", re.IGNORECASE
+    rf"^\s*(?:(?:references|bibliography|works cited)\b|(?:{REFERENCE_WORDS_ELSEWHERE})\W*$)",
+    re.IGNORECASE,
 )
 
 _TABLE_ROW = re.compile(r"^\s*\|.*\|\s*$", re.MULTILINE)

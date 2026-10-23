@@ -4944,7 +4944,9 @@ def _english_only(patch: pytest.MonkeyPatch, module: Any) -> None:
 
     found = next(name for name in ("_BIBLIOGRAPHY", "_REFERENCES") if hasattr(module, name))
     pattern = getattr(module, found)
-    english = pattern.pattern.replace(f"|{REFERENCE_WORDS_ELSEWHERE}", "")
+    # The sections read the other languages as a group of their own, which then never matches.
+    english = pattern.pattern.replace(f"(?:{REFERENCE_WORDS_ELSEWHERE})", "(?!)")
+    english = english.replace(f"|{REFERENCE_WORDS_ELSEWHERE}", "")
     assert english != pattern.pattern
     patch.setattr(module, found, re.compile(english, pattern.flags))
 
@@ -4965,6 +4967,14 @@ def _the_recycling_check_knows_english_titles_only(patch: pytest.MonkeyPatch) ->
     from manuscript_guard.gates import recycling
 
     _english_only(patch, recycling)
+
+
+def _a_section_takes_a_title_elsewhere_by_its_opening(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import sections
+    from manuscript_guard.text.section_names import REFERENCE_WORDS_ELSEWHERE
+
+    opening = rf"^\s*(?:references|bibliography|works cited|{REFERENCE_WORDS_ELSEWHERE})\b"
+    patch.setattr(sections, "_REFERENCES", re.compile(opening, re.IGNORECASE))
 
 
 # ------------------------------------------------ an address and an interleukin are names
@@ -5023,6 +5033,22 @@ def _an_interleukin_is_a_number(patch: pytest.MonkeyPatch) -> None:
         term for term in terms
         if term in earlier or not term.startswith(("il-", "interleukin-"))
     ))  # fmt: skip
+
+
+def _a_term_is_found_inside_a_word(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import classify
+
+    def anywhere(text: str, terms: tuple[str, ...]) -> list[str] | None:
+        rest, used = text.lower(), []
+        for term in terms:
+            if term and term in rest:
+                rest = rest.replace(term, " ")
+                used.append(term)
+                if not any(ch.isdigit() for ch in rest):
+                    return used
+        return None
+
+    patch.setattr(classify, "_terms_covering", anywhere)
 
 
 # ------------------------------------------------------------------- a suggested edit
@@ -11689,6 +11715,10 @@ BROKEN = {
         _the_recycling_check_knows_english_titles_only,
         test_a_reference_list_is_known_by_its_title_in_each_language,
     ),
+    "a section takes a title elsewhere by its opening": (
+        _a_section_takes_a_title_elsewhere_by_its_opening,
+        test_a_reference_list_is_known_by_its_title_in_each_language,
+    ),
     "an e-mail address is a number": (
         _an_email_address_is_a_number,
         test_an_address_and_an_interleukin_are_no_numbers_and_a_number_beside_them_is,
@@ -11699,6 +11729,10 @@ BROKEN = {
     ),
     "an interleukin is a number": (
         _an_interleukin_is_a_number,
+        test_an_address_and_an_interleukin_are_no_numbers_and_a_number_beside_them_is,
+    ),
+    "a term is found inside a word": (
+        _a_term_is_found_inside_a_word,
         test_an_address_and_an_interleukin_are_no_numbers_and_a_number_beside_them_is,
     ),
     "filler before a list item is not read": (

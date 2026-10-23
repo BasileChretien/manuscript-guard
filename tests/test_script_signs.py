@@ -303,6 +303,18 @@ def test_the_terms_come_in_one_order_on_every_run() -> None:
     assert unbound("One case of MERS-COVID-19 was seen.") == [], "`covid-19` before `mers-cov`"
 
 
+def test_a_term_counts_where_it_opens_a_word_in_the_atom_as_written() -> None:
+    """With `il-12` among the terms, "April-12" was a term, found inside the word."""
+    from manuscript_guard.classify import _terms_covering
+
+    assert _terms_covering("april-12", ("il-12",)) is None
+    assert _terms_covering("brazil-3", ("il-3",)) is None
+    assert _terms_covering("il-4/il-13", ("il-13", "il-4")) == ["il-13", "il-4"]
+    assert _terms_covering("anti-il-6", ("il-6",)) == ["il-6"]
+    assert _terms_covering("cd4+cd8+", ("cd4", "cd8")) == ["cd4", "cd8"]
+    assert _terms_covering("pao2fio2", ("pao2", "fio2")) == ["pao2", "fio2"]
+
+
 #: What the child process of the test below runs: the atoms of its first argument that
 #: nothing classifies, with a term of one space declared, as `unbound` gives them.
 READ_WITH_A_SPACE_DECLARED = N.join(

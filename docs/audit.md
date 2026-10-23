@@ -20,7 +20,8 @@ Italian, Turkish and Indonesian ("References", "Referencias", "Kaynakça", "Daft
 and the like), and otherwise by the shape of its entries. Numbers in names are classified as
 `check` classifies them: an e-mail address is no number, nor a name the shipped terms hold,
 such as "IL-4" or "interleukin-4". A Word 97-2003 document (.doc) is not read; save it as
-.docx first.
+.docx first. A .doc in a folder you give is named in the report as passed over, and does not
+fail `--strict`.
 
 **It also tells you how little that means.** The report ends with a measurement of the
 backing set you supplied:

@@ -8783,6 +8783,11 @@ A Word 97-2003 document, a compound file with NULs among its bytes, was refused 
 is UTF-16, save it as UTF-8"; it is now named as a .doc to be saved as .docx, by the audit
 and by every reader that opens a .docx, which looks for the compound file's signature before
 the zip, since a zip is read from its end and a .doc with an embedded object can end in one.
+A .doc in a folder given to the audit was passed over without a word, as any file the audit
+does not read is, and the paper in it went unaudited with nothing to say so. Each one is now
+named under "Passed over in a folder", with the same advice, as a note: the papers beside it
+were audited, so `--strict` does not count it, and a folder holding nothing else has nothing
+to audit and says which .doc it passed over.
 G6 counted the bold of a table's cells towards the rate of bold in the prose, and where a
 cell's bold ran on to its next line, paired `**` across the cells; pandoc writes a Word
 table as a simple or a multiline table where it can, which no rate passed over. The bold
@@ -16001,15 +16006,20 @@ What papers converted from Word showed (see "What papers converted from Word sho
   list in each (`text.section_names.REFERENCE_TITLES_ELSEWHERE`). A list titled in another
   language is prose to the audit, G4's count and the recycling check, and the audit tells
   its entries by their shape. A title typed with a combining accent, "c" and a combining
-  cedilla for "ç", is not matched.
+  cedilla for "ç", is not matched. A title in another language names the list only where
+  it is the whole title, with nothing after it but punctuation, as the audit and the
+  recycling check read every title: "Literatur und Forschungsstand" is a section of the
+  paper. G4's count and the other checks that ask `Section.is_references` still read an
+  English title by its opening word, as they did before these languages were added, so
+  "References and notes" is the list to them, and so is "Bibliography of the trials
+  searched"; the audit and the recycling check take neither.
 - **An interleukin is a term, and other names with digits are not.** The shipped terms hold
   the interleukins HGNC names, abbreviated with a hyphen and written out with one: "IL4",
   "interleukin 4" and a chemokine such as CXCL10 are numbers to G2 and to the audit alike.
   A project declares them in `terms:`; the audit reads no `paper.yaml`, so for it they stay
-  numbers.
-- **A .doc in a folder given to `audit` is passed over.** The audit takes a folder's .docx,
-  .md, .markdown and .txt files; a .doc named on its own is refused with the advice to save
-  it as .docx, and one in a folder is not named.
+  numbers. A term counts only where it opens a word, so that "April-12" and "Brazil-3" are
+  numbers and not `il-12` and `il-3`: a name with a letter before a term, "sIL-2R" or
+  "rhIL-2", is a number too until a project declares it.
 - **An e-mail address is one whose domain ends in letters.** "name@host" with no dot, or an
   address at a bare IP number, is read as a number.
 

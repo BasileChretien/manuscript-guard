@@ -1648,6 +1648,21 @@ The result is compiled and packed by the code above, and checked three times:
   prints. A file input from inside a definition is read as one nothing inputs, warned of,
   and the commands it defines with delimited parameters reach no other file, so a use of
   one is not refused (2026-10-23, the fix-only round of part 1).
+- An appendix's tables and figures are the supplement's to G2 only: G4 still counts one
+  placed with a binding toward the journal's limit on the main text's display items. An
+  appendix that numbers its own, `\renewcommand{\thetable}{S\arabic{table}}` after
+  `\setcounter{table}{0}`, is still counted on from the main text's, so a pointer typed to
+  its "Table S1" is read as one to the supplementary document's, and one to "Table A1" is
+  read as no pointer. So is an appendix a class numbers apart: elsarticle's `\appendix`
+  prints "Table A.1", and a "Table 3" typed for the appendix's first table after two in
+  the main text is taken as pointing at it. An `\appendix` in an author's macro opens no
+  appendix where the macro is used, so a table there cited first is out of order to G2.
+  Springer's and BMC's headings for files sent apart are read; a journal's other wording
+  for a supplement's heading is not (2026-10-23, round 1). A heading that is the word alone,
+  "Supplement", is taken for the supplement's even in a trial of a dietary supplement
+  (round 2). A reference list a supplement holds of its own, biblatex's `refsection` or
+  a typed `thebibliography` printed before its tables, ends the part there, and the tables after it are the main
+  text's (the fix-only round).
 - A distribution's package shipped beside the entry file, as an arXiv source often ships
   `natbib.sty`, is read as the author's, and refused at the first construct the reader
   does not read, natbib's `\csname`. Taken out of `manuscript/`, it is the
@@ -2463,8 +2478,27 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
     abstract in it read (above, "Environments"). Tests: `tests/test_latex_mask.py`,
     `tests/test_corruption.py`, and `latex_planted()` with `BROKEN` rules for the front
     matter read, its abstract passed over with it, its commands unknown, and one defined
-    again refused. The third, appendix displays: a table or figure after `\appendix`, or under a heading
-    named for a supplement or an appendix, is the supplement's.
+    again refused. The third, appendix displays (Basile's choice of 2026-10-23): a table or
+    a figure the main document prints after `\appendix` or in the appendix package's
+    `appendices`, or under a heading that names a supplement, an appendix or supporting
+    information, to the next heading of its level, is the supplement's. G2 holds it neither
+    to ICMJE's order nor to being cited; a pointer typed to it is held to its place among
+    the document's displays, counted on from the main text's. A heading the word only
+    describes, "Supplementary analyses" or "Supplementary data sources", holds the main
+    text's: the heading's title must name the supplement, alone or before a label, a colon
+    or a stop (rounds 1 and 2). A part a heading opens ends at the next heading of its level
+    or at the reference list, past which a paper may place its floats; IEEEtran's
+    `\appendices` and an `appendix` environment open the appendix too, and `\appendix` holds
+    past the end of an environment (round 2). The pointing view
+    marks where the appendix begins (`printed.APPENDIX`) and where `appendices` ends, not in a
+    comment or a definition's body, and `_in_order` in
+    `gates/pointers.py` takes the numbers to pass over. An Elsevier paper had cited its
+    "Supplementary Table" first in its Methods, a table of its own appendix, and was told it
+    was out of order. Tests: `tests/test_latex_pointers.py`, `tests/test_corruption.py`, and
+    `_planted_latex_appendix` in `tests/test_properties.py`, with `BROKEN` rules for the
+    appendix opening nothing, the package's environment opening nothing, an `\appendix` in a
+    comment or a body opening it, a supplement's heading holding nothing, its part running
+    to the end or ending at any heading, and the appendix's tables left out of the count.
 
 ## Zotero is never on the critical path
 

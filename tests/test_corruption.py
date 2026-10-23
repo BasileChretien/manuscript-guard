@@ -10760,6 +10760,27 @@ def test_a_latex_pointer_to_a_table_its_floats_do_not_number_fails(project: Path
     ]
 
 
+def test_a_latex_appendix_s_table_is_not_held_to_the_main_text_s_order(project: Path) -> None:
+    """A table in the appendix, cited first in the Methods as "Supplementary Table", is the
+    supplement's and passes; the same table outside the appendix is cited out of order and
+    fails (2026-10-23, an Elsevier paper)."""
+    from manuscript_guard.gates.pointers_latex import check_pointers_latex
+
+    shutil.rmtree(project / "manuscript")
+    shutil.copytree(TWIN, project / "manuscript")
+    main = project / "manuscript" / "main.tex"
+    cited = "\\section{Methods}\nCodes are in Supplementary Table~\\ref{codes}.\n"
+    codes = "\\begin{table}\\caption{Codes.}\\label{codes}\\end{table}\n"
+    text = main.read_text(encoding="utf-8").replace("\\section{Methods}\n", cited).replace(
+        "\\bibliographystyle{plain}", "\\appendix\n\\section{Codes}\n" + codes
+        + "\\bibliographystyle{plain}")  # fmt: skip
+    main.write_text(text, encoding="utf-8")
+    assert check_pointers_latex(load_project(project)[0]).failures == ()
+    main.write_text(text.replace("\\appendix\n", ""), encoding="utf-8")
+    failing = check_pointers_latex(load_project(project)[0]).failures
+    assert [(f.code, f.line) for f in failing] == [("cited-out-of-order", 33)], failing
+
+
 def test_a_latex_statement_that_does_not_name_the_chosen_source_is_said_in_its_file(
     project: Path,
 ) -> None:

@@ -772,6 +772,17 @@ LATEX_PLACES = (
     ("\\begin{{tabular}}{{ll}}{} & \\multicolumn{{1}}{{c}}{{m {}}} \\\\\\end{{tabular}}\n",
      (True, True)),
     ("$x$${}$ ", (True,)),
+    # What two journals' templates hold (2026-10-23): a definition with delimited parameters,
+    # whose body is prose where it stands and whose use in a blanked argument prints nothing;
+    # a definition in a body, whose parameters are doubled; and the endnotes package's note
+    # let to be the footnote.
+    ("\\def\\pair(#1,#2){{#1 to {}}}\\label{{\\pair(a,b)}} ", (True,)),
+    ("\\newcommand{{\\nat}}{{\\gdef\\y##1{{##1 of {}}}}}\\nat\\y{{2}} ", (True,)),
+    ("\\let\\footnote=\\endnote\\footnote{{note {}}} ", (True,)),
+    # Spaces after a control word, and a comment to the line's end, delimit nothing: the
+    # macro's uses are read (round 1).
+    ("\\def\\jn {{Lancet {}}}\\jn{{x}} ", (True,)),
+    ("\\def\\jc%\n  {{Lancet {}}}\\jc{{x}} ", (True,)),
 )  # fmt: skip
 #: Where a number stands in the preamble, before `\\begin{document}`.
 LATEX_PREAMBLE_PLACES = (
@@ -818,6 +829,75 @@ def latex_planted(draw: st.DrawFn) -> tuple[str, list[tuple[int, str, bool]]]:
     text += between[-1] + "\\end{document}\n"
     plant("after {}\n", (False,))
     return text, planted
+
+
+#: Where a command defined with delimited parameters is used, each `{}` the use, and whether
+#: what it makes prints there: where it prints the reader cannot know what it takes, and
+#: refuses it; in a blanked argument, a comment, an unprinted block, code and a definition's
+#: body it prints nothing, and is let be (2026-10-23).
+LATEX_DELIMITED_USES = (
+    ("prose {} ", True),
+    ("$x = {}$ ", True),
+    ("\\caption{{Of {}}} ", True),
+    ("\\footnote{{in {}}} ", True),
+    ("\\emph{{{}}} ", True),
+    ("\\section{{On {}}}\n", True),
+    ("\\label{{{}}} ", False),
+    ("% {}\n", False),
+    ("\\iffalse {} \\fi ", False),
+    ("\\verb|{}| ", False),
+    ("\\newcommand{{\\later}}{{{}}} ", False),
+    ("\\url{{http://a.b/{}}} ", False),
+    ("\\begin{{verbatim}}\n{}\n\\end{{verbatim}}\n", False),
+)  # fmt: skip
+
+
+@st.composite
+def latex_delimited_uses(draw: st.DrawFn) -> tuple[str, int]:
+    """A LaTeX document that defines `\\pair` with delimited parameters, uses it in its
+    preamble, and in the body at every place of `LATEX_DELIMITED_USES`, in an order drawn,
+    among whole pieces; and where the first use that prints stands, where the reader stops."""
+    use = "\\pair(1,2)"
+    filler = (*_spaced(FILLER), *_LATEX_WHOLE)
+    order = draw(st.permutations(LATEX_DELIMITED_USES))
+    between = draw(st.lists(st.sampled_from(filler), min_size=len(order) + 1,
+                            max_size=len(order) + 1))  # fmt: skip
+    text = "\\documentclass{article}\n\\def\\pair(#1,#2){#1 to #2}\n" + use + "\n"
+    text += "\\begin{document}\n"
+    first = -1
+    for piece, (template, prints) in zip(between, order, strict=False):
+        text += piece
+        before, after = (part.replace("{{", "{").replace("}}", "}")
+                         for part in template.split("{}"))  # fmt: skip
+        text += before
+        if prints and first < 0:
+            first = len(text)
+        text += use + after
+    return text + between[-1] + "\\end{document}\n", first
+
+
+#: The hooks whose body LaTeX runs where it stands, each `{}` a use of a command defined with
+#: delimited parameters, which prints there though it stands in the preamble (round 1 of real
+#: templates).
+LATEX_HOOKS = ("\\AtBeginDocument{{{}}}", "\\AtEndDocument{{{}}}", "\\AfterEndPreamble{{{}}}",
+               "\\AddToHook{{begindocument}}{{{}}}")  # fmt: skip
+
+
+@st.composite
+def latex_hooked_uses(draw: st.DrawFn) -> tuple[str, int]:
+    """A LaTeX document that defines `\\pair` with delimited parameters and uses it in the
+    body of every hook of `LATEX_HOOKS`, in its preamble, in an order drawn, among words; and
+    where the first use stands, where the reader stops."""
+    use = "\\pair(1,2)"
+    text, first = "\\documentclass{article}\n\\def\\pair(#1,#2){#1 to #2}\n", -1
+    for template in draw(st.permutations(LATEX_HOOKS)):
+        words = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=3)))
+        before, after = (part.replace("{{", "{").replace("}}", "}")
+                         for part in template.split("{}"))  # fmt: skip
+        text += before + words + " "
+        first = len(text) if first < 0 else first
+        text += use + after + "\n"
+    return text + "\\begin{document}\nBody.\n\\end{document}\n", first
 
 
 #: Where a binding stands in LaTeX, and what it is there: each `{}` holds the key's last part,
@@ -1419,9 +1499,25 @@ def latex_trees(
     So every manuscript has a file that starts under a heading, a part a chapter does not
     close, and a heading where an `\\input` ends, which stands over the text after it (round
     2 of #385). Nothing but a heading's word follows a line break, so an `\\input` stands
-    against what comes next."""
-    count = draw(st.integers(min_value=3, max_value=5))
-    names = ["main.tex", *(f"part{index}.tex" for index in range(1, count))]
+    against what comes next.
+
+    Each file is in a folder drawn, and is named in one of four ways, each in every
+    manuscript (2026-10-23): `\\input` by its path from the entry file's folder; the import
+    package's `\\import{folder}{file}`, which the entry file's first input is; `\\subimport`,
+    by its folder under the one the file it stands in was imported from, which the first file
+    writes; and `\\input` by its path from that folder, which LaTeX looks in where the entry
+    file's folder does not hold the file, which the first file writes too. The folder a file
+    was imported from is worked out here apart from the reader."""
+    count = draw(st.integers(min_value=5, max_value=6))
+    stems = ["main", *(f"part{index}" for index in range(1, count))]
+    # The first file is imported from a folder, and the third and fourth are under it, so
+    # that `\\subimport` and an `\\input` from the folder imported from both name them.
+    first = draw(st.sampled_from(("sec/", "a/b/")))
+    folders = ["", first, *(draw(st.sampled_from(("", "sec/", "other/", "a/b/")))
+                            for _ in range(2, count))]  # fmt: skip
+    folders[3] = first + draw(st.sampled_from(("", "deep/")))
+    folders[4] = first + draw(st.sampled_from(("", "more/")))
+    names = [folder + stem + ".tex" for folder, stem in zip(folders, stems, strict=True)]
     items: dict[str, list[tuple[str, object]]] = {}
     for index, name in enumerate(names):
         drawn = draw(st.lists(st.one_of(
@@ -1429,15 +1525,37 @@ def latex_trees(
             st.tuples(st.just("input"), st.integers(min_value=index + 1, max_value=count)),
             st.tuples(st.just("words"), st.sampled_from(FILLER)),
         ), max_size=8))  # fmt: skip
-        inputs = [("input", child) for kind, child in drawn if kind == "input" and child < count]
+        inputs = [("input", (child, None)) for kind, child in drawn
+                  if kind == "input" and child < count]  # fmt: skip
         rest = [item for item in drawn if item[0] != "input"]
-        opening = [("heading", -1), ("heading", 0), ("heading", 1), ("input", 1),
-                   ("heading", 3), ("input", 2)]  # fmt: skip
-        planted = {0: opening, 1: [("heading", 2)]}
+        opening = [("heading", -1), ("heading", 0), ("heading", 1), ("input", (1, "import")),
+                   ("heading", 3), ("input", (2, "input"))]  # fmt: skip
+        planted = {0: opening, 1: [("heading", 2), ("input", (3, "subimport")),
+                                   ("input", (4, "from-imported"))]}  # fmt: skip
         items[name] = planted.get(index, []) + rest + inputs
     files, under, marks, seen, counter = {}, {}, {}, {"main.tex"}, [0]
 
-    def visit(name: str, chain: list[tuple[int, str]]) -> list[tuple[int, str]]:
+    def named(child: int, how: str | None, imported: str) -> tuple[str, str]:
+        """How a file names `child`, and the folder `child` is imported from if it is read
+        there: `how` drawn where it is None, among the ways that name it from here."""
+        folder, stem = folders[child], stems[child]
+        ways = ["input", "import"]
+        if folder.startswith(imported):
+            ways.append("subimport")
+            if imported:
+                ways.append("from-imported")
+        how = how or draw(st.sampled_from(ways))
+        assert how in ways, (how, ways)
+        if how == "input":
+            return f"\\input{{{folder}{stem}}}", imported
+        if how == "import":
+            return f"\\import{{{folder or './'}}}{{{stem}}}", folder
+        below = folder[len(imported):]
+        if how == "subimport":
+            return f"\\subimport{{{below or './'}}}{{{stem}}}", folder
+        return f"\\input{{{below}{stem}}}", imported
+
+    def visit(name: str, chain: list[tuple[int, str]], imported: str) -> list[tuple[int, str]]:
         under[name] = [title for _, title in chain]
         text = "\\documentclass{article}\n\\begin{document}\n" if name == "main.tex" else ""
         for kind, value in items[name]:
@@ -1448,17 +1566,19 @@ def latex_trees(
                 marks[f"mark{counter[0]}"] = [title for _, title in chain]
                 text += f"\\{_SECTIONING[value]}{{{title}}}\nmark{counter[0]} "
             elif kind == "input":
-                child = names[value]
-                text += f"\\input{{{child[:-4]}}}"
+                index, how = value
+                written, folder = named(index, how, imported)
+                text += written
+                child = names[index]
                 if child not in seen:
                     seen.add(child)
-                    chain = visit(child, chain)
+                    chain = visit(child, chain, folder)
             else:
                 text += f"{value} "
         files[name] = text + ("\n\\end{document}\n" if name == "main.tex" else "")
         return chain
 
-    visit("main.tex", [])
+    visit("main.tex", [], "")
     for name in names:
         files.setdefault(name, "")
     return files, under, marks

@@ -190,10 +190,12 @@ _LABEL = re.compile(r"[ ]{0,3}(\*\*|__)(?=[^\s*_])[^*_\n]{1,80}?(?:\1[ \t]*:|:[ 
 #: "S1 Table.", "Supplementary Table S1", "eTable 1", "Box 1", "Appendix A", "Additional
 #: file 1"; a table, a pipe or a grid one; an image; a binding of a table or a figure. A
 #: caption's number is needed, so that "Fig trees and ..." and an author named Box are
-#: entries; an appendix's may be a letter.
+#: entries; an appendix's may be a letter, and a figure's or a table's a Roman numeral
+#: ("TABLE I."), but not a box's: "Box I, Jenkins GM." is an entry.
 _NO_ENTRY = re.compile(
     r"[ ]{0,3}(?:!\[|\||\+[-=]|\{\{|table:|[*_]{0,3}(?:"
-    r"(?:supplementa(?:ry|l)\s+|online\s+|e)?(?:fig(?:ure)?s?\.?|tables?|box)\s*s?[0-9]"
+    r"(?:supplementa(?:ry|l)\s+|online\s+|e)?(?:fig(?:ure)?s?\.?|tables?)\s*[ivx]+\b"
+    r"|(?:supplementa(?:ry|l)\s+|online\s+|e)?(?:fig(?:ure)?s?\.?|tables?|box)\s*s?[0-9]"
     r"|(?:supplementa(?:ry|l)\s+|online\s+|e)?appendi(?:x|ces)\s*(?:[0-9]|[a-z]\b|[ivx]+\b)"
     r"|additional\s+files?\s*[0-9]"
     r"|s[0-9]+\s+(?:fig(?:ure)?|table|file|appendix|text|data(?:set)?|video|movie)\b))",

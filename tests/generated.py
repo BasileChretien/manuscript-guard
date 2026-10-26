@@ -937,6 +937,31 @@ LATEX_PLACES = (
     ("\\Volume{{{}}}\\pagespan{{{}}}{{{}}}\\affil*[1]{{Unit {}}} ", (False, False, False, False)),
     # A front matter command the author defines is the author's, read as before (round 1).
     ("\\newcommand{{\\journal}}[1]{{#1}}\\journal{{Lancet {}}} ", (True,)),
+    # What 17 papers from arXiv held that the reader refused though LaTeX reads it
+    # (2026-10-23): `cite` inside a command's name, an English word ending in it, and
+    # pandoc's citeproc commands, whose citation is blanked as a citation is;
+    ("\\IEEEcompsocitemizethanks{{Unit {}}} \\excite{{{} volts}} \\citeproc{{ref-a}}{{Smith {}}} ",
+     (True, True, False)),
+    # a reference list BibTeX wrote, its header's machinery and REVTeX's `\\makeatletter`
+    # in it, past which `@` is no letter;
+    ("\\begin{{thebibliography}}{{9}}\n\\providecommand{{\\url}}[1]{{\\texttt{{#1}}}}\n"
+     "\\expandafter\\ifx\\csname urlstyle\\endcsname\\relax\\else\\fi\n\\makeatletter\n"
+     "\\providecommand \\@ifx [1]{{\\ifx #1\\expandafter\\@firstoftwo\\fi}}%\n"
+     "\\providecommand \\@clean [0]{{\\catcode `\\$12}}%\n"
+     "\\bibitem[{{\\citenamefont{{Smith}}(2011)}}]{{a}} Smith {}.\n"
+     "\\bibitem[\\citeproctext]{{b}} Jones.\n\\end{{thebibliography}}\n\\iffalse@ {} \\fi ",
+     (True, False)),
+    # a comment between a command and its argument, passed over with its line's break, but
+    # not a blank line, which ends the paragraph;
+    ("\\newenvironment{{refs}}[2] % #1 hanging\n{{\\begin{{list}}{{x}}{{y}}\\item Of {}}}\n"
+     "{{\\end{{list}}}}\\label % note\n  {{s{}}}\\begin{{figure}} % note\n\n[{}]\\end{{figure}}\n",
+     (True, False, True)),
+    # siunitx's `\\unit`, which the document does not load, defined as the author's; and a
+    # parameter text with no parameter, which prints its body.
+    ("$\\unit{{{}}}$ ", (True,)),
+    # apacite's citation, its prenote in angle brackets read as a note is (round 1 of #442).
+    ("\\citeA<see {}>[p.~{}]{{k}} ", (True, True)),
+    ("\\def\\eg/{{e.g. {}}}\\eg/ ", (True,)),
 )  # fmt: skip
 #: Where a number stands in the preamble, before `\\begin{document}`.
 LATEX_PREAMBLE_PLACES = (
@@ -949,6 +974,10 @@ LATEX_PREAMBLE_PLACES = (
     # (round 2 of #385: the first was refused, and so was the second).
     ("\\let\\oldabstract\\abstract\n\\abstract{{Of {}}}\n", (True,)),
     ("\\begin{{abstract}}Of {}\\end{{abstract}}\n", (True,)),
+    # An encoding other than UTF-8 in a file all of ASCII, and the author's `\\unit` where
+    # siunitx is not loaded (2026-10-23).
+    ("\\usepackage[latin9]{{inputenc}}\n", ()),
+    ("\\newcommand{{\\unit}}[1]{{\\mbox{{#1}}}}\n", ()),
     # An article's own `\\keywords`, defined again as the class's front matter may be.
     ("\\newcommand{{\\keywords}}[1]{{Keywords {} #1}}\n", (True,)),
 )  # fmt: skip
@@ -1056,6 +1085,138 @@ def latex_hooked_uses(draw: st.DrawFn) -> tuple[str, int]:
     return text + "\\begin{document}\nBody.\n\\end{document}\n", first
 
 
+#: A small LaTeX manuscript and what the reader owes it: its files, the author's packages,
+#: each refusal by file and offset, the spans it blanks, and the comments it records.
+LatexCase = tuple[dict[str, str], dict[str, str], list[tuple[str, int]],
+                  list[tuple[str, int, int]], list[tuple[str, int]]]  # fmt: skip
+#: Commands of a package that LaTeX does not give, with the packages that give each,
+#: written out apart from the reader (2026-10-23).
+LATEX_PACKAGE_COMMANDS = {"unit": ("siunitx", "units"), "qty": ("siunitx", "physics"),
+                          "num": ("siunitx",), "SI": ("siunitx",), "ang": ("siunitx",)}  # fmt: skip
+
+
+@st.composite
+def latex_refusal_trees(draw: st.DrawFn) -> list[LatexCase]:
+    """Small LaTeX manuscripts, each holding one thing the reader refuses or reads that 17
+    papers from arXiv showed (2026-10-23), every kind in every example, among words drawn:
+
+    - a command the reader does not know whose name holds `cite`, at its start, at its end or
+      inside it, refused where it is used, since it would hide its keys from G7, in a typed
+      reference list's entry too, where `\\citeauthoryear`, a label's, is read (round 1 of
+      #442);
+    - a conditional in a typed reference list's header, read, and one in its entries, refused;
+    - `\\providecommand` of a command the reader knows, in the preamble or the body, which
+      defines nothing; `\\renewcommand` of one, and a `\\def` after a `\\providecommand`,
+      refused at the command;
+    - an article's own command named as a package's, read as an unknown one where no file of
+      the tree loads the package, and refused where the same file, the author's package or a
+      file input from the preamble loads it;
+    - an input encoding other than UTF-8, accepted in a tree all of ASCII, and refused where
+      the file that sets it or another file of the tree is not ASCII;
+    - a `\\def` with a parameter text and no parameter, in the author's package or the entry
+      file, whose uses in the entry file and in a file it inputs are followed by that text,
+      each passed over, and a use it does not follow, refused; a space after a control word
+      in that text is none of it, `\\def\\x\\relax /{a}` then `\\x\\relax/`;
+    - a comment between a command and its argument, passed over and recorded."""
+
+    def words() -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=3)))
+
+    head, begin, end = "\\documentclass{article}\n", "\\begin{document}\n", "\\end{document}\n"
+    cases: list[LatexCase] = []
+    for names in (("citeauthoryear", "citewith", "citeZ"), ("mycite", "owncite", "ourcite"),
+                  ("mycites", "owncites"), ("mycitep", "posscitealias", "owncitet")):  # fmt: skip
+        name = draw(st.sampled_from(names))
+        main = head + begin + words() + " "
+        at = len(main)
+        main += f"\\{name}{{k}} {words()}.\n" + end
+        cases.append(({"main.tex": main}, {}, [("main.tex", at)], [], []))
+        listed = (head + begin + "\\begin{thebibliography}{9}\n"
+                  + "\\bibitem[{\\citeauthoryear{Smith}{2011}}]{a} " + words() + " ")  # fmt: skip
+        at = len(listed)
+        # `\\citeauthoryear` is a label's in a reference list, and no citation there.
+        cited = "citewith" if name == "citeauthoryear" else name
+        listed += f"\\{cited}{{k}}.\n\\end{{thebibliography}}\n" + end
+        cases.append(({"main.tex": listed}, {}, [("main.tex", at)], [], []))
+    header = "\\expandafter\\ifx\\csname urlstyle\\endcsname\\relax\\else\\fi\n"
+    listed = head + begin + "\\begin{thebibliography}{9}\n" + header + "\\bibitem{a} " + words()
+    at = len(listed) + 1
+    listed += " \\ifx\\a\\b x\\fi.\n\\end{thebibliography}\n" + end
+    cases.append(({"main.tex": listed}, {}, [("main.tex", at)], [], []))
+
+    known = draw(st.sampled_from(("url", "emph", "textbf", "caption")))
+    star = draw(st.sampled_from(("", "*")))
+    provide = f"\\providecommand{star}{{\\{known}}}[1]{{#1}}\n"
+    main = (head + provide + begin + words() + "\n" + end if draw(st.booleans())
+            else head + begin + words() + "\n" + provide + end)  # fmt: skip
+    cases.append(({"main.tex": main}, {}, [], [], []))
+    definer = draw(st.sampled_from(("renewcommand", "newcommand", "DeclareRobustCommand")))
+    main = head + f"\\{definer}{{\\{known}}}[1]{{#1}}\n" + begin + words() + "\n" + end
+    cases.append(({"main.tex": main}, {}, [("main.tex", main.index("{\\" + known))], [], []))
+    main = head + "\\providecommand{\\x}{1}\\def\\" + known + "{2}\n" + begin + end
+    cases.append(({"main.tex": main}, {}, [("main.tex", main.index("\\" + known))], [], []))
+
+    name = draw(st.sampled_from(sorted(LATEX_PACKAGE_COMMANDS)))
+    package = draw(st.sampled_from(LATEX_PACKAGE_COMMANDS[name]))
+    define = f"\\newcommand{{\\{name}}}[1]{{\\mbox{{#1}}}}\n"
+    used = f"$\\{name}{{k}}$ {words()}.\n"
+    main = head + define + begin + words() + " " + used + end
+    cases.append(({"main.tex": main}, {}, [], [], []))
+    loads = f"\\usepackage{{{package}}}\n"
+    for where in ("file", "package", "input"):
+        preamble = {"file": loads, "package": "\\usepackage{macros}\n",
+                    "input": "\\input{settings}\n"}[where]  # fmt: skip
+        main = head + preamble + define + begin + used + end
+        files = {"main.tex": main, **({"settings.tex": loads} if where == "input" else {})}
+        packages = {"macros.sty": loads.replace("usepackage", "RequirePackage")}
+        refused = [("main.tex", main.index("{\\" + name))]
+        cases.append((files, packages if where == "package" else {}, refused, [], []))
+
+    encoding = draw(st.sampled_from(("latin1", "latin9", "ansinew", "cp1252")))
+    sets = draw(st.sampled_from((f"\\usepackage[{encoding}]{{inputenc}}\n",
+                                 f"\\RequirePackage[{encoding}]{{inputenc}}\n",
+                                 f"\\inputencoding{{{encoding}}}\n")))  # fmt: skip
+    main = head + sets + begin + words() + "\n\\input{part}\n" + end
+    cases.append(({"main.tex": main, "part.tex": words() + ".\n"}, {}, [], [], []))
+    accented = words() + " caf\N{LATIN SMALL LETTER E WITH ACUTE}.\n"
+    cases.append(({"main.tex": main, "part.tex": accented}, {},
+                  [("main.tex", main.index(sets))], [], []))  # fmt: skip
+    alone = head + sets + begin + accented + end
+    cases.append(({"main.tex": alone}, {}, [("main.tex", alone.index(sets))], [], []))
+
+    delimiter = draw(st.sampled_from(("/", ".5", "\\relax", "!!")))
+    defined = f"\\def\\eg{delimiter}{{e.g.}}\n"
+    in_package = draw(st.booleans())
+    if in_package:
+        defined = f"\\makeatletter\n\\@ifdefinable{{\\eg}}{{{defined.strip()}}}\n\\makeatother\n"
+    main = head + ("\\usepackage{shortcuts}\n" if in_package else defined) + begin
+    hidden = []
+    for spaced in ("", draw(st.sampled_from((" ", "\n  ")))):
+        main += words() + " \\eg" + spaced
+        hidden.append(("main.tex", len(main) - len(spaced), len(main) + len(delimiter)))
+        main += delimiter + " " + words() + "\n"
+    main += "\\input{part}\n" + end
+    part = words() + " \\eg" + delimiter + " " + words() + ".\n"
+    hidden.append(("part.tex", part.index(delimiter), part.index(delimiter) + len(delimiter)))
+    packages = {"shortcuts.sty": defined} if in_package else {}
+    cases.append(({"main.tex": main, "part.tex": part}, packages, [], hidden, []))
+    stopped = part.replace("\\eg" + delimiter, "\\eg ;")
+    cases.append(({"main.tex": main, "part.tex": stopped}, packages,
+                  [("part.tex", stopped.index("\\eg"))], hidden[:2], []))  # fmt: skip
+    # The spaces after a control word in a parameter text are no token (round 1 of #442).
+    main = head + "\\def\\x\\relax /{a}\n" + begin + words() + " \\x"
+    hidden = [("main.tex", len(main), len(main) + len("\\relax/"))]
+    main += "\\relax/ " + words() + "\n" + end
+    cases.append(({"main.tex": main}, {}, [], hidden, []))
+
+    note = draw(st.sampled_from((" % note\n", "\n% note\n  ", " %\n\t")))
+    main = (head + f"\\newenvironment{{refs}}[1]{note}{{\\begin{{list}}{{}}{{}}}}"
+            f"{note}{{\\end{{list}}}}\n" + begin + words() + "\n" + end)  # fmt: skip
+    comments = [("main.tex", at) for at in range(len(main)) if main[at] == "%"]
+    cases.append(({"main.tex": main}, {}, [], [], comments))
+    return cases
+
+
 #: Where a binding stands in LaTeX, and what it is there: each `{}` holds the key's last part,
 #: and the kind says whether it is a binding, one in a typed table, something meant for one
 #: and none, a word in a listing, or nothing. A binding in a comment, an `\\iffalse` block or
@@ -1108,6 +1269,13 @@ LATEX_CITATION_PLACES = (
     ("\\cites(see the reviews of this question in)(){{{}}}{{{}}} ", ("cited", "cited")),
     ("\\citetalias{{{}}} ", ("narrative",)),
     ("\\footfullcite{{{}}} ", ("cited",)),
+    # apacite's, with its prenote in angle brackets, and chicago's; biblatex's
+    # `\\footcitetexts`; and a citation in a typed reference list's entry (round 1 of #442).
+    ("\\citeA<see the review>[p.~3]{{{}}} ", ("narrative",)),
+    ("\\shortciteNP{{{},{}}} \\citeN{{{}}} ", ("cited", "cited", "narrative")),
+    ("\\footcitetexts{{{}}}{{{}}} ", ("cited", "cited")),
+    ("\\begin{{thebibliography}}{{9}}\n\\bibitem[{{\\citenamefont{{Smith}}}}]{{zz}} See "
+     "\\citeA{{{}}}.\n\\end{{thebibliography}}\n", ("narrative",)),
 )  # fmt: skip
 #: A preamble that sets natbib's and biblatex's styles, which cite nothing.
 LATEX_CITATION_PREAMBLE = (

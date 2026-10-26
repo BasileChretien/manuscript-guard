@@ -1648,6 +1648,21 @@ The result is compiled and packed by the code above, and checked three times:
   prints. A file input from inside a definition is read as one nothing inputs, warned of,
   and the commands it defines with delimited parameters reach no other file, so a use of
   one is not refused (2026-10-23, the fix-only round of part 1).
+- An appendix's tables and figures are the supplement's to G2 only: G4 still counts one
+  placed with a binding toward the journal's limit on the main text's display items. An
+  appendix that numbers its own, `\renewcommand{\thetable}{S\arabic{table}}` after
+  `\setcounter{table}{0}`, is still counted on from the main text's, so a pointer typed to
+  its "Table S1" is read as one to the supplementary document's, and one to "Table A1" is
+  read as no pointer. So is an appendix a class numbers apart: elsarticle's `\appendix`
+  prints "Table A.1", and a "Table 3" typed for the appendix's first table after two in
+  the main text is taken as pointing at it. An `\appendix` in an author's macro opens no
+  appendix where the macro is used, so a table there cited first is out of order to G2.
+  Springer's and BMC's headings for files sent apart are read; a journal's other wording
+  for a supplement's heading is not (2026-10-23, round 1). A heading that is the word alone,
+  "Supplement", is taken for the supplement's even in a trial of a dietary supplement
+  (round 2). A reference list a supplement holds of its own, biblatex's `refsection` or
+  a typed `thebibliography` printed before its tables, ends the part there, and the tables after it are the main
+  text's (the fix-only round).
 - A distribution's package shipped beside the entry file, as an arXiv source often ships
   `natbib.sty`, is read as the author's, and refused at the first construct the reader
   does not read, natbib's `\csname`. Taken out of `manuscript/`, it is the
@@ -2463,8 +2478,27 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
     abstract in it read (above, "Environments"). Tests: `tests/test_latex_mask.py`,
     `tests/test_corruption.py`, and `latex_planted()` with `BROKEN` rules for the front
     matter read, its abstract passed over with it, its commands unknown, and one defined
-    again refused. The third, appendix displays: a table or figure after `\appendix`, or under a heading
-    named for a supplement or an appendix, is the supplement's.
+    again refused. The third, appendix displays (Basile's choice of 2026-10-23): a table or
+    a figure the main document prints after `\appendix` or in the appendix package's
+    `appendices`, or under a heading that names a supplement, an appendix or supporting
+    information, to the next heading of its level, is the supplement's. G2 holds it neither
+    to ICMJE's order nor to being cited; a pointer typed to it is held to its place among
+    the document's displays, counted on from the main text's. A heading the word only
+    describes, "Supplementary analyses" or "Supplementary data sources", holds the main
+    text's: the heading's title must name the supplement, alone or before a label, a colon
+    or a stop (rounds 1 and 2). A part a heading opens ends at the next heading of its level
+    or at the reference list, past which a paper may place its floats; IEEEtran's
+    `\appendices` and an `appendix` environment open the appendix too, and `\appendix` holds
+    past the end of an environment (round 2). The pointing view
+    marks where the appendix begins (`printed.APPENDIX`) and where `appendices` ends, not in a
+    comment or a definition's body, and `_in_order` in
+    `gates/pointers.py` takes the numbers to pass over. An Elsevier paper had cited its
+    "Supplementary Table" first in its Methods, a table of its own appendix, and was told it
+    was out of order. Tests: `tests/test_latex_pointers.py`, `tests/test_corruption.py`, and
+    `_planted_latex_appendix` in `tests/test_properties.py`, with `BROKEN` rules for the
+    appendix opening nothing, the package's environment opening nothing, an `\appendix` in a
+    comment or a body opening it, a supplement's heading holding nothing, its part running
+    to the end or ending at any heading, and the appendix's tables left out of the count.
 
 ## Zotero is never on the critical path
 
@@ -2990,8 +3024,9 @@ withdrawal or removal of a preprint. A record at PubMed or Europe PMC with neith
 that registry saying no, and is shown as "retracted: no" with its name; "not known" is shown
 only where no registry that answered said either way, never as "no". A Crossref that did not
 answer is said, and is not read as having found nothing (round 1 of #369). Of several
-preprints, the line says for how many of them, with their DOIs and each reason given, and
-each preprint left unchecked says "Crossref did not answer" beside its retraction
+preprints, the line says for how many of them and their DOIs, with the reason, or each
+reason beside its DOI where they differ, since a DOI Crossref throttled is worth asking again
+and one it answered with a 503 may not be (round 1 of #376). Each preprint left unchecked says "Crossref did not answer" beside its retraction
 (`unchecked_by` in the JSON), since its "retracted: no" is then another registry's word
 alone (round 2 of #369). A later version is PubMed's "Update in", Europe PMC's "Preprint of"
 or "Update in", or Crossref's `is-preprint-of`, and all three are asked because they do not
@@ -2999,7 +3034,13 @@ agree: on 2026-10-20 a medRxiv preprint had PubMed's link to its journal version
 Crossref, and another had Crossref's and Europe PMC's and none at PubMed. Each is shown with
 whose word it is. Two links are one version where they share a PMID or a DOI and give
 neither differently; a registry giving PubMed's PMID with another DOI is shown as a second
-version under its own name, not as having said PubMed's DOI (round 2 of #369).
+version under its own name, not as having said PubMed's DOI (round 2 of #369). Joined, each
+identifier keeps the names of the registries that gave it, as `given_by` in the JSON beside
+`said_by`, the registries that link the version at all. Where each gave every identifier the
+names are said once; where PubMed gave the PMID alone and Europe PMC the PMID and a DOI, the
+line reads "DOI 10.5/y (Europe PMC) / PMID 9 (PubMed, Europe PMC)", and not the DOI as
+PubMed's too (round 1 of #376). The reference shown beside them is the first registry's to
+give one, in the order PubMed, Europe PMC.
 
 A registry asked for a kind it does not type is not asked. OpenAlex types a review and a
 preprint and nothing finer, so with a systematic review, a meta-analysis, a guideline, a
@@ -3974,9 +4015,8 @@ that hid LaTeX commands, and a macro named `center` read as a word.
 **Three findings.** `spelling-variant` is one word in the other spelling: once for the
 word, where it first stands, with how many times it is used and what to write. When the
 other usage's spellings are five or more and are used more often than the paper's own, the
-likelier mistake is the line in `paper.yaml`, which `init` writes as `en-GB` for everyone,
-and one `spelling-not-as-declared` at `paper.yaml` takes the place of them all, with the
-twelve most used listed. `spelling-mixed` is for a British paper alone. British usage
+likelier mistake is the line in `paper.yaml`, and one `spelling-not-as-declared` at
+`paper.yaml` takes the place of them all, with the twelve most used listed. `spelling-mixed` is for a British paper alone. British usage
 takes `-ise` or `-ize`, Oxford's being `-ize`, and a paper takes one: the finding is given
 once, at the first word in the ending used less, with both counts. An American paper has
 no such choice, so an `-ise` there is a `spelling-variant`.
@@ -3986,6 +4026,39 @@ no such choice, so an `-ise` there is a `spelling-variant`.
 
 A journal that insists on one English says so in its profile, and G4 already reports a
 paper that declares the other. G14 holds the manuscript to what the paper declares.
+
+**A paper may declare no English, and `init` declares none unless told** (Basile,
+2026-10-23). `init` wrote `english_variant: en-GB` into every new project. Fourteen real
+American papers were checked so, and seven were told they broke their declared spelling,
+which nobody had declared. Now `english_variant` is optional in the schema, `init` writes it
+only with `--english en-GB` or `--english en-US` (any other value is refused, and the values
+it takes are read from the schema), and `Project.english_variant` is None where the line is
+absent. Each reader of it has a rule for a paper that has not said:
+
+- **G14** counts the words each English writes and the other does not, and holds the paper
+  to the English of the more. Where they are level, the paper's English is that of the first
+  such word met, as `spelling-mixed` keeps the ending met first when the two are level. An
+  `-ize` both usages write counts for neither, and a paper with no word of either hears
+  nothing. The words of the fewer are then each a `spelling-variant`, which says that
+  `paper.yaml` declares no English and gives both counts; `spelling-mixed` reads the endings
+  of a paper that is mostly British as it does those of a British one;
+  `spelling-not-as-declared` is never given, since the other English is never the more.
+- **The build** gives the document `lang: en`, English with no region. Pandoc writes `en`
+  into the .docx (`w:lang` in its styles, `dc:language` in its properties). Word 16 reads it
+  as English with no region (LanguageID 9) and proofs it with its American dictionary:
+  checked on 2026-10-23, it marked "Colour" and not "color" in a document so built, as it
+  does in one with no `lang` at all, which pandoc writes as `en-US`. In LaTeX pandoc loads
+  babel's `english`. Citeproc takes CSL's `en-US` locale for `en`, and the live Zotero
+  build names no locale, so `zotero_word.lua` writes `en-US`, CSL's default.
+- **A dataset's date**, which the emitters print when the analysis runs, is written day,
+  month, year ("1 March 2024"), as `written` writes it when given no English. That order is
+  the one of the two that a reader in either English reads without stopping, and it was
+  already what a paper that could not be read got. The R emitter reads the line of
+  `paper.yaml` and, finding none, does the same. `dataset-date-english` holds a date to that
+  order and says that `paper.yaml` declares no English.
+- **The review panel** is told nothing of a variant: the line "English:" is left out.
+- **G4** compares a journal's `english_variant` with the paper's only where the paper
+  declares one.
 
 ## One notation is the manuscript's own, and the space before a unit is the SI's
 
@@ -6937,6 +7010,88 @@ predecessor:
 
 Verified end to end: the example's built document audits clean against its own outputs, and
 one digit changed in the reporting odds ratio is reported with its line and context.
+
+## A paper written in Word is brought in through pandoc's tree
+
+The route the skills gave for moving a Word paper into a project was `pandoc paper.docx -t
+markdown`. Tried on fifteen openly licensed Word papers (2026-10-23), it wrote tables of
+seven as multiline tables, whose lines of dashes `check` refuses at every stage
+(`rule-opens-a-block`), so those seven failed whole, and those of four more as grid tables; and each title page landed in the
+text, names, affiliations and all. `init --from paper.docx` (Basile's choice, 2026-10-23)
+has pandoc read the document into its JSON tree, with tracked changes accepted, changes
+three things in the tree (`from_word.py`), and has pandoc write the rest as it would.
+
+**Tables.** A table whose cells hold only paragraphs, line blocks, headings or quotations of
+those is rewritten so that pandoc writes it as a pipe table: each cell's paragraphs and line
+breaks joined with spaces, inside emphasis too but not inside a note; every column's width
+left to its cells; a merged cell's text in its first row and column, the cells it covered
+left empty; a second header row and the footer's rows made rows of the body. No text is
+added or left out. Simple and multiline tables are switched off in the writer, so that a
+table of one-line cells is a pipe table and any other a grid table, and the line is made
+long enough that a table of more than nine columns is not written as raw HTML, which
+pandoc's default of 72 columns did. A table with anything else in a cell, a list, a table
+or code, is left a grid table and named in what `init` prints. `check` reads a grid table's
+rows as a table's (a line that starts with a pipe), and the audit does not read its cells.
+The tree, not a Lua filter: the change is a function of pandoc's tree and is tested on trees
+built by hand, without pandoc.
+
+**Pictures** go to `manuscript/media/`, and each image points there from the project's root,
+where the build runs pandoc. A picture pandoc saves elsewhere than its `media/` folder keeps
+the rest of its path under `manuscript/media/`, so that no image points into the temporary
+folder pandoc saved it in, which is deleted once the paper is read; an image pointing at a web
+address is left as it is. Not `figures/`: every file there is taken for a figure an
+analysis rendered, and a picture from Word would be reported as one with no text layer and
+no review.
+
+**The title page.** pandoc reads Word's Title, Subtitle, Author, Date and Abstract styles as
+the document's metadata, and nothing else is taken as a title or a name: no line is judged
+by its capitals or its place. The title goes to `paper.yaml` (where `--title` gives none),
+as plain text. A Title paragraph that holds what plain text loses, a note, a superscript, a
+link or a picture, goes into the comment as well, as it does when `--title` gives the title:
+a note on the title is where a paper often names its funder or its corresponding author, and
+taken as plain text it was written nowhere. A superscript at the title's end made of digits
+or the usual signs (`*`, `†`, `‡`, `§`, `¶`, `‖`, `#`), several with commas between, is the mark of such a
+note and is left out of the plain title, which kept its text and read "a fall1"; it stays in
+the comment with the title, and `init` names it. A superscript inside the title, or of
+anything else, "CD4^+^ T cells" or "Na^+^", is the title's. A unit's power at the end, "per
+m^2^", is taken for a mark too, and named, for the author to put back. Each Author paragraph that is one name goes to `authors.yaml`, in a comment
+over an entry whose given and family names are left empty, since which part is the family
+name cannot be read from the name; one holding a comma, a semicolon, "and", a digit, a
+superscript or a link is several names or carries a mark, and goes to the comment. The
+abstract becomes `# Abstract`. pandoc puts the Abstract style in the metadata only when it
+follows the Title, Author and Date paragraphs, and its own writer puts an "Abstract" title
+paragraph in between, so an abstract is often read as text instead. What stands before the
+first heading, with the metadata no file takes, is set aside in one HTML comment at the top
+of `main.md`, where no gate reads it and the build prints nothing of it; a `-->` in it, which
+pandoc leaves in code, is written `--&gt;`.
+
+Before the first heading is not always a title page. Of the fifteen papers, six had no
+paragraph in a heading style, one's first heading was an entry of its reference list, after
+10,106 words, one's was an empty paragraph near the end, and one's an APA paper's "Method"
+after its introduction (2,064 words). Set aside, each of those would have hidden the paper
+from every gate. So the run is set aside only up to 600 words, which a title, a long author
+list and a 300-word abstract stay under; the two title pages among the fifteen held 18 and
+375 words. A longer run stays in the text, as does everything in a paper with no heading.
+
+**Over nothing.** `init` keeps a file that is already there, and so would have kept a
+`paper.yaml` or an `authors.yaml` while saying it wrote the Word paper's title and names into
+them. `init --from` refuses before reading the paper where a manuscript is there. Once it has
+read the paper, it refuses where `paper.yaml` is there and the Word title would go into it
+(no `--title` given), and where `authors.yaml` is there and the paper's Author paragraphs
+name someone; where nothing from the paper would go into the file, it keeps the file, as
+plain `init` does. It refuses as well where a picture cannot be written: something already
+at its path, a file where the project or one of its folders goes, or two pictures whose
+paths differ only by case, which Windows and macOS take for one file. The pictures are
+written after the rest of the project, and an error then left half a project. Each refusal
+makes nothing.
+
+Measured on the fifteen: the seven that failed now pass `check` at the stage `init` sets,
+with 39 tables written as pipe tables and 2 left as grid tables (a numbered list in a cell,
+and a layout table holding two others); five titles came from a Title paragraph, one of
+them the journal's name; no
+paper's Author style was used, three having put their authors in the Subtitle style; two
+title pages were set aside, and three runs before the first heading were left in the text.
+The three `.doc` papers are refused, with "save it as .docx".
 
 ## What an adversarial review found, 2026-08-03
 
@@ -11427,7 +11582,11 @@ Open, recorded as each change landed:
   as typed: the 300-character limit stops a pasted paragraph, not a sentence of unpublished
   results written as a query. A PMID joins a record with no DOI to a work with one, so where
   OpenAlex gives a preprint the PMID of the paper it became, PubMed's DOI-less record of that
-  paper is shown as the preprint (round 1 of #369; not seen in the answers probed).
+  paper is shown as the preprint (round 1 of #369; not seen in the answers probed). A DOI
+  in a later-version link is read from the end of PubMed's or Europe PMC's reference string,
+  and two links can only be joined where they give the same one: a reference ending in
+  `10.1/x)` beside another's `10.1/x` for the same PMID is shown as two later versions
+  (round 1 of #376; not seen in the answers probed).
 - **The title comparison is one-sided and by words.** A registered title that holds every
   cited word and many more passes, and so does one whose words are the same in another
   order. A notice a publisher deposited as a journal article, with no `update-to`, is read
@@ -15187,6 +15346,21 @@ Open, recorded as each change landed:
   - The hook that runs after a manuscript file is saved does not run this gate yet; the
     findings appear at `check`.
 
+- **A paper that declares no English is held to a count, and is built in no region.**
+  (Basile, 2026-10-23.)
+  - G14 takes the English of the more words, so a draft with as many British spellings as
+    American ones, or one more of the wrong kind, is told the right ones are the strays.
+    Where they are level the first word decides, which is an order, not a reason.
+  - The count is of the words on G14's list, and only those: a paper whose only spellings
+    of either kind are in a name, a quotation or a section left unread has no English, and
+    hears nothing.
+  - G4 does not compare a journal's `english_variant` with such a paper, nor with the
+    English its words are mostly in: a journal that insists on British English and a paper
+    that declares nothing and is written in American pass G4 and G14 alike.
+  - The build writes `lang: en`, and Word and citeproc each take American English for it
+    (Word's proofing, CSL's `en-US` locale, babel's `english` in LaTeX), and the live
+    Zotero build names `en-US`. A paper written in British spelling that declares nothing
+    is so proofed and cited in American; declaring `en-GB` is the way out.
 - **G14's spelling is a list of general English, and reads a capital as a name's.**
   - A word the list does not hold is not read. It has "haemoglobin", "oedema" and
     "randomise", and not "hyperglycaemia", "leucocyte" or "operationalise"; a spelling of
@@ -15909,8 +16083,9 @@ Open, recorded as each change landed:
   lie outside as `dates[1]` in R and `dates[0]` in Python, each its language's way.
 - **The English a dataset's date is printed in is read when the analysis runs.** A
   `paper.yaml` changed afterwards is warned of (`dataset-date-english`), not failed. R reads
-  `english_variant` from its own line of `paper.yaml`, not as YAML, and takes British
-  English where it finds none there: a value in a flow mapping is not seen.
+  `english_variant` from its own line of `paper.yaml`, not as YAML, and takes no English
+  where it finds none there, printing day, month, year: a value in a flow mapping is not
+  seen, so an American paper that declares itself so prints "1 March 2024" from R.
 - **A chosen source's coverage is not compared with a dataset's.** The record says what a
   candidate covers in words (`covers.period`, "1968 to present", "2004 Q1 onwards"), and
   `dataset()`'s `covers` is the extract's, which may rightly be narrower than the source's.
@@ -16003,6 +16178,45 @@ Open, recorded as each change landed:
 - **`quality-not-reported` is not read in a LaTeX manuscript.** It reads the Methods as
   Markdown, and on a LaTeX manuscript G16 says `not-read-in-latex`, as the other checks not
   yet taught LaTeX do.
+- **A Word table's rows stacked in one cell become one row.** A table that lists a
+  characteristic's categories one paragraph to a line inside a single row, "Male" over
+  "Female" and "36" over "24", is written by `init --from` as one row whose cells read "Male
+  Female" and "36 24": a cell's paragraphs are joined, as Basile chose. No text is lost, but
+  the counts run together in a cell, the audit does not pair a count with its share there,
+  and a reader of the Markdown sees one row. Rewrite such a table by hand, or emit it from
+  the analysis.
+- **A merged cell's text stands in its first column only.** A header spanning a count's and a
+  share's columns, "Cases (n = 120)", heads the first of them in the pipe table, and the
+  audit reads its denominator for that column alone.
+- **What `init --from` sets aside is chosen by a count of words.** The run before the first
+  heading is set aside up to 600 words. A short introduction with no heading over it, after a
+  short title page, 600 words in all, is set aside with it, and no gate reads its numbers; a
+  title page over 600 words stays in the text, where its names and affiliations are read.
+  `init` prints which it did and how many words.
+- **An abstract `init --from` does not find in Word's metadata is not a section.** pandoc
+  reads the Abstract style as metadata only straight after the Title, Author and Date
+  paragraphs. An abstract elsewhere before the first heading goes into the comment with the
+  title page, and its numbers are read by no gate until it is moved out; one under a heading
+  of its own stays in the text.
+- **A Word paper's bold-text headings are no headings.** `init --from` takes as a heading only
+  a paragraph in one of Word's heading styles, as pandoc does; six of fifteen papers had none.
+  Their sections are paragraphs to every gate, so a Methods section's thresholds are not read
+  as chosen in advance, and nothing is set aside as a title page.
+- **`init --from` reads no affiliation, ORCID or e-mail address, and splits no name.** Each
+  name from an Author paragraph goes into `authors.yaml` in a comment over an empty entry; the
+  rest of the title page is in the comment in `main.md`.
+- **A table `init --from` leaves as a grid table keeps pandoc's numbering.** A numbered list
+  in a cell is written with its numbers, "1.", "2.", and `check` reports them as numbers
+  typed in a table, as it reports the rest of the grid table's rows.
+- **Word comments are not brought in by `init --from`.** pandoc drops them when it accepts
+  tracked changes; the audit and `import` read comments, `init` does not.
+- **A power at the end of a Word title is taken for a note's mark.** `init --from` leaves a
+  superscript of digits or `*`, `†`, `‡`, `§`, `¶`, `‖`, `#` at the title's end out of `paper.yaml`, so "per
+  m^2^" becomes "per m". It names what it left out, and the Title paragraph is in the comment.
+- **A Word title's mark inside a wrapper stays in the title.** `init --from` looks for the
+  mark among the title's own pieces, so one that pandoc reads inside bold or italic, or one
+  followed by an empty bookmark, is printed as part of the title, "a fall1"; the Title
+  paragraph is in the comment, where the author can see it.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

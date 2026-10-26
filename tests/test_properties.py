@@ -4813,6 +4813,74 @@ def _an_address_in_brackets_is_a_citation(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(citations_module, "BRACKETED", re.compile(rf"\[(?P<body>{group}*@{group}*)\]"))
 
 
+#: The papers each example of the property below holds: mostly British, mostly American,
+#: as many of each, British by its -ise words alone, and British with as many -ize words
+#: both Englishes write as it has British ones, which count for neither.
+_LEANINGS = ("en-GB", "en-US", "level", "-ise", "-ize")
+#: The -ise spellings British usage writes, and the -ize ones both usages write.
+WITH_ISE = ("randomised", "organised", "summarised", "categorised")
+WITH_IZE = ("randomized", "organized", "summarized", "categorized")
+
+
+@st.composite
+def _undeclared_papers(draw: st.DrawFn) -> list[tuple[str, str, dict[str, int], int, int]]:
+    """Papers that declare no English, one of each leaning in every example: filler with
+    words of both Englishes planted in an order drawn. Each comes with the English it is to
+    be held to, the words of the other with where each first stands, and how many of each."""
+    papers = []
+    for leaning in _LEANINGS:
+        more = draw(st.integers(2, 6))
+        if leaning == "level":
+            # The first word's English is the paper's; the rest are drawn in any order.
+            held = draw(st.sampled_from(("en-GB", "en-US")))
+            stray = "en-US" if held == "en-GB" else "en-GB"
+            planted = [held, *draw(st.permutations([held] * (more - 1) + [stray] * more))]
+        else:
+            held = "en-GB" if leaning.startswith("-") else leaning
+            stray = "en-US" if held == "en-GB" else "en-GB"
+            fewer = draw(st.integers(1, more - 1))
+            both = ["both"] * more * (leaning == "-ize")
+            planted = list(draw(st.permutations([held] * more + [stray] * fewer + both)))
+        pools = {
+            "en-GB": WITH_ISE if leaning == "-ise" else BRITISH,
+            "en-US": AMERICAN,
+            "both": WITH_IZE,
+        }
+        sentences: list[str] = []
+        stands: dict[str, int] = {}
+        for english in planted:
+            word = draw(st.sampled_from(pools[english]))
+            before = _words(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
+            after = _words(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
+            sentence = f"{before.capitalize()} {word} {after}."
+            if english == stray:
+                stands.setdefault(word, len(sentences))
+            sentences.append(sentence)
+        own, other = planted.count(held), planted.count(stray)
+        papers.append(("\n".join(sentences) + "\n", held, stands, own, other))
+    return papers
+
+
+@holds(100, _undeclared_papers())
+def test_a_paper_that_declares_no_english_is_held_to_the_one_most_of_its_words_are_in(
+    papers: list[tuple[str, str, dict[str, int], int, int]],
+) -> None:
+    """Basile, 2026-10-23. The words of the fewer English are each said where they first
+    stand, those of the more never, and nothing about a setting nobody made; where the two
+    are level, the English of the first word is the paper's."""
+    names = {"en-GB": "British", "en-US": "American"}
+    for text, held, stands, own, other in papers:
+        file = _file(0, MAIN, text, [], False)
+        passage = Passage(file.path, file.text, file.printed, file.line_of)
+        report = judge_spelling([passage], None, (), PAPER)
+        assert {f.code for f in report.findings} <= {"spelling-variant"}, text
+        theirs = names["en-US" if held == "en-GB" else "en-GB"]
+        found = {(f.message.split("'")[1], f.line) for f in report.findings}
+        assert found == {(word, line + 1) for word, line in stands.items()}, (text, held)
+        assert all(f"is the {theirs} spelling of" in f.message for f in report.findings), text
+        assert (report.counts["spelling_own"], report.counts["spelling_other"]) == (own, other)
+
+
 # ------------------------------------------------------------------------- placeholders
 
 
@@ -5962,6 +6030,178 @@ def test_a_latex_pointer_is_held_to_what_latex_numbers(
     )
     found = {(f.code, f.path.name, f.line) for f in report.findings}
     assert found == expected, (found, expected, texts)
+
+
+@st.composite
+def _planted_latex_appendix(draw: st.DrawFn) -> tuple[str, set[tuple], set[int]]:
+    """A LaTeX document whose Methods cite its appendix's first table; whose Results number
+    tables in captioned floats, each cited in order, then a subsection named for a supplement,
+    a deeper heading in it, holding a table cited nowhere, and a subsection after it that the
+    word only describes, "Supplementary analyses" say, whose table is cited nowhere; a
+    Discussion that ends on a heading for the supplement, then the reference list and a table
+    after it cited nowhere, as a paper that places its floats at the end does; and an
+    appendix, opened by `\\appendix`, IEEEtran's `\\appendices`, the appendix package's
+    `appendices` or an `appendix` environment, holding a table or two, an environment followed
+    by one more table cited nowhere. An `\\appendix` in a comment and one in a definition's
+    body stand before the Results, and open nothing. A pointer is typed to the appendix's last
+    table, and one to a table more than all. What G2 says of it: the main text's tables cited
+    nowhere, and the pointer to nothing at its line; and the numbers of those tables
+    (2026-10-23; rounds 1 and 2)."""
+
+    def table(label: str) -> str:
+        return f"\\begin{{table}}\\caption{{The table.}}\\label{{{label}}}\\end{{table}}"
+
+    def words() -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=3))) + "."
+
+    mains, appended = draw(st.integers(1, 3)), draw(st.integers(1, 2))
+    opened = draw(st.sampled_from(("\\appendix", "\\begin{appendices}", "\\appendices",
+                                   "\\begin{appendix}")))  # fmt: skip
+    describes = draw(st.sampled_from(("Supplementary analyses", "Supplementary data sources",
+                                      "Supplemental oxygen", "Appendix diameter")))  # fmt: skip
+    heading = draw(st.sampled_from(("Supplementary material", "Supplemental tables",
+                                    "Appendix: sensitivity", "Supporting information",
+                                    "S1 Appendix", "Electronic supplementary material",
+                                    "Additional files", "Supplement 2")))  # fmt: skip
+    lines = ["\\documentclass{article}", "\\begin{document}", "\\section{Methods}", words(),
+             "The codes are in Supplementary Table~\\ref{app1}.", "% \\appendix",
+             "\\newcommand{\\appx}{\\appendix}", "\\section{Results}"]  # fmt: skip
+    for number in range(1, mains + 1):
+        lines += [table(f"tab{number}"), words(), f"As Table~\\ref{{tab{number}}} shows."]
+    lines += [f"\\subsection{{{heading}}}", words(), "\\subsubsection{Detail}", table("part"),
+              f"\\subsection{{{describes}}}", words(), table("late"),
+              "\\section{Discussion}"]  # fmt: skip
+    last = mains + 3 + appended
+    environment = opened.startswith("\\begin{")
+    count = last + environment
+    lines += [f"The last is Table~{last}, not Table~{count + 1}.",
+              "\\section*{Supplementary data}", words(), "\\bibliography{refs}", table("float"),
+              opened, "\\section{Codes}"]  # fmt: skip
+    lines += [table(f"app{number}") for number in range(1, appended + 1)]
+    ended = opened.replace("\\begin", "\\end")
+    lines += [ended, table("after")] * environment + ["\\end{document}"]
+    pointed = next(index for index, line in enumerate(lines) if line.startswith("The last")) + 1
+    expected = {("display-not-cited", "main.tex", None),
+                ("pointer-to-nothing", "main.tex", pointed)}
+    uncited = {mains + 2, mains + 3} | ({count} if environment else set())
+    return "\n".join(lines) + "\n", expected, uncited
+
+
+@holds(60, _planted_latex_appendix())
+def test_a_latex_appendix_s_tables_are_the_supplement_s(
+    planted: tuple[str, set[tuple], set[int]],
+) -> None:
+    """A table after `\\appendix` or in `appendices`, or under a heading that names a
+    supplement to the next heading of its level, is the supplement's: held neither to ICMJE's
+    order nor to being cited, and still counted for a pointer typed to it; a table after that
+    part, under a heading the word only describes or past `appendices`, is the main text's;
+    an `\\appendix` in a comment or a definition's body opens nothing (Basile, 2026-10-23;
+    round 1)."""
+    text, expected, uncited = planted
+    sources = list(latex_structure.read_tree({"main.tex": text}).sources)
+    report = pointers_latex_gate.pointers_in_documents(
+        {False: sources, True: []}, Path("m"), dict.fromkeys(pointers_latex_gate.AS_FILES, 0)
+    )
+    found = {(f.code, f.path.name, f.line) for f in report.findings}
+    assert found == expected, (found, expected, text)
+    # A table cited nowhere is said at the entry file and no line: by its number, then.
+    missing = [int(re.match(r"Table (\d+) ", f.message)[1]) for f in report.findings
+               if f.code == "display-not-cited"]  # fmt: skip
+    assert sorted(missing) == sorted(uncited), (missing, uncited, text)
+
+
+def _the_appendix_opens_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print, "_APPENDIX", re.compile(r"(?!)"))
+
+
+#: The reference lists `printed._APPENDIX` marks, for the broken rules that change the rest.
+_LISTS = (r"|(?P<references>\\(?:bibliography|printbibliography)(?![A-Za-z@])"
+          r"|\\begin\s*\{thebibliography\})")
+
+
+def _the_appendix_package_s_environment_opens_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print, "_APPENDIX",
+                  re.compile(r"\\(?:appendix|appendices)(?![A-Za-z@])(?P<end>(?!))?" + _LISTS))
+
+
+def _the_appendix_package_s_environment_never_ends(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print, "_APPENDIX", re.compile(
+        r"\\(?:appendix|appendices)(?![A-Za-z@])|\\(?P<end>begin)\s*\{(?:appendices|appendix)\}"
+        + _LISTS))  # fmt: skip
+
+
+def _a_supplement_s_part_runs_past_the_reference_list(patch: pytest.MonkeyPatch) -> None:
+    def broken(text: str) -> list[tuple[int, int]]:
+        headings = pointers_latex_gate.find_headings(text)
+        return [(heading.start, next((later.start for later in headings[index + 1 :]
+                                      if later.level <= heading.level), len(text)))
+                for index, heading in enumerate(headings)
+                if pointers_latex_gate._SUPPLEMENT_HEADING.match(heading.title)]  # fmt: skip
+
+    patch.setattr(pointers_latex_gate, "_supplement_parts", broken)
+
+
+def _a_heading_the_word_only_describes_names_a_supplement(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(pointers_latex_gate, "_SUPPLEMENT_HEADING", re.compile(
+        r"\s*(?:supplement(?:ary|al)?|e?appendi(?:x|ces)|supporting\s+information"
+        r"|S\d+\s+appendix|electronic|additional)\b", re.IGNORECASE))  # fmt: skip
+
+
+def _an_appendix_opened_where(spans) -> object:
+    """A broken rule: each `\\appendix` in the spans `spans` gives of a reading opens the
+    appendix too."""
+
+    def broken(patch: pytest.MonkeyPatch) -> None:
+        events = latex_print._pointing_events
+
+        def opened(source):
+            found = events(source)
+            starts = {start for start, _end, _said in found}
+            for written in latex_print._APPENDIX.finditer(source.text):
+                inside = any(low <= written.start() < high for low, high in spans(source.reading))
+                if inside and written.start() not in starts:
+                    found.append((written.start(), written.end(),
+                                  latex_print.APPENDIX + latex_print.MARK_END))  # fmt: skip
+            return found
+
+        patch.setattr(latex_print, "_pointing_events", opened)
+
+    return broken
+
+
+_an_appendix_in_a_comment_opens_it = _an_appendix_opened_where(lambda reading: reading.comments)
+_an_appendix_in_a_body_opens_it = _an_appendix_opened_where(lambda reading: reading.bodies)
+
+
+def _a_supplement_s_heading_holds_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(pointers_latex_gate, "_SUPPLEMENT_HEADING", re.compile(r"(?!)"))
+
+
+def _a_supplement_s_part_runs_to_the_end(patch: pytest.MonkeyPatch) -> None:
+    parts = pointers_latex_gate._supplement_parts
+    patch.setattr(pointers_latex_gate, "_supplement_parts",
+                  lambda text: [(start, len(text)) for start, _end in parts(text)])  # fmt: skip
+
+
+def _a_supplement_s_part_ends_at_any_heading(patch: pytest.MonkeyPatch) -> None:
+    def broken(text: str) -> list[tuple[int, int]]:
+        headings = pointers_latex_gate.find_headings(text)
+        return [(heading.start, next((later.start for later in headings[index + 1 :]), len(text)))
+                for index, heading in enumerate(headings)
+                if pointers_latex_gate._SUPPLEMENT_HEADING.match(heading.title)]  # fmt: skip
+
+    patch.setattr(pointers_latex_gate, "_supplement_parts", broken)
+
+
+def _the_appendix_s_tables_are_not_counted(patch: pytest.MonkeyPatch) -> None:
+    numbered = pointers_latex_gate._numbered
+
+    def broken(views):
+        bound, labels, uncounted, apart = numbered(views)
+        return ({key: count - len(apart[key]) for key, count in bound.items()}, labels,
+                uncounted, apart)  # fmt: skip
+
+    patch.setattr(pointers_latex_gate, "_numbered", broken)
 
 
 @st.composite
@@ -8464,6 +8704,44 @@ def _a_variables_name_is_a_word(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(spelling_gate, "_in_an_identifier", lambda text, start, end: False)
 
 
+def _no_english_declared_is_british(patch: pytest.MonkeyPatch) -> None:
+    """The rule before 2026-10-23: a paper that declared nothing was British."""
+    patch.setattr(
+        spelling_gate, "_majority", lambda spelt: (spelling_gate.BRITISH, False) if spelt else None
+    )
+
+
+def _level_englishes_are_british(patch: pytest.MonkeyPatch) -> None:
+    """As many of each, and the first word's English not looked at."""
+    majority = spelling_gate._majority
+
+    def broken(spelt: list) -> tuple[str, bool] | None:
+        taken = majority(spelt)
+        return (spelling_gate.BRITISH, True) if taken and taken[1] else taken
+
+    patch.setattr(spelling_gate, "_majority", broken)
+
+
+def _ise_counts_for_neither(patch: pytest.MonkeyPatch) -> None:
+    """An -ise spelling taken for one both Englishes write."""
+    majority = spelling_gate._majority
+
+    def broken(spelt: list) -> tuple[str, bool] | None:
+        return majority([(*each[:-1], "" if each[-1] == "ise" else each[-1]) for each in spelt])
+
+    patch.setattr(spelling_gate, "_majority", broken)
+
+
+def _ize_counts_as_american(patch: pytest.MonkeyPatch) -> None:
+    """An -ize spelling both Englishes write taken for American."""
+    majority = spelling_gate._majority
+    patch.setattr(
+        spelling_gate,
+        "_majority",
+        lambda spelt: majority([(*each[:-1], each[-1] or "us") for each in spelt]),
+    )
+
+
 def _a_list_of_pointers_is_its_first(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import pointers
 
@@ -10226,6 +10504,50 @@ BROKEN = {
         _a_cross_reference_cites_nothing,
         test_a_latex_pointer_is_held_to_what_latex_numbers,
     ),
+    "in LaTeX, \\appendix opens nothing": (
+        _the_appendix_opens_nothing,
+        test_a_latex_appendix_s_tables_are_the_supplement_s,
+    ),
+    "in LaTeX, the appendix package's appendices open nothing": (
+        _the_appendix_package_s_environment_opens_nothing,
+        test_a_latex_appendix_s_tables_are_the_supplement_s,
+    ),
+    "in LaTeX, the appendix package's appendices never end": (
+        _the_appendix_package_s_environment_never_ends,
+        test_a_latex_appendix_s_tables_are_the_supplement_s,
+    ),
+    "in LaTeX, a supplement's part runs past the reference list": (
+        _a_supplement_s_part_runs_past_the_reference_list,
+        test_a_latex_appendix_s_tables_are_the_supplement_s,
+    ),
+    "in LaTeX, a heading the word supplementary only describes names a supplement": (
+        _a_heading_the_word_only_describes_names_a_supplement,
+        test_a_latex_appendix_s_tables_are_the_supplement_s,
+    ),
+    "in LaTeX, an \\appendix in a comment opens the appendix": (
+        _an_appendix_in_a_comment_opens_it,
+        test_a_latex_appendix_s_tables_are_the_supplement_s,
+    ),
+    "in LaTeX, an \\appendix in a definition's body opens the appendix": (
+        _an_appendix_in_a_body_opens_it,
+        test_a_latex_appendix_s_tables_are_the_supplement_s,
+    ),
+    "in LaTeX, a heading that names a supplement holds nothing": (
+        _a_supplement_s_heading_holds_nothing,
+        test_a_latex_appendix_s_tables_are_the_supplement_s,
+    ),
+    "in LaTeX, a supplement's part runs to the document's end": (
+        _a_supplement_s_part_runs_to_the_end,
+        test_a_latex_appendix_s_tables_are_the_supplement_s,
+    ),
+    "in LaTeX, a supplement's part ends at any heading": (
+        _a_supplement_s_part_ends_at_any_heading,
+        test_a_latex_appendix_s_tables_are_the_supplement_s,
+    ),
+    "in LaTeX, the appendix's tables are not counted": (
+        _the_appendix_s_tables_are_not_counted,
+        test_a_latex_appendix_s_tables_are_the_supplement_s,
+    ),
     "in LaTeX, a pointer's line is the printed view's": (
         _a_latex_pointer_s_line_is_the_view_s,
         test_a_latex_pointer_is_held_to_what_latex_numbers,
@@ -11756,6 +12078,22 @@ BROKEN = {
     "a variable's name is read as a word": (
         _a_variables_name_is_a_word,
         test_a_word_in_the_other_english_is_found_where_it_stands_and_a_name_is_not,
+    ),
+    "a paper that declares no English is held to British": (
+        _no_english_declared_is_british,
+        test_a_paper_that_declares_no_english_is_held_to_the_one_most_of_its_words_are_in,
+    ),
+    "two Englishes level are taken for British": (
+        _level_englishes_are_british,
+        test_a_paper_that_declares_no_english_is_held_to_the_one_most_of_its_words_are_in,
+    ),
+    "an -ise spelling counts for neither English": (
+        _ise_counts_for_neither,
+        test_a_paper_that_declares_no_english_is_held_to_the_one_most_of_its_words_are_in,
+    ),
+    "an -ize both write counts as American": (
+        _ize_counts_as_american,
+        test_a_paper_that_declares_no_english_is_held_to_the_one_most_of_its_words_are_in,
     ),
     "a list of tables is read as its first": (
         _a_list_of_pointers_is_its_first,

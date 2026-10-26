@@ -175,7 +175,7 @@ publisher: Example Press
 source_url: https://...        # the page you actually read
 retrieved_on: 2026-08-03
 article_type: "Original Research Article"
-english_variant: en-GB          # only if the journal insists; overrides paper.yaml
+english_variant: en-GB          # only if the journal insists; G4 compares it with paper.yaml's
 blinding: double                # how its peer review is blinded, where the page says
 text_recycling: "Methods only, cited"  # its policy on authors' reuse of their own text
 

@@ -104,7 +104,7 @@ from manuscript_guard.policy import (
 )
 from manuscript_guard.record import FIGURE_VERDICTS
 from manuscript_guard.record import VERDICTS as RECORD_VERDICTS
-from manuscript_guard.scaffold import init_project, rules_to_add
+from manuscript_guard.scaffold import ENGLISHES, UNTITLED, init_project, rules_to_add
 from manuscript_guard.text.masking import mask
 from manuscript_guard.text.placeholders import parse, substitute
 from manuscript_guard.text.reader import LATEX, manuscript_files, manuscript_format
@@ -4475,14 +4475,38 @@ def _note_stale_skills(start: Path) -> None:
 
 def cmd_init(args: argparse.Namespace) -> int:
     from manuscript_guard.contracts.results import HOW_TO_EMIT
+    from manuscript_guard.from_word import init_from_word, what_was_done
 
+    word = args.from_docx
+    if word is not None and args.latex:
+        print("manuscript-guard init: --from writes a Word paper as a Markdown manuscript, "
+              "and --latex starts a LaTeX one; nothing was made", file=sys.stderr)  # fmt: skip
+        return 2
+    converted = None
     try:
-        created = init_project(args.path, title=args.title, latex=args.latex)
+        if word is None:
+            title = UNTITLED if args.title is None else args.title
+            created = init_project(args.path, title=title, latex=args.latex,
+                                   english=args.english)  # fmt: skip
+        else:
+            created, converted = init_from_word(args.path, word, title=args.title,
+                                                english=args.english)  # fmt: skip
     except ContractError as exc:
-        print(f"manuscript-guard init: {exc}", file=sys.stderr)
+        # A title read from the Word document that init does not take.
+        read = word is not None and args.title is None and str(exc).startswith("the title")
+        hint = "; give one with --title" if read else ""
+        print(f"manuscript-guard init: {exc}{hint}", file=sys.stderr)
         return 2
     for path in created:
         print(f"created {path}")
+    paper = (Path(args.path) / "paper.yaml").resolve()
+    if args.english and paper not in {path.resolve() for path in created}:
+        print(
+            f"\npaper.yaml was already there and was left as it was, so english_variant: "
+            f"{args.english} was not written into it: set it there"
+        )
+    if converted is not None:
+        print("\n" + what_was_done(word, converted))
     rules = rules_to_add(args.path, latex=args.latex)
     if rules:
         print(
@@ -5223,11 +5247,28 @@ def build_parser() -> argparse.ArgumentParser:
 
     init = sub.add_parser("init", help="scaffold a new manuscript project")
     init.add_argument("path", nargs="?", type=Path, default=Path.cwd())
-    init.add_argument("--title", default="Untitled manuscript")
+    init.add_argument(
+        "--title", help=f"the paper's title; {UNTITLED!r} where none is given or read"
+    )
     init.add_argument(
         "--latex",
         action="store_true",
         help="start the manuscript in LaTeX: manuscript/main.tex, with its values file",
+    )
+    init.add_argument(
+        "--english",
+        help=f"the English paper.yaml declares, whose spelling G14 holds the manuscript to: "
+        f"{' or '.join(ENGLISHES)}. Without it none is declared, and G14 holds the paper to "
+        "the one most of its words are in",
+    )
+    init.add_argument(
+        "--from",
+        dest="from_docx",
+        type=Path,
+        metavar="PAPER.docx",
+        help="bring a paper written in Word into the project: its text as manuscript/main.md, "
+        "each table a pipe table where it can be one, its pictures in manuscript/media/, and "
+        "its title page set aside in a comment",
     )
     init.set_defaults(func=cmd_init)
 

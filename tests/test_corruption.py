@@ -10780,6 +10780,27 @@ def test_a_latex_pointer_to_a_table_its_floats_do_not_number_fails(project: Path
     ]
 
 
+def test_a_latex_appendix_s_table_is_not_held_to_the_main_text_s_order(project: Path) -> None:
+    """A table in the appendix, cited first in the Methods as "Supplementary Table", is the
+    supplement's and passes; the same table outside the appendix is cited out of order and
+    fails (2026-10-23, an Elsevier paper)."""
+    from manuscript_guard.gates.pointers_latex import check_pointers_latex
+
+    shutil.rmtree(project / "manuscript")
+    shutil.copytree(TWIN, project / "manuscript")
+    main = project / "manuscript" / "main.tex"
+    cited = "\\section{Methods}\nCodes are in Supplementary Table~\\ref{codes}.\n"
+    codes = "\\begin{table}\\caption{Codes.}\\label{codes}\\end{table}\n"
+    text = main.read_text(encoding="utf-8").replace("\\section{Methods}\n", cited).replace(
+        "\\bibliographystyle{plain}", "\\appendix\n\\section{Codes}\n" + codes
+        + "\\bibliographystyle{plain}")  # fmt: skip
+    main.write_text(text, encoding="utf-8")
+    assert check_pointers_latex(load_project(project)[0]).failures == ()
+    main.write_text(text.replace("\\appendix\n", ""), encoding="utf-8")
+    failing = check_pointers_latex(load_project(project)[0]).failures
+    assert [(f.code, f.line) for f in failing] == [("cited-out-of-order", 33)], failing
+
+
 def test_a_latex_statement_that_does_not_name_the_chosen_source_is_said_in_its_file(
     project: Path,
 ) -> None:
@@ -12881,6 +12902,78 @@ def test_a_rule_with_a_line_under_it_is_refused(project: Path, block: str, capsy
     assert "pandoc may read as a heading's underline, YAML metadata or a table" in (
         capsys.readouterr().out
     )
+
+
+_WORD_TABLE = """\
+# Results
+
+The counts are in Table 1.
+
+| Group    | Cases |
+|----------|-------|
+| Exposed  | 41    |
+| Others   | 17    |
+
+: Table 1. Counts.
+
++----------+-------------+
+| Group    | Deaths      |
++==========+=============+
+| Exposed  | 29          |
+|          |             |
+|          | in 2019     |
++----------+-------------+
+
+: Table 2. Deaths.
+"""
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_number_typed_in_a_word_table_is_read_once_the_paper_is_brought_in(
+    tmp_path: Path, capsys
+) -> None:
+    """A Word table as `pandoc paper.docx -t markdown` writes it is a multiline table, whose
+    lines of dashes `check` refuses at every stage, so a paper brought in that way was refused
+    whole. `init --from` writes it as a pipe table, and the 41 typed in it is reported for
+    what it is, a number in a table typed by hand. So is a table with a cell of two
+    paragraphs, which pandoc writes as a grid table until they are joined."""
+    import subprocess
+
+    from manuscript_guard.cli import main
+
+    folder = tmp_path / "word"
+    folder.mkdir()
+    (folder / "paper.md").write_text(_WORD_TABLE, encoding="utf-8")
+    subprocess.run(["pandoc", "paper.md", "-o", "paper.docx"], cwd=folder, check=True,
+                   timeout=120)  # fmt: skip
+    paper = folder / "paper.docx"
+
+    def failures_and_tables(root: Path) -> tuple[set[str], list[str]]:
+        capsys.readouterr()
+        main(["check", str(root), "--json", "--stage", "drafting"])
+        found = json.loads(capsys.readouterr().out)["findings"]
+        tables = [f["message"] for f in found if f["code"] == "hand-authored-table"]
+        return {f["code"] for f in found if f["severity"] == "fail"}, tables
+
+    plain = tmp_path / "plain"
+    assert main(["init", str(plain)]) == 0
+    subprocess.run(["pandoc", str(paper), "-t", "markdown", "-o", "main.md"],
+                   cwd=plain / "manuscript", check=True, timeout=120)  # fmt: skip
+    refused, _ = failures_and_tables(plain)
+    assert "rule-opens-a-block" in refused
+
+    root = tmp_path / "brought-in"
+    assert main(["init", str(root), "--from", str(paper)]) == 0
+    refused, tables = failures_and_tables(root)
+    assert "rule-opens-a-block" not in refused
+    assert any("'41'" in message for message in tables), tables
+    # A pipe table, so the audit reads its cells too: a grid table's rows are only text to it.
+    from manuscript_guard.build.assemble import strip_front_matter
+    from manuscript_guard.text.tables import markdown_tables
+
+    text = strip_front_matter((root / "manuscript" / "main.md").read_text(encoding="utf-8"))[0]
+    cells = [cell.text.strip() for table in markdown_tables(text) for row in table for cell in row]
+    assert "41" in cells and "29 in 2019" in cells
 
 
 @pytest.mark.skipif(
@@ -21723,6 +21816,37 @@ def test_a_reference_list_under_a_bold_line_is_passed_over_as_under_a_heading(
     ]
 
 
+def _declaring_no_english(root: Path) -> None:
+    """`paper.yaml` as `init` writes it since Basile's decision of 2026-10-23: no English."""
+    path = root / "paper.yaml"
+    paper = path.read_text(encoding="utf-8")
+    assert paper.count("english_variant: en-GB\n") == 1, "the fixture changed under this test"
+    path.write_text(paper.replace("english_variant: en-GB\n", ""), encoding="utf-8")
+
+
+def test_declaring_no_english_a_co_author_s_word_in_the_fewer_spelling_is_caught(
+    project: Path,
+) -> None:
+    """One co-author writes "colour", another "color", and nobody declared either: the paper
+    is held to the English most of its words are in, and the stray is said where it stands."""
+    _declaring_no_english(project)
+    text = main_md(project).read_text(encoding="utf-8")
+    old = "Several limitations follow from the design."
+    assert old in text, "the fixture changed under this test"
+    edited = text.replace(
+        old, old + " The colour of a tablet is rarely recorded, and the color of its coating never."
+    )
+    main_md(project).write_text(edited, encoding="utf-8")
+    assert spelling_findings(project) == [
+        (
+            "spelling-variant",
+            line_of(edited, "The colour of a tablet"),
+            "'color' is the American spelling of 'colour', used once; paper.yaml declares no "
+            "English, and the paper has 2 words in British spelling to 1 in American",
+        )
+    ]
+
+
 _SAID = "The color of each tumor group by ABC."
 
 #: What may follow a reference list under a bold line, each with `_SAID` after it or in it:
@@ -21862,6 +21986,31 @@ def test_a_blank_line_of_spaces_in_a_reference_list_still_ends_a_paragraph() -> 
     text = "**References**\n\n1. Doe J. Title. 2019.\n  \n# Data availability\n\nText here.\n"
     assert measure(text).sections == ("Data availability",)
     assert measure(text).main_text_words == 4
+
+
+def test_declaring_no_english_a_mostly_american_paper_hears_of_its_british_word(
+    project: Path,
+) -> None:
+    """The case behind the decision: a paper in American English that declared nothing was
+    told it broke the British English `init` had declared for it. Now the British word is
+    the one said, and nothing about a setting nobody made."""
+    _declaring_no_english(project)
+    supplement = project / "manuscript" / "supplementary" / "S1_code_lists.md"
+    supplement.write_text(
+        supplement.read_text(encoding="utf-8")
+        + "\nThe color of the tumor, the anemia, the edema and the hemoglobin level were not "
+        "coded.\n",
+        encoding="utf-8",
+    )
+    text = main_md(project).read_text(encoding="utf-8")
+    assert spelling_findings(project) == [
+        (
+            "spelling-variant",
+            line_of(text, "We analysed"),
+            "'analysed' is the British spelling of 'analyzed', used once; paper.yaml declares "
+            "no English, and the paper has 5 words in American spelling to 1 in British",
+        )
+    ]
 
 
 def test_a_name_a_quotation_and_a_citation_key_in_the_other_spelling_are_left_alone(

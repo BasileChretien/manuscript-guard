@@ -4683,7 +4683,8 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "spelling": st.fixed_dictionaries(
         {
             "text": texts(SPELT, REFERENCE_BLOCKS),
-            "variant": st.sampled_from(("en-GB", "en-US")),
+            # None: the paper declares no English (Basile, 2026-10-23).
+            "variant": st.sampled_from(("en-GB", "en-US", None)),
             "accepted": st.lists(st.sampled_from(("color", "Tumour", "centre")), max_size=2),
         }
     ),

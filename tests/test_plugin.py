@@ -874,6 +874,7 @@ NAMED_NOWHERE = {
     "profiles/reporting/sources/": "where `fetch` puts the guidelines, kept out of git",
     "literature/related.yaml": "written with the author by the related-outputs skill",
     "manuscript/main.tex": "written by `init --latex`, in place of main.md",
+    "manuscript/media/": "written by `init --from`, the pictures of a Word paper",
 }
 
 

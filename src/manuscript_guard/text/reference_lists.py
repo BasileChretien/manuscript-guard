@@ -18,6 +18,7 @@ from bisect import bisect_right
 
 from manuscript_guard.text.attributes import strip_attributes
 from manuscript_guard.text.blocks import find_headings, heading_shaped, scannable
+from manuscript_guard.text.section_names import STATEMENT_NAMES
 
 # A line that is nothing but a bibliography heading, perhaps numbered, perhaps in bold. From
 # there to the next heading is page ranges, volume numbers and years belonging to other
@@ -37,9 +38,12 @@ from manuscript_guard.text.blocks import find_headings, heading_shaped, scannabl
 # A pandoc attribute block after the word, `{-}` or `{#refs .unnumbered}`, is not matched
 # here. It is taken off a marked heading before the match, by `strip_attributes`, which reads
 # it item by item, so this pattern keeps one quantifier after the word.
+#
+# A number's full stop may be escaped, `6\. References`: pandoc writes a numbered title
+# paragraph of a Word document so, that it be no list item.
 _BIBLIOGRAPHY = re.compile(
     r"^(?P<hashes>#+)?[\s*_]*"
-    r"(?:(?P<numbered>\d+[.)])[\s*_]*|(?P<bare>\d+)\s[\s*_]*)?"
+    r"(?:(?P<numbered>\d+\\?[.)])[\s*_]*|(?P<bare>\d+)\s[\s*_]*)?"
     r"(?P<word>references(?:\s+cited)?|reference\s+list|list\s+of\s+references"
     r"|cited\s+references|bibliography|works\s+cited|literature\s+cited|cited\s+literature)"
     r"(?P<tail>[\s*_:.|]*)$",
@@ -155,9 +159,11 @@ _ITEM = re.compile(r"[ ]{0,3}(?:[0-9]{1,9}[.)]|[-*+])(?:[ \t]|$)")
 
 def _in_a_list(lines: list[str], number: int) -> bool:
     """Whether line `number` is a list's: indented, as an item's second paragraph is, or an
-    item whose paragraph before is an item too. "3. References" after "2. Registries" in a
-    list of sources searched is the list's third item; "6. References" after a paragraph of
-    the Discussion is the title of the reference list, numbered."""
+    item with an item before it or after it. "3. References" after "2. Registries" in a list
+    of sources searched is the list's third item, and "1. References" over "2. Registries"
+    its first; "6. References" between paragraphs of the Discussion and of entries is the
+    title of the reference list, numbered, and pandoc writes a numbered title paragraph of a
+    Word document as `6\\. References`, which is no item."""
     line = lines[number]
     if line[:1] in (" ", "\t"):
         return True
@@ -168,30 +174,69 @@ def _in_a_list(lines: list[str], number: int) -> bool:
         above -= 1
     while above > 0 and lines[above - 1].strip():
         above -= 1
-    return above >= 0 and bool(_ITEM.match(lines[above]))
+    below = number + 1
+    while below < len(lines) and not lines[below].strip():
+        below += 1
+    return any(0 <= at < len(lines) and _ITEM.match(lines[at]) for at in (above, below))
 
 
 #: A paragraph all in bold, a title in a paper converted from Word: "**Figure legends**",
-#: "__Supplementary material__", "**Table 2**:".
-_BOLD = re.compile(r"[ ]{0,3}(\*\*|__)(?=\S)(?:(?!\1).)+(?<=\S)\1[\s:.]*")
-#: A paragraph that is no entry of a reference list: a figure's or a table's caption, a
-#: table, an image.
+#: "__Supplementary material__", "***Figure legends***", "**Table 2**:".
+_BOLD = re.compile(r"[ ]{0,3}(\*\*|__)([*_]?)(?=\S)(?:(?!\1).)+?(?<=\S)\2\1[\s:.]*")
+#: A paragraph that opens with a label in bold, "**Funding:** The work was ...".
+_LABEL = re.compile(r"[ ]{0,3}(\*\*|__)(?=[^\s*_])[^*_\n]{1,80}?(?:\1[ \t]*:|:[ \t]*\1)")
+#: A paragraph that is no entry of a reference list: a figure's, a table's, a box's or an
+#: appendix's caption in each shape journals print, "Figure 1.", "Fig 1.", "FIGURE 1 |",
+#: "S1 Table.", "Supplementary Table S1", "eTable 1", "Box 1", "Appendix A", "Additional
+#: file 1"; a table, a pipe or a grid one; an image; a binding of a table or a figure. A
+#: caption's number is needed, so that "Fig trees and ..." and an author named Box are
+#: entries; an appendix's may be a letter.
 _NO_ENTRY = re.compile(
-    r"[ ]{0,3}(?:!\[|\||\+[-=]|Table:|[*_]{0,2}(?:Supplementa(?:ry|l)\s+|e)?"
-    r"(?:Figure|Fig\.|Table|Box|Appendix)s?\s*S?[0-9IVX])"
+    r"[ ]{0,3}(?:!\[|\||\+[-=]|\{\{|table:|[*_]{0,3}(?:"
+    r"(?:supplementa(?:ry|l)\s+|online\s+|e)?(?:fig(?:ure)?s?\.?|tables?|box)\s*s?[0-9]"
+    r"|(?:supplementa(?:ry|l)\s+|online\s+|e)?appendi(?:x|ces)\s*(?:[0-9]|[a-z]\b|[ivx]+\b)"
+    r"|additional\s+files?\s*[0-9]"
+    r"|s[0-9]+\s+(?:fig(?:ure)?|table|file|appendix|text|data(?:set)?|video|movie)\b))",
+    re.IGNORECASE,
+)
+#: A pandoc simple table's rule under its header row, "  ------- -------", or the rule
+#: that opens a multiline table or is a rule across the page.
+_TABLE_RULE = re.compile(r"[ ]*-{2,}(?:[ ]+-{2,})+[ ]*")
+_RULE = re.compile(r"[ ]{0,3}-{3,}[ ]*")
+#: A title of back matter standing alone as a paragraph: a statement's
+#: (`STATEMENT_NAMES`, "Funding", "Acknowledgements", "Data availability"), and "Figure
+#: legends", "Tables" or "Supplementary material".
+_BACK_MATTER = re.compile(
+    rf"(?:[0-9]+\\?[.)]\s*)?(?:{STATEMENT_NAMES}"
+    r"|(?:figure|table)s?(?:\s+(?:legends?|captions?|titles?))?"
+    r"|supplementa(?:ry|l)\s+(?:materials?|information|data|files?)|appendi(?:x|ces))[\s:.]*",
+    re.IGNORECASE,
 )
 
 
 def _ends_a_list(lines: list[str], number: int) -> bool:
-    """Whether the paragraph that line `number` opens ends a reference list: a paragraph all
-    in bold, or one that is no entry (`_NO_ENTRY`). An entry that opens with "Table" or
+    """Whether the paragraph that line `number` opens ends a reference list: one that is no
+    entry (`_NO_ENTRY`), a table under a rule, a paragraph all in bold or opening with a bold
+    label, or a title of back matter alone on its line. An entry that opens with "Table" or
     "Figure" and a number, which no style writes, would end it too, and the entries after it
-    are then read as prose: a false alarm, where running on hides the paper."""
-    if _NO_ENTRY.match(lines[number]):
+    are then read as prose: a false alarm, where running on hides the paper. A blank line,
+    one of several between entries, opens nothing."""
+    if not lines[number].strip():
+        return False
+    if _NO_ENTRY.match(lines[number]) or _LABEL.match(lines[number]):
         return True
     paragraph = []
     for line in lines[number:]:
         if not line.strip():
             break
-        paragraph.append(line.strip())
-    return bool(_BOLD.fullmatch(" ".join(paragraph)))
+        paragraph.append(line)
+    if _RULE.fullmatch(paragraph[0]) or (
+        len(paragraph) > 1 and _TABLE_RULE.fullmatch(paragraph[1])
+    ):
+        return True
+    joined = " ".join(line.strip() for line in paragraph)
+    if _BOLD.fullmatch(joined):
+        return True
+    return (
+        len(paragraph) == 1 and joined[:1].isupper() and bool(_BACK_MATTER.fullmatch(joined))
+    )

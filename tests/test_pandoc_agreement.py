@@ -1967,6 +1967,8 @@ CITATION_CASES = {
     "a key after a full stop": "[x.@smith] and x.@jones\n",
     "a key after an ellipsis": "[x...@smith]\n",
     "a key after an ellipsis and a full stop": "[x....@smith] and x.....@jones\n",
+    "a key after two full stops": "[x..@smith]\n",
+    "a key after two ellipses and two full stops": "x........@jones\n",
     "a key after two ellipses": "[x......@smith] and ......@jones\n",
     "a key after two ellipses and a full stop": "x.......@smith\n",
     "a key after a hyphen": "[x-@smith] and x-@jones\n",

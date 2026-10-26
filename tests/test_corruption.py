@@ -21686,7 +21686,8 @@ _LISTED = (
 
 
 @pytest.mark.parametrize(
-    "line", ["**References**", "**References:**", "References", "__Bibliography__"]
+    "line", ["**References**", "**References:**", "References", "__Bibliography__",
+             "6\\. References"]  # fmt: skip
 )
 def test_a_reference_list_under_a_bold_line_is_passed_over_as_under_a_heading(
     project: Path, line: str
@@ -21722,46 +21723,116 @@ def test_a_reference_list_under_a_bold_line_is_passed_over_as_under_a_heading(
     ]
 
 
-_LEGEND = "Figure 1. The color of each tumor group by ABC."
+_SAID = "The color of each tumor group by ABC."
+
+#: What may follow a reference list under a bold line, each with `_SAID` after it or in it:
+#: every caption, table, image, binding, bold title and back-matter title the list ends at.
+_AFTER_A_LIST = {
+    "a caption": f"\n\nFigure 1. {_SAID}",
+    "a caption, Fig": f"\n\nFig 1. {_SAID}",
+    "a caption, Fig.": f"\n\nFig. 1 {_SAID}",
+    "a caption in capitals": f"\n\nFIGURE 1 | {_SAID}",
+    "a caption, S1 Table": f"\n\nS1 Table. {_SAID}",
+    "a caption, S1 Fig": f"\n\nS1 Fig. {_SAID}",
+    "a table's caption": f"\n\nTable 1. {_SAID}",
+    "a supplementary table's caption": f"\n\nSupplementary Table S1. {_SAID}",
+    "an eTable's caption": f"\n\neTable 1. {_SAID}",
+    "a box": f"\n\nBox 1. {_SAID}",
+    "an appendix": f"\n\nAppendix A. {_SAID}",
+    "an additional file": f"\n\nAdditional file 1. {_SAID}",
+    "a pipe table": f"\n\n| Group | Count |\n|---|---|\n| A | 1 |\n\n{_SAID}",
+    "a grid table": f"\n\n+-------+-------+\n| Group | Count |\n+=======+=======+\n"
+                    f"| A     | 1     |\n+-------+-------+\n\n{_SAID}",
+    "a simple table": f"\n\n  Group   Count\n  ------- -------\n  A       1\n\n{_SAID}",
+    "an image": f"\n\n![A figure](figure.png)\n\n{_SAID}",
+    "a binding": f"\n\n{{{{table.baseline}}}}\n\n{_SAID}",
+    "a bold title": f"\n\n**Figure legends**\n\n{_SAID}",
+    "a bold title in underscores": f"\n\n__Supplementary material__\n\n{_SAID}",
+    "a bold title in italics": f"\n\n***Figure legends***\n\n{_SAID}",
+    "a bold label running in": f"\n\n**Funding:** {_SAID}",
+    "a heading printed as text": f"\n# Appendix\n{_SAID}",
+    **{f"a title, {title}": f"\n\n{title}\n\n{_SAID}"
+       for title in ("Acknowledgements", "Acknowledgments", "Figure legends", "Funding",
+                     "Conflicts of interest", "Author contributions", "Data availability",
+                     "Supplementary material")},
+}  # fmt: skip
 
 
-@pytest.mark.parametrize(
-    "after",
-    [
-        f"\n\n**Figure legends**\n\n{_LEGEND}\n\n",
-        f"\n\n{_LEGEND}\n\n",
-        f"\n\n__Supplementary material__\n\n{_LEGEND}\n\n",
-        f"\n# Appendix\n{_LEGEND}\n\n",
-        f"\n\n| Group | Count |\n|---|---|\n| A | 1 |\n\n{_LEGEND}\n\n",
-    ],
-    ids=["a bold title", "a legend", "a bold title in underscores", "a heading printed as text",
-         "a table"],  # fmt: skip
-)
+@pytest.mark.parametrize("after", list(_AFTER_A_LIST))
 def test_what_follows_a_reference_list_under_a_bold_line_is_read(project: Path, after: str) -> None:
     """In a paper converted from Word the titles after the list are bold paragraphs too, and
     journals ask for the figure legends and the tables after the references. Run on to the
     next heading or the end of the file, the list hid them from G14: "color", "tumor" and ABC
     in a legend were reported before the list was passed over and not after. It ends at a
-    paragraph all in bold, at a caption, a table or an image, and, as the audit's cut does,
-    at a line shaped like a heading that pandoc prints as text."""
+    paragraph all in bold or opening with a bold label, at a back-matter title, a caption, a
+    table, an image or a binding, and, as the audit's cut does, at a line shaped like a
+    heading that pandoc prints as text."""
     text = main_md(project).read_text(encoding="utf-8")
     end = text.index("# Data availability")
-    listed = text[:end] + _LISTED.format(line="**References**").rstrip("\n") + after + text[end:]
+    listed = (text[:end] + _LISTED.format(line="**References**").rstrip("\n")
+              + _AFTER_A_LIST[after] + "\n\n" + text[end:])  # fmt: skip
     main_md(project).write_text(listed, encoding="utf-8")
-    legend = line_of(listed, _LEGEND)
+    said = line_of(listed, _SAID)
     assert [(code, line) for code, line, _m in spelling_findings(project)] == [
-        ("spelling-variant", legend), ("spelling-variant", legend)
+        ("spelling-variant", said), ("spelling-variant", said)
     ]  # fmt: skip
-    assert ("abbreviation-undefined", legend) in language_findings(project)
+    assert ("abbreviation-undefined", said) in language_findings(project)
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        "3. Doe J. **The color of a tumor** in bold. Lancet. 2019;393:1-2.",
+        "Fig trees and the color of their fruit. Kew; 2019.",
+        "Box GEP, Jenkins GM. The color of time series. Wiley; 2015.",
+        "Tables and the color of tumor registries. 2nd ed. Oxford; 2018.",
+        "Figueroa A. The color of a tumor. BMC Med. 2020;18:1.",
+        "\n\n\n3. Doe J. The color of a tumor. Lancet. 2019;393:1-2.",
+    ],
+    ids=["bold text in an entry", "Fig as a title's word", "an author named Box",
+         "Tables as a title's word", "an author named Figueroa",
+         "blank lines between entries"],  # fmt: skip
+)
+def test_an_entry_shaped_a_little_like_a_caption_ends_no_reference_list(
+    project: Path, entry: str
+) -> None:
+    """An entry with bold text in it, one that opens with "Fig" or "Tables" as a word of its
+    title, and one by an author named Box are entries: the list runs on past them, and the
+    spelling of the titles after them is not read. Nor do two blank lines end the list: the
+    second was asked whether it opened a paragraph that ends one, and had none to read."""
+    text = main_md(project).read_text(encoding="utf-8")
+    end = text.index("# Data availability")
+    listed = (text[:end] + _LISTED.format(line="**References**") + f"{entry}\n\n"
+              f"4. Roe MB. The color of the tumor center. PLoS ONE. 2020;15:e1.\n\n"
+              + text[end:])  # fmt: skip
+    main_md(project).write_text(listed, encoding="utf-8")
+    assert spelling_findings(project) == []
+
+
+def test_a_binding_after_a_reference_list_is_counted() -> None:
+    """The word count blanked the list to count none of its words, and a table's or a
+    figure's binding after it went too: the display items were counted from the blanked text,
+    so a paper over the journal's limit passed. They are counted from the text, and a binding
+    ends the list."""
+    from manuscript_guard.text.sections import measure
+
+    for between in ("", "::: {#refs}\n:::\n\n"):
+        text = (f"# Intro\n\nText.\n\n**References**\n\n{between}1. Doe J. T. 2019.\n\n"
+                "{{table.baseline}}\n\n{{figure.forest}}\n")  # fmt: skip
+        counts = measure(text)
+        assert (counts.tables, counts.figures) == (1, 1), between
 
 
 @pytest.mark.parametrize(
     "lookalike",
     [
         "Sources searched:\n\n1. Databases\n\n2. Registries\n\n3. References\n\n",
+        "We searched:\n\n1. References\n2. Registries\n\n",
+        "We searched:\n\n1. References\n\n2. Registries\n\n",
         "- Sources searched\n\n  References\n\n",
     ],
-    ids=["an item of a numbered list", "an item's paragraph"],
+    ids=["an item of a numbered list", "the first item of a tight list",
+         "the first item of a loose list", "an item's paragraph"],  # fmt: skip
 )
 def test_references_as_an_item_of_a_list_opens_no_reference_list(
     project: Path, lookalike: str

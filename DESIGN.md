@@ -12738,17 +12738,24 @@ Open, recorded as each change landed:
   `**References:**` or "References" alone on a line, as the audit does
   (`text/reference_lists.py`): G14, the word count and the comparison with earlier papers.
   The list ends at the next heading of any level, at a line shaped like a heading that
-  pandoc prints as text, at a paragraph all in bold, and at a caption ("Figure 1.", "Table
-  2", "Supplementary Figure S1"), a table or an image. So a `## Books` inside it ends it,
-  where a list under `# References` runs on through the headings below its own, and so does
-  a bold title over a second list, "**Additional references**": the entries after either
-  are read as prose. An entry that opens with "Table 1" ends it too. What follows the list
-  under no title of its own, an appendix of plain paragraphs, is passed over with it. The
-  line has to open a paragraph, which the audit does not ask: the word alone on a line
-  inside a paragraph is a hard wrap, and an item of a list ("3. References" after "2.
-  Registries"), an indented line, a line in a block quote and one ending in a full stop
-  ("**References.**") open none. A list carried on into the next file of the manuscript is
-  read there as prose.
+  pandoc prints as text, at a paragraph all in bold or opening with a bold label
+  ("**Funding:** ..."), at a back-matter title alone on its line (a statement's, as G7's
+  comparison with earlier papers names them, "Figure legends", "Supplementary material"),
+  at a caption of a figure, a table, a box, an appendix or an additional file in the shapes
+  journals print ("Fig 1.", "FIGURE 1 |", "S1 Table.", "eTable 1", "Appendix A"), at a
+  table of any of pandoc's kinds, an image and a binding. So a `## Books` inside it ends
+  it, where a list under `# References` runs on through the headings below its own, and so
+  does a bold title over a second list, "**Additional references**": the entries after
+  either are read as prose. An entry that opens with "Table 1", or with a caption's word and
+  a number in another language, ends it too. What follows the list under no title of its
+  own, an appendix of plain paragraphs, is passed over with it. The line has to open a
+  paragraph, which the audit does not ask: the word alone on a line inside a paragraph is a
+  hard wrap, and an item of a list, beside another item ("3. References" after "2.
+  Registries", "1. References" over "2. Registries"), an indented line, a line in a block
+  quote and one ending in a full stop ("**References.**") open none. So "6. References"
+  written by hand over entries numbered "1." opens none either, as pandoc prints it as the
+  list's sixth item; `6\. References`, as pandoc writes a numbered title from Word, opens
+  one. A list carried on into the next file of the manuscript is read there as prose.
 - **A header pandoc cannot read is read as prose until it is fixed.** A `---` block at the
   top that is not YAML at all, such as one opening on an HTML comment or one never closed
   before a later rule, stops G2 and the build, which name the YAML's error. Meanwhile the

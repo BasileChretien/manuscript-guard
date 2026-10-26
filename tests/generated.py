@@ -4437,20 +4437,55 @@ def sessions(draw: st.DrawFn) -> dict[str, Any]:
 #: Word has them and as the audit takes them: the word alone on its line, in bold or not.
 REFERENCE_LINES = (
     "**References**", "**References:**", "References", "__Bibliography__", "*Literature cited*",
+    "6\\. References",
 )  # fmt: skip
 #: Lines that only look like one: a sentence, the word in small letters, the word with a full
 #: stop; `IN_A_PARAGRAPH`, the word alone on a line a hard wrap made inside a paragraph;
-#: `IN_A_LIST`, "3. References" in a loose list; and `IN_AN_ITEM`, the word as the second
-#: paragraph of a list item.
+#: `IN_A_LIST`, "3. References" in a loose list; `IN_A_LIST_FIRST`, "1. References" opening
+#: a tight one; and `IN_AN_ITEM`, the word as the second paragraph of a list item.
 NOT_REFERENCE_LINES = (
     "**References** were read by two pharmacists.", "**references**", "**References.**",
 )  # fmt: skip
 IN_A_PARAGRAPH = "in a paragraph"
 IN_A_LIST = "in a list"
+IN_A_LIST_FIRST = "first in a list"
 IN_AN_ITEM = "in an item"
-#: What ends a list under a line that is no heading: a heading, a paragraph all in bold, a
-#: caption, a line shaped like a heading that pandoc prints as text, and a table.
-LIST_ENDS = ("a heading", "a bold title", "a legend", "printed as text", "a table")
+#: The titles of back matter a list ends at when they stand alone as a paragraph.
+BACK_MATTER = (
+    "Acknowledgements", "Acknowledgments", "Figure legends", "Funding", "Conflicts of interest",
+    "Author contributions", "Data availability", "Supplementary material",
+)  # fmt: skip
+#: What ends a list under a line that is no heading, and the text after it, `{said}`, with
+#: `{n}` a number: a heading, one pandoc prints as text, a paragraph all in bold or opening
+#: with a bold label, a back-matter title (`{title}`), a caption of each shape, a table of
+#: each kind, an image and a binding.
+LIST_ENDS = {
+    "a heading": "\n\n# Section {n}\n\n{said}",
+    "a heading printed as text": "\n# Appendix {n}\n{said}",
+    "a bold title": "\n\n**Figure legends**\n\n{said}",
+    "a bold title in underscores": "\n\n__Supplementary material__\n\n{said}",
+    "a bold title in italics": "\n\n***Figure legends***\n\n{said}",
+    "a bold label running in": "\n\n**Funding:** {said}",
+    "a back-matter title": "\n\n{title}\n\n{said}",
+    "a caption": "\n\nFigure {n}. {said}",
+    "a caption, Fig": "\n\nFig {n}. {said}",
+    "a caption, Fig.": "\n\nFig. {n} {said}",
+    "a caption in capitals": "\n\nFIGURE {n} | {said}",
+    "a caption, S1 Table": "\n\nS{n} Table. {said}",
+    "a caption, S1 Fig": "\n\nS{n} Fig. {said}",
+    "a table's caption": "\n\nTable {n}. {said}",
+    "a supplementary table's caption": "\n\nSupplementary Table S{n}. {said}",
+    "an eTable's caption": "\n\neTable {n}. {said}",
+    "a box": "\n\nBox {n}. {said}",
+    "an appendix": "\n\nAppendix A. {said}",
+    "an additional file": "\n\nAdditional file {n}. {said}",
+    "a pipe table": "\n\n| Group | Count |\n|---|---|\n| A | {n} |\n\n{said}",
+    "a grid table": "\n\n+-------+-------+\n| Group | Count |\n+=======+=======+\n"
+                    "| A     | {n}     |\n+-------+-------+\n\n{said}",
+    "a simple table": "\n\n  Group   Count\n  ------- -------\n  A       {n}\n\n{said}",
+    "an image": "\n\n![A figure](figure.png)\n\n{said}",
+    "a binding": "\n\n{{table.baseline}}\n\n{said}",
+}  # fmt: skip
 #: Whole blocks for the readings that pass a reference list over (`INPUTS`).
 REFERENCE_BLOCKS = ("\n\n**References**\n\n", "\n\n**References:**\n\n", "\n\nReferences\n\n")
 #: Spellings of the other English, and journals whose names are in capitals.
@@ -4466,11 +4501,11 @@ def passed_over(text: str) -> str:
 
 @st.composite
 def reference_lists(draw: st.DrawFn) -> tuple[str, str]:
-    """A manuscript with a reference list under each of `REFERENCE_LINES`, each ended by one
-    of `LIST_ENDS`, and text under each of `NOT_REFERENCE_LINES`, `IN_A_PARAGRAPH`,
-    `IN_A_LIST` and `IN_AN_ITEM`, in an order drawn; and the same manuscript with each list,
-    its line included, `passed_over`, and each lookalike's word made "Remarks": what the
-    gates that pass a list over are to read.
+    """A manuscript with a reference list ended by each of `LIST_ENDS`, under each of
+    `REFERENCE_LINES` in turn, and text under each of `NOT_REFERENCE_LINES`,
+    `IN_A_PARAGRAPH`, `IN_A_LIST`, `IN_A_LIST_FIRST` and `IN_AN_ITEM`, in an order drawn; and
+    the same manuscript with each list, its line included, `passed_over`, and each
+    lookalike's word made "Remarks": what the gates that pass a list over are to read.
 
     Every kind in every example, and in each entry, after each list's end and after each
     lookalike a spelling of the other English, a journal's name in capitals and a run of
@@ -4486,22 +4521,19 @@ def reference_lists(draw: st.DrawFn) -> tuple[str, str]:
         word, journal = draw(st.sampled_from(_OTHER_ENGLISH)), draw(st.sampled_from(_JOURNALS))
         return f"The {word} of {draw(st.sampled_from(RECYCLED))}. {journal}. 2019;14:e0213."
 
-    kinds = draw(st.permutations(
-        (*REFERENCE_LINES, *NOT_REFERENCE_LINES, IN_A_PARAGRAPH, IN_A_LIST, IN_AN_ITEM)
-    ))  # fmt: skip
-    ends = iter(draw(st.permutations(LIST_ENDS)))
+    lookalikes = (*NOT_REFERENCE_LINES, IN_A_PARAGRAPH, IN_A_LIST, IN_A_LIST_FIRST, IN_AN_ITEM)
+    kinds = draw(st.permutations((*LIST_ENDS, *lookalikes)))
+    # Each line in turn, so that every one stands over a list in every example.
+    lines = iter(draw(st.permutations(REFERENCE_LINES)) * len(LIST_ENDS))
     opening = f"# Introduction\n\n{prose()}"
     listed, passed = [opening], [opening]
     for number, kind in enumerate(kinds, start=1):
-        if kind in REFERENCE_LINES:
-            entries = f"{kind}\n\n1. Doe HA, Roe MB. {cited()}\n\n2. Poe RM. {cited()}"
-            after = {
-                "a heading": f"\n\n# Section {number}\n\n{cited()}",
-                "a bold title": f"\n\n**Figure legends**\n\n{cited()}",
-                "a legend": f"\n\nFigure {number}. {cited()}",
-                "printed as text": f"\n# Appendix {number}\n{cited()}",
-                "a table": f"\n\n| Group | Count |\n|---|---|\n| A | {number} |\n\n{cited()}",
-            }[next(ends)]
+        if kind in LIST_ENDS:
+            # Two blank lines under the title, as a document converted from Word can have.
+            entries = f"{next(lines)}\n\n\n1. Doe HA, Roe MB. {cited()}"
+            after = (LIST_ENDS[kind].replace("{n}", str(number))
+                     .replace("{title}", draw(st.sampled_from(BACK_MATTER)))
+                     .replace("{said}", cited()))  # fmt: skip
             listed.append(f"\n\n{entries}{after}")
             passed.append(f"\n\n{passed_over(entries)}{after}")
             continue
@@ -4509,6 +4541,7 @@ def reference_lists(draw: st.DrawFn) -> tuple[str, str]:
             IN_A_PARAGRAPH: f"\n\n{prose()} Listed in the\nReferences\n{cited()}",
             IN_A_LIST: f"\n\nSources:\n\n1. Databases\n\n2. Registries\n\n3. References\n\n"
                        f"{cited()}",
+            IN_A_LIST_FIRST: f"\n\nWe searched:\n\n1. References\n2. Registries\n\n{cited()}",
             IN_AN_ITEM: f"\n\n- Sources searched\n\n  References\n\n{cited()}",
         }.get(kind, f"\n\n{kind}\n\n{cited()}")  # fmt: skip
         listed.append(piece)
@@ -4527,7 +4560,7 @@ ADDRESSES = (
     "<{a}@{h}>",
 )  # fmt: skip
 #: A citation of `{k}`, and two beside an address in one group.
-CITED = (
+KEYS_BESIDE_ADDRESSES = (
     "[@{k}]", "[see @{k}, p. 4]", "@{k}", "[-@{k}]", "[x-@{k}]", "[{a}@{h}; @{k}]",
     "[@{k}; {a}@{h}]",
 )  # fmt: skip
@@ -4542,14 +4575,14 @@ ADDRESS_BLOCKS = (
 @st.composite
 def addressed(draw: st.DrawFn) -> tuple[str, list[str]]:
     """Text with an e-mail address written each way of `ADDRESSES` and a citation each way of
-    `CITED`, in an order drawn among drawn words, and the keys cited. Every way in every
-    example, so that a rule reading the host of one kind of address as a key fails under any
-    seed."""
+    `KEYS_BESIDE_ADDRESSES`, in an order drawn among drawn words, and the keys cited. Every
+    way in every example, so that a rule reading the host of one kind of address as a key
+    fails under any seed."""
     local = st.sampled_from(("name", "first.last", "a-b", "x2", "team"))
     host = st.sampled_from(("gmail.com", "ciesar.org.gt", "example.org"))
     after = st.sampled_from((" ", ". ", ", ", "\n", "\n\n"))
     keys, pieces = [], []
-    for number, shape in enumerate(ADDRESSES + CITED):
+    for number, shape in enumerate(ADDRESSES + KEYS_BESIDE_ADDRESSES):
         key = f"key{number}{draw(st.sampled_from(('a', 'b')))}"
         if "{k}" in shape:
             keys.append(key)

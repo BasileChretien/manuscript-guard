@@ -74,6 +74,7 @@ from manuscript_guard.text.masking import blank_comments, fenced_blocks, front_m
 from manuscript_guard.text.reader import LATEX, manuscript_format
 from manuscript_guard.text.reference_lists import unmarked_reference_lists
 from manuscript_guard.text.section_names import (
+    STATEMENT_NAMES,
     methods_sections,
     names_abstract,
     names_conclusion,
@@ -131,30 +132,9 @@ _PARAGRAPH_BREAK = re.compile(r"\n[ \t]*\n")
 
 _INTRODUCTION = re.compile(r"(?:introduction|background|rationale)\b", re.IGNORECASE)
 _DISCUSSION = re.compile(r"(?:discussion|interpretation|comment)\b", re.IGNORECASE)
-#: The names of the statements a journal asks for, and of the lists, that are the same from
-#: paper to paper.
-_STATEMENT_NAMES = (
-    r"(?:"
-    r"funding(?:\s+(?:sources?|information))?|sources?\s+of\s+funding|(?:financial\s+)?support"
-    r"|financial\s+disclosures?|sponsors?(?:hip)?"
-    r"|role\s+of\s+the\s+(?:funders?|sponsors?|funding\s+sources?)"
-    r"|(?:declarations?\s+of\s+)?(?:competing|conflicting)\s+interests?"
-    r"|(?:potential\s+)?conflicts?\s+of\s+interests?|declarations?(?:\s+of\s+interests?)?"
-    r"|declarations?\s+of\s+(?:the\s+use\s+of\s+)?generative\s+ai\b[\w\s-]*"
-    r"|disclosures?(?:\s+of\s+interests?)?|acknowledge?ments?"
-    r"|data\s+(?:availability|sharing|access)"
-    r"|availability\s+of\s+(?:data(?:\s+and\s+materials?)?|materials?)"
-    r"|(?:code|software|materials?)\s+availability"
-    r"|ethics(?:\s+(?:committee\s+)?approval)?"
-    r"|ethical(?:\s+(?:approval|considerations|standards|aspects))?"
-    r"|(?:informed\s+|patient\s+)?consent(?:\s+(?:for|to)\s+(?:publication|participate))?"
-    r"|patient\s+and\s+public\s+involvement|provenance\s+and\s+peer\s+review"
-    r"|authors?['\N{RIGHT SINGLE QUOTATION MARK}]?\s+contributions?|contributors(?:hip)?"
-    r"|credit(?:\s+author(?:ship)?)?(?:\s+contributions?)?|transparency"
-    r"|(?:list\s+of\s+)?abbreviations|statements?\s+and\s+declarations?"
-    r"|additional\s+contributions|article\s+information"
-    r")(?:\s+(?:statements?|declarations?|disclosures?|section))?"
-)
+#: The names of the statements a journal asks for, said in `text/section_names.py`, where
+#: a reference list under a bold line ends at one standing alone.
+_STATEMENT_NAMES = STATEMENT_NAMES
 #: A statement's heading: its whole title names one or several, "Funding", "Data
 #: availability statement", "Ethics approval and consent to participate", "Funding/Support",
 #: "CRediT author statement". A title that only opens with such a word is the paper's own

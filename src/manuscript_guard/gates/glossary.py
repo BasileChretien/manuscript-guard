@@ -91,22 +91,29 @@ def entries(prose: str, raw: str, span: tuple[int, int]) -> list[Entry]:
     start, end = span
     found: list[list] = []
     lines = _lines(prose, start, end)
-    for index, (at, line) in enumerate(lines):
+    index = 0
+    while index < len(lines):
+        at, line = lines[index]
         if not line.strip():
             found.append([])
+            index += 1
             continue
         following = lines[index + 1][1] if index + 1 < len(lines) else ""
-        pieces = _run_on(line, at)
-        entry = _entry(line, at, raw, following) if len(pieces) == 1 else None
+        joined, where, taken = _paragraph(lines, index, raw)
+        pieces = _run_on(joined, 0)
         if len(pieces) > 1:
             for piece_at, piece in pieces:
                 separated = _SEPARATED.fullmatch(piece)
-                found.append([piece_at + separated.start("short"), separated["short"],
+                found.append([where[piece_at + separated.start("short")], separated["short"],
                               [separated["long"]]])  # fmt: skip
-        elif entry is not None:
+            index += taken
+            continue
+        entry = _entry(line, at, raw, following)
+        if entry is not None:
             found.append([entry[0], entry[1], [entry[2]]])
         elif found and found[-1] and not _DEFINITION.match(line) and not _TABLE_LINE.match(line):
             found[-1][2].append(line.strip())
+        index += 1
     out = []
     for each in found:
         if not each:
@@ -141,6 +148,32 @@ def _run_on(line: str, at: int) -> list[tuple[int, str]]:
         return [(at, line)]
     return [(piece_at + len(piece) - len(piece.lstrip()), piece.lstrip())
             for piece_at, piece in pieces]  # fmt: skip
+
+
+def _paragraph(
+    lines: list[tuple[int, str]], index: int, raw: str
+) -> tuple[str, list[int], int]:
+    """The line at `index` with the lines under it that carry its long form on, joined with
+    a space, as a hard-wrapped paragraph of entries is one text (round 2 of #446: a wrap
+    inside "PRR: proportional / reporting ratio; IC: ..." left IC's entry in PRR's long
+    form). Also where each character of the joined text stands in the prose, and how many
+    lines it took. A line under it that opens an entry of its own, a definition's `:` line,
+    a table's line or a blank line ends it."""
+    texts: list[str] = []
+    where: list[int] = []
+    taken = 0
+    for at, line in lines[index:]:
+        if not line.strip() or (taken and (
+            _DEFINITION.match(line) or _TABLE_LINE.match(line)
+            or _entry(line, at, raw, "") is not None
+        )):  # fmt: skip
+            break
+        if texts:
+            where.append(where[-1] + 1)
+        texts.append(line)
+        where.extend(range(at, at + len(line)))
+        taken += 1
+    return " ".join(texts), where, max(taken, 1)
 
 
 def _lines(prose: str, start: int, end: int) -> list[tuple[int, str]]:

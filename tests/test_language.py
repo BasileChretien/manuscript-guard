@@ -802,6 +802,28 @@ def test_a_glossary_in_one_paragraph_defines_each_entry(project: Path) -> None:
     assert not report.findings, found(report)
 
 
+@pytest.mark.parametrize(
+    "glossary",
+    ["ROR: reporting odds ratio; PRR: proportional\nreporting ratio; IC: information component",
+     "ROR: reporting odds ratio; PRR:\nproportional reporting ratio; IC: information component",
+     "ROR: reporting odds ratio;\nPRR: proportional reporting ratio; IC: information\ncomponent"],
+    ids=["wrapped in a long form", "wrapped after a sign", "wrapped at a semicolon"],
+)  # fmt: skip
+def test_a_glossary_in_one_wrapped_paragraph_defines_each_entry(
+    project: Path, glossary: str
+) -> None:
+    """The paragraph hard-wrapped in the source is one text: a wrap inside an entry kept the
+    entries after it in its long form (round 2 of #446: "PRR is defined as 'proportional
+    reporting ratio; IC: information component'", and IC undefined)."""
+    report = written(
+        project,
+        "# Methods\n\nThe reporting odds ratio (ROR) and the proportional reporting ratio "
+        "(PRR) were computed. The ROR and PRR rose.\n\n# Abbreviations\n\n" + glossary
+        + "\n\n# Results\n\nThe IC was computed for each pair. The IC was raised.\n",
+    )
+    assert not report.findings, found(report)
+
+
 def test_a_glossary_in_a_table_defines_its_entries(project: Path) -> None:
     report = written(
         project,

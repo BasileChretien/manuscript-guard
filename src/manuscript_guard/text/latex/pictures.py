@@ -120,13 +120,23 @@ def _closing(view: str, at: int, opener: str, closer: str) -> int:
 
 
 def _past_angle(view: str, at: int, stop: int) -> int:
-    """Where a label's text starts: past its options and its angle, to the first colon."""
+    """Where a label's text starts: past its options and its angle, to the first colon outside
+    braces. TikZ cuts there only, so `{1:2}` and `{\\ref{fig:a}}` are the label's text, and a
+    colon inside them is passed over with the brace before it (round 2 of #443)."""
     at = _skip_spaces(view, at)
     if view[at : at + 1] == "[":
         closed = _closing(view, at, "[", "]")
         at = closed if 0 < closed <= stop else at
-    colon = view.find(":", at, stop)
-    return at if colon < 0 else colon + 1
+    depth = 0
+    for index in range(at, stop):
+        character = view[index]
+        if character == "{":
+            depth += 1
+        elif character == "}":
+            depth -= 1
+        elif character == ":" and depth == 0:
+            return index + 1
+    return at
 
 
 def _value_end(view: str, at: int) -> int:

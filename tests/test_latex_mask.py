@@ -288,6 +288,21 @@ def test_springer_s_running_title_and_corresponding_author_are_passed_over() -> 
     assert "Limits of 4100" in reading.masked
 
 
+def test_a_colon_inside_a_tikz_labels_braces_is_its_text() -> None:
+    """TikZ cuts a label's angle at a colon outside braces only, and its manual has a label
+    that holds a colon braced: a colon inside braces is the label's text, and the brace before
+    it is read (round 2 of #443: the reader jumped past that brace and refused the file as
+    unbalanced, where main read the picture)."""
+    for label, printed in (("{{1:2}}", "1:2"), ("{[red]{09:30}}", "09:30"),
+                           ("{90:{Time 11:45}}", "Time 11:45")):  # fmt: skip
+        text = f"\\begin{{tikzpicture}}\\node[label={label}] {{A}};\\end{{tikzpicture}}\n"
+        reading = read(text, body=True)
+        assert reading.refusals == (), label
+        assert printed in reading.masked, label
+    text = "\\begin{tikzpicture}\\node[label={\\ref{fig:a}}] {A};\\end{tikzpicture}\n"
+    assert read(text, body=True).refusals == ()
+
+
 def test_a_tikz_picture_is_passed_over_as_a_picture_file_is() -> None:
     """2311.00579, 2401.04687 and 2405.21051: a TikZ picture's options, its sizes and shifts,
     and the old `\\tikzstyle{name} = [...]` were read as the text (2026-10-23). The picture is

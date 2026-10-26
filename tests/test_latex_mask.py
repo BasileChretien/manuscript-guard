@@ -142,13 +142,17 @@ def test_a_delimited_definition_is_read_and_each_use_where_it_prints_refused() -
                 "\\def\\pair(#1,#2){#1 to #2}\n\\newcommand{\\both}{\\bSig}\n\\bSig\n")  # fmt: skip
     quiet = preamble + "\\begin{document}\nNo use \\label{\\bSig} of 12.\n\\end{document}\n"
     reading = read(quiet)
-    assert reading.refusals == () and reading.delimited == ("bSig", "pair")
+    assert reading.refusals == () and reading.delimited == ("pair",)
+    # `\bSig` has a parameter text and no parameter, `\mathbf`, which TeX stops on where it
+    # does not follow a use (2026-10-23, `literal`).
+    assert reading.literal == (("bSig", "\\mathbf"),)
     for used, name in (("in maths $\\bSig$", "\\bSig"), ("in prose \\pair(1,2)", "\\pair"),
                        ("in a caption \\caption{\\bSig}", "\\bSig")):  # fmt: skip
         text = preamble + f"\\begin{{document}}\nUsed {used}.\n\\end{{document}}\n"
         (refusal,) = read(text).refusals
         assert refusal.offset == text.rindex(name), used
-        assert "delimited parameters" in refusal.message
+        said = "delimited parameters" if name == "\\pair" else "TeX stops there"
+        assert said in refusal.message, used
     # In the body the parameter text is blanked, and the definition's body is prose there.
     body = "\\def\\pair(#1,#2){#1 to #2}\n"
     masked = read(body, body=True).masked
@@ -245,11 +249,16 @@ def test_a_front_matter_command_the_author_defines_in_another_file_is_the_author
     assert macros.reading.own == ("journal",)
 
 
-def test_an_input_encoding_other_than_utf8_is_refused() -> None:
+def test_an_input_encoding_other_than_utf8_is_refused_where_the_file_is_not_ascii() -> None:
+    """A file all of ASCII reads the same in each encoding inputenc knows, so one it declares
+    is accepted (2026-10-23: `latin9` in such a file was refused); one with a character past
+    ASCII is read as UTF-8, and refused."""
     text = "\\documentclass{article}\n\\usepackage[latin1]{inputenc}\n\\begin{document}\n"
-    assert [r.code for r in read(text + "\\end{document}").refusals] == ["tex-refused"]
-    utf8 = text.replace("latin1", "utf8") + "\\end{document}"
-    assert read(utf8).refusals == ()
+    accented = text + "Caf\N{LATIN SMALL LETTER E WITH ACUTE}\n\\end{document}"
+    assert [r.code for r in read(accented).refusals] == ["tex-refused"]
+    assert read(text + "Cafe\n\\end{document}").refusals == ()
+    assert read(text + "Cafe\n\\end{document}").encodings == (text.index("\\usepackage"),)
+    assert read(accented.replace("latin1", "utf8")).refusals == ()
 
 
 def test_a_preamble_conditional_is_read_through_and_makeatletter_accepted() -> None:
@@ -317,7 +326,9 @@ def test_what_round_one_found_refused_wrongly_is_read(text: str) -> None:
     "text", ["\\RequirePackage[latin1]{inputenc} x", "\\inputencoding{latin1} x"]
 )
 def test_every_way_of_setting_another_encoding_is_refused(text: str) -> None:
-    assert [r.code for r in read(text, body=True).refusals] == ["tex-refused"]
+    accented = text + " \N{LATIN SMALL LETTER E WITH ACUTE}"
+    assert [r.code for r in read(accented, body=True).refusals] == ["tex-refused"]
+    assert read(text, body=True).refusals == ()
 
 
 @pytest.mark.parametrize(
@@ -391,3 +402,220 @@ def test_the_reader_is_linear_in_braces_and_cells(assert_linear) -> None:
     """Round 1 of #380: each `&` walked every open brace to find whether it was in a table."""
     assert_linear(lambda count: "{" * count + "&" * count, lambda text: read(text, body=True),
                   2000, "the LaTeX reader on braces then cells")  # fmt: skip
+
+
+# What 17 papers from arXiv found refused that LaTeX reads (2026-10-23). A refusal makes the
+# rest of its file read as typed, so each cost a whole file.
+
+PANDOC = ("\\documentclass{article}\n\\NewDocumentCommand\\citeproctext{}{}\n"
+          "\\NewDocumentCommand\\citeproc{mm}{%\n  \\begingroup\\def\\citeproctext{#2}"
+          "\\cite{#1}\\endgroup}\n\\newcommand{\\excite}[1]{#1}\n\\begin{document}\n")  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("used", "refused"),
+    [
+        # IEEE Computer Society's thanks to the authors holds `cite` inside a word; an author's
+        # `\excite` is an English word; pandoc's citeproc commands are its own, a citation as
+        # citeproc printed it blanked as a citation is.
+        ("\\IEEEcompsocitemizethanks{\\IEEEcompsocthanksitem Unit 7.}", ""),
+        ("We \\excite{electrons 7}", ""),
+        ("As Smith (\\citeproc{ref-smith2020}{2020}) says 7", ""),
+        # A name that holds `cite` anywhere else is a citation's, its keys hidden from G7
+        # (round 1 of #442: `\mycitep` passed under a rule for its start and end).
+        ("As \\mycite{smith2020} says", "\\mycite"),
+        ("As \\citeZ{smith2020} says", "\\citeZ"),
+        ("As \\mycitep{smith2020} says", "\\mycitep"),
+        ("As \\mycites{a}{b} say", "\\mycites"),
+        # An English word that holds `cite` is exempt only as the name's start: one inside a
+        # name is no word of it (round 2 of #442: `\maincite` lost "incite" and passed).
+        ("As \\maincite{smith2020} says", "\\maincite"),
+        ("As \\barecite{smith2020} says", "\\barecite"),
+        ("As \\pincite{smith2020} says", "\\pincite"),
+        ("As \\citemany{a,b} say", "\\citemany"),
+        ("We \\recited{the oath 7}", ""),
+    ],
+)
+def test_a_command_whose_name_is_a_citation_s_is_refused_and_one_with_cite_inside_is_not(
+    used: str, refused: str
+) -> None:
+    text = PANDOC + used + ".\n\\end{document}\n"
+    reading = read(text)
+    assert [r.offset for r in reading.refusals] == ([text.index(refused)] if refused else [])
+    if not refused:
+        body = reading.masked[text.index("\\begin{document}") :]
+        assert "2020" not in body and "7" in body
+
+
+def test_pandoc_s_reference_list_under_citeproc_is_read() -> None:
+    """pandoc's template defines `CSLReferences` with a comment between its arguments and
+    `\\citeproctext`, which labels each entry: the list is read (2026-10-23)."""
+    text = (PANDOC.replace("\\begin{document}\n", "")
+            + "\\newenvironment{CSLReferences}[2] % #1 hanging-indent, #2 entry-spacing\n"
+            "{\\begin{list}{}{%\n  \\setlength{\\itemindent}{0pt}\n  \\ifodd #1\n"
+            "  \\setlength{\\leftmargin}{1.5em}\n  \\fi\n"
+            "  \\setlength{\\itemsep}{#2\\baselineskip}}}\n{\\end{list}}\n\\begin{document}\n"
+            "\\begin{CSLReferences}{1}{0}\n\\bibitem[\\citeproctext]{ref-a}\nA. 2020.\n"
+            "\\end{CSLReferences}\n\\end{document}\n")  # fmt: skip
+    reading = read(text)
+    assert reading.refusals == ()
+    comment = text.index("% #1")
+    assert (comment, text.index("\n", comment)) in reading.comments
+    assert "hanging" not in reading.masked
+
+
+@pytest.mark.parametrize(
+    ("between", "taken"),
+    [
+        (" % note\n", True),
+        ("\n% note\n  % more\n", True),
+        (" % note\n\n", False),
+        ("\n\n", False),
+    ],
+)
+def test_a_comment_between_a_command_and_its_argument_is_passed_over_as_tex_does(
+    between: str, taken: bool
+) -> None:
+    """TeX looks for an argument past spaces, one line break, and a comment with its line's
+    break and the next line's spaces; a blank line ends the paragraph and the search
+    (2026-10-23)."""
+    text = f"\\label{between}{{s12}} after"
+    reading = read(text, body=True)
+    assert reading.refusals == ()
+    assert ("12" not in reading.masked) == taken, between
+    for start, end in reading.comments:
+        assert text[start] == "%" and set(reading.masked[start:end]) == {NUL}
+
+
+def test_a_reference_list_bibtex_wrote_is_read_with_its_header() -> None:
+    """natbib's and REVTeX's lists open with `\\providecommand`, a conditional on
+    `\\csname`, and REVTeX's `\\makeatletter` with `\\catcode` in a definition: the list is
+    read to its end, its span kept for G6, the pack and the blind check, and `@` is no letter
+    past it, as TeX's group puts it back (2026-10-23: each was refused at its header)."""
+    natbib = ("\\providecommand{\\natexlab}[1]{#1}\n\\providecommand{\\url}[1]{\\texttt{#1}}\n"
+              "\\expandafter\\ifx\\csname urlstyle\\endcsname\\relax\n"
+              "  \\providecommand{\\doi}[1]{doi: #1}\\else\n"
+              "  \\providecommand{\\doi}{doi:\\begingroup \\urlstyle{rm}\\Url}\\fi\n")  # fmt: skip
+    revtex = ("\\makeatletter\n\\providecommand \\@ifx [1]{%\n \\ifx #1\\expandafter "
+              "\\@firstoftwo\n \\else \\expandafter \\@secondoftwo\n \\fi\n}%\n"
+              "\\providecommand \\enquote [1]{``#1''}%\n\\providecommand \\citenamefont [1]{#1}%\n"
+              "\\providecommand \\@sanitize@url [0]{\\catcode `\\\\12\\catcode `\\$12}%\n"
+              "\\let\\auto@bib@innerbib\\@empty\n")  # fmt: skip
+    for header in (natbib, revtex):
+        listed = ("\\begin{thebibliography}{9}\n" + header
+                  + "\\bibitem[{\\citenamefont{Smith}(2011)}]{a} Smith A. 2011.\n"
+                  "\\end{thebibliography}")  # fmt: skip
+        text = "\\begin{document}\nText \\cite{a}.\n" + listed + "\nAfter \\iffalse@ 9\\fi.\n"
+        reading = read(text)
+        assert reading.refusals == (), header
+        start = text.index("\\begin{thebibliography}")
+        assert reading.references == ((start, start + len(listed)),)
+        assert "Smith A. 2011" in reading.masked and "9" not in reading.masked[-12:]
+    # Outside a definition's body there, `\catcode` changes what is read, and is refused.
+    changed = "\\begin{thebibliography}{9}\n\\catcode`\\@=11\n\\end{thebibliography}"
+    assert [r.code for r in read(changed, body=True).refusals] == ["tex-refused"]
+    # Round 1 of #442: the header ends at the first `\bibitem`, past which a conditional is
+    # refused; a citation in an entry is one, and one the reader does not know is refused.
+    entries = "\\begin{thebibliography}{9}\n\\bibitem{a} A.\n{} \n\\end{thebibliography}"
+    for entry, refused in (("\\ifx\\a\\b x\\fi", "\\ifx"), ("See \\mycitep{b}", "\\mycitep"),
+                           ("See \\citeA{b}", "")):  # fmt: skip
+        text = entries.replace("{} ", entry)
+        reading = read(text, body=True)
+        assert [r.offset for r in reading.refusals] == ([text.index(refused)] if refused
+                                                        else []), entry  # fmt: skip
+        if not refused:
+            assert [(found.key, found.narrative) for found in reading.cited] == [("b", True)]
+    # Outside the list, the header's commands are refused as before.
+    for outside in ("\\expandafter\\x", "\\ifx\\a\\b\\fi", "\\makeatletter"):
+        assert [r.code for r in read(outside, body=True).refusals] == ["tex-refused"], outside
+
+
+def test_providecommand_of_a_known_command_defines_nothing_and_renewcommand_is_refused() -> None:
+    """`\\providecommand` of a command that is defined changes nothing, in the preamble or
+    the body (2026-10-23); `\\renewcommand` of it is still refused, and so is a `\\def` after
+    a `\\providecommand`, which defines the command again."""
+    for text in ("\\documentclass{a}\n\\providecommand{\\url}[1]{\\texttt{#1}}\n"
+                 "\\begin{document}x\\end{document}",
+                 "\\providecommand*{\\emph}[1]{#1} x",
+                 "\\ProvideDocumentCommand{\\emph}{m}{#1} x"):  # fmt: skip
+        assert read(text, body=None if text.startswith("\\doc") else True).refusals == ()
+    for text in ("\\renewcommand{\\url}[1]{#1}", "\\providecommand{\\x}{1}\\def\\url{2}"):
+        assert [r.code for r in read(text, body=True).refusals] == ["tex-refused"], text
+
+
+@pytest.mark.parametrize("name", ["unit", "num", "SI", "qty"])
+def test_a_package_s_command_is_the_author_s_where_no_package_gives_it(name: str) -> None:
+    """`\\newcommand{\\unit}` with no siunitx defines the author's command, read as an unknown
+    one is, its argument read (2026-10-23: it was refused as defined again). Where siunitx is
+    loaded, or units for `\\unit`, the definition is refused, as before."""
+    define = f"\\newcommand{{\\{name}}}[1]{{\\mbox{{#1}}}}\n"
+    text = ("\\documentclass{article}\n" + define
+            + f"\\begin{{document}}\nThe vector $\\{name}{{k}}$ of 12.\n\\end{{document}}\n")
+    reading = read(text)
+    assert reading.refusals == () and reading.own == (name,)
+    assert "k" in reading.masked[text.index("$") :]
+    givers = {"unit": ("siunitx", "units"), "qty": ("siunitx", "physics")}.get(name, ("siunitx",))
+    for package in givers:
+        loaded = text.replace(define, f"\\usepackage{{{package}}}\n" + define)
+        (refusal,) = read(loaded).refusals
+        assert refusal.offset == loaded.index(f"{{\\{name}}}") and "again" in refusal.message
+
+
+def test_a_package_s_command_defined_where_another_file_loads_the_package_is_refused() -> None:
+    """The tree tells each file what the others load: siunitx in the author's package makes
+    `\\unit` the reader's in the entry file, and its definition there defined again."""
+    from manuscript_guard.text.latex.structure import read_tree
+
+    main = ("\\documentclass{article}\n\\usepackage{macros}\n\\newcommand{\\unit}[1]{#1}\n"
+            "\\begin{document}\n\\input{a}\n\\end{document}\n")  # fmt: skip
+    files = {"main.tex": main, "a.tex": "The vector $\\unit{k}$.\n"}
+    ((path, refusal),) = read_tree(files, packages={"macros.sty": "\\RequirePackage{siunitx}\n"}
+                                   ).refusals  # fmt: skip
+    assert path == "main.tex" and refusal.offset == main.index("{\\unit}")
+    document = read_tree(files, packages={"macros.sty": "\\RequirePackage{xcolor}\n"})
+    assert document.refusals == ()
+    assert "k" in document.sources[-1].reading.masked
+
+
+def test_an_ascii_file_s_encoding_is_held_to_every_file_of_its_tree() -> None:
+    """TeX reads each file of the tree in the encoding one sets: an ASCII entry file's
+    `latin9` is refused where a file it inputs is not ASCII (2026-10-23)."""
+    from manuscript_guard.text.latex.structure import read_tree
+
+    main = ("\\documentclass{article}\n\\usepackage[latin9]{inputenc}\n\\begin{document}\n"
+            "\\input{a}\n\\end{document}\n")  # fmt: skip
+    assert read_tree({"main.tex": main, "a.tex": "Cafe.\n"}).refusals == ()
+    ((path, refusal),) = read_tree({"main.tex": main,
+                                    "a.tex": "Caf\N{LATIN SMALL LETTER E WITH ACUTE}.\n"}
+                                   ).refusals  # fmt: skip
+    assert path == "main.tex" and refusal.offset == main.index("\\usepackage[latin9]")
+    assert "a.tex" in refusal.message
+
+
+def test_a_parameter_text_with_no_parameter_prints_its_body_and_is_passed_over() -> None:
+    """`\\def\\eg/{e.g.\\@}` takes nothing: each use prints its body, and the `/` after it is
+    TeX's, passed over (2026-10-23: refused as delimited parameters, in prose and in a
+    citation's note). A package of the author's defines them under `\\@ifdefinable`, and the
+    file that uses them is told. A use not followed by what the definition says is refused
+    where it prints, since TeX stops there."""
+    from manuscript_guard.text.latex.structure import read_tree
+
+    package = ("\\makeatletter\n  \\@ifdefinable{\\eg}{\\def\\eg/{e.g.\\@}}\n\\makeatother\n"
+               "\\def\\half.5{one half}\n")  # fmt: skip
+    main = ("\\documentclass{article}\n\\usepackage{shortcuts}\n\\begin{document}\n"
+            "Work \\citep[\\eg/][]{a} and \\eg/ more, \\half.5 and \\eg\n/ of 12.\n"
+            "\\end{document}\n")  # fmt: skip
+    document = read_tree({"main.tex": main}, packages={"shortcuts.sty": package})
+    assert document.refusals == ()
+    masked = document.sources[0].reading.masked
+    assert "/" not in masked and ".5" not in masked and "of 12." in masked
+    assert document.sources[1].reading.literal == (("eg", "/"), ("half", ".5"))
+    stopped = main.replace("\\half.5", "\\half")
+    ((_path, refusal),) = read_tree({"main.tex": stopped},
+                                    packages={"shortcuts.sty": package}).refusals  # fmt: skip
+    assert refusal.offset == stopped.index("\\half")
+    # Round 1 of #442: a space after a control word in the parameter text is no token, so
+    # `\def\x\relax /{a}` is followed by `\relax/`, as TeX reads it.
+    relaxed = "\\def\\x\\relax /{a}\nUse \\x\\relax/ here, \\x\\relax\n  / there.\n"
+    reading = read(relaxed, body=True)
+    assert reading.refusals == () and "/" not in reading.masked

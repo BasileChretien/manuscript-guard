@@ -3563,6 +3563,39 @@ def test_a_forbidden_data_statement_fails_from_internal_review(project: Path) ->
     assert "data-statement-forbidden" in {f.code for f in reviewed.failures}
 
 
+def _english_g4(root: Path) -> list[tuple[str, str, str]]:
+    from manuscript_guard.gates import check_journal
+    from manuscript_guard.policy import SUBMISSION, apply_stage
+
+    report, _ = apply_stage(check_journal(load_project(root)[0]), SUBMISSION)
+    return [(f.code, f.severity, f.message) for f in report.findings
+            if f.code.startswith("english-variant")]  # fmt: skip
+
+
+@pytest.mark.parametrize(("journal", "said"), [("en-GB", "British"), ("en-US", "American")])
+def test_a_declaration_of_english_deleted_under_a_journal_that_names_one_is_noted(
+    project: Path, journal: str, said: str
+) -> None:
+    """The example declares British English for a journal that asks for it, and G4 says
+    nothing. With the line deleted from paper.yaml, under a journal asking for either
+    English, G4 says which the journal asks for, and fails nothing even at submission: G14
+    then holds the paper to the English of most of its words (Basile, 2026-10-23)."""
+    assert _english_g4(project) == []
+    paper = project / "paper.yaml"
+    text = paper.read_text(encoding="utf-8")
+    assert "english_variant: en-GB\n" in text
+    paper.write_text(text.replace("english_variant: en-GB\n", ""), encoding="utf-8")
+    profile = project / "profiles" / "journals" / "demo-journal.yaml"
+    text = profile.read_text(encoding="utf-8")
+    assert "english_variant: en-GB\n" in text
+    profile.write_text(text.replace("english_variant: en-GB\n", f"english_variant: {journal}\n"),
+                       encoding="utf-8")  # fmt: skip
+    assert _english_g4(project) == [
+        ("english-variant-undeclared", "info",
+         f"the journal asks for {said} English ({journal}), and paper.yaml declares no English")
+    ]  # fmt: skip
+
+
 # ------------------------------------------------- a placeholder, wherever it is written
 
 

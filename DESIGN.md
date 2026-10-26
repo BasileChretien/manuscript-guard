@@ -4097,7 +4097,11 @@ absent. Each reader of it has a rule for a paper that has not said:
   order and says that `paper.yaml` declares no English.
 - **The review panel** is told nothing of a variant: the line "English:" is left out.
 - **G4** compares a journal's `english_variant` with the paper's only where the paper
-  declares one.
+  declares one. Where the journal's profile names an English and `paper.yaml` declares
+  none, G4 says so in a note, `english-variant-undeclared`, which names the English the
+  journal asks for and fails no stage (Basile, 2026-10-23). It reads no word of the
+  manuscript: whether the paper is written in the journal's English is G14's count, and
+  G14 holds it to the English of the more words, not to the journal's.
 
 ## One notation is the manuscript's own, and the space before a unit is the SI's
 
@@ -15393,9 +15397,11 @@ Open, recorded as each change landed:
   - The count is of the words on G14's list, and only those: a paper whose only spellings
     of either kind are in a name, a quotation or a section left unread has no English, and
     hears nothing.
-  - G4 does not compare a journal's `english_variant` with such a paper, nor with the
-    English its words are mostly in: a journal that insists on British English and a paper
-    that declares nothing and is written in American pass G4 and G14 alike.
+  - Under a journal whose profile names an English, G4 notes such a paper (see "Closed
+    since"), and the note fails no stage. Nothing compares the journal's English with the
+    English the paper's words are mostly in: a journal that insists on British English and
+    a paper that declares nothing and is written in American pass G4 and G14, with that note
+    alone.
   - The build writes `lang: en`, and Word and citeproc each take American English for it
     (Word's proofing, CSL's `en-US` locale, babel's `english` in LaTeX), and the live
     Zotero build names `en-US`. A paper written in British spelling that declares nothing
@@ -16280,6 +16286,18 @@ Open, recorded as each change landed:
   counts short. The front matter's and a listing's line breaks are kept.
 
 Closed since, and why each mattered (an open gap goes above this line):
+
+- **A paper that declared no English heard nothing of its journal's.** Since `english_variant`
+  became optional, G4 compared a journal's English with the paper's only where the paper
+  declared one, so a paper spelt in British English and sent to a journal that asks for
+  American was told nothing by G4, and G14 held it to its British majority. G4 now gives a
+  note, `english-variant-undeclared`, where the journal's profile names `en-GB` or `en-US`
+  and `paper.yaml` declares none: it names the English the journal asks for and says that
+  declaring it holds the paper to it. It is a note and fails no stage, as the author decided
+  (Basile, 2026-10-23): an English nobody declared is no rule broken, and the author is the
+  one to say which English the paper is in. A paper that declares the other English is
+  `english-variant-mismatch` as before. That nothing compares the journal's English with the
+  one the paper's words are in is still open, above.
 
 - **A LaTeX `\crefrange` cited nothing, and a range of `\ref`s cited its ends only.** G2
   said a figure that `\ref{a}--\ref{b}` or `\crefrange{a}{b}` took in, cited by itself only

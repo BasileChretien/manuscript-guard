@@ -21746,6 +21746,62 @@ def test_a_paragraph_pasted_from_a_paper_in_the_other_english_is_caught(project:
         assert f"{word} ({instead}, once)" in finding.hint
 
 
+def _declaring_no_english(root: Path) -> None:
+    """`paper.yaml` as `init` writes it since Basile's decision of 2026-10-23: no English."""
+    path = root / "paper.yaml"
+    paper = path.read_text(encoding="utf-8")
+    assert paper.count("english_variant: en-GB\n") == 1, "the fixture changed under this test"
+    path.write_text(paper.replace("english_variant: en-GB\n", ""), encoding="utf-8")
+
+
+def test_declaring_no_english_a_co_author_s_word_in_the_fewer_spelling_is_caught(
+    project: Path,
+) -> None:
+    """One co-author writes "colour", another "color", and nobody declared either: the paper
+    is held to the English most of its words are in, and the stray is said where it stands."""
+    _declaring_no_english(project)
+    text = main_md(project).read_text(encoding="utf-8")
+    old = "Several limitations follow from the design."
+    assert old in text, "the fixture changed under this test"
+    edited = text.replace(
+        old, old + " The colour of a tablet is rarely recorded, and the color of its coating never."
+    )
+    main_md(project).write_text(edited, encoding="utf-8")
+    assert spelling_findings(project) == [
+        (
+            "spelling-variant",
+            line_of(edited, "The colour of a tablet"),
+            "'color' is the American spelling of 'colour', used once; paper.yaml declares no "
+            "English, and the paper has 2 words in British spelling to 1 in American",
+        )
+    ]
+
+
+def test_declaring_no_english_a_mostly_american_paper_hears_of_its_british_word(
+    project: Path,
+) -> None:
+    """The case behind the decision: a paper in American English that declared nothing was
+    told it broke the British English `init` had declared for it. Now the British word is
+    the one said, and nothing about a setting nobody made."""
+    _declaring_no_english(project)
+    supplement = project / "manuscript" / "supplementary" / "S1_code_lists.md"
+    supplement.write_text(
+        supplement.read_text(encoding="utf-8")
+        + "\nThe color of the tumor, the anemia, the edema and the hemoglobin level were not "
+        "coded.\n",
+        encoding="utf-8",
+    )
+    text = main_md(project).read_text(encoding="utf-8")
+    assert spelling_findings(project) == [
+        (
+            "spelling-variant",
+            line_of(text, "We analysed"),
+            "'analysed' is the British spelling of 'analyzed', used once; paper.yaml declares "
+            "no English, and the paper has 5 words in American spelling to 1 in British",
+        )
+    ]
+
+
 def test_a_name_a_quotation_and_a_citation_key_in_the_other_spelling_are_left_alone(
     project: Path,
 ) -> None:

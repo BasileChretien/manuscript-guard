@@ -3,7 +3,7 @@
   "$id": "https://manuscript-guard.org/schemas/paper/1",
   "title": "manuscript-guard project configuration",
   "type": "object",
-  "required": ["schema", "title", "english_variant"],
+  "required": ["schema", "title"],
   "additionalProperties": false,
   "properties": {
     "schema": { "const": "manuscript-guard/paper/1" },
@@ -16,7 +16,7 @@
     "keywords": { "type": "array", "items": { "type": "string" } },
     "english_variant": {
       "enum": ["en-GB", "en-US"],
-      "description": "The author's choice, which a journal profile may override."
+      "description": "British or American spelling, which G14 holds the manuscript to, and the language the build gives the document. The author's choice; a journal profile may ask for one. Absent, nothing is declared: G14 holds the paper to the English most of its words are in, the document is written as English with no region, and a date is printed day, month, year."
     },
     "target_journal": {
       "type": "string",
@@ -275,7 +275,7 @@
         },
         "accepted_spellings": {
           "type": "array",
-          "description": "Single words this paper keeps although G14's list gives them to the other English: a field's own spelling, as orthopaedic is for American orthopaedics, or one word of a name. Letters only, in any case: a word is what G14 reads, so an entry with a space or a hyphen in it would match nothing. G14 reports any other word that is spelt the way english_variant does not spell it.",
+          "description": "Single words this paper keeps although G14's list gives them to the other English: a field's own spelling, as orthopaedic is for American orthopaedics, or one word of a name. Letters only, in any case: a word is what G14 reads, so an entry with a space or a hyphen in it would match nothing. G14 reports any other word that is spelt the way the paper's English does not spell it: the one english_variant declares, or where it declares none, the one most of the paper's words are in, and where they are level, the first word's.",
           "items": { "type": "string", "minLength": 2, "pattern": "^[A-Za-z]+$" }
         },
         "vocabulary": {

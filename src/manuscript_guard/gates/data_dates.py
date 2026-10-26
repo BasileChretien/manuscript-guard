@@ -116,8 +116,10 @@ def _typed(placeholder, value: Value, path: Path) -> Finding:
     )
 
 
-def dates_in_english(namespace: dict[str, Value], english: str) -> Report:
-    """Each dataset date printed otherwise than the English the paper declares prints it."""
+def dates_in_english(namespace: dict[str, Value], english: str | None) -> Report:
+    """Each dataset date printed otherwise than the English the paper declares prints it. A
+    paper that declares none prints day, month, year (Basile, 2026-10-23)."""
+    declares = f"declares {english}" if english else "declares no English"
     report = Report()
     for value in namespace.values():
         is_date = value.role == "dataset" and value.key.rsplit(".", 1)[-1] in DATE_PARTS
@@ -131,7 +133,7 @@ def dates_in_english(namespace: dict[str, Value], english: str) -> Report:
                 code="dataset-date-english",
                 severity=WARN,
                 message=f"results.{value.key} is printed {value.display!r}, and paper.yaml "
-                f"declares {english}, which prints {written(dated, english)!r}",
+                f"{declares}, which prints {written(dated, english)!r}",
                 path=value.source,
                 hint=f"run again the analysis that wrote {source}: the emitter reads the "
                 "English when it runs",

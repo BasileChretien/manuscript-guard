@@ -216,7 +216,7 @@ def _header(project, supplementary: bool) -> str:
     """The title, the keywords and, where the journal's review is not blind, the authors, for
     the template to print."""
     from manuscript_guard.build.blinding import BLIND
-    from manuscript_guard.build.document import _yaml_text
+    from manuscript_guard.build.document import _yaml_text, document_language
     from manuscript_guard.gates.journal import blinding
 
     paper = project.paper
@@ -234,7 +234,7 @@ def _header(project, supplementary: bool) -> str:
     if keywords:
         written = ", ".join(_yaml_text(project, "keywords", keyword) for keyword in keywords)
         lines.append(f"keywords: [{written}]")
-    lines += ["lang: " + ("en-GB" if project.english_variant == "en-GB" else "en-US"), "---", ""]
+    lines += [f"lang: {document_language(project)}", "---", ""]
     return "\n".join(lines)
 
 

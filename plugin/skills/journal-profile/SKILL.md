@@ -1,6 +1,6 @@
 ---
 name: journal-profile
-description: Choose a target journal with the author, then read that journal's instructions for authors and fill the annotated profile template with its limits, required sections and required statements. Use when choosing where to submit, when check reports journal-profile-missing, journal-profile-stale, data-statement-forbidden, data-identifier-missing, data-link-temporary, data-doi-uncited or pointer-form-unread, or before submitting to a different journal.
+description: Choose a target journal with the author, then read that journal's instructions for authors and fill the annotated profile template with its limits, required sections and required statements. Use when choosing where to submit, when check reports journal-profile-missing, journal-profile-stale, data-statement-forbidden, data-identifier-missing, data-link-temporary, data-doi-uncited, pointer-form-unread, english-variant-mismatch or english-variant-undeclared, or before submitting to a different journal.
 ---
 
 # Turning author guidelines into something a build can check

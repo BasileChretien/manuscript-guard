@@ -300,6 +300,32 @@ def _latex_writing() -> Reading:
     return judged
 
 
+@reading("latex listed")
+def _latex_listed() -> Reading:
+    """Whether a LaTeX document sets out an algorithm or a listing, where its algorithms run,
+    and what G6 says of its words to the reviewers, each finding's line and words (corpus
+    round, 2026-10-23)."""
+    from manuscript_guard.gates.writing import _judged, _listed_in, _read_latex, load_rules
+    from manuscript_guard.text.latex.mask import read
+    from manuscript_guard.text.latex.structure import Source
+
+    rules = load_rules()
+
+    def listed(text: str) -> dict[str, Any]:
+        sources = [Source("main.tex", text, read(text))]
+        found = _listed_in(Path("m"), [sources])
+        texts, words, cited = _read_latex(Path("m"), [sources])
+        report, _totals = _judged(texts, words, rules, cited=cited, listed=found)
+        return {
+            "listed": {str(path.name): [list(span) for span in spans]
+                       for path, spans in found.items()},
+            "residue": [[f.line, f.message] for f in report.findings
+                        if f.code == "revision-residue"],
+        }  # fmt: skip
+
+    return listed
+
+
 @reading("latex words")
 def _latex_words() -> Reading:
     from manuscript_guard.text.latex.mask import read

@@ -26,6 +26,19 @@ NARRATIVE = re.compile(r"(?<![\w`\[])(?P<suppress>-?)@(?P<key>[A-Za-z][\w:.#$%&+
 KEY_IN_BODY = re.compile(r"-?@(?P<key>[A-Za-z][\w:.#$%&+?<>~/-]*)")
 # A line break that `_IN_GROUP` does not take: one with a blank line after it.
 _BLANK_BREAK = re.compile(r"\n(?=[ \t]*\n)")
+# The LaTeX citation command a use was read in starts with: `\citep`, `\citet*`.
+_COMMAND = re.compile(r"\\[A-Za-z]+\*?")
+
+
+def cited_as(key: str, raw: str = "", *, latex: bool = False) -> str:
+    """How a finding names a cited work, as the manuscript cites it: `@key` in Markdown, and
+    in LaTeX with the command `raw`, the citation a use was read in, starts with,
+    `\\citep{key}`, or `\\cite{key}` where none is at hand (corpus round, 2026-10-23: a
+    LaTeX paper's finding said `@key` of what its author typed as `\\citep{key}`)."""
+    command = _COMMAND.match(raw)
+    if command is not None:
+        return f"{command.group(0)}{{{key}}}"
+    return f"\\cite{{{key}}}" if latex else f"@{key}"
 
 
 class _Next:

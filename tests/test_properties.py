@@ -88,18 +88,21 @@ from generated import (
     latex_delimited_uses,
     latex_displays,
     latex_hooked_uses,
+    latex_listed,
     latex_methods,
     latex_model_names,
     latex_planted,
     latex_pointers,
     latex_printed,
     latex_quotations,
+    latex_straight_quotes,
     latex_texts,
     latex_trees,
     latex_words,
     latex_writing,
     lines,
     markdown_for_latex,
+    masked_blocks,
     mean_tables,
     numbered_displays,
     painted_pdfs,
@@ -493,10 +496,57 @@ def _found_in_order(text: str) -> None:
         before = heading.start
 
 
+@holds(40, masked_blocks())
+def test_the_mask_keeps_the_line_breaks_of_what_it_hides_but_a_comment_s(
+    drawn: tuple[str, list[tuple[int, int]], list[tuple[str, int]]],
+) -> None:
+    """The Markdown mask keeps every line break of the front matter and of a listing where
+    the file has it, and hides a comment's, since pandoc reads a comment in a paragraph, a
+    blank line in it too, as a part of the paragraph; a pipe table under any of them is read
+    on the lines it is typed on (corpus round, 2026-10-23)."""
+    from manuscript_guard.text.tables import markdown_tables
+
+    text, comments, cells = drawn
+    masked = mask(text)
+    assert len(masked) == len(text)
+    for at, char in enumerate(text):
+        if char == "\n":
+            hidden = any(start <= at < end for start, end in comments)
+            assert masked[at] == (NUL if hidden else "\n"), (at, text, masked)
+    read = [(cell.text, cell.line) for table in markdown_tables(text)
+            for row in table for cell in row]  # fmt: skip
+    assert read == cells, (text, read)
+
+
+def _a_line_reader_reads_the_mask_as_it_is(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import tables
+
+    patch.setattr(tables, "kept_breaks", lambda text, masked: masked)
+
+
+def _the_mask_hides_every_line_break(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import masking
+
+    def blank(chars: list[str], start: int, end: int, *, breaks: bool = True) -> None:
+        chars[start:end] = NUL * (end - start)
+
+    patch.setattr(masking, "_blank", blank)
+
+
+def _the_mask_keeps_a_comment_s_line_breaks(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import masking
+
+    def blank(chars: list[str], start: int, end: int, *, breaks: bool = True) -> None:
+        for index in range(start, end):
+            chars[index] = chars[index] if chars[index] in "\r\n" else NUL
+
+    patch.setattr(masking, "_blank", blank)
+
+
 # ------------------------------------------------------------------------- the LaTeX reader
 
 
-@holds(200, latex_texts())
+@holds(200, st.one_of(latex_texts(), latex_straight_quotes().map(lambda drawn: drawn[0])))
 def test_the_latex_mask_keeps_every_character_in_its_place(text: str) -> None:
     """The LaTeX reader keeps the Markdown mask's contract: the same length, every line break
     where it was, and each character itself, a NUL, or what TeX prints for it there (a space,
@@ -512,7 +562,7 @@ def test_the_latex_mask_keeps_every_character_in_its_place(text: str) -> None:
         allowed = {was, NUL} | ({" "} if was in " \t~&\\" else set())
         if was == "\\" and at + 1 < len(text):
             allowed.add(text[at + 1])
-        allowed |= {"`": {LEFT_QUOTE}, "'": {RIGHT_QUOTE}}.get(was, set())
+        allowed |= {"`": {LEFT_QUOTE}, "'": {RIGHT_QUOTE}, '"': {RIGHT_QUOTE}}.get(was, set())
         assert now in allowed, (at, was, now, text)
     for refusal in reading.refusals:
         assert masked[refusal.offset :] == text[refusal.offset :], (refusal, text)
@@ -1143,6 +1193,25 @@ def test_g6_judges_a_latex_document_where_it_prints_and_by_its_citations(
         assert found == sorted(lines[key] for key, was in planted if was == kind), (code, text)
 
 
+@holds(20, latex_listed())
+def test_g6_lets_a_latex_paper_point_at_the_lines_of_what_it_sets_out(
+    drawn: list[tuple[str, str, list[int], list[int]]],
+) -> None:
+    """Lines in brackets with nothing to say whose, "(line 8)", are a place in the reviewers'
+    copy, unless the document sets out an algorithm or a listing, whose lines its text points
+    at so; an algorithm's lines are no prose, and words to the reviewers in one are not read;
+    an algorithm in a comment sets out nothing. Words to the reviewers in the prose are read
+    in every document (corpus round, 2026-10-23)."""
+    rules = writing_gate.load_rules()
+    for text, kind, pointers, said in drawn:
+        sources = latex_structure.read_tree({"main.tex": text}).sources
+        read, words, cited = writing_gate._read_latex(Path("m"), [sources])
+        listed = writing_gate._listed_in(Path("m"), [sources])
+        report, _totals = writing_gate._judged(read, words, rules, cited=cited, listed=listed)
+        found = sorted(f.line for f in report.findings if f.code == "revision-residue")
+        assert found == sorted(said + (pointers if kind == "neither" else [])), (kind, text)
+
+
 @holds(60, latex_methods())
 def test_g9_reads_a_latex_methods_section_as_it_reads_a_markdown_one(
     drawn: tuple[str, list[tuple[str, str, str]]],
@@ -1276,6 +1345,44 @@ def test_a_latex_quotation_is_read_at_its_line_and_nowhere_else(
             assert "\u2013" in quotation.quote and "\u2026" in quotation.quote, quotation
         if "far" in quotation.quote:
             assert quotation.quote.count("\u2014") == 3 and "-" not in quotation.quote, quotation
+
+
+@holds(60, latex_straight_quotes())
+def test_a_straight_quote_closes_a_latex_quotation_opened_in_its_paragraph(
+    drawn: tuple[str, list[tuple[int, bool]]],
+) -> None:
+    """A straight `"` in prose closes the quotation a ``` `` ``` opened in its paragraph, as
+    the font prints it, and is read as the closing mark; every other `"` is not: one after a
+    blank line, alone, after the quotation closed, before a letter, after a ``` `` ``` in a
+    comment, or in `\\verb` (corpus round, 2026-10-23)."""
+    text, planted = drawn
+    masked = latex_mask.mask(text)
+    assert len(masked) == len(text)
+    for at, closes in planted:
+        assert (masked[at] == "\N{RIGHT DOUBLE QUOTATION MARK}") is closes, (at, text, masked)
+
+
+def _a_straight_quote_closes_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask._Reader, "_closes_quote", lambda self, at: False)
+
+
+def _a_quotation_runs_past_its_paragraph(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_PARAGRAPH_END", re.compile("(?!)"))
+
+
+def _a_straight_quote_before_a_letter_closes(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_ACCENTED", re.compile("(?!)"))
+
+
+def _a_quotation_mark_once_used_closes_again(patch: pytest.MonkeyPatch) -> None:
+    def quote(self: Any, at: int, mark: str) -> None:
+        opened = self.quote_open
+        read(self, at, mark)
+        if mark == "\N{RIGHT DOUBLE QUOTATION MARK}":
+            self.quote_open = opened
+
+    read = latex_mask._Reader._quote
+    patch.setattr(latex_mask._Reader, "_quote", quote)
 
 
 def _a_quotation_s_line_is_the_printed_view_s(patch: pytest.MonkeyPatch) -> None:
@@ -1479,6 +1586,25 @@ def _g6_takes_nocite_for_a_claims_support(patch: pytest.MonkeyPatch) -> None:
 
 def _g6_reads_no_typed_reference_list(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(writing_gate, "_typed_lists_of", lambda folder, documents: [])
+
+
+def _g6_lists_nothing_in_latex(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(writing_gate, "_listed_in", lambda folder, documents: {})
+
+
+def _g6_reads_an_algorithm_as_prose(patch: pytest.MonkeyPatch) -> None:
+    def listed(folder: Path, documents: list) -> dict[Path, list[tuple[int, int]]]:
+        return {folder / source.path: [] for document in documents for source in document}
+
+    patch.setattr(writing_gate, "_listed_in", listed)
+
+
+def _g6_finds_no_algorithm(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(writing_gate, "_ALGORITHM", re.compile("(?!)"))
+
+
+def _g6_reads_an_algorithm_in_a_comment(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(writing_gate, "_read_at", lambda reading: lambda at: True)
 
 
 def _g6_reads_a_definitions_body_in_the_preamble(patch: pytest.MonkeyPatch) -> None:
@@ -10248,6 +10374,38 @@ BROKEN = {
         _a_subscripts_count_is_maths,
         test_latex_s_words_hold_each_word_where_latex_prints_it,
     ),
+    "a reader of lines reads the mask with a comment's line breaks hidden": (
+        _a_line_reader_reads_the_mask_as_it_is,
+        test_the_mask_keeps_the_line_breaks_of_what_it_hides_but_a_comment_s,
+    ),
+    "the mask hides the line breaks of the front matter and of a listing": (
+        _the_mask_hides_every_line_break,
+        test_the_mask_keeps_the_line_breaks_of_what_it_hides_but_a_comment_s,
+    ),
+    "the mask keeps a comment's line breaks": (
+        _the_mask_keeps_a_comment_s_line_breaks,
+        test_the_mask_keeps_the_line_breaks_of_what_it_hides_but_a_comment_s,
+    ),
+    "in LaTeX, a straight quote closes no quotation": (
+        _a_straight_quote_closes_nothing,
+        test_a_straight_quote_closes_a_latex_quotation_opened_in_its_paragraph,
+    ),
+    "in LaTeX, a quotation runs past the end of its paragraph": (
+        _a_quotation_runs_past_its_paragraph,
+        test_a_straight_quote_closes_a_latex_quotation_opened_in_its_paragraph,
+    ),
+    "in LaTeX, a straight quote before a letter closes a quotation": (
+        _a_straight_quote_before_a_letter_closes,
+        test_a_straight_quote_closes_a_latex_quotation_opened_in_its_paragraph,
+    ),
+    "in LaTeX, a quotation closed by '' is closed again by a straight quote": (
+        _a_quotation_mark_once_used_closes_again,
+        test_a_straight_quote_closes_a_latex_quotation_opened_in_its_paragraph,
+    ),
+    "in LaTeX, a straight quote closes no quotation for G7": (
+        _a_straight_quote_closes_nothing,
+        test_a_latex_quotation_is_read_at_its_line_and_nowhere_else,
+    ),
     "in LaTeX, a quotation's line is the printed view's": (
         _a_quotation_s_line_is_the_printed_view_s,
         test_a_latex_quotation_is_read_at_its_line_and_nowhere_else,
@@ -10479,6 +10637,22 @@ BROKEN = {
     "in LaTeX, G6 reads no typed reference list": (
         _g6_reads_no_typed_reference_list,
         test_g6_judges_a_latex_document_where_it_prints_and_by_its_citations,
+    ),
+    "in LaTeX, G6 takes no algorithm or listing for lines a paper may point at": (
+        _g6_lists_nothing_in_latex,
+        test_g6_lets_a_latex_paper_point_at_the_lines_of_what_it_sets_out,
+    ),
+    "in LaTeX, G6 reads an algorithm's lines as prose": (
+        _g6_reads_an_algorithm_as_prose,
+        test_g6_lets_a_latex_paper_point_at_the_lines_of_what_it_sets_out,
+    ),
+    "in LaTeX, G6 finds no algorithm": (
+        _g6_finds_no_algorithm,
+        test_g6_lets_a_latex_paper_point_at_the_lines_of_what_it_sets_out,
+    ),
+    "in LaTeX, G6 finds an algorithm in a comment": (
+        _g6_reads_an_algorithm_in_a_comment,
+        test_g6_lets_a_latex_paper_point_at_the_lines_of_what_it_sets_out,
     ),
     "in LaTeX, G6 reads a definition's body in the preamble": (
         _g6_reads_a_definitions_body_in_the_preamble,

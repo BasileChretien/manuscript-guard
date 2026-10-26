@@ -53,6 +53,15 @@ def shown(text: str, *, body: bool | None = True) -> str:
         ("\\begin{tabular}{lc}a & 7 \\\\\\end{tabular}", "·" * 19 + "a   7  " + "·" * 14),
         # Quotation marks, typed the TeX way.
         ("``quoted 6''", "\N{LEFT DOUBLE QUOTATION MARK}·quoted 6\N{RIGHT DOUBLE QUOTATION MARK}·"),
+        # A straight `"` closes a quotation `` opened in its paragraph, and is the character
+        # typed after a blank line, alone, once the quotation is closed, or before a letter
+        # (corpus round, 2026-10-23).
+        ('``quoted 6"', "\N{LEFT DOUBLE QUOTATION MARK}·quoted 6\N{RIGHT DOUBLE QUOTATION MARK}"),
+        ('``a\n\nb 6"', '\N{LEFT DOUBLE QUOTATION MARK}·a\n\nb 6"'),
+        ('a 6" b', 'a 6" b'),
+        ("``a'' 6\"", "\N{LEFT DOUBLE QUOTATION MARK}·a\N{RIGHT DOUBLE QUOTATION MARK}· 6\""),
+        ('``Gr"une', '\N{LEFT DOUBLE QUOTATION MARK}·Gr"une'),
+        ('% ``a\nb 6"', '·····\nb 6"'),
         # A block nobody prints.
         ("a \\iffalse 9 \\fi b", "a ·············· b"),
         ("\\begin{comment}\n9\n\\end{comment}", "···············\n·\n·············"),

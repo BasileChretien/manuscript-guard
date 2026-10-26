@@ -7892,8 +7892,9 @@ def test_g7_holds_a_quotation_that_opens_a_sentence_to_that_sentence_s_citation(
                 "with age and did not differ by region'' \\cite{fictionalClassSignal2019}.")
     _replace_once(entry, "\\section{Discussion}", f"{sentence}\n\n\\section{{Discussion}}")
     (found,) = check_prose_quotations(load_project(project)[0]).findings
-    assert "@fictionalClassSignal2019" in found.message, found.message
-    assert "@fictionalHepaticCohort2021" not in found.message, found.message
+    # Named as a LaTeX paper cites it (corpus round, 2026-10-23).
+    assert "\\cite{fictionalClassSignal2019}" in found.message, found.message
+    assert "fictionalHepaticCohort2021" not in found.message, found.message
 
 
 def test_g7_names_a_quotation_under_a_heading_at_its_own_line(project: Path) -> None:
@@ -7973,6 +7974,45 @@ def test_g6_finds_in_the_twin_what_it_finds_in_the_example(
     assert found and found[0].path == entry, [(f.code, f.message) for f in _g6_findings(project)]
     text = entry.read_text(encoding="utf-8")
     assert found[0].line == text.count("\n", 0, text.index(snippet)) + 1
+
+
+@pytest.mark.parametrize(
+    ("block", "pointed"),
+    [
+        ("", True),
+        ("\\begin{algorithm}\n\\begin{algorithmic}[1]\n\\State We have now clarified the step\n"
+         "\\end{algorithmic}\n\\end{algorithm}", False),
+        ("\\begin{verbatim}\nx <- 1\n\\end{verbatim}", False),
+        ("% \\begin{algorithm}\n% We have now clarified the step\n% \\end{algorithm}", True),
+    ],
+)  # fmt: skip
+def test_g6_lets_the_twin_point_at_the_lines_of_an_algorithm_or_a_listing(
+    project: Path, block: str, pointed: bool
+) -> None:
+    """Lines in brackets with nothing to say whose, "(line 8)", are words to the reviewers,
+    unless the paper sets out an algorithm or a listing, whose lines its text points at so:
+    a LaTeX paper of the corpus round (2026-10-23) was told so of every pointer into its
+    algorithm. An algorithm's lines are no prose, and words to the reviewers in one are not
+    read; an algorithm in a comment sets out nothing. Words to the reviewers in the prose
+    are read either way."""
+    entry = _twin(project)
+    _into_results(entry, f"{block}\n\nThe stride is set (line 8) of the step.\n\n"
+                         "As requested by Reviewer 2, we added the counts.")  # fmt: skip
+    text = entry.read_text(encoding="utf-8")
+    said = sorted(f.line for f in _g6_findings(project) if f.code == "revision-residue")
+    lines = [text.count("\n", 0, text.index(words)) + 1
+             for words in ("(line 8)", "As requested by Reviewer 2")]  # fmt: skip
+    assert said == (lines if pointed else lines[1:]), said
+
+
+def test_g6_tells_a_markdown_paper_of_lines_in_brackets_beside_a_listing(project: Path) -> None:
+    """In Markdown the rule is tried as before, a listing or not: no LaTeX algorithm numbers
+    the lines a Markdown paper points at."""
+    main = main_md(project)
+    main.write_text(main.read_text(encoding="utf-8") + "\n```r\nx <- 1\n```\n\n"
+                    "The stride is set (line 8) of the step.\n", encoding="utf-8")  # fmt: skip
+    assert any(f.code == "revision-residue" and "(line 8)" in f.message
+               for f in _g6_findings(project))  # fmt: skip
 
 
 def test_g6_takes_a_latex_citation_beside_a_claim_for_its_support(project: Path) -> None:
@@ -9356,6 +9396,33 @@ def test_a_wrapped_citation_to_a_missing_item_is_caught(project: Path, monkeypat
     )
 
 
+def test_g7_names_a_cited_work_as_the_manuscript_cites_it(project: Path, monkeypatch) -> None:
+    """A LaTeX paper of the corpus round (2026-10-23) was told of `@key`, which its author
+    never typed: G7 names a work with the command it is cited by, `\\citep{key}`, and the
+    keys it may have meant so too, as it names a Markdown paper's `@key`."""
+    from test_zotero import CLASS, HEPATIC, csl
+
+    near = "fictionalHepaticCohort2012"
+    main = main_md(project)
+    main.write_text(main.read_text(encoding="utf-8") + f"\nA claim [@{near}].\n",
+                    encoding="utf-8")  # fmt: skip
+    (found,) = [f for f in _g7(project).failures if f.code == "citation-unresolved"]
+    assert found.message == f"@{near} matches nothing in the library", found.message
+    assert found.hint.startswith(f"did you mean @{HEPATIC}"), found.hint
+
+    entry = _twin(project)
+    _into_results(entry, f"A claim \\citep[p.~2]{{{near}}}.")
+    (found,) = [f for f in _g7(project).failures if f.code == "citation-unresolved"]
+    assert found.message == f"\\citep{{{near}}} matches nothing in the library", found.message
+    assert found.hint.startswith(f"did you mean \\citep{{{HEPATIC}}}"), found.hint
+    assert "@" not in found.message + found.hint
+
+    _zotero(monkeypatch, [csl(HEPATIC, True), csl(CLASS, False)])
+    report = _g7(project, closed=False)
+    unpinned = [f.message for f in report.failures if f.code == "citation-key-unpinned"]
+    assert unpinned == [f"\\cite{{{CLASS}}} is not pinned in Zotero"], unpinned
+
+
 # A literature value with a blank field. `source_file: ""` was passed over by both gates:
 # `check --stage drafting` added no finding, and the value was simply not counted as
 # verified, so the run claimed every value it had checked was verified.
@@ -9768,6 +9835,28 @@ def test_an_audited_table_s_n_percent_off_its_denominator_is_listed_apart(
     shown = render(report, measure_discrimination(set()))
     assert "an n (%) and its denominator" in shown
     assert "line 12: n (%) 1,800 (50.0)" in shown
+
+
+@pytest.mark.parametrize(
+    "above",
+    ["<!-- a note\nover three\nlines -->\n\n", "```r\nx <- 1\n\ny <- 2\n```\n\n",
+     "---\ntitle: T\nabstract: |\n  A cohort.\n\n  Two parts.\n---\n\n"],
+)  # fmt: skip
+def test_an_audited_table_under_a_block_of_several_lines_is_read_on_its_own_lines(
+    tmp_path: Path, above: str
+) -> None:
+    """The mask made the line breaks of a comment, a listing and the front matter NUL, and
+    the reader of pipe tables, which cuts the mask and the text into lines and reads them
+    side by side, read a table under one a line out for each: the line above the header was
+    taken for it, and a share off its denominator in the last row went unread (corpus round,
+    2026-10-23)."""
+    from manuscript_guard.audit import audit
+
+    paper = tmp_path / "paper.md"
+    paper.write_text(above + _SHARES_OFF, encoding="utf-8")
+    report = audit([paper], [])
+    offset = above.count("\n")
+    assert [d.line - offset for d in report.disagreements] == [7, 8, 9, 12], report.disagreements
 
 
 def test_a_header_that_names_its_n_before_a_comma_gives_its_denominator(
@@ -14398,8 +14487,13 @@ def test_nothing_opened_in_the_front_matter_hides_the_body(
     path.write_text(paper, encoding="utf-8")
     assert {c.text.rstrip(".") for c in audit([path], [outputs]).unmatched} == shown
     assert all(number in mask(paper) for number in shown), "G2 reads what the audit reads"
-    hidden = {i for spans in masked_spans(paper).values() for a, b in spans for i in range(a, b)}
-    explained = "".join(NUL if i in hidden else ch for i, ch in enumerate(paper))
+    spans = masked_spans(paper)
+    hidden = {i for found in spans.values() for a, b in found for i in range(a, b)}
+    # The mask keeps the line breaks of what it hides, but a comment's, which pandoc reads
+    # inside the paragraph it stands in (corpus round, 2026-10-23).
+    comments = {i for a, b in spans.get("html-comment", []) for i in range(a, b)}
+    explained = "".join(NUL if i in hidden and (ch not in "\r\n" or i in comments) else ch
+                        for i, ch in enumerate(paper))  # fmt: skip
     assert explained == mask(paper), "`explain` reports what G2 masks"
 
 
@@ -14784,7 +14878,9 @@ def test_g2_judges_a_listing_in_the_front_matter_as_code() -> None:
     report = _fenced_code(Path("main.md"), text, Classifier.load())
     assert "code-block-text-number" in {f.code for f in report.findings}
     masked = mask(text)
-    assert all(masked[i] == NUL for f in fenced_blocks(text) for i in range(f.start, f.end))
+    assert all(masked[i] == NUL for f in fenced_blocks(text) for i in range(f.start, f.end)
+               if text[i] != "\n")  # fmt: skip
+    assert all(masked[i] == "\n" for i, ch in enumerate(text) if ch == "\n")
 
 
 def test_a_url_ending_a_yaml_value_hides_nothing_of_the_next(tmp_path: Path) -> None:

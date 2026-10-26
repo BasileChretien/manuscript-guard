@@ -237,6 +237,12 @@ CHANGED = {
         "MANY = 2\n",
         "spelling",
     ),
+    "a LaTeX range of cross-references that takes in nothing between its ends": (
+        "gates/pointers_latex.py",
+        "_RANGE = 50\n",
+        "_RANGE = 0\n",
+        "latex displays cited",
+    ),
     "a residue read across a blank line": (
         "gates/writing.py",
         "    return [*spans, (start, len(text))]\n",

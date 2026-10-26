@@ -19,6 +19,15 @@ reads, a `\\captionof`, a `longtable`'s caption or a page `\\includepdf` takes i
 kind uncounted, and one note says so, as `pointers.py` does of a table placed by hand. A
 `\\mg{table.key}` outside a float is a table LaTeX does not number. A table or a figure sent
 to the journal as a file of its own is declared in paper.yaml (`displays:`), as for Markdown.
+
+**The appendix is the supplement's.** A table or a figure the main document prints after
+`\\appendix` or in the appendix package's `appendices`, or under a heading that names a
+supplement, an appendix or supporting information, to the next heading of its level, is not
+held to ICMJE's order or to being cited, as a supplement's is not. A pointer typed to it is
+held to its place among the document's tables or figures, counted on from the main text's,
+which is the number LaTeX prints unless the class or the author numbers the appendix apart
+(Known gaps) (Basile, 2026-10-23, after an Elsevier paper cited its "Supplementary Table"
+first and was told it was out of order).
 """
 
 from __future__ import annotations
@@ -30,6 +39,7 @@ from pathlib import Path
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.findings import INFO, Finding, Report
 from manuscript_guard.gates.pointers import (
+    _DASHES,
     AS_FILES,
     FIGURE,
     TABLE,
@@ -40,8 +50,46 @@ from manuscript_guard.gates.pointers import (
 from manuscript_guard.text.blocks import find_headings
 
 GATE = "G2"
+#: A heading that names the main document's supplement, its whole title or before a label,
+#: a colon or a stop: "Supplementary materials", "Supplementary Table S1", "Supplement 2",
+#: "Appendix A: Proofs", "Appendices", "Supporting information", "S1 Appendix", "Electronic
+#: supplementary material", "Additional file 1", "Web appendix", "Data supplement",
+#: "eMethods"; "Supplementary tables and figures", "Supplementary material for the online
+#: version", and a label's title after it, "Appendix A Proofs", "Appendix 1 — Search" (fix
+#: round). Not one the word only describes, "Supplementary analyses", "Supplementary data
+#: sources", "Supplemental oxygen", "Appendix diameter", "Supplement-related events" or
+#: "Supplement A arm": a title goes on after an appendix's label only, and a hyphen parts it
+#: only with a space on each side (rounds 1 and 2, and the fix rounds).
+_SUPPLEMENT_HEADING = re.compile(
+    r"\s*(?:[A-Z]?\d+(?:\.\d+)*[.):]?\s+)?(?:"
+    r"(?:(?:e|web\s+)?appendi(?:x|ces)|S\d+\s+appendix)"
+    r"(?:\s+(?:S?\d+[A-Z]?|[A-Z](?:\.\d+)?)(?:\s+.*)?)?"
+    r"|(?:(?:online\s+|electronic\s+)?(?:supplementary|supplemental)(?:\s+(?:materials?\s+and"
+    r"\s+methods|(?:tables?|figures?)(?:\s+and\s+(?:tables?|figures?))?|materials?|information"
+    r"|data|files?|appendi(?:x|ces)|text|content|methods|notes)(?:\s+(?:for|to)\s.*)?)?"
+    r"|(?:online\s+|data\s+)?supplement|supporting\s+information|S\d+\s+(?:text|file)"
+    r"|additional\s+files?|e(?:methods|tables?|figures?))"
+    r"(?:\s+(?:S?\d+[A-Z]?|[A-Z](?:\.\d+)?))?)"
+    r"(?:(?:\s*[.:\N{EN DASH}\N{EM DASH}]|\s+-\s).*)?\s*$",
+    re.IGNORECASE,
+)
 #: The cross-references that cite what they point at: not a page's, which `\\pageref` prints.
-_PAGES = frozenset({"pageref", "cpageref"})
+_PAGES = frozenset({"pageref", "cpageref", "cpagerefrange", "Cpagerefrange"})
+#: cleveref's ranges, `\\crefrange{a}{b}`, which cite what LaTeX numbers from a to b.
+_RANGES = frozenset({"crefrange", "Crefrange"})
+#: What joins two cross-references into a range in the view, `\\ref{a}--\\ref{b}`: a dash,
+#: with spaces or a line's end around it, as a typed range's in `pointers.py`.
+_RANGE_DASH = re.compile(r"[^\S\n]*\n?[^\S\n]*[" + _DASHES + r"][^\S\n]*\n?[^\S\n]*")
+#: "to" between two cross-references, which `pointers.py`'s `_JOIN` reads as a range after a
+#: plural, "Figures 2 to 4", and as no join after a singular (fix round 1).
+_RANGE_TO = re.compile(r"[^\S\n]*\n?[^\S\n]*to[^\S\n]*\n?[^\S\n]*")
+#: The rest of `_JOIN`'s joins, a list's: they carry a plural on to the next cross-reference,
+#: "Figures \\ref{a}, \\ref{b} to \\ref{d}".
+_LIST_JOIN = re.compile(r"[^\S\n]*\n?[^\S\n]*(?:,[^\S\n]*(?:and|&)|,|and|&)[^\S\n]*\n?[^\S\n]*")
+#: The plural word before a cross-reference, as `pointers.py`'s `_PLURAL` reads one typed.
+_PLURAL_BEFORE = re.compile(r"(?<![\w.])(?:tables|figures|figs\.?)[^\S\n]*\Z", re.IGNORECASE)
+#: How far apart a range's ends may be, as `pointers.py` reads one typed.
+_RANGE = 50
 
 
 @dataclass(frozen=True)
@@ -77,12 +125,12 @@ def pointers_in_documents(documents: dict, folder: Path, as_files: dict) -> Repo
     from manuscript_guard.text.latex.structure import ENTRY
 
     views = {part: printed(sources, pointing=True) for part, sources in documents.items()}
-    bound, labels, uncounted = _numbered(views)
+    bound, labels, uncounted, apart = _numbered(views)
     pointers, typed = _cited(views, labels, folder)
     total = {key: bound[key] + as_files[key] for key in AS_FILES}
     report = _to_nothing(typed, total, bound, as_files, uncounted)
     report = report.merge(_unchecked(pointers, total, uncounted, folder / ENTRY))
-    report = report.merge(_in_order(pointers, total, uncounted, folder / ENTRY))
+    report = report.merge(_in_order(pointers, total, uncounted, folder / ENTRY, apart))
     return report.with_counts(
         pointers=len(pointers),
         pointers_checked=sum(
@@ -95,34 +143,73 @@ def pointers_in_documents(documents: dict, folder: Path, as_files: dict) -> Repo
 
 
 def _marks():
-    """A display's or a cross-reference's mark in the view: its kind, and what it holds."""
-    from manuscript_guard.text.latex.printed import DISPLAY, MARK_END, REFERENCE
+    """A display's, a cross-reference's or the appendix's mark in the view: its kind, and what
+    it holds."""
+    from manuscript_guard.text.latex.printed import APPENDIX, DISPLAY, MARK_END, REFERENCE
 
-    return re.compile(f"([{DISPLAY}{REFERENCE}])([^{MARK_END}]*){MARK_END}")
+    return re.compile(f"([{DISPLAY}{REFERENCE}{APPENDIX}])([^{MARK_END}]*){MARK_END}")
+
+
+def _supplement_parts(text: str) -> list[tuple[int, int]]:
+    """Where each heading that names a supplement runs in the view, to the next heading of
+    its level or above, or to the reference list, past which a paper may place its floats
+    (round 2)."""
+    from manuscript_guard.text.latex.printed import APPENDIX, MARK_END
+
+    headings = find_headings(text)
+    lists = [found.start() for found in re.finditer(f"{APPENDIX}references{MARK_END}", text)]
+    parts = []
+    for index, heading in enumerate(headings):
+        if _SUPPLEMENT_HEADING.match(heading.title):
+            ends = [later.start for later in headings[index + 1 :] if later.level <= heading.level]
+            ends += [at for at in lists if at > heading.start]
+            parts.append((heading.start, min(ends, default=len(text))))
+    return parts
 
 
 def _numbered(views: dict):
-    """How many tables and figures each document numbers, the display each label names, and
-    the kinds a document numbers in a way the view cannot count."""
-    from manuscript_guard.text.latex.printed import DISPLAY
+    """How many tables and figures each document numbers, the display each label names, the
+    kinds a document numbers in a way the view cannot count, and the numbers of the main
+    document's displays that are its supplement's, in its appendix or under a heading that
+    names one."""
+    from manuscript_guard.text.latex.printed import APPENDIX, DISPLAY, JOINED
 
     labels: dict[tuple[bool, str], _Numbered] = {}
     bound: dict[tuple[bool, str], int] = {key: 0 for key in AS_FILES}
     uncounted: set[tuple[bool, str]] = set()
+    apart: dict[tuple[bool, str], set[int]] = {key: set() for key in AS_FILES}
     for supplementary, view in views.items():
+        parts = _supplement_parts(view.text)
+        # `\\appendix` holds to the end; an environment to where it ends (round 2).
+        command = environment = False
+        latest: dict[str, _Numbered] = {}
         for found in _marks().finditer(view.text):
+            if found[1] == APPENDIX:
+                command = command or found[2] == ""
+                environment = {"environment": True, "end": False}.get(found[2], environment)
             if found[1] != DISPLAY:
                 continue
-            code, named = found[2][:1], found[2][1:]
+            appendix = command or environment
+            joined = found[2].startswith(JOINED)
+            code = found[2][len(JOINED) if joined else 0 :][:1]
+            named = found[2][len(JOINED) + 1 if joined else 1 :]
             kind = TABLE if code.lower() == "t" else FIGURE
+            # The floats of a file read inside a group are parts of the group's display, the
+            # last of its kind the view has marked (fix round 1).
+            if joined:
+                for label in filter(None, named.split(",") if kind in latest else []):
+                    labels.setdefault((supplementary, label), latest[kind])
+                continue
             if code.isupper():
                 uncounted.add((supplementary, kind))
                 continue
             bound[supplementary, kind] += 1
-            display = _Numbered(kind, supplementary, bound[supplementary, kind])
+            display = latest[kind] = _Numbered(kind, supplementary, bound[supplementary, kind])
+            if appendix or any(low <= found.start() < high for low, high in parts):
+                apart[supplementary, kind].add(display.number)
             for label in filter(None, named.split(",")):
                 labels.setdefault((supplementary, label), display)
-    return bound, labels, uncounted
+    return bound, labels, uncounted, apart
 
 
 def _cited(views: dict, labels: dict, folder: Path) -> tuple[list[Pointer], list[Pointer]]:
@@ -143,15 +230,24 @@ def _cited(views: dict, labels: dict, folder: Path) -> tuple[list[Pointer], list
             if placed is not None:
                 found.append((at, placed))
                 typed.append(placed)
+        last: tuple[int, _Numbered | None, bool] = (-1, None, False)
         for mark in _marks().finditer(view.text):
             command, _colon, named = mark[2].partition(":")
             if mark[1] != REFERENCE or command in _PAGES:
                 continue
-            for label in filter(None, named.split(",")):
-                display = labels.get((supplementary, label)) or labels.get(
-                    (not supplementary, label)
-                )
-                line = view.text.count("\n", 0, mark.start()) + 1
+            line = view.text.count("\n", 0, mark.start()) + 1
+            shown = [(label, labels.get((supplementary, label))
+                      or labels.get((not supplementary, label)))
+                     for label in filter(None, named.split(","))]  # fmt: skip
+            # A typed range, `\\ref{a}--\\ref{b}`, cites what LaTeX numbers between the two,
+            # as "Figures 2-4" does in Markdown (corpus round, 2026-10-23).
+            ranged, plural = _joined(view.text, last, mark.start())
+            if shown and ranged:
+                shown[:0] = _between(last[1], shown[0][1])
+            if command in _RANGES and len(shown) == 2:
+                shown[1:1] = _between(shown[0][1], shown[1][1])
+            last = (mark.end(), shown[-1][1] if shown else None, plural)
+            for label, display in shown:
                 if display is None:
                     continue
                 reference = Pointer(
@@ -164,6 +260,35 @@ def _cited(views: dict, labels: dict, folder: Path) -> tuple[list[Pointer], list
                     found.append((mark.start(), placed))
         pointers += [pointer for _at, pointer in sorted(found, key=lambda pair: pair[0])]
     return pointers, typed
+
+
+def _joined(text: str, last: tuple[int, _Numbered | None, bool], start: int) -> tuple[bool, bool]:
+    """Whether the cross-reference at `start` makes a range with the `last` one, which ended
+    where it says and was read after a plural or not; and whether it is read after a plural.
+    As `pointers.py` reads a typed pointer's numbers: a dash makes a range, "to" one after a
+    plural only, and a list's join carries the plural on (fix round 1)."""
+    after, _display, plural = last
+    if after >= 0 and _RANGE_DASH.fullmatch(text, after, start):
+        return True, plural
+    if after >= 0 and _RANGE_TO.fullmatch(text, after, start):
+        return plural, plural
+    if after >= 0 and _LIST_JOIN.fullmatch(text, after, start):
+        return False, plural
+    return False, _PLURAL_BEFORE.search(text, max(0, start - 16), start) is not None
+
+
+def _between(first: _Numbered | None, last: _Numbered | None) -> list[tuple[str, _Numbered]]:
+    """The displays a range from `first` to `last` takes in between them: of one kind and one
+    document, the first numbered before the last, at most `_RANGE` apart, as `pointers.py`
+    reads a typed range."""
+    if (
+        first is None
+        or last is None
+        or (first.kind, first.supplementary) != (last.kind, last.supplementary)
+        or not first.number < last.number <= first.number + _RANGE
+    ):
+        return []
+    return [("", replace(first, number=number)) for number in range(first.number + 1, last.number)]
 
 
 def _to_nothing(typed, total, bound, as_files, uncounted) -> Report:

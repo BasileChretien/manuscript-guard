@@ -377,13 +377,24 @@ def _zotero_version() -> str | None:
     return None
 
 
+def document_language(project) -> str:
+    """The language the document is given: the English `paper.yaml` declares, or English with
+    no region where it declares none (Basile, 2026-10-23). Pandoc writes `en` into the .docx
+    as it stands; Word 16 reads it as English with no region (LanguageID 9) and proofs it with
+    its American dictionary, and citeproc takes CSL's `en-US` locale for it."""
+    variant = project.english_variant
+    return variant if variant in ("en-GB", "en-US") else "en"
+
+
 def _word_lines(project) -> list[str]:
-    """The `zotero-word` block zotero_word.lua reads: the style and locale Word should use."""
+    """The `zotero-word` block zotero_word.lua reads: the style and locale Word should use.
+    With no English declared, no locale: the filter then names CSL's default, `en-US`."""
     style = _zotero_style(project)
     if style is None:
         return []
-    locale = "en-GB" if project.english_variant == "en-GB" else "en-US"
-    lines = ["zotero-word:", f'  style: "{style}"', f"  locale: {locale}"]
+    lines = ["zotero-word:", f'  style: "{style}"']
+    if document_language(project) != "en":
+        lines.append(f"  locale: {document_language(project)}")
     version = _zotero_version()
     if version:
         lines.append(f'  zotero-version: "{version}"')
@@ -466,7 +477,7 @@ def _front_matter(
         printed = ", ".join(_yaml_text(project, "keywords", k, sent=sent) for k in keywords)
         lines.append(f"keywords: [{printed}]")
     lines += [
-        "lang: " + ("en-GB" if project.english_variant == "en-GB" else "en-US"),
+        f"lang: {document_language(project)}",
         "zotero:",
         "  client: zotero",
         "  scannable-cite: false",

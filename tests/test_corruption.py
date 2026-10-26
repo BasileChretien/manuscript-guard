@@ -20326,16 +20326,56 @@ def test_a_statistic_in_brackets_does_not_stand_in_for_a_deleted_definition(
 ) -> None:
     """The definition is tidied away, and the Methods now give the estimate in brackets
     after words whose letters spell ROR. A statistic is no definition: ROR is undefined
-    where it is first used, and not defined as "older reporters" below that."""
+    where it is first used, and not defined as "Reports were fewer among older adults",
+    whose last word holds no R, below that."""
     mended = with_ror_defined(project)
     tidied = mended.replace("ratio (ROR) of", "ratio of").replace(
         "A signal was defined",
-        "Reports were fewer among older reporters (ROR: {{results.ror.point}}). A signal was "
+        "Reports were fewer among older adults (ROR: {{results.ror.point}}). A signal was "
         "defined",
     )
     main_md(project).write_text(tidied, encoding="utf-8")
     assert language_findings(project) == [
         ("abbreviation-undefined", line_of(tidied, ABBREVIATED))
+    ]
+
+
+def test_an_estimate_after_words_that_begin_with_its_letters_is_still_undefined(
+    project: Path,
+) -> None:
+    """A revision pastes in a hazard ratio from a sensitivity analysis, its estimate in
+    brackets after words that begin with the letters of HR, and never defines HR. A short
+    form followed by a number is a statistic: HR is undefined, not defined as "higher
+    risk"."""
+    mended = with_ror_defined(project)
+    pasted = mended.replace(
+        "A signal was defined",
+        "Exposure was associated with a higher risk (HR 1.32, 95% CI 1.10 to 1.58), and the "
+        "HR was stable. A signal was defined",
+    )
+    assert pasted != mended
+    main_md(project).write_text(pasted, encoding="utf-8")
+    assert language_findings(project) == [
+        ("abbreviation-undefined", line_of(pasted, "risk (HR 1.32"))
+    ]
+
+
+def test_a_definition_after_a_colon_given_again_is_caught(project: Path) -> None:
+    """The time to onset is summarised with its interquartile range defined after a colon,
+    and the definition is pasted again in the Discussion. The letters of IQR are not one per
+    word, and the first is still a definition: the second is a redefinition."""
+    mended = with_ror_defined(project)
+    pasted = mended.replace(
+        "A signal was defined",
+        "The time to onset had an interquartile range (IQR: 3 to 7 days). A signal was defined",
+    ).replace(
+        "The reporting odds ratio observed here",
+        "The interquartile range (IQR) was narrow, and an IQR this narrow is usual. The "
+        "reporting odds ratio observed here",
+    )
+    main_md(project).write_text(pasted, encoding="utf-8")
+    assert language_findings(project) == [
+        ("abbreviation-redefined", line_of(pasted, "range (IQR) was"))
     ]
 
 

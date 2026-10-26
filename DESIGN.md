@@ -3737,15 +3737,19 @@ capitals, or one that is not the capital of a word (`mL`), or a capital and a di
 plural defines its singular: `RORs` defines `ROR`, and `mAbs` after "monoclonal antibodies"
 defines `mAb`.
 
-A bracket that gives a statistic is held to a stricter reading. A short form followed by a
-colon, an equals sign or a number, "(ROR: 3.84, 95% CI ...)", defines it only where the
-words right before the bracket begin with its letters, one word each: "reporting odds
-ratio (ROR: 3.84)" does, as pharmacovigilance writes a first estimate, and "estimated
-glomerular filtration rate (eGFR: ml/min/1.73 m2)" does. In "use was lower in the young
-and older adults (AOR: 0.41, 95% CI ...)" the letters A, O and R are there in order, and
-read by them the bracket made AOR "defined as 'and older adults'", a second meaning beside
-the real one; their initials are not AOR, so it defines nothing. Before this, a short form
-followed by an equals sign or a number was not read as a definition at all.
+A bracket that gives a statistic is no definition. A short form followed by an equals sign
+or a number, "(HR 1.32, 95% CI ...)" or "(MAP = 90 mmHg)", defines nothing, whatever the
+words before it: "a higher risk (HR 1.32, ...)" begins with the letters of HR, and read as
+a definition it was a second one after "the hazard ratio (HR)", or the only one where the
+manuscript never defined HR. A short form followed by a colon is read as any other, by its
+letters, and is held to one rule more: the last word before the bracket holds its last
+letter. "Reporting odds ratio (ROR: 3.84)" defines, as pharmacovigilance writes a first
+estimate, and so do "estimated glomerular filtration rate (eGFR: ml/min/1.73 m2)",
+"creatinine clearance (CrCl: 58 mL/min)" and "interquartile range (IQR: 3-7)", whose
+letters are not one per word. In "use was lower in the young and older adults (AOR: 0.41,
+95% CI ...)" the letters A, O and R are there in order, and read by them the bracket made
+AOR "defined as 'and older adults'", a second meaning beside the real one; its R is the one
+of "older", not of "adults", so it defines nothing.
 
 And a long form takes no letter from inside a bracket it opens. In "(WSE1) and 40 (12.5%)
 had a second WSE (WSE2)" the `2` of WSE2 is found only in "(12.5%)", and nothing is
@@ -15123,14 +15127,16 @@ Open, recorded as each change landed:
     ROR", "ROR stands for". Its short form is then reported as undefined.
   - A short form followed by a citation inside the bracket, `(ROR [@key])`, is not read as
     a definition; `(ROR; ...)` and `(ROR, ...)` are.
-  - A short form followed by a colon, an equals sign or a number is read as a statistic,
-    and defines only where the words right before it are its initials, one word each. A
-    long form with a word its initials skip, "Medical Dictionary for Regulatory Activities
-    (MedDRA: 26.0)", defines nothing, and MedDRA is then reported as undefined. A colon
-    before words is read the same way, so "physical activity (PA: walking or cycling)"
-    defines PA. A comma does not make a statistic, so "and older adults (AOR, 0.41)" is
-    still read as defining AOR, with that long form, where the words before it hold its
-    letters in order.
+  - A short form followed by an equals sign or a number defines nothing, so "the reporting
+    odds ratio (ROR 3.84)" leaves ROR undefined. One followed by a colon defines where its
+    letters are found before the bracket and the last word holds its last letter, a
+    statistic or not: "a higher risk (HR: 1.32)" defines HR as "higher risk". A real long
+    form whose last word holds no letter of its short form, "tumour necrosis factor alpha
+    (TNF: 12 pg/mL)", defines nothing after a colon, and TNF is then reported as
+    undefined. A colon before words is read the same way, so "physical activity (PA:
+    walking or cycling)" defines PA. A comma does not make a statistic, so "and older
+    adults (AOR, 0.41)" is still read as defining AOR, with that long form, where the words
+    before it hold its letters in order.
   - Brackets inside brackets are not read: in "(reporting odds ratio (ROR) 3.84)" the inner
     bracket is read and the outer is not, and a definition whose long form is in the
     bracket and holds a bracket of its own is missed.

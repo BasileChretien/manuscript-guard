@@ -562,9 +562,9 @@ def signs() -> st.SearchStrategy[str]:
 #: nested in a bracket that gives a statistic, a citation before the short form's bracket,
 #: and two long forms that run across a bracket without taking a letter from inside one,
 #: the WSE taken after two hours and a risk adjusted for something said in brackets; a
-#: statistic after a colon, an equals sign or a number whose words right before it are its
-#: initials; and two whose nearest letter is inside a bracket the long form would open,
-#: found again before it.
+#: short form after a colon whose letters are found before the bracket, the last in its last
+#: word, one per word or not; and two whose nearest letter is inside a bracket the long form
+#: would open, found again before it.
 DEFINING = (
     ("the reporting odds ratio (ROR)", "(ROR", "ROR"),
     ("the PRR (proportional reporting ratio)", "PRR (", "PRR"),
@@ -575,20 +575,21 @@ DEFINING = (
     ("the empirical Bayes geometric mean [@smith2020] (EBGM)", "(EBGM", "EBGM"),
     ("a score at entry (SCE1) and after 2 hours (SCE2)", "(SCE2", "SCE2"),
     ("the adjusted (for sex) relative risk (aRR)", "(aRR", "aRR"),
-    # A statistic whose words right before it are its initials.
+    # A short form after a colon, its letters one per word or not.
     ("the relative reporting ratio (RRR: 3.84, 95% CI 2.10 to 7.02)", "(RRR", "RRR"),
-    ("the mean arterial pressure (MAP = 90 mmHg)", "(MAP", "MAP"),
-    ("the mean daily dose (MDD 40 mg)", "(MDD", "MDD"),
     ("the case fatality rate (CFR: {{results.cfr}})", "(CFR", "CFR"),
+    ("the creatinine clearance (CrCl: 58 mL/min)", "(CrCl", "CrCl"),
+    ("the interquartile range (IQR: 3 to 7)", "(IQR", "IQR"),
     # The nearest letter inside a bracket the long form would open, another before it.
     ("the brief pain scale (Spanish version) (BPS)", "(BPS", "BPS"),
     ("the lean mass index (in kg/m2) (LMI)", "(LMI", "LMI"),
 )  # fmt: skip
 
 #: Brackets that are no definition, though the words before each hold its letters in order:
-#: a statistic, its short form followed by a colon, an equals sign or a number, whose words
-#: right before it are not its initials; and a short form whose letters are found only by
-#: going into another bracket, "(12.5%)".
+#: a statistic, its short form followed by a colon whose last letter is not in the last word
+#: before the bracket, or by an equals sign or a number, whatever the words before it are,
+#: their initials among them; and a short form whose letters are found only by going into
+#: another bracket, "(12.5%)".
 NOT_DEFINING = (
     ("lower in the young and older adults (AOR: 0.41, 95% CI 0.22 to 0.77)", "(AOR",
      "AOR"),
@@ -596,6 +597,12 @@ NOT_DEFINING = (
     ("lower in the young and older adults (AOR: {{results.aor}})", "(AOR", "AOR"),
     ("lower in the young and older adults (AOR = 0.41)", "(AOR", "AOR"),
     ("lower in the young and older adults (AOR 0.41)", "(AOR", "AOR"),
+    ("a higher risk (HR 1.32, 95% CI 1.10 to 1.58)", "(HR", "HR"),
+    ("a reduced risk (RR 0.71)", "(RR", "RR"),
+    ("higher odds of readmission (OR 1.52)", "(OR", "OR"),
+    ("the odds ratio (OR 1.5)", "(OR", "OR"),
+    ("the mean arterial pressure (MAP = 90 mmHg)", "(MAP", "MAP"),
+    ("the mean daily dose (MDD 40 mg)", "(MDD", "MDD"),
     ("a warning score at entry (WSE1) and 40 (12.5%) had a second WSE (WSE2)", "(WSE2",
      "WSE2"),
     ("a warning score at entry (WSE1) and 40 [12.5%] had a second WSE (WSE2)", "(WSE2",

@@ -100,19 +100,19 @@ _QUOTES = (
 )
 #: What may cling to either end of a long form and is no part of it.
 _EDGES = _QUOTES + ".,;:()[]"
-# The short form opening a bracket: alone, before a separator ("ROR; 95% CI ..."), or before
-# a statistic ("ROR: 3.84", "ROR = 3.84", "ROR 3.84").
+# The short form opening a bracket: alone, or before a separator ("ROR; 95% CI ...", "ROR:
+# 3.84"). One followed by an equals sign or a number gives a statistic and defines nothing:
+# "a higher risk (HR 1.32, 95% CI ...)" is no definition of HR, though "higher risk" begins
+# with its letters.
 _OPENS_WITH = re.compile(
     rf"[\s{re.escape(_QUOTES)}]*(?P<short>[^\W_]+(?:-[^\W_]+)*)[\s{re.escape(_QUOTES)}]*"
-    r"(?:$|[;,:=]|(?=\d))"
+    r"(?:$|[;,:])"
 )
-# What makes a bracket a statistic: its short form followed by a colon, an equals sign or a
-# number, "(AOR: 0.41, 95% CI ...)". Such a bracket defines its short form only where the
-# words right before it begin with its letters (`_initials`): "reporting odds ratio (ROR:
-# 3.84)" does, "and older adults (AOR: 0.41)" does not, though its letters are there.
-_STATISTIC = re.compile(rf"[\s{re.escape(_QUOTES)}]*(?:[:=]|\d)")
-#: A word, or a part of a hyphenated one, for `_initials`: `drug`, `induced`, `2`.
-_PART = re.compile(r"[^\W_]+")
+# A short form followed by a colon may give a statistic, "(AOR: 0.41, 95% CI ...)", or a
+# definition, "creatinine clearance (CrCl: 58 mL/min)". It defines only where the last word
+# before the bracket holds its last letter (`_ends_the_long_form`): in "and older adults
+# (AOR: 0.41)" the letters A, O and R are there in order, and the R is not in "adults".
+_STATISTIC = re.compile(rf"[\s{re.escape(_QUOTES)}]*:")
 #: The brackets a long form opens and closes, round and square: a letter of its short form
 #: is not found inside one it opens (`_inside_a_bracket`).
 _OPENING = "(["
@@ -428,18 +428,15 @@ def _passed_over(before: str, opened: int) -> str:
     return before[:opened] + " " * (min(at, len(before) - 1) + 1 - opened) + before[at + 1 :]
 
 
-def _initials(short: str, before: str) -> str | None:
-    """The words right before a bracket, where they begin with the letters and digits of
-    `short` in order, one word each, and nothing but marks and spaces follows them: "the
-    reporting odds ratio" for ROR, "drug-induced liver injury" for DILI, "type 2 diabetes
-    mellitus" for T2DM. The stricter reading a statistic's bracket is held to."""
+def _ends_the_long_form(short: str, long: str) -> bool:
+    """Does the last word of `long` hold the last letter or digit of `short`? The letters of
+    a long form are found going back from the bracket, so its last word holds the last one
+    wherever that word has it: "creatinine clearance" for CrCl, "interquartile range" for
+    IQR. "and older adults" for AOR does not, its R being the one of "older". The reading a
+    short form followed by a colon is held to."""
     wanted = [char.lower() for char in short if char.isalnum()]
-    parts = list(_PART.finditer(before))[-len(wanted) :] if wanted else []
-    if len(parts) != len(wanted) or before[parts[-1].end() :].strip(_EDGES + " \t\r\n"):
-        return None
-    if [part.group()[0].lower() for part in parts] != wanted:
-        return None
-    return " ".join(before[parts[0].start() : parts[-1].end()].split())
+    words = long.split()
+    return bool(wanted and words) and wanted[-1] in words[-1].strip(_EDGES).lower()
 
 
 def _window(short: str) -> int:
@@ -663,16 +660,15 @@ def _short_inside(prose: str, bracket: re.Match[str]) -> tuple[int, str, str] | 
     short = opening.group("short")
     before = prose[max(0, bracket.start() - 400) : bracket.start()]
     before = _BLANK_LINE.split(before)[-1]
-    if _STATISTIC.match(bracket.group(1), opening.end("short")):
-        long = _initials(_singular(short), before)
-        if long is None:
-            return None
-        return bracket.start(1) + opening.start("short"), _stem(short, long), long
     words = " ".join(before.split()[-_window(short) :])
     long = _long_form(short, words)
     if long is None and short != _singular(short):
         long = _long_form(_singular(short), words)
     if long is None:
+        return None
+    if _STATISTIC.match(bracket.group(1), opening.end("short")) and not (
+        _ends_the_long_form(short, long) or _ends_the_long_form(_singular(short), long)
+    ):
         return None
     return bracket.start(1) + opening.start("short"), _stem(short, long), long
 

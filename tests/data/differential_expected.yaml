@@ -139,8 +139,9 @@ expected:
       parameter in a nested body are no longer refused either (real templates, part 1)
   - reading: abbreviations
     why: >-
-      a short form followed by a colon, an equals sign or a number in its bracket is a
-      statistic, and defines only where the words right before it are its initials; a long
+      a short form followed by a colon in its bracket defines only where the last word before
+      the bracket holds its last letter, so "and older adults (AOR: 0.41)" no longer defines
+      AOR; one followed by an equals sign or a number defines nothing, as before; a long
       form takes no letter from inside a bracket it opens, and looks for it before that
       bracket; a time of day, "8:30AM", "10:00 PM", is not read as an abbreviation, and
       nothing is reported as undefined in a paragraph set in bold with no small letter or a

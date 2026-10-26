@@ -157,15 +157,17 @@ def _paragraph(
     a space, as a hard-wrapped paragraph of entries is one text (round 2 of #446: a wrap
     inside "PRR: proportional / reporting ratio; IC: ..." left IC's entry in PRR's long
     form). Also where each character of the joined text stands in the prose, and how many
-    lines it took. A line under it that opens an entry of its own, a definition's `:` line,
-    a table's line or a blank line ends it."""
+    lines it took. A line under it that opens an entry of its own, a definition list's term
+    with the `:` line under it among them (round 3 of #446), a definition's `:` line, a
+    table's line or a blank line ends it."""
     texts: list[str] = []
     where: list[int] = []
     taken = 0
-    for at, line in lines[index:]:
+    for here, (at, line) in enumerate(lines[index:], start=index):
+        following = lines[here + 1][1] if here + 1 < len(lines) else ""
         if not line.strip() or (taken and (
             _DEFINITION.match(line) or _TABLE_LINE.match(line)
-            or _entry(line, at, raw, "") is not None
+            or _entry(line, at, raw, following) is not None
         )):  # fmt: skip
             break
         if texts:

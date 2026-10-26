@@ -923,6 +923,39 @@ def test_a_glossary_in_one_wrapped_paragraph_defines_each_entry(
     assert not report.findings, found(report)
 
 
+def test_a_definition_list_term_after_a_run_on_line_is_an_entry_of_its_own(
+    project: Path,
+) -> None:
+    """A run-on line's paragraph ends at a line that opens an entry, a definition list's
+    term among them, which only the `:` line under it makes one (round 3 of #446: asked
+    with no line under it, "IC" ran on into PRR's long form, "proportional reporting
+    ratio IC", and IC was lost)."""
+    report = written(
+        project,
+        "# Methods\n\nThe reporting odds ratio (ROR) and the proportional reporting ratio "
+        "(PRR) were computed. The ROR and PRR rose.\n\n# Abbreviations\n\nROR: reporting "
+        "odds ratio; PRR: proportional reporting ratio\nIC\n:   information component\n\n"
+        "# Results\n\nThe IC was computed for each pair. The IC was raised.\n",
+    )
+    assert not report.findings, found(report)
+
+
+def test_a_wrapped_glossary_entry_is_placed_on_its_own_source_line(project: Path) -> None:
+    """The joined paragraph's offsets are the file's: IC's entry, on the second line of a
+    wrapped paragraph, is named on that line where the text gives IC another meaning."""
+    report = written(
+        project,
+        "# Abbreviations\n\nROR: reporting odds ratio; PRR: proportional\nreporting ratio; "
+        "IC: information component\n\n# Methods\n\nThe ROR and the PRR were computed. The "
+        "ROR and PRR rose.\n\n# Results\n\nThe intensive care (IC) unit was used. The IC was "
+        "full.\n",
+    )
+    assert found(report) == [
+        "IC is defined as 'intensive care' here and as 'information component' at "
+        "manuscript/main.md:4"
+    ]
+
+
 def test_a_glossary_in_a_table_defines_its_entries(project: Path) -> None:
     report = written(
         project,

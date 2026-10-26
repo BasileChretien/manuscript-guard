@@ -1548,6 +1548,16 @@ def _a_glossary_s_lines_are_uses(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate, "_in_a_glossary", lambda file, offset: False)
 
 
+def _a_wrapped_glossary_line_is_not_joined(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import glossary
+
+    def alone(lines: list, index: int, raw: str) -> tuple[str, list[int], int]:
+        at, line = lines[index]
+        return line, list(range(at, at + len(line))), 1
+
+    patch.setattr(glossary, "_paragraph", alone)
+
+
 def _nothing_restates_a_definition(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate, "_restates", lambda captions, glossaries, offset: False)
 
@@ -11725,6 +11735,10 @@ BROKEN = {
     ),
     "a glossary's lines are uses": (
         _a_glossary_s_lines_are_uses,
+        test_a_glossary_and_a_caption_define_and_a_paper_with_no_heading_is_one_text,
+    ),
+    "a glossary paragraph wrapped in the source is not joined": (
+        _a_wrapped_glossary_line_is_not_joined,
         test_a_glossary_and_a_caption_define_and_a_paper_with_no_heading_is_one_text,
     ),
     "nothing restates a definition": (

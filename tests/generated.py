@@ -707,6 +707,8 @@ GLOSSARY_FORMS = (
     "BCPNN\n:   Bayesian confidence propagation neural network",
     "| Abbreviation | Meaning |\n|---|---|\n| GPS | gamma Poisson shrinker |\n"
     "| MGPS | multi-item gamma Poisson shrinker |",
+    # Run on in one paragraph and hard-wrapped inside a long form (round 2 of #446).
+    "ROR: reporting odds ratio; PRR: proportional\nreporting ratio; IC: information component",
 )
 GLOSSARY_USED = ("ROR", "PRR", "IC", "EBGM", "SDR", "BCPNN", "GPS", "MGPS")
 #: An entry nothing else uses, and an abbreviation the glossary does not list.

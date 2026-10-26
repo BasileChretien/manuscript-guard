@@ -16338,6 +16338,9 @@ What papers converted from Word showed (see "What papers converted from Word sho
   tells "CCR2" from them. And a word with a capital after a lower-case letter is read as
   a name from that capital, so "preCO2", with CO2 declared, is a term, and so is a word
   that ends in a term's letters after one, "MyIL-2".
+  A subscript is held to none of this, only a superscript is: "HR~2~", "OR~2~" and
+  "PharmD~2~" read as `r2` and `d2`, terms, where main reported them; an index set below
+  the line labels something far more often than it holds a result.
 - **A term counts directly after any other.** "PaO2FiO2" and "CD8CD4" are two terms each
   because the second counts where the first ends, and that holds after a term with no
   digit as well: with MeSH among the terms, "meshd2" is `mesh` and `d2`. Holding the second

@@ -268,14 +268,88 @@ def test_an_english_variant_clash_is_caught(project: Path) -> None:
     assert "english-variant-mismatch" in codes(journal_report(project))
 
 
-def test_a_paper_that_declares_no_english_is_not_compared_with_the_journal_s(
-    project: Path,
+def _english_said(root: Path, journal: str | None, paper: str | None):
+    """What G4 says of the English, by code, severity, message and hint, with the journal's
+    profile and paper.yaml naming these (None: the line left out)."""
+
+    def put(value):
+        def mutate(document):
+            document.pop("english_variant", None)
+            if value is not None:
+                document["english_variant"] = value
+
+        return mutate
+
+    edit_yaml(root / JOURNAL, put(journal))
+    edit_yaml(root / "paper.yaml", put(paper))
+    return [
+        (f.code, f.severity, f.message, f.hint)
+        for f in journal_report(root).findings
+        if f.code.startswith("english-variant")
+    ]
+
+
+@pytest.mark.parametrize(
+    ("journal", "english"), [("en-US", "American English"), ("en-GB", "British English")]
+)
+def test_a_paper_that_declares_no_english_is_told_the_journal_s(
+    project: Path, journal: str, english: str
 ) -> None:
-    """Basile, 2026-10-23: nothing declared is nothing to compare. G14 holds such a paper to
-    the English most of its words are in."""
-    edit_yaml(project / JOURNAL, lambda d: d.update(english_variant="en-US"))
-    edit_yaml(project / "paper.yaml", lambda d: d.pop("english_variant"))
-    assert "english-variant-mismatch" not in codes(journal_report(project))
+    """Basile, 2026-10-23: a journal that names an English and a paper.yaml that declares
+    none is a note of G4, never a failure. Nothing declared is nothing to compare, and G14
+    holds such a paper to the English most of its words are in, which may not be the
+    journal's."""
+    assert _english_said(project, journal, None) == [
+        (
+            "english-variant-undeclared",
+            "info",
+            f"the journal asks for {english} ({journal}), and paper.yaml declares no English",
+            f"declare english_variant: {journal} in paper.yaml to be held to it; until then "
+            "G14 holds the paper to the English most of its words are in",
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    ("journal", "paper"),
+    [
+        ("en-GB", "en-GB"),
+        ("en-US", "en-US"),
+        (None, None),
+        (None, "en-GB"),
+        ("either", None),
+        ("either", "en-US"),
+    ],
+)
+def test_a_journal_and_a_paper_that_agree_or_ask_nothing_hear_nothing(
+    project: Path, journal: str | None, paper: str | None
+) -> None:
+    assert _english_said(project, journal, paper) == []
+
+
+@pytest.mark.parametrize(("journal", "paper"), [("en-US", "en-GB"), ("en-GB", "en-US")])
+def test_a_paper_that_declares_the_other_english_is_the_mismatch_as_before(
+    project: Path, journal: str, paper: str
+) -> None:
+    assert _english_said(project, journal, paper) == [
+        (
+            "english-variant-mismatch",
+            "fail",
+            f"the journal wants {journal}, paper.yaml says {paper}",
+            f"set english_variant: {journal} in paper.yaml and re-read the prose",
+        )
+    ]
+
+
+def test_the_note_of_an_undeclared_english_fails_no_stage(project: Path) -> None:
+    from manuscript_guard.policy import STAGES, apply_stage
+
+    _english_said(project, "en-US", None)
+    report = journal_report(project)
+    for stage in STAGES:
+        staged, _ = apply_stage(report, stage)
+        said = [(f.code, f.severity) for f in staged.findings if f.code.startswith("english")]
+        assert said == [("english-variant-undeclared", "info")], stage
 
 
 def test_an_old_profile_warns(project: Path) -> None:

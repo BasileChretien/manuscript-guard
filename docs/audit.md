@@ -15,6 +15,14 @@ number 39,202,616 and silently skips every table), drops the bibliography, class
 conventions and cross-references, and reports every remaining number that appears nowhere
 in your outputs.
 
+The bibliography is found by its title in English, Spanish, Portuguese, French, German,
+Italian, Turkish and Indonesian ("References", "Referencias", "Kaynakça", "Daftar pustaka"
+and the like), and otherwise by the shape of its entries. Numbers in names are classified as
+`check` classifies them: an e-mail address is no number, nor a name the shipped terms hold,
+such as "IL-4" or "interleukin-4". A Word 97-2003 document (.doc) is not read; save it as
+.docx first. A .doc in a folder you give is named in the report as passed over, and does not
+fail `--strict`.
+
 **It also tells you how little that means.** The report ends with a measurement of the
 backing set you supplied:
 

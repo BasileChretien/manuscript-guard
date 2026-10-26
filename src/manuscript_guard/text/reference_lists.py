@@ -18,7 +18,7 @@ from bisect import bisect_right
 
 from manuscript_guard.text.attributes import strip_attributes
 from manuscript_guard.text.blocks import find_headings, heading_shaped, scannable
-from manuscript_guard.text.section_names import STATEMENT_NAMES
+from manuscript_guard.text.section_names import REFERENCE_WORDS_ELSEWHERE, STATEMENT_NAMES
 
 # A line that is nothing but a bibliography heading, perhaps numbered, perhaps in bold. From
 # there to the next heading is page ranges, volume numbers and years belonging to other
@@ -45,7 +45,8 @@ _BIBLIOGRAPHY = re.compile(
     r"^(?P<hashes>#+)?[\s*_]*"
     r"(?:(?P<numbered>\d+\\?[.)])[\s*_]*|(?P<bare>\d+)\s[\s*_]*)?"
     r"(?P<word>references(?:\s+cited)?|reference\s+list|list\s+of\s+references"
-    r"|cited\s+references|bibliography|works\s+cited|literature\s+cited|cited\s+literature)"
+    r"|cited\s+references|bibliography|works\s+cited|literature\s+cited|cited\s+literature"
+    rf"|{REFERENCE_WORDS_ELSEWHERE})"
     r"(?P<tail>[\s*_:.|]*)$",
     re.IGNORECASE,
 )

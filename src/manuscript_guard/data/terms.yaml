@@ -44,13 +44,78 @@ terms:
   - pd-1
   - pd-l1
   - ctla-4
-  - il-1
+  # The interleukins: each one HGNC names in its gene group "Interleukins" (601), and
+  # IL-8, which it names CXCL8 there, abbreviated and written out. A number in a name is no
+  # result, and IL-4 and interleukin-4 were listed as numbers by G2 and the audit alike.
   - il-1β
+  - il-1
   - il-2
+  - il-3
+  - il-4
+  - il-5
   - il-6
+  - il-7
+  - il-8
+  - il-9
   - il-10
+  - il-11
+  - il-12
+  - il-13
+  - il-15
+  - il-16
   - il-17
+  - il-18
+  - il-19
+  - il-20
+  - il-21
+  - il-22
   - il-23
+  - il-24
+  - il-25
+  - il-26
+  - il-27
+  - il-31
+  - il-32
+  - il-33
+  - il-34
+  - il-36
+  - il-37
+  - il-38
+  - il-40
+  - interleukin-1
+  - interleukin-2
+  - interleukin-3
+  - interleukin-4
+  - interleukin-5
+  - interleukin-6
+  - interleukin-7
+  - interleukin-8
+  - interleukin-9
+  - interleukin-10
+  - interleukin-11
+  - interleukin-12
+  - interleukin-13
+  - interleukin-15
+  - interleukin-16
+  - interleukin-17
+  - interleukin-18
+  - interleukin-19
+  - interleukin-20
+  - interleukin-21
+  - interleukin-22
+  - interleukin-23
+  - interleukin-24
+  - interleukin-25
+  - interleukin-26
+  - interleukin-27
+  - interleukin-31
+  - interleukin-32
+  - interleukin-33
+  - interleukin-34
+  - interleukin-36
+  - interleukin-37
+  - interleukin-38
+  - interleukin-40
   - tnf-α
   - tgf-β1
   - cd4

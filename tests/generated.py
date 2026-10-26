@@ -2259,6 +2259,122 @@ def lines() -> st.SearchStrategy[str]:
     return _in_a_row(_LINE, few=6, many=18)
 
 
+# ------------------------------------------------------------ a paper converted from Word
+
+#: Bold G6's rate counts, once each: in a sentence, and in prose under what only looks like
+#: a table's dashes, as pandoc 3.9 reads each: a rule, a setext heading's underline (one
+#: column's dashes over one line is a heading, not a table) and a rule of spaced dashes.
+BOLD_COUNTED = (
+    " **strong** ",
+    "\n\n----------\n**under** a rule.\n\n",
+    "\n\nA heading\n---------\n**under** a heading.\n\n",
+    "\n\n- - -\n**after** spaced dashes.\n\n",
+)
+#: Bold it does not count: in a table of each kind pandoc reads, `**` paired across cells
+#: among them, and a structured abstract's label.
+BOLD_NOT_COUNTED = (
+    "\n\n  --------------------\n  **A**     **B\n            c**\n  --------- ----------\n"
+    "  1         **2**\n\n  3         4\n  --------------------\n\n",
+    "\n\n---------- ----------\n**a**      **b\n           c**\n\n1          2\n"
+    "---------- ----------\n\n",
+    "\n\n**A**    **B**\n-----  -----\n1**      2**\n\n",
+    "\n\n-----  -----\n**a**  **b**\n-----  -----\n\n",
+    "\n\n+-----+-----+\n| **a | b** |\n+=====+=====+\n| **1** | 2   |\n+-----+-----+\n\n",
+    "\n\n| **A** | **B** |\n|---|---|\n| **1** | 2 |\n\n",
+    "\n\n**A** | **B**\n---|---\n**1** | 2\n\n",
+    "\n\n**Methods:** ",
+)
+
+
+@st.composite
+def bold_planted(draw: st.DrawFn) -> tuple[str, int]:
+    """Words, with every piece of bold that counts and every piece that does not between
+    them, in an order drawn each time; and how many count."""
+
+    def words() -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
+
+    pieces = [(piece, 1) for piece in BOLD_COUNTED] + [(piece, 0) for piece in BOLD_NOT_COUNTED]
+    text, count = words(), 0
+    for piece, counted in draw(st.permutations(pieces)):
+        text += piece + words()
+        count += counted
+    return text, count
+
+
+#: A reference list's titles, in English and in the languages `text.section_names` knows,
+#: and titles that open with such a word and name something else.
+REFERENCE_TITLES = (
+    "References", "Bibliography", "Works cited", "Kaynakça", "Kaynaklar", "Referencias",
+    "Bibliografía", "Referências", "Bibliografia", "Références", "Bibliographie", "Literatur",
+    "Literaturverzeichnis", "Riferimenti bibliografici", "Daftar pustaka", "Daftar  Pustaka",
+    "Pustaka", "Bibliografi",
+)  # fmt: skip
+NOT_REFERENCE_TITLES = (
+    "Literature review", "Literaturübersicht", "Pustakawan", "Bibliographic search",
+    "Referenced cohorts", "Kaynak", "Riferimenti", "Daftar", "Literatur und Forschungsstand",
+    "Referencias teóricas", "Bibliografia e metodi",
+)  # fmt: skip
+
+
+@st.composite
+def reference_titled(draw: st.DrawFn) -> list[tuple[str, bool]]:
+    """Every title above, each written as drawn, upper case, lower case or as it stands,
+    in an order drawn; and whether it titles a reference list."""
+    planted = [(title, True) for title in REFERENCE_TITLES]
+    planted += [(title, False) for title in NOT_REFERENCE_TITLES]
+    cased = [
+        (draw(st.sampled_from((title, title.upper(), title.lower()))), is_list)
+        for title, is_list in planted
+    ]
+    return draw(st.permutations(cased))
+
+
+#: Names a number stands in, which `check` and the audit read as no number: an e-mail
+#: address (structural) and an interleukin, abbreviated or written out (a term). And what
+#: is a number however near it stands: a count, and digits round an `@` with no domain.
+NUMBERED_ADDRESSES = ("someone1989@example.org", "a.b2@uni-3.edu.tr", "x+7@lab9.ac.jp")
+INTERLEUKINS = (
+    "IL-4", "IL-13", "IL-33", "interleukin-4", "interleukin-31", "IL-4/IL-13",
+    "IL-4R\N{GREEK SMALL LETTER ALPHA}", "IL-1\N{GREEK SMALL LETTER BETA}",
+)  # fmt: skip
+#: Terms inside a longer atom: after a prefix with no letter at its end, "anti-IL-6" and
+#: "CD4+CD8+"; after a lower-case prefix, at the term's capital, "sIL-2R" and "ppFEV1"; and
+#: two with nothing between, "PaO2FiO2" and "CD8CD4", each the other way round from the
+#: order of the terms; and after a capital, "CD3+", "Th1/Th2", "CCR2" and "HLA-DRB1".
+NAMES_IN_WORDS = (
+    "anti-IL-6", "CD4+CD8+", "sIL-2R", "ppFEV1", "PaO2FiO2", "CD8CD4", "CD3+", "Th1/Th2",
+    "CCR2", "HLA-DRB1",
+)  # fmt: skip
+#: A word that ends in an interleukin's letters, "April-12" and "Brazil-3", holds no name.
+TERM_LOOKALIKES = ("April-12", "Brazil-3", "until-15")
+#: A citation's number typed in a superscript after a word with a capital inside: read
+#: without its signs it stands hard against that capital, "PharmD2" holding `d2` and
+#: "ApoB12" `b12`, and it is a number still.
+RAISED_AFTER_A_CAPITAL = ("PharmD^2^", "ApoB^12^", "dB^12^")
+NOT_NAMES = ("12", "3.4", "12@3.5", "40@lab", *TERM_LOOKALIKES, *RAISED_AFTER_A_CAPITAL)
+#: Words to put between them: none names a class or a time, which a number after it is a
+#: label of ("cohort 12", "week 12").
+_BETWEEN_NAMES = ("reports", "were", "included", "the", "of", "and", "found", "among")
+
+
+@st.composite
+def named_numbers(draw: st.DrawFn) -> tuple[str, dict[str, str]]:
+    """Every address, interleukin and number above in a sentence, in an order drawn, with
+    words and a separator drawn between them; and what each is: "address", "name" or
+    "number"."""
+    planted = [(text, "address") for text in NUMBERED_ADDRESSES]
+    planted += [(text, "name") for text in (*INTERLEUKINS, *NAMES_IN_WORDS)]
+    planted += [(text, "number") for text in NOT_NAMES]
+    gaps = st.sampled_from((" ", ", ", "; ", " and ", " (", ") ", ". "))
+    # Words first, so that no number opens the line, where it is a list's numbering.
+    text = "We saw"
+    for piece, _kind in draw(st.permutations(planted)):
+        filler = " ".join(draw(st.lists(st.sampled_from(_BETWEEN_NAMES), max_size=3)))
+        text += f"{draw(gaps)}{filler} {piece}{draw(gaps)}"
+    return text.strip() + "\n", dict(planted)
+
+
 # -------------------------------------------------------------------------- quotations
 
 #: What a publisher's page or a PDF holds where a person copying the sentence types
@@ -5147,6 +5263,22 @@ def _quotation_asked(drawn: tuple[tuple[str, str], str, str]) -> dict[str, str]:
     return {"source": source, "quote": quote, "value": value}
 
 
+#: An address and an interleukin, where G2 reads every number: what it reads as no number.
+NAMED_BLOCKS = tuple(
+    f" {name} "
+    for name in (
+        *NUMBERED_ADDRESSES, *INTERLEUKINS, *NAMES_IN_WORDS, *TERM_LOOKALIKES,
+        *RAISED_AFTER_A_CAPITAL,
+    )
+)  # fmt: skip
+#: What a paper converted from Word has that `check` reads: bold in its tables and in its
+#: prose, and a reference list titled in another language.
+CONVERTED_BLOCKS = (
+    *BOLD_COUNTED,
+    *BOLD_NOT_COUNTED,
+    *(f"\n\n# {title}\n\n" for title in REFERENCE_TITLES[3:]),
+)
+
 #: What each reading of `tests/readings.py` is given, by the reading's name.
 INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "checker sentences": texts(),
@@ -5184,7 +5316,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     ),
     "numbers": st.fixed_dictionaries(
         {
-            "text": texts(POINTED, SUPPLEMENT_HEADINGS),
+            "text": texts(POINTED, SUPPLEMENT_HEADINGS + NAMED_BLOCKS),
             "terms": st.lists(
                 st.sampled_from(("CYP3A4", "COVID-19", "CO2", "HbA1c", "1,3-BDG")), max_size=2
             ),
@@ -5282,7 +5414,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     ).map(_quotation_asked),
     "check": st.fixed_dictionaries(
         {
-            "text": texts(TERMS + SPELT),
+            "text": texts(TERMS + SPELT, CONVERTED_BLOCKS),
             "settings": settings_typed(),
             "stage": st.sampled_from(("design", "drafting", "submission")),
         }

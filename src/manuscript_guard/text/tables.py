@@ -21,7 +21,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from manuscript_guard.text.blocks import _TABLE_RULE
+from manuscript_guard.text.blocks import _GRID_TOP, _TABLE_RULE
 from manuscript_guard.text.masking import kept_breaks, mask
 
 #: A pipe that is a cell's edge: not escaped.
@@ -61,6 +61,115 @@ def markdown_tables(text: str) -> list[Table]:
         tables.append(tuple(rows))
         index = end
     return tables
+
+
+#: A line of dashes in runs, a rule of a simple or a multiline table: "-------   ------".
+_DASHES = re.compile(r" {0,3}(-+)(?:[ \t]+-+)*[ \t]*")
+#: A grid table's row or border, which goes on from its top border.
+_GRID_LINE = re.compile(r"[+|]")
+
+
+def table_lines(text: str) -> frozenset[int]:
+    """The lines, from 0, of every table in a Markdown text: a pipe table, a grid table, a
+    simple table and a multiline table, as pandoc's manual shapes them. `text` is read as
+    given, so a caller that wants a table in a listing or a comment left out masks it first.
+
+    Pandoc writes a Word table as a simple or a multiline table where its cells allow, so a
+    paper converted from Word has those more than pipe tables. Each is read only where it
+    has every part pandoc's manual gives it, and is otherwise not a table: a column's
+    dashes in one run, which a setext heading's underline and a rule are, open none, nor
+    does a line of dashes that no other closes before two blank lines. Read wrong, prose
+    would be left out of what a rate counts; so the reading errs towards prose (DESIGN.md,
+    Known gaps)."""
+    return _Tables(text.split("\n")).lines()
+
+
+class _Tables:
+    def __init__(self, lines: list[str]) -> None:
+        self.text = lines
+        count = len(lines)
+        self.runs = [_dash_runs(line) for line in lines]
+        blank = [not line.strip() for line in lines]
+        # From each line, the first line of dashes with a blank line or the end under it,
+        # and the first of two blank lines, past which no table's rows run. Found once, so
+        # that a text of openers no line closes is read in one pass and not one per opener.
+        self.closing: list[int | None] = [None] * (count + 1)
+        self.gap = [count] * (count + 1)
+        for at in range(count - 1, -1, -1):
+            closes = self.runs[at] and (at + 1 == count or blank[at + 1])
+            self.closing[at] = at if closes else self.closing[at + 1]
+            two = blank[at] and at + 1 < count and blank[at + 1]
+            self.gap[at] = at if two else self.gap[at + 1]
+
+    def lines(self) -> frozenset[int]:
+        found: set[int] = set()
+        index = 0
+        while index < len(self.text):
+            end = self._from(index)
+            if end is None:
+                index += 1
+                continue
+            found.update(range(index, end))
+            index = end
+        return frozenset(found)
+
+    def _from(self, index: int) -> int | None:
+        """The line after the last of a table that opens on line `index`, or None."""
+        lines = self.text
+        line = lines[index]
+        below = lines[index + 1] if index + 1 < len(lines) else ""
+        if _row_shaped(line) and _TABLE_RULE.match(below):
+            end = index + 2
+            while end < len(lines) and _row_shaped(lines[end]):
+                end += 1
+            return end
+        if _GRID_TOP.match(line):
+            end = index + 1
+            while end < len(lines) and _GRID_LINE.match(lines[end]):
+                end += 1
+            # A grid table ends on a border, and one never closed is text.
+            return next((n + 1 for n in range(end - 1, index, -1) if _GRID_TOP.match(lines[n])),
+                        None)  # fmt: skip
+        opens_block = index == 0 or not lines[index - 1].strip()
+        if not opens_block or not line.strip() or not below.strip():
+            return None
+        if self.runs[index] == 1:
+            return self._multiline(index)
+        if self.runs[index] >= 2:
+            # Headless: its rows run to a line of dashes with a blank line or the end under it.
+            return self._closed(index + 1)
+        if self.runs[index + 1] >= 2:
+            # A simple table's header over its columns' dashes: its rows run to a blank line.
+            end = index + 2
+            while end < len(lines) and lines[end].strip():
+                end += 1
+            return end
+        return None
+
+    def _multiline(self, index: int) -> int | None:
+        """A multiline table opening on a line of dashes in one run: its header runs down to
+        its columns' dashes, and its rows, a blank line between each two, to a closing line."""
+        for at in range(index + 1, len(self.text)):
+            if not self.text[at].strip():
+                return None
+            if self.runs[at]:
+                return self._closed(at + 1) if self.runs[at] >= 2 else None
+        return None
+
+    def _closed(self, start: int) -> int | None:
+        """The line after the first closing line of dashes from `start`, or None where two
+        blank lines or the end come first."""
+        closing = self.closing[start]
+        return closing + 1 if closing is not None and closing < self.gap[start] else None
+
+
+def _dash_runs(line: str) -> int:
+    """How many runs of dashes a line of dashes holds, and 0 for any other line. A first
+    run of one dash is a list item's marker or a rule's, "- - -", and opens no table."""
+    found = _DASHES.fullmatch(line)
+    if found is None or len(found.group(1)) < 2:
+        return 0
+    return len(line.split())
 
 
 def _row_shaped(line: str) -> bool:

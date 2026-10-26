@@ -205,9 +205,9 @@ class Classifier:
         this file has already had several times.
         """
         matched = _terms_covering(atom.text, self.terms)
-        if matched is None and (bare := unsigned(atom)) is not None:
+        if matched is None and (marked := _unsigned_marked(atom)) is not None:
             # `HbA~1c~` is `HbA1c` with a subscript, and `CO~2~` a declared `CO2`.
-            matched = _names_covering(bare, self.terms)
+            matched = _names_covering(*marked, self.terms)
         if matched is not None:
             return Verdict(TERM, rule="terms", detail=", ".join(matched), terms=tuple(matched))
         if scan is None:
@@ -566,9 +566,26 @@ def unsigned(atom: Atom) -> str | None:
     first version took every sign out, and the number after such a tilde joined the
     letters before it: `pH~2` was `ph2`, which holds the built-in term `h2`, so a pH, an
     effect of `HR~2` and a rise of `increased~2-fold` were accepted as terms."""
+    marked = _unsigned_marked(atom)
+    return None if marked is None else marked[0]
+
+
+def _unsigned_marked(atom: Atom) -> tuple[str, frozenset[int]] | None:
+    """`unsigned`, with the places in it that a superscript held."""
     text = _with_its_closing_sign(atom)
-    bare = _SUPERSCRIPT.sub(r"\1", _SUBSCRIPT.sub(r"\1", text))
-    return None if bare == text else bare
+    lowered = _SUBSCRIPT.sub(r"\1", text)
+    pieces: list[str] = []
+    raised: set[int] = set()
+    cut = size = 0
+    for match in _SUPERSCRIPT.finditer(lowered):
+        before, inside = lowered[cut : match.start()], match.group(1)
+        size += len(before)
+        raised.update(range(size, size + len(inside)))
+        size += len(inside)
+        pieces += (before, inside)
+        cut = match.end()
+    bare = "".join((*pieces, lowered[cut:]))
+    return None if bare == text else (bare, frozenset(raised))
 
 
 def declarable(atom: Atom) -> str | None:
@@ -589,58 +606,117 @@ def declarable(atom: Atom) -> str | None:
     return None if _MARKED_WORD.fullmatch(text) else bare
 
 
-def _names_covering(text: str, terms: tuple[str, ...]) -> list[str] | None:
-    """`_terms_covering` for a name read without its signs: a term counts only where it
-    opens a word, with no letter and no digit before it, or stands directly after the
-    same term.
+def _names_covering(
+    text: str, raised: frozenset[int], terms: tuple[str, ...]
+) -> list[str] | None:
+    """`_terms_covering` for a name read without its signs, `raised` being the places in
+    `text` that a superscript held. A term holding one of them counts only where it opens a
+    word: taking the signs out puts a superscript's digits hard against the word before
+    it, and a citation's number typed after a word with a capital inside, "PharmD^2^" or
+    "ApoB^12^", made `d2` and `b12` at that capital. `I^131^` opens its word and is a
+    name, and a subscript is part of the name it is typed in: `pCO~2~` is `co2`."""
+    return _terms_covering(text, terms, raised)
 
-    The terms are gone through once, longest first. So of two names typed with nothing
-    between, the second is matched only where the first was taken out before it: it is
-    the longer, or as long and before it by its letters. Going through them again for as
-    long as one was taken out was tried: it took time by the square of the atom for names
-    alternating with nothing between, and did not end for a declared term of one space.
 
-    A term is found anywhere in an atom as it is written, and that stays. But taking the
-    signs out puts the digits of a superscript hard against the word before it, and
-    `risk^1^`, a citation's number, was `risk1`, which holds the term `k1`.
+def _term_may_start(text: str, at: int) -> bool:
+    """Whether a term may begin at `at` of `text`, as written: where a word opens, after
+    no letter and no digit; after a capital, as in "CD3", "CCR2", "HLA-DRB1" and "Th1"; or
+    where a capital follows a lower-case letter, as in "sIL-2R", "ppFEV1" and "pCO2". Not
+    after a lower-case letter, "April-12", nor after a digit. A term may also begin where
+    another ends (`_terms_covering`)."""
+    if at == 0 or not text[at - 1].isalnum():
+        return True
+    before = text[at - 1]
+    return before.isupper() or (before.islower() and text[at].isupper())
 
-    The text is made anew once for each term that is found, and not once for each place
-    it stands: one atom of `h~2~/` 160,000 times over took seven seconds."""
-    rest = text.lower()
-    used: list[str] = []
-    for term in terms:
-        at = rest.find(term) if term else -1
-        if at == -1:
+
+@lru_cache(maxsize=16)
+def _by_first_letter(terms: tuple[str, ...]) -> dict[str, tuple[tuple[int, str], ...]]:
+    """The terms by their first character, each with its place in `terms`."""
+    found: dict[str, list[tuple[int, str]]] = {}
+    for rank, term in enumerate(terms):
+        if term:
+            found.setdefault(term[0], []).append((rank, term))
+    return {first: tuple(ranked) for first, ranked in found.items()}
+
+
+#: Whether a term counts directly after another, as in "PaO2FiO2" and "CD8CD4". A name of
+#: its own so that the property tests can take the opening away and see them fail.
+_AFTER_A_TERM = True
+
+
+def _terms_covering(
+    text: str, terms: tuple[str, ...], raised: frozenset[int] = frozenset()
+) -> list[str] | None:
+    """Terms that between them account for every digit in `text`, or None. A term counts
+    where `_term_may_start`, or directly after another term; the terms used are given in
+    the order of `terms`. A term holding a place in `raised` counts only where
+    `_term_may_start` and a word opens (`_names_covering`).
+
+    A term was found anywhere in an atom as it is written, and only a name read without its
+    signs was held to a word's start: taking the signs out puts the digits of a superscript
+    hard against the word before it, and `risk^1^`, a citation's number, was `risk1`, which
+    holds the term `k1`. As written, a word was taken for a name in the same way: with the
+    interleukins among the terms, "April-12" held `il-12` and "Brazil-3" `il-3`, and their
+    numbers went unchecked. Held to a word's start alone, a name after a lower-case prefix,
+    "sIL-2R", was a number; a capital after a lower-case letter opens a name as well.
+
+    The terms were gone through once, longest first, each taken out where it stood, and a
+    term directly after another counted only where that one came first among the terms:
+    "PaO2FiO2" was a number for terms in one order. Going through them again for as long
+    as one was taken out took time by the square of the atom for names alternating with
+    nothing between, and did not end for a declared term of one space. So the text is read
+    once from its end: at each place, whether what follows can be covered, opening there
+    or after a term. Where a term or a step past a character could each cover the rest, a
+    term with a digit is taken first, then the step, so a term with no digit is named only
+    where it is needed; among terms, the one first in `terms`, so cyp2c19 before cyp2c9."""
+    low = "".join(ch.lower() if len(ch.lower()) == 1 else ch for ch in text)
+    size = len(low)
+    by_first = _by_first_letter(terms)
+    found = [
+        tuple((rank, term) for rank, term in by_first.get(low[at], ()) if low.startswith(term, at))
+        for at in range(size)
+    ]
+    opens = [_term_may_start(text, at) for at in range(size)]
+    # How many raised places stand before each place, so that whether a term holds one is
+    # a subtraction; and where a word opens, which is where a term holding one may.
+    below = list(accumulate((at in raised for at in range(size)), initial=0)) if raised else []
+    words = [opens[at] and (at == 0 or not text[at - 1].isalnum()) for at in range(size)]
+
+    def may_open(at: int, term: str, ended: bool) -> bool:
+        if below and below[at + len(term)] > below[at]:
+            return words[at]
+        return opens[at] or (ended and _AFTER_A_TERM)
+
+    # `plain[at]`: what follows `at` can be covered, `at` being no term's end; `after[at]`:
+    # the same where a term ends at `at`, so that another may open there.
+    plain = [False] * size + [True]
+    after = [False] * size + [True]
+    for at in range(size - 1, -1, -1):
+        step = not low[at].isdigit() and plain[at + 1]
+        plain[at] = step or any(
+            after[at + len(term)] for _rank, term in found[at] if may_open(at, term, False)
+        )
+        after[at] = step or any(
+            after[at + len(term)] for _rank, term in found[at] if may_open(at, term, True)
+        )
+    if not plain[0]:
+        return None
+    used: set[int] = set()
+    at, ended = 0, False
+    while at < size:
+        fits = [
+            (rank, term)
+            for rank, term in found[at]
+            if may_open(at, term, ended) and after[at + len(term)]
+        ]
+        digits = [(rank, term) for rank, term in fits if any(ch.isdigit() for ch in term)]
+        step = not low[at].isdigit() and plain[at + 1]
+        chosen = digits or ([] if step else fits)
+        if chosen:
+            rank, term = chosen[0]
+            used.add(rank)
+            at, ended = at + len(term), True
             continue
-        kept: list[str] = []
-        cut = 0
-        while at != -1:
-            # `cut` is where the text opens, and then where the term last found ended.
-            if at == cut or not rest[at - 1].isalnum():
-                kept += (rest[cut:at], " ")
-                cut = at + len(term)
-                at = rest.find(term, cut)
-            else:
-                at = rest.find(term, at + 1)
-        if kept:
-            rest = "".join((*kept, rest[cut:]))
-            used.append(term)
-            if not any(ch.isdigit() for ch in rest):
-                return used
-    return None
-
-
-def _terms_covering(text: str, terms: tuple[str, ...]) -> list[str] | None:
-    """Terms that between them account for every digit in `text`, or None.
-
-    Longest first, so cyp2c19 is consumed before cyp2c9 could nibble at it.
-    """
-    rest = text.lower()
-    used: list[str] = []
-    for term in terms:
-        if term and term in rest:
-            rest = rest.replace(term, " ")
-            used.append(term)
-            if not any(ch.isdigit() for ch in rest):
-                return used
-    return None
+        at, ended = at + 1, False
+    return [terms[rank] for rank in sorted(used)] or None

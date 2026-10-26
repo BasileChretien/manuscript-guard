@@ -34,6 +34,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from manuscript_guard.classify import UNCLASSIFIED, Classifier
+from manuscript_guard.safexml import COMPOUND_FILE, compound_file_said, is_compound_file
 from manuscript_guard.stats.granularity import described as described_mean
 from manuscript_guard.stats.granularity import names, possible, table_means
 from manuscript_guard.stats.intervals import (
@@ -129,6 +130,10 @@ class AuditReport:
     unreadable: list[str] = field(default_factory=list)
     #: Outputs named in --against that were not read, or not read as what they claimed to be.
     skipped: list[str] = field(default_factory=list)
+    #: Each Word 97-2003 document (.doc) found in a folder given as a paper, which is not
+    #: read, with what to do about it. A note: the papers beside it were audited, so
+    #: --strict does not count it. A .doc named on its own is in `unreadable`.
+    passed_over: list[str] = field(default_factory=list)
     #: Stretches of a paper that were read and deliberately not audited: the reference list.
     not_audited: list[str] = field(default_factory=list)
     #: Numbers found nowhere, on lines taken for reference entries by their shape. Listed
@@ -260,9 +265,13 @@ def read_text(path: Path) -> str:
     its `>` and default `Out-File` UTF-16. Read as UTF-8, a UTF-8 mark stopped a .json
     parsing, and UTF-16 put a NUL after every character, so "8393,3.84" went into the
     backing set as 8, 3, 9 and 4 — and a paper printing 3 for anything matched. NUL bytes
-    with no mark could be UTF-16 or binary, so they are refused rather than guessed at.
+    with no mark could be UTF-16 or binary, so they are refused rather than guessed at. A
+    Word 97-2003 document is one such binary, and is named as one: the advice to save it as
+    UTF-8 was wrong for it.
     """
     data = path.read_bytes()
+    if is_compound_file(data):
+        raise UnreadableText(compound_file_said(path.name))
     encoding = next((name for bom, name in _BOMS if data.startswith(bom)), None)
     if encoding is None and b"\x00" in data:
         raise UnreadableText(
@@ -637,6 +646,30 @@ def _intervals(text: str) -> list[tuple[int, int]]:
     ]
 
 
+def doc_passed_over(path: Path) -> str:
+    """What the report says of a .doc found in a folder given as a paper: the advice a .doc
+    named on its own is refused with, under the path it was found at, where it is a compound
+    file. A file named .doc that is none, Rich Text or a web page saved under that name, is
+    not called a Word 97-2003 document."""
+    try:
+        with path.open("rb") as handle:
+            opening = handle.read(len(COMPOUND_FILE))
+    except OSError as exc:
+        return f"{path.as_posix()} could not be read ({exc}), and was not audited"
+    if is_compound_file(opening):
+        return compound_file_said(path.as_posix())
+    return (
+        f"{path.as_posix()} is named .doc but is no Word 97-2003 document, and is not read: "
+        "open it in Word and save it as a Word document (.docx)"
+    )
+
+
+def is_lock_file(path: Path) -> bool:
+    """Whether `path` is the file Word keeps beside a document while it is open, "~$" and
+    the rest of the document's name, which holds no paper."""
+    return path.name.startswith("~$")
+
+
 def audit(
     papers: list[Path],
     backing: list[Path],
@@ -644,9 +677,11 @@ def audit(
     figures: list[Path] | None = None,
     classifier: Classifier | None = None,
     whole_numbers: tuple[str, ...] = (),
+    passed_over: list[Path] | None = None,
 ) -> AuditReport:
     """`whole_numbers` names the rows of the papers' tables whose cells are means of whole
-    numbers, which are held to their column's n (`stats/granularity.py`)."""
+    numbers, which are held to their column's n (`stats/granularity.py`). `passed_over` is
+    each .doc a folder given as a paper held, which is named in the report and not read."""
     # `rendered=True`: an existing paper has been through citeproc, so its citations are
     # "(Smith 2019)" rather than [@key]. That is the one place the audit-only rules apply.
     classifier = classifier or Classifier.load(rendered=True)
@@ -654,6 +689,7 @@ def audit(
     report = AuditReport(
         backing_values=values, backing_files=tuple(used), skipped=skipped,
         whole_numbers=whole_numbers, whole_numbers_unfound=list(whole_numbers),
+        passed_over=[doc_passed_over(path) for path in passed_over or []],
     )  # fmt: skip
 
     # Each source, whether a line may be taken for a reference entry by its shape, and
@@ -894,6 +930,7 @@ def render(report: AuditReport, discrimination: Discrimination, root: Path | Non
     for heading, items in (
         ("Could not read:", report.unreadable),
         ("Outputs not read as given:", report.skipped),
+        ("Passed over in a folder (a note, not counted by --strict):", report.passed_over),
         ("Not audited:", report.not_audited),
     ):
         if items:

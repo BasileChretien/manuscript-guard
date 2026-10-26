@@ -21,7 +21,7 @@ import pytest
 from manuscript_guard.classify import UNCLASSIFIED, Classifier
 from manuscript_guard.cli import main
 from manuscript_guard.text.masking import mask
-from manuscript_guard.text.tokens import find_atoms
+from manuscript_guard.text.tokens import Atom, find_atoms
 
 N = chr(10)
 
@@ -95,13 +95,19 @@ NAMES = {
         "Labelled with I^131^ or F^18^-FDG.",
         ("I131", "F18"),
     ),
-    # Two names with nothing between: the second opens a word once the first is gone, and
-    # the first is gone where its term comes before the second's, by its length and then
-    # by its letters. `fio2` comes before `pao2`.
+    # Two names with nothing between: the second opens where the first ends, in either
+    # order of the terms. `fio2` comes before `pao2`.
     "two built-in names with nothing between, the first by its letters first": (
         "A ratio FiO~2~PaO~2~ was taken.",
         (),
     ),
+    "two built-in names with nothing between, the second by its letters first": (
+        "A ratio PaO~2~FiO~2~ was taken.",
+        (),
+    ),
+    # A capital after a lower-case letter opens a name: a prefix in lower case before it.
+    "a declared name after a lower-case prefix": ("An EtCO~2~ and a pCO~2~ reading.", ("CO2",)),
+    "a declared name inside a longer word, at its capital": ("A preCO~2~ reading.", ("CO2",)),
     "a term twice with a sign between": ("A ratio H~2~/H~2~ and B~12~-B~12~.", ()),
     "a term twice with nothing between": ("A dimer H~2~H~2~ was seen.", ()),
 }
@@ -167,14 +173,10 @@ NOT_NAMES = {
         ("CO2",),
         ["CO~2~^3^"],
     ),
-    "a declared name inside a longer word": ("A preCO~2~ reading.", ("CO2",), ["preCO~2"]),
-    # Pinned, and in DESIGN.md's Known gaps: the terms are gone through once, so the same
-    # two names the other way round are an unbound number. The same on every run, where
-    # the order of a set decided it.
-    "two built-in names with nothing between, the second by its letters first": (
-        "A ratio PaO~2~FiO~2~ was taken.",
-        (),
-        ["PaO~2~FiO~2"],
+    "a declared name inside a longer word, in lower case": (
+        "A preco~2~ reading.",
+        ("CO2",),
+        ["preco~2"],
     ),
 }
 
@@ -292,15 +294,112 @@ def test_the_terms_come_in_one_order_on_every_run() -> None:
     loaded = Classifier.load(extra_terms=("CO2", "N2O")).terms
     assert list(loaded) == sorted(loaded, key=lambda term: (-len(term), term))
 
-    # One pass, in the order given: the second name counts once the first is gone.
-    assert _names_covering("pao2fio2", ("pao2", "fio2")) == ["pao2", "fio2"]
-    assert _names_covering("pao2fio2", ("fio2", "pao2")) is None
-    assert _names_covering("frisk1", ("k1", "risk")) is None, "terms inside a word"
+    # Two names with nothing between are two names, in whichever order the terms come:
+    # the second counts where the first ends.
+    unraised = frozenset[int]()
+    assert _names_covering("pao2fio2", unraised, ("pao2", "fio2")) == ["pao2", "fio2"]
+    assert _names_covering("pao2fio2", unraised, ("fio2", "pao2")) == ["fio2", "pao2"]
+    assert _names_covering("frisk1", unraised, ("k1", "risk")) is None, "terms inside a word"
 
     # The order settles an atom with no sign in it as well, where two terms of one length
     # overlap in it: each of these was a term on one run and an unbound number on the next.
     assert unbound("It was read on April-1 again.") == ["April-1"], "`apri` before `il-1`"
     assert unbound("One case of MERS-COVID-19 was seen.") == [], "`covid-19` before `mers-cov`"
+
+
+def test_a_term_counts_where_it_opens_a_word_in_the_atom_as_written() -> None:
+    """With `il-12` among the terms, "April-12" was a term, found inside the word."""
+    from manuscript_guard.classify import _terms_covering
+
+    assert _terms_covering("april-12", ("il-12",)) is None
+    assert _terms_covering("brazil-3", ("il-3",)) is None
+    assert _terms_covering("il-4/il-13", ("il-13", "il-4")) == ["il-13", "il-4"]
+    assert _terms_covering("anti-il-6", ("il-6",)) == ["il-6"]
+    assert _terms_covering("cd4+cd8+", ("cd4", "cd8")) == ["cd4", "cd8"]
+    assert _terms_covering("pao2fio2", ("pao2", "fio2")) == ["pao2", "fio2"]
+
+
+def test_a_term_after_a_lower_case_prefix_counts_from_its_capital() -> None:
+    """Held to a word's start, "sIL-2R", "rhIL-2", "sPD-L1", "ppFEV1", and with CO2
+    declared "pCO2" and "EtCO2", were numbers, where main had them as terms. A term counts
+    where its first letter, as written, is a capital after a lower-case letter; "April-12"
+    has no such boundary, and stays a number. After a capital a term counts as well, so
+    "BRAZIL-3", written in capitals, is read as "CCR2" is (Known gaps)."""
+    from manuscript_guard.classify import _terms_covering
+
+    assert _terms_covering("sIL-2R", ("il-2",)) == ["il-2"]
+    assert _terms_covering("rhIL-2", ("il-2",)) == ["il-2"]
+    assert _terms_covering("sPD-L1", ("pd-l1",)) == ["pd-l1"]
+    assert _terms_covering("ppFEV1", ("fev1",)) == ["fev1"]
+    assert _terms_covering("pCO2", ("co2",)) == ["co2"]
+    assert _terms_covering("EtCO2", ("co2",)) == ["co2"]
+    assert _terms_covering("April-12", ("il-12",)) is None
+    assert _terms_covering("BRAZIL-3", ("il-3",)) == ["il-3"]
+    assert _terms_covering("sil-2r", ("il-2",)) is None
+    assert _terms_covering("Until-15", ("il-15",)) is None
+
+
+def test_a_term_after_a_capital_counts() -> None:
+    """Held to a word's start, a capital after a lower-case letter or another term, a
+    shipped term after a capital was a number, where main had it as a term: "CD3+",
+    "Th1/Th2", "CCR2", "TNFR2", "FGFR2" and "HLA-DRB1" were reported in an immunology
+    paper. A lower-case letter after a lower-case one, and anything after a digit, opens
+    no term still."""
+    from manuscript_guard.classify import _terms_covering
+
+    assert _terms_covering("CD3+", ("d3",)) == ["d3"]
+    assert _terms_covering("Th1/Th2", ("h1", "h2")) == ["h1", "h2"]
+    assert _terms_covering("CCR2", ("r2",)) == ["r2"]
+    assert _terms_covering("HLA-DRB1", ("b1",)) == ["b1"]
+    assert _terms_covering("frisk1", ("k1",)) is None
+    assert _terms_covering("Brazil-3", ("il-3",)) is None
+    assert _terms_covering("2d3", ("d3",)) is None
+    assert unbound("CD3+ T cells, a Th1/Th2 ratio, CCR2, TNFR2, FGFR2 and HLA-DRB1.") == []
+
+
+def test_two_terms_with_nothing_between_count_in_either_order() -> None:
+    """A term directly after another counted only where the other came first among the
+    terms: "PaO2FiO2" and "CD8CD4", terms on main, were numbers."""
+    from manuscript_guard.classify import _terms_covering
+
+    assert _terms_covering("PaO2FiO2", ("fio2", "pao2")) == ["fio2", "pao2"]
+    assert _terms_covering("PaO2FiO2", ("pao2", "fio2")) == ["pao2", "fio2"]
+    assert _terms_covering("CD8CD4", ("cd4", "cd8")) == ["cd4", "cd8"]
+    assert _terms_covering("MERS-COVID-19", ("covid-19", "mers-cov")) == ["covid-19"]
+    assert _terms_covering("MERS-COVID-19", ("mers-cov", "covid-19")) == ["covid-19"]
+
+
+def _atom_of(text: str, word: str) -> Atom:
+    """The atom `word` of `text`, built over its span as the tokenizer builds one."""
+    start = text.index(word)
+    return Atom(word, start, start + len(word), 1, start + 1, 0, len(text), source=text)
+
+
+def test_a_superscript_after_a_capital_inside_a_word_makes_no_term() -> None:
+    """A term opened at a capital after a lower-case letter in the name read without its
+    signs too, so a citation's number typed after such a word joined the capital: "pH^2^"
+    was `h2`, "IgM^1^" `m1`, "PharmD^2^" `d2` and "ApoB^12^" `b12`, where main reported the
+    number. A term holding a superscript's place counts only where it opens a word."""
+    classifier = Classifier.load()
+    text = "A lower pH^2^ and raised IgM^1^."
+    # The tokenizer reads one digit after a short word as an exponent; the classifier is
+    # asked of them all the same, as a caller with its own atoms would ask.
+    for word in ("pH^2^", "IgM^1^"):
+        assert classifier.classify(_atom_of(text, word)).kind == UNCLASSIFIED, word
+    for word in ("IgM^3^", "IgD^2^", "PhD^3^", "dB^1^"):
+        assert classifier.classify(_atom_of(f"In {word} here.", word)).kind == UNCLASSIFIED
+
+    # Where the tokenizer finds the atom, G2 reports it.
+    for written in ("Jane Roe, PharmD^2^, wrote it.", "Raised ApoB^12^ and dB^12^ again."):
+        assert unbound(written) == [w for w in atoms(written) if "^" in w], written
+        assert unbound(written), written
+
+    # What opens a word, and a subscript, are names still.
+    assert unbound("Treated with I^131^ alone.", ("I131",)) == []
+    assert unbound("A raised pCO~2~ and EtCO~2~ were seen.", ("CO2",)) == []
+    assert unbound("A raised pCO2 and EtCO2 were seen.", ("CO2",)) == []
+    assert unbound("Soluble sIL-2R, rhIL-2, sPD-L1 and ppFEV1 fell.") == []
+    assert unbound("In April-12 and Brazil-3 alike.") == ["April-12", "Brazil-3"]
 
 
 #: What the child process of the test below runs: the atoms of its first argument that
@@ -374,7 +473,10 @@ def test_a_long_atom_of_names_takes_time_in_proportion(assert_linear) -> None:
         return [classifier.classify(atom).kind for atom in find_atoms(text, mask(text))]
 
     def covered(text: str) -> list[str] | None:
-        return _names_covering(text, classifier.terms)
+        return _names_covering(text, frozenset(), classifier.terms)
+
+    def raised(text: str) -> list[str] | None:
+        return _names_covering(text, frozenset(range(1, len(text), 3)), classifier.terms)
 
     assert covered("h2/" * 50) == covered("h2" * 50) == ["h2"]
     assert covered("pao2/fio2/" * 50) == ["fio2", "pao2"]
@@ -382,10 +484,13 @@ def test_a_long_atom_of_names_takes_time_in_proportion(assert_linear) -> None:
     assert_linear(lambda n: "pao2/fio2/" * n, covered, 4_000, "two terms many times in an atom")
     # With nothing between, each stands directly after the one before.
     assert_linear(lambda n: "h2" * n, covered, 16_000, "one term many times, nothing between")
-    # Two terms by turns with nothing between are an unbound number. Gone through again for
-    # as long as one was taken out, the terms took the square of this one: from a small
+    # Two terms by turns with nothing between are two names each time. Gone through again
+    # for as long as one was taken out, the terms took the square of this one: from a small
     # size, where that fails in seconds.
     assert_linear(lambda n: "h2d3" * n, covered, 100, "two terms by turns, nothing between")
+    # And with every digit a superscript's, which a term holds only where a word opens.
+    assert raised("h2/" * 50) == ["h2"]
+    assert_linear(lambda n: "h2/" * n, raised, 16_000, "one term many times, raised")
 
     # The same three names as they are typed, through the tokenizer and the classifier.
     assert judged("h~2~/" * 50) == judged("PaO~2~/FiO~2~/" * 50) == judged("h~2~" * 50) == ["term"]

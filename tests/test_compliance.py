@@ -268,6 +268,16 @@ def test_an_english_variant_clash_is_caught(project: Path) -> None:
     assert "english-variant-mismatch" in codes(journal_report(project))
 
 
+def test_a_paper_that_declares_no_english_is_not_compared_with_the_journal_s(
+    project: Path,
+) -> None:
+    """Basile, 2026-10-23: nothing declared is nothing to compare. G14 holds such a paper to
+    the English most of its words are in."""
+    edit_yaml(project / JOURNAL, lambda d: d.update(english_variant="en-US"))
+    edit_yaml(project / "paper.yaml", lambda d: d.pop("english_variant"))
+    assert "english-variant-mismatch" not in codes(journal_report(project))
+
+
 def test_an_old_profile_warns(project: Path) -> None:
     edit_yaml(project / JOURNAL, lambda d: d.update(retrieved_on="2020-01-01"))
     report = journal_report(project)

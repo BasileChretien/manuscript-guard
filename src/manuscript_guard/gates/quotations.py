@@ -32,6 +32,7 @@ from manuscript_guard.literature.sources import (
 )
 from manuscript_guard.text.masking import blank_comments
 from manuscript_guard.text.reader import LATEX, manuscript_format
+from manuscript_guard.zotero.citations import cited_as
 
 GATE = "G7"
 #: The fewest words a quotation holds for it to be looked for: "so-called" and a quoted term
@@ -159,11 +160,12 @@ def check_prose_quotations(project: Project) -> Report:
     sources = project.path("literature") / "sources"
     read: dict[Path, str | None] = {}
     report = Report()
+    latex = manuscript_format(project.path("manuscript")) == LATEX
     for path, quotation in _quotations(project):
         stored = [(key, source) for key in quotation.keys
                   for source in _sources_of(sources, key)]  # fmt: skip
         if not stored:
-            report = report.with_findings(_unchecked(path, quotation))
+            report = report.with_findings(_unchecked(path, quotation, latex))
             continue
         texts = [(key, _text(read, source)) for key, source in stored]
         if any(text is not None and quoted_in(text, quotation.quote) for _k, text in texts):
@@ -172,7 +174,7 @@ def check_prose_quotations(project: Project) -> Report:
         # #282: every cited key was named).
         looked_in = list(dict.fromkeys(key for key, text in texts if text is not None))
         if not looked_in:
-            report = report.with_findings(_unchecked(path, quotation))
+            report = report.with_findings(_unchecked(path, quotation, latex))
             continue
         report = report.with_findings(
             Finding(
@@ -180,7 +182,7 @@ def check_prose_quotations(project: Project) -> Report:
                 code="quotation-not-in-source",
                 severity=WARN,
                 message=f"the quotation {_shown(quotation.quote)} is not in the stored "
-                f"source of {', '.join('@' + key for key in looked_in)}",
+                f"source of {', '.join(cited_as(key, latex=latex) for key in looked_in)}",
                 path=path,
                 line=quotation.line,
                 hint="copy the words from the source rather than from memory, or cite the "
@@ -226,13 +228,14 @@ def _text(read: dict[Path, str | None], source: Path) -> str | None:
     return read[source]
 
 
-def _unchecked(path: Path, quotation: Quotation) -> Finding:
+def _unchecked(path: Path, quotation: Quotation, latex: bool = False) -> Finding:
     return Finding(
         gate=GATE,
         code="quotation-unchecked",
         severity=INFO,
         message=f"the quotation {_shown(quotation.quote)} could not be checked: no stored "
-        f"source of {', '.join('@' + key for key in quotation.keys)} can be read",
+        f"source of {', '.join(cited_as(key, latex=latex) for key in quotation.keys)} can be "
+        "read",
         path=path,
         line=quotation.line,
         hint="store the source under literature/sources/, named by its citation key",

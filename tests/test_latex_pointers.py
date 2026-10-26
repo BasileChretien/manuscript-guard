@@ -138,6 +138,120 @@ def test_a_part_s_label_cites_its_figure(twin: Path) -> None:
     assert _said(twin) == []
 
 
+@pytest.mark.parametrize("kind", ["figure", "table"])
+def test_a_group_of_floats_the_subfloat_package_numbers_is_one_display(
+    twin: Path, kind: str
+) -> None:
+    """Corpus round (2026-10-23): the floats in a `subfigures` or a `subtables` share the
+    group's one number, "Figure 2a" and "Figure 2b"; a `\\ref` to one of them, or to the label
+    after `\\begin`, cites that display. They were counted one display each, and a correct paper
+    was told its figures were out of order and cited nowhere."""
+    word, short = kind.capitalize(), kind[:3]
+    group, number = ("subfigures", 2) if kind == "figure" else ("subtables", 3)
+    _replaced(twin, "\\section{Discussion}", (
+        f"\\begin{{{group}}}\\label{{{short}:pair}}\n"
+        f"\\begin{{{kind}}}\\caption{{Left.}}\\label{{{short}:left}}\\end{{{kind}}}\n"
+        f"\\begin{{{kind}}}\\caption{{Right.}}\\label{{{short}:right}}\\end{{{kind}}}\n"
+        f"\\end{{{group}}}\n"
+        f"\\begin{{{kind}}}\\caption{{After.}}\\end{{{kind}}}\n\n"
+        f"{word}~\\ref{{{short}:right}} shows the right, {word}~\\ref{{{short}:pair}} both, "
+        f"and {word}~{number + 1} the last.\n\n\\section{{Discussion}}"))
+    assert _said(twin) == []
+    _replaced(twin, " the last.", f" the last, not {word}~{number + 2}.")
+    assert _said(twin) == [("pointer-to-nothing", "fail", "main.tex",
+                            _line(twin, f"{word}~{number + 2}"))]  # fmt: skip
+
+
+def test_a_float_read_inside_a_group_numbers_no_display_of_its_own(twin: Path) -> None:
+    """A file read inside `subfigures` holds a part of the group's one figure."""
+    (twin.parent / "right.tex").write_text(
+        "\\begin{figure}\\caption{Right.}\\end{figure}\n", encoding="utf-8")
+    _replaced(twin, "\\section{Discussion}", (
+        "\\begin{subfigures}\\label{fig:pair}\n"
+        "\\begin{figure}\\caption{Left.}\\end{figure}\n\\input{right}\n\\end{subfigures}\n\n"
+        "Figure~\\ref{fig:pair} shows both, and nothing is Figure~3.\n\n\\section{Discussion}"))
+    assert _said(twin) == [("pointer-to-nothing", "fail", "main.tex", _line(twin, "Figure~3"))]
+
+
+@pytest.mark.parametrize("inside", ["figure", "caption"])
+def test_a_label_in_a_file_read_inside_a_group_names_the_group(twin: Path, inside: str) -> None:
+    """Fix round 1: with one file a float, `\\input{figA}` and `\\input{figB}` in a
+    `subfigures`, a `\\ref` to a label in one of them cites the group's figure; the label was
+    lost, and the group said cited nowhere and the next figure out of order. The same where the
+    file holds a caption read inside the group's float."""
+    for name in "AB":
+        typed = f"\\caption{{{name}.}}\\label{{fig:{name}}}\n"
+        (twin.parent / f"fig{name}.tex").write_text(
+            f"\\begin{{figure}}{typed}\\end{{figure}}\n" if inside == "figure" else typed,
+            encoding="utf-8")  # fmt: skip
+    put = ("\\input{{fig{}}}\n" if inside == "figure"
+           else "\\begin{{figure}}\\input{{fig{}}}\\end{{figure}}\n")  # fmt: skip
+    _replaced(twin, "\\section{Discussion}", (
+        "\\begin{subfigures}\n" + put.format("A") + put.format("B") + "\\end{subfigures}\n"
+        "\\begin{figure}\\caption{After.}\\label{fig:after}\\end{figure}\n\n"
+        "Figure~\\ref{fig:A} shows one part, Figure~\\ref{fig:after} the last.\n\n"
+        "\\section{Discussion}"))
+    assert _said(twin) == []
+
+
+def test_a_float_of_the_other_kind_in_a_group_is_numbered_apart(twin: Path) -> None:
+    """Fix round 1: LaTeX numbers a `table` inside `subfigures` as any table, so it is Table 3
+    with its own label, and the group's figure is cited by its floats' labels."""
+    _replaced(twin, "\\section{Discussion}", (
+        "\\begin{subfigures}\\label{fig:pair}\n"
+        "\\begin{figure}\\caption{Left.}\\label{fig:left}\\end{figure}\n"
+        "\\begin{table}\\caption{Beside.}\\label{tab:beside}\\end{table}\n"
+        "\\end{subfigures}\n\n"
+        "Figure~\\ref{fig:left} and Table~\\ref{tab:beside} are here, and Table~3 too.\n\n"
+        "\\section{Discussion}"))
+    assert _said(twin) == []
+    _replaced(twin, "and Table~3 too.", "and Table~4 too.")
+    assert _said(twin) == [("pointer-to-nothing", "fail", "main.tex", _line(twin, "Table~4"))]
+
+
+_FIGURES ="".join(f"\\begin{{figure}}\\caption{{{name}.}}\\label{{fig:{name}}}\\end{{figure}}\n"
+                   for name in ("b", "c", "d"))  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    "ranged",
+    ["Figures~\\ref{fig:b}--\\ref{fig:d}", "Figures \\ref{fig:b}-\\ref{fig:d}",
+     "Figures~\\ref{fig:b}~--~\\ref{fig:d}", "Figures \\ref{fig:b}---\\ref{fig:d}",
+     "Figures~\\ref{fig:b}--%\n\\ref{fig:d}", "\\crefrange{fig:b}{fig:d}",
+     "\\Crefrange{fig:b}{fig:d}",
+     # Fix round 1: "to" after a plural, as `pointers.py` reads "Figures 2 to 4".
+     "Figures~\\ref{fig:b} to~\\ref{fig:d}", "Figs.~\\ref{fig:b} to \\ref{fig:d}",
+     "Figures~\\ref{fig:forest}, \\ref{fig:b} to~\\ref{fig:d}"],
+)  # fmt: skip
+def test_a_range_of_cross_references_cites_every_figure_in_it(twin: Path, ranged: str) -> None:
+    """Corpus round (2026-10-23): `\\ref{a}--\\ref{b}` prints "2-4", which cites Figure 3 as
+    a typed "Figures 2-4" does in Markdown, and so does cleveref's `\\crefrange{a}{b}`. The
+    middle figure, cited by itself only later, was said to be cited out of order."""
+    _replaced(twin, "\\section{Discussion}", _FIGURES + f"\n{ranged} show the rest, and "
+              "Figure~3 the middle.\n\n\\section{Discussion}")  # fmt: skip
+    assert _said(twin) == []
+
+
+@pytest.mark.parametrize(
+    "listed",
+    ["Figures~\\ref{fig:b} and~\\ref{fig:d}", "Figures~\\ref{fig:b}, \\ref{fig:d}",
+     "Figures~\\ref{fig:d}--\\ref{fig:b}",
+     "Figure~\\ref{fig:b}--\\ref{tab:counts} and~\\ref{fig:d}",
+     "\\cpagerefrange{fig:b}{fig:d} and Figures~\\ref{fig:b}, \\ref{fig:d}",
+     # Fix round 1: "to" after a singular, as `pointers.py` reads "Figure 2 to 4", and a
+     # paragraph's end.
+     "Figure~\\ref{fig:b} to~\\ref{fig:d}", "Figures~\\ref{fig:b}\n\n\\ref{fig:d}"],
+)  # fmt: skip
+def test_two_cross_references_that_make_no_range_cite_only_their_own(
+    twin: Path, listed: str
+) -> None:
+    """Two cross-references joined by a word or a comma, a range run backwards, one between
+    two kinds, or a range of pages cite what each names and nothing between."""
+    _replaced(twin, "\\section{Discussion}", _FIGURES + f"\n{listed} show the rest, and "
+              "Figure~3 the middle.\n\n\\section{Discussion}")  # fmt: skip
+    assert [code for code, *_rest in _said(twin)] == ["cited-out-of-order"]
+
+
 def test_a_caption_in_a_float_the_reader_does_not_know_leaves_both_kinds_unchecked(
     twin: Path,
 ) -> None:

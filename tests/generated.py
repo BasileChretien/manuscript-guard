@@ -555,6 +555,47 @@ def signs() -> st.SearchStrategy[str]:
     return _in_a_row(_SIGNS, few=12, many=50)
 
 
+#: What the Markdown mask hides over several lines, each with whether it is a comment, whose
+#: line breaks it hides too, since pandoc reads a comment in a paragraph, a blank line inside
+#: it too, as a part of that paragraph (corpus round, 2026-10-23). `{}` is words drawn.
+MASKED_BLOCKS = (
+    ("```r\nx <- 1\n\ny <- {}\n```", False),
+    ("~~~\n{}\n~~~", False),
+    ("<!--\n{}\n-->", True),
+    ("<!-- {}\n\nheld over -->", True),
+)
+
+
+@st.composite
+def masked_blocks(
+    draw: st.DrawFn,
+) -> tuple[str, list[tuple[int, int]], list[tuple[str, int]]]:
+    """A Markdown file under front matter of several lines, with every block of
+    `MASKED_BLOCKS` in an order drawn, the comments typed inside a paragraph or as a block of
+    their own, and a pipe table under each block; the spans of its comments; and each cell
+    of the tables with the line it is typed on."""
+
+    def words() -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=3)))
+
+    text = f"---\ntitle: {words()}\nabstract: |\n  {words()}\n\n  {words()}\n---\n"
+    comments: list[tuple[int, int]] = []
+    cells: list[tuple[str, int]] = []
+    for index in draw(st.permutations(range(len(MASKED_BLOCKS)))):
+        template, comment = MASKED_BLOCKS[index]
+        block = template.replace("{}", words())
+        inline = comment and draw(st.booleans())
+        text += f"\n{words()} " if inline else "\n"
+        if comment:
+            comments.append((len(text), len(text) + len(block)))
+        text += block + (f" {words()}.\n" if inline else "\n")
+        line = text.count("\n") + 2
+        head, body = f"a{4101 + index}", f"b{4101 + index}"
+        text += f"\n| {head} | x |\n|---|---|\n| {body} | y |\n"
+        cells += [(head, line), ("x", line), (body, line + 2), ("y", line + 2)]
+    return text, comments, cells
+
+
 # ------------------------------------------------------------------------------- LaTeX
 
 #: LaTeX as an author writes it, each piece whole: numbers as LaTeX writes them, the commands
@@ -1066,6 +1107,8 @@ LATEX_QUOTATION_PLACES = (
      True),
     ("As ``the cohort {} rose---by \\textemdash~far---with age'' \\cite{{w}}.\n", True),
     ("\\section{{Part}}\nAs ``the cohort {} found a rise with age'' \\cite{{w}}.\n", True),
+    # A straight `"` closes a quotation ``` `` ``` opened (corpus round, 2026-10-23).
+    ("As ``the cohort {} found a rise with age\" \\cite{{w}}.\n", True),
 )  # fmt: skip
 
 
@@ -1084,6 +1127,47 @@ def latex_quotations(draw: st.DrawFn) -> tuple[str, list[tuple[str, bool]]]:
         words = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
         text += f"\n{words}\n\n" + template.replace("{{", "{").replace("}}", "}").replace(
             "{}", key)
+    return text + "\n\\end{document}\n", planted
+
+
+#: A straight `"` in LaTeX prose, each `{}` words drawn and each `"` planted, with whether the
+#: reader reads it as a closing quotation mark (corpus round, 2026-10-23): where a ``` `` ```
+#: opened a quotation in its paragraph that nothing closed, and not after a blank line, nor
+#: alone, nor after a quotation closed, nor before a letter (babel's German accent), nor where
+#: the ``` `` ``` is in a comment, nor in `\verb`. Two in one paragraph each close their own.
+LATEX_STRAIGHT_QUOTES = (
+    ('``{} words" {}', (True,)),
+    ('``{} words\n\n{} words" here', (False,)),
+    ('{} words" {}', (False,)),
+    ("``{} words'' then\" {}", (False,)),
+    ('``{} words"a {}', (False,)),
+    ('% ``{} words\n{} words" here', (False,)),
+    ('\\verb|``{} words"| {}', (False,)),
+    ('``{} words" and ``{} more" {}', (True, True)),
+)  # fmt: skip
+
+
+@st.composite
+def latex_straight_quotes(draw: st.DrawFn) -> tuple[str, list[tuple[int, bool]]]:
+    """A LaTeX document with every place of `LATEX_STRAIGHT_QUOTES` as a paragraph of its own,
+    in an order drawn; and where each planted `"` stands, with whether it closes a quotation.
+    """
+    text = "\\documentclass{article}\n\\begin{document}\n"
+    planted: list[tuple[int, bool]] = []
+    for index in draw(st.permutations(range(len(LATEX_STRAIGHT_QUOTES)))):
+        template, closes = LATEX_STRAIGHT_QUOTES[index]
+        pieces = template.replace("{{", "\x01").replace("}}", "\x02").split("{}")
+        paragraph = pieces[0]
+        for piece in pieces[1:]:
+            paragraph += " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1,
+                                                max_size=3))) + piece  # fmt: skip
+        paragraph = paragraph.replace("\x01", "{").replace("\x02", "}")
+        text += "\n"
+        start = len(text)
+        marks = [start + at for at, char in enumerate(paragraph) if char == '"']
+        assert len(marks) == len(closes), template
+        planted += list(zip(marks, closes, strict=True))
+        text += paragraph + "\n"
     return text + "\n\\end{document}\n", planted
 
 
@@ -1127,6 +1211,8 @@ LATEX_POINTER_PLACES = (
     ("see \\autoref{{t{}}} ", True),
     ("by \\eqref{{e{}}} ", True),
     ("in \\cref{{t{}}} ", True),
+    # cleveref's range, one cross-reference to its second label (corpus round, 2026-10-23).
+    ("in \\crefrange{{t{}}}{{u{}}} ", True),
     ("% see \\ref{{t{}}}\n", False),
     ("\\begin{{verbatim}}\n\\ref{{t{}}}\n\\end{{verbatim}}\n", False),
     ("\\iffalse \\ref{{t{}}} \\fi ", False),
@@ -1150,6 +1236,102 @@ def latex_pointers(draw: st.DrawFn) -> tuple[str, list[tuple[str, bool]]]:
         text += " ".join(words) + " " + template.replace("{{", "{").replace("}}", "}").replace(
             "{}", key)
     return text + "\n\\end{document}\n", planted
+
+
+#: Each way a LaTeX document cites a range of tables, from label `{a}` to label `{b}`: two
+#: cross-references a dash joins, an en dash, a hyphen, an em dash, with spaces or a line's
+#: end around it, "to" after a plural (fix round 1), and cleveref's `\\crefrange` and
+#: `\\Crefrange` (corpus round, 2026-10-23).
+LATEX_RANGES = (
+    "Tables~\\ref{{{a}}}--\\ref{{{b}}}", "Tables \\ref{{{a}}}-\\ref{{{b}}}",
+    "Tables~\\ref{{{a}}}~--~\\ref{{{b}}}", "Tables \\ref{{{a}}}---\\ref{{{b}}}",
+    "Tables~\\ref{{{a}}}--%\n\\ref{{{b}}}", "Tables~\\ref{{{a}}} to~\\ref{{{b}}}",
+    "\\crefrange{{{a}}}{{{b}}}", "\\Crefrange{{{a}}}{{{b}}}",
+)  # fmt: skip
+#: Two cross-references to tables that make no range, from label `{a}` to label `{b}`: a list
+#: joined by "and" or a comma, "to" after a singular, which Markdown reads as no join, and a
+#: paragraph's end (fix round 1).
+LATEX_NOT_RANGES = (
+    "Tables~\\ref{{{a}}} and~\\ref{{{b}}}", "Tables~\\ref{{{a}}}, \\ref{{{b}}}",
+    "Table~\\ref{{{a}}} to~\\ref{{{b}}}", "Tables~\\ref{{{a}}}\n\n\\ref{{{b}}}",
+)  # fmt: skip
+
+
+@st.composite
+def latex_display_groups(
+    draw: st.DrawFn,
+) -> tuple[dict[str, str], set[tuple[str, int | None]], set[int]]:
+    """A LaTeX document, `main.tex` and the files it inputs, that numbers tables and figures
+    with captioned floats, one of each kind a group of floats the subfloat package numbers as
+    one, `subtables` and `subfigures`, at a place drawn, and points at one table and one
+    figure more than it numbers.
+
+    Its tables: it cites them in ranges of every form of `LATEX_RANGES`, in an order drawn,
+    each from the last one's end to the table two past it, so that the table between is cited
+    by the range alone; then in pairs of every form of `LATEX_NOT_RANGES`, the table between
+    each pair's two cited nowhere. The table group is the end of one range, named by its
+    second float's label, and the start of the next, named by the label after `\\begin`.
+
+    Its figures: the table group holds a figure too, which LaTeX numbers Figure 1; the figure
+    group's floats are each in a file of its own, `\\input` in the group, and it is cited by a
+    label in one of them (fix round 1); each figure is cited in order, by `\\ref` or typed; and
+    the last figure is pointed at by its number at the end.
+
+    What G2 says of it, and the tables cited nowhere: the two pointers to nothing, at their
+    lines; the first pair's second table, cited before the table between, out of order there;
+    and each table between a pair."""
+    forms, pairs = draw(st.permutations(LATEX_RANGES)), draw(st.permutations(LATEX_NOT_RANGES))
+    ranged = 2 * len(forms) + 1
+    counts = {"table": ranged + 2 * len(pairs), "figure": draw(st.integers(1, 3)) + 1}
+    grouped = {"table": 2 * draw(st.integers(1, len(forms) - 1)) + 1,
+               "figure": draw(st.integers(2, counts["figure"]))}  # fmt: skip
+    files: dict[str, str] = {}
+
+    def named(number: int, end: bool) -> str:
+        return f"tab{number}" + ("b" if end and number == grouped["table"] else "")
+
+    def placed(kind: str, number: int) -> list[str]:
+        caption = f"\\caption{{The {kind}.}}\\label{{{kind[:3]}{number}"
+        if number != grouped[kind]:
+            return [f"\\begin{{{kind}}}{caption}}}\\end{{{kind}}}"]
+        parts = [f"\\begin{{{kind}}}{caption}{part}}}\\end{{{kind}}}"
+                 for part in "abc"[: draw(st.integers(2, 3))]]  # fmt: skip
+        if kind == "table":
+            inside = [*parts, "\\begin{figure}\\caption{Inside.}\\label{fig1}\\end{figure}"]
+            return ["\\begin{subtables}\\label{tab" + str(number) + "}", *inside,
+                    "\\end{subtables}"]  # fmt: skip
+        for index, part in enumerate(parts):
+            files[f"part{index}.tex"] = part + "\n"
+        return ["\\begin{subfigures}\\label{fig" + str(number) + "}",
+                *(f"\\input{{part{index}}}" for index in range(len(parts))), "\\end{subfigures}"]
+
+    floats = [line for number in range(1, counts["table"] + 1) for line in placed("table", number)]
+    floats += [line for number in range(2, counts["figure"] + 1)
+               for line in placed("figure", number)]  # fmt: skip
+    cited = {
+        "table": [form.format(a=named(2 * index + 1, False), b=named(2 * index + 3, True))
+                  + " show it." for index, form in enumerate(forms)]
+        + [form.format(a=f"tab{ranged + 2 * index}", b=f"tab{ranged + 2 * index + 2}")
+           + " show it." for index, form in enumerate(pairs)],
+        "figure": [f"As Figure~\\ref{{fig{number}a}} shows." if number == grouped["figure"]
+                   else f"As Figure~\\ref{{fig{number}}} shows." if draw(st.booleans())
+                   else f"As Figure~{number} shows." for number in range(1, counts["figure"] + 1)],
+    }  # fmt: skip
+    lines = ["\\documentclass{article}", "\\begin{document}",
+             " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=3))) + "."]
+    while cited["table"] or cited["figure"]:
+        kind = draw(st.sampled_from([kind for kind in cited if cited[kind]]))
+        lines.append(cited[kind].pop(0))
+    lines.append(f"Figure~{counts['figure']} is the last.")
+    over = "\n".join(lines).count("\n") + 2
+    lines += [f"Nothing is Table~{counts['table'] + 1}.",
+              f"Nothing is Figure~{counts['figure'] + 1}.", *floats, "\\end{document}"]
+    text = "\n".join(lines) + "\n"
+    early = text.count("\n", 0, text.index(f"\\ref{{tab{ranged + 2}}}")) + 1
+    files["main.tex"] = text
+    expected = {("pointer-to-nothing", over), ("pointer-to-nothing", over + 1),
+                ("cited-out-of-order", early), ("display-not-cited", None)}  # fmt: skip
+    return files, expected, {ranged + 2 * index + 1 for index in range(len(pairs))}
 
 
 #: A cross-reference as the quoting view writes it, `{}` for `printed.POINTER`, with what
@@ -1413,6 +1595,56 @@ def latex_writing(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
         planted.append((key, kind))
         text += _FAR + template.replace("{{", "{").replace("}}", "}").replace("{}", key)
     return text + _FAR + "\\end{document}\n% TODO cut\nXXX patients\n", planted
+
+
+#: What a LaTeX document sets out that its text may point at by line, "the stride is set
+#: (line 8)", and what it is (G6's `unless_listed`, corpus round 2026-10-23): an algorithm in
+#: each environment that holds one, a listing, and an algorithm in a comment, which sets out
+#: nothing. `{}` is a word inside it, after words G6 reads as residue in prose.
+LATEX_LISTED = (
+    ("\\begin{{algorithm}}\n\\begin{{algorithmic}}[1]\n\\State We have now clarified {} here\n"
+     "\\end{{algorithmic}}\n\\end{{algorithm}}\n", "algorithm"),
+    ("\\begin{{algorithm2e}}\nWe have now clarified {} here\\;\n\\end{{algorithm2e}}\n",
+     "algorithm"),
+    ("\\begin{{algorithm*}}\nWe have now clarified {} here\n\\end{{algorithm*}}\n", "algorithm"),
+    ("\\begin{{lstlisting}}\nx <- 1 # We have now clarified {} here\n\\end{{lstlisting}}\n",
+     "listing"),
+    ("\\begin{{verbatim}}\nWe have now clarified {} here\n\\end{{verbatim}}\n", "listing"),
+    ("% \\begin{{algorithm}}\n% We have now clarified {} here\n% \\end{{algorithm}}\n",
+     "neither"),
+)  # fmt: skip
+#: How a paper points at lines in brackets, `{}` and `{}` their numbers.
+_LINES_POINTED = ("(line {})", "(lines {}-{})", "(see line {})", "(Lines {} to {})",
+                  "(ll. {})")  # fmt: skip
+
+
+@st.composite
+def latex_listed(draw: st.DrawFn) -> list[tuple[str, str, list[int], list[int]]]:
+    """A LaTeX document for each place of `LATEX_LISTED`, so that every kind is in every
+    example: paragraphs that point at lines in brackets, one with words to the reviewers, and
+    the place among them, in an order drawn. Each with what it sets out, the lines of its
+    pointers, and the line of its words to the reviewers, which G6 reads in every document."""
+    documents = []
+    for index, (template, kind) in enumerate(LATEX_LISTED):
+        blocks = [template.replace("{{", "{").replace("}}", "}").replace("{}", f"k{4101 + index}")]
+        for _ in range(draw(st.integers(1, 3))):
+            numbers = [str(draw(st.integers(1, 40))) for _ in range(2)]
+            pointer = draw(st.sampled_from(_LINES_POINTED)).format(*numbers)
+            words = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
+            blocks.append(f"The {words} is set\n{pointer} in the step.\n")
+        blocks.append("As requested by Reviewer 2, we added a table.\n")
+        text = "\\documentclass{article}\n\\begin{document}\n"
+        pointers, said = [], []
+        for block in draw(st.permutations(blocks)):
+            text += "\n"
+            line = text.count("\n") + 1
+            if block.startswith("The "):
+                pointers.append(line + 1)
+            elif block.startswith("As requested"):
+                said.append(line)
+            text += block
+        documents.append((text + "\n\\end{document}\n", kind, pointers, said))
+    return documents
 
 
 #: What a display is written in: digits and the signs a number is written with, each of TeX's
@@ -4226,8 +4458,10 @@ def claim_edits(draw: st.DrawFn) -> tuple[str, str, list[tuple[str, int]]]:
         return ladder(low), [word("hedge"), *ladder(high)], told
 
     # The front matter: its title stands, and its abstract is edited. Each value is on one
-    # line, as YAML has a plain value.
-    title = written(stable(), next(marks), wrap=False)
+    # line, as YAML has a plain value. A title ends with no stop, so that only the line
+    # between the two values ends it: the mask keeps that line break since the corpus round
+    # of 2026-10-23, and a stop before it was a cut the front matter's lines were not.
+    title = written(stable(), next(marks), wrap=False, stop=False)
     was, now, told = pair(draw(st.sampled_from(_SIMPLE)))
     mark = next(marks)
     ahead = f"---\ntitle: {title}\nabstract: "
@@ -4501,6 +4735,170 @@ def sessions(draw: st.DrawFn) -> dict[str, Any]:
     }
 
 
+# ---------------------------------------------- a reference list under a line that is no heading
+
+#: The lines a reference list stands under where it has no heading, as a paper converted from
+#: Word has them and as the audit takes them: the word alone on its line, in bold or not.
+REFERENCE_LINES = (
+    "**References**", "**References:**", "References", "__Bibliography__", "*Literature cited*",
+    "6\\. References",
+)  # fmt: skip
+#: Lines that only look like one: a sentence, the word in small letters, the word with a full
+#: stop; `IN_A_PARAGRAPH`, the word alone on a line a hard wrap made inside a paragraph;
+#: `IN_A_LIST`, "3. References" in a loose list; `IN_A_LIST_FIRST`, "1. References" opening
+#: a tight one; and `IN_AN_ITEM`, the word as the second paragraph of a list item.
+NOT_REFERENCE_LINES = (
+    "**References** were read by two pharmacists.", "**references**", "**References.**",
+)  # fmt: skip
+IN_A_PARAGRAPH = "in a paragraph"
+IN_A_LIST = "in a list"
+IN_A_LIST_FIRST = "first in a list"
+IN_AN_ITEM = "in an item"
+#: The titles of back matter a list ends at when they stand alone as a paragraph.
+BACK_MATTER = (
+    "Acknowledgements", "Acknowledgments", "Figure legends", "Funding", "Conflicts of interest",
+    "Author contributions", "Data availability", "Supplementary material",
+)  # fmt: skip
+#: What ends a list under a line that is no heading, and the text after it, `{said}`, with
+#: `{n}` a number: a heading, one pandoc prints as text, a paragraph all in bold or opening
+#: with a bold label, a back-matter title (`{title}`), a caption of each shape, a table of
+#: each kind, an image and a binding.
+LIST_ENDS = {
+    "a heading": "\n\n# Section {n}\n\n{said}",
+    "a heading printed as text": "\n# Appendix {n}\n{said}",
+    "a bold title": "\n\n**Figure legends**\n\n{said}",
+    "a bold title in underscores": "\n\n__Supplementary material__\n\n{said}",
+    "a bold title in italics": "\n\n***Figure legends***\n\n{said}",
+    "a bold label running in": "\n\n**Funding:** {said}",
+    "a back-matter title": "\n\n{title}\n\n{said}",
+    "a caption": "\n\nFigure {n}. {said}",
+    "a caption, Fig": "\n\nFig {n}. {said}",
+    "a caption, Fig.": "\n\nFig. {n} {said}",
+    "a caption in capitals": "\n\nFIGURE {n} | {said}",
+    "a caption, S1 Table": "\n\nS{n} Table. {said}",
+    "a caption, S1 Fig": "\n\nS{n} Fig. {said}",
+    "a table's caption": "\n\nTable {n}. {said}",
+    "a supplementary table's caption": "\n\nSupplementary Table S{n}. {said}",
+    "an eTable's caption": "\n\neTable {n}. {said}",
+    "a box": "\n\nBox {n}. {said}",
+    "an appendix": "\n\nAppendix A. {said}",
+    "an additional file": "\n\nAdditional file {n}. {said}",
+    "a pipe table": "\n\n| Group | Count |\n|---|---|\n| A | {n} |\n\n{said}",
+    "a grid table": "\n\n+-------+-------+\n| Group | Count |\n+=======+=======+\n"
+                    "| A     | {n}     |\n+-------+-------+\n\n{said}",
+    "a simple table": "\n\n  Group   Count\n  ------- -------\n  A       {n}\n\n{said}",
+    "an image": "\n\n![A figure](figure.png)\n\n{said}",
+    "a binding": "\n\n{{table.baseline}}\n\n{said}",
+}  # fmt: skip
+#: Whole blocks for the readings that pass a reference list over (`INPUTS`).
+REFERENCE_BLOCKS = ("\n\n**References**\n\n", "\n\n**References:**\n\n", "\n\nReferences\n\n")
+#: Spellings of the other English, and journals whose names are in capitals.
+_OTHER_ENGLISH = ("color", "tumor", "behavior", "center", "fiber")
+_JOURNALS = ("PLoS ONE", "BMC Med", "JAMA Netw Open")
+
+
+def passed_over(text: str) -> str:
+    """`text` with nothing in it to read: each character a NUL, its line breaks and spaces
+    kept, so that its lines are the same and a blank one stays blank."""
+    return re.sub(r"\S", chr(0), text)
+
+
+@st.composite
+def reference_lists(draw: st.DrawFn) -> tuple[str, str]:
+    """A manuscript with a reference list ended by each of `LIST_ENDS`, under each of
+    `REFERENCE_LINES` in turn, and text under each of `NOT_REFERENCE_LINES`,
+    `IN_A_PARAGRAPH`, `IN_A_LIST`, `IN_A_LIST_FIRST` and `IN_AN_ITEM`, in an order drawn; and
+    the same manuscript with each list, its line included, `passed_over`, and each
+    lookalike's word made "Remarks": what the gates that pass a list over are to read.
+
+    Every kind in every example, and in each entry, after each list's end and after each
+    lookalike a spelling of the other English, a journal's name in capitals and a run of
+    words an earlier paper has (`RECYCLED`): a rule that misses one kind of line, takes one
+    lookalike for a list, or runs a list on past one kind of end, reads otherwise than the
+    manuscript passed over in every example."""
+    filler = st.lists(st.sampled_from(FILLER), min_size=3, max_size=8)
+
+    def prose() -> str:
+        return " ".join(draw(filler)).capitalize() + "."
+
+    def cited() -> str:
+        word, journal = draw(st.sampled_from(_OTHER_ENGLISH)), draw(st.sampled_from(_JOURNALS))
+        return f"The {word} of {draw(st.sampled_from(RECYCLED))}. {journal}. 2019;14:e0213."
+
+    lookalikes = (*NOT_REFERENCE_LINES, IN_A_PARAGRAPH, IN_A_LIST, IN_A_LIST_FIRST, IN_AN_ITEM)
+    kinds = draw(st.permutations((*LIST_ENDS, *lookalikes)))
+    # Each line in turn, so that every one stands over a list in every example.
+    lines = iter(draw(st.permutations(REFERENCE_LINES)) * len(LIST_ENDS))
+    opening = f"# Introduction\n\n{prose()}"
+    listed, passed = [opening], [opening]
+    for number, kind in enumerate(kinds, start=1):
+        if kind in LIST_ENDS:
+            # Two blank lines under the title, as a document converted from Word can have.
+            entries = f"{next(lines)}\n\n\n1. Doe HA, Roe MB. {cited()}"
+            after = (LIST_ENDS[kind].replace("{n}", str(number))
+                     .replace("{title}", draw(st.sampled_from(BACK_MATTER)))
+                     .replace("{said}", cited()))  # fmt: skip
+            listed.append(f"\n\n{entries}{after}")
+            passed.append(f"\n\n{passed_over(entries)}{after}")
+            continue
+        piece = {
+            IN_A_PARAGRAPH: f"\n\n{prose()} Listed in the\nReferences\n{cited()}",
+            IN_A_LIST: f"\n\nSources:\n\n1. Databases\n\n2. Registries\n\n3. References\n\n"
+                       f"{cited()}",
+            IN_A_LIST_FIRST: f"\n\nWe searched:\n\n1. References\n2. Registries\n\n{cited()}",
+            IN_AN_ITEM: f"\n\n- Sources searched\n\n  References\n\n{cited()}",
+        }.get(kind, f"\n\n{kind}\n\n{cited()}")  # fmt: skip
+        listed.append(piece)
+        # A word no rule takes for a list's, so that a lookalike taken for one there hides
+        # what is read here.
+        passed.append(piece.replace("References", "Remarks").replace("references", "remarks"))
+    return "".join(listed) + "\n", "".join(passed) + "\n"
+
+
+# --------------------------------------------------- e-mail addresses beside citations
+
+#: An e-mail address as a manuscript gives one: in brackets, in a mailto link as Word writes
+#: it, in a span, in text and autolinked. `{a}@{h}`: no citation, in a group or out of one.
+ADDRESSES = (
+    "[{a}@{h}]", "[*{a}@{h}*](mailto:{a}@{h})", "[Centre. {a}@{h}]{{.mark}}", "{a}@{h}",
+    "<{a}@{h}>",
+)  # fmt: skip
+#: A citation of `{k}`, and two beside an address in one group.
+KEYS_BESIDE_ADDRESSES = (
+    "[@{k}]", "[see @{k}, p. 4]", "@{k}", "[-@{k}]", "[x-@{k}]", "[{a}@{h}; @{k}]",
+    "[@{k}; {a}@{h}]",
+)  # fmt: skip
+#: Whole blocks for the reading of citations (`INPUTS`).
+ADDRESS_BLOCKS = (
+    " [name@gmail.com] ", " [*first.last@gmail.com*](mailto:first.last@gmail.com) ",
+    " [Centre. someone@ciesar.org.gt]{.mark} ", " someone@example.org ",
+    " [someone@example.org; @smith2020] ",
+)  # fmt: skip
+
+
+@st.composite
+def addressed(draw: st.DrawFn) -> tuple[str, list[str]]:
+    """Text with an e-mail address written each way of `ADDRESSES` and a citation each way of
+    `KEYS_BESIDE_ADDRESSES`, in an order drawn among drawn words, and the keys cited. Every
+    way in every example, so that a rule reading the host of one kind of address as a key
+    fails under any seed."""
+    local = st.sampled_from(("name", "first.last", "a-b", "x2", "team"))
+    host = st.sampled_from(("gmail.com", "ciesar.org.gt", "example.org"))
+    after = st.sampled_from((" ", ". ", ", ", "\n", "\n\n"))
+    keys, pieces = [], []
+    for number, shape in enumerate(ADDRESSES + KEYS_BESIDE_ADDRESSES):
+        key = f"key{number}{draw(st.sampled_from(('a', 'b')))}"
+        if "{k}" in shape:
+            keys.append(key)
+        pieces.append(shape.format(a=draw(local), h=draw(host), k=key))
+    text = "".join(
+        f"{' '.join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))} "
+        f"{piece}{draw(after)}"
+        for piece in draw(st.permutations(pieces))
+    )
+    return text, keys
+
+
 # ------------------------------------------------------------------------------ inputs
 
 
@@ -4521,8 +4919,9 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "prose quotations": texts(QUOTED),
     "passages": passage_files().map(lambda drawn: drawn[0]),
     "plan citations": credited_plans().map(lambda drawn: drawn[0]),
-    "mask": texts(TERMS),
-    "latex mask": latex_texts(),
+    "citations": texts((), ADDRESS_BLOCKS),
+    "mask": st.one_of(texts(TERMS), masked_blocks().map(lambda drawn: drawn[0])),
+    "latex mask": st.one_of(latex_texts(), latex_straight_quotes().map(lambda drawn: drawn[0])),
     "latex refusals": latex_texts(),
     "latex sections": latex_texts(),
     "latex bindings": latex_texts(),
@@ -4530,9 +4929,16 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "latex printed": latex_texts(),
     "latex words": latex_texts(),
     "latex writing": latex_texts(),
+    "latex listed": st.one_of(
+        latex_texts(),
+        latex_listed().flatmap(lambda documents: st.sampled_from([d[0] for d in documents])),
+    ),
     "latex escaped": latex_texts(),
     "latex places": latex_texts(),
     "latex pointers": st.one_of(latex_texts(), latex_pointers().map(lambda drawn: drawn[0])),
+    "latex displays cited": st.one_of(
+        latex_texts(), latex_display_groups().map(lambda drawn: drawn[0])
+    ),
     "latex methods": st.one_of(latex_texts(), latex_methods().map(lambda drawn: drawn[0])),
     "latex models": st.one_of(latex_texts(), latex_model_names().map(lambda drawn: drawn[0])),
     "hidden": texts(TERMS),
@@ -4583,12 +4989,13 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "suggested edit": suggested_edits(),
     "suggestion written": suggestion_writes(),
     "recycled passages": st.fixed_dictionaries(
-        {"text": texts(RECYCLED), "source": earlier_papers()}
+        {"text": texts(RECYCLED, REFERENCE_BLOCKS), "source": earlier_papers()}
     ),
     "spelling": st.fixed_dictionaries(
         {
-            "text": texts(SPELT),
-            "variant": st.sampled_from(("en-GB", "en-US")),
+            "text": texts(SPELT, REFERENCE_BLOCKS),
+            # None: the paper declares no English (Basile, 2026-10-23).
+            "variant": st.sampled_from(("en-GB", "en-US", None)),
             "accepted": st.lists(st.sampled_from(("color", "Tumour", "centre")), max_size=2),
         }
     ),
@@ -4621,7 +5028,10 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         {"text": texts(QUOTED_LIMITS), "value": st.sampled_from((3500, 4, 14, 35000, 500))}
     ),
     "abbreviations": st.fixed_dictionaries(
-        {"text": texts(), "known": st.lists(st.sampled_from(("ROR", "CI", "II")), max_size=2)}
+        {
+            "text": texts((), REFERENCE_BLOCKS),
+            "known": st.lists(st.sampled_from(("ROR", "CI", "II")), max_size=2),
+        }
     ),
     "tex outside maths": lines(),
     "title": lines(),

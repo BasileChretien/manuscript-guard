@@ -182,6 +182,18 @@ def test_the_digests_are_of_the_files_as_they_were_read(mixed: Path) -> None:
     assert material.manuscript_sha256 == manuscript_digest(project)
 
 
+def test_the_panel_is_told_the_english_declared_and_nothing_where_none_is(mixed: Path) -> None:
+    """Basile, 2026-10-23: a paper that declares no English is sent no line about one."""
+    path = mixed / "paper.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["english_variant"] = "en-US"
+    path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    assert "\nEnglish: en-US\n" in prompt.gather(loaded(mixed)).user
+    del document["english_variant"]
+    path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    assert "English:" not in prompt.gather(loaded(mixed)).user
+
+
 def test_a_manuscript_file_that_is_not_utf8_is_refused(mixed: Path) -> None:
     (mixed / "manuscript" / "latin.md").write_bytes("café".encode("latin-1"))
     with pytest.raises(PlanError, match="latin.md"):

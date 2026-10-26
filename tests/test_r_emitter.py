@@ -1225,14 +1225,18 @@ em.write()
 }
 
 
-def _dataset_project(tmp_path: Path, english: str = "en-US") -> tuple[Path, dict[str, str]]:
+def _dataset_project(
+    tmp_path: Path, english: str | None = "en-US"
+) -> tuple[Path, dict[str, str]]:
     from manuscript_guard.datasets import dataset_digest
     from manuscript_guard.emit import input_digest
 
     root = _parameter_project(tmp_path)
     paper = root / "paper.yaml"
-    paper.write_text(paper.read_text(encoding="utf-8").replace("en-GB", english),
-                     encoding="utf-8")  # fmt: skip
+    text = paper.read_text(encoding="utf-8")
+    assert text.count("english_variant: en-GB\n") == 1
+    line = "" if english is None else f"english_variant: {english}\n"
+    paper.write_text(text.replace("english_variant: en-GB\n", line), encoding="utf-8")
     (root / "data").mkdir()
     # CRLF, so that the digest the pin is of is the one with line endings left out.
     (root / "data" / "extract.csv").write_bytes(b"id,received\r\n1,2023-01-05\r\n")
@@ -1278,6 +1282,27 @@ def test_r_and_python_declare_a_dataset_alike(tmp_path: Path) -> None:
     ]
     report = validate(r_document, "results", root / "results" / "data_r.json")
     assert report.ok, report.render(root)
+
+
+def test_r_and_python_print_day_month_year_where_the_paper_declares_no_english(
+    tmp_path: Path,
+) -> None:
+    """Basile, 2026-10-23: no English declared, a date is printed as the build's English
+    with no region has it, the day before the month, by both emitters."""
+    import runpy
+
+    root, pins = _dataset_project(tmp_path, None)
+    r_script = root / "analysis" / "data_r.R"
+    r_script.write_text(DATASETS["R"] % {"emit": EMIT_R.as_posix(), "script": r_script.as_posix(),
+                                         **pins}, encoding="utf-8")  # fmt: skip
+    out = _run_r(r_script, root)
+    assert out.returncode == 0, out.stderr
+    py_script = root / "analysis" / "data_py.py"
+    py_script.write_text(DATASETS["py"] % pins, encoding="utf-8")
+    runpy.run_path(str(py_script), run_name="__main__")
+    for name in ("data_r.json", "data_py.json"):
+        values = json.loads((root / "results" / name).read_text(encoding="utf-8"))["values"]
+        assert values["dataset.vigibase.extracted"]["display"] == "1 March 2024", name
 
 
 DATASET_INPUTS = {

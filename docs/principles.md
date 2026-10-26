@@ -140,7 +140,9 @@ of synonyms of its own.
 
 **One English, the one the paper declares.** `english_variant` in `paper.yaml` says
 British or American, and G14 reports the words spelt the other way: "color" in a British
-paper, "randomised" in an American one, and both `-ise` and `-ize` in a British one. A
+paper, "randomised" in an American one, and both `-ise` and `-ize` in a British one. A paper
+that declares neither, as `init` leaves it unless given `--english`, is held to the English
+most of its words are in. A
 name keeps its spelling, and so do a quotation, the reference list and the sections whose
 wording is somebody else's: contributions, acknowledgements, funding and competing
 interests, where the role names are CRediT's and a funder's sentence is the funder's. The

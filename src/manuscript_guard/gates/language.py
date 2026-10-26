@@ -943,6 +943,14 @@ def _judge(files: list[_File], known: _Known, root: Path) -> Report:
             shown = str(file.path)
         return f"{shown}:{file.line_of(mark.offset)}"
 
+    def placed(mark: _Mark, here: _Mark, at: str, beside: str) -> str:
+        """Where `mark` stands, said from `here`: `beside` where it is on the same line of
+        the same file, which `at` and the place would name as though it were another
+        (corpus round, 2026-10-23: "defined later at main.tex:158" of a use on line 158)."""
+        one, other = files[mark.order], files[here.order]
+        same = one.path == other.path and one.line_of(mark.offset) == other.line_of(here.offset)
+        return beside if same else f"{at} {where(mark)}"
+
     def finding(code: str, mark: _Mark, short: str, message: str, hint: str) -> Finding:
         file = files[mark.order]
         return Finding(
@@ -975,7 +983,8 @@ def _judge(files: list[_File], known: _Known, root: Path) -> Report:
                         "abbreviation-used-before-defined",
                         uses[0],
                         short,
-                        f"{short} is used here, and defined later at {where(first)}",
+                        f"{short} is used here, and defined "
+                        + placed(first, uses[0], "later at", "later on the same line"),
                         "define an abbreviation where it first appears: the long form, then "
                         "the short form in brackets",
                     )
@@ -983,12 +992,14 @@ def _judge(files: list[_File], known: _Known, root: Path) -> Report:
 
             for again in definitions[1:]:
                 if _same_meaning(first.long, again.long):
-                    message = f"{short} is defined again; it was defined at {where(first)}"
+                    message = f"{short} is defined again; it was defined " + placed(
+                        first, again, "at", "earlier on the same line"
+                    )
                     hint = "define an abbreviation once and use the short form after that"
                 else:
                     message = (
                         f"{short} is defined as {again.long!r} here and as {first.long!r} "
-                        f"at {where(first)}"
+                        + placed(first, again, "at", "earlier on the same line")
                     )
                     hint = "one short form, one meaning: a reader keeps the first"
                 findings.append(finding("abbreviation-redefined", again, short, message, hint))

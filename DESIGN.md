@@ -16256,6 +16256,28 @@ Open, recorded as each change landed:
   mark among the title's own pieces, so one that pandoc reads inside bold or italic, or one
   followed by an empty bookmark, is printed as part of the title, "a fall1"; the Title
   paragraph is in the comment, where the author can see it.
+- **G7 names a cited work as the manuscript cites it only where it read the citation.** A
+  finding about a use of a key names it `\citep{key}` in LaTeX, by the command the use was
+  read in, and `@key` in Markdown. A quotation's finding is read in the printed view, where the
+  command is gone, and names every LaTeX key `\cite{key}`. A finding about an entry of
+  `references.bib`, a duplicate, an identifier or a lookup, still names it `@key`.
+- **In LaTeX, a straight `"` after an open ``` `` ``` closes it, whatever the font.** In
+  `\texttt` a typewriter font prints both as typed, but the reader reads ``` `` ``` there as an
+  opening mark already, and a `"` after it as the closing one. Babel's German shorthands other
+  than an accent, `"-` and `"=`, inside an open quotation are read as a closing mark too. A
+  quotation is ended by a blank line only, not by `\par`.
+- **`lines-cited-alone` is not tried anywhere in a LaTeX document that sets out an algorithm
+  or a listing.** A `verbatim` block anywhere in the document turns the rule off for every
+  pointer in it, one into the reviewers' copy too: the rule cannot tell a listing's lines
+  from the copy's. A Markdown paper is told of every pointer, a listing or not. An algorithm
+  in an environment the reader does not name (`algorithm2e`'s `procedure` or `function`) is
+  read as prose, and words to the reviewers in it are reported.
+- **A comment's line breaks are NUL in the Markdown mask.** Pandoc reads a comment in a
+  paragraph, a blank line inside it too, as a part of that paragraph, and a reader of
+  paragraphs or sentences would cut one at a line break kept there. So a reader that cuts the
+  masked text into lines puts the file's line breaks back first (`kept_breaks`); one that
+  counts lines in the masked text under a comment of several lines, rather than in the file,
+  counts short. The front matter's and a listing's line breaks are kept.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

@@ -83,13 +83,6 @@ expected:
       its parameter text blanked and its body read, and a use refused only where it
       prints; a `\let` of a command to one the reader reads the same way and a doubled
       parameter in a nested body are no longer refused either (real templates, part 1)
-  - reading: latex mask
-    why: >-
-      a `\def` with delimited parameters, `\def\x\begin{verbatim}` among the inputs, was
-      refused and the rest of the file read as typed; it is read now, as TeX reads it,
-      its parameter text blanked and its body read, and a use refused only where it
-      prints; a `\let` of a command to one the reader reads the same way and a doubled
-      parameter in a nested body are no longer refused either (real templates, part 1)
   - reading: latex places
     why: >-
       a `\def` with delimited parameters, `\def\x\begin{verbatim}` among the inputs, was
@@ -125,25 +118,25 @@ expected:
       its parameter text blanked and its body read, and a use refused only where it
       prints; a `\let` of a command to one the reader reads the same way and a doubled
       parameter in a nested body are no longer refused either (real templates, part 1)
-  - reading: spelling
+  - reading: mask
     why: >-
-      a reference list under a line that is no heading, `**References**`, `**References:**`
-      or "References" alone on a line that opens a paragraph, is passed over as the list
-      under `# References` is, so the spelling of the cited titles is not read; the inputs
-      now hold such lines
-  - reading: abbreviations
+      the Markdown mask keeps the line breaks of the front matter, of a listing and of what
+      its patterns match, where it made them NUL, so that a reader of the masked text's
+      lines finds each where the file has it (a pipe table under a listing was read a line
+      out); a comment's line breaks are NUL still, since pandoc reads a comment, a blank
+      line in it too, inside the paragraph it stands in (corpus round, 2026-10-23)
+  - reading: hidden
     why: >-
-      a reference list under a line that is no heading, `**References**`, `**References:**`
-      or "References" alone on a line that opens a paragraph, is passed over as the list
-      under `# References` is, so a journal's name or an author's initials there are no
-      abbreviation; the inputs now hold such lines
-  - reading: recycled passages
+      G14 read the mask with each line feed put back and each carriage return NUL; the
+      mask keeps both now in the front matter and a listing, so a file with CRLF line ends
+      keeps its carriage returns there too, which every reading of it takes for a space
+  - reading: own words
     why: >-
-      a reference list under a line that is no heading, `**References**`, `**References:**`
-      or "References" alone on a line that opens a paragraph, is not compared with an
-      earlier paper, as the list under `# References` is not; the inputs now hold such lines
-  - reading: citations
+      read from the `hidden` text, which keeps a carriage return in the front matter and a
+      listing of a file with CRLF line ends where it was NUL
+  - reading: latex mask
     why: >-
-      a new reading; an `@` glued to the word before it, or to full stops that are not whole
-      ellipses, is an e-mail address's, as pandoc reads it, so "[name@gmail.com]", a mailto
-      link and a span holding an address are no citation group and their hosts no keys
+      a straight `"` in prose closes the quotation a ``` `` ``` opened in its paragraph, and
+      is read as the closing mark, as the font prints it; not after a blank line, nor before
+      a letter, babel's German accent; the inputs now hold such quotations (corpus round,
+      2026-10-23)

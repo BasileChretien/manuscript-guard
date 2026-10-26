@@ -555,6 +555,47 @@ def signs() -> st.SearchStrategy[str]:
     return _in_a_row(_SIGNS, few=12, many=50)
 
 
+#: What the Markdown mask hides over several lines, each with whether it is a comment, whose
+#: line breaks it hides too, since pandoc reads a comment in a paragraph, a blank line inside
+#: it too, as a part of that paragraph (corpus round, 2026-10-23). `{}` is words drawn.
+MASKED_BLOCKS = (
+    ("```r\nx <- 1\n\ny <- {}\n```", False),
+    ("~~~\n{}\n~~~", False),
+    ("<!--\n{}\n-->", True),
+    ("<!-- {}\n\nheld over -->", True),
+)
+
+
+@st.composite
+def masked_blocks(
+    draw: st.DrawFn,
+) -> tuple[str, list[tuple[int, int]], list[tuple[str, int]]]:
+    """A Markdown file under front matter of several lines, with every block of
+    `MASKED_BLOCKS` in an order drawn, the comments typed inside a paragraph or as a block of
+    their own, and a pipe table under each block; the spans of its comments; and each cell
+    of the tables with the line it is typed on."""
+
+    def words() -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=3)))
+
+    text = f"---\ntitle: {words()}\nabstract: |\n  {words()}\n\n  {words()}\n---\n"
+    comments: list[tuple[int, int]] = []
+    cells: list[tuple[str, int]] = []
+    for index in draw(st.permutations(range(len(MASKED_BLOCKS)))):
+        template, comment = MASKED_BLOCKS[index]
+        block = template.replace("{}", words())
+        inline = comment and draw(st.booleans())
+        text += f"\n{words()} " if inline else "\n"
+        if comment:
+            comments.append((len(text), len(text) + len(block)))
+        text += block + (f" {words()}.\n" if inline else "\n")
+        line = text.count("\n") + 2
+        head, body = f"a{4101 + index}", f"b{4101 + index}"
+        text += f"\n| {head} | x |\n|---|---|\n| {body} | y |\n"
+        cells += [(head, line), ("x", line), (body, line + 2), ("y", line + 2)]
+    return text, comments, cells
+
+
 # ------------------------------------------------------------------------------- LaTeX
 
 #: LaTeX as an author writes it, each piece whole: numbers as LaTeX writes them, the commands
@@ -996,6 +1037,8 @@ LATEX_QUOTATION_PLACES = (
      True),
     ("As ``the cohort {} rose---by \\textemdash~far---with age'' \\cite{{w}}.\n", True),
     ("\\section{{Part}}\nAs ``the cohort {} found a rise with age'' \\cite{{w}}.\n", True),
+    # A straight `"` closes a quotation ``` `` ``` opened (corpus round, 2026-10-23).
+    ("As ``the cohort {} found a rise with age\" \\cite{{w}}.\n", True),
 )  # fmt: skip
 
 
@@ -1014,6 +1057,47 @@ def latex_quotations(draw: st.DrawFn) -> tuple[str, list[tuple[str, bool]]]:
         words = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
         text += f"\n{words}\n\n" + template.replace("{{", "{").replace("}}", "}").replace(
             "{}", key)
+    return text + "\n\\end{document}\n", planted
+
+
+#: A straight `"` in LaTeX prose, each `{}` words drawn and each `"` planted, with whether the
+#: reader reads it as a closing quotation mark (corpus round, 2026-10-23): where a ``` `` ```
+#: opened a quotation in its paragraph that nothing closed, and not after a blank line, nor
+#: alone, nor after a quotation closed, nor before a letter (babel's German accent), nor where
+#: the ``` `` ``` is in a comment, nor in `\verb`. Two in one paragraph each close their own.
+LATEX_STRAIGHT_QUOTES = (
+    ('``{} words" {}', (True,)),
+    ('``{} words\n\n{} words" here', (False,)),
+    ('{} words" {}', (False,)),
+    ("``{} words'' then\" {}", (False,)),
+    ('``{} words"a {}', (False,)),
+    ('% ``{} words\n{} words" here', (False,)),
+    ('\\verb|``{} words"| {}', (False,)),
+    ('``{} words" and ``{} more" {}', (True, True)),
+)  # fmt: skip
+
+
+@st.composite
+def latex_straight_quotes(draw: st.DrawFn) -> tuple[str, list[tuple[int, bool]]]:
+    """A LaTeX document with every place of `LATEX_STRAIGHT_QUOTES` as a paragraph of its own,
+    in an order drawn; and where each planted `"` stands, with whether it closes a quotation.
+    """
+    text = "\\documentclass{article}\n\\begin{document}\n"
+    planted: list[tuple[int, bool]] = []
+    for index in draw(st.permutations(range(len(LATEX_STRAIGHT_QUOTES)))):
+        template, closes = LATEX_STRAIGHT_QUOTES[index]
+        pieces = template.replace("{{", "\x01").replace("}}", "\x02").split("{}")
+        paragraph = pieces[0]
+        for piece in pieces[1:]:
+            paragraph += " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1,
+                                                max_size=3))) + piece  # fmt: skip
+        paragraph = paragraph.replace("\x01", "{").replace("\x02", "}")
+        text += "\n"
+        start = len(text)
+        marks = [start + at for at, char in enumerate(paragraph) if char == '"']
+        assert len(marks) == len(closes), template
+        planted += list(zip(marks, closes, strict=True))
+        text += paragraph + "\n"
     return text + "\n\\end{document}\n", planted
 
 
@@ -1441,6 +1525,56 @@ def latex_writing(draw: st.DrawFn) -> tuple[str, list[tuple[str, str]]]:
         planted.append((key, kind))
         text += _FAR + template.replace("{{", "{").replace("}}", "}").replace("{}", key)
     return text + _FAR + "\\end{document}\n% TODO cut\nXXX patients\n", planted
+
+
+#: What a LaTeX document sets out that its text may point at by line, "the stride is set
+#: (line 8)", and what it is (G6's `unless_listed`, corpus round 2026-10-23): an algorithm in
+#: each environment that holds one, a listing, and an algorithm in a comment, which sets out
+#: nothing. `{}` is a word inside it, after words G6 reads as residue in prose.
+LATEX_LISTED = (
+    ("\\begin{{algorithm}}\n\\begin{{algorithmic}}[1]\n\\State We have now clarified {} here\n"
+     "\\end{{algorithmic}}\n\\end{{algorithm}}\n", "algorithm"),
+    ("\\begin{{algorithm2e}}\nWe have now clarified {} here\\;\n\\end{{algorithm2e}}\n",
+     "algorithm"),
+    ("\\begin{{algorithm*}}\nWe have now clarified {} here\n\\end{{algorithm*}}\n", "algorithm"),
+    ("\\begin{{lstlisting}}\nx <- 1 # We have now clarified {} here\n\\end{{lstlisting}}\n",
+     "listing"),
+    ("\\begin{{verbatim}}\nWe have now clarified {} here\n\\end{{verbatim}}\n", "listing"),
+    ("% \\begin{{algorithm}}\n% We have now clarified {} here\n% \\end{{algorithm}}\n",
+     "neither"),
+)  # fmt: skip
+#: How a paper points at lines in brackets, `{}` and `{}` their numbers.
+_LINES_POINTED = ("(line {})", "(lines {}-{})", "(see line {})", "(Lines {} to {})",
+                  "(ll. {})")  # fmt: skip
+
+
+@st.composite
+def latex_listed(draw: st.DrawFn) -> list[tuple[str, str, list[int], list[int]]]:
+    """A LaTeX document for each place of `LATEX_LISTED`, so that every kind is in every
+    example: paragraphs that point at lines in brackets, one with words to the reviewers, and
+    the place among them, in an order drawn. Each with what it sets out, the lines of its
+    pointers, and the line of its words to the reviewers, which G6 reads in every document."""
+    documents = []
+    for index, (template, kind) in enumerate(LATEX_LISTED):
+        blocks = [template.replace("{{", "{").replace("}}", "}").replace("{}", f"k{4101 + index}")]
+        for _ in range(draw(st.integers(1, 3))):
+            numbers = [str(draw(st.integers(1, 40))) for _ in range(2)]
+            pointer = draw(st.sampled_from(_LINES_POINTED)).format(*numbers)
+            words = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
+            blocks.append(f"The {words} is set\n{pointer} in the step.\n")
+        blocks.append("As requested by Reviewer 2, we added a table.\n")
+        text = "\\documentclass{article}\n\\begin{document}\n"
+        pointers, said = [], []
+        for block in draw(st.permutations(blocks)):
+            text += "\n"
+            line = text.count("\n") + 1
+            if block.startswith("The "):
+                pointers.append(line + 1)
+            elif block.startswith("As requested"):
+                said.append(line)
+            text += block
+        documents.append((text + "\n\\end{document}\n", kind, pointers, said))
+    return documents
 
 
 #: What a display is written in: digits and the signs a number is written with, each of TeX's
@@ -4254,8 +4388,10 @@ def claim_edits(draw: st.DrawFn) -> tuple[str, str, list[tuple[str, int]]]:
         return ladder(low), [word("hedge"), *ladder(high)], told
 
     # The front matter: its title stands, and its abstract is edited. Each value is on one
-    # line, as YAML has a plain value.
-    title = written(stable(), next(marks), wrap=False)
+    # line, as YAML has a plain value. A title ends with no stop, so that only the line
+    # between the two values ends it: the mask keeps that line break since the corpus round
+    # of 2026-10-23, and a stop before it was a cut the front matter's lines were not.
+    title = written(stable(), next(marks), wrap=False, stop=False)
     was, now, told = pair(draw(st.sampled_from(_SIMPLE)))
     mark = next(marks)
     ahead = f"---\ntitle: {title}\nabstract: "
@@ -4714,8 +4850,8 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "passages": passage_files().map(lambda drawn: drawn[0]),
     "plan citations": credited_plans().map(lambda drawn: drawn[0]),
     "citations": texts((), ADDRESS_BLOCKS),
-    "mask": texts(TERMS),
-    "latex mask": latex_texts(),
+    "mask": st.one_of(texts(TERMS), masked_blocks().map(lambda drawn: drawn[0])),
+    "latex mask": st.one_of(latex_texts(), latex_straight_quotes().map(lambda drawn: drawn[0])),
     "latex refusals": latex_texts(),
     "latex sections": latex_texts(),
     "latex bindings": latex_texts(),
@@ -4723,6 +4859,10 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "latex printed": latex_texts(),
     "latex words": latex_texts(),
     "latex writing": latex_texts(),
+    "latex listed": st.one_of(
+        latex_texts(),
+        latex_listed().flatmap(lambda documents: st.sampled_from([d[0] for d in documents])),
+    ),
     "latex escaped": latex_texts(),
     "latex places": latex_texts(),
     "latex pointers": st.one_of(latex_texts(), latex_pointers().map(lambda drawn: drawn[0])),

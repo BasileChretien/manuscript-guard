@@ -125,18 +125,25 @@ expected:
       its parameter text blanked and its body read, and a use refused only where it
       prints; a `\let` of a command to one the reader reads the same way and a doubled
       parameter in a nested body are no longer refused either (real templates, part 1)
-  - reading: latex pointers
+  - reading: spelling
     why: >-
-      cleveref's `\crefrange{a}{b}` and `\Crefrange`, and the page forms `\cpagerefrange`,
-      are cross-references now, the inputs hold one, and each is recorded once, from its
-      command to the brace of its second label; they were not read, and their labels printed
-      as words (corpus round of 2026-10-23)
-  - reading: latex displays cited
+      a reference list under a line that is no heading, `**References**`, `**References:**`
+      or "References" alone on a line that opens a paragraph, is passed over as the list
+      under `# References` is, so the spelling of the cited titles is not read; the inputs
+      now hold such lines
+  - reading: abbreviations
     why: >-
-      the floats of the subfloat package's `subfigures` or `subtables` of its kind are one
-      display, in the group's file or each in a file it inputs, and a label in the group or
-      in those files names it; a float of the other kind is numbered as any; a range of
-      cross-references, two a dash joins, two "to" joins after a plural, or `\crefrange`,
-      cites every display from its first end to its last; the inputs hold all of these,
-      which were counted one display a float and cited at their ends only, and said cited
-      out of order or nowhere (corpus round of 2026-10-23, and its fix round 1)
+      a reference list under a line that is no heading, `**References**`, `**References:**`
+      or "References" alone on a line that opens a paragraph, is passed over as the list
+      under `# References` is, so a journal's name or an author's initials there are no
+      abbreviation; the inputs now hold such lines
+  - reading: recycled passages
+    why: >-
+      a reference list under a line that is no heading, `**References**`, `**References:**`
+      or "References" alone on a line that opens a paragraph, is not compared with an
+      earlier paper, as the list under `# References` is not; the inputs now hold such lines
+  - reading: citations
+    why: >-
+      a new reading; an `@` glued to the word before it, or to full stops that are not whole
+      ellipses, is an e-mail address's, as pandoc reads it, so "[name@gmail.com]", a mailto
+      link and a span holding an address are no citation group and their hosts no keys

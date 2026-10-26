@@ -9356,6 +9356,26 @@ def test_a_wrapped_citation_to_a_missing_item_is_caught(project: Path, monkeypat
     )
 
 
+def test_an_e_mail_address_is_no_citation_and_a_key_beside_one_still_is(project: Path) -> None:
+    """A corresponding author's address, in a mailto link as Word writes one and in a span:
+    `check` read the host of each as a key, "@gmail.com matches nothing in the library",
+    and failed the submission on it. Pandoc reads neither as a citation. A key the library
+    does not hold, in a group beside an address, is still caught."""
+    main = main_md(project)
+    addresses = (
+        "\n*Corresponding author*:\n[*first.last@gmail.com*](mailto:first.last@gmail.com)\n\n"
+        "1\\. [Research Centre. someone@centre.org.gt]{.mark}\n\n"
+        "Write to someone@centre.org.gt or [name@example.org].\n"
+    )
+    main.write_text(main.read_text(encoding="utf-8") + addresses, encoding="utf-8")
+    assert "citation-unresolved" not in codes(_g7(project))
+
+    main.write_text(main.read_text(encoding="utf-8") + "\nAs shown [name@example.org; "
+                    "@ghostKey2020].\n", encoding="utf-8")  # fmt: skip
+    unresolved = [f.message for f in _g7(project).failures if f.code == "citation-unresolved"]
+    assert unresolved == ["@ghostKey2020 matches nothing in the library"]
+
+
 # A literature value with a blank field. `source_file: ""` was passed over by both gates:
 # `check --stage drafting` added no finding, and the value was simply not counted as
 # verified, so the run claimed every value it had checked was verified.
@@ -21818,6 +21838,56 @@ def test_a_paragraph_pasted_from_a_paper_in_the_other_english_is_caught(project:
         assert f"{word} ({instead}, once)" in finding.hint
 
 
+#: A reference list as a paper converted from Word has it, under a line that is no heading:
+#: its titles in the other English, a journal's name and the authors' initials in capitals.
+_CITED_TITLE = (
+    "The color of the tumor and its organization in a national register of spontaneous reports"
+)
+_LISTED = (
+    "{line}\n\n"
+    f"1. Doe HA, Roe MB. {_CITED_TITLE}. PLoS ONE. 2019;14:e0213.\n\n"
+    "2. Poe RM, Low DL. Behavior in the pediatric center. BMC Med. 2020;18:12.\n\n"
+)
+
+
+@pytest.mark.parametrize(
+    "line", ["**References**", "**References:**", "References", "__Bibliography__",
+             "6\\. References"]  # fmt: skip
+)
+def test_a_reference_list_under_a_bold_line_is_passed_over_as_under_a_heading(
+    project: Path, line: str
+) -> None:
+    """Papers converted from Word put the list under `**References**` as often as under a
+    heading, and G14 read it as prose: "both endings are used" for the cited titles, and
+    "PLoS", "BMC" and the authors' initials taken for abbreviations; the word count and the
+    comparison with an earlier paper took it for the Discussion. Under `# References` none
+    of it is read, and the audit already took the bold line for the list's start. The text
+    under the next heading is read again: a slip there is still caught."""
+    from manuscript_guard.gates.recycling import recycled_in
+    from manuscript_guard.text.sections import measure
+
+    text = main_md(project).read_text(encoding="utf-8")
+    end = text.index("# Data availability")
+    listed = text[:end] + _LISTED.format(line=line) + text[end:]
+    main_md(project).write_text(listed, encoding="utf-8")
+    assert spelling_findings(project) == []
+    assert language_findings(project) == [("abbreviation-undefined", line_of(text, "(ROR "))]
+    assert measure(listed).main_text_words == measure(text).main_text_words
+    assert recycled_in(listed, f"An earlier paper cited it: {_CITED_TITLE}.", "earlier") == []
+
+    slipped = listed.replace("# Data availability", "# Appendix\n\nThe color of each group "
+                             "was noted.\n\n# Data availability")  # fmt: skip
+    main_md(project).write_text(slipped, encoding="utf-8")
+    assert spelling_findings(project) == [
+        (
+            "spelling-variant",
+            line_of(slipped, "The color of each"),
+            "'color' is the American spelling of 'colour', used once; this paper is in "
+            "British English",
+        )
+    ]
+
+
 def _declaring_no_english(root: Path) -> None:
     """`paper.yaml` as `init` writes it since Basile's decision of 2026-10-23: no English."""
     path = root / "paper.yaml"
@@ -21847,6 +21917,147 @@ def test_declaring_no_english_a_co_author_s_word_in_the_fewer_spelling_is_caught
             "English, and the paper has 2 words in British spelling to 1 in American",
         )
     ]
+
+
+_SAID = "The color of each tumor group by ABC."
+
+#: What may follow a reference list under a bold line, each with `_SAID` after it or in it:
+#: every caption, table, image, binding, bold title and back-matter title the list ends at.
+_AFTER_A_LIST = {
+    "a caption": f"\n\nFigure 1. {_SAID}",
+    "a caption, Fig": f"\n\nFig 1. {_SAID}",
+    "a caption, Fig.": f"\n\nFig. 1 {_SAID}",
+    "a caption in capitals": f"\n\nFIGURE 1 | {_SAID}",
+    "a caption, S1 Table": f"\n\nS1 Table. {_SAID}",
+    "a caption, S1 Fig": f"\n\nS1 Fig. {_SAID}",
+    "a table's caption": f"\n\nTable 1. {_SAID}",
+    "a table's caption, Roman": f"\n\nTABLE I. {_SAID}",
+    "a caption, Roman": f"\n\nFigure IV. {_SAID}",
+    "a supplementary table's caption": f"\n\nSupplementary Table S1. {_SAID}",
+    "an eTable's caption": f"\n\neTable 1. {_SAID}",
+    "a box": f"\n\nBox 1. {_SAID}",
+    "an appendix": f"\n\nAppendix A. {_SAID}",
+    "an additional file": f"\n\nAdditional file 1. {_SAID}",
+    "a pipe table": f"\n\n| Group | Count |\n|---|---|\n| A | 1 |\n\n{_SAID}",
+    "a grid table": f"\n\n+-------+-------+\n| Group | Count |\n+=======+=======+\n"
+                    f"| A     | 1     |\n+-------+-------+\n\n{_SAID}",
+    "a simple table": f"\n\n  Group   Count\n  ------- -------\n  A       1\n\n{_SAID}",
+    "an image": f"\n\n![A figure](figure.png)\n\n{_SAID}",
+    "a binding": f"\n\n{{{{table.baseline}}}}\n\n{_SAID}",
+    "a bold title": f"\n\n**Figure legends**\n\n{_SAID}",
+    "a bold title in underscores": f"\n\n__Supplementary material__\n\n{_SAID}",
+    "a bold title in italics": f"\n\n***Figure legends***\n\n{_SAID}",
+    "a bold label running in": f"\n\n**Funding:** {_SAID}",
+    "a heading printed as text": f"\n# Appendix\n{_SAID}",
+    **{f"a title, {title}": f"\n\n{title}\n\n{_SAID}"
+       for title in ("Acknowledgements", "Acknowledgments", "Figure legends", "Funding",
+                     "Conflicts of interest", "Author contributions", "Data availability",
+                     "Supplementary material")},
+}  # fmt: skip
+
+
+@pytest.mark.parametrize("after", list(_AFTER_A_LIST))
+def test_what_follows_a_reference_list_under_a_bold_line_is_read(project: Path, after: str) -> None:
+    """In a paper converted from Word the titles after the list are bold paragraphs too, and
+    journals ask for the figure legends and the tables after the references. Run on to the
+    next heading or the end of the file, the list hid them from G14: "color", "tumor" and ABC
+    in a legend were reported before the list was passed over and not after. It ends at a
+    paragraph all in bold or opening with a bold label, at a back-matter title, a caption, a
+    table, an image or a binding, and, as the audit's cut does, at a line shaped like a
+    heading that pandoc prints as text."""
+    text = main_md(project).read_text(encoding="utf-8")
+    end = text.index("# Data availability")
+    listed = (text[:end] + _LISTED.format(line="**References**").rstrip("\n")
+              + _AFTER_A_LIST[after] + "\n\n" + text[end:])  # fmt: skip
+    main_md(project).write_text(listed, encoding="utf-8")
+    said = line_of(listed, _SAID)
+    assert [(code, line) for code, line, _m in spelling_findings(project)] == [
+        ("spelling-variant", said), ("spelling-variant", said)
+    ]  # fmt: skip
+    assert ("abbreviation-undefined", said) in language_findings(project)
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        "3. Doe J. **The color of a tumor** in bold. Lancet. 2019;393:1-2.",
+        "Fig trees and the color of their fruit. Kew; 2019.",
+        "Box GEP, Jenkins GM. The color of time series. Wiley; 2015.",
+        "Box I, Jenkins GM. The color of time series. Wiley; 2015.",
+        "Tables and the color of tumor registries. 2nd ed. Oxford; 2018.",
+        "Figueroa A. The color of a tumor. BMC Med. 2020;18:1.",
+        "\n\n\n3. Doe J. The color of a tumor. Lancet. 2019;393:1-2.",
+    ],
+    ids=["bold text in an entry", "Fig as a title's word", "an author named Box",
+         "an author named Box with one initial", "Tables as a title's word",
+         "an author named Figueroa", "blank lines between entries"],  # fmt: skip
+)
+def test_an_entry_shaped_a_little_like_a_caption_ends_no_reference_list(
+    project: Path, entry: str
+) -> None:
+    """An entry with bold text in it, one that opens with "Fig" or "Tables" as a word of its
+    title, and one by an author named Box are entries: the list runs on past them, and the
+    spelling of the titles after them is not read. Nor do two blank lines end the list: the
+    second was asked whether it opened a paragraph that ends one, and had none to read."""
+    text = main_md(project).read_text(encoding="utf-8")
+    end = text.index("# Data availability")
+    listed = (text[:end] + _LISTED.format(line="**References**") + f"{entry}\n\n"
+              f"4. Roe MB. The color of the tumor center. PLoS ONE. 2020;15:e1.\n\n"
+              + text[end:])  # fmt: skip
+    main_md(project).write_text(listed, encoding="utf-8")
+    assert spelling_findings(project) == []
+
+
+def test_a_binding_after_a_reference_list_is_counted() -> None:
+    """The word count blanked the list to count none of its words, and a table's or a
+    figure's binding after it went too: the display items were counted from the blanked text,
+    so a paper over the journal's limit passed. They are counted from the text, and a binding
+    ends the list."""
+    from manuscript_guard.text.sections import measure
+
+    for between in ("", "::: {#refs}\n:::\n\n"):
+        text = (f"# Intro\n\nText.\n\n**References**\n\n{between}1. Doe J. T. 2019.\n\n"
+                "{{table.baseline}}\n\n{{figure.forest}}\n")  # fmt: skip
+        counts = measure(text)
+        assert (counts.tables, counts.figures) == (1, 1), between
+
+
+@pytest.mark.parametrize(
+    "lookalike",
+    [
+        "Sources searched:\n\n1. Databases\n\n2. Registries\n\n3. References\n\n",
+        "We searched:\n\n1. References\n2. Registries\n\n",
+        "We searched:\n\n1. References\n\n2. Registries\n\n",
+        "- Sources searched\n\n  References\n\n",
+    ],
+    ids=["an item of a numbered list", "the first item of a tight list",
+         "the first item of a loose list", "an item's paragraph"],  # fmt: skip
+)
+def test_references_as_an_item_of_a_list_opens_no_reference_list(
+    project: Path, lookalike: str
+) -> None:
+    """"3. References" in a loose list of sources searched, or "References" as a paragraph of
+    a list item, is a list's text and not the title of a reference list; taken for one, it
+    hid the rest of the Methods from G14."""
+    text = main_md(project).read_text(encoding="utf-8")
+    end = text.index("# Results")
+    sentence = "We searched the color atlas."
+    edited = text[:end] + lookalike + sentence + "\n\n" + text[end:]
+    main_md(project).write_text(edited, encoding="utf-8")
+    assert [(code, line) for code, line, _m in spelling_findings(project)] == [
+        ("spelling-variant", line_of(edited, sentence))
+    ]
+
+
+def test_a_blank_line_of_spaces_in_a_reference_list_still_ends_a_paragraph() -> None:
+    """The word count makes the list's characters NULs so that it counts none of its words.
+    A line of spaces made NULs was no longer blank, and the `#` line under it was no longer a
+    heading: the Data availability section was gone from the count."""
+    from manuscript_guard.text.sections import measure
+
+    text = "**References**\n\n1. Doe J. Title. 2019.\n  \n# Data availability\n\nText here.\n"
+    assert measure(text).sections == ("Data availability",)
+    assert measure(text).main_text_words == 4
 
 
 def test_declaring_no_english_a_mostly_american_paper_hears_of_its_british_word(

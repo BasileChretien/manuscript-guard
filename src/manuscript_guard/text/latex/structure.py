@@ -19,12 +19,20 @@ input twice is read once, where it is first input. A package of the author's,
 `\\usepackage{macros}` with `macros.sty` beside the entry file, is read as preamble with `@` a
 letter; `mgvalues.sty`, which the tool writes, is not. A `.tex` file nothing inputs is read as
 loose body under no heading, and is warned of.
+
+Two kinds of file the paper does not input are not read at all. A file that a class or a
+package the paper loads inputs, by a path written out in full, is the class's, as a list
+of journals a journal's class ships beside the paper is: the class is read for the files it
+inputs and the packages it loads, and nothing else of it. A file that holds a document of
+its own, its own `\\begin{document}`, is another document, never the main text: it is
+refused, since the supplement is the one at `supplementary/main.tex`.
 """
 
 from __future__ import annotations
 
 import posixpath
-from bisect import bisect_left
+import re
+from bisect import bisect_left, bisect_right
 from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import cached_property
@@ -38,6 +46,43 @@ SUPPLEMENT_ENTRY = "supplementary/main.tex"
 #: The values file the tool writes, never read as the author's package.
 VALUES = "mgvalues"
 _NOT_WRITTEN_OUT = set("\\#$%{}~")
+#: A comment in a class or a package: an unescaped `%` to the end of its line, the
+#: backslashes before it kept.
+_COMMENT = re.compile(r"(?<!\\)((?:\\\\)*)%[^\n]*")
+#: What a class or a package loads, by a name written out in braces: another class or
+#: package, or a file it inputs, `\\input`, LaTeX's `\\@input` and `\\InputIfFileExists`, or
+#: TeX's `\\input name` without braces.
+_LOADS = re.compile(
+    r"\\(?P<how>RequirePackage|RequirePackageWithOptions|usepackage|LoadClass"
+    r"|LoadClassWithOptions)[ \t]*(?:\r?\n[ \t]*)?(?:\[[^\]]*\][ \t]*(?:\r?\n[ \t]*)?)?"
+    r"\{(?P<names>[^{}]*)\}"
+    r"|\\(?:@?input@?|InputIfFileExists\*?|include)[ \t]*(?:\r?\n[ \t]*)?\{(?P<path>[^{}\n]*)\}"
+    r"|\\@?input[ \t]+(?P<bare>[^\s{}\\%]+)"
+)
+#: A command that defines another, by what holds what it defines past its name and its
+#: options: `one` braced group, `two` (an environment's code, or a document command's
+#: argument specification and code) or `three`, or TeX's `tex` parameter text and a group,
+#: past a name that is a command or, for `\\@namedef` and expl3's `c` forms, braced. That
+#: code runs where the command is used, not where it stands (rounds 1 and 2 of #445).
+_DEFINES = re.compile(
+    r"\\(?:(?P<one>(?:re)?newcommandx?|providecommand|DeclareRobustCommand"
+    r"|(?:re)?newrobustcmd|providerobustcmd|cs[gex]?def)"
+    r"|(?P<two>(?:re)?newenvironment|provideenvironment"
+    r"|(?:New|Renew|Provide|Declare)(?:Expandable)?DocumentCommand)"
+    r"|(?P<three>(?:New|Renew|Provide|Declare)DocumentEnvironment)"
+    r"|(?P<tex>[gex]?def|protected@[ex]def|@namedef"
+    r"|cs_(?:new|g?set)(?:_protected)?(?:_nopar)?:[Nc]p?[nxe]))(?![A-Za-z@_:])\*?"
+)
+#: What a defining command's name after `\\let\\name` stands for: it is copied, not used.
+_LET = re.compile(r"\\let[ \t]*\\(?:[A-Za-z@]+|.)[ \t]*=?[ \t]*\Z")
+_SPACE = re.compile(r"\s*")
+_CONTROL = re.compile(r"\\(?:[A-Za-z@]+|.)", re.DOTALL)
+#: The classes whose document is part of another's, printed in it: a `standalone` picture,
+#: which the paper places by `\\includestandalone` or as the PDF compiled from it, and a
+#: part in the `subfiles` class, which the paper places by `\\subfile` (round 2 of #445).
+_PARTS = frozenset({"standalone", "subfiles"})
+#: The code a file that holds a document of its own is refused with.
+SECOND_DOCUMENT = "tex-second-document"
 
 
 @dataclass(frozen=True)
@@ -136,10 +181,12 @@ def _target(
 @dataclass(frozen=True)
 class Document:
     """The files in the order the build prints them, loose ones after, and every refusal with
-    the file it is in."""
+    the file it is in; and the files a class or a package inputs, which are not read
+    (`_classes`)."""
 
     sources: tuple[Source, ...]
     refusals: tuple[tuple[str, Refusal], ...]
+    classes: tuple[str, ...] = ()
 
     @property
     def loose(self) -> tuple[str, ...]:
@@ -171,14 +218,17 @@ def read_tree(
     *,
     packages: Mapping[str, str] | None = None,
     unreadable: frozenset[str] = frozenset(),
+    classes: Mapping[str, str] | None = None,
 ) -> Document:
-    """The document `entry` begins, its files given by path; `packages` the author's `.sty`
-    files; `unreadable` files that could not be read, reported elsewhere and passed over. A
-    command one file defines with delimited parameters is refused where another uses it, and
-    a command of a class's front matter one file defines is the author's in another, so a
-    tree that defines either is read twice, the second time with every file told of them. A
-    file nothing inputs defines nothing the document uses (round 2)."""
-    document = _read_tree(files, entry, packages or {}, unreadable, _Told())
+    """The document `entry` begins, its files given by path; `packages` the `.sty` files and
+    `classes` the `.cls` files the manuscript holds; `unreadable` files that could not be
+    read, reported elsewhere and passed over. A command one file defines with delimited
+    parameters is refused where another uses it, and a command of a class's front matter one
+    file defines is the author's in another, so a tree that defines either is read twice, the
+    second time with every file told of them. A file nothing inputs defines nothing the
+    document uses (round 2)."""
+    styles = (packages or {}, classes or {})
+    document = _read_tree(files, entry, styles, unreadable, _Told())
     tree = [source for source in document.sources if not source.loose]
     delimited = frozenset(name for source in tree
                           for name in source.reading.delimited)  # fmt: skip
@@ -192,7 +242,7 @@ def read_tree(
     own = frozenset(name for name in own
                     if not set(PACKAGE_COMMANDS.get(name, ())) & loaded)  # fmt: skip
     told = _Told(delimited, own, literal, loaded)
-    return _encoded(_read_tree(files, entry, packages or {}, unreadable, told))
+    return _encoded(_read_tree(files, entry, styles, unreadable, told))
 
 
 @dataclass(frozen=True)
@@ -222,17 +272,167 @@ def _encoded(document: Document) -> Document:
     said = f"the input encoding is not UTF-8, in which {other} is read"
     refused = [(source.path, Refusal("tex-refused", at, said))
                for source in tree for at in source.reading.encodings]  # fmt: skip
-    return Document(document.sources, (*document.refusals, *refused)) if refused else document
+    return Document(document.sources, (*document.refusals, *refused),
+                    document.classes) if refused else document  # fmt: skip
+
+
+def _classes(
+    entry: str, tree: list[Source], files: Mapping[str, str],
+    styles: tuple[Mapping[str, str], Mapping[str, str]],
+) -> frozenset[str]:  # fmt: skip
+    """The `.tex` files a class or a package the tree loads inputs, and the files they input
+    in turn: a class's, not the author's text, though the manuscript folder holds them, as a
+    journal's class holds a list of its journals in a file it inputs. A class or a package
+    counts where the manuscript holds it, found as LaTeX finds it, from the entry file's
+    folder; its comments are passed over, and so is a path it builds with a command, which
+    names no file here, and a load inside a definition's body, which runs where the command
+    is used and may print there (`_bodies`). A file the tree inputs too is the tree's
+    (`_theirs`)."""
+    packages, classes = styles
+    folder = posixpath.dirname(entry)
+
+    def held(name: str, suffix: str, among: Mapping[str, str]) -> list[str]:
+        path = posixpath.normpath(posixpath.join(folder, name.strip() + suffix))
+        return [path] if name.strip() and path in among else []
+
+    todo = [path for source in tree for kind, name in source.reading.declared if kind == "class"
+            for path in held(name, ".cls", classes)]  # fmt: skip
+    todo += [path for source in tree for _at, name in source.reading.packages
+             for path in held(name, ".sty", packages)]  # fmt: skip
+    texts = {**files, **packages, **classes}
+    done: set[str] = set()
+    inputs: set[str] = set()
+    while todo:
+        path = todo.pop()
+        if path in done:
+            continue
+        done.add(path)
+        text = _COMMENT.sub(r"\1", texts[path])
+        bodies = _bodies(text)
+        starts = [start for start, _end in bodies]
+        for load in _LOADS.finditer(text):
+            before = bisect_right(starts, load.start()) - 1
+            if before >= 0 and load.start() < bodies[before][1]:
+                continue
+            if load["names"] is not None:
+                among = classes if load["how"].startswith("LoadClass") else packages
+                suffix = ".cls" if among is classes else ".sty"
+                todo += [found for name in load["names"].split(",")
+                         for found in held(name, suffix, among)]  # fmt: skip
+                continue
+            target, _why = resolve(entry, load["path"] or load["bare"] or "", files)
+            if target is not None:
+                inputs.add(target)
+                todo.append(target)
+    return _theirs(frozenset(inputs), tree)
+
+
+def _theirs(inputs: frozenset[str], tree: list[Source]) -> frozenset[str]:
+    """Of the files a class inputs, those the tree does not read: one the paper inputs too
+    is the paper's, read where the paper inputs it."""
+    return inputs - {source.path for source in tree}
+
+
+def _bodies(text: str) -> list[tuple[int, int]]:
+    """Where each definition in a class's or a package's text holds what it defines, in
+    order, from the brace that opens it to past the one that closes it: what is there runs
+    where the command is used, so an `\\input` in it is not the class's own but whatever
+    file uses the command's (round 1 of #445: `\\newcommand{\\abstracttext}{\\input{abstract}}`
+    in a package made the paper's abstract the package's). A body that is not closed runs to
+    the end of the text. A definition inside a body is part of it."""
+    spans: list[tuple[int, int]] = []
+    at = 0
+    while (found := _DEFINES.search(text, at)) is not None:
+        at = found.end()
+        if _LET.search(text, max(found.start() - 80, 0), found.start()):
+            continue
+        if found["tex"]:
+            at = _SPACE.match(text, at).end()
+            name = _CONTROL.match(text, at)
+            if name is None and text.startswith("{", at):
+                at = _closing(text, at)
+            opened = _next_brace(text, name.end() if name else at)
+            if opened < 0:
+                continue
+            at = _closing(text, opened)
+            spans.append((opened, at))
+            continue
+        groups = 1 if found["one"] else 2 if found["two"] else 3
+        at = _SPACE.match(text, at).end()
+        name = _CONTROL.match(text, at)
+        at = name.end() if name else _closing(text, at) if text.startswith("{", at) else at
+        while text.startswith("[", at := _SPACE.match(text, at).end()):
+            at = _closing(text, at, "[", "]")
+        opened = at
+        for _group in range(groups):
+            at = _SPACE.match(text, at).end()
+            if not text.startswith("{", at):
+                break
+            at = _closing(text, at)
+        if at > opened:
+            spans.append((opened, at))
+    return spans
+
+
+def _next_brace(text: str, at: int) -> int:
+    """Where the first `{` from `at` stands, not one a backslash escapes, or -1."""
+    while at < len(text):
+        if text[at] == "\\":
+            at += 2
+            continue
+        if text[at] == "{":
+            return at
+        at += 1
+    return -1
+
+
+def _closing(text: str, opened: int, opener: str = "{", closer: str = "}") -> int:
+    """Past the `closer` that closes the `opener` at `opened`, braces balanced inside it and
+    an escaped one passed over, or the end of the text where none does."""
+    depth, at = 0, opened
+    while at < len(text):
+        char = text[at]
+        if char == "\\":
+            at += 2
+            continue
+        if char == "{" and opener != "{":
+            at = _closing(text, at)
+            continue
+        if char == opener:
+            depth += 1
+        elif char == closer:
+            depth -= 1
+            if depth == 0:
+                return at + 1
+        at += 1
+    return len(text)
+
+
+def own_document(text: str) -> int:
+    """Where a file opens a document of its own, at its `\\begin{document}`, or -1 where it
+    opens none: read as an entry file is, it opens in its preamble and does not read on as
+    body, so a `\\begin{document}` in a comment, a listing or an `\\iffalse` block opens none.
+    One refused in that preamble before it reaches a `\\begin{document}` opens none either:
+    it is read past its refusal, which fails it, as a file nothing inputs is (round 1 of
+    #445: it was taken for a second document at its first character and not read). Nor does
+    a `standalone` picture or a `subfiles` part, which the paper prints (`_PARTS`)."""
+    reading = read(text)
+    if reading.body_start <= 0:
+        return -1
+    if {name for kind, name in reading.declared if kind == "class"} & _PARTS:
+        return -1
+    return max(text.rfind("\\begin", 0, reading.body_start), 0)
 
 
 def _read_tree(
     files: Mapping[str, str],
     entry: str,
-    packages: Mapping[str, str],
+    styles: tuple[Mapping[str, str], Mapping[str, str]],
     unreadable: frozenset[str],
     told: _Told,
 ) -> Document:
     """`read_tree`, each file told what `told` holds."""
+    packages = styles[0]
     known = {**files, **dict.fromkeys(unreadable, "")}
     sources: list[Source] = []
     refusals: list[tuple[str, Refusal]] = []
@@ -297,13 +497,21 @@ def _read_tree(
     if entry in files:
         seen.add(entry)
         visit(entry, None, (), (), (entry,))
+    classes = _classes(entry, sources, files, styles)
     for path in sorted(files):
-        if path not in seen:
-            text = files[path]
-            reading = told.read(text, body=True, loose=True)
-            sources.append(Source(path, text, reading, loose=True))
-            refusals.extend((path, refusal) for refusal in reading.refusals)
-    return Document(tuple(sources), tuple(refusals))
+        if path in seen or path in classes:
+            continue
+        text = files[path]
+        begins = own_document(text)
+        if begins >= 0:
+            said = (f"{path} holds a document of its own, with its own \\begin{{document}}, "
+                    f"and is not read as part of {entry}'s")  # fmt: skip
+            refusals.append((path, Refusal(SECOND_DOCUMENT, begins, said)))
+            continue
+        reading = told.read(text, body=True, loose=True)
+        sources.append(Source(path, text, reading, loose=True))
+        refusals.extend((path, refusal) for refusal in reading.refusals)
+    return Document(tuple(sources), tuple(refusals), tuple(sorted(classes)))
 
 
 def read_document(manuscript_dir: Path, *, supplementary: bool = False) -> Document:
@@ -325,5 +533,6 @@ def read_document(manuscript_dir: Path, *, supplementary: bool = False) -> Docum
 
     files, unreadable = gathered("*.tex")
     packages, _ = gathered("*.sty")
+    classes, _ = gathered("*.cls")
     entry = SUPPLEMENT_ENTRY if supplementary else ENTRY
-    return read_tree(files, entry, packages=packages, unreadable=unreadable)
+    return read_tree(files, entry, packages=packages, unreadable=unreadable, classes=classes)

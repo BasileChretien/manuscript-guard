@@ -7271,6 +7271,75 @@ def test_a_delimited_command_where_it_prints_and_an_import_of_nothing_fail_build
     assert not [f for f in report.findings if f.code == "tex-not-input"]
 
 
+def test_a_classs_own_file_is_not_main_text_and_a_second_document_fails_build(
+    project: Path,
+) -> None:
+    """A file the paper's class inputs, kept with the class in a folder of its own, is the
+    class's: none of its numbers is the paper's, and it is no file nothing inputs. A document
+    of its own beside `main.tex` fails BUILD at its `\\begin{document}`, and none of its
+    numbers is read as the main text's (2026-10-23: a journal's list of its journals, and a
+    supplement kept as a second document, were both read as main text)."""
+    from manuscript_guard.cli import _run_gates
+
+    entry = _as_latex(project)
+    folder = entry.parent
+    (folder / "style").mkdir()
+    entry.write_text(entry.read_text("utf-8").replace("{article}", "{style/journal}"), "utf-8")
+    (folder / "style" / "journal.cls").write_text("\\input{style/names}\n", "utf-8")
+    (folder / "style" / "names.tex").write_text("Volume 2731 of 1987.\n", "utf-8")
+    (folder / "supplement.tex").write_text(
+        "\\documentclass{article}\n\\begin{document}\nOf 9183 patients.\n\\end{document}\n",
+        "utf-8",
+    )
+    report, _project, _stage, _deferred = _run_gates(project, stage="submission")
+    named = {(f.code, f.path.name if f.path else None) for f in report.findings}
+    assert "names.tex" not in {name for _code, name in named}, report.render(project)
+    assert {code for code, name in named if name == "supplement.tex"} == {
+        "tex-second-document"
+    }, report.render(project)
+    (refused,) = [f for f in report.failures if f.code == "tex-second-document"]
+    assert (refused.gate, refused.line) == ("BUILD", 2)
+
+
+def test_an_input_in_a_definition_a_standalone_picture_and_a_refused_file_are_read(
+    project: Path,
+) -> None:
+    """A file the author's package inputs only inside a command's definition is printed where
+    the paper uses the command: it is read, its numbers reach the gates, and it is warned of.
+    A `standalone` picture is read and warned of, and not failed as a second document; nor is
+    a file refused before the `\\begin{document}` it shows in a listing, which keeps its own
+    refusal (round 1 of #445: the first was read by no gate, with no warning, and the other
+    two failed BUILD as documents of their own)."""
+    from manuscript_guard.cli import _run_gates
+
+    entry = _as_latex(project)
+    folder = entry.parent
+    entry.write_text(
+        entry.read_text("utf-8").replace(
+            "\\begin{document}\n", "\\usepackage{mine}\n\\begin{document}\n\\abstracttext\n"
+        ),
+        "utf-8",
+    )
+    (folder / "mine.sty").write_text("\\newcommand{\\abstracttext}{\\input{abstract}}\n", "utf-8")
+    (folder / "abstract.tex").write_text("Of 9183 patients, 12 died.\n", "utf-8")
+    (folder / "fig.tex").write_text(
+        "\\documentclass{standalone}\n\\usepackage{tikz}\n\\begin{document}\n"
+        "\\begin{tikzpicture}\\node{n = 42};\\end{tikzpicture}\n\\end{document}\n",
+        "utf-8",
+    )
+    (folder / "notes.tex").write_text(
+        "\\csname x\\endcsname 42.\n\\begin{verbatim}\\begin{document}\\end{verbatim}\n", "utf-8"
+    )
+    report, _project, _stage, _deferred = _run_gates(project, stage="submission")
+    codes: dict[str, set[str]] = {}
+    for f in report.findings:
+        codes.setdefault(f.path.name if f.path else "", set()).add(f.code)
+    assert {"tex-not-input", "unclassified-number"} <= codes.get("abstract.tex", set()), codes
+    assert "tex-not-input" in codes.get("fig.tex", set()), codes
+    assert {"tex-not-input", "tex-refused"} <= codes.get("notes.tex", set()), codes
+    assert not [f for f in report.findings if f.code == "tex-second-document"], codes
+
+
 def test_what_papers_from_arxiv_hold_that_latex_reads_passes_build(project: Path) -> None:
     """Each construct that 17 papers from arXiv held and the reader refused, though LaTeX
     reads it, so that the rest of each file was read as typed (2026-10-23): IEEE's thanks to

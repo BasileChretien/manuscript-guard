@@ -150,13 +150,11 @@ expected:
       is read as the closing mark, as the font prints it; not after a blank line, nor before
       a letter, babel's German accent; the inputs now hold such quotations (corpus round,
       2026-10-23)
-  - reading: abbreviations
+  - reading: latex documents
     why: >-
-      the brackets this pull request plants: one whose short form is followed by an equals
-      sign or a number defines nothing, as before, and one followed by a colon is read
-      exactly as before; what differs is the shapes of its earlier commits: a long
-      form takes no letter from inside a bracket it opens, and looks for it before that
-      bracket; a time of day, "8:30AM", "10:00 PM", is not read as an abbreviation, and
-      nothing is reported as undefined in a paragraph set in bold with no small letter or a
-      cell of a table's header row with none, a heading typed in capitals; the inputs now
-      hold such brackets, times, headings and tables
+      a reading new in this pull request, of a manuscript folder's files: a `.tex` file a
+      class or a package the paper loads inputs is the class's and read by neither document,
+      where it was read as loose main text, and a file that holds a document of its own is
+      refused, `tex-second-document`, where it was read as loose main text; a file a class
+      inputs only inside a command's definition, a `standalone` picture and a file
+      refused before its `\begin{document}` are read as loose main text, as before

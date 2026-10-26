@@ -1314,6 +1314,53 @@ order is `printed_order`.
   (`tex-not-input`). It is read as body under no heading, where definitions, `\makeatletter`
   (after which `@` is a letter) and conditionals are accepted as in the preamble, since such a
   file may be a set of macros left out.
+- A `.tex` file that a class or a package the paper loads inputs is the class's, and is not
+  read at all (2026-10-23: a journal's class, kept in a folder of its own beside the paper,
+  inputs a list of the publisher's journals from that folder, which the paper never inputs,
+  and its numbers, abbreviations and words reached the gates as loose main text). A class or
+  a package counts where the manuscript holds it, found as LaTeX finds it from the entry
+  file's folder: the class `\documentclass` names, each package a file of the tree loads, the
+  author's among them, and what those load in turn with `\RequirePackage`, `\usepackage` or
+  `\LoadClass`. Each is read for its loads and nothing else: `\input` with braces or without,
+  `\@input` and `\InputIfFileExists`, by a path written out in full, outside a comment and
+  outside a definition's body. A load inside the body of `\newcommand`, `\renewcommand`,
+  `\providecommand`, `\DeclareRobustCommand`, `\def`, `\gdef`, `\edef`, `\xdef`, LaTeX's
+  `\@namedef`, `\protected@edef` and `\protected@xdef`, etoolbox's `\csdef` and
+  `\newrobustcmd` and their kin, xargs' `\newcommandx`, expl3's `\cs_new:Npn`,
+  `\cs_set:Npn` and `\cs_gset:Npn` in their `x`, `e`, `c`, `_protected` and `_nopar` forms
+  and without the `p` (round 2 of #445), `\newenvironment` and the document commands
+  and environments (`\NewDocumentCommand` and its kin), at any depth inside it, runs where
+  the command is used, and its file is printed there: it stays loose, read and warned of
+  (round 1 of #445: a package's `\newcommand{\abstracttext}{\input{abstract}}` made the
+  paper's abstract the package's, read by no gate). A body runs from the brace past the
+  command's name, its options and, for TeX's forms, its parameter text, to the brace that
+  closes it, or to the end of the file where none does; a defining command copied with
+  `\let` defines nothing. A file one inputs is read for its loads too, and is the class's in
+  turn. A file the paper inputs as well is the paper's, read where the paper inputs it
+  (`structure._theirs`). The rule follows what a class
+  inputs, not where its files are kept: a file of the author's in the class's folder that
+  nothing inputs is loose and warned of, as any other is. `structure._classes`;
+  `Document.classes` lists them.
+- A `.tex` file that holds a document of its own, a `\begin{document}` the reader reaches
+  when it reads the file as an entry file, is another document and never part of the one
+  whose folder holds it (2026-10-23: a paper's supplement, kept as a second document beside
+  `main.tex`, was read as its main text, and so was another paper left in the folder). It
+  fails BUILD at every stage, `tex-second-document`, at that `\begin{document}`, and no
+  gate reads it. A `\begin{document}` in a comment, a listing or an `\iffalse` block opens
+  none. Some files that show one are not second documents, and are read as files nothing
+  inputs, loose and warned of, as before (round 1 of #445). One is a picture in the
+  `standalone` class, which the paper prints, placed by `\includestandalone` or as the PDF
+  compiled from it: it failed BUILD at every stage. So is a part in the `subfiles` class,
+  `\documentclass[../main.tex]{subfiles}`, which the paper places by `\subfile`, itself
+  refused (round 2). The last is a file the reader refuses in
+  its preamble before it reaches a `\begin{document}`: it keeps that refusal and is read
+  past it, where it was refused as a second document at its first character and not read.
+  The supplement is the document at `supplementary/main.tex`, as the Markdown
+  supplement is what `supplementary/` holds: a second document there is refused too. It is
+  refused rather than taken for the supplement because a file names no document it is,
+  and a title that says "Supplementary" is a guess, where the folder is not; it is refused
+  rather than passed over with a warning because, like a file of the other format, it would
+  be text no gate reads and no build prints (`other-format-file`).
 
 **Environments.**
 - In `figure` and `table`, the caption is prose, and a typed number in a `tabular` is
@@ -1749,6 +1796,38 @@ The result is compiled and packed by the code above, and checked three times:
   prints. A file input from inside a definition is read as one nothing inputs, warned of,
   and the commands it defines with delimited parameters reach no other file, so a use of
   one is not refused (2026-10-23, the fix-only round of part 1).
+- A file a class inputs by a path it builds, `\input{\@journal-names}`, or a class that is
+  not UTF-8, which the reader cannot read, leaves the file to be read as one nothing inputs,
+  warned of (`tex-not-input`); a path in a class's `\iffalse` block or in a branch it does
+  not take counts as input. A file the class's file list or the author's package inputs is
+  not read at all, so a command it defines is not known to the reader (2026-10-23).
+- A class's definition is found by its command's name, not by expanding the class: a
+  LaTeX definition whose name is built, `\expandafter\newcommand\csname x\endcsname{...}`
+  (TeX's `\def` so written is seen), or a defining command the class renamed with `\let`
+  and uses under that name, is not seen as a definition, and a load in it counts as the
+  class's. So does a load kept in a token list or a box, expl3's `\tl_set:Nn` or
+  `\sbox`, which is stored, not defined, and a load in the code of an expl3 function other
+  than the `\cs_new`, `\cs_set` and `\cs_gset` forms, `\prg_new_conditional:Npnn` say; a load in a
+  hook, `\AtBeginDocument`
+  or `\DeclareOption`'s code, counts as the class's too, since it runs whether or not the
+  paper asks for it. A body whose braces do not balance, such as one with a brace changed
+  by `\catcode`, runs to the end of the file, so the loads past it stay loose and warned of
+  (rounds 1 and 2 of #445). xargs' `\providecommandx` is not read as a definition, and a
+  defining command copied with expl3's `\cs_new_eq:NN` or `\cs_set_eq:NN` is taken for one,
+  its next braced group for a body; the generated folders plant the TeX and LaTeX forms,
+  and the expl3 and xargs forms are held by unit tests alone.
+- A `standalone` picture, a `subfiles` part, and a document of its own that the reader
+  refuses in its preamble, are read as files nothing inputs, under no heading and warned of:
+  `\includestandalone` is not followed, so a picture's text is not read where the paper
+  places it (and `\subfile` is refused where the paper uses it), and a second
+  document refused before its `\begin{document}` fails BUILD by that refusal rather than as
+  a second document, its preamble and its body read as loose main text (round 1 of #445).
+- A file a class inputs, and a document of its own, are left out of each document, but not
+  out of the manuscript's file list (`Reader.files`): G11's digests, the review panel's
+  prompt and G12's reading of the manuscript's text as typed still take them in (2026-10-23).
+- A supplement kept as a second document beside `main.tex` is refused, not read as the
+  supplement: the author moves it to `supplementary/main.tex`, and its paths to pictures and
+  inputs with it, since a path resolves from its entry file's folder (2026-10-23).
 - An appendix's tables and figures are the supplement's to G2 only: G4 still counts one
   placed with a binding toward the journal's limit on the main text's display items. An
   appendix that numbers its own, `\renewcommand{\thetable}{S\arabic{table}}` after

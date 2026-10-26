@@ -2100,6 +2100,109 @@ def latex_trees(
     return files, under, marks
 
 
+#: Each way a class or a package names a file it inputs, as `{}` takes the file's path.
+CLASS_INPUTS = ("\\input{{{}}}", "\\input {}\n", "\\@input{{{}}}",
+                "\\InputIfFileExists{{{}}}{{}}{{}}")  # fmt: skip
+#: Each way a file shows a `\begin{document}` it does not open.
+NOT_A_DOCUMENT = ("% \\begin{document}\n", "\\begin{verbatim}\n\\begin{document}\n"
+                  "\\end{verbatim}\n", "\\iffalse\\begin{document}\\fi\n")  # fmt: skip
+#: Each way a class or a package defines a command whose code inputs a file, where the paper
+#: uses the command, as `{}` takes the file's path (round 1 of #445).
+DEFINED_INPUTS = (
+    "\\newcommand{{\\cmd}}[1][{{a]b}}]{{\\par{{\\input{{{}}}}}}}",
+    "\\def\\cmd#1.{{\\relax\\input{{{}}}}}",
+    "\\long\\gdef\\cmd{{\\iftrue{{\\input {}\n}}\\fi}}",
+    "\\NewDocumentCommand{{\\cmd}}{{O{{}} m}}{{\\@input{{{}}}}}",
+    "\\newenvironment{{cmd}}{{\\begin{{center}}}}{{\\InputIfFileExists{{{}}}{{}}{{}}}}",
+    "\\expandafter\\edef\\csname cmd\\endcsname{{\\noexpand\\input{{{}}}}}",
+)
+#: What the reader refuses in a file's preamble, before a `\begin{document}` the file shows in
+#: a listing (round 1 of #445).
+PREAMBLE_REFUSALS = ("\\csname x\\endcsname", "\\catcode`\\@=11", "\\expandafter\\relax")
+
+
+@st.composite
+def latex_folders(draw: st.DrawFn) -> tuple[dict[str, str], dict[str, set[str]]]:
+    """A LaTeX manuscript's folder, by path, and what the reader is to make of each of its
+    files, worked out apart from it: `read` the files the main text's tree reads, `classes`
+    those a class or a package the paper loads inputs, `loose` those nothing inputs, and
+    `second` the document of its own, which stands beside the main text's entry file, in a
+    folder under it, or in the supplement's folder beside the supplement's entry.
+
+    Every folder holds one of each kind (2026-10-23): a class the paper loads, kept in a
+    folder drawn, which inputs a file in each way of `CLASS_INPUTS`, names one only in a
+    comment, inputs one the paper inputs too, and loads a package that inputs another; the
+    author's package, beside the entry file, which inputs one; a class the paper does not
+    load, which inputs one; a file nothing inputs in the class's folder or another; a file
+    that shows a `\\begin{document}` in each way of `NOT_A_DOCUMENT`; and a document of its
+    own. And since round 1 of #445: the class loads a class with `\\LoadClass`, which inputs
+    one, and defines a command to input one in each way of `DEFINED_INPUTS`, a file the paper
+    prints and so loose; a picture in the `standalone` class, which the paper places with
+    `\\includestandalone`, loose; a part in the `subfiles` class, loose (round 2); and a file
+    refused in its preamble, in a way drawn from `PREAMBLE_REFUSALS`, before a
+    `\\begin{document}` it shows in a listing, loose and `refused`."""
+
+    def words() -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
+
+    style = draw(st.sampled_from(("", "cls/", "a/b/")))
+    stem = draw(st.sampled_from(("journal", "paper")))
+    forms = list(draw(st.permutations(CLASS_INPUTS)))
+    listed = [f"{style}list{index}.tex" for index in range(len(forms))]
+    files = {name: f"{words()} {index + 2}1.\n" for index, name in enumerate(listed)}
+    commented, shared = f"{style}commented.tex", f"{style}shared.tex"
+    deeper, macros, unloaded = f"{style}deeper.tex", "macros.tex", "unloaded.tex"
+    for name in (commented, shared, deeper, macros, unloaded):
+        files[name] = f"{words()} 47.\n"
+    lines = [form.format(name.removesuffix(".tex") if "{}\n" in form else name)
+             for form, name in zip(forms, listed, strict=True)]  # fmt: skip
+    lines += [f"% \\input{{{commented}}}", f"\\input{{{shared}}}",
+              f"\\RequirePackage[{words()}]{{{style}extra}}",
+              f"\\LoadClass{{{style}base}}"]  # fmt: skip
+    defined = [f"{style}defined{index}.tex" for index in range(len(DEFINED_INPUTS))]
+    for index, (form, name) in enumerate(zip(DEFINED_INPUTS, defined, strict=True)):
+        files[name] = f"{words()} {index + 2}3.\n"
+        lines.append(form.format(name.removesuffix(".tex") if "{}\n" in form else name))
+    based = f"{style}based.tex"
+    files[based] = f"{words()} 61.\n"
+    files[f"{style}{stem}.cls"] = "\n".join(draw(st.permutations(lines))) + "\n"
+    files[f"{style}base.cls"] = f"\\input{{{based}}}\n"
+    files["other.cls"] = f"\\input{{{unloaded}}}\n"
+    files[f"{style}extra.sty"] = f"\\input{{{deeper}}}\n"
+    files["mine.sty"] = f"\\input{{{macros}}}\n"
+    shows = draw(st.sampled_from(("notes.tex", "a/b/notes.tex")))
+    files[shows] = "".join(f"{part}{words()}\n" for part in draw(st.permutations(NOT_A_DOCUMENT)))
+    loose = draw(st.sampled_from(("old.tex", f"{style}old.tex")))
+    files[loose] = f"{words()} 9.\n"
+    second = draw(st.sampled_from(("supplement.tex", "extra/si.tex", "supplementary/si.tex")))
+    files[second] = (f"\\documentclass{{article}}\n\\title{{{words()}}}\n\\begin{{document}}\n"
+                     f"{words()} 83.\n\\end{{document}}\n")  # fmt: skip
+    if second.startswith("supplementary/"):
+        files["supplementary/main.tex"] = (f"\\documentclass{{article}}\n\\begin{{document}}\n"
+                                           f"{words()}\n\\end{{document}}\n")  # fmt: skip
+    picture = draw(st.sampled_from(("fig.tex", "figures/fig.tex")))
+    options = draw(st.sampled_from(("", "[tikz, border=2pt]")))
+    files[picture] = (f"\\documentclass{options}{{standalone}}\n\\usepackage{{tikz}}\n"
+                      "\\begin{document}\n\\begin{tikzpicture}\\node{n = 42};\\end{tikzpicture}\n"
+                      "\\end{document}\n")  # fmt: skip
+    part = draw(st.sampled_from(("part.tex", "sections/part.tex")))
+    files[part] = (f"\\documentclass[{'../' if '/' in part else ''}main.tex]{{subfiles}}\n"
+                   f"\\begin{{document}}\n{words()} 7.\n\\end{{document}}\n")  # fmt: skip
+    refused = draw(st.sampled_from(("refused.tex", "a/b/refused.tex")))
+    files[refused] = (f"{draw(st.sampled_from(PREAMBLE_REFUSALS))} {words()} 5.\n"
+                      "\\begin{verbatim}\\begin{document}\\end{verbatim}\n")  # fmt: skip
+    files["main.tex"] = (f"\\documentclass[{words()}]{{{style}{stem}}}\n\\usepackage{{mine}}\n"
+                         "\\usepackage{standalone}\n"
+                         f"\\begin{{document}}\n{words()}\n\\input{{{shared}}}\n{words()}\n"
+                         f"\\includestandalone[width=3cm]{{{picture.removesuffix('.tex')}}}\n"
+                         "\\end{document}\n")  # fmt: skip
+    expected = {"read": {"main.tex", shared, "mine.sty"},
+                "classes": {*listed, deeper, macros, based},
+                "loose": {commented, unloaded, shows, loose, *defined, picture, part, refused},
+                "second": {second}, "refused": {refused}}  # fmt: skip
+    return files, expected
+
+
 #: The headings of the parts of a paper, each written more than one way, and bindings to
 #: put under them: what G8 reads to find a number a summary gives and the paper does not.
 SUMMARIES = (
@@ -5360,6 +5463,8 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "latex mask": st.one_of(latex_texts(), latex_straight_quotes().map(lambda drawn: drawn[0])),
     "latex refusals": latex_texts(),
     "latex sections": latex_texts(),
+    "latex documents": st.one_of(latex_trees().map(lambda drawn: drawn[0]),
+                                 latex_folders().map(lambda drawn: drawn[0])),  # fmt: skip
     "latex bindings": latex_texts(),
     "latex citations": latex_texts(),
     "latex printed": latex_texts(),

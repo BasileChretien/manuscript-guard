@@ -1422,16 +1422,72 @@ or a name, `\let\chapter\section` (round 1). Let to anything else, the command i
 again (Basile, 2026-10-23, after two journals' templates: the first two were refused at the
 definition, and the rest of each file read as typed).
 
+A `\def` whose parameter text holds no parameter, only what must follow each use,
+`\def\eg/{e.g.\@}`, takes nothing: a use prints the body, a text the definition holds, and
+what follows it, the `/`, is TeX's, passed over as a run of spaces is one space and a line
+break, not a blank line, a space. A use it does not follow is refused where it prints, as a
+use of delimited parameters is, since TeX stops there: `\def\bSig\mathbf{\Sigma}`, then
+`$\bSig$`. The spaces after a control word in the parameter text are no token, as at a use,
+so `\def\x\relax /{a}` is followed by `\relax/` (round 1 of #442). The tree tells each file
+of these too (2026-10-23: a paper's package of such shortcuts, `\eg/` and `\wm/` among them,
+was refused at the first use).
+
+`\providecommand` of a command that is defined defines nothing, so one of a command the reader
+reads is read as before, in the preamble and in the body. A command that a package gives
+and LaTeX does not, siunitx's `\unit`, `\num`, `\qty` and the rest (`PACKAGE_COMMANDS`), is
+the reader's only where a file of the tree loads a package that gives it, siunitx, units for
+`\unit` or physics for `\qty`; elsewhere an author's definition of it makes it the author's
+command in every file of the tree, read as an unknown command is, as the front matter's
+commands are above (2026-10-23: an article's own `\unit` for a unit vector, with no
+siunitx, was refused as defined again).
+
+TeX looks for an argument past spaces and one line break, and past a comment with its line's
+break and the next line's spaces, as many lines of comments as there are, but not past a blank
+line, which ends the paragraph. The reader does the same, and records each comment so passed
+(2026-10-23: pandoc's `\newenvironment{CSLReferences}[2] % #1 hanging-indent`, its body on
+the next line, was read as a group, and a brace after it closed nothing).
+
+A reference list typed in `thebibliography` is often BibTeX's `.bbl` pasted in, whose header
+tests what is loaded and defines what the style needs: natbib's
+`\expandafter\ifx\csname urlstyle\endcsname` and `\providecommand{\url}`, REVTeX's
+`\makeatletter` and its `\providecommand \@ifx`. In such a list's header, from its `\begin` to
+its first `\bibitem`, the reader reads a conditional as in the preamble, both branches, and
+accepts `\makeatletter`, `@` a letter to the list's end, where TeX's group puts it back;
+`\expandafter` and `\csname`; and `\catcode` and the rest of what changes how characters are
+read in a definition's body only, where it prints nothing. In its entries each is refused as
+in the body (round 1 of #442). REVTeX's `\citenamefont` and harvard's and apacite's
+`\citeauthoryear`, the labels of its entries, are no citations anywhere in the list; a
+citation in an entry, `\bibitem{a} See \citeA{b}`, is one, and one the reader does not know is
+refused there as elsewhere (2026-10-23: three papers' lists were refused at their header, and
+with the span of the list unrecorded, G6, the pack and the blind check read it as text).
+
+A command whose name holds `cite` is a citation's: one the reader does not know is refused
+where it prints, since its keys would not reach G7, however the name holds it, `\citeZ`,
+`\mycite`, `\mycitep`, `\maincite`. Not where the name opens with an English word that cites
+nothing, `\excite`, `\recited`, `\solicited`, `\elicited`, `\anthracite`, `\plebiscite`: such
+a word inside a name is no word of it, and `\maincite`, which holds "incite", is refused (round
+2 of #442). Nor in IEEE's `\IEEEcompsocitemizethanks`, named whole (2026-10-23: it was refused). The reader
+knows natbib's and biblatex's commands, biblatex's multi-citations `\footcitetexts` among
+them, and apacite's and chicago's, read from their `.sty`: `\citeA`, `\citeNP`,
+`\citeauthorNP`, `\citeyearNP`, `\shortcite` and `\fullcite` with their `A`, `NP`, `author`
+and `authorNP` forms, `\nocitemeta`, and chicago's `\citeN`, `\citeANP`, `\shortciteN` and
+`\shortciteANP`. apacite's prenote in angle brackets, `\citeA<see>[p.~3]{key}`, is read as a
+citation's note (round 1 of #442: a rule that read only a name's start and end let
+`\shortciteNP` and `\mycitep` pass unread, their keys hidden from G7).
+
 Refused:
 - a definition, in a file of the author's, of any command the reader reads, `\mg` among them,
   but `\abstract`, which the reader read as an unknown command before it opened a section and
-  which an author restyles;
-- a use of a command defined with delimited parameters, where it prints (above);
+  which an author restyles, pandoc's `\citeproc` and `\citeproctext`, which its template
+  defines, `\providecommand` of one, and a package's command where no package that gives it
+  is loaded (above);
+- a use of a command defined with delimited parameters, where it prints (above), and a use
+  that what its parameter text holds does not follow;
 - anything that changes how characters are read: `\catcode`, `\makeatletter` in the body,
   `\csname`, `\expandafter`, and `babel` with a language whose shorthands make a character
-  active;
+  active, but in a reference list's header (above);
 - in the body, any conditional but a plain `\iffalse` block and `\ifthenelse`, a command whose
-  branches are its arguments and are both read.
+  branches are its arguments and are both read, and those of a reference list's header.
 
 **Characters.**
 - `--` and `---` stay as typed, as in Markdown.
@@ -1440,7 +1496,11 @@ Refused:
 - An accent command or `\-` inside a word cannot be written in place without a NUL that splits
   the word, so that word is hidden from `words`. G14 says, once a file, how many words it did
   not read and why: the file is UTF-8, so type the letter.
-- An `inputenc` other than `utf8` is refused.
+- An `inputenc` other than `utf8` is refused, but in a tree whose files are all ASCII, which
+  reads the same in each encoding inputenc knows. A file of ASCII that sets one is accepted
+  and the tree refuses it there where another of its files is not ASCII, since TeX reads
+  every file of the tree in that encoding (2026-10-23: a paper's `latin9` was refused in a
+  file of ASCII).
 
 **Refused.** Each refusal is a finding under BUILD that fails at every stage, as `unclear-fence`
 does. Beyond those above, `tex-unbalanced` covers a group, an environment or maths left open or
@@ -1809,9 +1869,9 @@ The result is compiled and packed by the code above, and checked three times:
   a dialect, `language=[Sharp]C`, and `\lstset{language=R}` leave the language unread.
 - A command not in the table has its arguments read, by design, so layout the table lacks,
   `\titlespacing` in the body, or a primitive with a size and no braces, `\vskip 6pt`, gives
-  an unclassified number now that G2 reads LaTeX. Each found goes into the table. A
+  an unclassified number now that G2 reads LaTeX. Each found goes into the table. (A
   definition whose body follows a comment, `\renewcommand{\arraystretch}%` with `{1.5}` on
-  the next line, has its body read as a group, so a parameter's size there is a number too.
+  the next line, had its body read as a group; it is the body since 2026-10-23.)
 - physics' `\qty[a = b]` holds an `=`, so it is taken for siunitx's option list and blanked
   (round 2 of #400). A siunitx key with no `=`, `\qty[sticky-per]`, is taken for a value and
   read as prose words; it holds no number (round 3).
@@ -1821,13 +1881,43 @@ The result is compiled and packed by the code above, and checked three times:
   5). A `)` in a comment inside a global note is taken for its end. A comment in the middle of
   a key, `\cite{smi%` with `th}` on the next line, leaves a space in the key, where TeX joins
   it, and `\\%` in a key list is taken for an escaped `%`.
-- apacite's `\citeA` and `\citeNP`, and an author's own command whose name holds `cite`, are
-  refused where they are used, as the design asks: the reader knows natbib's and biblatex's
-  (step 5). In the preamble such a command is not refused, since natbib's and biblatex's
-  settings stand there, `\setcitestyle` and `\DeclareCiteCommand` among them, and nothing of
-  it prints; biblatex's `\volcite` family is refused in the body (round 1 of step 5).
-  natbib's `\citetext`, `\defcitealias` and biblatex's `\citereset` and `\notecite` family
-  are read (round 2).
+- A citation command the reader does not know, an author's own whose name holds `cite`,
+  `\mycite` or `\mycitep`, is refused where it is used, as the design asks: the reader knows
+  natbib's, biblatex's, apacite's and chicago's (step 5; round 1 of #442). In the preamble
+  such a command is not refused, since natbib's and biblatex's settings stand there,
+  `\setcitestyle` and `\DeclareCiteCommand` among them, and nothing of it prints; biblatex's
+  `\volcite` family is refused in the body (round 1 of step 5). natbib's `\citetext`,
+  `\defcitealias` and biblatex's `\citereset` and `\notecite` family are read (round 2). A
+  name whose `cite` is in a word that cites nothing (`_CITE_WORDS`), `\excite`, `\recite` or
+  IEEE's `\IEEEcompsocitemizethanks`, is read as an unknown command, so an author's citing
+  command so named, `\recite`, hides its keys from G7; so do `\citenamefont` and
+  `\citeauthoryear` in a typed reference list, labels there by BibTeX's styles (2026-10-23).
+  apacite's `<...>` prenote is taken after any citation command, so a `<` typed right after
+  natbib's `\citep`, before its options and braces, is read as one, where LaTeX prints it
+  (round 1 of #442).
+- pandoc's `\citeproc{ref-smith2020}{Smith 2020, 3}`, which it writes for a citation under
+  citeproc, is read as a citation is, both arguments blanked, but not recorded as one: its key
+  names an entry of the typed list, `ref-` and the library's key, so G7 does not see it, and a
+  locator in its text is read by no gate, where Markdown's is (2026-10-23).
+- A reference list opened in one file and closed in another, `\input` between, is refused as
+  left open, so what `\makeatletter` changed in its header is never carried past its
+  `\end` (round 1 of #442).
+- `\providecommand` of a command the reader reads is taken to define nothing, though one a
+  package gives that is not loaded, `\providecommand{\url}[1]{\texttt{#1}}` with no url
+  package, defines it: the reader reads it as the package's, its address blanked where LaTeX
+  prints it as code. A package that a class loads is not known, so the author's `\unit` in a
+  class that loads siunitx is read as the author's; the compile stops on it (2026-10-23).
+- In a reference list typed in `thebibliography`, `\catcode` in a definition's body is
+  accepted, though where the command runs it changes how TeX reads what follows: REVTeX's
+  `\href`, where hyperref is not loaded, reads its address so, and the reader blanks that
+  address as typed either way (2026-10-23).
+- What follows a use of a command defined with a parameter text and no parameter is looked
+  for past spaces and one line break, not past a comment, so `\eg%` with `/` on the next line
+  is refused though TeX reads it. A comment between a command and its argument is passed over
+  as TeX passes it, but not between `\mg` and its brace, whose binding is then malformed, nor
+  between `\input` or `\import` and theirs, which are refused as naming no file (2026-10-23).
+- An encoding set in a file of ASCII is held to the files of its tree, not to a file nothing
+  inputs, which TeX does not read (2026-10-23).
 - A citation in a hook's body, `\AtBeginDocument{\nocite{smith2019}}`, is not recorded, as one
   in a definition's body is not, and G7 warns that its key is cited nowhere (round 1 of
   step 5).

@@ -3986,6 +3986,28 @@ capitals, or one that is not the capital of a word (`mL`), or a capital and a di
 plural defines its singular: `RORs` defines `ROR`, and `mAbs` after "monoclonal antibodies"
 defines `mAb`.
 
+A bracket that gives a statistic is no definition. A short form followed by an equals sign
+or a number, "(HR 1.32, 95% CI ...)" or "(MAP = 90 mmHg)", defines nothing, whatever the
+words before it: "a higher risk (HR 1.32, ...)" begins with the letters of HR, and read as
+a definition it was a second one after "the hazard ratio (HR)", or the only one where the
+manuscript never defined HR. A short form followed by a colon is read as any other, by its
+letters, exactly as before: "reporting odds ratio (ROR: 3.84)" defines, as pharmacovigilance
+writes a first estimate, and so do "creatinine clearance (CrCl: 58 mL/min)", "Hamilton
+Depression Rating Scale (HAM-D: 18)" and "the hazard ratio for death (HR: 1.3)", whose
+letters are not one per word or whose last word does not hold the short form's last letter. Two attempts to tell a
+statistic after a colon from a definition by its words, by their initials and then by the
+last word, each dropped definitions like these, so a colon is left as it was and its
+lookalikes are a Known gap.
+
+And a long form takes no letter from inside a bracket it opens. In "(WSE1) and 40 (12.5%)
+had a second WSE (WSE2)" the `2` of WSE2 is found only in "(12.5%)", and nothing is
+defined. Where the nearest letter is inside such a bracket and another stands before it,
+the bracket is passed over: the `S` of "Hospital Anxiety and Depression Scale (French
+version) (HADS)" is the one of "Scale", and the `I` of "body mass index (in kg/m2) (BMI)"
+the one of "index". A long form may close a bracket, "warning score (WSE) at 1 hour
+(WSE1)", where WSE1 is the WSE at one hour, and hold a whole one none of its letters is in,
+"adjusted (for age) relative risk (aRR)". Both rules come from manuscripts written in Word.
+
 **An abbreviation nobody defined is read by its capitals.** A word met with no definition
 is taken for one only when two capitals stand side by side, which keeps `McNemar`,
 `DeLong` and `PhD` out of the report. Three things with two capitals together are not
@@ -3998,7 +4020,8 @@ somewhere. The count is what tells the two apart. `CO2`, `H2SO4` and `NaHCO3` ar
 (serum creatinine), which the first version of this rule let through as formulas. A count
 is from two to twelve: nobody writes a count of one, which keeps `HSV1` in the report, and
 none runs to fifty, which keeps `IC50`. A count typeset as pandoc's subscript, `CO~2~`, or
-in subscript digits, is read as the count it is.
+in subscript digits, is read as the count it is. A time of day is not read either:
+`11:00AM` is the words `11` and `00AM`, and `10:00 PM` holds a `PM`.
 
 **A hyphenated word is one abbreviation where it reads as one.** `SARS-CoV-2` is read
 whole when it is defined or known, and so is a name that holds an ordinary word:
@@ -4021,8 +4044,15 @@ section the one before it ended in.
 
 **What is not a sentence is not read.** Listings, comments, bindings, citation keys and
 link targets go with `mask`, and inline code, equations, image captions, front matter and
-headings go after them: a heading in capitals is not an abbreviation. A reference list is
-not read at all. In a contributions, acknowledgements, funding or competing-interests
+headings go after them: a heading in capitals is not an abbreviation. Nor is one typed as
+a paragraph in bold: a manuscript converted from Word has a heading only where a heading
+style was used, and "**ABSTRACT**" or "**TITLE PAGE**" is a paragraph. So in a paragraph
+set entirely in bold whose letters are all capitals, and in a cell of a table's header row
+whose letters are ("MODEL 1"), nothing is reported as undefined; what the manuscript
+defines is still used there. A cell of a grid table's header that runs over several lines
+is read whole. A table's body is not a heading, since its rows name what they count,
+`COPD` and `CKD` in a baseline table, nor is a plain paragraph or a list item in capitals.
+A reference list is not read at all. In a contributions, acknowledgements, funding or competing-interests
 section, capitals are people and institutions, so nothing there is reported as undefined,
 and a funder named once with its acronym is not reported as unused. Those sections are
 found by a word anywhere in their title, since each publisher words the heading its own
@@ -4266,7 +4296,11 @@ absent. Each reader of it has a rule for a paper that has not said:
   order and says that `paper.yaml` declares no English.
 - **The review panel** is told nothing of a variant: the line "English:" is left out.
 - **G4** compares a journal's `english_variant` with the paper's only where the paper
-  declares one.
+  declares one. Where the journal's profile names an English and `paper.yaml` declares
+  none, G4 says so in a note, `english-variant-undeclared`, which names the English the
+  journal asks for and fails no stage (Basile, 2026-10-23). It reads no word of the
+  manuscript: whether the paper is written in the journal's English is G14's count, and
+  G14 holds it to the English of the more words, not to the journal's.
 
 ## One notation is the manuscript's own, and the space before a unit is the SI's
 
@@ -15485,10 +15519,29 @@ Open, recorded as each change landed:
   - A definition written as a sentence is not seen: "hereafter ROR", "which we call the
     ROR", "ROR stands for". Its short form is then reported as undefined.
   - A short form followed by a citation inside the bracket, `(ROR [@key])`, is not read as
-    a definition; `(ROR; ...)`, `(ROR, ...)` and `(ROR: ...)` are.
+    a definition; `(ROR; ...)` and `(ROR, ...)` are.
+  - A short form followed by an equals sign or a number defines nothing, so "the reporting
+    odds ratio (ROR 3.84)" leaves ROR undefined. One followed by a colon defines where its
+    letters are found before the bracket, a statistic or not: "a higher risk (HR: 1.32, 95%
+    CI ...)" defines HR as "higher risk", and in "use was lower in the young and older
+    adults (AOR: 0.41, 95% CI ...)" the letters A, O and R are there in order, so AOR is
+    defined as "and older adults", a second meaning beside the real one, reported as
+    `abbreviation-redefined`; where the real definition was deleted, the use above it is
+    reported as used before its definition rather than undefined. A colon before words is
+    read the same way, so "physical activity (PA: walking or cycling)" defines PA. A comma
+    does not make a statistic, so "and older
+    adults (AOR, 0.41)" is still read as defining AOR, with that long form, where the words
+    before it hold its letters in order.
   - Brackets inside brackets are not read: in "(reporting odds ratio (ROR) 3.84)" the inner
-    bracket is read and the outer is not, and a definition whose long form holds a bracket
-    is missed.
+    bracket is read and the outer is not, and a definition whose long form is in the
+    bracket and holds a bracket of its own is missed.
+  - A long form before its short form takes no letter from inside a bracket it opens: the
+    bracket is passed over and the letter looked for before it. A definition whose letter
+    is only in such a bracket is missed, as one whose long form is an aside would be. One
+    that takes its letters from a bracket it closes is read, the elliptical "at entry
+    (WSE1) and after 2 hours (WSE2)" among them, with the long form "WSE1) and after 2
+    hours". So is one whose letter is found past the aside in a count: "(WSE1) and 20
+    (12%) had a second WSE (WSE2)" defines WSE2 as "WSE1) and 20 (12%) had a second WSE".
   - The long form is matched by letters, so it can start a word late or early: "the ratio
     as before (ROR)" is read as a definition whose long form is "ratio as before". The
     definition is still counted; the long form quoted in a message can be wrong, and two
@@ -15539,7 +15592,23 @@ Open, recorded as each change landed:
     `Figure legends` section are main text, so a definition repeated in the Introduction
     after one of them, or in a legend that has to stand alone, is reported as
     `abbreviation-redefined`.
-  - A word typed in capitals for emphasis is reported as an undefined abbreviation.
+  - A word typed in capitals for emphasis is reported as an undefined abbreviation, unless
+    its paragraph is set entirely in bold and has no small letter in it.
+  - A heading typed in capitals in a plain paragraph, "APPENDIX 1", and a row label in a
+    table's body, "TOTAL", are reported as undefined abbreviations.
+  - In a paragraph set entirely in bold with no small letter, and in a cell of a table's
+    header row with none, read as headings typed in capitals, nothing is reported as
+    undefined. An abbreviation nobody defined that stands only in such places is missed:
+    a column headed `HIV`. A header row is told by the rule under it, a pipe table's
+    dashes or a grid table's `=` line; a simple table's, set out with spaces, is not read
+    as one. A grid table's header cell over several lines is read whole where every line
+    of the row has its bars where the first has them, and line by line where not. A
+    defined abbreviation is used in a heading so read, and a use above its definition is
+    still reported.
+  - A time of day is read as one only with its minutes and a colon: `11:00AM`, `10:00 PM`.
+    "9 AM" and "11.00 AM" are read as words, and `AM` is then reported as undefined. A
+    ratio before an abbreviation that reads as a time, "1:20 AM" for alveolar
+    macrophages, is taken for one, and its `AM` is not read.
   - Tables and figures are not read, since both are generated from results. An abbreviation
     defined in the text for a table's sake is reported as unused, and one used only in a
     caption is not seen. The hint on `abbreviation-unused` says so.
@@ -15562,9 +15631,11 @@ Open, recorded as each change landed:
   - The count is of the words on G14's list, and only those: a paper whose only spellings
     of either kind are in a name, a quotation or a section left unread has no English, and
     hears nothing.
-  - G4 does not compare a journal's `english_variant` with such a paper, nor with the
-    English its words are mostly in: a journal that insists on British English and a paper
-    that declares nothing and is written in American pass G4 and G14 alike.
+  - Under a journal whose profile names an English, G4 notes such a paper (see "Closed
+    since"), and the note fails no stage. Nothing compares the journal's English with the
+    English the paper's words are mostly in: a journal that insists on British English and
+    a paper that declares nothing and is written in American pass G4 and G14, with that note
+    alone.
   - The build writes `lang: en`, and Word and citeproc each take American English for it
     (Word's proofing, CSL's `en-US` locale, babel's `english` in LaTeX), and the live
     Zotero build names `en-US`. A paper written in British spelling that declares nothing
@@ -16449,6 +16520,18 @@ Open, recorded as each change landed:
   counts short. The front matter's and a listing's line breaks are kept.
 
 Closed since, and why each mattered (an open gap goes above this line):
+
+- **A paper that declared no English heard nothing of its journal's.** Since `english_variant`
+  became optional, G4 compared a journal's English with the paper's only where the paper
+  declared one, so a paper spelt in British English and sent to a journal that asks for
+  American was told nothing by G4, and G14 held it to its British majority. G4 now gives a
+  note, `english-variant-undeclared`, where the journal's profile names `en-GB` or `en-US`
+  and `paper.yaml` declares none: it names the English the journal asks for and says that
+  declaring it holds the paper to it. It is a note and fails no stage, as the author decided
+  (Basile, 2026-10-23): an English nobody declared is no rule broken, and the author is the
+  one to say which English the paper is in. A paper that declares the other English is
+  `english-variant-mismatch` as before. That nothing compares the journal's English with the
+  one the paper's words are in is still open, above.
 
 - **A LaTeX `\crefrange` cited nothing, and a range of `\ref`s cited its ends only.** G2
   said a figure that `\ref{a}--\ref{b}` or `\crefrange{a}{b}` took in, cited by itself only

@@ -1456,6 +1456,110 @@ def _a_file_input_is_read_after_its_parent(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate, "_input_ends", lambda source: [])
 
 
+# ------------------------------------------------- G14: what is a definition, what an abbreviation
+
+# Imported here, not at the top, to keep clear of the import block other branches edit.
+from generated import bracketed, capitalised  # noqa: E402
+
+
+@holds(60, bracketed())
+def test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not(
+    drawn: tuple[str, list[tuple[int, str, bool]]],
+) -> None:
+    """G14 reads a definition in both orders, in square brackets, with a separator or a
+    citation beside it, nested in a bracket that gives a statistic, and with a long form that
+    closes a bracket or holds a whole one; a letter whose nearest match is inside a bracket
+    the long form would open is looked for before that bracket. A short form followed by an
+    equals sign or a number is a statistic and defines nothing, whatever the words before
+    it; one followed by a colon defines where its letters are found before the bracket, as
+    any short form does, one per word or not; one whose letters are found only inside a
+    bracket its long form would open defines nothing, though the words before each hold its
+    letters."""
+    text, planted = drawn
+    read = _file(0, Path("main.md"), text, [], False)
+    defined = {at: short for at, short, _long in read.definitions}
+    for at, short, defines in planted:
+        if defines:
+            assert defined.get(at) == short, (short, text)
+        else:
+            assert at not in defined, (short, text)
+
+
+@holds(60, capitalised())
+def test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations(
+    drawn: tuple[str, list[str]],
+) -> None:
+    """A time of day, `8:30AM`, `10:00 PM`, a heading typed in capitals in bold and a column's
+    label in capitals in a table's header row are not reported as undefined abbreviations,
+    and an abbreviation the manuscript defines is used in such a cell; one beside a time of
+    day, in a cell with small letters, in a sentence, in a table's body, a list item or a
+    plain paragraph, or in a header cell over two lines with small letters, still is."""
+    text, undefined = drawn
+    nothing = language_gate._Known(frozenset(), frozenset())
+    report = language_gate._judge([_file(0, Path("main.md"), text, [], False)], nothing, Path("."))
+    found = sorted((f.code, f.message.split()[0]) for f in report.findings)
+    assert found == [("abbreviation-undefined", short) for short in undefined], text
+
+
+def _a_short_form_followed_by_a_colon_defines_nothing(patch: pytest.MonkeyPatch) -> None:
+    pattern = language_gate._OPENS_WITH.pattern
+    assert pattern.endswith("(?:$|[;,:])")
+    patch.setattr(language_gate, "_OPENS_WITH", re.compile(pattern[:-3] + "])"))
+
+
+def _a_number_or_an_equals_sign_opens_a_definition(patch: pytest.MonkeyPatch) -> None:
+    pattern = language_gate._OPENS_WITH.pattern
+    assert pattern.endswith("(?:$|[;,:])")
+    patch.setattr(language_gate, "_OPENS_WITH", re.compile(pattern[:-2] + r"=]|(?=\d))"))
+
+
+def _a_long_form_takes_a_letter_from_inside_a_bracket(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_inside_a_bracket", lambda before, matched: None)
+
+
+def _a_long_form_gives_up_at_a_bracket_it_would_open(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_passed_over", lambda before, opened: "")
+
+
+def _a_long_form_crosses_no_bracket(patch: pytest.MonkeyPatch) -> None:
+    def crosses(before: str, matched: list[int]) -> int | None:
+        crossed = any(char in "()[]" for char in before[matched[-1] : matched[0]])
+        return matched[-1] if crossed else None
+
+    patch.setattr(language_gate, "_inside_a_bracket", crosses)
+    patch.setattr(language_gate, "_passed_over", lambda before, opened: "")
+
+
+def _a_time_of_day_is_words(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_CLOCK", re.compile("(?!)"))
+
+
+def _a_heading_in_capitals_is_words(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_in_capitals", lambda prose: [])
+
+
+def _a_table_s_body_and_a_plain_line_in_capitals_are_headings(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    def everywhere(prose: str) -> list[tuple[int, int]]:
+        spans, at = [], 0
+        for line in prose.split("\n"):
+            if line.isupper():
+                spans.append((at, at + len(line)))
+            elif line.lstrip().startswith("|"):
+                bars = [at + index for index, char in enumerate(line) if char == "|"]
+                spans += [(left + 1, right) for left, right in zip(bars, bars[1:], strict=False)
+                          if prose[left + 1 : right].isupper()]  # fmt: skip
+            at += len(line) + 1
+        return spans
+
+    patch.setattr(language_gate, "_in_capitals", everywhere)
+
+
+def _a_header_cell_is_read_line_by_line(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_rows", lambda header: [[line] for line in header])
+
+
 @holds(60, latex_writing())
 def test_g6_judges_a_latex_document_where_it_prints_and_by_its_citations(
     drawn: tuple[str, list[tuple[str, str]]],
@@ -11608,6 +11712,42 @@ BROKEN = {
     "the Methods report nothing": (
         _the_methods_report_nothing,
         test_a_number_a_summary_gives_is_found_unreported_whatever_the_headings_are_called,
+    ),
+    "a short form followed by a colon defines nothing": (
+        _a_short_form_followed_by_a_colon_defines_nothing,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a number or an equals sign after a short form opens a definition": (
+        _a_number_or_an_equals_sign_opens_a_definition,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a long form takes a letter from inside a bracket it opens": (
+        _a_long_form_takes_a_letter_from_inside_a_bracket,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a long form gives up at a bracket it would open": (
+        _a_long_form_gives_up_at_a_bracket_it_would_open,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a long form crosses no bracket": (
+        _a_long_form_crosses_no_bracket,
+        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
+    ),
+    "a time of day is read as words": (
+        _a_time_of_day_is_words,
+        test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
+    ),
+    "a heading typed in capitals is read as words": (
+        _a_heading_in_capitals_is_words,
+        test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
+    ),
+    "a table's body and a plain line in capitals are headings": (
+        _a_table_s_body_and_a_plain_line_in_capitals_are_headings,
+        test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
+    ),
+    "a header cell is read line by line": (
+        _a_header_cell_is_read_line_by_line,
+        test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
     ),
     "a statistic is read at its printed value, not over what its last digit allows": (
         _a_statistic_is_read_at_its_printed_value,

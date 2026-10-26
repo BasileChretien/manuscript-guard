@@ -555,6 +555,142 @@ def signs() -> st.SearchStrategy[str]:
     return _in_a_row(_SIGNS, few=12, many=50)
 
 
+# ----------------------------------------------------------------- abbreviations, G14
+
+#: Brackets G14 reads as a definition, each with what finds its short form in it and the
+#: short form: both orders, square brackets, a separator after the short form, a definition
+#: nested in a bracket that gives a statistic, a citation before the short form's bracket,
+#: and two long forms that run across a bracket without taking a letter from inside one,
+#: the WSE taken after two hours and a risk adjusted for something said in brackets; a
+#: short form after a colon whose letters are found before the bracket, one per word or not,
+#: in the last word or not, and words that hold the letters of a statistic's short form in
+#: order, "and older adults (AOR: 0.41)", read by them as main reads them (a Known gap); and
+#: two whose nearest letter is inside a bracket the long form would open, found again before
+#: it.
+DEFINING = (
+    ("the reporting odds ratio (ROR)", "(ROR", "ROR"),
+    ("the PRR (proportional reporting ratio)", "PRR (", "PRR"),
+    ("the hazard ratio [HR]", "[HR", "HR"),
+    ("the information component (IC; a measure of disproportion)", "(IC", "IC"),
+    ("the signal detection ratio (SDR, 2.4)", "(SDR", "SDR"),
+    ("high (adjusted odds ratio (AOR): 0.41, 95% CI 0.22 to 0.77)", "(AOR", "AOR"),
+    ("the empirical Bayes geometric mean [@smith2020] (EBGM)", "(EBGM", "EBGM"),
+    ("a score at entry (SCE1) and after 2 hours (SCE2)", "(SCE2", "SCE2"),
+    ("the adjusted (for sex) relative risk (aRR)", "(aRR", "aRR"),
+    # A short form after a colon, its letters one per word or not.
+    ("the relative reporting ratio (RRR: 3.84, 95% CI 2.10 to 7.02)", "(RRR", "RRR"),
+    ("the case fatality rate (CFR: {{results.cfr}})", "(CFR", "CFR"),
+    ("the creatinine clearance (CrCl: 58 mL/min)", "(CrCl", "CrCl"),
+    ("the interquartile range (IQR: 3 to 7)", "(IQR", "IQR"),
+    ("the Hamilton Depression Rating Scale (HAM-D: 18)", "(HAM-D", "HAM-D"),
+    ("the Charlson Comorbidity Index score (CCI: 2)", "(CCI", "CCI"),
+    ("the estimated glomerular filtration rate at baseline (eGFR: 58)", "(eGFR", "eGFR"),
+    ("the hazard ratio for death (HR: 1.3)", "(HR", "HR"),
+    ("lower in the young and older adults (AOR: 0.41, 95% CI 0.22 to 0.77)", "(AOR",
+     "AOR"),
+    ("lower in the young and older adults (AOR:0.41)", "(AOR", "AOR"),
+    ("lower in the young and older adults (AOR: {{results.aor}})", "(AOR", "AOR"),
+    # The nearest letter inside a bracket the long form would open, another before it.
+    ("the brief pain scale (Spanish version) (BPS)", "(BPS", "BPS"),
+    ("the lean mass index (in kg/m2) (LMI)", "(LMI", "LMI"),
+)  # fmt: skip
+
+#: Brackets that are no definition, though the words before each hold its letters in order:
+#: a statistic, its short form followed by an equals sign or a number, whatever the words
+#: before it are, their initials among them; and a short form whose letters are found only
+#: by going into another bracket, "(12.5%)".
+NOT_DEFINING = (
+    ("lower in the young and older adults (AOR = 0.41)", "(AOR", "AOR"),
+    ("lower in the young and older adults (AOR 0.41)", "(AOR", "AOR"),
+    ("a higher risk (HR 1.32, 95% CI 1.10 to 1.58)", "(HR", "HR"),
+    ("a reduced risk (RR 0.71)", "(RR", "RR"),
+    ("higher odds of readmission (OR 1.52)", "(OR", "OR"),
+    ("the odds ratio (OR 1.5)", "(OR", "OR"),
+    ("the mean arterial pressure (MAP = 90 mmHg)", "(MAP", "MAP"),
+    ("the mean daily dose (MDD 40 mg)", "(MDD", "MDD"),
+    ("a warning score at entry (WSE1) and 40 (12.5%) had a second WSE (WSE2)", "(WSE2",
+     "WSE2"),
+    ("a warning score at entry (WSE1) and 40 [12.5%] had a second WSE (WSE2)", "(WSE2",
+     "WSE2"),
+)  # fmt: skip
+
+#: What has capitals together and is no abbreviation: a time of day, `11:00AM` read as
+#: `00AM`; a heading typed in capitals as a paragraph set in bold; and a column's label in
+#: capitals in a table's header row, a pipe table's and a grid table's, over two lines; and
+#: a defined abbreviation in such a cell, which is still a use of it.
+NOT_ABBREVIATIONS = (
+    "visits ran from 8:30AM to 5:45PM", "doses were given at 10:00 PM",
+    "the round began at 7:15\nAM", "the last dose was at 12:30:15PM", "**SUMMARY**",
+    "__SUPPLEMENTARY APPENDIX 2__", "**MATERIALS AND\nMETHODS**",
+    "| GROUP | TOTAL |\n|---|---|\n| women | 3 |",
+    "+-------+----+\n| MODEL | N  |\n| 1     |    |\n+=======+====+\n| men   | 3  |\n"
+    "+-------+----+",
+    "the relative risk (RR) was computed\n\n| RR | n |\n|---|---|\n| 1.2 | 3 |",
+)  # fmt: skip
+
+#: Abbreviations beside those, each still reported as undefined: one near a time of day,
+#: one in a cell with small letters in it, one in a sentence; one in a table's body, pipe
+#: and grid, in a list item and in a plain paragraph, all in capitals; and one in a header
+#: cell that runs over two lines and has small letters on the other.
+STILL_ABBREVIATIONS = (
+    ("the PM was high at 10:00", "PM"),
+    ("| Group | n |\n|---|---|\n| ICU stay | 12 |", "ICU"),
+    ("the NIH paid for the second year", "NIH"),
+    ("| Group | n |\n|---|---|\n| COPD | 12 |", "COPD"),
+    ("+-------+----+\n| Group | n  |\n+=======+====+\n| CKD   | 3  |\n+-------+----+", "CKD"),
+    ("- HIV\n- women", "HIV"),
+    ("ECG", "ECG"),
+    ("+---------------+----+\n| Patients with | n  |\n| AKI           |    |\n"
+     "+===============+====+\n| 3             | 4  |\n+---------------+----+", "AKI"),
+)  # fmt: skip
+
+
+def _paragraphs(draw: st.DrawFn, pieces: Iterable[str]) -> tuple[str, list[int]]:
+    """`pieces` each a paragraph of its own between paragraphs of words, and where each
+    starts. The words are plain, so that nothing between them hides a piece or defines."""
+    between = _in_a_row((*_spaced(FILLER), *_PHRASES), few=2, many=6)
+    text, starts = "", []
+    for piece in pieces:
+        text += draw(between) + "\n\n"
+        starts.append(len(text))
+        text += piece + "\n\n"
+    return text, starts
+
+
+@st.composite
+def bracketed(draw: st.DrawFn) -> tuple[str, list[tuple[int, str, bool]]]:
+    """A manuscript with every bracket of `DEFINING` and `NOT_DEFINING`, in an order drawn,
+    and for each where its short form stands, the short form, and whether it is defined
+    there."""
+    planted = draw(st.permutations([*((*each, True) for each in DEFINING),
+                                    *((*each, False) for each in NOT_DEFINING)]))  # fmt: skip
+    text, starts = _paragraphs(draw, (written for written, *_rest in planted))
+    found = []
+    for start, (written, needle, short, defines) in zip(starts, planted, strict=True):
+        found.append((start + written.rindex(needle) + needle.index(short), short, defines))
+    return text, found
+
+
+@st.composite
+def capitalised(draw: st.DrawFn) -> tuple[str, list[str]]:
+    """A manuscript with every piece of `NOT_ABBREVIATIONS` and `STILL_ABBREVIATIONS`, in an
+    order drawn, and the abbreviations it leaves undefined, in order of the alphabet."""
+    still = [written for written, _short in STILL_ABBREVIATIONS]
+    planted = draw(st.permutations([*NOT_ABBREVIATIONS, *still]))
+    text, _starts = _paragraphs(draw, planted)
+    return text, sorted(short for _written, short in STILL_ABBREVIATIONS)
+
+
+#: The same pieces, as blocks a manuscript of the pool is drawn with.
+ABBREVIATION_BLOCKS = tuple(
+    f"\n\n{written}\n\n"
+    for written in (
+        *(each[0] for each in (*DEFINING, *NOT_DEFINING, *STILL_ABBREVIATIONS)),
+        *NOT_ABBREVIATIONS,
+    )
+)
+
+
 #: What the Markdown mask hides over several lines, each with whether it is a comment, whose
 #: line breaks it hides too, since pandoc reads a comment in a paragraph, a blank line inside
 #: it too, as a part of that paragraph (corpus round, 2026-10-23). `{}` is words drawn.
@@ -5232,7 +5368,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     ),
     "abbreviations": st.fixed_dictionaries(
         {
-            "text": texts((), REFERENCE_BLOCKS),
+            "text": texts((), (*ABBREVIATION_BLOCKS, *REFERENCE_BLOCKS)),
             "known": st.lists(st.sampled_from(("ROR", "CI", "II")), max_size=2),
         }
     ),

@@ -142,7 +142,8 @@ of synonyms of its own.
 British or American, and G14 reports the words spelt the other way: "color" in a British
 paper, "randomised" in an American one, and both `-ise` and `-ize` in a British one. A paper
 that declares neither, as `init` leaves it unless given `--english`, is held to the English
-most of its words are in. A
+most of its words are in, and where the target journal's profile names an English, G4 notes
+which one the journal asks for and fails nothing. A
 name keeps its spelling, and so do a quotation, the reference list and the sections whose
 wording is somebody else's: contributions, acknowledgements, funding and competing
 interests, where the role names are CRediT's and a funder's sentence is the funder's. The

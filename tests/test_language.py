@@ -9,6 +9,7 @@ everything in attention: the quiet half is what keeps the warnings read.
 
 from __future__ import annotations
 
+import re
 import shutil
 from pathlib import Path
 
@@ -549,6 +550,214 @@ def test_the_long_form_is_matched_letter_by_letter() -> None:
     assert _long_form("ROR", "the ROR") is None, "a short form does not define itself"
 
 
+@pytest.mark.parametrize("value", [" = 0.41", "=0.41", " 0.41"])
+def test_a_statistic_in_brackets_is_not_a_definition(project: Path, value: str) -> None:
+    """A short form followed by an equals sign or a number is a statistic and defines
+    nothing, though "and older adults" holds the letters of AOR in order."""
+    report = written(
+        project,
+        "# Results\n\nThe adjusted odds ratio (AOR) was computed for each group. Use was "
+        f"lower among the young and older adults (AOR{value}, 95% CI 0.22 to 0.77).\n",
+    )
+    assert not report.findings, found(report)
+
+
+@pytest.mark.parametrize("value", [": 0.41", ":0.41", ": {{results.aor}}"])
+def test_a_statistic_after_a_colon_is_read_by_its_letters_as_on_main(
+    project: Path, value: str
+) -> None:
+    """Known gap, held where it stands: a short form followed by a colon is read by its
+    letters, as any short form is, a statistic or not. "and older adults" holds A, O and R
+    in order, so "(AOR: 0.41)" defines AOR a second time, as it did before, and the
+    definitions are all its uses."""
+    report = written(
+        project,
+        "# Results\n\nThe adjusted odds ratio (AOR) was computed for each group. Use was "
+        f"lower among the young and older adults (AOR{value}, 95% CI 0.22 to 0.77).\n",
+    )
+    assert codes(report) == {"abbreviation-redefined", "abbreviation-unused"}, found(report)
+
+
+@pytest.mark.parametrize(
+    ("text", "long"),
+    [
+        ("The reporting odds ratio (ROR: 3.84, 95% CI 2.10 to 7.02) was high.",
+         "reporting odds ratio"),
+        ("The *reporting odds ratio* (ROR: 3.84) was high.", "reporting odds ratio"),
+        ("The estimated glomerular filtration rate (eGFR: ml/min/1.73 m2) fell.",
+         "estimated glomerular filtration rate"),
+        ("Drug-induced liver injury (DILI: 12 cases) was rare.", "Drug-induced liver injury"),
+        ("Type 2 diabetes mellitus (T2DM: 40%) was common.", "Type 2 diabetes mellitus"),
+        ("Their reporting odds ratios (RORs: 3.8 and 4.1) were high.",
+         "reporting odds ratios"),
+        ("The reporting odds ratio (RORs: 3.8 and 4.1) was high in both.",
+         "reporting odds ratio"),
+        # Letters that are not one per word, read as any long form is.
+        ("Creatinine clearance (CrCl: 58 mL/min) was reduced.", "Creatinine clearance"),
+        ("The interquartile range (IQR: 3\N{EN DASH}7) was wide.", "interquartile range"),
+        ("The Medical Dictionary for Regulatory Activities (MedDRA: 26.0) was used.",
+         "Medical Dictionary for Regulatory Activities"),
+        # A last word that does not hold the short form's last letter.
+        ("The Hamilton Depression Rating Scale (HAM-D: 18) was high.",
+         "Hamilton Depression Rating Scale"),
+        ("The Charlson Comorbidity Index score (CCI: 2) was low.",
+         "Charlson Comorbidity Index score"),
+        ("The estimated glomerular filtration rate at baseline (eGFR: 58) was low.",
+         "estimated glomerular filtration rate at baseline"),
+        ("We estimated the hazard ratio for death (HR: 1.3) in each group.",
+         "hazard ratio for death"),
+    ],
+)  # fmt: skip
+def test_a_short_form_before_a_colon_defines_by_its_letters(text: str, long: str) -> None:
+    """How pharmacovigilance writes a first estimate: "reporting odds ratio (ROR: 3.84)". A
+    short form followed by a colon defines where its letters are found before the bracket,
+    as any short form does."""
+    short = re.match(r"[^\W_]+(?:-[^\W_]+)*", text[text.index("(") + 1 :])[0]
+    definitions = [(found, words) for _at, found, words in _definitions(text)]
+    assert definitions == [(short.removesuffix("s"), long)], definitions
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Use was lower in the young and older adults (AOR = 0.41).",
+        "Use was lower in the young and older adults (AOR 0.41).",
+    ],
+)
+def test_a_statistic_after_an_equals_sign_or_a_number_defines_nothing(text: str) -> None:
+    """The letters of AOR are in "and older adults" in order, which is how a definition is
+    found; after an equals sign or a number the bracket is a statistic's."""
+    assert _definitions(text) == []
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Treatment was associated with a higher risk (HR 1.32, 95% CI 1.10 to 1.58).",
+        "Treatment was associated with a higher risk (HR = 1.32, 95% CI 1.10 to 1.58).",
+        "Exposure carried a reduced risk (RR 0.71).",
+        "Use carried higher odds of readmission (OR 1.52).",
+        "In the second cohort the odds ratio (OR 1.5) was lower.",
+        "The reporting odds ratio (ROR = 3.84) was high.",
+        "The reporting odds ratio (ROR 3.84) was high.",
+    ],
+)
+def test_a_short_form_before_a_number_or_an_equals_sign_defines_nothing(text: str) -> None:
+    """A statistic's bracket: "a higher risk (HR 1.32, ...)" begins with the letters of HR,
+    and is no definition of it. Read as one, it was a second definition after "the hazard
+    ratio (HR)", and a definition where there was none."""
+    assert _definitions(text) == []
+
+
+@pytest.mark.parametrize(
+    ("text", "codes_found"),
+    [
+        ("The hazard ratio (HR) was estimated. Treatment was associated with a higher risk "
+         "(HR 1.32, 95% CI 1.10 to 1.58).", set()),
+        ("Treatment was associated with a higher risk (HR 1.32, 95% CI 1.10 to 1.58). The "
+         "HR was stable.", {"abbreviation-undefined"}),
+        ("The odds ratios (ORs) were estimated. In the second cohort the odds ratio (OR 1.5) "
+         "was lower.", set()),
+        ("Creatinine clearance (CrCl: 58 mL/min) was reduced. Creatinine clearance (CrCl) "
+         "fell further, and CrCl was lowest at discharge.", {"abbreviation-redefined"}),
+        ("The interquartile range (IQR: 3\N{EN DASH}7) was wide. The IQR was narrower "
+         "later.", set()),
+    ],
+)  # fmt: skip
+def test_what_a_statistic_s_bracket_leaves_defined(
+    project: Path, text: str, codes_found: set[str]
+) -> None:
+    """A statistic after a number is no second definition, nor a first; a short form after a
+    colon whose letters are not one per word is still a definition."""
+    report = written(project, f"# Results\n\n{text}\n")
+    assert codes(report) == codes_found, found(report)
+
+
+@pytest.mark.parametrize(
+    ("text", "short"),
+    [
+        ("The Hospital Anxiety and Depression Scale (French version) (HADS) was used.", "HADS"),
+        ("The body mass index (in kg/m2) (BMI) was recorded.", "BMI"),
+        ("Programmed cell death protein 1 (PD-1) or its ligand (PD-L1) was raised.", "PD-L1"),
+    ],
+)
+def test_a_long_form_steps_back_past_a_bracket_it_would_open(text: str, short: str) -> None:
+    """The nearest `S` of HADS is in "version", inside a bracket the long form would open:
+    the bracket is passed over and the letter looked for before it, in "Scale"."""
+    assert short in [found for _at, found, _long in _definitions(text)]
+
+
+def test_a_statistic_in_brackets_does_not_stand_in_for_a_definition(project: Path) -> None:
+    report = written(
+        project,
+        "# Results\n\nUse was lower among older adults (AOR 0.41). The AOR was stable.\n",
+    )
+    assert codes(report) == {"abbreviation-undefined"}, found(report)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "A warning score was taken at entry (WSE1) and 40 (12.5%) had a second WSE (WSE2).",
+        "A warning score was taken at entry (WSE1) and 40 [12.5%] had a second WSE (WSE2).",
+    ],
+)
+def test_a_long_form_takes_no_letter_from_inside_a_bracket_it_opens(text: str) -> None:
+    """The letters of `WSE2` are all there before its bracket, its `2` in a percentage and
+    the rest in another short form: the long form would run into an aside."""
+    assert "WSE2" not in [short for _at, short, _long in _definitions(text)]
+    assert _long_form("WSE2", text[: text.rindex("(")]) is None
+
+
+@pytest.mark.parametrize(
+    ("text", "short", "long"),
+    [
+        # A short form made from another: the WSE taken after two hours.
+        ("The score was taken at entry (WSE1) and after 2 hours (WSE2).", "WSE2",
+         "WSE1) and after 2 hours"),
+        ("A warning score (WSE) at 15 minutes (WSE1) was taken.", "WSE1",
+         "WSE) at 15 minutes"),
+        # A whole bracket none of the letters is in.
+        ("The adjusted (for sex) relative risk (aRR) was low.", "aRR",
+         "adjusted (for sex) relative risk"),
+    ],
+)  # fmt: skip
+def test_a_long_form_may_close_a_bracket_or_hold_a_whole_one(
+    text: str, short: str, long: str
+) -> None:
+    assert (short, long) in [(found, words) for _at, found, words in _definitions(text)]
+
+
+def test_the_limits_of_the_bracket_rules_are_as_design_md_says() -> None:
+    """Known gaps, held where they stand: after a colon, a short form is read by its letters,
+    a statistic or not, so words that hold them in order define it; a colon before words is
+    read the same way; and a comma makes no statistic."""
+
+    def shorts(text: str) -> list[str]:
+        return [short for _at, short, _long in _definitions(text)]
+
+    assert shorts("It was associated with a higher risk (HR: 1.32, 95% CI 1.1 to 1.6).") == ["HR"]
+    assert shorts("Use was lower in the young and older adults (AOR: 0.41).") == ["AOR"]
+    assert shorts("Use was lower after adjusted odds ratio analysis (AOR: 0.41).") == ["AOR"]
+    assert shorts("Physical activity (PA: walking or cycling) was low.") == ["PA"]
+    assert shorts("Use was lower in the young and older adults (AOR, 0.41).") == ["AOR"]
+    # Past the aside, the 2 of a count before it is a letter like any other.
+    assert shorts("Scored at entry (WSE1) and 20 (12%) had a second WSE (WSE2).") == ["WSE2"]
+
+
+def test_what_follows_the_long_form_may_hold_a_bracket(project: Path) -> None:
+    """A citation between the long form and its short form is masked to an empty bracket,
+    and the long form's letters do not cross it; a definition nested in a bracket that also
+    gives a statistic is read, and so is a short form with a separator after it."""
+    report = written(
+        project,
+        "# Results\n\nThe reporting odds ratio [@smith2020] (ROR) was raised. The ROR was "
+        "high (Adjusted odds ratio (AOR): 0.52, 95% CI 0.30 to 0.88), and the AOR was "
+        "stable. The proportional reporting ratio (PRR, 2.1) agreed, as the PRR did.\n",
+    )
+    assert not report.findings, found(report)
+
+
 # ---------------------------------------------------------------- what must stay quiet
 
 
@@ -604,6 +813,88 @@ def test_what_is_not_an_abbreviation_is_not_reported(project: Path, sentence: st
 def test_what_only_looks_exempt_is_still_reported(project: Path, sentence: str) -> None:
     report = written(project, f"# Methods\n\n{sentence}\n")
     assert codes(report) == {"abbreviation-undefined"}, found(report)
+
+
+def test_a_clock_time_is_not_an_abbreviation(project: Path) -> None:
+    """`11:00AM` is read as the words `11` and `00AM`, and `10:00 PM` has `PM` in it: both
+    are the time of day."""
+    report = written(
+        project,
+        "# Methods\n\nVisits ran from 8:30AM to 5:45PM. Doses were given at 10:00 PM, at "
+        "12:30:15PM or at 7:15\nAM.\n",
+    )
+    assert not report.findings, found(report)
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        "The PM was high at 10:00.",  # particulate matter, with a time of day near it
+        "The dose was given at 9 AM.",  # a time with no minutes: a known gap
+    ],
+)
+def test_what_is_near_a_clock_time_is_still_read(project: Path, sentence: str) -> None:
+    report = written(project, f"# Methods\n\n{sentence}\n")
+    assert codes(report) == {"abbreviation-undefined"}, found(report)
+
+
+def test_a_heading_typed_in_capitals_is_not_an_abbreviation(project: Path) -> None:
+    """A manuscript converted from Word has its headings as bold paragraphs, often in
+    capitals, and its tables' column labels in a header row: none of their words is an
+    abbreviation. A grid table's header cell may run over two lines."""
+    report = written(
+        project,
+        f"**TITLE PAGE**\n\nA study of reports.\n\n**ABSTRACT**\n\n{PLAIN}\n\n"
+        "**MATERIALS AND\nMETHODS**\n\n__RESULTS__\n\n"
+        "| GROUP | MODEL 1 |\n|---|---|\n| women | 3 |\n\n"
+        "+-------+----+\n| MODEL | N  |\n| 1     |    |\n+=======+====+\n| men   | 3  |\n"
+        "+-------+----+\n",
+    )
+    assert not report.findings, found(report)
+
+
+@pytest.mark.parametrize(
+    ("text", "reported"),
+    [
+        # A table's body: a baseline table's conditions are abbreviations.
+        ("| Group | n |\n|---|---|\n| COPD | 12 |\n| CKD | 4 |\n", ["CKD", "COPD"]),
+        ("+-------+----+\n| Group | n  |\n+=======+====+\n| COPD  | 3  |\n+-------+----+\n",
+         ["COPD"]),
+        # A list item and a plain paragraph in capitals.
+        ("- COPD\n- CKD\n", ["CKD", "COPD"]),
+        ("ICU\n", ["ICU"]),
+        # A paragraph only partly bold.
+        ("**ICU** stays were short.\n", ["ICU"]),
+        # A header cell over two lines, read as one cell, which has small letters.
+        ("+---------------+----+\n| Patients with | n  |\n| COPD          |    |\n"
+         "+===============+====+\n| 3             | 4  |\n+---------------+----+\n",
+         ["COPD"]),
+    ],
+)  # fmt: skip
+def test_what_is_not_a_heading_in_capitals_is_still_read(
+    project: Path, text: str, reported: list[str]
+) -> None:
+    report = written(project, f"# Results\n\n{text}")
+    assert sorted(f.message.split()[0] for f in report.findings) == reported, found(report)
+
+
+def test_a_cell_or_a_line_with_small_letters_is_still_read(project: Path) -> None:
+    report = written(
+        project,
+        "# Results\n\n| Group | n |\n|---|---|\n| ICU stay | 12 |\n\nThe PRR was raised.\n",
+    )
+    assert sorted(f.message.split()[0] for f in report.findings) == ["ICU", "PRR"]
+
+
+def test_a_defined_abbreviation_in_a_cell_in_capitals_is_a_use(project: Path) -> None:
+    """The cell is not hidden: the abbreviation in it is used. What nobody defined goes
+    unreported there, `HIV` here, which is a known gap."""
+    report = written(
+        project,
+        "# Results\n\nThe relative risk (RR) was computed.\n\n| RR | HIV |\n|---|---|\n"
+        "| 1.2 | 3 |\n",
+    )
+    assert not report.findings, found(report)
 
 
 def test_a_word_in_capitals_too_long_for_a_short_form_is_not_reported(project: Path) -> None:

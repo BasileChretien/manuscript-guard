@@ -3563,6 +3563,39 @@ def test_a_forbidden_data_statement_fails_from_internal_review(project: Path) ->
     assert "data-statement-forbidden" in {f.code for f in reviewed.failures}
 
 
+def _english_g4(root: Path) -> list[tuple[str, str, str]]:
+    from manuscript_guard.gates import check_journal
+    from manuscript_guard.policy import SUBMISSION, apply_stage
+
+    report, _ = apply_stage(check_journal(load_project(root)[0]), SUBMISSION)
+    return [(f.code, f.severity, f.message) for f in report.findings
+            if f.code.startswith("english-variant")]  # fmt: skip
+
+
+@pytest.mark.parametrize(("journal", "said"), [("en-GB", "British"), ("en-US", "American")])
+def test_a_declaration_of_english_deleted_under_a_journal_that_names_one_is_noted(
+    project: Path, journal: str, said: str
+) -> None:
+    """The example declares British English for a journal that asks for it, and G4 says
+    nothing. With the line deleted from paper.yaml, under a journal asking for en-GB or for
+    en-US, G4 says which the journal asks for, and fails nothing even at submission: G14
+    then holds the paper to the English of most of its words (Basile, 2026-10-23)."""
+    assert _english_g4(project) == []
+    paper = project / "paper.yaml"
+    text = paper.read_text(encoding="utf-8")
+    assert "english_variant: en-GB\n" in text
+    paper.write_text(text.replace("english_variant: en-GB\n", ""), encoding="utf-8")
+    profile = project / "profiles" / "journals" / "demo-journal.yaml"
+    text = profile.read_text(encoding="utf-8")
+    assert "english_variant: en-GB\n" in text
+    profile.write_text(text.replace("english_variant: en-GB\n", f"english_variant: {journal}\n"),
+                       encoding="utf-8")  # fmt: skip
+    assert _english_g4(project) == [
+        ("english-variant-undeclared", "info",
+         f"the journal asks for {said} English ({journal}), and paper.yaml declares no English")
+    ]  # fmt: skip
+
+
 # ------------------------------------------------- a placeholder, wherever it is written
 
 
@@ -20741,6 +20774,165 @@ def test_a_definition_whose_brackets_were_deleted_is_caught(project: Path) -> No
     main_md(project).write_text(tidied, encoding="utf-8")
     assert language_findings(project) == [
         ("abbreviation-undefined", line_of(tidied, ABBREVIATED))
+    ]
+
+
+def test_a_statistic_in_brackets_does_not_stand_in_for_a_deleted_definition(
+    project: Path,
+) -> None:
+    """The definition is tidied away, and the Methods now give the estimate in brackets
+    after an equals sign, after words whose letters spell ROR. A statistic is no definition:
+    ROR is undefined where it is first used, and not defined as "Reports were fewer among
+    older adults" below that."""
+    mended = with_ror_defined(project)
+    tidied = mended.replace("ratio (ROR) of", "ratio of").replace(
+        "A signal was defined",
+        "Reports were fewer among older adults (ROR = {{results.ror.point}}). A signal was "
+        "defined",
+    )
+    main_md(project).write_text(tidied, encoding="utf-8")
+    assert language_findings(project) == [
+        ("abbreviation-undefined", line_of(tidied, ABBREVIATED))
+    ]
+
+
+def test_a_statistic_after_a_colon_stands_in_for_a_deleted_definition_as_on_main(
+    project: Path,
+) -> None:
+    """Known gap, held where it stands: the same estimate after a colon is read by its
+    letters, as any short form is, and defines ROR as "Reports were fewer among older
+    adults". The deleted definition is still caught, as a use before the definition."""
+    mended = with_ror_defined(project)
+    tidied = mended.replace("ratio (ROR) of", "ratio of").replace(
+        "A signal was defined",
+        "Reports were fewer among older adults (ROR: {{results.ror.point}}). A signal was "
+        "defined",
+    )
+    main_md(project).write_text(tidied, encoding="utf-8")
+    assert language_findings(project) == [
+        ("abbreviation-used-before-defined", line_of(tidied, ABBREVIATED))
+    ]
+
+
+def test_an_estimate_after_words_that_begin_with_its_letters_is_still_undefined(
+    project: Path,
+) -> None:
+    """A revision pastes in a hazard ratio from a sensitivity analysis, its estimate in
+    brackets after words that begin with the letters of HR, and never defines HR. A short
+    form followed by a number is a statistic: HR is undefined, not defined as "higher
+    risk"."""
+    mended = with_ror_defined(project)
+    pasted = mended.replace(
+        "A signal was defined",
+        "Exposure was associated with a higher risk (HR 1.32, 95% CI 1.10 to 1.58), and the "
+        "HR was stable. A signal was defined",
+    )
+    assert pasted != mended
+    main_md(project).write_text(pasted, encoding="utf-8")
+    assert language_findings(project) == [
+        ("abbreviation-undefined", line_of(pasted, "risk (HR 1.32"))
+    ]
+
+
+def test_a_definition_after_a_colon_given_again_is_caught(project: Path) -> None:
+    """The time to onset is summarised with its interquartile range defined after a colon,
+    and the definition is pasted again in the Discussion. The letters of IQR are not one per
+    word, and the first is still a definition: the second is a redefinition."""
+    mended = with_ror_defined(project)
+    pasted = mended.replace(
+        "A signal was defined",
+        "The time to onset had an interquartile range (IQR: 3 to 7 days). A signal was defined",
+    ).replace(
+        "The reporting odds ratio observed here",
+        "The interquartile range (IQR) was narrow, and an IQR this narrow is usual. The "
+        "reporting odds ratio observed here",
+    )
+    main_md(project).write_text(pasted, encoding="utf-8")
+    assert language_findings(project) == [
+        ("abbreviation-redefined", line_of(pasted, "range (IQR) was"))
+    ]
+
+
+def test_a_short_form_spelt_from_inside_an_aside_is_undefined(project: Path) -> None:
+    """A revision splits the estimate in two and names each part, the second with nothing
+    before it to define it but another short form and a percentage in brackets. Both are
+    undefined: the second is not defined as "ROR1) and 40 (12%) had a second ROR"."""
+    mended = with_ror_defined(project)
+    split = mended.replace(
+        "A signal was defined",
+        "The ROR was computed for the first half (ROR1) and 40 (12%) had a second ROR "
+        "(ROR2). A signal was defined",
+    )
+    main_md(project).write_text(split, encoding="utf-8")
+    line = line_of(split, "(ROR1)")
+    assert language_findings(project) == [
+        ("abbreviation-undefined", line),
+        ("abbreviation-undefined", line_of(split, "(ROR2)")),
+    ]
+
+
+def test_a_heading_in_capitals_and_a_time_of_day_hide_no_undefined_abbreviation(
+    project: Path,
+) -> None:
+    """A manuscript pasted from Word: an appendix headed in bold capitals, a table whose
+    header row is in capitals, the time the reports were extracted; and the definition
+    tidied away. Only the undefined ROR is reported."""
+    mended = with_ror_defined(project)
+    pasted = mended.replace("ratio (ROR) of", "ratio of").replace(
+        "The analysis was run in Python",
+        "**APPENDIX**\n\n| GROUP | TOTAL |\n|---|---|\n| women | 12 |\n\nReports were "
+        "extracted at 9:30AM.\n\nThe analysis was run in Python",
+    )
+    main_md(project).write_text(pasted, encoding="utf-8")
+    assert language_findings(project) == [
+        ("abbreviation-undefined", line_of(pasted, ABBREVIATED))
+    ]
+
+
+def test_a_condition_in_a_table_s_body_is_still_undefined(project: Path) -> None:
+    """A baseline table pasted into the Methods, its rows the conditions it counts, in
+    capitals as conditions are written. A table's body is not a heading: COPD is undefined."""
+    mended = with_ror_defined(project)
+    pasted = mended.replace(
+        "The analysis was run in Python",
+        "| Condition | Reports |\n|---|---|\n| COPD | 12 |\n\nThe analysis was run in Python",
+    )
+    main_md(project).write_text(pasted, encoding="utf-8")
+    assert language_findings(project) == [
+        ("abbreviation-undefined", line_of(pasted, "| COPD"))
+    ]
+
+
+def test_a_definition_given_again_with_its_estimate_is_caught(project: Path) -> None:
+    """The definition is pasted a second time, this time with the estimate after a colon,
+    as pharmacovigilance reports one. Its words are the short form's initials, so it is a
+    definition, and a second one."""
+    mended = with_ror_defined(project)
+    again = mended.replace(
+        "The reporting odds ratio observed here",
+        "The reporting odds ratio (ROR: {{results.ror.point}}) observed here",
+    )
+    assert again != mended
+    main_md(project).write_text(again, encoding="utf-8")
+    assert language_findings(project) == [
+        ("abbreviation-redefined", line_of(again, "ratio (ROR: {{"))
+    ]
+
+
+def test_a_definition_with_an_aside_given_again_is_caught(project: Path) -> None:
+    """The definition says what the ratio compares in brackets before its short form, and
+    is pasted again further on. The R of ROR nearest the bracket is in the aside; the one of
+    "ratio" is the long form's, so both are definitions."""
+    mended = with_ror_defined(project)
+    aside = mended.replace(
+        "a reporting odds ratio (ROR) of", "a reporting odds ratio (cases versus others) (ROR) of"
+    ).replace(
+        "The reporting odds ratio observed here",
+        "The reporting odds ratio (cases versus others) (ROR) observed here",
+    )
+    main_md(project).write_text(aside, encoding="utf-8")
+    assert language_findings(project) == [
+        ("abbreviation-redefined", line_of(aside, "others) (ROR) observed"))
     ]
 
 

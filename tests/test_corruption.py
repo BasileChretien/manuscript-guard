@@ -7892,8 +7892,9 @@ def test_g7_holds_a_quotation_that_opens_a_sentence_to_that_sentence_s_citation(
                 "with age and did not differ by region'' \\cite{fictionalClassSignal2019}.")
     _replace_once(entry, "\\section{Discussion}", f"{sentence}\n\n\\section{{Discussion}}")
     (found,) = check_prose_quotations(load_project(project)[0]).findings
-    assert "@fictionalClassSignal2019" in found.message, found.message
-    assert "@fictionalHepaticCohort2021" not in found.message, found.message
+    # Named as a LaTeX paper cites it (corpus round, 2026-10-23).
+    assert "\\cite{fictionalClassSignal2019}" in found.message, found.message
+    assert "fictionalHepaticCohort2021" not in found.message, found.message
 
 
 def test_g7_names_a_quotation_under_a_heading_at_its_own_line(project: Path) -> None:
@@ -7973,6 +7974,45 @@ def test_g6_finds_in_the_twin_what_it_finds_in_the_example(
     assert found and found[0].path == entry, [(f.code, f.message) for f in _g6_findings(project)]
     text = entry.read_text(encoding="utf-8")
     assert found[0].line == text.count("\n", 0, text.index(snippet)) + 1
+
+
+@pytest.mark.parametrize(
+    ("block", "pointed"),
+    [
+        ("", True),
+        ("\\begin{algorithm}\n\\begin{algorithmic}[1]\n\\State We have now clarified the step\n"
+         "\\end{algorithmic}\n\\end{algorithm}", False),
+        ("\\begin{verbatim}\nx <- 1\n\\end{verbatim}", False),
+        ("% \\begin{algorithm}\n% We have now clarified the step\n% \\end{algorithm}", True),
+    ],
+)  # fmt: skip
+def test_g6_lets_the_twin_point_at_the_lines_of_an_algorithm_or_a_listing(
+    project: Path, block: str, pointed: bool
+) -> None:
+    """Lines in brackets with nothing to say whose, "(line 8)", are words to the reviewers,
+    unless the paper sets out an algorithm or a listing, whose lines its text points at so:
+    a LaTeX paper of the corpus round (2026-10-23) was told so of every pointer into its
+    algorithm. An algorithm's lines are no prose, and words to the reviewers in one are not
+    read; an algorithm in a comment sets out nothing. Words to the reviewers in the prose
+    are read either way."""
+    entry = _twin(project)
+    _into_results(entry, f"{block}\n\nThe stride is set (line 8) of the step.\n\n"
+                         "As requested by Reviewer 2, we added the counts.")  # fmt: skip
+    text = entry.read_text(encoding="utf-8")
+    said = sorted(f.line for f in _g6_findings(project) if f.code == "revision-residue")
+    lines = [text.count("\n", 0, text.index(words)) + 1
+             for words in ("(line 8)", "As requested by Reviewer 2")]  # fmt: skip
+    assert said == (lines if pointed else lines[1:]), said
+
+
+def test_g6_tells_a_markdown_paper_of_lines_in_brackets_beside_a_listing(project: Path) -> None:
+    """In Markdown the rule is tried as before, a listing or not: no LaTeX algorithm numbers
+    the lines a Markdown paper points at."""
+    main = main_md(project)
+    main.write_text(main.read_text(encoding="utf-8") + "\n```r\nx <- 1\n```\n\n"
+                    "The stride is set (line 8) of the step.\n", encoding="utf-8")  # fmt: skip
+    assert any(f.code == "revision-residue" and "(line 8)" in f.message
+               for f in _g6_findings(project))  # fmt: skip
 
 
 def test_g6_takes_a_latex_citation_beside_a_claim_for_its_support(project: Path) -> None:
@@ -9356,6 +9396,55 @@ def test_a_wrapped_citation_to_a_missing_item_is_caught(project: Path, monkeypat
     )
 
 
+def test_g7_names_a_cited_work_as_the_manuscript_cites_it(project: Path, monkeypatch) -> None:
+    """A LaTeX paper of the corpus round (2026-10-23) was told of `@key`, which its author
+    never typed: G7 names a work with the command it is cited by, `\\citep{key}`, and the
+    keys it may have meant so too, as it names a Markdown paper's `@key`."""
+    from test_zotero import CLASS, HEPATIC, csl
+
+    near = "fictionalHepaticCohort2012"
+    main = main_md(project)
+    main.write_text(main.read_text(encoding="utf-8") + f"\nA claim [@{near}].\n",
+                    encoding="utf-8")  # fmt: skip
+    (found,) = [f for f in _g7(project).failures if f.code == "citation-unresolved"]
+    assert found.message == f"@{near} matches nothing in the library", found.message
+    assert found.hint.startswith(f"did you mean @{HEPATIC}"), found.hint
+
+    entry = _twin(project)
+    _into_results(entry, f"A claim \\citep[p.~2]{{{near}}}.")
+    (found,) = [f for f in _g7(project).failures if f.code == "citation-unresolved"]
+    assert found.message == f"\\citep{{{near}}} matches nothing in the library", found.message
+    assert found.hint.startswith(f"did you mean \\citep{{{HEPATIC}}}"), found.hint
+    assert "@" not in found.message + found.hint
+
+    _zotero(monkeypatch, [csl(HEPATIC, True), csl(CLASS, False)])
+    report = _g7(project, closed=False)
+    unpinned = [f.message for f in report.failures if f.code == "citation-key-unpinned"]
+    assert unpinned == [f"\\cite{{{CLASS}}} is not pinned in Zotero"], unpinned
+
+
+def test_an_e_mail_address_is_no_citation_and_a_key_beside_one_still_is(project: Path) -> None:
+    """A corresponding author's address, in a mailto link as Word writes one and in a span:
+    `check` read the host of each as a key, "@gmail.com matches nothing in the library",
+    and failed the submission on it. Pandoc reads neither as a citation. A key the library
+    does not hold, in a group beside an address, is still caught."""
+    main = main_md(project)
+    addresses = (
+        "\n*Corresponding author*:\n[*first.last@gmail.com*](mailto:first.last@gmail.com)\n\n"
+        "1\\. [Research Centre. someone@centre.org.gt]{.mark}\n\n"
+        "Write to someone@centre.org.gt or [name@example.org].\n"
+    )
+    main.write_text(main.read_text(encoding="utf-8") + addresses, encoding="utf-8")
+    assert "citation-unresolved" not in codes(_g7(project))
+
+    main.write_text(main.read_text(encoding="utf-8") + "\nAs shown [name@example.org; "
+                    "@ghostKey2020].\n", encoding="utf-8")  # fmt: skip
+    unresolved = [f.message for f in _g7(project).failures if f.code == "citation-unresolved"]
+    assert unresolved == ["@ghostKey2020 matches nothing in the library"]
+
+
+
+
 # A literature value with a blank field. `source_file: ""` was passed over by both gates:
 # `check --stage drafting` added no finding, and the value was simply not counted as
 # verified, so the run claimed every value it had checked was verified.
@@ -9768,6 +9857,28 @@ def test_an_audited_table_s_n_percent_off_its_denominator_is_listed_apart(
     shown = render(report, measure_discrimination(set()))
     assert "an n (%) and its denominator" in shown
     assert "line 12: n (%) 1,800 (50.0)" in shown
+
+
+@pytest.mark.parametrize(
+    "above",
+    ["<!-- a note\nover three\nlines -->\n\n", "```r\nx <- 1\n\ny <- 2\n```\n\n",
+     "---\ntitle: T\nabstract: |\n  A cohort.\n\n  Two parts.\n---\n\n"],
+)  # fmt: skip
+def test_an_audited_table_under_a_block_of_several_lines_is_read_on_its_own_lines(
+    tmp_path: Path, above: str
+) -> None:
+    """The mask made the line breaks of a comment, a listing and the front matter NUL, and
+    the reader of pipe tables, which cuts the mask and the text into lines and reads them
+    side by side, read a table under one a line out for each: the line above the header was
+    taken for it, and a share off its denominator in the last row went unread (corpus round,
+    2026-10-23)."""
+    from manuscript_guard.audit import audit
+
+    paper = tmp_path / "paper.md"
+    paper.write_text(above + _SHARES_OFF, encoding="utf-8")
+    report = audit([paper], [])
+    offset = above.count("\n")
+    assert [d.line - offset for d in report.disagreements] == [7, 8, 9, 12], report.disagreements
 
 
 def test_a_header_that_names_its_n_before_a_comma_gives_its_denominator(
@@ -10758,6 +10869,99 @@ def test_a_latex_pointer_to_a_table_its_floats_do_not_number_fails(project: Path
     assert [(f.gate, f.code, f.path, f.line) for f in failing] == [
         ("G2", "pointer-to-nothing", main, 93)
     ]
+
+
+def test_a_latex_pointer_that_counts_a_group_s_parts_as_figures_fails(project: Path) -> None:
+    """Corpus round (2026-10-23): the floats of a `subfigures` share one number, Figure 2a and
+    2b, and pass; a pointer typed to Figure 3, as if each part were a figure, fails."""
+    from manuscript_guard.gates.pointers_latex import check_pointers_latex
+
+    shutil.rmtree(project / "manuscript")
+    shutil.copytree(TWIN, project / "manuscript")
+    main = project / "manuscript" / "main.tex"
+    group = ("\\begin{subfigures}\\label{fig:pair}\n"
+             "\\begin{figure}\\caption{Left.}\\label{fig:left}\\end{figure}\n"
+             "\\begin{figure}\\caption{Right.}\\end{figure}\n\\end{subfigures}\n\n")  # fmt: skip
+    text = main.read_text(encoding="utf-8").replace(
+        "\\section{Discussion}", group + "Figure~\\ref{fig:left} is the left.\n\n"
+        "\\section{Discussion}")  # fmt: skip
+    main.write_text(text, encoding="utf-8")
+    assert check_pointers_latex(load_project(project)[0]).failures == ()
+    main.write_text(text.replace("is the left.", "is the left, Figure~3 the right."),
+                    encoding="utf-8")  # fmt: skip
+    failing = check_pointers_latex(load_project(project)[0]).failures
+    assert [(f.code, f.line) for f in failing] == [("pointer-to-nothing", 108)], failing
+
+
+def test_a_latex_group_whose_floats_are_files_of_their_own_is_one_figure(project: Path) -> None:
+    """Fix round 1: a `subfigures` whose floats are each `\\input` from a file of its own is
+    one figure, cited by a label in one of the files, and passes; a pointer typed to Figure 3,
+    as if each file held a figure, fails."""
+    from manuscript_guard.gates.pointers_latex import check_pointers_latex
+
+    shutil.rmtree(project / "manuscript")
+    shutil.copytree(TWIN, project / "manuscript")
+    folder = project / "manuscript"
+    for name in "AB":
+        (folder / f"fig{name}.tex").write_text(
+            f"\\begin{{figure}}\\caption{{{name}.}}\\label{{fig:{name}}}\\end{{figure}}\n",
+            encoding="utf-8")  # fmt: skip
+    main = folder / "main.tex"
+    text = main.read_text(encoding="utf-8").replace(
+        "\\section{Discussion}", "\\begin{subfigures}\n\\input{figA}\n\\input{figB}\n"
+        "\\end{subfigures}\n\nFigure~\\ref{fig:B} is the right.\n\n\\section{Discussion}")
+    main.write_text(text, encoding="utf-8")
+    assert check_pointers_latex(load_project(project)[0]).failures == ()
+    main.write_text(text.replace("is the right.", "is the right, Figure~3 the left."),
+                    encoding="utf-8")  # fmt: skip
+    failing = check_pointers_latex(load_project(project)[0]).failures
+    assert [(f.code, f.line) for f in failing] == [("pointer-to-nothing", 108)], failing
+
+
+@pytest.mark.parametrize("joined", ["--", " to~"])
+def test_a_latex_figure_cited_before_a_range_that_holds_it_fails(
+    project: Path, joined: str
+) -> None:
+    """Corpus round (2026-10-23): `\\ref{a}--\\ref{b}` cites the figures between a and b, and
+    so does `Figures~\\ref{a} to~\\ref{b}` (fix round 1), so "Figures 2-4" before "Figure 3"
+    passes; Figure 4 cited by itself before them fails."""
+    from manuscript_guard.gates.pointers_latex import check_pointers_latex
+
+    shutil.rmtree(project / "manuscript")
+    shutil.copytree(TWIN, project / "manuscript")
+    main = project / "manuscript" / "main.tex"
+    floats = "".join(f"\\begin{{figure}}\\caption{{{name}.}}\\label{{fig:{name}}}\\end{{figure}}\n"
+                     for name in "bcd")  # fmt: skip
+    text = main.read_text(encoding="utf-8").replace(
+        "\\section{Discussion}", floats + f"\nFigures~\\ref{{fig:b}}{joined}\\ref{{fig:d}} "
+        "show the rest, and Figure~3 the middle.\n\n\\section{Discussion}")  # fmt: skip
+    main.write_text(text, encoding="utf-8")
+    assert check_pointers_latex(load_project(project)[0]).failures == ()
+    main.write_text(text.replace("\nFigures~", "\nFigure~\\ref{fig:d} first. Figures~"),
+                    encoding="utf-8")  # fmt: skip
+    failing = check_pointers_latex(load_project(project)[0]).failures
+    assert [(f.code, f.line) for f in failing] == [("cited-out-of-order", 107)], failing
+
+
+def test_a_latex_appendix_s_table_is_not_held_to_the_main_text_s_order(project: Path) -> None:
+    """A table in the appendix, cited first in the Methods as "Supplementary Table", is the
+    supplement's and passes; the same table outside the appendix is cited out of order and
+    fails (2026-10-23, an Elsevier paper)."""
+    from manuscript_guard.gates.pointers_latex import check_pointers_latex
+
+    shutil.rmtree(project / "manuscript")
+    shutil.copytree(TWIN, project / "manuscript")
+    main = project / "manuscript" / "main.tex"
+    cited = "\\section{Methods}\nCodes are in Supplementary Table~\\ref{codes}.\n"
+    codes = "\\begin{table}\\caption{Codes.}\\label{codes}\\end{table}\n"
+    text = main.read_text(encoding="utf-8").replace("\\section{Methods}\n", cited).replace(
+        "\\bibliographystyle{plain}", "\\appendix\n\\section{Codes}\n" + codes
+        + "\\bibliographystyle{plain}")  # fmt: skip
+    main.write_text(text, encoding="utf-8")
+    assert check_pointers_latex(load_project(project)[0]).failures == ()
+    main.write_text(text.replace("\\appendix\n", ""), encoding="utf-8")
+    failing = check_pointers_latex(load_project(project)[0]).failures
+    assert [(f.code, f.line) for f in failing] == [("cited-out-of-order", 33)], failing
 
 
 def test_a_latex_statement_that_does_not_name_the_chosen_source_is_said_in_its_file(
@@ -12863,6 +13067,78 @@ def test_a_rule_with_a_line_under_it_is_refused(project: Path, block: str, capsy
     )
 
 
+_WORD_TABLE = """\
+# Results
+
+The counts are in Table 1.
+
+| Group    | Cases |
+|----------|-------|
+| Exposed  | 41    |
+| Others   | 17    |
+
+: Table 1. Counts.
+
++----------+-------------+
+| Group    | Deaths      |
++==========+=============+
+| Exposed  | 29          |
+|          |             |
+|          | in 2019     |
++----------+-------------+
+
+: Table 2. Deaths.
+"""
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_number_typed_in_a_word_table_is_read_once_the_paper_is_brought_in(
+    tmp_path: Path, capsys
+) -> None:
+    """A Word table as `pandoc paper.docx -t markdown` writes it is a multiline table, whose
+    lines of dashes `check` refuses at every stage, so a paper brought in that way was refused
+    whole. `init --from` writes it as a pipe table, and the 41 typed in it is reported for
+    what it is, a number in a table typed by hand. So is a table with a cell of two
+    paragraphs, which pandoc writes as a grid table until they are joined."""
+    import subprocess
+
+    from manuscript_guard.cli import main
+
+    folder = tmp_path / "word"
+    folder.mkdir()
+    (folder / "paper.md").write_text(_WORD_TABLE, encoding="utf-8")
+    subprocess.run(["pandoc", "paper.md", "-o", "paper.docx"], cwd=folder, check=True,
+                   timeout=120)  # fmt: skip
+    paper = folder / "paper.docx"
+
+    def failures_and_tables(root: Path) -> tuple[set[str], list[str]]:
+        capsys.readouterr()
+        main(["check", str(root), "--json", "--stage", "drafting"])
+        found = json.loads(capsys.readouterr().out)["findings"]
+        tables = [f["message"] for f in found if f["code"] == "hand-authored-table"]
+        return {f["code"] for f in found if f["severity"] == "fail"}, tables
+
+    plain = tmp_path / "plain"
+    assert main(["init", str(plain)]) == 0
+    subprocess.run(["pandoc", str(paper), "-t", "markdown", "-o", "main.md"],
+                   cwd=plain / "manuscript", check=True, timeout=120)  # fmt: skip
+    refused, _ = failures_and_tables(plain)
+    assert "rule-opens-a-block" in refused
+
+    root = tmp_path / "brought-in"
+    assert main(["init", str(root), "--from", str(paper)]) == 0
+    refused, tables = failures_and_tables(root)
+    assert "rule-opens-a-block" not in refused
+    assert any("'41'" in message for message in tables), tables
+    # A pipe table, so the audit reads its cells too: a grid table's rows are only text to it.
+    from manuscript_guard.build.assemble import strip_front_matter
+    from manuscript_guard.text.tables import markdown_tables
+
+    text = strip_front_matter((root / "manuscript" / "main.md").read_text(encoding="utf-8"))[0]
+    cells = [cell.text.strip() for table in markdown_tables(text) for row in table for cell in row]
+    assert "41" in cells and "29 in 2019" in cells
+
+
 @pytest.mark.skipif(
     __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
 )
@@ -14305,8 +14581,13 @@ def test_nothing_opened_in_the_front_matter_hides_the_body(
     path.write_text(paper, encoding="utf-8")
     assert {c.text.rstrip(".") for c in audit([path], [outputs]).unmatched} == shown
     assert all(number in mask(paper) for number in shown), "G2 reads what the audit reads"
-    hidden = {i for spans in masked_spans(paper).values() for a, b in spans for i in range(a, b)}
-    explained = "".join(NUL if i in hidden else ch for i, ch in enumerate(paper))
+    spans = masked_spans(paper)
+    hidden = {i for found in spans.values() for a, b in found for i in range(a, b)}
+    # The mask keeps the line breaks of what it hides, but a comment's, which pandoc reads
+    # inside the paragraph it stands in (corpus round, 2026-10-23).
+    comments = {i for a, b in spans.get("html-comment", []) for i in range(a, b)}
+    explained = "".join(NUL if i in hidden and (ch not in "\r\n" or i in comments) else ch
+                        for i, ch in enumerate(paper))  # fmt: skip
     assert explained == mask(paper), "`explain` reports what G2 masks"
 
 
@@ -14691,7 +14972,9 @@ def test_g2_judges_a_listing_in_the_front_matter_as_code() -> None:
     report = _fenced_code(Path("main.md"), text, Classifier.load())
     assert "code-block-text-number" in {f.code for f in report.findings}
     masked = mask(text)
-    assert all(masked[i] == NUL for f in fenced_blocks(text) for i in range(f.start, f.end))
+    assert all(masked[i] == NUL for f in fenced_blocks(text) for i in range(f.start, f.end)
+               if text[i] != "\n")  # fmt: skip
+    assert all(masked[i] == "\n" for i, ch in enumerate(text) if ch == "\n")
 
 
 def test_a_url_ending_a_yaml_value_hides_nothing_of_the_next(tmp_path: Path) -> None:
@@ -20325,17 +20608,75 @@ def test_a_statistic_in_brackets_does_not_stand_in_for_a_deleted_definition(
     project: Path,
 ) -> None:
     """The definition is tidied away, and the Methods now give the estimate in brackets
-    after words whose letters spell ROR. A statistic is no definition: ROR is undefined
-    where it is first used, and not defined as "older reporters" below that."""
+    after an equals sign, after words whose letters spell ROR. A statistic is no definition:
+    ROR is undefined where it is first used, and not defined as "Reports were fewer among
+    older adults" below that."""
     mended = with_ror_defined(project)
     tidied = mended.replace("ratio (ROR) of", "ratio of").replace(
         "A signal was defined",
-        "Reports were fewer among older reporters (ROR: {{results.ror.point}}). A signal was "
+        "Reports were fewer among older adults (ROR = {{results.ror.point}}). A signal was "
         "defined",
     )
     main_md(project).write_text(tidied, encoding="utf-8")
     assert language_findings(project) == [
         ("abbreviation-undefined", line_of(tidied, ABBREVIATED))
+    ]
+
+
+def test_a_statistic_after_a_colon_stands_in_for_a_deleted_definition_as_on_main(
+    project: Path,
+) -> None:
+    """Known gap, held where it stands: the same estimate after a colon is read by its
+    letters, as any short form is, and defines ROR as "Reports were fewer among older
+    adults". The deleted definition is still caught, as a use before the definition."""
+    mended = with_ror_defined(project)
+    tidied = mended.replace("ratio (ROR) of", "ratio of").replace(
+        "A signal was defined",
+        "Reports were fewer among older adults (ROR: {{results.ror.point}}). A signal was "
+        "defined",
+    )
+    main_md(project).write_text(tidied, encoding="utf-8")
+    assert language_findings(project) == [
+        ("abbreviation-used-before-defined", line_of(tidied, ABBREVIATED))
+    ]
+
+
+def test_an_estimate_after_words_that_begin_with_its_letters_is_still_undefined(
+    project: Path,
+) -> None:
+    """A revision pastes in a hazard ratio from a sensitivity analysis, its estimate in
+    brackets after words that begin with the letters of HR, and never defines HR. A short
+    form followed by a number is a statistic: HR is undefined, not defined as "higher
+    risk"."""
+    mended = with_ror_defined(project)
+    pasted = mended.replace(
+        "A signal was defined",
+        "Exposure was associated with a higher risk (HR 1.32, 95% CI 1.10 to 1.58), and the "
+        "HR was stable. A signal was defined",
+    )
+    assert pasted != mended
+    main_md(project).write_text(pasted, encoding="utf-8")
+    assert language_findings(project) == [
+        ("abbreviation-undefined", line_of(pasted, "risk (HR 1.32"))
+    ]
+
+
+def test_a_definition_after_a_colon_given_again_is_caught(project: Path) -> None:
+    """The time to onset is summarised with its interquartile range defined after a colon,
+    and the definition is pasted again in the Discussion. The letters of IQR are not one per
+    word, and the first is still a definition: the second is a redefinition."""
+    mended = with_ror_defined(project)
+    pasted = mended.replace(
+        "A signal was defined",
+        "The time to onset had an interquartile range (IQR: 3 to 7 days). A signal was defined",
+    ).replace(
+        "The reporting odds ratio observed here",
+        "The interquartile range (IQR) was narrow, and an IQR this narrow is usual. The "
+        "reporting odds ratio observed here",
+    )
+    main_md(project).write_text(pasted, encoding="utf-8")
+    assert language_findings(project) == [
+        ("abbreviation-redefined", line_of(pasted, "range (IQR) was"))
     ]
 
 
@@ -21825,6 +22166,253 @@ def test_a_paragraph_pasted_from_a_paper_in_the_other_english_is_caught(project:
         ("hemoglobin", "haemoglobin"),
     ):
         assert f"{word} ({instead}, once)" in finding.hint
+
+
+#: A reference list as a paper converted from Word has it, under a line that is no heading:
+#: its titles in the other English, a journal's name and the authors' initials in capitals.
+_CITED_TITLE = (
+    "The color of the tumor and its organization in a national register of spontaneous reports"
+)
+_LISTED = (
+    "{line}\n\n"
+    f"1. Doe HA, Roe MB. {_CITED_TITLE}. PLoS ONE. 2019;14:e0213.\n\n"
+    "2. Poe RM, Low DL. Behavior in the pediatric center. BMC Med. 2020;18:12.\n\n"
+)
+
+
+@pytest.mark.parametrize(
+    "line", ["**References**", "**References:**", "References", "__Bibliography__",
+             "6\\. References"]  # fmt: skip
+)
+def test_a_reference_list_under_a_bold_line_is_passed_over_as_under_a_heading(
+    project: Path, line: str
+) -> None:
+    """Papers converted from Word put the list under `**References**` as often as under a
+    heading, and G14 read it as prose: "both endings are used" for the cited titles, and
+    "PLoS", "BMC" and the authors' initials taken for abbreviations; the word count and the
+    comparison with an earlier paper took it for the Discussion. Under `# References` none
+    of it is read, and the audit already took the bold line for the list's start. The text
+    under the next heading is read again: a slip there is still caught."""
+    from manuscript_guard.gates.recycling import recycled_in
+    from manuscript_guard.text.sections import measure
+
+    text = main_md(project).read_text(encoding="utf-8")
+    end = text.index("# Data availability")
+    listed = text[:end] + _LISTED.format(line=line) + text[end:]
+    main_md(project).write_text(listed, encoding="utf-8")
+    assert spelling_findings(project) == []
+    assert language_findings(project) == [("abbreviation-undefined", line_of(text, "(ROR "))]
+    assert measure(listed).main_text_words == measure(text).main_text_words
+    assert recycled_in(listed, f"An earlier paper cited it: {_CITED_TITLE}.", "earlier") == []
+
+    slipped = listed.replace("# Data availability", "# Appendix\n\nThe color of each group "
+                             "was noted.\n\n# Data availability")  # fmt: skip
+    main_md(project).write_text(slipped, encoding="utf-8")
+    assert spelling_findings(project) == [
+        (
+            "spelling-variant",
+            line_of(slipped, "The color of each"),
+            "'color' is the American spelling of 'colour', used once; this paper is in "
+            "British English",
+        )
+    ]
+
+
+def _declaring_no_english(root: Path) -> None:
+    """`paper.yaml` as `init` writes it since Basile's decision of 2026-10-23: no English."""
+    path = root / "paper.yaml"
+    paper = path.read_text(encoding="utf-8")
+    assert paper.count("english_variant: en-GB\n") == 1, "the fixture changed under this test"
+    path.write_text(paper.replace("english_variant: en-GB\n", ""), encoding="utf-8")
+
+
+def test_declaring_no_english_a_co_author_s_word_in_the_fewer_spelling_is_caught(
+    project: Path,
+) -> None:
+    """One co-author writes "colour", another "color", and nobody declared either: the paper
+    is held to the English most of its words are in, and the stray is said where it stands."""
+    _declaring_no_english(project)
+    text = main_md(project).read_text(encoding="utf-8")
+    old = "Several limitations follow from the design."
+    assert old in text, "the fixture changed under this test"
+    edited = text.replace(
+        old, old + " The colour of a tablet is rarely recorded, and the color of its coating never."
+    )
+    main_md(project).write_text(edited, encoding="utf-8")
+    assert spelling_findings(project) == [
+        (
+            "spelling-variant",
+            line_of(edited, "The colour of a tablet"),
+            "'color' is the American spelling of 'colour', used once; paper.yaml declares no "
+            "English, and the paper has 2 words in British spelling to 1 in American",
+        )
+    ]
+
+
+_SAID = "The color of each tumor group by ABC."
+
+#: What may follow a reference list under a bold line, each with `_SAID` after it or in it:
+#: every caption, table, image, binding, bold title and back-matter title the list ends at.
+_AFTER_A_LIST = {
+    "a caption": f"\n\nFigure 1. {_SAID}",
+    "a caption, Fig": f"\n\nFig 1. {_SAID}",
+    "a caption, Fig.": f"\n\nFig. 1 {_SAID}",
+    "a caption in capitals": f"\n\nFIGURE 1 | {_SAID}",
+    "a caption, S1 Table": f"\n\nS1 Table. {_SAID}",
+    "a caption, S1 Fig": f"\n\nS1 Fig. {_SAID}",
+    "a table's caption": f"\n\nTable 1. {_SAID}",
+    "a table's caption, Roman": f"\n\nTABLE I. {_SAID}",
+    "a caption, Roman": f"\n\nFigure IV. {_SAID}",
+    "a supplementary table's caption": f"\n\nSupplementary Table S1. {_SAID}",
+    "an eTable's caption": f"\n\neTable 1. {_SAID}",
+    "a box": f"\n\nBox 1. {_SAID}",
+    "an appendix": f"\n\nAppendix A. {_SAID}",
+    "an additional file": f"\n\nAdditional file 1. {_SAID}",
+    "a pipe table": f"\n\n| Group | Count |\n|---|---|\n| A | 1 |\n\n{_SAID}",
+    "a grid table": f"\n\n+-------+-------+\n| Group | Count |\n+=======+=======+\n"
+                    f"| A     | 1     |\n+-------+-------+\n\n{_SAID}",
+    "a simple table": f"\n\n  Group   Count\n  ------- -------\n  A       1\n\n{_SAID}",
+    "an image": f"\n\n![A figure](figure.png)\n\n{_SAID}",
+    "a binding": f"\n\n{{{{table.baseline}}}}\n\n{_SAID}",
+    "a bold title": f"\n\n**Figure legends**\n\n{_SAID}",
+    "a bold title in underscores": f"\n\n__Supplementary material__\n\n{_SAID}",
+    "a bold title in italics": f"\n\n***Figure legends***\n\n{_SAID}",
+    "a bold label running in": f"\n\n**Funding:** {_SAID}",
+    "a heading printed as text": f"\n# Appendix\n{_SAID}",
+    **{f"a title, {title}": f"\n\n{title}\n\n{_SAID}"
+       for title in ("Acknowledgements", "Acknowledgments", "Figure legends", "Funding",
+                     "Conflicts of interest", "Author contributions", "Data availability",
+                     "Supplementary material")},
+}  # fmt: skip
+
+
+@pytest.mark.parametrize("after", list(_AFTER_A_LIST))
+def test_what_follows_a_reference_list_under_a_bold_line_is_read(project: Path, after: str) -> None:
+    """In a paper converted from Word the titles after the list are bold paragraphs too, and
+    journals ask for the figure legends and the tables after the references. Run on to the
+    next heading or the end of the file, the list hid them from G14: "color", "tumor" and ABC
+    in a legend were reported before the list was passed over and not after. It ends at a
+    paragraph all in bold or opening with a bold label, at a back-matter title, a caption, a
+    table, an image or a binding, and, as the audit's cut does, at a line shaped like a
+    heading that pandoc prints as text."""
+    text = main_md(project).read_text(encoding="utf-8")
+    end = text.index("# Data availability")
+    listed = (text[:end] + _LISTED.format(line="**References**").rstrip("\n")
+              + _AFTER_A_LIST[after] + "\n\n" + text[end:])  # fmt: skip
+    main_md(project).write_text(listed, encoding="utf-8")
+    said = line_of(listed, _SAID)
+    assert [(code, line) for code, line, _m in spelling_findings(project)] == [
+        ("spelling-variant", said), ("spelling-variant", said)
+    ]  # fmt: skip
+    assert ("abbreviation-undefined", said) in language_findings(project)
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        "3. Doe J. **The color of a tumor** in bold. Lancet. 2019;393:1-2.",
+        "Fig trees and the color of their fruit. Kew; 2019.",
+        "Box GEP, Jenkins GM. The color of time series. Wiley; 2015.",
+        "Box I, Jenkins GM. The color of time series. Wiley; 2015.",
+        "Tables and the color of tumor registries. 2nd ed. Oxford; 2018.",
+        "Figueroa A. The color of a tumor. BMC Med. 2020;18:1.",
+        "\n\n\n3. Doe J. The color of a tumor. Lancet. 2019;393:1-2.",
+    ],
+    ids=["bold text in an entry", "Fig as a title's word", "an author named Box",
+         "an author named Box with one initial", "Tables as a title's word",
+         "an author named Figueroa", "blank lines between entries"],  # fmt: skip
+)
+def test_an_entry_shaped_a_little_like_a_caption_ends_no_reference_list(
+    project: Path, entry: str
+) -> None:
+    """An entry with bold text in it, one that opens with "Fig" or "Tables" as a word of its
+    title, and one by an author named Box are entries: the list runs on past them, and the
+    spelling of the titles after them is not read. Nor do two blank lines end the list: the
+    second was asked whether it opened a paragraph that ends one, and had none to read."""
+    text = main_md(project).read_text(encoding="utf-8")
+    end = text.index("# Data availability")
+    listed = (text[:end] + _LISTED.format(line="**References**") + f"{entry}\n\n"
+              f"4. Roe MB. The color of the tumor center. PLoS ONE. 2020;15:e1.\n\n"
+              + text[end:])  # fmt: skip
+    main_md(project).write_text(listed, encoding="utf-8")
+    assert spelling_findings(project) == []
+
+
+def test_a_binding_after_a_reference_list_is_counted() -> None:
+    """The word count blanked the list to count none of its words, and a table's or a
+    figure's binding after it went too: the display items were counted from the blanked text,
+    so a paper over the journal's limit passed. They are counted from the text, and a binding
+    ends the list."""
+    from manuscript_guard.text.sections import measure
+
+    for between in ("", "::: {#refs}\n:::\n\n"):
+        text = (f"# Intro\n\nText.\n\n**References**\n\n{between}1. Doe J. T. 2019.\n\n"
+                "{{table.baseline}}\n\n{{figure.forest}}\n")  # fmt: skip
+        counts = measure(text)
+        assert (counts.tables, counts.figures) == (1, 1), between
+
+
+@pytest.mark.parametrize(
+    "lookalike",
+    [
+        "Sources searched:\n\n1. Databases\n\n2. Registries\n\n3. References\n\n",
+        "We searched:\n\n1. References\n2. Registries\n\n",
+        "We searched:\n\n1. References\n\n2. Registries\n\n",
+        "- Sources searched\n\n  References\n\n",
+    ],
+    ids=["an item of a numbered list", "the first item of a tight list",
+         "the first item of a loose list", "an item's paragraph"],  # fmt: skip
+)
+def test_references_as_an_item_of_a_list_opens_no_reference_list(
+    project: Path, lookalike: str
+) -> None:
+    """"3. References" in a loose list of sources searched, or "References" as a paragraph of
+    a list item, is a list's text and not the title of a reference list; taken for one, it
+    hid the rest of the Methods from G14."""
+    text = main_md(project).read_text(encoding="utf-8")
+    end = text.index("# Results")
+    sentence = "We searched the color atlas."
+    edited = text[:end] + lookalike + sentence + "\n\n" + text[end:]
+    main_md(project).write_text(edited, encoding="utf-8")
+    assert [(code, line) for code, line, _m in spelling_findings(project)] == [
+        ("spelling-variant", line_of(edited, sentence))
+    ]
+
+
+def test_a_blank_line_of_spaces_in_a_reference_list_still_ends_a_paragraph() -> None:
+    """The word count makes the list's characters NULs so that it counts none of its words.
+    A line of spaces made NULs was no longer blank, and the `#` line under it was no longer a
+    heading: the Data availability section was gone from the count."""
+    from manuscript_guard.text.sections import measure
+
+    text = "**References**\n\n1. Doe J. Title. 2019.\n  \n# Data availability\n\nText here.\n"
+    assert measure(text).sections == ("Data availability",)
+    assert measure(text).main_text_words == 4
+
+
+def test_declaring_no_english_a_mostly_american_paper_hears_of_its_british_word(
+    project: Path,
+) -> None:
+    """The case behind the decision: a paper in American English that declared nothing was
+    told it broke the British English `init` had declared for it. Now the British word is
+    the one said, and nothing about a setting nobody made."""
+    _declaring_no_english(project)
+    supplement = project / "manuscript" / "supplementary" / "S1_code_lists.md"
+    supplement.write_text(
+        supplement.read_text(encoding="utf-8")
+        + "\nThe color of the tumor, the anemia, the edema and the hemoglobin level were not "
+        "coded.\n",
+        encoding="utf-8",
+    )
+    text = main_md(project).read_text(encoding="utf-8")
+    assert spelling_findings(project) == [
+        (
+            "spelling-variant",
+            line_of(text, "We analysed"),
+            "'analysed' is the British spelling of 'analyzed', used once; paper.yaml declares "
+            "no English, and the paper has 5 words in American spelling to 1 in British",
+        )
+    ]
 
 
 def test_a_name_a_quotation_and_a_citation_key_in_the_other_spelling_are_left_alone(

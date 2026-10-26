@@ -74,6 +74,9 @@ _FRONT_MATTER_SPECS = {
                      "authormark", "editor"), "{b}"),
     "pagespan": "{b}{b}",
 }  # fmt: skip
+#: cleveref's cross-references to a range, which print the numbers of two labels with a word
+#: between, "Figures 2 to 4" (corpus round, 2026-10-23).
+RANGES = frozenset({"crefrange", "Crefrange", "cpagerefrange", "Cpagerefrange"})
 #: Commands and their arguments.
 COMMANDS = _specs(
     {
@@ -129,6 +132,8 @@ COMMANDS = _specs(
              "newlength", "date"),
             _REF,
         ),
+        # cleveref's ranges, `\crefrange{a}{b}`: the two labels the range runs between.
+        **dict.fromkeys(RANGES, "{b}{b}"),
         # The import package's: a folder and a file, followed as an input is (`IMPORTS`).
         **dict.fromkeys(("import", "subimport"), "{b}{b}"),
         "url": "{r}",
@@ -274,7 +279,7 @@ LISTINGS = RAW - {"comment"}
 
 #: The cross-references, which print a number only the compiled document knows (step 8).
 POINTERS = frozenset({"ref", "eqref", "pageref", "autoref", "nameref", "cref", "Cref", "vref",
-                      "cpageref", "labelcref"})  # fmt: skip
+                      "cpageref", "labelcref", *RANGES})  # fmt: skip
 #: Tables an author types: a number in one is `hand-authored-table`, as one in a Markdown
 #: table's row is. Maths' alignments separate cells too, and are no tables.
 TYPED_TABLES = frozenset({"tabular", "tabular*", "tabularx", "tabulary", "longtable"})

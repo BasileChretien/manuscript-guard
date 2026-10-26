@@ -64,6 +64,7 @@ from manuscript_guard.paths import SHIPPED_RECIPES
 from manuscript_guard.text.blocks import Heading, find_headings
 from manuscript_guard.text.inline import code_spans, equation_spans
 from manuscript_guard.text.masking import NUL, front_matter_end, mask
+from manuscript_guard.text.reference_lists import unmarked_reference_lists
 from manuscript_guard.text.sections import Section
 
 if TYPE_CHECKING:
@@ -101,19 +102,14 @@ _QUOTES = (
 )
 #: What may cling to either end of a long form and is no part of it.
 _EDGES = _QUOTES + ".,;:()[]"
-# The short form opening a bracket: alone, before a separator ("ROR; 95% CI ..."), or before
-# a statistic ("ROR: 3.84", "ROR = 3.84", "ROR 3.84").
+# The short form opening a bracket: alone, or before a separator ("ROR; 95% CI ...", "ROR:
+# 3.84", read by its letters like any other). One followed by an equals sign or a number
+# gives a statistic and defines nothing: "a higher risk (HR 1.32, 95% CI ...)" is no
+# definition of HR, though "higher risk" begins with its letters.
 _OPENS_WITH = re.compile(
     rf"[\s{re.escape(_QUOTES)}]*(?P<short>[^\W_]+(?:-[^\W_]+)*)[\s{re.escape(_QUOTES)}]*"
-    r"(?:$|[;,:=]|(?=\d))"
+    r"(?:$|[;,:])"
 )
-# What makes a bracket a statistic: its short form followed by a colon, an equals sign or a
-# number, "(AOR: 0.41, 95% CI ...)". Such a bracket defines its short form only where the
-# words right before it begin with its letters (`_initials`): "reporting odds ratio (ROR:
-# 3.84)" does, "and older adults (AOR: 0.41)" does not, though its letters are there.
-_STATISTIC = re.compile(rf"[\s{re.escape(_QUOTES)}]*(?:[:=]|\d)")
-#: A word, or a part of a hyphenated one, for `_initials`: `drug`, `induced`, `2`.
-_PART = re.compile(r"[^\W_]+")
 #: The brackets a long form opens and closes, round and square: a letter of its short form
 #: is not found inside one it opens (`_inside_a_bracket`).
 _OPENING = "(["
@@ -451,20 +447,6 @@ def _passed_over(before: str, opened: int) -> str:
     return before[:opened] + " " * (min(at, len(before) - 1) + 1 - opened) + before[at + 1 :]
 
 
-def _initials(short: str, before: str) -> str | None:
-    """The words right before a bracket, where they begin with the letters and digits of
-    `short` in order, one word each, and nothing but marks and spaces follows them: "the
-    reporting odds ratio" for ROR, "drug-induced liver injury" for DILI, "type 2 diabetes
-    mellitus" for T2DM. The stricter reading a statistic's bracket is held to."""
-    wanted = [char.lower() for char in short if char.isalnum()]
-    parts = list(_PART.finditer(before))[-len(wanted) :] if wanted else []
-    if len(parts) != len(wanted) or before[parts[-1].end() :].strip(_EDGES + " \t\r\n"):
-        return None
-    if [part.group()[0].lower() for part in parts] != wanted:
-        return None
-    return " ".join(before[parts[0].start() : parts[-1].end()].split())
-
-
 def _window(short: str) -> int:
     """How many words back a long form may start: Schwartz and Hearst's bound."""
     return min(len(short) + 5, len(short) * 2)
@@ -524,10 +506,13 @@ def _regions(
     *,
     supplementary: bool,
     abstract_title: str | None = None,
+    lists: Iterable[tuple[int, int]] = (),
 ) -> list[_Region]:
     """Which text each stretch of a file belongs to. `chain` is the headings a reader is
     under, carried from one file of a document into the next: a file that opens without a
-    heading continues the section the last one ended in."""
+    heading continues the section the last one ended in. `lists` are the reference lists
+    under a line that is no heading (`unmarked_reference_lists`): each is read as the list
+    under `# References` is, and the text after it as the text before it."""
 
     def here(start: int) -> _Region:
         return _region(start, chain, supplementary=supplementary, abstract_title=abstract_title)
@@ -538,6 +523,14 @@ def _regions(
             chain.pop()
         chain.append(Section(title=heading.title, level=heading.level, body="", line=0))
         regions.append(here(heading.start))
+    for start, end in lists:
+        before = [region for region in regions if region.start < start]
+        after = [region for region in regions if region.start >= end]
+        resumed = [region for region in regions if region.start <= end][-1]
+        regions = [*before, _Region(start, None, True)]
+        if not after or after[0].start > end:
+            regions.append(_Region(end, resumed.scope, resumed.quiet))
+        regions += after
     return regions
 
 
@@ -703,11 +696,6 @@ def _short_inside(prose: str, bracket: re.Match[str]) -> tuple[int, str, str] | 
     short = opening.group("short")
     before = prose[max(0, bracket.start() - 400) : bracket.start()]
     before = _BLANK_LINE.split(before)[-1]
-    if _STATISTIC.match(bracket.group(1), opening.end("short")):
-        long = _initials(_singular(short), before)
-        if long is None:
-            return None
-        return bracket.start(1) + opening.start("short"), _stem(short, long), long
     words = " ".join(before.split()[-_window(short) :])
     long = _long_form(short, words)
     if long is None and short != _singular(short):
@@ -923,7 +911,8 @@ def _file(
     prose = _hide(hidden, (_heading_span(text, heading) for heading in headings)).replace(
         NUL, " "
     )
-    regions = _regions(headings, chain, supplementary=supplementary, abstract_title=abstract_title)
+    regions = _regions(headings, chain, supplementary=supplementary, abstract_title=abstract_title,
+                       lists=unmarked_reference_lists(text))  # fmt: skip
     titled = [(heading.start, _heading_span(text, heading)[1], heading.level, heading.title)
               for heading in headings]  # fmt: skip
     return _assembled(
@@ -1164,13 +1153,13 @@ def _same_meaning(one: str, other: str) -> bool:
 
 
 def _given_again(
-    short: str, definitions: list[_Definition], where
+    short: str, definitions: list[_Definition], said
 ) -> list[tuple[_Definition, str, str]]:
     """Each definition of `short` after the first that is a finding, with its message and
     hint: one that gives another meaning than the first, wherever it stands; and one that
     gives the same meaning again, unless a caption or a glossary gives it, which may restate
     what the text defines, or none of the text's own came before it. `definitions` are in
-    the order they stand."""
+    the order they stand; `said(mark, here)` names where `mark` stands, seen from `here`."""
     first = definitions[0]
     given: _Definition | None = None
     found = []
@@ -1178,14 +1167,14 @@ def _given_again(
         if again is not first and not _same_meaning(first.long, again.long):
             found.append((
                 again,
-                f"{short} is defined as {again.long!r} here and as {first.long!r} at "
-                f"{where(first)}",
+                f"{short} is defined as {again.long!r} here and as {first.long!r} "
+                f"{said(first, again)}",
                 "one short form, one meaning: a reader keeps the first",
             ))  # fmt: skip
         elif again is not first and not again.restates and given is not None:
             found.append((
                 again,
-                f"{short} is defined again; it was defined at {where(given)}",
+                f"{short} is defined again; it was defined {said(given, again)}",
                 "define an abbreviation once and use the short form after that",
             ))  # fmt: skip
         if given is None and not again.restates:
@@ -1224,6 +1213,14 @@ def _judge(files: list[_File], known: _Known, root: Path) -> Report:
             shown = str(file.path)
         return f"{shown}:{file.line_of(mark.offset)}"
 
+    def placed(mark: _Mark, here: _Mark, at: str, beside: str) -> str:
+        """Where `mark` stands, said from `here`: `beside` where it is on the same line of
+        the same file, which `at` and the place would name as though it were another
+        (corpus round, 2026-10-23: "defined later at main.tex:158" of a use on line 158)."""
+        one, other = files[mark.order], files[here.order]
+        same = one.path == other.path and one.line_of(mark.offset) == other.line_of(here.offset)
+        return beside if same else f"{at} {where(mark)}"
+
     def finding(code: str, mark: _Mark, short: str, message: str, hint: str) -> Finding:
         file = files[mark.order]
         return Finding(
@@ -1259,7 +1256,8 @@ def _judge(files: list[_File], known: _Known, root: Path) -> Report:
                         "abbreviation-used-before-defined",
                         uses[0],
                         short,
-                        f"{short} is used here, and defined later at {where(first)}",
+                        f"{short} is used here, and defined "
+                        + placed(first, uses[0], "later at", "later on the same line"),
                         "define an abbreviation where it first appears: the long form, then "
                         "the short form in brackets",
                     )
@@ -1268,7 +1266,11 @@ def _judge(files: list[_File], known: _Known, root: Path) -> Report:
             # Without headings nothing tells the abstract from the main text, so a
             # definition the abstract repeats would be reported as one given twice.
             for again, message, hint in [] if headless and scope.name == BODY else (
-                _given_again(short, definitions, where)
+                _given_again(
+                    short,
+                    definitions,
+                    lambda mark, here: placed(mark, here, "at", "earlier on the same line"),
+                )
             ):
                 findings.append(finding("abbreviation-redefined", again, short, message, hint))
 

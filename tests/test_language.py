@@ -88,6 +88,30 @@ def test_an_abbreviation_defined_twice_is_reported(project: Path) -> None:
     assert "manuscript/main.md:3" in finding.message
 
 
+@pytest.mark.parametrize(
+    ("text", "code", "said"),
+    [
+        ("The ROR of each drug, the reporting odds ratio (ROR), was computed.",
+         "abbreviation-used-before-defined",
+         "ROR is used here, and defined later on the same line"),
+        ("The reporting odds ratio (ROR) and the reporting odds ratio (ROR) were computed. "
+         "The ROR rose.", "abbreviation-redefined",
+         "ROR is defined again; it was defined earlier on the same line"),
+        ("The reporting odds ratio (ROR) and the relative odds ratio (ROR) were computed. "
+         "The ROR rose.", "abbreviation-redefined",
+         "ROR is defined as 'relative odds ratio' here and as 'reporting odds ratio' earlier on "
+         "the same line"),
+    ],
+)  # fmt: skip
+def test_a_definition_on_the_line_of_its_use_is_said_to_be_on_the_same_line(
+    project: Path, text: str, code: str, said: str
+) -> None:
+    """A use and its definition on one line were told as "defined later at main.tex:158" of
+    a finding on line 158, as though it were another place (corpus round, 2026-10-23): the
+    same line is said to be the same line, and another is still named by file and line."""
+    report = written(project, f"# Methods\n\n{text}\n")
+    assert found(report, code) == [said], found(report)
+
 def test_one_short_form_with_two_meanings_names_both(project: Path) -> None:
     report = written(
         project,
@@ -526,15 +550,10 @@ def test_the_long_form_is_matched_letter_by_letter() -> None:
     assert _long_form("ROR", "the ROR") is None, "a short form does not define itself"
 
 
-@pytest.mark.parametrize(
-    "value", [": 0.41", ":0.41", " = 0.41", "=0.41", " 0.41", ": {{results.aor}}"]
-)
+@pytest.mark.parametrize("value", [" = 0.41", "=0.41", " 0.41"])
 def test_a_statistic_in_brackets_is_not_a_definition(project: Path, value: str) -> None:
-    """A short form followed by a colon, an equals sign or a number is a statistic, and it
-    defines its short form only where the words right before it are its initials. Read as a
-    definition by its letters, "AOR: 0.41" was "AOR is defined as 'and older adults'", a
-    second meaning. An equals sign and a number were never read as a definition before;
-    now they are where the initials are there."""
+    """A short form followed by an equals sign or a number is a statistic and defines
+    nothing, though "and older adults" holds the letters of AOR in order."""
     report = written(
         project,
         "# Results\n\nThe adjusted odds ratio (AOR) was computed for each group. Use was "
@@ -543,13 +562,27 @@ def test_a_statistic_in_brackets_is_not_a_definition(project: Path, value: str) 
     assert not report.findings, found(report)
 
 
+@pytest.mark.parametrize("value", [": 0.41", ":0.41", ": {{results.aor}}"])
+def test_a_statistic_after_a_colon_is_read_by_its_letters_as_on_main(
+    project: Path, value: str
+) -> None:
+    """Known gap, held where it stands: a short form followed by a colon is read by its
+    letters, as any short form is, a statistic or not. "and older adults" holds A, O and R
+    in order, so "(AOR: 0.41)" defines AOR a second time, as it did before, and the
+    definitions are all its uses."""
+    report = written(
+        project,
+        "# Results\n\nThe adjusted odds ratio (AOR) was computed for each group. Use was "
+        f"lower among the young and older adults (AOR{value}, 95% CI 0.22 to 0.77).\n",
+    )
+    assert codes(report) == {"abbreviation-redefined", "abbreviation-unused"}, found(report)
+
+
 @pytest.mark.parametrize(
     ("text", "long"),
     [
         ("The reporting odds ratio (ROR: 3.84, 95% CI 2.10 to 7.02) was high.",
          "reporting odds ratio"),
-        ("The reporting odds ratio (ROR = 3.84) was high.", "reporting odds ratio"),
-        ("The reporting odds ratio (ROR 3.84) was high.", "reporting odds ratio"),
         ("The *reporting odds ratio* (ROR: 3.84) was high.", "reporting odds ratio"),
         ("The estimated glomerular filtration rate (eGFR: ml/min/1.73 m2) fell.",
          "estimated glomerular filtration rate"),
@@ -557,15 +590,29 @@ def test_a_statistic_in_brackets_is_not_a_definition(project: Path, value: str) 
         ("Type 2 diabetes mellitus (T2DM: 40%) was common.", "Type 2 diabetes mellitus"),
         ("Their reporting odds ratios (RORs: 3.8 and 4.1) were high.",
          "reporting odds ratios"),
+        ("The reporting odds ratio (RORs: 3.8 and 4.1) was high in both.",
+         "reporting odds ratio"),
+        # Letters that are not one per word, read as any long form is.
+        ("Creatinine clearance (CrCl: 58 mL/min) was reduced.", "Creatinine clearance"),
+        ("The interquartile range (IQR: 3\N{EN DASH}7) was wide.", "interquartile range"),
+        ("The Medical Dictionary for Regulatory Activities (MedDRA: 26.0) was used.",
+         "Medical Dictionary for Regulatory Activities"),
+        # A last word that does not hold the short form's last letter.
+        ("The Hamilton Depression Rating Scale (HAM-D: 18) was high.",
+         "Hamilton Depression Rating Scale"),
+        ("The Charlson Comorbidity Index score (CCI: 2) was low.",
+         "Charlson Comorbidity Index score"),
+        ("The estimated glomerular filtration rate at baseline (eGFR: 58) was low.",
+         "estimated glomerular filtration rate at baseline"),
+        ("We estimated the hazard ratio for death (HR: 1.3) in each group.",
+         "hazard ratio for death"),
     ],
 )  # fmt: skip
-def test_a_statistic_defines_where_the_words_before_it_are_its_initials(
-    text: str, long: str
-) -> None:
-    """How pharmacovigilance writes a first estimate: "reporting odds ratio (ROR: 3.84)".
-    Where the words right before the bracket begin with the short form's letters, in order
-    and one word each, the bracket defines it, a statistic or not."""
-    short = re.match(r"[^\W_]+", text[text.index("(") + 1 :])[0]
+def test_a_short_form_before_a_colon_defines_by_its_letters(text: str, long: str) -> None:
+    """How pharmacovigilance writes a first estimate: "reporting odds ratio (ROR: 3.84)". A
+    short form followed by a colon defines where its letters are found before the bracket,
+    as any short form does."""
+    short = re.match(r"[^\W_]+(?:-[^\W_]+)*", text[text.index("(") + 1 :])[0]
     definitions = [(found, words) for _at, found, words in _definitions(text)]
     assert definitions == [(short.removesuffix("s"), long)], definitions
 
@@ -573,16 +620,57 @@ def test_a_statistic_defines_where_the_words_before_it_are_its_initials(
 @pytest.mark.parametrize(
     "text",
     [
-        "Use was lower in the young and older adults (AOR: 0.41).",
         "Use was lower in the young and older adults (AOR = 0.41).",
         "Use was lower in the young and older adults (AOR 0.41).",
-        "Use was lower after adjusted odds ratio analysis (AOR: 0.41).",
     ],
 )
-def test_a_statistic_whose_words_are_not_its_initials_defines_nothing(text: str) -> None:
+def test_a_statistic_after_an_equals_sign_or_a_number_defines_nothing(text: str) -> None:
     """The letters of AOR are in "and older adults" in order, which is how a definition is
-    found; for a statistic the words right before it have to begin with them."""
+    found; after an equals sign or a number the bracket is a statistic's."""
     assert _definitions(text) == []
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Treatment was associated with a higher risk (HR 1.32, 95% CI 1.10 to 1.58).",
+        "Treatment was associated with a higher risk (HR = 1.32, 95% CI 1.10 to 1.58).",
+        "Exposure carried a reduced risk (RR 0.71).",
+        "Use carried higher odds of readmission (OR 1.52).",
+        "In the second cohort the odds ratio (OR 1.5) was lower.",
+        "The reporting odds ratio (ROR = 3.84) was high.",
+        "The reporting odds ratio (ROR 3.84) was high.",
+    ],
+)
+def test_a_short_form_before_a_number_or_an_equals_sign_defines_nothing(text: str) -> None:
+    """A statistic's bracket: "a higher risk (HR 1.32, ...)" begins with the letters of HR,
+    and is no definition of it. Read as one, it was a second definition after "the hazard
+    ratio (HR)", and a definition where there was none."""
+    assert _definitions(text) == []
+
+
+@pytest.mark.parametrize(
+    ("text", "codes_found"),
+    [
+        ("The hazard ratio (HR) was estimated. Treatment was associated with a higher risk "
+         "(HR 1.32, 95% CI 1.10 to 1.58).", set()),
+        ("Treatment was associated with a higher risk (HR 1.32, 95% CI 1.10 to 1.58). The "
+         "HR was stable.", {"abbreviation-undefined"}),
+        ("The odds ratios (ORs) were estimated. In the second cohort the odds ratio (OR 1.5) "
+         "was lower.", set()),
+        ("Creatinine clearance (CrCl: 58 mL/min) was reduced. Creatinine clearance (CrCl) "
+         "fell further, and CrCl was lowest at discharge.", {"abbreviation-redefined"}),
+        ("The interquartile range (IQR: 3\N{EN DASH}7) was wide. The IQR was narrower "
+         "later.", set()),
+    ],
+)  # fmt: skip
+def test_what_a_statistic_s_bracket_leaves_defined(
+    project: Path, text: str, codes_found: set[str]
+) -> None:
+    """A statistic after a number is no second definition, nor a first; a short form after a
+    colon whose letters are not one per word is still a definition."""
+    report = written(project, f"# Results\n\n{text}\n")
+    assert codes(report) == codes_found, found(report)
 
 
 @pytest.mark.parametrize(
@@ -602,7 +690,7 @@ def test_a_long_form_steps_back_past_a_bracket_it_would_open(text: str, short: s
 def test_a_statistic_in_brackets_does_not_stand_in_for_a_definition(project: Path) -> None:
     report = written(
         project,
-        "# Results\n\nUse was lower among older adults (AOR: 0.41). The AOR was stable.\n",
+        "# Results\n\nUse was lower among older adults (AOR 0.41). The AOR was stable.\n",
     )
     assert codes(report) == {"abbreviation-undefined"}, found(report)
 
@@ -641,14 +729,16 @@ def test_a_long_form_may_close_a_bracket_or_hold_a_whole_one(
 
 
 def test_the_limits_of_the_bracket_rules_are_as_design_md_says() -> None:
-    """Known gaps, held where they stand: a statistic whose long form holds a word its
-    initials skip defines nothing, a colon before words is read as a statistic's, and a
-    comma makes no statistic."""
+    """Known gaps, held where they stand: after a colon, a short form is read by its letters,
+    a statistic or not, so words that hold them in order define it; a colon before words is
+    read the same way; and a comma makes no statistic."""
 
     def shorts(text: str) -> list[str]:
         return [short for _at, short, _long in _definitions(text)]
 
-    assert shorts("The Medical Dictionary for Regulatory Activities (MedDRA: 26.0).") == []
+    assert shorts("It was associated with a higher risk (HR: 1.32, 95% CI 1.1 to 1.6).") == ["HR"]
+    assert shorts("Use was lower in the young and older adults (AOR: 0.41).") == ["AOR"]
+    assert shorts("Use was lower after adjusted odds ratio analysis (AOR: 0.41).") == ["AOR"]
     assert shorts("Physical activity (PA: walking or cycling) was low.") == ["PA"]
     assert shorts("Use was lower in the young and older adults (AOR, 0.41).") == ["AOR"]
     # Past the aside, the 2 of a count before it is a letter like any other.

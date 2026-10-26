@@ -465,11 +465,14 @@ def test_crossref_answering_some_preprints_says_how_many_it_did_not_and_which() 
                                                   SECOND: _json(503, {})}))  # fmt: skip
     assert result.answers["crossref"].why == f"HTTP 503, for 1 of 3: {SECOND}"
     assert f"unresolvable (HTTP 503, for 1 of 3: {SECOND})" in proposals.render(result)
+    # Round 1 of #376: two reasons were listed before the DOIs, so neither said which was
+    # whose, and a DOI Crossref throttled is worth asking again where a 503 may not be.
     result = _run(Table(europepmc=epmc, crossref={SECOND: _json(503, {}),
                                                   THIRD: _json(429, {})}))  # fmt: skip
-    why = result.answers["crossref"].why
-    assert why.startswith("HTTP 503; throttled (HTTP 429)")
-    assert why.endswith(f", for 2 of 3: {SECOND}, {THIRD}")
+    throttled = "throttled (HTTP 429): asked too often, or past the allowance"
+    assert result.answers["crossref"].why == (
+        f"for 2 of 3: {SECOND} (HTTP 503), {THIRD} ({throttled})"
+    )
 
 
 def test_a_preprint_crossref_did_not_answer_is_marked_beside_its_retraction() -> None:
@@ -492,7 +495,9 @@ def test_one_later_version_two_registries_give_is_said_once() -> None:
             _hit("crossref", 0, doi=PREPRINT, later=({"doi": "10.5/x"},))]  # fmt: skip
     [one] = proposals.candidate(hits).later_versions
     assert one == {"pmid": "9", "doi": "10.5/x", "reference": "J. 2026",
-                   "said_by": ["pubmed", "europepmc", "crossref"]}  # fmt: skip
+                   "said_by": ["pubmed", "europepmc", "crossref"],
+                   "given_by": {"pmid": ["pubmed", "europepmc"],
+                                "doi": ["pubmed", "crossref"]}}  # fmt: skip
 
 
 @pytest.mark.parametrize(
@@ -507,9 +512,37 @@ def test_two_links_that_share_one_identifier_and_differ_on_the_other_are_two(fir
             _hit("europepmc", 1, doi=PREPRINT, later=(second,)),
             _hit("crossref", 0, doi=PREPRINT, later=({"doi": "10.5/x"},))]  # fmt: skip
     assert proposals.candidate(hits).later_versions == (
-        {**first, "said_by": ["pubmed", "crossref"]},
-        {**second, "said_by": ["europepmc"]},
-    )
+        {**first, "said_by": ["pubmed", "crossref"],
+         "given_by": {"pmid": ["pubmed"], "doi": ["pubmed", "crossref"]}},
+        {**second, "said_by": ["europepmc"],
+         "given_by": {"pmid": ["europepmc"], "doi": ["europepmc"]}},
+    )  # fmt: skip
+
+
+def _said(*candidates: proposals.Candidate) -> str:
+    answers = {name: registries.Answer("found") for name in registries.REGISTRIES}
+    return proposals.render(proposals.Result(QUERY, Filters(), "relevance", answers, candidates))
+
+
+def test_a_later_version_says_whose_each_identifier_is() -> None:
+    """Round 1 of #376: PubMed's PMID alone and Europe PMC's PMID with a DOI were one version
+    said in one breath to be both registries', as if PubMed had given the DOI."""
+    hits = [_hit("pubmed", 1, doi=PREPRINT, later=({"pmid": "9"},)),
+            _hit("europepmc", 1, doi=PREPRINT,
+                 later=({"pmid": "9", "doi": "10.5/y"},))]  # fmt: skip
+    found = proposals.candidate(hits)
+    [one] = found.later_versions
+    assert one["said_by"] == ["pubmed", "europepmc"]
+    assert one["given_by"] == {"pmid": ["pubmed", "europepmc"], "doi": ["europepmc"]}
+    said = _said(found)
+    assert "a later version, DOI 10.5/y (Europe PMC) / PMID 9 (PubMed, Europe PMC)\n" in said
+    result = proposals.Result(QUERY, Filters(), "relevance", {}, (found,))
+    [data] = proposals.as_json(result)["candidates"][0]["later_versions"]
+    assert data["given_by"] == {"pmid": ["pubmed", "europepmc"], "doi": ["europepmc"]}
+    # Where each registry gave every identifier, the names are said once, as before.
+    hits[0] = _hit("pubmed", 1, doi=PREPRINT, later=({"pmid": "9", "doi": "10.5/y"},))
+    said = _said(proposals.candidate(hits))
+    assert "a later version, DOI 10.5/y / PMID 9 (PubMed, Europe PMC)\n" in said
 
 
 def test_openalex_asked_without_a_key_is_said_when_only_asked_by_doi() -> None:

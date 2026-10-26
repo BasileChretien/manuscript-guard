@@ -229,10 +229,10 @@ the paper says.
 
 ## One English
 
-`english_variant` in `paper.yaml` says whether the paper is in British (`en-GB`) or
-American (`en-US`) spelling, and G14 holds the manuscript to it. Write in that English
-from the first draft: a paragraph pasted from another paper, or drafted without looking,
-is where the other spelling comes in.
+`english_variant` in `paper.yaml` says if the paper is in British (`en-GB`) or
+American (`en-US`) spelling, and G14 holds the manuscript to it; where it says neither, to
+the English most of its words are in (ask which; declare it). Write in it from the
+first draft: a pasted paragraph brings in the other.
 
 - `spelling-variant`: a word in the other spelling, reported once, at its first use, with
   how many times it is used and what this paper writes. Search for the others and respell

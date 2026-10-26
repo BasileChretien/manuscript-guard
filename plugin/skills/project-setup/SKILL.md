@@ -47,9 +47,20 @@ hook says once when that release is newer than the installed tool, with the upgr
 manuscript-guard init my-paper --title "Working title"   # a new project
 manuscript-guard init . --title "Working title"          # an existing analysis repository
 manuscript-guard init my-paper --title "Working title" --latex   # the manuscript in LaTeX
+manuscript-guard init my-paper --title "Working title" --english en-US   # American spelling
+manuscript-guard init my-paper --from paper.docx         # a paper written in Word
 ```
 
-Ask the authors whether they write the manuscript in Markdown or in LaTeX before running it.
+`--from` writes the Word paper as `manuscript/main.md`: each table a pipe table where its
+cells hold only paragraphs, the pictures in `manuscript/media/`, the title from Word's Title
+style in `paper.yaml`, each name of its Author style in `authors.yaml`, unsplit, and what
+stands before the first heading in a comment at the top, which no gate reads. Read what it
+prints with the authors: the tables it left as grid tables, and whether the comment holds
+an abstract or text that belongs to the paper. A `.doc` is refused; save it as `.docx`.
+
+Ask the authors whether they write the manuscript in Markdown or in LaTeX, and in British
+(`en-GB`) or American (`en-US`) spelling, before running it. Without `--english`, `init`
+declares none, and G14 holds the paper to the English most of its words are in.
 With `--latex` the manuscript is `manuscript/main.tex`, which declares its class and loads
 `mgvalues`, with `mgvalues.sty` beside it, in place of `main.md`. A project is one or the
 other: `init --latex` makes nothing where `manuscript/` holds Markdown, and `check` fails a
@@ -98,7 +109,9 @@ Then fill in, in this order:
    warning left standing is theirs to sign off, with `manuscript-guard sign --as <them>
    --finding <id>` as its hint says. Never run `sign` for them.
 2. **`paper.yaml`**: the title, `english_variant` (`en-GB` or `en-US`; ask, do not
-   assume: G14 holds the manuscript's spelling to it), and the reporting
+   assume: G14 holds the manuscript's spelling to it. `init --english en-US` writes it at
+   the start. Left out, G14 holds the paper to the English most of its words are in, and
+   the document is built as English with no region), and the reporting
    guideline under the key `reporting_guideline` (singular, a list). Any key the schema does
    not know is a failure at every stage. The title, the short title and the keywords are
    read as Markdown, and TeX in them is kept only between dollar signs: write

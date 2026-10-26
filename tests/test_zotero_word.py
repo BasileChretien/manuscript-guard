@@ -96,6 +96,15 @@ def test_the_style_is_written_where_words_zotero_plugin_reads_it(tmp_path: Path)
     assert '<style id="http://www.zotero.org/styles/apa" locale="en-GB"' in prefs
     assert '<pref name="fieldType" value="Field"/>' in prefs
     assert 'zotero-version="9.0.6"' in prefs
+    # Given no locale, as for a paper that declares no English, the filter names CSL's
+    # default one, which is also what citeproc takes for `lang: en`.
+    bare = tmp_path / "bare"
+    bare.mkdir()
+    unnamed = "".join(
+        zotero_prefs(custom_properties(run_filter(bare, HEADER.replace("  locale: en-GB\n", "")
+                                                  + "Text.\n")))
+    )  # fmt: skip
+    assert '<style id="http://www.zotero.org/styles/apa" locale="en-US"' in unnamed
     # The filter's own settings do not linger as properties of their own.
     assert not re.search(r'name="zotero(-word)?"', properties)
 
@@ -121,6 +130,38 @@ def test_the_live_front_matter_names_the_journals_zotero_style(project: Path, mo
     assert 'style: "http://www.zotero.org/styles/vancouver"' in live
     assert 'zotero-version: "9.0.6"' in live
     assert "zotero-word" not in _front_matter(proj, live=False)
+
+
+@pytest.mark.parametrize(
+    ("declared", "lang", "locale"),
+    [("en-GB", "en-GB", "  locale: en-GB\n"), ("en-US", "en-US", "  locale: en-US\n"),
+     (None, "en", "")],
+)  # fmt: skip
+def test_the_document_is_in_the_english_declared_or_english_with_no_region(
+    project: Path, monkeypatch, declared: str | None, lang: str, locale: str
+) -> None:
+    """Declaring none, pandoc is given `lang: en`, which Word reads as English with no
+    region, and the filter is given no locale, so Zotero is asked for the one it takes when
+    none is named (Basile, 2026-10-23)."""
+    profile = project / "profiles" / "journals" / "demo-journal.yaml"
+    profile.write_text(
+        profile.read_text(encoding="utf-8").replace(
+            'style_name: "Vancouver"', 'style_name: "Vancouver"\n  csl: vancouver'
+        ),
+        encoding="utf-8",
+    )
+    path = project / "paper.yaml"
+    text = path.read_text(encoding="utf-8")
+    assert text.count("english_variant: en-GB\n") == 1, "the example changed under this test"
+    line = "" if declared is None else f"english_variant: {declared}\n"
+    path.write_text(text.replace("english_variant: en-GB\n", line), encoding="utf-8")
+    monkeypatch.setattr("manuscript_guard.build.document._zotero_version", lambda: None)
+    proj, _ = load_project(project)
+    live = _front_matter(proj, live=True)
+    assert f"\nlang: {lang}\n" in live
+    assert live.split("zotero-word:\n")[1].split("---")[0] == (
+        '  style: "http://www.zotero.org/styles/vancouver"\n' + locale
+    )
 
 
 # ---------------------------------------------------------------- the stamp

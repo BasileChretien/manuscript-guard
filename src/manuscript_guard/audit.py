@@ -55,8 +55,7 @@ from manuscript_guard.text.comments import unclear_comment_lines
 from manuscript_guard.text.docx import NotADocx, is_docx, read_docx_text
 from manuscript_guard.text.fences import unclear_fence_lines
 from manuscript_guard.text.masking import front_matter_end, mask
-from manuscript_guard.text.section_names import REFERENCE_WORDS_ELSEWHERE
-from manuscript_guard.text.sections import strip_attributes
+from manuscript_guard.text.reference_lists import is_bibliography_heading
 from manuscript_guard.text.tables import Table, markdown_tables
 from manuscript_guard.text.tokens import DIGIT, Atom, find_atoms, trim
 
@@ -353,79 +352,6 @@ def load_backing(paths: list[Path]) -> tuple[set[str], list[Path], list[str]]:
             skipped.append(f"{given}: does not exist")
 
     return values, used, skipped
-
-
-# A line that is nothing but a bibliography heading, perhaps numbered, perhaps in bold. From
-# there to the next heading is page ranges, volume numbers and years belonging to other
-# people's papers: not the author's claims, and reporting them buries the findings that
-# matter.
-#
-# Everything after the heading word is one character class under one quantifier. The first
-# version had five optional whitespace runs in a row there, and a line that began with the
-# word and failed later backtracked through every way of dividing its spaces between them:
-# 26 s for one line of the kind `pdftotext -layout` writes.
-#
-# And every run of whitespace before the word has exactly one quantifier that can take it:
-# the line is stripped first, and a number takes the spaces after it. With `^\s*` beside
-# `[\s*_]*` a failing line was still quadratic in its indentation, and `pdftotext -layout`
-# indents a right-hand column by a hundred spaces: 20 s for 3,000 such lines.
-#
-# A pandoc attribute block after the word, `{-}` or `{#refs .unnumbered}`, is not matched
-# here. It is taken off a marked heading before the match, by `strip_attributes`, which reads
-# it item by item, so this pattern keeps one quantifier after the word.
-_BIBLIOGRAPHY = re.compile(
-    r"^(?P<hashes>#+)?[\s*_]*"
-    r"(?:(?P<numbered>\d+[.)])[\s*_]*|(?P<bare>\d+)\s[\s*_]*)?"
-    r"(?P<word>references(?:\s+cited)?|reference\s+list|list\s+of\s+references"
-    r"|cited\s+references|bibliography|works\s+cited|literature\s+cited|cited\s+literature"
-    rf"|{REFERENCE_WORDS_ELSEWHERE})"
-    r"(?P<tail>[\s*_:.|]*)$",
-    re.IGNORECASE,
-)
-
-
-def is_bibliography_heading(
-    line: str, *, marked: bool = False, markdown: bool = True
-) -> bool:
-    """A bibliography heading: a line that is marked as a heading, or has a heading's shape.
-
-    `marked` is for a line the document itself calls a heading, a Markdown `#` or setext
-    heading or a styled paragraph in a .docx. Any other line has to look like one:
-    capitalised, and not ending in a full stop. "12 references." and "references." are where
-    a hard wrap left the end of a sentence, and taking either for a heading hid the rest of
-    the section.
-
-    A marked line is read without the attribute block at its end, as pandoc reads it.
-    Pandoc users write an unnumbered reference heading as `# References {-}`, and the audit
-    found no heading there: it cut nothing, and every number in a book or a web page in the
-    list was reported among the findings. On an unmarked line the braces are printed, so
-    "References {-}" there is text. Only spaces and tabs may follow the block: `strip()`
-    takes every Unicode space, and a no-break space after `{-}`, which pandoc prints braces
-    and all, cut a list.
-
-    `markdown` says whether the marks are Markdown's. There a marked line opening with `#`
-    is an ATX heading and loses its closing `#`s. A setext heading reading "References #"
-    prints the `#`, and so does a .docx, where a style marks the heading and Word prints
-    every `#` in "# References #".
-
-    An unmarked line starting with `#` is not one at all. `#` opens a comment in R, Python
-    and YAML, and `# References` in a code listing cut everything after it; where `#` does
-    make a heading, the document has marked it.
-    """
-    text = line.strip()
-    if marked:
-        text = strip_attributes(line.lstrip().rstrip(" \t"))
-        if markdown and text.startswith("#"):
-            text = text.rstrip("#").rstrip(" \t")
-        text = text.strip()
-    found = _BIBLIOGRAPHY.match(text)
-    if not found:
-        return False
-    if marked:
-        return True
-    if found.group("hashes"):
-        return False
-    return found.group("word")[0].isupper() and "." not in found.group("tail")
 
 
 # A reference-list entry, recognised by its shape rather than by a heading. citeproc appends

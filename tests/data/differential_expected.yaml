@@ -93,13 +93,6 @@ expected:
       its parameter text blanked and its body read, and a use refused only where it
       prints; a `\let` of a command to one the reader reads the same way and a doubled
       parameter in a nested body are no longer refused either (real templates, part 1)
-  - reading: latex mask
-    why: >-
-      a `\def` with delimited parameters, `\def\x\begin{verbatim}` among the inputs, was
-      refused and the rest of the file read as typed; it is read now, as TeX reads it,
-      its parameter text blanked and its body read, and a use refused only where it
-      prints; a `\let` of a command to one the reader reads the same way and a doubled
-      parameter in a nested body are no longer refused either (real templates, part 1)
   - reading: latex places
     why: >-
       a `\def` with delimited parameters, `\def\x\begin{verbatim}` among the inputs, was
@@ -135,10 +128,25 @@ expected:
       its parameter text blanked and its body read, and a use refused only where it
       prints; a `\let` of a command to one the reader reads the same way and a doubled
       parameter in a nested body are no longer refused either (real templates, part 1)
-  - reading: latex pointers
+  - reading: mask
     why: >-
-      a `\def` with delimited parameters, `\def\x\begin{verbatim}` among the inputs, was
-      refused and the rest of the file read as typed; it is read now, as TeX reads it,
-      its parameter text blanked and its body read, and a use refused only where it
-      prints; a `\let` of a command to one the reader reads the same way and a doubled
-      parameter in a nested body are no longer refused either (real templates, part 1)
+      the Markdown mask keeps the line breaks of the front matter, of a listing and of what
+      its patterns match, where it made them NUL, so that a reader of the masked text's
+      lines finds each where the file has it (a pipe table under a listing was read a line
+      out); a comment's line breaks are NUL still, since pandoc reads a comment, a blank
+      line in it too, inside the paragraph it stands in (corpus round, 2026-10-23)
+  - reading: hidden
+    why: >-
+      G14 read the mask with each line feed put back and each carriage return NUL; the
+      mask keeps both now in the front matter and a listing, so a file with CRLF line ends
+      keeps its carriage returns there too, which every reading of it takes for a space
+  - reading: own words
+    why: >-
+      read from the `hidden` text, which keeps a carriage return in the front matter and a
+      listing of a file with CRLF line ends where it was NUL
+  - reading: latex mask
+    why: >-
+      a straight `"` in prose closes the quotation a ``` `` ``` opened in its paragraph, and
+      is read as the closing mark, as the font prints it; not after a blank line, nor before
+      a letter, babel's German accent; the inputs now hold such quotations (corpus round,
+      2026-10-23)

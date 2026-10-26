@@ -32,6 +32,7 @@ from manuscript_guard.gates.duplicates import check_duplicates
 from manuscript_guard.gates.identifiers import check_identifiers
 from manuscript_guard.gates.lookups import check_lookups
 from manuscript_guard.zotero import Lookup, ZoteroUnavailable, available, lookup
+from manuscript_guard.zotero.citations import cited_as
 
 GATE = "G7"
 BIB_FILE = "references.bib"
@@ -52,6 +53,10 @@ def check_citations(project: Project, literature: Literature) -> Report:
     uses = citation_uses(project)
 
     seen: set[str] = {use.citekey for use in uses}
+    # What each key was first cited in, which a finding names it as (`cited_as`).
+    raws: dict[str, str] = {}
+    for use in uses:
+        raws.setdefault(use.citekey, use.raw)
     committed = bib_keys(project)
     bib_path = project.path("literature") / BIB_FILE
 
@@ -98,10 +103,10 @@ def check_citations(project: Project, literature: Literature) -> Report:
                 Finding(
                     gate=GATE,
                     code="citation-unresolved",
-                    message=f"@{use.citekey} matches nothing in the library",
+                    message=f"{cited_as(use.citekey, use.raw)} matches nothing in the library",
                     path=use.path,
                     line=use.line,
-                    hint=_nearest(use.citekey, known),
+                    hint=_nearest(use.citekey, known, use.raw),
                 )
             )
 
@@ -110,7 +115,8 @@ def check_citations(project: Project, literature: Literature) -> Report:
             Finding(
                 gate=GATE,
                 code="citation-key-ambiguous",
-                message=f"@{citekey} is carried by {zotero.ambiguous[citekey]} items in Zotero, "
+                message=f"{cited_as(citekey, raws[citekey])} is carried by "
+                f"{zotero.ambiguous[citekey]} items in Zotero, "
                 "so Better BibTeX cannot tell which one is cited and `sync-bib` will stop",
                 hint="merge the duplicates in Zotero (Duplicate Items), or move the extra copy "
                 "to the trash, then run the check again",
@@ -122,7 +128,7 @@ def check_citations(project: Project, literature: Literature) -> Report:
             Finding(
                 gate=GATE,
                 code="citation-key-unpinned",
-                message=f"@{citekey} is not pinned in Zotero",
+                message=f"{cited_as(citekey, raws[citekey])} is not pinned in Zotero",
                 hint=f"in Zotero, put the line `Citation Key: {citekey}` at the top of the "
                 "item's Extra field; an unpinned key is regenerated from metadata and will "
                 "change under you",
@@ -207,12 +213,13 @@ def _sources_exist(project: Project, literature: Literature) -> Report:
     return report.with_counts(literature_sources_missing=missing)
 
 
-def _nearest(citekey: str, known: frozenset[str]) -> str:
+def _nearest(citekey: str, known: frozenset[str], raw: str = "") -> str:
+    """The keys of the library spelt nearest `citekey`, named as it is cited (`cited_as`)."""
     import difflib
 
     close = difflib.get_close_matches(citekey, known, n=3, cutoff=0.6)
     if close:
-        return "did you mean " + ", ".join(f"@{c}" for c in close) + "?"
+        return "did you mean " + ", ".join(cited_as(c, raw) for c in close) + "?"
     return "check the key exists and is pinned in Zotero"
 
 

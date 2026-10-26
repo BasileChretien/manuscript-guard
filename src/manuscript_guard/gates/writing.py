@@ -117,8 +117,9 @@ def check_writing(
     folder = project.path("manuscript")
     typed_lists: list[Elsewhere] = []
     if manuscript_format(folder) == LATEX:
-        read, words, cited = _latex_texts(folder)
-        report, totals = _judged(read, words, rules, submission=submission, cited=cited)
+        read, words, cited, listed = _latex_texts(folder)
+        report, totals = _judged(read, words, rules, submission=submission, cited=cited,
+                                 listed=listed)  # fmt: skip
         typed_lists = _typed_lists(folder)
     else:
         corpus = [(path, read_text(path)) for path in source_files(folder)]
@@ -161,32 +162,82 @@ def _judged(
     *,
     submission: bool = False,
     cited: dict[Path, list[int]] | None = None,
+    listed: dict[Path, list[tuple[int, int]]] | None = None,
 ) -> tuple[Report, dict[str, int]]:
     """What G6 says of texts read: each as typed and its prose, with the words a journal
-    counts in them, and, for a LaTeX file, where its citation commands stand."""
+    counts in them, and, for a LaTeX file, where its citation commands stand and, in a
+    document that sets out an algorithm or a listing, where the file's algorithms run
+    (`_listed_in`)."""
     report = Report()
     totals = {"words": words, "artefacts": 0, "phrases": 0, "vague": 0, "residue": 0}
     for path, text, prose in read:
         report = report.merge(_artefacts(rules, path, text, totals))
         report = report.merge(_phrases(rules, path, text, prose, totals))
-        report = report.merge(_residue(rules, path, text, prose, totals, submission))
+        algorithms = None if listed is None else listed.get(path)
+        report = report.merge(_residue(rules, path, text, prose, totals, submission, algorithms))
         report = report.merge(_vague(rules, path, text, prose, totals,
                                      None if cited is None else cited.get(path, [])))  # fmt: skip
     return report.merge(_density(rules, read, totals["words"])), totals
 
 
-def _latex_texts(folder: Path) -> tuple[list[tuple[Path, str, str]], int, dict[Path, list[int]]]:
+def _latex_texts(
+    folder: Path,
+) -> tuple[list[tuple[Path, str, str]], int, dict[Path, list[int]], dict[Path, list]]:
     """A LaTeX manuscript as G6 reads it (DESIGN.md, "LaTeX manuscripts", step 7): each file
     of its documents as typed, where the artefacts are looked for as in a Markdown file; its
     prose as the reader masks it, where the phrases and the residue are; where each of its
-    citation commands stands, which a vague attribution is judged against; and the words a
-    journal would count, as G4 counts them in the document's printed view. The author's
-    packages are no text of the paper."""
+    citation commands stands, which a vague attribution is judged against; the words a
+    journal would count, as G4 counts them in the document's printed view; and the algorithms
+    and listings the residue reads apart (`_listed_in`). The author's packages are no text of
+    the paper."""
     from manuscript_guard.text.latex.structure import read_document
 
     documents = [read_document(folder, supplementary=supplementary).sources
                  for supplementary in (False, True)]  # fmt: skip
-    return _read_latex(folder, documents)
+    return (*_read_latex(folder, documents), _listed_in(folder, documents))
+
+
+#: Where an environment that sets out an algorithm begins or ends: algorithmic's
+#: (algorithmicx, algpseudocode), the `algorithm` float around it, and algorithm2e's, whose
+#: `algorithm` holds the lines itself.
+_ALGORITHM = re.compile(r"\\(begin|end)\s*\{(?:algorithmic|algorithm2e\*?|algorithm\*?)\}")
+
+
+def _listed_in(folder: Path, documents: list) -> dict[Path, list[tuple[int, int]]]:
+    """Each file of a document that sets out an algorithm or a listing, with where the file's
+    algorithms run: a paper that numbers the lines of one points at them so, "the stride is
+    set (line 8)", and an algorithm's lines are no prose for the residue to read (corpus
+    round, 2026-10-23). A file of a document that sets out neither is not listed. An
+    environment is read where the reader reads it: not in a comment, a listing, code, what
+    TeX does not print, or a definition's body (`_read_at`)."""
+    from manuscript_guard.text.latex.printed import _spans
+
+    listed: dict[Path, list[tuple[int, int]]] = {}
+    for document in documents:
+        found: dict[Path, list[tuple[int, int]]] = {}
+        listing = False
+        for source in document:
+            if source.path.lower().endswith(".sty"):
+                continue  # the author's packages are no text of the paper (`_read_latex`)
+            spans = _spans(source.text, _ALGORITHM, 0, len(source.text), _read_at(source.reading))
+            found[folder / source.path] = spans
+            listing = listing or bool(source.reading.listings) or bool(spans)
+        if listing:
+            listed.update(found)
+    return listed
+
+
+def _read_at(reading):
+    """Whether the reader reads an offset of a LaTeX file: not in a comment, a listing, code,
+    what TeX does not print, or a definition's body."""
+    from manuscript_guard.text.latex.printed import _passed_over
+
+    passed, _comments = _passed_over(reading)
+
+    def read(at: int) -> bool:
+        return passed(at) and not any(start <= at < end for start, end in reading.bodies)
+
+    return read
 
 
 def _read_latex(
@@ -303,9 +354,10 @@ def _line_of(text: str, match: re.Match[str]) -> int:
     """The line of the file the matched words begin on.
 
     `text` is the file as read, never the prose the rules match in: masking keeps every
-    offset and blanks the line ends inside a comment, a listing and the front matter, so a
-    count in the prose fell short by each of those lines, and a phrase under a comment was
-    reported on the comment. And the words, not the match: a rule that opens with `^\\s*`
+    offset and blanks the line ends inside a comment (and did inside a listing and the front
+    matter until the corpus round of 2026-10-23), so a count in the prose fell short by each
+    of those lines, and a phrase under a comment was reported on the comment. And the
+    words, not the match: a rule that opens with `^\\s*`
     matches from the first blank line above a paragraph, and its finding was put there.
     """
     found = match.group(0)
@@ -473,15 +525,19 @@ def _paragraphs(text: str) -> list[tuple[int, int]]:
 
 
 def residue_in(
-    rules: Rules, text: str, said: list[tuple[int, int]] | None = None
+    rules: Rules, text: str, said: list[tuple[int, int]] | None = None, *, listed: bool = False
 ) -> Iterator[tuple[dict, re.Match[str]]]:
     """Each place in `text` that speaks to the reviewers or to a model, with the rule that
     found it: read a paragraph at a time, less what the rule's exemptions cover and the
     places `said` already, an artefact's. The rules that point at this manuscript are tried
-    first, so that a place two rules find is said once, and as the stricter."""
+    first, so that a place two rules find is said once, and as the stricter. `listed` where
+    the document sets out an algorithm or a listing, whose lines its text points at: a rule
+    marked `unless_listed`, lines in brackets with nothing to say whose, is not tried."""
     taken: list[tuple[int, int]] = list(said or ())
     paragraphs = _paragraphs(text)
     for rule in sorted(rules.residue, key=lambda rule: not rule.get("self_reference")):
+        if listed and rule.get("unless_listed"):
+            continue
         pattern = re.compile(rule["pattern"])
         exempt = [
             span
@@ -499,13 +555,22 @@ def residue_in(
 
 
 def _residue(
-    rules: Rules, path: Path, text: str, prose: str, totals: dict, submission: bool
+    rules: Rules,
+    path: Path,
+    text: str,
+    prose: str,
+    totals: dict,
+    submission: bool,
+    algorithms: list[tuple[int, int]] | None = None,
 ) -> Report:
     """Every residue, each reported: one "as requested by Reviewer 2" is enough. Not where
-    an artefact was found, "Here is the revised Methods", which fails already."""
+    an artefact was found, "Here is the revised Methods", which fails already, nor in an
+    algorithm, whose lines are no prose. `algorithms` is None in a document that sets out no
+    algorithm and no listing, and otherwise where the file's algorithms run."""
     report = Report()
     said = [match.span() for _rule, match in artefacts_in(rules, text, manuscript=True)]
-    for rule, match in residue_in(rules, prose, said):
+    said += algorithms or []
+    for rule, match in residue_in(rules, prose, said, listed=algorithms is not None):
         totals["residue"] += 1
         binds = bool(rule.get("self_reference"))
         if binds:

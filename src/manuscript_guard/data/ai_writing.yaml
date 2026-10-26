@@ -455,8 +455,11 @@ residue:
     why: A place in the reviewers' copy, which the paper's reader does not have
   - id: lines-cited-alone
     # Lines in brackets with nothing to say whose: "(lines 245-250)". A program's listing
-    # may be pointed at so. Not in capitals: "(LINE 1)" is a retrotransposon.
+    # may be pointed at so. Not in capitals: "(LINE 1)" is a retrotransposon. Not tried in a
+    # LaTeX document that sets out an algorithm or a listing, whose lines its text points at
+    # so, "the stride is set (line 8)" (corpus round, 2026-10-23).
     pattern: '\((?:[Ss]ee\s+)?(?:[Ll]ines?|ll\.)\s+\d+(?:\s*(?:[-–—]|to|and)\s*\d+)?\)'
+    unless_listed: true
     why: A place in the reviewers' copy, unless it is a listing's
   - id: changes-marked
     self_reference: true

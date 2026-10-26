@@ -36,6 +36,33 @@ _CONCLUSION = re.compile(
     r"conclu(?:sions?|ding\s+remarks)\b|summary(?:\s+and\s+conclusions?)?\W*$", re.IGNORECASE
 )
 
+#: The names of the statements a journal asks for, and of the lists, that are the same from
+#: paper to paper: a pattern to put in another, of no flags, to be read ignoring case. G7's
+#: comparison with earlier papers reads a statement's heading by it, and a reference list
+#: under a bold line ends at one standing alone as a paragraph.
+STATEMENT_NAMES = (
+    r"(?:"
+    r"funding(?:\s+(?:sources?|information))?|sources?\s+of\s+funding|(?:financial\s+)?support"
+    r"|financial\s+disclosures?|sponsors?(?:hip)?"
+    r"|role\s+of\s+the\s+(?:funders?|sponsors?|funding\s+sources?)"
+    r"|(?:declarations?\s+of\s+)?(?:competing|conflicting)\s+interests?"
+    r"|(?:potential\s+)?conflicts?\s+of\s+interests?|declarations?(?:\s+of\s+interests?)?"
+    r"|declarations?\s+of\s+(?:the\s+use\s+of\s+)?generative\s+ai\b[\w\s-]*"
+    r"|disclosures?(?:\s+of\s+interests?)?|acknowledge?ments?"
+    r"|data\s+(?:availability|sharing|access)"
+    r"|availability\s+of\s+(?:data(?:\s+and\s+materials?)?|materials?)"
+    r"|(?:code|software|materials?)\s+availability"
+    r"|ethics(?:\s+(?:committee\s+)?approval)?"
+    r"|ethical(?:\s+(?:approval|considerations|standards|aspects))?"
+    r"|(?:informed\s+|patient\s+)?consent(?:\s+(?:for|to)\s+(?:publication|participate))?"
+    r"|patient\s+and\s+public\s+involvement|provenance\s+and\s+peer\s+review"
+    r"|authors?['\N{RIGHT SINGLE QUOTATION MARK}]?\s+contributions?|contributors(?:hip)?"
+    r"|credit(?:\s+author(?:ship)?)?(?:\s+contributions?)?|transparency"
+    r"|(?:list\s+of\s+)?abbreviations|statements?\s+and\s+declarations?"
+    r"|additional\s+contributions|article\s+information"
+    r")(?:\s+(?:statements?|declarations?|disclosures?|section))?"
+)
+
 
 #: The reference list's title in the languages besides English that papers are most often
 #: written in, lower case. Each is the title pandoc 3.9.0.2 gives a reference list and a

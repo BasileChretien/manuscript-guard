@@ -251,7 +251,7 @@ def test_a_standalone_picture_is_read_loose_and_is_no_second_document(declared: 
     by `\\includestandalone` or as the PDF compiled from it: it is read as a file nothing
     inputs, warned of, and not refused (round 1 of #445: it failed BUILD at every stage). So
     is a part in the `subfiles` class, which the paper places by `\\subfile` (round 2)."""
-    main =("\\documentclass{article}\n\\usepackage{standalone}\n\\begin{document}\n"
+    main = ("\\documentclass{article}\n\\usepackage{standalone}\n\\begin{document}\n"
             "\\includestandalone[width=\\linewidth]{fig}\n\\includegraphics{tikz}\n" + END)
     picture = (f"\\documentclass{declared}\n\\usepackage{{tikz}}\n"
                "\\begin{document}\n\\begin{tikzpicture}\\node{n = 42};\\end{tikzpicture}\n"

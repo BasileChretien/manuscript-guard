@@ -1326,7 +1326,7 @@ order is `printed_order`.
   outside a definition's body. A load inside the body of `\newcommand`, `\renewcommand`,
   `\providecommand`, `\DeclareRobustCommand`, `\def`, `\gdef`, `\edef`, `\xdef`, LaTeX's
   `\@namedef`, `\protected@edef` and `\protected@xdef`, etoolbox's `\csdef` and
-  `\newrobustcmd` and their kin, keyval's `\newcommandx`, expl3's `\cs_new:Npn`,
+  `\newrobustcmd` and their kin, xargs' `\newcommandx`, expl3's `\cs_new:Npn`,
   `\cs_set:Npn` and `\cs_gset:Npn` in their `x`, `e`, `c`, `_protected` and `_nopar` forms
   and without the `p` (round 2 of #445), `\newenvironment` and the document commands
   and environments (`\NewDocumentCommand` and its kin), at any depth inside it, runs where
@@ -1771,7 +1771,10 @@ The result is compiled and packed by the code above, and checked three times:
   or `\DeclareOption`'s code, counts as the class's too, since it runs whether or not the
   paper asks for it. A body whose braces do not balance, such as one with a brace changed
   by `\catcode`, runs to the end of the file, so the loads past it stay loose and warned of
-  (rounds 1 and 2 of #445).
+  (rounds 1 and 2 of #445). xargs' `\providecommandx` is not read as a definition, and a
+  defining command copied with expl3's `\cs_new_eq:NN` or `\cs_set_eq:NN` is taken for one,
+  its next braced group for a body; the generated folders plant the TeX and LaTeX forms,
+  and the expl3 and xargs forms are held by unit tests alone.
 - A `standalone` picture, a `subfiles` part, and a document of its own that the reader
   refuses in its preamble, are read as files nothing inputs, under no heading and warned of:
   `\includestandalone` is not followed, so a picture's text is not read where the paper

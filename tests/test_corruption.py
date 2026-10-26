@@ -3577,8 +3577,8 @@ def test_a_declaration_of_english_deleted_under_a_journal_that_names_one_is_note
     project: Path, journal: str, said: str
 ) -> None:
     """The example declares British English for a journal that asks for it, and G4 says
-    nothing. With the line deleted from paper.yaml, under a journal asking for either
-    English, G4 says which the journal asks for, and fails nothing even at submission: G14
+    nothing. With the line deleted from paper.yaml, under a journal asking for en-GB or for
+    en-US, G4 says which the journal asks for, and fails nothing even at submission: G14
     then holds the paper to the English of most of its words (Basile, 2026-10-23)."""
     assert _english_g4(project) == []
     paper = project / "paper.yaml"

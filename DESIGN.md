@@ -3024,8 +3024,9 @@ withdrawal or removal of a preprint. A record at PubMed or Europe PMC with neith
 that registry saying no, and is shown as "retracted: no" with its name; "not known" is shown
 only where no registry that answered said either way, never as "no". A Crossref that did not
 answer is said, and is not read as having found nothing (round 1 of #369). Of several
-preprints, the line says for how many of them, with their DOIs and each reason given, and
-each preprint left unchecked says "Crossref did not answer" beside its retraction
+preprints, the line says for how many of them and their DOIs, with the reason, or each
+reason beside its DOI where they differ, since a DOI Crossref throttled is worth asking again
+and one it answered with a 503 may not be (round 1 of #376). Each preprint left unchecked says "Crossref did not answer" beside its retraction
 (`unchecked_by` in the JSON), since its "retracted: no" is then another registry's word
 alone (round 2 of #369). A later version is PubMed's "Update in", Europe PMC's "Preprint of"
 or "Update in", or Crossref's `is-preprint-of`, and all three are asked because they do not
@@ -3033,7 +3034,13 @@ agree: on 2026-10-20 a medRxiv preprint had PubMed's link to its journal version
 Crossref, and another had Crossref's and Europe PMC's and none at PubMed. Each is shown with
 whose word it is. Two links are one version where they share a PMID or a DOI and give
 neither differently; a registry giving PubMed's PMID with another DOI is shown as a second
-version under its own name, not as having said PubMed's DOI (round 2 of #369).
+version under its own name, not as having said PubMed's DOI (round 2 of #369). Joined, each
+identifier keeps the names of the registries that gave it, as `given_by` in the JSON beside
+`said_by`, the registries that link the version at all. Where each gave every identifier the
+names are said once; where PubMed gave the PMID alone and Europe PMC the PMID and a DOI, the
+line reads "DOI 10.5/y (Europe PMC) / PMID 9 (PubMed, Europe PMC)", and not the DOI as
+PubMed's too (round 1 of #376). The reference shown beside them is the first registry's to
+give one, in the order PubMed, Europe PMC.
 
 A registry asked for a kind it does not type is not asked. OpenAlex types a review and a
 preprint and nothing finer, so with a systematic review, a meta-analysis, a guideline, a
@@ -11575,7 +11582,11 @@ Open, recorded as each change landed:
   as typed: the 300-character limit stops a pasted paragraph, not a sentence of unpublished
   results written as a query. A PMID joins a record with no DOI to a work with one, so where
   OpenAlex gives a preprint the PMID of the paper it became, PubMed's DOI-less record of that
-  paper is shown as the preprint (round 1 of #369; not seen in the answers probed).
+  paper is shown as the preprint (round 1 of #369; not seen in the answers probed). A DOI
+  in a later-version link is read from the end of PubMed's or Europe PMC's reference string,
+  and two links can only be joined where they give the same one: a reference ending in
+  `10.1/x)` beside another's `10.1/x` for the same PMID is shown as two later versions
+  (round 1 of #376; not seen in the answers probed).
 - **The title comparison is one-sided and by words.** A registered title that holds every
   cited word and many more passes, and so does one whose words are the same in another
   order. A notice a publisher deposited as a journal article, with no `update-to`, is read

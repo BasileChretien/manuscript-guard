@@ -38,6 +38,7 @@ from manuscript_guard.text.latex.commands import (
     PARAMETERS,
     POINTERS,
     PROVIDERS,
+    RANGES,
     RAW,
     READ_IN_FRONT_MATTER,
     REFERENCE_MACHINERY,
@@ -72,7 +73,11 @@ PRINTED_IN_PREAMBLE = frozenset(
 NOT_CONDITIONALS = frozenset({"iff", "ifthenelse"})
 _LETTERS = re.compile(r"[A-Za-z]+")
 _LETTERS_AT = re.compile(r"[A-Za-z@]+")
-_TEXT = re.compile(r"[^\\%{}\[\]$&~#`'\n]+")
+_TEXT = re.compile(r"[^\\%{}\[\]$&~#`'\n\"]+")
+#: A blank line, which ends a paragraph and any quotation left open in it.
+_PARAGRAPH_END = re.compile(r"\n[ \t\r]*\n")
+#: A straight `"` before a letter, which closes no quotation: babel's German accent, `"a`.
+_ACCENTED = re.compile(r'"[^\W\d_]')
 _ENVIRONMENT_NAME = re.compile(r"[ \t]*\n?[ \t]*\{([^{}\n]*)\}")
 _BRACED_NAME = re.compile(r"\{\s*\\([A-Za-z@]+|[^A-Za-z@\s])\s*\}")
 #: A parameter token in a definition's body: `#1`, or `##1` in a definition inside it.
@@ -554,6 +559,8 @@ class _Reader:
         self.loaded = loaded
         self.encodings: list[int] = []
         self.heading_at = -1
+        #: Where the prose's last ``` `` ``` stands while no `''` or `"` has closed it, or -1.
+        self.quote_open = -1
         for name in environments:
             role = MATHS_READ if name in MATHS else self._entered(name, self._role())
             self.stack.append(_Frame("env", role, 0, name, table=name in TABLES, inherited=True))
@@ -761,7 +768,11 @@ class _Reader:
             frame.origin = self.heading_at
         if kind == "arg" and spec == "b" and self.command in CITATIONS and not self.definitions:
             self._cite(at)
-        if kind == "arg" and spec == "b" and self.command in POINTERS and not self.definitions:
+        # A range's span runs to its second label's group (corpus round, 2026-10-23).
+        pointer = self.command in POINTERS and not self.definitions
+        if kind == "arg" and spec == "b" and pointer and (
+            self.command not in RANGES or not self.pending[1:]
+        ):
             end = self._group_end(at, comments=True)
             if end >= 0:
                 self.pointers.append((self.pointer_at, end))
@@ -848,6 +859,10 @@ class _Reader:
         elif character in "`'" and self.text[at + 1 : at + 2] == character:
             self._quote(at, "\N{LEFT DOUBLE QUOTATION MARK}" if character == "`"
                         else "\N{RIGHT DOUBLE QUOTATION MARK}")  # fmt: skip
+        elif character == '"' and self._closes_quote(at):
+            self.out[at] = "\N{RIGHT DOUBLE QUOTATION MARK}"
+            self.quote_open = -1
+            self.pos = at + 1
         else:
             run = _TEXT.match(self.text, at)
             end = run.end() if run else at + 1
@@ -869,9 +884,23 @@ class _Reader:
     def _quote(self, at: int, mark: str) -> None:
         if self._role() == PROSE:
             self.out[at], self.out[at + 1] = mark, NUL
+            self.quote_open = at if mark == "\N{LEFT DOUBLE QUOTATION MARK}" else -1
         else:
             self._keep_or_blank(at, at + 2)
         self.pos = at + 2
+
+    def _closes_quote(self, at: int) -> bool:
+        """Whether a straight `"` in prose closes the quotation a ``` `` ``` opened in its
+        paragraph: ``` ``word" ``` prints as ``` ``word'' ``` does, the font's `"` being a
+        closing mark (corpus round, 2026-10-23). Another `"` is the character typed, and so
+        is one before a letter, which closes nothing and with babel's German is an accent,
+        `"a`. A quotation whose paragraph has ended is closed, so that no paragraph is
+        searched twice."""
+        if self.quote_open < 0 or self._role() != PROSE or _ACCENTED.match(self.text, at):
+            return False
+        ended = _PARAGRAPH_END.search(self.text, self.quote_open, at) is not None
+        self.quote_open = -1
+        return not ended
 
     def _in_table(self) -> bool:
         """Whether the innermost environment is a table: kept apart from the stack, so that a

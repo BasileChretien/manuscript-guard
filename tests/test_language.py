@@ -87,6 +87,30 @@ def test_an_abbreviation_defined_twice_is_reported(project: Path) -> None:
     assert "manuscript/main.md:3" in finding.message
 
 
+@pytest.mark.parametrize(
+    ("text", "code", "said"),
+    [
+        ("The ROR of each drug, the reporting odds ratio (ROR), was computed.",
+         "abbreviation-used-before-defined",
+         "ROR is used here, and defined later on the same line"),
+        ("The reporting odds ratio (ROR) and the reporting odds ratio (ROR) were computed. "
+         "The ROR rose.", "abbreviation-redefined",
+         "ROR is defined again; it was defined earlier on the same line"),
+        ("The reporting odds ratio (ROR) and the relative odds ratio (ROR) were computed. "
+         "The ROR rose.", "abbreviation-redefined",
+         "ROR is defined as 'relative odds ratio' here and as 'reporting odds ratio' earlier on "
+         "the same line"),
+    ],
+)  # fmt: skip
+def test_a_definition_on_the_line_of_its_use_is_said_to_be_on_the_same_line(
+    project: Path, text: str, code: str, said: str
+) -> None:
+    """A use and its definition on one line were told as "defined later at main.tex:158" of
+    a finding on line 158, as though it were another place (corpus round, 2026-10-23): the
+    same line is said to be the same line, and another is still named by file and line."""
+    report = written(project, f"# Methods\n\n{text}\n")
+    assert found(report, code) == [said], found(report)
+
 def test_one_short_form_with_two_meanings_names_both(project: Path) -> None:
     report = written(
         project,

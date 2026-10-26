@@ -22,7 +22,7 @@ import re
 from dataclasses import dataclass
 
 from manuscript_guard.text.blocks import _TABLE_RULE
-from manuscript_guard.text.masking import mask
+from manuscript_guard.text.masking import kept_breaks, mask
 
 #: A pipe that is a cell's edge: not escaped.
 _EDGE = re.compile(r"(?<!\\)\|")
@@ -42,9 +42,11 @@ Table = tuple[tuple[TableCell, ...], ...]
 
 
 def markdown_tables(text: str) -> list[Table]:
-    """Each pipe table in a Markdown text, its header row first."""
+    """Each pipe table in a Markdown text, its header row first. The mask is read with every
+    line break of the text, so that its lines are the text's: one under a comment of several
+    lines was read a line out for each (corpus round, 2026-10-23)."""
     lines = text.split("\n")
-    shown = mask(text).split("\n")
+    shown = kept_breaks(text, mask(text)).split("\n")
     tables: list[Table] = []
     index = 0
     while index + 1 < len(shown):

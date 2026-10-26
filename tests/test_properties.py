@@ -86,8 +86,10 @@ from generated import (
     latex_claims,
     latex_declared,
     latex_delimited_uses,
+    latex_display_groups,
     latex_displays,
     latex_hooked_uses,
+    latex_listed,
     latex_methods,
     latex_model_names,
     latex_planted,
@@ -95,12 +97,14 @@ from generated import (
     latex_printed,
     latex_quotations,
     latex_refusal_trees,
+    latex_straight_quotes,
     latex_texts,
     latex_trees,
     latex_words,
     latex_writing,
     lines,
     markdown_for_latex,
+    masked_blocks,
     mean_tables,
     numbered_displays,
     painted_pdfs,
@@ -494,10 +498,57 @@ def _found_in_order(text: str) -> None:
         before = heading.start
 
 
+@holds(40, masked_blocks())
+def test_the_mask_keeps_the_line_breaks_of_what_it_hides_but_a_comment_s(
+    drawn: tuple[str, list[tuple[int, int]], list[tuple[str, int]]],
+) -> None:
+    """The Markdown mask keeps every line break of the front matter and of a listing where
+    the file has it, and hides a comment's, since pandoc reads a comment in a paragraph, a
+    blank line in it too, as a part of the paragraph; a pipe table under any of them is read
+    on the lines it is typed on (corpus round, 2026-10-23)."""
+    from manuscript_guard.text.tables import markdown_tables
+
+    text, comments, cells = drawn
+    masked = mask(text)
+    assert len(masked) == len(text)
+    for at, char in enumerate(text):
+        if char == "\n":
+            hidden = any(start <= at < end for start, end in comments)
+            assert masked[at] == (NUL if hidden else "\n"), (at, text, masked)
+    read = [(cell.text, cell.line) for table in markdown_tables(text)
+            for row in table for cell in row]  # fmt: skip
+    assert read == cells, (text, read)
+
+
+def _a_line_reader_reads_the_mask_as_it_is(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import tables
+
+    patch.setattr(tables, "kept_breaks", lambda text, masked: masked)
+
+
+def _the_mask_hides_every_line_break(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import masking
+
+    def blank(chars: list[str], start: int, end: int, *, breaks: bool = True) -> None:
+        chars[start:end] = NUL * (end - start)
+
+    patch.setattr(masking, "_blank", blank)
+
+
+def _the_mask_keeps_a_comment_s_line_breaks(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import masking
+
+    def blank(chars: list[str], start: int, end: int, *, breaks: bool = True) -> None:
+        for index in range(start, end):
+            chars[index] = chars[index] if chars[index] in "\r\n" else NUL
+
+    patch.setattr(masking, "_blank", blank)
+
+
 # ------------------------------------------------------------------------- the LaTeX reader
 
 
-@holds(200, latex_texts())
+@holds(200, st.one_of(latex_texts(), latex_straight_quotes().map(lambda drawn: drawn[0])))
 def test_the_latex_mask_keeps_every_character_in_its_place(text: str) -> None:
     """The LaTeX reader keeps the Markdown mask's contract: the same length, every line break
     where it was, and each character itself, a NUL, or what TeX prints for it there (a space,
@@ -513,7 +564,7 @@ def test_the_latex_mask_keeps_every_character_in_its_place(text: str) -> None:
         allowed = {was, NUL} | ({" "} if was in " \t~&\\" else set())
         if was == "\\" and at + 1 < len(text):
             allowed.add(text[at + 1])
-        allowed |= {"`": {LEFT_QUOTE}, "'": {RIGHT_QUOTE}}.get(was, set())
+        allowed |= {"`": {LEFT_QUOTE}, "'": {RIGHT_QUOTE}, '"': {RIGHT_QUOTE}}.get(was, set())
         assert now in allowed, (at, was, now, text)
     for refusal in reading.refusals:
         assert masked[refusal.offset :] == text[refusal.offset :], (refusal, text)
@@ -1334,6 +1385,25 @@ def test_g6_judges_a_latex_document_where_it_prints_and_by_its_citations(
         assert found == sorted(lines[key] for key, was in planted if was == kind), (code, text)
 
 
+@holds(20, latex_listed())
+def test_g6_lets_a_latex_paper_point_at_the_lines_of_what_it_sets_out(
+    drawn: list[tuple[str, str, list[int], list[int]]],
+) -> None:
+    """Lines in brackets with nothing to say whose, "(line 8)", are a place in the reviewers'
+    copy, unless the document sets out an algorithm or a listing, whose lines its text points
+    at so; an algorithm's lines are no prose, and words to the reviewers in one are not read;
+    an algorithm in a comment sets out nothing. Words to the reviewers in the prose are read
+    in every document (corpus round, 2026-10-23)."""
+    rules = writing_gate.load_rules()
+    for text, kind, pointers, said in drawn:
+        sources = latex_structure.read_tree({"main.tex": text}).sources
+        read, words, cited = writing_gate._read_latex(Path("m"), [sources])
+        listed = writing_gate._listed_in(Path("m"), [sources])
+        report, _totals = writing_gate._judged(read, words, rules, cited=cited, listed=listed)
+        found = sorted(f.line for f in report.findings if f.code == "revision-residue")
+        assert found == sorted(said + (pointers if kind == "neither" else [])), (kind, text)
+
+
 @holds(60, latex_methods())
 def test_g9_reads_a_latex_methods_section_as_it_reads_a_markdown_one(
     drawn: tuple[str, list[tuple[str, str, str]]],
@@ -1402,13 +1472,16 @@ def test_a_latex_cross_reference_is_recorded_where_it_prints_and_nowhere_else(
 ) -> None:
     """A `\\ref`, `\\autoref`, `\\eqref` or `\\cref` in prose is recorded, from its command
     to its brace; one in a comment, a listing or what `\\iffalse` leaves out is not, nor a
-    label or a citation (round 1 of G13 in step 8)."""
+    label or a citation (round 1 of G13 in step 8). A `\\crefrange` is one, to the brace of its
+    second label (corpus round, 2026-10-23)."""
     text, planted = drawn
     spans = latex_mask.read(text).pointers
     found = sorted(key for key, _recorded in planted
                    if any(key in text[start:end] for start, end in spans))  # fmt: skip
     assert found == sorted(key for key, recorded in planted if recorded), (text, spans)
     assert all(text[start] == "\\" and text[end - 1] == "}" for start, end in spans), spans
+    pairs = zip(spans, spans[1:], strict=False)
+    assert all(end <= later for (_start, end), (later, _end) in pairs), spans
 
 
 @holds(100, quoted_references())
@@ -1467,6 +1540,44 @@ def test_a_latex_quotation_is_read_at_its_line_and_nowhere_else(
             assert "\u2013" in quotation.quote and "\u2026" in quotation.quote, quotation
         if "far" in quotation.quote:
             assert quotation.quote.count("\u2014") == 3 and "-" not in quotation.quote, quotation
+
+
+@holds(60, latex_straight_quotes())
+def test_a_straight_quote_closes_a_latex_quotation_opened_in_its_paragraph(
+    drawn: tuple[str, list[tuple[int, bool]]],
+) -> None:
+    """A straight `"` in prose closes the quotation a ``` `` ``` opened in its paragraph, as
+    the font prints it, and is read as the closing mark; every other `"` is not: one after a
+    blank line, alone, after the quotation closed, before a letter, after a ``` `` ``` in a
+    comment, or in `\\verb` (corpus round, 2026-10-23)."""
+    text, planted = drawn
+    masked = latex_mask.mask(text)
+    assert len(masked) == len(text)
+    for at, closes in planted:
+        assert (masked[at] == "\N{RIGHT DOUBLE QUOTATION MARK}") is closes, (at, text, masked)
+
+
+def _a_straight_quote_closes_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask._Reader, "_closes_quote", lambda self, at: False)
+
+
+def _a_quotation_runs_past_its_paragraph(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_PARAGRAPH_END", re.compile("(?!)"))
+
+
+def _a_straight_quote_before_a_letter_closes(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_ACCENTED", re.compile("(?!)"))
+
+
+def _a_quotation_mark_once_used_closes_again(patch: pytest.MonkeyPatch) -> None:
+    def quote(self: Any, at: int, mark: str) -> None:
+        opened = self.quote_open
+        read(self, at, mark)
+        if mark == "\N{RIGHT DOUBLE QUOTATION MARK}":
+            self.quote_open = opened
+
+    read = latex_mask._Reader._quote
+    patch.setattr(latex_mask._Reader, "_quote", quote)
 
 
 def _a_quotation_s_line_is_the_printed_view_s(patch: pytest.MonkeyPatch) -> None:
@@ -1670,6 +1781,25 @@ def _g6_takes_nocite_for_a_claims_support(patch: pytest.MonkeyPatch) -> None:
 
 def _g6_reads_no_typed_reference_list(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(writing_gate, "_typed_lists_of", lambda folder, documents: [])
+
+
+def _g6_lists_nothing_in_latex(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(writing_gate, "_listed_in", lambda folder, documents: {})
+
+
+def _g6_reads_an_algorithm_as_prose(patch: pytest.MonkeyPatch) -> None:
+    def listed(folder: Path, documents: list) -> dict[Path, list[tuple[int, int]]]:
+        return {folder / source.path: [] for document in documents for source in document}
+
+    patch.setattr(writing_gate, "_listed_in", listed)
+
+
+def _g6_finds_no_algorithm(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(writing_gate, "_ALGORITHM", re.compile("(?!)"))
+
+
+def _g6_reads_an_algorithm_in_a_comment(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(writing_gate, "_read_at", lambda reading: lambda at: True)
 
 
 def _g6_reads_a_definitions_body_in_the_preamble(patch: pytest.MonkeyPatch) -> None:
@@ -4918,6 +5048,160 @@ def test_a_word_in_the_other_english_is_found_where_it_stands_and_a_name_is_not(
     assert report.counts["spelling_other"] == sum(len(places) for places in stands.values())
 
 
+# ------------------------------------------ a reference list under a line that is no heading
+
+# Imported here, not at the top, to keep clear of the import block other branches edit.
+from generated import RECYCLED, addressed, reference_lists  # noqa: E402
+
+from manuscript_guard.text import reference_lists as reference_lists_module  # noqa: E402
+from manuscript_guard.text import sections as sections_module  # noqa: E402
+from manuscript_guard.zotero import citations as citations_module  # noqa: E402
+
+
+def _passed_over(text: str) -> dict[str, Any]:
+    """What the gates that pass a reference list over make of `text`: G14's spelling and
+    abbreviations, the word counts a journal's limits are held to, and the passages an
+    earlier paper has too."""
+    file = _file(0, MAIN, text, [], False)
+    spelt = judge_spelling([Passage(file.path, file.text, file.spelt, file.line_of)], "en-GB",
+                           [], PAPER)  # fmt: skip
+    exact, lowered = language_gate._shipped()
+    named = language_gate._judge([file], language_gate._Known(exact, lowered), Path("."))
+    counts = sections_module.measure(text)
+    return {
+        "spelling": [(f.code, f.line, f.message) for f in spelt.findings],
+        "abbreviations": [(f.code, f.line, f.message) for f in named.findings],
+        "words": (counts.abstract_words, counts.main_text_words),
+        "recycled": [(p.first_line, p.last_line, p.shared, p.kind)
+                     for p in recycling_gate.recycled_in(text, " ".join(RECYCLED), "earlier")],
+    }  # fmt: skip
+
+
+@holds(60, reference_lists())
+def test_a_reference_list_under_a_bold_line_is_passed_over_to_where_it_ends(
+    drawn: tuple[str, str],
+) -> None:
+    """A list under `**References**`, `References` alone or another line the audit takes for
+    a list's start is passed over by every gate that passes a list over, to the next heading,
+    bold title, caption, table or line shaped like a heading, and no further; a sentence, a
+    full stop, small letters, a hard wrap that left the word alone in a paragraph and an item
+    of a list start none (`reference_lists`)."""
+    listed, passed = drawn
+    assert _passed_over(listed) == _passed_over(passed), listed
+
+
+def _no_list_under_a_line(patch: pytest.MonkeyPatch) -> None:
+    for module in (language_gate, sections_module, recycling_gate):
+        patch.setattr(module, "unmarked_reference_lists", lambda text: [])
+
+
+def _a_list_opens_inside_a_paragraph(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reference_lists_module, "_opens_a_paragraph", lambda lines, number, under: True)
+
+
+def _a_list_runs_on_to_the_next_heading(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reference_lists_module, "_ends_a_list", lambda lines, number: False)
+
+
+def _a_heading_printed_as_text_ends_no_list(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reference_lists_module, "heading_shaped", lambda lines: set())
+
+
+def _an_item_of_a_list_opens_one(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reference_lists_module, "_in_a_list", lambda lines, number: False)
+
+
+# --------------------------------------------------- e-mail addresses beside citations
+
+
+@holds(100, addressed())
+def test_an_e_mail_address_is_no_citation_and_every_key_beside_one_is(
+    drawn: tuple[str, list[str]],
+) -> None:
+    """An `@` glued to the word before it is an address's, as pandoc reads it
+    (`test_the_toolkit_reads_the_citations_pandoc_reads`): in brackets, a mailto link, a span
+    or text it is no citation, and a key in a group beside one is."""
+    text, keys = drawn
+    found = [use.citekey for use in citations_module.find_citations(text, MAIN)]
+    assert sorted(found) == sorted(keys), text
+
+
+def _an_address_in_brackets_is_a_citation(patch: pytest.MonkeyPatch) -> None:
+    key = r"-?@(?P<key>[A-Za-z][\w:.#$%&+?<>~/-]*)"
+    group = r"(?:[^\]\n]|\n(?![ \t]*\n))"
+    patch.setattr(citations_module, "KEY_IN_BODY", re.compile(key))
+    patch.setattr(citations_module, "_SIGN", re.compile("@"))
+    patch.setattr(citations_module, "BRACKETED", re.compile(rf"\[(?P<body>{group}*@{group}*)\]"))
+
+
+#: The papers each example of the property below holds: mostly British, mostly American,
+#: as many of each, British by its -ise words alone, and British with as many -ize words
+#: both Englishes write as it has British ones, which count for neither.
+_LEANINGS = ("en-GB", "en-US", "level", "-ise", "-ize")
+#: The -ise spellings British usage writes, and the -ize ones both usages write.
+WITH_ISE = ("randomised", "organised", "summarised", "categorised")
+WITH_IZE = ("randomized", "organized", "summarized", "categorized")
+
+
+@st.composite
+def _undeclared_papers(draw: st.DrawFn) -> list[tuple[str, str, dict[str, int], int, int]]:
+    """Papers that declare no English, one of each leaning in every example: filler with
+    words of both Englishes planted in an order drawn. Each comes with the English it is to
+    be held to, the words of the other with where each first stands, and how many of each."""
+    papers = []
+    for leaning in _LEANINGS:
+        more = draw(st.integers(2, 6))
+        if leaning == "level":
+            # The first word's English is the paper's; the rest are drawn in any order.
+            held = draw(st.sampled_from(("en-GB", "en-US")))
+            stray = "en-US" if held == "en-GB" else "en-GB"
+            planted = [held, *draw(st.permutations([held] * (more - 1) + [stray] * more))]
+        else:
+            held = "en-GB" if leaning.startswith("-") else leaning
+            stray = "en-US" if held == "en-GB" else "en-GB"
+            fewer = draw(st.integers(1, more - 1))
+            both = ["both"] * more * (leaning == "-ize")
+            planted = list(draw(st.permutations([held] * more + [stray] * fewer + both)))
+        pools = {
+            "en-GB": WITH_ISE if leaning == "-ise" else BRITISH,
+            "en-US": AMERICAN,
+            "both": WITH_IZE,
+        }
+        sentences: list[str] = []
+        stands: dict[str, int] = {}
+        for english in planted:
+            word = draw(st.sampled_from(pools[english]))
+            before = _words(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
+            after = _words(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
+            sentence = f"{before.capitalize()} {word} {after}."
+            if english == stray:
+                stands.setdefault(word, len(sentences))
+            sentences.append(sentence)
+        own, other = planted.count(held), planted.count(stray)
+        papers.append(("\n".join(sentences) + "\n", held, stands, own, other))
+    return papers
+
+
+@holds(100, _undeclared_papers())
+def test_a_paper_that_declares_no_english_is_held_to_the_one_most_of_its_words_are_in(
+    papers: list[tuple[str, str, dict[str, int], int, int]],
+) -> None:
+    """Basile, 2026-10-23. The words of the fewer English are each said where they first
+    stand, those of the more never, and nothing about a setting nobody made; where the two
+    are level, the English of the first word is the paper's."""
+    names = {"en-GB": "British", "en-US": "American"}
+    for text, held, stands, own, other in papers:
+        file = _file(0, MAIN, text, [], False)
+        passage = Passage(file.path, file.text, file.printed, file.line_of)
+        report = judge_spelling([passage], None, (), PAPER)
+        assert {f.code for f in report.findings} <= {"spelling-variant"}, text
+        theirs = names["en-US" if held == "en-GB" else "en-GB"]
+        found = {(f.message.split("'")[1], f.line) for f in report.findings}
+        assert found == {(word, line + 1) for word, line in stands.items()}, (text, held)
+        assert all(f"is the {theirs} spelling of" in f.message for f in report.findings), text
+        assert (report.counts["spelling_own"], report.counts["spelling_other"]) == (own, other)
+
+
 # ------------------------------------------------------------------------- placeholders
 
 
@@ -6067,6 +6351,79 @@ def test_a_latex_pointer_is_held_to_what_latex_numbers(
     )
     found = {(f.code, f.path.name, f.line) for f in report.findings}
     assert found == expected, (found, expected, texts)
+
+
+@holds(60, latex_display_groups())
+def test_a_latex_group_of_floats_is_one_display_and_a_range_cites_what_it_takes_in(
+    planted: tuple[dict[str, str], set[tuple[str, int | None]], set[int]],
+) -> None:
+    """The floats of a `subtables` or a `subfigures` of the group's kind share its one number,
+    and a cross-reference to one of them, in the group's file or in a file it inputs, or to the
+    label after `\\begin`, cites it; a float of the other kind is numbered as any. A range of
+    cross-references, two a dash joins, two "to" joins after a plural or cleveref's
+    `\\crefrange`, cites every table from its first end to its last; two a list's join, "to"
+    after a singular or a paragraph's end join cite their ends only (corpus round, 2026-10-23,
+    and fix round 1)."""
+    texts, expected, uncited = planted
+    sources = list(latex_structure.read_tree(texts).sources)
+    report = pointers_latex_gate.pointers_in_documents(
+        {False: sources, True: []}, Path("m"), dict.fromkeys(pointers_latex_gate.AS_FILES, 0)
+    )
+    found = {(f.code, f.line) for f in report.findings}
+    assert found == expected, (found, expected, texts)
+    missing = {int(re.match(r"Table (\d+) ", f.message)[1]) for f in report.findings
+               if f.code == "display-not-cited"}  # fmt: skip
+    assert missing == uncited, (missing, uncited, texts)
+
+
+def _a_group_of_floats_numbers_each(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print, "_GROUP", re.compile(r"(?!)"))
+
+
+def _a_group_s_labels_name_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print, "_group_labels", lambda _source, _low, _high, _kind, _read: [])
+
+
+def _a_group_s_input_files_labels_name_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print, "_labels_read_in_a_group", lambda _text, _start, _end, _read: [])
+
+
+def _a_float_of_the_other_kind_joins_a_group(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print, "_joins", lambda _kind, _grouped: True)
+
+
+def _anything_between_two_cross_references_makes_a_range(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(pointers_latex_gate, "_RANGE_DASH", re.compile(r"[\s\S]*"))
+
+
+def _to_makes_no_range(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(pointers_latex_gate, "_RANGE_TO", re.compile(r"(?!)"))
+
+
+def _to_makes_a_range_after_a_singular(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(pointers_latex_gate, "_PLURAL_BEFORE", re.compile(r""))
+
+
+def _a_range_of_cross_references_cites_its_ends(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(pointers_latex_gate, "_RANGE_DASH", re.compile(r"(?!)"))
+
+
+def _only_an_en_dash_makes_a_range(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(pointers_latex_gate, "_RANGE_DASH",
+                  re.compile(r"[^\S\n]*\n?[^\S\n]*" + chr(0x2013) + r"[^\S\n]*\n?[^\S\n]*"))
+
+
+def _a_range_held_to_one_line(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(pointers_latex_gate, "_RANGE_DASH",
+                  re.compile(r"[^\S\n]*[-" + chr(0x2013) + chr(0x2014) + r"][^\S\n]*"))
+
+
+def _cleveref_s_range_cites_its_ends(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(pointers_latex_gate, "_RANGES", frozenset())
+
+
+def _a_range_s_span_is_recorded_at_each_label(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "RANGES", frozenset())
 
 
 @st.composite
@@ -8741,6 +9098,44 @@ def _a_variables_name_is_a_word(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(spelling_gate, "_in_an_identifier", lambda text, start, end: False)
 
 
+def _no_english_declared_is_british(patch: pytest.MonkeyPatch) -> None:
+    """The rule before 2026-10-23: a paper that declared nothing was British."""
+    patch.setattr(
+        spelling_gate, "_majority", lambda spelt: (spelling_gate.BRITISH, False) if spelt else None
+    )
+
+
+def _level_englishes_are_british(patch: pytest.MonkeyPatch) -> None:
+    """As many of each, and the first word's English not looked at."""
+    majority = spelling_gate._majority
+
+    def broken(spelt: list) -> tuple[str, bool] | None:
+        taken = majority(spelt)
+        return (spelling_gate.BRITISH, True) if taken and taken[1] else taken
+
+    patch.setattr(spelling_gate, "_majority", broken)
+
+
+def _ise_counts_for_neither(patch: pytest.MonkeyPatch) -> None:
+    """An -ise spelling taken for one both Englishes write."""
+    majority = spelling_gate._majority
+
+    def broken(spelt: list) -> tuple[str, bool] | None:
+        return majority([(*each[:-1], "" if each[-1] == "ise" else each[-1]) for each in spelt])
+
+    patch.setattr(spelling_gate, "_majority", broken)
+
+
+def _ize_counts_as_american(patch: pytest.MonkeyPatch) -> None:
+    """An -ize spelling both Englishes write taken for American."""
+    majority = spelling_gate._majority
+    patch.setattr(
+        spelling_gate,
+        "_majority",
+        lambda spelt: majority([(*each[:-1], each[-1] or "us") for each in spelt]),
+    )
+
+
 def _a_list_of_pointers_is_its_first(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import pointers
 
@@ -10227,6 +10622,30 @@ BROKEN = {
         _no_abbreviation_is_known,
         test_every_citation_lies_in_the_sentence_of_its_own_clause,
     ),
+    "no reference list stands under a line that is no heading": (
+        _no_list_under_a_line,
+        test_a_reference_list_under_a_bold_line_is_passed_over_to_where_it_ends,
+    ),
+    "a reference list opens inside a paragraph": (
+        _a_list_opens_inside_a_paragraph,
+        test_a_reference_list_under_a_bold_line_is_passed_over_to_where_it_ends,
+    ),
+    "a reference list runs on to the next heading": (
+        _a_list_runs_on_to_the_next_heading,
+        test_a_reference_list_under_a_bold_line_is_passed_over_to_where_it_ends,
+    ),
+    "a heading printed as text ends no reference list": (
+        _a_heading_printed_as_text_ends_no_list,
+        test_a_reference_list_under_a_bold_line_is_passed_over_to_where_it_ends,
+    ),
+    "an item of a list opens a reference list": (
+        _an_item_of_a_list_opens_one,
+        test_a_reference_list_under_a_bold_line_is_passed_over_to_where_it_ends,
+    ),
+    "an e-mail address in brackets is a citation": (
+        _an_address_in_brackets_is_a_citation,
+        test_an_e_mail_address_is_no_citation_and_every_key_beside_one_is,
+    ),
     "in LaTeX, an escaped percent opens a comment": (
         _an_escaped_percent_opens_a_comment,
         test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
@@ -10547,6 +10966,38 @@ BROKEN = {
         _a_subscripts_count_is_maths,
         test_latex_s_words_hold_each_word_where_latex_prints_it,
     ),
+    "a reader of lines reads the mask with a comment's line breaks hidden": (
+        _a_line_reader_reads_the_mask_as_it_is,
+        test_the_mask_keeps_the_line_breaks_of_what_it_hides_but_a_comment_s,
+    ),
+    "the mask hides the line breaks of the front matter and of a listing": (
+        _the_mask_hides_every_line_break,
+        test_the_mask_keeps_the_line_breaks_of_what_it_hides_but_a_comment_s,
+    ),
+    "the mask keeps a comment's line breaks": (
+        _the_mask_keeps_a_comment_s_line_breaks,
+        test_the_mask_keeps_the_line_breaks_of_what_it_hides_but_a_comment_s,
+    ),
+    "in LaTeX, a straight quote closes no quotation": (
+        _a_straight_quote_closes_nothing,
+        test_a_straight_quote_closes_a_latex_quotation_opened_in_its_paragraph,
+    ),
+    "in LaTeX, a quotation runs past the end of its paragraph": (
+        _a_quotation_runs_past_its_paragraph,
+        test_a_straight_quote_closes_a_latex_quotation_opened_in_its_paragraph,
+    ),
+    "in LaTeX, a straight quote before a letter closes a quotation": (
+        _a_straight_quote_before_a_letter_closes,
+        test_a_straight_quote_closes_a_latex_quotation_opened_in_its_paragraph,
+    ),
+    "in LaTeX, a quotation closed by '' is closed again by a straight quote": (
+        _a_quotation_mark_once_used_closes_again,
+        test_a_straight_quote_closes_a_latex_quotation_opened_in_its_paragraph,
+    ),
+    "in LaTeX, a straight quote closes no quotation for G7": (
+        _a_straight_quote_closes_nothing,
+        test_a_latex_quotation_is_read_at_its_line_and_nowhere_else,
+    ),
     "in LaTeX, a quotation's line is the printed view's": (
         _a_quotation_s_line_is_the_printed_view_s,
         test_a_latex_quotation_is_read_at_its_line_and_nowhere_else,
@@ -10586,6 +11037,54 @@ BROKEN = {
     "in LaTeX, a cross-reference cites nothing": (
         _a_cross_reference_cites_nothing,
         test_a_latex_pointer_is_held_to_what_latex_numbers,
+    ),
+    "in LaTeX, a subfigures group numbers each of its floats": (
+        _a_group_of_floats_numbers_each,
+        test_a_latex_group_of_floats_is_one_display_and_a_range_cites_what_it_takes_in,
+    ),
+    "in LaTeX, a subfigures group's labels name nothing": (
+        _a_group_s_labels_name_nothing,
+        test_a_latex_group_of_floats_is_one_display_and_a_range_cites_what_it_takes_in,
+    ),
+    "in LaTeX, the labels of a file read inside a group name nothing": (
+        _a_group_s_input_files_labels_name_nothing,
+        test_a_latex_group_of_floats_is_one_display_and_a_range_cites_what_it_takes_in,
+    ),
+    "in LaTeX, a float of the other kind joins a subfigures group": (
+        _a_float_of_the_other_kind_joins_a_group,
+        test_a_latex_group_of_floats_is_one_display_and_a_range_cites_what_it_takes_in,
+    ),
+    "in LaTeX, anything between two cross-references makes a range": (
+        _anything_between_two_cross_references_makes_a_range,
+        test_a_latex_group_of_floats_is_one_display_and_a_range_cites_what_it_takes_in,
+    ),
+    "in LaTeX, to between two cross-references makes no range": (
+        _to_makes_no_range,
+        test_a_latex_group_of_floats_is_one_display_and_a_range_cites_what_it_takes_in,
+    ),
+    "in LaTeX, to after a singular makes a range": (
+        _to_makes_a_range_after_a_singular,
+        test_a_latex_group_of_floats_is_one_display_and_a_range_cites_what_it_takes_in,
+    ),
+    "in LaTeX, two cross-references a dash joins cite their ends only": (
+        _a_range_of_cross_references_cites_its_ends,
+        test_a_latex_group_of_floats_is_one_display_and_a_range_cites_what_it_takes_in,
+    ),
+    "in LaTeX, only an en dash joins a range of cross-references": (
+        _only_an_en_dash_makes_a_range,
+        test_a_latex_group_of_floats_is_one_display_and_a_range_cites_what_it_takes_in,
+    ),
+    "in LaTeX, a range of cross-references is held to one line": (
+        _a_range_held_to_one_line,
+        test_a_latex_group_of_floats_is_one_display_and_a_range_cites_what_it_takes_in,
+    ),
+    "in LaTeX, cleveref's range cites its ends only": (
+        _cleveref_s_range_cites_its_ends,
+        test_a_latex_group_of_floats_is_one_display_and_a_range_cites_what_it_takes_in,
+    ),
+    "in LaTeX, cleveref's range is recorded at each label": (
+        _a_range_s_span_is_recorded_at_each_label,
+        test_a_latex_cross_reference_is_recorded_where_it_prints_and_nowhere_else,
     ),
     "in LaTeX, \\appendix opens nothing": (
         _the_appendix_opens_nothing,
@@ -10778,6 +11277,22 @@ BROKEN = {
     "in LaTeX, G6 reads no typed reference list": (
         _g6_reads_no_typed_reference_list,
         test_g6_judges_a_latex_document_where_it_prints_and_by_its_citations,
+    ),
+    "in LaTeX, G6 takes no algorithm or listing for lines a paper may point at": (
+        _g6_lists_nothing_in_latex,
+        test_g6_lets_a_latex_paper_point_at_the_lines_of_what_it_sets_out,
+    ),
+    "in LaTeX, G6 reads an algorithm's lines as prose": (
+        _g6_reads_an_algorithm_as_prose,
+        test_g6_lets_a_latex_paper_point_at_the_lines_of_what_it_sets_out,
+    ),
+    "in LaTeX, G6 finds no algorithm": (
+        _g6_finds_no_algorithm,
+        test_g6_lets_a_latex_paper_point_at_the_lines_of_what_it_sets_out,
+    ),
+    "in LaTeX, G6 finds an algorithm in a comment": (
+        _g6_reads_an_algorithm_in_a_comment,
+        test_g6_lets_a_latex_paper_point_at_the_lines_of_what_it_sets_out,
     ),
     "in LaTeX, G6 reads a definition's body in the preamble": (
         _g6_reads_a_definitions_body_in_the_preamble,
@@ -12161,6 +12676,22 @@ BROKEN = {
     "a variable's name is read as a word": (
         _a_variables_name_is_a_word,
         test_a_word_in_the_other_english_is_found_where_it_stands_and_a_name_is_not,
+    ),
+    "a paper that declares no English is held to British": (
+        _no_english_declared_is_british,
+        test_a_paper_that_declares_no_english_is_held_to_the_one_most_of_its_words_are_in,
+    ),
+    "two Englishes level are taken for British": (
+        _level_englishes_are_british,
+        test_a_paper_that_declares_no_english_is_held_to_the_one_most_of_its_words_are_in,
+    ),
+    "an -ise spelling counts for neither English": (
+        _ise_counts_for_neither,
+        test_a_paper_that_declares_no_english_is_held_to_the_one_most_of_its_words_are_in,
+    ),
+    "an -ize both write counts as American": (
+        _ize_counts_as_american,
+        test_a_paper_that_declares_no_english_is_held_to_the_one_most_of_its_words_are_in,
     ),
     "a list of tables is read as its first": (
         _a_list_of_pointers_is_its_first,

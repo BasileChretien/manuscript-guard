@@ -596,13 +596,14 @@ def authors_yaml(names: tuple[str, ...]) -> str:
     return AUTHORS.format(entries=entries)
 
 
-def init_from_word(root: Path, docx: Path, title: str | None = None
-                   ) -> tuple[list[Path], Converted]:  # fmt: skip
+def init_from_word(root: Path, docx: Path, title: str | None = None,
+                   english: str | None = None) -> tuple[list[Path], Converted]:  # fmt: skip
     """Make a project at `root` whose manuscript is the Word paper `docx`. `init` writes over
     nothing, so nothing is made where the paper cannot be read, where `root` already has a
     manuscript, where a picture cannot be written, or where `paper.yaml` or `authors.yaml`
     is there and the paper's title or names would go into neither. A file that is there and
-    that nothing from the paper goes into is kept, as plain `init` keeps it."""
+    that nothing from the paper goes into is kept, as plain `init` keeps it. `english` is
+    the English `paper.yaml` declares, as for plain `init`."""
     from manuscript_guard.gates.numbers import source_files
     from manuscript_guard.scaffold import UNTITLED, init_project
 
@@ -629,6 +630,7 @@ def init_from_word(root: Path, docx: Path, title: str | None = None
     created = init_project(
         root, title if title is not None else converted.title or UNTITLED, text=converted.text,
         authors=authors_yaml(converted.authors) if converted.authors else None,
+        english=english,
     )  # fmt: skip
     for name, data in converted.media:
         path = root / name

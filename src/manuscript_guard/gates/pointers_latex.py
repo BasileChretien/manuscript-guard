@@ -39,6 +39,7 @@ from pathlib import Path
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.findings import INFO, Finding, Report
 from manuscript_guard.gates.pointers import (
+    _DASHES,
     AS_FILES,
     FIGURE,
     TABLE,
@@ -73,7 +74,22 @@ _SUPPLEMENT_HEADING = re.compile(
     re.IGNORECASE,
 )
 #: The cross-references that cite what they point at: not a page's, which `\\pageref` prints.
-_PAGES = frozenset({"pageref", "cpageref"})
+_PAGES = frozenset({"pageref", "cpageref", "cpagerefrange", "Cpagerefrange"})
+#: cleveref's ranges, `\\crefrange{a}{b}`, which cite what LaTeX numbers from a to b.
+_RANGES = frozenset({"crefrange", "Crefrange"})
+#: What joins two cross-references into a range in the view, `\\ref{a}--\\ref{b}`: a dash,
+#: with spaces or a line's end around it, as a typed range's in `pointers.py`.
+_RANGE_DASH = re.compile(r"[^\S\n]*\n?[^\S\n]*[" + _DASHES + r"][^\S\n]*\n?[^\S\n]*")
+#: "to" between two cross-references, which `pointers.py`'s `_JOIN` reads as a range after a
+#: plural, "Figures 2 to 4", and as no join after a singular (fix round 1).
+_RANGE_TO = re.compile(r"[^\S\n]*\n?[^\S\n]*to[^\S\n]*\n?[^\S\n]*")
+#: The rest of `_JOIN`'s joins, a list's: they carry a plural on to the next cross-reference,
+#: "Figures \\ref{a}, \\ref{b} to \\ref{d}".
+_LIST_JOIN = re.compile(r"[^\S\n]*\n?[^\S\n]*(?:,[^\S\n]*(?:and|&)|,|and|&)[^\S\n]*\n?[^\S\n]*")
+#: The plural word before a cross-reference, as `pointers.py`'s `_PLURAL` reads one typed.
+_PLURAL_BEFORE = re.compile(r"(?<![\w.])(?:tables|figures|figs\.?)[^\S\n]*\Z", re.IGNORECASE)
+#: How far apart a range's ends may be, as `pointers.py` reads one typed.
+_RANGE = 50
 
 
 @dataclass(frozen=True)
@@ -156,7 +172,7 @@ def _numbered(views: dict):
     kinds a document numbers in a way the view cannot count, and the numbers of the main
     document's displays that are its supplement's, in its appendix or under a heading that
     names one."""
-    from manuscript_guard.text.latex.printed import APPENDIX, DISPLAY
+    from manuscript_guard.text.latex.printed import APPENDIX, DISPLAY, JOINED
 
     labels: dict[tuple[bool, str], _Numbered] = {}
     bound: dict[tuple[bool, str], int] = {key: 0 for key in AS_FILES}
@@ -166,6 +182,7 @@ def _numbered(views: dict):
         parts = _supplement_parts(view.text)
         # `\\appendix` holds to the end; an environment to where it ends (round 2).
         command = environment = False
+        latest: dict[str, _Numbered] = {}
         for found in _marks().finditer(view.text):
             if found[1] == APPENDIX:
                 command = command or found[2] == ""
@@ -173,13 +190,21 @@ def _numbered(views: dict):
             if found[1] != DISPLAY:
                 continue
             appendix = command or environment
-            code, named = found[2][:1], found[2][1:]
+            joined = found[2].startswith(JOINED)
+            code = found[2][len(JOINED) if joined else 0 :][:1]
+            named = found[2][len(JOINED) + 1 if joined else 1 :]
             kind = TABLE if code.lower() == "t" else FIGURE
+            # The floats of a file read inside a group are parts of the group's display, the
+            # last of its kind the view has marked (fix round 1).
+            if joined:
+                for label in filter(None, named.split(",") if kind in latest else []):
+                    labels.setdefault((supplementary, label), latest[kind])
+                continue
             if code.isupper():
                 uncounted.add((supplementary, kind))
                 continue
             bound[supplementary, kind] += 1
-            display = _Numbered(kind, supplementary, bound[supplementary, kind])
+            display = latest[kind] = _Numbered(kind, supplementary, bound[supplementary, kind])
             if appendix or any(low <= found.start() < high for low, high in parts):
                 apart[supplementary, kind].add(display.number)
             for label in filter(None, named.split(",")):
@@ -205,15 +230,24 @@ def _cited(views: dict, labels: dict, folder: Path) -> tuple[list[Pointer], list
             if placed is not None:
                 found.append((at, placed))
                 typed.append(placed)
+        last: tuple[int, _Numbered | None, bool] = (-1, None, False)
         for mark in _marks().finditer(view.text):
             command, _colon, named = mark[2].partition(":")
             if mark[1] != REFERENCE or command in _PAGES:
                 continue
-            for label in filter(None, named.split(",")):
-                display = labels.get((supplementary, label)) or labels.get(
-                    (not supplementary, label)
-                )
-                line = view.text.count("\n", 0, mark.start()) + 1
+            line = view.text.count("\n", 0, mark.start()) + 1
+            shown = [(label, labels.get((supplementary, label))
+                      or labels.get((not supplementary, label)))
+                     for label in filter(None, named.split(","))]  # fmt: skip
+            # A typed range, `\\ref{a}--\\ref{b}`, cites what LaTeX numbers between the two,
+            # as "Figures 2-4" does in Markdown (corpus round, 2026-10-23).
+            ranged, plural = _joined(view.text, last, mark.start())
+            if shown and ranged:
+                shown[:0] = _between(last[1], shown[0][1])
+            if command in _RANGES and len(shown) == 2:
+                shown[1:1] = _between(shown[0][1], shown[1][1])
+            last = (mark.end(), shown[-1][1] if shown else None, plural)
+            for label, display in shown:
                 if display is None:
                     continue
                 reference = Pointer(
@@ -226,6 +260,35 @@ def _cited(views: dict, labels: dict, folder: Path) -> tuple[list[Pointer], list
                     found.append((mark.start(), placed))
         pointers += [pointer for _at, pointer in sorted(found, key=lambda pair: pair[0])]
     return pointers, typed
+
+
+def _joined(text: str, last: tuple[int, _Numbered | None, bool], start: int) -> tuple[bool, bool]:
+    """Whether the cross-reference at `start` makes a range with the `last` one, which ended
+    where it says and was read after a plural or not; and whether it is read after a plural.
+    As `pointers.py` reads a typed pointer's numbers: a dash makes a range, "to" one after a
+    plural only, and a list's join carries the plural on (fix round 1)."""
+    after, _display, plural = last
+    if after >= 0 and _RANGE_DASH.fullmatch(text, after, start):
+        return True, plural
+    if after >= 0 and _RANGE_TO.fullmatch(text, after, start):
+        return plural, plural
+    if after >= 0 and _LIST_JOIN.fullmatch(text, after, start):
+        return False, plural
+    return False, _PLURAL_BEFORE.search(text, max(0, start - 16), start) is not None
+
+
+def _between(first: _Numbered | None, last: _Numbered | None) -> list[tuple[str, _Numbered]]:
+    """The displays a range from `first` to `last` takes in between them: of one kind and one
+    document, the first numbered before the last, at most `_RANGE` apart, as `pointers.py`
+    reads a typed range."""
+    if (
+        first is None
+        or last is None
+        or (first.kind, first.supplementary) != (last.kind, last.supplementary)
+        or not first.number < last.number <= first.number + _RANGE
+    ):
+        return []
+    return [("", replace(first, number=number)) for number in range(first.number + 1, last.number)]
 
 
 def _to_nothing(typed, total, bound, as_files, uncounted) -> Report:

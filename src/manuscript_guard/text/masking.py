@@ -689,8 +689,33 @@ def _either_side(pattern: re.Pattern[str], text: str, head: int) -> list[re.Matc
     return [*front.finditer(text, 0, head), *pattern.finditer(text, head)]
 
 
+def _blank(chars: list[str], start: int, end: int, *, breaks: bool = True) -> None:
+    """`chars` from `start` to `end` replaced by NUL, its line breaks kept unless `breaks` is
+    false."""
+    for index in range(start, end):
+        if not breaks or chars[index] not in "\r\n":
+            chars[index] = NUL
+
+
+def kept_breaks(text: str, masked: str) -> str:
+    """`masked`, a mask of `text`, with every line break of `text` where `text` has it: for a
+    reader of lines, which cuts both into lines and reads them side by side."""
+    return "".join(text[index] if text[index] in "\r\n" else char
+                   for index, char in enumerate(masked))  # fmt: skip
+
+
 def mask(text: str) -> str:
-    """Return `text` with non-claim regions replaced by NUL, preserving length."""
+    """Return `text` with non-claim regions replaced by NUL, preserving length, and the line
+    breaks of the front matter, of a listing and of what the patterns match: a reader that
+    cuts the masked text into lines finds each of those where the file has it. They were
+    NUL, and a pipe table under one was read a line out (corpus round, 2026-10-23). Each is
+    a block of its own for pandoc, or a line break of the prose, so a blank line kept in one
+    parts no paragraph pandoc reads as one.
+
+    Not a comment's: pandoc reads a comment in a paragraph, a blank line inside it too, as
+    a part of that paragraph, and a blank line or a line of NUL kept there would cut it in
+    two for every reader of paragraphs and sentences. A reader of lines puts those back
+    (`kept_breaks`)."""
     chars = list(text)
     head = front_matter_end(text)
     # Fenced blocks go first, and through the shared scanner rather than a regex of their
@@ -698,20 +723,16 @@ def mask(text: str) -> str:
     # opening run, so a longer closer swallowed the prose after it. See text/fences.py.
     fences = fenced_blocks(text)
     for fence in fences:
-        for index in range(fence.start, fence.end):
-            chars[index] = NUL
+        _blank(chars, fence.start, fence.end)
     for start, end in _frontmatter_spans(text):
-        for index in range(start, end):
-            chars[index] = NUL
+        _blank(chars, start, end)
     # Found in the source, not in what is left once fences are gone: a comment opened
     # before a listing ends at a `-->` inside it, and the prose after it is printed.
     for start, end in html_comments(text, fences):
-        for index in range(start, end):
-            chars[index] = NUL
+        _blank(chars, start, end, breaks=False)
     for _name, pattern in _PATTERNS:
         for match in _either_side(pattern, "".join(chars), head):
-            for index in range(match.start(), match.end()):
-                chars[index] = NUL
+            _blank(chars, match.start(), match.end())
     for index in comparison_escapes(text):
         chars[index] = NUL
     return "".join(chars)
@@ -729,23 +750,20 @@ def masked_spans(text: str) -> dict[str, list[tuple[int, int]]]:
         found["fenced-code"] = fences
         chars = list(working)
         for start, end in fences:
-            for index in range(start, end):
-                chars[index] = NUL
+            _blank(chars, start, end)
         working = "".join(chars)
     frontmatter = _frontmatter_spans(text)
     if frontmatter:
         found["frontmatter"] = frontmatter
         chars = list(working)
         for start, end in frontmatter:
-            for index in range(start, end):
-                chars[index] = NUL
+            _blank(chars, start, end)
         working = "".join(chars)
     if comments:
         found["html-comment"] = comments
         chars = list(working)
         for start, end in comments:
-            for index in range(start, end):
-                chars[index] = NUL
+            _blank(chars, start, end, breaks=False)
         working = "".join(chars)
     for name, pattern in _PATTERNS:
         spans = [(m.start(), m.end()) for m in _either_side(pattern, working, head)]
@@ -753,8 +771,7 @@ def masked_spans(text: str) -> dict[str, list[tuple[int, int]]]:
             found[name] = spans
             chars = list(working)
             for start, end in spans:
-                for index in range(start, end):
-                    chars[index] = NUL
+                _blank(chars, start, end)
             working = "".join(chars)
     escapes = [(index, index + 1) for index in comparison_escapes(text)]
     if escapes:

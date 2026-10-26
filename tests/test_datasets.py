@@ -213,6 +213,19 @@ def test_a_dataset_is_printed_in_american_english_where_the_paper_is(scratch: Pa
     assert values["dataset.vigibase.extracted"]["display"] == "March 1, 2024"
 
 
+def test_a_dataset_is_printed_day_month_year_where_the_paper_declares_no_english(
+    scratch: Path,
+) -> None:
+    """Basile, 2026-10-23: the build gives such a paper no region, and a date the order that
+    names no English's habit, the day before the month."""
+    paper = scratch / "paper.yaml"
+    text = paper.read_text(encoding="utf-8")
+    paper.write_text(text.replace("english_variant: en-GB\n", ""), encoding="utf-8")
+    assert "english_variant" not in paper.read_text(encoding="utf-8")
+    values = declared(scratch).document()["values"]
+    assert values["dataset.vigibase.extracted"]["display"] == "1 March 2024"
+
+
 def test_a_dataset_unpinned_is_refused_and_told_its_pin(scratch: Path) -> None:
     with pytest.raises(ValueError, match=re.escape(f'fingerprint="{pin(scratch)}"')):
         declared(scratch, fingerprint=None)
@@ -454,6 +467,17 @@ def test_a_dataset_date_printed_in_another_english_is_warned() -> None:
     assert not dates_in_english(namespace, "en-GB").findings
     (found,) = dates_in_english(namespace, "en-US").findings
     assert found.code == "dataset-date-english" and "'March 1, 2024'" in found.message
+
+
+def test_a_paper_that_declares_no_english_is_held_to_day_month_year() -> None:
+    printed = dict([_value("dataset.vb.extracted", "2024-03-01", "1 March 2024", "dataset")])
+    assert not dates_in_english(printed, None).findings
+    american = dict([_value("dataset.vb.extracted", "2024-03-01", "March 1, 2024", "dataset")])
+    (found,) = dates_in_english(american, None).findings
+    assert found.message == (
+        "results.dataset.vb.extracted is printed 'March 1, 2024', and paper.yaml declares no "
+        "English, which prints '1 March 2024'"
+    )
 
 
 # ------------------------------------------------------------------- round 1 of #392

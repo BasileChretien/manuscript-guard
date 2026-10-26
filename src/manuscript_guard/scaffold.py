@@ -13,7 +13,7 @@ from pathlib import Path
 
 import yaml
 
-from manuscript_guard.contracts._schema import ContractError
+from manuscript_guard.contracts._schema import ContractError, load_schema
 from manuscript_guard.contracts.project import (
     KEEP_THE_TEX,
     named,
@@ -22,10 +22,22 @@ from manuscript_guard.contracts.project import (
     unprintable_character,
 )
 
+#: The Englishes `init --english` declares: the ones `paper.yaml`'s schema takes, so that the
+#: two cannot come apart.
+ENGLISHES: tuple[str, ...] = tuple(
+    load_schema("paper")["properties"]["english_variant"]["enum"]
+)
+#: What `paper.yaml` says of its English when `init` is not told one (Basile, 2026-10-23: the
+#: `en-GB` it wrote for everyone told seven of fourteen American papers they broke it).
+UNDECLARED = """\
+# The English the paper is in, en-GB or en-US, which G14 holds its spelling to. Left out,
+# the paper is held to the one most of its words are in.
+# english_variant: en-GB"""
+
 PAPER = """\
 schema: manuscript-guard/paper/1
 title: {quoted}
-english_variant: en-GB
+{english}
 
 # Where the work has got to. Move it along as you go; `manuscript-guard stages` lists what
 # each one starts to enforce. Written here rather than left to the default, because the
@@ -339,11 +351,18 @@ def _header(title: str) -> str:
 
 
 def init_project(root: Path, title: str = UNTITLED, *, latex: bool = False,
-                 text: str | None = None, authors: str | None = None) -> list[Path]:  # fmt: skip
+                 english: str | None = None, text: str | None = None,
+                 authors: str | None = None) -> list[Path]:  # fmt: skip
     """Create the project layout. Existing files are never overwritten. With `latex`, the
-    manuscript is `manuscript/main.tex`, with the values file beside it (step 12). With
-    `text`, `main.md` is that text under its header, and with `authors`, `authors.yaml`
-    is that text: what `init --from` made of a Word paper."""
+    manuscript is `manuscript/main.tex`, with the values file beside it (step 12).
+    `english` is the `english_variant` written into `paper.yaml`, one of `ENGLISHES`; with
+    None, none is declared. With `text`, `main.md` is that text under its header, and with
+    `authors`, `authors.yaml` is that text: what `init --from` made of a Word paper."""
+    if english is not None and english not in ENGLISHES:
+        raise ContractError(
+            f"{english!r} is not an English paper.yaml can declare, so nothing was made; "
+            f"give one of {', '.join(ENGLISHES)}"
+        )
     root = Path(root).resolve()
     created: list[Path] = []
     # On one line, and a tab as a space: what the build prints for each. Written into
@@ -410,6 +429,7 @@ def init_project(root: Path, title: str = UNTITLED, *, latex: bool = False,
             quoted=json.dumps(title, ensure_ascii=False),
             header=_header(title),
             latex_title=latex_title,
+            english=UNDECLARED if english is None else f"english_variant: {english}",
         )
         # Not through format(): a paper's text holds braces of its own.
         if name == "manuscript/main.md" and text is not None:

@@ -110,8 +110,10 @@ Then fill in, in this order:
    --finding <id>` as its hint says. Never run `sign` for them.
 2. **`paper.yaml`**: the title, `english_variant` (`en-GB` or `en-US`; ask, do not
    assume: G14 holds the manuscript's spelling to it. `init --english en-US` writes it at
-   the start. Left out, G14 holds the paper to the English most of its words are in, and
-   the document is built as English with no region), and the reporting
+   the start. Left out, G14 holds the paper to the English most of its words are in, the
+   document is built as English with no region, and where the journal's profile names an
+   English G4 notes `english-variant-undeclared`: ask the author which English, and
+   declare it), and the reporting
    guideline under the key `reporting_guideline` (singular, a list). Any key the schema does
    not know is a failure at every stage. The title, the short title and the keywords are
    read as Markdown, and TeX in them is kept only between dollar signs: write

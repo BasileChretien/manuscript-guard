@@ -57,7 +57,7 @@ retrieved_by: "REPLACE — who or what read the page"
 article_type: "Original research"
 
 # en-GB, en-US, or either. Set this ONLY when the journal insists; G4 then reports a paper
-# that declares the other, and a wrong value here asks the author to respell for no reason. Most
+# that declares the other, notes one that declares none, and a wrong value here asks the author to respell for no reason. Most
 # journals accept either provided you are consistent — in that case write `either`, or delete
 # the line and let the project decide.
 english_variant: either

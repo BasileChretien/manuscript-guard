@@ -414,13 +414,31 @@ def _check_statements(document: dict, text: str, path: Path) -> Report:
     return report
 
 
+_ENGLISH_NAMES = {"en-GB": "British English", "en-US": "American English"}
+
+
 def _check_variant(document: dict, project: Project) -> Report:
     wanted = document.get("english_variant")
-    # A paper that declares no English has nothing to compare (Basile, 2026-10-23); G14
-    # holds it to the English most of its words are in.
     declared = project.english_variant
-    if not wanted or wanted == "either" or declared is None or wanted == declared:
+    if not wanted or wanted == "either" or wanted == declared:
         return Report()
+    if declared is None:
+        # A paper that declares no English has nothing to compare, and G14 holds it to the
+        # English most of its words are in, which may not be the journal's: a note, never a
+        # failure (Basile, 2026-10-23).
+        return Report(
+            (
+                Finding(
+                    gate=GATE,
+                    code="english-variant-undeclared",
+                    severity=INFO,
+                    message=f"the journal asks for {_ENGLISH_NAMES.get(wanted, wanted)} "
+                    f"({wanted}), and paper.yaml declares no English",
+                    hint=f"declare english_variant: {wanted} in paper.yaml to be held to it; "
+                    "until then G14 holds the paper to the English most of its words are in",
+                ),
+            )
+        )
     return Report(
         (
             Finding(

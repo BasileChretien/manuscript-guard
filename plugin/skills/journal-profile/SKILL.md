@@ -1,6 +1,6 @@
 ---
 name: journal-profile
-description: Choose a target journal with the author, then read that journal's instructions for authors and fill the annotated profile template with its limits, required sections and required statements. Use when choosing where to submit, when check reports journal-profile-missing, journal-profile-stale, data-statement-forbidden, data-identifier-missing, data-link-temporary, data-doi-uncited or pointer-form-unread, or before submitting to a different journal.
+description: Choose a target journal with the author, then read that journal's instructions for authors and fill the annotated profile template with its limits, required sections and required statements. Use when choosing where to submit, when check reports journal-profile-missing, journal-profile-stale, data-statement-forbidden, data-identifier-missing, data-link-temporary, data-doi-uncited, pointer-form-unread, english-variant-mismatch or english-variant-undeclared, or before submitting to a different journal.
 ---
 
 # Turning author guidelines into something a build can check
@@ -175,7 +175,7 @@ publisher: Example Press
 source_url: https://...        # the page you actually read
 retrieved_on: 2026-08-03
 article_type: "Original Research Article"
-english_variant: en-GB          # only if the journal insists; G4 compares it with paper.yaml's
+english_variant: en-GB          # only if the journal insists; G4 compares it with paper.yaml's, and notes a paper.yaml that declares none
 blinding: double                # how its peer review is blinded, where the page says
 text_recycling: "Methods only, cited"  # its policy on authors' reuse of their own text
 abbreviations:                  # only where the page asks for what G14 lets stand undefined
@@ -294,6 +294,12 @@ citations as the journal does. Until then `check` warns `journal-style-not-store
 `journal-style-changed` when a stored file was edited, and `journal-style-format` when the
 style numbers citations and `numbered:` says it does not, or the other way round: read the
 journal's page again to know which of the two is wrong.
+
+Where the profile names an English (`en-GB` or `en-US`) and `paper.yaml` declares none, G4
+notes `english-variant-undeclared`; it fails nothing. Ask the author which English the
+paper is in and declare it in `paper.yaml`: until then G14 holds the paper to the English
+most of its words are in, which may not be the journal's. Where `paper.yaml` declares the
+other English, G4 fails `english-variant-mismatch` from internal review.
 
 ## Changing journals after a rejection
 

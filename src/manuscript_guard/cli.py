@@ -2059,6 +2059,8 @@ def cmd_audit(args: argparse.Namespace) -> int:
         FIGURE_SUFFIXES,
         PAPER_SUFFIXES,
         audit,
+        doc_passed_over,
+        is_lock_file,
         measure_discrimination,
         render,
     )
@@ -2070,11 +2072,22 @@ def cmd_audit(args: argparse.Namespace) -> int:
                 found += [
                     p
                     for p in sorted(path.rglob("*"))
-                    if p.is_file() and p.suffix.lower() in suffixes
+                    # Word's lock file beside an open document, "~$x.docx", is no paper.
+                    if p.is_file() and p.suffix.lower() in suffixes and not is_lock_file(p)
                 ]
             elif path.is_file():
                 found.append(path)
         return found
+
+    # A .doc in a folder is not read, and was passed over without a word: the paper in it
+    # went unaudited and the report did not say so. It is named, as a note.
+    docs = [
+        p
+        for folder in args.paper
+        if folder.is_dir()
+        for p in sorted(folder.rglob("*"))
+        if p.is_file() and p.suffix.lower() == ".doc" and not is_lock_file(p)
+    ]
 
     # A path that is not there is a typo, and auditing without it answers a different
     # question: a missing output reports every number it held as absent from the paper.
@@ -2089,13 +2102,15 @@ def cmd_audit(args: argparse.Namespace) -> int:
     figures = expand(args.figures or [], FIGURE_SUFFIXES)
     if not papers and not figures:
         print("nothing to audit: no .docx or .md found in what you gave me", file=sys.stderr)
+        for doc in docs:
+            print(f"  {doc_passed_over(doc)}", file=sys.stderr)
         return 2
     if not args.against:
         print("--against is required: point it at the analysis outputs", file=sys.stderr)
         return 2
 
     report = audit(papers, args.against, figures=figures,
-                   whole_numbers=tuple(args.whole_numbers))  # fmt: skip
+                   whole_numbers=tuple(args.whole_numbers), passed_over=docs)  # fmt: skip
     if not report.backing_files:
         print("--against gave the audit nothing it can read:", file=sys.stderr)
         for item in report.skipped:
@@ -2105,7 +2120,7 @@ def cmd_audit(args: argparse.Namespace) -> int:
         # "Audited 0 file(s) … 0 not found" read as a clean report, and exited 0 under
         # --strict, when every paper given was unreadable.
         print("nothing given could be audited:", file=sys.stderr)
-        for item in report.unreadable:
+        for item in (*report.unreadable, *report.passed_over):
             print(f"  {item}", file=sys.stderr)
         return 2
     print(render(report, measure_discrimination(report.backing_values), Path.cwd()))

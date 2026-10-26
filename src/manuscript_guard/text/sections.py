@@ -37,7 +37,7 @@ from manuscript_guard.text.blocks import (
 from manuscript_guard.text.fences import blank_fences
 from manuscript_guard.text.masking import NUL, mask, without_front_matter
 from manuscript_guard.text.reference_lists import unmarked_reference_lists
-from manuscript_guard.text.section_names import names_abstract
+from manuscript_guard.text.section_names import REFERENCE_WORDS_ELSEWHERE, names_abstract
 
 # `scannable` moved to `text.blocks` with the heading walk, and `strip_attributes` to
 # `text.attributes` so the walk can title headings with it; both are re-exported for the
@@ -64,7 +64,15 @@ __all__ = [
 # no sections at all as far as G2, G4 and the reporting gate were concerned: no
 # required-section check, no abstract, and every `methods_only` rule silently inapplicable.
 
-_REFERENCES = re.compile(r"^\s*(?:references|bibliography|works cited)\b", re.IGNORECASE)
+# An English title is read by its opening word, as it always was: "References and notes"
+# is the list. A title in another language is read whole, with only punctuation after it,
+# as the audit and the recycling check read every title: German "Literatur" opens
+# "Literatur und Forschungsstand", a review of the literature, and Italian's "Bibliografia"
+# opens a section on how the literature was searched.
+_REFERENCES = re.compile(
+    rf"^\s*(?:(?:references|bibliography|works cited)\b|(?:{REFERENCE_WORDS_ELSEWHERE})\W*$)",
+    re.IGNORECASE,
+)
 
 _TABLE_ROW = re.compile(r"^\s*\|.*\|\s*$", re.MULTILINE)
 _TABLE_CAPTION = re.compile(r"^\s*:\s+.+$", re.MULTILINE)

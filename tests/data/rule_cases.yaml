@@ -348,6 +348,15 @@ structural:
       - {text: "The study ran 2015-2024 and included 4000 reports.", atom: "4000"}
       - {text: "Reports rose from 1200-1400 over the period.", atom: "1200-1400"}
 
+  email-address:
+    accepts:
+      - {text: "Correspondence: someone1989@example.org.", atom: "someone1989@example.org"}
+      - {text: "Write to a.b2@uni-3.edu.tr for the data.", atom: "a.b2@uni-3.edu.tr"}
+    rejects:
+      # Digits round an `@` with no domain that ends in letters are no address.
+      - {text: "The dose was typed as 12@3.5 in the log.", atom: "12@3.5"}
+      - {text: "We counted 40@lab in the second week.", atom: "40@lab"}
+
   age-band:
     accepts:
       - {text: "Adults aged 65+ years were excluded.", atom: "65+"}

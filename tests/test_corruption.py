@@ -23521,3 +23521,319 @@ def test_an_anchor_deleted_leaves_its_step_described_by_nothing(project: Path) -
     assert [f.message for f in report.warnings if f.code == "method-step-undescribed"] == [
         "step 'signal' ran, and no text in the manuscript points at it"
     ]
+
+
+# --------------------------------------------------------------------------------------
+# What papers converted from Word showed the audit and G6 doing wrong
+# --------------------------------------------------------------------------------------
+
+_COMPOUND = bytes.fromhex("d0cf11e0a1b11ae1")
+
+
+def test_a_word_97_2003_document_is_named_and_not_taken_for_utf16(tmp_path: Path) -> None:
+    """A .doc given to `audit` is a compound file, with NULs among its bytes, and was refused
+    with "if it is UTF-16, save it as UTF-8", which is no help: it has to be saved as .docx."""
+    from manuscript_guard.audit import audit
+
+    doc = tmp_path / "paper.doc"
+    doc.write_bytes(_COMPOUND + bytes(504) + "We saw 412 reports.".encode("utf-16-le"))
+    report = audit([doc], [_outputs(tmp_path, '{"n": 412}')])
+    [said] = report.unreadable
+    assert "Word 97-2003" in said and ".docx" in said, said
+    assert "UTF-16" not in said and "UTF-8" not in said, said
+
+
+def test_a_doc_renamed_docx_is_named_although_a_zip_ends_it(tmp_path: Path) -> None:
+    """A zip is read from its end, and a .doc that holds an embedded object can end in one: a
+    .doc renamed .docx was opened as a zip and said to have "no word/document.xml"."""
+    from manuscript_guard.audit import audit
+    from manuscript_guard.text.docx import NotADocx, read_docx_text
+
+    embedded = _docx(tmp_path / "embedded.docx", _p("We saw 412 reports."))
+    renamed = tmp_path / "paper.docx"
+    renamed.write_bytes(_COMPOUND + bytes(504) + embedded.read_bytes())
+    with pytest.raises(NotADocx, match="Word 97-2003") as raised:
+        read_docx_text(renamed)
+    assert "password" in str(raised.value)
+    [said] = audit([renamed], [_outputs(tmp_path, '{"n": 412}')]).unreadable
+    assert "Word 97-2003" in said and "word/document.xml" not in said, said
+
+
+def test_a_doc_in_a_folder_given_to_audit_is_named_and_strict_still_passes(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The audit takes a folder's .docx, .md, .markdown and .txt files, and passed over a
+    .doc beside them without a word: the paper in it went unaudited, and nothing said so.
+    Each .doc passed over is named, with the advice a .doc named on its own gets. It is a
+    note: the papers that were read were audited, so --strict passes on it."""
+    from manuscript_guard.audit import audit
+    from manuscript_guard.cli import main
+
+    folder = tmp_path / "papers"
+    (folder / "old").mkdir(parents=True)
+    (folder / "old" / "first.doc").write_bytes(_COMPOUND + bytes(504))
+    # Word's lock file beside an open document is no paper, and is not named.
+    (folder / "old" / "~$first.doc").write_bytes(bytes(162))
+    # A .doc that is no compound file, Rich Text saved under that name, is named as that.
+    (folder / "notes.doc").write_bytes(b"{\\rtf1\\ansi We saw 412 reports.}")
+    _docx(folder / "paper.docx", _p("We saw 412 reports."))
+    outputs = _outputs(tmp_path, '{"n": 412}')
+    assert main(["audit", str(folder), "--against", str(outputs), "--strict"]) == 0
+    out = capsys.readouterr().out
+    assert "old/first.doc is a Word 97-2003 document" in out, out
+    assert "save it as a Word document (.docx)" in out, out
+    assert "~$" not in out, out
+    assert "notes.doc is named .doc but is no Word 97-2003 document" in out, out
+    assert "notes.doc is a Word 97-2003" not in out, out
+    assert "Could not read" not in out, out
+
+    # In the report as well, apart from what could not be read.
+    doc = folder / "old" / "first.doc"
+    report = audit([folder / "paper.docx"], [outputs], passed_over=[doc])
+    assert report.unreadable == [] and len(report.passed_over) == 1
+    assert "first.doc" in report.passed_over[0]
+    (folder / "notes.doc").unlink()
+
+    # A number the outputs lack still fails --strict beside the note.
+    _docx(folder / "paper.docx", _p("We saw 413 reports."))
+    assert main(["audit", str(folder), "--against", str(outputs), "--strict"]) == 1
+
+    # Where every paper found is unreadable, nothing could be audited, and the .doc passed
+    # over is named with what could not be read.
+    (folder / "paper.docx").write_bytes(b"not a zip")
+    assert main(["audit", str(folder), "--against", str(outputs), "--strict"]) == 2
+    said = capsys.readouterr().err
+    assert "paper.docx" in said and "old/first.doc is a Word 97-2003 document" in said, said
+
+    # A folder with nothing but a .doc has nothing to audit, and says why.
+    (folder / "paper.docx").unlink()
+    assert main(["audit", str(folder), "--against", str(outputs), "--strict"]) == 2
+    assert "first.doc" in capsys.readouterr().err
+
+
+def test_word_s_lock_file_in_a_folder_given_to_audit_is_no_paper(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Word keeps "~$paper.docx" beside paper.docx while it is open, and the audit read it
+    as a paper: it is no zip, so it could not be read, and --strict failed on a folder
+    whose one paper matched its outputs."""
+    from manuscript_guard.cli import main
+
+    folder = tmp_path / "papers"
+    folder.mkdir()
+    _docx(folder / "paper.docx", _p("We saw 412 reports."))
+    (folder / "~$paper.docx").write_bytes(b"B" + b" author" * 23)
+    assert len((folder / "~$paper.docx").read_bytes()) == 162
+    outputs = _outputs(tmp_path, '{"n": 412}')
+    assert main(["audit", str(folder), "--against", str(outputs), "--strict"]) == 0
+    out = capsys.readouterr().out
+    assert "Could not read" not in out and "~$" not in out, out
+    assert "Audited 1 file(s)" in out, out
+
+
+_PROSE_200 = " ".join(["Reports were included after review of each site and its records."] * 25)
+
+_MULTILINE = """
+  ----------------------------------------------------------
+  **Variable**         **Monotherapy    **Combination
+                       (%)**            therapy (%)**
+  -------------------- ---------------- --------------------
+  **Dizziness**        12 (20)          8 (13)
+
+  **Headache**         5 (8)            **9 (15)**
+  ----------------------------------------------------------
+"""
+_SIMPLE = """
+  **Group**   **N**   **Sites**
+  ----------- ------- ---------
+  exposed     **412**  1**   2**
+"""
+_GRID = """
++-----------+-------+
+| **Group   | N**   |
++===========+=======+
+| **a**     | **b** |
++-----------+-------+
+"""
+_PIPE = """
+**Group** | **N**
+---|---
+**a** | **1**
+"""
+
+
+def test_bold_in_a_table_is_no_cadence_of_the_prose() -> None:
+    """Pandoc writes a Word table as a simple, multiline, grid or pipe table, and G6 counted
+    each bold cell of it, and `**` paired across cells, "**   | **" and "1**   2**", towards
+    the rate of bold in the prose: a paper with a bold header row warned for it."""
+    from manuscript_guard.gates.writing import _hits, _prose, judge_texts, load_rules
+
+    tables = "\n".join((_MULTILINE, _SIMPLE, _GRID, _PIPE))
+    text = f"{_PROSE_200}\n\nOne **word** is bold.\n{tables}\nThe end of the prose.\n"
+    corpus = [(Path("main.md"), text)]
+    rule = next(rule for rule in load_rules().density if rule["id"] == "boldface")
+    [(_path, _text, prose)] = _prose(corpus)
+    assert [hit.group(0) for hit in _hits(rule, prose)] == ["**word**"]
+    report, _totals = judge_texts(corpus)
+    assert not [f for f in report.findings if "boldface" in f.message]
+    # The same bold in the prose is the cadence the rate is for.
+    prose = f"{_PROSE_200}\n\n" + " and ".join(["**bold**"] * 12) + "\n"
+    report, _totals = judge_texts([(Path("main.md"), prose)])
+    assert [f for f in report.findings if "boldface" in f.message]
+
+
+@pytest.mark.parametrize(
+    "title",
+    ["Kaynakça", "Kaynaklar", "Referencias", "Bibliografía", "Referências", "Références",
+     "Bibliographie", "Literatur", "Literaturverzeichnis", "Riferimenti bibliografici",
+     "Bibliografia", "Daftar Pustaka", "Pustaka", "Bibliografi"],
+)  # fmt: skip
+def test_a_reference_list_under_a_title_in_another_language_is_the_list(
+    tmp_path: Path, title: str
+) -> None:
+    """The reference list of a paper in Turkish, "Kaynakça", was read as prose: the audit
+    fell back to telling entries by their shape and listed the rest, G4 counted its words
+    in the main text, and the recycling check read it as the paper's own words."""
+    from manuscript_guard.audit import audit
+    from manuscript_guard.gates.recycling import SET_APART, _kind_of
+    from manuscript_guard.text.sections import measure
+
+    entry = "Yılmaz A, Kaya B. Uzaktan eğitim. Eğitim ve Bilim 2021, cilt 46, sayı 207, s. 1-23."
+    outputs = _outputs(tmp_path, '{"n": 412}')
+    text = f"# Results\n\nWe saw 412 reports.\n\n# {title}\n\n{entry}\n"
+    paper = tmp_path / "paper.md"
+    paper.write_text(text, encoding="utf-8")
+    assert audit([paper], [outputs]).unmatched == []
+    word = _docx(tmp_path / "paper.docx", _p("We saw 412 reports.") + _p(title) + _p(entry))
+    assert audit([word], [outputs]).unmatched == []
+    counts = measure(text)
+    assert counts.main_text_words == 5, counts
+    assert _kind_of(title, False, None) == SET_APART
+
+
+@pytest.mark.parametrize(
+    "title",
+    ["Literature review", "Literaturübersicht", "Pustakawan", "Literatur und Forschungsstand",
+     "Referencias teóricas", "Bibliografia e metodi"],
+)  # fmt: skip
+def test_a_title_that_opens_with_the_word_names_no_reference_list(title: str) -> None:
+    from manuscript_guard.audit import is_bibliography_heading
+    from manuscript_guard.text.sections import split_sections
+
+    assert not is_bibliography_heading(f"# {title}", marked=True)
+    [section] = split_sections(f"# {title}\n\nText.\n")
+    assert not section.is_references
+
+
+def test_an_email_address_and_an_interleukin_are_no_numbers(tmp_path: Path) -> None:
+    """A paper converted from Word keeps its correspondence line, and the audit listed
+    "someone1989@example.org" among the numbers to check, and "IL-4", "interleukin-13" and
+    "IL-4/IL-13" with it. G2 classified them the same way, so both now read them as `check`
+    reads a name: an address is structural, and an interleukin a term."""
+    from manuscript_guard.audit import audit
+    from manuscript_guard.classify import STRUCTURAL, TERM, Classifier
+    from manuscript_guard.text.masking import mask
+    from manuscript_guard.text.tokens import find_atoms
+
+    alpha = "\N{GREEK SMALL LETTER ALPHA}"
+    names = ("IL-4", f"IL-4R{alpha}", "interleukin-13", "IL-4/IL-13")
+    text = (
+        "Correspondence: someone1989@example.org or a.b2@uni-3.edu.tr. "
+        f"{', '.join(names)} rose in 12 of 40, and 12@3.5 was typed.\n"
+    )
+    paper = tmp_path / "paper.md"
+    paper.write_text(text, encoding="utf-8")
+    found = audit([paper], [_outputs(tmp_path, '{"n": 1}')]).unmatched
+    assert sorted(c.text for c in found) == ["12", "12@3.5", "40"]
+    for classifier in (Classifier.load(), Classifier.load(rendered=True)):
+        kinds = {a.text: classifier.classify(a).kind for a in find_atoms(text, mask(text))}
+        assert kinds["someone1989@example.org"] == kinds["a.b2@uni-3.edu.tr"] == STRUCTURAL
+        assert {kinds[name] for name in names} == {TERM}, kinds
+
+
+def test_a_term_inside_a_word_leaves_its_number_a_number(tmp_path: Path) -> None:
+    """A term was found anywhere in an atom, so with "il-12" and "il-3" among the terms,
+    "April-12" and "Brazil-3" were terms and their numbers went unchecked, by G2 and by the
+    audit. A term counts where it opens a word."""
+    from manuscript_guard.audit import audit
+    from manuscript_guard.classify import TERM, UNCLASSIFIED, Classifier
+    from manuscript_guard.text.masking import mask
+    from manuscript_guard.text.tokens import find_atoms
+
+    text = "Sites opened April-12 in Brazil-3 until-15, and IL-4 and interleukin-6 rose.\n"
+    paper = tmp_path / "paper.md"
+    paper.write_text(text, encoding="utf-8")
+    found = audit([paper], [_outputs(tmp_path, '{"n": 1}')]).unmatched
+    assert sorted(c.text for c in found) == ["April-12", "Brazil-3", "until-15"]
+    for classifier in (Classifier.load(), Classifier.load(rendered=True)):
+        kinds = {a.text: classifier.classify(a).kind for a in find_atoms(text, mask(text))}
+        assert kinds == {"April-12": UNCLASSIFIED, "Brazil-3": UNCLASSIFIED,
+                         "until-15": UNCLASSIFIED, "IL-4": TERM, "interleukin-6": TERM}
+
+
+def test_a_name_after_a_lower_case_prefix_or_another_name_is_a_term() -> None:
+    """Held to a word's start, a shipped term after a lower-case prefix, "sIL-2R" or
+    "ppFEV1", and two terms run together, "PaO2FiO2" when the terms came in the other order,
+    were numbers G2 failed, where main read them as terms. With CO2 declared, so were
+    "pCO2" and "EtCO2", typed or with their subscripts; and so was a term after a capital,
+    "CD3+", "Th1/Th2", "CCR2" or "HLA-DRB1"."""
+    from manuscript_guard.classify import TERM, UNCLASSIFIED, Classifier
+    from manuscript_guard.text.masking import mask
+    from manuscript_guard.text.tokens import find_atoms
+
+    names = ("sIL-2R", "rhIL-2", "sPD-L1", "ppFEV1", "PaO2FiO2", "CD8CD4", "pCO2", "EtCO2",
+             "pCO~2~", "EtCO~2~", "CD3+", "Th1/Th2", "CCR2", "TNFR2", "FGFR2",
+             "HLA-DRB1")  # fmt: skip
+    text = f"We read {', '.join(names)} and April-12 and Brazil-3.\n"
+    for classifier in (Classifier.load(extra_terms=("CO2",)),
+                       Classifier.load(rendered=True, extra_terms=("CO2",))):  # fmt: skip
+        kinds = {a.text: classifier.classify(a).kind for a in find_atoms(text, mask(text))}
+        kinds = {name.rstrip("~"): kind for name, kind in kinds.items()}
+        expected = {name.rstrip("~"): TERM for name in names}
+        assert kinds == {**expected, "April-12": UNCLASSIFIED, "Brazil-3": UNCLASSIFIED}
+
+
+def test_a_citation_number_after_a_capital_inside_a_word_is_a_number(tmp_path: Path) -> None:
+    """A term opened at a capital after a lower-case letter in a name read without its
+    signs too, so a citation's number typed in a superscript after such a word joined the
+    capital: "PharmD^2^" was `d2` and "ApoB^12^" and "dB^12^" `b12`, and G2 and the audit
+    passed the number, where main reported it. "^99m^Tc", opening its word, is a name."""
+    from manuscript_guard.audit import audit
+    from manuscript_guard.classify import TERM, UNCLASSIFIED, Classifier
+    from manuscript_guard.text.masking import mask
+    from manuscript_guard.text.tokens import find_atoms
+
+    raised = ("PharmD^2^", "ApoB^12^", "dB^12^")
+    text = f"Jane Roe, {raised[0]}, saw {raised[1]} fall by {raised[2]}.\n"
+    paper = tmp_path / "paper.md"
+    paper.write_text(text, encoding="utf-8")
+    found = audit([paper], [_outputs(tmp_path, '{"n": 1}')]).unmatched
+    assert sorted(c.text for c in found) == sorted(raised)
+    text = text.replace(".\n", " with ^99m^Tc.\n")
+    for classifier in (Classifier.load(extra_terms=("99mTc",)),
+                       Classifier.load(rendered=True, extra_terms=("99mTc",))):  # fmt: skip
+        kinds = {a.text: classifier.classify(a).kind for a in find_atoms(text, mask(text))}
+        assert kinds == {**dict.fromkeys(raised, UNCLASSIFIED), "^99m^Tc": TERM}
+
+
+@pytest.mark.parametrize(
+    "title", ["Literatur und Forschungsstand", "Referencias teóricas", "Bibliografia e metodi"]
+)
+def test_a_title_that_only_opens_with_a_list_s_title_elsewhere_is_prose(
+    tmp_path: Path, title: str
+) -> None:
+    """A reference list's title in another language was matched as the opening of the
+    title, so a German "Literatur und Forschungsstand" was the reference list: G4 dropped
+    its words from the main text, and the recycling check set it apart."""
+    from manuscript_guard.audit import is_bibliography_heading
+    from manuscript_guard.gates.recycling import SET_APART, _kind_of
+    from manuscript_guard.text.sections import measure, split_sections
+
+    text = f"# Results\n\nWe saw 412 reports.\n\n# {title}\n\nThree more words.\n"
+    [_results, section] = split_sections(text)
+    assert not section.is_references
+    # The headings are counted, the reference list's apart: "Results", four words, the
+    # title and three.
+    assert measure(text).main_text_words == 8 + len(title.split())
+    assert not is_bibliography_heading(f"# {title}", marked=True)
+    assert _kind_of(title, False, None) != SET_APART

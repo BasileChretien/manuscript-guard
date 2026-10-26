@@ -127,20 +127,16 @@ expected:
       parameter in a nested body are no longer refused either (real templates, part 1)
   - reading: latex pointers
     why: >-
-      a `\def` with delimited parameters, `\def\x\begin{verbatim}` among the inputs, was
-      refused and the rest of the file read as typed; it is read now, as TeX reads it,
-      its parameter text blanked and its body read, and a use refused only where it
-      prints; a `\let` of a command to one the reader reads the same way and a doubled
-      parameter in a nested body are no longer refused either (real templates, part 1)
-  - reading: spelling
+      cleveref's `\crefrange{a}{b}` and `\Crefrange`, and the page forms `\cpagerefrange`,
+      are cross-references now, the inputs hold one, and each is recorded once, from its
+      command to the brace of its second label; they were not read, and their labels printed
+      as words (corpus round of 2026-10-23)
+  - reading: latex displays cited
     why: >-
-      a paper that declares no English, `variant` None, is held to the English most of its
-      words are in, the first word's where they are level, and the words of the other are
-      reported (Basile, 2026-10-23); the base judged nothing for it, and the inputs now draw
-      such papers
-  - reading: check
-    why: >-
-      `init` writes no `english_variant` unless given `--english`, and in its place a comment
-      of three lines saying what the key is for, so a line of paper.yaml after it is two
-      lines further down than in the base, as a message that cannot parse it says; and a
-      project made so is held by G14 to the English most of its words are in
+      the floats of the subfloat package's `subfigures` or `subtables` of its kind are one
+      display, in the group's file or each in a file it inputs, and a label in the group or
+      in those files names it; a float of the other kind is numbered as any; a range of
+      cross-references, two a dash joins, two "to" joins after a plural, or `\crefrange`,
+      cites every display from its first end to its last; the inputs hold all of these,
+      which were counted one display a float and cited at their ends only, and said cited
+      out of order or nowhere (corpus round of 2026-10-23, and its fix round 1)

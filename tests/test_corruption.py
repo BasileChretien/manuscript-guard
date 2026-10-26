@@ -10760,6 +10760,78 @@ def test_a_latex_pointer_to_a_table_its_floats_do_not_number_fails(project: Path
     ]
 
 
+def test_a_latex_pointer_that_counts_a_group_s_parts_as_figures_fails(project: Path) -> None:
+    """Corpus round (2026-10-23): the floats of a `subfigures` share one number, Figure 2a and
+    2b, and pass; a pointer typed to Figure 3, as if each part were a figure, fails."""
+    from manuscript_guard.gates.pointers_latex import check_pointers_latex
+
+    shutil.rmtree(project / "manuscript")
+    shutil.copytree(TWIN, project / "manuscript")
+    main = project / "manuscript" / "main.tex"
+    group = ("\\begin{subfigures}\\label{fig:pair}\n"
+             "\\begin{figure}\\caption{Left.}\\label{fig:left}\\end{figure}\n"
+             "\\begin{figure}\\caption{Right.}\\end{figure}\n\\end{subfigures}\n\n")  # fmt: skip
+    text = main.read_text(encoding="utf-8").replace(
+        "\\section{Discussion}", group + "Figure~\\ref{fig:left} is the left.\n\n"
+        "\\section{Discussion}")  # fmt: skip
+    main.write_text(text, encoding="utf-8")
+    assert check_pointers_latex(load_project(project)[0]).failures == ()
+    main.write_text(text.replace("is the left.", "is the left, Figure~3 the right."),
+                    encoding="utf-8")  # fmt: skip
+    failing = check_pointers_latex(load_project(project)[0]).failures
+    assert [(f.code, f.line) for f in failing] == [("pointer-to-nothing", 108)], failing
+
+
+def test_a_latex_group_whose_floats_are_files_of_their_own_is_one_figure(project: Path) -> None:
+    """Fix round 1: a `subfigures` whose floats are each `\\input` from a file of its own is
+    one figure, cited by a label in one of the files, and passes; a pointer typed to Figure 3,
+    as if each file held a figure, fails."""
+    from manuscript_guard.gates.pointers_latex import check_pointers_latex
+
+    shutil.rmtree(project / "manuscript")
+    shutil.copytree(TWIN, project / "manuscript")
+    folder = project / "manuscript"
+    for name in "AB":
+        (folder / f"fig{name}.tex").write_text(
+            f"\\begin{{figure}}\\caption{{{name}.}}\\label{{fig:{name}}}\\end{{figure}}\n",
+            encoding="utf-8")  # fmt: skip
+    main = folder / "main.tex"
+    text = main.read_text(encoding="utf-8").replace(
+        "\\section{Discussion}", "\\begin{subfigures}\n\\input{figA}\n\\input{figB}\n"
+        "\\end{subfigures}\n\nFigure~\\ref{fig:B} is the right.\n\n\\section{Discussion}")
+    main.write_text(text, encoding="utf-8")
+    assert check_pointers_latex(load_project(project)[0]).failures == ()
+    main.write_text(text.replace("is the right.", "is the right, Figure~3 the left."),
+                    encoding="utf-8")  # fmt: skip
+    failing = check_pointers_latex(load_project(project)[0]).failures
+    assert [(f.code, f.line) for f in failing] == [("pointer-to-nothing", 108)], failing
+
+
+@pytest.mark.parametrize("joined", ["--", " to~"])
+def test_a_latex_figure_cited_before_a_range_that_holds_it_fails(
+    project: Path, joined: str
+) -> None:
+    """Corpus round (2026-10-23): `\\ref{a}--\\ref{b}` cites the figures between a and b, and
+    so does `Figures~\\ref{a} to~\\ref{b}` (fix round 1), so "Figures 2-4" before "Figure 3"
+    passes; Figure 4 cited by itself before them fails."""
+    from manuscript_guard.gates.pointers_latex import check_pointers_latex
+
+    shutil.rmtree(project / "manuscript")
+    shutil.copytree(TWIN, project / "manuscript")
+    main = project / "manuscript" / "main.tex"
+    floats = "".join(f"\\begin{{figure}}\\caption{{{name}.}}\\label{{fig:{name}}}\\end{{figure}}\n"
+                     for name in "bcd")  # fmt: skip
+    text = main.read_text(encoding="utf-8").replace(
+        "\\section{Discussion}", floats + f"\nFigures~\\ref{{fig:b}}{joined}\\ref{{fig:d}} "
+        "show the rest, and Figure~3 the middle.\n\n\\section{Discussion}")  # fmt: skip
+    main.write_text(text, encoding="utf-8")
+    assert check_pointers_latex(load_project(project)[0]).failures == ()
+    main.write_text(text.replace("\nFigures~", "\nFigure~\\ref{fig:d} first. Figures~"),
+                    encoding="utf-8")  # fmt: skip
+    failing = check_pointers_latex(load_project(project)[0]).failures
+    assert [(f.code, f.line) for f in failing] == [("cited-out-of-order", 107)], failing
+
+
 def test_a_latex_appendix_s_table_is_not_held_to_the_main_text_s_order(project: Path) -> None:
     """A table in the appendix, cited first in the Methods as "Supplementary Table", is the
     supplement's and passes; the same table outside the appendix is cited out of order and

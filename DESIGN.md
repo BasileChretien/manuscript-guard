@@ -1416,9 +1416,10 @@ with the span of the list unrecorded, G6, the pack and the blind check read it a
 
 A command whose name holds `cite` is a citation's: one the reader does not know is refused
 where it prints, since its keys would not reach G7, however the name holds it, `\citeZ`,
-`\mycite`, `\mycitep`. Not in a word that cites nothing: English words, `\excite`,
-`\recite`, `\solicited`, `\elicited`, `\anthracite`, `\plebiscite`, and `item`, which IEEE's
-`\IEEEcompsocitemizethanks` holds after `compso` (2026-10-23: it was refused). The reader
+`\mycite`, `\mycitep`, `\maincite`. Not where the name opens with an English word that cites
+nothing, `\excite`, `\recited`, `\solicited`, `\elicited`, `\anthracite`, `\plebiscite`: such
+a word inside a name is no word of it, and `\maincite`, which holds "incite", is refused (round
+2 of #442). Nor in IEEE's `\IEEEcompsocitemizethanks`, named whole (2026-10-23: it was refused). The reader
 knows natbib's and biblatex's commands, biblatex's multi-citations `\footcitetexts` among
 them, and apacite's and chicago's, read from their `.sty`: `\citeA`, `\citeNP`,
 `\citeauthorNP`, `\citeyearNP`, `\shortcite` and `\fullcite` with their `A`, `NP`, `author`

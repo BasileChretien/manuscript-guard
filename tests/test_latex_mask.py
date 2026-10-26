@@ -418,6 +418,13 @@ PANDOC = ("\\documentclass{article}\n\\NewDocumentCommand\\citeproctext{}{}\n"
         ("As \\citeZ{smith2020} says", "\\citeZ"),
         ("As \\mycitep{smith2020} says", "\\mycitep"),
         ("As \\mycites{a}{b} say", "\\mycites"),
+        # An English word that holds `cite` is exempt only as the name's start: one inside a
+        # name is no word of it (round 2 of #442: `\maincite` lost "incite" and passed).
+        ("As \\maincite{smith2020} says", "\\maincite"),
+        ("As \\barecite{smith2020} says", "\\barecite"),
+        ("As \\pincite{smith2020} says", "\\pincite"),
+        ("As \\citemany{a,b} say", "\\citemany"),
+        ("We \\recited{the oath 7}", ""),
     ],
 )
 def test_a_command_whose_name_is_a_citation_s_is_refused_and_one_with_cite_inside_is_not(

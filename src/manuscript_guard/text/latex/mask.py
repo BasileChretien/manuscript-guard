@@ -264,11 +264,14 @@ _BOUND_IN_SIUNITX = ("a binding in a siunitx command is not read: siunitx parses
                      "and a value prints as text; write \\mg{...} outside it")  # fmt: skip
 
 
-#: Words that hold `cite` and cite nothing, which an author may name a command with: English
-#: words, `\\excite`, `\\solicited`, and `item`, as IEEE's `\\IEEEcompsocitemizethanks` holds
-#: it after `compso`.
+#: English words that hold `cite` and cite nothing, which an author may open a command's name
+#: with: `\\excite`, `\\solicited`. Only as the name's start: inside a name the word is no
+#: word of it, and `\\maincite` holds "incite" (round 2 of #442).
 _CITE_WORDS = ("anthracite", "plebiscite", "excite", "incite", "recite", "solicite", "elicite",
-               "lucite", "citem")  # fmt: skip
+               "lucite")  # fmt: skip
+#: Class commands whose names hold `cite` and cite nothing, named whole: IEEE Computer
+#: Society's thanks to the authors holds it in `compso` and `item`.
+_CITE_NAMES = frozenset({"ieeecompsocitemizethanks"})
 #: A reference list's helpers that hold `cite`, which BibTeX's styles write in its entries'
 #: labels: REVTeX's `\\citenamefont`, harvard's and apacite's `\\citeauthoryear`.
 _LIST_HELPERS = frozenset({"citenamefont", "citeauthoryear"})
@@ -279,11 +282,12 @@ def _cites(name: str) -> bool:
     `\\mycitep` do, but in a word that cites nothing (`_CITE_WORDS`): IEEE's
     `\\IEEEcompsocitemizethanks` and an author's `\\excite` were refused (2026-10-23), and a
     rule for names that begin or end with `cite` let `\\mycitep` pass unread (round 1 of
-    #442)."""
+    #442), as one that took the words out anywhere let `\\maincite` pass (round 2)."""
     low = name.lower()
-    for word in _CITE_WORDS:
-        low = low.replace(word, " ")
-    return "cite" in low
+    if low in _CITE_NAMES:
+        return False
+    word = next((word for word in _CITE_WORDS if low.startswith(word)), "")
+    return "cite" in low[len(word) :]
 
 
 def _near_binding(name: str) -> bool:

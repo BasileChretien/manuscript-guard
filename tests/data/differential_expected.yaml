@@ -125,13 +125,6 @@ expected:
       its parameter text blanked and its body read, and a use refused only where it
       prints; a `\let` of a command to one the reader reads the same way and a doubled
       parameter in a nested body are no longer refused either (real templates, part 1)
-  - reading: latex pointers
-    why: >-
-      a `\def` with delimited parameters, `\def\x\begin{verbatim}` among the inputs, was
-      refused and the rest of the file read as typed; it is read now, as TeX reads it,
-      its parameter text blanked and its body read, and a use refused only where it
-      prints; a `\let` of a command to one the reader reads the same way and a doubled
-      parameter in a nested body are no longer refused either (real templates, part 1)
   - reading: spelling
     why: >-
       a reference list under a line that is no heading, `**References**`, `**References:**`

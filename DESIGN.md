@@ -15559,6 +15559,10 @@ Open, recorded as each change landed:
     ratio" only in a table or a definition list: a paragraph of "ROR, reporting odds ratio;
     PRR, ..." is not read, and a grid table's long form over several lines keeps its first.
     A glossary whose section runs on into the next file is cut at the end of its own.
+    A run-on glossary paragraph wrapped so that one word stands alone above a line that
+    opens with a colon and a space is cut before that word, which is read as a
+    definition-list term: "PRR: proportional reporting" / "ratio" / ":   used in ..."
+    gives PRR "proportional reporting".
   - A glossary's or a caption's long form is compared with the text's as written: "CI =
     95% confidence interval" beside "confidence interval (CI)" is reported as two meanings.
   - SD on the statistical list hides an undefined SD that means stable disease.

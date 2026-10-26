@@ -1191,6 +1191,18 @@ def _passages() -> Reading:
     return passages
 
 
+@reading("citations")
+def _citations() -> Reading:
+    """Each citation of a Markdown file, with its key, its line and whether it is narrative:
+    what G7 resolves in the library and the build cites."""
+    from manuscript_guard.zotero.citations import find_citations
+
+    def citations(text: str) -> list[list[Any]]:
+        return [[use.citekey, use.line, use.narrative] for use in find_citations(text, MAIN)]
+
+    return citations
+
+
 @reading("plan citations")
 def _plan_citations() -> Reading:
     """The citation keys a plan's text credits a study by: what G12 asks of a method taken

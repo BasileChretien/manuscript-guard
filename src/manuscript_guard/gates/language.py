@@ -63,6 +63,7 @@ from manuscript_guard.paths import SHIPPED_RECIPES
 from manuscript_guard.text.blocks import Heading, find_headings
 from manuscript_guard.text.inline import code_spans, equation_spans
 from manuscript_guard.text.masking import NUL, front_matter_end, mask
+from manuscript_guard.text.reference_lists import unmarked_reference_lists
 from manuscript_guard.text.sections import Section
 
 if TYPE_CHECKING:
@@ -411,10 +412,13 @@ def _regions(
     *,
     supplementary: bool,
     abstract_title: str | None = None,
+    lists: Iterable[tuple[int, int]] = (),
 ) -> list[_Region]:
     """Which text each stretch of a file belongs to. `chain` is the headings a reader is
     under, carried from one file of a document into the next: a file that opens without a
-    heading continues the section the last one ended in."""
+    heading continues the section the last one ended in. `lists` are the reference lists
+    under a line that is no heading (`unmarked_reference_lists`): each is read as the list
+    under `# References` is, and the text after it as the text before it."""
 
     def here(start: int) -> _Region:
         return _region(start, chain, supplementary=supplementary, abstract_title=abstract_title)
@@ -425,6 +429,14 @@ def _regions(
             chain.pop()
         chain.append(Section(title=heading.title, level=heading.level, body="", line=0))
         regions.append(here(heading.start))
+    for start, end in lists:
+        before = [region for region in regions if region.start < start]
+        after = [region for region in regions if region.start >= end]
+        resumed = [region for region in regions if region.start <= end][-1]
+        regions = [*before, _Region(start, None, True)]
+        if not after or after[0].start > end:
+            regions.append(_Region(end, resumed.scope, resumed.quiet))
+        regions += after
     return regions
 
 
@@ -710,7 +722,8 @@ def _file(
     prose = _hide(hidden, (_heading_span(text, heading) for heading in headings)).replace(
         NUL, " "
     )
-    regions = _regions(headings, chain, supplementary=supplementary, abstract_title=abstract_title)
+    regions = _regions(headings, chain, supplementary=supplementary, abstract_title=abstract_title,
+                       lists=unmarked_reference_lists(text))  # fmt: skip
     return _assembled(order, path, text, hidden, prose, regions)
 
 

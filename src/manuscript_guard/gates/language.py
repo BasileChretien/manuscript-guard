@@ -101,9 +101,26 @@ _QUOTES = (
 )
 #: What may cling to either end of a long form and is no part of it.
 _EDGES = _QUOTES + ".,;:()[]"
-# The short form opening a bracket: alone, or before a separator ("ROR; 95% CI ...").
+# The short form opening a bracket: alone, or before a separator ("ROR; 95% CI ...", "ROR:
+# 3.84", read by its letters like any other). One followed by an equals sign or a number
+# gives a statistic and defines nothing: "a higher risk (HR 1.32, 95% CI ...)" is no
+# definition of HR, though "higher risk" begins with its letters.
 _OPENS_WITH = re.compile(
-    rf"[\s{re.escape(_QUOTES)}]*(?P<short>[^\W_]+(?:-[^\W_]+)*)[\s{re.escape(_QUOTES)}]*(?:$|[;,:])"
+    rf"[\s{re.escape(_QUOTES)}]*(?P<short>[^\W_]+(?:-[^\W_]+)*)[\s{re.escape(_QUOTES)}]*"
+    r"(?:$|[;,:])"
+)
+#: The brackets a long form opens and closes, round and square: a letter of its short form
+#: is not found inside one it opens (`_inside_a_bracket`).
+_OPENING = "(["
+_CLOSING = ")]"
+# A time of day: `11:00AM`, `10:00 PM`, `7:15` at the end of a line and `AM` on the next.
+# Read as words it is `11` and `00AM`, or a `PM`, which are abbreviations to the gate.
+_CLOCK = re.compile(r"(?<![\d:])\d{1,2}:[0-5]\d(?::[0-5]\d)?\s?(?:AM|PM)(?![^\W_])")
+# A paragraph set entirely in bold, `**TITLE PAGE**` or `__RESULTS__`: a heading typed in Word.
+_BOLD = re.compile(r"\s*(\*\*|__)(?:(?!\1).)+\1\s*", re.DOTALL)
+# The rule under a table's header row: a pipe table's dashes, a grid table's `=` line.
+_HEADER_RULE = re.compile(
+    r"\+[:+]*=[=:+]*|(?=.*\|)\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?"
 )
 # The word standing against an opening bracket: "ROR (reporting odds ratio)".
 _BEFORE_PAREN = re.compile(r"(?P<short>[^\W_]+(?:-[^\W_]+)*)[ \t]?$")
@@ -328,8 +345,35 @@ def _long_form(short: str, before: str) -> str | None:
 
     Schwartz and Hearst's rule (Pac Symp Biocomput 2003;8:451-62): going backwards, each
     letter or digit of the short form is found in turn, and the first must begin a word.
+    A letter is not taken from inside a bracket the long form would open: where the nearest
+    is, the bracket is passed over and its letters looked for before it, so the `S` of
+    "Depression Scale (French version) (HADS)" is the one of "Scale".
     """
+    searched = before
+    while True:
+        matched = _letters(short, searched)
+        if matched is None:
+            return None
+        opened = _inside_a_bracket(searched, matched)
+        if opened is None:
+            break
+        searched = _passed_over(searched, opened)
+    found = before[matched[-1] :].strip().strip(_EDGES).strip()
+    if len(found) <= len(short):
+        return None
+    # A short form does not define itself, nor through its plural: in "expressed as ORs
+    # (OR, 95% CI)" the letters of OR are all in "ORs".
+    words = {_singular(word.strip(_EDGES)).lower() for word in found.split()}
+    if _singular(short).lower() in words:
+        return None
+    return found
+
+
+def _letters(short: str, before: str) -> list[int] | None:
+    """Where each letter or digit of `short` is found going back from the end of `before`,
+    the nearest each time, the last letter first; None where one is not there."""
     at = len(before) - 1
+    matched: list[int] = []
     for position in range(len(short) - 1, -1, -1):
         wanted = short[position].lower()
         if not wanted.isalnum():
@@ -341,16 +385,43 @@ def _long_form(short: str, before: str) -> str | None:
             at -= 1
         if at < 0:
             return None
+        matched.append(at)
         at -= 1
-    found = before[at + 1 :].strip().strip(_EDGES).strip()
-    if len(found) <= len(short):
-        return None
-    # A short form does not define itself, nor through its plural: in "expressed as ORs
-    # (OR, 95% CI)" the letters of OR are all in "ORs".
-    words = {_singular(word.strip(_EDGES)).lower() for word in found.split()}
-    if _singular(short).lower() in words:
-        return None
-    return found
+    return matched or None
+
+
+def _inside_a_bracket(before: str, matched: list[int]) -> int | None:
+    """Where a bracket opens that the long form would open and a letter of the short form is
+    found inside, the outermost; None where there is none. `matched` are where its letters
+    were found, the last letter first.
+
+    "(WSE1) and 40 (12.5%) had a second WSE (WSE2)" has the `2` of WSE2 inside "(12.5%)",
+    which is no part of a long form. A bracket closing one opened before the long form is,
+    "warning score (WSE) at 1 hour (WSE1)", where WSE1 is the WSE at one hour, and so is a
+    whole bracket none of the letters is in, "adjusted (for age) relative risk (aRR)"."""
+    letters = set(matched)
+    opened: list[int] = []
+    for at in range(matched[-1], matched[0] + 1):
+        char = before[at]
+        if char in _OPENING:
+            opened.append(at)
+        elif char in _CLOSING and opened:
+            opened.pop()
+        elif opened and at in letters:
+            return opened[0]
+    return None
+
+
+def _passed_over(before: str, opened: int) -> str:
+    """`before` with the bracket that opens at `opened` blanked to its close, or to the end
+    where it does not close, so that no letter is found in it."""
+    depth, at = 0, opened
+    while at < len(before):
+        depth += (before[at] in _OPENING) - (before[at] in _CLOSING)
+        if depth == 0:
+            break
+        at += 1
+    return before[:opened] + " " * (min(at, len(before) - 1) + 1 - opened) + before[at + 1 :]
 
 
 def _window(short: str) -> int:
@@ -489,6 +560,75 @@ def _latex_regions(
 
 def _within(spans: Iterable[tuple[int, int]], offset: int) -> bool:
     return any(start <= offset < end for start, end in spans)
+
+
+def _in_capitals(prose: str) -> list[tuple[int, int]]:
+    """Where `prose` holds a heading typed in capitals: a paragraph set entirely in bold
+    whose letters are all capitals, "**ABSTRACT**", which is how a manuscript converted from
+    Word writes a heading, pandoc making one only of a heading style; and a cell of a
+    table's header row whose letters are, "MODEL 1". Not a table's body, whose cells name
+    what the rows count, `COPD` among them, nor a plain paragraph or a list item. In order,
+    and none inside another."""
+    spans: list[tuple[int, int]] = []
+    start = 0
+    for gap in (*_BLANK_LINE.finditer(prose), None):
+        end = len(prose) if gap is None else gap.start()
+        paragraph = prose[start:end]
+        if _BOLD.fullmatch(paragraph) and paragraph.isupper():
+            spans.append((start, end))
+        else:
+            spans += _header_cells(prose, start, end)
+        if gap is not None:
+            start = gap.end()
+    return sorted(spans)
+
+
+def _header_cells(prose: str, start: int, end: int) -> list[tuple[int, int]]:
+    """The cells of the header rows of the tables between `start` and `end` whose letters
+    are all capitals: the rows above a pipe table's dashes or a grid table's `=` rule."""
+    lines = []
+    at = start
+    for line in prose[start:end].split("\n"):
+        lines.append((at, line))
+        at += len(line) + 1
+    cells = []
+    for index, (_at, line) in enumerate(lines):
+        if not _HEADER_RULE.fullmatch(line.strip()):
+            continue
+        header = []
+        for above in reversed(lines[:index]):
+            if not above[1].lstrip().startswith("|"):
+                break
+            header.insert(0, above)
+        for row in _rows(header):
+            cells += _capitals_in_row(prose, row)
+    return cells
+
+
+def _rows(header: list[tuple[int, str]]) -> list[list[tuple[int, str]]]:
+    """The lines of a header as its rows: one row, a grid table's cell running over
+    several lines, where each line has its bars where the first has them; else a row for
+    each line."""
+    if not header:
+        return []
+    bars = [index for index, char in enumerate(header[0][1]) if char == "|"]
+    if all(len(line) > bars[-1] and all(line[bar] == "|" for bar in bars)
+           for _at, line in header):  # fmt: skip
+        return [header]
+    return [[line] for line in header]
+
+
+def _capitals_in_row(prose: str, row: list[tuple[int, str]]) -> list[tuple[int, int]]:
+    """The cells of one row whose letters are all capitals, a cell read whole over all the
+    lines of the row: "Patients with" over "COPD" is one cell, and has small letters."""
+    bars = [index for index, char in enumerate(row[0][1]) if char == "|"]
+    cells = []
+    for left, right in zip(bars, [*bars[1:], None], strict=True):
+        pieces = [(at + left + 1, at + (len(line) if right is None else right))
+                  for at, line in row]  # fmt: skip
+        if " ".join(prose[low:high] for low, high in pieces).isupper():
+            cells += pieces
+    return cells
 
 
 def _stem(short: str, long: str) -> str:
@@ -895,18 +1035,24 @@ def _collect(files: list[_File], known: _Known) -> dict[str, _Scope]:
             )
 
     for file in files:
-        for word in _WORD.finditer(file.prose):
+        capitals = _in_capitals(file.prose)
+        starts = [start for start, _end in capitals]
+        for word in _WORD.finditer(_CLOCK.sub(lambda time: " " * len(time[0]), file.prose)):
             token = word.group(0)
             if token.islower() or token.isdigit():
                 continue
             region = file.region_at(word.start())
             if region.scope is None:
                 continue
+            at = bisect_right(starts, word.start()) - 1
+            shouted = at >= 0 and word.start() < capitals[at][1]
             for within, short, is_defined in _forms(token, defined, known):
                 offset = word.start() + within
                 if (file.order, offset) in defining:
                     continue
-                if not is_defined and region.quiet:
+                # A word of a heading typed in capitals, or of a table's label, is a use of
+                # what the manuscript defines and is not reported as undefined.
+                if not is_defined and (region.quiet or shouted):
                     continue
                 if not is_defined:
                     # `CO~2~`: the word is `CO`, and with its subscript it is a formula.

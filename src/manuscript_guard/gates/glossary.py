@@ -95,8 +95,15 @@ def entries(prose: str, raw: str, span: tuple[int, int]) -> list[Entry]:
         if not line.strip():
             found.append([])
             continue
-        entry = _entry(line, at, raw, lines[index + 1][1] if index + 1 < len(lines) else "")
-        if entry is not None:
+        following = lines[index + 1][1] if index + 1 < len(lines) else ""
+        pieces = _run_on(line, at)
+        entry = _entry(line, at, raw, following) if len(pieces) == 1 else None
+        if len(pieces) > 1:
+            for piece_at, piece in pieces:
+                separated = _SEPARATED.fullmatch(piece)
+                found.append([piece_at + separated.start("short"), separated["short"],
+                              [separated["long"]]])  # fmt: skip
+        elif entry is not None:
             found.append([entry[0], entry[1], [entry[2]]])
         elif found and found[-1] and not _DEFINITION.match(line) and not _TABLE_LINE.match(line):
             found[-1][2].append(line.strip())
@@ -109,6 +116,31 @@ def entries(prose: str, raw: str, span: tuple[int, int]) -> list[Entry]:
         if long and len(long) > len(short):
             out.append(Entry(at, short, long))
     return out
+
+
+#: A semicolon between two entries run on in one paragraph, "ROR: ...; PRR: ...".
+_RUN_ON = re.compile(r";[ \t]*")
+
+
+def _run_on(line: str, at: int) -> list[tuple[int, str]]:
+    """A line of entries run on in one paragraph, "ROR: ...; PRR: ...", as BMC prints its
+    "List of abbreviations", cut into one piece per entry with where each starts (round 1
+    of #446: the first entry's long form took all the others). Only a line that opens with
+    a short form and a sign is cut, and only at a semicolon after which another short form
+    and sign open: a semicolon inside a long form stays in it. A line that is not cut is
+    one piece."""
+    if _SEPARATED.match(line.lstrip()) is None:
+        return [(at, line)]
+    pieces, begin = [], 0
+    for cut in _RUN_ON.finditer(line):
+        if _SEPARATED.fullmatch(line, cut.end()) is not None:
+            pieces.append((at + begin, line[begin : cut.start()]))
+            begin = cut.end()
+    pieces.append((at + begin, line[begin:]))
+    if not all(_SEPARATED.fullmatch(piece.lstrip()) for _at, piece in pieces):
+        return [(at, line)]
+    return [(piece_at + len(piece) - len(piece.lstrip()), piece.lstrip())
+            for piece_at, piece in pieces]  # fmt: skip
 
 
 def _lines(prose: str, start: int, end: int) -> list[tuple[int, str]]:

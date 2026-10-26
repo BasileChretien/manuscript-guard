@@ -787,6 +787,21 @@ def test_a_glossary_defines_its_entries(project: Path, heading: str) -> None:
     assert not report.findings, found(report)
 
 
+def test_a_glossary_in_one_paragraph_defines_each_entry(project: Path) -> None:
+    """BMC's "List of abbreviations" runs its entries on in one paragraph, with a semicolon
+    between them: each is an entry, and none takes the others into its long form (round 1
+    of #446: "ROR is defined as 'reporting odds ratio; PRR: proportional reporting ratio'").
+    A semicolon inside a long form, with no short form and sign after it, stays in it."""
+    report = written(
+        project,
+        "# Methods\n\nThe reporting odds ratio (ROR) and the proportional reporting ratio "
+        "(PRR) were computed. The ROR and PRR rose.\n\n# Abbreviations\n\nROR: reporting "
+        "odds ratio; PRR: proportional reporting ratio; IC: information component; see "
+        "Methods\n\n# Results\n\nThe IC was computed for each pair. The IC was raised.\n",
+    )
+    assert not report.findings, found(report)
+
+
 def test_a_glossary_in_a_table_defines_its_entries(project: Path) -> None:
     report = written(
         project,

@@ -59,6 +59,8 @@ def written(
     path = project / "paper.yaml"
     paper = yaml.safe_load(path.read_text(encoding="utf-8"))
     paper["english_variant"] = variant
+    if variant is None:
+        del paper["english_variant"]  # declared nowhere
     paper["language"] = {} if accepted is None else {"accepted_spellings": accepted}
     path.write_text(yaml.safe_dump(paper, sort_keys=False), encoding="utf-8")
     projekt, _ = load_project(project)
@@ -280,6 +282,119 @@ def test_a_paper_mostly_in_its_own_english_hears_of_each_stray_word(project: Pat
     assert reported(found) == ["color", "tumor", "anemia", "edema", "hemoglobin"]
     _, found = written(project, f"# Methods\n\nWe saw {strays}. The colour agreed.\n")
     assert [f.code for f in found] == ["spelling-not-as-declared"]
+
+
+# --------------------------------------------------- a paper that declares no English
+# Basile, 2026-10-23: `init` declares none unless told, and such a paper is held to the
+# English most of its words are in.
+
+
+def test_a_paper_that_declares_no_english_hears_of_the_words_of_the_fewer(
+    project: Path,
+) -> None:
+    report, found = written(
+        project,
+        "# Methods\n\nThe colour, the tumour and the centre were noted. The color of the "
+        "tumor was not.\n",
+        None,
+    )
+    assert reported(found) == ["color", "tumor"]
+    assert found[0].message == (
+        "'color' is the American spelling of 'colour', used once; paper.yaml declares no "
+        "English, and the paper has 3 words in British spelling to 2 in American"
+    )
+    assert "english_variant" in found[0].hint
+    assert (report.counts["spelling_own"], report.counts["spelling_other"]) == (3, 2)
+
+
+def test_a_paper_mostly_in_american_and_declaring_none_is_not_told_of_its_setting(
+    project: Path,
+) -> None:
+    """Five American spellings and one British: in a British paper that is one finding at
+    paper.yaml. Declaring none, the paper is American, and the British word is the stray."""
+    _, found = written(
+        project,
+        "# Methods\n\nThe tumor and its color, the anemia and the edema were recorded, and "
+        "hemoglobin was measured. The colour was recorded once.\n",
+        None,
+    )
+    assert [f.code for f in found] == ["spelling-variant"]
+    assert reported(found) == ["colour"]
+    assert "is the British spelling of 'color'" in found[0].message
+    assert "5 words in American spelling to 1 in British" in found[0].message
+
+
+@pytest.mark.parametrize(
+    ("text", "stray"),
+    [
+        ("The colour and the color.", "color"),
+        ("The color and the colour.", "colour"),
+    ],
+)
+def test_declaring_none_with_as_many_of_each_the_first_sets_the_english(
+    project: Path, text: str, stray: str
+) -> None:
+    _, found = written(project, f"# Methods\n\n{text}\n", None)
+    assert reported(found) == [stray]
+    assert "as many words in" in found[0].message
+    assert "1 of each" in found[0].message, "both counts, as the others give them"
+
+
+def test_declaring_none_a_mostly_british_paper_is_told_its_endings_are_mixed(
+    project: Path,
+) -> None:
+    _, found = written(
+        project,
+        "# Methods\n\nWe summarised the colour and randomised the patients. Doses were "
+        "standardized.\n",
+        None,
+    )
+    assert [f.code for f in found] == ["spelling-mixed"]
+
+
+def test_declaring_none_a_mostly_american_paper_hears_of_its_ise(project: Path) -> None:
+    _, found = written(
+        project, "# Methods\n\nThe color, the tumor and the center. We randomised.\n", None
+    )
+    assert reported(found) == ["randomised"]
+    assert [f.code for f in found] == ["spelling-variant"]
+
+
+def test_declaring_none_an_ise_counts_for_british(project: Path) -> None:
+    """Two -ise words to one American: the paper is British, and its American word is the
+    one told of."""
+    _, found = written(
+        project, "# Methods\n\nWe randomised and summarised the data. The color was noted.\n", None
+    )
+    assert reported(found) == ["color"]
+
+
+def test_declaring_none_an_ize_both_write_counts_for_neither(project: Path) -> None:
+    """One British word to one American, and -ize words both Englishes write: level, so the
+    first word's English is the paper's, whatever the -ize words would add to American."""
+    _, found = written(
+        project,
+        "# Methods\n\nThe colour was noted. We randomized, organized and summarized the "
+        "color.\n",
+        None,
+    )
+    assert reported(found) == ["color"]
+
+
+def test_declaring_none_a_paper_with_no_word_of_either_hears_nothing(project: Path) -> None:
+    """An -ize both write is no evidence, and with no word of either English there is no
+    English to hold the paper to."""
+    report, found = written(project, "# Methods\n\nWe randomized the patients.\n", None)
+    assert not found
+    assert report.counts["spelling_own"] == report.counts["spelling_other"] == 0
+
+
+def test_the_reading_asked_with_no_english_takes_the_majority() -> None:
+    text = "The colour, the centre and the color."
+    passages = [Passage(Path("main.md"), text, text, lambda offset: 1)]
+    report = judge_spelling(passages, None, (), Path("paper.yaml"))
+    assert reported(report.findings) == ["color"]
+    assert report.counts == {"spelling_own": 2, "spelling_other": 1}
 
 
 def test_a_british_paper_that_writes_both_endings_is_told_once(project: Path) -> None:
@@ -583,11 +698,11 @@ def test_the_schema_reports_an_entry_that_is_not_one_word(project: Path, entry: 
     assert any("language/accepted_spellings/0" in message for message in refused), refused
 
 
-@pytest.mark.parametrize("variant", ["en-AU", "en-gb", "", 5, None, ["en-GB"], {"a": "en-GB"}])
+@pytest.mark.parametrize("variant", ["en-AU", "en-gb", "", 5, ["en-GB"], {"a": "en-GB"}])
 def test_another_english_is_not_judged(variant: object) -> None:
-    """The schema lets a paper be en-GB or en-US. Called with anything else, a list or a
-    mapping included, the reading has no list to hold the paper to: it says nothing, and
-    it does not raise."""
+    """The schema lets a paper be en-GB or en-US, or neither declared, which is None.
+    Called with anything else, a list or a mapping included, the reading has no list to
+    hold the paper to: it says nothing, and it does not raise."""
     text = "The color and the colour."
     passages = [Passage(Path("main.md"), text, text, lambda offset: 1)]
     report = judge_spelling(passages, variant, (), Path("paper.yaml"))
@@ -595,7 +710,7 @@ def test_another_english_is_not_judged(variant: object) -> None:
     assert report.counts == {"spelling_own": 0, "spelling_other": 0}
 
 
-@pytest.mark.parametrize("variant", [["en-GB"], {"a": "en-GB"}, 5, None])
+@pytest.mark.parametrize("variant", [["en-GB"], {"a": "en-GB"}, 5])
 def test_an_english_in_the_wrong_shape_does_not_take_the_gate_s_other_readings_with_it(
     project: Path, variant: object
 ) -> None:

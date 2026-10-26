@@ -1556,15 +1556,17 @@ class Emitter:
             self._values[key]["role"] = "dataset"
         self._datasets[name] = stated.record([rel for rel, _full in files], pin)
 
-    def _english(self) -> str:
-        """The English paper.yaml declares, and British English where it cannot be read."""
+    def _english(self) -> str | None:
+        """The English paper.yaml declares, and None where it declares none or cannot be
+        read: a date is then printed day, month, year, and the build gives the document no
+        region (Basile, 2026-10-23)."""
         try:
             from manuscript_guard.contracts import load_project
 
             project, _report = load_project(self.root)
             return project.english_variant
         except Exception:  # noqa: BLE001 - a half-configured project must not stop an analysis
-            return "en-GB"
+            return None
 
     def variable(
         self,

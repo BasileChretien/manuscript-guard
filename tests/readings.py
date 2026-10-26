@@ -294,6 +294,25 @@ def _latex_pointers() -> Reading:
     return lambda text: [list(span) for span in read(text).pointers]
 
 
+@reading("latex displays cited")
+def _latex_displays_cited() -> Reading:
+    """What G2 says of a LaTeX document's pointers to the tables and figures it numbers, and
+    its counts (step 13; the corpus round of 2026-10-23)."""
+    from manuscript_guard.gates.pointers_latex import AS_FILES, pointers_in_documents
+    from manuscript_guard.text.latex.structure import read_tree
+
+    def said(given: str | dict[str, str]) -> dict[str, Any]:
+        """`given` is `main.tex`'s text, or the files' texts by name, `main.tex` among them."""
+        texts = given if isinstance(given, dict) else {"main.tex": given}
+        sources = list(read_tree(texts).sources)
+        report = pointers_in_documents({False: sources, True: []}, Path("m"),
+                                       dict.fromkeys(AS_FILES, 0))  # fmt: skip
+        return {"findings": [[f.code, f.line, f.message] for f in report.findings],
+                "counts": dict(report.counts)}  # fmt: skip
+
+    return said
+
+
 @reading("latex methods")
 def _latex_methods() -> Reading:
     from manuscript_guard.gates.methods import _anchored_in, _latex_read
@@ -324,6 +343,32 @@ def _latex_writing() -> Reading:
                 "cited": [list(cited[Path("m") / "main.tex"])]}  # fmt: skip
 
     return judged
+
+
+@reading("latex listed")
+def _latex_listed() -> Reading:
+    """Whether a LaTeX document sets out an algorithm or a listing, where its algorithms run,
+    and what G6 says of its words to the reviewers, each finding's line and words (corpus
+    round, 2026-10-23)."""
+    from manuscript_guard.gates.writing import _judged, _listed_in, _read_latex, load_rules
+    from manuscript_guard.text.latex.mask import read
+    from manuscript_guard.text.latex.structure import Source
+
+    rules = load_rules()
+
+    def listed(text: str) -> dict[str, Any]:
+        sources = [Source("main.tex", text, read(text))]
+        found = _listed_in(Path("m"), [sources])
+        texts, words, cited = _read_latex(Path("m"), [sources])
+        report, _totals = _judged(texts, words, rules, cited=cited, listed=found)
+        return {
+            "listed": {str(path.name): [list(span) for span in spans]
+                       for path, spans in found.items()},
+            "residue": [[f.line, f.message] for f in report.findings
+                        if f.code == "revision-residue"],
+        }  # fmt: skip
+
+    return listed
 
 
 @reading("latex words")
@@ -1170,6 +1215,18 @@ def _passages() -> Reading:
         ]
 
     return passages
+
+
+@reading("citations")
+def _citations() -> Reading:
+    """Each citation of a Markdown file, with its key, its line and whether it is narrative:
+    what G7 resolves in the library and the build cites."""
+    from manuscript_guard.zotero.citations import find_citations
+
+    def citations(text: str) -> list[list[Any]]:
+        return [[use.citekey, use.line, use.narrative] for use in find_citations(text, MAIN)]
+
+    return citations
 
 
 @reading("plan citations")

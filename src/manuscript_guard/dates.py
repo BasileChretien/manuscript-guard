@@ -119,7 +119,8 @@ def parse_iso(text: object) -> Dated | None:
 
 def written(dated: Dated, english: str | None = None) -> str:
     """How the paper prints the date: day, month and year in the order its English writes
-    them ("1 March 2024", "March 1, 2024"), a month as "March 2024", a year as itself."""
+    them ("1 March 2024", "March 1, 2024"), a month as "March 2024", a year as itself. A
+    paper that declares no English, `english` None, prints day, month, year."""
     if dated.month is None:
         return str(dated.year)
     month = _NAMES[dated.month - 1]

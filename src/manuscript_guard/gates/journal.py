@@ -406,7 +406,10 @@ def _check_statements(document: dict, text: str, path: Path) -> Report:
 
 def _check_variant(document: dict, project: Project) -> Report:
     wanted = document.get("english_variant")
-    if not wanted or wanted == "either" or wanted == project.english_variant:
+    # A paper that declares no English has nothing to compare (Basile, 2026-10-23); G14
+    # holds it to the English most of its words are in.
+    declared = project.english_variant
+    if not wanted or wanted == "either" or declared is None or wanted == declared:
         return Report()
     return Report(
         (

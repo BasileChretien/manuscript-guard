@@ -104,7 +104,7 @@ from manuscript_guard.policy import (
 )
 from manuscript_guard.record import FIGURE_VERDICTS
 from manuscript_guard.record import VERDICTS as RECORD_VERDICTS
-from manuscript_guard.scaffold import UNTITLED, init_project, rules_to_add
+from manuscript_guard.scaffold import ENGLISHES, UNTITLED, init_project, rules_to_add
 from manuscript_guard.text.masking import mask
 from manuscript_guard.text.placeholders import parse, substitute
 from manuscript_guard.text.reader import LATEX, manuscript_files, manuscript_format
@@ -4486,9 +4486,11 @@ def cmd_init(args: argparse.Namespace) -> int:
     try:
         if word is None:
             title = UNTITLED if args.title is None else args.title
-            created = init_project(args.path, title=title, latex=args.latex)
+            created = init_project(args.path, title=title, latex=args.latex,
+                                   english=args.english)  # fmt: skip
         else:
-            created, converted = init_from_word(args.path, word, title=args.title)
+            created, converted = init_from_word(args.path, word, title=args.title,
+                                                english=args.english)  # fmt: skip
     except ContractError as exc:
         # A title read from the Word document that init does not take.
         read = word is not None and args.title is None and str(exc).startswith("the title")
@@ -4497,6 +4499,12 @@ def cmd_init(args: argparse.Namespace) -> int:
         return 2
     for path in created:
         print(f"created {path}")
+    paper = (Path(args.path) / "paper.yaml").resolve()
+    if args.english and paper not in {path.resolve() for path in created}:
+        print(
+            f"\npaper.yaml was already there and was left as it was, so english_variant: "
+            f"{args.english} was not written into it: set it there"
+        )
     if converted is not None:
         print("\n" + what_was_done(word, converted))
     rules = rules_to_add(args.path, latex=args.latex)
@@ -5246,6 +5254,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--latex",
         action="store_true",
         help="start the manuscript in LaTeX: manuscript/main.tex, with its values file",
+    )
+    init.add_argument(
+        "--english",
+        help=f"the English paper.yaml declares, whose spelling G14 holds the manuscript to: "
+        f"{' or '.join(ENGLISHES)}. Without it none is declared, and G14 holds the paper to "
+        "the one most of its words are in",
     )
     init.add_argument(
         "--from",

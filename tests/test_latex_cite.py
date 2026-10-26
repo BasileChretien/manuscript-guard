@@ -53,6 +53,7 @@ def test_a_citation_command_the_reader_does_not_know_is_refused(command: str) ->
         ("\\citeNP{a, b}", [("a", False), ("b", False)]),
         ("\\shortciteNP{a}", [("a", False)]),
         ("\\shortciteA{a}", [("a", True)]),
+        ("\\fullciteA{a}", [("a", True)]),
         ("\\fullciteNP{a}", [("a", False)]),
         ("\\fullciteauthorNP{a}", [("a", True)]),
         ("\\citeyearNP{a}", [("a", False)]),

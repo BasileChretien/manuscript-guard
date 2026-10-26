@@ -1314,6 +1314,53 @@ order is `printed_order`.
   (`tex-not-input`). It is read as body under no heading, where definitions, `\makeatletter`
   (after which `@` is a letter) and conditionals are accepted as in the preamble, since such a
   file may be a set of macros left out.
+- A `.tex` file that a class or a package the paper loads inputs is the class's, and is not
+  read at all (2026-10-23: a journal's class, kept in a folder of its own beside the paper,
+  inputs a list of the publisher's journals from that folder, which the paper never inputs,
+  and its numbers, abbreviations and words reached the gates as loose main text). A class or
+  a package counts where the manuscript holds it, found as LaTeX finds it from the entry
+  file's folder: the class `\documentclass` names, each package a file of the tree loads, the
+  author's among them, and what those load in turn with `\RequirePackage`, `\usepackage` or
+  `\LoadClass`. Each is read for its loads and nothing else: `\input` with braces or without,
+  `\@input` and `\InputIfFileExists`, by a path written out in full, outside a comment and
+  outside a definition's body. A load inside the body of `\newcommand`, `\renewcommand`,
+  `\providecommand`, `\DeclareRobustCommand`, `\def`, `\gdef`, `\edef`, `\xdef`, LaTeX's
+  `\@namedef`, `\protected@edef` and `\protected@xdef`, etoolbox's `\csdef` and
+  `\newrobustcmd` and their kin, xargs' `\newcommandx`, expl3's `\cs_new:Npn`,
+  `\cs_set:Npn` and `\cs_gset:Npn` in their `x`, `e`, `c`, `_protected` and `_nopar` forms
+  and without the `p` (round 2 of #445), `\newenvironment` and the document commands
+  and environments (`\NewDocumentCommand` and its kin), at any depth inside it, runs where
+  the command is used, and its file is printed there: it stays loose, read and warned of
+  (round 1 of #445: a package's `\newcommand{\abstracttext}{\input{abstract}}` made the
+  paper's abstract the package's, read by no gate). A body runs from the brace past the
+  command's name, its options and, for TeX's forms, its parameter text, to the brace that
+  closes it, or to the end of the file where none does; a defining command copied with
+  `\let` defines nothing. A file one inputs is read for its loads too, and is the class's in
+  turn. A file the paper inputs as well is the paper's, read where the paper inputs it
+  (`structure._theirs`). The rule follows what a class
+  inputs, not where its files are kept: a file of the author's in the class's folder that
+  nothing inputs is loose and warned of, as any other is. `structure._classes`;
+  `Document.classes` lists them.
+- A `.tex` file that holds a document of its own, a `\begin{document}` the reader reaches
+  when it reads the file as an entry file, is another document and never part of the one
+  whose folder holds it (2026-10-23: a paper's supplement, kept as a second document beside
+  `main.tex`, was read as its main text, and so was another paper left in the folder). It
+  fails BUILD at every stage, `tex-second-document`, at that `\begin{document}`, and no
+  gate reads it. A `\begin{document}` in a comment, a listing or an `\iffalse` block opens
+  none. Some files that show one are not second documents, and are read as files nothing
+  inputs, loose and warned of, as before (round 1 of #445). One is a picture in the
+  `standalone` class, which the paper prints, placed by `\includestandalone` or as the PDF
+  compiled from it: it failed BUILD at every stage. So is a part in the `subfiles` class,
+  `\documentclass[../main.tex]{subfiles}`, which the paper places by `\subfile`, itself
+  refused (round 2). The last is a file the reader refuses in
+  its preamble before it reaches a `\begin{document}`: it keeps that refusal and is read
+  past it, where it was refused as a second document at its first character and not read.
+  The supplement is the document at `supplementary/main.tex`, as the Markdown
+  supplement is what `supplementary/` holds: a second document there is refused too. It is
+  refused rather than taken for the supplement because a file names no document it is,
+  and a title that says "Supplementary" is a guess, where the folder is not; it is refused
+  rather than passed over with a warning because, like a file of the other format, it would
+  be text no gate reads and no build prints (`other-format-file`).
 
 **Environments.**
 - In `figure` and `table`, the caption is prose, and a typed number in a `tabular` is
@@ -1343,6 +1390,36 @@ order is `printed_order`.
   an Elsevier and a Wiley template, whose title, addresses and issue were read as main
   text). The title is still read where it stands outside the front matter, in the preamble
   as before.
+- The title page the classes write outside such an environment is passed over too, each
+  arity read from the class (2026-10-23, after 17 papers from arXiv): `\title`'s option,
+  the running head's short title in Springer's `sn-jnl` and amsart and an option list in
+  Elsevier's CAS classes, `\title [mode = title]{...}`, a space before it as LaTeX allows;
+  Springer's `\author*`, the corresponding author's; CAS's option list after the author's
+  name and after an address, `\author{...}[orcid=...]` (`O{} m O{}` in `cas-common.sty`),
+  its marks, `\cormark[1]`, `\fnmark`, `\tnotemark` (`O{}`), its CRediT roles, `\credit`,
+  a note with no mark and the running heads (`m`); elsarticle's `\fnref`, `\corref` and
+  `\tnoteref`; and acmart's CCS concepts, the `CCSXML` environment, which the class
+  excludes as the comment package's, read to its `\end` and blanked as `comment` is, and
+  `\ccsdesc[300]{...}` with its weight (`\ccsdesc[2][100]`). The XML is the publisher's
+  metadata and no note of the author's, so the submission folder keeps it, where it takes a
+  comment's text out.
+- A TikZ picture, `tikzpicture`, is passed over, its options, coordinates, styles and paths,
+  as `\includegraphics` passes over a picture's file; so are `\tikzset`, `\pgfplotsset` and
+  the old `\tikzstyle{name} = [...]`, which style it (2026-10-23: their sizes and shifts,
+  `minimum size=1em`, `xshift=-4cm`, were numbers of the text). What the picture prints as
+  text is read as prose where it stands (`text/latex/pictures.py`; round 1 of #443: passed
+  over whole, a flow diagram's `\node[draw] {Reports screened (n = 4371)};` was seen by no
+  gate): a node's text, the braces after `\node` or after `node` in a path, past the node's
+  name, options and `at (x,y)`; a label's and a pin's, `label={[red]above:Text}` or
+  `pin=above:Text`, past its options and its angle, to the first colon as TikZ reads it;
+  `node contents=`; a `matrix of nodes`, its cells; pgfplots' `xlabel`, `ylabel`, `zlabel`,
+  `title` and `legend entries`, and the text of `\addlegendentry` and `\legend`. A text
+  without braces runs to the next comma, bracket or
+  brace of its options, or its line's end, and is read as typed. A picture is found to its
+  first `\end{tikzpicture}` outside a comment, and a file input inside one is read as one.
+  In a definition's body, where an environment is otherwise text expanded at each use, a
+  picture whose `\end` stands in the same body is a picture there, as a command that draws
+  a circled letter holds one.
 - An environment not in the table is read as an unknown command is, and so is its body.
 
 **Definitions.** A `\newcommand`, `\renewcommand`, `\providecommand`,
@@ -1356,6 +1433,17 @@ read. So with `\newcommand{\ci}[2]{95\% CI #1--#2}`, the `95` is found at the de
 each number of `\ci{1.2}{3.4}` at the use. Nothing is
 expanded, because an expansion is text at a place the file does not hold, with no offset to
 give a finding.
+
+A length in a definition's body, typed as TeX reads one with its unit against its number, in
+a unit TeX measures the page in and a paper does not, `pt`, `sp`, `dd`, `em`, `ex` or `mu`,
+is layout: G2 lets it through as `tex-length`, `\def\bibhang{24pt}` and `\lower.5ex`
+(2026-10-23, after two papers from arXiv whose preambles gave 24pt and .5ex as numbers). The
+reader reads the body as before, and the classifier decides, given the bodies' spans by the
+file's read (`_Read.layout`, `Classifier.scan(..., layout=...)`), so `check`, `explain` and
+`bind` judge the number alike. In the text a length is a number like any other, since
+"24pt" may be a scale's points. TeX's big points, Cicero and picas are a paper's base pairs,
+cubic centimetres and parsecs, `500bp`, `20cc`, `8pc`, and are numbers anywhere, as are
+millimetres, centimetres and inches, which may be the paper's own measure (round 1 of #443).
 
 A `\def` with delimited parameters, `\def\x#1.{...}`, is read where it is written, its
 parameter text blanked and its body read as any body is. A use of it is refused where the
@@ -1708,6 +1796,38 @@ The result is compiled and packed by the code above, and checked three times:
   prints. A file input from inside a definition is read as one nothing inputs, warned of,
   and the commands it defines with delimited parameters reach no other file, so a use of
   one is not refused (2026-10-23, the fix-only round of part 1).
+- A file a class inputs by a path it builds, `\input{\@journal-names}`, or a class that is
+  not UTF-8, which the reader cannot read, leaves the file to be read as one nothing inputs,
+  warned of (`tex-not-input`); a path in a class's `\iffalse` block or in a branch it does
+  not take counts as input. A file the class's file list or the author's package inputs is
+  not read at all, so a command it defines is not known to the reader (2026-10-23).
+- A class's definition is found by its command's name, not by expanding the class: a
+  LaTeX definition whose name is built, `\expandafter\newcommand\csname x\endcsname{...}`
+  (TeX's `\def` so written is seen), or a defining command the class renamed with `\let`
+  and uses under that name, is not seen as a definition, and a load in it counts as the
+  class's. So does a load kept in a token list or a box, expl3's `\tl_set:Nn` or
+  `\sbox`, which is stored, not defined, and a load in the code of an expl3 function other
+  than the `\cs_new`, `\cs_set` and `\cs_gset` forms, `\prg_new_conditional:Npnn` say; a load in a
+  hook, `\AtBeginDocument`
+  or `\DeclareOption`'s code, counts as the class's too, since it runs whether or not the
+  paper asks for it. A body whose braces do not balance, such as one with a brace changed
+  by `\catcode`, runs to the end of the file, so the loads past it stay loose and warned of
+  (rounds 1 and 2 of #445). xargs' `\providecommandx` is not read as a definition, and a
+  defining command copied with expl3's `\cs_new_eq:NN` or `\cs_set_eq:NN` is taken for one,
+  its next braced group for a body; the generated folders plant the TeX and LaTeX forms,
+  and the expl3 and xargs forms are held by unit tests alone.
+- A `standalone` picture, a `subfiles` part, and a document of its own that the reader
+  refuses in its preamble, are read as files nothing inputs, under no heading and warned of:
+  `\includestandalone` is not followed, so a picture's text is not read where the paper
+  places it (and `\subfile` is refused where the paper uses it), and a second
+  document refused before its `\begin{document}` fails BUILD by that refusal rather than as
+  a second document, its preamble and its body read as loose main text (round 1 of #445).
+- A file a class inputs, and a document of its own, are left out of each document, but not
+  out of the manuscript's file list (`Reader.files`): G11's digests, the review panel's
+  prompt and G12's reading of the manuscript's text as typed still take them in (2026-10-23).
+- A supplement kept as a second document beside `main.tex` is refused, not read as the
+  supplement: the author moves it to `supplementary/main.tex`, and its paths to pictures and
+  inputs with it, since a path resolves from its entry file's folder (2026-10-23).
 - An appendix's tables and figures are the supplement's to G2 only: G4 still counts one
   placed with a binding toward the journal's limit on the main text's display items. An
   appendix that numbers its own, `\renewcommand{\thetable}{S\arabic{table}}` after
@@ -1866,6 +1986,31 @@ The result is compiled and packed by the code above, and checked three times:
   main text, and an abbreviation in it is used before its definition to G14. A class's
   front matter command not in `FRONT_MATTER_COMMANDS` is read as an unknown command is, its
   arguments as prose (rounds 1 of steps 6 and 7; the front matter itself since 2026-10-23).
+- `\title`'s option is passed over in every class, so a word or a number that only a running
+  head's short title holds is read by no gate. `\author{...}`, `\address{...}` and
+  `\affiliation{...}` followed by an opening bracket, past spaces and one line break, take
+  it for CAS's option list in any class: in one whose command takes none, text that opens
+  with a bracket there is passed over (2026-10-23; round 1 of #443).
+- A TikZ picture's text is read where the source types it, among the paper's prose, so G14
+  and G9 read a node's words as a sentence there. What the picture prints otherwise is read
+  by no gate, where G3 reads a picture file's text layer: pgfplots' tick labels, `nodes near
+  coords` and what else it computes from the coordinates; a node's text given by a `\pic`,
+  by a `\foreach` variable or by a command of the author's that writes the node; a style's
+  label, `every node/.style={label=...}`, set outside the picture; and, in a picture that
+  holds another in a node, what the outer prints after the inner's `\end`. A `matrix of
+  nodes` is read whole, its cells' options `|[draw]|` as prose. Bind such a number with
+  `\mg`, or draw the figure from a script. TikZ's inline `\tikz[...]`, PGF's `pgfpicture` and circuitikz's environment are
+  read as unknown commands are, their options as prose; and a picture opened in one
+  definition's body and closed in another,
+  `\newenvironment{pic}{\begin{tikzpicture}}{\end{tikzpicture}}`, passes over its options
+  only, and what `\begin{pic}` holds is read (2026-10-23; round 1 of #443).
+- A TeX length is layout only in a definition's body: not in a hook's,
+  `\AtBeginDocument{\kern2pt}`, nor in a definition's default argument,
+  `\newcommand{\x}[1][2pt]{...}`, which prints where the definition is used and is read as
+  prose; and only in its units' small letters without TeX's `true`: so `\vskip 6pt` in the
+  body, `24 pt` with a space, `24PT` and `24truept` are numbers. A length in points a
+  definition prints as text where it is used, `\newcommand{\font}{12pt}`, passes as layout
+  (2026-10-23; round 1 of #443).
 - Past a refusal G14 reads a LaTeX file as typed, its commands and comments as words; `check`
   fails on the refusal already (round 1 of step 7).
 - `\~{}` before a number, written for "about", is taken for an accent on the word after it,

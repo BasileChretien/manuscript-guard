@@ -7271,6 +7271,75 @@ def test_a_delimited_command_where_it_prints_and_an_import_of_nothing_fail_build
     assert not [f for f in report.findings if f.code == "tex-not-input"]
 
 
+def test_a_classs_own_file_is_not_main_text_and_a_second_document_fails_build(
+    project: Path,
+) -> None:
+    """A file the paper's class inputs, kept with the class in a folder of its own, is the
+    class's: none of its numbers is the paper's, and it is no file nothing inputs. A document
+    of its own beside `main.tex` fails BUILD at its `\\begin{document}`, and none of its
+    numbers is read as the main text's (2026-10-23: a journal's list of its journals, and a
+    supplement kept as a second document, were both read as main text)."""
+    from manuscript_guard.cli import _run_gates
+
+    entry = _as_latex(project)
+    folder = entry.parent
+    (folder / "style").mkdir()
+    entry.write_text(entry.read_text("utf-8").replace("{article}", "{style/journal}"), "utf-8")
+    (folder / "style" / "journal.cls").write_text("\\input{style/names}\n", "utf-8")
+    (folder / "style" / "names.tex").write_text("Volume 2731 of 1987.\n", "utf-8")
+    (folder / "supplement.tex").write_text(
+        "\\documentclass{article}\n\\begin{document}\nOf 9183 patients.\n\\end{document}\n",
+        "utf-8",
+    )
+    report, _project, _stage, _deferred = _run_gates(project, stage="submission")
+    named = {(f.code, f.path.name if f.path else None) for f in report.findings}
+    assert "names.tex" not in {name for _code, name in named}, report.render(project)
+    assert {code for code, name in named if name == "supplement.tex"} == {
+        "tex-second-document"
+    }, report.render(project)
+    (refused,) = [f for f in report.failures if f.code == "tex-second-document"]
+    assert (refused.gate, refused.line) == ("BUILD", 2)
+
+
+def test_an_input_in_a_definition_a_standalone_picture_and_a_refused_file_are_read(
+    project: Path,
+) -> None:
+    """A file the author's package inputs only inside a command's definition is printed where
+    the paper uses the command: it is read, its numbers reach the gates, and it is warned of.
+    A `standalone` picture is read and warned of, and not failed as a second document; nor is
+    a file refused before the `\\begin{document}` it shows in a listing, which keeps its own
+    refusal (round 1 of #445: the first was read by no gate, with no warning, and the other
+    two failed BUILD as documents of their own)."""
+    from manuscript_guard.cli import _run_gates
+
+    entry = _as_latex(project)
+    folder = entry.parent
+    entry.write_text(
+        entry.read_text("utf-8").replace(
+            "\\begin{document}\n", "\\usepackage{mine}\n\\begin{document}\n\\abstracttext\n"
+        ),
+        "utf-8",
+    )
+    (folder / "mine.sty").write_text("\\newcommand{\\abstracttext}{\\input{abstract}}\n", "utf-8")
+    (folder / "abstract.tex").write_text("Of 9183 patients, 12 died.\n", "utf-8")
+    (folder / "fig.tex").write_text(
+        "\\documentclass{standalone}\n\\usepackage{tikz}\n\\begin{document}\n"
+        "\\begin{tikzpicture}\\node{n = 42};\\end{tikzpicture}\n\\end{document}\n",
+        "utf-8",
+    )
+    (folder / "notes.tex").write_text(
+        "\\csname x\\endcsname 42.\n\\begin{verbatim}\\begin{document}\\end{verbatim}\n", "utf-8"
+    )
+    report, _project, _stage, _deferred = _run_gates(project, stage="submission")
+    codes: dict[str, set[str]] = {}
+    for f in report.findings:
+        codes.setdefault(f.path.name if f.path else "", set()).add(f.code)
+    assert {"tex-not-input", "unclassified-number"} <= codes.get("abstract.tex", set()), codes
+    assert "tex-not-input" in codes.get("fig.tex", set()), codes
+    assert {"tex-not-input", "tex-refused"} <= codes.get("notes.tex", set()), codes
+    assert not [f for f in report.findings if f.code == "tex-second-document"], codes
+
+
 def test_what_papers_from_arxiv_hold_that_latex_reads_passes_build(project: Path) -> None:
     """Each construct that 17 papers from arXiv held and the reader refused, though LaTeX
     reads it, so that the rest of each file was read as typed (2026-10-23): IEEE's thanks to
@@ -7534,6 +7603,77 @@ def test_the_twins_front_matter_is_passed_over_and_its_abstract_read(project: Pa
     entry.write_text(text, encoding="utf-8")
     found = [(f.code, f.message) for f in _twin_failures(project)]
     assert found == [("unclassified-number", "'4371' is not bound to any source")], found
+
+
+def test_a_journal_classs_title_page_in_the_twin_is_passed_over(project: Path) -> None:
+    """Springer's running title and corresponding author, Elsevier's CAS ORCID iD, marks,
+    CRediT roles and running heads, and acmart's CCS concepts, typed in the body, are none of
+    the paper's numbers; a number typed in the abstract beside them is still unbound
+    (2026-10-23, from 2112.07039, 2604.24157 and 2311.00579)."""
+    entry = _twin(project)
+    text = entry.read_text(encoding="utf-8")
+    text = text.replace("\\title{", "\\title [Hepatic injury 12]{", 1)
+    text = text.replace("\\begin{abstract}\n", "\\author*[1]{A. Author}\n\\author{B. Author}"
+                        "[orcid=0000-0001-6060-2001]\n\\cormark[1]\\fnmark[2]\\tnotemark[3]\n"
+                        "\\credit{Writing 4}\\shorttitle{Hepatic 5}\\shortauthors{Author 6}\n"
+                        "\\begin{CCSXML}\n<concept_id>10002978.10003001</concept_id>\n"
+                        "\\end{CCSXML}\n\\ccsdesc[300]{Applied computing~Health}\n"
+                        "\\begin{abstract}\nOf 4371 reports.\n", 1)  # fmt: skip
+    entry.write_text(text, encoding="utf-8")
+    found = [(f.code, f.message) for f in _twin_failures(project)]
+    assert found == [("unclassified-number", "'4371' is not bound to any source")], found
+
+
+def test_a_tikz_picture_in_the_twin_is_passed_over_as_a_picture_file_is(project: Path) -> None:
+    """A TikZ picture's options, its sizes and shifts, its coordinates and the styles set for
+    it are no numbers of the paper's, in the body or in a definition's body; a number typed
+    beside the picture is still unbound (2026-10-23, from 2311.00579, 2401.04687 and
+    2405.21051)."""
+    entry = _twin(project)
+    text = entry.read_text(encoding="utf-8")
+    entry.write_text(text.replace("\\begin{document}", "\\usepackage{tikz}\n"
+                                  "\\tikzset{>={Latex[width=2mm]}}\n\\newcommand{\\dot}[1]{"
+                                  "\\begin{tikzpicture}[baseline={(0,-0.5ex)}]\n"
+                                  "\\node[minimum size=1em] {#1};\\end{tikzpicture}}\n"
+                                  "\\begin{document}", 1), encoding="utf-8")  # fmt: skip
+    _into_results(entry, "\\tikzstyle{latent} = [circle, line width=0.35mm]\n"
+                  "\\begin{tikzpicture}[shift={(1,2)}]\n\\node[xshift=-4cm] at (3,4) {Reports};"
+                  "\n\\draw (0,0) -- (5,6);\n\\end{tikzpicture}\nOf 4371 \\dot{a} reports.")
+    found = [(f.code, f.message) for f in _twin_failures(project)]
+    assert found == [("unclassified-number", "'4371' is not bound to any source")], found
+
+
+def test_a_number_a_tikz_flow_diagram_prints_in_the_twin_is_unbound(project: Path) -> None:
+    """A flow diagram drawn in TikZ, as a cohort's or a trial's often is, prints its counts in
+    its nodes: one typed there is unbound, as it was before pictures were passed over; its
+    options and coordinates are not numbers of the paper's, and a count bound there is
+    bound (round 1 of #443: passed over whole, the 4371 was seen by no gate)."""
+    entry = _twin(project)
+    _into_results(entry, "\\begin{figure}\n\\begin{tikzpicture}[node distance=2cm]\n"
+                  "\\node[draw] (a) {Reports screened (n = 4371)};\n"
+                  "\\node[draw, below of=a] (b) {Cases (n = \\mg{results.case.n_cases})};\n"
+                  "\\draw[->] (a) -- (b) node[midway, right] {excluded};\n"
+                  "\\end{tikzpicture}\n\\caption{Flow of reports.}\\label{fig:flow}\n"
+                  "\\end{figure}\nFigure~\\ref{fig:flow} shows the flow.")  # fmt: skip
+    found = [(f.code, f.message) for f in _twin_failures(project)
+             if f.code == "unclassified-number"]  # fmt: skip
+    assert found == [("unclassified-number", "'4371' is not bound to any source")], found
+
+
+def test_a_tex_length_in_the_twin_s_definitions_is_layout(project: Path) -> None:
+    """A length in a unit TeX measures the page in, in a definition's body, is layout and no
+    number of the paper's; in inches it may be the paper's own measure, and in the text a
+    length is a number like any other (2026-10-23, from 2601.04966 and 2412.11273)."""
+    entry = _twin(project)
+    text = entry.read_text(encoding="utf-8")
+    entry.write_text(text.replace("\\begin{document}", "\\def\\bibhang{24pt}%\n"
+                                  "\\def\\simgt{\\lower.5ex\\hbox{$>$}}\n"
+                                  "\\def\\jump{\\hskip 0.2in}\n\\begin{document}", 1),
+                     encoding="utf-8")  # fmt: skip
+    _into_results(entry, "The tables are set in 9pt type.")
+    found = sorted((f.code, f.message) for f in _twin_failures(project))
+    assert found == [("unclassified-number", "'0.2in' is not bound to any source"),
+                     ("unclassified-number", "'9pt' is not bound to any source")], found
 
 
 def test_layout_in_the_twin_is_no_number_g2_reads(project: Path) -> None:

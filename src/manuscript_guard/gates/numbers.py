@@ -24,6 +24,7 @@ from manuscript_guard.classify import (
     STRUCTURAL,
     UNCLASSIFIED,
     Classifier,
+    Scan,
     Verdict,
     declarable,
 )
@@ -234,7 +235,7 @@ def check_numbers(
 
         # One scan of this file per rule, reused by every atom in it. Matching each rule
         # against a window around each atom re-read the same characters once per number.
-        scan = classifier.scan(read.scanned, blocks=read.blocks)
+        scan = read.scan(classifier)
         releases = typed_releases(view, dictionaries)
         said: set[int] = set()
         for atom in find_atoms(text, read.masked):
@@ -397,6 +398,13 @@ class _Read:
     blocks: bool = True
     #: A hint as it is written for this file's format.
     spell: Callable[[str], str] = str
+    #: Where a LaTeX file sets its pages, its definitions' bodies, in which a TeX length is
+    #: layout (`classify.TEX_LENGTH`; 2026-10-23).
+    layout: tuple[tuple[int, int], ...] = ()
+
+    def scan(self, classifier: Classifier) -> Scan:
+        """The file's rule matches, as G2, `explain` and `bind` judge its numbers by."""
+        return classifier.scan(self.scanned, blocks=self.blocks, layout=self.layout)
 
 
 def _is_latex(project: Project) -> bool:
@@ -453,6 +461,7 @@ def _latex_read(found: latex_views.File) -> _Read:
         code=lambda classifier: _listings(found.path, source, classifier),
         blocks=False,
         spell=lambda hint: _HINTED_BINDING.sub(r"\\mg{\1}", hint),
+        layout=source.reading.bodies,
     )  # fmt: skip
 
 

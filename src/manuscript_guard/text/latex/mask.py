@@ -20,6 +20,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from manuscript_guard.text.latex import pictures
 from manuscript_guard.text.latex.commands import (
     AMSMATH,
     CATEGORY,
@@ -36,6 +37,7 @@ from manuscript_guard.text.latex.commands import (
     MATHS,
     PACKAGE_COMMANDS,
     PARAMETERS,
+    PICTURES,
     POINTERS,
     PROVIDERS,
     RANGES,
@@ -267,6 +269,9 @@ _LISTING_OPTIONS = re.compile(r"[ \t]*\[([^\]\n]*)\]")
 _LANGUAGE = re.compile(r"language\s*=\s*\{?\s*(?:\[[^\]]*\])?\s*([A-Za-z][A-Za-z0-9+#]*)")
 _BOUND_IN_SIUNITX = ("a binding in a siunitx command is not read: siunitx parses its number, "
                      "and a value prints as text; write \\mg{...} outside it")  # fmt: skip
+#: TikZ's old `\\tikzstyle{name} = [options]`: its name, and the sign before its options,
+#: `=` or `+=`, or none.
+_STYLE_NAME = re.compile(_GAP + r"\{[^{}\n]*\}[ \t]*\+?=?")
 
 
 #: English words that hold `cite` and cite nothing, which an author may open a command's name
@@ -559,9 +564,15 @@ class _Reader:
         self.loaded = loaded
         self.encodings: list[int] = []
         self.heading_at = -1
+        #: What a picture prints as text (`pictures.py`): each brace that opens one, with where
+        #: its prose starts, and each text without braces.
+        self.picture_text: dict[int, int] = {}
+        self.picture_spans: list[tuple[int, int]] = []
         #: Where the prose's last ``` `` ``` stands while no `''` or `"` has closed it, or -1.
         self.quote_open = -1
         for name in environments:
+            if name in PICTURES and self._role() == PROSE:
+                self._picture_printed(0, self.n)
             role = MATHS_READ if name in MATHS else self._entered(name, self._role())
             self.stack.append(_Frame("env", role, 0, name, table=name in TABLES, inherited=True))
             self.environments.append(name)
@@ -575,6 +586,11 @@ class _Reader:
         opened = [frame for frame in self.stack if not frame.inherited]
         if self.refused is None and opened:
             self._refuse("tex-unbalanced", opened[0].start, f"{_opened(opened[0])} is not closed")
+        # A picture's text without braces, `label=above:Text`, is read as typed.
+        for start, end in self.picture_spans:
+            for index in range(start, end):
+                if self.out[index] == NUL:
+                    self.out[index] = self.text[index]
         masked = "".join(self.out)
         # A table the file was input inside and does not close runs to its end.
         tables = self.tables + [(0, self.n) for frame in self.stack
@@ -839,9 +855,11 @@ class _Reader:
         elif character == "{":
             if _MARKDOWN_BINDING.match(self.text, at):
                 self.suspects.append((at, self._suspect_end(at)))
-            self.stack.append(_Frame("group", self._role(), at))
-            self._blank(at, at + 1)
-            self.pos = at + 1
+            # A picture's text, a node's say, is prose from where its prose starts.
+            prose = self.picture_text.get(at, -1)
+            self.stack.append(_Frame("group", PROSE if prose >= 0 else self._role(), at))
+            self._blank(at, max(at + 1, prose))
+            self.pos = max(at + 1, prose)
         elif character == "}":
             self._close_group(at)
         elif character in "]>" and self.stack and self.stack[-1].kind == "opt" and (
@@ -1041,6 +1059,11 @@ class _Reader:
                 self.command, self.pending = name, COMMANDS[name]
         elif name == "mg":
             self._binding(at, end)
+            self.command, self.pending = name, COMMANDS[name]
+        elif name == "tikzstyle" and (style := _STYLE_NAME.match(self.text, end)):
+            # Its name passed over, then its options as a command's, past the sign between.
+            self._blank(end, style.end())
+            self.pos = style.end()
             self.command, self.pending = name, COMMANDS[name]
         elif name in COMMANDS and name not in self.own:
             if name in LEVELS or name == "abstract":
@@ -1399,7 +1422,7 @@ class _Reader:
         name = named.group(1).strip()
         self._blank(at, named.end())
         self.pos = named.end()
-        if self.definitions:
+        if self.definitions and not self._picture_in_body(which, name):
             # In a definition's body an environment is text to be expanded at each use, not
             # one that opens here (round 1 of #380: `\newenvironment{tight}{\begin{itemize}}
             # {\end{itemize}}` was refused). Its arguments are still taken: a minipage's width
@@ -1435,6 +1458,8 @@ class _Reader:
             if bound is not None:
                 self._refuse("tex-refused", bound.start(), _bound_as_typed(name))
         else:
+            if name in PICTURES and self._role() == PROSE:
+                self._picture_printed(self.pos, self._picture_end(name))
             role = self._entered(name, self._role())
             if role == PREAMBLE and self._printed_from_preamble(name):
                 role = PROSE
@@ -1448,12 +1473,45 @@ class _Reader:
                 self.headings.append(Heading(at, 1, "Abstract"))
             self.command, self.pending = "begin", ENVIRONMENTS.get(name, ())
 
+    def _picture_in_body(self, which: str, name: str) -> bool:
+        """Whether a picture opens or closes in a definition's body as it does outside one:
+        one whose `\\end` stands in the same body is a picture there, passed over, as
+        2311.00579's `\\newcommand{\\redcircleletter}[1]{\\begin{tikzpicture}...}` draws one
+        (2026-10-23). One opened in a body and closed in another is text expanded at each
+        use, as any environment in a body is, so that nothing is left open."""
+        if name not in PICTURES:
+            return False
+        top = self.stack[-1] if self.stack else None
+        if which == "end":
+            return top is not None and top.kind == "env" and top.closer == name
+        body = next(frame for frame in reversed(self.stack) if frame.definition)
+        ends = self._group_end(body.start, comments=True)
+        return self._picture_end(name, max(ends, self.pos)) >= 0
+
+    def _picture_end(self, name: str, stop: int | None = None) -> int:
+        """Where the picture opened here ends, at its first `\\end` outside a comment before
+        `stop`; -1 where there is none, or the file's end where `stop` is None."""
+        ending = re.compile(r"\\end\s*\{" + re.escape(name) + r"\}")
+        for closing in ending.finditer(self.text, self.pos, self.n if stop is None else stop):
+            # One in a comment closes nothing.
+            line = self.text.rfind("\n", 0, closing.start()) + 1
+            if not _opens_comment(self.text, max(line, self.pos), closing.start()):
+                return closing.start()
+        return self.n if stop is None else -1
+
+    def _picture_printed(self, start: int, end: int) -> None:
+        """Record what the picture from `start` to `end` prints as text, which is read as
+        prose there though the picture is passed over (round 1 of #443)."""
+        braces, spans = pictures.printed_in(self.text, start, end)
+        self.picture_text.update(braces)
+        self.picture_spans.extend(spans)
+
     def _entered(self, name: str, role: str) -> str:
         """How an environment opened where `role` is read is read: a class's front matter is
         passed over, and an abstract or highlights in it, inside environments and groups only,
         `{\\small ...}` say, are read as what holds the front matter is; not in an argument,
-        which is blanked whatever holds it (round 2)."""
-        if name in FRONT_MATTER:
+        which is blanked whatever holds it (round 2). A picture is passed over whole."""
+        if name in FRONT_MATTER or name in PICTURES:
             return BLANK
         if name not in READ_IN_FRONT_MATTER:
             return role

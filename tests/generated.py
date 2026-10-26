@@ -1809,7 +1809,11 @@ INTERLEUKINS = (
 NAMES_IN_WORDS = ("anti-IL-6", "CD4+CD8+", "sIL-2R", "ppFEV1", "PaO2FiO2", "CD8CD4")
 #: A word that ends in an interleukin's letters, "April-12" and "Brazil-3", holds no name.
 TERM_LOOKALIKES = ("April-12", "Brazil-3", "until-15")
-NOT_NAMES = ("12", "3.4", "12@3.5", "40@lab", *TERM_LOOKALIKES)
+#: A citation's number typed in a superscript after a word with a capital inside: read
+#: without its signs it stands hard against that capital, "PharmD2" holding `d2` and
+#: "ApoB12" `b12`, and it is a number still.
+RAISED_AFTER_A_CAPITAL = ("PharmD^2^", "ApoB^12^", "dB^12^")
+NOT_NAMES = ("12", "3.4", "12@3.5", "40@lab", *TERM_LOOKALIKES, *RAISED_AFTER_A_CAPITAL)
 #: Words to put between them: none names a class or a time, which a number after it is a
 #: label of ("cohort 12", "week 12").
 _BETWEEN_NAMES = ("reports", "were", "included", "the", "of", "and", "found", "among")
@@ -4556,8 +4560,11 @@ def _quotation_asked(drawn: tuple[tuple[str, str], str, str]) -> dict[str, str]:
 
 #: An address and an interleukin, where G2 reads every number: what it reads as no number.
 NAMED_BLOCKS = tuple(
-    f" {name} " for name in (*ADDRESSES, *INTERLEUKINS, *NAMES_IN_WORDS, *TERM_LOOKALIKES)
-)
+    f" {name} "
+    for name in (
+        *ADDRESSES, *INTERLEUKINS, *NAMES_IN_WORDS, *TERM_LOOKALIKES, *RAISED_AFTER_A_CAPITAL
+    )
+)  # fmt: skip
 #: What a paper converted from Word has that `check` reads: bold in its tables and in its
 #: prose, and a reference list titled in another language.
 CONVERTED_BLOCKS = (

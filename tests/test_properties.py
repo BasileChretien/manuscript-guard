@@ -5069,6 +5069,20 @@ def _a_capital_after_a_lower_case_letter_opens_no_term(patch: pytest.MonkeyPatch
                   lambda text, at: at == 0 or not text[at - 1].isalnum())  # fmt: skip
 
 
+def _a_superscript_s_digits_open_a_term_at_a_capital(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import classify
+
+    terms_covering = classify._terms_covering
+    patch.setattr(classify, "_names_covering",
+                  lambda text, _raised, terms: terms_covering(text, terms))  # fmt: skip
+
+
+def _no_term_counts_directly_after_another(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import classify
+
+    patch.setattr(classify, "_AFTER_A_TERM", False)
+
+
 # ------------------------------------------------------------------- a suggested edit
 
 
@@ -11759,6 +11773,14 @@ BROKEN = {
     ),
     "a capital after a lower-case letter opens no term": (
         _a_capital_after_a_lower_case_letter_opens_no_term,
+        test_an_address_and_an_interleukin_are_no_numbers_and_a_number_beside_them_is,
+    ),
+    "a superscript's digits open a term at a capital": (
+        _a_superscript_s_digits_open_a_term_at_a_capital,
+        test_an_address_and_an_interleukin_are_no_numbers_and_a_number_beside_them_is,
+    ),
+    "no term counts directly after another": (
+        _no_term_counts_directly_after_another,
         test_an_address_and_an_interleukin_are_no_numbers_and_a_number_beside_them_is,
     ),
     "filler before a list item is not read": (

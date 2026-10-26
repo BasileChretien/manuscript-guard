@@ -22907,6 +22907,29 @@ def test_a_name_after_a_lower_case_prefix_or_another_name_is_a_term() -> None:
         assert kinds == {**expected, "April-12": UNCLASSIFIED, "BRAZIL-3": UNCLASSIFIED}
 
 
+def test_a_citation_number_after_a_capital_inside_a_word_is_a_number(tmp_path: Path) -> None:
+    """A term opened at a capital after a lower-case letter in a name read without its
+    signs too, so a citation's number typed in a superscript after such a word joined the
+    capital: "PharmD^2^" was `d2` and "ApoB^12^" and "dB^12^" `b12`, and G2 and the audit
+    passed the number, where main reported it. "^99m^Tc", opening its word, is a name."""
+    from manuscript_guard.audit import audit
+    from manuscript_guard.classify import TERM, UNCLASSIFIED, Classifier
+    from manuscript_guard.text.masking import mask
+    from manuscript_guard.text.tokens import find_atoms
+
+    raised = ("PharmD^2^", "ApoB^12^", "dB^12^")
+    text = f"Jane Roe, {raised[0]}, saw {raised[1]} fall by {raised[2]}.\n"
+    paper = tmp_path / "paper.md"
+    paper.write_text(text, encoding="utf-8")
+    found = audit([paper], [_outputs(tmp_path, '{"n": 1}')]).unmatched
+    assert sorted(c.text for c in found) == sorted(raised)
+    text = text.replace(".\n", " with ^99m^Tc.\n")
+    for classifier in (Classifier.load(extra_terms=("99mTc",)),
+                       Classifier.load(rendered=True, extra_terms=("99mTc",))):  # fmt: skip
+        kinds = {a.text: classifier.classify(a).kind for a in find_atoms(text, mask(text))}
+        assert kinds == {**dict.fromkeys(raised, UNCLASSIFIED), "^99m^Tc": TERM}
+
+
 @pytest.mark.parametrize(
     "title", ["Literatur und Forschungsstand", "Referencias teóricas", "Bibliografia e metodi"]
 )

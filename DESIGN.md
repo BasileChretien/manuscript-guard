@@ -10589,7 +10589,12 @@ Added by the adversarial review, verified and **not** fixed:
   one length came in the order of a set, so a name was a term on one run and a number
   on the next; they come in one order now, longest first and then by their letters. Two
   names typed with nothing between, `FiO~2~PaO~2~` and `PaO~2~FiO~2~`, are two terms
-  in either order: a term counts where another ends (#438). Where terms overlap, the
+  in either order: a term counts where another ends (#438). A term that holds a
+  superscript's digits counts only where it opens a word: read without its signs, a
+  citation's number typed after a word with a capital inside stood hard against that
+  capital, and "PharmD^2^" was `d2` and "ApoB^12^" `b12`, which a capital after a
+  lower-case letter opens (#438). `^99m^Tc` opens its word and stays a name, and a
+  subscript is the name's own: `pCO~2~` is a declared `CO2`. Where terms overlap, the
   atom is a term if some of them cover its digits: `MERS-COVID-19` is `covid-19`. The
   terms were once gone through again for as long as one was taken out, which took time
   by the square of the atom and did not end for a declared term of one space; the atom
@@ -16021,8 +16026,16 @@ What papers converted from Word showed (see "What papers converted from Word sho
   first letter as written is a capital after a lower-case letter: "sIL-2R", "ppFEV1" and,
   with CO2 declared, "pCO2" are terms, and "April-12", "Brazil-3" and "BRAZIL-3" numbers,
   not `il-12` and `il-3`. A name written in lower case after a lower-case prefix,
-  "sil-2r", is a number; and any word with a capital before a term's letters is read as a
-  name, so "preCO2", with CO2 declared, is a term.
+  "sil-2r", is a number; and a word with a capital after a lower-case letter is read as a
+  name from that capital, so "preCO2", with CO2 declared, is a term, and so is a word that
+  ends in a term's letters after one, "MyIL-2".
+- **A term counts directly after any other.** "PaO2FiO2" and "CD8CD4" are two terms each
+  because the second counts where the first ends, and that holds after a term with no
+  digit as well: with MeSH among the terms, "MESHD2" is `mesh` and `d2`. Holding the second
+  to a first that itself opened a word or at a capital changes nothing for it, "MESH"
+  opening its word, and holding it to a first with a digit would take a name after a
+  term with none, "BRAFV600E" read as `braf` then `v600e` were that a term, for a shape
+  no paper has shown.
 - **An e-mail address is one whose domain ends in letters.** "name@host" with no dot, or an
   address at a bare IP number, is read as a number.
 

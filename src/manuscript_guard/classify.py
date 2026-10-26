@@ -620,11 +620,14 @@ def _names_covering(
 
 def _term_may_start(text: str, at: int) -> bool:
     """Whether a term may begin at `at` of `text`, as written: where a word opens, after
-    no letter and no digit, or where a capital follows a lower-case letter, as in "sIL-2R",
-    "ppFEV1" and "pCO2". A term may also begin where another ends (`_terms_covering`)."""
+    no letter and no digit; after a capital, as in "CD3", "CCR2", "HLA-DRB1" and "Th1"; or
+    where a capital follows a lower-case letter, as in "sIL-2R", "ppFEV1" and "pCO2". Not
+    after a lower-case letter, "April-12", nor after a digit. A term may also begin where
+    another ends (`_terms_covering`)."""
     if at == 0 or not text[at - 1].isalnum():
         return True
-    return text[at].isupper() and text[at - 1].islower()
+    before = text[at - 1]
+    return before.isupper() or (before.islower() and text[at].isupper())
 
 
 @lru_cache(maxsize=16)

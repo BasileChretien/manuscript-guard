@@ -59,10 +59,11 @@ expected:
     why: >-
       an e-mail address is structural, `email-address`, and an interleukin, "IL-4",
       "interleukin-31", "IL-4/IL-13", is a shipped term, so neither is a number nothing
-      classifies; a term counts only where it opens a word, at a capital after a
-      lower-case letter or directly after another term, and one holding a superscript's
-      digits only where it opens a word, so "April-12" and "PharmD^2^" are numbers and
-      "sIL-2R" and "PaO2FiO2" terms; the inputs now hold such addresses and names
+      classifies; a term counts only where it opens a word, after a capital, at a capital
+      after a lower-case letter or directly after another term, and one holding a
+      superscript's digits only where it opens a word, so "April-12" and "PharmD^2^" are
+      numbers and "sIL-2R", "CCR2" and "PaO2FiO2" terms; the inputs now hold such
+      addresses and names
   - reading: reported tests
     why: >-
       a P above 1, "P = 4.1 x 10^5", is not judged; a number with a middle dot or a comma

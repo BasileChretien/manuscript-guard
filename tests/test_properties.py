@@ -5069,6 +5069,17 @@ def _a_capital_after_a_lower_case_letter_opens_no_term(patch: pytest.MonkeyPatch
                   lambda text, at: at == 0 or not text[at - 1].isalnum())  # fmt: skip
 
 
+def _a_capital_opens_no_term_after_it(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import classify
+
+    def may_start(text: str, at: int) -> bool:
+        if at == 0 or not text[at - 1].isalnum():
+            return True
+        return text[at].isupper() and text[at - 1].islower()
+
+    patch.setattr(classify, "_term_may_start", may_start)
+
+
 def _a_superscript_s_digits_open_a_term_at_a_capital(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard import classify
 
@@ -11773,6 +11784,10 @@ BROKEN = {
     ),
     "a capital after a lower-case letter opens no term": (
         _a_capital_after_a_lower_case_letter_opens_no_term,
+        test_an_address_and_an_interleukin_are_no_numbers_and_a_number_beside_them_is,
+    ),
+    "a capital opens no term after it": (
+        _a_capital_opens_no_term_after_it,
         test_an_address_and_an_interleukin_are_no_numbers_and_a_number_beside_them_is,
     ),
     "a superscript's digits open a term at a capital": (

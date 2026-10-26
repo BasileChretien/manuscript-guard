@@ -10593,7 +10593,9 @@ Added by the adversarial review, verified and **not** fixed:
   superscript's digits counts only where it opens a word: read without its signs, a
   citation's number typed after a word with a capital inside stood hard against that
   capital, and "PharmD^2^" was `d2` and "ApoB^12^" `b12`, which a capital after a
-  lower-case letter opens (#438). `^99m^Tc` opens its word and stays a name, and a
+  lower-case letter opens (#438). A term after a capital counts as written, "CD3+",
+  "Th1/Th2", "CCR2" and "HLA-DRB1" being names, and after a lower-case letter only from a
+  capital, "April-12" being a number (#438). `^99m^Tc` opens its word and stays a name, and a
   subscript is the name's own: `pCO~2~` is a declared `CO2`. Where terms overlap, the
   atom is a term if some of them cover its digits: `MERS-COVID-19` is `covid-19`. The
   terms were once gone through again for as long as one was taken out, which took time
@@ -16022,20 +16024,21 @@ What papers converted from Word showed (see "What papers converted from Word sho
   the interleukins HGNC names, abbreviated with a hyphen and written out with one: "IL4",
   "interleukin 4" and a chemokine such as CXCL10 are numbers to G2 and to the audit alike.
   A project declares them in `terms:`; the audit reads no `paper.yaml`, so for it they stay
-  numbers. A term counts where it opens a word, where another term ends, or where its
-  first letter as written is a capital after a lower-case letter: "sIL-2R", "ppFEV1" and,
-  with CO2 declared, "pCO2" are terms, and "April-12", "Brazil-3" and "BRAZIL-3" numbers,
-  not `il-12` and `il-3`. A name written in lower case after a lower-case prefix,
-  "sil-2r", is a number; and a word with a capital after a lower-case letter is read as a
-  name from that capital, so "preCO2", with CO2 declared, is a term, and so is a word that
-  ends in a term's letters after one, "MyIL-2".
+  numbers. A term counts where it opens a word, where another term ends, after a capital,
+  or where its first letter as written is a capital after a lower-case letter: "sIL-2R",
+  "ppFEV1", "CD3+", "Th1/Th2", "CCR2", "HLA-DRB1" and, with CO2 declared, "pCO2" are
+  terms, and "April-12" and "Brazil-3" numbers, not `il-12` and `il-3`. A name written in
+  lower case after a lower-case prefix, "sil-2r", is a number. A word in capitals is read
+  as "CCR2" is, so "BRAZIL-3" holds `il-3` and "WEEK1" `k1`, and their numbers go
+  unchecked, as they did when a term was found anywhere in an atom; a capital is all that
+  tells "CCR2" from them. And a word with a capital after a lower-case letter is read as
+  a name from that capital, so "preCO2", with CO2 declared, is a term, and so is a word
+  that ends in a term's letters after one, "MyIL-2".
 - **A term counts directly after any other.** "PaO2FiO2" and "CD8CD4" are two terms each
   because the second counts where the first ends, and that holds after a term with no
-  digit as well: with MeSH among the terms, "MESHD2" is `mesh` and `d2`. Holding the second
-  to a first that itself opened a word or at a capital changes nothing for it, "MESH"
-  opening its word, and holding it to a first with a digit would take a name after a
-  term with none, "BRAFV600E" read as `braf` then `v600e` were that a term, for a shape
-  no paper has shown.
+  digit as well: with MeSH among the terms, "meshd2" is `mesh` and `d2`. Holding the second
+  to a first that itself opened a word or at a capital changes nothing for it, "mesh"
+  opening its word; and "MESHD2" is `d2` after a capital in any case, as "CCR2" is `r2`.
 - **An e-mail address is one whose domain ends in letters.** "name@host" with no dot, or an
   address at a bare IP number, is read as a number.
 

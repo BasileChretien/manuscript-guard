@@ -22891,20 +22891,22 @@ def test_a_name_after_a_lower_case_prefix_or_another_name_is_a_term() -> None:
     """Held to a word's start, a shipped term after a lower-case prefix, "sIL-2R" or
     "ppFEV1", and two terms run together, "PaO2FiO2" when the terms came in the other order,
     were numbers G2 failed, where main read them as terms. With CO2 declared, so were
-    "pCO2" and "EtCO2", typed or with their subscripts."""
+    "pCO2" and "EtCO2", typed or with their subscripts; and so was a term after a capital,
+    "CD3+", "Th1/Th2", "CCR2" or "HLA-DRB1"."""
     from manuscript_guard.classify import TERM, UNCLASSIFIED, Classifier
     from manuscript_guard.text.masking import mask
     from manuscript_guard.text.tokens import find_atoms
 
     names = ("sIL-2R", "rhIL-2", "sPD-L1", "ppFEV1", "PaO2FiO2", "CD8CD4", "pCO2", "EtCO2",
-             "pCO~2~", "EtCO~2~")  # fmt: skip
-    text = f"We read {', '.join(names)} and April-12 and BRAZIL-3.\n"
+             "pCO~2~", "EtCO~2~", "CD3+", "Th1/Th2", "CCR2", "TNFR2", "FGFR2",
+             "HLA-DRB1")  # fmt: skip
+    text = f"We read {', '.join(names)} and April-12 and Brazil-3.\n"
     for classifier in (Classifier.load(extra_terms=("CO2",)),
                        Classifier.load(rendered=True, extra_terms=("CO2",))):  # fmt: skip
         kinds = {a.text: classifier.classify(a).kind for a in find_atoms(text, mask(text))}
         kinds = {name.rstrip("~"): kind for name, kind in kinds.items()}
         expected = {name.rstrip("~"): TERM for name in names}
-        assert kinds == {**expected, "April-12": UNCLASSIFIED, "BRAZIL-3": UNCLASSIFIED}
+        assert kinds == {**expected, "April-12": UNCLASSIFIED, "Brazil-3": UNCLASSIFIED}
 
 
 def test_a_citation_number_after_a_capital_inside_a_word_is_a_number(tmp_path: Path) -> None:

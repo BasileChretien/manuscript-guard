@@ -1805,8 +1805,11 @@ INTERLEUKINS = (
 #: Terms inside a longer atom: after a prefix with no letter at its end, "anti-IL-6" and
 #: "CD4+CD8+"; after a lower-case prefix, at the term's capital, "sIL-2R" and "ppFEV1"; and
 #: two with nothing between, "PaO2FiO2" and "CD8CD4", each the other way round from the
-#: order of the terms.
-NAMES_IN_WORDS = ("anti-IL-6", "CD4+CD8+", "sIL-2R", "ppFEV1", "PaO2FiO2", "CD8CD4")
+#: order of the terms; and after a capital, "CD3+", "Th1/Th2", "CCR2" and "HLA-DRB1".
+NAMES_IN_WORDS = (
+    "anti-IL-6", "CD4+CD8+", "sIL-2R", "ppFEV1", "PaO2FiO2", "CD8CD4", "CD3+", "Th1/Th2",
+    "CCR2", "HLA-DRB1",
+)  # fmt: skip
 #: A word that ends in an interleukin's letters, "April-12" and "Brazil-3", holds no name.
 TERM_LOOKALIKES = ("April-12", "Brazil-3", "until-15")
 #: A citation's number typed in a superscript after a word with a capital inside: read

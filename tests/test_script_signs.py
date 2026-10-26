@@ -323,7 +323,8 @@ def test_a_term_after_a_lower_case_prefix_counts_from_its_capital() -> None:
     """Held to a word's start, "sIL-2R", "rhIL-2", "sPD-L1", "ppFEV1", and with CO2
     declared "pCO2" and "EtCO2", were numbers, where main had them as terms. A term counts
     where its first letter, as written, is a capital after a lower-case letter; "April-12"
-    and "BRAZIL-3" have no such boundary, and stay numbers."""
+    has no such boundary, and stays a number. After a capital a term counts as well, so
+    "BRAZIL-3", written in capitals, is read as "CCR2" is (Known gaps)."""
     from manuscript_guard.classify import _terms_covering
 
     assert _terms_covering("sIL-2R", ("il-2",)) == ["il-2"]
@@ -333,9 +334,27 @@ def test_a_term_after_a_lower_case_prefix_counts_from_its_capital() -> None:
     assert _terms_covering("pCO2", ("co2",)) == ["co2"]
     assert _terms_covering("EtCO2", ("co2",)) == ["co2"]
     assert _terms_covering("April-12", ("il-12",)) is None
-    assert _terms_covering("BRAZIL-3", ("il-3",)) is None
+    assert _terms_covering("BRAZIL-3", ("il-3",)) == ["il-3"]
     assert _terms_covering("sil-2r", ("il-2",)) is None
     assert _terms_covering("Until-15", ("il-15",)) is None
+
+
+def test_a_term_after_a_capital_counts() -> None:
+    """Held to a word's start, a capital after a lower-case letter or another term, a
+    shipped term after a capital was a number, where main had it as a term: "CD3+",
+    "Th1/Th2", "CCR2", "TNFR2", "FGFR2" and "HLA-DRB1" were reported in an immunology
+    paper. A lower-case letter after a lower-case one, and anything after a digit, opens
+    no term still."""
+    from manuscript_guard.classify import _terms_covering
+
+    assert _terms_covering("CD3+", ("d3",)) == ["d3"]
+    assert _terms_covering("Th1/Th2", ("h1", "h2")) == ["h1", "h2"]
+    assert _terms_covering("CCR2", ("r2",)) == ["r2"]
+    assert _terms_covering("HLA-DRB1", ("b1",)) == ["b1"]
+    assert _terms_covering("frisk1", ("k1",)) is None
+    assert _terms_covering("Brazil-3", ("il-3",)) is None
+    assert _terms_covering("2d3", ("d3",)) is None
+    assert unbound("CD3+ T cells, a Th1/Th2 ratio, CCR2, TNFR2, FGFR2 and HLA-DRB1.") == []
 
 
 def test_two_terms_with_nothing_between_count_in_either_order() -> None:

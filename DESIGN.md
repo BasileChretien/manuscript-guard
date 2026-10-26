@@ -3938,9 +3938,12 @@ image, is not read at all.
 **A paper with no heading is read as one text.** A Markdown manuscript converted from Word
 with its headings as bold lines has no section G14 can tell apart: the abstract is read with
 the main text, so a definition the abstract and the Introduction both give would be reported
-as given twice. Where the main text has no heading at all, G14 says so once, as a note,
-`no-headings`, and does not report `abbreviation-redefined` in it. A bold line is not taken
-for a heading.
+as given twice. Where the main text has no heading at all, G14 does not report
+`abbreviation-redefined` in it, at any stage, and says so once, as a note, `no-headings`, at
+the drafting stage only (Basile, 2026-10-23: "a note once, at drafting"). The headings are
+added while the paper is drafted; once it is past that, the note would be said at every run
+of a paper that keeps its bold lines. `check` gives G14 its stage, as it gives G3 and G12
+theirs; called with none, G14 says nothing of it. A bold line is not taken for a heading.
 
 **Every finding is a warning, at every stage.** The reading of a definition is good and not
 exact, and a name in capitals is not an abbreviation. The first plan for this gate had an
@@ -15470,6 +15473,9 @@ Open, recorded as each change landed:
     95% confidence interval" beside "confidence interval (CI)" is reported as two meanings.
   - SD on the statistical list hides an undefined SD that means stable disease.
   - `no-headings` is said of a Markdown manuscript only; a LaTeX one has its sections.
+    It is said at the drafting stage only, as decided: a paper declared past drafting with
+    no heading is still read as one text, with no `abbreviation-redefined`, and nothing
+    says so.
   - A word typed in capitals for emphasis is reported as an undefined abbreviation, unless
     its paragraph is set entirely in bold and has no small letter in it.
   - A heading typed in capitals in a plain paragraph, "APPENDIX 1", and a row label in a

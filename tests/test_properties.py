@@ -1324,22 +1324,27 @@ def test_a_glossary_and_a_caption_define_and_a_paper_with_no_heading_is_one_text
     """A glossary under any of its headings defines its entries in every form, its lines
     are not uses, and what it does not list is undefined; a caption, a legend and the first
     use in the text restate a definition and do not give it twice, while a second in the
-    text does. Without headings, the paper is read as one text: abbreviation-redefined is
-    not reported, a note says so, and what is undefined still is."""
+    text does. Without headings, the paper is read as one text at every stage:
+    abbreviation-redefined is not reported, what is undefined still is, and a note says so
+    at drafting and at no other stage."""
+    from manuscript_guard.policy import DRAFTING, STAGES
+
     nothing = language_gate._Known(frozenset(), frozenset())
 
-    def findings(text: str) -> list:
+    def findings(text: str, stage: str | None = None) -> list:
         read = [_file(0, Path("main.md"), text, [], False)]
-        return list(language_gate._judge(read, nothing, Path(".")).findings)
+        return list(language_gate._judge(read, nothing, Path("."), stage).findings)
 
-    headed = findings(drawn["headed"])
-    assert sorted((f.code, f.message.split()[0]) for f in headed) == drawn["found"], drawn
-    plain = findings(drawn["headless"])
-    assert "no-headings" in {f.code for f in plain}, drawn["headless"]
-    assert "abbreviation-redefined" not in {f.code for f in plain}, drawn["headless"]
-    assert ("abbreviation-undefined", "UMC") in {
-        (f.code, f.message.split()[0]) for f in plain
-    }, drawn["headless"]
+    for stage in (None, *STAGES):
+        headed = findings(drawn["headed"], stage)
+        assert sorted((f.code, f.message.split()[0]) for f in headed) == drawn["found"], drawn
+        plain = findings(drawn["headless"], stage)
+        said = {f.code for f in plain}
+        assert ("no-headings" in said) == (stage == DRAFTING), (stage, drawn["headless"])
+        assert "abbreviation-redefined" not in said, (stage, drawn["headless"])
+        assert ("abbreviation-undefined", "UMC") in {
+            (f.code, f.message.split()[0]) for f in plain
+        }, drawn["headless"]
 
 
 def _a_glossary_is_not_read(patch: pytest.MonkeyPatch) -> None:
@@ -1364,6 +1369,10 @@ def _a_caption_is_text(patch: pytest.MonkeyPatch) -> None:
 
 def _a_headless_paper_is_read_as_one_with_headings(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate, "_headless", lambda files: None)
+
+
+def _no_headings_is_said_at_every_stage(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_says_headless", lambda stage: True)
 
 
 @holds(60, latex_writing())
@@ -11429,6 +11438,10 @@ BROKEN = {
     ),
     "a paper with no heading is read as one with headings": (
         _a_headless_paper_is_read_as_one_with_headings,
+        test_a_glossary_and_a_caption_define_and_a_paper_with_no_heading_is_one_text,
+    ),
+    "no-headings is said at every stage": (
+        _no_headings_is_said_at_every_stage,
         test_a_glossary_and_a_caption_define_and_a_paper_with_no_heading_is_one_text,
     ),
     "a statistic is read at its printed value, not over what its last digit allows": (

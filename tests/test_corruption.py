@@ -20513,10 +20513,10 @@ SPELT_OUT = "The reporting odds ratio was computed from"
 ABBREVIATED = "The ROR was computed from"
 
 
-def language_findings(root: Path) -> list[tuple[str, int]]:
+def language_findings(root: Path, stage: str | None = None) -> list[tuple[str, int]]:
     from manuscript_guard.gates import check_language
 
-    report = check_language(load_project(root)[0])
+    report = check_language(load_project(root)[0], stage)
     assert report.ok, "G14 warns; it does not fail"
     return sorted((f.code, f.line) for f in report.findings)
 
@@ -20821,19 +20821,37 @@ def test_a_legend_restates_and_a_pasted_definition_is_still_caught(project: Path
     ]
 
 
-def test_a_paper_with_its_headings_in_bold_is_read_as_one_text(project: Path) -> None:
+def test_a_paper_with_its_headings_in_bold_is_read_as_one_text(project: Path, capsys) -> None:
     """Pasted from Word, the headings are bold lines and the definition is pasted again.
     Nothing tells the abstract from the main text, so the second definition is not
-    reported; G14 says why, once, and the abbreviation nobody defined is still reported."""
+    reported; G14 says why, once and at drafting only, and the abbreviation nobody defined
+    is still reported."""
+    from manuscript_guard.cli import main
+    from manuscript_guard.policy import DRAFTING, INTERNAL_REVIEW, STAGES
+
     mended = with_ror_defined(project)
     bold = re.sub(r"(?m)^# (.+)$", r"**\1**", mended).replace(
         "The reporting odds ratio observed here", "The reporting odds ratio (ROR) observed here"
     ).replace("A signal was defined", "The UMC curated the database. A signal was defined")
     main_md(project).write_text(bold, encoding="utf-8")
-    assert language_findings(project) == [
+    assert language_findings(project, DRAFTING) == [
         ("abbreviation-undefined", line_of(bold, "The UMC")),
         ("no-headings", None),
     ]
+    assert language_findings(project, INTERNAL_REVIEW) == [
+        ("abbreviation-undefined", line_of(bold, "The UMC")),
+    ]
+
+    def notes(stage: str) -> int:
+        capsys.readouterr()
+        main(["check", str(project), "--json", "--stage", stage])
+        found = json.loads(capsys.readouterr().out)["findings"]
+        return sum(f["code"] == "no-headings" for f in found)
+
+    # `check` gives G14 the stage it runs at.
+    assert {stage: notes(stage) for stage in STAGES} == {
+        stage: int(stage == DRAFTING) for stage in STAGES
+    }
 
 
 # --------------------------------------------------------------------------------------

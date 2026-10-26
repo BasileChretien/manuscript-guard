@@ -50,9 +50,9 @@ expected:
       against it ends one, so the bounds on either side of it are no longer compared
   - reading: check
     why: >-
-      G14 notes a Markdown manuscript whose main text has no heading, `no-headings`, and
-      reports no `abbreviation-redefined` in it; reads a glossary's entries as definitions,
-      lets a caption restate one, and leaves SD, ANOVA, RMSE and RMSD undefined unless the
+      G14 reports no `abbreviation-redefined` in a Markdown manuscript whose main text has
+      no heading, and notes it, `no-headings`, at the drafting stage only; reads a
+      glossary's entries as definitions, lets a caption restate one, and leaves SD, ANOVA, RMSE and RMSD undefined unless the
       journal's profile asks for them
   - reading: numbers
     why: >-
@@ -158,5 +158,5 @@ expected:
       hold such brackets, times, headings and tables. Then: a glossary under its heading
       defines its entries and its lines are no uses, a caption or a legend restates a
       definition without giving it twice, and a manuscript with no heading is read as one
-      text, with a `no-headings` note and no `abbreviation-redefined`; the inputs hold a
-      glossary and captions, and many have no heading
+      text, with no `abbreviation-redefined` (the reading gives no stage, so no
+      `no-headings` note); the inputs hold a glossary and captions, and many have no heading

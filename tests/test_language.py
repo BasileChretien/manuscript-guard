@@ -19,11 +19,20 @@ import yaml
 from manuscript_guard.contracts import load_project
 from manuscript_guard.gates import check_language
 from manuscript_guard.gates.language import _definitions, _hidden, _long_form
+from manuscript_guard.policy import DRAFTING, STAGES
 
 
-def written(project: Path, text: str, *, supplement: str | None = None, **files: str):
-    """Judge exactly this text. The example's supplement goes unless one is given, and
-    `files` are further main-text files, named without their `.md`."""
+def written(
+    project: Path,
+    text: str,
+    *,
+    supplement: str | None = None,
+    stage: str | None = None,
+    **files: str,
+):
+    """Judge exactly this text, at `stage` where one is given, as `check` gives its own. The
+    example's supplement goes unless one is given, and `files` are further main-text files,
+    named without their `.md`."""
     shutil.rmtree(project / "manuscript" / "supplementary", ignore_errors=True)
     (project / "manuscript" / "main.md").write_text(text, encoding="utf-8")
     for name, body in files.items():
@@ -33,7 +42,7 @@ def written(project: Path, text: str, *, supplement: str | None = None, **files:
         folder.mkdir()
         (folder / "S1.md").write_text(supplement, encoding="utf-8")
     projekt, _ = load_project(project)
-    return check_language(projekt)
+    return check_language(projekt, stage)
 
 
 def configured(project: Path, **settings) -> None:
@@ -1024,18 +1033,26 @@ HEADLESS = (
 
 def test_a_manuscript_with_no_headings_is_read_as_one_text_and_says_so(project: Path) -> None:
     """Converted from Word with bold lines for headings: nothing tells the abstract from
-    the main text, so a definition repeated in each is not reported, and G14 says why once.
-    A bold line is no heading. What is undefined is still reported."""
-    report = written(project, HEADLESS)
+    the main text, so a definition repeated in each is not reported, and G14 says why once,
+    at drafting. A bold line is no heading. What is undefined is still reported."""
+    report = written(project, HEADLESS, stage=DRAFTING)
     assert sorted((f.code, f.severity) for f in report.findings) == [
         ("abbreviation-undefined", "warn"),
         ("no-headings", "info"),
     ]
     (note,) = found(report, "no-headings")
     assert "abbreviation-redefined is not reported" in note
-    headed = written(project, "# Methods\n\n" + HEADLESS)
+    headed = written(project, "# Methods\n\n" + HEADLESS, stage=DRAFTING)
     assert "abbreviation-redefined" in codes(headed)
     assert "no-headings" not in codes(headed)
+
+
+@pytest.mark.parametrize("stage", [None, *(stage for stage in STAGES if stage != DRAFTING)])
+def test_no_headings_is_said_at_drafting_only(project: Path, stage: str | None) -> None:
+    """Basile, 2026-10-23: "No headings: a note once, at drafting". At any other stage, and
+    where no stage is given, the paper is still read as one text, and nothing says so."""
+    report = written(project, HEADLESS, stage=stage)
+    assert sorted(f.code for f in report.findings) == ["abbreviation-undefined"], found(report)
 
 
 def test_a_headless_supplement_says_nothing(project: Path) -> None:

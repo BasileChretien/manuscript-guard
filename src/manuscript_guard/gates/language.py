@@ -61,6 +61,7 @@ from manuscript_guard.gates.vocabulary import (
     judge_vocabulary,
 )
 from manuscript_guard.paths import SHIPPED_RECIPES
+from manuscript_guard.policy import DRAFTING
 from manuscript_guard.text.blocks import Heading, find_headings
 from manuscript_guard.text.inline import code_spans, equation_spans
 from manuscript_guard.text.masking import NUL, front_matter_end, mask
@@ -1200,9 +1201,17 @@ def _headless(files: list[_File]) -> Finding | None:
     )
 
 
-def _judge(files: list[_File], known: _Known, root: Path) -> Report:
-    """The findings, from files already read. Apart from `check_language` so that what it
-    costs can be measured on a manuscript of any size without writing one to disk."""
+def _says_headless(stage: str | None) -> bool:
+    """Whether the `no-headings` note is said at this stage: once, at drafting (Basile,
+    2026-10-23), when the sections are being written. At any other stage, or where `check`
+    gave none, the paper is still read as one text, and the note is not said."""
+    return stage == DRAFTING
+
+
+def _judge(files: list[_File], known: _Known, root: Path, stage: str | None = None) -> Report:
+    """The findings, from files already read, at `stage` where one is given. Apart from
+    `check_language` so that what it costs can be measured on a manuscript of any size
+    without writing one to disk."""
     scopes = _collect(files, known)
 
     def where(mark: _Mark) -> str:
@@ -1238,7 +1247,7 @@ def _judge(files: list[_File], known: _Known, root: Path) -> Report:
     everything: set[str] = set()
     defined_anywhere: set[str] = set()
     headless = _headless(files)
-    if headless is not None:
+    if headless is not None and _says_headless(stage):
         findings.append(headless)
 
     for scope in scopes.values():
@@ -1320,9 +1329,10 @@ def _judge(files: list[_File], known: _Known, root: Path) -> Report:
     )
 
 
-def check_language(project: Project) -> Report:
+def check_language(project: Project, stage: str | None = None) -> Report:
     """The four readings of the manuscript: its abbreviations, the terms it keeps to,
-    its spelling and its notation; and where its prose is in a script none of them reads."""
+    its spelling and its notation; and where its prose is in a script none of them reads.
+    `stage` is the one `check` runs at, which decides only whether `no-headings` is said."""
     files = _read(project)
     passages = [Passage(file.path, file.text, file.printed, file.line_of) for file in files]
     # A contributions statement names its roles as CRediT spells them and a funding
@@ -1331,7 +1341,7 @@ def check_language(project: Project) -> Report:
     spelt = [Passage(file.path, file.text, file.spelt, file.line_of) for file in files]
     paper = project.root / PAPER_FILE
     return (
-        _judge(files, _known(project), project.root)
+        _judge(files, _known(project), project.root, stage)
         .merge(judge_vocabulary(passages, project.vocabulary, paper))
         .merge(
             judge_spelling(spelt, project.english_variant, project.accepted_spellings, paper)

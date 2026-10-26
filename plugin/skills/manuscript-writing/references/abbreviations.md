@@ -25,5 +25,6 @@ An entry nothing else uses is reported as unused.
 ## No headings
 
 A manuscript with no headings at all, its sections typed as bold lines, is read as one
-text: G14 says so in a note, `no-headings`, and reports no `abbreviation-redefined`. Give
-the sections Markdown headings (`# Abstract`) to have the abstract read apart again.
+text and reports no `abbreviation-redefined`. G14 says so in a note, `no-headings`, at the
+drafting stage only, so its absence at a later stage does not mean the paper has headings.
+Give the sections Markdown headings (`# Abstract`) to have the abstract read apart again.

@@ -597,7 +597,7 @@ def test_a_statistic_after_a_colon_is_read_by_its_letters_as_on_main(
         ("The interquartile range (IQR: 3\N{EN DASH}7) was wide.", "interquartile range"),
         ("The Medical Dictionary for Regulatory Activities (MedDRA: 26.0) was used.",
          "Medical Dictionary for Regulatory Activities"),
-        # A last word that holds no letter of the short form.
+        # A last word that does not hold the short form's last letter.
         ("The Hamilton Depression Rating Scale (HAM-D: 18) was high.",
          "Hamilton Depression Rating Scale"),
         ("The Charlson Comorbidity Index score (CCI: 2) was low.",

@@ -3825,7 +3825,7 @@ manuscript never defined HR. A short form followed by a colon is read as any oth
 letters, exactly as before: "reporting odds ratio (ROR: 3.84)" defines, as pharmacovigilance
 writes a first estimate, and so do "creatinine clearance (CrCl: 58 mL/min)", "Hamilton
 Depression Rating Scale (HAM-D: 18)" and "the hazard ratio for death (HR: 1.3)", whose
-letters are not one per word or whose last word holds none of them. Two attempts to tell a
+letters are not one per word or whose last word does not hold the short form's last letter. Two attempts to tell a
 statistic after a colon from a definition by its words, by their initials and then by the
 last word, each dropped definitions like these, so a colon is left as it was and its
 lookalikes are a Known gap.

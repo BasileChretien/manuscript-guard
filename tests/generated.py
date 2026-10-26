@@ -868,6 +868,32 @@ LATEX_PLACES = (
     ("\\Volume{{{}}}\\pagespan{{{}}}{{{}}}\\affil*[1]{{Unit {}}} ", (False, False, False, False)),
     # A front matter command the author defines is the author's, read as before (round 1).
     ("\\newcommand{{\\journal}}[1]{{#1}}\\journal{{Lancet {}}} ", (True,)),
+    # A journal class's title page in the body (2026-10-23): Springer's running title and
+    # corresponding author; Elsevier's CAS option lists, the title's after a space, the marks
+    # of its notes, its CRediT roles, a note with no mark and its running heads; and acmart's
+    # CCS concepts, the XML its class excludes and each concept's weight. The title is read.
+    ("\\title[Short {}]{{Long {}}}\\title [mode = {}]{{T}}\\author*[{}]{{A}}[orcid={}]"
+     "\\cormark[{}]\\fnmark[{}]\\tnotemark[{}]\\credit{{Role {}}}\\shorttitle{{S {}}}"
+     "\\shortauthors{{A {}}}\\nonumnote{{N {}}}\\affiliation[{}]{{org={}}}[type={}] ",
+     (False, True, *(False,) * 13)),
+    ("\\begin{{CCSXML}}\n<c>{}</c>\n\\end{{CCSXML}}\n\\ccsdesc[{}]{{C {}}} ",
+     (False, False, False)),
+    # A TikZ picture, passed over as a picture's file is, its options, coordinates and paths,
+    # and the styles set for it; but what it prints as text, read: a node's, one in a path, a
+    # label's and a pin's past their angle, pgfplots' axis label and legend; in a definition's
+    # body too (2026-10-23; round 1 of #443).
+    ("\\begin{{tikzpicture}}[x={}cm]\\node[minimum size={}em] (n) at ({},1) {{n = {}}};"
+     "\\draw (0,{}) -- (1,1) node[above] {{excluded {}}};"
+     "\\node[label={{[red]{}:Label {}}}, pin={}:Pin {}] {{ }};"
+     "\\begin{{axis}}[xmin={}, xlabel={{Day {}}}]\\addplot coordinates {{(1,{})}};"
+     "\\addlegendentry{{Arm {}}}\\end{{axis}}\\node[node contents={{Box {}}}];"
+     "\\matrix[matrix of nodes, row sep={}mm] {{ M {} & N {} \\\\ }};\\end{{tikzpicture}} ",
+     (False, False, False, True, False, True, False, True, False, True, False, True, False,
+      True, True, False, True, True)),
+    ("\\tikzset{{a/.style={{line width={}mm}}}}\\tikzstyle{{b}} = [inner sep={}pt] ",
+     (False, False)),
+    ("\\newcommand{{\\pic}}[1]{{\\begin{{tikzpicture}}\\node[size={}em] {{#1 of {}}};"
+     "\\end{{tikzpicture}}}} ", (False, True)),
     # What 17 papers from arXiv held that the reader refused though LaTeX reads it
     # (2026-10-23): `cite` inside a command's name, an English word ending in it, and
     # pandoc's citeproc commands, whose citation is blanked as a citation is;
@@ -945,6 +971,50 @@ def latex_planted(draw: st.DrawFn) -> tuple[str, list[tuple[int, str, bool]]]:
     text += between[-1] + "\\end{document}\n"
     plant("after {}\n", (False,))
     return text, planted
+
+
+#: Where a length stands in LaTeX, each `{}` a length, and whether it sets the page there: in
+#: a definition's body, the whole of it, after a primitive or among words, a length in a unit
+#: TeX measures the page in is layout; in the text, the body's prose, a note, emphasis or
+#: maths, it is a number (2026-10-23).
+LATEX_LENGTH_PLACES = (
+    ("\\def\\h{{{}}}%\n", True),
+    ("\\newcommand{{\\k}}{{\\kern{} x}}\n", True),
+    ("\\def\\l{{\\lower{}\\hbox{{x}} and {} y}}\n", True),
+    ("prose {} ", False),
+    ("\\footnote{{in {}}} ", False),
+    ("\\emph{{{}}} ", False),
+    ("$x = {}$ ", False),
+)
+#: TeX's units that measure the page, and those a paper measures in too: its millimetres,
+#: centimetres and inches, and TeX's big points, Cicero and picas, a paper's base pairs,
+#: cubic centimetres and parsecs (round 1 of #443).
+TEX_UNITS = ("pt", "sp", "dd", "em", "ex", "mu")
+PAPER_UNITS = ("mm", "cm", "in", "bp", "cc", "pc")
+
+
+@st.composite
+def latex_lengths(draw: st.DrawFn) -> tuple[str, list[tuple[int, str, bool]]]:
+    """A LaTeX document with a length at every place of `LATEX_LENGTH_PLACES`, twice, once in
+    a unit TeX measures the page in and once in one a paper measures in too, each written as
+    TeX reads a length, its sign and its point drawn; and where each stands, and whether it is
+    layout there. Every kind is in every document."""
+    places = draw(st.permutations([(template, layout, units) for template, layout in
+                                   LATEX_LENGTH_PLACES for units in (TEX_UNITS, PAPER_UNITS)]))
+    # A file with no `\\begin{document}` is body, definitions and prose alike.
+    text, planted, count = "", [], 0
+    for template, layout, units in places:
+        pieces = [piece.replace("{{", "{").replace("}}", "}") for piece in template.split("{}")]
+        for piece in pieces[:-1]:
+            number = str(4101 + count)
+            count += 1
+            shape = draw(st.sampled_from(("{}", "-{}", "{}.5", ".{}")))
+            length = shape.format(number) + draw(st.sampled_from(units))
+            text += piece
+            planted.append((len(text), length, layout and units is TEX_UNITS))
+            text += length
+        text += pieces[-1]
+    return text + "\n", planted
 
 
 #: Where a command defined with delimited parameters is used, each `{}` the use, and whether

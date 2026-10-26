@@ -90,6 +90,7 @@ from generated import (
     latex_display_groups,
     latex_displays,
     latex_hooked_uses,
+    latex_lengths,
     latex_listed,
     latex_methods,
     latex_model_names,
@@ -592,6 +593,35 @@ def test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else(
             assert set(seen) == {NUL}, (number, seen, text)
 
 
+def _g2_rules_in_latex(text: str) -> list[tuple[int, int, str]]:
+    """Each number of a LaTeX file, where it stands, and the rule G2 lets it through by
+    there, as `check`, `explain` and `bind` judge it; or `UNCLASSIFIED`."""
+    source = latex_structure.Source("main.tex", text, latex_mask.read(text))
+    good, malformed = latex_views.bindings(source)
+    read = numbers_gate._latex_read(latex_views.File(
+        Path("main.tex"), source, tuple(good), tuple(malformed),
+        latex_views.markdown_view(source, good)))  # fmt: skip
+    scan = read.scan(CLASSIFIER)
+    return [(atom.start, atom.end,
+             CLASSIFIER.classify_under(atom, read.chains(atom.start), scan).rule or UNCLASSIFIED)
+            for atom in find_atoms(read.text, read.masked)]  # fmt: skip
+
+
+@holds(100, latex_lengths())
+def test_a_tex_length_is_layout_in_a_definition_s_body_and_a_number_in_the_text(
+    drawn: tuple[str, list[tuple[int, str, bool]]],
+) -> None:
+    """A length planted in a definition's body and in the text, in a unit TeX measures the
+    page in and in one a paper measures in too, its sign and its point drawn: G2 takes the
+    first for layout in a definition's body, and judges every other as the number it is, in
+    the text and in millimetres, centimetres and inches anywhere (2026-10-23)."""
+    text, planted = drawn
+    judged = _g2_rules_in_latex(text)
+    for at, length, layout in planted:
+        rules = {rule for start, end, rule in judged if start < at + len(length) and at < end}
+        assert rules == ({"tex-length"} if layout else {UNCLASSIFIED}), (length, rules, text)
+
+
 def _an_escaped_percent_opens_a_comment(patch: pytest.MonkeyPatch) -> None:
     symbol = latex_mask._Reader._symbol
 
@@ -690,6 +720,64 @@ def _highlights_in_front_matter_are_passed_over(patch: pytest.MonkeyPatch) -> No
 
 def _an_author_s_front_matter_command_is_passed_over(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(latex_mask, "FRONT_MATTER_COMMANDS", frozenset())
+
+
+def _a_title_s_option_is_read(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "COMMANDS", {**latex_mask.COMMANDS, "title": ("[p]", "{p}")})
+
+
+def _an_author_takes_no_star_and_no_option_after_the_name(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "COMMANDS", {**latex_mask.COMMANDS, "author": ("[b]", "{b}")})
+
+
+def _ccs_xml_is_read(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "RAW", latex_mask.RAW - {"CCSXML"})
+
+
+def _a_picture_is_read(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "PICTURES", frozenset())
+
+
+def _a_picture_in_a_definition_s_body_is_text(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask._Reader, "_picture_in_body", lambda self, which, name: False)
+
+
+def _a_tikz_style_s_name_is_an_argument(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_STYLE_NAME", re.compile("(?!)"))
+
+
+def _a_tikz_picture_prints_no_text(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask.pictures, "printed_in", lambda text, start, end: ({}, []))
+
+
+def _a_node_is_only_a_node_command(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask.pictures, "_NODE", re.compile(r"\\node(?![A-Za-z@])"))
+
+
+def _a_tikz_label_prints_no_text(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask.pictures, "_KEYS", re.compile("(?!)"))
+
+
+def _a_matrix_of_nodes_prints_no_text(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask.pictures, "_MATRIX", re.compile("(?!)"))
+
+
+def _a_tex_length_is_layout_in_the_text_too(patch: pytest.MonkeyPatch) -> None:
+    read = numbers_gate._latex_read
+    patch.setattr(numbers_gate, "_latex_read", lambda found: dataclasses.replace(
+        read(found), layout=((0, len(found.source.text)),)))  # fmt: skip
+
+
+def _a_tex_length_is_a_number_in_a_definition_s_body(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import classify
+
+    patch.setattr(classify, "TEX_LENGTH", re.compile("(?!)"))
+
+
+def _a_length_in_centimetres_is_layout(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import classify
+
+    patch.setattr(classify, "TEX_LENGTH", re.compile(classify.TEX_LENGTH.pattern[:-1] + "|cm)"))
 
 
 @holds(100, latex_delimited_uses())
@@ -11072,6 +11160,58 @@ BROKEN = {
     "in LaTeX, a front matter command the author defines is passed over": (
         _an_author_s_front_matter_command_is_passed_over,
         test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a title's option is read": (
+        _a_title_s_option_is_read,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, an author takes no star and no option after the name": (
+        _an_author_takes_no_star_and_no_option_after_the_name,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, acmart's CCS XML is read": (
+        _ccs_xml_is_read,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a TikZ picture is read": (
+        _a_picture_is_read,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a TikZ picture in a definition's body is text": (
+        _a_picture_in_a_definition_s_body_is_text,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a TikZ style's name is taken for its options": (
+        _a_tikz_style_s_name_is_an_argument,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a TikZ node's text is blanked with its picture": (
+        _a_tikz_picture_prints_no_text,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a node in a TikZ path is no node": (
+        _a_node_is_only_a_node_command,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a TikZ label's and an axis's text are blanked": (
+        _a_tikz_label_prints_no_text,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a TikZ matrix of nodes is blanked": (
+        _a_matrix_of_nodes_prints_no_text,
+        test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, a TeX length is layout in the text too": (
+        _a_tex_length_is_layout_in_the_text_too,
+        test_a_tex_length_is_layout_in_a_definition_s_body_and_a_number_in_the_text,
+    ),
+    "in LaTeX, a TeX length in a definition's body is a number": (
+        _a_tex_length_is_a_number_in_a_definition_s_body,
+        test_a_tex_length_is_layout_in_a_definition_s_body_and_a_number_in_the_text,
+    ),
+    "in LaTeX, a length in centimetres is layout": (
+        _a_length_in_centimetres_is_layout,
+        test_a_tex_length_is_layout_in_a_definition_s_body_and_a_number_in_the_text,
     ),
     "in LaTeX, a delimited command is refused wherever it stands": (
         _a_delimited_use_is_refused_wherever_it_stands,

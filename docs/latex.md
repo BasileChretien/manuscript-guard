@@ -93,7 +93,21 @@ refused.
 A journal class's front matter in the body, Elsevier's `frontmatter` with its title,
 authors, addresses and keywords, or Wiley's issue and dates, is passed over as a Markdown
 manuscript's YAML header is; an abstract or Elsevier's highlights in it are read. A command
-of that front matter you define yourself, `\keywords` say, is read as your own.
+of that front matter you define yourself, `\keywords` say, is read as your own. The title
+page the classes write outside such an environment is passed over too: the running head's
+short title in
+`\title[short]{...}`, Springer's `\author*`, Elsevier's `\author{...}[orcid=...]`, its marks
+and CRediT roles, and acmart's CCS concepts, `CCSXML` and `\ccsdesc`. The title itself is
+read.
+A TikZ picture's options, coordinates and paths are passed over, as a picture's file is, with
+`\tikzset` and `\tikzstyle`; the text it prints is read: a node's, a label's, a pin's, a
+matrix of nodes' cells and pgfplots' axis labels and legend. So a count typed in a flow
+diagram's box is unbound until you write it with `\mg`; what pgfplots computes from the
+data, its tick labels, is read by no check. In a command's definition, a length in a unit
+TeX sets the page in, `\def\bibhang{24pt}` or `\lower.5ex`, is layout, not a number of the
+paper's; in the text, and in millimetres, centimetres, inches, `bp`, `cc` or `pc`, which a
+paper uses for base pairs, cubic centimetres and parsecs, a length is a number like any
+other.
 Past a refusal the rest of the file is read as typed, so nothing it did not understand is
 hidden. Write a number the reader cannot see as a binding, or move the construct to the
 preamble.

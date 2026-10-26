@@ -2489,7 +2489,7 @@ def _explain_latex(project, file: Path) -> int:
     namespace, _results, _literature, _loaded = load_namespace(project)
     choices = [value for value in namespace.values() if value.role]
     chosen = chosen_rules(classifier)
-    scan = classifier.scan(read.scanned, blocks=read.blocks)
+    scan = read.scan(classifier)
     rows = []
     for atom in find_atoms(read.text, read.masked):
         verdict = classifier.classify_under(atom, read.chains(atom.start), scan)

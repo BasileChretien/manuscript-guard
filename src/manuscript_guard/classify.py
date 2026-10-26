@@ -36,6 +36,18 @@ STRUCTURAL = "structural"
 CONVENTION = "convention"
 UNCLASSIFIED = "unclassified"
 
+#: A length as TeX reads one, its unit typed against its number, in a unit TeX measures the
+#: page in and no paper measures anything in: points, scaled points, Didot points, a font's
+#: em and ex, maths units. A LaTeX file's definitions set such lengths,
+#: `\\def\\bibhang{24pt}`, `\\lower.5ex` (2026-10-23, from 2601.04966 and 2412.11273). TeX's
+#: big points, Cicero and picas are left out, since a paper writes base pairs `bp`, cubic
+#: centimetres `cc` and parsecs `pc` with the same letters (round 1 of #443), and so are
+#: millimetres, centimetres and inches, which may be the paper's own measure. Layout only in
+#: a definition's body (`Classifier.scan`'s `layout`): in the text "24pt" may be a scale's
+#: points.
+TEX_LENGTH = re.compile(r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:pt|sp|dd|em|ex|mu)")
+TEX_LENGTH_WHY = "A TeX length a definition's body sets the page with, which measures nothing."
+
 
 @dataclass(frozen=True)
 class Rule:
@@ -167,7 +179,14 @@ class Classifier:
         )
         return cls(conventions + project_rules, structural, merged_terms, project_terms)
 
-    def scan(self, text: str, *, lines_are_blocks: bool = False, blocks: bool = True) -> Scan:
+    def scan(
+        self,
+        text: str,
+        *,
+        lines_are_blocks: bool = False,
+        blocks: bool = True,
+        layout: Iterable[tuple[int, int]] = (),
+    ) -> Scan:
         """Find every rule's matches in one document, so `classify` is a lookup.
 
         `text` is read as Markdown, where a heading or a list item starts only where pandoc
@@ -182,11 +201,19 @@ class Classifier:
         numbering, and the rules that read a heading's or an item's numbering hold nowhere in
         it. The NUL the reader writes for what does not print is taken out before the rules
         read it (`_printed`).
+
+        `layout` is where a LaTeX file sets its pages: its definitions' bodies, where a TeX
+        length is layout (`TEX_LENGTH`).
         """
         rules = (*self.structural, *self.conventions)
         if not blocks:
             rules = tuple(rule for rule in rules if not (rule.heading_only or rule.list_only))
-        return _scan(rules, text, lines_are_blocks=lines_are_blocks, blanked=not blocks)
+        found = _scan(rules, text, lines_are_blocks=lines_are_blocks, blanked=not blocks)
+        spans = sorted(layout)
+        if not spans:
+            return found
+        return Scan(found.starts, found.reach, tuple(start for start, _end in spans),
+                    tuple(accumulate((end for _start, end in spans), max)))  # fmt: skip
 
     def classify(
         self, atom: Atom, section: Sequence[str] | None = None, scan: Scan | None = None
@@ -218,6 +245,8 @@ class Classifier:
         for rule in self.conventions:
             if _applies(rule, section) and scan.covers(rule.id, atom.start, atom.end):
                 return Verdict(CONVENTION, rule=rule.id, detail=rule.why)
+        if scan.in_layout(atom.start, atom.end) and TEX_LENGTH.fullmatch(atom.text):
+            return Verdict(CONVENTION, rule="tex-length", detail=TEX_LENGTH_WHY)
         return Verdict(UNCLASSIFIED)
 
     def classify_under(
@@ -450,6 +479,10 @@ class Scan:
     #: sorted by start but not by end, and a long early match can cover an atom that several
     #: later, shorter matches do not.
     reach: dict[str, list[int]]
+    #: Where a LaTeX file sets its pages (`Classifier.scan`'s `layout`), by start, and the
+    #: furthest end reached by any of them starting at or before the same index.
+    layout_starts: tuple[int, ...] = ()
+    layout_reach: tuple[int, ...] = ()
 
     def covers(self, rule_id: str, start: int, end: int) -> bool:
         starts = self.starts.get(rule_id)
@@ -457,6 +490,10 @@ class Scan:
             return False
         index = bisect_right(starts, start) - 1
         return index >= 0 and self.reach[rule_id][index] >= end
+
+    def in_layout(self, start: int, end: int) -> bool:
+        index = bisect_right(self.layout_starts, start) - 1
+        return index >= 0 and self.layout_reach[index] >= end
 
 
 def _printed(text: str, *, blanked: bool = False) -> tuple[str, list[int] | None]:

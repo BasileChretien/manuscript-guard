@@ -177,3 +177,46 @@ def test_a_rule_does_not_match_what_it_is_not_for(rule_id: str, text: str) -> No
     pattern = re.compile(RULES[rule_id]["pattern"], re.MULTILINE)
     found = pattern.search(text)
     assert found is None, f"{rule_id} matched {found.group()!r} in {text!r}"
+
+
+# ------------------------------------------------------------- a TeX length, in LaTeX
+
+
+def _latex_verdicts(text: str) -> dict[str, str]:
+    """Each number of a LaTeX file as G2 judges it there, by the rule that lets it through."""
+    from manuscript_guard.gates.numbers import _latex_read
+    from manuscript_guard.text.latex.mask import read
+    from manuscript_guard.text.latex.structure import Source
+    from manuscript_guard.text.latex.views import File, bindings, markdown_view
+
+    source = Source("main.tex", text, read(text))
+    good, malformed = bindings(source)
+    found = _latex_read(File(Path("main.tex"), source, tuple(good), tuple(malformed),
+                             markdown_view(source, good)))  # fmt: skip
+    classifier = Classifier.load()
+    scan = found.scan(classifier)
+    return {atom.text + "@" + str(atom.line): classifier.classify_under(
+                atom, found.chains(atom.start), scan).rule or UNCLASSIFIED
+            for atom in find_atoms(found.text, found.masked)}  # fmt: skip
+
+
+def test_a_tex_length_in_a_definition_s_body_is_layout_and_in_the_text_a_number() -> None:
+    """2601.04966's `\\def\\bibhang{24pt}` and 2412.11273's `\\lower.5ex` in the preamble were
+    numbers bound to nothing (2026-10-23). A length in a unit TeX measures the page in, typed
+    as TeX reads one, is layout in a definition's body; in the text it is a number like any
+    other, since "24 pt" may be a font or points of a scale; and a length in millimetres,
+    centimetres or inches may be the paper's own measure anywhere. So may one in TeX's big
+    points, Cicero and picas, a paper's base pairs, cubic centimetres and parsecs, in a
+    definition's body too (round 1 of #443)."""
+    text = ("\\documentclass{article}\n\\def\\bibhang{24pt}%\n"
+            "\\def\\simgt{\\lower.5ex\\hbox{$>$}}\n\\newcommand{\\back}{\\kern-3.5em}\n"
+            "\\def\\jump{\\hskip 0.2in}\n\\newcommand{\\n}{4100}\n"
+            "\\newcommand{\\frag}{500bp, 20cc and 8pc}\n\\begin{document}\n"
+            "Set in 24pt type, a 24 pt font, fragments of 500bp and 12mu.\n"
+            "\\end{document}\n")  # fmt: skip
+    assert _latex_verdicts(text) == {
+        "24pt@2": "tex-length", ".5ex@3": "tex-length", "-3.5em@4": "tex-length",
+        "0.2in@5": UNCLASSIFIED, "4100@6": UNCLASSIFIED, "500bp@7": UNCLASSIFIED,
+        "20cc@7": UNCLASSIFIED, "8pc@7": UNCLASSIFIED, "24pt@9": UNCLASSIFIED,
+        "24@9": UNCLASSIFIED, "500bp@9": UNCLASSIFIED, "12mu@9": UNCLASSIFIED,
+    }  # fmt: skip

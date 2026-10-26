@@ -1764,9 +1764,9 @@ def latex_folders(draw: st.DrawFn) -> tuple[dict[str, str], dict[str, set[str]]]
     own. And since round 1 of #445: the class loads a class with `\\LoadClass`, which inputs
     one, and defines a command to input one in each way of `DEFINED_INPUTS`, a file the paper
     prints and so loose; a picture in the `standalone` class, which the paper places with
-    `\\includestandalone`, loose; and a file refused in its preamble, in a way drawn from
-    `PREAMBLE_REFUSALS`, before a `\\begin{document}` it shows in a listing, loose and
-    `refused`."""
+    `\\includestandalone`, loose; a part in the `subfiles` class, loose (round 2); and a file
+    refused in its preamble, in a way drawn from `PREAMBLE_REFUSALS`, before a
+    `\\begin{document}` it shows in a listing, loose and `refused`."""
 
     def words() -> str:
         return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
@@ -1811,6 +1811,9 @@ def latex_folders(draw: st.DrawFn) -> tuple[dict[str, str], dict[str, set[str]]]
     files[picture] = (f"\\documentclass{options}{{standalone}}\n\\usepackage{{tikz}}\n"
                       "\\begin{document}\n\\begin{tikzpicture}\\node{n = 42};\\end{tikzpicture}\n"
                       "\\end{document}\n")  # fmt: skip
+    part = draw(st.sampled_from(("part.tex", "sections/part.tex")))
+    files[part] = (f"\\documentclass[{'../' if '/' in part else ''}main.tex]{{subfiles}}\n"
+                   f"\\begin{{document}}\n{words()} 7.\n\\end{{document}}\n")  # fmt: skip
     refused = draw(st.sampled_from(("refused.tex", "a/b/refused.tex")))
     files[refused] = (f"{draw(st.sampled_from(PREAMBLE_REFUSALS))} {words()} 5.\n"
                       "\\begin{verbatim}\\begin{document}\\end{verbatim}\n")  # fmt: skip
@@ -1821,7 +1824,7 @@ def latex_folders(draw: st.DrawFn) -> tuple[dict[str, str], dict[str, set[str]]]
                          "\\end{document}\n")  # fmt: skip
     expected = {"read": {"main.tex", shared, "mine.sty"},
                 "classes": {*listed, deeper, macros, based},
-                "loose": {commented, unloaded, shows, loose, *defined, picture, refused},
+                "loose": {commented, unloaded, shows, loose, *defined, picture, part, refused},
                 "second": {second}, "refused": {refused}}  # fmt: skip
     return files, expected
 

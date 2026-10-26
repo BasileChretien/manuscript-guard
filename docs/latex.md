@@ -34,7 +34,8 @@ a class or a package inputs only inside a command's definition, as
 `\newcommand{\abstracttext}{\input{abstract}}` does, is printed where the paper uses the
 command, and is read. A `.tex` file that nothing inputs is read as main text and warned of
 (`tex-not-input`), and so is a picture in the `standalone` class, which the paper places
-with `\includestandalone`: its text is read, though not where the paper places it. One that
+with `\includestandalone`: its text is read, though not where the paper places it. A part in
+the `subfiles` class is read the same way, though `\subfile` itself is refused. One that
 is a document of its own, with its own `\begin{document}`, is never read as part of the main
 text: `check` fails it (`tex-second-document`). If it is the supplement, make it
 `manuscript/supplementary/main.tex`, with its paths to pictures written from that folder;

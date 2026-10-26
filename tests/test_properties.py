@@ -855,14 +855,20 @@ def _an_input_in_a_class_s_definition_is_the_class_s(patch: pytest.MonkeyPatch) 
 
 
 def _a_standalone_picture_is_a_second_document(patch: pytest.MonkeyPatch) -> None:
-    patch.setattr(latex_structure, "_PARTS", frozenset())
+    patch.setattr(latex_structure, "_PARTS", frozenset({"subfiles"}))
+
+
+def _a_subfiles_part_is_a_second_document(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_structure, "_PARTS", frozenset({"standalone"}))
 
 
 def _a_file_refused_in_its_preamble_is_a_second_document(patch: pytest.MonkeyPatch) -> None:
     original = latex_structure.own_document
 
     def opens(text: str) -> int:
-        return 0 if latex_structure.read(text).body_start < 0 else original(text)
+        reading = latex_structure.read(text)
+        refused = reading.refusals and reading.body_start < 0
+        return 0 if refused and "\\begin{document}" in text else original(text)
 
     patch.setattr(latex_structure, "own_document", opens)
 
@@ -10642,6 +10648,10 @@ BROKEN = {
     ),
     "in LaTeX, a standalone picture is a second document": (
         _a_standalone_picture_is_a_second_document,
+        test_a_latex_document_reads_its_own_files_and_no_class_s_nor_another_document_s,
+    ),
+    "in LaTeX, a subfiles part is a second document": (
+        _a_subfiles_part_is_a_second_document,
         test_a_latex_document_reads_its_own_files_and_no_class_s_nor_another_document_s,
     ),
     "in LaTeX, a file refused in its preamble is a second document": (

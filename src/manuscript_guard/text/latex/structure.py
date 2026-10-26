@@ -60,23 +60,26 @@ _LOADS = re.compile(
 )
 #: A command that defines another, by what holds what it defines past its name and its
 #: options: `one` braced group, `two` (an environment's code, or a document command's
-#: argument specification and code) or `three`, or TeX's `tex` parameter text and a group.
-#: That code runs where the command is used, not where it stands (round 1 of #445).
+#: argument specification and code) or `three`, or TeX's `tex` parameter text and a group,
+#: past a name that is a command or, for `\\@namedef` and expl3's `c` forms, braced. That
+#: code runs where the command is used, not where it stands (rounds 1 and 2 of #445).
 _DEFINES = re.compile(
-    r"\\(?:(?P<one>(?:re)?newcommand|providecommand|DeclareRobustCommand"
+    r"\\(?:(?P<one>(?:re)?newcommandx?|providecommand|DeclareRobustCommand"
     r"|(?:re)?newrobustcmd|providerobustcmd|cs[gex]?def)"
     r"|(?P<two>(?:re)?newenvironment|provideenvironment"
     r"|(?:New|Renew|Provide|Declare)(?:Expandable)?DocumentCommand)"
     r"|(?P<three>(?:New|Renew|Provide|Declare)DocumentEnvironment)"
-    r"|(?P<tex>[gex]?def))(?![A-Za-z@])\*?"
+    r"|(?P<tex>[gex]?def|protected@[ex]def|@namedef"
+    r"|cs_(?:new|g?set)(?:_protected)?(?:_nopar)?:[Nc]p?[nxe]))(?![A-Za-z@_:])\*?"
 )
 #: What a defining command's name after `\\let\\name` stands for: it is copied, not used.
 _LET = re.compile(r"\\let[ \t]*\\(?:[A-Za-z@]+|.)[ \t]*=?[ \t]*\Z")
 _SPACE = re.compile(r"\s*")
 _CONTROL = re.compile(r"\\(?:[A-Za-z@]+|.)", re.DOTALL)
 #: The classes whose document is part of another's, printed in it: a `standalone` picture,
-#: which the paper places by `\\includestandalone` or as the PDF compiled from it.
-_PARTS = frozenset({"standalone"})
+#: which the paper places by `\\includestandalone` or as the PDF compiled from it, and a
+#: part in the `subfiles` class, which the paper places by `\\subfile` (round 2 of #445).
+_PARTS = frozenset({"standalone", "subfiles"})
 #: The code a file that holds a document of its own is refused with.
 SECOND_DOCUMENT = "tex-second-document"
 
@@ -305,7 +308,10 @@ def _bodies(text: str) -> list[tuple[int, int]]:
         if _LET.search(text, max(found.start() - 80, 0), found.start()):
             continue
         if found["tex"]:
-            name = _CONTROL.match(text, _SPACE.match(text, at).end())
+            at = _SPACE.match(text, at).end()
+            name = _CONTROL.match(text, at)
+            if name is None and text.startswith("{", at):
+                at = _closing(text, at)
             opened = _next_brace(text, name.end() if name else at)
             if opened < 0:
                 continue
@@ -370,7 +376,7 @@ def own_document(text: str) -> int:
     One refused in that preamble before it reaches a `\\begin{document}` opens none either:
     it is read past its refusal, which fails it, as a file nothing inputs is (round 1 of
     #445: it was taken for a second document at its first character and not read). Nor does
-    a `standalone` picture, which the paper prints (`_PARTS`)."""
+    a `standalone` picture or a `subfiles` part, which the paper prints (`_PARTS`)."""
     reading = read(text)
     if reading.body_start <= 0:
         return -1

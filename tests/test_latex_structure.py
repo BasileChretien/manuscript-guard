@@ -197,6 +197,16 @@ def test_a_second_document_beside_an_entry_is_refused_and_never_read_as_its_text
         "\\NewDocumentEnvironment{abstracttext}{m}{}{\\input{abstract}}",
         "\\def\\outer{\\newcommand\\abstracttext{x}\\input{abstract}}",
         "\\def\\a{\\{}\\def\\abstracttext{\\input{abstract}\\}}",
+        "\\@namedef{abstracttext}#1{\\input{abstract}}",
+        "\\protected@edef\\abstracttext{\\noexpand\\input{abstract}}",
+        "\\protected@xdef\\abstracttext{\\noexpand\\input{abstract}}",
+        "\\cs_new:Npn \\mine_abstract:n #1 { \\input{abstract} }",
+        "\\cs_set:Npn \\mine_abstract: { \\input{abstract} }",
+        "\\cs_gset:Npx \\mine_abstract: { \\exp_not:N \\input{abstract} }",
+        "\\cs_new_protected:cpn { mine_abstract:n } #1 { \\input{abstract} }",
+        "\\cs_set:cpx {mine_abstract:} {\\exp_not:N\\input{abstract}}",
+        "\\cs_new:Nn \\mine_abstract:n { \\input{abstract} }",
+        "\\newcommandx\\abstracttext[2][1=x, usedefault]{\\input{abstract}}",
     ],
 )
 def test_an_input_inside_a_definition_of_a_class_or_a_package_is_not_theirs(
@@ -221,14 +231,29 @@ def test_an_input_inside_a_definition_of_a_class_or_a_package_is_not_theirs(
         assert document.classes == ("copied.tex", "names.tex"), (definition, document)
 
 
-@pytest.mark.parametrize("options", ["", "[tikz, border=2pt]"])
-def test_a_standalone_picture_is_read_loose_and_is_no_second_document(options: str) -> None:
+def test_a_defining_command_copied_with_let_defines_nothing() -> None:
+    """`\\let\\olddef\\def` copies `\\def` and defines nothing, so the hook on the next line is
+    no body of a definition: a file it inputs is the package's, as a hook runs whether or not
+    the paper asks for it (round 2 of #445)."""
+    files = {"main.tex": "\\documentclass{article}\n\\usepackage{mine}\n\\begin{document}\n" + END,
+             "names.tex": "Annals 2024.\n"}  # fmt: skip
+    package = "\\let\\olddef\\def\n\\AtBeginDocument{\\input{names}}\n"
+    document = read_tree(files, packages={"mine.sty": package})
+    assert document.classes == ("names.tex",) and document.loose == (), document
+
+
+@pytest.mark.parametrize(
+    "declared", ["{standalone}", "[tikz, border=2pt]{standalone}", "[main.tex]{subfiles}",
+                 "[../main.tex]{subfiles}"],
+)  # fmt: skip
+def test_a_standalone_picture_is_read_loose_and_is_no_second_document(declared: str) -> None:
     """A picture in the `standalone` class has a document of its own, which the paper prints,
     by `\\includestandalone` or as the PDF compiled from it: it is read as a file nothing
-    inputs, warned of, and not refused (round 1 of #445: it failed BUILD at every stage)."""
-    main = ("\\documentclass{article}\n\\usepackage{standalone}\n\\begin{document}\n"
+    inputs, warned of, and not refused (round 1 of #445: it failed BUILD at every stage). So
+    is a part in the `subfiles` class, which the paper places by `\\subfile` (round 2)."""
+    main =("\\documentclass{article}\n\\usepackage{standalone}\n\\begin{document}\n"
             "\\includestandalone[width=\\linewidth]{fig}\n\\includegraphics{tikz}\n" + END)
-    picture = (f"\\documentclass{options}{{standalone}}\n\\usepackage{{tikz}}\n"
+    picture = (f"\\documentclass{declared}\n\\usepackage{{tikz}}\n"
                "\\begin{document}\n\\begin{tikzpicture}\\node{n = 42};\\end{tikzpicture}\n"
                + END)  # fmt: skip
     document = read_tree({"main.tex": main, "fig.tex": picture, "tikz.tex": picture})

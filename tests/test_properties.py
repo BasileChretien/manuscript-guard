@@ -788,9 +788,12 @@ def test_a_latex_document_reads_its_own_files_and_no_class_s_nor_another_documen
     class's, read by neither document and not loose; a file nothing inputs is loose,
     whether it stands in the class's folder or names a `\\begin{document}` it does not open;
     and a document of its own is refused in the document whose folder holds it and read by
-    neither: worked out apart from the reader, over folders that hold one of each."""
+    neither: worked out apart from the reader, over folders that hold one of each. A file a
+    class inputs inside a command's definition, a `standalone` picture and a file refused
+    before a `\\begin{document}` in a listing are loose, the last with its own refusal and
+    none a second document (round 1 of #445)."""
     files, expected = drawn
-    read, classes, loose, second = set(), set(), set(), set()
+    read, classes, loose, second, refused = set(), set(), set(), set(), set()
     for supplementary in (False, True):
         mine = {name: text for name, text in files.items()
                 if name.startswith("supplementary/") == supplementary}  # fmt: skip
@@ -805,11 +808,14 @@ def test_a_latex_document_reads_its_own_files_and_no_class_s_nor_another_documen
         loose |= set(document.loose)
         second |= {path for path, refusal in document.refusals
                    if refusal.code == "tex-second-document"}  # fmt: skip
-        assert {r.code for _p, r in document.refusals} <= {"tex-second-document"}, document
+        refused |= {path for path, refusal in document.refusals if refusal.code == "tex-refused"}
+        assert {r.code for _p, r in document.refusals} <= {"tex-second-document",
+                                                           "tex-refused"}, document  # fmt: skip
     assert read == expected["read"], files
     assert classes == expected["classes"], files
     assert loose == expected["loose"], files
     assert second == expected["second"], files
+    assert refused == expected["refused"], files
 
 
 def _a_class_inputs_nothing(patch: pytest.MonkeyPatch) -> None:
@@ -832,6 +838,33 @@ def _a_second_document_is_read_loose(patch: pytest.MonkeyPatch) -> None:
 def _any_begin_document_opens_a_document(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(latex_structure, "own_document",
                   lambda text: text.find("\\begin{document}"))  # fmt: skip
+
+
+def _a_class_s_requirepackage_and_loadclass_are_not_followed(patch: pytest.MonkeyPatch) -> None:
+    pattern = latex_structure._LOADS.pattern
+    patch.setattr(latex_structure, "_LOADS",
+                  re.compile(pattern.replace("\\\\(?P<how>", "(?!)\\\\(?P<how>", 1)))  # fmt: skip
+
+
+def _a_file_the_paper_inputs_too_is_the_class_s(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_structure, "_theirs", lambda inputs, tree: inputs)
+
+
+def _an_input_in_a_class_s_definition_is_the_class_s(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_structure, "_bodies", lambda text: [])
+
+
+def _a_standalone_picture_is_a_second_document(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_structure, "_PARTS", frozenset())
+
+
+def _a_file_refused_in_its_preamble_is_a_second_document(patch: pytest.MonkeyPatch) -> None:
+    original = latex_structure.own_document
+
+    def opens(text: str) -> int:
+        return 0 if latex_structure.read(text).body_start < 0 else original(text)
+
+    patch.setattr(latex_structure, "own_document", opens)
 
 
 def _an_input_file_starts_under_no_heading(patch: pytest.MonkeyPatch) -> None:
@@ -10593,6 +10626,26 @@ BROKEN = {
     ),
     "in LaTeX, a \\begin{document} in a comment or a listing opens a document": (
         _any_begin_document_opens_a_document,
+        test_a_latex_document_reads_its_own_files_and_no_class_s_nor_another_document_s,
+    ),
+    "in LaTeX, a class's \\RequirePackage and \\LoadClass are not followed": (
+        _a_class_s_requirepackage_and_loadclass_are_not_followed,
+        test_a_latex_document_reads_its_own_files_and_no_class_s_nor_another_document_s,
+    ),
+    "in LaTeX, a file the paper inputs too is the class's": (
+        _a_file_the_paper_inputs_too_is_the_class_s,
+        test_a_latex_document_reads_its_own_files_and_no_class_s_nor_another_document_s,
+    ),
+    "in LaTeX, an \\input in a class's definition is the class's": (
+        _an_input_in_a_class_s_definition_is_the_class_s,
+        test_a_latex_document_reads_its_own_files_and_no_class_s_nor_another_document_s,
+    ),
+    "in LaTeX, a standalone picture is a second document": (
+        _a_standalone_picture_is_a_second_document,
+        test_a_latex_document_reads_its_own_files_and_no_class_s_nor_another_document_s,
+    ),
+    "in LaTeX, a file refused in its preamble is a second document": (
+        _a_file_refused_in_its_preamble_is_a_second_document,
         test_a_latex_document_reads_its_own_files_and_no_class_s_nor_another_document_s,
     ),
     "in LaTeX, a definition with delimited parameters is refused": (

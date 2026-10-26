@@ -29,9 +29,13 @@ Zotero and `sync-bib` or by copying the file there, and have the document name i
 read exactly ("What the reader reads" below).
 
 A `.tex` file that the class or a package you load inputs, such as a list of journals a
-journal's class keeps in its own folder, is the class's: `check` does not read it. A `.tex`
-file that nothing inputs is read as main text and warned of (`tex-not-input`). One that is
-a document of its own, with its own `\begin{document}`, is never read as part of the main
+journal's class keeps in its own folder, is the class's: `check` does not read it. One that
+a class or a package inputs only inside a command's definition, as
+`\newcommand{\abstracttext}{\input{abstract}}` does, is printed where the paper uses the
+command, and is read. A `.tex` file that nothing inputs is read as main text and warned of
+(`tex-not-input`), and so is a picture in the `standalone` class, which the paper places
+with `\includestandalone`: its text is read, though not where the paper places it. One that
+is a document of its own, with its own `\begin{document}`, is never read as part of the main
 text: `check` fails it (`tex-second-document`). If it is the supplement, make it
 `manuscript/supplementary/main.tex`, with its paths to pictures written from that folder;
 if it is not, move it out of `manuscript/` or into a folder whose name starts with `_`.

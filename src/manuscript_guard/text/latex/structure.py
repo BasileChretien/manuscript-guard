@@ -32,7 +32,7 @@ from __future__ import annotations
 
 import posixpath
 import re
-from bisect import bisect_left
+from bisect import bisect_left, bisect_right
 from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import cached_property
@@ -58,6 +58,25 @@ _LOADS = re.compile(
     r"|\\(?:@?input@?|InputIfFileExists\*?|include)[ \t]*(?:\r?\n[ \t]*)?\{(?P<path>[^{}\n]*)\}"
     r"|\\@?input[ \t]+(?P<bare>[^\s{}\\%]+)"
 )
+#: A command that defines another, by what holds what it defines past its name and its
+#: options: `one` braced group, `two` (an environment's code, or a document command's
+#: argument specification and code) or `three`, or TeX's `tex` parameter text and a group.
+#: That code runs where the command is used, not where it stands (round 1 of #445).
+_DEFINES = re.compile(
+    r"\\(?:(?P<one>(?:re)?newcommand|providecommand|DeclareRobustCommand"
+    r"|(?:re)?newrobustcmd|providerobustcmd|cs[gex]?def)"
+    r"|(?P<two>(?:re)?newenvironment|provideenvironment"
+    r"|(?:New|Renew|Provide|Declare)(?:Expandable)?DocumentCommand)"
+    r"|(?P<three>(?:New|Renew|Provide|Declare)DocumentEnvironment)"
+    r"|(?P<tex>[gex]?def))(?![A-Za-z@])\*?"
+)
+#: What a defining command's name after `\\let\\name` stands for: it is copied, not used.
+_LET = re.compile(r"\\let[ \t]*\\(?:[A-Za-z@]+|.)[ \t]*=?[ \t]*\Z")
+_SPACE = re.compile(r"\s*")
+_CONTROL = re.compile(r"\\(?:[A-Za-z@]+|.)", re.DOTALL)
+#: The classes whose document is part of another's, printed in it: a `standalone` picture,
+#: which the paper places by `\\includestandalone` or as the PDF compiled from it.
+_PARTS = frozenset({"standalone"})
 #: The code a file that holds a document of its own is refused with.
 SECOND_DOCUMENT = "tex-second-document"
 
@@ -224,7 +243,9 @@ def _classes(
     journal's class holds a list of its journals in a file it inputs. A class or a package
     counts where the manuscript holds it, found as LaTeX finds it, from the entry file's
     folder; its comments are passed over, and so is a path it builds with a command, which
-    names no file here. A file the tree inputs too is the tree's (`_read_tree`)."""
+    names no file here, and a load inside a definition's body, which runs where the command
+    is used and may print there (`_bodies`). A file the tree inputs too is the tree's
+    (`_theirs`)."""
     packages, classes = styles
     folder = posixpath.dirname(entry)
 
@@ -244,7 +265,13 @@ def _classes(
         if path in done:
             continue
         done.add(path)
-        for load in _LOADS.finditer(_COMMENT.sub(r"\1", texts[path])):
+        text = _COMMENT.sub(r"\1", texts[path])
+        bodies = _bodies(text)
+        starts = [start for start, _end in bodies]
+        for load in _LOADS.finditer(text):
+            before = bisect_right(starts, load.start()) - 1
+            if before >= 0 and load.start() < bodies[before][1]:
+                continue
             if load["names"] is not None:
                 among = classes if load["how"].startswith("LoadClass") else packages
                 suffix = ".cls" if among is classes else ".sty"
@@ -255,19 +282,100 @@ def _classes(
             if target is not None:
                 inputs.add(target)
                 todo.append(target)
-    return frozenset(inputs)
+    return _theirs(frozenset(inputs), tree)
+
+
+def _theirs(inputs: frozenset[str], tree: list[Source]) -> frozenset[str]:
+    """Of the files a class inputs, those the tree does not read: one the paper inputs too
+    is the paper's, read where the paper inputs it."""
+    return inputs - {source.path for source in tree}
+
+
+def _bodies(text: str) -> list[tuple[int, int]]:
+    """Where each definition in a class's or a package's text holds what it defines, in
+    order, from the brace that opens it to past the one that closes it: what is there runs
+    where the command is used, so an `\\input` in it is not the class's own but whatever
+    file uses the command's (round 1 of #445: `\\newcommand{\\abstracttext}{\\input{abstract}}`
+    in a package made the paper's abstract the package's). A body that is not closed runs to
+    the end of the text. A definition inside a body is part of it."""
+    spans: list[tuple[int, int]] = []
+    at = 0
+    while (found := _DEFINES.search(text, at)) is not None:
+        at = found.end()
+        if _LET.search(text, max(found.start() - 80, 0), found.start()):
+            continue
+        if found["tex"]:
+            name = _CONTROL.match(text, _SPACE.match(text, at).end())
+            opened = _next_brace(text, name.end() if name else at)
+            if opened < 0:
+                continue
+            at = _closing(text, opened)
+            spans.append((opened, at))
+            continue
+        groups = 1 if found["one"] else 2 if found["two"] else 3
+        at = _SPACE.match(text, at).end()
+        name = _CONTROL.match(text, at)
+        at = name.end() if name else _closing(text, at) if text.startswith("{", at) else at
+        while text.startswith("[", at := _SPACE.match(text, at).end()):
+            at = _closing(text, at, "[", "]")
+        opened = at
+        for _group in range(groups):
+            at = _SPACE.match(text, at).end()
+            if not text.startswith("{", at):
+                break
+            at = _closing(text, at)
+        if at > opened:
+            spans.append((opened, at))
+    return spans
+
+
+def _next_brace(text: str, at: int) -> int:
+    """Where the first `{` from `at` stands, not one a backslash escapes, or -1."""
+    while at < len(text):
+        if text[at] == "\\":
+            at += 2
+            continue
+        if text[at] == "{":
+            return at
+        at += 1
+    return -1
+
+
+def _closing(text: str, opened: int, opener: str = "{", closer: str = "}") -> int:
+    """Past the `closer` that closes the `opener` at `opened`, braces balanced inside it and
+    an escaped one passed over, or the end of the text where none does."""
+    depth, at = 0, opened
+    while at < len(text):
+        char = text[at]
+        if char == "\\":
+            at += 2
+            continue
+        if char == "{" and opener != "{":
+            at = _closing(text, at)
+            continue
+        if char == opener:
+            depth += 1
+        elif char == closer:
+            depth -= 1
+            if depth == 0:
+                return at + 1
+        at += 1
+    return len(text)
 
 
 def own_document(text: str) -> int:
     """Where a file opens a document of its own, at its `\\begin{document}`, or -1 where it
     opens none: read as an entry file is, it opens in its preamble and does not read on as
     body, so a `\\begin{document}` in a comment, a listing or an `\\iffalse` block opens none.
-    One refused in that preamble opens one, at its first character."""
+    One refused in that preamble before it reaches a `\\begin{document}` opens none either:
+    it is read past its refusal, which fails it, as a file nothing inputs is (round 1 of
+    #445: it was taken for a second document at its first character and not read). Nor does
+    a `standalone` picture, which the paper prints (`_PARTS`)."""
     reading = read(text)
-    if reading.body_start == 0:
+    if reading.body_start <= 0:
         return -1
-    if reading.body_start < 0:
-        return 0
+    if {name for kind, name in reading.declared if kind == "class"} & _PARTS:
+        return -1
     return max(text.rfind("\\begin", 0, reading.body_start), 0)
 
 
@@ -347,7 +455,7 @@ def _read_tree(
     if entry in files:
         seen.add(entry)
         visit(entry, None, (), (), (entry,))
-    classes = _classes(entry, sources, files, styles) - seen
+    classes = _classes(entry, sources, files, styles)
     for path in sorted(files):
         if path in seen or path in classes:
             continue

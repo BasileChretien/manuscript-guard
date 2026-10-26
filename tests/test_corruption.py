@@ -7268,6 +7268,45 @@ def test_a_classs_own_file_is_not_main_text_and_a_second_document_fails_build(
     assert (refused.gate, refused.line) == ("BUILD", 2)
 
 
+def test_an_input_in_a_definition_a_standalone_picture_and_a_refused_file_are_read(
+    project: Path,
+) -> None:
+    """A file the author's package inputs only inside a command's definition is printed where
+    the paper uses the command: it is read, its numbers reach the gates, and it is warned of.
+    A `standalone` picture is read and warned of, and not failed as a second document; nor is
+    a file refused before the `\\begin{document}` it shows in a listing, which keeps its own
+    refusal (round 1 of #445: the first was read by no gate, with no warning, and the other
+    two failed BUILD as documents of their own)."""
+    from manuscript_guard.cli import _run_gates
+
+    entry = _as_latex(project)
+    folder = entry.parent
+    entry.write_text(
+        entry.read_text("utf-8").replace(
+            "\\begin{document}\n", "\\usepackage{mine}\n\\begin{document}\n\\abstracttext\n"
+        ),
+        "utf-8",
+    )
+    (folder / "mine.sty").write_text("\\newcommand{\\abstracttext}{\\input{abstract}}\n", "utf-8")
+    (folder / "abstract.tex").write_text("Of 9183 patients, 12 died.\n", "utf-8")
+    (folder / "fig.tex").write_text(
+        "\\documentclass{standalone}\n\\usepackage{tikz}\n\\begin{document}\n"
+        "\\begin{tikzpicture}\\node{n = 42};\\end{tikzpicture}\n\\end{document}\n",
+        "utf-8",
+    )
+    (folder / "notes.tex").write_text(
+        "\\csname x\\endcsname 42.\n\\begin{verbatim}\\begin{document}\\end{verbatim}\n", "utf-8"
+    )
+    report, _project, _stage, _deferred = _run_gates(project, stage="submission")
+    codes: dict[str, set[str]] = {}
+    for f in report.findings:
+        codes.setdefault(f.path.name if f.path else "", set()).add(f.code)
+    assert {"tex-not-input", "unclassified-number"} <= codes.get("abstract.tex", set()), codes
+    assert "tex-not-input" in codes.get("fig.tex", set()), codes
+    assert {"tex-not-input", "tex-refused"} <= codes.get("notes.tex", set()), codes
+    assert not [f for f in report.findings if f.code == "tex-second-document"], codes
+
+
 # --------------------------------------------------------------- G2 on the LaTeX twin
 
 TWIN = Path(__file__).parent / "data" / "latex" / "manuscript"

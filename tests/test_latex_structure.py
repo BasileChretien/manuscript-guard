@@ -180,6 +180,72 @@ def test_a_second_document_beside_an_entry_is_refused_and_never_read_as_its_text
 
 
 @pytest.mark.parametrize(
+    "definition",
+    [
+        "\\newcommand{\\abstracttext}{\\input{abstract}}",
+        "\\renewcommand*\\abstracttext[1][{a]b}]{\\par\\input{abstract}}",
+        "\\providecommand{\\abstracttext}\n  {\\iftrue{\\relax{\\input{abstract}}}\\fi}",
+        "\\DeclareRobustCommand\\abstracttext{\\input abstract\n}",
+        "\\def\\abstracttext#1.{\\input{abstract}}",
+        "\\long\\gdef\\abstracttext{{\\input{abstract}}}",
+        "\\edef\\abstracttext{\\noexpand\\input{abstract}}",
+        "\\protected\\xdef\\abstracttext{\\noexpand\\InputIfFileExists{abstract}{}{}}",
+        "\\expandafter\\def\\csname abstracttext\\endcsname{\\@input{abstract}}",
+        "\\csdef{abstracttext}{\\input{abstract}}",
+        "\\NewDocumentCommand{\\abstracttext}{O{} m}{\\input{abstract}}",
+        "\\newenvironment{abstracttext}[1]{\\begin{center}}{\\input{abstract}\\end{center}}",
+        "\\NewDocumentEnvironment{abstracttext}{m}{}{\\input{abstract}}",
+        "\\def\\outer{\\newcommand\\abstracttext{x}\\input{abstract}}",
+        "\\def\\a{\\{}\\def\\abstracttext{\\input{abstract}\\}}",
+    ],
+)
+def test_an_input_inside_a_definition_of_a_class_or_a_package_is_not_theirs(
+    definition: str,
+) -> None:
+    """A package that defines a command to input a file inputs it where the paper uses the
+    command, and the file is then the paper's to print: it is read, and warned of as one the
+    tree does not follow, at any depth inside any kind of definition's body (round 1 of
+    #445: `\\newcommand{\\abstracttext}{\\input{abstract}}` made the paper's abstract the
+    package's, read by no gate). A load past the definition's closing brace, or one where a
+    defining command is only copied, is the package's still."""
+    main = "\\documentclass{article}\n\\usepackage{mine}\n\\begin{document}\n\\abstracttext\n"
+    files = {"main.tex": main + END, "abstract.tex": "Of 4100 patients, 12 died.\n",
+             "names.tex": "Annals 2024.\n", "copied.tex": "Annals 2025.\n"}  # fmt: skip
+    package = (f"{definition}\n\\input{{names}}\n\\let\\olddef\\def\n\\input{{copied}}\n"
+               "\\let\\oldnew=\\newcommand\\input{copied}\n")  # fmt: skip
+    for packages, classes in (({"mine.sty": package}, {}),
+                              ({}, {"mine.cls": package})):  # fmt: skip
+        tree = dict(files, **{"main.tex": files["main.tex"].replace("{article}", "{mine}")})
+        document = read_tree(tree if classes else files, packages=packages, classes=classes)
+        assert "abstract.tex" in document.loose, (definition, document)
+        assert document.classes == ("copied.tex", "names.tex"), (definition, document)
+
+
+@pytest.mark.parametrize("options", ["", "[tikz, border=2pt]"])
+def test_a_standalone_picture_is_read_loose_and_is_no_second_document(options: str) -> None:
+    """A picture in the `standalone` class has a document of its own, which the paper prints,
+    by `\\includestandalone` or as the PDF compiled from it: it is read as a file nothing
+    inputs, warned of, and not refused (round 1 of #445: it failed BUILD at every stage)."""
+    main = ("\\documentclass{article}\n\\usepackage{standalone}\n\\begin{document}\n"
+            "\\includestandalone[width=\\linewidth]{fig}\n\\includegraphics{tikz}\n" + END)
+    picture = (f"\\documentclass{options}{{standalone}}\n\\usepackage{{tikz}}\n"
+               "\\begin{document}\n\\begin{tikzpicture}\\node{n = 42};\\end{tikzpicture}\n"
+               + END)  # fmt: skip
+    document = read_tree({"main.tex": main, "fig.tex": picture, "tikz.tex": picture})
+    assert document.loose == ("fig.tex", "tikz.tex") and document.refusals == ()
+
+
+def test_a_file_refused_before_a_begin_document_in_a_listing_is_read_past_its_refusal() -> None:
+    """A file refused in its preamble before the `\\begin{document}` it shows in a listing is
+    not a second document: it keeps its refusal and is read past it (round 1 of #445: it was
+    refused as a document of its own at its first character, and not read)."""
+    notes = "\\csname x\\endcsname 42.\n\\begin{verbatim}\\begin{document}\\end{verbatim}\n"
+    document = read_tree({"main.tex": DOC + END, "notes.tex": notes})
+    assert document.loose == ("notes.tex",)
+    assert [(path, r.code) for path, r in document.refusals] == [("notes.tex", "tex-refused")]
+
+
+@pytest.mark.parametrize(
     "abstract",
     ["\\abstract{Of 4100 reports, 12 were fatal.}", "\\begin{abstract}12\\end{abstract}"],
 )

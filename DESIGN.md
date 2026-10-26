@@ -1322,9 +1322,19 @@ order is `printed_order`.
   file's folder: the class `\documentclass` names, each package a file of the tree loads, the
   author's among them, and what those load in turn with `\RequirePackage`, `\usepackage` or
   `\LoadClass`. Each is read for its loads and nothing else: `\input` with braces or without,
-  `\@input` and `\InputIfFileExists`, by a path written out in full, outside a comment. A file
-  one inputs is read for its loads too, and is the class's in turn. A file the paper inputs
-  as well is the paper's, read where the paper inputs it. The rule follows what a class
+  `\@input` and `\InputIfFileExists`, by a path written out in full, outside a comment and
+  outside a definition's body. A load inside the body of `\newcommand`, `\renewcommand`,
+  `\providecommand`, `\DeclareRobustCommand`, `\def`, `\gdef`, `\edef`, `\xdef`, etoolbox's
+  `\csdef` and `\newrobustcmd` and their kin, `\newenvironment` and the document commands
+  and environments (`\NewDocumentCommand` and its kin), at any depth inside it, runs where
+  the command is used, and its file is printed there: it stays loose, read and warned of
+  (round 1 of #445: a package's `\newcommand{\abstracttext}{\input{abstract}}` made the
+  paper's abstract the package's, read by no gate). A body runs from the brace past the
+  command's name, its options and, for TeX's forms, its parameter text, to the brace that
+  closes it, or to the end of the file where none does; a defining command copied with
+  `\let` defines nothing. A file one inputs is read for its loads too, and is the class's in
+  turn. A file the paper inputs as well is the paper's, read where the paper inputs it
+  (`structure._theirs`). The rule follows what a class
   inputs, not where its files are kept: a file of the author's in the class's folder that
   nothing inputs is loose and warned of, as any other is. `structure._classes`;
   `Document.classes` lists them.
@@ -1334,7 +1344,13 @@ order is `printed_order`.
   `main.tex`, was read as its main text, and so was another paper left in the folder). It
   fails BUILD at every stage, `tex-second-document`, at that `\begin{document}`, and no
   gate reads it. A `\begin{document}` in a comment, a listing or an `\iffalse` block opens
-  none. The supplement is the document at `supplementary/main.tex`, as the Markdown
+  none. Two files that show one are not second documents, and are read as files nothing
+  inputs, loose and warned of, as before (round 1 of #445). One is a picture in the
+  `standalone` class, which the paper prints, placed by `\includestandalone` or as the PDF
+  compiled from it: it failed BUILD at every stage. The other is a file the reader refuses in
+  its preamble before it reaches a `\begin{document}`: it keeps that refusal and is read
+  past it, where it was refused as a second document at its first character and not read.
+  The supplement is the document at `supplementary/main.tex`, as the Markdown
   supplement is what `supplementary/` holds: a second document there is refused too. It is
   refused rather than taken for the supplement because a file names no document it is,
   and a title that says "Supplementary" is a guess, where the folder is not; it is refused
@@ -1679,6 +1695,20 @@ The result is compiled and packed by the code above, and checked three times:
   warned of (`tex-not-input`); a path in a class's `\iffalse` block or in a branch it does
   not take counts as input. A file the class's file list or the author's package inputs is
   not read at all, so a command it defines is not known to the reader (2026-10-23).
+- A class's definition is found by its command's name, not by expanding the class: a
+  LaTeX definition whose name is built, `\expandafter\newcommand\csname x\endcsname{...}`
+  (TeX's `\def` so written is seen), or a defining command the class renamed with `\let`
+  and uses under that name, is not seen as a definition, and a load in it counts as the
+  class's; a load in a hook, `\AtBeginDocument`
+  or `\DeclareOption`'s code, counts as the class's too, since it runs whether or not the
+  paper asks for it. A body whose braces do not balance, such as one with a brace changed
+  by `\catcode`, runs to the end of the file, so the loads past it stay loose and warned of
+  (round 1 of #445).
+- A `standalone` picture, and a document of its own that the reader refuses in its preamble,
+  are read as files nothing inputs, under no heading and warned of: `\includestandalone` is
+  not followed, so a picture's text is not read where the paper places it, and a second
+  document refused before its `\begin{document}` fails BUILD by that refusal rather than as
+  a second document, its preamble and its body read as loose main text (round 1 of #445).
 - A file a class inputs, and a document of its own, are left out of each document, but not
   out of the manuscript's file list (`Reader.files`): G11's digests, the review panel's
   prompt and G12's reading of the manuscript's text as typed still take them in (2026-10-23).

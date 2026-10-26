@@ -1732,6 +1732,19 @@ CLASS_INPUTS = ("\\input{{{}}}", "\\input {}\n", "\\@input{{{}}}",
 #: Each way a file shows a `\begin{document}` it does not open.
 NOT_A_DOCUMENT = ("% \\begin{document}\n", "\\begin{verbatim}\n\\begin{document}\n"
                   "\\end{verbatim}\n", "\\iffalse\\begin{document}\\fi\n")  # fmt: skip
+#: Each way a class or a package defines a command whose code inputs a file, where the paper
+#: uses the command, as `{}` takes the file's path (round 1 of #445).
+DEFINED_INPUTS = (
+    "\\newcommand{{\\cmd}}[1][{{a]b}}]{{\\par{{\\input{{{}}}}}}}",
+    "\\def\\cmd#1.{{\\relax\\input{{{}}}}}",
+    "\\long\\gdef\\cmd{{\\iftrue{{\\input {}\n}}\\fi}}",
+    "\\NewDocumentCommand{{\\cmd}}{{O{{}} m}}{{\\@input{{{}}}}}",
+    "\\newenvironment{{cmd}}{{\\begin{{center}}}}{{\\InputIfFileExists{{{}}}{{}}{{}}}}",
+    "\\expandafter\\edef\\csname cmd\\endcsname{{\\noexpand\\input{{{}}}}}",
+)
+#: What the reader refuses in a file's preamble, before a `\begin{document}` the file shows in
+#: a listing (round 1 of #445).
+PREAMBLE_REFUSALS = ("\\csname x\\endcsname", "\\catcode`\\@=11", "\\expandafter\\relax")
 
 
 @st.composite
@@ -1748,7 +1761,12 @@ def latex_folders(draw: st.DrawFn) -> tuple[dict[str, str], dict[str, set[str]]]
     author's package, beside the entry file, which inputs one; a class the paper does not
     load, which inputs one; a file nothing inputs in the class's folder or another; a file
     that shows a `\\begin{document}` in each way of `NOT_A_DOCUMENT`; and a document of its
-    own."""
+    own. And since round 1 of #445: the class loads a class with `\\LoadClass`, which inputs
+    one, and defines a command to input one in each way of `DEFINED_INPUTS`, a file the paper
+    prints and so loose; a picture in the `standalone` class, which the paper places with
+    `\\includestandalone`, loose; and a file refused in its preamble, in a way drawn from
+    `PREAMBLE_REFUSALS`, before a `\\begin{document}` it shows in a listing, loose and
+    `refused`."""
 
     def words() -> str:
         return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
@@ -1765,8 +1783,16 @@ def latex_folders(draw: st.DrawFn) -> tuple[dict[str, str], dict[str, set[str]]]
     lines = [form.format(name.removesuffix(".tex") if "{}\n" in form else name)
              for form, name in zip(forms, listed, strict=True)]  # fmt: skip
     lines += [f"% \\input{{{commented}}}", f"\\input{{{shared}}}",
-              f"\\RequirePackage[{words()}]{{{style}extra}}"]  # fmt: skip
+              f"\\RequirePackage[{words()}]{{{style}extra}}",
+              f"\\LoadClass{{{style}base}}"]  # fmt: skip
+    defined = [f"{style}defined{index}.tex" for index in range(len(DEFINED_INPUTS))]
+    for index, (form, name) in enumerate(zip(DEFINED_INPUTS, defined, strict=True)):
+        files[name] = f"{words()} {index + 2}3.\n"
+        lines.append(form.format(name.removesuffix(".tex") if "{}\n" in form else name))
+    based = f"{style}based.tex"
+    files[based] = f"{words()} 61.\n"
     files[f"{style}{stem}.cls"] = "\n".join(draw(st.permutations(lines))) + "\n"
+    files[f"{style}base.cls"] = f"\\input{{{based}}}\n"
     files["other.cls"] = f"\\input{{{unloaded}}}\n"
     files[f"{style}extra.sty"] = f"\\input{{{deeper}}}\n"
     files["mine.sty"] = f"\\input{{{macros}}}\n"
@@ -1780,11 +1806,23 @@ def latex_folders(draw: st.DrawFn) -> tuple[dict[str, str], dict[str, set[str]]]
     if second.startswith("supplementary/"):
         files["supplementary/main.tex"] = (f"\\documentclass{{article}}\n\\begin{{document}}\n"
                                            f"{words()}\n\\end{{document}}\n")  # fmt: skip
+    picture = draw(st.sampled_from(("fig.tex", "figures/fig.tex")))
+    options = draw(st.sampled_from(("", "[tikz, border=2pt]")))
+    files[picture] = (f"\\documentclass{options}{{standalone}}\n\\usepackage{{tikz}}\n"
+                      "\\begin{document}\n\\begin{tikzpicture}\\node{n = 42};\\end{tikzpicture}\n"
+                      "\\end{document}\n")  # fmt: skip
+    refused = draw(st.sampled_from(("refused.tex", "a/b/refused.tex")))
+    files[refused] = (f"{draw(st.sampled_from(PREAMBLE_REFUSALS))} {words()} 5.\n"
+                      "\\begin{verbatim}\\begin{document}\\end{verbatim}\n")  # fmt: skip
     files["main.tex"] = (f"\\documentclass[{words()}]{{{style}{stem}}}\n\\usepackage{{mine}}\n"
+                         "\\usepackage{standalone}\n"
                          f"\\begin{{document}}\n{words()}\n\\input{{{shared}}}\n{words()}\n"
+                         f"\\includestandalone[width=3cm]{{{picture.removesuffix('.tex')}}}\n"
                          "\\end{document}\n")  # fmt: skip
-    expected = {"read": {"main.tex", shared, "mine.sty"}, "classes": {*listed, deeper, macros},
-                "loose": {commented, unloaded, shows, loose}, "second": {second}}  # fmt: skip
+    expected = {"read": {"main.tex", shared, "mine.sty"},
+                "classes": {*listed, deeper, macros, based},
+                "loose": {commented, unloaded, shows, loose, *defined, picture, refused},
+                "second": {second}, "refused": {refused}}  # fmt: skip
     return files, expected
 
 

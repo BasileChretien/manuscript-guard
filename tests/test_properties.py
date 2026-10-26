@@ -1185,8 +1185,8 @@ def test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_
     closes a bracket or holds a whole one; a letter whose nearest match is inside a bracket
     the long form would open is looked for before that bracket. A short form followed by an
     equals sign or a number is a statistic and defines nothing, whatever the words before
-    it; one followed by a colon defines where its letters are found before the bracket, the
-    last in the last word, one per word or not; one whose letters are found only inside a
+    it; one followed by a colon defines where its letters are found before the bracket, as
+    any short form does, one per word or not; one whose letters are found only inside a
     bracket its long form would open defines nothing, though the words before each hold its
     letters."""
     text, planted = drawn
@@ -1215,36 +1215,16 @@ def test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations(
     assert found == [("abbreviation-undefined", short) for short in undefined], text
 
 
-def _a_statistic_in_brackets_is_a_definition(patch: pytest.MonkeyPatch) -> None:
-    patch.setattr(language_gate, "_STATISTIC", re.compile("(?!)"))
-
-
-def _a_statistic_defines_by_its_letters(patch: pytest.MonkeyPatch) -> None:
-    patch.setattr(language_gate, "_ends_the_long_form", lambda short, long: True)
-
-
-def _a_statistic_never_defines(patch: pytest.MonkeyPatch) -> None:
-    patch.setattr(language_gate, "_ends_the_long_form", lambda short, long: False)
+def _a_short_form_followed_by_a_colon_defines_nothing(patch: pytest.MonkeyPatch) -> None:
+    pattern = language_gate._OPENS_WITH.pattern
+    assert pattern.endswith("(?:$|[;,:])")
+    patch.setattr(language_gate, "_OPENS_WITH", re.compile(pattern[:-3] + "])"))
 
 
 def _a_number_or_an_equals_sign_opens_a_definition(patch: pytest.MonkeyPatch) -> None:
     pattern = language_gate._OPENS_WITH.pattern
     assert pattern.endswith("(?:$|[;,:])")
     patch.setattr(language_gate, "_OPENS_WITH", re.compile(pattern[:-2] + r"=]|(?=\d))"))
-
-
-def _a_statistic_defines_by_its_initials(patch: pytest.MonkeyPatch) -> None:
-    """The reading of round 1: a short form followed by a colon, an equals sign or a number
-    defines where the words right before the bracket begin with its letters, one each."""
-    _a_number_or_an_equals_sign_opens_a_definition(patch)
-    patch.setattr(language_gate, "_STATISTIC", re.compile(r"[\s*_]*(?:[:=]|\d)"))
-
-    def initials(short: str, long: str) -> bool:
-        wanted = [char.lower() for char in short if char.isalnum()]
-        words = re.findall(r"[^\W_]+", long)[-len(wanted) :]
-        return [word[0].lower() for word in words] == wanted
-
-    patch.setattr(language_gate, "_ends_the_long_form", initials)
 
 
 def _a_long_form_takes_a_letter_from_inside_a_bracket(patch: pytest.MonkeyPatch) -> None:
@@ -11295,24 +11275,12 @@ BROKEN = {
         _the_methods_report_nothing,
         test_a_number_a_summary_gives_is_found_unreported_whatever_the_headings_are_called,
     ),
-    "a statistic in brackets is read as a definition": (
-        _a_statistic_in_brackets_is_a_definition,
-        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
-    ),
-    "a statistic defines where its letters are before it": (
-        _a_statistic_defines_by_its_letters,
-        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
-    ),
-    "a statistic never defines": (
-        _a_statistic_never_defines,
+    "a short form followed by a colon defines nothing": (
+        _a_short_form_followed_by_a_colon_defines_nothing,
         test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
     ),
     "a number or an equals sign after a short form opens a definition": (
         _a_number_or_an_equals_sign_opens_a_definition,
-        test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
-    ),
-    "a statistic defines where the words before it are its initials": (
-        _a_statistic_defines_by_its_initials,
         test_a_bracket_defines_where_its_long_form_stands_before_it_and_a_statistic_does_not,
     ),
     "a long form takes a letter from inside a bracket it opens": (

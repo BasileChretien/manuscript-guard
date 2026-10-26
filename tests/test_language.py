@@ -550,20 +550,32 @@ def test_the_long_form_is_matched_letter_by_letter() -> None:
     assert _long_form("ROR", "the ROR") is None, "a short form does not define itself"
 
 
-@pytest.mark.parametrize(
-    "value", [": 0.41", ":0.41", " = 0.41", "=0.41", " 0.41", ": {{results.aor}}"]
-)
+@pytest.mark.parametrize("value", [" = 0.41", "=0.41", " 0.41"])
 def test_a_statistic_in_brackets_is_not_a_definition(project: Path, value: str) -> None:
     """A short form followed by an equals sign or a number is a statistic and defines
-    nothing; one followed by a colon defines only where the last word before the bracket
-    holds its last letter. Read as a definition by its letters, "AOR: 0.41" was "AOR is
-    defined as 'and older adults'", a second meaning, and its R is the one of "older"."""
+    nothing, though "and older adults" holds the letters of AOR in order."""
     report = written(
         project,
         "# Results\n\nThe adjusted odds ratio (AOR) was computed for each group. Use was "
         f"lower among the young and older adults (AOR{value}, 95% CI 0.22 to 0.77).\n",
     )
     assert not report.findings, found(report)
+
+
+@pytest.mark.parametrize("value", [": 0.41", ":0.41", ": {{results.aor}}"])
+def test_a_statistic_after_a_colon_is_read_by_its_letters_as_on_main(
+    project: Path, value: str
+) -> None:
+    """Known gap, held where it stands: a short form followed by a colon is read by its
+    letters, as any short form is, a statistic or not. "and older adults" holds A, O and R
+    in order, so "(AOR: 0.41)" defines AOR a second time, as it did before, and the
+    definitions are all its uses."""
+    report = written(
+        project,
+        "# Results\n\nThe adjusted odds ratio (AOR) was computed for each group. Use was "
+        f"lower among the young and older adults (AOR{value}, 95% CI 0.22 to 0.77).\n",
+    )
+    assert codes(report) == {"abbreviation-redefined", "abbreviation-unused"}, found(report)
 
 
 @pytest.mark.parametrize(
@@ -585,13 +597,22 @@ def test_a_statistic_in_brackets_is_not_a_definition(project: Path, value: str) 
         ("The interquartile range (IQR: 3\N{EN DASH}7) was wide.", "interquartile range"),
         ("The Medical Dictionary for Regulatory Activities (MedDRA: 26.0) was used.",
          "Medical Dictionary for Regulatory Activities"),
+        # A last word that holds no letter of the short form.
+        ("The Hamilton Depression Rating Scale (HAM-D: 18) was high.",
+         "Hamilton Depression Rating Scale"),
+        ("The Charlson Comorbidity Index score (CCI: 2) was low.",
+         "Charlson Comorbidity Index score"),
+        ("The estimated glomerular filtration rate at baseline (eGFR: 58) was low.",
+         "estimated glomerular filtration rate at baseline"),
+        ("We estimated the hazard ratio for death (HR: 1.3) in each group.",
+         "hazard ratio for death"),
     ],
 )  # fmt: skip
 def test_a_short_form_before_a_colon_defines_by_its_letters(text: str, long: str) -> None:
     """How pharmacovigilance writes a first estimate: "reporting odds ratio (ROR: 3.84)". A
     short form followed by a colon defines where its letters are found before the bracket,
-    as any short form does, and the last word before the bracket holds its last letter."""
-    short = re.match(r"[^\W_]+", text[text.index("(") + 1 :])[0]
+    as any short form does."""
+    short = re.match(r"[^\W_]+(?:-[^\W_]+)*", text[text.index("(") + 1 :])[0]
     definitions = [(found, words) for _at, found, words in _definitions(text)]
     assert definitions == [(short.removesuffix("s"), long)], definitions
 
@@ -599,17 +620,13 @@ def test_a_short_form_before_a_colon_defines_by_its_letters(text: str, long: str
 @pytest.mark.parametrize(
     "text",
     [
-        "Use was lower in the young and older adults (AOR: 0.41).",
         "Use was lower in the young and older adults (AOR = 0.41).",
         "Use was lower in the young and older adults (AOR 0.41).",
-        "Use was lower after adjusted odds ratio analysis (AOR: 0.41).",
     ],
 )
-def test_a_statistic_whose_last_letter_is_not_in_the_last_word_defines_nothing(
-    text: str,
-) -> None:
+def test_a_statistic_after_an_equals_sign_or_a_number_defines_nothing(text: str) -> None:
     """The letters of AOR are in "and older adults" in order, which is how a definition is
-    found; after a colon the last word before the bracket has to hold its last letter."""
+    found; after an equals sign or a number the bracket is a statistic's."""
     assert _definitions(text) == []
 
 
@@ -673,7 +690,7 @@ def test_a_long_form_steps_back_past_a_bracket_it_would_open(text: str, short: s
 def test_a_statistic_in_brackets_does_not_stand_in_for_a_definition(project: Path) -> None:
     report = written(
         project,
-        "# Results\n\nUse was lower among older adults (AOR: 0.41). The AOR was stable.\n",
+        "# Results\n\nUse was lower among older adults (AOR 0.41). The AOR was stable.\n",
     )
     assert codes(report) == {"abbreviation-undefined"}, found(report)
 
@@ -712,16 +729,16 @@ def test_a_long_form_may_close_a_bracket_or_hold_a_whole_one(
 
 
 def test_the_limits_of_the_bracket_rules_are_as_design_md_says() -> None:
-    """Known gaps, held where they stand: after a colon, a long form whose last word does
-    not hold the short form's last letter defines nothing, and one whose words spell the
-    short form defines, a statistic or not; a colon before words is read the same way; and
-    a comma makes no statistic."""
+    """Known gaps, held where they stand: after a colon, a short form is read by its letters,
+    a statistic or not, so words that hold them in order define it; a colon before words is
+    read the same way; and a comma makes no statistic."""
 
     def shorts(text: str) -> list[str]:
         return [short for _at, short, _long in _definitions(text)]
 
-    assert shorts("Tumour necrosis factor alpha (TNF: 12 pg/mL) was raised.") == []
-    assert shorts("Treatment was associated with a higher risk (HR: 1.32).") == ["HR"]
+    assert shorts("It was associated with a higher risk (HR: 1.32, 95% CI 1.1 to 1.6).") == ["HR"]
+    assert shorts("Use was lower in the young and older adults (AOR: 0.41).") == ["AOR"]
+    assert shorts("Use was lower after adjusted odds ratio analysis (AOR: 0.41).") == ["AOR"]
     assert shorts("Physical activity (PA: walking or cycling) was low.") == ["PA"]
     assert shorts("Use was lower in the young and older adults (AOR, 0.41).") == ["AOR"]
     # Past the aside, the 2 of a count before it is a letter like any other.

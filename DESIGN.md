@@ -3822,14 +3822,13 @@ or a number, "(HR 1.32, 95% CI ...)" or "(MAP = 90 mmHg)", defines nothing, what
 words before it: "a higher risk (HR 1.32, ...)" begins with the letters of HR, and read as
 a definition it was a second one after "the hazard ratio (HR)", or the only one where the
 manuscript never defined HR. A short form followed by a colon is read as any other, by its
-letters, and is held to one rule more: the last word before the bracket holds its last
-letter. "Reporting odds ratio (ROR: 3.84)" defines, as pharmacovigilance writes a first
-estimate, and so do "estimated glomerular filtration rate (eGFR: ml/min/1.73 m2)",
-"creatinine clearance (CrCl: 58 mL/min)" and "interquartile range (IQR: 3-7)", whose
-letters are not one per word. In "use was lower in the young and older adults (AOR: 0.41,
-95% CI ...)" the letters A, O and R are there in order, and read by them the bracket made
-AOR "defined as 'and older adults'", a second meaning beside the real one; its R is the one
-of "older", not of "adults", so it defines nothing.
+letters, exactly as before: "reporting odds ratio (ROR: 3.84)" defines, as pharmacovigilance
+writes a first estimate, and so do "creatinine clearance (CrCl: 58 mL/min)", "Hamilton
+Depression Rating Scale (HAM-D: 18)" and "the hazard ratio for death (HR: 1.3)", whose
+letters are not one per word or whose last word holds none of them. Two attempts to tell a
+statistic after a colon from a definition by its words, by their initials and then by the
+last word, each dropped definitions like these, so a colon is left as it was and its
+lookalikes are a Known gap.
 
 And a long form takes no letter from inside a bracket it opens. In "(WSE1) and 40 (12.5%)
 had a second WSE (WSE2)" the `2` of WSE2 is found only in "(12.5%)", and nothing is
@@ -15350,12 +15349,14 @@ Open, recorded as each change landed:
     a definition; `(ROR; ...)` and `(ROR, ...)` are.
   - A short form followed by an equals sign or a number defines nothing, so "the reporting
     odds ratio (ROR 3.84)" leaves ROR undefined. One followed by a colon defines where its
-    letters are found before the bracket and the last word holds its last letter, a
-    statistic or not: "a higher risk (HR: 1.32)" defines HR as "higher risk". A real long
-    form whose last word holds no letter of its short form, "tumour necrosis factor alpha
-    (TNF: 12 pg/mL)", defines nothing after a colon, and TNF is then reported as
-    undefined. A colon before words is read the same way, so "physical activity (PA:
-    walking or cycling)" defines PA. A comma does not make a statistic, so "and older
+    letters are found before the bracket, a statistic or not: "a higher risk (HR: 1.32, 95%
+    CI ...)" defines HR as "higher risk", and in "use was lower in the young and older
+    adults (AOR: 0.41, 95% CI ...)" the letters A, O and R are there in order, so AOR is
+    defined as "and older adults", a second meaning beside the real one, reported as
+    `abbreviation-redefined`; where the real definition was deleted, the use above it is
+    reported as used before its definition rather than undefined. A colon before words is
+    read the same way, so "physical activity (PA: walking or cycling)" defines PA. A comma
+    does not make a statistic, so "and older
     adults (AOR, 0.41)" is still read as defining AOR, with that long form, where the words
     before it hold its letters in order.
   - Brackets inside brackets are not read: in "(reporting odds ratio (ROR) 3.84)" the inner

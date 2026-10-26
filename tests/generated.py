@@ -562,9 +562,11 @@ def signs() -> st.SearchStrategy[str]:
 #: nested in a bracket that gives a statistic, a citation before the short form's bracket,
 #: and two long forms that run across a bracket without taking a letter from inside one,
 #: the WSE taken after two hours and a risk adjusted for something said in brackets; a
-#: short form after a colon whose letters are found before the bracket, the last in its last
-#: word, one per word or not; and two whose nearest letter is inside a bracket the long form
-#: would open, found again before it.
+#: short form after a colon whose letters are found before the bracket, one per word or not,
+#: in the last word or not, and words that hold the letters of a statistic's short form in
+#: order, "and older adults (AOR: 0.41)", read by them as main reads them (a Known gap); and
+#: two whose nearest letter is inside a bracket the long form would open, found again before
+#: it.
 DEFINING = (
     ("the reporting odds ratio (ROR)", "(ROR", "ROR"),
     ("the PRR (proportional reporting ratio)", "PRR (", "PRR"),
@@ -580,21 +582,24 @@ DEFINING = (
     ("the case fatality rate (CFR: {{results.cfr}})", "(CFR", "CFR"),
     ("the creatinine clearance (CrCl: 58 mL/min)", "(CrCl", "CrCl"),
     ("the interquartile range (IQR: 3 to 7)", "(IQR", "IQR"),
+    ("the Hamilton Depression Rating Scale (HAM-D: 18)", "(HAM-D", "HAM-D"),
+    ("the Charlson Comorbidity Index score (CCI: 2)", "(CCI", "CCI"),
+    ("the estimated glomerular filtration rate at baseline (eGFR: 58)", "(eGFR", "eGFR"),
+    ("the hazard ratio for death (HR: 1.3)", "(HR", "HR"),
+    ("lower in the young and older adults (AOR: 0.41, 95% CI 0.22 to 0.77)", "(AOR",
+     "AOR"),
+    ("lower in the young and older adults (AOR:0.41)", "(AOR", "AOR"),
+    ("lower in the young and older adults (AOR: {{results.aor}})", "(AOR", "AOR"),
     # The nearest letter inside a bracket the long form would open, another before it.
     ("the brief pain scale (Spanish version) (BPS)", "(BPS", "BPS"),
     ("the lean mass index (in kg/m2) (LMI)", "(LMI", "LMI"),
 )  # fmt: skip
 
 #: Brackets that are no definition, though the words before each hold its letters in order:
-#: a statistic, its short form followed by a colon whose last letter is not in the last word
-#: before the bracket, or by an equals sign or a number, whatever the words before it are,
-#: their initials among them; and a short form whose letters are found only by going into
-#: another bracket, "(12.5%)".
+#: a statistic, its short form followed by an equals sign or a number, whatever the words
+#: before it are, their initials among them; and a short form whose letters are found only
+#: by going into another bracket, "(12.5%)".
 NOT_DEFINING = (
-    ("lower in the young and older adults (AOR: 0.41, 95% CI 0.22 to 0.77)", "(AOR",
-     "AOR"),
-    ("lower in the young and older adults (AOR:0.41)", "(AOR", "AOR"),
-    ("lower in the young and older adults (AOR: {{results.aor}})", "(AOR", "AOR"),
     ("lower in the young and older adults (AOR = 0.41)", "(AOR", "AOR"),
     ("lower in the young and older adults (AOR 0.41)", "(AOR", "AOR"),
     ("a higher risk (HR 1.32, 95% CI 1.10 to 1.58)", "(HR", "HR"),

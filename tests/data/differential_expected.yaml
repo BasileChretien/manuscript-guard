@@ -142,9 +142,9 @@ expected:
       2026-10-23)
   - reading: abbreviations
     why: >-
-      a short form followed by a colon in its bracket defines only where the last word before
-      the bracket holds its last letter, so "and older adults (AOR: 0.41)" no longer defines
-      AOR; one followed by an equals sign or a number defines nothing, as before; a long
+      the brackets this pull request plants: one whose short form is followed by an equals
+      sign or a number defines nothing, as before, and one followed by a colon is read
+      exactly as before; what differs is the shapes of its earlier commits: a long
       form takes no letter from inside a bracket it opens, and looks for it before that
       bracket; a time of day, "8:30AM", "10:00 PM", is not read as an abbreviation, and
       nothing is reported as undefined in a paragraph set in bold with no small letter or a

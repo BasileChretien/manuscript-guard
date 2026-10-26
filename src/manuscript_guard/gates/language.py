@@ -102,18 +102,13 @@ _QUOTES = (
 #: What may cling to either end of a long form and is no part of it.
 _EDGES = _QUOTES + ".,;:()[]"
 # The short form opening a bracket: alone, or before a separator ("ROR; 95% CI ...", "ROR:
-# 3.84"). One followed by an equals sign or a number gives a statistic and defines nothing:
-# "a higher risk (HR 1.32, 95% CI ...)" is no definition of HR, though "higher risk" begins
-# with its letters.
+# 3.84", read by its letters like any other). One followed by an equals sign or a number
+# gives a statistic and defines nothing: "a higher risk (HR 1.32, 95% CI ...)" is no
+# definition of HR, though "higher risk" begins with its letters.
 _OPENS_WITH = re.compile(
     rf"[\s{re.escape(_QUOTES)}]*(?P<short>[^\W_]+(?:-[^\W_]+)*)[\s{re.escape(_QUOTES)}]*"
     r"(?:$|[;,:])"
 )
-# A short form followed by a colon may give a statistic, "(AOR: 0.41, 95% CI ...)", or a
-# definition, "creatinine clearance (CrCl: 58 mL/min)". It defines only where the last word
-# before the bracket holds its last letter (`_ends_the_long_form`): in "and older adults
-# (AOR: 0.41)" the letters A, O and R are there in order, and the R is not in "adults".
-_STATISTIC = re.compile(rf"[\s{re.escape(_QUOTES)}]*:")
 #: The brackets a long form opens and closes, round and square: a letter of its short form
 #: is not found inside one it opens (`_inside_a_bracket`).
 _OPENING = "(["
@@ -429,17 +424,6 @@ def _passed_over(before: str, opened: int) -> str:
     return before[:opened] + " " * (min(at, len(before) - 1) + 1 - opened) + before[at + 1 :]
 
 
-def _ends_the_long_form(short: str, long: str) -> bool:
-    """Does the last word of `long` hold the last letter or digit of `short`? The letters of
-    a long form are found going back from the bracket, so its last word holds the last one
-    wherever that word has it: "creatinine clearance" for CrCl, "interquartile range" for
-    IQR. "and older adults" for AOR does not, its R being the one of "older". The reading a
-    short form followed by a colon is held to."""
-    wanted = [char.lower() for char in short if char.isalnum()]
-    words = long.split()
-    return bool(wanted and words) and wanted[-1] in words[-1].strip(_EDGES).lower()
-
-
 def _window(short: str) -> int:
     """How many words back a long form may start: Schwartz and Hearst's bound."""
     return min(len(short) + 5, len(short) * 2)
@@ -677,10 +661,6 @@ def _short_inside(prose: str, bracket: re.Match[str]) -> tuple[int, str, str] | 
     if long is None and short != _singular(short):
         long = _long_form(_singular(short), words)
     if long is None:
-        return None
-    if _STATISTIC.match(bracket.group(1), opening.end("short")) and not (
-        _ends_the_long_form(short, long) or _ends_the_long_form(_singular(short), long)
-    ):
         return None
     return bracket.start(1) + opening.start("short"), _stem(short, long), long
 

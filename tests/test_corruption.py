@@ -7238,6 +7238,77 @@ def test_a_delimited_command_where_it_prints_and_an_import_of_nothing_fail_build
     assert not [f for f in report.findings if f.code == "tex-not-input"]
 
 
+def test_what_papers_from_arxiv_hold_that_latex_reads_passes_build(project: Path) -> None:
+    """Each construct that 17 papers from arXiv held and the reader refused, though LaTeX
+    reads it, so that the rest of each file was read as typed (2026-10-23): IEEE's thanks to
+    the authors, an author's `\\excite`, pandoc's references under citeproc with a comment
+    between an environment's arguments, a reference list BibTeX wrote with natbib's and
+    REVTeX's headers, an article's own `\\unit` with no siunitx, `latin9` in a file of ASCII,
+    and `\\def\\eg/{e.g.\\@}` in the author's package. None fails BUILD."""
+    from manuscript_guard.cli import _run_gates
+
+    entry = _as_latex(project)
+    (entry.parent / "shortcuts.sty").write_text(
+        "\\makeatletter\n  \\@ifdefinable{\\eg}{\\def\\eg/{e.g.\\@}}\n\\makeatother\n",
+        encoding="utf-8",
+    )
+    entry.write_text(
+        "\\documentclass{article}\n\\usepackage[latin9]{inputenc}\n\\usepackage{shortcuts}\n"
+        "\\newcommand{\\unit}[1]{\\mbox{\\boldmath $\\hat{#1}$}}\n"
+        "\\NewDocumentCommand\\citeproctext{}{}\n\\NewDocumentCommand\\citeproc{mm}{%\n"
+        "  \\begingroup\\def\\citeproctext{#2}\\cite{#1}\\endgroup}\n"
+        "\\newenvironment{CSLReferences}[2] % #1 hanging-indent, #2 entry-spacing\n"
+        "{\\begin{list}{}{%\n  \\ifodd #1\n  \\setlength{\\leftmargin}{1.5em}\n  \\fi\n"
+        "  \\setlength{\\itemsep}{#2\\baselineskip}}}\n{\\end{list}}\n"
+        "\\newcommand{\\excite}[1]{#1}\n\\begin{document}\n"
+        "\\author{A.\\IEEEcompsocitemizethanks{\\IEEEcompsocthanksitem A. is with B.}}\n"
+        "Of 4100 reports, \\eg/ these, 12 were fatal, as Smith "
+        "(\\citeproc{ref-smith}{2020}) found. We \\excite{electrons} along $\\unit{k}$.\n"
+        "\\begin{CSLReferences}{1}{0}\n\\bibitem[\\citeproctext]{ref-smith}\nSmith.\n"
+        "\\end{CSLReferences}\n"
+        "\\begin{thebibliography}{9}\n\\providecommand{\\url}[1]{\\texttt{#1}}\n"
+        "\\expandafter\\ifx\\csname urlstyle\\endcsname\\relax\n"
+        "  \\providecommand{\\doi}[1]{doi: #1}\\else\n"
+        "  \\providecommand{\\doi}{doi:\\begingroup \\urlstyle{rm}\\Url}\\fi\n\\makeatletter\n"
+        "\\providecommand \\@ifx [1]{%\n \\ifx #1\\expandafter \\@firstoftwo\n"
+        " \\else \\expandafter \\@secondoftwo\n \\fi\n}%\n"
+        "\\providecommand \\citenamefont [1]{#1}%\n"
+        "\\providecommand \\@sanitize@url [0]{\\catcode `\\\\12\\catcode `\\$12}%\n"
+        "\\bibitem[{\\citenamefont{Jones}(2011)}]{jones} Jones.\n\\end{thebibliography}\n"
+        "\\end{document}\n",
+        encoding="utf-8",
+    )
+    report, _project, _stage, _deferred = _run_gates(project, stage="design")
+    refused = [f for f in report.findings if f.code in ("tex-refused", "tex-unbalanced")]
+    assert refused == [], report.render(project)
+
+
+def test_what_the_reader_still_refuses_of_those_papers_fails_build(project: Path) -> None:
+    """Kept as the design has it (2026-10-23): an author's citing command, `\\mycite`, whose
+    keys G7 would not see; a definition of siunitx's `\\unit` where the author's package loads
+    siunitx; and `latin9` in an entry file of ASCII where a file it inputs is not ASCII, which
+    TeX reads in `latin9` and the reader in UTF-8. Each fails BUILD where it stands."""
+    from manuscript_guard.cli import _run_gates
+
+    entry = _as_latex(project)
+    (entry.parent / "macros.sty").write_text("\\RequirePackage{siunitx}\n", encoding="utf-8")
+    entry.write_text(
+        "\\documentclass{article}\n\\usepackage[latin9]{inputenc}\n\\usepackage{macros}\n"
+        "\\begin{document}\n\\input{a}\n\\input{b}\n\\end{document}\n",
+        encoding="utf-8",
+    )
+    (entry.parent / "a.tex").write_text(
+        "Of 4100 caf\N{LATIN SMALL LETTER E WITH ACUTE}s, as \\mycite{smith} found.\n",
+        encoding="utf-8",
+    )
+    (entry.parent / "b.tex").write_text("\\newcommand{\\unit}[1]{#1}\n", encoding="utf-8")
+    report, _project, _stage, _deferred = _run_gates(project, stage="design")
+    found = {(f.code, f.path.name, f.line) for f in report.failures if f.gate == "BUILD"}
+    assert ("tex-refused", "main.tex", 2) in found, report.render(project)
+    assert ("tex-refused", "a.tex", 1) in found, report.render(project)
+    assert ("tex-refused", "b.tex", 1) in found, report.render(project)
+
+
 # --------------------------------------------------------------- G2 on the LaTeX twin
 
 TWIN = Path(__file__).parent / "data" / "latex" / "manuscript"

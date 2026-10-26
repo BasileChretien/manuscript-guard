@@ -48,11 +48,6 @@ expected:
       blanked, as the bindings are: a stop inside a comment ends no sentence, so a reversal
       with such a comment between its bounds is reported, and a stop with a comment typed
       against it ends one, so the bounds on either side of it are no longer compared
-  - reading: check
-    why: >-
-      G1 counts the datasets the results name, `datasets_checked`, which is 0 in a project
-      that names none; and the hint for an unbound number beside a month's name says that the
-      date of the data is declared with `dataset()` and a date the study chose is a parameter
   - reading: numbers
     why: >-
       a supplement's name of the Methods, "Supplementary methods", "eMethods 1. Data
@@ -117,13 +112,6 @@ expected:
       prints; a `\let` of a command to one the reader reads the same way and a doubled
       parameter in a nested body are no longer refused either (real templates, part 1)
   - reading: latex writing
-    why: >-
-      a `\def` with delimited parameters, `\def\x\begin{verbatim}` among the inputs, was
-      refused and the rest of the file read as typed; it is read now, as TeX reads it,
-      its parameter text blanked and its body read, and a use refused only where it
-      prints; a `\let` of a command to one the reader reads the same way and a doubled
-      parameter in a nested body are no longer refused either (real templates, part 1)
-  - reading: latex pointers
     why: >-
       a `\def` with delimited parameters, `\def\x\begin{verbatim}` among the inputs, was
       refused and the rest of the file read as typed; it is read now, as TeX reads it,

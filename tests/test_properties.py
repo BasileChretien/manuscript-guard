@@ -86,6 +86,7 @@ from generated import (
     latex_claims,
     latex_declared,
     latex_delimited_uses,
+    latex_display_groups,
     latex_displays,
     latex_hooked_uses,
     latex_listed,
@@ -1280,13 +1281,16 @@ def test_a_latex_cross_reference_is_recorded_where_it_prints_and_nowhere_else(
 ) -> None:
     """A `\\ref`, `\\autoref`, `\\eqref` or `\\cref` in prose is recorded, from its command
     to its brace; one in a comment, a listing or what `\\iffalse` leaves out is not, nor a
-    label or a citation (round 1 of G13 in step 8)."""
+    label or a citation (round 1 of G13 in step 8). A `\\crefrange` is one, to the brace of its
+    second label (corpus round, 2026-10-23)."""
     text, planted = drawn
     spans = latex_mask.read(text).pointers
     found = sorted(key for key, _recorded in planted
                    if any(key in text[start:end] for start, end in spans))  # fmt: skip
     assert found == sorted(key for key, recorded in planted if recorded), (text, spans)
     assert all(text[start] == "\\" and text[end - 1] == "}" for start, end in spans), spans
+    pairs = zip(spans, spans[1:], strict=False)
+    assert all(end <= later for (_start, end), (later, _end) in pairs), spans
 
 
 @holds(100, quoted_references())
@@ -4853,6 +4857,74 @@ def test_a_word_in_the_other_english_is_found_where_it_stands_and_a_name_is_not(
     assert report.counts["spelling_other"] == sum(len(places) for places in stands.values())
 
 
+#: The papers each example of the property below holds: mostly British, mostly American,
+#: as many of each, British by its -ise words alone, and British with as many -ize words
+#: both Englishes write as it has British ones, which count for neither.
+_LEANINGS = ("en-GB", "en-US", "level", "-ise", "-ize")
+#: The -ise spellings British usage writes, and the -ize ones both usages write.
+WITH_ISE = ("randomised", "organised", "summarised", "categorised")
+WITH_IZE = ("randomized", "organized", "summarized", "categorized")
+
+
+@st.composite
+def _undeclared_papers(draw: st.DrawFn) -> list[tuple[str, str, dict[str, int], int, int]]:
+    """Papers that declare no English, one of each leaning in every example: filler with
+    words of both Englishes planted in an order drawn. Each comes with the English it is to
+    be held to, the words of the other with where each first stands, and how many of each."""
+    papers = []
+    for leaning in _LEANINGS:
+        more = draw(st.integers(2, 6))
+        if leaning == "level":
+            # The first word's English is the paper's; the rest are drawn in any order.
+            held = draw(st.sampled_from(("en-GB", "en-US")))
+            stray = "en-US" if held == "en-GB" else "en-GB"
+            planted = [held, *draw(st.permutations([held] * (more - 1) + [stray] * more))]
+        else:
+            held = "en-GB" if leaning.startswith("-") else leaning
+            stray = "en-US" if held == "en-GB" else "en-GB"
+            fewer = draw(st.integers(1, more - 1))
+            both = ["both"] * more * (leaning == "-ize")
+            planted = list(draw(st.permutations([held] * more + [stray] * fewer + both)))
+        pools = {
+            "en-GB": WITH_ISE if leaning == "-ise" else BRITISH,
+            "en-US": AMERICAN,
+            "both": WITH_IZE,
+        }
+        sentences: list[str] = []
+        stands: dict[str, int] = {}
+        for english in planted:
+            word = draw(st.sampled_from(pools[english]))
+            before = _words(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
+            after = _words(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
+            sentence = f"{before.capitalize()} {word} {after}."
+            if english == stray:
+                stands.setdefault(word, len(sentences))
+            sentences.append(sentence)
+        own, other = planted.count(held), planted.count(stray)
+        papers.append(("\n".join(sentences) + "\n", held, stands, own, other))
+    return papers
+
+
+@holds(100, _undeclared_papers())
+def test_a_paper_that_declares_no_english_is_held_to_the_one_most_of_its_words_are_in(
+    papers: list[tuple[str, str, dict[str, int], int, int]],
+) -> None:
+    """Basile, 2026-10-23. The words of the fewer English are each said where they first
+    stand, those of the more never, and nothing about a setting nobody made; where the two
+    are level, the English of the first word is the paper's."""
+    names = {"en-GB": "British", "en-US": "American"}
+    for text, held, stands, own, other in papers:
+        file = _file(0, MAIN, text, [], False)
+        passage = Passage(file.path, file.text, file.printed, file.line_of)
+        report = judge_spelling([passage], None, (), PAPER)
+        assert {f.code for f in report.findings} <= {"spelling-variant"}, text
+        theirs = names["en-US" if held == "en-GB" else "en-GB"]
+        found = {(f.message.split("'")[1], f.line) for f in report.findings}
+        assert found == {(word, line + 1) for word, line in stands.items()}, (text, held)
+        assert all(f"is the {theirs} spelling of" in f.message for f in report.findings), text
+        assert (report.counts["spelling_own"], report.counts["spelling_other"]) == (own, other)
+
+
 # ------------------------------------------------------------------------- placeholders
 
 
@@ -6002,6 +6074,79 @@ def test_a_latex_pointer_is_held_to_what_latex_numbers(
     )
     found = {(f.code, f.path.name, f.line) for f in report.findings}
     assert found == expected, (found, expected, texts)
+
+
+@holds(60, latex_display_groups())
+def test_a_latex_group_of_floats_is_one_display_and_a_range_cites_what_it_takes_in(
+    planted: tuple[dict[str, str], set[tuple[str, int | None]], set[int]],
+) -> None:
+    """The floats of a `subtables` or a `subfigures` of the group's kind share its one number,
+    and a cross-reference to one of them, in the group's file or in a file it inputs, or to the
+    label after `\\begin`, cites it; a float of the other kind is numbered as any. A range of
+    cross-references, two a dash joins, two "to" joins after a plural or cleveref's
+    `\\crefrange`, cites every table from its first end to its last; two a list's join, "to"
+    after a singular or a paragraph's end join cite their ends only (corpus round, 2026-10-23,
+    and fix round 1)."""
+    texts, expected, uncited = planted
+    sources = list(latex_structure.read_tree(texts).sources)
+    report = pointers_latex_gate.pointers_in_documents(
+        {False: sources, True: []}, Path("m"), dict.fromkeys(pointers_latex_gate.AS_FILES, 0)
+    )
+    found = {(f.code, f.line) for f in report.findings}
+    assert found == expected, (found, expected, texts)
+    missing = {int(re.match(r"Table (\d+) ", f.message)[1]) for f in report.findings
+               if f.code == "display-not-cited"}  # fmt: skip
+    assert missing == uncited, (missing, uncited, texts)
+
+
+def _a_group_of_floats_numbers_each(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print, "_GROUP", re.compile(r"(?!)"))
+
+
+def _a_group_s_labels_name_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print, "_group_labels", lambda _source, _low, _high, _kind, _read: [])
+
+
+def _a_group_s_input_files_labels_name_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print, "_labels_read_in_a_group", lambda _text, _start, _end, _read: [])
+
+
+def _a_float_of_the_other_kind_joins_a_group(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print, "_joins", lambda _kind, _grouped: True)
+
+
+def _anything_between_two_cross_references_makes_a_range(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(pointers_latex_gate, "_RANGE_DASH", re.compile(r"[\s\S]*"))
+
+
+def _to_makes_no_range(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(pointers_latex_gate, "_RANGE_TO", re.compile(r"(?!)"))
+
+
+def _to_makes_a_range_after_a_singular(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(pointers_latex_gate, "_PLURAL_BEFORE", re.compile(r""))
+
+
+def _a_range_of_cross_references_cites_its_ends(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(pointers_latex_gate, "_RANGE_DASH", re.compile(r"(?!)"))
+
+
+def _only_an_en_dash_makes_a_range(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(pointers_latex_gate, "_RANGE_DASH",
+                  re.compile(r"[^\S\n]*\n?[^\S\n]*" + chr(0x2013) + r"[^\S\n]*\n?[^\S\n]*"))
+
+
+def _a_range_held_to_one_line(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(pointers_latex_gate, "_RANGE_DASH",
+                  re.compile(r"[^\S\n]*[-" + chr(0x2013) + chr(0x2014) + r"][^\S\n]*"))
+
+
+def _cleveref_s_range_cites_its_ends(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(pointers_latex_gate, "_RANGES", frozenset())
+
+
+def _a_range_s_span_is_recorded_at_each_label(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "RANGES", frozenset())
 
 
 @st.composite
@@ -8676,6 +8821,44 @@ def _a_variables_name_is_a_word(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(spelling_gate, "_in_an_identifier", lambda text, start, end: False)
 
 
+def _no_english_declared_is_british(patch: pytest.MonkeyPatch) -> None:
+    """The rule before 2026-10-23: a paper that declared nothing was British."""
+    patch.setattr(
+        spelling_gate, "_majority", lambda spelt: (spelling_gate.BRITISH, False) if spelt else None
+    )
+
+
+def _level_englishes_are_british(patch: pytest.MonkeyPatch) -> None:
+    """As many of each, and the first word's English not looked at."""
+    majority = spelling_gate._majority
+
+    def broken(spelt: list) -> tuple[str, bool] | None:
+        taken = majority(spelt)
+        return (spelling_gate.BRITISH, True) if taken and taken[1] else taken
+
+    patch.setattr(spelling_gate, "_majority", broken)
+
+
+def _ise_counts_for_neither(patch: pytest.MonkeyPatch) -> None:
+    """An -ise spelling taken for one both Englishes write."""
+    majority = spelling_gate._majority
+
+    def broken(spelt: list) -> tuple[str, bool] | None:
+        return majority([(*each[:-1], "" if each[-1] == "ise" else each[-1]) for each in spelt])
+
+    patch.setattr(spelling_gate, "_majority", broken)
+
+
+def _ize_counts_as_american(patch: pytest.MonkeyPatch) -> None:
+    """An -ize spelling both Englishes write taken for American."""
+    majority = spelling_gate._majority
+    patch.setattr(
+        spelling_gate,
+        "_majority",
+        lambda spelt: majority([(*each[:-1], each[-1] or "us") for each in spelt]),
+    )
+
+
 def _a_list_of_pointers_is_its_first(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import pointers
 
@@ -10446,6 +10629,54 @@ BROKEN = {
         _a_cross_reference_cites_nothing,
         test_a_latex_pointer_is_held_to_what_latex_numbers,
     ),
+    "in LaTeX, a subfigures group numbers each of its floats": (
+        _a_group_of_floats_numbers_each,
+        test_a_latex_group_of_floats_is_one_display_and_a_range_cites_what_it_takes_in,
+    ),
+    "in LaTeX, a subfigures group's labels name nothing": (
+        _a_group_s_labels_name_nothing,
+        test_a_latex_group_of_floats_is_one_display_and_a_range_cites_what_it_takes_in,
+    ),
+    "in LaTeX, the labels of a file read inside a group name nothing": (
+        _a_group_s_input_files_labels_name_nothing,
+        test_a_latex_group_of_floats_is_one_display_and_a_range_cites_what_it_takes_in,
+    ),
+    "in LaTeX, a float of the other kind joins a subfigures group": (
+        _a_float_of_the_other_kind_joins_a_group,
+        test_a_latex_group_of_floats_is_one_display_and_a_range_cites_what_it_takes_in,
+    ),
+    "in LaTeX, anything between two cross-references makes a range": (
+        _anything_between_two_cross_references_makes_a_range,
+        test_a_latex_group_of_floats_is_one_display_and_a_range_cites_what_it_takes_in,
+    ),
+    "in LaTeX, to between two cross-references makes no range": (
+        _to_makes_no_range,
+        test_a_latex_group_of_floats_is_one_display_and_a_range_cites_what_it_takes_in,
+    ),
+    "in LaTeX, to after a singular makes a range": (
+        _to_makes_a_range_after_a_singular,
+        test_a_latex_group_of_floats_is_one_display_and_a_range_cites_what_it_takes_in,
+    ),
+    "in LaTeX, two cross-references a dash joins cite their ends only": (
+        _a_range_of_cross_references_cites_its_ends,
+        test_a_latex_group_of_floats_is_one_display_and_a_range_cites_what_it_takes_in,
+    ),
+    "in LaTeX, only an en dash joins a range of cross-references": (
+        _only_an_en_dash_makes_a_range,
+        test_a_latex_group_of_floats_is_one_display_and_a_range_cites_what_it_takes_in,
+    ),
+    "in LaTeX, a range of cross-references is held to one line": (
+        _a_range_held_to_one_line,
+        test_a_latex_group_of_floats_is_one_display_and_a_range_cites_what_it_takes_in,
+    ),
+    "in LaTeX, cleveref's range cites its ends only": (
+        _cleveref_s_range_cites_its_ends,
+        test_a_latex_group_of_floats_is_one_display_and_a_range_cites_what_it_takes_in,
+    ),
+    "in LaTeX, cleveref's range is recorded at each label": (
+        _a_range_s_span_is_recorded_at_each_label,
+        test_a_latex_cross_reference_is_recorded_where_it_prints_and_nowhere_else,
+    ),
     "in LaTeX, \\appendix opens nothing": (
         _the_appendix_opens_nothing,
         test_a_latex_appendix_s_tables_are_the_supplement_s,
@@ -12036,6 +12267,22 @@ BROKEN = {
     "a variable's name is read as a word": (
         _a_variables_name_is_a_word,
         test_a_word_in_the_other_english_is_found_where_it_stands_and_a_name_is_not,
+    ),
+    "a paper that declares no English is held to British": (
+        _no_english_declared_is_british,
+        test_a_paper_that_declares_no_english_is_held_to_the_one_most_of_its_words_are_in,
+    ),
+    "two Englishes level are taken for British": (
+        _level_englishes_are_british,
+        test_a_paper_that_declares_no_english_is_held_to_the_one_most_of_its_words_are_in,
+    ),
+    "an -ise spelling counts for neither English": (
+        _ise_counts_for_neither,
+        test_a_paper_that_declares_no_english_is_held_to_the_one_most_of_its_words_are_in,
+    ),
+    "an -ize both write counts as American": (
+        _ize_counts_as_american,
+        test_a_paper_that_declares_no_english_is_held_to_the_one_most_of_its_words_are_in,
     ),
     "a list of tables is read as its first": (
         _a_list_of_pointers_is_its_first,

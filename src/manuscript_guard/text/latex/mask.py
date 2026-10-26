@@ -34,6 +34,7 @@ from manuscript_guard.text.latex.commands import (
     MATHS,
     PARAMETERS,
     POINTERS,
+    RANGES,
     RAW,
     READ_IN_FRONT_MATTER,
     REFUSED,
@@ -632,7 +633,11 @@ class _Reader:
             frame.origin = self.heading_at
         if kind == "arg" and spec == "b" and self.command in CITATIONS and not self.definitions:
             self._cite(at)
-        if kind == "arg" and spec == "b" and self.command in POINTERS and not self.definitions:
+        # A range's span runs to its second label's group (corpus round, 2026-10-23).
+        pointer = self.command in POINTERS and not self.definitions
+        if kind == "arg" and spec == "b" and pointer and (
+            self.command not in RANGES or not self.pending[1:]
+        ):
             end = self._group_end(at, comments=True)
             if end >= 0:
                 self.pointers.append((self.pointer_at, end))

@@ -1688,9 +1688,18 @@ The result is compiled and packed by the code above, and checked three times:
 - G2 holds a LaTeX manuscript's typed pointers to what a float's `\caption` numbers (step
   13). A supplement's numbering is taken to be Table S1, as in Markdown, whatever its
   `\thetable` prints; a typed "Figure 1a" points at Figure 1, `\subfloat`'s letters unread; a
-  pointer typed in a float's caption or a `\captionof`'s is not read; a `\crefrange` cites
-  nothing, so a display cited only by one is said not cited; and a label defined twice names
-  the first display it labels. Where a document numbers a kind in a way the view cannot
+  pointer typed in a float's caption or a `\captionof`'s is not read; and a label defined
+  twice names the first display it labels. A range of cross-references is read where a dash
+  joins two, where "to" does after "Tables", "Figures" or "Figs." typed before the first or
+  before a list it ends, or in a `\crefrange`, as `pointers.py` reads a typed one: "to" after
+  a plural a command of the author's prints, `\Figs~\ref{a} to~\ref{b}`, and `\ref{a},
+  \dots, \ref{b}` cite their ends only, so a display between them first cited later is said
+  out of order; a range whose ends are more than 50 apart, of two kinds, or of the main text
+  and the supplement cites its ends only. Unlike Markdown's, the join may have a line's end
+  on either side, which TeX reads as a space (corpus round, 2026-10-23, and fix round 1). A
+  group of the subfloat package, `subfigures` or `subtables`, is one display however its
+  floats' captions are written, and a group that is not closed leaves its floats numbered
+  each. Where a document numbers a kind in a way the view cannot
   count, a `\captionof`, a `longtable`'s caption, or a float whose caption a command of the
   author's writes, that kind's pointers are not checked, and a note says so; a page
   `\includepdf` takes in, or a `\caption` in a float the reader does not know, `SCfigure` or
@@ -2499,6 +2508,36 @@ fourth, a LaTeX author has `check` on numbers and a PDF from their own editor.
     appendix opening nothing, the package's environment opening nothing, an `\appendix` in a
     comment or a body opening it, a supplement's heading holding nothing, its part running
     to the end or ending at any heading, and the appendix's tables left out of the count.
+    Then a round on seventeen openly licensed arXiv papers (2026-10-23) found two more of
+    G2's. The subfloat package's `subfigures` and `subtables` number the floats they hold as
+    one display, "Figure 3a" and "Figure 3b": the pointing view writes one mark where the
+    group begins, with every label in it, the one after `\begin` and its floats', and none for
+    its floats, whose captions number parts, as a `subfigure`'s do; a file read inside a group
+    numbers no display of its own. A paper was told its group's figures were cited nowhere
+    and the next one out of order. And a range of cross-references, `\ref{a}--\ref{b}` with
+    any dash, spaces or a line's end around it, cites every display from a to b, as
+    `pointers.py` reads "Figures 2-4" typed in Markdown and two nums a dash joins: of one kind
+    and one document, the first numbered before the last, at most 50 apart. cleveref's
+    `\crefrange{a}{b}` and `\Crefrange` are cross-references now, read the same way, and
+    `\cpagerefrange` a page's; the reader had not known them and printed their labels as
+    words. A paper that cited a range of figures with two `\ref`s a dash joins, and a figure
+    inside the range alone after it, was told the range's last figure was cited before it.
+    Review found three more (fix round 1). With one file a float, `\input` in the group, the
+    labels in the files named nothing, and main, which counted each float, had passed the
+    paper: a file read inside a group now writes its floats' labels as a mark of its own
+    (`printed.JOINED`), which the display the view marked last of the group's kind, the
+    group's, takes on. LaTeX numbers a `table` in a `subfigures` as any table, so only the
+    floats of the group's kind are its parts. And "to" between two cross-references after
+    "Tables", "Figures" or "Figs." is a range, as `_JOIN` in `pointers.py` reads "Figures 2 to
+    4", and no join after a singular; a list's join carries the plural on.
+    Tests: `tests/test_latex_pointers.py`, `tests/test_corruption.py`, `latex_pointers()`,
+    which holds a `\crefrange`, and `latex_display_groups()` with the reading `latex displays
+    cited`, which plants a group's floats in files of their own, a figure in the table group,
+    and pairs that make no range beside every form of range, with `BROKEN` rules for a group
+    numbering each of its floats, its labels or its files' naming nothing, a float of the other
+    kind joining it, a range cited at its ends, read with an en dash only, on one line, or
+    across anything, "to" making no range or one after a singular, cleveref's range cited at
+    its ends, and its span recorded at each label.
 
 ## Zotero is never on the critical path
 
@@ -3024,8 +3063,9 @@ withdrawal or removal of a preprint. A record at PubMed or Europe PMC with neith
 that registry saying no, and is shown as "retracted: no" with its name; "not known" is shown
 only where no registry that answered said either way, never as "no". A Crossref that did not
 answer is said, and is not read as having found nothing (round 1 of #369). Of several
-preprints, the line says for how many of them, with their DOIs and each reason given, and
-each preprint left unchecked says "Crossref did not answer" beside its retraction
+preprints, the line says for how many of them and their DOIs, with the reason, or each
+reason beside its DOI where they differ, since a DOI Crossref throttled is worth asking again
+and one it answered with a 503 may not be (round 1 of #376). Each preprint left unchecked says "Crossref did not answer" beside its retraction
 (`unchecked_by` in the JSON), since its "retracted: no" is then another registry's word
 alone (round 2 of #369). A later version is PubMed's "Update in", Europe PMC's "Preprint of"
 or "Update in", or Crossref's `is-preprint-of`, and all three are asked because they do not
@@ -3033,7 +3073,13 @@ agree: on 2026-10-20 a medRxiv preprint had PubMed's link to its journal version
 Crossref, and another had Crossref's and Europe PMC's and none at PubMed. Each is shown with
 whose word it is. Two links are one version where they share a PMID or a DOI and give
 neither differently; a registry giving PubMed's PMID with another DOI is shown as a second
-version under its own name, not as having said PubMed's DOI (round 2 of #369).
+version under its own name, not as having said PubMed's DOI (round 2 of #369). Joined, each
+identifier keeps the names of the registries that gave it, as `given_by` in the JSON beside
+`said_by`, the registries that link the version at all. Where each gave every identifier the
+names are said once; where PubMed gave the PMID alone and Europe PMC the PMID and a DOI, the
+line reads "DOI 10.5/y (Europe PMC) / PMID 9 (PubMed, Europe PMC)", and not the DOI as
+PubMed's too (round 1 of #376). The reference shown beside them is the first registry's to
+give one, in the order PubMed, Europe PMC.
 
 A registry asked for a kind it does not type is not asked. OpenAlex types a review and a
 preprint and nothing finer, so with a systematic review, a meta-analysis, a guideline, a
@@ -4008,9 +4054,8 @@ that hid LaTeX commands, and a macro named `center` read as a word.
 **Three findings.** `spelling-variant` is one word in the other spelling: once for the
 word, where it first stands, with how many times it is used and what to write. When the
 other usage's spellings are five or more and are used more often than the paper's own, the
-likelier mistake is the line in `paper.yaml`, which `init` writes as `en-GB` for everyone,
-and one `spelling-not-as-declared` at `paper.yaml` takes the place of them all, with the
-twelve most used listed. `spelling-mixed` is for a British paper alone. British usage
+likelier mistake is the line in `paper.yaml`, and one `spelling-not-as-declared` at
+`paper.yaml` takes the place of them all, with the twelve most used listed. `spelling-mixed` is for a British paper alone. British usage
 takes `-ise` or `-ize`, Oxford's being `-ize`, and a paper takes one: the finding is given
 once, at the first word in the ending used less, with both counts. An American paper has
 no such choice, so an `-ise` there is a `spelling-variant`.
@@ -4020,6 +4065,39 @@ no such choice, so an `-ise` there is a `spelling-variant`.
 
 A journal that insists on one English says so in its profile, and G4 already reports a
 paper that declares the other. G14 holds the manuscript to what the paper declares.
+
+**A paper may declare no English, and `init` declares none unless told** (Basile,
+2026-10-23). `init` wrote `english_variant: en-GB` into every new project. Fourteen real
+American papers were checked so, and seven were told they broke their declared spelling,
+which nobody had declared. Now `english_variant` is optional in the schema, `init` writes it
+only with `--english en-GB` or `--english en-US` (any other value is refused, and the values
+it takes are read from the schema), and `Project.english_variant` is None where the line is
+absent. Each reader of it has a rule for a paper that has not said:
+
+- **G14** counts the words each English writes and the other does not, and holds the paper
+  to the English of the more. Where they are level, the paper's English is that of the first
+  such word met, as `spelling-mixed` keeps the ending met first when the two are level. An
+  `-ize` both usages write counts for neither, and a paper with no word of either hears
+  nothing. The words of the fewer are then each a `spelling-variant`, which says that
+  `paper.yaml` declares no English and gives both counts; `spelling-mixed` reads the endings
+  of a paper that is mostly British as it does those of a British one;
+  `spelling-not-as-declared` is never given, since the other English is never the more.
+- **The build** gives the document `lang: en`, English with no region. Pandoc writes `en`
+  into the .docx (`w:lang` in its styles, `dc:language` in its properties). Word 16 reads it
+  as English with no region (LanguageID 9) and proofs it with its American dictionary:
+  checked on 2026-10-23, it marked "Colour" and not "color" in a document so built, as it
+  does in one with no `lang` at all, which pandoc writes as `en-US`. In LaTeX pandoc loads
+  babel's `english`. Citeproc takes CSL's `en-US` locale for `en`, and the live Zotero
+  build names no locale, so `zotero_word.lua` writes `en-US`, CSL's default.
+- **A dataset's date**, which the emitters print when the analysis runs, is written day,
+  month, year ("1 March 2024"), as `written` writes it when given no English. That order is
+  the one of the two that a reader in either English reads without stopping, and it was
+  already what a paper that could not be read got. The R emitter reads the line of
+  `paper.yaml` and, finding none, does the same. `dataset-date-english` holds a date to that
+  order and says that `paper.yaml` declares no English.
+- **The review panel** is told nothing of a variant: the line "English:" is left out.
+- **G4** compares a journal's `english_variant` with the paper's only where the paper
+  declares one.
 
 ## One notation is the manuscript's own, and the space before a unit is the SI's
 
@@ -11543,7 +11621,11 @@ Open, recorded as each change landed:
   as typed: the 300-character limit stops a pasted paragraph, not a sentence of unpublished
   results written as a query. A PMID joins a record with no DOI to a work with one, so where
   OpenAlex gives a preprint the PMID of the paper it became, PubMed's DOI-less record of that
-  paper is shown as the preprint (round 1 of #369; not seen in the answers probed).
+  paper is shown as the preprint (round 1 of #369; not seen in the answers probed). A DOI
+  in a later-version link is read from the end of PubMed's or Europe PMC's reference string,
+  and two links can only be joined where they give the same one: a reference ending in
+  `10.1/x)` beside another's `10.1/x` for the same PMID is shown as two later versions
+  (round 1 of #376; not seen in the answers probed).
 - **The title comparison is one-sided and by words.** A registered title that holds every
   cited word and many more passes, and so does one whose words are the same in another
   order. A notice a publisher deposited as a journal article, with no `update-to`, is read
@@ -15280,6 +15362,21 @@ Open, recorded as each change landed:
   - The hook that runs after a manuscript file is saved does not run this gate yet; the
     findings appear at `check`.
 
+- **A paper that declares no English is held to a count, and is built in no region.**
+  (Basile, 2026-10-23.)
+  - G14 takes the English of the more words, so a draft with as many British spellings as
+    American ones, or one more of the wrong kind, is told the right ones are the strays.
+    Where they are level the first word decides, which is an order, not a reason.
+  - The count is of the words on G14's list, and only those: a paper whose only spellings
+    of either kind are in a name, a quotation or a section left unread has no English, and
+    hears nothing.
+  - G4 does not compare a journal's `english_variant` with such a paper, nor with the
+    English its words are mostly in: a journal that insists on British English and a paper
+    that declares nothing and is written in American pass G4 and G14 alike.
+  - The build writes `lang: en`, and Word and citeproc each take American English for it
+    (Word's proofing, CSL's `en-US` locale, babel's `english` in LaTeX), and the live
+    Zotero build names `en-US`. A paper written in British spelling that declares nothing
+    is so proofed and cited in American; declaring `en-GB` is the way out.
 - **G14's spelling is a list of general English, and reads a capital as a name's.**
   - A word the list does not hold is not read. It has "haemoglobin", "oedema" and
     "randomise", and not "hyperglycaemia", "leucocyte" or "operationalise"; a spelling of
@@ -15996,8 +16093,9 @@ Open, recorded as each change landed:
   lie outside as `dates[1]` in R and `dates[0]` in Python, each its language's way.
 - **The English a dataset's date is printed in is read when the analysis runs.** A
   `paper.yaml` changed afterwards is warned of (`dataset-date-english`), not failed. R reads
-  `english_variant` from its own line of `paper.yaml`, not as YAML, and takes British
-  English where it finds none there: a value in a flow mapping is not seen.
+  `english_variant` from its own line of `paper.yaml`, not as YAML, and takes no English
+  where it finds none there, printing day, month, year: a value in a flow mapping is not
+  seen, so an American paper that declares itself so prints "1 March 2024" from R.
 - **A chosen source's coverage is not compared with a dataset's.** The record says what a
   candidate covers in words (`covers.period`, "1968 to present", "2004 Q1 onwards"), and
   `dataset()`'s `covers` is the extract's, which may rightly be narrower than the source's.
@@ -16153,6 +16251,14 @@ Open, recorded as each change landed:
   counts short. The front matter's and a listing's line breaks are kept.
 
 Closed since, and why each mattered (an open gap goes above this line):
+
+- **A LaTeX `\crefrange` cited nothing, and a range of `\ref`s cited its ends only.** G2
+  said a figure that `\ref{a}--\ref{b}` or `\crefrange{a}{b}` took in, cited by itself only
+  later, was cited out of order, and one cited only by a `\crefrange` not cited at all; the
+  reader did not know cleveref's ranges and printed their labels as words. A range cites
+  every display from its first end to its last now, as a typed one does in Markdown, and the
+  floats of a `subfigures` or a `subtables` are one display, in the group's file or in files
+  it inputs (corpus round, 2026-10-23, and fix round 1).
 
 - **A dataset's name was not held to the record of data sources.** The name was meant to be
   the id of its source in `design/data_sources.yaml`, and nothing said where it was not: an

@@ -10849,6 +10849,78 @@ def test_a_latex_pointer_to_a_table_its_floats_do_not_number_fails(project: Path
     ]
 
 
+def test_a_latex_pointer_that_counts_a_group_s_parts_as_figures_fails(project: Path) -> None:
+    """Corpus round (2026-10-23): the floats of a `subfigures` share one number, Figure 2a and
+    2b, and pass; a pointer typed to Figure 3, as if each part were a figure, fails."""
+    from manuscript_guard.gates.pointers_latex import check_pointers_latex
+
+    shutil.rmtree(project / "manuscript")
+    shutil.copytree(TWIN, project / "manuscript")
+    main = project / "manuscript" / "main.tex"
+    group = ("\\begin{subfigures}\\label{fig:pair}\n"
+             "\\begin{figure}\\caption{Left.}\\label{fig:left}\\end{figure}\n"
+             "\\begin{figure}\\caption{Right.}\\end{figure}\n\\end{subfigures}\n\n")  # fmt: skip
+    text = main.read_text(encoding="utf-8").replace(
+        "\\section{Discussion}", group + "Figure~\\ref{fig:left} is the left.\n\n"
+        "\\section{Discussion}")  # fmt: skip
+    main.write_text(text, encoding="utf-8")
+    assert check_pointers_latex(load_project(project)[0]).failures == ()
+    main.write_text(text.replace("is the left.", "is the left, Figure~3 the right."),
+                    encoding="utf-8")  # fmt: skip
+    failing = check_pointers_latex(load_project(project)[0]).failures
+    assert [(f.code, f.line) for f in failing] == [("pointer-to-nothing", 108)], failing
+
+
+def test_a_latex_group_whose_floats_are_files_of_their_own_is_one_figure(project: Path) -> None:
+    """Fix round 1: a `subfigures` whose floats are each `\\input` from a file of its own is
+    one figure, cited by a label in one of the files, and passes; a pointer typed to Figure 3,
+    as if each file held a figure, fails."""
+    from manuscript_guard.gates.pointers_latex import check_pointers_latex
+
+    shutil.rmtree(project / "manuscript")
+    shutil.copytree(TWIN, project / "manuscript")
+    folder = project / "manuscript"
+    for name in "AB":
+        (folder / f"fig{name}.tex").write_text(
+            f"\\begin{{figure}}\\caption{{{name}.}}\\label{{fig:{name}}}\\end{{figure}}\n",
+            encoding="utf-8")  # fmt: skip
+    main = folder / "main.tex"
+    text = main.read_text(encoding="utf-8").replace(
+        "\\section{Discussion}", "\\begin{subfigures}\n\\input{figA}\n\\input{figB}\n"
+        "\\end{subfigures}\n\nFigure~\\ref{fig:B} is the right.\n\n\\section{Discussion}")
+    main.write_text(text, encoding="utf-8")
+    assert check_pointers_latex(load_project(project)[0]).failures == ()
+    main.write_text(text.replace("is the right.", "is the right, Figure~3 the left."),
+                    encoding="utf-8")  # fmt: skip
+    failing = check_pointers_latex(load_project(project)[0]).failures
+    assert [(f.code, f.line) for f in failing] == [("pointer-to-nothing", 108)], failing
+
+
+@pytest.mark.parametrize("joined", ["--", " to~"])
+def test_a_latex_figure_cited_before_a_range_that_holds_it_fails(
+    project: Path, joined: str
+) -> None:
+    """Corpus round (2026-10-23): `\\ref{a}--\\ref{b}` cites the figures between a and b, and
+    so does `Figures~\\ref{a} to~\\ref{b}` (fix round 1), so "Figures 2-4" before "Figure 3"
+    passes; Figure 4 cited by itself before them fails."""
+    from manuscript_guard.gates.pointers_latex import check_pointers_latex
+
+    shutil.rmtree(project / "manuscript")
+    shutil.copytree(TWIN, project / "manuscript")
+    main = project / "manuscript" / "main.tex"
+    floats = "".join(f"\\begin{{figure}}\\caption{{{name}.}}\\label{{fig:{name}}}\\end{{figure}}\n"
+                     for name in "bcd")  # fmt: skip
+    text = main.read_text(encoding="utf-8").replace(
+        "\\section{Discussion}", floats + f"\nFigures~\\ref{{fig:b}}{joined}\\ref{{fig:d}} "
+        "show the rest, and Figure~3 the middle.\n\n\\section{Discussion}")  # fmt: skip
+    main.write_text(text, encoding="utf-8")
+    assert check_pointers_latex(load_project(project)[0]).failures == ()
+    main.write_text(text.replace("\nFigures~", "\nFigure~\\ref{fig:d} first. Figures~"),
+                    encoding="utf-8")  # fmt: skip
+    failing = check_pointers_latex(load_project(project)[0]).failures
+    assert [(f.code, f.line) for f in failing] == [("cited-out-of-order", 107)], failing
+
+
 def test_a_latex_appendix_s_table_is_not_held_to_the_main_text_s_order(project: Path) -> None:
     """A table in the appendix, cited first in the Methods as "Supplementary Table", is the
     supplement's and passes; the same table outside the appendix is cited out of order and
@@ -21840,6 +21912,62 @@ def test_a_paragraph_pasted_from_a_paper_in_the_other_english_is_caught(project:
         ("hemoglobin", "haemoglobin"),
     ):
         assert f"{word} ({instead}, once)" in finding.hint
+
+
+def _declaring_no_english(root: Path) -> None:
+    """`paper.yaml` as `init` writes it since Basile's decision of 2026-10-23: no English."""
+    path = root / "paper.yaml"
+    paper = path.read_text(encoding="utf-8")
+    assert paper.count("english_variant: en-GB\n") == 1, "the fixture changed under this test"
+    path.write_text(paper.replace("english_variant: en-GB\n", ""), encoding="utf-8")
+
+
+def test_declaring_no_english_a_co_author_s_word_in_the_fewer_spelling_is_caught(
+    project: Path,
+) -> None:
+    """One co-author writes "colour", another "color", and nobody declared either: the paper
+    is held to the English most of its words are in, and the stray is said where it stands."""
+    _declaring_no_english(project)
+    text = main_md(project).read_text(encoding="utf-8")
+    old = "Several limitations follow from the design."
+    assert old in text, "the fixture changed under this test"
+    edited = text.replace(
+        old, old + " The colour of a tablet is rarely recorded, and the color of its coating never."
+    )
+    main_md(project).write_text(edited, encoding="utf-8")
+    assert spelling_findings(project) == [
+        (
+            "spelling-variant",
+            line_of(edited, "The colour of a tablet"),
+            "'color' is the American spelling of 'colour', used once; paper.yaml declares no "
+            "English, and the paper has 2 words in British spelling to 1 in American",
+        )
+    ]
+
+
+def test_declaring_no_english_a_mostly_american_paper_hears_of_its_british_word(
+    project: Path,
+) -> None:
+    """The case behind the decision: a paper in American English that declared nothing was
+    told it broke the British English `init` had declared for it. Now the British word is
+    the one said, and nothing about a setting nobody made."""
+    _declaring_no_english(project)
+    supplement = project / "manuscript" / "supplementary" / "S1_code_lists.md"
+    supplement.write_text(
+        supplement.read_text(encoding="utf-8")
+        + "\nThe color of the tumor, the anemia, the edema and the hemoglobin level were not "
+        "coded.\n",
+        encoding="utf-8",
+    )
+    text = main_md(project).read_text(encoding="utf-8")
+    assert spelling_findings(project) == [
+        (
+            "spelling-variant",
+            line_of(text, "We analysed"),
+            "'analysed' is the British spelling of 'analyzed', used once; paper.yaml declares "
+            "no English, and the paper has 5 words in American spelling to 1 in British",
+        )
+    ]
 
 
 def test_a_name_a_quotation_and_a_citation_key_in_the_other_spelling_are_left_alone(

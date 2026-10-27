@@ -23956,6 +23956,31 @@ def test_a_citation_number_after_a_capital_inside_a_word_is_a_number(tmp_path: P
         assert kinds == {**dict.fromkeys(raised, UNCLASSIFIED), "^99m^Tc": TERM}
 
 
+def test_a_subscripted_index_after_a_capital_is_a_number(tmp_path: Path) -> None:
+    """A subscript is part of the name it is typed in, and a term holding one counted
+    wherever any term does, after a capital among them: "HR~2~" and "OR~2~" were `r2`, and
+    G2 and the audit passed their numbers. A name opened at its word or at a capital after
+    a lower-case letter, "HbA~1c~", "ppFEV~1~" or, with CO2 declared, "pCO~2~", is a term."""
+    from manuscript_guard.audit import audit
+    from manuscript_guard.classify import TERM, UNCLASSIFIED, Classifier
+    from manuscript_guard.text.masking import mask
+    from manuscript_guard.text.tokens import find_atoms
+
+    sunk = ("HR~2~", "OR~2~")
+    names = ("HbA~1c~", "ppFEV~1~", "pCO~2~", "CO~2~", "EtCO~2~")
+    text = f"We read {sunk[0]} and {sunk[1]} beside {', '.join(names)}.\n"
+    paper = tmp_path / "paper.md"
+    paper.write_text(text.replace(", pCO~2~, CO~2~, EtCO~2~", ""), encoding="utf-8")
+    found = audit([paper], [_outputs(tmp_path, '{"n": 1}')]).unmatched
+    assert sorted(c.text.rstrip("~") for c in found) == ["HR~2", "OR~2"]
+    for classifier in (Classifier.load(extra_terms=("CO2",)),
+                       Classifier.load(rendered=True, extra_terms=("CO2",))):  # fmt: skip
+        kinds = {a.text.rstrip("~"): classifier.classify(a).kind
+                 for a in find_atoms(text, mask(text))}  # fmt: skip
+        expected = {name.rstrip("~"): TERM for name in names}
+        assert kinds == {**expected, "HR~2": UNCLASSIFIED, "OR~2": UNCLASSIFIED}
+
+
 @pytest.mark.parametrize(
     "title", ["Literatur und Forschungsstand", "Referencias teóricas", "Bibliografia e metodi"]
 )

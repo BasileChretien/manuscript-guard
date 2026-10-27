@@ -16705,9 +16705,12 @@ What papers converted from Word showed (see "What papers converted from Word sho
   tells "CCR2" from them. And a word with a capital after a lower-case letter is read as
   a name from that capital, so "preCO2", with CO2 declared, is a term, and so is a word
   that ends in a term's letters after one, "MyIL-2".
-  A subscript is held to none of this, only a superscript is: "HR~2~", "OR~2~" and
-  "PharmD~2~" read as `r2` and `d2`, terms, where main reported them; an index set below
-  the line labels something far more often than it holds a result.
+  A term holding a subscript's place counts where a word opens, at a capital after a
+  lower-case letter, or directly after another term, so that "pCO~2~", "EtCO~2~" and
+  "ppFEV~1~" are terms; "PharmD~2~" is a capital after a lower-case letter too, and reads
+  as `d2`, a term, where main reported it. Told from "EtCO~2~" it would be by its word
+  opening with a capital, and from "pO~2~", with O2 declared, by the one capital before the
+  subscript, and either rule refuses a name an author writes.
 - **A term counts directly after any other.** "PaO2FiO2" and "CD8CD4" are two terms each
   because the second counts where the first ends, and that holds after a term with no
   digit as well: with MeSH among the terms, "meshd2" is `mesh` and `d2`. Holding the second
@@ -16717,6 +16720,15 @@ What papers converted from Word showed (see "What papers converted from Word sho
   address at a bare IP number, is read as a number.
 
 Closed since, and why each mattered (an open gap goes above this line):
+
+- **A subscripted index after capitals read as a term.** A term holding a subscript's place
+  counted wherever any term does, after a capital among them, so "HR~2~" and "OR~2~" were
+  `r2`, and G2 and the audit passed their numbers, where main reported them. Such a term
+  counts now where a word opens, at a capital after a lower-case letter, or directly after
+  another term, and not after a capital that ends no term: "HR~2~" and "OR~2~" are unbound
+  numbers, and "CO~2~", "pCO~2~", "HbA~1c~", "ppFEV~1~" and "PaO~2~FiO~2~" names
+  (`test_a_subscripted_index_after_a_capital_is_a_number`). "PharmD~2~" is still a term,
+  above.
 
 - **A paper that declared no English heard nothing of its journal's.** Since `english_variant`
   became optional, G4 compared a journal's English with the paper's only where the paper

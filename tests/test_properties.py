@@ -5912,7 +5912,7 @@ def _an_interleukin_is_a_number(patch: pytest.MonkeyPatch) -> None:
 def _a_term_is_found_inside_a_word(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard import classify
 
-    def anywhere(text: str, terms: tuple[str, ...]) -> list[str] | None:
+    def anywhere(text: str, terms: tuple[str, ...], *_marked: frozenset[int]) -> list[str] | None:
         rest, used = text.lower(), []
         for term in terms:
             if term and term in rest:
@@ -5957,9 +5957,26 @@ def _a_capital_opens_no_term_after_it(patch: pytest.MonkeyPatch) -> None:
 def _a_superscript_s_digits_open_a_term_at_a_capital(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard import classify
 
-    terms_covering = classify._terms_covering
+    names_covering = classify._names_covering
     patch.setattr(classify, "_names_covering",
-                  lambda text, _raised, terms: terms_covering(text, terms))  # fmt: skip
+                  lambda text, _raised, terms, sunk: names_covering(text, frozenset(), terms,
+                                                                    sunk=sunk))  # fmt: skip
+
+
+def _a_subscript_s_digits_open_a_term_after_a_capital(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import classify
+
+    names_covering = classify._names_covering
+    patch.setattr(classify, "_names_covering",
+                  lambda text, raised, terms, sunk: names_covering(text, raised, terms))
+
+
+def _a_subscript_s_digits_open_a_term_only_at_a_word(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import classify
+
+    names_covering = classify._names_covering
+    patch.setattr(classify, "_names_covering",
+                  lambda text, raised, terms, sunk: names_covering(text, raised | sunk, terms))
 
 
 def _no_term_counts_directly_after_another(patch: pytest.MonkeyPatch) -> None:
@@ -13389,6 +13406,14 @@ BROKEN = {
     ),
     "a superscript's digits open a term at a capital": (
         _a_superscript_s_digits_open_a_term_at_a_capital,
+        test_an_address_and_an_interleukin_are_no_numbers_and_a_number_beside_them_is,
+    ),
+    "a subscript's digits open a term after a capital": (
+        _a_subscript_s_digits_open_a_term_after_a_capital,
+        test_an_address_and_an_interleukin_are_no_numbers_and_a_number_beside_them_is,
+    ),
+    "a subscript's digits open a term only at a word": (
+        _a_subscript_s_digits_open_a_term_only_at_a_word,
         test_an_address_and_an_interleukin_are_no_numbers_and_a_number_beside_them_is,
     ),
     "no term counts directly after another": (

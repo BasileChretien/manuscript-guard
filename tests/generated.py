@@ -2596,7 +2596,16 @@ TERM_LOOKALIKES = ("April-12", "Brazil-3", "until-15")
 #: without its signs it stands hard against that capital, "PharmD2" holding `d2` and
 #: "ApoB12" `b12`, and it is a number still.
 RAISED_AFTER_A_CAPITAL = ("PharmD^2^", "ApoB^12^", "dB^12^")
-NOT_NAMES = ("12", "3.4", "12@3.5", "40@lab", *TERM_LOOKALIKES, *RAISED_AFTER_A_CAPITAL)
+#: A subscript is part of the name it is typed in, where the name opens its word, at a
+#: capital after a lower-case letter, or after another name: "HbA~1c~", "ppFEV~1~" and
+#: "PaO~2~FiO~2~" are names. An index set below the line after a capital, "HR~2~" and
+#: "OR~2~", is a number, though `r2` is a term.
+SUNK_NAMES = ("HbA~1c~", "ppFEV~1~", "PaO~2~FiO~2~")
+SUNK_AFTER_A_CAPITAL = ("HR~2~", "OR~2~")
+NOT_NAMES = (
+    "12", "3.4", "12@3.5", "40@lab", *TERM_LOOKALIKES, *RAISED_AFTER_A_CAPITAL,
+    *SUNK_AFTER_A_CAPITAL,
+)  # fmt: skip
 #: Words to put between them: none names a class or a time, which a number after it is a
 #: label of ("cohort 12", "week 12").
 _BETWEEN_NAMES = ("reports", "were", "included", "the", "of", "and", "found", "among")
@@ -2608,7 +2617,7 @@ def named_numbers(draw: st.DrawFn) -> tuple[str, dict[str, str]]:
     words and a separator drawn between them; and what each is: "address", "name" or
     "number"."""
     planted = [(text, "address") for text in NUMBERED_ADDRESSES]
-    planted += [(text, "name") for text in (*INTERLEUKINS, *NAMES_IN_WORDS)]
+    planted += [(text, "name") for text in (*INTERLEUKINS, *NAMES_IN_WORDS, *SUNK_NAMES)]
     planted += [(text, "number") for text in NOT_NAMES]
     gaps = st.sampled_from((" ", ", ", "; ", " and ", " (", ") ", ". "))
     # Words first, so that no number opens the line, where it is a list's numbering.
@@ -2616,7 +2625,8 @@ def named_numbers(draw: st.DrawFn) -> tuple[str, dict[str, str]]:
     for piece, _kind in draw(st.permutations(planted)):
         filler = " ".join(draw(st.lists(st.sampled_from(_BETWEEN_NAMES), max_size=3)))
         text += f"{draw(gaps)}{filler} {piece}{draw(gaps)}"
-    return text.strip() + "\n", dict(planted)
+    # An atom is cut before the `~` that closes its last subscript.
+    return text.strip() + "\n", {piece.removesuffix("~"): kind for piece, kind in planted}
 
 
 # -------------------------------------------------------------------------- quotations

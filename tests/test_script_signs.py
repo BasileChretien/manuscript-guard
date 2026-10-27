@@ -402,6 +402,24 @@ def test_a_superscript_after_a_capital_inside_a_word_makes_no_term() -> None:
     assert unbound("In April-12 and Brazil-3 alike.") == ["April-12", "Brazil-3"]
 
 
+def test_a_subscript_after_a_capital_makes_no_term() -> None:
+    """A term holding a subscript's place counted wherever any term does, after a capital
+    among them, so an index set below the line after an abbreviation was a name: "HR~2~"
+    and "OR~2~" read as `r2` and their numbers went unchecked. Such a term counts where a
+    word opens, where a capital follows a lower-case letter, or directly after another
+    term."""
+    from manuscript_guard.classify import _names_covering
+
+    assert unbound("An HR~2~ and an OR~2~ were sought.") == ["HR~2", "OR~2"]
+    assert _names_covering("HR2", frozenset(), ("r2",)) == ["r2"], "typed, it is CCR2's"
+    assert _names_covering("HR2", frozenset(), ("r2",), sunk=frozenset({2})) is None
+    # A subscript is part of the name it is typed in.
+    assert unbound("A raised pCO~2~, EtCO~2~, CO~2~ and pO~2~.", ("CO2", "O2")) == []
+    assert unbound("HbA~1c~, ppFEV~1~, FEV~1~ and PaO~2~FiO~2~ fell.") == []
+    assert _names_covering("pao2fio2", frozenset(), ("pao2", "fio2"),
+                           sunk=frozenset({3, 7})) == ["pao2", "fio2"]  # fmt: skip
+
+
 #: What the child process of the test below runs: the atoms of its first argument that
 #: nothing classifies, with a term of one space declared, as `unbound` gives them.
 READ_WITH_A_SPACE_DECLARED = N.join(

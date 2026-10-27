@@ -1986,10 +1986,8 @@ The result is compiled and packed by the code above, and checked three times:
   `longtable`'s caption, a page `\includepdf` takes in and a float numbered by a command of
   the author's count only by the bindings they place, as G2 leaves their kind uncounted. A
   table or figure in the appendix counts against the journal's limits, though G2 holds it
-  as the supplement's. The submission pack's title page still declares the tables and
-  figures `measure` counts of the printed view, the bindings, where G4 holds the numbered
-  displays (`gates.journal.measured`): the two differ for a LaTeX paper with a figure placed
-  by hand until `build/submission.py` asks `measured`.
+  as the supplement's. The submission pack's title page declares what G4 holds, the
+  numbered displays (`gates.journal.measured`, 2026-10-27).
 - A class's front matter command an author provides for portability, `\providecommand` or
   `\@ifundefined`, is the author's though the class keeps its own, and its argument is read
   as prose, as before the table held it. Highlights, read in the front matter, count as main
@@ -11555,8 +11553,7 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   for Windows. A release before this one reads a record with `citations` as no record.
 - **Text structure.** On Linux, `Main.MD` is said to be an `.md` file that is not read. Of
   several files, the Methods heading is chosen by name within each file, so an earlier
-  file's "Overview of existing methods" wins over a later "# Methods"; "II. Results" is not
-  set aside. A Lancet "# Summary" with no `abstract_title` is taken for the title, and a
+  file's "Overview of existing methods" wins over a later "# Methods". A Lancet "# Summary" with no `abstract_title` is taken for the title, and a
   Discussion's "Findings in context" or JAMA's "### Findings" reports. A pointer "in
   Appendix 1" or "in Supplementary Material" after its number is not read as the
   supplement's, "S" carries only across a range, and a reference-style image, a one-column
@@ -16965,9 +16962,10 @@ Closed since, and why each mattered (an open gap goes above this line):
   References", "7. References" and "**References**" were read as typed, so G4 counted the
   list's words as main text and G14 read its authors' initials as abbreviations, where the
   recycling check, which reads the title as printed, set the list apart. `Section.
-  is_references` reads the title as printed now (`section_names.plain`). "II. Results" is
-  still not set aside as no Methods, and a later file's "# Methods" still loses to an
-  earlier file's "Overview of existing methods", above: both are read outside these files.
+  is_references` reads the title as printed now (`section_names.plain`), and
+  `NOT_METHODS_SECTIONS` takes a Roman number before a part's name as `METHODS_SECTIONS`
+  does, so "III. Results" is set aside as no Methods. A later file's "# Methods" still
+  loses to an earlier file's "Overview of existing methods", above.
 
 - **An earlier paper's citation by author and year cut a passage the manuscript repeats.**
   "(Smith et al., 2019)" was three words the manuscript did not have beside its citation key,

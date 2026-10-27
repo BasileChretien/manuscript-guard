@@ -64,6 +64,17 @@ def test_the_title_page_declares_the_words_the_build_prints(project: Path) -> No
     assert f"main text {measure(printed).main_text_words}." in page
 
 
+def test_the_title_page_declares_the_counts_g4_checks(project: Path) -> None:
+    """The title page took `measure(main_text(...))` while G4 took `measured(...)`, which
+    also counts a LaTeX manuscript's floats as LaTeX numbers them: a figure placed by hand
+    was declared to the editor as none, and checked against the journal's limit as one."""
+    from manuscript_guard.build.submission import _counts
+    from manuscript_guard.gates.journal import measured
+
+    loaded = load_project(project)[0]
+    assert _counts(loaded) == measured(loaded)
+
+
 def test_affiliation_superscripts_follow_the_declared_order(project: Path) -> None:
     page = title_page(load_project(project)[0])
     assert "Ada Example, PharmD, MSc^1^" in page

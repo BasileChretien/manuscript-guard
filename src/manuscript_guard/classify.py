@@ -367,7 +367,7 @@ def _opened_by_the_supplement(section: Sequence[str]) -> bool:
 # as the pre-specified threshold: exactly the failure `methods_only` was built to close,
 # in a subsection that appears in most pharmacoepidemiology papers.
 NOT_METHODS_SECTIONS = re.compile(
-    r"^\s*(?:\d+(?:\.\d+)*[.)]?\s*)?"
+    r"^\s*(?:\d+(?:\.\d+)*[.)]?\s*|[IVXLC]+[.)]\s*)?"  # "3. Results", "III. Results"
     r"(?:results?|findings|discussion|conclusions?|interpretation|introduction|background|"
     r"abstract|summary|limitations)"
     r"\s*$",

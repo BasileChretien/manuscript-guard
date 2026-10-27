@@ -33,7 +33,6 @@ import yaml
 from manuscript_guard import __version__
 from manuscript_guard.contracts._schema import ContractError, read_structured
 from manuscript_guard.contracts.project import Project
-from manuscript_guard.text.sections import measure
 
 CREDIT_ORDER = (
     "Conceptualization",
@@ -231,9 +230,9 @@ def _counts(project: Project):
 
     The same text the journal gate measures, so the count declared is the count checked.
     """
-    from manuscript_guard.gates.journal import main_text
+    from manuscript_guard.gates.journal import measured
 
-    return measure(main_text(project))
+    return measured(project)
 
 
 def credit_statement(project: Project) -> str:

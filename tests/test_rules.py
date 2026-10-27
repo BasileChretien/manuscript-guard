@@ -228,3 +228,12 @@ def test_a_tex_length_in_a_definition_s_body_is_layout_and_in_the_text_a_number(
         "20cc@7": UNCLASSIFIED, "8pc@7": UNCLASSIFIED, "24pt@9": UNCLASSIFIED,
         "24@9": UNCLASSIFIED, "500bp@9": UNCLASSIFIED, "12mu@9": UNCLASSIFIED,
     }  # fmt: skip
+
+
+@pytest.mark.parametrize("title", ["Results", "3. Results", "III. Results", "IV) Discussion"])
+def test_a_part_that_reports_is_not_the_methods_however_it_is_numbered(title: str) -> None:
+    """`NOT_METHODS_SECTIONS` took an Arabic number before the name but not a Roman one,
+    as `METHODS_SECTIONS` does, so "III. Results" was not set aside (Known gaps, 11544)."""
+    from manuscript_guard.classify import NOT_METHODS_SECTIONS
+
+    assert NOT_METHODS_SECTIONS.match(title.lower())

@@ -9888,6 +9888,17 @@ def _emitted(root: Path, **displays: str) -> None:
         ("The arms differed, z = 3.30, P = 0.01.", ["p-inconsistent"]),
         ("A one-sided t(23) = 2.45, p = .011, as planned.", []),
         ("<!-- t(23) = 2.45, p = .40 -->", []),
+        # A middle dot for the point, as the Lancet sets it, was read as no number, so a
+        # paper set that way had none of its tests judged; and degrees of freedom with a
+        # thousands' comma were read as two.
+        ("Earlier work found t(23) = 2\N{MIDDLE DOT}45, p = 0\N{MIDDLE DOT}40 "
+         "[@fictionalHepaticCohort2021].", ["p-decision-error"]),
+        ("Earlier work found t(23) = 2\N{MIDDLE DOT}45, p = 0\N{MIDDLE DOT}022 "
+         "[@fictionalHepaticCohort2021].", []),
+        ("The arms differed, z = 4\N{MIDDLE DOT}50, P = 6\N{MIDDLE DOT}8\N{MIDDLE DOT}10^-4^.",
+         ["p-inconsistent"]),
+        ("The arms differed, *F*(1, 1,234) = 4.50, *P* = 0.30.", ["p-decision-error"]),
+        ("The arms differed, t = 2.45, df = 1,234, P = 0.30.", ["p-decision-error"]),
     ],
 )
 def test_a_p_that_does_not_follow_from_its_statistic_is_found(

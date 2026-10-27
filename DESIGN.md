@@ -10943,8 +10943,9 @@ Added by the adversarial review, verified and **not** fixed:
   own, "P = .022 (t(23) = 2.45); P = .40 (t(30) = 0.85)", the first statistic is judged
   with the second's P and reported (round 1 of #285, where this said such a P was not
   read; `test_a_p_written_before_its_statistic_is_read_as_the_next_one_s`). A number written
-  with a middle dot or a comma for its point, "0·62" or "0,62", is not read at all, so a
-  paper set that way has none of its tests judged; a comma after a number with its point,
+  with a comma for its point, "0,62", is not read at all, so a paper set that way has none
+  of its tests judged (a middle dot, "0·62", is read as a point; see "Closed since"); a
+  comma after a number with its point,
   "P = 0.40,12", is the sentence's (round 1 of #336), so in such a paper a point that groups
   thousands is read as a point, "1.234,5" as 1.234 (pinned by
   `test_a_point_that_groups_thousands_in_a_decimal_comma_paper_is_read_as_a_point`). A P above 1 is not judged. A sentence ends at a stop before a
@@ -16748,6 +16749,20 @@ Closed since, and why each mattered (an open gap goes above this line):
   no word on what changed after it was agreed was said to have one. "deviation" after
   "standard" names no Deviations now; "Protocol deviations" and "Deviations from the plan"
   still do (`test_a_standard_deviation_is_no_deviation_from_the_plan`).
+
+- **A test set with a middle dot for its point was not read.** "t(23) = 2·45, p = 0·40", as
+  the Lancet sets numbers, was refused as a decimal comma is, so such a paper had none of
+  its tests judged by the reading of a P against its statistic (G8, the
+  audit and the literature check). A middle dot between digits is a point now, in the
+  statistic, its degrees of freedom and its P, and a middle dot before a power of ten is
+  still a multiplication sign, "6·8·10^-4^". Degrees of freedom with a thousands' comma,
+  "F(1, 1,234)" or "df = 1,234", were read as two numbers and the test dropped; a comma
+  that can be either is read the way that gives the test as many degrees of freedom as it
+  has, "F(1,234)" as 1 and 234 and "t(1,234)" as 1,234, and where both ways do, nothing is
+  read (`test_a_p_that_does_not_follow_from_its_statistic_is_found`). The decimal comma is
+  still open, above. The P of an interval's sentence is read by the same pattern, so a P
+  written "0·03" after an interval is read now, though the interval's own numbers with a
+  middle dot are not (`stats/intervals.py`).
 
 - **An escaped backtick opened a code span for G2's escapes.** `import` writes a backslash
   before every backtick typed in Word, and the pattern that paired backtick runs took the

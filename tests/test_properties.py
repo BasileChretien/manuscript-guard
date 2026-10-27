@@ -3324,7 +3324,7 @@ def _reported_tests(draw: st.DrawFn) -> tuple[str, list[tuple[Any, ...]]]:
     for index in range(len(_TEST_FORMS)):
         plans += [(index, kind) for kind in ("moderate", "large", "far", "near", "quiet")]
     plans += [(-1, "next sentence"), (-1, "two statistics"), (-1, "middle dot"),
-              (-1, "decimal comma"), (-1, "reference after")]  # fmt: skip
+              (-1, "decimal comma"), (-1, "reference after"), (-1, "thousands")]  # fmt: skip
     shapes = draw(st.permutations(("e", "x10", "<")))
     sentences: list[tuple[str, tuple[Any, ...] | None]] = []
     for number, (index, plan) in enumerate(draw(st.permutations(plans))):
@@ -3332,15 +3332,41 @@ def _reported_tests(draw: st.DrawFn) -> tuple[str, list[tuple[Any, ...]]]:
             s, df, _p = statistic("t", _MODERATE)
             sentences.append((f"t({df[0]}) = {s}. {words().capitalize()} p = .40", None))
             continue
-        if plan in ("middle dot", "decimal comma"):
-            # A decimal written with a middle dot, in the P, or a comma, in the statistic:
-            # not read at all, rather than read as its whole part (round 1 of #285).
-            s, df, p = statistic("t", _MODERATE)
-            if plan == "middle dot":
-                printed = f"{p:.3f}".replace(".", "\N{MIDDLE DOT}")
-                sentences.append((f"t({df[0]}) = {s}, p = {printed}", None))
+        if plan == "middle dot":
+            # A decimal written with a middle dot, as the Lancet sets one, in the statistic
+            # and the P, and in a P's mantissa before a middle dot that multiplies by a
+            # power of ten: read with its point, where none was read at all.
+            kind = draw(st.sampled_from(("t", "z")))
+            s, df, p = statistic(kind, _MODERATE if kind == "t" else _LARGE)
+            dot = "\N{MIDDLE DOT}"
+            if kind == "t":
+                printed = f"{p:.3f}".replace(".", dot)
             else:
-                sentences.append((f"t({df[0]}) = {s.replace('.', ',')}, p = {p:.3f}", None))
+                mantissa, exponent = f"{p:.1e}".split("e")
+                printed = f"{mantissa.replace('.', dot)}{dot}10^{int(exponent)}^"
+            symbol = f"t({df[0]})" if kind == "t" else "z"
+            s = s.replace(".", dot)
+            sentences.append((f"{symbol} = {s}, p = {printed}",
+                              (0, kind, s, df, "=", printed, "right")))  # fmt: skip
+            continue
+        if plan == "decimal comma":
+            # A decimal written with a comma, in the statistic: not read at all, rather
+            # than read as its whole part (round 1 of #285).
+            s, df, p = statistic("t", _MODERATE)
+            sentences.append((f"t({df[0]}) = {s.replace('.', ',')}, p = {p:.3f}", None))
+            continue
+        if plan == "thousands":
+            # Degrees of freedom with a thousands' comma, in brackets after another and
+            # after "df =" alone: read whole, where no test was read.
+            kind = draw(st.sampled_from(("t", "F")))
+            value = draw(st.integers(*_MODERATE[kind])) / 1000 + 0.0003
+            df = (draw(st.integers(1, 5)),) * (kind == "F") + (draw(st.integers(1000, 99999)),)
+            s = f"{value:.2f}"
+            sign, printed = _printed_p(draw, _true_p(kind, value, df), "=")
+            written = tuple(f"{d:,}" for d in df)
+            text = (f"F({written[0]}, {written[1]}) = {s}, p {sign} {printed}" if kind == "F"
+                    else f"t = {s}, df = {written[0]}, P {sign} {printed}")  # fmt: skip
+            sentences.append((text, (0, kind, s, written, sign, printed, "right")))
             continue
         if plan == "reference after":
             # A reference set inline after a number that has its point, as text taken from
@@ -3441,10 +3467,28 @@ def _less_than_is_read_as_equal_to(patch: pytest.MonkeyPatch) -> None:
 def _a_decimal_comma_is_read_as_a_whole_number(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.stats import reported
 
-    refusal = r"(?(stat_point)|(?![\N{MIDDLE DOT},]\d))"
+    refusal = r"(?(stat_point)|(?!,\d))"
     assert refusal in reported._STATISTIC.pattern
     pattern = reported._STATISTIC.pattern.replace(refusal, "")
     patch.setattr(reported, "_STATISTIC", re.compile(pattern))
+
+
+def _a_middle_dot_is_no_decimal_point(patch: pytest.MonkeyPatch) -> None:
+    """The rule before a middle dot was read as a point: a number written with one was not
+    read at all."""
+    from manuscript_guard.stats import reported
+
+    point, refusal = r"[.\N{MIDDLE DOT}]", r"(?(stat_point)|(?!,\d))"
+    assert point in reported._STATISTIC.pattern and refusal in reported._STATISTIC.pattern
+    pattern = reported._STATISTIC.pattern.replace(point, r"\.").replace(
+        refusal, r"(?(stat_point)|(?![\N{MIDDLE DOT},]\d))")  # fmt: skip
+    patch.setattr(reported, "_STATISTIC", re.compile(pattern))
+
+
+def _degrees_with_a_thousands_comma_are_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import reported
+
+    patch.setattr(reported, "_GROUPED", re.compile(r"(?!)"))
 
 
 def _a_comma_after_a_point_is_taken_for_a_decimal_comma(patch: pytest.MonkeyPatch) -> None:
@@ -3452,7 +3496,7 @@ def _a_comma_after_a_point_is_taken_for_a_decimal_comma(patch: pytest.MonkeyPatc
     the number had its point already."""
     from manuscript_guard.stats import reported
 
-    refusal = r"(?![\N{MIDDLE DOT},]\d)"
+    refusal = r"(?!,\d)"
     for name, conditional in (("_STATISTIC", rf"(?(stat_point)|{refusal})"),
                               ("_P", rf"(?(p_point)|(?(power)|{refusal}))")):  # fmt: skip
         expression = getattr(reported, name)
@@ -3464,7 +3508,7 @@ def _a_comma_after_a_point_is_taken_for_a_decimal_comma(patch: pytest.MonkeyPatc
 def _a_middle_dot_is_read_as_the_end_of_a_p(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.stats import reported
 
-    pattern = reported._P.pattern.replace(r"[\N{MIDDLE DOT},]\d", r"\d")
+    pattern = reported._P.pattern.replace(r"(?P<p_point>\.|", r"(?P<p_point>\.|(?!)")
     assert pattern != reported._P.pattern
     patch.setattr(reported, "_P", re.compile(pattern))
 
@@ -12417,6 +12461,14 @@ BROKEN = {
     ),
     "a P written with a middle dot is read as its whole part": (
         _a_middle_dot_is_read_as_the_end_of_a_p,
+        test_a_reported_test_is_found_where_it_stands_and_its_p_judged_by_its_statistic,
+    ),
+    "a statistic written with a middle dot is not read": (
+        _a_middle_dot_is_no_decimal_point,
+        test_a_reported_test_is_found_where_it_stands_and_its_p_judged_by_its_statistic,
+    ),
+    "degrees of freedom with a thousands' comma are not read": (
+        _degrees_with_a_thousands_comma_are_not_read,
         test_a_reported_test_is_found_where_it_stands_and_its_p_judged_by_its_statistic,
     ),
     "a test its sentence calls one-sided or adjusted is judged as two-sided": (

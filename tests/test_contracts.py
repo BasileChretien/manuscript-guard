@@ -114,6 +114,38 @@ def test_utf8_is_still_read_whatever_its_line_endings(
     assert read_structured(path) == {"who": "Renée", "text": "one\ntwo\n"}
 
 
+@pytest.mark.parametrize("ending", ["\n", "\r\n"], ids=["LF", "CRLF"])
+def test_json_with_the_mark_of_utf8_is_read_as_yaml_with_it_is(ending: str, tmp_path: Path) -> None:
+    """Notepad's "UTF-8 with BOM", and Windows PowerShell 5's `Out-File -Encoding utf8`, put
+    the mark in front. The JSON parser refused it in its own words, "Unexpected UTF-8 BOM",
+    where the same mark in front of YAML was always read."""
+    path = tmp_path / "hand.json"
+    path.write_bytes(b"\xef\xbb\xbf" + ending.join(['{"who": "Renée",', ' "n": 77}', ""]).encode())
+
+    assert read_structured(path) == {"who": "Renée", "n": 77}
+
+
+def test_a_fragment_with_the_mark_of_utf8_loads_with_the_rest(tmp_path: Path) -> None:
+    """The route `check` takes to it: the fragment's values are in the namespace."""
+    root = a_project(tmp_path / "paper")
+    (root / "results").mkdir()
+    example = Path(__file__).parents[1] / "example" / "results" / "01_disproportionality.json"
+    (root / "results" / "01.json").write_bytes(b"\xef\xbb\xbf" + example.read_bytes())
+    project, _report = load_project(root)
+
+    plain = tmp_path / "plain"
+    a_project(plain)
+    (plain / "results").mkdir()
+    (plain / "results" / "01.json").write_bytes(example.read_bytes())
+    unmarked, _ = load_project(plain)
+
+    marked, _results, _literature, report = load_namespace(project)
+    assert marked, "the example's values"
+    plain_values, _results, _literature, plain_report = load_namespace(unmarked)
+    assert sorted(marked) == sorted(plain_values)
+    assert {f.code for f in report.findings} == {f.code for f in plain_report.findings}
+
+
 # ---------------------------------------------------------------- a value the parser will not make
 
 

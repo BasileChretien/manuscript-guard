@@ -12369,10 +12369,10 @@ Open, recorded as each change landed:
   resumed or compacted one has its note already), and a stop reads every new or changed one
   before it checks, so hundreds of megabytes under `literature/sources/`, read from a cold
   disk ahead of a check that takes nearly 45 s, can still reach the 60 s timeout and end with
-  nothing said. Only hidden files and `__pycache__`
-  are passed over, so Word's `~$main.docx`, Emacs's `#main.md#` and `main.md~`, and Windows'
-  `Thumbs.db` count as changes, and the line can follow a turn that changed nothing the
-  gates read. A file that cannot be read is read again at every stop (round 1 of #366).
+  nothing said. What an editor or the system leaves beside a file is passed over by its
+  name (see "Closed since"), so one under a name of its own, a lock file of an editor not
+  named there, still counts as a change. A file that cannot be read is read again at every
+  stop (round 1 of #366).
 - **On Windows every hook misread a name outside ASCII.** The event was read from standard
   input as text, which on Windows is the system's ANSI code page, what Python gives a pipe,
   and not the console's (so `chcp 65001` changed nothing), and the tools write it as UTF-8
@@ -12828,10 +12828,8 @@ Open, recorded as each change landed:
   another route keeps the older wording: a figure's `.guard.yaml`, `methods.lock`. So does a
   folder under `manuscript/` named like a source, `notes.md`: the gates that read text name
   it, but G11 reads bytes for the digest and reports "PermissionError", and `review` ends
-  in a traceback on it, as before, with or without the dry run of a panel. And a
-  results fragment with the mark of UTF-8 in front,
-  which Notepad's "UTF-8 with BOM" writes, is refused in the parser's words ("Unexpected
-  UTF-8 BOM (decode using utf-8-sig)"), where YAML with that mark is read. Two more are of
+  in a traceback on it, as before, with or without the dry run of a panel. (A results
+  fragment with the mark of UTF-8 in front is read now: see "Closed since".) Two more are of
   the hooks, in a project whose `paper.yaml` parses and is refused for the shape of one
   entry under `paths`, and were found in the review of #134. The write guard does not know
   a folder that another entry moves: with `results: output` beside a `figures:` left empty,
@@ -13127,9 +13125,13 @@ Open, recorded as each change landed:
   review rounds went into reading it as pandoc does, and each found a place where pandoc
   does not (fenced code, indented code, HTML comments) and a sign flipped or prose
   vanished. A false alarm is the cheaper mistake.
-- **A .docx without heading styles gives its reference list no end.** The cut then runs to
-  the end of the body, as it always did, but the report names the lines, and footnotes and
-  endnotes are read regardless. Bold text that looks like a heading is not one.
+- **A .docx list under a paragraph that is no heading ends only where its shape does.** The
+  cut ends at a caption, a back-matter title or a table (see "Closed since"), and otherwise
+  runs to the next styled heading or the end of the body, but the report names the lines,
+  and footnotes and endnotes are read regardless. Bold is not in the text the audit reads
+  of a .docx, so a bold title that is neither a caption nor a back-matter title, "Search
+  strategy" over an appendix, does not end it, where `**Search strategy**` in Markdown ends
+  one for `check`.
 - **A text box anchored in a reference heading is cut with the list.** A text box is read
   after the paragraph that holds it, so one anchored in a styled `References` heading is
   the list's first line and is not audited. The report gives the range of lines it cut
@@ -13583,9 +13585,6 @@ Open, recorded as each change landed:
   Separately, a `~~~` fence, or a backtick fence indented one to three spaces, does not
   interrupt a paragraph in pandoc, which prints it as prose. One pass that finds fences,
   code spans and comments together would close all of these.
-- **The audit masks HTML comments in Word and figure text too.** A `.docx` prints `<!--` as
-  typed, but its text goes through the same `mask()` as Markdown, so a paragraph that
-  mentions both markers hides everything between them.
 - **The other masked patterns match greedily, and can cover a number printed beside them.**
   A bare URL runs to the next space, so in ``https://x.org/a`b`9.99`` the 9.99 pandoc prints
   is masked along with the address. A footnote label, a pandoc attribute and a placeholder
@@ -13838,14 +13837,16 @@ Open, recorded as each change landed:
   holds one and names the measure. Four is a rule of thumb, not a measurement.
 - **A headingless reference list is recognised by the signature of its year alone.**
   "Smith J, Jones K. ... 2019;393:100-10." is a reference, and so are "Smith, J. (2019)."
-  and "Fictional, Anne. 2021.". A book, a web page or an online-first article with no
-  volume in a numbered style is not, nor is one with no full stop before the year (the
-  BMJ's house style, "BMJ 2021;372:n71") or with anything after its pages but a DOI, PMID,
-  Epub or availability note, nor a Harvard entry with no full stop after
-  "(2019)", nor one whose names are not in the Latin script, so their numbers are
-  reported: noise rather than a pass. A caption or sentence that has the shape costs
-  nothing hidden, since the line is still compared; its unmatched numbers are listed in a
-  section of their own, which `--strict` does not count.
+  and "Fictional, Anne. 2021.", and the styles named under "Closed since": the BMJ's, a
+  book, a web page, an article online first and Harvard's with no full stop after the year.
+  An entry with anything after its pages but a DOI, PMID, Epub or availability note is not,
+  nor an author-year entry whose author is an organisation, "Example Agency. (2020).", nor
+  a book in a numbered style with no place before its publisher, nor one whose names are not
+  in the Latin script, so their numbers are reported: noise rather than a pass. A caption or
+  sentence that has the shape is still compared, but its unmatched numbers are listed in a
+  section of their own, which `--strict` does not count: each shape added is a little more
+  that `--strict` can miss, which is why each is held to an ending a caption or a sentence
+  does not have, and to lookalikes in the tests (`AUDIT_LOOKALIKES`).
 - **The design gate cannot tell when a plan was written.** It checks that one exists and
   says something; it has no way to know the plan predates the analysis, which is the whole
   point of a plan. Only a timestamped external record — a registry, a signed commit — could,
@@ -14509,10 +14510,12 @@ Open, recorded as each change landed:
   take any run of whole numbers, so a median [IQR] with whole bounds, `64 [55-72]`, was a
   citation too. It is read as an interval when its bounds enclose the value written just
   before it, as an interval does and a citation range, `12% [4-6]`, does not. What that
-  misses: an interval separated from its value, `64 years [55-72]`, or after a value written
-  with a comma or a spaced percent sign, `12,5 [10-15]`, `1,204 [1,100-1,300]`, `45 %
-  [40-50]`, is still a citation. And a citation that happens to enclose a number before it,
-  `found 2 [1,3]`, `Table 2 [1-4]` or `Grade 3 [2,5]`, is listed as unexplained.
+  misses: an interval separated from its value, `64 years [55-72]`, is still a citation, and
+  so is one whose bounds have a decimal comma, `12,5 [10,5-15,5]`, since a bound read so
+  would make a citation such as `[4,12-15]` an interval (a value with a comma or a spaced
+  percent sign is read: see "Closed since"). And a citation that happens to enclose a
+  number before it, `found 2 [1,3]`, `Table 2 [1-4]`, `Grade 3 [2,5]` or `1,5 [1-2]`, is
+  listed as unexplained.
 - **A rule's phrase crosses one line break between words, not two.** "Table" and its 2,
   "STROBE" and 14, "p" and `< 0.05` may be split by a hard wrap, and still match. With a
   blank line between them they are two paragraphs, and the number opening the second is
@@ -16717,6 +16720,57 @@ What papers converted from Word showed (see "What papers converted from Word sho
   address at a bare IP number, is read as a number.
 
 Closed since, and why each mattered (an open gap goes above this line):
+
+- **The stop counted what an editor or the system leaves as a change.** Only hidden files
+  and `__pycache__` were passed over, so Word's `~$main.docx`, there whenever the document
+  is open, Emacs's `#main.md#` and `main.md~`, and Windows' `Thumbs.db` and `desktop.ini`
+  counted, and the line followed a turn that changed nothing the gates read. Those names
+  are passed over now, and compiled Python outside its cache with them, and a test holds
+  that every name the reproducibility package leaves out as no one's work is passed over
+  too. The list is the hook's own and not imported from `deposit/plan.py`, which brings in
+  the gates, half a second or more at the end of every turn. A name with a `#` or a `~`
+  inside it, `#1 notes.md` or `a~b.json`, is the author's and still counts.
+- **A JSON file with the mark of UTF-8 in front was refused in the parser's words.** A
+  results fragment saved as Notepad's "UTF-8 with BOM", or written by Windows PowerShell 5's
+  `Out-File -Encoding utf8`, stopped `check` with "cannot parse: Unexpected UTF-8 BOM
+  (decode using utf-8-sig)", where YAML with the same mark was always read. The mark is
+  passed over in JSON too now, by `read_structured`, which every structured file of the
+  project is read through. The bytes are not changed, so a digest of the file is as it was.
+- **A headingless reference list knew two styles of entry.** Where no heading says where the
+  list is, the audit knows an entry by its shape, and only a journal article in the
+  numbered styles with a full stop before its year, or in the author-year styles with one
+  after it, had a shape. A book, a chapter, a web page, an article online first, the BMJ's
+  entry ("BMJ 2021;372:n71", no full stop before the year) and a Harvard entry with no full
+  stop after "(2019)" were read as prose, and their years, volumes and pages were reported
+  among the findings. Each is now known by an ending a caption or a sentence does not
+  have: the BMJ's by a capitalised word that is no month's before the year, with the volume
+  and pages and nothing after them but a note, as before; a book by "Place: Publisher;
+  2019." and perhaps its pages; an article online first by its year, or "Published online"
+  and a date, after the journal's full stop and then a DOI, a PMID or an Epub note; a web
+  page, whose author may be an organisation, by "[Internet]" or "[cited ...]", by
+  "Accessed March 5, 2021." and the address at the end, or by "Available at:" and the
+  address at the end, perhaps with the date it was read; and Harvard's year by a title in
+  capitals or quoted after it, where "(2019) found" is a sentence. The lookalikes the tests
+  hold to being none include "Dec 2019;2:14." and "Accessed on 412 sites in 2019".
+- **The audit took an interval after a comma-written value for a citation.** A bracket of
+  whole numbers after a value is an interval where it encloses the value, and the value was
+  read as digits with a point, so `12,5 [10-15]`, `1,204 [1,100-1,300]` and `45 % [40-50]`
+  were filed as citations and their bounds never compared. A decimal comma and a spaced
+  percent sign, a no-break space included, are read now, and a value grouped in thousands
+  is read as one, with bounds that may be grouped too: `1,204 [1-3]` stays a citation,
+  where a decimal comma's reading would take 1.204 to lie inside it.
+- **The audit masked HTML comments in Word and figure text.** A `.docx` and a figure print
+  `<!--` as typed, but their text went through the mask Markdown does, so a paragraph that
+  mentioned both markers hid everything between them from the comparison and from the
+  tests of a statistic against its P. Their text is masked with every `<!--` made to open
+  nothing, so the other regions, an address for one, are masked as before.
+- **A .docx with no heading styles gave its reference list no end.** The cut ran from the
+  paragraph "References" to the end of the body, and a figure legend, a statement or a
+  table after the list was never audited. A list under a paragraph that is no heading now
+  ends where `check` ends one under no heading in Markdown (`text/reference_lists.py`):
+  at a caption of a figure, a table, a box or an appendix, at a back-matter title standing
+  alone, "Funding" or "Figure legends", and at a table. A list under a styled heading runs
+  on to the next heading, as one under `# References` does. What is left is above.
 
 - **A paper that declared no English heard nothing of its journal's.** Since `english_variant`
   became optional, G4 compared a journal's English with the paper's only where the paper

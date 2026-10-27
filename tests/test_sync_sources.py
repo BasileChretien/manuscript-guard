@@ -616,9 +616,11 @@ def test_each_name_and_place_a_downloader_gives_a_doi_is_read(paper, tmp_path, n
         ("10.1000/xyz(1)", "_browser_fallback/10.1000_xyz_1_.pdf"),
         (LONG, f"{LONG_SERVICE}/{LONG_SERVICE}.pdf"),
         (LONG, f"_browser_fallback/{'10.1000_' + 'a' * 160}.pdf"),
+        # A DOI `references.bib` writes with a TeX escape: the PDF is named for the DOI.
+        ("10.1000/abc" + chr(92) + "_def", "10.1000_abc_def/10.1000_abc_def.pdf"),
     ],
     ids=["service-ends-stripped", "playwright-ends-stripped", "chrome-ends-kept",
-         "service-cut-at-150", "browser-not-cut"],
+         "service-cut-at-150", "browser-not-cut", "tex-escaped"],
 )  # fmt: skip
 def test_a_doi_whose_name_is_cut_or_trimmed_is_still_found(paper, tmp_path, doi, name):
     cite(paper, "edge2020")

@@ -2574,6 +2574,24 @@ def reference_titled(draw: st.DrawFn) -> list[tuple[str, bool]]:
     return draw(st.permutations(cased))
 
 
+#: How a heading's title is numbered or marked, which is no part of its name: Arabic, Roman,
+#: a letter, a number in brackets, a subsection's number, and bold around it.
+TITLE_NUMBERINGS = (
+    lambda title: f"7. {title}", lambda title: f"VII. {title}", lambda title: f"A. {title}",
+    lambda title: f"(3) {title}", lambda title: f"2.1 {title}", lambda title: f"**{title}**",
+    lambda title: f"**IV. {title}**",
+)  # fmt: skip
+
+
+@st.composite
+def numbered_reference_titled(draw: st.DrawFn) -> list[tuple[str, bool]]:
+    """`reference_titled`, each title numbered or marked as `TITLE_NUMBERINGS` writes one,
+    every way among them in each example."""
+    titled = draw(reference_titled())
+    ways = list(draw(st.permutations(TITLE_NUMBERINGS)))
+    return [(ways[at % len(ways)](title), is_list) for at, (title, is_list) in enumerate(titled)]
+
+
 #: Names a number stands in, which `check` and the audit read as no number: an e-mail
 #: address (structural) and an interleukin, abbreviated or written out (a term). And what
 #: is a number however near it stands: a count, and digits round an `@` with no domain.
@@ -2822,12 +2840,29 @@ RECYCLED = (
 )
 
 #: What a page sets in place of a word or between two: a ligature, a word broken at the end
-#: of a line, a reference's number, a page's end.
+#: of a line, a reference's number or its authors and year, a page's end.
 _SET_IN_TYPE = (
     ("fi", "\N{LATIN SMALL LIGATURE FI}"), ("ff", "\N{LATIN SMALL LIGATURE FF}"),
     ("fl", "\N{LATIN SMALL LIGATURE FL}"),
 )  # fmt: skip
-_TYPESET_GAPS = (*SOURCE_GAPS, ".12 ", "\N{SUPERSCRIPT TWO} ", "\f", "-\n")
+#: A citation by author and year in parentheses, as an earlier paper prints one where the
+#: manuscript cites by key: each is no word of the passage it stands in.
+AUTHOR_YEAR_CITED = (
+    "(Smith et al., 2019)", "(Smith et al. 2019)", "(Smith, 2019)", "(Smith 2019a)",
+    "(Smith and Roe, 2019)", "(Smith & Roe, 2019)", "(Smith, Roe, and Doe, 2019)",
+    "(Smith et al., 2019; Roe, 2020)", "(van der Berg et al., 2018)", "(O'Brien, 2017)",
+    "(M\N{LATIN SMALL LETTER U WITH DIAERESIS}ller-Roe et al.,\n2019)",
+    "(e.g., Smith et al., 2019)", "(see Roe 2020)", "(Smith et al., 2019, 2020b)",
+    "(Smith, 2019, p. 12)", "( Smith  et  al. ,  2019 )",
+)  # fmt: skip
+#: Words in parentheses that are no citation by author and year: a date, a name with no
+#: year, a table, a year with no name, and words in lower case before a year.
+NOT_AUTHOR_YEAR = (
+    "(January 2019)", "(Smith et al.)", "(Table 2, 2019)", "(in 2019)", "(two readers, 2019)",
+    "(n = 2019)", "(2019)",
+)  # fmt: skip
+_TYPESET_GAPS = (*SOURCE_GAPS, ".12 ", "\N{SUPERSCRIPT TWO} ", "\f", "-\n",
+                 " (Smith et al., 2019) ", " (Roe and Doe 2020a) ")  # fmt: skip
 
 
 @st.composite
@@ -5447,6 +5482,132 @@ def reference_lists(draw: st.DrawFn) -> tuple[str, str]:
         # what is read here.
         passed.append(piece.replace("References", "Remarks").replace("references", "remarks"))
     return "".join(listed) + "\n", "".join(passed) + "\n"
+
+
+# --------------------------------------------------- a display item placed by hand, G4
+
+#: A figure placed by hand that pandoc numbers, as a paragraph of the text: an image with a
+#: caption alone in its paragraph, with attributes, a bracketed pair in its caption, a title
+#: and parentheses in its target, three spaces in, and on the line under a heading.
+FIGURES_PLACED = (
+    "![The sites, by region.](figures/sites.png)",
+    "![A map](map.png){#fig:map width=50%}",
+    '![Panel [a] and b](f(1).png "A title")',
+    "   ![Three spaces in.](x.png)",
+    "## A heading\n![Under a heading.](h.png)",
+)  # fmt: skip
+#: An image pandoc numbers not, or that is not printed: in a sentence, with no caption, in a
+#: comment, in a fence, four spaces in (a code block), two on two lines of one paragraph,
+#: and one on a paragraph's second line.
+NOT_FIGURES_PLACED = (
+    "A map, ![inline](m.png), in a sentence.",
+    "![](bare.png)",
+    "![ ](space.png)",
+    "<!--\n\n![In a comment.](c.png)\n\n-->",
+    "```\n![In a fence.](f.png)\n```",
+    "    ![Four spaces in.](i.png)",
+    "![Two](a.png)\n![lines](b.png)",
+    "Words above it\n![On the second line.](l.png)",
+)  # fmt: skip
+
+
+@st.composite
+def figures_placed(draw: st.DrawFn) -> tuple[str, int]:
+    """Paragraphs of filler words with every image above between them, each a paragraph of
+    its own, in an order drawn; and how many figures pandoc numbers of them."""
+
+    def words() -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=5))) + "."
+
+    pieces = [(piece, 1) for piece in FIGURES_PLACED]
+    pieces += [(piece, 0) for piece in NOT_FIGURES_PLACED]
+    text, count = words(), 0
+    for piece, counted in draw(st.permutations(pieces)):
+        text += f"\n\n{piece}\n\n{words()}"
+        count += counted
+    return text + "\n", count
+
+
+#: A LaTeX display a journal counts, and how many: a picture and a typed table, each in a
+#: float with its caption; a float with no caption by the binding it places; a binding in no
+#: float; a float of two panels and one caption; two captions in one float.
+LATEX_DISPLAYS = (
+    ("\\begin{figure}\\includegraphics{a.pdf}\\caption{A picture.}\\end{figure}", 1),
+    ("\\begin{table}\\caption{Typed.}\\begin{tabular}{l}a\\\\\\end{tabular}\\end{table}", 1),
+    ("\\begin{figure}\\mg{figure.forest}\\end{figure}", 1),
+    ("\\mg{table.baseline}", 1),
+    ("\\begin{figure}\\mg{figure.forest}\\mg{figure.forest}\\caption{Two panels.}\\end{figure}", 1),
+    ("\\begin{figure}\\includegraphics{b.pdf}\\caption{One.}\\includegraphics{c.pdf}"
+     "\\caption{Two.}\\end{figure}", 2),
+    # And what counts as none: a picture with no caption, a float with a starred caption
+    # only, and a float in a comment.
+    ("\\begin{figure}\\includegraphics{d.pdf}\\end{figure}", 0),
+    ("\\begin{figure}\\includegraphics{e.pdf}\\caption*{Unnumbered.}\\end{figure}", 0),
+    ("% \\begin{figure}\\includegraphics{f.pdf}\\caption{Commented.}\\end{figure}", 0),
+)  # fmt: skip
+
+
+@st.composite
+def latex_displays_placed(draw: st.DrawFn) -> tuple[str, int]:
+    """A LaTeX document's body with every display above among paragraphs of filler words,
+    in an order drawn; and how many display items a journal counts of them."""
+
+    def words() -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=5))) + "."
+
+    body, count = words(), 0
+    for piece, counted in draw(st.permutations(LATEX_DISPLAYS)):
+        body += f"\n\n{piece}\n\n{words()}"
+        count += counted
+    document = ("\\documentclass{article}\n\\usepackage{graphicx}\n\\begin{document}\n"
+                f"\\section{{Results}}\n\n{body}\n\n\\end{{document}}\n")  # fmt: skip
+    return document, count
+
+
+# ------------------------------------------------- one reference written two ways, G7
+
+#: DOIs with what a `.bib` file or a resolver's link writes otherwise: an underscore, a
+#: percent sign, an ampersand, brackets.
+DOIS_WRITTEN = (
+    "10.5555/abc_def", "10.1016/S0140-6736(20)30183-5", "10.1002/(SICI)1097-0258(1998)17:1<1::AID>",
+    "10.5555/a&b_c", "10.5555/x_1(2)",
+)  # fmt: skip
+#: Each way a DOI is written beside its registered form, as a function of it: TeX's escapes
+#: of `_`, `%`, `&`, a resolver's link with brackets percent-encoded, and TeX's escape of the
+#: percent sign such a link writes.
+DOI_WRITINGS = (
+    lambda doi: doi,
+    lambda doi: doi.replace("_", "\\_").replace("&", "\\&"),
+    lambda doi: "https://doi.org/" + doi.replace("(", "%28").replace(")", "%29"),
+    lambda doi: doi.replace("(", "\\%28").replace(")", "\\%29").replace("_", "\\_"),
+    lambda doi: "doi:" + doi.replace("<", "%3C").replace(">", "%3E").replace("&", "%26"),
+)  # fmt: skip
+#: A letter with an accent, as TeX writes it and as Unicode does.
+TEX_ACCENTED = (
+    ("\\'e", "\N{LATIN SMALL LETTER E WITH ACUTE}"),
+    ('\\"u', "\N{LATIN SMALL LETTER U WITH DIAERESIS}"),
+    ("\\^o", "\N{LATIN SMALL LETTER O WITH CIRCUMFLEX}"),
+    ("\\`a", "\N{LATIN SMALL LETTER A WITH GRAVE}"),
+    ("\\~n", "\N{LATIN SMALL LETTER N WITH TILDE}"),
+    ('\\"O', "\N{LATIN CAPITAL LETTER O WITH DIAERESIS}"),
+    ("\\c c", "\N{LATIN SMALL LETTER C WITH CEDILLA}"),
+    ("\\ss ", "ss"),
+)  # fmt: skip
+
+
+@st.composite
+def titles_in_tex(draw: st.DrawFn) -> tuple[str, str]:
+    """A title of filler words with every accented letter of `TEX_ACCENTED` inside a word,
+    in an order drawn: as TeX writes it and as Unicode does."""
+    tex, unicode = [], []
+    for accented, letter in draw(st.permutations(TEX_ACCENTED)):
+        before, after = draw(st.sampled_from(FILLER)), draw(st.sampled_from(FILLER))
+        tex.append(before + accented + after)
+        unicode.append(before + letter + after)
+        filler = " ".join(draw(st.lists(st.sampled_from(FILLER), max_size=2)))
+        tex.append(filler)
+        unicode.append(filler)
+    return " ".join(tex), " ".join(unicode)
 
 
 # --------------------------------------------------- e-mail addresses beside citations

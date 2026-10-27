@@ -51,7 +51,9 @@ if it is not, move it out of `manuscript/` or into a folder whose name starts wi
 | `{{method.step}}` | `\mg{method.step}`, which prints nothing |
 
 Put each table and figure in a float with a `\caption` and a `\label`: LaTeX numbers it by
-its caption, and a `\mg{table.key}` outside a float is a table it does not number. Point at
+its caption, and a `\mg{table.key}` outside a float is a table it does not number. G4 holds
+the journal's limits on tables and figures to the displays the captions number, so a figure
+placed with `\includegraphics` and captioned counts as one bound with `\mg`. Point at
 one with `\ref` to its label, or type "Table 2": G2 holds a typed pointer to what the
 document's captions number, and the main text's tables and figures to the order ICMJE asks
 for, a `\ref` counting as a citation. A range, `Figures~\ref{a}--\ref{b}` with any dash,

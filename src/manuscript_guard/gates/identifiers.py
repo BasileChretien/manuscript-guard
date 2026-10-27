@@ -61,9 +61,21 @@ REQUIRED: dict[str, tuple[tuple[str, ...], ...]] = {
 }  # fmt: skip
 
 
+#: A character a `.bib` file escapes for TeX, `10.1000/abc\_def`: the character is the DOI's.
+_TEX_ESCAPED = re.compile(r"\\([_%&#$])")
+#: A printable ASCII character a resolver's link encodes, `%28` for `(`; one outside ASCII,
+#: whose bytes a single escape does not make, stays as written.
+_PERCENT_ENCODED = re.compile(r"%([2-7][0-9A-Fa-f])")
+
+
 def normal_doi(written: str) -> str:
-    """A DOI without the scheme, the resolver or the stop it is often written with."""
-    return _DOI_DRESSING.sub("", written.strip()).rstrip(".").strip()
+    """A DOI without the scheme, the resolver or the stop it is often written with, and as
+    it is registered: a TeX escape, `\\_`, read as the character, and a resolver link's
+    `%28` as `(`. Compared as written, one work cited under two keys was not found, and a
+    PDF named for the DOI was looked for under `10.1000_abc__def`."""
+    doi = _DOI_DRESSING.sub("", written.strip()).rstrip(".").strip()
+    doi = _TEX_ESCAPED.sub(r"\1", doi)
+    return _PERCENT_ENCODED.sub(lambda found: chr(int(found.group(1), 16)), doi)
 
 
 def isbn_valid(written: str) -> bool:

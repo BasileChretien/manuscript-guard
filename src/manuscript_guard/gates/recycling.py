@@ -130,6 +130,62 @@ _SINGLE_QUOTED = re.compile(
     r"|\n(?![ \t]*\n))+?\N{RIGHT SINGLE QUOTATION MARK}(?![^\W_])"
 )
 _PARAGRAPH_BREAK = re.compile(r"\n[ \t]*\n")
+#: A citation by author and year in parentheses, as the earlier paper prints one where the
+#: manuscript cites by key: "(Smith et al., 2019)", "(Smith and Roe 2019a)", "(van der Berg,
+#: Roe, & Doe, 2018, p. 4)", "(e.g., Smith, 2019; Roe, 2020)". Its names are read by
+#: `_is_author_year`, which holds each to a capital.
+_PARTICLE = r"(?:(?:van|von|de|der|den|del|della|di|da|du|dos|das|la|le|ten|ter)\s+)"
+_CITED_NAME = rf"{_PARTICLE}*[^\W\d_]+(?:[-{_APOSTROPHES}][^\W\d_]+)*"
+_CITED_YEAR = r"(?:1[5-9]|20)\d\d[a-z]?(?![^\W_])"
+_ONE_CITED = (
+    rf"{_CITED_NAME}(?:\s+et\s+al\.?|(?:\s*,\s*{_CITED_NAME})*\s*,?\s+(?:and|&)\s+{_CITED_NAME})?"
+    rf"\s*,?\s+{_CITED_YEAR}(?:\s*,\s*{_CITED_YEAR})*"
+    r"(?:\s*,\s*(?:pp?\.|ch\.|chap\.)\s*\d+(?:[-" "\N{EN DASH}" r"]\d+)?)?"
+)
+_CITED_BEFORE = r"(?:(?:e\.g\.|i\.e\.|see(?:\s+also)?|cf\.)\s*,?\s*)?"
+_AUTHOR_YEAR = re.compile(
+    rf"\(\s*{_CITED_BEFORE}{_ONE_CITED}(?:\s*;\s*{_CITED_BEFORE}{_ONE_CITED})*\s*\)"
+)
+#: The words of such a citation that are no name, and so may be in lower case.
+_CITED_LOWER = frozenset(
+    {"van", "von", "de", "der", "den", "del", "della", "di", "da", "du", "dos", "das", "la",
+     "le", "ten", "ter", "et", "al", "and", "e", "g", "i", "see", "also", "cf", "p", "pp", "ch",
+     "chap"}
+)  # fmt: skip
+#: A month, which a date in parentheses names where a citation names its author:
+#: "(January 2019)" is no citation.
+_MONTHS = frozenset(
+    {"january", "february", "march", "april", "may", "june", "july", "august", "september",
+     "october", "november", "december"}
+)  # fmt: skip
+_LETTERS = re.compile(r"(?<!\d)[^\W\d_]+")
+
+
+def _is_author_year(cited: str) -> bool:
+    """Whether a match of `_AUTHOR_YEAR` names its authors: each name with a capital, and no
+    month among them."""
+    names = [word for word in _LETTERS.findall(cited) if word.casefold() not in _CITED_LOWER]
+    return bool(names) and all(
+        name[0].isupper() and name.casefold() not in _MONTHS for name in names
+    )
+
+
+def without_author_year(source: str) -> str:
+    """`source` with each citation by author and year blanked, its line breaks kept, so that
+    where a word stands is where it stood: the manuscript cites by key, and the citation's
+    names are words it does not have, which cut a passage the two share (Known gaps)."""
+    return _AUTHOR_YEAR.sub(
+        lambda found: re.sub(r"[^\n]", " ", found.group())
+        if _is_author_year(found.group())
+        else found.group(),
+        source,
+    )
+
+
+def source_words(source: str) -> list[Word]:
+    """The words of an earlier paper as they are compared: `words` of it, with its citations
+    by author and year left out."""
+    return words(without_author_year(source))
 
 _INTRODUCTION = re.compile(r"(?:introduction|background|rationale)\b", re.IGNORECASE)
 _DISCUSSION = re.compile(r"(?:discussion|interpretation|comment)\b", re.IGNORECASE)
@@ -452,7 +508,7 @@ def recycled_in(
     """The passages of a manuscript file, `text`, that an earlier paper, `source`, has too,
     each with its part of the paper and whether it is cited: those with `SHARED` words or
     more outside quotation marks, and those with as many inside them."""
-    return _recycled(_read(text, abstract_title), words(source), key)
+    return _recycled(_read(text, abstract_title), source_words(source), key)
 
 
 def _recycled(read: _Manuscript, source: Sequence[Word], key: str) -> list[Recycled]:
@@ -529,7 +585,7 @@ def check_recycling(project: Project, stage: str = DRAFTING) -> Report:
             continue
         compared += 1
         texts = dict(copies)
-        read = [(copy, words(source)) for copy, source in copies]
+        read = [(copy, source_words(source)) for copy, source in copies]
         found = [
             _placed(folder, where, copy, passage)
             for where, prepared in manuscript

@@ -163,3 +163,9 @@ expected:
       definition without giving it twice, and a manuscript with no heading is read as one
       text, with no `abbreviation-redefined` (the reading gives no stage, so no
       `no-headings` note); the inputs hold a glossary and captions, and many have no heading
+  - reading: recycled passages
+    why: >-
+      a citation by author and year in parentheses in the earlier paper, "(Smith et al.,
+      2019)", is blanked before its words are compared, so it no longer cuts a passage the
+      manuscript repeats where the manuscript cites by key; the earlier papers drawn now
+      set such citations between words, as they set a reference's number

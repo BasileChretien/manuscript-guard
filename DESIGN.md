@@ -1974,9 +1974,15 @@ The result is compiled and packed by the code above, and checked three times:
   count differently by that much (step 6).
 - The heading with no title that closes an abstract is a section of its own to G4, which
   counts it as text and finds no required section in it (step 6).
-- A float counts as a display item only where it places a `\mg{figure.key}` or
-  `\mg{table.key}`; a figure placed with `\includegraphics` alone counts as none. Markdown
-  has the same gap for `![](...)`, met far less often (round 1 of step 6).
+- G4 counts a display item where a float's caption numbers one, and a binding where no
+  caption the view reads numbers its float (see "Closed since"). A `\captionof`, a
+  `longtable`'s caption, a page `\includepdf` takes in and a float numbered by a command of
+  the author's count only by the bindings they place, as G2 leaves their kind uncounted. A
+  table or figure in the appendix counts against the journal's limits, though G2 holds it
+  as the supplement's. The submission pack's title page still declares the tables and
+  figures `measure` counts of the printed view, the bindings, where G4 holds the numbered
+  displays (`gates.journal.measured`): the two differ for a LaTeX paper with a figure placed
+  by hand until `build/submission.py` asks `measured`.
 - A class's front matter command an author provides for portability, `\providecommand` or
   `\@ifundefined`, is the author's though the class keeps its own, and its argument is read
   as prose, as before the table held it. Highlights, read in the front matter, count as main
@@ -10865,14 +10871,6 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   will. G1 holds the results to the inputs the script declared, and no more. The question
   is asked at the `design` stage alone, so a project that starts at a later stage is never
   asked it.
-- **G4 reads the main-text files in path order, and the build prints them in another.** The
-  build puts `main.md` first and sorts the rest by file name, not by path. A section's words
-  count where the headings above it put them, so an `abstract.md` beside a `main.md` written
-  in `##` headings makes the whole paper abstract as far as G4 can tell. The order also
-  decides which comments and fences reach across files: an unclosed `<!--` or fence at the
-  end of a file G4 reads first hides the next file's headings and statements up to the next
-  `-->` or fence, where the build, reading `main.md` first, may print them. A project with
-  one main-text file, which is what `init` writes, is unaffected.
 - **G4's blanking of comments and fences is close to pandoc's reading, not the same.** A
   stray fence line inside a comment, or a fence directly under prose that is tilde or
   indented a space or more, hides what follows from the statement and abstract-heading
@@ -11549,7 +11547,11 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   Appendix 1" or "in Supplementary Material" after its number is not read as the
   supplement's, "S" carries only across a range, and a reference-style image, a one-column
   pipe table, a table set as an image and `\begin{tabular}` are not seen as placed by hand;
-  a caption directly under a heading line counts as a citation.
+  a caption directly under a heading line counts as a citation. The audit takes "VII.
+  References" or "A. Bibliography" for prose, where G4, G14 and the recycling check know the
+  list by it. G4 counts a figure placed by hand where it is an image with a caption alone in
+  a paragraph of its own; one in a list, a block quotation or a div, or written by
+  reference, `![caption][ref]`, is a figure pandoc numbers and G4 counts none.
 - **Placeholders.** "47,XXX reports" (a count in the forty thousands) is read as a
   karyotype, the karyotypes 69,XXX and 92,XXXX as gaps; a bracketed translated title that
   opens with an instruction's verb, or holds a to-come word in capitals, fails in a cited
@@ -11846,9 +11848,9 @@ Open, recorded as each change landed:
   words is not compared. A chapter or a conference paper cited twice is found only by its
   title, a warning, and a book cited twice with a volume in one entry only is not found. A
   volume is compared without the word it is written with, "Vol. 1" as "1", and otherwise as
-  written: "I" and "1" are two. A
-  DOI is compared as the file writes it, so `\_` is not read as `_` nor `%28` as `(`, and a
-  title's TeX accents and commands are read as letters: `Caf\'e` is two words.
+  written: "I" and "1" are two. A DOI's `%` followed by two hex digits of a printable ASCII
+  character is read as that character, so a DOI registered with such a sequence in it,
+  which the DOI Handbook allows and no registry we know issues, is compared as another.
 - **Some gates read nothing and say nothing, on purpose.** A paper with no figure, no
   citation, no reporting guideline, no analysis code, no fitted model or no revision round
   has nothing for G3, G10, G7, G8, G8r, G9, G12, G15 or G13 to read, and each passes with
@@ -14010,13 +14012,12 @@ Open, recorded as each change landed:
   of them by rate, so its 98.9% is not independent of that choice. A percentile of 291 is
   set by the three or four papers at the top: the em-dash threshold was 13.9 while one
   paper's table notes were counted, and is 4.7 without them. The papers were measured with
-  their tables left out. The em-dash rate leaves out a pipe table's row in a manuscript, but
-  not a simple or a multiline table's; and an em dash typed as `---` at the start of a line
-  that holds only masked text after it, `--- [^1]`, is taken for a rule's line (round 1 of
-  #352). The bold rate leaves out a table of each of pandoc's four kinds
-  (`text.tables.table_lines`), but reads as prose a table with one column, and a headless
+  their tables left out. An em dash typed as `---` at the start of a line that holds only
+  masked text after it, `--- [^1]`, is taken for a rule's line (round 1 of #352). The bold
+  and the em-dash rates leave out a table of each of pandoc's four kinds
+  (`text.tables.table_lines`), but read as prose a table with one column, and a headless
   multiline table opened by a line of dashes in one run, which pandoc reads as a table:
-  their bold is counted.
+  their bold and their dashes are counted.
 - **A small count is found where it is bound, by its value.** A count printed in an emitted
   table, a percentage that gives a small count away with its denominator, and a count typed
   rather than bound are not read; G2 fails a typed count for being typed. A whole number
@@ -16126,9 +16127,7 @@ Open, recorded as each change landed:
   that copied it first. A name is weighed only against the DOIs the manuscript cites: the
   PDF of an uncited `10.1000/a;b` in a shared folder is taken for a cited `10.1000/a:b`,
   since both are `10.1000_a_b`, and the name is all there is to tell them by (round 1;
-  contrived). A DOI that `references.bib` writes with a TeX escape, `10.1000/abc\_def`, is
-  looked for under `10.1000_abc__def` and not found, as G7 reads the same DOI with its
-  backslash (round 1).
+  contrived).
 - **A design record declared as an input in other capitals is not known for it on macOS.**
   Declared paths are compared in the case the system compares names in, which Python
   folds only on Windows, so on a case-insensitive macOS volume `Design/data_dictionary.yaml`
@@ -16421,9 +16420,13 @@ Open, recorded as each change landed:
   a sentence, and a passage across them is cut in two, each half reported only where it has
   twelve shared words. pypdf, where `pdftotext` is not installed, reads a page in the order
   its content draws it.
-- **A reference the earlier paper cites by author and year cuts a passage there.** "(Smith et
-  al., 2019)" is three words the manuscript does not have beside its citation key. A number,
-  "[12]" or "12", is no word and cuts nothing.
+- **A citation by author and year is known in parentheses only.** The earlier paper's "(Smith
+  et al., 2019)" is blanked before its words are compared (see "Closed since"); one in
+  square brackets, "[Smith 2019]", is read as words, and cuts a passage where the
+  manuscript cites by key alone. A parenthesis
+  that reads as such a citation and is none, "(Spring, 2019)", is blanked too; the word it
+  takes is one the manuscript has and the earlier paper then does not, which a passage
+  bridges as it bridges any word changed.
 - **A Methods passage counts as cited only where its own paragraph cites the earlier paper.**
   "As described previously [@key]" heading a subsection, with the description two paragraphs
   on, is reported as uncited, a warning from internal-review.
@@ -16717,6 +16720,57 @@ What papers converted from Word showed (see "What papers converted from Word sho
   address at a bare IP number, is read as a number.
 
 Closed since, and why each mattered (an open gap goes above this line):
+
+- **G4 read the main-text files in path order, and the build prints them in another.** The
+  build puts `main.md` first and sorts the rest by file name; G4 joined them as their paths
+  sort, so an `abstract.md` beside a `main.md` written in `##` headings made the whole paper
+  abstract as far as G4 could tell, over the abstract's limit, and an unclosed comment or
+  fence at the end of the file it read first hid the next file's statements. `main_text`
+  now takes the files in the build's order (`gates.numbers.printed_order`), as the paragraph
+  record does (`test_g4_reads_the_main_text_files_in_the_order_the_build_prints_them`).
+
+- **Two keys for one work went unfound where the file wrote the DOI or the title in TeX.**
+  A DOI was compared as `references.bib` writes it, so `10.1000/abc\_def` and
+  `10.1000/abc_def`, or a resolver's `%28` and `(`, were two works to G7; `sync-sources
+  --from` looked for the PDF under `10.1000_abc__def`, and the registry lookup asked for the
+  DOI with its backslash. A title's TeX accents were read as letters, `Caf\'e` as two words.
+  `identifiers.normal_doi` now reads TeX's escape of `_`, `%`, `&`, `#` and `$` as the
+  character and a printable ASCII character's percent-encoding as the character, for every
+  reader of a DOI, and `duplicates.title_of` takes TeX out of a title as the registry lookup
+  does (`test_a_doi_is_compared_as_it_is_registered_however_the_file_writes_it`,
+  `test_a_title_in_tex_is_the_title_in_unicode`). A preprint and its article are still not
+  found, above.
+
+- **G6's em-dash rate counted the dashes in a simple or a multiline table.** The threshold
+  was measured on papers read with their tables left out, and a table pandoc writes from
+  Word marks "not applicable" with a dash, so a paper with such a table warned for its
+  cells. The `em-dash` rule now leaves tables out as the bold rate does (`in_tables: false`).
+
+- **A number before a heading's name hid the reference list from G4 and G14.** "VII.
+  References", "7. References" and "**References**" were read as typed, so G4 counted the
+  list's words as main text and G14 read its authors' initials as abbreviations, where the
+  recycling check, which reads the title as printed, set the list apart. `Section.
+  is_references` reads the title as printed now (`section_names.plain`). "II. Results" is
+  still not set aside as no Methods, and a later file's "# Methods" still loses to an
+  earlier file's "Overview of existing methods", above: both are read outside these files.
+
+- **An earlier paper's citation by author and year cut a passage the manuscript repeats.**
+  "(Smith et al., 2019)" was three words the manuscript did not have beside its citation key,
+  so the words before it, where fewer than a shingle, were not reported. Such a citation in
+  parentheses is blanked before the earlier paper's words are compared, its line breaks
+  kept (`recycling.without_author_year`): names with a capital, "et al." or "and" between
+  them, a year with a letter after it, several joined by semicolons, "e.g." before and a
+  page after; not a date, "(January 2019)", nor words in lower case before a year.
+
+- **A display item counted only where a binding placed it.** A LaTeX figure placed with
+  `\includegraphics` and captioned, and a Markdown figure placed by hand, `![caption](file)`
+  alone in its paragraph, are numbered figures in the document the journal counts, and G4
+  counted none of them, so a paper over a limit on display items passed. G4 now counts each
+  display a LaTeX float's caption numbers, as G2's pointers count them, and a binding where
+  no caption numbers its float, once a float however many pictures it places
+  (`gates.journal.latex_displays`); and a Markdown image with a caption alone in a paragraph
+  as a figure (`text.sections`). What is still counted by its bindings only, and the title
+  page's count, are above.
 
 - **A paper that declared no English heard nothing of its journal's.** Since `english_variant`
   became optional, G4 compared a journal's English with the paper's only where the paper

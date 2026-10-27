@@ -23,6 +23,7 @@ import unicodedata
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.findings import WARN, Finding, Report
 from manuscript_guard.gates.identifiers import _DOI, _PMCID, _PMID, _isbns, isbn_valid, normal_doi
+from manuscript_guard.gates.lookups import _COMMAND, _MATHS, _SIGN, _TAGS, _untex
 from manuscript_guard.literature.bibfile import read_entries
 
 GATE = "G7"
@@ -95,12 +96,14 @@ def _volume(written: str) -> str:
 
 
 def title_of(fields: dict[str, str]) -> str | None:
-    """A title as it is compared: case, accents and punctuation folded. None for one too
-    short to say two entries are one work."""
+    """A title as it is compared: TeX, case, accents and punctuation folded. None for one too
+    short to say two entries are one work. TeX goes as the registry lookup takes it out of a
+    title (`gates.lookups`): read as letters, `Caf\\'e` was two words, and an entry written
+    in TeX was not found beside one written in Unicode."""
+    written = fields.get("title", "")
+    untexed = _MATHS.sub("", _SIGN.sub("", _COMMAND.sub(_untex, _TAGS.sub("", written))))
     folded = "".join(
-        c
-        for c in unicodedata.normalize("NFKD", fields.get("title", "").casefold())
-        if not unicodedata.combining(c)
+        c for c in unicodedata.normalize("NFKD", untexed.casefold()) if not unicodedata.combining(c)
     )
     words = re.findall(r"[^\W_]+", folded)
     return " ".join(words) if len(words) >= TITLE_WORDS else None

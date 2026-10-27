@@ -19,11 +19,20 @@ import yaml
 from manuscript_guard.contracts import load_project
 from manuscript_guard.gates import check_language
 from manuscript_guard.gates.language import _definitions, _hidden, _long_form
+from manuscript_guard.policy import DRAFTING, STAGES
 
 
-def written(project: Path, text: str, *, supplement: str | None = None, **files: str):
-    """Judge exactly this text. The example's supplement goes unless one is given, and
-    `files` are further main-text files, named without their `.md`."""
+def written(
+    project: Path,
+    text: str,
+    *,
+    supplement: str | None = None,
+    stage: str | None = None,
+    **files: str,
+):
+    """Judge exactly this text, at `stage` where one is given, as `check` gives its own. The
+    example's supplement goes unless one is given, and `files` are further main-text files,
+    named without their `.md`."""
     shutil.rmtree(project / "manuscript" / "supplementary", ignore_errors=True)
     (project / "manuscript" / "main.md").write_text(text, encoding="utf-8")
     for name, body in files.items():
@@ -33,7 +42,7 @@ def written(project: Path, text: str, *, supplement: str | None = None, **files:
         folder.mkdir()
         (folder / "S1.md").write_text(supplement, encoding="utf-8")
     projekt, _ = load_project(project)
-    return check_language(projekt)
+    return check_language(projekt, stage)
 
 
 def configured(project: Path, **settings) -> None:
@@ -815,6 +824,277 @@ def test_what_only_looks_exempt_is_still_reported(project: Path, sentence: str) 
     assert codes(report) == {"abbreviation-undefined"}, found(report)
 
 
+def journal_asks(project: Path, rules: dict) -> None:
+    """The example's journal profile, with `abbreviations:` set to `rules`."""
+    path = project / "profiles" / "journals" / "demo-journal.yaml"
+    profile = yaml.safe_load(path.read_text(encoding="utf-8"))
+    profile["abbreviations"] = rules
+    path.write_text(yaml.safe_dump(profile, sort_keys=False), encoding="utf-8")
+
+
+STATISTICS = "# Results\n\nThe mean (SD) age was 54 (12), and an ANOVA and the RMSE were used.\n"
+
+
+def test_a_statistical_abbreviation_on_the_list_needs_no_definition(project: Path) -> None:
+    assert not written(project, STATISTICS).findings
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        "The OR was 2.1 (95% CI 1.2 to 3.4).",  # journals that ask CI expanded: not listed
+        "The HR and the IQR were given.",
+        "The SE and the SEM were given.",  # SE is status epilepticus, SEM a microscope
+    ],
+)
+def test_what_the_statistical_list_leaves_out_is_still_reported(
+    project: Path, sentence: str
+) -> None:
+    configured(project, language={"known_abbreviations": []})
+    report = written(project, f"# Results\n\n{sentence}\n")
+    assert codes(report) == {"abbreviation-undefined"}, found(report)
+
+
+def test_a_journal_that_asks_statistics_defined_has_them_reported(project: Path) -> None:
+    journal_asks(project, {"define_statistics": True})
+    report = written(project, STATISTICS)
+    assert sorted(f.message.split()[0] for f in report.findings) == ["ANOVA", "RMSE", "SD"]
+
+
+def test_a_journal_names_what_it_asks_defined(project: Path) -> None:
+    """The example lists CI in paper.yaml; a journal that names it has it reported, and
+    names nothing else."""
+    journal_asks(project, {"define": ["CI", "SD"]})
+    report = written(project, f"{STATISTICS}\nThe OR was 2.1 (95% CI 1.2 to 3.4).\n")
+    assert sorted(f.message.split()[0] for f in report.findings) == ["CI", "OR", "SD"]
+
+
+GLOSSARY_USES = "# Methods\n\nThe ROR, the PRR, the IC, the EBGM and the SDR were computed.\n"
+
+
+@pytest.mark.parametrize(
+    "heading", ["Abbreviations", "List of abbreviations", "GLOSSARY", "Acronyms",
+                "List of Acronyms", "Abbreviations:"],
+)  # fmt: skip
+def test_a_glossary_defines_its_entries(project: Path, heading: str) -> None:
+    report = written(
+        project,
+        f"# {heading}\n\nROR = reporting odds ratio\nPRR: proportional reporting ratio\n\n"
+        "- IC \N{EN DASH} information component\n- **EBGM**: empirical Bayes geometric "
+        "mean\n\nSDR\n:   signal detection ratio\n\n" + GLOSSARY_USES,
+    )
+    assert not report.findings, found(report)
+
+
+def test_a_glossary_in_one_paragraph_defines_each_entry(project: Path) -> None:
+    """BMC's "List of abbreviations" runs its entries on in one paragraph, with a semicolon
+    between them: each is an entry, and none takes the others into its long form (round 1
+    of #446: "ROR is defined as 'reporting odds ratio; PRR: proportional reporting ratio'").
+    A semicolon inside a long form, with no short form and sign after it, stays in it."""
+    report = written(
+        project,
+        "# Methods\n\nThe reporting odds ratio (ROR) and the proportional reporting ratio "
+        "(PRR) were computed. The ROR and PRR rose.\n\n# Abbreviations\n\nROR: reporting "
+        "odds ratio; PRR: proportional reporting ratio; IC: information component; see "
+        "Methods\n\n# Results\n\nThe IC was computed for each pair. The IC was raised.\n",
+    )
+    assert not report.findings, found(report)
+
+
+@pytest.mark.parametrize(
+    "glossary",
+    ["ROR: reporting odds ratio; PRR: proportional\nreporting ratio; IC: information component",
+     "ROR: reporting odds ratio; PRR:\nproportional reporting ratio; IC: information component",
+     "ROR: reporting odds ratio;\nPRR: proportional reporting ratio; IC: information\ncomponent"],
+    ids=["wrapped in a long form", "wrapped after a sign", "wrapped at a semicolon"],
+)  # fmt: skip
+def test_a_glossary_in_one_wrapped_paragraph_defines_each_entry(
+    project: Path, glossary: str
+) -> None:
+    """The paragraph hard-wrapped in the source is one text: a wrap inside an entry kept the
+    entries after it in its long form (round 2 of #446: "PRR is defined as 'proportional
+    reporting ratio; IC: information component'", and IC undefined)."""
+    report = written(
+        project,
+        "# Methods\n\nThe reporting odds ratio (ROR) and the proportional reporting ratio "
+        "(PRR) were computed. The ROR and PRR rose.\n\n# Abbreviations\n\n" + glossary
+        + "\n\n# Results\n\nThe IC was computed for each pair. The IC was raised.\n",
+    )
+    assert not report.findings, found(report)
+
+
+def test_a_definition_list_term_after_a_run_on_line_is_an_entry_of_its_own(
+    project: Path,
+) -> None:
+    """A run-on line's paragraph ends at a line that opens an entry, a definition list's
+    term among them, which only the `:` line under it makes one (round 3 of #446: asked
+    with no line under it, "IC" ran on into PRR's long form, "proportional reporting
+    ratio IC", and IC was lost)."""
+    report = written(
+        project,
+        "# Methods\n\nThe reporting odds ratio (ROR) and the proportional reporting ratio "
+        "(PRR) were computed. The ROR and PRR rose.\n\n# Abbreviations\n\nROR: reporting "
+        "odds ratio; PRR: proportional reporting ratio\nIC\n:   information component\n\n"
+        "# Results\n\nThe IC was computed for each pair. The IC was raised.\n",
+    )
+    assert not report.findings, found(report)
+
+
+def test_a_wrapped_glossary_entry_is_placed_on_its_own_source_line(project: Path) -> None:
+    """The joined paragraph's offsets are the file's: IC's entry, on the second line of a
+    wrapped paragraph, is named on that line where the text gives IC another meaning."""
+    report = written(
+        project,
+        "# Abbreviations\n\nROR: reporting odds ratio; PRR: proportional\nreporting ratio; "
+        "IC: information component\n\n# Methods\n\nThe ROR and the PRR were computed. The "
+        "ROR and PRR rose.\n\n# Results\n\nThe intensive care (IC) unit was used. The IC was "
+        "full.\n",
+    )
+    assert found(report) == [
+        "IC is defined as 'intensive care' here and as 'information component' at "
+        "manuscript/main.md:4"
+    ]
+
+
+def test_a_glossary_in_a_table_defines_its_entries(project: Path) -> None:
+    report = written(
+        project,
+        "# Abbreviations\n\n| Abbreviation | Meaning |\n|---|---|\n| ROR | reporting odds "
+        "ratio |\n| PRR | proportional reporting ratio |\n| IC | information component |\n"
+        "| EBGM | empirical Bayes geometric mean |\n| SDR | signal detection ratio |\n\n"
+        + GLOSSARY_USES,
+    )
+    assert not report.findings, found(report)
+
+
+def test_a_glossary_is_a_definition_where_it_stands(project: Path) -> None:
+    """A use above the glossary is used before its definition, as above any definition;
+    the glossary's own lines are not uses, so an entry nothing else uses is unused; and
+    what it does not list is undefined."""
+    report = written(
+        project,
+        "# Introduction\n\nThe ROR was raised.\n\n# Abbreviations\n\nROR: reporting odds "
+        "ratio\nPRR: proportional reporting ratio\n\n# Methods\n\nThe ROR and the SDR were "
+        "computed.\n",
+    )
+    assert sorted((f.code, f.message.split()[0]) for f in report.findings) == [
+        ("abbreviation-undefined", "SDR"),
+        ("abbreviation-unused", "PRR"),
+        ("abbreviation-used-before-defined", "ROR"),
+    ]
+
+
+def test_a_glossary_and_a_first_use_define_one_thing_once(project: Path) -> None:
+    """A journal that asks for both gets both: the expansion at first use repeats the
+    glossary, and is not defined again. A second definition in the text still is, and a
+    glossary that means something else is two meanings."""
+    glossary = "# Abbreviations\n\nROR: reporting odds ratio\n\n"
+    text = "# Methods\n\nThe reporting odds ratio (ROR) was computed. The ROR was raised.\n"
+    assert not written(project, glossary + text).findings
+    assert not written(project, text + "\n" + glossary).findings
+    again = written(project, glossary + text + "\n# Discussion\n\nThe reporting odds ratio "
+                    "(ROR) fell.\n")  # fmt: skip
+    (message,) = found(again, "abbreviation-redefined")
+    assert "defined again" in message and "main.md:7" in message, message
+    other = written(project, "# Abbreviations\n\nROR: relative odds ratio\n\n" + text)
+    (message,) = found(other, "abbreviation-redefined")
+    assert "relative odds ratio" in message
+
+
+@pytest.mark.parametrize(
+    "caption",
+    [
+        "Table: Reports by drug; reporting odds ratio (ROR) with its interval.",
+        ": Reports by drug; reporting odds ratio (ROR) with its interval.",
+        "**Table 2.** Reports by drug; reporting odds ratio (ROR) with its interval.",
+        "Figure 1. The reporting odds ratio (ROR) by year.",
+    ],
+)
+def test_a_caption_may_restate_a_definition(project: Path, caption: str) -> None:
+    table = "| Drug | Reports |\n|---|---|\n| one | 12 |\n"
+    placed = f"{table}\n{caption}\n" if caption.startswith((":", "Table:")) else f"{caption}\n"
+    report = written(
+        project,
+        "# Results\n\nThe reporting odds ratio (ROR) was computed. The ROR was raised.\n\n"
+        f"{placed}\nThe ROR fell.\n",
+    )
+    assert not report.findings, found(report)
+
+
+def test_a_caption_that_means_something_else_is_still_two_meanings(project: Path) -> None:
+    report = written(
+        project,
+        "# Results\n\nThe reporting odds ratio (ROR) was computed. The ROR was raised.\n\n"
+        "Figure 1. The relative odds ratio (ROR) by year.\n",
+    )
+    (message,) = found(report, "abbreviation-redefined")
+    assert "relative odds ratio" in message
+
+
+def test_a_latex_caption_may_restate_a_definition() -> None:
+    """A table's caption is read in LaTeX, so a definition it restates is read there; it
+    is not given twice."""
+    from manuscript_guard.gates.language import _judge, _Known, _latex_file
+    from manuscript_guard.text.latex.structure import read_tree
+
+    tex = (
+        "\\documentclass{article}\n\\begin{document}\n\\section{Results}\nThe reporting "
+        "odds ratio (ROR) was computed. The ROR was raised.\n\\begin{table}\n\\caption[By "
+        "drug]{The reporting odds ratio (ROR) by drug.}\n\\begin{tabular}{l}one \\\\\n"
+        "\\end{tabular}\n\\end{table}\n%\\caption{a comment (PRR)}\n\\end{document}\n"
+    )
+    source = read_tree({"main.tex": tex}).sources[0]
+    whole = _latex_file(source, False, None)
+    from manuscript_guard.gates.language import _assembled
+    from manuscript_guard.text.masking import NUL
+
+    file = _assembled(0, Path("main.tex"), whole.view, whole.words,
+                      whole.untitled.replace(NUL, " "), whole.regions, breaks=whole.breaks,
+                      typed=tex, captions=whole.captions, glossaries=whole.glossaries)  # fmt: skip
+    assert [tex[start:end] for start, end in whole.captions] == [
+        "The reporting odds ratio (ROR) by drug."
+    ]
+    report = _judge([file], _Known(frozenset(), frozenset()), Path("."))
+    assert not report.findings, [f.message for f in report.findings]
+
+
+HEADLESS = (
+    "**Abstract**\n\nThe reporting odds ratio (ROR) was raised.\n\n**Methods**\n\n"
+    "The reporting odds ratio (ROR) was computed. The ROR and the PRR were raised.\n"
+)
+
+
+def test_a_manuscript_with_no_headings_is_read_as_one_text_and_says_so(project: Path) -> None:
+    """Converted from Word with bold lines for headings: nothing tells the abstract from
+    the main text, so a definition repeated in each is not reported, and G14 says why once,
+    at drafting. A bold line is no heading. What is undefined is still reported."""
+    report = written(project, HEADLESS, stage=DRAFTING)
+    assert sorted((f.code, f.severity) for f in report.findings) == [
+        ("abbreviation-undefined", "warn"),
+        ("no-headings", "info"),
+    ]
+    (note,) = found(report, "no-headings")
+    assert "abbreviation-redefined is not reported" in note
+    headed = written(project, "# Methods\n\n" + HEADLESS, stage=DRAFTING)
+    assert "abbreviation-redefined" in codes(headed)
+    assert "no-headings" not in codes(headed)
+
+
+@pytest.mark.parametrize("stage", [None, *(stage for stage in STAGES if stage != DRAFTING)])
+def test_no_headings_is_said_at_drafting_only(project: Path, stage: str | None) -> None:
+    """Basile, 2026-10-23: "No headings: a note once, at drafting". At any other stage, and
+    where no stage is given, the paper is still read as one text, and nothing says so."""
+    report = written(project, HEADLESS, stage=stage)
+    assert sorted(f.code for f in report.findings) == ["abbreviation-undefined"], found(report)
+
+
+def test_a_headless_supplement_says_nothing(project: Path) -> None:
+    report = written(
+        project, f"# Methods\n\n{PLAIN}\n", supplement="Supplementary text with no heading.\n"
+    )
+    assert not report.findings, found(report)
+
+
 def test_a_clock_time_is_not_an_abbreviation(project: Path) -> None:
     """`11:00AM` is read as the words `11` and `00AM`, and `10:00 PM` has `PM` in it: both
     are the time of day."""
@@ -848,7 +1128,8 @@ def test_a_heading_typed_in_capitals_is_not_an_abbreviation(project: Path) -> No
         "**MATERIALS AND\nMETHODS**\n\n__RESULTS__\n\n"
         "| GROUP | MODEL 1 |\n|---|---|\n| women | 3 |\n\n"
         "+-------+----+\n| MODEL | N  |\n| 1     |    |\n+=======+====+\n| men   | 3  |\n"
-        "+-------+----+\n",
+        "+-------+----+\n"
+        f"\n# Discussion\n\n{PLAIN}\n",
     )
     assert not report.findings, found(report)
 

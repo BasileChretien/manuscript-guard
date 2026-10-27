@@ -48,7 +48,8 @@ import yaml
 
 from manuscript_guard.contracts._schema import read_text
 from manuscript_guard.contracts.project import PAPER_FILE, Project
-from manuscript_guard.findings import WARN, Finding, Report
+from manuscript_guard.findings import INFO, WARN, Finding, Report
+from manuscript_guard.gates import glossary
 from manuscript_guard.gates.notation import judge_notation
 from manuscript_guard.gates.numbers import is_supplementary, printed_order, source_files
 from manuscript_guard.gates.scripts import judge_scripts
@@ -60,6 +61,7 @@ from manuscript_guard.gates.vocabulary import (
     judge_vocabulary,
 )
 from manuscript_guard.paths import SHIPPED_RECIPES
+from manuscript_guard.policy import DRAFTING
 from manuscript_guard.text.blocks import Heading, find_headings
 from manuscript_guard.text.inline import code_spans, equation_spans
 from manuscript_guard.text.masking import NUL, front_matter_end, mask
@@ -199,6 +201,9 @@ class _Mark:
 @dataclass(frozen=True)
 class _Definition(_Mark):
     long: str = ""
+    #: In a caption or a glossary: where a definition may be given again, and is not given
+    #: twice by being so.
+    restates: bool = False
 
 
 @dataclass
@@ -244,14 +249,33 @@ def _listed(value: object) -> set[str]:
     return {str(entry) for entry in value if isinstance(entry, (str, int, float))}
 
 
+@lru_cache(maxsize=1)
+def _statistical() -> frozenset[str]:
+    """The statistical abbreviations a style manual lets stand undefined
+    (`data/statistical_abbreviations.yaml`)."""
+    listed = yaml.safe_load((DATA / "statistical_abbreviations.yaml").read_text(encoding="utf-8"))
+    return frozenset(str(entry) for entry in listed.get("exempt", ()))
+
+
+def _asked(known: _Known, statistics: bool, named: frozenset[str]) -> _Known:
+    """`known` with the statistical abbreviations added, unless the journal asks for them to
+    be defined (`statistics`), and less those it names: what a journal asks to be defined
+    is reported where it is not, whoever exempted it."""
+    exact = known.exact if statistics else known.exact | _statistical()
+    return _Known(exact - named, known.lowered - {name.lower() for name in named})
+
+
 def _known(project: Project) -> _Known:
+    from manuscript_guard.gates.journal import abbreviations_asked
+
     exact, lowered = _shipped()
-    return _Known(
+    listed = _Known(
         exact
         | set(project.known_abbreviations)
         | _listed(project.paper.get("reporting_guideline")),
         lowered | {term.lower() for term in _listed(project.paper.get("terms"))},
     )
+    return _asked(listed, *abbreviations_asked(project))
 
 
 def _numeral(form: str) -> bool:
@@ -562,6 +586,23 @@ def _within(spans: Iterable[tuple[int, int]], offset: int) -> bool:
     return any(start <= offset < end for start, end in spans)
 
 
+def _restates(captions: tuple, glossaries: tuple, offset: int) -> bool:
+    """Whether a definition at `offset` is in a caption or a glossary, where it may restate
+    one the text gives."""
+    return _inside(captions, offset) or _inside(glossaries, offset)
+
+
+def _in_a_glossary(file: _File, offset: int) -> bool:
+    """Whether a word at `offset` is in a glossary, whose lines are not uses."""
+    return _inside(file.glossaries, offset)
+
+
+def _inside(spans: tuple[tuple[int, int], ...], offset: int) -> bool:
+    """`_within` for spans in order and none inside another, by halving."""
+    at = bisect_right(spans, (offset, float("inf"))) - 1
+    return at >= 0 and spans[at][0] <= offset < spans[at][1]
+
+
 def _in_capitals(prose: str) -> list[tuple[int, int]]:
     """Where `prose` holds a heading typed in capitals: a paragraph set entirely in bold
     whose letters are all capitals, "**ABSTRACT**", which is how a manuscript converted from
@@ -832,6 +873,15 @@ class _File:
     unread: tuple[tuple[int, int], ...] = ()
     #: A LaTeX file as typed, where `text` is the file as Markdown writes it.
     typed: str = ""
+    #: Where a caption or a legend runs, and where a glossary's body does, in order.
+    captions: tuple[tuple[int, int], ...] = ()
+    glossaries: tuple[tuple[int, int], ...] = ()
+    #: Where the definitions stand that are in a caption or a glossary.
+    restating: frozenset[int] = frozenset()
+    #: Whether the file has a heading; None for a LaTeX file, whose sections G14 reads from
+    #: its commands.
+    headed: bool | None = None
+    supplementary: bool = False
 
     def __post_init__(self) -> None:
         self.starts = [region.start for region in self.regions]
@@ -864,24 +914,41 @@ def _file(
     )
     regions = _regions(headings, chain, supplementary=supplementary, abstract_title=abstract_title,
                        lists=unmarked_reference_lists(text))  # fmt: skip
-    return _assembled(order, path, text, hidden, prose, regions)
+    titled = [(heading.start, _heading_span(text, heading)[1], heading.level, heading.title)
+              for heading in headings]  # fmt: skip
+    return _assembled(
+        order, path, text, hidden, prose, regions,
+        captions=tuple(glossary.markdown_captions(prose)),
+        glossaries=tuple(glossary.sections(titled, len(text))),
+        headed=bool(headings), supplementary=supplementary,
+    )  # fmt: skip
 
 
 def _assembled(
     order: int, path: Path, text: str, hidden: str, prose: str, regions: list[_Region], **more
 ) -> _File:
-    """A file read: its regions, its definitions, and the texts each reading reads in."""
+    """A file read: its regions, its definitions, and the texts each reading reads in. A
+    glossary's entries are definitions, after those of its sentences."""
     ends = [*(region.start for region in regions[1:]), len(text)]
     spans = list(zip(regions, ends, strict=True))
     references = [(region.start, end) for region, end in spans if region.scope is None]
     # A reference list is quiet too, so this hides it with the rest.
     quiet = [(region.start, end) for region, end in spans if region.quiet]
+    captions, glossaries = more.get("captions", ()), more.get("glossaries", ())
+    raw = more.get("typed") or text
+    listed = [(entry.at, _stem(entry.short, entry.long), entry.long)
+              for span in glossaries for entry in glossary.entries(prose, raw, span)
+              if _may_be_defined(entry.short)]  # fmt: skip
+    definitions = [*_definitions(prose), *listed]
+    restating = frozenset(at for at, _short, _long in definitions
+                          if _restates(captions, glossaries, at))  # fmt: skip
     return _File(
         order=order,
         path=path,
         text=text,
         regions=regions,
-        definitions=_definitions(prose),
+        definitions=definitions,
+        restating=restating,
         prose=prose,
         printed=_hide(hidden, references),
         spelt=_hide(hidden, quiet),
@@ -910,6 +977,8 @@ def _latex_read(root: Path, abstract_title: str | None) -> list[_File]:
                 _hide(whole.untitled, outside).replace(NUL, " "), whole.regions,
                 breaks=whole.breaks, stretch=(start, end), typed=source.text,
                 unread=tuple(span for span in whole.unread if start <= span[0] < end),
+                captions=whole.captions, glossaries=whole.glossaries,
+                supplementary=supplementary,
             ))  # fmt: skip
     return files
 
@@ -927,6 +996,9 @@ class _LatexFile:
     regions: list[_Region]
     breaks: list[int]
     unread: tuple[tuple[int, int], ...]
+    #: Where its captions' text runs, and its glossaries' bodies.
+    captions: tuple[tuple[int, int], ...] = ()
+    glossaries: tuple[tuple[int, int], ...] = ()
 
 
 def _latex_file(source: Source, supplementary: bool, abstract_title: str | None) -> _LatexFile:
@@ -949,7 +1021,11 @@ def _latex_file(source: Source, supplementary: bool, abstract_title: str | None)
         regions=regions,
         breaks=[index for index, char in enumerate(source.text) if char == "\n"],
         unread=unread,
-    )
+        captions=tuple(glossary.latex_captions(source)),
+        glossaries=tuple(glossary.sections(
+            [(heading.start, max(heading.end, heading.start), heading.level, heading.title)
+             for heading in source.reading.headings], len(source.text))),
+    )  # fmt: skip
 
 
 def _stretches(sources) -> Iterator[tuple[Source, int, int]]:
@@ -1031,7 +1107,7 @@ def _collect(files: list[_File], known: _Known) -> dict[str, _Scope]:
             defined.add(short)
             defining.add((file.order, offset))
             scopes[region.scope].defined.setdefault(short, []).append(
-                _Definition(file.order, offset, region.quiet, long)
+                _Definition(file.order, offset, region.quiet, long, offset in file.restating)
             )
 
     for file in files:
@@ -1042,7 +1118,8 @@ def _collect(files: list[_File], known: _Known) -> dict[str, _Scope]:
             if token.islower() or token.isdigit():
                 continue
             region = file.region_at(word.start())
-            if region.scope is None:
+            # A glossary's lines are its entries, and none of them is a use.
+            if region.scope is None or _in_a_glossary(file, word.start()):
                 continue
             at = bisect_right(starts, word.start()) - 1
             shouted = at >= 0 and word.start() < capitals[at][1]
@@ -1076,9 +1153,65 @@ def _same_meaning(one: str, other: str) -> bool:
     return plain(one) == plain(other)
 
 
-def _judge(files: list[_File], known: _Known, root: Path) -> Report:
-    """The findings, from files already read. Apart from `check_language` so that what it
-    costs can be measured on a manuscript of any size without writing one to disk."""
+def _given_again(
+    short: str, definitions: list[_Definition], said
+) -> list[tuple[_Definition, str, str]]:
+    """Each definition of `short` after the first that is a finding, with its message and
+    hint: one that gives another meaning than the first, wherever it stands; and one that
+    gives the same meaning again, unless a caption or a glossary gives it, which may restate
+    what the text defines, or none of the text's own came before it. `definitions` are in
+    the order they stand; `said(mark, here)` names where `mark` stands, seen from `here`."""
+    first = definitions[0]
+    given: _Definition | None = None
+    found = []
+    for again in definitions:
+        if again is not first and not _same_meaning(first.long, again.long):
+            found.append((
+                again,
+                f"{short} is defined as {again.long!r} here and as {first.long!r} "
+                f"{said(first, again)}",
+                "one short form, one meaning: a reader keeps the first",
+            ))  # fmt: skip
+        elif again is not first and not again.restates and given is not None:
+            found.append((
+                again,
+                f"{short} is defined again; it was defined {said(given, again)}",
+                "define an abbreviation once and use the short form after that",
+            ))  # fmt: skip
+        if given is None and not again.restates:
+            given = again
+    return found
+
+
+def _headless(files: list[_File]) -> Finding | None:
+    """The note that the main text of a Markdown manuscript has no heading at all, so that
+    its abstract and its sections are read as one text; None where it has one."""
+    paper = [file for file in files if file.headed is not None and not file.supplementary]
+    if not paper or any(file.headed for file in paper):
+        return None
+    return Finding(
+        gate=GATE,
+        code="no-headings",
+        severity=INFO,
+        message="the manuscript has no headings, so its abstract and main text are read as "
+        "one; abbreviation-redefined is not reported",
+        path=paper[0].path,
+        hint="give each section a Markdown heading, `# Abstract`, `# Methods`: a line in bold "
+        "is not one",
+    )
+
+
+def _says_headless(stage: str | None) -> bool:
+    """Whether the `no-headings` note is said at this stage: once, at drafting (Basile,
+    2026-10-23), when the sections are being written. At any other stage, or where `check`
+    gave none, the paper is still read as one text, and the note is not said."""
+    return stage == DRAFTING
+
+
+def _judge(files: list[_File], known: _Known, root: Path, stage: str | None = None) -> Report:
+    """The findings, from files already read, at `stage` where one is given. Apart from
+    `check_language` so that what it costs can be measured on a manuscript of any size
+    without writing one to disk."""
     scopes = _collect(files, known)
 
     def where(mark: _Mark) -> str:
@@ -1113,6 +1246,9 @@ def _judge(files: list[_File], known: _Known, root: Path) -> Report:
     findings: list[Finding] = []
     everything: set[str] = set()
     defined_anywhere: set[str] = set()
+    headless = _headless(files)
+    if headless is not None and _says_headless(stage):
+        findings.append(headless)
 
     for scope in scopes.values():
         everything.update(scope.defined, scope.used)
@@ -1136,18 +1272,15 @@ def _judge(files: list[_File], known: _Known, root: Path) -> Report:
                     )
                 )
 
-            for again in definitions[1:]:
-                if _same_meaning(first.long, again.long):
-                    message = f"{short} is defined again; it was defined " + placed(
-                        first, again, "at", "earlier on the same line"
-                    )
-                    hint = "define an abbreviation once and use the short form after that"
-                else:
-                    message = (
-                        f"{short} is defined as {again.long!r} here and as {first.long!r} "
-                        + placed(first, again, "at", "earlier on the same line")
-                    )
-                    hint = "one short form, one meaning: a reader keeps the first"
+            # Without headings nothing tells the abstract from the main text, so a
+            # definition the abstract repeats would be reported as one given twice.
+            for again, message, hint in [] if headless and scope.name == BODY else (
+                _given_again(
+                    short,
+                    definitions,
+                    lambda mark, here: placed(mark, here, "at", "earlier on the same line"),
+                )
+            ):
                 findings.append(finding("abbreviation-redefined", again, short, message, hint))
 
             # A funder or a society named in full with its acronym, once, is how those
@@ -1196,9 +1329,10 @@ def _judge(files: list[_File], known: _Known, root: Path) -> Report:
     )
 
 
-def check_language(project: Project) -> Report:
+def check_language(project: Project, stage: str | None = None) -> Report:
     """The four readings of the manuscript: its abbreviations, the terms it keeps to,
-    its spelling and its notation; and where its prose is in a script none of them reads."""
+    its spelling and its notation; and where its prose is in a script none of them reads.
+    `stage` is the one `check` runs at, which decides only whether `no-headings` is said."""
     files = _read(project)
     passages = [Passage(file.path, file.text, file.printed, file.line_of) for file in files]
     # A contributions statement names its roles as CRediT spells them and a funding
@@ -1207,7 +1341,7 @@ def check_language(project: Project) -> Report:
     spelt = [Passage(file.path, file.text, file.spelt, file.line_of) for file in files]
     paper = project.root / PAPER_FILE
     return (
-        _judge(files, _known(project), project.root)
+        _judge(files, _known(project), project.root, stage)
         .merge(judge_vocabulary(passages, project.vocabulary, paper))
         .merge(
             judge_spelling(spelt, project.english_variant, project.accepted_spellings, paper)

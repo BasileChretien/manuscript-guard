@@ -1588,7 +1588,9 @@ def test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations(
     text, undefined = drawn
     nothing = language_gate._Known(frozenset(), frozenset())
     report = language_gate._judge([_file(0, Path("main.md"), text, [], False)], nothing, Path("."))
-    found = sorted((f.code, f.message.split()[0]) for f in report.findings)
+    # The manuscript has no heading, and the note that says so is no abbreviation's.
+    found = sorted((f.code, f.message.split()[0]) for f in report.findings
+                   if f.code.startswith("abbreviation-"))  # fmt: skip
     assert found == [("abbreviation-undefined", short) for short in undefined], text
 
 
@@ -1649,6 +1651,115 @@ def _a_table_s_body_and_a_plain_line_in_capitals_are_headings(
 
 def _a_header_cell_is_read_line_by_line(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(language_gate, "_rows", lambda header: [[line] for line in header])
+
+
+# Imported here, not at the top, to keep clear of the import block other branches edit.
+from generated import (  # noqa: E402
+    STATISTICS_EXEMPT,
+    STATISTICS_NOT,
+    defined_elsewhere,
+    statistics_used,
+)
+
+
+@holds(60, statistics_used())
+def test_a_statistical_abbreviation_stands_undefined_unless_the_journal_asks(
+    drawn: tuple[str, list[str]],
+) -> None:
+    """The statistical abbreviations G14's list holds are not reported as undefined, and
+    the others are; a journal that asks for the statistical ones defined has all of them
+    reported, and one that names some has those reported, from either list."""
+    text, named = drawn
+    nothing = language_gate._Known(frozenset(), frozenset())
+    read = [_file(0, Path("main.md"), text, [], False)]
+
+    def undefined(statistics: bool, asked: frozenset[str]) -> list[str]:
+        known = language_gate._asked(nothing, statistics, asked)
+        report = language_gate._judge(read, known, Path("."))
+        return sorted(f.message.split()[0] for f in report.findings)
+
+    assert undefined(False, frozenset()) == sorted(STATISTICS_NOT), text
+    assert undefined(True, frozenset()) == sorted(STATISTICS_EXEMPT + STATISTICS_NOT), text
+    assert undefined(False, frozenset(named)) == sorted({*STATISTICS_NOT, *named}), text
+
+
+def _the_statistical_list_is_empty(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_statistical", lambda: frozenset())
+
+
+def _a_journal_s_ask_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    def ignored(known: Any, statistics: bool, named: frozenset[str]) -> Any:
+        return language_gate._Known(known.exact | language_gate._statistical(), known.lowered)
+
+    patch.setattr(language_gate, "_asked", ignored)
+
+
+@holds(60, defined_elsewhere())
+def test_a_glossary_and_a_caption_define_and_a_paper_with_no_heading_is_one_text(
+    drawn: dict[str, Any],
+) -> None:
+    """A glossary under any of its headings defines its entries in every form, its lines
+    are not uses, and what it does not list is undefined; a caption, a legend and the first
+    use in the text restate a definition and do not give it twice, while a second in the
+    text does. Without headings, the paper is read as one text at every stage:
+    abbreviation-redefined is not reported, what is undefined still is, and a note says so
+    at drafting and at no other stage."""
+    from manuscript_guard.policy import DRAFTING, STAGES
+
+    nothing = language_gate._Known(frozenset(), frozenset())
+
+    def findings(text: str, stage: str | None = None) -> list:
+        read = [_file(0, Path("main.md"), text, [], False)]
+        return list(language_gate._judge(read, nothing, Path("."), stage).findings)
+
+    for stage in (None, *STAGES):
+        headed = findings(drawn["headed"], stage)
+        assert sorted((f.code, f.message.split()[0]) for f in headed) == drawn["found"], drawn
+        plain = findings(drawn["headless"], stage)
+        said = {f.code for f in plain}
+        assert ("no-headings" in said) == (stage == DRAFTING), (stage, drawn["headless"])
+        assert "abbreviation-redefined" not in said, (stage, drawn["headless"])
+        assert ("abbreviation-undefined", "UMC") in {
+            (f.code, f.message.split()[0]) for f in plain
+        }, drawn["headless"]
+
+
+def _a_glossary_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import glossary
+
+    patch.setattr(glossary, "sections", lambda headings, length: [])
+
+
+def _a_glossary_s_lines_are_uses(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_in_a_glossary", lambda file, offset: False)
+
+
+def _a_wrapped_glossary_line_is_not_joined(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import glossary
+
+    def alone(lines: list, index: int, raw: str) -> tuple[str, list[int], int]:
+        at, line = lines[index]
+        return line, list(range(at, at + len(line))), 1
+
+    patch.setattr(glossary, "_paragraph", alone)
+
+
+def _nothing_restates_a_definition(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_restates", lambda captions, glossaries, offset: False)
+
+
+def _a_caption_is_text(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import glossary
+
+    patch.setattr(glossary, "markdown_captions", lambda prose: [])
+
+
+def _a_headless_paper_is_read_as_one_with_headings(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_headless", lambda files: None)
+
+
+def _no_headings_is_said_at_every_stage(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(language_gate, "_says_headless", lambda stage: True)
 
 
 @holds(60, latex_writing())
@@ -12111,6 +12222,42 @@ BROKEN = {
     "a header cell is read line by line": (
         _a_header_cell_is_read_line_by_line,
         test_a_time_of_day_and_a_heading_in_capitals_are_no_abbreviations,
+    ),
+    "a statistical abbreviation needs a definition": (
+        _the_statistical_list_is_empty,
+        test_a_statistical_abbreviation_stands_undefined_unless_the_journal_asks,
+    ),
+    "a journal's ask for definitions is not read": (
+        _a_journal_s_ask_is_not_read,
+        test_a_statistical_abbreviation_stands_undefined_unless_the_journal_asks,
+    ),
+    "a glossary is not read": (
+        _a_glossary_is_not_read,
+        test_a_glossary_and_a_caption_define_and_a_paper_with_no_heading_is_one_text,
+    ),
+    "a glossary's lines are uses": (
+        _a_glossary_s_lines_are_uses,
+        test_a_glossary_and_a_caption_define_and_a_paper_with_no_heading_is_one_text,
+    ),
+    "a glossary paragraph wrapped in the source is not joined": (
+        _a_wrapped_glossary_line_is_not_joined,
+        test_a_glossary_and_a_caption_define_and_a_paper_with_no_heading_is_one_text,
+    ),
+    "nothing restates a definition": (
+        _nothing_restates_a_definition,
+        test_a_glossary_and_a_caption_define_and_a_paper_with_no_heading_is_one_text,
+    ),
+    "a caption is read as text": (
+        _a_caption_is_text,
+        test_a_glossary_and_a_caption_define_and_a_paper_with_no_heading_is_one_text,
+    ),
+    "a paper with no heading is read as one with headings": (
+        _a_headless_paper_is_read_as_one_with_headings,
+        test_a_glossary_and_a_caption_define_and_a_paper_with_no_heading_is_one_text,
+    ),
+    "no-headings is said at every stage": (
+        _no_headings_is_said_at_every_stage,
+        test_a_glossary_and_a_caption_define_and_a_paper_with_no_heading_is_one_text,
     ),
     "a statistic is read at its printed value, not over what its last digit allows": (
         _a_statistic_is_read_at_its_printed_value,

@@ -35,7 +35,7 @@
     },
     "quotes": {
       "type": "object",
-      "description": "For each rule, the words of the page it was read from, as the page writes them, keyed by the rule: limits.abstract_words, structure.required_sections, required_statements.<id>, references, english_variant, blinding, text_recycling, reporting_guidelines, pointers.<kind>. G4 holds each to the stored page, and a limit's number to its quote.",
+      "description": "For each rule, the words of the page it was read from, as the page writes them, keyed by the rule: limits.abstract_words, structure.required_sections, required_statements.<id>, references, english_variant, blinding, text_recycling, abbreviations.<key>, reporting_guidelines, pointers.<kind>. G4 holds each to the stored page, and a limit's number to its quote.",
       "propertyNames": { "type": "string", "minLength": 1 },
       "additionalProperties": { "type": "string", "minLength": 1 }
     },
@@ -69,6 +69,21 @@
       "minLength": 1,
       "pattern": "\\S",
       "description": "What the journal says of text its authors reuse from their own earlier papers, in a sentence, as its own page says: Methods only and cited, say, or none. Its quote, under `quotes.text_recycling`, is held to the stored page, and G7 gives that quote with each passage it finds repeated from an earlier output."
+    },
+    "abbreviations": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "description": "The abbreviations the journal asks to be defined though G14 would let them stand. `define_statistics: true`: the statistical ones G14 exempts (data/statistical_abbreviations.yaml) are reported when undefined. `define`: these, by name, are reported when undefined, whatever exempts them. Each is quoted under `quotes.abbreviations.<key>`.",
+      "properties": {
+        "define_statistics": { "type": "boolean" },
+        "define": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "pattern": "^\\S+$" }
+        }
+      }
     },
     "figures": {
         "type": "object",

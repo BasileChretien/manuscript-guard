@@ -50,11 +50,10 @@ expected:
       against it ends one, so the bounds on either side of it are no longer compared
   - reading: check
     why: >-
-      a reference list titled in Spanish, Portuguese, French, German, Italian, Turkish or
-      Indonesian, "Daftar pustaka" say, is the reference list, so G14 reads no abbreviation
-      under it and G4 counts none of its words in the main text; and
-      G6's bold rate leaves out a simple, multiline, grid or pipe table; the inputs now hold
-      such titles, and bold in tables and in prose under lines of dashes that open none
+      G14 reports no `abbreviation-redefined` in a Markdown manuscript whose main text has
+      no heading, and notes it, `no-headings`, at the drafting stage only; reads a
+      glossary's entries as definitions, lets a caption restate one, and leaves SD, ANOVA, RMSE and RMSD undefined unless the
+      journal's profile asks for them
   - reading: numbers
     why: >-
       an e-mail address is structural, `email-address`, and an interleukin, "IL-4",
@@ -150,11 +149,17 @@ expected:
       is read as the closing mark, as the font prints it; not after a blank line, nor before
       a letter, babel's German accent; the inputs now hold such quotations (corpus round,
       2026-10-23)
-  - reading: latex documents
+  - reading: abbreviations
     why: >-
-      a reading new in this pull request, of a manuscript folder's files: a `.tex` file a
-      class or a package the paper loads inputs is the class's and read by neither document,
-      where it was read as loose main text, and a file that holds a document of its own is
-      refused, `tex-second-document`, where it was read as loose main text; a file a class
-      inputs only inside a command's definition, a `standalone` picture and a file
-      refused before its `\begin{document}` are read as loose main text, as before
+      the brackets this pull request plants: one whose short form is followed by an equals
+      sign or a number defines nothing, as before, and one followed by a colon is read
+      exactly as before; what differs is the shapes of its earlier commits: a long
+      form takes no letter from inside a bracket it opens, and looks for it before that
+      bracket; a time of day, "8:30AM", "10:00 PM", is not read as an abbreviation, and
+      nothing is reported as undefined in a paragraph set in bold with no small letter or a
+      cell of a table's header row with none, a heading typed in capitals; the inputs now
+      hold such brackets, times, headings and tables. Then: a glossary under its heading
+      defines its entries and its lines are no uses, a caption or a legend restates a
+      definition without giving it twice, and a manuscript with no heading is read as one
+      text, with no `abbreviation-redefined` (the reading gives no stage, so no
+      `no-headings` note); the inputs hold a glossary and captions, and many have no heading

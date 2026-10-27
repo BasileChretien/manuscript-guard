@@ -1,0 +1,30 @@
+schema: manuscript-guard/statistical-abbreviations/1
+
+# Statistical abbreviations G14 does not ask a manuscript to define, unless the target
+# journal's profile asks for them (`abbreviations: define_statistics: true`, or by name under
+# `abbreviations: define:`).
+#
+# Only what a published style manual lets stand undefined. The ASA, CSSA and SSSA
+# Publications Handbook and Style Manual, chapter 4, says the abbreviations and symbols of
+# its Table 4-1, "Some widely used statistical abbreviations and symbols", "do not require
+# definition" in those societies' journals
+# (https://sciencesocieties.org/files/publications/style/chapter-04.pdf, read 2026-10-23).
+# Of its entries, these are the ones G14 would otherwise report, having two capitals
+# together, and that mean the statistic in clinical prose too.
+#
+# Left out, from that table: SE (status epilepticus), SEM (scanning electron microscopy,
+# structural equation model), CV (cardiovascular) and LSD (the drug). `P`, `p`, `df`, `n`,
+# `r`, `F` and `t` are not reported anyway: they have no two capitals together.
+#
+# Not here, though some journals let them stand: CI, OR, RR, HR and IQR. JAMA asks for every
+# abbreviation to be expanded at its first mention in the text
+# (https://jamanetwork.com/journals/jama/pages/instructions-for-authors, read 2026-10-23),
+# and the Cochrane Style Manual's list of common abbreviations that do not need to be
+# defined holds none of them. A project whose journal lets them stand lists them under
+# `language: known_abbreviations:` in paper.yaml.
+
+exempt:
+  - ANOVA
+  - RMSD
+  - RMSE
+  - SD

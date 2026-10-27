@@ -20757,10 +20757,10 @@ SPELT_OUT = "The reporting odds ratio was computed from"
 ABBREVIATED = "The ROR was computed from"
 
 
-def language_findings(root: Path) -> list[tuple[str, int]]:
+def language_findings(root: Path, stage: str | None = None) -> list[tuple[str, int]]:
     from manuscript_guard.gates import check_language
 
-    report = check_language(load_project(root)[0])
+    report = check_language(load_project(root)[0], stage)
     assert report.ok, "G14 warns; it does not fail"
     return sorted((f.code, f.line) for f in report.findings)
 
@@ -21005,6 +21005,97 @@ def test_a_definition_with_an_aside_given_again_is_caught(project: Path) -> None
     assert language_findings(project) == [
         ("abbreviation-redefined", line_of(aside, "others) (ROR) observed"))
     ]
+
+
+def journal_asks_for(root: Path, rules: dict, quotes: dict) -> None:
+    """The example's journal profile, asking for `rules` under `abbreviations:`."""
+    path = root / "profiles" / "journals" / "demo-journal.yaml"
+    profile = yaml.safe_load(path.read_text(encoding="utf-8"))
+    profile["abbreviations"] = rules
+    profile["quotes"].update(quotes)
+    path.write_text(yaml.safe_dump(profile, sort_keys=False), encoding="utf-8")
+
+
+def test_a_statistic_the_journal_asks_defined_is_caught(project: Path) -> None:
+    """The Methods give the spread of the yearly counts as an SD, which G14's list lets
+    stand; the journal's page asks every abbreviation expanded, and its profile says so."""
+    mended = with_ror_defined(project)
+    spread = mended.replace("A signal was defined", "The SD of the yearly counts was small. A "
+                            "signal was defined")  # fmt: skip
+    main_md(project).write_text(spread, encoding="utf-8")
+    assert language_findings(project) == []
+    journal_asks_for(
+        project,
+        {"define_statistics": True},
+        {"abbreviations.define_statistics": "Expand every abbreviation at first use."},
+    )
+    assert language_findings(project) == [
+        ("abbreviation-undefined", line_of(spread, "The SD of"))
+    ]
+
+
+def test_a_glossary_entry_the_paper_no_longer_uses_is_caught(project: Path) -> None:
+    """A list of abbreviations is added before the Introduction, and one of its entries is
+    used nowhere. The glossary defines ROR, the Introduction expands it again at first use
+    as journals ask, and only the unused entry is reported."""
+    mended = with_ror_defined(project)
+    listed = mended.replace(
+        "# Introduction",
+        "# Abbreviations\n\nROR: reporting odds ratio\nPRR: proportional reporting ratio\n\n"
+        "# Introduction",
+    )
+    main_md(project).write_text(listed, encoding="utf-8")
+    assert language_findings(project) == [("abbreviation-unused", line_of(listed, "PRR:"))]
+
+
+def test_a_legend_restates_and_a_pasted_definition_is_still_caught(project: Path) -> None:
+    """A figure's legend, typed in Word, restates the definition, as a legend that has to
+    stand alone does; the definition pasted again in the Discussion is still given twice."""
+    mended = with_ror_defined(project)
+    again = mended.replace(
+        "The analysis was run in Python",
+        "Figure 1. The reporting odds ratio (ROR) by year of report.\n\n"
+        "The analysis was run in Python",
+    ).replace(
+        "The reporting odds ratio observed here", "The reporting odds ratio (ROR) observed here"
+    )
+    main_md(project).write_text(again, encoding="utf-8")
+    assert language_findings(project) == [
+        ("abbreviation-redefined", line_of(again, "ratio (ROR) observed"))
+    ]
+
+
+def test_a_paper_with_its_headings_in_bold_is_read_as_one_text(project: Path, capsys) -> None:
+    """Pasted from Word, the headings are bold lines and the definition is pasted again.
+    Nothing tells the abstract from the main text, so the second definition is not
+    reported; G14 says why, once and at drafting only, and the abbreviation nobody defined
+    is still reported."""
+    from manuscript_guard.cli import main
+    from manuscript_guard.policy import DRAFTING, INTERNAL_REVIEW, STAGES
+
+    mended = with_ror_defined(project)
+    bold = re.sub(r"(?m)^# (.+)$", r"**\1**", mended).replace(
+        "The reporting odds ratio observed here", "The reporting odds ratio (ROR) observed here"
+    ).replace("A signal was defined", "The UMC curated the database. A signal was defined")
+    main_md(project).write_text(bold, encoding="utf-8")
+    assert language_findings(project, DRAFTING) == [
+        ("abbreviation-undefined", line_of(bold, "The UMC")),
+        ("no-headings", None),
+    ]
+    assert language_findings(project, INTERNAL_REVIEW) == [
+        ("abbreviation-undefined", line_of(bold, "The UMC")),
+    ]
+
+    def notes(stage: str) -> int:
+        capsys.readouterr()
+        main(["check", str(project), "--json", "--stage", stage])
+        found = json.loads(capsys.readouterr().out)["findings"]
+        return sum(f["code"] == "no-headings" for f in found)
+
+    # `check` gives G14 the stage it runs at.
+    assert {stage: notes(stage) for stage in STAGES} == {
+        stage: int(stage == DRAFTING) for stage in STAGES
+    }
 
 
 # --------------------------------------------------------------------------------------

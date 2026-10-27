@@ -182,6 +182,16 @@ def figure_rules(project: Project) -> dict:
     return rules if isinstance(rules, dict) else {}
 
 
+def abbreviations_asked(project: Project) -> tuple[bool, frozenset[str]]:
+    """What the target journal asks to be defined though G14 would let it stand: whether the
+    statistical abbreviations are (`abbreviations.define_statistics`), and which by name
+    (`abbreviations.define`). Nothing where there is no profile, or none that can be read:
+    G4 says why."""
+    document = _profile(project)
+    rules = (document or {}).get("abbreviations") or {}
+    return bool(rules.get("define_statistics")), frozenset(map(str, rules.get("define") or ()))
+
+
 def text_recycling(project: Project) -> str | None:
     """What the target journal says of text reused from its authors' earlier papers, in its
     page's words where the profile quotes them (`quotes.text_recycling`), else as the

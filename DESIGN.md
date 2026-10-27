@@ -13648,12 +13648,11 @@ Open, recorded as each change landed:
 - **A unit after a binding is read from a list of symbols.** "mg" is read and "milligrams"
   is not, so a unit written out in words is compared with nothing; one-letter symbols other
   than g and h (m, L, s) are left out as G14 leaves them, so "{{results.length}} m" is not
-  read. A divisor after a space, "mg kg-1", is not read: written, the unit is its first
-  symbol, so "mg kg-1" against an emitted "mg/kg" is said to differ, and emitted, it is
-  compared with nothing. A divisor written as a word, "mg/kg per day" against an emitted
-  "mg/kg/day", is said to differ too (round 1 of #279, where this entry said "mg/kg" and
-  "mg kg-1" were taken for two both ways; pinned by
-  `test_what_the_unit_reading_gets_wrong_is_pinned`).
+  read. A divisor written as a word, "mg/kg per day" against an emitted "mg/kg/day", is
+  said to differ (pinned by `test_what_the_unit_reading_gets_wrong_is_pinned`), and so is
+  one spelt otherwise than the emitted one, "mg kg-1 d-1" against "mg/kg/day". A divisor
+  after a space is read only with a power below nought, "mg kg-1", not with a middle dot
+  between, "mg·kg⁻¹", whose unit is its first symbol.
 - **A heading nested in a list item is read with its marker, or not at all.** Pandoc prints
   `- Results` over an underline as a list item holding a heading titled "Results". The
   gates keep the marker in the title, so it ends the section above; "- Results" is read as
@@ -16738,6 +16737,14 @@ Closed since, and why each mattered (an open gap goes above this line):
   what the section holds, or by "of" and words, is the Methods now; a title that also names
   what was found, "Methods: main results", is not, as "Methods and results" is not
   (`test_the_methods_named_with_what_they_hold_are_the_methods_to_g2`).
+
+- **A divisor after a space was not read after a binding.** Written, "mg kg-1" was read as
+  its first symbol and said to differ from an emitted "mg/kg"; emitted, it was compared
+  with nothing. A divisor after a space with its power below nought, typed ("kg-1",
+  "kg^-1^", with a minus sign) or in superscript characters ("kg⁻¹"), is read now, among
+  the symbols and the one-letter ones a power below nought tells from a word ("mg L-1",
+  "µg m-3"), and compared as the same divisor after a slash, both ways
+  (`test_what_the_unit_reading_gets_wrong_is_pinned`).
 
 - **A paper that declared no English heard nothing of its journal's.** Since `english_variant`
   became optional, G4 compared a journal's English with the paper's only where the paper

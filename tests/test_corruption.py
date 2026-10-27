@@ -2690,18 +2690,26 @@ def test_a_unit_written_after_a_binding_is_the_one_emitted(
 
 
 @pytest.mark.parametrize(("emitted", "written", "said"), [
-    # A divisor after a space is not read: the written unit is its first symbol, and an
-    # emitted one is compared with nothing.
-    ("mg/kg", " mg kg-1", True),
+    # A divisor after a space, with its power below nought, divides as one after a slash:
+    # written, "mg kg-1" was read as "mg" and said to differ from an emitted "mg/kg", and
+    # emitted, it was compared with nothing.
+    ("mg/kg", " mg kg-1", False),
+    ("mg/kg", " mg kg\N{SUPERSCRIPT MINUS}\N{SUPERSCRIPT ONE}", False),
+    ("mg/kg", " mg kg\N{MINUS SIGN}1", False),
+    ("mg/L", " mg L-1", False),
+    ("mg/kg/d", " mg kg-1 d-1", False),
     ("mg kg-1", " mg/kg", False),
-    # A divisor written as a word is not read either.
+    ("mg kg-1", " \N{MICRO SIGN}g/kg", True),
+    ("\N{MICRO SIGN}g/kg", " mg kg-1", True),
+    ("mg/kg", " mg kg-1 d-1", True),
+    # A divisor written as a word is not read.
     ("mg/kg/day", " mg/kg per day", True),
 ])  # fmt: skip
 def test_what_the_unit_reading_gets_wrong_is_pinned(
     project: Path, emitted: str, written: str, said: bool
 ) -> None:
     """Known gaps, as DESIGN.md writes them (round 1 of #279, where it said "mg/kg" and
-    "mg kg-1" were taken for two units both ways)."""
+    "mg kg-1" were taken for two units both ways). A divisor after a space is read now."""
     _unit_emitted(project, "case.pct_serious", emitted)
     path = main_md(project)
     binding = "{{results.case.pct_serious}}"
@@ -2724,6 +2732,9 @@ def test_what_the_unit_reading_gets_wrong_is_pinned(
     ("\N{MASCULINE ORDINAL INDICATOR}F", "\N{DEGREE SIGN}F"),
     ("cm\N{SUPERSCRIPT TWO}", "cm2"), ("cm^2^", "cm2"), ("cm\N{SUPERSCRIPT THREE}", "cm3"),
     ("h\N{MINUS SIGN}1", "h-1"),
+    ("mg kg-1", "mg/kg"), ("mg kg\N{SUPERSCRIPT MINUS}\N{SUPERSCRIPT ONE}", "mg/kg"),
+    ("mg kg^-1^", "mg/kg"), ("mg/kg", "mg kg-1"), ("mg kg-2", "mg/kg2"),
+    ("mg L-1", "mg/l"), ("mg kg\N{MINUS SIGN}1", "mg / kg"),
 ])  # fmt: skip
 def test_every_spelling_of_one_unit_is_one_unit(written: str, emitted: str) -> None:
     """Round 1 of #279: only mcg and mu were held, so an empty list of spellings passed."""

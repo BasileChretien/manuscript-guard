@@ -8083,6 +8083,16 @@ _AFTER_A_BINDING = (
     (" min-1", "min-1"),
     (" \N{DEGREE SIGN}C", "\N{DEGREE SIGN}C"),
     (" mg/kg/day", "mg/kg/day"),
+    # A divisor after a space, with its power below nought; not a word with a number after
+    # a hyphen, nor a power of two digits.
+    (" mg kg-1", "mg kg-1"),
+    (
+        " mg kg\N{SUPERSCRIPT MINUS}\N{SUPERSCRIPT ONE}",
+        "mg kg\N{SUPERSCRIPT MINUS}\N{SUPERSCRIPT ONE}",
+    ),
+    ("\N{NO-BREAK SPACE}\N{MICRO SIGN}g L-1 d-1", "\N{MICRO SIGN}g L-1 d-1"),
+    (" mg COX-2", "mg"),
+    (" mg kg-12", "mg"),
     (" minutes", None),
     (" mgs", None),
     (" group", None),
@@ -10695,6 +10705,12 @@ def _a_heading_is_part_of_the_paragraph_under_it(patch: pytest.MonkeyPatch) -> N
     patch.setattr(methods_gate, "_HEADING", re.compile(r"(?!)"))
 
 
+def _a_divisor_after_a_space_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    assert bound_units_gate._SPACED in bound_units_gate._UNIT.pattern
+    pattern = bound_units_gate._UNIT.pattern.replace(bound_units_gate._SPACED, "")
+    patch.setattr(bound_units_gate, "_UNIT", re.compile(pattern))
+
+
 def _a_unit_is_read_after_a_plain_space_only(patch: pytest.MonkeyPatch) -> None:
     pattern = bound_units_gate._UNIT.pattern.replace(bound_units_gate._GAP, " ?", 1)
     patch.setattr(bound_units_gate, "_UNIT", re.compile(pattern))
@@ -12696,6 +12712,10 @@ BROKEN = {
     "a heading is part of the paragraph under it": (
         _a_heading_is_part_of_the_paragraph_under_it,
         test_an_anchor_claims_the_text_back_to_the_anchor_before_it_or_its_paragraph,
+    ),
+    "a divisor after a space is not read": (
+        _a_divisor_after_a_space_is_not_read,
+        test_the_unit_after_a_binding_is_read_however_spaced_and_no_word_is,
     ),
     "a unit is read after a plain space only": (
         _a_unit_is_read_after_a_plain_space_only,

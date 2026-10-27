@@ -215,6 +215,32 @@ def test_offline_build_produces_a_document(project: Path) -> None:
 
 
 @needs_pandoc
+def test_a_heading_straight_under_a_captioned_table_is_printed_as_a_heading(
+    project: Path,
+) -> None:
+    """Known gaps: the caption is a paragraph after the table, and a heading on the next
+    line does not interrupt a paragraph, so the document printed "Discussion" at the end of
+    the caption while G2 read the heading the source means."""
+    import re
+
+    path = project / "manuscript" / "main.md"
+    text = path.read_text(encoding="utf-8").replace(
+        "{{table.two_by_two}}\n\n{{figure.forest}}\n\n# Discussion",
+        "{{figure.forest}}\n\n{{table.two_by_two}}\n# Discussion", 1,
+    )  # fmt: skip
+    assert "two_by_two}}\n# Discussion" in text
+    path.write_text(text, encoding="utf-8")
+    proj, namespace, results, _lit = loaded(project)
+    assembled, report = assemble(proj, namespace, results)
+    assert report.ok, report.render(project)
+    out = project / "build" / "manuscript.docx"
+    build_document(proj, assembled, mode=OFFLINE, output=out)
+    xml = zipfile.ZipFile(out).read("word/document.xml").decode("utf-8")
+    heading = re.search(r'<w:pStyle w:val="Heading1"\s*/>(?:(?!</w:p>).)*Discussion', xml, re.S)
+    assert heading is not None, "Discussion is no heading in the document"
+
+
+@needs_pandoc
 def test_offline_build_needs_a_bibliography(project: Path) -> None:
     (project / "literature" / "references.bib").unlink()
     proj, namespace, results, _lit = loaded(project)
@@ -369,6 +395,60 @@ def test_prose_directly_after_a_figure_is_not_set_as_its_caption(project: Path) 
     ]
     assert len(found) == 1
     assert 'w:val="FigureCaption"' not in found[0], "prose was set in the caption style"
+
+
+def styled_captions(markdown: str) -> list[str]:
+    """The text of each paragraph `figure_caption.lua` sets in the caption style, as pandoc
+    reads `markdown` with it."""
+    import json
+    import subprocess
+
+    from manuscript_guard.build.document import FIGURE_CAPTION_LUA, pandoc
+
+    done = subprocess.run(
+        [pandoc(), "-f", "markdown", "-t", "json", "--lua-filter", str(FIGURE_CAPTION_LUA)],
+        input=markdown, capture_output=True, text=True, encoding="utf-8", check=True,
+    )  # fmt: skip
+
+    def text(node: object) -> str:
+        if isinstance(node, list):
+            return "".join(text(item) for item in node)
+        if not isinstance(node, dict):
+            return ""
+        if node.get("t") == "Str":
+            return node["c"]
+        if node.get("t") in ("Space", "SoftBreak"):
+            return " "
+        return text(node.get("c"))
+
+    return [
+        text(block["c"][1])
+        for block in json.loads(done.stdout)["blocks"]
+        if block["t"] == "Div" and ["custom-style", "Figure Caption"] in block["c"][0][2]
+    ]
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    "caption",
+    ["Figure 1. The estimate.", "**Fig. 1.** The estimate.", "Fig. S2: The estimate.",
+     "eFigure 3. The estimate.", "**eFigure S1.** The estimate."],
+)  # fmt: skip
+def test_a_caption_opening_fig_or_efigure_is_styled_as_one(caption: str) -> None:
+    """Known gaps: G2 holds "Fig. 1." and "eFigure 1." as a figure's caption, and the build
+    set only "Figure 1." in the caption's style; the others were set in the body font."""
+    found = styled_captions(f"![](figure.png)\n\n{caption}\n")
+    assert found == [caption.replace("**", "")], found
+
+
+@needs_pandoc
+@pytest.mark.parametrize(
+    "prose",
+    ["Fig. 1 shows the estimate.", "eFigure 2 shows it.", "Fig. 2.5-fold higher.",
+     "Figs. 1. The estimate.", "Fig 1. The estimate.", "efigure 1. The estimate."],
+)  # fmt: skip
+def test_prose_opening_fig_or_efigure_under_a_figure_is_not_its_caption(prose: str) -> None:
+    assert styled_captions(f"![](figure.png)\n\n{prose}\n") == []
 
 
 @needs_pandoc

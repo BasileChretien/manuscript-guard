@@ -111,13 +111,16 @@ stage; on fifteen real papers it did so for seven. `init --from` changes three t
 What Word's Title, Author, Date and Abstract styles hold is what pandoc reads as the
 document's metadata. The title goes to `paper.yaml` unless `--title` gives another, each
 name of an Author paragraph to `authors.yaml` as the paper writes it, for you to split into
-given and family name, and the abstract becomes the section `# Abstract`. An Author
+given and family name, and the abstract becomes the section `# Abstract`. pandoc reads the
+Abstract style only straight after the Title, Author and Date paragraphs, so a paragraph in
+that style elsewhere on the title page is found by reading the document again with its
+styles, and joins the section where that reading matches the first. An Author
 paragraph holding several names, a comma, a number or a superscript, and the date, go into
 the comment. So does the Title paragraph, as well as `paper.yaml`'s plain title, where it
 holds a note, a superscript, a link or a picture: a note on the title often names the funder
 or the corresponding author. Nothing is guessed from how a line looks, so names typed in capitals on the
-title page stay in the comment. Read it: an abstract there hides its numbers from every
-gate until you move it out.
+title page stay in the comment. Read it: an abstract there in no Abstract style hides its
+numbers from every gate until you move it out.
 
 A `.doc` is refused: open it in Word and save it as `.docx`. `--from` makes nothing where
 `manuscript/` already holds a manuscript or the folder already has a `paper.yaml` or an

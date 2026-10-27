@@ -11494,9 +11494,7 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   `opacity` that hide text, a `tspan`'s tail, and a width of 100% with no `viewBox` (read
   as 16 units) are not read as a browser would; `@media` and `@supports` apply always, a
   child combinator matches as a descendant, and `font-size` and the `font` shorthand are
-  not ordered. A run of `{` before one `}` is read again from each brace. In PDF, forms whose
-  resources name each other in a ring, of two or more, or name the page's own, are followed
-  until Python's recursion limit raises; a
+  not ordered. A run of `{` before one `}` is read again from each brace. In PDF, a
   `MediaBox` written as a number or a name, which page is first, an inline image's `EI`
   inside its data, and a form decoded once per use are not handled.
 - **Study designs and their plan sections.** A section is found by words of its heading:
@@ -11560,11 +11558,8 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   citation key that opens with a CJK character is counted as prose; 々, 〆, 〇, CJK Extensions
   G to I, the compatibility supplement, Hangul Jamo Extended A and B and half-width Hangul
   are not among the blocks.
-- **The submission pack.** `**Keywords**` with no colon is not cut from `abstract.txt`; an
-  abstract heading inside a Div is not found and the abstract is left out without a word;
-  "Abstract screening" is taken for the Abstract's heading; an e-mail autolink is refused
-  as a link with words of its own. The build exits 0 where its own document is
-  `docx-unreadable` to the blind check.
+- **The submission pack.** "Abstract screening" is taken for the Abstract's heading; an
+  e-mail autolink is refused as a link with words of its own.
 - **Blinding.** "J.-P. Example", "Van der Berg" at a sentence's start and an APA "A.
   Example, 2019" in the text are not read as written; a figure in the supplement only is
   reported against `manuscript.docx`; an SVG with an internal subset is read as empty with
@@ -11673,11 +11668,6 @@ Open, recorded as each change landed:
   and a value is not read with a full stop before it, so a quote holding `…14 per 100 000`
   does not state 14 and is reported `value-not-in-quote`. With a space after the ellipsis
   it does.
-- **A minus sign in a PDF figure is not the hyphen in its sidecar.** A figure saved as PDF
-  with its text kept as text (matplotlib's `pdf.fonttype: 42`) holds U+2212 before a negative
-  tick, and a sidecar entry `"-1.0"` does not allow it: `figure-number-unbound`. Poppler's
-  `pdftotext` always read it so; the one from Xpdf wrote a hyphen until it was asked for
-  UTF-8 and now reads it the same. The entry has to hold the sign the figure does.
 - **Retrieval is not automated.** The skill drives Chrome by hand; there is no DOI-to-PDF
   pipeline, deliberately, because publisher access varies and bulk fetching is not
   something this tool should make easy.
@@ -11794,9 +11784,10 @@ Open, recorded as each change landed:
   caption, a stop and a space, whatever the journal sets there ("Table 2:", the label in
   bold). Where the count cannot number a table (placed twice, or its kind also placed by
   hand or sent as files in that document) its caption prints with no number, and a caption
-  beside it is not held. A figure's caption in a form other than "Figure 1." ("Fig. 1.",
-  "eFigure 1.") is held by G2 and set in the body font, since the build styles only the
-  paragraph under a figure that opens "Figure" and its number. A caption is held only where
+  beside it is not held. A figure's caption in a form other than "Figure 1.", "Fig. 1." and
+  "eFigure 1." ("Supplementary Figure 1.", "Fig 1.", "Figure 1 - ...", "**Figure 1** ...") is
+  held by G2 and set in the body font, since the build styles only the paragraph under a
+  figure that opens with one of those three and its number. A caption is held only where
   it stands next to its display: one typed two paragraphs above its table names whatever it
   names.
 - **A ref G2 does not see is still printed.** G2 reads the text as the build prints it less
@@ -12851,9 +12842,9 @@ Open, recorded as each change landed:
   after `cp a b &&` or after `cd "example - Copy" &&`, where the folder's name is the verb.
   On the line after such a command it goes through. `review` and `respond` take no `--stage`:
   in a failing project an agent sees the review at submission standard through `check
-  --stage submission`, and `respond --submission` waits until the check passes. The README,
-  the submission-pack and review-panel skills, and the `MANIFEST.yaml` of a pack assembled
-  with `--skip-checks` still write `check --submission`, which costs an agent one refusal
+  --stage submission`, and `respond --submission` waits until the check passes. The
+  `AGENTS.md` that `init` writes into a project (and the example's) and the description of
+  the comments schema still write `check --submission`, which costs an agent one refusal
   before it is told the other spelling. Letting a command through when it is a `check` and
   nothing else was considered and left (Basile, 2026-10-02): the rule has to tell
   `manuscript-guard check --submission` from the same words followed by `&& scp`, and a
@@ -13800,12 +13791,10 @@ Open, recorded as each change landed:
   discussion" is not, so a "Sensitivity analyses" under it keeps the Methods rules. The
   old scan did the same. Reading every title that starts with "Results" as Results would
   also report the thresholds under a Methods subsection called "Summary statistics".
-- **A heading directly under a captioned `{{table.x}}` is printed inside the caption.** The
-  build writes the caption as a paragraph after the table, and a heading cannot interrupt a
-  paragraph, so the document loses the heading while G2 reads the one the source means. With
-  no caption the table ends at its last row and the two agree. A blank line avoids it, as
-  the example leaves one everywhere. A `{{figure.x}}` line is prose to both: the
-  build writes an image there, and a heading under it is printed as text.
+- **A heading directly under a `{{figure.x}}` line is printed as text.** The line is prose to
+  the gates and to the build: the build writes an image there, and a heading on the next line
+  does not interrupt the paragraph. A blank line avoids it, as the example leaves one
+  everywhere.
 - **Raw HTML and LaTeX beside a heading are read from lists, not from pandoc's parser.** A
   line of nothing but LaTeX commands is a block unless one of them is on a list of inline
   commands. A tag is block-level, "either" (a block at the margin, inline in a paragraph),
@@ -14457,10 +14446,6 @@ Open, recorded as each change landed:
   which bound is which and G2 uses it in prose; a composed cell records ordered `parts`, and
   a transposition rebuilds the template exactly. The emitter refuses a transposed interval
   through one API and renders one through another.
-- **`document-stale` can block the build that would clear it.** At `internal-review` the
-  gate fails, `build` refuses while anything fails, and `--skip-checks` writes a different
-  filename - so the stale document stays stale and the UNCHECKED copy becomes a second
-  permanent finding. `--output` is the escape and its message is then untrue.
 - **A determined fragment editor is not caught by G2, and never could be.** The table check
   catches an *inconsistent* fragment: a cell that its own `composed` entry does not rebuild,
   a number no value published, a claim of composition attached to the wrong cell. Someone
@@ -16630,11 +16615,12 @@ Open, recorded as each change landed:
   short title page, 600 words in all, is set aside with it, and no gate reads its numbers; a
   title page over 600 words stays in the text, where its names and affiliations are read.
   `init` prints which it did and how many words.
-- **An abstract `init --from` does not find in Word's metadata is not a section.** pandoc
-  reads the Abstract style as metadata only straight after the Title, Author and Date
-  paragraphs. An abstract elsewhere before the first heading goes into the comment with the
-  title page, and its numbers are read by no gate until it is moved out; one under a heading
-  of its own stays in the text.
+- **`init --from` finds an abstract on the title page by its style alone.** A paragraph in
+  Word's Abstract style there is the section `# Abstract` only where pandoc's reading of the
+  document with its styles is, the styles taken off, its ordinary reading block for block;
+  where the two differ, it is left in the comment with the rest of the title page, and
+  nothing says so. An abstract in another style, or under a line "Abstract" in bold, stays
+  in the comment, and its numbers are read by no gate until it is moved out.
 - **A Word paper's bold-text headings are no headings.** `init --from` takes as a heading only
   a paragraph in one of Word's heading styles, as pandoc does; six of fifteen papers had none.
   Their sections are paragraphs to every gate, so a Methods section's thresholds are not read
@@ -16717,6 +16703,61 @@ What papers converted from Word showed (see "What papers converted from Word sho
   address at a bare IP number, is read as a number.
 
 Closed since, and why each mattered (an open gap goes above this line):
+
+- **`document-stale` blocked the build that would clear it.** At `internal-review` the
+  gate fails, `build` refused while anything failed, and `--skip-checks` wrote
+  `manuscript.UNCHECKED.docx` beside the stale document, which then went stale in its turn:
+  a second finding no build cleared. The Word build now leaves `document-stale`, and only
+  it, out of what it refuses for and of what names a document UNCHECKED, since the document
+  it writes is the one that clears it; a checked build that writes `manuscript.docx` takes
+  away the UNCHECKED copy of an older source; and a build given its name by `--output` no
+  longer says the document is named UNCHECKED (`test_cli.py`,
+  `test_a_stale_document_does_not_block_the_build_that_clears_it`). A LaTeX build writes
+  PDFs, which clear no stale `.docx`, and still counts it.
+- **The submission pack lost an abstract and passed a document it could not read.**
+  `**Keywords**` and `**Keywords.**`, bold with no colon as the abstract's own labels are
+  written, went into `abstract.txt`; they end the abstract now, as a label with a colon did,
+  and a sentence that opens with the word, emphasised, plain or all in bold, does not. An
+  abstract heading inside a Div was looked for among the text's own blocks only, and the
+  abstract was left out without a word: it is found inside a Div, to the Div's end, and
+  where the gates read an Abstract section and pandoc reads no heading naming it, the pack
+  says why `abstract.txt` is not written. And `build` exited 0 where the blind check could
+  not read its own document (`docx-unreadable`): it exits 1 and says not to send it, as it
+  does for a name it read (properties over `keyword_paragraphs` and `abstract_trees`).
+- **A heading straight under a captioned `{{table.x}}` was printed inside the caption.** The
+  build wrote the caption as a paragraph after the table, a heading on the next line does
+  not interrupt a paragraph, and the document lost the heading G2 read. `render_table`
+  writes a blank line after the caption, as the example leaves one.
+- **The build styled only captions opening "Figure 1."** `figure_caption.lua` set "Fig. 1."
+  and "eFigure 1.", which G2 holds as captions, in the body font. It takes the three forms
+  now, a stop or a colon after the number as before (a property over `figure_captions`, with
+  pandoc).
+- **A minus sign in a PDF figure was not the hyphen in its sidecar.** A figure saved with its
+  text kept as text (matplotlib's `pdf.fonttype: 42`, or an SVG) holds the U+2212 matplotlib
+  draws before a negative tick, and a sidecar entry `"-1.0"` did not allow it:
+  `figure-number-unbound`. G3 writes U+2212 as a hyphen in the figure's numbers, the
+  results' displays and the sidecar's entries alike before comparing them, so either sign
+  allows either; a number allowed only with the opposite sign is still another number (a
+  property over `signed_ticks`).
+- **A PDF figure whose forms named each other in a ring raised RecursionError.** The fonts
+  of forms whose resources name each other, of two or more, or the page's own through
+  another form, were followed until Python's recursion limit. `_fonts` reads each
+  resources dictionary once, and lists the fonts found in the ring.
+- **The skills, the README and a pack's manifest told an agent to run `check --submission`.**
+  The submission guard holds that to the check it names and refused it in a failing project,
+  so an agent was refused once before being told the other spelling. The project-setup,
+  review-panel, submission-pack and word-roundtrip skills, the README, `docs/` and the
+  `MANIFEST.yaml` of a pack assembled with `--skip-checks` write `check --stage submission`
+  now, and `test_plugin.py` holds that no skill or page tells an agent to run the other.
+  What the guard matches is unchanged, as decided (Basile, 2026-10-02); what still writes
+  the old spelling is above.
+- **An abstract `init --from` did not find in Word's metadata was set aside.** pandoc reads
+  the Abstract style as metadata only straight after the Title, Author and Date paragraphs,
+  and an abstract elsewhere on the title page went into the comment with it, its numbers
+  read by no gate. `init --from` reads the document a second time with its styles
+  (`docx+styles`) and, where that reading is the first block for block, puts the title
+  page's paragraphs in the Abstract style in the section `# Abstract`, after any pandoc
+  read as metadata. What it cannot match exactly it leaves as before (above).
 
 - **A paper that declared no English heard nothing of its journal's.** Since `english_variant`
   became optional, G4 compared a journal's English with the paper's only where the paper

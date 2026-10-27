@@ -468,6 +468,64 @@ def test_the_abstract_s_keywords_are_not_its_text(project: Path, keywords: str) 
 
 @pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
 @pytest.mark.parametrize(
+    "keywords",
+    ["**Keywords** hepatotoxicity", "**Keywords.** hepatotoxicity",
+     "**Key words**. hepatotoxicity"],
+)  # fmt: skip
+def test_the_keywords_label_in_bold_with_no_colon_is_not_the_abstract(
+    project: Path, keywords: str
+) -> None:
+    """Known gaps, the submission pack: `**Keywords**` with no colon, written as the
+    abstract's own labels are, went into `abstract.txt`."""
+    from manuscript_guard.build.submission import abstract_text
+
+    main = project / "manuscript" / "main.md"
+    main.write_text(
+        main.read_text(encoding="utf-8").replace(
+            "cannot establish risk.\n", f"cannot establish risk.\n\n{keywords}\n", 1
+        ),
+        encoding="utf-8",
+    )
+    plain, why = abstract_text(load_project(project)[0])
+    assert why is None and "hepatotoxicity" not in plain, (plain, why)
+    assert plain.rstrip().endswith("cannot establish risk.")
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize(
+    ("opened", "closed"), [("::: {.abstract}\n", ":::\n"), ("<div>\n", "</div>\n")]
+)
+def test_an_abstract_heading_inside_a_div_is_found(
+    project: Path, opened: str, closed: str
+) -> None:
+    """Known gaps, the submission pack: the heading was looked for among the text's own
+    blocks, so one inside a Div was not found and the abstract was left out, unsaid."""
+    from manuscript_guard.build.submission import abstract_text
+
+    main = project / "manuscript" / "main.md"
+    text = main.read_text(encoding="utf-8").replace("# Abstract\n", f"{opened}# Abstract\n", 1)
+    text = text.replace("# Introduction\n", f"{closed}\n# Introduction\n", 1)
+    main.write_text(text, encoding="utf-8")
+    plain, why = abstract_text(load_project(project)[0])
+    assert why is None and plain.startswith("Background. Drug-induced"), (plain, why)
+    assert "Introduction" not in plain
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_an_abstract_the_gates_read_and_pandoc_does_not_is_said(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Where the gates read an Abstract section and no heading pandoc reads names it, the
+    abstract was left out without a word."""
+    from manuscript_guard.build import submission
+
+    monkeypatch.setattr(submission, "_abstract_blocks", lambda blocks: None)
+    plain, why = submission.abstract_text(load_project(project)[0])
+    assert plain is None and "abstract.txt is not written" in why and "pandoc" in why
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize(
     "added",
     [
         # round 2 of #259: the word in a sentence, not the label that opens the keywords

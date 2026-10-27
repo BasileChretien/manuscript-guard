@@ -138,7 +138,7 @@ BUILD's checks of the Markdown build do not run on a LaTeX manuscript, whose bui
 checked by its compile.
 
 `submit` packs the source a journal compiles, in one folder, `latex/` in the pack, where
-`check --submission` passes, as it packs a Markdown manuscript:
+`check --stage submission` passes, as it packs a Markdown manuscript:
 
 - each document is one file, `manuscript.tex` and `supplementary.tex`, with its inputs
   written in, its values written in and the text of its comments taken out;

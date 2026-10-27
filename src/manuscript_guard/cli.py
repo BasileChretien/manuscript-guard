@@ -3068,6 +3068,25 @@ def _build_markdown_latex(project, report, args: argparse.Namespace) -> int:
     return _pdfs_built(project, report, args, list(packed.each))
 
 
+def _without_stale_document(report):
+    """`report` less `document-stale`, the one finding a Word build clears by running."""
+    from dataclasses import replace
+
+    kept = tuple(f for f in report.findings if f.code != "document-stale")
+    return replace(report, findings=kept)
+
+
+def _superseded_unchecked(project) -> None:
+    """The UNCHECKED copy of an older source taken away once a checked build has written
+    `manuscript.docx`: left, it stayed stale with no build that could clear it."""
+    from manuscript_guard.build.document import SOURCE_STAMP
+
+    unchecked = project.path("build") / "manuscript.UNCHECKED.docx"
+    for path in (unchecked, unchecked.with_name(unchecked.name + SOURCE_STAMP)):
+        if path.is_file():
+            path.unlink()
+
+
 def cmd_build(args: argparse.Namespace) -> int:
     """Produce the .docx. Gates run first unless the author insists otherwise.
 
@@ -3092,6 +3111,9 @@ def cmd_build(args: argparse.Namespace) -> int:
         return _build_latex(project, report, args)
     if getattr(args, "latex", False):
         return _build_markdown_latex(project, report, args)
+    # A stale .docx is this build's to clear: counted, it refused the build that would
+    # rewrite it, and `--skip-checks` wrote an UNCHECKED copy beside it, a second finding.
+    report = _without_stale_document(report)
     if marked_up:
         refused = _refused_inputs([args.since, args.since_supplement])
         if refused is not None:
@@ -3154,10 +3176,14 @@ def cmd_build(args: argparse.Namespace) -> int:
 
     print(f"built {result.output} ({result.mode})")
     if not report.ok:
+        # With `--output` the name is the author's, and saying it is UNCHECKED was untrue.
+        called = "this is named UNCHECKED" if args.output is None else "it is unchecked"
         print(
-            f"{len(report.failures)} check(s) were failing, so this is named UNCHECKED. "
+            f"{len(report.failures)} check(s) were failing, so {called}. "
             f"Fix them and rebuild before sending it anywhere."
         )
+    elif args.output is None:
+        _superseded_unchecked(project)
     if result.report.findings:
         print(result.report.render(project.root))
     fields = result.report.counts.get("zotero_fields")
@@ -3175,7 +3201,9 @@ def cmd_build(args: argparse.Namespace) -> int:
     # names an author. The supplement's findings were printed as it was built.
     from manuscript_guard.build.blinding import CODE, check_blinded
 
-    named = any(f.code == CODE for f in result.report.failures)
+    # A document the blind check could not read is no more to be sent than one it read a
+    # name in, and the build exited 0 for its own (`docx-unreadable`).
+    named = any(f.code in (CODE, "docx-unreadable") for f in result.report.failures)
     if supplement is not None:
         named = named or not check_blinded(project, supplement).ok
     if getattr(args, "marked_up", False):
@@ -3201,7 +3229,8 @@ def cmd_build(args: argparse.Namespace) -> int:
                 print(blind.render(project.root))
                 named = True
     if named:
-        print("The document names an author, and the journal's review is blind: do not send it.")
+        print("The document names an author, or could not be read for their names, and the "
+              "journal's review is blind: do not send it.")  # fmt: skip
         return 1
     return 0
 

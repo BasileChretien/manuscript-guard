@@ -259,7 +259,7 @@ number in the file and the rule that classified it.
 | Command | What it does |
 |---|---|
 | `init` | scaffold a new manuscript project; `--latex` starts the manuscript in LaTeX; `--from paper.docx` brings a paper written in Word in, its tables as pipe tables and its title page set aside; `--english en-GB` or `en-US` declares the paper's English (none unless told) |
-| `check` | run every gate; `--submission` holds the manuscript to submission standards |
+| `check` | run every gate; `--stage submission` holds the manuscript to submission standards |
 | `bind` | show every unbound number and how to give it a source; `--pointers` offers the `{{ref.…}}` binding that prints each typed "Table 2" |
 | `explain` | show how each number in a file was classified |
 | `passages` | list each sentence that cites a work, with the passage of that work recorded as supporting it and what G7 found of it; `--missing` lists those with none |

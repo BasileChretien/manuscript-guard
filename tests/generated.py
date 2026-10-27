@@ -2546,6 +2546,132 @@ def bold_planted(draw: st.DrawFn) -> tuple[str, int]:
     return text, count
 
 
+def _inlines(words: str) -> list[dict]:
+    """Words as pandoc's tree holds them: a Str each, a Space between."""
+    out: list[dict] = []
+    for word in words.split(" "):
+        out += [{"t": "Space"}, {"t": "Str", "c": word}] if out else [{"t": "Str", "c": word}]
+    return out
+
+
+@st.composite
+def keyword_paragraphs(draw: st.DrawFn) -> list[tuple[dict, bool]]:
+    """Paragraphs of pandoc's tree that open an abstract's keywords, and paragraphs that open
+    with the word and are a sentence, every kind in each example, in an order drawn; and
+    whether each is the label. The word is drawn in each case and spelling: "Keywords", "Key
+    words", "Key-words", "Keyword"."""
+    word = draw(st.sampled_from(("Keywords", "Key words", "Key-words", "Keyword")))
+    word = draw(st.sampled_from((word, word.upper(), word.lower())))
+    listed = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=3)))
+    sentence = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=2, max_size=5)))
+
+    def strong(said: str) -> dict:
+        return {"t": "Strong", "c": _inlines(said)}
+
+    def para(*inlines: dict | list[dict]) -> dict:
+        flat: list[dict] = []
+        for piece in inlines:
+            flat += piece if isinstance(piece, list) else [piece]
+        return {"t": "Para", "c": flat}
+
+    space = {"t": "Space"}
+    kinds = [
+        # In bold with no colon, as the abstract's own labels are written.
+        (para(strong(word), space, _inlines(listed)), True),
+        (para(strong(word + "."), space, _inlines(listed)), True),
+        (para(strong(word), {"t": "Str", "c": "."}, space, _inlines(listed)), True),
+        # With a colon, in bold, emphasised or plain.
+        (para(strong(word + ":"), space, _inlines(listed)), True),
+        (para({"t": "Emph", "c": _inlines(word)}, {"t": "Str", "c": ":"}, space,
+              _inlines(listed)), True),
+        (para(_inlines(word + ": " + listed)), True),
+        # A sentence that opens with the word: emphasised, plain, or a bold sentence.
+        (para({"t": "Emph", "c": _inlines(word)}, space, _inlines(sentence)), False),
+        (para(_inlines(word + " " + sentence)), False),
+        (para(strong(word + " " + sentence)), False),
+        (para(strong(word.replace(" ", "").replace("-", "") + "search"), space,
+              _inlines(sentence)), False),
+    ]  # fmt: skip
+    return draw(st.permutations(kinds))
+
+
+@st.composite
+def abstract_trees(draw: st.DrawFn) -> list[tuple[list[dict], list[dict] | None]]:
+    """Texts as pandoc's tree holds them, each with its heading "Abstract" at the top, inside
+    a Div, inside a Div inside a Div, after a Div of words, or nowhere; and the blocks under
+    the heading, up to the next of its level or above, or the end of its Div. Every kind in
+    each example, in an order drawn."""
+    title = draw(st.sampled_from(("Abstract", "ABSTRACT", "Structured abstract", "1. Abstract")))
+    level = draw(st.integers(1, 3))
+
+    def paragraphs(least: int = 1) -> list[dict]:
+        return [
+            {"t": "Para", "c": _inlines(" ".join(draw(st.lists(st.sampled_from(FILLER),
+                                                                min_size=1, max_size=4))))}
+            for _ in range(draw(st.integers(least, 3)))
+        ]  # fmt: skip
+
+    def heading(said: str, at: int) -> dict:
+        return {"t": "Header", "c": [at, ["", [], []], _inlines(said)]}
+
+    def div(blocks: list[dict]) -> dict:
+        classes = draw(st.sampled_from(([], ["abstract"], ["section"])))
+        return {"t": "Div", "c": [["", classes, []], blocks]}
+
+    def section() -> tuple[list[dict], list[dict]]:
+        under = paragraphs()
+        after = [heading("Introduction", draw(st.integers(1, level))), *paragraphs()]
+        return [heading(title, level), *under, *after], under
+
+    kinds: list[tuple[list[dict], list[dict] | None]] = []
+    blocks, under = section()
+    kinds.append(([*paragraphs(0), *blocks], under))
+    blocks, under = section()
+    kinds.append(([*paragraphs(0), div(blocks), *paragraphs(0)], under))
+    blocks, under = section()
+    kinds.append(([div([*paragraphs(0), div(blocks)]), *paragraphs(0)], under))
+    blocks, under = section()
+    kinds.append(([div(paragraphs()), *blocks], under))
+    # The Div ends the abstract: what stands after it is the text's.
+    under = paragraphs()
+    kinds.append(([div([heading(title, level), *under]), *paragraphs()], under))
+    words = [{"t": "Para", "c": _inlines("Abstract " + " ".join(draw(st.lists(
+        st.sampled_from(FILLER), min_size=1, max_size=3))))}]  # fmt: skip
+    kinds.append(([div(words), *paragraphs()], None))
+    return draw(st.permutations(kinds))
+
+
+#: A figure's caption, as `figure_caption.lua` sets it in the caption's style, and words that
+#: open as one and are prose. `{n}` is the figure's number.
+CAPTIONS = (
+    "Figure {n}. The estimate.", "Figure S{n}: The estimate.", "Fig. {n}. The estimate.",
+    "Fig.\N{NO-BREAK SPACE}S{n}: The estimate.", "**Fig. {n}.** The estimate.",
+    "eFigure {n}. The estimate.", "eFigure S{n}. The estimate.", "**eFigure {n}.** The estimate.",
+)  # fmt: skip
+NOT_CAPTIONS = (
+    "Fig. {n} shows the estimate.", "Figs. {n}. The estimates.", "Fig {n}. The estimate.",
+    "eFigure {n}.5-fold higher.", "efigure {n}. The estimate.", "Figure {n} shows it.",
+    "eFigure {n} shows it.",
+)  # fmt: skip
+
+
+@st.composite
+def figure_captions(draw: st.DrawFn) -> tuple[str, list[str]]:
+    """A text of figures, each with a paragraph under it, a caption or prose, every kind in
+    each example in an order drawn; and a caption also standing under no figure. With the
+    text of each paragraph the filter should set as a caption, in order, bold taken off."""
+    kinds = [(form, True) for form in CAPTIONS] + [(form, False) for form in NOT_CAPTIONS]
+    out, styled = [], []
+    for form, is_caption in draw(st.permutations(kinds)):
+        said = form.format(n=draw(st.integers(1, 12)))
+        out += ["![](figure.png)", said]
+        if is_caption:
+            styled.append(said.replace("**", ""))
+        if draw(st.booleans()):
+            out.append(draw(st.sampled_from(CAPTIONS)).format(n=draw(st.integers(1, 12))))
+    return "\n\n".join(out) + "\n", styled
+
+
 #: A reference list's titles, in English and in the languages `text.section_names` knows,
 #: and titles that open with such a word and name something else.
 REFERENCE_TITLES = (
@@ -3041,6 +3167,55 @@ def pdf_document(
     for number, body in enumerate(objects, 1):
         out += b"%d 0 obj\n" % number + body + b"\nendobj\n"
     return out + b"%%EOF\n"
+
+
+#: The signs a figure's negative number is drawn with and a sidecar or a display types it
+#: with: the hyphen, and the minus sign matplotlib draws (`axes.unicode_minus`).
+MINUS_SIGNS = ("-", "\N{MINUS SIGN}")
+
+
+@st.composite
+def signed_ticks(draw: st.DrawFn) -> tuple[str, list[str], list[str], list[str]]:
+    """A figure's text, a number to a line, with the displays of the results and the entries
+    of its sidecar beside it; and the numbers of the text neither allows. Every kind in each
+    example, in an order drawn: a negative number drawn with either sign and allowed by an
+    entry or a display typed with the other or the same, one allowed by nothing, one with
+    separators of thousands allowed without them, and a number allowed only with the
+    opposite sign, which is another number."""
+    values = draw(st.lists(st.integers(100, 99999), min_size=11, max_size=11, unique=True))
+    numbers = iter(f"{value / 100:.2f}" for value in values)
+
+    def sign() -> str:
+        return draw(st.sampled_from(MINUS_SIGNS))
+
+    other = {"-": MINUS_SIGNS[1], MINUS_SIGNS[1]: "-"}
+    drawn: list[str] = []
+    displays: list[str] = []
+    ticks: list[str] = []
+    unbound: list[str] = []
+    for kind in ("tick", "display"):
+        for written in MINUS_SIGNS:
+            number = next(numbers)
+            drawn.append(written + number)
+            typed = draw(st.sampled_from((other[written], written))) + number
+            (ticks if kind == "tick" else displays).append(typed)
+    for _ in range(2):
+        number = sign() + next(numbers)
+        drawn.append(number)
+        unbound.append(number)
+    thousands = f"{draw(st.integers(1, 99))},{draw(st.integers(100, 999))}.{next(numbers)[-2:]}"
+    drawn.append(sign() + thousands)
+    displays.append(sign() + thousands.replace(",", ""))
+    positive = next(numbers)
+    drawn.append(positive)
+    ticks.append(sign() + positive)
+    unbound.append(positive)
+    negative = sign() + next(numbers)
+    drawn.append(negative)
+    displays.append(negative.lstrip("".join(MINUS_SIGNS)))
+    unbound.append(negative)
+    order = draw(st.permutations(range(len(drawn))))
+    return "\n".join(drawn[at] for at in order), displays, ticks, unbound
 
 
 def _row(left: tuple[float, ...], right: tuple[float, ...]) -> tuple[float, ...]:

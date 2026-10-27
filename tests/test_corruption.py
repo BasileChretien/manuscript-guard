@@ -399,6 +399,40 @@ def test_edited_figure_number_is_caught(project: Path) -> None:
     assert "figure-number-unbound" in codes(gate_report(project))
 
 
+def _unbound_in_the_figure(root: Path) -> list[str]:
+    project, _ = load_project(root)
+    results = load_namespace(project)[1]
+    return sorted(
+        f.message.split("'")[1]
+        for f in check_figures(project, results).findings
+        if f.code == "figure-number-unbound"
+    )
+
+
+@pytest.mark.parametrize(
+    ("drawn", "declared"),
+    [("\N{MINUS SIGN}0.5", "-0.5"), ("-0.5", "\N{MINUS SIGN}0.5"),
+     ("\N{MINUS SIGN}0.5", "\N{MINUS SIGN}0.5")],
+)  # fmt: skip
+def test_a_minus_sign_in_a_figure_is_the_hyphen_of_its_sidecar(
+    project: Path, drawn: str, declared: str
+) -> None:
+    """Known gaps: matplotlib draws U+2212 before a negative tick, and a sidecar entry typed
+    "-0.5" did not allow it: `figure-number-unbound`. The two signs are one either side; a
+    number neither side declares is still reported."""
+    svg = project / "figures" / "forest.svg"
+    text = svg.read_text(encoding="utf-8")
+    text = text.replace(">0.5</text>", f">{drawn}</text>", 1).replace(
+        ">2</text>", "> \N{MINUS SIGN}0.7</text>", 1
+    )
+    svg.write_text(text, encoding="utf-8")
+    sidecar = project / "figures" / "forest.guard.yaml"
+    guard = sidecar.read_text(encoding="utf-8")
+    sidecar.write_text(guard.replace('value: "0.5"', f'value: "{declared}"', 1),
+                       encoding="utf-8")  # fmt: skip
+    assert _unbound_in_the_figure(project) == ["\N{MINUS SIGN}0.7"]
+
+
 def test_figure_script_that_ignores_results_is_caught(project: Path) -> None:
     script = project / "figures" / "forest.py"
     text = script.read_text(encoding="utf-8")
@@ -11532,6 +11566,32 @@ def test_a_pdf_figure_s_fonts_text_and_lines_the_journal_would_refuse_are_a_warn
     assert found == said
 
 
+def test_a_pdf_figure_whose_forms_name_each_other_in_a_ring_is_read(project: Path) -> None:
+    """Known gaps: two forms whose resources name each other were followed until Python's
+    recursion limit raised, and the Type 3 font inside the ring went unsaid. Each form's
+    resources are read once."""
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /Resources << /XObject << /X 4 0 R >> >>"
+        b" /MediaBox [0 0 216 144] /Contents 6 0 R >>",
+        b"<< /Type /XObject /Subtype /Form /BBox [0 0 1 1] /Length 0 /Resources"
+        b" << /XObject << /Y 5 0 R >> >> >>\nstream\n\nendstream",
+        b"<< /Type /XObject /Subtype /Form /BBox [0 0 1 1] /Length 0 /Resources"
+        b" << /XObject << /X 4 0 R >> /Font << /F1 7 0 R >> >> >>\nstream\n\nendstream",
+        b"<< /Length 5 >>\nstream\n/X Do\nendstream",
+        b"<< /Type /Font /Subtype /Type3 /BaseFont /ABCDEF+DejaVuSans >>",
+    ]
+    document = b"%PDF-1.7\n" + b"".join(
+        b"%d 0 obj\n" % number + body + b"\nendobj\n" for number, body in enumerate(objects, 1)
+    )
+    (project / "figures" / "forest.pdf").write_bytes(document)
+    _artwork_said(project, None, widths_mm=[89])
+    found = [(f.code, f.severity) for f in _journal(project).findings
+             if f.code in _PDF_CODES and f.path.name == "forest.pdf"]  # fmt: skip
+    assert found == [("figure-font-type3", "warn")]
+
+
 @pytest.mark.parametrize("written", ["tif", "TIF", "tiff"])
 def test_a_tiff_is_taken_however_the_journal_writes_it(project: Path, written: str) -> None:
     """Round 1 of #291: "tif" in a profile matched no file, and the message said the TIFF
@@ -13383,6 +13443,37 @@ def test_a_number_typed_in_a_word_table_is_read_once_the_paper_is_brought_in(
     assert "41" in cells and "29 in 2019" in cells
 
 
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_number_in_a_word_abstract_away_from_the_title_is_read_once_brought_in(
+    tmp_path: Path, capsys
+) -> None:
+    """Known gaps: an abstract in Word's Abstract style with a line of the title page before
+    it is no metadata to pandoc, so `init --from` set it aside in the comment with the title
+    page and no gate read the 120 in it. It is the section `# Abstract` now."""
+    import subprocess
+
+    from manuscript_guard.cli import main
+
+    folder = tmp_path / "word"
+    folder.mkdir()
+    (folder / "paper.md").write_text(
+        '---\ntitle: "Outcomes"\nauthor:\n  - Anne Example\n---\n\nDepartment of Things\n\n'
+        '::: {custom-style="Abstract"}\nWe followed 120 patients.\n:::\n\n'
+        "# Introduction\n\nFalls are common.\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["pandoc", "paper.md", "-o", "paper.docx"], cwd=folder, check=True,
+                   timeout=120)  # fmt: skip
+    root = tmp_path / "brought-in"
+    assert main(["init", str(root), "--from", str(folder / "paper.docx")]) == 0
+    capsys.readouterr()
+    main(["check", str(root), "--json", "--stage", "drafting"])
+    found = json.loads(capsys.readouterr().out)["findings"]
+    assert any(
+        f["code"] == "unclassified-number" and "'120'" in f["message"] for f in found
+    ), found
+
+
 @pytest.mark.skipif(
     __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
 )
@@ -14368,6 +14459,35 @@ def test_a_document_reviewed_blind_is_built_and_packed_only_without_its_authors(
         encoding="utf-8")  # fmt: skip
     assert main(["build", str(project), "--offline", "--skip-checks"]) == 1
     assert "'Anne Fictional' is in the text of manuscript.docx" in capsys.readouterr().out
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_blind_build_whose_own_document_cannot_be_read_for_names_exits_1(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Known gaps, the submission pack: the blind check reported `docx-unreadable` of the
+    build's own document and the build exited 0, as though it had read no name there."""
+    from manuscript_guard.build import blinding
+    from manuscript_guard.cli import main
+    from manuscript_guard.safexml import UnsafeDocument
+
+    _blind(project)
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 0
+
+    places = blinding._places
+
+    def unreadable(document: Path) -> list:
+        # The build's own document only: the supplement's was already said to be unsendable.
+        if document.name == "manuscript.docx":
+            raise UnsafeDocument("a part could not be read")
+        return places(document)
+
+    monkeypatch.setattr(blinding, "_places", unreadable)
+    capsys.readouterr()
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 1
+    out = capsys.readouterr().out
+    assert "docx-unreadable" in out or "could not read manuscript" in out, out
+    assert "do not send it" in out
 
 
 @pytest.mark.skipif(

@@ -231,3 +231,30 @@ def test_a_text_in_a_composite_font_is_not_quoted_by_its_glyph_numbers() -> None
     as characters: a finding named '$' for glyph 36."""
     figure = parse_pdf(pdf_document(b"BT /F1 4 Tf <0024> Tj ET", {"F1": TYPE0}))
     assert figure is not None and figure.texts == [("", 4.0)]
+
+
+@pytest.mark.parametrize("ring", ["two forms", "three forms", "back to the page"])
+def test_forms_whose_resources_name_each_other_in_a_ring_are_read_once(ring: str) -> None:
+    """Known gaps: the fonts of forms whose resources name each other in a ring, or name the
+    page's own through another form, were followed until Python's recursion limit raised.
+    Each form's resources are read once, and the fonts found in the ring are listed."""
+    page = (b"<< /Type /Page /Parent 2 0 R /Resources 5 0 R /MediaBox [0 0 216 144]"
+            b" /Contents 6 0 R >>")  # fmt: skip
+    form = b"<< /Type /XObject /Subtype /Form /BBox [0 0 1 1] /Resources %d 0 R /Length 0 >>"
+    form = form + b"\nstream\n\nendstream"
+    # Objects 7, 8 and 9 are forms, and 10, 11 and 12 their resources: the page's draws 7,
+    # 7's draws 8, and 8's draws 7 again, or 9, whose draws 7; or 8 has the page's.
+    second = {"two forms": 7, "three forms": 9, "back to the page": 7}[ring]
+    document = _raw(
+        b"<< /Type /Catalog /Pages 2 0 R >>", b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        page, b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        b"<< /XObject << /X 7 0 R >> /Font << /F1 4 0 R >> >>", _stream(b"/X Do"),
+        form % 10, form % (5 if ring == "back to the page" else 11), form % 12,
+        b"<< /XObject << /X 8 0 R >> /Font << /F2 13 0 R >> >>",
+        b"<< /XObject << /X %d 0 R >> >>" % second,
+        b"<< /XObject << /X 7 0 R >> >>",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Times-Roman >>",
+    )  # fmt: skip
+    figure = parse_pdf(document)
+    assert figure is not None
+    assert sorted(f.name for f in figure.fonts) == ["Helvetica", "Times-Roman"]

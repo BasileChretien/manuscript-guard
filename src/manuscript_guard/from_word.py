@@ -19,7 +19,11 @@ changed in the tree before pandoc writes it as Markdown, and nothing else:
 
 What pandoc reads from Word's Title, Author, Date and Abstract styles is its metadata. The
 title goes to `paper.yaml`, each author's name to `authors.yaml` as the paper gives it, and
-the abstract becomes the manuscript's `# Abstract`. A Title paragraph holding a note, a mark,
+the abstract becomes the manuscript's `# Abstract`. pandoc reads the Abstract style so only
+straight after the Title, Author and Date paragraphs; a paragraph in it elsewhere in the
+title page joins that section too, found by reading the document again with its styles
+(`docx+styles`), and only where that reading is the ordinary one block for block. A Title
+paragraph holding a note, a mark,
 a link or a picture, which its plain text loses, is in the comment as well; the marks of
 notes raised at its end are left out of the title, and kept there with it. Nothing is
 guessed from how a line looks: a name in capitals is a line of the title page like any other.
@@ -129,6 +133,9 @@ def convert(path: Path, *, titled: bool = False) -> Converted:
     blocks = tree["blocks"]
     headings = sum(1 for block in blocks if block["t"] == "Header")
     aside, body, title_page = _title_page(blocks)
+    if aside:
+        aside, styled = _abstract_styled(aside, _styled_run(path))
+        abstract = [*abstract, *styled]
     if abstract:
         body = [_heading("Abstract"), *abstract, *body]
     converted, unconverted = _tables(body)
@@ -370,6 +377,72 @@ def _labelled(label: str, blocks: list) -> list:
         inlines = [{"t": "Str", "c": f"{label}:"}, _SPACE, *first["c"]]
         return [{"t": "Para", "c": inlines}, *blocks[1:]]
     return [{"t": "Para", "c": [{"t": "Str", "c": f"{label}:"}]}, *blocks]
+
+
+#: The paragraph style pandoc reads as the abstract, where it stands after the title.
+ABSTRACT_STYLE = "Abstract"
+
+
+def _styled_run(path: Path) -> list[tuple[dict, str | None]]:
+    """The blocks before the first heading as pandoc reads them with each paragraph's style
+    (`docx+styles`), each with the style it is in, or None; with the styles taken off, so
+    that they compare with the blocks of the ordinary reading."""
+    tree = json.loads(_pandoc([str(path.resolve()), "-f", "docx+styles", "-t", "json"], None, path))
+    run: list[tuple[dict, str | None]] = []
+    for block in tree["blocks"]:
+        if block.get("t") == "Header":
+            break
+        style = _custom_style(block)
+        if style is None:
+            run.append((_unstyled(block), None))
+        else:
+            run += [(inner, style) for inner in _unstyled(block["c"][1])]
+    return run
+
+
+def _custom_style(node: dict) -> str | None:
+    """The style of a Div or a Span `docx+styles` wraps a paragraph or a run in."""
+    if node.get("t") not in ("Div", "Span"):
+        return None
+    identifier, classes, pairs = node["c"][0]
+    if identifier or classes or len(pairs) != 1 or pairs[0][0] != "custom-style":
+        return None
+    return pairs[0][1]
+
+
+def _unstyled(node: object) -> object:
+    """A piece of the tree with every style's Div and Span taken off and each image's address
+    left out, which the ordinary reading has elsewhere: what the two readings share."""
+    if isinstance(node, list):
+        out: list = []
+        for item in node:
+            if isinstance(item, dict) and _custom_style(item) is not None:
+                out.extend(_unstyled(item["c"][1]))
+            else:
+                out.append(_unstyled(item))
+        return out
+    if not isinstance(node, dict):
+        return node
+    if node.get("t") == "Image":
+        attr, words, (_target, title) = node["c"]
+        return {"t": "Image", "c": [_unstyled(attr), _unstyled(words), ["", title]]}
+    return {key: _unstyled(value) for key, value in node.items()}
+
+
+def _abstract_styled(aside: list, styled: list[tuple[dict, str | None]]) -> tuple[list, list]:
+    """The title page less its paragraphs in the Abstract style, and those paragraphs: what
+    pandoc reads as the abstract only straight after the title, author and date. Taken only
+    where the reading with styles is, its styles taken off, the ordinary one block for
+    block; otherwise all is left set aside, as before."""
+    if [block for block, _style in styled] != _unstyled(aside):
+        return aside, []
+    lifted = [block for block, (_b, style) in zip(aside, styled, strict=True)
+              if style == ABSTRACT_STYLE and block["t"] in ("Para", "Plain")]  # fmt: skip
+    if not lifted:
+        return aside, []
+    kept = [block for block, (_b, style) in zip(aside, styled, strict=True)
+            if not (style == ABSTRACT_STYLE and block["t"] in ("Para", "Plain"))]  # fmt: skip
+    return kept, lifted
 
 
 def _heading(text: str) -> dict:

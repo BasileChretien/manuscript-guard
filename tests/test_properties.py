@@ -69,6 +69,7 @@ from generated import (
     TYPOGRAPHY,
     UNCLAIMED,
     WRITTEN_WORDS,
+    abstract_trees,
     alt_texts,
     bindings,
     bold_planted,
@@ -79,8 +80,10 @@ from generated import (
     credited_plans,
     deposit_statements,
     dictionary_pairs,
+    figure_captions,
     generated,
     holds,
+    keyword_paragraphs,
     laid_out,
     latex_bound,
     latex_cited,
@@ -124,6 +127,7 @@ from generated import (
     reference_titled,
     revisions,
     share_tables,
+    signed_ticks,
     signs,
     sources,
     suggestion_paragraphs,
@@ -5765,6 +5769,56 @@ def test_bold_is_counted_in_the_prose_and_not_in_a_table(planted: tuple[str, int
     assert len(_hits(rule, prose)) == count, text
 
 
+@holds(100, keyword_paragraphs())
+def test_the_abstract_ends_at_its_keywords_label_and_not_at_a_sentence_about_them(
+    planted: list[tuple[dict, bool]],
+) -> None:
+    """`abstract.txt` is the abstract up to its keywords. Their label opens a paragraph in
+    bold with no colon (Known gaps: it went into the file), or with a colon however set; a
+    sentence that opens with the word, emphasised, plain or all in bold, is the abstract's."""
+    from manuscript_guard.build.submission import _until_keywords
+
+    words = {"t": "Para", "c": [{"t": "Str", "c": "reports"}]}
+    for paragraph, is_label in planted:
+        kept = _until_keywords([words, paragraph, words])
+        assert kept == ([words] if is_label else [words, paragraph, words]), paragraph
+
+
+def _a_bold_keywords_label_needs_a_colon(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.build import submission
+
+    patch.setattr(submission, "_bold_keywords", lambda block: False)
+
+
+def _any_emphasis_opening_with_the_word_is_the_label(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.build import submission
+
+    patch.setattr(submission, "_bold_keywords", lambda block: bool(block.get("c")) and block[
+        "c"][0].get("t") in ("Strong", "Emph") and submission._text(block["c"][0]).lower()
+        .replace(" ", "").replace("-", "").startswith("keyword"))  # fmt: skip
+
+
+@holds(100, abstract_trees())
+def test_the_abstract_is_found_under_its_heading_wherever_a_div_holds_it(
+    planted: list[tuple[list[dict], list[dict] | None]],
+) -> None:
+    """The pack's abstract is what stands under the heading that names it, to the next of
+    its level or the end of the Div it is in. A heading inside a Div was not looked for
+    (Known gaps), and the abstract was left out without a word."""
+    from manuscript_guard.build.submission import _abstract_blocks
+
+    for blocks, under in planted:
+        assert _abstract_blocks(blocks) == under, blocks
+
+
+def _a_div_is_not_looked_inside(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.build import submission
+
+    found = submission._abstract_blocks
+    patch.setattr(submission, "_abstract_blocks",
+                  lambda blocks: found([b for b in blocks if b.get("t") != "Div"]))  # fmt: skip
+
+
 def _bold_in_a_table_is_counted(patch: pytest.MonkeyPatch) -> None:
     from dataclasses import replace
 
@@ -7476,6 +7530,89 @@ def _a_line_is_not_widened(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import figure_svg
 
     patch.setattr(figure_svg, "_widened", lambda matrix: 1.0)
+
+
+@holds(100, signed_ticks())
+def test_a_figure_s_minus_sign_and_a_hyphen_are_one_sign_either_side(
+    planted: tuple[str, list[str], list[str], list[str]],
+) -> None:
+    """G3 allows a number of a figure's text that a display of the results or an entry of
+    its sidecar types. A minus sign there and a hyphen here were two numbers (Known gaps):
+    matplotlib draws U+2212. A number allowed only with the other sign, or not at all, is
+    still reported, as written."""
+    from manuscript_guard.classify import Classifier
+    from manuscript_guard.gates.figures import _allowed, _allowed_ticks, _unbound
+    from manuscript_guard.text.tokens import find_atoms
+
+    text, displays, ticks, unbound = planted
+    classifier = Classifier.load((), ())
+    found = _unbound(find_atoms(text, text), _allowed(displays), _allowed_ticks(ticks),
+                     classifier, classifier.scan(text, lines_are_blocks=True))  # fmt: skip
+    assert sorted(atom.text for atom in found) == sorted(unbound), text
+
+
+def _a_minus_sign_is_not_a_hyphen(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figures
+
+    patch.setattr(figures, "_signed", lambda number: number)
+
+
+def _a_number_s_sign_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figures
+
+    patch.setattr(figures, "_signed", lambda number: number.lstrip("-\N{MINUS SIGN}"))
+
+
+@holds(25, figure_captions())
+def test_a_figure_s_caption_is_styled_in_every_form_g2_holds_and_prose_is_not(
+    planted: tuple[str, list[str]],
+) -> None:
+    """`figure_caption.lua` sets in the caption's style the paragraph under a figure that
+    opens with its label and number and a stop or a colon: "Figure 1.", "Fig. 1." and
+    "eFigure 1." (Known gaps: only the first), and no paragraph under no figure, nor prose
+    that opens with the words."""
+    from manuscript_guard.build import document
+
+    if shutil.which("pandoc") is None:
+        pytest.skip("pandoc is not installed, and the filter is one pandoc runs")
+    markdown, styled = planted
+    done = subprocess.run(
+        [document.pandoc(), "-f", "markdown", "-t", "json", "--lua-filter",
+         str(document.FIGURE_CAPTION_LUA)],
+        input=markdown, capture_output=True, text=True, encoding="utf-8", check=True,
+        timeout=120,
+    )  # fmt: skip
+
+    def said(node: object) -> str:
+        if isinstance(node, list):
+            return "".join(said(item) for item in node)
+        if not isinstance(node, dict):
+            return ""
+        if node.get("t") == "Str":
+            return node["c"]
+        if node.get("t") in ("Space", "SoftBreak"):
+            return " "
+        return said(node.get("c"))
+
+    found = [
+        said(block["c"][1]).replace("\N{NO-BREAK SPACE}", " ")
+        for block in json.loads(done.stdout)["blocks"]
+        if block["t"] == "Div" and ["custom-style", "Figure Caption"] in block["c"][0][2]
+    ]
+    assert found == [text.replace("\N{NO-BREAK SPACE}", " ") for text in styled], markdown
+
+
+def _only_figure_opens_a_caption(patch: pytest.MonkeyPatch) -> None:
+    import tempfile
+
+    from manuscript_guard.build import document
+
+    lua = document.FIGURE_CAPTION_LUA.read_text(encoding="utf-8")
+    broken = lua.replace("{ 'Figure', 'Fig%.', 'eFigure' }", "{ 'Figure' }")
+    assert broken != lua
+    path = Path(tempfile.mkdtemp(prefix="mg-broken-lua-")) / "figure_caption.lua"
+    path.write_text(broken, encoding="utf-8")
+    patch.setattr(document, "FIGURE_CAPTION_LUA", path)
 
 
 @holds(100, pdf_figures())
@@ -11122,6 +11259,30 @@ BROKEN = {
     "a registered outcome keeps its dashes": (
         _fold_keeps_dashes,
         test_a_registered_outcome_is_found_however_it_was_copied_and_not_with_a_word_changed,
+    ),
+    "a bold keywords label needs a colon": (
+        _a_bold_keywords_label_needs_a_colon,
+        test_the_abstract_ends_at_its_keywords_label_and_not_at_a_sentence_about_them,
+    ),
+    "any emphasis opening with the word is the keywords label": (
+        _any_emphasis_opening_with_the_word_is_the_label,
+        test_the_abstract_ends_at_its_keywords_label_and_not_at_a_sentence_about_them,
+    ),
+    "the abstract's heading is not looked for inside a Div": (
+        _a_div_is_not_looked_inside,
+        test_the_abstract_is_found_under_its_heading_wherever_a_div_holds_it,
+    ),
+    "a figure's minus sign is not its sidecar's hyphen": (
+        _a_minus_sign_is_not_a_hyphen,
+        test_a_figure_s_minus_sign_and_a_hyphen_are_one_sign_either_side,
+    ),
+    "a figure's number is read without its sign": (
+        _a_number_s_sign_is_not_read,
+        test_a_figure_s_minus_sign_and_a_hyphen_are_one_sign_either_side,
+    ),
+    "only Figure opens a caption the build styles": (
+        _only_figure_opens_a_caption,
+        test_a_figure_s_caption_is_styled_in_every_form_g2_holds_and_prose_is_not,
     ),
     "a registry is read as a registration": (
         _retrospective_any_regist_word,

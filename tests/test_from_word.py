@@ -570,3 +570,63 @@ def test_an_author_paragraph_with_a_superscript_is_set_aside() -> None:
     one = {"t": "MetaInlines", "c": [{"t": "Str", "c": "Anne"}, {"t": "Space"},
                                      {"t": "Str", "c": "O'Brien-Smith"}]}  # fmt: skip
     assert _names(one) == (("Anne O'Brien-Smith",), [])
+
+
+#: An abstract in Word's Abstract style that does not stand straight after the title, author
+#: and date paragraphs, where pandoc reads it as metadata: a line of the title page between.
+ABSTRACT_LATER = """\
+---
+title: "Outcomes after a fall"
+author:
+  - Anne Example
+---
+
+Department of Things, Somewhere University
+
+::: {custom-style="Abstract"}
+We followed 120 patients.
+:::
+
+::: {custom-style="Abstract"}
+Of them, 41 fell again.
+:::
+
+Corresponding author: Anne Example
+
+# Introduction
+
+Falls are common.
+"""
+
+
+@needs_pandoc
+def test_an_abstract_styled_paragraph_before_the_first_heading_is_the_abstract(
+    tmp_path: Path, capsys
+) -> None:
+    """Known gaps: pandoc reads the Abstract style as metadata only straight after the
+    Title, Author and Date paragraphs. An abstract elsewhere before the first heading went
+    into the comment with the title page, and no gate read its numbers. The paragraphs in
+    the Abstract style are the section `# Abstract`; the rest of the title page stays set
+    aside."""
+    paper = word(tmp_path / "word", ABSTRACT_LATER)
+    root = tmp_path / "project"
+    assert main(["init", str(root), "--from", str(paper)]) == 0
+    said = capsys.readouterr().out
+    text = (root / "manuscript" / "main.md").read_text(encoding="utf-8")
+    comment = text[text.index("<!--") : text.index("-->")]
+    assert "Department of Things" in comment and "Corresponding author" in comment
+    assert "120 patients" not in comment and "41 fell" not in comment
+    section = "# Abstract\n\nWe followed 120 patients.\n\nOf them, 41 fell again.\n\n# Introduction"
+    assert section in text, text
+    assert "abstract: from its Abstract paragraphs" in said
+
+
+@needs_pandoc
+def test_an_abstract_styled_paragraph_under_a_heading_stays_where_it_is(tmp_path: Path) -> None:
+    """Only what is set aside as the title page is looked at: under a heading, a paragraph
+    in the Abstract style is in the text already."""
+    aside = 'Falls are common.\n\n::: {custom-style="Abstract"}\nAn aside 7.\n:::'
+    paper = word(tmp_path / "word", ABSTRACT_LATER.replace("Falls are common.", aside))
+    converted = from_word.convert(paper)
+    assert converted.text.count("# Abstract") == 1
+    assert converted.text.index("An aside 7.") > converted.text.index("# Introduction")

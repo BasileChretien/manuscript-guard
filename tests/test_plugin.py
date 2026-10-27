@@ -821,6 +821,20 @@ def test_the_unsafe_instructions_are_found_where_a_skill_gives_them() -> None:
     assert any("--run" in f and "--yes" in f for f in shown)
 
 
+def test_no_skill_or_page_tells_an_agent_to_run_what_the_submission_guard_refuses() -> None:
+    """Known gaps: the skills and the README told an agent to run `check --submission`,
+    which the submission guard holds to the check it names, and the agent was refused
+    once before being told the other spelling. A line may still say the guard holds it."""
+    pages = [*SKILLS.rglob("*.md"), REPO / "README.md", *(REPO / "docs").rglob("*.md")]
+    told = [
+        f"{page.relative_to(REPO)}: {line.strip()}"
+        for page in pages
+        for line in page.read_text(encoding="utf-8").splitlines()
+        if "check --submission" in line and "itself" not in line
+    ]
+    assert told == []
+
+
 #: What the Agent Skills specification recommends for a SKILL.md body: under 5000 tokens,
 #: counted here as characters divided by four, and under 500 lines. What goes past them is
 #: what a skill needs only sometimes, and belongs in a page under references/.

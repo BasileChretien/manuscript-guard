@@ -17,7 +17,7 @@ coincidence. The check also runs backwards: a value your analysis declares as qu
 no source file references, is a failure too. A registry that binds a handful of numbers and
 reports "all clear" is worse than no registry.
 
-`manuscript-guard check --submission` holds the manuscript to submission standards:
+`manuscript-guard check --stage submission` holds the manuscript to submission standards:
 unanswered review findings become failures rather than warnings, so you can keep building
 drafts to read while the version you send anywhere has to be clean.
 

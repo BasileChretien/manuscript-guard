@@ -2700,6 +2700,63 @@ def reference_titled(draw: st.DrawFn) -> list[tuple[str, bool]]:
     return draw(st.permutations(cased))
 
 
+#: Titles of the Methods, `{}` standing for words drawn each time: the word alone, with
+#: another part's name joined by "and", and with what the Methods hold after a colon, a
+#: stop, a dash or "of". And titles that are not the Methods: a part that reports what was
+#: found, under any of those joints, and a word that only opens with "method".
+METHODS_TITLES = (
+    "Methods", "Materials and methods", "Methods and {}", "Methods: {}", "Methods. {}",
+    "Methods \N{EN DASH} {}", "Methods of {}", "Statistical analysis",
+)  # fmt: skip
+NOT_METHODS_TITLES = (
+    "Results", "Methods and results", "Methods: main results of {}", "Methods of {} findings",
+    "Methodological notes on {}", "Methodsof {}",
+)  # fmt: skip
+_METHODS_WORDS = ("data", "sources", "the", "study", "cohort", "setting", "analysis")
+
+
+@st.composite
+def methods_titled(draw: st.DrawFn) -> list[tuple[str, bool]]:
+    """Every title above, with words drawn for its `{}`, numbered or not, written as drawn,
+    upper case, lower case or as it stands, in an order drawn; and whether it titles the
+    Methods."""
+    planted = [(title, True) for title in METHODS_TITLES]
+    planted += [(title, False) for title in NOT_METHODS_TITLES]
+    written = []
+    for title, methods in planted:
+        words = " ".join(draw(st.lists(st.sampled_from(_METHODS_WORDS), min_size=1, max_size=3)))
+        title = draw(st.sampled_from(("", "2. ", "II. "))) + title.replace("{}", words)
+        written.append((draw(st.sampled_from((title, title.upper(), title.lower()))), methods))
+    return draw(st.permutations(written))
+
+
+#: Titles of a plan's Deviations, and titles that hold "deviation" as a statistic's name.
+DEVIATION_TITLES = (
+    "Deviations from the plan", "Protocol deviations", "Changes to the plan", "Amendments",
+    "Standard deviation and deviations from the plan",
+)  # fmt: skip
+NOT_DEVIATION_TITLES = (
+    "Standard deviation of the dose", "Standard deviations", "Pooled standard deviation",
+)  # fmt: skip
+
+
+@st.composite
+def deviation_titled(draw: st.DrawFn) -> tuple[str, list[str]]:
+    """A plan with a section under every title above, numbered or not, written as drawn,
+    upper case, lower case or as it stands, in an order drawn, each saying a word of its
+    own; and the words said under the Deviations, in order."""
+    planted = [(title, True) for title in DEVIATION_TITLES]
+    planted += [(title, False) for title in NOT_DEVIATION_TITLES]
+    text, said = "# Analysis plan\n\n", []
+    for number, (title, deviation) in enumerate(draw(st.permutations(planted))):
+        title = draw(st.sampled_from(("", "7. "))) + title
+        title = draw(st.sampled_from((title, title.upper(), title.lower())))
+        text += f"## {title}\n\nword{number}\n\n"
+        if deviation:
+            said.append(f"word{number}")
+    return text, said
+
+
 #: Names a number stands in, which `check` and the audit read as no number: an e-mail
 #: address (structural) and an interleukin, abbreviated or written out (a term). And what
 #: is a number however near it stands: a count, and digits round an `@` with no domain.
@@ -2722,7 +2779,16 @@ TERM_LOOKALIKES = ("April-12", "Brazil-3", "until-15")
 #: without its signs it stands hard against that capital, "PharmD2" holding `d2` and
 #: "ApoB12" `b12`, and it is a number still.
 RAISED_AFTER_A_CAPITAL = ("PharmD^2^", "ApoB^12^", "dB^12^")
-NOT_NAMES = ("12", "3.4", "12@3.5", "40@lab", *TERM_LOOKALIKES, *RAISED_AFTER_A_CAPITAL)
+#: A subscript is part of the name it is typed in, where the name opens its word, at a
+#: capital after a lower-case letter, or after another name: "HbA~1c~", "ppFEV~1~" and
+#: "PaO~2~FiO~2~" are names. An index set below the line after a capital, "HR~2~" and
+#: "OR~2~", is a number, though `r2` is a term.
+SUNK_NAMES = ("HbA~1c~", "ppFEV~1~", "PaO~2~FiO~2~")
+SUNK_AFTER_A_CAPITAL = ("HR~2~", "OR~2~")
+NOT_NAMES = (
+    "12", "3.4", "12@3.5", "40@lab", *TERM_LOOKALIKES, *RAISED_AFTER_A_CAPITAL,
+    *SUNK_AFTER_A_CAPITAL,
+)  # fmt: skip
 #: Words to put between them: none names a class or a time, which a number after it is a
 #: label of ("cohort 12", "week 12").
 _BETWEEN_NAMES = ("reports", "were", "included", "the", "of", "and", "found", "among")
@@ -2734,7 +2800,7 @@ def named_numbers(draw: st.DrawFn) -> tuple[str, dict[str, str]]:
     words and a separator drawn between them; and what each is: "address", "name" or
     "number"."""
     planted = [(text, "address") for text in NUMBERED_ADDRESSES]
-    planted += [(text, "name") for text in (*INTERLEUKINS, *NAMES_IN_WORDS)]
+    planted += [(text, "name") for text in (*INTERLEUKINS, *NAMES_IN_WORDS, *SUNK_NAMES)]
     planted += [(text, "number") for text in NOT_NAMES]
     gaps = st.sampled_from((" ", ", ", "; ", " and ", " (", ") ", ". "))
     # Words first, so that no number opens the line, where it is a list's numbering.
@@ -2742,7 +2808,8 @@ def named_numbers(draw: st.DrawFn) -> tuple[str, dict[str, str]]:
     for piece, _kind in draw(st.permutations(planted)):
         filler = " ".join(draw(st.lists(st.sampled_from(_BETWEEN_NAMES), max_size=3)))
         text += f"{draw(gaps)}{filler} {piece}{draw(gaps)}"
-    return text.strip() + "\n", dict(planted)
+    # An atom is cut before the `~` that closes its last subscript.
+    return text.strip() + "\n", {piece.removesuffix("~"): kind for piece, kind in planted}
 
 
 # -------------------------------------------------------------------------- quotations
@@ -5889,6 +5956,38 @@ def addressed(draw: st.DrawFn) -> tuple[str, list[str]]:
         for piece in draw(st.permutations(pieces))
     )
     return text, keys
+
+
+# --------------------------------------------- escaped backticks beside an escaped comparison
+
+#: Pieces of a paragraph with backticks and escaped comparisons in them, each closing every
+#: code span it opens, with the places in it of the backslashes that escape a comparison: a
+#: comparison between backticks `import` escaped, as it writes one typed in Word, which
+#: open no code span; a code span closed by a run after a backslash, which code prints;
+#: code after a backtick escaped, and after a backslash printed; an escaped backtick after a
+#: run of three backslashes; and a comparison in code and out of it.
+ESCAPED_BACKTICKS = (
+    ("(\\` ROR \\> 2 \\`)", (8,)),
+    ("`ROR\\` and ROR \\> 2", (15,)),
+    ("\\``c \\> 4`", ()),
+    ("x\\\\`b \\> 1` y", ()),
+    ("\\\\\\` d \\> 5", (7,)),
+    ("`a \\> 3`", ()),
+    ("e \\> 6", (2,)),
+)  # fmt: skip
+
+
+@st.composite
+def escaped_backticks(draw: st.DrawFn) -> tuple[str, list[int]]:
+    """Every piece above in one paragraph, in an order and among words drawn each time, and
+    where each backslash that escapes a comparison stands."""
+    text, found = "", []
+    for piece, escapes in draw(st.permutations(ESCAPED_BACKTICKS)):
+        words = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=3)))
+        text += words + draw(st.sampled_from((" ", "\n", ", ")))
+        found += [len(text) + at for at in escapes]
+        text += piece + draw(st.sampled_from((" ", "\n", "; ")))
+    return text, found
 
 
 # ------------------------------------------------------------------------------ inputs

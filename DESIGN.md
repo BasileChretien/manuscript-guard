@@ -10943,8 +10943,9 @@ Added by the adversarial review, verified and **not** fixed:
   own, "P = .022 (t(23) = 2.45); P = .40 (t(30) = 0.85)", the first statistic is judged
   with the second's P and reported (round 1 of #285, where this said such a P was not
   read; `test_a_p_written_before_its_statistic_is_read_as_the_next_one_s`). A number written
-  with a middle dot or a comma for its point, "0·62" or "0,62", is not read at all, so a
-  paper set that way has none of its tests judged; a comma after a number with its point,
+  with a comma for its point, "0,62", is not read at all, so a paper set that way has none
+  of its tests judged (a middle dot, "0·62", is read as a point; see "Closed since"); a
+  comma after a number with its point,
   "P = 0.40,12", is the sentence's (round 1 of #336), so in such a paper a point that groups
   thousands is read as a point, "1.234,5" as 1.234 (pinned by
   `test_a_point_that_groups_thousands_in_a_decimal_comma_paper_is_read_as_a_point`). A P above 1 is not judged. A sentence ends at a stop before a
@@ -11587,8 +11588,6 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   spelt in two cases is two inputs, and a path in another case than the disk's names no
   file in a clone on Linux. A `.txt` input is digested as its bytes, so a copy checked out
   with CRLF line ends reads as changed.
-- **The plan's sections.** A heading "### Standard deviation of the dose" is read by G12 as
-  a Deviations section.
 - **Inputs kept by Git LFS or git-annex.** Results written from an analysis run on an
   unfetched pointer read as `input-changed`; a pointer's size written as "²" raises; a
   large input is hashed twice.
@@ -11802,11 +11801,12 @@ Open, recorded as each change landed:
   with only "method" or "methodology" is no Methods to either gate, as it was none to G4.
   A Methods with a subsection titled only "Results", "Limitations" or "Background" is taken
   for a heading over another part of the paper and is not read. G2 and G15 read
-  "Methods", numbered or not, "<anything> and methods", "Methods and <anything>" and the
-  names of the method's own subsections, and not "Methods: data sources" or "Methods of
-  the study": there G2 reports a number written in the Methods where it could have let it
-  through, and G15 reads no model's name. `methods-not-found` is said only where the
-  project has analysis code, since a case report or a narrative review has no Methods.
+  "Methods", numbered or not, "<anything> and methods", "Methods and <anything>",
+  "Methods" with what they hold after a colon, a stop, a dash or "of", and the names of the
+  method's own subsections, and not "Overview of methods" or "Methods used": there G2
+  reports a number written in the Methods where it could have let it through, and G15
+  reads no model's name. `methods-not-found` is said only where the project has analysis
+  code, since a case report or a narrative review has no Methods.
 - **A body under an abstract heading of a higher level is the abstract's.** With
   `# Abstract` and the paper's sections at `##`, every section is inside the abstract: G4
   finds none of the required sections, and the word count has the whole body as abstract,
@@ -13375,10 +13375,9 @@ Open, recorded as each change landed:
     should be found in the printed text and mapped back, as the rules already are.
   - *Code found by pairing backtick runs.* A run pandoc reads a backtick at a time, a
     backtick inside a comment, math or a `~~~` fence, and an indented block are missed, so a
-    backslash there counts as an escape. An escaped backtick, which `import` writes for every
-    one typed in Word, is taken for a delimiter, so `` (\` ROR \> 2 \`) `` fails. Runs are
-    paired across the front matter's edge, too, and a backtick inside a `~~~` block with
-    one in the prose after it, which pandoc never does. This needs a reader that knows code
+    backslash there counts as an escape. Runs are paired across the front matter's edge,
+    too, and a backtick inside a `~~~` block with one in the prose after it, which pandoc
+    never does. This needs a reader that knows code
     spans as pandoc does. The comment scanner in `text/comments.py` comes closer, since it
     knows escapes, fences and the front matter's edge, but it still ends a code span only at
     a blank line and misreads backticks in maths, links and indented code.
@@ -13637,12 +13636,11 @@ Open, recorded as each change landed:
 - **A unit after a binding is read from a list of symbols.** "mg" is read and "milligrams"
   is not, so a unit written out in words is compared with nothing; one-letter symbols other
   than g and h (m, L, s) are left out as G14 leaves them, so "{{results.length}} m" is not
-  read. A divisor after a space, "mg kg-1", is not read: written, the unit is its first
-  symbol, so "mg kg-1" against an emitted "mg/kg" is said to differ, and emitted, it is
-  compared with nothing. A divisor written as a word, "mg/kg per day" against an emitted
-  "mg/kg/day", is said to differ too (round 1 of #279, where this entry said "mg/kg" and
-  "mg kg-1" were taken for two both ways; pinned by
-  `test_what_the_unit_reading_gets_wrong_is_pinned`).
+  read. A divisor written as a word, "mg/kg per day" against an emitted "mg/kg/day", is
+  said to differ (pinned by `test_what_the_unit_reading_gets_wrong_is_pinned`), and so is
+  one spelt otherwise than the emitted one, "mg kg-1 d-1" against "mg/kg/day". A divisor
+  after a space is read only with a power below nought, "mg kg-1", not with a middle dot
+  between, "mg·kg⁻¹", whose unit is its first symbol.
 - **A heading nested in a list item is read with its marker, or not at all.** Pandoc prints
   `- Results` over an underline as a list item holding a heading titled "Results". The
   gates keep the marker in the title, so it ends the section above; "- Results" is read as
@@ -16694,9 +16692,12 @@ What papers converted from Word showed (see "What papers converted from Word sho
   tells "CCR2" from them. And a word with a capital after a lower-case letter is read as
   a name from that capital, so "preCO2", with CO2 declared, is a term, and so is a word
   that ends in a term's letters after one, "MyIL-2".
-  A subscript is held to none of this, only a superscript is: "HR~2~", "OR~2~" and
-  "PharmD~2~" read as `r2` and `d2`, terms, where main reported them; an index set below
-  the line labels something far more often than it holds a result.
+  A term holding a subscript's place counts where a word opens, at a capital after a
+  lower-case letter, or directly after another term, so that "pCO~2~", "EtCO~2~" and
+  "ppFEV~1~" are terms; "PharmD~2~" is a capital after a lower-case letter too, and reads
+  as `d2`, a term, where main reported it. Told from "EtCO~2~" it would be by its word
+  opening with a capital, and from "pO~2~", with O2 declared, by the one capital before the
+  subscript, and either rule refuses a name an author writes.
 - **A term counts directly after any other.** "PaO2FiO2" and "CD8CD4" are two terms each
   because the second counts where the first ends, and that holds after a term with no
   digit as well: with MeSH among the terms, "meshd2" is `mesh` and `d2`. Holding the second
@@ -16811,6 +16812,59 @@ Closed since, and why each mattered (an open gap goes above this line):
   at a caption of a figure, a table, a box or an appendix, at a back-matter title standing
   alone, "Funding" or "Figure legends", and at a table. A list under a styled heading runs
   on to the next heading, as one under `# References` does. What is left is above.
+- **A subscripted index after capitals read as a term.** A term holding a subscript's place
+  counted wherever any term does, after a capital among them, so "HR~2~" and "OR~2~" were
+  `r2`, and G2 and the audit passed their numbers, where main reported them. Such a term
+  counts now where a word opens, at a capital after a lower-case letter, or directly after
+  another term, and not after a capital that ends no term: "HR~2~" and "OR~2~" are unbound
+  numbers, and "CO~2~", "pCO~2~", "HbA~1c~", "ppFEV~1~" and "PaO~2~FiO~2~" names
+  (`test_a_subscripted_index_after_a_capital_is_a_number`). "PharmD~2~" is still a term,
+  above.
+
+- **"Methods: data sources" and "Methods of the study" were no Methods to G2 and G15.**
+  `classify.METHODS_SECTIONS` took "Methods" alone or joined to another part's name by
+  "and", so under such a title G2 reported a threshold the analysis chose as an unbound
+  number, and G15 read no model's name. "Methods" followed by a colon, a stop or a dash and
+  what the section holds, or by "of" and words, is the Methods now; a title that also names
+  what was found, "Methods: main results", is not, as "Methods and results" is not
+  (`test_the_methods_named_with_what_they_hold_are_the_methods_to_g2`).
+
+- **A divisor after a space was not read after a binding.** Written, "mg kg-1" was read as
+  its first symbol and said to differ from an emitted "mg/kg"; emitted, it was compared
+  with nothing. A divisor after a space with its power below nought, typed ("kg-1",
+  "kg^-1^", with a minus sign) or in superscript characters ("kg⁻¹"), is read now, among
+  the symbols and the one-letter ones a power below nought tells from a word ("mg L-1",
+  "µg m-3"), and compared as the same divisor after a slash, both ways
+  (`test_what_the_unit_reading_gets_wrong_is_pinned`).
+
+- **The plan's sections.** A heading "### Standard deviation of the dose" was read by G12
+  as a Deviations section, since "deviation" anywhere in a title named them, so a plan with
+  no word on what changed after it was agreed was said to have one. "deviation" after
+  "standard" names no Deviations now; "Protocol deviations" and "Deviations from the plan"
+  still do (`test_a_standard_deviation_is_no_deviation_from_the_plan`).
+
+- **A test set with a middle dot for its point was not read.** "t(23) = 2·45, p = 0·40", as
+  the Lancet sets numbers, was refused as a decimal comma is, so such a paper had none of
+  its tests judged by the reading of a P against its statistic (G8, the
+  audit and the literature check). A middle dot between digits is a point now, in the
+  statistic, its degrees of freedom and its P, and a middle dot before a power of ten is
+  still a multiplication sign, "6·8·10^-4^". Degrees of freedom with a thousands' comma,
+  "F(1, 1,234)" or "df = 1,234", were read as two numbers and the test dropped; a comma
+  that can be either is read the way that gives the test as many degrees of freedom as it
+  has, "F(1,234)" as 1 and 234 and "t(1,234)" as 1,234, and where both ways do, nothing is
+  read (`test_a_p_that_does_not_follow_from_its_statistic_is_found`). The decimal comma is
+  still open, above. The P of an interval's sentence is read by the same pattern, so a P
+  written "0·03" after an interval is read now, though the interval's own numbers with a
+  middle dot are not (`stats/intervals.py`).
+
+- **An escaped backtick opened a code span for G2's escapes.** `import` writes a backslash
+  before every backtick typed in Word, and the pattern that paired backtick runs took the
+  escaped ones for delimiters, so in `` (\` ROR \> 2 \`) `` the `\>` was read as a
+  backslash code prints, and the threshold pandoc prints was an unbound number.
+  `masking._code_spans` reads the runs once now: a backtick after an odd run of backslashes,
+  outside code, is printed and opens nothing, the rest of its run opening as pandoc's does;
+  inside code a backslash prints, so a run after one still closes the span, as pandoc
+  reads `` `a\` `` (`test_an_escaped_threshold_between_escaped_backticks_is_still_a_convention`).
 
 - **A paper that declared no English heard nothing of its journal's.** Since `english_variant`
   became optional, G4 compared a journal's English with the paper's only where the paper

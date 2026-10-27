@@ -282,6 +282,22 @@ def test_narrowing_openers_are_read_in_linear_time(assert_linear) -> None:
     assert_linear(openers_over, read, 10000, "a hundred narrowing openers, by the lines after")
 
 
+def test_code_spans_are_found_in_linear_time(assert_linear) -> None:
+    """Code spans are paired by reading the runs of backticks once, each to the next run as
+    long: runs of every width that never close, and escaped backticks after long runs of
+    backslashes, must not make the time grow faster than the text."""
+    from manuscript_guard.text.masking import _code_spans as code_spans
+
+    def unclosed(count: int) -> str:
+        return " ".join("`" * (1 + n % 50) + "x" for n in range(count)) + " \\> 2\n"
+
+    def escaped(count: int) -> str:
+        return ("\\" * 41 + "`a " + "`b` ") * count
+
+    assert_linear(unclosed, code_spans, 4000, "runs of backticks that never close")
+    assert_linear(escaped, code_spans, 2000, "escaped backticks after long runs of backslashes")
+
+
 def test_unclosed_attributes_are_read_in_linear_time(assert_linear) -> None:
     """Pandoc reads a fence's `{attributes}` on over lines. Reading them that way too, with a
     backslash before each newline read as an escape, took every opener to the end of the

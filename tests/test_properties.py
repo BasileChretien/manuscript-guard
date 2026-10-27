@@ -79,7 +79,9 @@ from generated import (
     count_cells,
     credited_plans,
     deposit_statements,
+    deviation_titled,
     dictionary_pairs,
+    escaped_backticks,
     figure_captions,
     generated,
     holds,
@@ -112,6 +114,7 @@ from generated import (
     markdown_for_latex,
     masked_blocks,
     mean_tables,
+    methods_titled,
     named_numbers,
     numbered_displays,
     painted_pdfs,
@@ -552,6 +555,40 @@ def _the_mask_keeps_a_comment_s_line_breaks(patch: pytest.MonkeyPatch) -> None:
             chars[index] = chars[index] if chars[index] in "\r\n" else NUL
 
     patch.setattr(masking, "_blank", blank)
+
+
+@holds(100, escaped_backticks())
+def test_an_escaped_backtick_opens_no_code_span_and_code_ends_at_its_run(
+    drawn: tuple[str, list[int]],
+) -> None:
+    """`import` writes a backslash before every backtick typed in Word, and the backticks
+    were paired as code all the same, so a comparison between them was taken for one code
+    prints. A backtick after an odd run of backslashes opens no code span; inside code a
+    backslash prints, and the run after it closes the span. Every backslash that escapes a
+    comparison outside code is found, and none other."""
+    from manuscript_guard.text.masking import comparison_escapes
+
+    text, expected = drawn
+    assert comparison_escapes(text) == expected, text
+
+
+#: How the code spans were found before an escaped backtick was read as one printed.
+_PAIRED_RUNS = re.compile(r"(?<!`)(`+)(?!`)(?:[^\n]|\n(?![ \t]*\n))+?(?<!`)\1(?!`)")
+
+
+def _an_escaped_backtick_opens_a_code_span(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import masking
+
+    patch.setattr(masking, "_code_spans",
+                  lambda text: [match.span() for match in _PAIRED_RUNS.finditer(text)])  # fmt: skip
+
+
+def _a_backslash_before_a_closing_run_escapes_it(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import masking
+
+    # A backtick after a backslash read as escaped inside code too: a code span with one
+    # before its closing run runs on to the next run as long.
+    patch.setattr(masking, "_BACKTICKS", re.compile(r"(?<!\\)`+"))
 
 
 # ------------------------------------------------------------------------- the LaTeX reader
@@ -2919,6 +2956,28 @@ def test_a_deviation_rewrapped_says_what_it_said_and_a_word_more_does_not(
     assert deviations_said(plan) != deviations_said(longer), longer
 
 
+@holds(100, deviation_titled())
+def test_the_deviations_are_known_by_their_title_and_a_standard_deviation_is_not(
+    drawn: tuple[str, list[str]],
+) -> None:
+    """G12 found the Deviations by "deviation" anywhere in a title, so a section on the
+    dose's standard deviation was the plan's Deviations. What a plan says under each title
+    of its Deviations is read, numbered or not and in any case, and nothing under a title
+    that names a standard deviation alone."""
+    from manuscript_guard.gates.design import deviations_said
+
+    plan, said = drawn
+    assert deviations_said(plan) == " ".join(said), plan
+
+
+def _a_standard_deviation_is_a_deviation(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import design
+
+    patch.setattr(design, "REQUIRED", tuple(
+        (name, rule.replace(r"(?<!standard\s)", ""), why) for name, rule, why in design.REQUIRED
+    ))  # fmt: skip
+
+
 # ------------------------------------------------------------- the results a plan promises
 
 
@@ -3269,7 +3328,7 @@ def _reported_tests(draw: st.DrawFn) -> tuple[str, list[tuple[Any, ...]]]:
     for index in range(len(_TEST_FORMS)):
         plans += [(index, kind) for kind in ("moderate", "large", "far", "near", "quiet")]
     plans += [(-1, "next sentence"), (-1, "two statistics"), (-1, "middle dot"),
-              (-1, "decimal comma"), (-1, "reference after")]  # fmt: skip
+              (-1, "decimal comma"), (-1, "reference after"), (-1, "thousands")]  # fmt: skip
     shapes = draw(st.permutations(("e", "x10", "<")))
     sentences: list[tuple[str, tuple[Any, ...] | None]] = []
     for number, (index, plan) in enumerate(draw(st.permutations(plans))):
@@ -3277,15 +3336,41 @@ def _reported_tests(draw: st.DrawFn) -> tuple[str, list[tuple[Any, ...]]]:
             s, df, _p = statistic("t", _MODERATE)
             sentences.append((f"t({df[0]}) = {s}. {words().capitalize()} p = .40", None))
             continue
-        if plan in ("middle dot", "decimal comma"):
-            # A decimal written with a middle dot, in the P, or a comma, in the statistic:
-            # not read at all, rather than read as its whole part (round 1 of #285).
-            s, df, p = statistic("t", _MODERATE)
-            if plan == "middle dot":
-                printed = f"{p:.3f}".replace(".", "\N{MIDDLE DOT}")
-                sentences.append((f"t({df[0]}) = {s}, p = {printed}", None))
+        if plan == "middle dot":
+            # A decimal written with a middle dot, as the Lancet sets one, in the statistic
+            # and the P, and in a P's mantissa before a middle dot that multiplies by a
+            # power of ten: read with its point, where none was read at all.
+            kind = draw(st.sampled_from(("t", "z")))
+            s, df, p = statistic(kind, _MODERATE if kind == "t" else _LARGE)
+            dot = "\N{MIDDLE DOT}"
+            if kind == "t":
+                printed = f"{p:.3f}".replace(".", dot)
             else:
-                sentences.append((f"t({df[0]}) = {s.replace('.', ',')}, p = {p:.3f}", None))
+                mantissa, exponent = f"{p:.1e}".split("e")
+                printed = f"{mantissa.replace('.', dot)}{dot}10^{int(exponent)}^"
+            symbol = f"t({df[0]})" if kind == "t" else "z"
+            s = s.replace(".", dot)
+            sentences.append((f"{symbol} = {s}, p = {printed}",
+                              (0, kind, s, df, "=", printed, "right")))  # fmt: skip
+            continue
+        if plan == "decimal comma":
+            # A decimal written with a comma, in the statistic: not read at all, rather
+            # than read as its whole part (round 1 of #285).
+            s, df, p = statistic("t", _MODERATE)
+            sentences.append((f"t({df[0]}) = {s.replace('.', ',')}, p = {p:.3f}", None))
+            continue
+        if plan == "thousands":
+            # Degrees of freedom with a thousands' comma, in brackets after another and
+            # after "df =" alone: read whole, where no test was read.
+            kind = draw(st.sampled_from(("t", "F")))
+            value = draw(st.integers(*_MODERATE[kind])) / 1000 + 0.0003
+            df = (draw(st.integers(1, 5)),) * (kind == "F") + (draw(st.integers(1000, 99999)),)
+            s = f"{value:.2f}"
+            sign, printed = _printed_p(draw, _true_p(kind, value, df), "=")
+            written = tuple(f"{d:,}" for d in df)
+            text = (f"F({written[0]}, {written[1]}) = {s}, p {sign} {printed}" if kind == "F"
+                    else f"t = {s}, df = {written[0]}, P {sign} {printed}")  # fmt: skip
+            sentences.append((text, (0, kind, s, written, sign, printed, "right")))
             continue
         if plan == "reference after":
             # A reference set inline after a number that has its point, as text taken from
@@ -3386,10 +3471,28 @@ def _less_than_is_read_as_equal_to(patch: pytest.MonkeyPatch) -> None:
 def _a_decimal_comma_is_read_as_a_whole_number(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.stats import reported
 
-    refusal = r"(?(stat_point)|(?![\N{MIDDLE DOT},]\d))"
+    refusal = r"(?(stat_point)|(?!,\d))"
     assert refusal in reported._STATISTIC.pattern
     pattern = reported._STATISTIC.pattern.replace(refusal, "")
     patch.setattr(reported, "_STATISTIC", re.compile(pattern))
+
+
+def _a_middle_dot_is_no_decimal_point(patch: pytest.MonkeyPatch) -> None:
+    """The rule before a middle dot was read as a point: a number written with one was not
+    read at all."""
+    from manuscript_guard.stats import reported
+
+    point, refusal = r"[.\N{MIDDLE DOT}]", r"(?(stat_point)|(?!,\d))"
+    assert point in reported._STATISTIC.pattern and refusal in reported._STATISTIC.pattern
+    pattern = reported._STATISTIC.pattern.replace(point, r"\.").replace(
+        refusal, r"(?(stat_point)|(?![\N{MIDDLE DOT},]\d))")  # fmt: skip
+    patch.setattr(reported, "_STATISTIC", re.compile(pattern))
+
+
+def _degrees_with_a_thousands_comma_are_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import reported
+
+    patch.setattr(reported, "_GROUPED", re.compile(r"(?!)"))
 
 
 def _a_comma_after_a_point_is_taken_for_a_decimal_comma(patch: pytest.MonkeyPatch) -> None:
@@ -3397,7 +3500,7 @@ def _a_comma_after_a_point_is_taken_for_a_decimal_comma(patch: pytest.MonkeyPatc
     the number had its point already."""
     from manuscript_guard.stats import reported
 
-    refusal = r"(?![\N{MIDDLE DOT},]\d)"
+    refusal = r"(?!,\d)"
     for name, conditional in (("_STATISTIC", rf"(?(stat_point)|{refusal})"),
                               ("_P", rf"(?(p_point)|(?(power)|{refusal}))")):  # fmt: skip
         expression = getattr(reported, name)
@@ -3409,7 +3512,7 @@ def _a_comma_after_a_point_is_taken_for_a_decimal_comma(patch: pytest.MonkeyPatc
 def _a_middle_dot_is_read_as_the_end_of_a_p(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.stats import reported
 
-    pattern = reported._P.pattern.replace(r"[\N{MIDDLE DOT},]\d", r"\d")
+    pattern = reported._P.pattern.replace(r"(?P<p_point>\.|", r"(?P<p_point>\.|(?!)")
     assert pattern != reported._P.pattern
     patch.setattr(reported, "_P", re.compile(pattern))
 
@@ -6041,6 +6144,34 @@ def test_a_reference_list_is_known_by_its_title_in_each_language(
         assert (_kind_of(title, False, None) == SET_APART) == is_list, title
 
 
+@holds(100, methods_titled())
+def test_the_methods_are_known_by_their_title_with_what_they_hold_after_it(
+    titled: list[tuple[str, bool]],
+) -> None:
+    """G2 and G15 read "Methods" alone, or joined to another part's name by "and", and not
+    "Methods: data sources" or "Methods of the study". Each title that names the Methods,
+    with what they hold after a colon, a stop, a dash or "of", is the Methods for what stands
+    under it, numbered or not and in any case; a title that also names what was found, or a
+    word that only opens with "method", is not."""
+    from manuscript_guard.classify import is_methods
+
+    text = "".join(f"# {title}\n\nText {n}.\n\n" for n, (title, _is) in enumerate(titled))
+    headings, notes = heading_index(text), footnote_index(text)
+    for n, (title, methods) in enumerate(titled):
+        chains = chains_at(headings, notes, text.index(f"Text {n}."))
+        assert [is_methods(chain) for chain in chains] == [methods] * len(chains), title
+
+
+def _methods_only_alone_or_joined_by_and(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import classify
+
+    joints = r"methods\s*[:.\N{EN DASH}\N{EM DASH}][^\n]*|methods\s+of\s+[^\n]+|"
+    pattern = classify.METHODS_SECTIONS
+    assert joints in pattern.pattern
+    patch.setattr(classify, "METHODS_SECTIONS",
+                  re.compile(pattern.pattern.replace(joints, ""), pattern.flags))  # fmt: skip
+
+
 def _english_only(patch: pytest.MonkeyPatch, module: Any) -> None:
     from manuscript_guard.text.section_names import REFERENCE_WORDS_ELSEWHERE
 
@@ -6141,7 +6272,7 @@ def _an_interleukin_is_a_number(patch: pytest.MonkeyPatch) -> None:
 def _a_term_is_found_inside_a_word(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard import classify
 
-    def anywhere(text: str, terms: tuple[str, ...]) -> list[str] | None:
+    def anywhere(text: str, terms: tuple[str, ...], *_marked: frozenset[int]) -> list[str] | None:
         rest, used = text.lower(), []
         for term in terms:
             if term and term in rest:
@@ -6186,9 +6317,26 @@ def _a_capital_opens_no_term_after_it(patch: pytest.MonkeyPatch) -> None:
 def _a_superscript_s_digits_open_a_term_at_a_capital(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard import classify
 
-    terms_covering = classify._terms_covering
+    names_covering = classify._names_covering
     patch.setattr(classify, "_names_covering",
-                  lambda text, _raised, terms: terms_covering(text, terms))  # fmt: skip
+                  lambda text, _raised, terms, sunk: names_covering(text, frozenset(), terms,
+                                                                    sunk=sunk))  # fmt: skip
+
+
+def _a_subscript_s_digits_open_a_term_after_a_capital(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import classify
+
+    names_covering = classify._names_covering
+    patch.setattr(classify, "_names_covering",
+                  lambda text, raised, terms, sunk: names_covering(text, raised, terms))
+
+
+def _a_subscript_s_digits_open_a_term_only_at_a_word(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import classify
+
+    names_covering = classify._names_covering
+    patch.setattr(classify, "_names_covering",
+                  lambda text, raised, terms, sunk: names_covering(text, raised | sunk, terms))
 
 
 def _no_term_counts_directly_after_another(patch: pytest.MonkeyPatch) -> None:
@@ -8349,6 +8497,16 @@ _AFTER_A_BINDING = (
     (" min-1", "min-1"),
     (" \N{DEGREE SIGN}C", "\N{DEGREE SIGN}C"),
     (" mg/kg/day", "mg/kg/day"),
+    # A divisor after a space, with its power below nought; not a word with a number after
+    # a hyphen, nor a power of two digits.
+    (" mg kg-1", "mg kg-1"),
+    (
+        " mg kg\N{SUPERSCRIPT MINUS}\N{SUPERSCRIPT ONE}",
+        "mg kg\N{SUPERSCRIPT MINUS}\N{SUPERSCRIPT ONE}",
+    ),
+    ("\N{NO-BREAK SPACE}\N{MICRO SIGN}g L-1 d-1", "\N{MICRO SIGN}g L-1 d-1"),
+    (" mg COX-2", "mg"),
+    (" mg kg-12", "mg"),
     (" minutes", None),
     (" mgs", None),
     (" group", None),
@@ -10961,6 +11119,12 @@ def _a_heading_is_part_of_the_paragraph_under_it(patch: pytest.MonkeyPatch) -> N
     patch.setattr(methods_gate, "_HEADING", re.compile(r"(?!)"))
 
 
+def _a_divisor_after_a_space_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    assert bound_units_gate._SPACED in bound_units_gate._UNIT.pattern
+    pattern = bound_units_gate._UNIT.pattern.replace(bound_units_gate._SPACED, "")
+    patch.setattr(bound_units_gate, "_UNIT", re.compile(pattern))
+
+
 def _a_unit_is_read_after_a_plain_space_only(patch: pytest.MonkeyPatch) -> None:
     pattern = bound_units_gate._UNIT.pattern.replace(bound_units_gate._GAP, " ?", 1)
     patch.setattr(bound_units_gate, "_UNIT", re.compile(pattern))
@@ -12027,9 +12191,21 @@ BROKEN = {
         _the_mask_hides_every_line_break,
         test_the_mask_keeps_the_line_breaks_of_what_it_hides_but_a_comment_s,
     ),
+    "a standard deviation is a deviation": (
+        _a_standard_deviation_is_a_deviation,
+        test_the_deviations_are_known_by_their_title_and_a_standard_deviation_is_not,
+    ),
     "the mask keeps a comment's line breaks": (
         _the_mask_keeps_a_comment_s_line_breaks,
         test_the_mask_keeps_the_line_breaks_of_what_it_hides_but_a_comment_s,
+    ),
+    "an escaped backtick opens a code span": (
+        _an_escaped_backtick_opens_a_code_span,
+        test_an_escaped_backtick_opens_no_code_span_and_code_ends_at_its_run,
+    ),
+    "a backslash before a closing run escapes it": (
+        _a_backslash_before_a_closing_run_escapes_it,
+        test_an_escaped_backtick_opens_no_code_span_and_code_ends_at_its_run,
     ),
     "in LaTeX, a straight quote closes no quotation": (
         _a_straight_quote_closes_nothing,
@@ -12623,6 +12799,14 @@ BROKEN = {
         _a_middle_dot_is_read_as_the_end_of_a_p,
         test_a_reported_test_is_found_where_it_stands_and_its_p_judged_by_its_statistic,
     ),
+    "a statistic written with a middle dot is not read": (
+        _a_middle_dot_is_no_decimal_point,
+        test_a_reported_test_is_found_where_it_stands_and_its_p_judged_by_its_statistic,
+    ),
+    "degrees of freedom with a thousands' comma are not read": (
+        _degrees_with_a_thousands_comma_are_not_read,
+        test_a_reported_test_is_found_where_it_stands_and_its_p_judged_by_its_statistic,
+    ),
     "a test its sentence calls one-sided or adjusted is judged as two-sided": (
         _a_test_that_is_not_the_textbook_one_is_judged,
         test_a_reported_test_is_found_where_it_stands_and_its_p_judged_by_its_statistic,
@@ -12986,6 +13170,10 @@ BROKEN = {
     "a heading is part of the paragraph under it": (
         _a_heading_is_part_of_the_paragraph_under_it,
         test_an_anchor_claims_the_text_back_to_the_anchor_before_it_or_its_paragraph,
+    ),
+    "a divisor after a space is not read": (
+        _a_divisor_after_a_space_is_not_read,
+        test_the_unit_after_a_binding_is_read_however_spaced_and_no_word_is,
     ),
     "a unit is read after a plain space only": (
         _a_unit_is_read_after_a_plain_space_only,
@@ -13747,6 +13935,10 @@ BROKEN = {
         _a_section_takes_a_title_elsewhere_by_its_opening,
         test_a_reference_list_is_known_by_its_title_in_each_language,
     ),
+    "the methods are only alone or joined by and": (
+        _methods_only_alone_or_joined_by_and,
+        test_the_methods_are_known_by_their_title_with_what_they_hold_after_it,
+    ),
     "an e-mail address is a number": (
         _an_email_address_is_a_number,
         test_an_address_and_an_interleukin_are_no_numbers_and_a_number_beside_them_is,
@@ -13777,6 +13969,14 @@ BROKEN = {
     ),
     "a superscript's digits open a term at a capital": (
         _a_superscript_s_digits_open_a_term_at_a_capital,
+        test_an_address_and_an_interleukin_are_no_numbers_and_a_number_beside_them_is,
+    ),
+    "a subscript's digits open a term after a capital": (
+        _a_subscript_s_digits_open_a_term_after_a_capital,
+        test_an_address_and_an_interleukin_are_no_numbers_and_a_number_beside_them_is,
+    ),
+    "a subscript's digits open a term only at a word": (
+        _a_subscript_s_digits_open_a_term_only_at_a_word,
         test_an_address_and_an_interleukin_are_no_numbers_and_a_number_beside_them_is,
     ),
     "no term counts directly after another": (

@@ -144,6 +144,14 @@ def test_a_rule_leaves_a_real_measurement_alone(rule_id: str, text: str, atom: s
         pytest.param(r"a \\\> 3", [4], id="a-backslash-printed-then-an-escape"),
         pytest.param(r"`a \> 3` and \> 3", [13], id="printed-in-code"),
         pytest.param("```\na \\> 3\n```", [], id="printed-in-a-listing"),
+        # A backtick after an odd run of backslashes is printed and opens no code span, as
+        # `import` writes one typed in Word; inside code a backslash before the closing run
+        # prints, and the run closes it.
+        pytest.param(r"(\` ROR \> 2 \`)", [8], id="between-escaped-backticks"),
+        pytest.param(r"\``a \> 3` and \> 3", [15], id="an-escaped-backtick-then-code"),
+        pytest.param(r"x\\`a \> 3` y", [], id="a-backslash-printed-then-code"),
+        pytest.param(r"`a\` \> 3", [5], id="a-backslash-printed-in-code-before-its-end"),
+        pytest.param(r"`a` \` \> 1 `b`", [7], id="an-escaped-backtick-between-code"),
     ],
 )
 def test_only_a_backslash_that_prints_nothing_escapes_a_comparison(

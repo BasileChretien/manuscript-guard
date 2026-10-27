@@ -228,16 +228,49 @@ def test_a_p_judged_at_the_level_the_analysis_declares() -> None:
 @pytest.mark.parametrize(
     "text",
     [
-        # Round 1 of #285: a decimal written with a middle dot or a comma was read as its
-        # whole part, "p<0·0001" as a P of 0, and the test was reported.
-        "t(23) = 2\N{MIDDLE DOT}45, p = 0\N{MIDDLE DOT}022",
-        "t(23) = 2.45, p < 0\N{MIDDLE DOT}0001",
+        # Round 1 of #285: a decimal written with a comma was read as its whole part, and
+        # the test was reported.
         "t(23) = 2,45, p = 0,022",
         "t(23) = 2.45, p = 0,022",
     ],
 )
-def test_a_decimal_point_that_is_no_full_stop_is_not_read(text) -> None:
+def test_a_decimal_comma_is_not_read(text) -> None:
     assert reported_tests(text) == []
+
+
+@pytest.mark.parametrize(
+    ("text", "statistic", "df", "p"),
+    [
+        # A middle dot between digits is a point, as the Lancet sets one: such a test was
+        # not read at all, and a paper set that way had none of its tests judged.
+        ("t(23) = 2\N{MIDDLE DOT}45, p = 0\N{MIDDLE DOT}022", "2\N{MIDDLE DOT}45", ("23",),
+         "0\N{MIDDLE DOT}022"),
+        ("t(23) = 2.45, p < 0\N{MIDDLE DOT}05", "2.45", ("23",), "0\N{MIDDLE DOT}05"),
+        ("F(1\N{MIDDLE DOT}5, 20) = 4\N{MIDDLE DOT}5, p = 0\N{MIDDLE DOT}04",
+         "4\N{MIDDLE DOT}5", ("1\N{MIDDLE DOT}5", "20"), "0\N{MIDDLE DOT}04"),
+        ("z = 4\N{MIDDLE DOT}5, P = 6\N{MIDDLE DOT}8\N{MIDDLE DOT}10^-6^", "4\N{MIDDLE DOT}5",
+         (), "6\N{MIDDLE DOT}8\N{MIDDLE DOT}10^-6^"),
+        # Degrees of freedom with a thousands' comma, read whole where a comma between two
+        # would give the test more than it has.
+        ("F(1, 1,234) = 4.5, p = .034", "4.5", ("1", "1,234"), ".034"),
+        ("F(1,234) = 4.5, p = .034", "4.5", ("1", "234"), ".034"),
+        ("t(1,234) = 2.1, p = .036", "2.1", ("1,234",), ".036"),
+        ("t = 2.45, df = 1,234, P = 0.0145", "2.45", ("1,234",), "0.0145"),
+        ("chi2(1, N = 1,234) = 4.5, p = .034", "4.5", ("1",), ".034"),
+    ],
+)
+def test_a_middle_dot_is_a_point_and_a_thousands_comma_groups_degrees(
+    text: str, statistic: str, df: tuple[str, ...], p: str
+) -> None:
+    test = _one(text)
+    assert (test.statistic, test.df, test.p) == (statistic, df, p)
+    verdict = judge(test)
+    assert verdict is not None and not verdict.inconsistent, (test, verdict)
+
+
+def test_a_comma_that_reads_two_ways_reads_none() -> None:
+    """"F(1,234,567)" is 1,234 and 567 or 1 and 234,567: an F has two either way."""
+    assert reported_tests("F(1,234,567) = 4.5, p = .034") == []
 
 
 @pytest.mark.parametrize(

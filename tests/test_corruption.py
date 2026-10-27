@@ -842,6 +842,21 @@ def test_an_escaped_threshold_is_still_a_convention(project: Path) -> None:
     assert codes(report) == {"typed-parameter"}, report.render(project)
 
 
+def test_an_escaped_threshold_between_escaped_backticks_is_still_a_convention(
+    project: Path,
+) -> None:
+    """`import` writes a backslash before every backtick typed in Word, and G2 paired the
+    escaped backticks as a code span: in `` (\\` ROR \\> 2 \\`) `` the `\\>` was taken for a
+    backslash code prints, and the threshold pandoc prints, `ROR > 2`, was an unbound
+    number. An escaped backtick opens no code span; one before a code span's closing run
+    closes it, as pandoc reads it."""
+    _in_methods(project, "A signal needed (\\` ROR \\> 2 \\`) here.")
+    report = gate_report(project)
+    assert "unclassified-number" not in codes(report), report.render(project)
+    _in_methods(project, "A signal needed `ROR\\` and ROR \\> 2 here.")
+    assert "unclassified-number" not in codes(gate_report(project))
+
+
 @pytest.mark.parametrize(
     "written",
     [
@@ -2724,18 +2739,26 @@ def test_a_unit_written_after_a_binding_is_the_one_emitted(
 
 
 @pytest.mark.parametrize(("emitted", "written", "said"), [
-    # A divisor after a space is not read: the written unit is its first symbol, and an
-    # emitted one is compared with nothing.
-    ("mg/kg", " mg kg-1", True),
+    # A divisor after a space, with its power below nought, divides as one after a slash:
+    # written, "mg kg-1" was read as "mg" and said to differ from an emitted "mg/kg", and
+    # emitted, it was compared with nothing.
+    ("mg/kg", " mg kg-1", False),
+    ("mg/kg", " mg kg\N{SUPERSCRIPT MINUS}\N{SUPERSCRIPT ONE}", False),
+    ("mg/kg", " mg kg\N{MINUS SIGN}1", False),
+    ("mg/L", " mg L-1", False),
+    ("mg/kg/d", " mg kg-1 d-1", False),
     ("mg kg-1", " mg/kg", False),
-    # A divisor written as a word is not read either.
+    ("mg kg-1", " \N{MICRO SIGN}g/kg", True),
+    ("\N{MICRO SIGN}g/kg", " mg kg-1", True),
+    ("mg/kg", " mg kg-1 d-1", True),
+    # A divisor written as a word is not read.
     ("mg/kg/day", " mg/kg per day", True),
 ])  # fmt: skip
 def test_what_the_unit_reading_gets_wrong_is_pinned(
     project: Path, emitted: str, written: str, said: bool
 ) -> None:
     """Known gaps, as DESIGN.md writes them (round 1 of #279, where it said "mg/kg" and
-    "mg kg-1" were taken for two units both ways)."""
+    "mg kg-1" were taken for two units both ways). A divisor after a space is read now."""
     _unit_emitted(project, "case.pct_serious", emitted)
     path = main_md(project)
     binding = "{{results.case.pct_serious}}"
@@ -2758,6 +2781,9 @@ def test_what_the_unit_reading_gets_wrong_is_pinned(
     ("\N{MASCULINE ORDINAL INDICATOR}F", "\N{DEGREE SIGN}F"),
     ("cm\N{SUPERSCRIPT TWO}", "cm2"), ("cm^2^", "cm2"), ("cm\N{SUPERSCRIPT THREE}", "cm3"),
     ("h\N{MINUS SIGN}1", "h-1"),
+    ("mg kg-1", "mg/kg"), ("mg kg\N{SUPERSCRIPT MINUS}\N{SUPERSCRIPT ONE}", "mg/kg"),
+    ("mg kg^-1^", "mg/kg"), ("mg/kg", "mg kg-1"), ("mg kg-2", "mg/kg2"),
+    ("mg L-1", "mg/l"), ("mg kg\N{MINUS SIGN}1", "mg / kg"),
 ])  # fmt: skip
 def test_every_spelling_of_one_unit_is_one_unit(written: str, emitted: str) -> None:
     """Round 1 of #279: only mcg and mu were held, so an empty list of spellings passed."""
@@ -9896,6 +9922,17 @@ def _emitted(root: Path, **displays: str) -> None:
         ("The arms differed, z = 3.30, P = 0.01.", ["p-inconsistent"]),
         ("A one-sided t(23) = 2.45, p = .011, as planned.", []),
         ("<!-- t(23) = 2.45, p = .40 -->", []),
+        # A middle dot for the point, as the Lancet sets it, was read as no number, so a
+        # paper set that way had none of its tests judged; and degrees of freedom with a
+        # thousands' comma were read as two.
+        ("Earlier work found t(23) = 2\N{MIDDLE DOT}45, p = 0\N{MIDDLE DOT}40 "
+         "[@fictionalHepaticCohort2021].", ["p-decision-error"]),
+        ("Earlier work found t(23) = 2\N{MIDDLE DOT}45, p = 0\N{MIDDLE DOT}022 "
+         "[@fictionalHepaticCohort2021].", []),
+        ("The arms differed, z = 4\N{MIDDLE DOT}50, P = 6\N{MIDDLE DOT}8\N{MIDDLE DOT}10^-4^.",
+         ["p-inconsistent"]),
+        ("The arms differed, *F*(1, 1,234) = 4.50, *P* = 0.30.", ["p-decision-error"]),
+        ("The arms differed, t = 2.45, df = 1,234, P = 0.30.", ["p-decision-error"]),
     ],
 )
 def test_a_p_that_does_not_follow_from_its_statistic_is_found(
@@ -11846,6 +11883,33 @@ def test_a_methods_and_results_section_is_no_methods_for_g2(project: Path) -> No
         f.code == "unclassified-number" and "0.001" in f.message
         for f in gate_report(project).failures
     )
+
+
+@pytest.mark.parametrize(
+    "heading", ["Methods: data sources", "Methods. Study design", "2. Methods of the study"]
+)
+def test_the_methods_named_with_what_they_hold_are_the_methods_to_g2(
+    project: Path, heading: str
+) -> None:
+    """G2 and G15 read "Methods" alone, "Methods and <anything>" and "<anything> and
+    methods", so a Methods titled "Methods: data sources" or "Methods of the study" was no
+    Methods to them: a threshold the analysis chose, typed there, was an unbound number,
+    where under "Methods" it is the convention it is."""
+    from manuscript_guard.classify import is_methods
+
+    assert is_methods((heading,))
+    assert not is_methods(("Methods: main results",)), "a section of results is not"
+    _methods_retitled(project, heading)
+    main = main_md(project)
+    main.write_text(
+        main.read_text(encoding="utf-8").replace(
+            f"# {heading}\n", f"# {heading}\n\nA difference was significant at p < 0.001.\n",
+            1,
+        ),
+        encoding="utf-8",
+    )
+    found = [f for f in gate_report(project).failures if f.code == "unclassified-number"]
+    assert not found, found
 
 
 @pytest.mark.parametrize(
@@ -22234,6 +22298,24 @@ def test_a_plan_is_asked_for_what_its_design_needs(project: Path) -> None:
                                     "randomisation"]  # fmt: skip
 
 
+@pytest.mark.parametrize(
+    "title", ["Standard deviation of the dose", "Standard deviations", "standard\tdeviation"]
+)
+def test_a_standard_deviation_is_no_deviation_from_the_plan(project: Path, title: str) -> None:
+    """G12 found the Deviations by "deviation" anywhere in a title, so a plan with a section
+    on the dose's standard deviation, and none on what changed after it was agreed, was
+    said to have one."""
+    plan = project / "design" / "plan.md"
+    text = plan.read_text(encoding="utf-8")
+    assert "## Deviations from the plan" in text
+    plan.write_text(text.replace("## Deviations from the plan", f"## {title}"), encoding="utf-8")
+    assert _plan_asked(project) == ["deviations"]
+    plan.write_text(text.replace("## Deviations from the plan",
+                                 f"## {title}\n\nWords.\n\n## Protocol deviations"),
+                    encoding="utf-8")  # fmt: skip
+    assert _plan_asked(project) == []
+
+
 def test_a_section_the_design_needs_says_where_it_comes_from(project: Path) -> None:
     from manuscript_guard.gates import check_design
 
@@ -24169,6 +24251,31 @@ def test_a_citation_number_after_a_capital_inside_a_word_is_a_number(tmp_path: P
                        Classifier.load(rendered=True, extra_terms=("99mTc",))):  # fmt: skip
         kinds = {a.text: classifier.classify(a).kind for a in find_atoms(text, mask(text))}
         assert kinds == {**dict.fromkeys(raised, UNCLASSIFIED), "^99m^Tc": TERM}
+
+
+def test_a_subscripted_index_after_a_capital_is_a_number(tmp_path: Path) -> None:
+    """A subscript is part of the name it is typed in, and a term holding one counted
+    wherever any term does, after a capital among them: "HR~2~" and "OR~2~" were `r2`, and
+    G2 and the audit passed their numbers. A name opened at its word or at a capital after
+    a lower-case letter, "HbA~1c~", "ppFEV~1~" or, with CO2 declared, "pCO~2~", is a term."""
+    from manuscript_guard.audit import audit
+    from manuscript_guard.classify import TERM, UNCLASSIFIED, Classifier
+    from manuscript_guard.text.masking import mask
+    from manuscript_guard.text.tokens import find_atoms
+
+    sunk = ("HR~2~", "OR~2~")
+    names = ("HbA~1c~", "ppFEV~1~", "pCO~2~", "CO~2~", "EtCO~2~")
+    text = f"We read {sunk[0]} and {sunk[1]} beside {', '.join(names)}.\n"
+    paper = tmp_path / "paper.md"
+    paper.write_text(text.replace(", pCO~2~, CO~2~, EtCO~2~", ""), encoding="utf-8")
+    found = audit([paper], [_outputs(tmp_path, '{"n": 1}')]).unmatched
+    assert sorted(c.text.rstrip("~") for c in found) == ["HR~2", "OR~2"]
+    for classifier in (Classifier.load(extra_terms=("CO2",)),
+                       Classifier.load(rendered=True, extra_terms=("CO2",))):  # fmt: skip
+        kinds = {a.text.rstrip("~"): classifier.classify(a).kind
+                 for a in find_atoms(text, mask(text))}  # fmt: skip
+        expected = {name.rstrip("~"): TERM for name in names}
+        assert kinds == {**expected, "HR~2": UNCLASSIFIED, "OR~2": UNCLASSIFIED}
 
 
 @pytest.mark.parametrize(

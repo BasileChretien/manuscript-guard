@@ -11694,6 +11694,33 @@ def test_a_methods_and_results_section_is_no_methods_for_g2(project: Path) -> No
 
 
 @pytest.mark.parametrize(
+    "heading", ["Methods: data sources", "Methods. Study design", "2. Methods of the study"]
+)
+def test_the_methods_named_with_what_they_hold_are_the_methods_to_g2(
+    project: Path, heading: str
+) -> None:
+    """G2 and G15 read "Methods" alone, "Methods and <anything>" and "<anything> and
+    methods", so a Methods titled "Methods: data sources" or "Methods of the study" was no
+    Methods to them: a threshold the analysis chose, typed there, was an unbound number,
+    where under "Methods" it is the convention it is."""
+    from manuscript_guard.classify import is_methods
+
+    assert is_methods((heading,))
+    assert not is_methods(("Methods: main results",)), "a section of results is not"
+    _methods_retitled(project, heading)
+    main = main_md(project)
+    main.write_text(
+        main.read_text(encoding="utf-8").replace(
+            f"# {heading}\n", f"# {heading}\n\nA difference was significant at p < 0.001.\n",
+            1,
+        ),
+        encoding="utf-8",
+    )
+    found = [f for f in gate_report(project).failures if f.code == "unclassified-number"]
+    assert not found, found
+
+
+@pytest.mark.parametrize(
     "title",
     [
         "A method for signal detection",

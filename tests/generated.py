@@ -2574,6 +2574,36 @@ def reference_titled(draw: st.DrawFn) -> list[tuple[str, bool]]:
     return draw(st.permutations(cased))
 
 
+#: Titles of the Methods, `{}` standing for words drawn each time: the word alone, with
+#: another part's name joined by "and", and with what the Methods hold after a colon, a
+#: stop, a dash or "of". And titles that are not the Methods: a part that reports what was
+#: found, under any of those joints, and a word that only opens with "method".
+METHODS_TITLES = (
+    "Methods", "Materials and methods", "Methods and {}", "Methods: {}", "Methods. {}",
+    "Methods \N{EN DASH} {}", "Methods of {}", "Statistical analysis",
+)  # fmt: skip
+NOT_METHODS_TITLES = (
+    "Results", "Methods and results", "Methods: main results of {}", "Methods of {} findings",
+    "Methodological notes on {}", "Methodsof {}",
+)  # fmt: skip
+_METHODS_WORDS = ("data", "sources", "the", "study", "cohort", "setting", "analysis")
+
+
+@st.composite
+def methods_titled(draw: st.DrawFn) -> list[tuple[str, bool]]:
+    """Every title above, with words drawn for its `{}`, numbered or not, written as drawn,
+    upper case, lower case or as it stands, in an order drawn; and whether it titles the
+    Methods."""
+    planted = [(title, True) for title in METHODS_TITLES]
+    planted += [(title, False) for title in NOT_METHODS_TITLES]
+    written = []
+    for title, methods in planted:
+        words = " ".join(draw(st.lists(st.sampled_from(_METHODS_WORDS), min_size=1, max_size=3)))
+        title = draw(st.sampled_from(("", "2. ", "II. "))) + title.replace("{}", words)
+        written.append((draw(st.sampled_from((title, title.upper(), title.lower()))), methods))
+    return draw(st.permutations(written))
+
+
 #: Names a number stands in, which `check` and the audit read as no number: an e-mail
 #: address (structural) and an interleukin, abbreviated or written out (a term). And what
 #: is a number however near it stands: a count, and digits round an `@` with no domain.

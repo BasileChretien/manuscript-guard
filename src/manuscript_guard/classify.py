@@ -285,7 +285,10 @@ METHODS_SECTIONS = re.compile(
     r"(?!.*\b(?:results?|findings|discussion|conclusions?)\b)"
     # "Materials and methods", "Patients and methods", "Methods and analysis": the Methods by
     # another name, which G4 has always counted as a required Methods section present.
-    r"(?:[^\n]*?\band\s+methods|methods\s+and\s+[^\n]+|methods|methodology|"
+    # "Methods: data sources", "Methods. Study design", "Methods of the study": the Methods
+    # with what they hold after a stop, a colon or a dash, or after "of".
+    r"(?:[^\n]*?\band\s+methods|methods\s+and\s+[^\n]+|"
+    r"methods\s*[:.\N{EN DASH}\N{EM DASH}][^\n]*|methods\s+of\s+[^\n]+|methods|methodology|"
     r"statistical\s+(?:analysis|analyses|methods)|analysis\s+plan|statistical\s+plan|"
     r"study\s+design|design|protocol|sensitivity\s+analys[ei]s)"
     r"\s*$",

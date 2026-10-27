@@ -11811,11 +11811,12 @@ Open, recorded as each change landed:
   with only "method" or "methodology" is no Methods to either gate, as it was none to G4.
   A Methods with a subsection titled only "Results", "Limitations" or "Background" is taken
   for a heading over another part of the paper and is not read. G2 and G15 read
-  "Methods", numbered or not, "<anything> and methods", "Methods and <anything>" and the
-  names of the method's own subsections, and not "Methods: data sources" or "Methods of
-  the study": there G2 reports a number written in the Methods where it could have let it
-  through, and G15 reads no model's name. `methods-not-found` is said only where the
-  project has analysis code, since a case report or a narrative review has no Methods.
+  "Methods", numbered or not, "<anything> and methods", "Methods and <anything>",
+  "Methods" with what they hold after a colon, a stop, a dash or "of", and the names of the
+  method's own subsections, and not "Overview of methods" or "Methods used": there G2
+  reports a number written in the Methods where it could have let it through, and G15
+  reads no model's name. `methods-not-found` is said only where the project has analysis
+  code, since a case report or a narrative review has no Methods.
 - **A body under an abstract heading of a higher level is the abstract's.** With
   `# Abstract` and the paper's sections at `##`, every section is inside the abstract: G4
   finds none of the required sections, and the word count has the whole body as abstract,
@@ -16729,6 +16730,14 @@ Closed since, and why each mattered (an open gap goes above this line):
   numbers, and "CO~2~", "pCO~2~", "HbA~1c~", "ppFEV~1~" and "PaO~2~FiO~2~" names
   (`test_a_subscripted_index_after_a_capital_is_a_number`). "PharmD~2~" is still a term,
   above.
+
+- **"Methods: data sources" and "Methods of the study" were no Methods to G2 and G15.**
+  `classify.METHODS_SECTIONS` took "Methods" alone or joined to another part's name by
+  "and", so under such a title G2 reported a threshold the analysis chose as an unbound
+  number, and G15 read no model's name. "Methods" followed by a colon, a stop or a dash and
+  what the section holds, or by "of" and words, is the Methods now; a title that also names
+  what was found, "Methods: main results", is not, as "Methods and results" is not
+  (`test_the_methods_named_with_what_they_hold_are_the_methods_to_g2`).
 
 - **A paper that declared no English heard nothing of its journal's.** Since `english_variant`
   became optional, G4 compared a journal's English with the paper's only where the paper

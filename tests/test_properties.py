@@ -109,6 +109,7 @@ from generated import (
     markdown_for_latex,
     masked_blocks,
     mean_tables,
+    methods_titled,
     named_numbers,
     numbered_displays,
     painted_pdfs,
@@ -5810,6 +5811,34 @@ def test_a_reference_list_is_known_by_its_title_in_each_language(
         assert section.is_references == is_list, title
         assert is_bibliography_heading(f"# {title}", marked=True) == is_list, title
         assert (_kind_of(title, False, None) == SET_APART) == is_list, title
+
+
+@holds(100, methods_titled())
+def test_the_methods_are_known_by_their_title_with_what_they_hold_after_it(
+    titled: list[tuple[str, bool]],
+) -> None:
+    """G2 and G15 read "Methods" alone, or joined to another part's name by "and", and not
+    "Methods: data sources" or "Methods of the study". Each title that names the Methods,
+    with what they hold after a colon, a stop, a dash or "of", is the Methods for what stands
+    under it, numbered or not and in any case; a title that also names what was found, or a
+    word that only opens with "method", is not."""
+    from manuscript_guard.classify import is_methods
+
+    text = "".join(f"# {title}\n\nText {n}.\n\n" for n, (title, _is) in enumerate(titled))
+    headings, notes = heading_index(text), footnote_index(text)
+    for n, (title, methods) in enumerate(titled):
+        chains = chains_at(headings, notes, text.index(f"Text {n}."))
+        assert [is_methods(chain) for chain in chains] == [methods] * len(chains), title
+
+
+def _methods_only_alone_or_joined_by_and(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import classify
+
+    joints = r"methods\s*[:.\N{EN DASH}\N{EM DASH}][^\n]*|methods\s+of\s+[^\n]+|"
+    pattern = classify.METHODS_SECTIONS
+    assert joints in pattern.pattern
+    patch.setattr(classify, "METHODS_SECTIONS",
+                  re.compile(pattern.pattern.replace(joints, ""), pattern.flags))  # fmt: skip
 
 
 def _english_only(patch: pytest.MonkeyPatch, module: Any) -> None:
@@ -13375,6 +13404,10 @@ BROKEN = {
     "a section takes a title elsewhere by its opening": (
         _a_section_takes_a_title_elsewhere_by_its_opening,
         test_a_reference_list_is_known_by_its_title_in_each_language,
+    ),
+    "the methods are only alone or joined by and": (
+        _methods_only_alone_or_joined_by_and,
+        test_the_methods_are_known_by_their_title_with_what_they_hold_after_it,
     ),
     "an e-mail address is a number": (
         _an_email_address_is_a_number,

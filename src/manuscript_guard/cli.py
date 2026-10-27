@@ -13,7 +13,9 @@ import codecs
 import contextlib
 import hashlib
 import re
+import shutil
 import sys
+import textwrap
 from collections.abc import Callable, Collection
 from datetime import date
 from pathlib import Path
@@ -4536,6 +4538,63 @@ def cmd_init(args: argparse.Namespace) -> int:
     return 0
 
 
+#: The commands, under the headings the top-level help lists them by, in that order. Every
+#: command is in one group, but `hook`: an agent tool calls it and an author never does.
+COMMAND_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("Setup & Guide", ("init", "stages", "journal", "style", "install-skills")),
+    (
+        "Checking & Audit",
+        (
+            "check",
+            "audit",
+            "explain",
+            "bind",
+            "impact",
+            "reworded",
+            "methods",
+            "checklist",
+            "fetch",
+            "transcribe",
+        ),
+    ),
+    ("Analysis & Data", ("verify", "values", "models", "dictionary", "palettes", "related")),
+    ("Literature", ("lookup", "search", "sync-bib", "sync-sources", "passages")),
+    ("Co-Authors & Review", ("review", "checker", "import", "respond", "approve", "sign")),
+    ("Build, Release & Communicate", ("render", "build", "submit", "package", "proof")),
+)
+HIDDEN_COMMANDS = frozenset({"hook"})
+
+
+class _GroupedHelp(argparse.RawDescriptionHelpFormatter):
+    """The top-level help, with the commands left out of argparse's own list.
+
+    The usage line still names `<command>`; the commands themselves are listed under their
+    groups by `_command_list`, in the epilog, which this formatter prints as written.
+    """
+
+    def add_arguments(self, actions) -> None:
+        super().add_arguments(
+            [action for action in actions if not isinstance(action, argparse._SubParsersAction)]
+        )
+
+
+def _command_list(commands: argparse._SubParsersAction) -> str:
+    """Each group's heading, then each of its commands with its own one-line help."""
+    helps = {choice.dest: choice.help or "" for choice in commands._choices_actions}
+    width = max(shutil.get_terminal_size().columns - 2, 40)
+    column = 4 + max(len(name) for _, names in COMMAND_GROUPS for name in names)
+    blocks = []
+    for heading, names in COMMAND_GROUPS:
+        rows = [f"{heading}:"]
+        for name in names:
+            lines = textwrap.wrap(helps[name], max(width - column, 20)) or [""]
+            rows.append(f"  {name:<{column - 2}}{lines[0]}")
+            rows.extend(" " * column + line for line in lines[1:])
+        blocks.append("\n".join(rows))
+    blocks.append("Each command takes --help.")
+    return "\n\n".join(blocks)
+
+
 class _Parser(argparse.ArgumentParser):
     """A parser that reads an option only where it is written in full.
 
@@ -4556,9 +4615,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser = _Parser(
         prog="manuscript-guard",
         description="Make every number in a scientific manuscript traceable to its source.",
+        formatter_class=_GroupedHelp,
     )
     parser.add_argument("--version", action="version", version=__version__)
-    sub = parser.add_subparsers(dest="command", required=True)
+    sub = parser.add_subparsers(dest="command", required=True, metavar="<command>")
 
     check = sub.add_parser("check", help="run every gate")
     check.add_argument("path", nargs="?", type=Path, default=Path.cwd())
@@ -5312,6 +5372,7 @@ def build_parser() -> argparse.ArgumentParser:
     skills.add_argument("--dry-run", action="store_true", help="with --remove: change nothing")
     skills.set_defaults(func=cmd_install_skills)
 
+    parser.epilog = _command_list(sub)
     return parser
 
 

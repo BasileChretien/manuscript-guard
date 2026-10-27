@@ -139,8 +139,11 @@ _NAMED = re.compile(r"\b(" + "|".join(sorted(CLAIMABLE, key=len, reverse=True)) 
 
 #: Sentence-ish. A claim and the guidelines it names sit in one sentence, and "followed
 #: STROBE and RECORD-PE" names two - a single regex spanning verb to name caught only the
-#: first, because the match consumed the text the second one needed.
-_SENTENCE = re.compile(r"[^.!?\n]+(?:[.!?]|\n|$)")
+#: first, because the match consumed the text the second one needed. A sentence runs over a
+#: single line break, as a hard-wrapped source writes one, and stops at a blank line and
+#: before a line that opens a Markdown heading or a table's row (Known gaps, 2026-10-27: a
+#: claim whose verb and name stood on two lines was not read).
+_SENTENCE = re.compile(r"(?:[^.!?\n]|\n(?![ \t]*(?:\n|$|[#|])))+(?:[.!?]|\n|$)")
 
 
 def _claimed_in_prose(project: Project, declared: set[str]) -> Report:
@@ -243,8 +246,15 @@ def _prose_texts(project: Project) -> list[tuple[Path, str]]:
 def _latex_prose(source, view: str) -> str:
     """A LaTeX file's Markdown view with its code blanked, and a reference list typed in
     `thebibliography`, which cites a guideline's statement and claims nothing, as a Markdown
-    paper's list from `references.bib` is never read (round 2 of G8r in step 8)."""
-    return _blanked(view, (*source.reading.code, *source.reading.references))
+    paper's list from `references.bib` is never read (round 2 of G8r in step 8). A typed
+    table's line ends end a sentence, as a Markdown table's rows do (`_SENTENCE`), since a
+    sentence runs over a line break (2026-10-27)."""
+    out = list(_blanked(view, (*source.reading.code, *source.reading.references)))
+    for start, end in source.reading.tables:
+        for index in range(start, min(end, len(out))):
+            if out[index] == "\n":
+                out[index] = "."
+    return "".join(out)
 
 
 def _blanked(text: str, spans) -> str:

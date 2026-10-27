@@ -99,6 +99,7 @@ from generated import (
     latex_pointers,
     latex_printed,
     latex_quotations,
+    latex_reference_lists,
     latex_refusal_trees,
     latex_straight_quotes,
     latex_texts,
@@ -623,6 +624,24 @@ def test_a_tex_length_is_layout_in_a_definition_s_body_and_a_number_in_the_text(
         assert rules == ({"tex-length"} if layout else {UNCLASSIFIED}), (length, rules, text)
 
 
+@holds(60, latex_reference_lists())
+def test_g2_reads_no_number_of_a_typed_reference_list_and_every_one_round_it(
+    drawn: tuple[str, list[tuple[int, str, bool]]],
+) -> None:
+    """A number at every place of a reference list typed in `thebibliography`, its label, a
+    year, pages, a DOI, is no number G2 reads, as a Markdown project's list is never read;
+    one in the text before and after the list is (Known gaps, 2026-10-27)."""
+    text, planted = drawn
+    judged = _g2_rules_in_latex(text)
+    for at, number, read in planted:
+        rules = {rule for start, end, rule in judged if start < at + len(number) and at < end}
+        assert bool(rules) == read, (number, rules, text)
+
+
+def _a_typed_reference_list_is_read(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(numbers_gate, "_outside", lambda spans, placeholders: [])
+
+
 def _an_escaped_percent_opens_a_comment(patch: pytest.MonkeyPatch) -> None:
     symbol = latex_mask._Reader._symbol
 
@@ -1048,7 +1067,11 @@ def test_each_latex_file_starts_under_the_headings_in_force_where_it_is_input(
     file that opened a section is read under that section, as LaTeX prints them: worked out
     apart from the reader, over manuscripts of a few files that input one another. So is the
     text after each heading (`Source.chain_at`), a heading where an `\\input` ends and a
-    chapter under its part among them."""
+    chapter under its part among them. A part placed by `\\subfile` and a picture placed by
+    `\\includestandalone` inside a figure are read there, past their preambles, the picture's
+    body inside the figure (2026-10-27)."""
+    from generated import PLACED_PICTURE
+
     files, expected, marks = drawn
     document = latex_structure.read_tree(files)
     found = {source.path: [h.title for h in source.under] for source in document.sources}
@@ -1059,6 +1082,35 @@ def test_each_latex_file_starts_under_the_headings_in_force_where_it_is_input(
         (source,) = [s for s in document.sources if f"{mark} " in s.text]
         chain = source.chain_at(source.text.index(f"{mark} "))
         assert [h.title for h in chain] == titles, (mark, source.path, files)
+    (picture,) = [s for s in document.sources if s.path.endswith(PLACED_PICTURE)]
+    body = picture.reading.body_start
+    assert any(start <= body < end for start, end in picture.reading.figures), picture
+
+
+def _a_preamble_input_without_braces_names_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_BARE_PATH", re.compile(r"(?!)"))
+
+
+def _a_placed_part_is_not_followed(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "PLACED", frozenset())
+
+
+def _a_placed_part_is_read_from_its_first_line(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_structure, "part", lambda text: False)
+
+
+def _a_placed_part_opens_no_environment_at_its_document(patch: pytest.MonkeyPatch) -> None:
+    inherit = latex_mask._Reader._inherit
+
+    def broken(self, environments: tuple[str, ...], at: int) -> None:
+        if not at:
+            inherit(self, environments, at)
+
+    patch.setattr(latex_mask._Reader, "_inherit", broken)
+
+
+def _a_placed_part_s_preamble_is_the_paper_s(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_structure, "_placed", lambda reading: reading)
 
 
 @holds(60, latex_folders())
@@ -1384,6 +1436,8 @@ def test_latex_s_printed_view_holds_what_it_prints_as_markdown_writes_it(
             assert view.count(key) == 1, (key, view)
         elif kind == "hidden":
             assert key not in view, (key, view)
+        elif kind.startswith("folded:"):
+            assert kind.removeprefix("folded:").format(key) in view, (key, view)
         else:
             written = {"bound": "{{results.%s}}", "table": "{{table.%s}}", "cited": "[@%s]",
                        "tight": "({{results.%s}})."}  # fmt: skip
@@ -1395,6 +1449,10 @@ def test_latex_s_printed_view_holds_what_it_prints_as_markdown_writes_it(
     # A word in prose is in no code span: LaTeX's single quote opens none (round 1 of step 6).
     spans = "".join(re.findall(r"`[^`\n]+`", view))
     assert not [k for k, kind in planted if kind == "prose" and k in spans], view
+
+
+def _the_printed_view_drops_an_accent_s_mark(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print, "accented", lambda text, masked: masked)
 
 
 @holds(60, latex_trees())
@@ -1477,9 +1535,11 @@ def test_latex_s_words_hold_each_word_where_latex_prints_it(
 ) -> None:
     """A word planted in every place a LaTeX document holds one is in the view G14 reads, at
     its own offset, where LaTeX prints it as prose; it is not in it in maths, code, a figure's
-    caption, a comment, a label or the preamble's title; a word an accent command or `\\-`
-    splits is not in it and is given as unread, and no other word is; and a count written as
-    a subscript after a letter is written as Markdown writes it (step 7)."""
+    caption, a comment, a label or the preamble's title; a word an accent command, a letter
+    typed as a command or `\\-` splits is in it as LaTeX prints it, whole and followed by NUL
+    (2026-10-27); one whose accent marks no letter is not in it and is given as unread, and
+    no other word is; and a count written as a subscript after a letter is written as
+    Markdown writes it (step 7)."""
     text, planted = drawn
     reading = latex_mask.read(text)
     assert reading.refusals == (), (reading.refusals, text)
@@ -1491,6 +1551,12 @@ def test_latex_s_words_hold_each_word_where_latex_prints_it(
             assert seen.text.count(key) == 1 and seen.text.find(key) == text.find(key), key
         elif kind == "subscript":
             assert f"{key}X~2~" in seen.text, (key, seen.text)
+        elif kind.startswith("folded:"):
+            written = kind.removeprefix("folded:").format(key)
+            at = seen.text.find(written)
+            assert at >= 0 and seen.text.count(written) == 1, (written, seen.text)
+            after = seen.text[at + len(written) :]
+            assert after[: len(after) - len(after.lstrip(NUL))] and not after[:1].isalnum()
         else:
             assert key not in seen.text, (key, kind, seen.text)
         if kind == "split":
@@ -1524,6 +1590,27 @@ def _an_accented_word_is_cut_at_its_accent(patch: pytest.MonkeyPatch) -> None:
 
 def _a_subscripts_count_is_maths(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(latex_words_view, "_subscripts", lambda out, text: None)
+
+
+def _an_accent_command_drops_its_mark(patch: pytest.MonkeyPatch) -> None:
+    folded = latex_words_view.folded
+
+    def broken(found: re.Match[str]) -> str | None:
+        written = folded(found)
+        return written if not written else written[:1].encode("ascii", "ignore").decode()
+
+    patch.setattr(latex_words_view, "folded", broken)
+
+
+def _an_accent_over_no_letter_is_read(patch: pytest.MonkeyPatch) -> None:
+    folded = latex_words_view.folded
+    patch.setattr(latex_words_view, "folded", lambda found: folded(found) or "")
+
+
+def _a_letter_command_s_space_ends_its_word(patch: pytest.MonkeyPatch) -> None:
+    letter = r"\\(?:ss|ae|AE|oe|OE|aa|AA|o|O|l|L|i|j)(?![A-Za-z])(?:[ \t]*\{\})?"
+    patch.setattr(latex_words_view, "_SPLITS",
+                  re.compile(rf"{latex_words_view._ACCENT}|{letter}|\\-"))  # fmt: skip
 
 
 @holds(60, latex_trees())
@@ -1904,7 +1991,8 @@ def test_a_latex_claim_to_have_followed_a_guideline_is_read_where_it_prints(
     drawn: tuple[str, list[tuple[str, bool]]],
 ) -> None:
     """A claim in prose or a footnote is read; one in a comment, code, a listing or what
-    `\\iffalse` leaves out is no claim (G8r, step 8)."""
+    `\\iffalse` leaves out is no claim (G8r, step 8). One hard-wrapped over two lines is
+    read; over a blank line or a table's rows it is not (2026-10-27)."""
     from manuscript_guard.gates import reporting as reporting_gate
 
     text, planted = drawn
@@ -1964,6 +2052,22 @@ def _a_straight_quote_closes_nothing(patch: pytest.MonkeyPatch) -> None:
 
 def _a_quotation_runs_past_its_paragraph(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(latex_mask, "_PARAGRAPH_END", re.compile("(?!)"))
+
+
+def _a_quotation_runs_past_a_par(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_PAR", re.compile("(?P<par>(?!))"))
+
+
+def _a_par_in_a_comment_ends_a_quotation(patch: pytest.MonkeyPatch) -> None:
+    def broken(self: Any, start: int, end: int) -> bool:
+        return (latex_mask._PARAGRAPH_END.search(self.text, start, end) is not None
+                or latex_mask._PAR.search(self.text, start, end) is not None)  # fmt: skip
+
+    patch.setattr(latex_mask._Reader, "_paragraph_ended", broken)
+
+
+def _the_letters_after_a_line_break_are_a_par(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_PAR", re.compile(r"(?P<par>\\par)(?![A-Za-z@])"))
 
 
 def _a_straight_quote_before_a_letter_closes(patch: pytest.MonkeyPatch) -> None:
@@ -2029,6 +2133,27 @@ def _g8r_reads_a_latex_file_s_code(patch: pytest.MonkeyPatch) -> None:
 
     def prose(source, view):
         return reporting_gate._blanked(view, source.reading.references)
+
+    patch.setattr(reporting_gate, "_latex_prose", prose)
+
+
+def _a_claim_stops_at_a_line_break(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import reporting as reporting_gate
+
+    patch.setattr(reporting_gate, "_SENTENCE", re.compile(r"[^.!?\n]+(?:[.!?]|\n|$)"))
+
+
+def _a_claim_runs_over_a_blank_line(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import reporting as reporting_gate
+
+    patch.setattr(reporting_gate, "_SENTENCE", re.compile(r"[^.!?]+(?:[.!?]|$)"))
+
+
+def _a_claim_runs_over_a_table_s_rows(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import reporting as reporting_gate
+
+    def prose(source, view):
+        return reporting_gate._blanked(view, (*source.reading.code, *source.reading.references))
 
     patch.setattr(reporting_gate, "_latex_prose", prose)
 
@@ -4968,7 +5093,30 @@ def _planted_pointers(draw: st.DrawFn) -> tuple[str, str, set[tuple[str, bool, i
         form = draw(st.sampled_from(_SUPPLEMENTARY))
         parts[False].append(f"{words().capitalize()} {form % ('Figure', number)}.\n")
     planted.add(("figure", True, last + 1))
+    # Past the supplement's tables in each way the words after a pointer name it, at a
+    # number past the main text's too and apart from every other planted (2026-10-27).
+    for index, after in enumerate(_AFTER_SUPPLEMENT):
+        past = 50 + 30 * index + draw(st.integers(0, 20))
+        gap = draw(st.sampled_from(_GAPS))
+        written = after.format(n=past, gap=gap, s=draw(st.integers(1, 3)))
+        parts[False].append(f"{words().capitalize()} {written}.\n")
+        planted.add(("table", True, past))
     return "\n".join(parts[False]), "\n".join(parts[True]), planted, as_files
+
+
+#: The words after a pointer that put it in the supplement: "in the Supplement", and JAMA's
+#: numbered one, "in Supplement 1".
+_AFTER_SUPPLEMENT = ("Table {n} in{gap}the Supplement", "Table {n} in{gap}Supplement {s}",
+                     "Table {n} of the{gap}online appendix")
+
+
+def _a_numbered_supplement_after_a_pointer_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import pointers
+
+    numbered = "|supplement" + pointers._GAP + r"\d+\b"
+    assert numbered in pointers._POINTER.pattern
+    patch.setattr(pointers, "_POINTER",
+                  re.compile(pointers._POINTER.pattern.replace(numbered, ""), re.IGNORECASE))
 
 
 @holds(100, _planted_pointers())
@@ -11367,6 +11515,30 @@ BROKEN = {
         _a_standalone_picture_is_a_second_document,
         test_a_latex_document_reads_its_own_files_and_no_class_s_nor_another_document_s,
     ),
+    "in LaTeX, a preamble's \\input without braces names nothing": (
+        _a_preamble_input_without_braces_names_nothing,
+        test_a_latex_document_reads_its_own_files_and_no_class_s_nor_another_document_s,
+    ),
+    "in LaTeX, a part \\subfile or \\includestandalone places is not followed": (
+        _a_placed_part_is_not_followed,
+        test_a_latex_document_reads_its_own_files_and_no_class_s_nor_another_document_s,
+    ),
+    "in LaTeX, a placed part is not followed, so not read under its heading": (
+        _a_placed_part_is_not_followed,
+        test_each_latex_file_starts_under_the_headings_in_force_where_it_is_input,
+    ),
+    "in LaTeX, a placed part is read from its first line, its preamble as body": (
+        _a_placed_part_is_read_from_its_first_line,
+        test_each_latex_file_starts_under_the_headings_in_force_where_it_is_input,
+    ),
+    "in LaTeX, a placed picture's body is outside the figure it is placed in": (
+        _a_placed_part_opens_no_environment_at_its_document,
+        test_each_latex_file_starts_under_the_headings_in_force_where_it_is_input,
+    ),
+    "in LaTeX, what a placed part's preamble inputs is the paper's": (
+        _a_placed_part_s_preamble_is_the_paper_s,
+        test_each_latex_file_starts_under_the_headings_in_force_where_it_is_input,
+    ),
     "in LaTeX, a subfiles part is a second document": (
         _a_subfiles_part_is_a_second_document,
         test_a_latex_document_reads_its_own_files_and_no_class_s_nor_another_document_s,
@@ -11450,6 +11622,10 @@ BROKEN = {
     "in LaTeX, a TikZ matrix of nodes is blanked": (
         _a_matrix_of_nodes_prints_no_text,
         test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, G2 reads a typed reference list as prose": (
+        _a_typed_reference_list_is_read,
+        test_g2_reads_no_number_of_a_typed_reference_list_and_every_one_round_it,
     ),
     "in LaTeX, a TeX length is layout in the text too": (
         _a_tex_length_is_layout_in_the_text_too,
@@ -11679,6 +11855,22 @@ BROKEN = {
         _an_accented_word_is_cut_at_its_accent,
         test_latex_s_words_hold_each_word_where_latex_prints_it,
     ),
+    "in LaTeX's words, an accent command drops its mark": (
+        _an_accent_command_drops_its_mark,
+        test_latex_s_words_hold_each_word_where_latex_prints_it,
+    ),
+    "in LaTeX's words, an accent over no letter is read": (
+        _an_accent_over_no_letter_is_read,
+        test_latex_s_words_hold_each_word_where_latex_prints_it,
+    ),
+    "in LaTeX's words, the space after \\ss ends its word": (
+        _a_letter_command_s_space_ends_its_word,
+        test_latex_s_words_hold_each_word_where_latex_prints_it,
+    ),
+    "in LaTeX's printed view, an accent command drops its mark": (
+        _the_printed_view_drops_an_accent_s_mark,
+        test_latex_s_printed_view_holds_what_it_prints_as_markdown_writes_it,
+    ),
     "in LaTeX's words, a subscript's count is maths": (
         _a_subscripts_count_is_maths,
         test_latex_s_words_hold_each_word_where_latex_prints_it,
@@ -11701,6 +11893,18 @@ BROKEN = {
     ),
     "in LaTeX, a quotation runs past the end of its paragraph": (
         _a_quotation_runs_past_its_paragraph,
+        test_a_straight_quote_closes_a_latex_quotation_opened_in_its_paragraph,
+    ),
+    "in LaTeX, a quotation runs past a \\par": (
+        _a_quotation_runs_past_a_par,
+        test_a_straight_quote_closes_a_latex_quotation_opened_in_its_paragraph,
+    ),
+    "in LaTeX, a \\par in a comment ends a quotation": (
+        _a_par_in_a_comment_ends_a_quotation,
+        test_a_straight_quote_closes_a_latex_quotation_opened_in_its_paragraph,
+    ),
+    "in LaTeX, the letters after \\\\ are a \\par": (
+        _the_letters_after_a_line_break_are_a_par,
         test_a_straight_quote_closes_a_latex_quotation_opened_in_its_paragraph,
     ),
     "in LaTeX, a straight quote before a letter closes a quotation": (
@@ -11889,6 +12093,18 @@ BROKEN = {
     ),
     "in LaTeX, G8r reads a file's code": (
         _g8r_reads_a_latex_file_s_code,
+        test_a_latex_claim_to_have_followed_a_guideline_is_read_where_it_prints,
+    ),
+    "G8r reads a claim within one line": (
+        _a_claim_stops_at_a_line_break,
+        test_a_latex_claim_to_have_followed_a_guideline_is_read_where_it_prints,
+    ),
+    "G8r reads a claim over a blank line": (
+        _a_claim_runs_over_a_blank_line,
+        test_a_latex_claim_to_have_followed_a_guideline_is_read_where_it_prints,
+    ),
+    "in LaTeX, G8r reads a claim over a typed table's rows": (
+        _a_claim_runs_over_a_table_s_rows,
         test_a_latex_claim_to_have_followed_a_guideline_is_read_where_it_prints,
     ),
     "in LaTeX, G8r reads a typed reference list": (
@@ -13544,6 +13760,10 @@ BROKEN = {
     ),
     "a list of tables is read as its first": (
         _a_list_of_pointers_is_its_first,
+        test_a_pointer_names_what_the_document_carries_or_is_said,
+    ),
+    "\"in Supplement 1\" after a pointer leaves it the main text's": (
+        _a_numbered_supplement_after_a_pointer_is_not_read,
         test_a_pointer_names_what_the_document_carries_or_is_said,
     ),
     "the supplement's tables are counted as the paper's": (

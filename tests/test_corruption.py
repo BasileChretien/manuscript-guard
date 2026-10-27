@@ -3027,6 +3027,14 @@ def test_g13_reads_a_quote_in_a_latex_manuscript_as_it_prints(project: Path) -> 
         ("It is shown (Table~\\ref{tab:main}).", "It is shown (Table 1)."),
         ("By Eq.~(\\ref{eq:ror}) it holds.", "By Eq. (2) it holds."),
         ("See Figure~\\ref{fig:forest}A now.", "See Figure 1A now."),
+        # An accent command, a letter typed as one, `\-`, LaTeX's dashes and `\ldots` are
+        # what the PDF prints (Known gaps, 2026-10-27: the accent's mark was dropped).
+        ("As Chr\\'etien and M{\\\"u}ller found in Stra\\ss e, logis\\-tic.",
+         "As Chr\N{LATIN SMALL LETTER E WITH ACUTE}tien and "
+         "M\N{LATIN SMALL LETTER U WITH DIAERESIS}ller found in "
+         "Stra\N{LATIN SMALL LETTER SHARP S}e, logistic."),
+        ("From 2010--2019 it rose---and fell \\ldots{} again.",
+         "From 2010\N{EN DASH}2019 it rose\N{EM DASH}and fell \N{HORIZONTAL ELLIPSIS} again."),
     ],
 )
 def test_g13_finds_a_latex_quote_through_a_formula_or_a_cross_reference(
@@ -4411,6 +4419,8 @@ def test_a_kind_placed_some_other_way_is_not_checked_and_says_so(
         "As Supplemental Table 1 shows.",
         "As Extended Data Fig. 1 shows.",
         "As Table 1 in the Supplement shows.",
+        # JAMA's numbered supplement (Known gaps, 2026-10-27).
+        "As Table 2 in Supplement 1 shows.",
         "As Tables S1\N{EN DASH}2 show.",
         "As eFigure 1 shows.",
     ],
@@ -4640,6 +4650,8 @@ def _journal_forms(root: Path, forms: str) -> None:
         ('{supplementary_table: "eTable {n}"}', "eTable 1", "1"),
         ('{supplementary_table: "Supplementary Table {n}"}', "Supplementary Table 1", "1"),
         ('{supplementary_table: "Table {n} in the Supplement"}', "Table 1 in the Supplement",
+         "1"),
+        ('{supplementary_table: "eTable {n} in Supplement 1"}', "eTable 1 in Supplement 1",
          "1"),
     ],
 )  # fmt: skip
@@ -7340,6 +7352,83 @@ def test_an_input_in_a_definition_a_standalone_picture_and_a_refused_file_are_re
     assert not [f for f in report.findings if f.code == "tex-second-document"], codes
 
 
+def test_a_part_the_paper_places_is_read_there_and_not_warned_of(project: Path) -> None:
+    """A `subfiles` part the paper places by `\\subfile`, and a `standalone` picture it
+    places by `\\includestandalone`, are read where they stand, their numbers reaching the
+    gates, and neither is warned of as a file nothing inputs (Known gaps, 2026-10-27: the
+    `\\subfile` failed BUILD as refused, and the picture was read under no heading and warned
+    of)."""
+    from manuscript_guard.cli import _run_gates
+
+    entry = _as_latex(project)
+    folder = entry.parent
+    entry.write_text(
+        "\\documentclass{article}\n\\usepackage{subfiles}\n\\usepackage{standalone}\n"
+        "\\begin{document}\n\\section{Results}\n\\subfile{sections/results}\n"
+        "\\includestandalone[width=3cm]{fig}\n\\end{document}\n",
+        "utf-8",
+    )
+    (folder / "sections").mkdir()
+    (folder / "sections" / "results.tex").write_text(
+        "\\documentclass[../main.tex]{subfiles}\n\\begin{document}\n"
+        "Of 9183 patients, 12 died.\n\\end{document}\n",
+        "utf-8",
+    )
+    (folder / "fig.tex").write_text(
+        "\\documentclass{standalone}\n\\usepackage{tikz}\n\\begin{document}\n"
+        "\\begin{tikzpicture}\\node{n = 42};\\end{tikzpicture}\n\\end{document}\n",
+        "utf-8",
+    )
+    report, _project, _stage, _deferred = _run_gates(project, stage="submission")
+    codes: dict[str, set[str]] = {}
+    for f in report.findings:
+        codes.setdefault(f.path.name if f.path else "", set()).add(f.code)
+    assert "unclassified-number" in codes.get("results.tex", set()), codes
+    assert not {"tex-not-input", "tex-refused"} & codes.get("results.tex", set()), codes
+    assert not {"tex-not-input", "tex-refused"} & codes.get("main.tex", set()), codes
+    assert "tex-not-input" not in codes.get("fig.tex", set()), codes
+
+
+def test_a_preamble_input_without_braces_is_read_and_not_warned_of(project: Path) -> None:
+    """`\\input macros` in the preamble, TeX's form without braces, reads the author's
+    `macros.tex` as preamble: it is not warned of as a file nothing inputs, and a command it
+    defines prints its text where the paper uses it (Known gaps, 2026-10-27)."""
+    from manuscript_guard.cli import _run_gates
+
+    entry = _as_latex(project)
+    entry.write_text(
+        "\\documentclass{article}\n\\input macros\n\\begin{document}\n\\cohort\n"
+        "\\end{document}\n",
+        "utf-8",
+    )
+    (entry.parent / "macros.tex").write_text(
+        "\\newcommand{\\cohort}{Of 9183 patients, 12 died.}\n", "utf-8"
+    )
+    report, _project, _stage, _deferred = _run_gates(project, stage="submission")
+    found = {(f.code, f.path.name if f.path else "") for f in report.findings}
+    assert ("tex-not-input", "macros.tex") not in found, found
+    assert ("unclassified-number", "macros.tex") in found, found
+
+
+def test_g2_reads_no_number_of_a_typed_reference_list(project: Path) -> None:
+    """A reference list typed in `thebibliography` is not read by G2, as a Markdown project's
+    is never read: its years, volumes and pages are no unbound numbers (Known gaps,
+    2026-10-27: each was `unclassified-number`). A number in the text still is."""
+    from manuscript_guard.cli import _run_gates
+
+    entry = _as_latex(project)
+    entry.write_text(
+        "\\documentclass{article}\n\\begin{document}\nOf 4100 reports, 12 were fatal.\n"
+        "\\begin{thebibliography}{9}\n\\bibitem{smith} Smith J. Title. Journal 2011;34:120-9.\n"
+        "\\end{thebibliography}\n\\end{document}\n",
+        "utf-8",
+    )
+    report, _project, _stage, _deferred = _run_gates(project, stage="submission")
+    lines = {f.line for f in report.findings
+             if f.code == "unclassified-number" and f.path and f.path.name == "main.tex"}
+    assert 3 in lines and 5 not in lines, report.render(project)
+
+
 def test_what_papers_from_arxiv_hold_that_latex_reads_passes_build(project: Path) -> None:
     """Each construct that 17 papers from arXiv held and the reader refused, though LaTeX
     reads it, so that the rest of each file was read as typed (2026-10-23): IEEE's thanks to
@@ -7772,7 +7861,10 @@ def _g14(root: Path) -> list:
     [
         ("The hazard ratio was HR here.", "abbreviation-undefined", "HR is used once"),
         ("The color of the reports.", "spelling-variant", "'color'"),
-        ("The caf\\'e reports.", "tex-words-not-read", "caf\\\\'e"),
+        ("The caf\\'{}e reports.", "tex-words-not-read", "caf\\\\'{}e"),
+        # A word `\-` or an accent command splits is read as LaTeX prints it (Known gaps,
+        # 2026-10-27: it was said unread, and its spelling not held).
+        ("The co\\-lor of the reports.", "spelling-variant", "'color'"),
         ("The SSRI rose. The SSRI (selective serotonin reuptake inhibitor) class.",
          "abbreviation-used-before-defined", "SSRI"),
     ],
@@ -8037,6 +8129,25 @@ def test_g15_finds_the_model_s_kind_typed_in_the_twin_s_methods_and_nowhere_else
     assert "\\mg{results.model.adjusted.kind}" in report.findings[0].hint, "LaTeX spells it"
 
 
+def test_g15_reads_a_model_s_kind_that_a_hyphenation_command_splits(project: Path) -> None:
+    """`logis\\-tic regression` is the kind LaTeX prints, read in the words G14 reads, and
+    `condi\\-tional` before it makes it another model's (Known gaps, 2026-10-27: the first
+    was not found, and after the second a logistic regression was read as one)."""
+    from manuscript_guard.gates.models import check_models
+
+    entry = _twin(project)
+    _replace_once(entry, "\\section{Methods}\n",
+                  "\\section{Methods}\nThen a logis\\-tic regression was fitted.\n\n"
+                  "A condi\\-tional logistic regression was not.\n")  # fmt: skip
+    projekt = load_project(project)[0]
+    report = check_models(projekt, load_namespace(projekt)[1])
+    text = entry.read_text(encoding="utf-8")
+    lines = [text.count("\n", 0, text.index(said)) + 1 for said in ("Then a", "A condi")]
+    found = [(f.code, f.line) for f in report.findings if f.line in lines]
+    assert ("typed-model-kind", lines[0]) in found, report.findings
+    assert ("typed-model-kind", lines[1]) not in found, report.findings
+
+
 def test_g15_finds_the_model_s_kind_typed_in_an_input_file_and_the_twin_s_supplement(
     project: Path,
 ) -> None:
@@ -8084,6 +8195,26 @@ def test_g8r_names_a_guideline_the_twin_says_it_followed_and_not_one_in_a_commen
     assert found == [("guideline-claimed-not-declared", "main.tex", "PRISMA")], found
 
 
+@pytest.mark.parametrize("latex", [False, True], ids=["markdown", "latex"])
+def test_g8r_reads_a_claim_hard_wrapped_over_two_lines(project: Path, latex: bool) -> None:
+    """A claim whose verb and guideline a hard-wrapped source puts on two lines is read, in
+    Markdown as in LaTeX; one parted by a blank line is not (Known gaps, 2026-10-27: the
+    first was read within one line, and missed)."""
+    from manuscript_guard.gates import check_reporting
+
+    claim = "Our methods followed the\nPRISMA items.\n\nIt follows\n\nCONSORT."
+    if latex:
+        _replace_once(_twin(project), "\\section{Results}", f"{claim}\n\n\\section{{Results}}")
+    else:
+        main = main_md(project)
+        main.write_text(main.read_text("utf-8").replace("# Results\n", f"{claim}\n\n# Results\n",
+                                                        1), "utf-8")  # fmt: skip
+    found = [f.message.split(" followed ")[1].split(",")[0]
+             for f in check_reporting(load_project(project)[0]).findings
+             if f.code == "guideline-claimed-not-declared"]  # fmt: skip
+    assert found == ["PRISMA"], found
+
+
 _LATEX_QUOTED = (
     "the cohort found that ``incidence {} with age and did not differ meaningfully by sex''"
 )
@@ -8104,6 +8235,10 @@ _LATEX_QUOTED = (
         ("It is ``a fictional national cohort, 2010--2019'' \\cite{fictionalHepaticCohort2021}.",
          []),
         ("They wrote ``The crude incidence \\ldots{} was 14 per 100 000 person-years'' "
+         "\\cite{fictionalHepaticCohort2021}.", []),
+        # A `\par` ends the paragraph and the quotation left open in it, as a blank line
+        # does: the `"` after it closes nothing (Known gaps, 2026-10-27).
+        ("They wrote ``incidence fell with age\\par and a 5\" sample differed by sex "
          "\\cite{fictionalHepaticCohort2021}.", []),
     ],
 )  # fmt: skip

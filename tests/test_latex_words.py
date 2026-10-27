@@ -70,19 +70,29 @@ def test_the_words_view_keeps_the_prose_and_hides_what_g14_does_not_read() -> No
     assert seen.unread == ()
 
 
-def test_a_word_holding_an_accent_command_is_hidden_and_given() -> None:
+def test_a_word_holding_an_accent_command_is_read_as_latex_prints_it() -> None:
+    """Each accent command is the accented letter, a letter typed as a command that letter,
+    and `\\-` nothing, the word written from where it starts with NUL after it (Known gaps,
+    2026-10-27: each word was hidden and said unread). An accent over no letter is still
+    unread; one in a comment or maths is not read at all."""
     text = (
         OPEN + "caf\\'e na\\\"{\\i}ve {\\\"u}ber co\\-operate "
-        "Stra\\ss e r\\'esum\\'e\\c{c}a plain.\n"
+        "Stra\\ss e r\\'esum\\'e\\c{c}a \\emph{Chr\\'etien} caf\\'{}e plain.\n"
         "% caf\\'e in a comment\n$\\'e$\n" + CLOSE
     )
     seen = _words(text)
-    unread = [text[start:end] for start, end in seen.unread]
-    assert unread == ["caf\\'e", "na\\\"{\\i}ve", "{\\\"u}ber", "co\\-operate", "Stra\\ss",
-                      "r\\'esum\\'e\\c{c}a"]  # fmt: skip
-    assert _read(seen) == "e plain."
-    for start, end in seen.unread:
-        assert set(seen.text[start:end]) == {NUL}
+    assert [text[start:end] for start, end in seen.unread] == ["caf\\'{}e"]
+    assert _read(seen) == ("caf\N{LATIN SMALL LETTER E WITH ACUTE} "
+                           "na\N{LATIN SMALL LETTER I WITH DIAERESIS}ve "
+                           "\N{LATIN SMALL LETTER U WITH DIAERESIS}ber cooperate "
+                           "Stra\N{LATIN SMALL LETTER SHARP S}e "
+                           "r\N{LATIN SMALL LETTER E WITH ACUTE}sum"
+                           "\N{LATIN SMALL LETTER E WITH ACUTE}"
+                           "\N{LATIN SMALL LETTER C WITH CEDILLA}a "
+                           "Chr\N{LATIN SMALL LETTER E WITH ACUTE}tien plain."), _read(seen)
+    assert len(seen.text) == len(text)
+    start = text.index("caf\\'e")
+    assert seen.text[start : start + 6] == "caf\N{LATIN SMALL LETTER E WITH ACUTE}" + NUL * 2
 
 
 def test_a_count_written_as_a_subscript_reads_as_markdown_writes_it() -> None:
@@ -179,17 +189,19 @@ def test_g14_reads_a_file_input_whatever_the_case_of_its_suffix() -> None:
 
 
 def test_g14_says_once_a_file_how_many_words_it_did_not_read(project: Path) -> None:
+    """Only a word whose accent marks no letter is unread since 2026-10-27; a word an accent
+    command or `\\-` splits is read as LaTeX prints it."""
     report = _latex(project, {
-        "main.tex": OPEN + "\\section{Results}\nThe caf\\'e was\n"
-        "\\input{more}\nna\\\"ive.\n" + CLOSE,
-        "more.tex": "A co\\-operate word.\n",
+        "main.tex": OPEN + "\\section{Results}\nThe caf\\'{}e and caf\\'e was\n"
+        "\\input{more}\nna\\\"{}ive.\n" + CLOSE,
+        "more.tex": "A co\\'{}operate and co\\-operate word.\n",
     })  # fmt: skip
     found = sorted((f for f in report.findings if f.code == "tex-words-not-read"),
                    key=lambda f: f.path.name)  # fmt: skip
     assert [(f.path.name, f.line, f.message) for f in found] == [
         ("main.tex", 4, "2 words here hold an accent command or \\-, and G14 does not read "
-                        "them: the first is \"caf\\\\'e\""),
+                        "them: the first is \"caf\\\\'{}e\""),
         ("more.tex", 1, "1 word here holds an accent command or \\-, and G14 does not read "
-                        "it: the first is 'co\\\\-operate'"),
+                        "it: the first is \"co\\\\'{}operate\""),
     ]  # fmt: skip
     assert all(f.severity == "warn" for f in found)

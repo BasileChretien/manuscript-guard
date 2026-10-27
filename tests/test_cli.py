@@ -1393,25 +1393,31 @@ def test_an_option_written_in_full_is_still_read(project: Path, capsys) -> None:
 COMMAND_LINES = Path(__file__).resolve().parent / "data" / "command_lines.json"
 
 
-def _sample_value(action: argparse.Action) -> str:
+def _sample_value(action: argparse.Action, choice: object = None) -> str:
     if action.choices:
-        return str(next(iter(action.choices)))
+        return str(next(iter(action.choices)) if choice is None else choice)
     return "1" if action.type in (int, float) else "x"
 
 
-def _sample_values(action: argparse.Action, optional_too: bool) -> list[str]:
+def _sample_values(action: argparse.Action, optional_too: bool, choice: object = None) -> list[str]:
     if action.nargs == 0:
         return []
     if action.nargs in ("?", "*"):
-        return [_sample_value(action)] if optional_too else []
+        return [_sample_value(action, choice)] if optional_too else []
     if isinstance(action.nargs, int):
-        return [_sample_value(action)] * action.nargs
-    return [_sample_value(action)]
+        return [_sample_value(action, choice)] * action.nargs
+    return [_sample_value(action, choice)]
+
+
+def _choices(action: argparse.Action) -> list[object]:
+    """Each value an option or a positional takes from a fixed list, or one sample."""
+    return list(action.choices) if action.choices else [None]
 
 
 def sample_command_lines(parser: argparse.ArgumentParser) -> list[list[str]]:
     """For each command, the shortest line it takes, then that line with each optional
-    positional or option added, one at a time."""
+    positional or option added, one at a time: every spelling of the option, and every value
+    of a fixed list of them, a positional's included."""
     lines = []
     for name, command in sorted(_commands_of(parser).items()):
         actions = [a for a in command._actions if not isinstance(a, argparse._HelpAction)]
@@ -1426,18 +1432,26 @@ def sample_command_lines(parser: argparse.ArgumentParser) -> list[list[str]]:
         shortest = _sample_line(name, positionals, required)
         lines.append(shortest)
         for action in actions:
+            if not action.option_strings and action.choices:
+                for choice in _choices(action)[1:]:
+                    lines.append(_sample_line(name, positionals, required, action, choice))
             if not action.option_strings and action.nargs in ("?", "*"):
                 lines.append(_sample_line(name, positionals, required, action))
             elif action.option_strings and not action.required:
-                option = max(action.option_strings, key=len)
-                lines.append([*shortest, option, *_sample_values(action, True)])
+                for option in sorted(action.option_strings):
+                    for choice in _choices(action):
+                        lines.append([*shortest, option, *_sample_values(action, True, choice)])
     return lines
 
 
-def _sample_line(name, positionals, required, filled=None) -> list[str]:
-    """The command, its positionals (an optional one only where it is `filled`), then the
-    options it requires."""
-    given = [value for a in positionals for value in _sample_values(a, a is filled)]
+def _sample_line(name, positionals, required, filled=None, choice=None) -> list[str]:
+    """The command, its positionals (an optional one only where it is `filled`; the `filled`
+    one with `choice` where its values are a fixed list), then the options it requires."""
+    given = [
+        value
+        for a in positionals
+        for value in _sample_values(a, a is filled, choice if a is filled else None)
+    ]
     return [name, *given, *required]
 
 

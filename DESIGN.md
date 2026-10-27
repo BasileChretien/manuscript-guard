@@ -6837,9 +6837,11 @@ read the whole list. The top-level help now lists them under six headings, in
 Co-Authors & Review, and Build, Release & Communicate. Each command keeps the one-line help it
 had. `hook` is in no group and is not listed: an agent tool calls it and an author never does.
 
-Only what the help prints changed. The commands, their options and each command's own
-`--help` are as they were, and `tests/test_cli.py` parses 193 command lines recorded from
-the parser before the change and compares what they give. A command added later goes into
+Only what the top-level help prints changed, and with it argparse's own usage line and
+messages, which name the command `<command>` where they listed every name. The commands,
+their options and each command's own `--help` are as they were, and `tests/test_cli.py`
+parses 218 command lines recorded from the parser before the change, every spelling of every
+option and every value of a fixed list among them, and compares what they give. A command added later goes into
 one of the groups, or the test that every command but `hook` is in exactly one fails. The
 README's "Commands" table is split under the same headings in the same order, and
 `tests/test_docs.py` holds each part to its group.

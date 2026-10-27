@@ -6121,10 +6121,17 @@ def test_every_residue_is_found_by_its_rule_and_nothing_that_reads_like_one(
 # ------------------------------------------------------------------------ an em dash typed
 
 #: What G6 counts as an em dash, the character and three hyphens, spaced or not; and what it
-#: does not: two hyphens, four, and a line of dashes, a rule or a table's.
+#: does not: two hyphens, four, a line of dashes, a rule or a table's, and a dash in a cell
+#: of a table of each kind pandoc reads, simple, headless simple, multiline and grid.
 _EM_DASHES = ("\N{EM DASH}", "---", " --- ", " \N{EM DASH} ")
 _NO_EM_DASHES = ("--", " -- ", "----", "\n\n---\n\n", "\n\n|---|:---:|\n\n", "\n\n--- ---\n\n",
-                 "\n\n+---+---+\n\n", " `---` ", "\n\n| a | --- |\n\n")  # fmt: skip
+                 "\n\n+---+---+\n\n", " `---` ", "\n\n| a | --- |\n\n",
+                 "\n\nGroup     N\n--------- ---------\nexposed   \N{EM DASH}\nunexposed ---\n\n",
+                 "\n\n-------  -------\nexposed  \N{EM DASH}\nother    ---\n-------  -------\n\n",
+                 "\n\n  ------------------\n  Drug      Dose\n  --------- --------\n"
+                 "  a         \N{EM DASH}\n\n  b         ---\n  ------------------\n\n",
+                 "\n\n+-----+-----+\n| a   | --- |\n+=====+=====+\n| b   | \N{EM DASH}   |\n"
+                 "+-----+-----+\n\n")  # fmt: skip
 
 
 @st.composite
@@ -6176,6 +6183,10 @@ def _a_rule_or_a_table_s_dashes_are_em_dashes(patch: pytest.MonkeyPatch) -> None
 
 def _any_run_of_hyphens_is_an_em_dash(patch: pytest.MonkeyPatch) -> None:
     _em_dash_rule(patch, pattern="\N{EM DASH}|-{2,}")
+
+
+def _an_em_dash_in_a_table_is_counted(patch: pytest.MonkeyPatch) -> None:
+    _em_dash_rule(patch, in_tables=True)
 
 
 # ------------------------------------------------------------------ bold in a table
@@ -6318,6 +6329,93 @@ def _methods_only_alone_or_joined_by_and(patch: pytest.MonkeyPatch) -> None:
     assert joints in pattern.pattern
     patch.setattr(classify, "METHODS_SECTIONS",
                   re.compile(pattern.pattern.replace(joints, ""), pattern.flags))  # fmt: skip
+
+
+from generated import numbered_reference_titled  # noqa: E402
+
+
+@holds(100, numbered_reference_titled())
+def test_a_reference_list_is_known_by_its_title_however_it_is_numbered(
+    titled: list[tuple[str, bool]],
+) -> None:
+    """A number before a heading's name, "VII. References" or "7. References", or bold
+    around it, stopped G4's count and G14 knowing the reference list by it, where the
+    recycling check, which reads the title as printed, set the list apart. Both know it by
+    its title however it is numbered or marked, and neither takes a title that only opens
+    with such a word for one."""
+    from manuscript_guard.gates.recycling import SET_APART, _kind_of
+    from manuscript_guard.text.sections import split_sections
+
+    text = "".join(f"# {title}\n\nText {n}.\n\n" for n, (title, _is) in enumerate(titled))
+    sections = split_sections(text)
+    assert len(sections) == len(titled), text
+    for section, (title, is_list) in zip(sections, titled, strict=True):
+        assert section.is_references == is_list, title
+        assert (_kind_of(title, False, None) == SET_APART) == is_list, title
+
+
+def _a_reference_list_s_title_is_read_as_typed(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import sections
+
+    patch.setattr(sections, "plain", lambda title: title)
+
+
+# ------------------------------------------------- a display item placed by hand, G4
+
+from generated import figures_placed, latex_displays_placed  # noqa: E402
+
+
+@holds(100, figures_placed())
+def test_a_figure_placed_by_hand_counts_where_pandoc_numbers_it(planted: tuple[str, int]) -> None:
+    """G4 counted a figure only where a binding placed it, so a figure placed by hand, which
+    pandoc prints as a numbered figure, was no display item. An image with a caption alone in
+    its paragraph counts; one in a sentence, with no caption, in a comment, a fence or a code
+    block, or on a line of a longer paragraph, does not."""
+    from manuscript_guard.text.sections import measure
+
+    text, count = planted
+    assert measure(text).figures == count, text
+
+
+def _a_figure_placed_by_hand_is_no_display(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import sections
+
+    patch.setattr(sections, "_figures_placed", lambda text: 0)
+
+
+def _every_image_is_a_figure(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import sections
+
+    patch.setattr(sections, "_figures_placed",
+                  lambda text: len(re.findall(r"!\[[^\]\n]*\]\(", text)))  # fmt: skip
+
+
+@holds(25, latex_displays_placed())
+def test_a_latex_display_counts_as_latex_numbers_it(planted: tuple[str, int]) -> None:
+    """G4 counted a LaTeX float as a display item only where it placed a binding, so a
+    figure placed with `\\includegraphics` and captioned was none. Each caption a float
+    numbers counts, whatever the float places, and a binding in a float with no caption or
+    in none counts as before; a picture with no caption, a starred caption and a float in a
+    comment count as none."""
+    import tempfile
+
+    from manuscript_guard.gates.journal import latex_displays
+
+    document, count = planted
+    with tempfile.TemporaryDirectory() as folder:
+        (Path(folder) / "main.tex").write_text(document, encoding="utf-8")
+        assert sum(latex_displays(Path(folder))) == count, document
+
+
+def _a_latex_display_counts_by_its_bindings(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import journal
+    from manuscript_guard.text.latex.printed import printed_document
+
+    def bound(folder: Path) -> tuple[int, int]:
+        text = printed_document(folder, supplementary=False)
+        return text.count("{{table."), text.count("{{figure.")
+
+    patch.setattr(journal, "latex_displays", bound)
 
 
 def _english_only(patch: pytest.MonkeyPatch, module: Any) -> None:
@@ -7187,6 +7285,8 @@ _EARLIER_WORDS = tuple(
                   "pel", "bru", "hok", "lom", "wib", "fen")  # fmt: skip
     for end in ("ade", "ine", "ost", "eth", "ond", "ix", "um", "orb", "ask", "elp", "aunt")
 )  # fmt: skip
+from generated import AUTHOR_YEAR_CITED, NOT_AUTHOR_YEAR  # noqa: E402
+
 #: Words a page sets with a ligature.
 _LIGATURED = ("zoruffa", "velifle", "quanflan", "mibaffe", "teshoffin")
 #: Words the earlier paper has between the passages a manuscript repeats.
@@ -7229,7 +7329,8 @@ def _planted_recycling(draw: st.DrawFn) -> tuple[str, str, set[tuple[int, ...]]]
     one under the Discussion's principal findings, beside its interpretation and its
     conclusions, as the Discussion's. Not reported: a run of eleven, and runs in a listing, a
     comment, a heading and the reference list. The earlier paper sets each run in type: a
-    word broken at the end of a line, a ligature, a reference's number."""
+    word broken at the end of a line, a ligature, a reference's number, and a citation by
+    author and year where the manuscript cites by key."""
     pool = list(draw(st.permutations(_EARLIER_WORDS)))
     text, source, expected = "", "", set()
 
@@ -7256,6 +7357,8 @@ def _planted_recycling(draw: st.DrawFn) -> tuple[str, str, set[tuple[int, ...]]]
         typeset[broken] = f"{typeset[broken][:cut]}-\n{typeset[broken][cut:]}"
         numbered = draw(st.integers(0, size - 2))
         typeset[numbered] += draw(st.sampled_from((".12", "12", "\N{SUPERSCRIPT TWO}", " [3]")))
+        cited = draw(st.integers(0, size - 2))
+        typeset[cited] += " " + draw(st.sampled_from(AUTHOR_YEAR_CITED))
         own = draw(st.lists(st.sampled_from(_ITS_OWN), min_size=_APART_BY, max_size=8))
         source += " ".join(own) + "\n" + " ".join(typeset) + "\n"
         # The manuscript.
@@ -7333,6 +7436,113 @@ def test_a_passage_of_an_earlier_paper_is_found_where_it_stands_however_it_is_se
         for p in recycling_gate.recycled_in(text, source, "earlier")
     }
     assert found == expected, (text, source)
+
+
+@st.composite
+def _author_year_planted(draw: st.DrawFn) -> tuple[str, str]:
+    """Words, with every citation by author and year and every parenthesis that is none
+    between them, in an order drawn each time; and the text with the citations blanked."""
+
+    def words() -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
+
+    pieces = [(cited, True) for cited in AUTHOR_YEAR_CITED]
+    pieces += [(other, False) for other in NOT_AUTHOR_YEAR]
+    text = blanked = words()
+    for piece, cited in draw(st.permutations(pieces)):
+        gap, after = draw(st.sampled_from((" ", "\n"))), " " + words()
+        text += gap + piece + after
+        blanked += gap + (re.sub(r"[^\n]", " ", piece) if cited else piece) + after
+    return text, blanked
+
+
+@holds(100, _author_year_planted())
+def test_a_citation_by_author_and_year_is_no_word_of_an_earlier_paper(
+    planted: tuple[str, str],
+) -> None:
+    """An earlier paper that cites by author and year, "(Smith et al., 2019)", has words
+    where the manuscript cites by key, and they cut a passage the two share. Each such
+    citation is blanked, its line breaks kept; a date, a name with no year, a table, or
+    words in lower case before a year are not."""
+    text, blanked = planted
+    assert recycling_gate.without_author_year(text) == blanked, text
+
+
+def _an_author_year_citation_is_words(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(recycling_gate, "without_author_year", lambda source: source)
+
+
+def _a_cited_name_needs_no_capital(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(recycling_gate, "_is_author_year", lambda cited: True)
+
+
+def _a_citation_names_one_author(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(recycling_gate, "_AUTHOR_YEAR", re.compile(
+        r"\(\s*[^\W\d_]+(?:\s+et\s+al\.?)?\s*,?\s+(?:1[5-9]|20)\d\d[a-z]?\s*\)"
+    ))  # fmt: skip
+
+
+# ---------------------------------------------------- one reference written two ways, G7
+
+from generated import DOI_WRITINGS, DOIS_WRITTEN, titles_in_tex  # noqa: E402
+
+
+@st.composite
+def _dois_written(draw: st.DrawFn) -> list[tuple[str, str]]:
+    """Every DOI of `DOIS_WRITTEN` written every way of `DOI_WRITINGS`, in capitals or as
+    it stands, in an order drawn; each beside its registered form."""
+    written = [
+        (writing(draw(st.sampled_from((doi, doi.upper())))), doi)
+        for doi in DOIS_WRITTEN
+        for writing in DOI_WRITINGS
+    ]
+    return draw(st.permutations(written))
+
+
+@holds(50, _dois_written())
+def test_a_doi_is_compared_as_it_is_registered_however_the_file_writes_it(
+    written: list[tuple[str, str]],
+) -> None:
+    """A DOI was compared as `references.bib` writes it, so `\\_` was not `_` nor `%28` `(`:
+    one work cited under two keys was not found, and a PDF named for its DOI was looked for
+    under another name. A TeX escape and a resolver's percent-encoding are read as the
+    character; the DOI is then the one registered."""
+    from manuscript_guard.gates.duplicates import identifiers_of
+    from manuscript_guard.gates.identifiers import doi_of
+
+    for doi, registered in written:
+        assert doi_of({"doi": doi}) == registered.lower(), doi
+        assert identifiers_of({"doi": doi}) == {("DOI", registered.lower())}, doi
+
+
+def _a_tex_escape_in_a_doi_is_kept(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import identifiers
+
+    patch.setattr(identifiers, "_TEX_ESCAPED", re.compile(r"(?!)(.)"))
+
+
+def _a_doi_s_percent_encoding_is_kept(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import identifiers
+
+    patch.setattr(identifiers, "_PERCENT_ENCODED", re.compile(r"(?!)(..)"))
+
+
+@holds(100, titles_in_tex())
+def test_a_title_in_tex_is_the_title_in_unicode(written: tuple[str, str]) -> None:
+    """A title's TeX accents were read as letters, `Caf\\'e` as two words, so an entry
+    written in TeX and one of the same work in Unicode were not found to share a title.
+    Each accent TeX writes as a command is the letter it makes."""
+    from manuscript_guard.gates.duplicates import title_of
+
+    tex, unicode = written
+    assert title_of({"title": tex}) == title_of({"title": unicode}) is not None, tex
+
+
+def _a_title_s_tex_is_letters(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import duplicates
+
+    patch.setattr(duplicates, "_SIGN", re.compile(r"(?!)"))
+    patch.setattr(duplicates, "_untex", lambda found: found.group())
 
 
 #: Where a LaTeX document repeats a run of an earlier paper, whether G7's text recycling reads
@@ -13327,6 +13537,30 @@ BROKEN = {
         _a_quotation_is_recycled_text,
         test_a_passage_of_an_earlier_paper_is_found_where_it_stands_however_it_is_set,
     ),
+    "an earlier paper's citation by author and year is words": (
+        _an_author_year_citation_is_words,
+        test_a_passage_of_an_earlier_paper_is_found_where_it_stands_however_it_is_set,
+    ),
+    "a cited name needs no capital": (
+        _a_cited_name_needs_no_capital,
+        test_a_citation_by_author_and_year_is_no_word_of_an_earlier_paper,
+    ),
+    "a citation by author and year names one author": (
+        _a_citation_names_one_author,
+        test_a_citation_by_author_and_year_is_no_word_of_an_earlier_paper,
+    ),
+    "a TeX escape in a DOI is kept": (
+        _a_tex_escape_in_a_doi_is_kept,
+        test_a_doi_is_compared_as_it_is_registered_however_the_file_writes_it,
+    ),
+    "a DOI's percent-encoding is kept": (
+        _a_doi_s_percent_encoding_is_kept,
+        test_a_doi_is_compared_as_it_is_registered_however_the_file_writes_it,
+    ),
+    "a title's TeX is read as letters": (
+        _a_title_s_tex_is_letters,
+        test_a_title_in_tex_is_the_title_in_unicode,
+    ),
     "a word changed ends a passage": (
         _a_word_changed_ends_the_passage,
         test_a_passage_of_an_earlier_paper_is_found_where_it_stands_however_it_is_set,
@@ -14074,6 +14308,26 @@ BROKEN = {
     "any run of hyphens is an em dash": (
         _any_run_of_hyphens_is_an_em_dash,
         test_an_em_dash_is_counted_however_it_is_typed,
+    ),
+    "an em dash in a table is counted": (
+        _an_em_dash_in_a_table_is_counted,
+        test_an_em_dash_is_counted_however_it_is_typed,
+    ),
+    "a reference list's title is read as typed": (
+        _a_reference_list_s_title_is_read_as_typed,
+        test_a_reference_list_is_known_by_its_title_however_it_is_numbered,
+    ),
+    "a figure placed by hand is no display item": (
+        _a_figure_placed_by_hand_is_no_display,
+        test_a_figure_placed_by_hand_counts_where_pandoc_numbers_it,
+    ),
+    "every image is a figure": (
+        _every_image_is_a_figure,
+        test_a_figure_placed_by_hand_counts_where_pandoc_numbers_it,
+    ),
+    "a LaTeX display counts by its bindings": (
+        _a_latex_display_counts_by_its_bindings,
+        test_a_latex_display_counts_as_latex_numbers_it,
     ),
     "bold in a table is counted": (
         _bold_in_a_table_is_counted,

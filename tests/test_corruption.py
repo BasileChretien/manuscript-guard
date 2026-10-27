@@ -24434,3 +24434,204 @@ def test_a_title_that_only_opens_with_a_list_s_title_elsewhere_is_prose(
     assert measure(text).main_text_words == 8 + len(title.split())
     assert not is_bibliography_heading(f"# {title}", marked=True)
     assert _kind_of(title, False, None) != SET_APART
+
+
+def test_g4_reads_the_main_text_files_in_the_order_the_build_prints_them(project: Path) -> None:
+    """G4 joined the main-text files in path order, where the build prints `main.md` first
+    and the rest by file name: an `abstract.md` beside a `main.md` written in `##` headings
+    put the whole paper under the abstract's heading, over its limit."""
+    from manuscript_guard.gates import check_journal
+    from manuscript_guard.gates.journal import main_text
+
+    main = main_md(project)
+    text = main.read_text(encoding="utf-8")
+    opened, rest = text.index("# Abstract"), text.index("# Introduction")
+    (main.parent / "abstract.md").write_text(text[opened:rest], encoding="utf-8")
+    main.write_text(text[:opened] + text[rest:].replace("\n# ", "\n## ").replace(
+        "# Introduction", "## Introduction", 1), encoding="utf-8")
+    loaded, _ = load_project(project)
+    read = main_text(loaded)
+    assert read.index("## Introduction") < read.index("# Abstract")
+    report = check_journal(loaded)
+    assert report.counts["abstract_words"] < 300
+    assert "over-journal-limit" not in {f.code for f in report.findings}
+
+
+_DASHED_TABLES = """
+  -------------------------------------
+  Variable      Exposed    Unexposed
+  ------------- ---------- ------------
+  Dizziness     12 (20)    \N{EM DASH}
+
+  Headache      ---        9 (15)
+  -------------------------------------
+
+Group     N
+--------- ---------
+exposed   \N{EM DASH}
+unexposed ---
+
+"""
+
+
+def test_an_em_dash_in_a_table_is_no_cadence_of_the_prose() -> None:
+    """G6's em-dash rate left out a pipe table's rows but counted a simple or a multiline
+    table's, where "---" or a dash is "not applicable": the papers the threshold was measured
+    on were read with their tables left out."""
+    from manuscript_guard.gates.writing import _hits, _prose, judge_texts, load_rules
+
+    tables = _DASHED_TABLES * 4
+    text = f"{_PROSE_200}\n\nOne aside \N{EM DASH} here.\n{tables}\nThe end of the prose.\n"
+    corpus = [(Path("main.md"), text)]
+    rule = next(rule for rule in load_rules().density if rule["id"] == "em-dash")
+    [(_path, _text, prose)] = _prose(corpus)
+    assert [hit.group(0) for hit in _hits(rule, prose)] == ["\N{EM DASH}"]
+    report, _totals = judge_texts(corpus)
+    assert not [f for f in report.findings if "em-dash" in f.message]
+    # The same dashes in the prose are the cadence the rate is for.
+    prose = f"{_PROSE_200}\n\n" + " and ".join(["a \N{EM DASH} b"] * 16) + "\n"
+    report, _totals = judge_texts([(Path("main.md"), prose)])
+    assert [f for f in report.findings if "em-dash" in f.message]
+
+
+def test_a_citation_by_author_and_year_in_the_earlier_paper_cuts_no_passage() -> None:
+    """The earlier paper cites by author and year, "(Smith et al., 2019)", where the
+    manuscript cites by key: three words the manuscript does not have, which cut the
+    passage, and the words before them were not reported. A number, "[12]", never did."""
+    from manuscript_guard.gates.recycling import recycled_in
+
+    text = ("# Methods\n\nReports came [@smith2019] from the database and were coded by two "
+            "readers [@roe2020] each apart from each other in the study period.\n")  # fmt: skip
+    numbered = ("Reports came [1] from the database and were coded by two readers [2] each "
+                "apart from each other in the study period.")  # fmt: skip
+    whole = [(p.shared, p.excerpt) for p in recycled_in(text, numbered, "earlier")]
+    assert whole[0][0] == 20 and whole[0][1].startswith("Reports came")
+    for cited in ("(Smith et al., 2019)", "(Smith and Roe 2019a)", "(Smith, 2019; Roe, 2020)"):
+        source = numbered.replace("[1]", cited).replace("[2]", "(Roe & Doe,\n2020)")
+        assert [(p.shared, p.excerpt) for p in recycled_in(text, source, "earlier")] == whole
+
+
+@pytest.mark.parametrize(
+    ("first", "second"),
+    [
+        ({"doi": r"10.5555/x\_1"}, {"doi": "10.5555/x_1"}),
+        ({"doi": "10.1016/S0140-6736(20)30183-5"},
+         {"doi": "https://doi.org/10.1016/s0140-6736%2820%2930183-5"}),
+        ({"doi": r"10.5555/a\%28b\%29"}, {"doi": "10.5555/a(b)"}),
+    ],
+    ids=["tex-underscore", "percent-encoded", "tex-percent"],
+)  # fmt: skip
+def test_one_work_under_a_doi_written_two_ways_fails(
+    project: Path, first: dict, second: dict
+) -> None:
+    """A DOI was compared as the file writes it, so `\\_` was not read as `_` nor `%28` as
+    `(`, and one work cited under two keys passed G7."""
+    _both_have(project, first, second)
+    said = _duplicate_findings(project)
+    assert [(code, severity) for code, severity, _ in said] == [("reference-duplicate", "fail")]
+
+
+def test_two_titles_one_with_tex_accents_are_a_warning(project: Path) -> None:
+    """A title's TeX accents were read as letters, `Caf\\'e` as two words, so two entries
+    of one work, one written in TeX and one in Unicode, were not found."""
+    from manuscript_guard.gates.duplicates import title_of
+
+    assert title_of({"title": r"Caf\'e au lait \"Uber alles"}) == title_of(
+        {"title": "Caf\N{LATIN SMALL LETTER E WITH ACUTE} au lait "
+                  "\N{LATIN CAPITAL LETTER U WITH DIAERESIS}ber alles"}
+    )  # fmt: skip
+    bib = project / "literature" / "references.bib"
+    text = bib.read_text(encoding="utf-8")
+    text = text.replace("A disproportionality signal for a fictional drug class",
+                        r"Hepatic injury in a fictional caf{\'e} cohort", 1)
+    text = text.replace("Hepatic injury in a fictional national cohort, 2010--2019",
+                        "Hepatic injury in a fictional caf\N{LATIN SMALL LETTER E WITH ACUTE} "
+                        "cohort", 1)  # fmt: skip
+    bib.write_text(text, encoding="utf-8")
+    said = _duplicate_findings(project)
+    assert [(code, severity) for code, severity, _ in said] == [
+        ("reference-title-duplicate", "warn")
+    ]  # fmt: skip
+
+
+@pytest.mark.parametrize("title", ["VII. References", "7. References", "**References**",
+                                   "References {#refs}"])  # fmt: skip
+def test_a_numbered_reference_list_is_no_main_text(title: str) -> None:
+    """A number before a heading's name, Roman or not, stopped the reference list being
+    known by it, as did emphasis or an identifier: G4 counted the list's words as main text
+    and G14 read them, where the recycling check, which reads the title as printed, set the
+    list apart."""
+    from manuscript_guard.text.sections import measure, split_sections
+
+    text = (f"# Results\n\nWe saw 412 reports.\n\n# {title}\n\n"
+            "1. Smith J, Roe A. A title of the cited work. Drug Saf. 2019.\n")  # fmt: skip
+    assert split_sections(text)[-1].is_references
+    assert measure(text).main_text_words == 5
+
+
+def _journal_limits(root: Path, **limits: int) -> None:
+    """The example's journal profile, with these limits."""
+    path = root / "profiles" / "journals" / "demo-journal.yaml"
+    profile = yaml.safe_load(path.read_text(encoding="utf-8"))
+    profile["limits"].update(limits)
+    path.write_text(yaml.safe_dump(profile, sort_keys=False), encoding="utf-8")
+
+
+def test_g4_counts_a_figure_placed_by_hand_as_a_display_item(project: Path) -> None:
+    """G4 counted a display item only where a binding placed it: a figure placed by hand,
+    `![caption](file)` alone in its paragraph, which pandoc prints as a numbered figure, counted
+    as none. An image in a sentence, or one with no caption, is no figure pandoc numbers."""
+    from manuscript_guard.gates import check_journal
+    from manuscript_guard.text.sections import measure
+
+    main = main_md(project)
+    text = main.read_text(encoding="utf-8")
+    before = measure(text)
+    end = text.index("# Discussion")
+    placed = (text[:end] + "![The sites, by region.](figures/sites.png){#fig:sites}\n\n"
+              "A map, ![inline](figures/map.png), sits in a sentence.\n\n"
+              "![](figures/bare.png)\n\n<!--\n\n![In a comment.](figures/c.png)\n\n-->\n\n"
+              + text[end:])  # fmt: skip
+    main.write_text(placed, encoding="utf-8")
+    after = measure(placed)
+    assert (after.figures, after.tables) == (before.figures + 1, before.tables)
+    _journal_limits(project, figures=before.figures)
+    loaded, _ = load_project(project)
+    report = check_journal(loaded)
+    assert report.counts["display_items"] == before.figures + before.tables + 1
+    assert any(f.code == "over-journal-limit" and f.message.startswith("figures:")
+               for f in report.findings)  # fmt: skip
+
+
+def test_g4_counts_every_float_latex_numbers_as_a_display_item(project: Path) -> None:
+    """G4 counted a LaTeX float as a display item only where it placed a `\\mg{figure.key}`
+    or a `\\mg{table.key}`: a figure placed with `\\includegraphics` alone, which LaTeX
+    numbers by its caption, counted as none. A float numbers one display by each caption,
+    whatever it places, and one with no caption counts by the bindings it places, as before."""
+    from manuscript_guard.gates import check_journal
+
+    main = _twin(project)
+    loaded, _ = load_project(project)
+    before = check_journal(loaded).counts["display_items"]
+    text = main.read_text(encoding="utf-8")
+    end = text.index("\\section{Discussion}")
+    added = (
+        "\\begin{figure}\\includegraphics{sites.pdf}\\caption{The sites.}\\label{fig:sites}"
+        "\\end{figure}\n\n"
+        "\\begin{table}\\caption{A table typed by hand.}\\begin{tabular}{ll}a & b\\\\\\end{tabular}"
+        "\\end{table}\n\n"
+        "\\begin{figure}\\includegraphics{map.pdf}\\end{figure}\n\n"
+        "\\begin{figure}\\mg{figure.forest}\\end{figure}\n\n"
+        "\\begin{figure}\\mg{figure.forest}\\mg{figure.forest}\\caption{Two panels.}\\end{figure}"
+        "\n\n"
+    )  # fmt: skip
+    main.write_text(text[:end] + added + text[end:], encoding="utf-8")
+    loaded, _ = load_project(project)
+    report = check_journal(loaded)
+    # The captioned picture and table, the float with no caption by its binding, and the
+    # float of two panels by its one caption: not the picture with neither.
+    assert report.counts["display_items"] == before + 4
+    _journal_limits(project, display_items=before)
+    report = check_journal(load_project(project)[0])
+    assert any(f.code == "over-journal-limit" and f.message.startswith("figures and tables")
+               for f in report.findings)  # fmt: skip

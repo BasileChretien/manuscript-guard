@@ -13,6 +13,7 @@ eventually and silently. A profile older than a year is reported, because it pro
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -24,12 +25,12 @@ from manuscript_guard.gates.data_statement import check_data_statement
 from manuscript_guard.gates.figure_files import check_figure_files
 from manuscript_guard.gates.journal_latex import check_latex_profile
 from manuscript_guard.gates.journal_quotes import check_quotes, manual_signable
-from manuscript_guard.gates.numbers import source_files
+from manuscript_guard.gates.numbers import printed_order, source_files
 from manuscript_guard.paths import SHIPPED_JOURNALS
 from manuscript_guard.sign_offs import settle
 from manuscript_guard.text.masking import without_front_matter
 from manuscript_guard.text.section_names import bare, methods_sections, names_abstract
-from manuscript_guard.text.sections import measure, scannable, split_sections
+from manuscript_guard.text.sections import Counts, measure, scannable, split_sections
 
 GATE = "G4"
 PROFILE_DIR = SHIPPED_JOURNALS
@@ -83,8 +84,71 @@ def main_text(project: Project, *, formula: str = "") -> str:
         return printed_view([source for source in document.sources if not source.loose
                              and not source.path.lower().endswith(".sty")],
                             formula=formula)  # fmt: skip
-    sources = source_files(folder, main_text_only=True)
+    # In the order the build prints them, `main.md` first and the rest by file name: read in
+    # path order, an `abstract.md` beside a `main.md` written in `##` headings put the whole
+    # paper under the abstract's heading.
+    sources = printed_order(source_files(folder, main_text_only=True), supplementary=False)
     return "\n\n".join(without_front_matter(read_text(p)) for p in sources)
+
+
+def measured(project: Project, named: str | None = None, text: str | None = None) -> Counts:
+    """The main text's counts, as G4 holds them to the journal's limits: `measure` of
+    `main_text`, and in a LaTeX manuscript its tables and figures as LaTeX numbers them
+    (`latex_displays`). `named` is what the journal's profile calls the abstract; `text` the
+    main text where the caller has read it already."""
+    from manuscript_guard.text.reader import LATEX, manuscript_format
+
+    counts = measure(main_text(project) if text is None else text, named)
+    folder = project.path("manuscript")
+    if manuscript_format(folder) != LATEX:
+        return counts
+    tables, figures = latex_displays(folder)
+    return replace(counts, tables=tables, figures=figures)
+
+
+def latex_displays(folder: Path) -> tuple[int, int]:
+    """The tables and the figures of a LaTeX manuscript's main text, as a journal counts its
+    display items: one for each display a float's caption numbers, as G2's pointers count
+    them (`printed(..., pointing=True)`), whatever the float places; and one for each
+    `\\mg{table.key}` or `\\mg{figure.key}` that stands in no float or in one whose display
+    the view cannot count, a float with no caption it reads among them, as before.
+
+    Counted by its bindings alone, a figure placed with `\\includegraphics` and captioned
+    counted as none, and a journal's limit on display items let it through (round 1 of step
+    6, Known gaps)."""
+    from manuscript_guard.text.latex.printed import (
+        DISPLAY,
+        MARK_END,
+        _passed_over,
+        _pointing_events,
+        printed,
+    )
+    from manuscript_guard.text.latex.structure import read_document
+    from manuscript_guard.text.latex.views import bindings
+
+    sources = [source for source in read_document(folder, supplementary=False).sources
+               if not source.loose and not source.path.lower().endswith(".sty")]  # fmt: skip
+    marks = re.compile(f"{DISPLAY}([^{MARK_END}]*){MARK_END}")
+    view = printed(sources, pointing=True).text
+    # Each display a caption numbers; not a float of a group's, whose mark the group's is.
+    kinds = [found[1][:1] for found in marks.finditer(view)]
+    tables, figures = kinds.count("t"), kinds.count("f")
+    # A binding outside every float is in the view as it is.
+    tables += len(re.findall(r"\{\{table\.[a-z0-9_.]+\}\}", view))
+    figures += len(re.findall(r"\{\{figure\.[a-z0-9_.]+\}\}", view))
+    # A binding in a float, or another span, whose display the view cannot count.
+    for source in sources:
+        read, _comments = _passed_over(source.reading)
+        placed = [p for p in bindings(source)[0]
+                  if read(p.start) and p.ref.startswith(("table.", "figure."))]  # fmt: skip
+        for start, end, written in _pointing_events(source):
+            codes = [found[1][:1] for found in marks.finditer(written)]
+            if not codes or not all(code in "TF" for code in codes):
+                continue
+            inside = [p.ref for p in placed if start <= p.start < end]
+            tables += sum(ref.startswith("table.") for ref in inside)
+            figures += sum(ref.startswith("figure.") for ref in inside)
+    return tables, figures
 
 
 def check_journal(project: Project) -> Report:
@@ -134,7 +198,7 @@ def check_journal(project: Project) -> Report:
     # never going to count in the first place.
     text = main_text(project)
     named = abstract_title_of(document)
-    counts = measure(text, named)
+    counts = measured(project, named, text)
     report = report.merge(_check_limits(document, counts, path))
     report = report.merge(_check_abstract_found(document, text, path))
     report = report.merge(_check_structure(document, text, path))

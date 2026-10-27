@@ -664,6 +664,9 @@ density:
     # nor four; and not a line of dashes, pipes and colons, which is a rule or a table's.
     # Nor inline code, printed as typed, nor a pipe table's row: the papers were measured
     # with their tables left out, and a table's "---" is "not applicable" (round 1 of #352).
+    # Nor a simple, multiline or grid table's (`text.tables.table_lines`), as the bold rate
+    # leaves them out: a dash in a cell of a table pandoc wrote from Word counted.
+    in_tables: false
     pattern: '—|(?<!-)---(?!-)'
     exempt:
       - '(?m)^[ \t]*[-|:+][-|:+ \t]*$'

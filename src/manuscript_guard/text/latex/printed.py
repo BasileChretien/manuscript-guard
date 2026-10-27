@@ -37,6 +37,7 @@ from manuscript_guard.text.latex.commands import FLOATS
 from manuscript_guard.text.latex.mask import NUL
 from manuscript_guard.text.latex.structure import Source
 from manuscript_guard.text.latex.views import bindings
+from manuscript_guard.text.latex.words import accented
 
 #: An inline formula, one word as a journal counts it.
 FORMULA = "x"
@@ -284,9 +285,11 @@ def _printed(
     # A file that never reaches the body prints nothing but an abstract written in its
     # preamble, and the files it inputs are read.
     ranges = _printed_ranges(reading)
+    # An accent command prints its accented letter (`words.accented`).
+    masked = accented(source.text, reading.masked)
 
     def shown(start: int, end: int) -> list[Piece]:
-        return [(_prose(_typeset(reading.masked[max(start, low) : min(end, high)])), source,
+        return [(_prose(_typeset(masked[max(start, low) : min(end, high)])), source,
                  max(start, low), True)
                 for low, high in ranges if max(start, low) < min(end, high)]  # fmt: skip
 

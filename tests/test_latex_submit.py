@@ -226,6 +226,28 @@ def test_a_file_the_import_package_names_is_written_in_where_it_stands(
     assert (folder / "pic.png").is_file()
 
 
+def test_a_placed_part_is_written_in_without_its_preamble(
+    project: Path, twin: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A part a `\\subfile` or an `\\includestandalone` places is written in where the
+    command stands, its document body alone: its preamble, its `\\begin{document}` and its
+    `\\end{document}` are not, nor a comment in its preamble (Known gaps, 2026-10-27)."""
+    (twin.parent / "sections").mkdir(exist_ok=True)
+    (twin.parent / "sections" / "part.tex").write_text(
+        "\\documentclass[../main.tex]{subfiles}\n% DRAFTH\n\\begin{document}\nPart words.\n"
+        "\\end{document}\nDRAFTI\n", encoding="utf-8")  # fmt: skip
+    (twin.parent / "pic.tex").write_text(
+        "\\documentclass[tikz]{standalone}\n\\begin{document}\n\\begin{tikzpicture}"
+        "\\node{Drawn};\\end{tikzpicture}\n\\end{document}\n", encoding="utf-8")  # fmt: skip
+    _typed_before(twin, "\\section{Discussion}",
+                  "\\subfile{sections/part}\n\\includestandalone[width=3cm]{pic}\n")
+    written = (_written(project, monkeypatch) / "manuscript.tex").read_text(encoding="utf-8")
+    assert "\nPart words.\n" in written and "\\node{Drawn};" in written, written
+    assert written.count("\\documentclass") == 1 and written.count("\\begin{document}") == 1
+    assert "DRAFTH" not in written and "DRAFTI" not in written
+    assert "\\subfile" not in written and "\\includestandalone" not in written
+
+
 def test_what_filecontents_writes_and_a_commented_bibliography_are_kept(
     project: Path, twin: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

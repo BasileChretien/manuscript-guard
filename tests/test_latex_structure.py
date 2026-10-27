@@ -248,16 +248,52 @@ def test_a_defining_command_copied_with_let_defines_nothing() -> None:
 )  # fmt: skip
 def test_a_standalone_picture_is_read_loose_and_is_no_second_document(declared: str) -> None:
     """A picture in the `standalone` class has a document of its own, which the paper prints,
-    by `\\includestandalone` or as the PDF compiled from it: it is read as a file nothing
-    inputs, warned of, and not refused (round 1 of #445: it failed BUILD at every stage). So
-    is a part in the `subfiles` class, which the paper places by `\\subfile` (round 2)."""
+    by `\\includestandalone` or as the PDF compiled from it: one the paper does not place is
+    read as a file nothing inputs, warned of, and not refused (round 1 of #445: it failed
+    BUILD at every stage). So is a part in the `subfiles` class (round 2). One the paper
+    places is read where it is placed (`test_a_placed_part_is_read_where_it_is_placed`)."""
     main = ("\\documentclass{article}\n\\usepackage{standalone}\n\\begin{document}\n"
             "\\includestandalone[width=\\linewidth]{fig}\n\\includegraphics{tikz}\n" + END)
     picture = (f"\\documentclass{declared}\n\\usepackage{{tikz}}\n"
                "\\begin{document}\n\\begin{tikzpicture}\\node{n = 42};\\end{tikzpicture}\n"
                + END)  # fmt: skip
     document = read_tree({"main.tex": main, "fig.tex": picture, "tikz.tex": picture})
-    assert document.loose == ("fig.tex", "tikz.tex") and document.refusals == ()
+    assert document.loose == ("tikz.tex",) and document.refusals == ()
+
+
+@pytest.mark.parametrize("placing", ["\\subfile{{{}}}", "\\includestandalone{{{}}}",
+                                     "\\includestandalone[width=3cm,\n mode=tex]\n{{{}}}"])
+@pytest.mark.parametrize("declared", ["[tikz]{standalone}", "[../main.tex]{subfiles}"])
+def test_a_placed_part_is_read_where_it_is_placed(placing: str, declared: str) -> None:
+    """A `\\subfile` and an `\\includestandalone` place the part they name: its document body
+    is read where the command stands, under the heading in force there and inside the
+    environments it stands in, and its preamble and what follows its `\\end{document}` are
+    TeX's to pass over (`unprinted`), so the submission folder writes the body alone. The
+    file is no longer loose, and `\\subfile` no longer refused (Known gaps, 2026-10-27)."""
+    main = (DOC + "\\section{Methods}\n\\begin{figure}\n" + placing.format("parts/fig")
+            + "\n\\caption{A}\n\\end{figure}\n" + END)  # fmt: skip
+    text = (f"\\documentclass{declared}\n\\usepackage{{tikz}}% a note\n\\input{{settings}}\n"
+            "\\begin{document}\nOf 42 patients.\n\\end{document}\ntrailing\n")  # fmt: skip
+    document = read_tree({"main.tex": main, "parts/fig.tex": text, "settings.tex": "x\n"})
+    assert document.refusals == () and document.loose == ("settings.tex",), document
+    (part,) = [s for s in document.sources if s.path == "parts/fig.tex"]
+    assert titles(document, "parts/fig.tex") == ["Methods"]
+    assert part.reading.masked.replace("\x00", "").split() == ["Of", "42", "patients."]
+    assert part.reading.figures and part.reading.declared == () and part.reading.inputs == ()
+    kept = [text[start:end] for start, end in part.reading.unprinted]
+    assert kept[0].endswith("\\begin{document}") and kept[1] == "\\end{document}\ntrailing\n"
+
+
+def test_a_standalone_picture_the_folder_lacks_is_an_image_and_a_plain_file_is_an_input() -> None:
+    """An `\\includestandalone` of a picture whose `.tex` the folder lacks places the image
+    compiled from it, which no gate reads: passed over, as before. A `\\subfile` of a file
+    that is no part is read as an `\\input` of it; one of a file the folder lacks is refused,
+    as an `\\input` of one is."""
+    main = DOC + "\\includestandalone{pic}\n\\subfile{plain}\n\\subfile{gone}\n" + END
+    document = read_tree({"main.tex": main, "plain.tex": "Of 42.\n"})
+    assert document.loose == () and "plain.tex" in [s.path for s in document.sources]
+    said = [r.message for _p, r in document.refusals]
+    assert said == ["gone.tex is not in the manuscript folder"], said
 
 
 def test_a_file_refused_before_a_begin_document_in_a_listing_is_read_past_its_refusal() -> None:
@@ -307,6 +343,25 @@ def test_a_bare_name_input_from_the_preamble_is_the_distributions() -> None:
     text = preamble + "\\begin{document}\n\\input{glyphtounicode}\n" + END
     ((_path, refusal),) = read_tree({"main.tex": text}).refusals
     assert refusal.offset == text.rindex("\\input")
+
+
+@pytest.mark.parametrize("written", ["\\input macros", "\\input macros.tex", "\\input  macros%",
+                                     "\\input macros\\relax"])
+def test_a_preamble_input_without_braces_is_followed(written: str) -> None:
+    """TeX's `\\input macros` without braces, in the preamble, names `macros.tex` by the name
+    up to a space, a command or a comment: the author's file is read as preamble, its
+    definitions known where they are used, and it is not loose (Known gaps, 2026-10-27: it
+    was read as a file nothing inputs, warned of). In the body the form is refused as
+    before."""
+    macros = "\\newcommand{\\cohort}{Of 4100 reports}\n"
+    preamble = "\\documentclass{article}\n" + written + "\n\\begin{document}\n\\cohort.\n" + END
+    document = read_tree({"main.tex": preamble, "macros.tex": macros})
+    assert document.loose == () and document.refusals == (), document
+    (source,) = [s for s in document.sources if s.path == "macros.tex"]
+    assert source.reading.body_start < 0
+    body = DOC + written + "\n" + END
+    assert [r.code for _p, r in read_tree({"main.tex": body, "macros.tex": macros}).refusals] == [
+        "tex-refused"]
 
 
 def test_the_import_package_names_a_file_in_a_folder_and_subimport_one_under_it() -> None:

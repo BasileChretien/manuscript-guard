@@ -1299,12 +1299,13 @@ order is `printed_order`.
   tool writes it, its definitions are the bindings, and `check` compares it with what `values`
   would write.
 - Refused:
-  - a path that is not written out in full, or not written in braces;
+  - a path that is not written out in full, or, in the body, not written in braces: in the
+    preamble TeX's `\input macros` names the file by the name up to a space (2026-10-27);
   - a path outside `manuscript/` or under a `_` folder;
   - a missing file, or a cycle. A bare name input from the preamble that `manuscript/` does not
     hold, such as `\input{glyphtounicode}`, is the distribution's and is passed over, as a
     package is, and so is TeX's form without braces there, `\input glyphtounicode`;
-  - `\subfile`, `\InputIfFileExists`, and the import package's `\inputfrom` and
+  - `\InputIfFileExists`, and the import package's `\inputfrom` and
     `\includefrom` and their `sub` forms, and its starred `\import*` and `\subimport*`;
   - a command that prints a file no gate reads: `\lstinputlisting` and its kin,
     `\verbatiminput`, csvsimple's `\csvautotabular` and `\csvreader`, pgfplotstable's
@@ -1351,8 +1352,10 @@ order is `printed_order`.
   inputs, loose and warned of, as before (round 1 of #445). One is a picture in the
   `standalone` class, which the paper prints, placed by `\includestandalone` or as the PDF
   compiled from it: it failed BUILD at every stage. So is a part in the `subfiles` class,
-  `\documentclass[../main.tex]{subfiles}`, which the paper places by `\subfile`, itself
-  refused (round 2). The last is a file the reader refuses in
+  `\documentclass[../main.tex]{subfiles}`, which the paper places by `\subfile` (round 2).
+  Either, placed by its command, is read where the command stands, past its preamble, under
+  the heading and inside the environments in force there, and is not loose (2026-10-27,
+  `structure._placed`). The last is a file the reader refuses in
   its preamble before it reaches a `\begin{document}`: it keeps that refusal and is read
   past it, where it was refused as a second document at its first character and not read.
   The supplement is the document at `supplementary/main.tex`, as the Markdown
@@ -1758,8 +1761,6 @@ The result is compiled and packed by the code above, and checked three times:
 
 - `babel` with a language whose shorthands make a character active is not refused yet (step
   2): a shorthand changes letters, not digits, so it is left to step 7, which reads words.
-- A bibliography typed by hand, `thebibliography`, is read as prose, so its years and pages are
-  numbers G2 reads; a Markdown project's reference list is built and never read.
 - Only the first refusal of a file is reported: past it the file is read as prose, and the
   next is found once the first is put right.
 - A file whose only `\begin{document}` stands in a `\verb`, a listing or an `\iffalse` opens in
@@ -1816,12 +1817,18 @@ The result is compiled and packed by the code above, and checked three times:
   defining command copied with expl3's `\cs_new_eq:NN` or `\cs_set_eq:NN` is taken for one,
   its next braced group for a body; the generated folders plant the TeX and LaTeX forms,
   and the expl3 and xargs forms are held by unit tests alone.
-- A `standalone` picture, a `subfiles` part, and a document of its own that the reader
-  refuses in its preamble, are read as files nothing inputs, under no heading and warned of:
-  `\includestandalone` is not followed, so a picture's text is not read where the paper
-  places it (and `\subfile` is refused where the paper uses it), and a second
-  document refused before its `\begin{document}` fails BUILD by that refusal rather than as
-  a second document, its preamble and its body read as loose main text (round 1 of #445).
+- A `standalone` picture or a `subfiles` part the paper places nowhere, and a document of
+  its own that the reader refuses in its preamble, are read as files nothing inputs, under
+  no heading and warned of: a second document refused before its `\begin{document}` fails
+  BUILD by that refusal rather than as a second document, its preamble and its body read as
+  loose main text (round 1 of #445). One the paper places by `\includestandalone` or
+  `\subfile` is read where it stands (see "Closed since"), with these limits: its preamble
+  is passed over whole, so a command it defines is not known in its body, where TeX would
+  not know it either; a file the command places that is in neither class is read as an
+  `\input` of it, and its own `\documentclass` is refused; an `\includestandalone` of a
+  picture whose `.tex` the folder lacks is taken for the image compiled from it and passed
+  over; and the submission folder writes the picture's body in the command's place, so the
+  command's options, a width or a scale, do not size it there (2026-10-27).
 - A file a class inputs, and a document of its own, are left out of each document, but not
   out of the manuscript's file list (`Reader.files`): G11's digests, the review panel's
   prompt and G12's reading of the manuscript's text as typed still take them in (2026-10-23).
@@ -1851,11 +1858,11 @@ The result is compiled and packed by the code above, and checked three times:
   `\AtBeginDocument{\input{x}}` is not followed. It is warned of as `tex-not-input`, whose
   message says no `\input` the reader follows names it, and is read under no heading (round 1
   of #385).
-- An `\input` from the preamble without braces, `\input macros`, is not followed, so an
-  author's `macros.tex` is read as a file nothing inputs, warned of, and its definitions are
-  not known where they are used. A file input from the preamble by a path with no folder that
-  `manuscript/` lacks, `\input{settings.tex}` too, is taken for the distribution's and passes;
-  the compile finds it missing (step 9) (rounds 1 and 2 of #385).
+- A file input from the preamble by a path with no folder that `manuscript/` lacks,
+  `\input{settings.tex}` or `\input settings` too, is taken for the distribution's and
+  passes; the compile finds it missing (step 9) (rounds 1 and 2 of #385). In the body,
+  TeX's `\input name` without braces is refused as before: only the preamble's is followed
+  (2026-10-27).
 - After `\renewcommand{\abstract}` or `\let\abstract\relax`, `\abstract{…}` still opens a
   section titled Abstract, though LaTeX prints what the author defined (round 2 of #385).
 - The Abstract an abstract opens stays in force to the next heading of its level, so text
@@ -2058,17 +2065,20 @@ The result is compiled and packed by the code above, and checked three times:
   anchor parts the paragraph typed round it, where TeX moves it out and the paragraph goes
   on; and an anchor typed alone after a table set apart claims nothing
   (`method-claim-empty`), as one alone after any paragraph does (round 4).
-- G15 reads a LaTeX file's names of models in the words G14 reads, which hides a word that
-  holds `\-` or an accent command: `logis\-tic regression` is not found, and after
-  `condi\-tional` a logistic regression is read as one. Two or more lines of comments
+- G15 reads a LaTeX file's names of models in the words G14 reads, where a word that holds
+  `\-` or an accent command is written whole from where it starts, NUL after it, which G15
+  reads as spaces between it and the next word (2026-10-27). Two or more lines of comments
   between a word and the name after it are as many line breaks, so "conditional" over them
   does not make the name another model's (round 1 of G15 in step 8). A name a macro of the
   preamble prints, `\newcommand{\mainmodel}{logistic regression}`, is not read where the
   macro is used; past a refusal the headings stay as they were and the rest of the file is
   read as typed, comments too; and a float's caption is read where it is typed, not where
   LaTeX prints the float (round 2).
-- G8r reads a claim to have followed a guideline within one line, in LaTeX as in Markdown,
-  so a claim whose verb and name a hard-wrapped source puts on two lines is not read; a
+- G8r reads a claim to have followed a guideline within a sentence, which runs over single
+  line breaks and stops at a blank line, before a Markdown line that opens with `#` or `|`,
+  and at a typed table's line ends (2026-10-27). A comment line between the two lines of a
+  LaTeX claim is blank in the view, and ends the sentence there; and a Markdown table whose
+  rows open with no `|`, a simple or a multiline table, has its rows read as one sentence. A
   name a command parts, `RECORD\textendash{}PE`, is read as the part before it, RECORD; and
   a heading more than six levels below the shallowest, `\subparagraph` under `\part`, is
   no heading a checklist's answer can point at (round 1 of G8r in step 8). A definition's
@@ -2188,9 +2198,10 @@ The result is compiled and packed by the code above, and checked three times:
   footnote's words stand at its mark, glued to the word before it, and a float typed inside
   a paragraph leaves its bindings there: a quote of a sentence across either is not found.
   A citation is `[@key]` with a space before the stop after it, so a quote that holds one
-  is not found either, as in Markdown (step 8). An accent typed as a command, `Chr\'etien`,
-  prints there without its mark, `\ldots` as nothing and `--` as typed, so a quote copied
-  from the PDF that holds one is not found. A number in a quote may stand where the source
+  is not found either, as in Markdown (step 8). An accent command prints its accented letter
+  there, and a letter typed as a command its letter, only beside a letter the reader reads:
+  `\ss{}` standing alone as a word prints nothing, and an accent in a heading's title loses
+  its mark (2026-10-27). A number in a quote may stand where the source
   has a cross-reference, with the word before it ("Table 1", "(2)"), whatever the compiled
   paper numbered it: the number is not checked, nor whether the name before it is printed
   by the command or by no one, `Table 1` passing where a plain `\ref` prints `1` (round 1
@@ -2217,9 +2228,13 @@ The result is compiled and packed by the code above, and checked three times:
 - A profile's LaTeX template is read by no gate, so text or digits it prints after
   `\begin{document}` are compared with nothing in `build --latex`.
 - `\date` is read by no gate, since a Markdown build prints no date to compare it with.
-- A word holding an accent command or `\-` is not read by G14, which says how many there are
-  in each file. `\=`, `\'` and `\-` are tab commands in `tabbing`, where the word after one is
-  taken for an accented word all the same (step 7).
+- A word holding an accent over no letter, `caf\'{}e`, is not read by G14, which says how
+  many there are in each file, in a message that still names any accent command or `\-`.
+  `\=`, `\'` and `\-` are tab commands in `tabbing`, where the word after one is taken for
+  an accented word all the same, and read with the accent (step 7; 2026-10-27). A word made
+  of letters typed as commands alone, `\ss{}`, is not read. LaTeX's dashes stay as typed in
+  the words G14 reads, `--`, which its notation reads as an en dash: written as the
+  character, the NUL after it would part a range in two (2026-10-27).
 - G14 does not read a figure's caption, as it does not read an image's caption in Markdown; a
   table's caption it reads (step 7).
 - A P value or another symbol written in maths, `$P < 0.05$`, is not read by G14's notation,
@@ -11743,8 +11758,10 @@ Open, recorded as each change landed:
   and the pointer is typed, as before refs; so is a ref to a key placed twice (Basile's
   choice, 2026-10-20). A form G2 does not read as a pointer cannot be printed: a journal
   that letters its appendix tables "Table A1", or writes "Exhibit 2", has its pointers typed
-  (`pointer-form-unread`). So does JAMA's own form, "eTable 1 in Supplement 1": G2 reads "in
-  the Supplement" after a pointer and not "in Supplement 1" (round 1 of #378).
+  (`pointer-form-unread`) (round 1 of #378). "Table 1 in Supplement 2" is read as a pointer
+  to the supplement's Table 1, which is one supplement: a paper that sends several, as JAMA
+  numbers them, has every one's tables counted as the one supplementary document's
+  (2026-10-27).
 - **`bind --pointers` offers what G2 reads as a pointer, and some of that is not one.**
   "Table 3 of Smith et al." is offered as the paper's own Table 3, and "in Tables 1, 2
   patients were excluded" offers the 2. Either prints as typed when it is applied, and
@@ -16650,7 +16667,8 @@ Open, recorded as each change landed:
   `\texttt` a typewriter font prints both as typed, but the reader reads ``` `` ``` there as an
   opening mark already, and a `"` after it as the closing one. Babel's German shorthands other
   than an accent, `"-` and `"=`, inside an open quotation are read as a closing mark too. A
-  quotation is ended by a blank line only, not by `\par`.
+  `\par` a definition's body holds ends the quotation where the body is written, not where
+  the command prints it (2026-10-27).
 - **`lines-cited-alone` is not tried anywhere in a LaTeX document that sets out an algorithm
   or a listing.** A `verbatim` block anywhere in the document turns the rule off for every
   pointer in it, one into the reviewers' copy too: the rule cannot tell a listing's lines
@@ -16865,6 +16883,54 @@ Closed since, and why each mattered (an open gap goes above this line):
   outside code, is printed and opens nothing, the rest of its run opening as pandoc's does;
   inside code a backslash prints, so a run after one still closes the span, as pandoc
   reads `` `a\` `` (`test_an_escaped_threshold_between_escaped_backticks_is_still_a_convention`).
+- **A part the paper placed by `\includestandalone` or `\subfile` was read loose.** A
+  `standalone` picture was read under no heading and warned of as a file nothing inputs,
+  and `\subfile` was refused, failing BUILD, though LaTeX prints both where they stand, as
+  the maintainer asked to have them read (2026-10-27). Each command is now an input of the
+  file it names (`commands.PLACED`), past `\includestandalone`'s options. A file in the
+  `standalone` or the `subfiles` class is read past its preamble, opening the heading and
+  the environments the command stands in at its `\begin{document}`, so a picture placed in
+  a `figure` is the figure's; what its preamble loads, inputs, declares or comments is not
+  the paper's, and its preamble and what follows its `\end{document}` are TeX's to pass
+  over, so the submission folder writes its body alone in the command's place. What is
+  still open, a part placed nowhere and the options the folder drops, is above.
+- **A preamble's `\input macros` was not followed.** TeX's form without braces named no
+  file to the reader, so an author's `macros.tex` was read as a file nothing inputs, warned
+  of, its definitions unknown where they were used. In the preamble the name up to a space,
+  a brace, a command or a comment is now the path, as a class's is read
+  (`mask._BARE_PATH`), and a name the folder lacks is the distribution's as before
+  (2026-10-27).
+- **G2 read a typed `thebibliography` as prose.** Its years, volumes and pages were
+  `unclassified-number`, where a Markdown project's reference list, which the build makes,
+  is never read. G2's LaTeX view, which `explain` and `bind` read too, now blanks each
+  reference list the reader records, a binding typed in one excepted; G6, G8r, G14 and the
+  printed view already passed over it, and no gate needs its numbers read as the text's
+  (2026-10-27).
+- **"Table 2 in Supplement 1" was the main text's Table 2.** JAMA's form names its
+  supplement by number, and G2 read only "in the Supplement" after a pointer as the
+  supplement's, so such a pointer before the main text's Table 1 was cited out of order,
+  and a journal profile that writes the form was `pointer-form-unread`. "in" or "of"
+  "Supplement" and a number after a pointer now put it in the supplement, in Markdown and
+  in LaTeX (2026-10-27).
+- **A LaTeX quotation left open was not ended at `\par`.** A ``` `` ``` that nothing closed
+  before a `\par` was closed by a straight `"` after it, which made the two paragraphs one
+  quotation for G7. A `\par` TeX reads now ends the quotation as a blank line does; one in a
+  comment or in what TeX passes over, and the letters after `\\`, do not (2026-10-27).
+- **G8r read a claim within one line.** A claim whose verb and guideline a hard-wrapped
+  source put on two lines, "prepared following the / PRISMA statement", was not read, and a
+  guideline the paper said it followed went unreconciled with paper.yaml. A sentence now
+  runs over single line breaks, in Markdown as in LaTeX, and stops at a blank line, before
+  a Markdown heading or a table's row, and at a typed table's line ends, so that a table of
+  checklist items is not one claim (2026-10-27).
+- **An accent command lost its mark in the printed view, and its word in G14's.**
+  `Chr\'etien` printed "Chretien", so a quote copied from the PDF was not found by G13, G8
+  or G7; and a word an accent command, a letter typed as a command or `\-` split was not
+  read by G14 or G15 at all, so `co\-lor` was no American spelling and `logis\-tic
+  regression` no model typed. The printed view now writes each accent command whose letter
+  it reads as the accented letter, composed as Unicode composes it, and a letter typed as a
+  command beside a letter it reads as that letter; the words view writes such a word whole,
+  as LaTeX prints it, from where it starts, `\-` dropped (`words.folded`). The printed view
+  already printed LaTeX's dashes and `\ldots` as the characters (2026-10-27).
 
 - **A paper that declared no English heard nothing of its journal's.** Since `english_variant`
   became optional, G4 compared a journal's English with the paper's only where the paper

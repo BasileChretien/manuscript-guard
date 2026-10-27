@@ -1088,6 +1088,47 @@ def latex_lengths(draw: st.DrawFn) -> tuple[str, list[tuple[int, str, bool]]]:
     return text + "\n", planted
 
 
+#: Where a number stands in a reference list typed in `thebibliography`, each `{}` the
+#: number: the list's widest label, an entry's label, its year, its volume and pages, a
+#: `\\newblock`, a DOI and a note; and where one stands round the list, in the text before
+#: and after it, which G2 reads (2026-10-27).
+LATEX_REFERENCE_PLACES = (
+    ("\\begin{{thebibliography}}{{{}}}\n", False),
+    ("\\bibitem[Smith({})]{{smith}} Smith J. ", False),
+    ("Title. Journal {};", False),
+    ("34:{}-9.\n", False),
+    ("\\newblock Vol. {}, pp. 1--9.\n", False),
+    ("\\bibitem{{jones}} Jones. doi:10.{}/x. ", False),
+    ("(accessed {} May).\n\\end{{thebibliography}}\n", False),
+)
+LATEX_PROSE_PLACES = ("Of {} reports, ", "{} were fatal.\n\n")
+
+
+@st.composite
+def latex_reference_lists(draw: st.DrawFn) -> tuple[str, list[tuple[int, str, bool]]]:
+    """A LaTeX document's body holding a reference list typed in `thebibliography`, a number
+    at each place of `LATEX_REFERENCE_PLACES` in that order, with prose holding a number
+    before it and after it; each place's words drawn round it. And where each number stands,
+    and whether G2 reads it. Every kind is in every document."""
+    text, planted, count = "", [], 0
+
+    def put(template: str, read: bool) -> None:
+        nonlocal text, count
+        before, after = template.split("{}")
+        number = str(4101 + count)
+        count += 1
+        text += before.replace("{{", "{").replace("}}", "}")
+        planted.append((len(text), number, read))
+        text += number + after.replace("{{", "{").replace("}}", "}")
+
+    put(draw(st.sampled_from(LATEX_PROSE_PLACES)), True)
+    for template, read in LATEX_REFERENCE_PLACES:
+        text += draw(st.sampled_from(("", "A. ", "\\emph{B.} ")))
+        put(template, read)
+    put(draw(st.sampled_from(LATEX_PROSE_PLACES)), True)
+    return text, planted
+
+
 #: Where a command defined with delimited parameters is used, each `{}` the use, and whether
 #: what it makes prints there: where it prints the reader cannot know what it takes, and
 #: refuses it; in a blanked argument, a comment, an unprinted block, code and a definition's
@@ -1429,6 +1470,12 @@ LATEX_PRINTED_PLACES = (
     # A formula and a typed table print the bindings they hold (round 1 of step 8).
     ("$n = \\mg{{results.{}}}$ ", ("bound",)),
     ("\\begin{{tabular}}{{l}}\\mg{{results.{}}}\\end{{tabular}}\n", ("bound",)),
+    # An accent command and a letter typed as one print their letter, beside the rest of
+    # the word; one in a comment prints nothing (2026-10-27).
+    ("{}Chr\\'etien ", ("folded:{}Chr\N{LATIN SMALL LETTER E WITH ACUTE}tien",)),
+    ("M{{\\\"u}}ller{} ", ("folded:M\N{LATIN SMALL LETTER U WITH DIAERESIS}ller{}",)),
+    ("Stra\\ss e{} ", ("folded:Stra\N{LATIN SMALL LETTER SHARP S}e{}",)),
+    ("% caf\\'e {}\n", ("hidden",)),
 )  # fmt: skip
 
 
@@ -1510,9 +1557,15 @@ def latex_quotations(draw: st.DrawFn) -> tuple[str, list[tuple[str, bool]]]:
 #: opened a quotation in its paragraph that nothing closed, and not after a blank line, nor
 #: alone, nor after a quotation closed, nor before a letter (babel's German accent), nor where
 #: the ``` `` ``` is in a comment, nor in `\verb`. Two in one paragraph each close their own.
+#: Nor after a `\par`, which ends a paragraph as a blank line does, on its line or on one of
+#: its own; but after a `\par` in a comment, or the letters after `\\`, it closes (2026-10-27).
 LATEX_STRAIGHT_QUOTES = (
     ('``{} words" {}', (True,)),
     ('``{} words\n\n{} words" here', (False,)),
+    ('``{} words\\par {} words" here', (False,)),
+    ('``{} words\n\\par\n{} words" here', (False,)),
+    ('``{} words % \\par\n{} words" here', (True,)),
+    ('``{} words\\\\par {} words" here', (True,)),
     ('{} words" {}', (False,)),
     ("``{} words'' then\" {}", (False,)),
     ('``{} words"a {}', (False,)),
@@ -1558,10 +1611,16 @@ LATEX_CLAIM_PLACES = (
     ("\\iffalse This report follows {}. \\fi\n", False),
     ("\\begin{{thebibliography}}{{9}}\n\\bibitem{{k}} The {} statement.\n"
      "\\end{{thebibliography}}\n", False),
+    # Hard-wrapped, the verb and the name on two lines, is read; over a blank line, or over
+    # a typed table's rows, it is not (2026-10-27).
+    ("This report\nfollows {}.\n", True),
+    ("The report follows the\n{} items.\n", True),
+    ("The report follows\n\n{} here.\n", False),
+    ("\\begin{{tabular}}{{ll}}\nChecklist & page \\\\\n{} & 3 \\\\\n\\end{{tabular}}\n", False),
 )  # fmt: skip
 #: A guideline's name for each place, none the start of another.
 _GUIDELINES_CLAIMED = ("STROBE", "CONSORT", "SPIRIT", "PRISMA", "TRIPOD", "ARRIVE", "SQUIRE",
-                       "COREQ")  # fmt: skip
+                       "COREQ", "STARD", "MOOSE", "CHEERS", "SRQR")  # fmt: skip
 
 
 @st.composite
@@ -1877,9 +1936,11 @@ def latex_model_names(draw: st.DrawFn) -> tuple[str, list[tuple[int, str]]]:
 #: Where a LaTeX document holds a word, as G14 reads it (`text/latex/words.py`): each `{}`
 #: holds a word, and its kind says what the words view makes of it. A word in prose, a
 #: heading, a footnote or a table's caption is read where it stands; one in maths, code, a
-#: figure's caption, a comment or a label is not; one an accent command or `\\-` splits is not
-#: read and is given as unread; and a count written as a subscript after a word's last letter
-#: is written `~2~`.
+#: figure's caption, a comment or a label is not; one an accent command, a letter typed as a
+#: command or `\\-` splits is read as LaTeX prints it, from where it starts (`folded:` and the
+#: word, `{}` its key; 2026-10-27), and one whose accent marks no letter is not read and is
+#: given as unread; and a count written as a subscript after a word's last letter is written
+#: `~2~`.
 LATEX_WORDS_PLACES = (
     ("prose {} words ", ("read",)),
     ("\\section{{{}}}\n", ("read",)),
@@ -1892,8 +1953,12 @@ LATEX_WORDS_PLACES = (
     ("\\texttt{{{}}} ", ("hidden",)),
     ("% {}\n", ("hidden",)),
     ("\\label{{{}}} ", ("hidden",)),
-    ("caf\\'e{} ", ("split",)),
-    ("{}co\\-op ", ("split",)),
+    ("caf\\'e{} ", ("folded:caf\N{LATIN SMALL LETTER E WITH ACUTE}{}",)),
+    ("{}co\\-op ", ("folded:{}coop",)),
+    ("{}na\\\"{{\\i}}ve ", ("folded:{}na\N{LATIN SMALL LETTER I WITH DIAERESIS}ve",)),
+    ("Stra\\ss e{} ", ("folded:Stra\N{LATIN SMALL LETTER SHARP S}e{}",)),
+    ("{{\\c c}}a{} ", ("folded:\N{LATIN SMALL LETTER C WITH CEDILLA}a{}",)),
+    ("caf\\'{{ }}e{} ", ("split",)),
     ("{}X$_2$ ", ("subscript",)),
 )  # fmt: skip
 
@@ -2094,7 +2159,12 @@ def latex_trees(
     by its folder under the one the file it stands in was imported from, which the first file
     writes; and `\\input` by its path from that folder, which LaTeX looks in where the entry
     file's folder does not hold the file, which the first file writes too. The folder a file
-    was imported from is worked out here apart from the reader."""
+    was imported from is worked out here apart from the reader.
+
+    And the entry file places two parts after its second input (2026-10-27): a `subfiles`
+    part by `\\subfile`, whose body opens a heading, and a `standalone` picture by
+    `\\includestandalone` inside a `figure`, each with a preamble that inputs or comments
+    something the paper does not read."""
     count = draw(st.integers(min_value=5, max_value=6))
     stems = ["main", *(f"part{index}" for index in range(1, count))]
     # The first file is imported from a folder, and the third and fourth are under it, so
@@ -2116,10 +2186,17 @@ def latex_trees(
                   if kind == "input" and child < count]  # fmt: skip
         rest = [item for item in drawn if item[0] != "input"]
         opening = [("heading", -1), ("heading", 0), ("heading", 1), ("input", (1, "import")),
-                   ("heading", 3), ("input", (2, "input"))]  # fmt: skip
+                   ("heading", 3), ("input", (2, "input")), ("place", PLACED_PART),
+                   ("place", PLACED_PICTURE)]  # fmt: skip
         planted = {0: opening, 1: [("heading", 2), ("input", (3, "subimport")),
                                    ("input", (4, "from-imported"))]}  # fmt: skip
         items[name] = planted.get(index, []) + rest + inputs
+    # A part the paper places by `\\subfile`, which opens a heading, and a picture it places
+    # by `\\includestandalone` inside a figure, after it (2026-10-27).
+    placing = draw(st.sampled_from(("", "parts/")))
+    items[placing + PLACED_PART] = [("heading", draw(st.integers(min_value=1, max_value=3))),
+                                    ("words", draw(st.sampled_from(FILLER)))]  # fmt: skip
+    items[placing + PLACED_PICTURE] = [("words", draw(st.sampled_from(FILLER)))]
     files, under, marks, seen, counter = {}, {}, {}, {"main.tex"}, [0]
 
     def named(child: int, how: str | None, imported: str) -> tuple[str, str]:
@@ -2145,6 +2222,12 @@ def latex_trees(
     def visit(name: str, chain: list[tuple[int, str]], imported: str) -> list[tuple[int, str]]:
         under[name] = [title for _, title in chain]
         text = "\\documentclass{article}\n\\begin{document}\n" if name == "main.tex" else ""
+        if name.endswith(PLACED_PART):
+            up = "../" if placing else ""
+            text = (f"\\documentclass[{up}main.tex]{{subfiles}}\n\\input{{./x}}\n"
+                    "\\begin{document}\n")
+        elif name.endswith(PLACED_PICTURE):
+            text = "\\documentclass[tikz]{standalone}\n% x\n\\begin{document}\n"
         for kind, value in items[name]:
             if kind == "heading":
                 counter[0] += 1
@@ -2160,9 +2243,19 @@ def latex_trees(
                 if child not in seen:
                     seen.add(child)
                     chain = visit(child, chain, folder)
+            elif kind == "place":
+                child = placing + value
+                stem = child.removesuffix(".tex")
+                if value == PLACED_PART:
+                    text += f"\\subfile{{{stem}}}"
+                else:
+                    text += (f"\\begin{{figure}}\\includestandalone[width=3cm]{{{stem}}}"
+                             "\\end{figure}")
+                chain = visit(child, chain, "")
             else:
                 text += f"{value} "
-        files[name] = text + ("\n\\end{document}\n" if name == "main.tex" else "")
+        ends = name == "main.tex" or name.endswith((PLACED_PART, PLACED_PICTURE))
+        files[name] = text + ("\n\\end{document}\n" if ends else "")
         return chain
 
     visit("main.tex", [], "")
@@ -2171,6 +2264,8 @@ def latex_trees(
     return files, under, marks
 
 
+#: The files `latex_trees` places, a part by `\\subfile` and a picture by `\\includestandalone`.
+PLACED_PART, PLACED_PICTURE = "placed.tex", "picture.tex"
 #: Each way a class or a package names a file it inputs, as `{}` takes the file's path.
 CLASS_INPUTS = ("\\input{{{}}}", "\\input {}\n", "\\@input{{{}}}",
                 "\\InputIfFileExists{{{}}}{{}}{{}}")  # fmt: skip
@@ -2208,10 +2303,13 @@ def latex_folders(draw: st.DrawFn) -> tuple[dict[str, str], dict[str, set[str]]]
     that shows a `\\begin{document}` in each way of `NOT_A_DOCUMENT`; and a document of its
     own. And since round 1 of #445: the class loads a class with `\\LoadClass`, which inputs
     one, and defines a command to input one in each way of `DEFINED_INPUTS`, a file the paper
-    prints and so loose; a picture in the `standalone` class, which the paper places with
-    `\\includestandalone`, loose; a part in the `subfiles` class, loose (round 2); and a file
-    refused in its preamble, in a way drawn from `PREAMBLE_REFUSALS`, before a
-    `\\begin{document}` it shows in a listing, loose and `refused`."""
+    prints and so loose; a picture in the `standalone` class and a part in the `subfiles`
+    class (round 2), each once where the paper places it, with `\\includestandalone` or
+    `\\subfile`, and read (2026-10-27), and once placed nowhere, and loose; a file of
+    settings the paper's preamble inputs by TeX's `\\input name` without braces, read
+    (2026-10-27); and a file refused in its preamble, in a way drawn from
+    `PREAMBLE_REFUSALS`, before a `\\begin{document}` it shows in a listing, loose and
+    `refused`."""
 
     def words() -> str:
         return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
@@ -2251,25 +2349,34 @@ def latex_folders(draw: st.DrawFn) -> tuple[dict[str, str], dict[str, set[str]]]
     if second.startswith("supplementary/"):
         files["supplementary/main.tex"] = (f"\\documentclass{{article}}\n\\begin{{document}}\n"
                                            f"{words()}\n\\end{{document}}\n")  # fmt: skip
-    picture = draw(st.sampled_from(("fig.tex", "figures/fig.tex")))
+    folder = draw(st.sampled_from(("", "figures/")))
+    picture, unplaced = f"{folder}fig.tex", f"{folder}unplaced.tex"
     options = draw(st.sampled_from(("", "[tikz, border=2pt]")))
-    files[picture] = (f"\\documentclass{options}{{standalone}}\n\\usepackage{{tikz}}\n"
-                      "\\begin{document}\n\\begin{tikzpicture}\\node{n = 42};\\end{tikzpicture}\n"
-                      "\\end{document}\n")  # fmt: skip
-    part = draw(st.sampled_from(("part.tex", "sections/part.tex")))
-    files[part] = (f"\\documentclass[{'../' if '/' in part else ''}main.tex]{{subfiles}}\n"
-                   f"\\begin{{document}}\n{words()} 7.\n\\end{{document}}\n")  # fmt: skip
+    for name in (picture, unplaced):
+        files[name] = (f"\\documentclass{options}{{standalone}}\n\\usepackage{{tikz}}\n"
+                       "\\begin{document}\n\\begin{tikzpicture}\\node{n = 42};\\end{tikzpicture}\n"
+                       "\\end{document}\n")  # fmt: skip
+    folder = draw(st.sampled_from(("", "sections/")))
+    part, placed = f"{folder}part.tex", f"{folder}placed.tex"
+    for name in (part, placed):
+        files[name] = (f"\\documentclass[{'../' if folder else ''}main.tex]{{subfiles}}\n"
+                       f"\\begin{{document}}\n{words()} 7.\n\\end{{document}}\n")  # fmt: skip
     refused = draw(st.sampled_from(("refused.tex", "a/b/refused.tex")))
     files[refused] = (f"{draw(st.sampled_from(PREAMBLE_REFUSALS))} {words()} 5.\n"
                       "\\begin{verbatim}\\begin{document}\\end{verbatim}\n")  # fmt: skip
+    settings = draw(st.sampled_from(("settings.tex", "a/settings.tex")))
+    files[settings] = "\\newcommand{\\cohort}{a cohort}\n"
+    bare = draw(st.sampled_from(("{} ", "{}\n", "{}%\n", "{}\\relax\n", "{}.tex\n")))
     files["main.tex"] = (f"\\documentclass[{words()}]{{{style}{stem}}}\n\\usepackage{{mine}}\n"
-                         "\\usepackage{standalone}\n"
+                         + "\\input " + bare.format(settings.removesuffix(".tex"))
+                         + "\\usepackage{standalone}\n"
                          f"\\begin{{document}}\n{words()}\n\\input{{{shared}}}\n{words()}\n"
                          f"\\includestandalone[width=3cm]{{{picture.removesuffix('.tex')}}}\n"
+                         f"\\subfile{{{placed.removesuffix('.tex')}}}\n"
                          "\\end{document}\n")  # fmt: skip
-    expected = {"read": {"main.tex", shared, "mine.sty"},
+    expected = {"read": {"main.tex", shared, "mine.sty", picture, placed, settings},
                 "classes": {*listed, deeper, macros, based},
-                "loose": {commented, unloaded, shows, loose, *defined, picture, part, refused},
+                "loose": {commented, unloaded, shows, loose, *defined, unplaced, part, refused},
                 "second": {second}, "refused": {refused}}  # fmt: skip
     return files, expected
 

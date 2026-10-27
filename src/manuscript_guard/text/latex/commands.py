@@ -166,6 +166,9 @@ COMMANDS = _specs(
         **dict.fromkeys(RANGES, "{b}{b}"),
         # The import package's: a folder and a file, followed as an input is (`IMPORTS`).
         **dict.fromkeys(("import", "subimport"), "{b}{b}"),
+        # A part the paper places, followed as an input is, its document body read (`PLACED`).
+        "subfile": "{b}",
+        "includestandalone": "[b]{b}",
         "url": "{r}",
         # Springer's `\\author*[1]{...}`, its star the corresponding author's, and Elsevier's
         # CAS `\\author[1]{...}[orcid=...]`, with an option list after the name (2026-10-23).
@@ -264,6 +267,12 @@ FRONT_MATTER_COMMANDS = frozenset(_FRONT_MATTER_SPECS)
 #: `\\import`'s folder is the manuscript's, and `\\subimport`'s is under the folder the
 #: file it stands in was imported from (`structure.py`).
 IMPORTS = frozenset({"import", "subimport"})
+#: The commands that place a file's document body where they stand, followed as an input is:
+#: the subfiles package's `\\subfile{path}` and the standalone package's
+#: `\\includestandalone[options]{path}`. A file in the `subfiles` or the `standalone` class is
+#: read past its preamble, under the heading and inside the environments the command stands
+#: in (`structure.py`).
+PLACED = frozenset({"subfile", "includestandalone"})
 #: Commands that print a space, written as one.
 SPACES = frozenset({"quad", "qquad", "enspace", "thinspace", "space", "enskip", "nobreakspace"})
 #: The commands that print one character, which the mask writes where the command stands: a
@@ -393,7 +402,7 @@ REFUSED = {
     **dict.fromkeys(("lstinputlisting", "verbatiminput", "VerbatimInput", "csvautotabular",
                      "csvautobooktabular", "csvreader", "pgfplotstabletypeset", "DTLloaddb",
                      "DTLdisplaydb", "DTLdisplaylongdb", "includepdf"), _FILE),
-    **dict.fromkeys(("subfile", "InputIfFileExists", "inputfrom", "subinputfrom", "includefrom",
+    **dict.fromkeys(("InputIfFileExists", "inputfrom", "subinputfrom", "includefrom",
                      "subincludefrom"),
                     "its file is not followed; \\input it by a path written out in full"),
     "inputminted": "it needs shell escape, which the build does not allow",

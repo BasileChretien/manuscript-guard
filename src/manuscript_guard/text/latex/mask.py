@@ -38,6 +38,7 @@ from manuscript_guard.text.latex.commands import (
     PACKAGE_COMMANDS,
     PARAMETERS,
     PICTURES,
+    PLACED,
     POINTERS,
     PROVIDERS,
     RANGES,
@@ -78,6 +79,8 @@ _LETTERS_AT = re.compile(r"[A-Za-z@]+")
 _TEXT = re.compile(r"[^\\%{}\[\]$&~#`'\n\"]+")
 #: A blank line, which ends a paragraph and any quotation left open in it.
 _PARAGRAPH_END = re.compile(r"\n[ \t\r]*\n")
+#: TeX's `\\par`, which ends a paragraph as a blank line does: not the letters after `\\\\`.
+_PAR = re.compile(r"(?<!\\)(?:\\\\)*(?P<par>\\par)(?![A-Za-z@])")
 #: A straight `"` before a letter, which closes no quotation: babel's German accent, `"a`.
 _ACCENTED = re.compile(r'"[^\W\d_]')
 _ENVIRONMENT_NAME = re.compile(r"[ \t]*\n?[ \t]*\{([^{}\n]*)\}")
@@ -90,7 +93,7 @@ _DELIMITED_REACH = 300
 _LET_GAP = re.compile(r"[ \t]*=?[ \t]*")
 #: Commands the reader reads apart from the rest of their form, which no `\\let` makes one of
 #: another: an input, an import, code the printed view passes over, and a binding (round 2).
-_READ_APART = frozenset({"input", "include", "import", "subimport", "texttt", "mg"})
+_READ_APART = frozenset({"input", "include", "import", "subimport", "texttt", "mg"}) | PLACED
 #: What TeX passes over after a control word: spaces, and one line's end with the spaces after.
 _SKIPPED = re.compile(r"[ \t]*(?:\r?\n[ \t]*)?")
 #: An input encoding set by a package's option or by `\\inputencoding`, a few hundred
@@ -122,8 +125,9 @@ class Input:
     path: str
     body: bool
     environments: tuple[str, ...]
-    #: The command: `input` for `\\input` and `\\include`, or the import package's `import` or
-    #: `subimport`, whose folder is written before the file.
+    #: The command: `input` for `\\input` and `\\include`, the import package's `import` or
+    #: `subimport`, whose folder is written before the file, or `subfile` or
+    #: `includestandalone`, which place a part's document body (`commands.PLACED`).
     via: str = "input"
     folder: str = ""
 
@@ -245,6 +249,11 @@ LEVELS = {"part": -1, "chapter": 0, "section": 1, "subsection": 2, "subsubsectio
           "paragraph": 4, "subparagraph": 5}  # fmt: skip
 #: A path in braces after `\input`, which TeX finds past spaces and one line break.
 _BRACED_PATH = re.compile(r"[ \t]*(?:\r?\n[ \t]*)?\{([^{}\n]*)\}")
+#: TeX's `\\input name` without braces: the name runs to a space, a brace, a command or a
+#: comment, as `structure._LOADS` reads it in a class.
+_BARE_PATH = re.compile(r"[ \t]+([^\s{}\\%]+)")
+#: The options before `\\includestandalone`'s path, a few hundred characters at most.
+_PLACE_OPTIONS = re.compile(r"[ \t]*(?:\r?\n[ \t]*)?\[[^\]]{0,300}\]")
 #: Commands the reader knows that an author may define again, which it then reads as before:
 #: `\abstract` was an unknown command, its arguments read, until it was given a heading; a
 #: class's front matter, `\keywords` among it, is passed over however it is defined; and
@@ -364,10 +373,13 @@ def read(
     `loose` file, which nothing inputs, is body that accepts what a preamble accepts. A
     `package` of the author's is read as LaTeX reads a package, with `@` a letter. The tree
     tells each file of what the others define, `delimited`, `own` and `literal`, and of the
-    packages they load, `loaded`."""
+    packages they load, `loaded`. A file that opens in its preamble, as a part the paper
+    places by `\\subfile` does, opens the `environments` at its `\\begin{document}`."""
     opens_in_body = not _has_document(text) if body is None else body
     told = (delimited, own, literal, loaded)
-    reader = _Reader(text, opens_in_body, environments, loose, package, *told)
+    opening = environments if opens_in_body else ()
+    reader = _Reader(text, opens_in_body, opening, loose, package, *told,
+                     later=() if opens_in_body else environments)  # fmt: skip
     reading = reader.run()
     if body is None and not reader.body and reader.refused is None:
         return _Reader(text, True, environments, loose, package, *told).run()
@@ -506,9 +518,13 @@ class _Reader:
         own: frozenset[str] = frozenset(),
         literal: tuple[tuple[str, str], ...] = (),
         loaded: frozenset[str] = frozenset(),
+        *,
+        later: tuple[str, ...] = (),
     ) -> None:
         self.text = text
         self.n = len(text)
+        #: The environments the file opens at its `\\begin{document}` (`read`).
+        self.later = later
         self.out = list(text)
         self.pos = 0
         self.body = body
@@ -570,9 +586,13 @@ class _Reader:
         self.picture_spans: list[tuple[int, int]] = []
         #: Where the prose's last ``` `` ``` stands while no `''` or `"` has closed it, or -1.
         self.quote_open = -1
+        self._inherit(environments, 0)
+
+    def _inherit(self, environments: tuple[str, ...], at: int) -> None:
+        """Open the environments the file's input stood in, from `at`."""
         for name in environments:
             if name in PICTURES and self._role() == PROSE:
-                self._picture_printed(0, self.n)
+                self._picture_printed(at, self.n)
             role = MATHS_READ if name in MATHS else self._entered(name, self._role())
             self.stack.append(_Frame("env", role, 0, name, table=name in TABLES, inherited=True))
             self.environments.append(name)
@@ -916,9 +936,19 @@ class _Reader:
         searched twice."""
         if self.quote_open < 0 or self._role() != PROSE or _ACCENTED.match(self.text, at):
             return False
-        ended = _PARAGRAPH_END.search(self.text, self.quote_open, at) is not None
+        ended = self._paragraph_ended(self.quote_open, at)
         self.quote_open = -1
         return not ended
+
+    def _paragraph_ended(self, start: int, end: int) -> bool:
+        """Whether a paragraph ends between `start` and `end`: at a blank line, or at a
+        `\\par` TeX reads, not one in a comment or what TeX passes over (Known gaps,
+        2026-10-27: a quotation left open before a `\\par` was closed by a `"` after it)."""
+        if _PARAGRAPH_END.search(self.text, start, end) is not None:
+            return True
+        passed = [*self.comments, *self.unprinted]
+        return any(not any(low <= found.start("par") < high for low, high in passed)
+                   for found in _PAR.finditer(self.text, start, end))  # fmt: skip
 
     def _in_table(self) -> bool:
         """Whether the innermost environment is a table: kept apart from the stack, so that a
@@ -1039,6 +1069,8 @@ class _Reader:
             self._input(at, end)
         elif name in IMPORTS and not self.definitions:
             self._import(name, at, end)
+        elif name in PLACED and not self.definitions:
+            self._place(name, at, end)
         elif name == "verb":
             self._verb(at, end)
         elif name in ("begin", "end"):
@@ -1183,10 +1215,17 @@ class _Reader:
         """Record an `\\input` with the state it stands in. Its path is read raw; one not
         written in braces, or holding a command, is refused where the tree is read. Its
         argument is then taken as any blanked argument is, so that the mask is the same with
-        or without the tree (the old-against-new test of #385)."""
+        or without the tree (the old-against-new test of #385). In the preamble, TeX's
+        `\\input macros` without braces names the file by the name up to a space, as
+        `structure._LOADS` reads a class's (Known gaps, 2026-10-27: an author's `macros.tex`
+        was read as a file nothing inputs); in the body it is refused as before."""
         braced = _BRACED_PATH.match(self.text, end)
-        path = braced.group(1) if braced else ""
-        stop = braced.end() if braced else end
+        bare = None
+        if braced is None and not self.body and self.text.startswith("\\input", at):
+            bare = _BARE_PATH.match(self.text, end)
+        found = braced or bare
+        path = found.group(1) if found else ""
+        stop = found.end() if found else end
         self.inputs.append(Input(at, stop, path, self.body, tuple(self.environments)))
         self.command, self.pending = "input", COMMANDS["input"]
 
@@ -1205,6 +1244,17 @@ class _Reader:
         stop = named.end() if named else folder.end() if folder else end
         self.inputs.append(Input(at, stop, path, self.body, tuple(self.environments), name,
                                  folder.group(1) if folder else ""))  # fmt: skip
+        self.command, self.pending = name, COMMANDS[name]
+
+    def _place(self, name: str, at: int, end: int) -> None:
+        """Record a `\\subfile{path}` or an `\\includestandalone[options]{path}` as an input
+        of the file it places, past its options, which size a picture and print nothing; the
+        tree reads that file's document body where the command stands (`structure.py`)."""
+        options = _PLACE_OPTIONS.match(self.text, end) if name == "includestandalone" else None
+        braced = _BRACED_PATH.match(self.text, options.end() if options else end)
+        path = braced.group(1) if braced else ""
+        stop = braced.end() if braced else end
+        self.inputs.append(Input(at, stop, path, self.body, tuple(self.environments), name))
         self.command, self.pending = name, COMMANDS[name]
 
     def _packages(self, at: int, end: int) -> None:
@@ -1437,6 +1487,8 @@ class _Reader:
         elif name == "document":
             self.body = True
             self.body_start = self.pos
+            self._inherit(self.later, self.pos)
+            self.later = ()
         elif name in RAW:
             ending = re.compile(r"\\end\s*\{" + re.escape(name) + r"\}")
             closing = ending.search(self.text, self.pos)

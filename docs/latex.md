@@ -33,9 +33,12 @@ journal's class keeps in its own folder, is the class's: `check` does not read i
 a class or a package inputs only inside a command's definition, as
 `\newcommand{\abstracttext}{\input{abstract}}` does, is printed where the paper uses the
 command, and is read. A `.tex` file that nothing inputs is read as main text and warned of
-(`tex-not-input`), and so is a picture in the `standalone` class, which the paper places
-with `\includestandalone`: its text is read, though not where the paper places it. A part in
-the `subfiles` class is read the same way, though `\subfile` itself is refused. One that
+(`tex-not-input`). A picture in the `standalone` class that the paper places with
+`\includestandalone`, and a part in the `subfiles` class that it places with `\subfile`, are
+read where the command stands, under its heading and inside its float, past their own
+preamble; one the paper places nowhere is read as main text and warned of. The submission
+folder writes such a picture's body where the command stood, without the command's width or
+scale. One that
 is a document of its own, with its own `\begin{document}`, is never read as part of the main
 text: `check` fails it (`tex-second-document`). If it is the supplement, make it
 `manuscript/supplementary/main.tex`, with its paths to pictures written from that folder;
@@ -83,8 +86,9 @@ number and a value prints as text.
 ## What the reader reads
 
 The reader reads LaTeX under TeX's default category codes, one pass per file, through the
-include tree that `\input`, `\include` and the import package's `\import` and `\subimport`
-make. What it cannot read exactly, it refuses, naming the line. A conditional in the body,
+include tree that `\input`, `\include`, the import package's `\import` and `\subimport`,
+`\subfile` and `\includestandalone` make; in the preamble, TeX's `\input macros` without
+braces is followed too. What it cannot read exactly, it refuses, naming the line. A conditional in the body,
 `\makeatletter` in the body and a citation command the reader does not know, one whose name
 holds `cite` such as `\mycitep`, are refused: cite with `\cite` or natbib's, biblatex's,
 apacite's or chicago's commands. So
@@ -93,7 +97,9 @@ document prints it, since what it takes there is not known: define it with `\new
 One whose parameter text holds no parameter, `\def\eg/{e.g.\@}`, takes nothing and is read,
 the `/` after each use passed over. A reference list BibTeX wrote, pasted into
 `thebibliography`, is read with its header, the conditionals and `\makeatletter` before
-its first `\bibitem` too. `\providecommand` of a command already defined defines
+its first `\bibitem` too; G2 reads none of its numbers, as a Markdown paper's list is never
+read. An accent command, `Chr\'etien`, is read as the accented letter, and a word `\-`
+splits as one word. `\providecommand` of a command already defined defines
 nothing. A command a package gives, siunitx's `\unit` say, is yours where you define it
 and no file loads that package. A comment between a command and its argument is passed over,
 as TeX passes it. An input encoding other than UTF-8 is refused, unless every file is plain

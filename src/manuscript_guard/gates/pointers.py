@@ -67,13 +67,19 @@ _ELSEWHERE = (
     r"(?:supplementary|supplemental|suppl\.|extended" + _GAP + r"data|appendix|online"
     r"(?:" + _GAP + r"supplementary)?)"
 )
+#: What after a pointer puts it in the supplement: "in the Supplement", "of the online
+#: appendix", and JAMA's numbered supplement, "eTable 1 in Supplement 1" (Known gaps,
+#: 2026-10-27).
+_AFTER = (
+    _GAP + r"(?:in|of)" + _GAP + r"(?:the" + _GAP + r"(?:online" + _GAP
+    + r")?(?:supplement|supplementary|appendix)\b|supplement" + _GAP + r"\d+\b)"
+)
 _POINTER = re.compile(
     r"(?<![\w.])(?P<supp>" + _ELSEWHERE + _GAP + r")?(?P<e>e)?"
     r"(?P<kind>tables?|figures?|figs?\.?)" + _GAP
     + r"(?P<s0>S)?(?P<n0>\d+)[A-Za-z]?\b"
     + r"(?P<rest>(?:" + _JOIN + r"S?\d+[A-Za-z]?\b)*)"
-    + r"(?P<after>" + _GAP + r"(?:in|of)" + _GAP + r"the" + _GAP + r"(?:online" + _GAP
-    + r")?(?:supplement|supplementary|appendix)\b)?",
+    + r"(?P<after>" + _AFTER + r")?",
     re.IGNORECASE,
 )
 _REST = re.compile(r"(?P<join>" + _JOIN + r")(?P<s>S)?(?P<n>\d+)[A-Za-z]?\b", re.IGNORECASE)

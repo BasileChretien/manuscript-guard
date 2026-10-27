@@ -808,6 +808,21 @@ def test_an_escaped_threshold_is_still_a_convention(project: Path) -> None:
     assert codes(report) == {"typed-parameter"}, report.render(project)
 
 
+def test_an_escaped_threshold_between_escaped_backticks_is_still_a_convention(
+    project: Path,
+) -> None:
+    """`import` writes a backslash before every backtick typed in Word, and G2 paired the
+    escaped backticks as a code span: in `` (\\` ROR \\> 2 \\`) `` the `\\>` was taken for a
+    backslash code prints, and the threshold pandoc prints, `ROR > 2`, was an unbound
+    number. An escaped backtick opens no code span; one before a code span's closing run
+    closes it, as pandoc reads it."""
+    _in_methods(project, "A signal needed (\\` ROR \\> 2 \\`) here.")
+    report = gate_report(project)
+    assert "unclassified-number" not in codes(report), report.render(project)
+    _in_methods(project, "A signal needed `ROR\\` and ROR \\> 2 here.")
+    assert "unclassified-number" not in codes(gate_report(project))
+
+
 @pytest.mark.parametrize(
     "written",
     [

@@ -13383,10 +13383,9 @@ Open, recorded as each change landed:
     should be found in the printed text and mapped back, as the rules already are.
   - *Code found by pairing backtick runs.* A run pandoc reads a backtick at a time, a
     backtick inside a comment, math or a `~~~` fence, and an indented block are missed, so a
-    backslash there counts as an escape. An escaped backtick, which `import` writes for every
-    one typed in Word, is taken for a delimiter, so `` (\` ROR \> 2 \`) `` fails. Runs are
-    paired across the front matter's edge, too, and a backtick inside a `~~~` block with
-    one in the prose after it, which pandoc never does. This needs a reader that knows code
+    backslash there counts as an escape. Runs are paired across the front matter's edge,
+    too, and a backtick inside a `~~~` block with one in the prose after it, which pandoc
+    never does. This needs a reader that knows code
     spans as pandoc does. The comment scanner in `text/comments.py` comes closer, since it
     knows escapes, fences and the front matter's edge, but it still ends a code span only at
     a blank line and misreads backticks in maths, links and indented code.
@@ -16745,6 +16744,15 @@ Closed since, and why each mattered (an open gap goes above this line):
   the symbols and the one-letter ones a power below nought tells from a word ("mg L-1",
   "µg m-3"), and compared as the same divisor after a slash, both ways
   (`test_what_the_unit_reading_gets_wrong_is_pinned`).
+
+- **An escaped backtick opened a code span for G2's escapes.** `import` writes a backslash
+  before every backtick typed in Word, and the pattern that paired backtick runs took the
+  escaped ones for delimiters, so in `` (\` ROR \> 2 \`) `` the `\>` was read as a
+  backslash code prints, and the threshold pandoc prints was an unbound number.
+  `masking._code_spans` reads the runs once now: a backtick after an odd run of backslashes,
+  outside code, is printed and opens nothing, the rest of its run opening as pandoc's does;
+  inside code a backslash prints, so a run after one still closes the span, as pandoc
+  reads `` `a\` `` (`test_an_escaped_threshold_between_escaped_backticks_is_still_a_convention`).
 
 - **A paper that declared no English heard nothing of its journal's.** Since `english_variant`
   became optional, G4 compared a journal's English with the paper's only where the paper

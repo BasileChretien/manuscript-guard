@@ -79,6 +79,7 @@ from generated import (
     credited_plans,
     deposit_statements,
     dictionary_pairs,
+    escaped_backticks,
     generated,
     holds,
     laid_out,
@@ -549,6 +550,40 @@ def _the_mask_keeps_a_comment_s_line_breaks(patch: pytest.MonkeyPatch) -> None:
             chars[index] = chars[index] if chars[index] in "\r\n" else NUL
 
     patch.setattr(masking, "_blank", blank)
+
+
+@holds(100, escaped_backticks())
+def test_an_escaped_backtick_opens_no_code_span_and_code_ends_at_its_run(
+    drawn: tuple[str, list[int]],
+) -> None:
+    """`import` writes a backslash before every backtick typed in Word, and the backticks
+    were paired as code all the same, so a comparison between them was taken for one code
+    prints. A backtick after an odd run of backslashes opens no code span; inside code a
+    backslash prints, and the run after it closes the span. Every backslash that escapes a
+    comparison outside code is found, and none other."""
+    from manuscript_guard.text.masking import comparison_escapes
+
+    text, expected = drawn
+    assert comparison_escapes(text) == expected, text
+
+
+#: How the code spans were found before an escaped backtick was read as one printed.
+_PAIRED_RUNS = re.compile(r"(?<!`)(`+)(?!`)(?:[^\n]|\n(?![ \t]*\n))+?(?<!`)\1(?!`)")
+
+
+def _an_escaped_backtick_opens_a_code_span(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import masking
+
+    patch.setattr(masking, "_code_spans",
+                  lambda text: [match.span() for match in _PAIRED_RUNS.finditer(text)])  # fmt: skip
+
+
+def _a_backslash_before_a_closing_run_escapes_it(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import masking
+
+    # A backtick after a backslash read as escaped inside code too: a code span with one
+    # before its closing run runs on to the next run as long.
+    patch.setattr(masking, "_BACKTICKS", re.compile(r"(?<!\\)`+"))
 
 
 # ------------------------------------------------------------------------- the LaTeX reader
@@ -11756,6 +11791,14 @@ BROKEN = {
     "the mask keeps a comment's line breaks": (
         _the_mask_keeps_a_comment_s_line_breaks,
         test_the_mask_keeps_the_line_breaks_of_what_it_hides_but_a_comment_s,
+    ),
+    "an escaped backtick opens a code span": (
+        _an_escaped_backtick_opens_a_code_span,
+        test_an_escaped_backtick_opens_no_code_span_and_code_ends_at_its_run,
+    ),
+    "a backslash before a closing run escapes it": (
+        _a_backslash_before_a_closing_run_escapes_it,
+        test_an_escaped_backtick_opens_no_code_span_and_code_ends_at_its_run,
     ),
     "in LaTeX, a straight quote closes no quotation": (
         _a_straight_quote_closes_nothing,

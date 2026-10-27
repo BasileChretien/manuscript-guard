@@ -399,13 +399,50 @@ _KEY_LINE = re.compile(
 )
 
 _BACKSLASHES = re.compile(r"\\+(?=[<>])")
-# A run of backticks, closed by the next run exactly as long, within a paragraph: pandoc's
-# rule, less its fallbacks. It is not pandoc's reader: a `~~~` block, or a ```` ``` ```` one
-# with a blank line inside, is not seen as code here, nor is code handed over without its
-# fence, a listing's string or a figure script's. And the runs are paired in the text as it
-# stands, so a backtick inside a `~~~` block pairs with one in the prose after it, and a
-# code span there goes unseen. DESIGN.md's Known gaps has the rest.
-_CODE_SPAN = re.compile(r"(?<!`)(`+)(?!`)(?:[^\n]|\n(?![ \t]*\n))+?(?<!`)\1(?!`)")
+_BACKTICKS = re.compile(r"`+")
+_PARAGRAPH_BREAK = re.compile(r"\n[ \t]*\n")
+
+
+def _code_spans(text: str) -> list[tuple[int, int]]:
+    """Where inline code stands: a run of backticks, closed by the next run exactly as
+    long, within a paragraph, pandoc's rule less its fallbacks. A backtick after an odd run
+    of backslashes, outside code, is a backtick printed and opens nothing, so `` \\`` ``
+    opens with the rest of its run; inside code a backslash prints as typed, so one before
+    the closing run closes it all the same (`` `a\\` `` is the code "a\\").
+
+    It is not pandoc's reader: a `~~~` block, or a ```` ``` ```` one with a blank line
+    inside, is not seen as code here, nor is code handed over without its fence, a
+    listing's string or a figure script's. And the runs are paired in the text as it
+    stands, so a backtick inside a `~~~` block pairs with one in the prose after it, and a
+    code span there goes unseen. DESIGN.md's Known gaps has the rest.
+
+    A pattern paired the runs, and took an escaped backtick for one: `` (\\` ROR \\> 2 \\`) ``,
+    as `import` writes a backtick typed in Word, was code, and its `\\>` no escape."""
+    runs = [match.span() for match in _BACKTICKS.finditer(text)]
+    by_length: dict[int, list[int]] = {}
+    for index, (start, end) in enumerate(runs):
+        by_length.setdefault(end - start, []).append(index)
+    breaks = [match.start() for match in _PARAGRAPH_BREAK.finditer(text)]
+    spans: list[tuple[int, int]] = []
+    done = 0
+    for index, (start, end) in enumerate(runs):
+        if start < done:
+            continue
+        before = start
+        while before > done and text[before - 1] == "\\":
+            before -= 1
+        start += (start - before) % 2
+        same = by_length.get(end - start, [])
+        later = bisect_right(same, index)
+        if start == end or later == len(same):
+            continue
+        close_start, close_end = runs[same[later]]
+        ends = bisect_right(breaks, end - 1)
+        if ends < len(breaks) and breaks[ends] < close_start:
+            continue
+        spans.append((start, close_end))
+        done = close_end
+    return spans
 
 
 def comparison_escapes(text: str) -> list[int]:
@@ -424,10 +461,10 @@ def comparison_escapes(text: str) -> list[int]:
     """
     runs = list(_BACKSLASHES.finditer(text))
     if not runs:
-        # `_CODE_SPAN` backtracks on backtick runs that never close: 4 s for 80 KB of them,
-        # paid by `mask` and the classifier alike, in every paper, for escapes it held none of.
+        # A pattern that paired the runs backtracked on runs that never close: 4 s for 80 KB
+        # of them, paid by `mask` and the classifier alike, for escapes it held none of.
         return []
-    code = [m.span() for m in _CODE_SPAN.finditer(text)]
+    code = _code_spans(text)
     starts = [start for start, _end in code]
     found = []
     for run in runs:

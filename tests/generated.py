@@ -5533,6 +5533,38 @@ def addressed(draw: st.DrawFn) -> tuple[str, list[str]]:
     return text, keys
 
 
+# --------------------------------------------- escaped backticks beside an escaped comparison
+
+#: Pieces of a paragraph with backticks and escaped comparisons in them, each closing every
+#: code span it opens, with the places in it of the backslashes that escape a comparison: a
+#: comparison between backticks `import` escaped, as it writes one typed in Word, which
+#: open no code span; a code span closed by a run after a backslash, which code prints;
+#: code after a backtick escaped, and after a backslash printed; an escaped backtick after a
+#: run of three backslashes; and a comparison in code and out of it.
+ESCAPED_BACKTICKS = (
+    ("(\\` ROR \\> 2 \\`)", (8,)),
+    ("`ROR\\` and ROR \\> 2", (15,)),
+    ("\\``c \\> 4`", ()),
+    ("x\\\\`b \\> 1` y", ()),
+    ("\\\\\\` d \\> 5", (7,)),
+    ("`a \\> 3`", ()),
+    ("e \\> 6", (2,)),
+)  # fmt: skip
+
+
+@st.composite
+def escaped_backticks(draw: st.DrawFn) -> tuple[str, list[int]]:
+    """Every piece above in one paragraph, in an order and among words drawn each time, and
+    where each backslash that escapes a comparison stands."""
+    text, found = "", []
+    for piece, escapes in draw(st.permutations(ESCAPED_BACKTICKS)):
+        words = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=3)))
+        text += words + draw(st.sampled_from((" ", "\n", ", ")))
+        found += [len(text) + at for at in escapes]
+        text += piece + draw(st.sampled_from((" ", "\n", "; ")))
+    return text, found
+
+
 # ------------------------------------------------------------------------------ inputs
 
 

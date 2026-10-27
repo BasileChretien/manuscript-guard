@@ -45,7 +45,6 @@ from manuscript_guard.findings import WARN, Finding, Report
 from manuscript_guard.paths import lockfiles
 from manuscript_guard.pointers import pointer_at
 from manuscript_guard.sign_offs import Signable, digest_of, settle
-from manuscript_guard.text.reader import LATEX, manuscript_format
 from manuscript_guard.verify import _is_junction
 
 from .counts import GATE, ROLE, settled_small_counts
@@ -79,7 +78,11 @@ RESULTS_INPUT = "a results file of this project, deposited with the rest"
 DESIGN_INPUT = "the analysis plan or its record, deposited with the rest"
 #: The files a package writes of its own, at its root.
 WRITTEN = ("README.md", "CITATION.cff", "BOUND.md", "INPUTS.md", "paper.yaml", "MANIFEST.yaml",
-           "SHA256SUMS")  # fmt: skip
+           "SHA256SUMS", ".zenodo.json", "MODELS.md", "RELATIONS.md",
+           "ro-crate-metadata.json")  # fmt: skip
+#: What a package describes itself with besides CITATION.cff, by the option that asks for it:
+#: `--citation` adds .zenodo.json, and `--ro-crate` the crate, with the citation files.
+KINDS = ("", "citation", "ro-crate")
 GIT_SECONDS = 30
 
 
@@ -126,6 +129,8 @@ class Plan:
     report: Report
     signables: tuple[Signable, ...]
     with_manuscript: bool = False
+    #: "", "citation" or "ro-crate": what the package describes itself with (`KINDS`).
+    kind: str = ""
 
 
 def _digest(path: Path) -> str:
@@ -469,14 +474,15 @@ def _held_to_the_withheld(project: Project, inputs: list[Input]) -> list[Input]:
     ]
 
 
-def deposit_id(with_manuscript: bool) -> str:
+def deposit_id(with_manuscript: bool, kind: str = "") -> str:
     """The id the custodian signs a package off by: a package with the manuscript is
-    another package."""
-    return f"{DEPOSIT}-with-manuscript" if with_manuscript else DEPOSIT
+    another package, and so is one that describes itself with other files (`KINDS`)."""
+    said = f"{DEPOSIT}-with-manuscript" if with_manuscript else DEPOSIT
+    return f"{said}-{kind}" if kind else said
 
 
 def _deposit_signable(
-    project: Project, entries: list[Entry], with_manuscript: bool
+    project: Project, entries: list[Entry], with_manuscript: bool, kind: str = ""
 ) -> Signable | None:
     from manuscript_guard.panel.custodian import restricts_sending
 
@@ -490,7 +496,7 @@ def _deposit_signable(
         path=project.root / "paper.yaml",
     )  # fmt: skip
     digest = digest_of("deposit", sorted((entry.path, entry.sha256) for entry in entries))
-    return Signable(ROLE, deposit_id(with_manuscript), digest, (finding,))
+    return Signable(ROLE, deposit_id(with_manuscript, kind), digest, (finding,))
 
 
 def _licence_findings(project: Project, licence: Path | None) -> list[Finding]:
@@ -508,9 +514,14 @@ def _licence_findings(project: Project, licence: Path | None) -> list[Finding]:
     return found
 
 
-def plan_package(project: Project, results: Results, *, with_manuscript: bool = False) -> Plan:
-    """Everything the package would hold and leave out, and what stops it."""
+def plan_package(project: Project, results: Results, *, with_manuscript: bool = False,
+                 citation: bool = False, ro_crate: bool = False) -> Plan:  # fmt: skip
+    """Everything the package would hold and leave out, and what stops it. `citation` adds
+    .zenodo.json beside CITATION.cff; `ro_crate` adds ro-crate-metadata.json, RELATIONS.md
+    and, where the analysis fitted models, MODELS.md, and implies `citation`."""
     from .texts import generated_entries
+
+    kind = "ro-crate" if ro_crate else "citation" if citation else ""
 
     if not results.fragments:
         raise PackageError(f"no results in {project.path('results')}: there is nothing to "
@@ -528,11 +539,11 @@ def plan_package(project: Project, results: Results, *, with_manuscript: bool = 
                                 path=project.root, hint="run `git status` there: git may not "
                                 "be on PATH, or may refuse the folder as of dubious "
                                 "ownership"))  # fmt: skip
-    findings += _notes(project, inputs)
+    findings += _notes(project, inputs, kind)
     entries = sorted(collect.entries.values(), key=lambda entry: entry.path)
     findings += _names_taken(project, entries)
     entries += generated_entries(project, results, inputs, entries, with_manuscript,
-                                 in_git=tracked is not None)
+                                 in_git=tracked is not None, kind=kind)
     entries.sort(key=lambda entry: entry.path)
     signables: list[Signable] = []
     produced = {_key(f.path.relative_to(project.root).as_posix()):
@@ -543,7 +554,7 @@ def plan_package(project: Project, results: Results, *, with_manuscript: bool = 
     if small is not None:
         signables.append(small)
         findings += settled
-    deposit = _deposit_signable(project, entries, with_manuscript)
+    deposit = _deposit_signable(project, entries, with_manuscript, kind)
     if deposit is not None:
         signables.append(deposit)
         findings += settle(project, deposit)
@@ -552,7 +563,7 @@ def plan_package(project: Project, results: Results, *, with_manuscript: bool = 
                                                  inputs_withheld=len(away))  # fmt: skip
     withheld = collect.withheld + [Withheld(i.path, i.why) for i in away]
     return Plan(name_of(project), tuple(entries), tuple(sorted(withheld, key=lambda w: w.path)),
-                tuple(inputs), report, tuple(signables), with_manuscript)  # fmt: skip
+                tuple(inputs), report, tuple(signables), with_manuscript, kind)  # fmt: skip
 
 
 def _collect(collect: _Collector, project: Project, results: Results, inputs: list[Input],
@@ -616,9 +627,12 @@ def _names_taken(project: Project, entries: list[Entry]) -> list[Finding]:
     return found
 
 
-def _notes(project: Project, inputs: list[Input]) -> list[Finding]:
-    """A withheld input with no way to obtain it, no lockfile, and a manuscript BOUND.md
-    cannot read."""
+def _notes(project: Project, inputs: list[Input], kind: str = "") -> list[Finding]:
+    """A withheld input with no way to obtain it, no lockfile, a part of a LaTeX manuscript
+    whose bindings BOUND.md cannot place, and licences a Zenodo record cannot take."""
+    from .bound import latex_unread
+    from .metadata import licence_note
+
     found = []
     away = sum(not i.included for i in inputs)
     if away and not settings(project).get("request"):
@@ -631,10 +645,18 @@ def _notes(project: Project, inputs: list[Input]) -> list[Finding]:
                              "requirements file or lockfile at its root), so the package says "
                              "only the language versions the results were written with",
                              severity=WARN, path=project.root))  # fmt: skip
-    if manuscript_format(project.path("manuscript")) == LATEX:
-        found.append(Finding(GATE, "package-bound-not-read", "BOUND.md does not list the "
-                             "results a LaTeX manuscript binds: the reading of its bindings "
-                             "is not built yet", severity=WARN))  # fmt: skip
+    unread = latex_unread(project)
+    if unread is not None:
+        found.append(Finding(GATE, "package-bound-not-read", "BOUND.md lists the bindings of "
+                             f"the LaTeX manuscript as far as its reader reads it: past "
+                             f"{unread}, which it refuses, each binding is found by its shape, "
+                             "and the heading over it is not known", severity=WARN,
+                             hint="put the part right, as `check` says of it, and package "
+                             "again"))  # fmt: skip
+    note = licence_note(project) if kind else None
+    if note is not None:
+        found.append(Finding(GATE, "package-zenodo-licence", note, severity=WARN,
+                             path=project.root / "paper.yaml"))  # fmt: skip
     return found
 
 
@@ -645,10 +667,13 @@ def package_signables(project: Project, results: Results) -> list[Signable]:
         return []
     found: dict[str, Signable] = {}
     for with_manuscript in (False, True):
-        for signable in plan_package(project, results, with_manuscript=with_manuscript).signables:
-            found.setdefault(signable.id, signable)
+        for kind in KINDS:
+            planned = plan_package(project, results, with_manuscript=with_manuscript,
+                                   citation=kind == "citation", ro_crate=kind == "ro-crate")
+            for signable in planned.signables:
+                found.setdefault(signable.id, signable)
     return list(found.values())
 
 
-__all__ = ["DEPOSIT", "Entry", "Input", "PackageError", "Plan", "Withheld", "deposit_id",
-           "package_signables", "plan_package"]  # fmt: skip
+__all__ = ["DEPOSIT", "KINDS", "Entry", "Input", "PackageError", "Plan", "Withheld",
+           "deposit_id", "package_signables", "plan_package"]  # fmt: skip

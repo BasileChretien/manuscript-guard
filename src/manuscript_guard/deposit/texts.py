@@ -15,7 +15,6 @@ import yaml
 
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import Fragment, Results
-from manuscript_guard.text.sections import split_sections
 
 from .plan import Entry, Input, generated, settings
 
@@ -102,33 +101,15 @@ def project_file(project: Project) -> str:
     )
 
 
-def _section_at(text: str, line: int) -> str:
-    title = ""
-    for section in split_sections(text):
-        if section.line <= line:
-            title = section.title
-    return title or "before the first heading"
-
-
 def bound(project: Project, results: Results) -> str:
     """BOUND.md: each results value, table and figure the manuscript binds, what it prints,
-    and where."""
-    from manuscript_guard.gates.numbers import source_files
-    from manuscript_guard.text.placeholders import parse
+    and where, in a Markdown manuscript or a LaTeX one (`bound.py`)."""
+    from .bound import bound_rows
 
     rows: dict[str, list[str]] = {"results": [], "table": [], "figure": []}
-    folder = project.path("manuscript")
-    for path in source_files(folder) if folder.is_dir() else ():
-        try:
-            text = path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
-            continue
-        shown = path.relative_to(project.root).as_posix()
-        for placeholder in parse(text)[0]:
-            if placeholder.namespace not in rows:
-                continue
-            where = f"{shown}, {_cell(_section_at(text, placeholder.line))}"
-            rows[placeholder.namespace].append(_bound_row(project, results, placeholder, where))
+    for found in bound_rows(project):
+        where = f"{found.file}, {_cell(found.section)}"
+        rows[found.namespace].append(_bound_row(project, results, found, where))
     printed = len({row.split(" | ")[0] for row in rows["results"]})
     out = ["# The results the paper prints", "",
            "Each value, table and figure of the results that the manuscript binds, with what "
@@ -211,7 +192,17 @@ def _licence_name(entries: list[Entry]) -> str:
     return next((entry.path for entry in entries if entry.why == "the licence"), "LICENSE")
 
 
-def _contents(entries: list[Entry]) -> list[str]:
+#: Rows of the table of contents for the files an option adds, by their names.
+DESCRIBED = {
+    ".zenodo.json": "the metadata a Zenodo record of this package is made from",
+    "MODELS.md": "each model the analysis fitted, as `manuscript-guard models` prints it",
+    "ro-crate-metadata.json": "this package described as an RO-Crate: its files, the runs "
+    "that wrote the results and the drawings of the figures, and the authors",
+    "RELATIONS.md": "what ro-crate-metadata.json does not state, and why",
+}
+
+
+def _contents(entries: list[Entry], added: tuple[str, ...] = ()) -> list[str]:
     out = ["| Folder or file | What it holds |", "|---|---|"]
     for prefix, said in FOLDERS:
         if any(entry.path.startswith(prefix) for entry in entries):
@@ -230,11 +221,12 @@ def _contents(entries: list[Entry]) -> list[str]:
         f"| `{_licence_name(entries)}`, `CITATION.cff` | the terms of reuse, and how to "
         "cite this package |",
     ]
+    out += [f"| `{name}` | {DESCRIBED[name]} |" for name in added]
     return out
 
 
 def readme(project: Project, results: Results, inputs: list[Input], entries: list[Entry],
-           with_manuscript: bool, in_git: bool) -> str:  # fmt: skip
+           with_manuscript: bool, in_git: bool, added: tuple[str, ...] = ()) -> str:  # fmt: skip
     from .readme import readme_text
 
     documents = _documents(results)
@@ -243,21 +235,55 @@ def readme(project: Project, results: Results, inputs: list[Input], entries: lis
     tools = [(d.get("provenance") or {}).get("tool") or {} for d in documents.values()]
     versions = sorted({str(tool["version"]) for tool in tools if tool.get("version")})
     return readme_text(project, results, inputs, entries, with_manuscript,
-                       contents=_contents(entries), sessions=sessions, versions=versions,
+                       contents=_contents(entries, added), sessions=sessions, versions=versions,
                        in_git=in_git)
+
+
+def added_files(results: Results, kind: str) -> tuple[str, ...]:
+    """The files an option adds to the package, in the order the README lists them."""
+    names: list[str] = []
+    if kind in ("citation", "ro-crate"):
+        names.append(".zenodo.json")
+    if kind == "ro-crate":
+        names += (["MODELS.md"] if results.models else []) + ["ro-crate-metadata.json",
+                                                               "RELATIONS.md"]  # fmt: skip
+    return tuple(names)
 
 
 def generated_entries(project: Project, results: Results, inputs: list[Input],
                       entries: list[Entry], with_manuscript: bool, *,
-                      in_git: bool) -> list[Entry]:  # fmt: skip
-    told = readme(project, results, inputs, entries, with_manuscript, in_git)
-    return [
+                      in_git: bool, kind: str = "") -> list[Entry]:  # fmt: skip
+    """The files the package writes of its own. `kind` is "", "citation" or "ro-crate"
+    (`plan.KINDS`); the crate is made last, since it names every other file by its digest."""
+    added = added_files(results, kind)
+    told = readme(project, results, inputs, entries, with_manuscript, in_git, added)
+    made = [
         generated("README.md", told, "how to run it again"),
         generated("CITATION.cff", citation(project), "how to cite it"),
         generated("BOUND.md", bound(project, results), "the results the paper prints"),
         generated("INPUTS.md", inputs_text(project, inputs), "the inputs, and where they are"),
         generated("paper.yaml", project_file(project), "the project file verify reads"),
     ]
+    if ".zenodo.json" in added:
+        from .metadata import zenodo
+
+        made.append(generated(".zenodo.json", zenodo(project), "how a Zenodo record of it is "
+                              "made"))  # fmt: skip
+    if "MODELS.md" in added:
+        from manuscript_guard.cards import models_text
+
+        made.append(generated("MODELS.md", models_text(project, results) or "",
+                              "the models the analysis fitted"))  # fmt: skip
+    if kind == "ro-crate":
+        from .crate import CRATE, RELATIONS, crate_files
+
+        every = sorted([*entries, *made], key=lambda entry: entry.path)
+        relations, crate = crate_files(project, results, every, inputs, with_manuscript)
+        made.append(generated(RELATIONS, relations, "what ro-crate-metadata.json does not "
+                              "state, and why"))  # fmt: skip
+        made.append(generated(CRATE, crate, "the package described as an RO-Crate"))
+    return made
 
 
-__all__ = ["RUN", "bound", "citation", "generated_entries", "inputs_text", "project_file"]
+__all__ = ["RUN", "added_files", "bound", "citation", "generated_entries", "inputs_text",
+           "project_file"]  # fmt: skip

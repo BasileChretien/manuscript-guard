@@ -8059,6 +8059,38 @@ other. The commit, the tree's state and the version of the tool that packaged it
 MANIFEST.yaml, which nobody signs. Each file copied is hashed again in the package and held to
 the plan's digest; one that changed in between stops the package.
 
+**A crate states what the files show, and RELATIONS.md the rest** (Task 4, the design
+Basile accepted on 2026-10-28). Each option is the author's to ask for, and the package
+without them is the bytes it was. `--citation` adds `.zenodo.json` (`deposit/metadata.py`):
+the authors as "Family, Given" with their ORCID iDs and affiliations, the keywords, the
+licence, the DOI, and as related works only the DOIs of the data sources
+`design/data_sources.yaml` chose, under a fixed sentence about the package, since what the
+paper found is the paper's to say. `--ro-crate` adds `ro-crate-metadata.json`, an RO-Crate
+1.1 and a Process Run Crate (`deposit/crate.py`), with `RELATIONS.md` and, where models were
+fitted, `MODELS.md`, the G15 cards as `models` prints them (one function writes both,
+`cards.py`). Every entity is made from a record: the authors with no address, each file of
+the package with its digest and size, each run of a script from its fragment, each drawing
+of a figure from its `*.render.json`, each withheld input by its recorded digest with
+`package.request` as its conditions of access, and the paper as a contextual article based
+on the package, its source a part of it only with `--with-manuscript`. A relationship is in
+`@graph` only where it holds now: the script in the package is the one whose
+`generated_by_sha256` its fragment recorded, an input has the digest the run recorded, a
+fragment the digest of its `.sha256`, a figure and its script the digests its
+`*.render.json` recorded. A crate that states a link the record names and the files do not
+bear out describes a package nobody ran; so each such link, and each no record makes, is a
+row of RELATIONS.md, under "not as recorded" or "not recorded". `datePublished` is
+`package.date`, a new optional field, or the day the latest results were written; no file
+reads the clock. JSON is written with its keys sorted, the entities in order and `\n` line
+ends, so that two packages of an unchanged project, made in two folders, are one set of
+bytes. `--root-citation` writes `CITATION.cff` and `.zenodo.json` at the project's root
+only where none is (decision 7(a)): one there is the author's, is never written over, and
+the fields where it differs are named. The crate and the citation files are files of the
+package, so where the custodian restricts sending a package with them is another package to
+sign off (`PACKAGE/custodian/deposit-citation`, `-ro-crate`). The tests are in
+`tests/test_ro_crate.py`, and the corruption cases, a script edited after its run, an input
+changed and a figure redrawn, each left out of `@graph` and listed in RELATIONS.md, in
+`tests/test_corruption.py`.
+
 What this rests on: deterministic tests in CI (`tests/test_package.py`): the example packaged,
 unzipped and run again by `verify` from the unpacked folder with every value reproduced; an R
 analysis the same way where R is installed; a restricted input, an input nobody declared
@@ -16166,8 +16198,29 @@ Open, recorded as each change landed:
   the R packages the R emitter recorded and the versions the analysis declared as software.
   An R analysis that sources the emitter from a path outside the project, as the tests do,
   runs only where that path is.
-- **BOUND.md does not read a LaTeX manuscript.** The reading of its bindings is not built
-  yet, and the package says so with a warning (`package-bound-not-read`).
+- **BOUND.md places a LaTeX binding only as far as the reader reads the file.** Past a part
+  the LaTeX reader refuses, a binding is found by its shape, as the gates find it, and the
+  heading over it is the last one read before the refusal; the package warns of it
+  (`package-bound-not-read`) and names the part. A file nothing inputs is not printed, and
+  BOUND.md leaves its bindings out.
+- **The crate states what the records hold, and the records hold less than a reader may
+  think.** Which results a figure was drawn from is recorded nowhere (`render.record` takes
+  the script and the files drawn), so RELATIONS.md always lists it as not recorded; nor which
+  inputs the data dictionary or the record of the data sources describe. `datePublished` is
+  the day the latest results were written where `package.date` is not given, which is not
+  the day the deposit is published. An input the package withholds is linked to its run only
+  where the file is on the computer that made the package and has the recorded digest, so a
+  package made where the data are not has no such link and is other bytes than one made
+  where they are, and needs the custodian's sign-off again. The crate does not name
+  MANIFEST.yaml and SHA256SUMS, which are written after it and name it by its digest. It was
+  written to the RO-Crate 1.1 specification and the Process Run Crate 0.5 profile by hand
+  and has not been run through an RO-Crate validator, which the tests do not install; the
+  digest term `sha256` is mapped to the Workflow Run Crate's in the crate's own context.
+- **.zenodo.json is the legacy deposition API's metadata, as written down, not as Zenodo was
+  seen to read it.** It calls the deposit `software`, as CITATION.cff does, names the licence
+  in Zenodo's small-letter SPDX spelling and none where `package.licence` names several (the
+  package warns, `package-zenodo-licence`), and takes related works only from the data
+  sources the record chose. Nothing sends it to Zenodo, and no test has.
 - **A proof is compared as far as its text can be read, and no further.** `proof` reads what
   `pdftotext` or pypdf gives. A figure's picture, the text inside a figure, an equation and
   emphasis (an italic P, a gene's name) are not read; a figure is held to its caption alone. A
@@ -16717,6 +16770,14 @@ What papers converted from Word showed (see "What papers converted from Word sho
   address at a bare IP number, is read as a number.
 
 Closed since, and why each mattered (an open gap goes above this line):
+
+- **BOUND.md read no LaTeX manuscript.** It listed nothing a LaTeX paper binds and warned
+  (`package-bound-not-read`) on every LaTeX project. Its rows are read now by `bound_rows`
+  (`deposit/bound.py`), from a Markdown file as `placeholders.parse` reads it and from a LaTeX
+  one as the gates' reader does, each binding with the nearest heading over it and whether
+  the supplement prints it; the warning is kept for a manuscript holding a part the reader
+  refuses, where the heading of what follows is not known
+  (`tests/test_ro_crate.py`).
 
 - **A paper that declared no English heard nothing of its journal's.** Since `english_variant`
   became optional, G4 compared a journal's English with the paper's only where the paper

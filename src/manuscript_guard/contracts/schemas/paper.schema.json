@@ -123,6 +123,12 @@
           "minLength": 1,
           "description": "How to obtain the inputs the package withholds: who to apply to, and on what terms. Required by `package` when it withholds any."
         },
+        "date": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "description": "The day the deposit is published, in ISO 8601 (2026-10-28): ro-crate-metadata.json gives it as datePublished and .zenodo.json as publication_date. Without it the crate is dated the day the latest results were written, and .zenodo.json carries no date. The tool reads no clock."
+        },
         "doi": {
           "type": "string",
           "pattern": "^10\\.\\d{4,9}/\\S+$",

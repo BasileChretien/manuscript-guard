@@ -1,0 +1,62 @@
+# Depositing the code and the results
+
+`manuscript-guard package` writes `build/package/<name>/` and a `.zip` of it: the analysis
+scripts, the results and their digests, the figure scripts and figures, the plan, the
+literature ledger, the lockfiles and the licence, with a README on running it again,
+`CITATION.cff`, `BOUND.md` (each result the paper prints, and where) and `INPUTS.md` (every
+input the analysis read, and how to obtain the ones that are not there). An input goes in
+only when the analysis declared it synthetic or `paper.yaml` lists it in `package.share`; one
+declared restricted never does. The tool uploads nothing: depositing is yours.
+
+```bash
+manuscript-guard package --dry-run      # what would go in and what would be left out
+manuscript-guard package                # the folder and the .zip
+manuscript-guard package --ro-crate     # with the files below
+```
+
+`BOUND.md` reads a Markdown manuscript and a LaTeX one alike. Where the LaTeX reader refuses
+a part of the manuscript, the bindings past it are found by their shape and the heading over
+each is not known, and the package warns of it (`package-bound-not-read`).
+
+## The files the options add
+
+Each is made from the project's records, holds no date the records do not give and no
+address, and is the same bytes from one run to the next and from one folder to another.
+
+| Option | Adds |
+|---|---|
+| `--citation` | `.zenodo.json`, the metadata a Zenodo record of the package is made from: the authors as "Family, Given" with their ORCID iDs and affiliations, the keywords, the licence, the package's DOI, and as related works the DOIs of the data sources `design/data_sources.yaml` chose. Its description is a fixed sentence about the package. |
+| `--ro-crate` | `ro-crate-metadata.json`, the package described as an [RO-Crate 1.1](https://w3id.org/ro/crate/1.1) and a Process Run Crate; `RELATIONS.md`, what the crate does not state and why; `MODELS.md`, each model the analysis fitted as `manuscript-guard models` prints it. It implies `--citation`. |
+| `--root-citation` | `CITATION.cff` and `.zenodo.json` at the project's root as well, each only where none is there, which is what GitHub and Zenodo's GitHub integration read. One already there is never written over; the fields where it differs from the package's are named. It implies `--citation`. |
+
+The package holds the citation files whatever is asked for at the root.
+
+## What the crate states, and what it leaves out
+
+The crate names every file of the package with its SHA-256 and size, the authors by their
+ORCID iDs, each run of a script that wrote results, each drawing of a figure, and each input
+the package withholds, by the digest the run recorded and with `package.request` as how to
+obtain it. A relationship is stated only where the files show it holds now:
+
+- a run's script, where the script in the package is the one whose digest its results
+  recorded;
+- each input a run read, where the file in the package, or on your computer for one the
+  package withholds, has the digest the run recorded;
+- the results a run wrote, where the results file has the digest of its `.sha256` file;
+- a figure's script and the files it drew, where they have the digests its `*.render.json`
+  recorded.
+
+Every other relationship is in `RELATIONS.md`: a script edited after its run, an input
+changed since, a figure drawn again by hand, and what no record says, such as which results
+a figure was drawn from.
+
+`datePublished` is `package.date` where `paper.yaml` gives it, and otherwise the day the
+latest results were written. The tool reads no clock.
+
+## A custodian's sign-off
+
+Where the data custodian restricts sending, the package is written only once they have
+signed off its files and their digests. The crate and the citation files are files of the
+package, so a package with them is signed off apart from one without:
+`PACKAGE/custodian/deposit-citation` and `PACKAGE/custodian/deposit-ro-crate`, with
+`-with-manuscript` before the suffix for the package that carries the manuscript.

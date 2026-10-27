@@ -52,9 +52,10 @@ REQUIRED = (
     ("exposure", r"(?i)\bexposure|intervention|predictor\b", "what is being compared"),
     ("outcome", r"(?i)\boutcome|endpoint\b", "what is being measured"),
     ("analysis", r"(?i)\banalysis|statistical\b", "the estimator and the model"),
+    # Not "Standard deviation of the dose", which is a statistic, not a change to the plan.
     (
         "deviations",
-        r"(?i)\bdeviation|changes? (from|to) the plan|amendments?\b",
+        r"(?i)(?<!standard\s)\bdeviation|changes? (from|to) the plan|amendments?\b",
         "what changed after the plan was agreed, or that nothing did",
     ),
 )

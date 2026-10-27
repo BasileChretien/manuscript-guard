@@ -78,6 +78,7 @@ from generated import (
     count_cells,
     credited_plans,
     deposit_statements,
+    deviation_titled,
     dictionary_pairs,
     escaped_backticks,
     generated,
@@ -2949,6 +2950,28 @@ def test_a_deviation_rewrapped_says_what_it_said_and_a_word_more_does_not(
     plan, rewrapped, longer = drawn
     assert deviations_said(plan) == deviations_said(rewrapped), rewrapped
     assert deviations_said(plan) != deviations_said(longer), longer
+
+
+@holds(100, deviation_titled())
+def test_the_deviations_are_known_by_their_title_and_a_standard_deviation_is_not(
+    drawn: tuple[str, list[str]],
+) -> None:
+    """G12 found the Deviations by "deviation" anywhere in a title, so a section on the
+    dose's standard deviation was the plan's Deviations. What a plan says under each title
+    of its Deviations is read, numbered or not and in any case, and nothing under a title
+    that names a standard deviation alone."""
+    from manuscript_guard.gates.design import deviations_said
+
+    plan, said = drawn
+    assert deviations_said(plan) == " ".join(said), plan
+
+
+def _a_standard_deviation_is_a_deviation(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import design
+
+    patch.setattr(design, "REQUIRED", tuple(
+        (name, rule.replace(r"(?<!standard\s)", ""), why) for name, rule, why in design.REQUIRED
+    ))  # fmt: skip
 
 
 # ------------------------------------------------------------- the results a plan promises
@@ -11787,6 +11810,10 @@ BROKEN = {
     "the mask hides the line breaks of the front matter and of a listing": (
         _the_mask_hides_every_line_break,
         test_the_mask_keeps_the_line_breaks_of_what_it_hides_but_a_comment_s,
+    ),
+    "a standard deviation is a deviation": (
+        _a_standard_deviation_is_a_deviation,
+        test_the_deviations_are_known_by_their_title_and_a_standard_deviation_is_not,
     ),
     "the mask keeps a comment's line breaks": (
         _the_mask_keeps_a_comment_s_line_breaks,

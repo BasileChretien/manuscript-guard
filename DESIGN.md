@@ -11592,8 +11592,6 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   spelt in two cases is two inputs, and a path in another case than the disk's names no
   file in a clone on Linux. A `.txt` input is digested as its bytes, so a copy checked out
   with CRLF line ends reads as changed.
-- **The plan's sections.** A heading "### Standard deviation of the dose" is read by G12 as
-  a Deviations section.
 - **Inputs kept by Git LFS or git-annex.** Results written from an analysis run on an
   unfetched pointer read as `input-changed`; a pointer's size written as "²" raises; a
   large input is hashed twice.
@@ -16744,6 +16742,12 @@ Closed since, and why each mattered (an open gap goes above this line):
   the symbols and the one-letter ones a power below nought tells from a word ("mg L-1",
   "µg m-3"), and compared as the same divisor after a slash, both ways
   (`test_what_the_unit_reading_gets_wrong_is_pinned`).
+
+- **The plan's sections.** A heading "### Standard deviation of the dose" was read by G12
+  as a Deviations section, since "deviation" anywhere in a title named them, so a plan with
+  no word on what changed after it was agreed was said to have one. "deviation" after
+  "standard" names no Deviations now; "Protocol deviations" and "Deviations from the plan"
+  still do (`test_a_standard_deviation_is_no_deviation_from_the_plan`).
 
 - **An escaped backtick opened a code span for G2's escapes.** `import` writes a backslash
   before every backtick typed in Word, and the pattern that paired backtick runs took the

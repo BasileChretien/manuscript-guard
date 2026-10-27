@@ -2604,6 +2604,33 @@ def methods_titled(draw: st.DrawFn) -> list[tuple[str, bool]]:
     return draw(st.permutations(written))
 
 
+#: Titles of a plan's Deviations, and titles that hold "deviation" as a statistic's name.
+DEVIATION_TITLES = (
+    "Deviations from the plan", "Protocol deviations", "Changes to the plan", "Amendments",
+    "Standard deviation and deviations from the plan",
+)  # fmt: skip
+NOT_DEVIATION_TITLES = (
+    "Standard deviation of the dose", "Standard deviations", "Pooled standard deviation",
+)  # fmt: skip
+
+
+@st.composite
+def deviation_titled(draw: st.DrawFn) -> tuple[str, list[str]]:
+    """A plan with a section under every title above, numbered or not, written as drawn,
+    upper case, lower case or as it stands, in an order drawn, each saying a word of its
+    own; and the words said under the Deviations, in order."""
+    planted = [(title, True) for title in DEVIATION_TITLES]
+    planted += [(title, False) for title in NOT_DEVIATION_TITLES]
+    text, said = "# Analysis plan\n\n", []
+    for number, (title, deviation) in enumerate(draw(st.permutations(planted))):
+        title = draw(st.sampled_from(("", "7. "))) + title
+        title = draw(st.sampled_from((title, title.upper(), title.lower())))
+        text += f"## {title}\n\nword{number}\n\n"
+        if deviation:
+            said.append(f"word{number}")
+    return text, said
+
+
 #: Names a number stands in, which `check` and the audit read as no number: an e-mail
 #: address (structural) and an interleukin, abbreviated or written out (a term). And what
 #: is a number however near it stands: a count, and digits round an `@` with no domain.

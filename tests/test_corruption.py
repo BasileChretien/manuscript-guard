@@ -22072,6 +22072,24 @@ def test_a_plan_is_asked_for_what_its_design_needs(project: Path) -> None:
                                     "randomisation"]  # fmt: skip
 
 
+@pytest.mark.parametrize(
+    "title", ["Standard deviation of the dose", "Standard deviations", "standard\tdeviation"]
+)
+def test_a_standard_deviation_is_no_deviation_from_the_plan(project: Path, title: str) -> None:
+    """G12 found the Deviations by "deviation" anywhere in a title, so a plan with a section
+    on the dose's standard deviation, and none on what changed after it was agreed, was
+    said to have one."""
+    plan = project / "design" / "plan.md"
+    text = plan.read_text(encoding="utf-8")
+    assert "## Deviations from the plan" in text
+    plan.write_text(text.replace("## Deviations from the plan", f"## {title}"), encoding="utf-8")
+    assert _plan_asked(project) == ["deviations"]
+    plan.write_text(text.replace("## Deviations from the plan",
+                                 f"## {title}\n\nWords.\n\n## Protocol deviations"),
+                    encoding="utf-8")  # fmt: skip
+    assert _plan_asked(project) == []
+
+
 def test_a_section_the_design_needs_says_where_it_comes_from(project: Path) -> None:
     from manuscript_guard.gates import check_design
 

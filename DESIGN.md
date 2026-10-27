@@ -6830,7 +6830,7 @@ and the same items fail from `drafting` onwards.
 ## The commands are listed in six groups
 
 By October 2026 the tool had 37 commands an author could run, and `manuscript-guard --help`
-printed them in the order they were added to the parser, `check` beside `palettes` and
+printed them in the order they were added to the parser, `stages` beside `palettes` and
 `sync-bib` after `build`. Someone looking for the command that answers a co-author had to
 read the whole list. The top-level help now lists them under six headings, in
 `cli.COMMAND_GROUPS`: Setup & Guide, Checking & Audit, Analysis & Data, Literature,

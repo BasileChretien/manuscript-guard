@@ -1479,6 +1479,11 @@ def test_every_command_line_parses_as_it_did_before_the_commands_were_grouped() 
     recorded = json.loads(COMMAND_LINES.read_text(encoding="utf-8"))
     assert len({entry["argv"][0] for entry in recorded}) == 38, "every command of 40dcb675"
     parser = build_parser()
+    # What the sampler draws from 40dcb675's parser: none of it left out, and nothing in it
+    # the sampler would not draw from today's.
+    assert len(recorded) == 218, "every line recorded at 40dcb675"
+    sampled = {tuple(argv) for argv in sample_command_lines(parser)}
+    assert [entry["argv"] for entry in recorded if tuple(entry["argv"]) not in sampled] == []
     changed = []
     for entry in recorded:
         namespace = vars(parser.parse_args(entry["argv"]))

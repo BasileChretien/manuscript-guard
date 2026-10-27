@@ -1492,10 +1492,28 @@ def _unattended() -> bool:
     )
 
 
+#: Files an editor or the system writes beside the author's, which no gate reads: Windows'
+#: thumbnails and folder settings, and compiled Python outside its cache. The names the
+#: reproducibility package leaves out (`deposit/plan.py`'s `JUNK_*`) are all here or hidden,
+#: which a test holds; they are not imported from there, since that module brings in the
+#: gates, half a second or more at the end of every turn.
+_LEFT_BESIDE = frozenset({"Thumbs.db", "desktop.ini", "__pycache__"})
+_LEFT_BESIDE_SUFFIXES = (".pyc", ".pyo")
+
+
 def _not_the_projects(name: str) -> bool:
-    """A hidden file or folder, or Python's cache of compiled code: written beside a project's
-    files by the tools that run them, and read by no gate."""
-    return name.startswith(".") or name == "__pycache__"
+    """A hidden file or folder, Python's cache of compiled code, or what an editor or the
+    system leaves beside a file: Word's owner file while a document is open (`~$main.docx`),
+    Emacs's auto-save (`#main.md#`) and an editor's backup (`main.md~`). Each is written
+    beside a project's files by the tools that open or run them, and read by no gate, and
+    each counted as a change, so the line followed a turn that changed nothing."""
+    return (
+        name.startswith((".", "~$"))
+        or name.endswith("~")
+        or (len(name) > 1 and name.startswith("#") and name.endswith("#"))
+        or name in _LEFT_BESIDE
+        or name.endswith(_LEFT_BESIDE_SUFFIXES)
+    )
 
 
 def _watched_folders(root: Path, before: dict) -> list[Path]:

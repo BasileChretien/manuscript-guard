@@ -5516,6 +5516,181 @@ def _an_item_of_a_list_opens_one(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(reference_lists_module, "_in_a_list", lambda lines, number: False)
 
 
+# ---------------------------------------------- the audit's entries, intervals and markers
+
+# Imported here, not at the top, to keep clear of the import block other branches edit.
+from generated import (  # noqa: E402
+    audit_entries,
+    docx_reference_ends,
+    glued_intervals,
+    printed_markers,
+)
+
+from manuscript_guard import audit as audit_module  # noqa: E402
+
+_WORD_NAMESPACE = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+
+
+def _docx_of(path: Path, paragraphs: list[str | tuple[str, str]]) -> Path:
+    """A .docx of `paragraphs` with no styles, each pair a table of one row of two cells."""
+    import zipfile
+    from xml.sax.saxutils import escape
+
+    def cell(text: str) -> str:
+        return f"<w:tc><w:p><w:r><w:t>{escape(text)}</w:t></w:r></w:p></w:tc>"
+
+    body = "".join(
+        f"<w:tbl><w:tr>{cell(each[0])}{cell(each[1])}</w:tr></w:tbl>" if isinstance(each, tuple)
+        else f"<w:p><w:r><w:t xml:space=\"preserve\">{escape(each)}</w:t></w:r></w:p>"
+        for each in paragraphs
+    )  # fmt: skip
+    with zipfile.ZipFile(path, "w") as archive:
+        document = f"<w:document {_WORD_NAMESPACE}><w:body>{body}</w:body></w:document>"
+        archive.writestr("word/document.xml", document)
+    return path
+
+
+def _listed(papers: list[Path], figures: list[Path] | None = None) -> list[str]:
+    """What the audit lists as found in no output, given none."""
+    return sorted(c.text for c in audit_module.audit(papers, [], figures=figures).unmatched)
+
+
+@holds(100, audit_entries())
+def test_an_entry_of_each_style_is_known_by_its_shape_and_no_lookalike_is(
+    drawn: list[tuple[str, bool]],
+) -> None:
+    """Where no heading says where the list is, a book, a chapter, a web page in four styles,
+    an article online first, the BMJ's entry with no full stop before its year and Harvard's
+    with none after it are each known by their shape, and a caption or a sentence with some
+    of their parts is not (`looks_like_reference`)."""
+    assert [(line, audit_module.looks_like_reference(line)) for line, _ in drawn] == drawn
+
+
+def _without(patch: pytest.MonkeyPatch, name: str, part: str, instead: str = "") -> None:
+    """The audit's pattern `name` with `part` of it replaced."""
+    pattern = getattr(audit_module, name).pattern
+    assert pattern.count(part) == 1, (name, part)
+    patch.setattr(audit_module, name, re.compile(pattern.replace(part, instead)))
+
+
+_NO_MONTH = r"(?!(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\b)"
+
+
+def _no_web_page_is_an_entry(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(audit_module, "_WEB_ENTRY", re.compile("(?!)"))
+
+
+def _an_entry_needs_a_stop_before_its_year(patch: pytest.MonkeyPatch) -> None:
+    _without(patch, "_VANCOUVER_ENTRY", rf"|\s{_NO_MONTH}[A-Z][A-Za-z]{{0,30}}\s+", "|(?!)")
+
+
+def _a_month_is_a_journal_s_name(patch: pytest.MonkeyPatch) -> None:
+    _without(patch, "_VANCOUVER_ENTRY", _NO_MONTH)
+
+
+def _a_book_is_no_entry(patch: pytest.MonkeyPatch) -> None:
+    _without(patch, "_VANCOUVER_ENTRY", r"|:\s?[", r"|(?!):\s?[")
+
+
+def _an_article_online_first_is_no_entry(patch: pytest.MonkeyPatch) -> None:
+    _without(patch, "_VANCOUVER_ENTRY", r"\.\s+(?i:doi\b|https?://|pmid\b|epub\b)[^\n]*$", "(?!)")
+
+
+def _harvard_s_year_needs_its_full_stop(patch: pytest.MonkeyPatch) -> None:
+    _without(patch, "_REFERENCE_ENTRY", r"(?:\.|(?=\s+[", r"(?:\.|(?!)(?=\s+[")
+
+
+@holds(100, glued_intervals())
+def test_an_interval_after_a_value_in_any_format_is_told_from_a_citation(
+    drawn: tuple[str, list[tuple[int, int]]],
+) -> None:
+    """A bracket of whole numbers after a value is an interval where it encloses the value,
+    whether the value has a decimal point or a decimal comma, is grouped in thousands, or
+    has a percent sign spaced from it, and a citation where it does not (`_intervals`)."""
+    text, expected = drawn
+    assert audit_module._intervals(text) == expected, text
+
+
+def _a_percent_sign_must_touch_its_value(patch: pytest.MonkeyPatch) -> None:
+    _without(patch, "_AFTER_A_VALUE", r"(?:\s?%)?", "%?")
+
+
+def _a_decimal_comma_ends_the_value(patch: pytest.MonkeyPatch) -> None:
+    _without(patch, "_AFTER_A_VALUE", r"(?P<value>\d+(?:[.,]\d+)?)", r"(?P<value>\d+(?:\.\d+)?)")
+
+
+def _a_thousands_comma_is_read_as_a_decimal_one(patch: pytest.MonkeyPatch) -> None:
+    read = audit_module._encloses
+
+    def encloses(match: re.Match[str]) -> bool:
+        if not match["grouped"]:
+            return read(match)
+        low, high = (int(match[name].replace(",", "")) for name in ("grouped_low", "grouped_high"))
+        return low <= float(match["grouped"].replace(",", ".")) <= high
+
+    patch.setattr(audit_module, "_encloses", encloses)
+
+
+@holds(30, printed_markers())
+def test_the_markers_of_an_html_comment_hide_nothing_in_word_or_a_figure(
+    drawn: tuple[list[str], list[str]],
+) -> None:
+    """A .docx and a figure print `<!--` and `-->` as typed: every number beside them, or
+    between them in one paragraph or across two, is listed, and an address between them is
+    still masked, as one is anywhere (`_masked`)."""
+    import tempfile
+    from xml.sax.saxutils import escape
+
+    lines, planted = drawn
+    with tempfile.TemporaryDirectory() as folder:
+        docx = _docx_of(Path(folder) / "paper.docx", lines)
+        svg = Path(folder) / "figure.svg"
+        svg.write_text(
+            '<svg xmlns="http://www.w3.org/2000/svg">'
+            + "".join(f'<text y="{n}">{escape(line)}</text>' for n, line in enumerate(lines))
+            + "</svg>",
+            encoding="utf-8",
+        )
+        assert _listed([docx]) == sorted(planted), lines
+        assert _listed([], [svg]) == sorted(planted), lines
+
+
+def _printed_text_hides_its_comments(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(audit_module, "_masked", lambda text, printed_as_typed: audit_module.mask(text))
+
+
+def _printed_text_is_not_masked(patch: pytest.MonkeyPatch) -> None:
+    masked = audit_module._masked
+
+    def unmasked(text: str, printed_as_typed: bool) -> str:
+        return text if printed_as_typed else masked(text, False)
+
+    patch.setattr(audit_module, "_masked", unmasked)
+
+
+@holds(30, docx_reference_ends())
+def test_a_docx_list_under_no_heading_style_ends_where_check_ends_one(
+    drawn: tuple[list[str | tuple[str, str]], list[str]],
+) -> None:
+    """In a .docx with no heading styles, a list under "References" ends at a caption of each
+    shape, a back-matter title and a table, as `check` ends one under no heading in
+    Markdown, and every number after it is listed (`_end_under_no_heading`); the entries'
+    volumes and pages are not."""
+    import tempfile
+
+    paragraphs, planted = drawn
+    with tempfile.TemporaryDirectory() as folder:
+        assert _listed([_docx_of(Path(folder) / "paper.docx", paragraphs)]) == sorted(planted)
+
+
+def _a_docx_list_runs_to_the_end(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(audit_module, "_end_under_no_heading", lambda lines, start, end: end)
+
+
+def _a_caption_ends_no_docx_list(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reference_lists_module, "_NO_ENTRY", re.compile("(?!)"))
+
+
 # --------------------------------------------------- e-mail addresses beside citations
 
 
@@ -13507,6 +13682,58 @@ BROKEN = {
     "the audit knows a reference list's English titles only": (
         _the_audit_knows_english_titles_only,
         test_a_reference_list_is_known_by_its_title_in_each_language,
+    ),
+    "a web page is no reference entry": (
+        _no_web_page_is_an_entry,
+        test_an_entry_of_each_style_is_known_by_its_shape_and_no_lookalike_is,
+    ),
+    "a numbered entry needs a full stop before its year": (
+        _an_entry_needs_a_stop_before_its_year,
+        test_an_entry_of_each_style_is_known_by_its_shape_and_no_lookalike_is,
+    ),
+    "a month before a year is a journal's name": (
+        _a_month_is_a_journal_s_name,
+        test_an_entry_of_each_style_is_known_by_its_shape_and_no_lookalike_is,
+    ),
+    "a book is no reference entry": (
+        _a_book_is_no_entry,
+        test_an_entry_of_each_style_is_known_by_its_shape_and_no_lookalike_is,
+    ),
+    "an article online first is no reference entry": (
+        _an_article_online_first_is_no_entry,
+        test_an_entry_of_each_style_is_known_by_its_shape_and_no_lookalike_is,
+    ),
+    "a Harvard entry's year needs its full stop": (
+        _harvard_s_year_needs_its_full_stop,
+        test_an_entry_of_each_style_is_known_by_its_shape_and_no_lookalike_is,
+    ),
+    "a percent sign must touch the value an interval follows": (
+        _a_percent_sign_must_touch_its_value,
+        test_an_interval_after_a_value_in_any_format_is_told_from_a_citation,
+    ),
+    "a decimal comma ends the value an interval follows": (
+        _a_decimal_comma_ends_the_value,
+        test_an_interval_after_a_value_in_any_format_is_told_from_a_citation,
+    ),
+    "a thousands comma before an interval is read as a decimal one": (
+        _a_thousands_comma_is_read_as_a_decimal_one,
+        test_an_interval_after_a_value_in_any_format_is_told_from_a_citation,
+    ),
+    "the audit hides an HTML comment in Word and figure text": (
+        _printed_text_hides_its_comments,
+        test_the_markers_of_an_html_comment_hide_nothing_in_word_or_a_figure,
+    ),
+    "the audit masks nothing in Word and figure text": (
+        _printed_text_is_not_masked,
+        test_the_markers_of_an_html_comment_hide_nothing_in_word_or_a_figure,
+    ),
+    "a list in a .docx with no heading styles runs to the end": (
+        _a_docx_list_runs_to_the_end,
+        test_a_docx_list_under_no_heading_style_ends_where_check_ends_one,
+    ),
+    "a caption or a table ends no list in a .docx": (
+        _a_caption_ends_no_docx_list,
+        test_a_docx_list_under_no_heading_style_ends_where_check_ends_one,
     ),
     "a section knows a reference list's English titles only": (
         _the_sections_know_english_titles_only,

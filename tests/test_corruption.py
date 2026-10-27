@@ -10212,6 +10212,101 @@ def test_categories_run_on_into_the_next_characteristic_are_not_read(tmp_path: P
     assert [d.line for d in audit([paper], []).disagreements] == [4]
 
 
+# ------------------------------------------------- what the audit read as no claim
+# Each of these hid a number from the comparison, so a fabricated one passed `--strict`.
+
+
+def _paragraphs_docx(path: Path, *paragraphs: str) -> Path:
+    """A .docx of plain paragraphs, with no styles: what a paper typed without them is."""
+    from xml.sax.saxutils import escape
+
+    word = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+    body = "".join(f"<w:p><w:r><w:t>{escape(text)}</w:t></w:r></w:p>" for text in paragraphs)
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("word/document.xml",
+                         f"<w:document {word}><w:body>{body}</w:body></w:document>")  # fmt: skip
+    return path
+
+
+def _strictly(paper: Path, outputs: Path) -> int:
+    from manuscript_guard.cli import main
+
+    return main(["audit", str(paper), "--against", str(outputs), "--strict"])
+
+
+@pytest.mark.parametrize(
+    "written",
+    [
+        "Median stay was 1,204 [1,100-1,399] days.\n",
+        "The score was 12,5 [10-19] points.\n",
+        "Rates were 45 % [40-59] overall.\n",
+    ],
+)
+def test_a_fabricated_bound_after_a_comma_or_a_spaced_percent_fails_the_audit(
+    tmp_path: Path, written: str
+) -> None:
+    """The bounds were filed as a citation, `[1,100-1,399]` as references 1, 100 to 1 and
+    399, and never compared with the outputs. (The value `12,5` is read as 125 wherever the
+    audit compares it, which is another matter: the bounds are what is held here.)"""
+    from manuscript_guard.audit import audit
+
+    outputs = tmp_path / "outputs.csv"
+    outputs.write_text("value\n1204\n1100\n1300\n10\n15\n45\n40\n50\n", encoding="utf-8")
+    paper = tmp_path / "paper.md"
+    paper.write_text(written, encoding="utf-8")
+    bounds = re.search(r"\[(.*)\]", written)[1]
+    assert bounds in [c.text for c in audit([paper], [outputs]).unmatched]
+    assert _strictly(paper, outputs) == 1
+    honest = written.replace("399", "300").replace("19]", "15]").replace("59]", "50]")
+    paper.write_text(honest, encoding="utf-8")
+    assert re.search(r"\[(.*)\]", honest)[1] in [c.text for c in audit([paper], [outputs]).matched]
+
+
+def test_a_fabricated_number_between_printed_comment_markers_fails_the_audit(
+    tmp_path: Path,
+) -> None:
+    """Word prints `<!--` as typed, and the audit hid what lay between it and a `-->`."""
+    outputs = tmp_path / "outputs.csv"
+    outputs.write_text("value\n77\n", encoding="utf-8")
+    paper = _paragraphs_docx(tmp_path / "paper.docx", "We saw 77.",
+                             "Notes typed <!-- in Word say 9.99 held, and --> after.")  # fmt: skip
+    assert _strictly(paper, outputs) == 1
+
+
+def test_a_fabricated_number_after_a_docx_list_under_no_heading_style_fails_the_audit(
+    tmp_path: Path,
+) -> None:
+    """With no heading styles the reference list ran to the end of the body, and a figure
+    legend after it was cut with it."""
+    outputs = tmp_path / "outputs.csv"
+    outputs.write_text("value\n77\n", encoding="utf-8")
+    paper = _paragraphs_docx(
+        tmp_path / "paper.docx", "We saw 77.", "References",
+        "Smith J, Jones K. Title. Lancet. 2019;393:100-10.",
+        "Figure 1. Reports by year; 9.99 of them were serious.",
+    )  # fmt: skip
+    assert _strictly(paper, outputs) == 1
+
+
+def test_a_book_in_a_headingless_list_is_listed_apart_and_a_number_in_prose_still_fails(
+    tmp_path: Path,
+) -> None:
+    """A book's year and pages were among the findings, which buried them; read as an entry
+    they are listed apart, and `--strict` still counts a fabricated number in the prose."""
+    from manuscript_guard.audit import audit
+
+    outputs = tmp_path / "outputs.csv"
+    outputs.write_text("value\n77\n", encoding="utf-8")
+    paper = tmp_path / "paper.md"
+    book = "Smith J, Jones K. Hepatic injury. 2nd ed. London: Example Press; 2019. p. 100-10.\n"
+    paper.write_text(f"We saw 77.\n\n{book}", encoding="utf-8")
+    report = audit([paper], [outputs])
+    assert report.unmatched == [] and {c.line for c in report.reference_like} == {3}
+    assert _strictly(paper, outputs) == 0
+    paper.write_text(f"We saw 77 and 9.99.\n\n{book}", encoding="utf-8")
+    assert _strictly(paper, outputs) == 1
+
+
 def _ledger_mean(project: Path, printed: str, declared: dict | None) -> None:
     """A third ledger entry, a mean of answers as the source prints it, with what the
     ledger says it is a mean of."""

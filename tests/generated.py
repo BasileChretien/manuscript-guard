@@ -5624,6 +5624,229 @@ def reference_lists(draw: st.DrawFn) -> tuple[str, str]:
     return "".join(listed) + "\n", "".join(passed) + "\n"
 
 
+# ------------------------------------------------- the audit's entries, intervals and markers
+
+#: A reference entry of each style the audit knows by its shape where no heading says where
+#: the list is, beyond the plain Vancouver and author-year ones: the BMJ's with no full stop
+#: before the year, a book and a chapter, a web page in four styles, an article online first
+#: in two, and Harvard's with no full stop after the year.
+AUDIT_ENTRIES = {
+    "the BMJ's style": "{a} {i}, {b} {j}. {title}. {journal} {year};{vol}:{page}.",
+    "the BMJ's style, numbered, with a DOI": (
+        "{n}. {a} {i}. {title}. {journal} {year};{vol}({issue}):{page}-{end}. "
+        "doi:10.1016/j.x.{year}.01.001"
+    ),
+    "a book": "{a} {i}, {b} {j}. {title}. 2nd ed. {place}: {publisher}; {year}.",
+    "a chapter": (
+        "{a} {i}. {title}. In: {b} {j}, editor. {title}. {place}: {publisher}; {year}. "
+        "p. {page}-{end}."
+    ),
+    "a web page": (
+        "{a} {i}. {title} [Internet]. {place}: {publisher}; {year} [cited {later} Mar {day}]. "
+        "Available from: https://example.org/{vol}"
+    ),
+    "a web page in AMA style": (
+        "{a} {i}. {title}. {publisher}. Published {year}. Accessed March {day}, {later}. "
+        "https://example.org/{vol}"
+    ),
+    "a web page in Harvard style": (
+        "{a}, {h}. ({year}) {title}. Available at: https://example.org/{vol} "
+        "(Accessed: {day} March {later})."
+    ),
+    "an organisation's web page": (
+        "{publisher}. {title} [Internet]. {year} [cited {later} Mar {day}]. Available from: "
+        "https://example.org/{vol}"
+    ),
+    "online first": "{a} {i}, {b} {j}. {title}. {journal}. {year}. doi:10.1007/s{vol}-{year}-1",
+    "online first in AMA style": (
+        "{a} {i}. {title}. {journal}. Published online March {day}, {year}. doi:10.1001/x.{vol}"
+    ),
+    "Harvard with no stop after the year": (
+        "{a}, {h}. and {b}, {k}. ({year}) '{title}', {long}, {vol}({issue}), pp. {page}-{end}."
+    ),
+    "Harvard with no stop, a title in capitals": (
+        "{a}, {h}. ({year}) {title}. {long}, {vol}, {page}-{end}."
+    ),
+}
+#: Captions and sentences with some of an entry's parts, which are none: a month before a
+#: year and a volume, a year after "to", a caption's full stop after its year, a place and
+#: a year after a colon, "available from", "Accessed", and names with a year and a verb.
+AUDIT_LOOKALIKES = (
+    "Figure A. Enrolment to {month} {year};2:{page}.",
+    "Figure A. Enrolment to {month} {year};2:1 randomisation followed.",
+    "Figure A. Case-control design, {earlier} to {year};1:{page} matching.",
+    "Figure A. Enrolment in {year}. Events were counted.",
+    "Table S1. Characteristics by site: {place}; {year} and {page} reports.",
+    "{a} {i} reported {page} cases in {year}, available from the registry.",
+    "Data were taken from the registry (available from https://example.org) in {year}.",
+    "{a}, {b} and {c} ({year}) found {page} cases.",
+    "Figure A. Reports by year. Accessed on {page} sites in {year}, and more.",
+    "The code is in the Internet archive, {year} release, at https://example.org.",
+)
+_SURNAMES = ("Smith", "Tanaka", "Østergaard", "Dupont", "Okafor", "Novak")
+_INITIALS = ("J", "JA", "K", "MB", "H")
+_TITLES = ("Hepatic injury in reports", "Renal events after exposure", "Falls in older adults")
+_NO_STOP_JOURNALS = ("BMJ", "Lancet", "N Engl J Med", "J Clin Epidemiol", "PLoS One", "Drug Saf")
+_LONG_JOURNALS = ("Drug Safety", "The Lancet", "Clinical Epidemiology")
+
+
+@st.composite
+def audit_entries(draw: st.DrawFn) -> list[tuple[str, bool]]:
+    """Each of `AUDIT_ENTRIES` and each of `AUDIT_LOOKALIKES`, in an order drawn, with names,
+    titles, journals, years and pages drawn, and whether each is an entry. Every kind in
+    every example."""
+    year = st.integers(1990, 2025)
+    names = draw(st.permutations(_SURNAMES))
+    fill = {
+        "a": names[0], "b": names[1], "c": names[2],
+        "i": draw(st.sampled_from(_INITIALS)), "j": draw(st.sampled_from(_INITIALS)),
+        "h": draw(st.sampled_from("JKMH")), "k": draw(st.sampled_from("JKMH")),
+        "title": draw(st.sampled_from(_TITLES)),
+        "journal": draw(st.sampled_from(_NO_STOP_JOURNALS)),
+        "long": draw(st.sampled_from(_LONG_JOURNALS)),
+        "place": draw(st.sampled_from(("London", "Geneva", "Paris"))),
+        "publisher": draw(st.sampled_from(("Example Press", "Example Agency", "Sample House"))),
+        "month": draw(st.sampled_from(("Jan", "Mar", "Dec", "Sept"))),
+        "year": draw(year), "earlier": draw(year), "later": draw(year),
+        "n": draw(st.integers(1, 99)), "vol": draw(st.integers(1, 400)),
+        "issue": draw(st.integers(1, 12)), "page": draw(st.integers(1, 900)),
+        "end": draw(st.integers(1, 99)), "day": draw(st.integers(1, 28)),
+    }  # fmt: skip
+    lines = [(shape.format(**fill), True) for shape in AUDIT_ENTRIES.values()]
+    lines += [(shape.format(**fill), False) for shape in AUDIT_LOOKALIKES]
+    return draw(st.permutations(lines))
+
+
+#: A value and a bracket after it, by the value's format: `{v}` the value as printed and
+#: `{b}` the bracket. Whether the bracket encloses the value is drawn apart.
+INTERVAL_VALUES = ("decimal comma", "thousands", "spaced percent", "no-break percent", "point")
+
+
+@st.composite
+def glued_intervals(draw: st.DrawFn) -> tuple[str, list[tuple[int, int]]]:
+    """Sentences with a value of each of `INTERVAL_VALUES` before a bracket that encloses it,
+    an interval, and before one that does not, a citation, in an order drawn; and where
+    each interval's bracket runs, from the end of its value to its `]`, as the audit's
+    `_intervals` is to give it. A citation after a value in thousands is `[1-c]` after
+    1,xxx, which a decimal comma's reading would take to enclose it, and a list of three,
+    `[1,100,200]`."""
+    parts: list[str] = []
+    expected: list[tuple[int, int]] = []
+    kinds = draw(st.permutations([(kind, True) for kind in INTERVAL_VALUES]
+                                 + [(kind, False) for kind in INTERVAL_VALUES]))  # fmt: skip
+    for kind, encloses in kinds:
+        whole = draw(st.integers(20, 900))
+        low, high = draw(st.integers(1, whole - 1)), draw(st.integers(whole + 1, 999))
+        if not encloses:
+            low, high = draw(st.integers(1, 9)), draw(st.integers(10, 19))
+        separator = draw(st.sampled_from(("-", "–", ", ", "; ")))
+        bracket = f"[{low}{separator}{high}]"
+        if kind == "decimal comma":
+            value, after = f"{whole},{draw(st.integers(1, 9))}", ""
+        elif kind == "point":
+            value, after = f"{whole}.{draw(st.integers(1, 9))}", ""
+        elif kind == "spaced percent":
+            value, after = str(whole), " %"
+        elif kind == "no-break percent":
+            value, after = str(whole), chr(0xA0) + "%"
+        elif encloses:
+            grouped = draw(st.integers(1000, 99999))
+            low, high = draw(st.integers(100, grouped - 1)), draw(st.integers(grouped + 1, 999999))
+            value, after, bracket = f"{grouped:,}", "", f"[{low:,}{separator}{high:,}]"
+        elif draw(st.booleans()):
+            value, after = f"1,{draw(st.integers(0, 999)):03d}", ""
+            bracket = f"[1{separator}{draw(st.integers(2, 9))}]"
+        else:
+            value, after, bracket = f"{draw(st.integers(1000, 99999)):,}", "", "[1,100,200]"
+        opening = f"The {draw(st.sampled_from(FILLER))} was "
+        start = len("".join(parts)) + len(opening) + len(value)
+        if encloses:
+            expected.append((start, start + len(after) + 1 + len(bracket)))
+        parts.append(f"{opening}{value}{after} {bracket} in the {draw(st.sampled_from(FILLER))}. ")
+    return "".join(parts), expected
+
+
+#: Paragraphs of a .docx or text of a figure with HTML's comment markers printed as typed,
+#: `{n}` and `{m}` numbers each listed, `{u}` one in an address, which is masked.
+PRINTED_MARKERS = {
+    "both markers in a paragraph": ("We strip <!-- from the notes; {n} held; and -->.",),
+    "a comment opened in one paragraph and closed in the next": (
+        "<!-- opens here and {n} was said", "{m} and --> closes it",
+    ),
+    "markers around an address": ("See <!-- https://example.org/report/{u} --> and {n} held.",),
+    "an opening marker alone": ("Only <!-- here, and {n} held.",),
+    "a closing marker alone": ("Only --> here, and {n} held.",),
+    "markers in backticks": ("Type `<!--` then {n} and `-->` after.",),
+}  # fmt: skip
+
+
+@st.composite
+def printed_markers(draw: st.DrawFn) -> tuple[list[str], list[str]]:
+    """Lines with each of `PRINTED_MARKERS`, in an order drawn, and the numbers in them that
+    are to be listed: each distinct, none in an address."""
+    numbers = iter(draw(st.lists(st.integers(100, 999), min_size=20, max_size=20, unique=True)))
+
+    def number() -> str:
+        drawn = next(numbers)
+        return f"{drawn // 100}.{drawn % 100:02d}"
+
+    lines: list[str] = []
+    planted: list[str] = []
+    for kind in draw(st.permutations(list(PRINTED_MARKERS))):
+        fill = {"n": number(), "m": number(), "u": number()}
+        shapes = PRINTED_MARKERS[kind]
+        lines += [shape.format(**fill) for shape in shapes]
+        planted += [fill[key] for key in "nm" if any("{" + key + "}" in s for s in shapes)]
+    return lines, planted
+
+
+#: What ends a reference list under a paragraph that is no heading in a .docx, as `check`
+#: ends one in Markdown: paragraphs, `{n}` the number after the end that is to be listed,
+#: `{k}` a caption's number, `{title}` a back-matter title; `TABLE` a table holding `{n}`.
+DOCX_LIST_ENDS = {
+    "a figure's caption": ("Figure {k}. Reports by year; {n} were serious.",),
+    "a caption, Fig.": ("Fig. {k} Reports by year; {n} were serious.",),
+    "a table's caption": ("Table {k}. Characteristics; {n} were serious.",),
+    "a supplementary table's caption": ("Supplementary Table S{k}. Sites; {n} were serious.",),
+    "an appendix": ("Appendix A. Search terms; {n} records were found.",),
+    "a box": ("Box {k}. Definitions; {n} were serious.",),
+    "a back-matter title": ("{title}", "Reports by year; {n} were serious."),
+    "a table": ("TABLE",),
+}
+#: Entries of a numbered list, with volumes and pages that are cut with it.
+_CUT_ENTRIES = (
+    "Smith J, Jones K. Title. Lancet. {year};{vol}:{page}-10.",
+    "Doe A. Title. BMJ {year};{vol}:m{page}.",
+    "Roe MB. Title. Example Press; {year}.",
+)
+
+
+@st.composite
+def docx_reference_ends(draw: st.DrawFn) -> tuple[list[str | tuple[str, str]], list[str]]:
+    """The paragraphs of a .docx with no heading styles: a list under "References" ended by
+    each of `DOCX_LIST_ENDS`, in an order drawn, and a table as `(label, number)`; and the
+    numbers after each end, which are to be listed. Every entry's numbers are cut."""
+    numbers = iter(draw(st.lists(st.integers(100, 999), min_size=10, max_size=10, unique=True)))
+    paragraphs: list[str | tuple[str, str]] = ["We saw what was reported."]
+    planted: list[str] = []
+    for kind in draw(st.permutations(list(DOCX_LIST_ENDS))):
+        paragraphs.append("References")
+        for entry in draw(st.lists(st.sampled_from(_CUT_ENTRIES), min_size=1, max_size=3)):
+            paragraphs.append(entry.format(year=draw(st.integers(1990, 2025)),
+                                           vol=draw(st.integers(1, 400)),
+                                           page=draw(st.integers(1, 99))))  # fmt: skip
+        drawn = next(numbers)
+        number = f"{drawn // 100}.{drawn % 100:02d}"
+        planted.append(number)
+        for line in DOCX_LIST_ENDS[kind]:
+            if line == "TABLE":
+                paragraphs.append(("Serious", number))
+                continue
+            paragraphs.append(line.format(n=number, k=draw(st.integers(1, 9)),
+                                          title=draw(st.sampled_from(BACK_MATTER))))  # fmt: skip
+    return paragraphs, planted
+
+
 # --------------------------------------------------- e-mail addresses beside citations
 
 #: An e-mail address as a manuscript gives one: in brackets, in a mailto link as Word writes

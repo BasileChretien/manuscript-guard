@@ -9,6 +9,57 @@ manuscript-guard audit manuscript.docx supplement1.docx \
     --figures figures/
 ```
 
+It reads a .docx, a Markdown or text file, and a LaTeX paper. A `.tex` named is read with
+the files it inputs, from its own folder, as `check` reads a project's `main.tex`: its
+numbers where they print, at the `.tex` line they stand on, and its tables cell by cell. In
+a folder, only a `.tex` with `\documentclass` starts a paper; a file no paper inputs, an old
+draft or a cover letter, is named under "Passed over" and not read. A `thebibliography` is
+cut as a reference list is, and a stretch the LaTeX reader refuses is named under "Could not
+read", which `--strict` counts.
+
+`--against` may be left out. Then no number is compared with the analysis, the report says
+so on its first line, "No outputs given: no number was compared with the analysis", and what
+needs no outputs is read all the same: the numbers against each other, the words and the
+reference list. The audit exits 2 only when nothing could be read: a path that is not there,
+a folder with no paper in it, papers none of which could be read, or outputs named in
+`--against` none of which could.
+
+The report comes in sections, after what was read and what was not:
+
+| Section | What it holds | Counted by `--strict` |
+|---|---|---|
+| Membership | each number against the outputs, and what a match is worth there | a number in no output |
+| Arithmetic | a P and its statistic, an estimate and its interval, an n (%) and its denominator, a mean of whole numbers and its n | no |
+| Writing (G6) and Language (G14) | what `check` says of the words, on a project made for the paper | no |
+| References (G7) | the reference list counted, its numbered citations held to it, and with `--lookup` what the registries say | no |
+
+`--strict` also counts a paper, a figure or a stretch of one that could not be read, and an
+audit that read no number. `--json` prints the report in the shape `check --json` gives,
+each finding with its section and whether `--strict` counts it; `ok` is what `--strict`
+would say.
+
+**The words.** G6 and G14 read a project's manuscript, so the paper is put into one made for
+it in a temporary folder and the two gates run as `check` runs them. A .docx goes through
+the conversion `init --from` makes, so its lines are lines of that converted text; without
+pandoc a .docx is not converted, and the report says G6 and G14 were not run on it.
+`--english british` or `american` declares the paper's English, which G14 holds its spelling
+to; without it G14 holds the paper to the English most of its words are in.
+`--submission-residue` makes a residue of the revision that answers a reviewer a failure, as
+`check` does at the submission stage. Neither gate is counted by `--strict`.
+
+**The references.** The list cut from the text is counted: its entries, and the DOIs and
+PMIDs typed in them. Where the entries carry their numbers, "1." or "[1]", each bracketed
+citation of numbers in the text, `[3]`, `[3, 5]` or `[3-5]`, is held to the list: a number
+the list does not hold is reported, and so is an entry no citation names. A list Word
+numbers itself prints no number, so in a .docx whose text cites by number an entry's number
+is its place in the list. A bracket after a value that encloses it, `64 [55-72]`, is an
+interval and no citation. In LaTeX each `\cite` key is held to the `\bibitem`s. Nothing is
+sent anywhere unless you ask: `--lookup` asks Crossref and OpenAlex about each DOI and
+PubMed about each PMID, and reports a work retracted, withdrawn, under an expression of
+concern or published since, as G7 does in a project; `--lookup --dry-run` lists what would
+be sent and sends nothing; `--lookup-cache DIR` keeps each answer in `DIR` and reads it from
+there the next time. Without `--lookup-cache` nothing is kept.
+
 It reads the .docx with **tracked changes accepted** and **table cells kept apart** (Word
 stores a row with no separator, so a naive read turns `39 | 20 | 26 | 16` into the single
 number 39,202,616 and silently skips every table), drops the bibliography, classifies

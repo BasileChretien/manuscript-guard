@@ -1773,8 +1773,6 @@ The result is compiled and packed by the code above, and checked three times:
   The submission refusal and the status line run the gates, so they see `not-read-in-latex`
   as `check` does; the note on a saved file reads only Markdown, and says nothing when a
   `.tex` is saved (round 2 of #370), until step 12 teaches the hooks.
-- `audit` is not tied to a project: given a folder of `.tex` it says it found nothing to
-  audit, and only a `.tex` named is refused.
 - On a LaTeX project, `sign` of an id that stands nowhere lists G15's ids among those that
   stand, though `sign` refuses them there; and `review --suggestions --design`, a misuse, is
   told LaTeX is not read rather than that `--suggestions` stands alone (round 2 of #404).
@@ -2254,7 +2252,7 @@ The result is compiled and packed by the code above, and checked three times:
   an abbreviation (step 7).
 - The author block is written in the class's own commands, and is not compared with
   authors.yaml. A number typed into the author block or `\date` is read by no gate.
-- The Word round trip, `annotate`, `reworded` and `audit` do not read `.tex`.
+- The Word round trip, `annotate` and `reworded` do not read `.tex`.
 - The profile's statement patterns are written for Markdown headings. For a LaTeX source they
   are matched against `printed_view`, which writes each heading as a `#` line.
 - Biblatex's `.bbl` depends on Biber's version, and a journal that compiles it with another
@@ -7509,6 +7507,37 @@ predecessor:
 
 Verified end to end: the example's built document audits clean against its own outputs, and
 one digit changed in the reporting odds ratio is reported with its line and context.
+
+### Reading anything, and what needs no outputs (2026-10-28)
+
+The audit read Markdown and Word, and refused a `.tex`. It now reads a LaTeX paper through
+the reader every gate uses (`auditing/latex.py`): a `.tex` named is an entry, and its
+folder's `.tex`, `.sty` and `.cls` files are what its `\input`s resolve to, as they are for a
+project's `main.tex`; in a folder given, only a file with `\documentclass` starts a paper, and
+a file no entry inputs is named under "Passed over" rather than read, since a paper's folder
+keeps old drafts. Each file is read as G2 reads one, at its `.tex` lines, its
+`thebibliography` cut, and each refusal of the reader named where `--strict` counts it. Its
+tables are rows of cells (`text/latex/tables.py`), split where LaTeX splits them, so an n (%)
+and a mean of whole numbers are held in a LaTeX table as in a Word one.
+
+`--against` is optional. A paper often reaches an auditor without its outputs, and the
+checks that need none, the P worked out from its statistic among them, were out of reach
+behind a required flag. Without it nothing is compared, and the report's first line says so:
+"No outputs given: no number was compared with the analysis". The report is now in sections,
+Membership, Arithmetic, Writing (G6) and Language (G14), References (G7), and `--json` gives
+it in `check --json`'s shape, each finding with its section and whether `--strict` counts it.
+
+G6 and G14 read a project's manuscript, so the paper is put into one made for it in a
+temporary folder (`auditing/gates.py`), and each finding's path put back. A .docx goes through
+`init --from`'s conversion, so that its words are read as they will be once the paper is
+brought in, and without pandoc the two are passed over for it with a note (the author,
+2026-10-28). G7's census needs no `references.bib`: the list the audit cuts is counted, its
+DOIs and PMIDs, and its numbered citations held to it (`auditing/references.py`). The
+registries are asked only with `--lookup`, through `lookup`'s transport, and read as G7 reads
+a record; nothing is kept unless `--lookup-cache` names where.
+
+`--strict` counts exact findings only (the author, 2026-10-28). In this PR that is what it
+counted before; the P worked out from a statistic, G6, G14 and G7 are listed and not counted.
 
 ## A paper written in Word is brought in through pandoc's tree
 
@@ -17280,7 +17309,41 @@ What papers converted from Word showed (see "What papers converted from Word sho
     when `manuscript.docx` is stale.
   - ci.yml's comment on setup-pandoc names a step that is gone.
 
+- **What `audit` reads of a LaTeX paper, its words and its references (Task 3, PR 1,
+  2026-10-28).** Each limit, as built:
+  - A number an author's macro prints where it is used is not read there, as in G2; nor is a
+    table `\csvautotabular` or pgfplotstable draws from a file. A `longtable`'s caption is read
+    as a row of it, and a head it repeats with `\endhead` is read once, where it is typed.
+  - A reference list BibTeX or biber makes from a `.bib` is not counted: only a typed
+    `thebibliography` is, and the report says so where the paper cites and has none.
+  - A folder's `.tex` with `\documentclass` is an entry however it is used: a standalone
+    figure's file is read as a paper of its own, and so is a file whose `\documentclass`
+    stands in a `\verb` or a `comment` environment.
+  - G6 and G14 run on a project made for each paper, so an abbreviation defined in the main
+    text and used in a supplement given beside it is undefined in the supplement. Nothing of
+    a `paper.yaml` is read but the English: no journal profile, no `language:` settings, no
+    accepted spellings. A .docx's lines are those of the text pandoc converts it to.
+  - The census holds citations to a list only where the entries carry their numbers, or in a
+    .docx whose list Word numbers, by each entry's place, which assumes Word numbers from 1
+    with none skipped. A citation in superscript, `^3^`, or in parentheses, `(3)`, is not
+    read; a bracketed number that is no citation, an equation's `[2]`, is read as one. Two
+    lists each numbered from 1 are read as one. A Markdown entry wrapped over lines with no
+    blank line between entries is one entry only where each starts with its number. A list
+    found by its entries' shape alone, with no heading, is not counted.
+  - `--lookup` asks about the first DOI and the first PMID of an entry, and nothing about one
+    with neither: `lookup`'s search by title is not run. A record kept with
+    `--lookup-cache` is used however old it is, until the identifiers it was asked for
+    change. `--strict` counts no finding of G7's, in the census or from a registry.
+  - `--strict` counts what it counted before, a number in no output, a stretch not read and
+    an audit that read no number, and nothing new: the sums and flows that will count come
+    in the PRs after this one.
+
 Closed since, and why each mattered (an open gap goes above this line):
+
+- **`audit` refused a LaTeX paper (Task 3, PR 1, 2026-10-28).** A `.tex` named was refused,
+  and a folder of them had nothing to audit, so a LaTeX paper outside a project had its
+  numbers, its tables and its references checked by nothing. It is read through its include
+  tree now; see "Reading anything, and what needs no outputs".
 
 - **`document-stale` blocked the build that would clear it.** At `internal-review` the
   gate fails, `build` refused while anything failed, and `--skip-checks` wrote

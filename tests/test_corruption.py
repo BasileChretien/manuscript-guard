@@ -11244,6 +11244,71 @@ def test_a_quote_that_holds_little_more_than_its_value_is_said(
     assert report.counts["literature_verified"] == 2
 
 
+# ------------------------------------------------- what the audit reads of a LaTeX paper
+# `audit` refused a `.tex` named: a LaTeX paper's numbers, its tables and its references were
+# checked by nothing outside a project. Each corruption below changes what it reports.
+
+_LATEX_PAPER = (
+    "!documentclass{article}\n!begin{document}\n!section{Results}\n"
+    "Of 412 reports, the odds ratio was 2.10 !cite{smith}.\n"
+    "!begin{tabular}{lr}\n& Cases (n = 40) !!\nMale & 12 (30.0!%) !!\n"
+    "Female & 28 (70.0!%) !!\n!end{tabular}\n"
+    "!begin{thebibliography}{9}\n!bibitem{smith} Smith J. Lancet. 2019;393:100-10.\n"
+    "!end{thebibliography}\n!end{document}\n"
+)
+
+
+@pytest.mark.parametrize(
+    ("typed", "unmatched", "off", "listed"),
+    [
+        ((), [], [], []),
+        ((("2.10", "2.01"),), ["2.01"], [], []),
+        ((("12 (30.0", "12 (35.0"),), ["35.0%"], [7], []),
+        ((("cite{smith}", "cite{smyth}"),), [], [],
+         ["citation-not-listed", "entry-never-cited"]),
+    ],
+    ids=["as written", "an estimate changed", "a share changed", "a citation's key changed"],
+)
+def test_an_audited_latex_paper_is_held_as_a_markdown_one_is(
+    tmp_path: Path, typed, unmatched, off, listed
+) -> None:
+    from manuscript_guard.audit import audit
+    from manuscript_guard.cli import main
+
+    text = _LATEX_PAPER
+    for old, new in typed:
+        text = text.replace(old, new)
+    paper = tmp_path / "paper.tex"
+    paper.write_text(text.replace("!", chr(92)), encoding="utf-8")
+    outputs = tmp_path / "outputs.csv"
+    outputs.write_text("n,or,male,female,pm,pf\n412,2.10,12,28,30.0,70.0\n40,0,0,0,0,0\n",
+                       encoding="utf-8")  # fmt: skip
+    report = audit([paper], [outputs])
+    assert [c.text for c in report.unmatched] == unmatched
+    assert [d.line for d in report.disagreements] == off
+    assert [p.code for c in report.references for p in c.problems] == listed
+    assert main(["audit", str(paper), "--against", str(outputs), "--strict"]) == (
+        1 if unmatched else 0
+    )
+
+
+@pytest.mark.parametrize(("marker", "listed"), [("[3]", []), ("[4]", ["citation-beyond-list"])])
+def test_an_audited_paper_s_numbered_citation_is_held_to_its_list(
+    tmp_path: Path, marker: str, listed: list[str]
+) -> None:
+    """A citation by number of an entry the list does not hold, which no gate read in a
+    paper outside a project: `audit` counted no reference list."""
+    from manuscript_guard.audit import audit
+
+    paper = tmp_path / "paper.md"
+    paper.write_text(f"# Results\n\nIt rose [1, 2] and fell {marker}.\n\n# References\n\n"
+                     "1. Smith J. A. J Ex. 2019;1:1-2.\n2. Jones K. B. J Ex. 2020;2:3-4.\n"
+                     "3. Brown L. C. J Ex. 2021;3:5-6.\n", encoding="utf-8")  # fmt: skip
+    [census] = audit([paper], None).references
+    never = [] if marker == "[3]" else ["entry-never-cited"]
+    assert [p.code for p in census.problems] == listed + never
+
+
 # --------------------------------------------------------------------- the journal gate
 # A journal's limits, sections and statements are about the document the editor receives,
 # and the build strips every file's front matter before printing it.

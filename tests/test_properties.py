@@ -108,6 +108,7 @@ from generated import (
     latex_reference_lists,
     latex_refusal_trees,
     latex_straight_quotes,
+    latex_table_rows,
     latex_texts,
     latex_trees,
     latex_words,
@@ -119,6 +120,7 @@ from generated import (
     mean_tables,
     methods_titled,
     named_numbers,
+    numbered_citations,
     numbered_displays,
     painted_pdfs,
     painted_svgs,
@@ -4201,6 +4203,98 @@ def _a_table_in_a_fenced_listing_is_read(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.text import tables
 
     patch.setattr(tables, "mask", lambda text: text)
+
+
+# ----------------------------------------------------------- a LaTeX table's rows and cells
+
+
+@holds(100, latex_table_rows())
+def test_a_latex_table_is_read_as_rows_of_cells_where_latex_splits_them(
+    drawn: tuple[str, list[list[tuple[str, int, int]]]],
+) -> None:
+    """Every row of a table typed in LaTeX is read where LaTeX ends it, at `\\\\` or
+    `\\tabularnewline`, and its cells where `&` parts them, whatever the order of the rows:
+    an escaped `\\&` and a `\\\\` inside braces part nothing, a comment's separators are no
+    separators, a `\\multicolumn` spans its columns after a rule or a comment, and a rule
+    is no row (`text/latex/tables.py`)."""
+    from manuscript_guard.text.latex.structure import read_tree
+    from manuscript_guard.text.latex.tables import latex_tables
+
+    text, expected = drawn
+    source = read_tree({"main.tex": text}, "main.tex").sources[0]
+    found = [[(c.text, c.line, c.span) for c in row]
+             for table in latex_tables(source) for row in table]  # fmt: skip
+    assert found == expected, text
+
+
+def _a_row_ends_inside_braces(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text.latex import tables
+
+    patch.setattr(tables, "_at_top", lambda depth, nested: True)
+
+
+def _a_multicolumn_spans_one_column(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text.latex import tables
+
+    patch.setattr(tables, "_SPAN", re.compile("(?!)"))
+
+
+def _a_comment_before_a_cell_is_its_text(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text.latex import tables
+
+    patch.setattr(tables, "_in_comment", lambda source, start, end: set())
+
+
+def _a_rule_before_a_cell_is_its_text(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text.latex import tables
+
+    patch.setattr(tables, "_RULE", re.compile("(?!)"))
+
+
+def _tabularnewline_ends_no_row(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text.latex import tables
+
+    patch.setattr(tables, "_NEWLINE_COMMAND", "\\tabularnewline-never")
+
+
+# ---------------------------------------------------- a reference list and its citations
+
+
+@holds(100, numbered_citations())
+def test_a_numbered_citation_is_held_to_the_reference_list_and_an_interval_is_none(
+    drawn: tuple[str, list[tuple[str, int]]],
+) -> None:
+    """G7's census in `audit`: a bracketed citation of one entry, of a list, of a range
+    with a hyphen or an en dash, cites each entry it names, a range every one between its
+    ends; a citation of an entry the list does not hold is reported where it stands, and an
+    entry nothing cites where it is listed. An interval after the value it encloses and a
+    link's text are no citations (`auditing/references.py`)."""
+    from manuscript_guard.audit import census_of_markdown
+
+    text, expected = drawn
+    census = census_of_markdown(Path("paper.md"), text)
+    assert census.style == "numbered", text
+    assert [(p.code, p.line) for p in census.problems] == expected, text
+
+
+def _an_interval_after_its_value_is_a_citation(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import audit
+
+    patch.setattr(audit, "_intervals", lambda text: [])
+
+
+def _a_range_of_citations_cites_its_ends(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import references
+
+    patch.setattr(references, "MAX_RANGE", -1)
+
+
+def _a_link_s_text_is_a_citation(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import references
+
+    pattern = references._MARKER.pattern.replace("(?!\\()", "")
+    assert pattern != references._MARKER.pattern
+    patch.setattr(references, "_MARKER", re.compile(pattern))
 
 
 # ------------------------------------------------------- a table's means of whole numbers
@@ -13647,6 +13741,38 @@ BROKEN = {
     "a characteristic's label row with its P value beside it is read as a header": (
         _a_label_row_with_its_p_value_is_a_header,
         test_an_n_percent_in_a_table_is_read_where_it_stands_and_held_to_its_denominator,
+    ),
+    "a LaTeX row ends at a \\\\ inside braces": (
+        _a_row_ends_inside_braces,
+        test_a_latex_table_is_read_as_rows_of_cells_where_latex_splits_them,
+    ),
+    "a LaTeX \\multicolumn spans one column": (
+        _a_multicolumn_spans_one_column,
+        test_a_latex_table_is_read_as_rows_of_cells_where_latex_splits_them,
+    ),
+    "a comment before a LaTeX cell is read as its start": (
+        _a_comment_before_a_cell_is_its_text,
+        test_a_latex_table_is_read_as_rows_of_cells_where_latex_splits_them,
+    ),
+    "a rule before a LaTeX cell is read as its start": (
+        _a_rule_before_a_cell_is_its_text,
+        test_a_latex_table_is_read_as_rows_of_cells_where_latex_splits_them,
+    ),
+    "\\tabularnewline ends no LaTeX row": (
+        _tabularnewline_ends_no_row,
+        test_a_latex_table_is_read_as_rows_of_cells_where_latex_splits_them,
+    ),
+    "an interval after its value is read as a numbered citation": (
+        _an_interval_after_its_value_is_a_citation,
+        test_a_numbered_citation_is_held_to_the_reference_list_and_an_interval_is_none,
+    ),
+    "a range of numbered citations cites only its ends": (
+        _a_range_of_citations_cites_its_ends,
+        test_a_numbered_citation_is_held_to_the_reference_list_and_an_interval_is_none,
+    ),
+    "a link's text is read as a numbered citation": (
+        _a_link_s_text_is_a_citation,
+        test_a_numbered_citation_is_held_to_the_reference_list_and_an_interval_is_none,
     ),
     "a run of categories takes in the characteristic after them": (
         _a_run_of_categories_takes_in_the_row_after_them,

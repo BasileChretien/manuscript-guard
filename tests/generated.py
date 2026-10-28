@@ -4895,6 +4895,119 @@ def _no_mean(draw: st.DrawFn, count: int, places: int) -> str:
     raise AssertionError(f"every mean fits {count}")  # pragma: no cover
 
 
+# ------------------------------------------------------------------ a LaTeX table's cells
+
+#: A cell as `text/latex/tables.py` reads it: its text, its line and its span.
+LatexCell = tuple[str, int, int]
+#: The kinds of row each LaTeX table holds, one of each in an order drawn: cells split at
+#: `&`, an escaped `\&` in a cell, a `\\` inside braces, a `\multicolumn`, a `\multirow`, a
+#: row ended by `\tabularnewline`, and a comment holding `&` and `\\` before a row that opens
+#: with a `\multicolumn`.
+LATEX_ROWS = ("plain", "escaped", "braced", "multicolumn", "multirow", "newline", "commented")
+#: What may stand between two rows: a rule, or nothing.
+LATEX_RULES = ("", "\\hline", "\\midrule", "\\cline{2-3}")
+
+
+@st.composite
+def latex_table_rows(draw: st.DrawFn) -> tuple[str, list[list[LatexCell]]]:
+    """A LaTeX document with a table of three columns, a row of each kind of `LATEX_ROWS`
+    in an order drawn, a rule drawn between rows, always one before the `\\multicolumn` row,
+    and a length after a `\\` drawn; with each row as `latex_tables` reads it, its cells'
+    text, line and span."""
+    word = st.sampled_from(FILLER).map(str.capitalize)
+    number = st.integers(0, 999).map(str)
+    lines = ["\\documentclass{article}", "\\begin{document}", "\\begin{tabular}{lrr}"]
+    expected: list[list[LatexCell]] = []
+    for kind in draw(st.permutations(LATEX_ROWS)):
+        # A rule always stands before the row that opens with a `\multicolumn`, which has
+        # to be read past to find its span.
+        rule = draw(st.sampled_from(LATEX_RULES[1:] if kind == "multicolumn" else LATEX_RULES))
+        if rule:
+            lines.append(rule)
+        end = "\\\\" + draw(st.sampled_from(("", "[2pt]", "*")))
+        at = len(lines) + 1
+        label, a, b = draw(word), draw(number), draw(number)
+        if kind == "plain":
+            lines.append(f"{label} & {a} & {b} {end}")
+            expected.append([(label, at, 1), (a, at, 1), (b, at, 1)])
+        elif kind == "escaped":
+            other = draw(word)
+            lines.append(f"{label} \\& {other} & {a} & {b} {end}")
+            expected.append([(f"{label} & {other}", at, 1), (a, at, 1), (b, at, 1)])
+        elif kind == "braced":
+            c = draw(number)
+            lines.append(f"{label} & \\makecell{{{a}\\\\{c}}} & {b} {end}")
+            expected.append([(label, at, 1), (f"{a} {c}", at, 1), (b, at, 1)])
+        elif kind == "multicolumn":
+            lines.append(f"\\multicolumn{{2}}{{l}}{{{label}}} & {a} {end}")
+            expected.append([(label, at, 2), (a, at, 1)])
+        elif kind == "multirow":
+            lines.append(f"\\multirow{{2}}{{*}}{{{label}}} & {a} & {b} {end}")
+            expected.append([(label, at, 1), (a, at, 1), (b, at, 1)])
+        elif kind == "newline":
+            lines.append(f"{label} & {a} & {b} \\tabularnewline")
+            expected.append([(label, at, 1), (a, at, 1), (b, at, 1)])
+        else:
+            hidden = draw(number)
+            lines.append(f"{label} & {a} & {b} {end} % {hidden} & {hidden} \\\\")
+            whole = draw(word)
+            lines.append(f"\\multicolumn{{3}}{{c}}{{{whole}}} {end}")
+            expected.append([(label, at, 1), (a, at, 1), (b, at, 1)])
+            expected.append([(whole, at + 1, 3)])
+    lines += ["\\bottomrule", "\\end{tabular}", "\\end{document}", ""]
+    return "\n".join(lines), expected
+
+
+# ------------------------------------------------------------ a reference list and its citations
+
+#: The kinds of bracket each paper holds, one of each in an order drawn: a citation of one
+#: entry, of a list of them, of a range with a hyphen and of one with an en dash, a citation
+#: of an entry the list does not hold, an interval after the value it encloses, and a link
+#: whose text is a number the list does not hold.
+CITATION_KINDS = ("single", "list", "range", "dashed", "beyond", "interval", "link")
+#: Census = what G7's census reports of a paper: each problem's code and line.
+Census = tuple[str, int]
+
+
+@st.composite
+def numbered_citations(draw: st.DrawFn) -> tuple[str, list[Census]]:
+    """A Markdown paper whose numbered reference list of `count` entries is cited by a
+    bracket of each kind of `CITATION_KINDS`, each in a paragraph of its own, and by a
+    paragraph for each entry no kind cites but the last, which nothing cites. With what the
+    census reports: the citation beyond the list, and the last entry, never cited."""
+    count = draw(st.integers(9, 13))
+    sentence = st.lists(st.sampled_from(FILLER), min_size=2, max_size=5).map(" ".join)
+    value = count + draw(st.integers(10, 40))
+    brackets = {
+        "range": "[1-3]",
+        "dashed": "[4\N{EN DASH}5]",
+        "list": f"[6, {draw(st.sampled_from(('7', ' 7')))}]",
+        "single": "[8]",
+        "beyond": f"[{count + 1}]",
+        "interval": f"of {value} [{value - draw(st.integers(1, 5))}-{value + 3}]",
+        "link": f"[{count + 2}](https://example.org/a)",
+    }
+    paragraphs = [(kind, brackets[kind]) for kind in draw(st.permutations(CITATION_KINDS))]
+    paragraphs += [("single", f"[{entry}]") for entry in range(9, count)]
+    lines = ["# Results", ""]
+    expected: list[Census] = []
+    for kind, bracket in paragraphs:
+        if kind == "beyond":
+            expected.append(("citation-beyond-list", len(lines) + 1))
+        lines += [f"{draw(sentence).capitalize()} {bracket}.", ""]
+    lines += ["# References", ""]
+    for entry in range(1, count + 1):
+        if entry == count:
+            expected.append(("entry-never-cited", len(lines) + 1))
+        lines.append(f"{entry}. {draw(word_names())} A. A study. J Ex. 2019;{entry}:1-2.")
+    return "\n".join(lines) + "\n", expected
+
+
+def word_names() -> st.SearchStrategy[str]:
+    """A family name for a reference entry."""
+    return st.sampled_from(("Smith", "Jones", "Brown", "Green", "Sato", "Okafor"))
+
+
 @st.composite
 def mean_tables(draw: st.DrawFn) -> tuple[str, list[str], list[Meant]]:
     """A paper with a table of means, whose header names each arm's n, the first under 100
@@ -6586,6 +6699,8 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "reported tests": texts(REPORTED),
     "reported intervals": texts(ESTIMATES),
     "table shares": share_tables().map(lambda drawn: drawn[0]),
+    "latex tables": latex_table_rows().map(lambda drawn: drawn[0]),
+    "reference census": numbered_citations().map(lambda drawn: drawn[0]),
     "whole-number means": mean_tables().map(
         lambda drawn: {"text": drawn[0], "labels": drawn[1]}
     ),

@@ -59,7 +59,7 @@ from manuscript_guard.text.reference_lists import ends_a_list_alone, is_bibliogr
 from manuscript_guard.text.tables import Table, markdown_tables
 from manuscript_guard.text.tokens import DIGIT, Atom, find_atoms, trim
 
-PAPER_SUFFIXES = {".docx", ".md", ".txt", ".markdown"}
+PAPER_SUFFIXES = {".docx", ".md", ".txt", ".markdown", ".tex"}
 BACKING_SUFFIXES = {".json", ".csv", ".tsv", ".txt", ".yaml", ".yml", ".md"}
 FIGURE_SUFFIXES = {".svg", ".pdf"}
 
@@ -151,12 +151,25 @@ class AuditReport:
     #: Each label --whole-numbers gave under which no mean was read: no table row's label
     #: holds it, or no cell of those rows is a mean under a column that names its n.
     whole_numbers_unfound: list[str] = field(default_factory=list)
+    #: Whether outputs were given. Without them no number is compared, and `uncompared`
+    #: counts the numbers that would have been.
+    compared: bool = True
+    uncompared: int = 0
+    #: Each paper's reference list, counted (`auditing.references.Census`).
+    references: list = field(default_factory=list)
+    #: What was asked of the registries (`auditing.references.Looked`), with --lookup;
+    #: None where nothing was to be.
+    lookups: list | None = None
+    #: G6 and G14 on each paper (`auditing.gates.GateRun`).
+    gates: list = field(default_factory=list)
+    #: Each LaTeX entry's tree as it was read (`auditing.latex.Tree`).
+    trees: list = field(default_factory=list)
 
     @property
     def examined(self) -> int:
         return (
             len(self.matched) + len(self.unmatched) + len(self.reference_like)
-            + self.classified
+            + self.classified + self.uncompared
         )
 
 
@@ -580,9 +593,10 @@ def _blank(text: str, spans: list[tuple[int, int]]) -> str:
     return "\n".join(lines)
 
 
-def read_paper(path: Path) -> tuple[str, list[tuple[int, int]], list[Table]]:
-    """The paper's text with its reference lists blanked, which lines those were, and its
-    tables outside them as rows of cells (`text.tables`).
+def read_paper(path: Path) -> tuple[str, list[tuple[int, int]], list[Table], str]:
+    """The paper's text with its reference lists blanked, which lines those were, its
+    tables outside them as rows of cells (`text.tables`), and the text before the cut, whose
+    lists G7's census reads (`auditing.references`).
 
     A .docx's footnotes and endnotes follow its body, and are read after the cut rather than
     through it: they were being dropped along with the bibliography.
@@ -591,7 +605,7 @@ def read_paper(path: Path) -> tuple[str, list[tuple[int, int]], list[Table]]:
         text = read_text(path)
         spans = bibliography_spans(text)
         blanked = _blank(text, spans)
-        return blanked, spans, markdown_tables(blanked)
+        return blanked, spans, markdown_tables(blanked), text
     document = read_docx_text(path)
     spans = bibliography_spans(document.body, document.headings, document.cells)
     body = _blank(document.body, spans)
@@ -600,7 +614,87 @@ def read_paper(path: Path) -> tuple[str, list[tuple[int, int]], list[Table]]:
         if not any(start < cell.line <= end for row in table for cell in row
                    for start, end in spans)
     ]  # fmt: skip
-    return (f"{body}\n{document.notes}" if document.notes else body), spans, tables
+    return (f"{body}\n{document.notes}" if document.notes else body), spans, tables, document.body
+
+
+def census_of_markdown(path: Path, text: str):
+    """G7's census of a Markdown or text paper, read as `audit` reads it: its lists cut
+    where `bibliography_spans` finds them, its citations in what is left, masked, with each
+    interval after its value set aside (`auditing.references`)."""
+    from manuscript_guard.auditing.references import census_of_text
+
+    spans = bibliography_spans(text)
+    blanked = _blank(text, spans)
+    hidden = _masked(blanked, printed_as_typed=False)
+    return census_of_text(path, text, spans, hidden, _intervals(blanked), docx=False)
+
+
+@dataclass(frozen=True)
+class _Source:
+    """One text the audit reads numbers in. `text` is what an atom is reported from;
+    `hidden` what is read, masked; `scanned` what the classifier's rules read; `plain` what
+    an interval after a value is looked for in. A LaTeX file's are its views at the same
+    offsets (`auditing.latex`), and its headings and items are commands (`blocks` False)."""
+
+    path: Path
+    text: str
+    hidden: str
+    scanned: str
+    plain: str
+    tables: tuple[Table, ...]
+    by_shape: bool
+    lines_are_blocks: bool
+    blocks: bool = True
+    layout: tuple[tuple[int, int], ...] = ()
+
+    def scan(self, classifier: Classifier):
+        return classifier.scan(self.scanned, lines_are_blocks=self.lines_are_blocks,
+                               blocks=self.blocks, layout=self.layout)  # fmt: skip
+
+
+def _read_sources(
+    report: AuditReport, papers: list[Path], found_tex: list[Path]
+) -> list[_Source]:
+    """Every paper given, read, and G7's census of each taken (`auditing.references`)."""
+    from manuscript_guard.auditing.latex import read_latex
+    from manuscript_guard.auditing.references import census_of_latex, census_of_text
+
+    sources: list[_Source] = []
+    entries = [path for path in papers if path.suffix.lower() == ".tex"]
+    for path in papers:
+        if path in entries:
+            continue
+        try:
+            text, spans, tables, original = read_paper(path)
+        except (NotADocx, OSError, UnreadableText) as exc:
+            report.unreadable.append(str(exc))
+            continue
+        docx = is_docx(path)
+        hidden = _masked(text, printed_as_typed=docx)
+        sources.append(_Source(path, text, hidden, text, text, tuple(tables), not spans, docx))
+        report.not_audited += [
+            f"{path.name}: lines {start + 1}-{end}, read as the reference list"
+            for start, end in spans
+        ]
+        if not docx:
+            report.unreadable += unread_shapes(path, text)
+        report.references.append(
+            census_of_text(path, original, spans, hidden, _intervals(text), docx=docx)
+        )
+    if entries or found_tex:
+        latex = read_latex(entries, found_tex)
+        report.unreadable += latex.unreadable
+        report.passed_over += latex.passed_over
+        report.not_audited += latex.not_audited
+        for file in latex.files:
+            plain = file.hidden.replace(NUL, " ")
+            sources.append(_Source(file.path, file.source.text, file.hidden, file.hidden,
+                                   plain, file.tables, False, False, blocks=False,
+                                   layout=file.layout))  # fmt: skip
+        report.trees += latex.trees
+        report.references += [census_of_latex(tree.entry, list(tree.files))
+                              for tree in latex.trees]  # fmt: skip
+    return sources
 
 
 def unread_shapes(path: Path, text: str) -> list[str]:
@@ -765,24 +859,29 @@ def is_lock_file(path: Path) -> bool:
 
 def audit(
     papers: list[Path],
-    backing: list[Path],
+    backing: list[Path] | None,
     *,
     figures: list[Path] | None = None,
     classifier: Classifier | None = None,
     whole_numbers: tuple[str, ...] = (),
     passed_over: list[Path] | None = None,
+    found_tex: list[Path] | None = None,
 ) -> AuditReport:
     """`whole_numbers` names the rows of the papers' tables whose cells are means of whole
     numbers, which are held to their column's n (`stats/granularity.py`). `passed_over` is
-    each .doc a folder given as a paper held, which is named in the report and not read."""
+    each .doc a folder given as a paper held, which is named in the report and not read.
+    `backing` None is no outputs given: every number is read and classified, and none is
+    compared. A `.tex` among `papers` is an entry (`auditing.latex`); `found_tex` are the
+    other `.tex` files of a folder given, read where an entry inputs them."""
     # `rendered=True`: an existing paper has been through citeproc, so its citations are
     # "(Smith 2019)" rather than [@key]. That is the one place the audit-only rules apply.
     classifier = classifier or Classifier.load(rendered=True)
-    values, used, skipped = load_backing(backing)
+    values, used, skipped = load_backing(backing) if backing is not None else (set(), [], [])
     report = AuditReport(
         backing_values=values, backing_files=tuple(used), skipped=skipped,
         whole_numbers=whole_numbers, whole_numbers_unfound=list(whole_numbers),
         passed_over=[doc_passed_over(path) for path in passed_over or []],
+        compared=backing is not None,
     )  # fmt: skip
 
     # Each source, whether a line may be taken for a reference entry by its shape, and
@@ -791,21 +890,7 @@ def audit(
     # wrong, and in Markdown a line is a physical line, so a wrapped paragraph can open on
     # anything. A .docx and a figure are read a paragraph or an element per line; Markdown
     # and plain text are read as pandoc reads them.
-    sources: list[tuple[Path, str, bool, bool]] = []
-    tables: dict[Path, list[Table]] = {}
-    for path in papers:
-        try:
-            text, spans, tables[path] = read_paper(path)
-        except (NotADocx, OSError, UnreadableText) as exc:
-            report.unreadable.append(str(exc))
-            continue
-        sources.append((path, text, not spans, is_docx(path)))
-        report.not_audited += [
-            f"{path.name}: lines {start + 1}-{end}, read as the reference list"
-            for start, end in spans
-        ]
-        if not is_docx(path):
-            report.unreadable += unread_shapes(path, text)
+    sources = _read_sources(report, papers, found_tex or [])
     for path in figures or []:
         text = read_figure(path)
         if text is None:
@@ -821,9 +906,20 @@ def audit(
                 f"as outlines look like this (matplotlib: rcParams['svg.fonttype'] = 'none')"
             )
             continue
-        sources.append((path, text, False, True))
+        # A figure prints `<!--`, as a .docx does.
+        hidden = _masked(text, printed_as_typed=True)
+        sources.append(_Source(path, text, hidden, text, text, (), False, True))
 
-    report.papers = tuple(path for path, _text, _shape, _lines in sources)
+    report.papers = tuple(source.path for source in sources)
+    for source in sources:
+        _read_numbers(report, source, classifier, values)
+    return report
+
+
+def _read_numbers(
+    report: AuditReport, source: _Source, classifier: Classifier, values: set[str]
+) -> None:
+    """Every number of one source, classified and, where outputs were given, compared."""
     rendered_only = {
         rule.id for rule in (*classifier.structural, *classifier.conventions) if rule.audit_only
     }
@@ -835,59 +931,57 @@ def audit(
         structural=tuple(r for r in classifier.structural if not r.audit_only),
         _memo={},
     )
-
-    for path, text, by_shape, lines_are_blocks in sources:
-        # A .docx and a figure are the sources whose lines are blocks, and they print `<!--`.
-        hidden = _masked(text, printed_as_typed=lines_are_blocks)
-        found = _disagreements(path, hidden, tables.get(path, []))
-        if whole_numbers:
-            found = sorted(found + _whole_number_means(report, path, tables.get(path, [])),
-                           key=lambda d: d.line)  # fmt: skip
-        report.disagreements += found
-        scan = classifier.scan(text, lines_are_blocks=lines_are_blocks)
-        source_scan = None
-        intervals = _intervals(text)
-        starts = [start for start, _end in intervals]
-        pieces = [piece for atom in find_atoms(text, hidden) for piece in _apart(atom)]
-        for atom, read_apart in pieces:
-            if not _within(intervals, starts, atom):
-                verdict = classifier.classify(atom, None, scan)
-                # A number read apart from its marker may be a label, `Table 2[3]`, but not
-                # part of a citation, bar a year: the author-year rule took the `9.99` of
-                # `(2019; 95% CI 1.20, 9.99)[12]` for one.
-                if read_apart and verdict.rule in rendered_only and not _YEAR.fullmatch(atom.text):
-                    if source_scan is None:
-                        source_scan = source_rules.scan(text, lines_are_blocks=lines_are_blocks)
-                    verdict = source_rules.classify(atom, None, source_scan)
-                if verdict.kind != UNCLASSIFIED:
-                    report.classified += 1
-                    continue
-            candidate = Candidate(
-                text=atom.text,
-                normalised=normalise_number(atom.text),
-                source=path,
-                line=atom.line,
-                context=atom.line_text.strip()[:140],
-            )
-            # Every number the atom carries has to be in the outputs, not just one of them:
-            # an interval is accounted for when both its bounds are, and "0.72-0.99" with
-            # only 0.72 published is exactly the discrepancy this command is for.
-            found = all(part in values for part in parts_of(atom.text))
-            # A line shaped like a reference entry is compared like any other. Its numbers
-            # are most likely a volume, a page and a year, so a miss is listed apart from
-            # the findings rather than among them; a hit counts as a reference. The shape
-            # used to decide instead, and a caption it accepted hid every number it held.
-            if by_shape and looks_like_reference(atom.line_text):
-                if found:
-                    report.classified += 1
-                else:
-                    report.reference_like.append(candidate)
-            elif found:
-                report.matched.append(candidate)
+    path, text, hidden = source.path, source.text, source.hidden
+    found = _disagreements(path, hidden, list(source.tables))
+    if report.whole_numbers:
+        found = sorted(found + _whole_number_means(report, path, list(source.tables)),
+                       key=lambda d: d.line)  # fmt: skip
+    report.disagreements += found
+    scan = source.scan(classifier)
+    source_scan = None
+    intervals = _intervals(source.plain)
+    starts = [start for start, _end in intervals]
+    pieces = [piece for atom in find_atoms(text, hidden) for piece in _apart(atom)]
+    for atom, read_apart in pieces:
+        if not _within(intervals, starts, atom):
+            verdict = classifier.classify(atom, None, scan)
+            # A number read apart from its marker may be a label, `Table 2[3]`, but not
+            # part of a citation, bar a year: the author-year rule took the `9.99` of
+            # `(2019; 95% CI 1.20, 9.99)[12]` for one.
+            if read_apart and verdict.rule in rendered_only and not _YEAR.fullmatch(atom.text):
+                if source_scan is None:
+                    source_scan = source.scan(source_rules)
+                verdict = source_rules.classify(atom, None, source_scan)
+            if verdict.kind != UNCLASSIFIED:
+                report.classified += 1
+                continue
+        if not report.compared:
+            report.uncompared += 1
+            continue
+        candidate = Candidate(
+            text=atom.text,
+            normalised=normalise_number(atom.text),
+            source=path,
+            line=atom.line,
+            context=atom.line_text.strip()[:140],
+        )
+        # Every number the atom carries has to be in the outputs, not just one of them:
+        # an interval is accounted for when both its bounds are, and "0.72-0.99" with
+        # only 0.72 published is exactly the discrepancy this command is for.
+        matched = all(part in values for part in parts_of(atom.text))
+        # A line shaped like a reference entry is compared like any other. Its numbers
+        # are most likely a volume, a page and a year, so a miss is listed apart from
+        # the findings rather than among them; a hit counts as a reference. The shape
+        # used to decide instead, and a caption it accepted hid every number it held.
+        if source.by_shape and looks_like_reference(atom.line_text):
+            if matched:
+                report.classified += 1
             else:
-                report.unmatched.append(candidate)
-
-    return report
+                report.reference_like.append(candidate)
+        elif matched:
+            report.matched.append(candidate)
+        else:
+            report.unmatched.append(candidate)
 
 
 def _whole_number_means(report: AuditReport, path: Path, tables: list[Table]) -> list[Disagreement]:
@@ -949,18 +1043,6 @@ def _disagreements(path: Path, hidden: str, tables: list[Table]) -> list[Disagre
     return sorted(found, key=lambda d: d.line)
 
 
-def _ranges(numbers: list[int]) -> str:
-    """"3-25, 29": sorted line numbers, with any no more than two apart shown as a range,
-    since reference entries are usually separated by blank lines."""
-    runs: list[list[int]] = []
-    for number in numbers:
-        if runs and number - runs[-1][-1] <= 2:
-            runs[-1].append(number)
-        else:
-            runs.append([number])
-    return ", ".join(f"{r[0]}-{r[-1]}" if len(r) > 1 else str(r[0]) for r in runs)
-
-
 # --------------------------------------------------------------------------- discrimination
 
 
@@ -997,130 +1079,10 @@ def measure_discrimination(values: set[str]) -> Discrimination:
     return Discrimination(small_integers=small, medium_integers=medium, two_decimals=decimals)
 
 
-def render(report: AuditReport, discrimination: Discrimination, root: Path | None = None) -> str:
-    def show(path: Path) -> str:
-        if root is None:
-            return path.name
-        try:
-            return str(path.relative_to(root))
-        except ValueError:
-            return path.name
+def render(
+    report: AuditReport, discrimination: Discrimination | None, root: Path | None = None
+) -> str:
+    """The report in its sections (`auditing.report`)."""
+    from manuscript_guard.auditing.report import render as sections
 
-    lines: list[str] = []
-    lines.append(
-        f"Audited {len(report.papers)} file(s) against {len(report.backing_values)} distinct "
-        f"numbers from {len(report.backing_files)} output file(s)."
-    )
-    apart = (
-        f", and {len(report.reference_like)} not found on lines read as reference entries"
-        if report.reference_like
-        else ""
-    )
-    lines.append(
-        f"{report.examined} numeric tokens: {report.classified} conventions or references, "
-        f"{len(report.matched)} found in the outputs, {len(report.unmatched)} not found{apart}."
-    )
-
-    for heading, items in (
-        ("Could not read:", report.unreadable),
-        ("Outputs not read as given:", report.skipped),
-        ("Passed over in a folder (a note, not counted by --strict):", report.passed_over),
-        ("Not audited:", report.not_audited),
-    ):
-        if items:
-            lines.append("")
-            lines.append(heading)
-            lines += [f"  {item}" for item in items]
-
-    if report.unmatched:
-        lines.append("")
-        lines.append("NOT FOUND IN ANY OUTPUT — check each of these:")
-        by_source: dict[Path, list[Candidate]] = {}
-        for candidate in report.unmatched:
-            by_source.setdefault(candidate.source, []).append(candidate)
-        for source, items in by_source.items():
-            lines.append(f"  {show(source)}")
-            for candidate in items[:40]:
-                lines.append(f"    line {candidate.line}: {candidate.text}")
-                lines.append(f"      {candidate.context}")
-            if len(items) > 40:
-                lines.append(f"    (+{len(items) - 40} more)")
-
-    if report.reference_like:
-        lines.append("")
-        lines.append(
-            "NOT FOUND, ON LINES READ AS REFERENCE ENTRIES — mostly volumes, pages and years; "
-            "a caption or sentence misread as an entry shows up here (not counted by --strict):"
-        )
-        by_line: dict[Path, dict[int, list[str]]] = {}
-        for candidate in report.reference_like:
-            numbers = by_line.setdefault(candidate.source, {})
-            numbers.setdefault(candidate.line, []).append(candidate.text)
-        for source, numbers in by_line.items():
-            lines.append(f"  {show(source)}")
-            ordered = sorted(numbers)
-            for number in ordered[:40]:
-                lines.append(f"    line {number}: {', '.join(numbers[number])}")
-            if len(ordered) > 40:
-                lines.append(f"    (+{len(ordered) - 40} more lines: {_ranges(ordered[40:])})")
-
-    if report.disagreements:
-        lines.append("")
-        lines.append(
-            "NUMBERS THAT DO NOT FIT THE ONES BESIDE THEM: a P and its statistic, t and z "
-            "read as two-sided; a ratio and its interval; an interval and its P; an n (%) "
-            "and its denominator; a mean of whole numbers and its n (not counted by "
-            "--strict):"
-        )
-        by_paper: dict[Path, list[Disagreement]] = {}
-        for item in report.disagreements:
-            by_paper.setdefault(item.source, []).append(item)
-        for source, items in by_paper.items():
-            lines.append(f"  {show(source)}")
-            for item in items:
-                lines.append(f"    line {item.line}: {item.message}")
-                lines.append(f"      {item.context}")
-
-    if report.whole_numbers:
-        lines.append("")
-        lines.append(
-            f"Means of whole numbers (--whole-numbers): {report.means_read} read in the rows "
-            f"named, {len(report.means_not_assessable)} not assessable, every mean printed "
-            f"to their places being possible for their n (any n of 10 to the power of the "
-            f"places or more, and a few just under)."
-        )
-        apart: dict[Path, list[Disagreement]] = {}
-        for item in report.means_not_assessable:
-            apart.setdefault(item.source, []).append(item)
-        for source, items in apart.items():
-            lines.append(f"  {show(source)}")
-            lines += [f"    line {item.line}: {item.message}" for item in items[:40]]
-            if len(items) > 40:
-                lines.append(f"    (+{len(items) - 40} more)")
-        lines += [
-            f"  --whole-numbers {label!r}: no mean was read in a row whose label holds it"
-            for label in report.whole_numbers_unfound
-        ]
-
-    lines.append("")
-    lines.append("What a match is worth here:")
-    lines.append(
-        f"  integers 1-100    {discrimination.small_integers:6.0%} of all possible values "
-        f"already match"
-    )
-    lines.append(f"  integers 1-1000   {discrimination.medium_integers:6.0%}")
-    lines.append(f"  two-decimal       {discrimination.two_decimals:6.0%}")
-    lines.append(f"  {discrimination.verdict()}")
-    if discrimination.small_integers > 0.5:
-        lines.append(
-            "  Point --against at the analysis outputs rather than the raw data if you can. "
-            "A row-level dataset contains most small integers, so it matches almost anything."
-        )
-    lines.append("")
-    lines.append(
-        "This audit asks only whether a number appears somewhere in the outputs. It cannot "
-        "tell whether it appears in the right place, or whether the sentence around it is "
-        "true. For a paper still being written, bind the numbers instead: "
-        "`manuscript-guard init`."
-    )
-    return "\n".join(lines)
+    return sections(report, discrimination, root)

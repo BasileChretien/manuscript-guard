@@ -85,7 +85,7 @@ COMMANDS = {
     "audit": Zero("the papers and figures given, against the outputs given",
                   why="exits 1 under --strict when it read no number "
                   "(tests/test_cli.py, `test_audit_strict_fails_a_paper_with_no_number_in_it`); "
-                  "it needs outputs to read against, which an empty project has not"),
+                  "and an empty project holds no paper to give it"),
     "bind": Zero("every unbound number in the manuscript", exits=2, argv=("bind", "{project}")),
     "build": Zero("the manuscript, once the gates pass",
                   why="the gates run first, and an empty manuscript fails them from the drafting "
@@ -238,7 +238,8 @@ def test_a_command_that_reads_nothing_exits_as_the_table_says(
 #: `{tex}` is the project's `main.tex`. A command leaves "refuses" in the step that teaches it.
 LATEX = {
     "approve": ("reads", ("approve", "{project}", "--as", "Nobody Listed")),
-    "audit": ("refuses", ("audit", "{tex}", "--against", "{project}/results")),
+    # It reads a `.tex` named with the files it inputs, as G2 reads them (Task 3, PR 1).
+    "audit": ("reads", ("audit", "{tex}", "--against", "{project}/results")),
     # It reads each file as G2 does and offers `\\mg{...}` (step 12).
     "bind": ("reads", ("bind", "{project}")),
     # It compiles the PDF with latexmk (step 9).
@@ -308,7 +309,7 @@ def test_every_command_says_what_it_does_with_latex() -> None:
     assert set(LATEX) == _subcommands()
     # The table says what the code does: the refusing ones are those the guard holds.
     refusing = {name for name, (kind, _argv) in LATEX.items() if kind == "refuses"}
-    assert refusing == set(cli._MARKDOWN_COMMANDS) | {"audit"}
+    assert refusing == set(cli._MARKDOWN_COMMANDS)
 
 
 @pytest.mark.parametrize("name", sorted(n for n, (kind, _) in LATEX.items() if kind == "refuses"))

@@ -17,6 +17,7 @@ import shutil
 import sys
 import textwrap
 from collections.abc import Callable, Collection
+from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
@@ -44,7 +45,7 @@ from manuscript_guard.contracts import (
     load_project,
     read_text,
 )
-from manuscript_guard.findings import Report, merge_all
+from manuscript_guard.findings import WARN, Finding, Report, merge_all
 from manuscript_guard.gates import (
     check_bound_units,
     check_citations,
@@ -3458,11 +3459,13 @@ def cmd_submit(args: argparse.Namespace) -> int:
         return 1
 
     try:
-        pack = assemble_pack(project, document, checked=report.ok, extra=marked)
+        coauthors = _coauthor_verification(project)
+        pack = assemble_pack(project, document, checked=report.ok, extra=marked,
+                             coauthor_verification=coauthors.text)  # fmt: skip
     except SubmissionError as exc:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
-    return _packed(project, report, pack, marked_notes)
+    return _packed(project, report, pack, marked_notes, coauthors)
 
 
 def _submit_latex(project, report, args: argparse.Namespace) -> int:
@@ -3515,16 +3518,81 @@ def _submit_latex(project, report, args: argparse.Namespace) -> int:
         notes.append("no marked-up copy is packed: `build --marked-up` makes Word copies, "
                      "and the LaTeX source is packed without one")  # fmt: skip
     try:
+        coauthors = _coauthor_verification(project)
         pack = assemble_pack(project, packed.documents[0], checked=report.ok,
                              extra=[(path, f"latex/{path.name}") for path in packed.files],
-                             supplements=packed.documents[1:])  # fmt: skip
+                             supplements=packed.documents[1:],
+                             coauthor_verification=coauthors.text)  # fmt: skip
     except SubmissionError as exc:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
-    return _packed(project, report, pack, notes)
+    return _packed(project, report, pack, notes, coauthors)
 
 
-def _packed(project, report, pack, notes: list[str]) -> int:
+@dataclass(frozen=True)
+class _Coauthors:
+    """What `submit` packs and says of the co-authors' checking: the publisher's copy of the
+    recap, where the project has a record; a warning for each flag still open; and why no copy
+    is packed, where one is not."""
+
+    text: str | None = None
+    flags: Report = field(default_factory=Report)
+    notes: tuple[str, ...] = ()
+
+
+def _coauthor_verification(project) -> _Coauthors:
+    """The publisher's recap for the pack, and `coauthor-flag-open` for each current `wrong`
+    or `code` that is still the latest answer of the person who gave it. Said, and never
+    refused: whether to send with a co-author's flag open is the corresponding author's call
+    (decision 7 (a)). The warnings need the record and the items only, so they are said where
+    the copy cannot be made, the register unreadable, say (round 2 of #465)."""
+    import csv
+    import io
+
+    from manuscript_guard.checking.items import ItemsError
+    from manuscript_guard.checking.recap import RecapError, earlier_for, flags_of, make
+    from manuscript_guard.checking.store import decisions_path
+    from manuscript_guard.text.reader import LATEX, manuscript_format
+
+    if not decisions_path(project.root).is_file():
+        return _Coauthors()
+    if manuscript_format(project.path("manuscript")) == LATEX:
+        return _Coauthors(notes=("no coauthor-verification.md is packed: `checker` reads a "
+                                 "Markdown manuscript only",))  # fmt: skip
+    said = io.StringIO()
+    try:
+        # What it prints of the items it leaves out is for `checker`; what it could not read
+        # is said below, since the table is the poorer for it.
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(said):
+            items = _checking_items(project, None)
+    except ItemsError as exc:
+        return _Coauthors(notes=(f"no coauthor-verification.md is packed: {exc}",))
+    unread = tuple(f"coauthor-verification.md: {line}" for line in said.getvalue().splitlines())
+    try:
+        text = make(project, items, earlier=earlier_for(project), publisher=True).text
+    except RecapError as exc:
+        text, unread = None, (*unread, f"no coauthor-verification.md is packed: {exc}")
+    try:
+        open_ = flags_of(project.root, items)
+    except (OSError, UnicodeDecodeError, csv.Error):
+        # The record itself cannot be read: the note above says so.
+        open_ = ()
+    flags = tuple(
+        Finding(
+            gate="BUILD", code="coauthor-flag-open", severity=WARN,
+            message=f"{flag.by} answered {flag.status!r} on {flag.title or flag.id}, and has "
+            f"given no later answer on it, nor has it changed since: {flag.note or 'no note'}",
+            path=decisions_path(project.root),
+            hint="any later answer of theirs on it, or an edit to the item, closes it: change "
+            "what they asked for, or ask them again (`checker build`); `checker recap` lists "
+            "each with its sentence or its steps",
+        )
+        for flag in open_
+    )  # fmt: skip
+    return _Coauthors(text, Report(flags), unread)
+
+
+def _packed(project, report, pack, notes: list[str], coauthors: _Coauthors | None = None) -> int:
     """What `submit` says of the pack it assembled."""
     print(f"submission pack: {pack.directory}")
     if not report.ok:
@@ -3542,6 +3610,13 @@ def _packed(project, report, pack, notes: list[str]) -> int:
     if approvals.findings:
         print()
         print(approvals.render(project.root))
+    coauthors = coauthors or _Coauthors()
+    for note in coauthors.notes:
+        print(f"  {note}")
+    if coauthors.flags.findings:
+        # As the approvals are: said, not refused (decision 7 (a) of Task 1).
+        print()
+        print(coauthors.flags.render(project.root))
     print("\nStill to write by hand: the covering letter. No file in the project holds it.")
     _declare_in_letter(project)
     return 0
@@ -4224,13 +4299,18 @@ def _checking_items(project, named: Path | None, *, build: bool = False,
 def cmd_checker(args: argparse.Namespace) -> int:
     """Send a co-author the numbers to check, and take their answers back.
 
-    Three verbs, and they are the whole of a round: `build` writes one file per person, `import`
-    records what they sent back, `status` says where the round stands. Nothing here asks the
+    Four verbs, and they are the whole of a round: `build` writes one file per person, `import`
+    records what they sent back, `status` says where the round stands, and `recap` writes
+    `checks/recap.md`, who checked what, or with `--check` holds one to the record. Nothing
+    here asks the
     co-author to install, sign in or configure anything, and nothing here is particular to a
     model or a vendor: the file is a page, the answers are JSON, the record is a CSV.
     """
     from manuscript_guard.checking import ItemsError
 
+    if getattr(args, "check", None) is not None and args.verb != "recap":
+        print("manuscript-guard: --check belongs to `checker recap`", file=sys.stderr)
+        return 2
     project, _ = load_project(args.path)
     try:
         items = _checking_items(project, args.items, build=args.verb == "build")
@@ -4241,6 +4321,8 @@ def cmd_checker(args: argparse.Namespace) -> int:
         return _checker_build(project, items, args)
     if args.verb == "import":
         return _checker_import(project, items, args)
+    if args.verb == "recap":
+        return _checker_recap(project, items, args)
     return _checker_status(project, items)
 
 
@@ -4517,6 +4599,36 @@ def _checker_import(project, items, args) -> int:
             print(f"  not recorded: {called} — {why}")
     # As before: nothing that counts came in, and something was wrong with what did.
     return 1 if troubled and not counted else 0
+
+
+def _checker_recap(project, items, args) -> int:
+    """Write `checks/recap.md`, or with `--check` hold a recap to the record as it is now."""
+    from manuscript_guard.checking import recap
+
+    try:
+        if args.check is not None:
+            # A file named relative to the project, as every path in it is; an absolute
+            # one stands as given.
+            path = project.root / (recap.RECAP if args.check is True else args.check)
+            code, said = recap.check(project, items, path)
+            for line in said:
+                print(line)
+            return code
+        made = recap.write(project, items)
+    except recap.RecapError as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 2
+    print(f"{project.root / recap.RECAP}: {len(items.items)} item(s), {made.head.rows} row(s) "
+          f"of checks/decisions.csv, chain head {made.head.head}; root digest {made.root}")
+    if made.earlier is not None and not made.earlier_holds:
+        # Said and written into the recap, not refused: the recap is the record of it, and
+        # `--check` against an earlier copy is what fails.
+        print(f"  the earlier recap counted {made.earlier.rows} row(s) with chain head "
+              f"{made.earlier.head}, and the record's first rows no longer give it: a row was "
+              "edited, deleted or moved since")
+    for flag in made.flags:
+        print(f"  [{flag.status}] {flag.by} on {flag.title or flag.id}: {flag.note or '—'}")
+    return 0
 
 
 def _checker_status(project, items) -> int:
@@ -5775,7 +5887,7 @@ def build_parser() -> argparse.ArgumentParser:
     checker = sub.add_parser(
         "checker", help="send a co-author the numbers to check, and take their answers back"
     )
-    checker.add_argument("verb", choices=["build", "import", "status"])
+    checker.add_argument("verb", choices=["build", "import", "status", "recap"])
     checker.add_argument("path", nargs="?", type=Path, default=Path.cwd())
     checker.add_argument("--for", dest="name", default="", help="build: who the file is for")
     checker.add_argument(
@@ -5799,8 +5911,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--answers", type=Path, nargs="+", help="import: the files the co-authors sent back"
     )
     checker.add_argument(
-        "--items", type=Path, help="the items file, if not checks/items.json"
+        "--items", type=Path,
+        help="the items file, if not checks/items.json; a relative path is read from the "
+        "working folder, where --check's is read under the project",
     )
+    checker.add_argument(
+        "--check", nargs="?", const=True, default=None, metavar="FILE",
+        help="recap: make the recap in FILE (checks/recap.md unless given; a relative FILE "
+        "is under the project) again from the record and the manuscript, and exit 1 at the "
+        "first line that differs; name the project before --check",
+    )  # fmt: skip
     checker.set_defaults(func=cmd_checker)
 
     methods = sub.add_parser("methods", help="check or record Methods-to-code reconciliation")

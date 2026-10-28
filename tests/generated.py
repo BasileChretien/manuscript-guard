@@ -2624,6 +2624,33 @@ def method_claims(
     )
 
 
+#: The columns of `checks/decisions.csv`, as `checking.store.FIELDS` writes them.
+RECORD_FIELDS = ("when", "by", "id", "group", "title", "status", "note", "digest", "bundle")
+#: What a cell of the record holds: a CSV writer quotes the comma, the quotation mark and the
+#: line break, a spreadsheet reads the equals sign, and an empty cell is a row `read_decisions`
+#: passes over where it is the id.
+RECORD_CELLS = (
+    "ok", "wrong", "Ada Example", "José García", "a, b", 'said "no"', "two\nlines", "=1+1",
+    " padded ", "", "0123456789abcdef", "2026-10-28T09:00:00+09:00",
+)  # fmt: skip
+
+
+@st.composite
+def decision_records(draw: st.DrawFn) -> list[dict[str, str]]:
+    """Rows of the co-authors' record, two to six, each cell drawn from `RECORD_CELLS`. In
+    every example one row has no id, one note holds a comma, a quotation mark and a line
+    break, and one title a CRLF line break: what a reader of the record has to keep, wherever
+    it stands."""
+    count = draw(st.integers(2, 6))
+    rows = [{field: draw(st.sampled_from(RECORD_CELLS)) for field in RECORD_FIELDS}
+            for _ in range(count)]  # fmt: skip
+    rows[draw(st.integers(0, count - 1))]["id"] = ""
+    rows[draw(st.integers(0, count - 1))]["note"] = 'it says "17.4",\nnot 17.2'
+    # A line break as a CRLF checkout writes it inside a quoted cell (round 2 of #465).
+    rows[draw(st.integers(0, count - 1))]["title"] = "a title,\r\non two lines"
+    return rows
+
+
 #: The supplement's names of the Methods as headings in a manuscript drawn from the pool.
 SUPPLEMENT_HEADINGS = tuple(f"\n\n# {heading}\n\n" for heading in SUPPLEMENT_METHODS)
 

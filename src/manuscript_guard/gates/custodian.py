@@ -128,6 +128,20 @@ def _printed(display: str) -> float:
     return number_in(display) or 0
 
 
+def recoverable_cells(
+    project: Project, results: Results, carried: frozenset[str] = frozenset()
+) -> Report:
+    """A failure for each count the custodian's minimum holds back that the results files
+    `carried` (named from the project's root) still let a reader work out: a cell printed as
+    "<5" in a row whose total and other cells are printed, recovered by subtraction.
+
+    The one entry point `deposit`'s preflight calls for it, so that the check, when it is
+    written (Task 3), is made before anything is deposited. It finds nothing yet: DESIGN.md,
+    Known gaps, "A masked cell recovered by subtraction is not looked for"."""
+    del project, results, carried
+    return Report()
+
+
 def check_restricted_inputs(project: Project, results: Results) -> Report:
     """A failure for each input declared restricted that git tracks."""
     restricted = sorted(

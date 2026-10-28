@@ -155,6 +155,9 @@ ROUTES: dict[str, Route] = {
     **_all("word-roundtrip", None, "comment-unanswered", "comments-", "docx-unreadable"),
     # -- what is sent ---------------------------------------------------------------------
     **_all("submission-pack", ("package",), "package-"),
+    # Said by `deposit` itself, which takes a target and a bundle; a custodian signs off.
+    **_all("submission-pack", None, "deposit-"),
+    **_all("submission-pack", None, "deposit-not-authorised", who="author"),
     **_all("submission-pack", ("build",), "blind-document-names-author"),
     **_all("submission-pack", None, "approval-", who="author"),
     # -- what only a named person may do ----------------------------------------------------

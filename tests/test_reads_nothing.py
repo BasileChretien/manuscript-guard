@@ -154,6 +154,10 @@ COMMANDS = {
     "verify": Zero("the results fragments, re-run", exits=2, argv=("verify", "{project}")),
     "package": Zero("the results fragments, and the files that made them", exits=2,
                     argv=("package", "{project}")),
+    # A plan's deposit with no plan is refused; a release with no results fails its check.
+    "deposit": Zero("the analysis plan, the package or the manuscript, as the bundle holds",
+                    exits=2, argv=("deposit", "{project}", "--target", "zenodo", "--bundle",
+                                   "preregistration")),
 }
 
 
@@ -270,6 +274,8 @@ LATEX = {
     # It packages the results, the scripts and the inputs whatever the format, and the `.tex`
     # sources with `--with-manuscript`; BOUND.md reads LaTeX's bindings (`deposit/bound.py`).
     "package": ("reads", ("package", "{project}")),
+    # The arXiv bundle is the submission folder `submit` writes of the LaTeX source.
+    "deposit": ("reads", ("deposit", "{project}", "--target", "arxiv", "--bundle", "preprint")),
     "palettes": ("no manuscript", ("palettes",)),
     "passages": ("reads", ("passages", "{project}")),
     "proof": ("refuses", ("proof", "{project}/proof.pdf", "{project}")),

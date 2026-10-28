@@ -10553,8 +10553,8 @@ asking its own version of each beside them would have added a few hundred duplic
 someone's afternoon. So one contributed item in a group takes that whole group, and
 `build` prints how many of its own it left out — a thing to notice, rather than to discover from
 a co-author. Not `methods`: its items carry G9's code digest, which a project's own could not,
-and its answers include `code`, so a project's file that declares a group of that id is
-refused.
+and its answers include `code`, so `checker build` refuses a project's file that declares a
+group of that id.
 
 ### What the digest covers
 
@@ -10746,9 +10746,11 @@ read from the script on disk: the step's body, and for a Python script each func
 followed into, as its own block, found with `ast`; R gives the body only. Where the script's
 digest is not the one its fragment recorded, each block and `build` say the code shown may not
 be what ran, and a fragment that records no digest of its script is said by both to leave it
-unknown. The Methods are read strictly, as G9 reads them: a file that is not UTF-8 leaves the
-group out of the round, and `build` names the file, while the other groups, which read it with
-replacements, are sent. **Not shown**: how the pair stands in `methods.lock`, which would answer for the
+unknown, and one whose script is not there is said by `build`. The Methods are read strictly,
+as G9 reads them, with the results they bind: a manuscript file that is not UTF-8, or a results
+file that does not parse, leaves the group out of the round, and every verb names the file,
+while the other groups, which read neither so, are sent; `import` refuses the group's answers
+with that reason. **Not shown**: how the pair stands in `methods.lock`, which would answer for the
 co-author before they read anything.
 
 **The identifier and the digest.** The identifier is the file under `manuscript/`, the steps
@@ -10774,8 +10776,9 @@ lists. `code` is refused at import outside a group that lists it, with the reaso
 about an item the project no longer has is written down with `ok`, `wrong` or `unsure`, as
 before, and refused with `code`, since its group cannot be known. Every answer but `ok` asks
 for a note, on the page and at import, which refuses one without, naming the item. A group may
-not list a status twice, and a project's own items file may not declare a group `methods`: its
-items would carry no code digest, and be asked the toolkit's question. `decisions.csv` keeps its nine columns: `code` is a status like
+not list a status twice. `checker build` refuses a project's items file that declares a group
+`methods`, which would send the project's items under the toolkit's question and none of the
+toolkit's; `import` and `status` read it as before (Known gaps says how to move). `decisions.csv` keeps its nine columns: `code` is a status like
 the rest. `status` lists a `code` with the `wrong` and the `unsure`.
 
 **Tests.** `tests/test_properties.py` holds over generated Methods (`method_claims`, reading
@@ -11027,7 +11030,10 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   bytes are not in it, so an answer survives the outline moving to another cell or the image
   being replaced. A bound value is shown by its name (`[reported_incidence]`), so a changed
   `results.` or `lit.` value leaves the sentence, and an answer about it, as they were. A
-  methods item is the exception: its values are filled in and in its digest.
+  methods item is the exception: its values are filled in and in its digest, and so is what a
+  cross-reference in it prints, "Figure 1". A figure placed before Figure 1 renumbers it, and
+  the answers about every methods item that points at it go stale, though its words did not
+  change.
 - **A methods item's code is read from disk, and only what the step's digest holds.** The
   lines shown are the script as it is when the page is built, and a script whose digest is not
   the one its run recorded is said to be so on the page and by `build`; a fragment that records
@@ -11050,6 +11056,18 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   its file's path under `manuscript/` and is matched by it; a cited sentence or a value records
   the file's name alone, so a file of the main text and one of the supplement with one name
   match each other's answers in `impact`.
+- **A project's own `methods` group is read, and no longer built.** A project whose
+  `checks/items.json` declared a group `methods` before the toolkit had one has it refused by
+  `checker build`, which says to rename it; `import` and `status` read it as before, leaving
+  the toolkit's methods items out, with a line. Renamed, its items keep their ids and their
+  recorded answers, but an item's digest holds its group, so each is asked again, its notes
+  kept.
+- **Answers about a group that could not be made are refused, not kept.** Where the Methods
+  could not be read this run (a manuscript file G9 refuses, a results file that does not
+  parse), `import` refuses each answer the page marks as the methods group's, and each `code`,
+  with that reason, and `status` says the group is out; the files can be imported again once
+  it reads. A page built before it wrote the group with each answer is known by `code` alone,
+  so its ok, wrong and unsure on Methods items are recorded as about items gone.
 - **An open Methods paragraph is known by its place.** It has no steps to be known by, so
   its identifier is its place among the open paragraphs of its file: one added above, or one
   given an anchor, moves those below, and their answers go stale (never onto another

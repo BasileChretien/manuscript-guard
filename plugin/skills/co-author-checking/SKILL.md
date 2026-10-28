@@ -127,7 +127,7 @@ calls as well. Its buttons are "Text matches the code", "Text needs changing", "
 changing" (key C) and "Not sure", and every one but the first asks for a note. A `code`
 answer is a finding about the analysis, not the prose: change the code, run it again, and read
 the text against it (the [methods-writer](../methods-writer/SKILL.md) skill). `code` is
-refused in any other group.
+refused at import outside a group that lists it.
 
 The page does not say whether the author reconciled the pair in `methods.lock`, so as not to
 answer for the co-author. `build` prints a line for each claim it leaves out (a step that never

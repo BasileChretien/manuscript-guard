@@ -4049,22 +4049,32 @@ def _checking_items(project, named: Path | None, *, build: bool = False):
         # and `group`, so an item written without one — the ordinary authoring mistake this
         # schema exists to report — raised a `KeyError` from inside the merge instead.
         items_from(contributed, source)
-        reserved = [str(group.get("id")) for group in contributed.get("groups") or ()
-                    if str(group.get("id")) in RESERVED_GROUPS]  # fmt: skip
-        if reserved:
-            # Taken whole, it would put the project's items under the toolkit's question and
-            # without the code digest each of the toolkit's carries.
-            raise ItemsError(
-                f"{source} declares the group {reserved[0]!r}, whose id is the toolkit's: its "
-                "items are each Methods text beside the code G9 holds it to. Give the "
-                "project's group another id."
-            )
     elif named is not None:
         # A file named on the command line and not there is a mistake worth saying, where the
         # default being absent only means this project contributes nothing of its own.
         raise ItemsError(f"{named} does not exist")
 
-    produced, unread, notes = produce_with_notes(project)
+    reserved = sorted({str(group.get("id")) for group in (contributed or {}).get("groups") or ()
+                       if str(group.get("id")) in RESERVED_GROUPS})  # fmt: skip
+    if reserved and build:
+        # Taken whole, it would send the project's items under the toolkit's question, and
+        # the toolkit's would not be sent. Refused where a page is made; read as before by
+        # `import` and `status`, so that answers already given come in and are counted.
+        raise ItemsError(
+            f"{source} declares the group {reserved[0]!r}, whose id is now the toolkit's: its "
+            "items are each Methods text beside the code G9 holds it to. Rename the project's "
+            "group, and the `group` of each of its items, to another id (`methods-own`, say), "
+            "and build again. The items keep their ids, so the answers recorded on them are "
+            "still theirs; the digest holds the group, so they are asked again, notes kept."
+        )
+    produced, unread, notes, unavailable = produce_with_notes(project)
+    if reserved:
+        mine = [item for item in produced["items"] if item["group"] in reserved]
+        produced = {**produced, "items": [i for i in produced["items"] if i not in mine]}
+        unavailable = {}
+        print(f"{', '.join(reserved)}: the toolkit's {len(mine)} item(s) are left out, because "
+              f"{source.name} declares that group itself; rename it there to send them "
+              "(`checker build` says how).")  # fmt: skip
     for said in notes if build else ():
         # A Methods claim left out of the round, or code shown from a script that changed
         # since its run: said where the page is built, which is where it can still be fixed.
@@ -4091,7 +4101,9 @@ def _checking_items(project, named: Path | None, *, build: bool = False):
             "of those holds anything. A project that traces numbers of "
             f"its own adds them in {source}: see contracts/schemas/checking.schema.json."
         )
-    return items_from(document, source)
+    from dataclasses import replace
+
+    return replace(items_from(document, source), unavailable=unavailable)
 
 
 def cmd_checker(args: argparse.Namespace) -> int:

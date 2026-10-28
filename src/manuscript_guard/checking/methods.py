@@ -76,6 +76,8 @@ class Ran:
     changed: frozenset[str] = field(default_factory=frozenset)
     #: Scripts whose fragment records no digest of them.
     unrecorded: frozenset[str] = field(default_factory=frozenset)
+    #: Scripts a step names that are not on disk.
+    missing: frozenset[str] = field(default_factory=frozenset)
 
 
 def ran_of(project, results) -> Ran:
@@ -85,17 +87,20 @@ def ran_of(project, results) -> Ran:
     fragments = {fragment.path: fragment for fragment in results.fragments}
     changed: set[str] = set()
     unrecorded: set[str] = set()
+    missing: set[str] = set()
     for step in results.steps.values():
         script = project.root / step.script
         if not script.is_file():
-            continue  # the evidence says it cannot be read
+            missing.add(step.script)
+            continue
         fragment = fragments.get(step.source)
         declared = fragment.generated_by_sha256 if fragment is not None else None
         if not declared:
             unrecorded.add(step.script)
         elif not source_digest_matches(script, declared):
             changed.add(step.script)
-    return Ran(dict(results.steps), project.root, frozenset(changed), frozenset(unrecorded))
+    return Ran(dict(results.steps), project.root, frozenset(changed), frozenset(unrecorded),
+               frozenset(missing))
 
 
 def _identifier(*parts: str) -> str:
@@ -190,6 +195,9 @@ def method_items(
             notes.append(f"methods: {script} has changed since the run that recorded step(s) "
                          f"{said}, so the code a co-author is shown may not be what ran; run it "
                          "again before sending the round")  # fmt: skip
+        elif script in ran.missing:
+            notes.append(f"methods: {script}, where the run recorded step(s) {said}, is not "
+                         "there, so no code is shown for them")  # fmt: skip
         elif script in ran.unrecorded:
             notes.append(f"methods: the run that recorded step(s) {said} kept no digest of "
                          f"{script}, so whether the code a co-author is shown is what ran "

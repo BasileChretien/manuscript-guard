@@ -621,37 +621,38 @@ def produce(project) -> tuple[dict[str, Any], tuple[str, ...]]:
     in silence — a page with two items instead of a hundred and thirty, and three ordinary lines
     of output. The warnings come back with the document now, and `build` prints them.
     """
-    document, unread, _notes = produce_with_notes(project)
+    document, unread, _notes, _unavailable = produce_with_notes(project)
     return document, unread
 
 
-def _method_items(project) -> tuple[list[dict], list[str]]:
+def _method_items(project) -> tuple[list[dict], list[str], str | None]:
     """The methods group (`checking/methods.py`): each claim G9 reads and each Methods
-    paragraph that points at no step, and the lines `build` prints about what is not sent.
+    paragraph that points at no step; the lines `build` prints about what is not sent; and,
+    where the group could not be made at all, why.
 
-    Read as G9 reads them, strictly: a file that is not UTF-8 is one G9 refuses, so no Methods
-    item is sent and `build` names the file, while the other groups, which read it with
-    replacements, are sent as before."""
+    Read as G9 reads them, strictly, with the results the claims bind: a manuscript file that
+    is not UTF-8, or a results file that cannot be read, leaves the group out, and says which
+    file, while the other groups, which read neither so, are sent as before."""
     from manuscript_guard.checking.methods import method_items, ran_of
     from manuscript_guard.contracts import load_namespace
-    from manuscript_guard.contracts._schema import Unreadable
+    from manuscript_guard.contracts._schema import ContractError
     from manuscript_guard.gates.methods import anchored
     from manuscript_guard.gates.pointers import display_numbers
 
     try:
         claims, open_ = anchored(project)
         if not claims and not open_:
-            return [], []
+            return [], [], None
         # What a cross-reference prints, "Figure 1", where the document's count is exact.
         numbers = display_numbers(project).bindings()
-    except Unreadable as exc:
-        return [], [f"methods: {exc.path} cannot be read as G9 reads it ({exc.reason}), so no "
-                    "Methods item is in this round"]  # fmt: skip
-    namespace, results = load_namespace(project)[:2]
+        namespace, results = load_namespace(project)[:2]
+    except ContractError as exc:
+        return [], [], f"the Methods could not be read: {exc}"
     shown = {ref: str(value.display or value.value) for ref, value in namespace.items()}
     folder = project.path("manuscript")
-    return method_items(claims, open_, folder=folder, ran=ran_of(project, results),
-                        shown=numbers | shown, order=_reading_order(folder))  # fmt: skip
+    items, notes = method_items(claims, open_, folder=folder, ran=ran_of(project, results),
+                                shown=numbers | shown, order=_reading_order(folder))  # fmt: skip
+    return items, notes, None
 
 
 def _reading_order(folder: Path) -> tuple[str, ...]:
@@ -667,9 +668,13 @@ def _reading_order(folder: Path) -> tuple[str, ...]:
     return tuple(p.relative_to(folder).as_posix() for p in (*main, *supplement))
 
 
-def produce_with_notes(project) -> tuple[dict[str, Any], tuple[str, ...], tuple[str, ...]]:
-    """As `produce`, and the lines `build` prints about the methods group: each claim not sent,
-    and each script changed since the run that recorded its steps."""
+def produce_with_notes(
+    project,
+) -> tuple[dict[str, Any], tuple[str, ...], tuple[str, ...], dict[str, str]]:
+    """As `produce`; the lines `build` prints about the methods group, each claim not sent and
+    each script changed, missing or unrecorded since its run; and each group that could not be
+    made this run, with why: its answers cannot be told apart from answers about items gone,
+    so `import` refuses them with that reason (`Items.unavailable`)."""
     from manuscript_guard.contracts.literature import load_literature
     from manuscript_guard.literature.passages import read_passages
 
@@ -682,7 +687,8 @@ def produce_with_notes(project) -> tuple[dict[str, Any], tuple[str, ...], tuple[
         for finding in (*report.failures, *passages_report.failures)
     )
     documents = _manuscript(project)
-    methods, notes = _method_items(project)
+    methods, notes, failed = _method_items(project)
+    unavailable = {METHODS_GROUP["id"]: failed} if failed else {}
 
     items = (
         _literature_items(project, literature, documents)
@@ -696,7 +702,7 @@ def produce_with_notes(project) -> tuple[dict[str, Any], tuple[str, ...], tuple[
         "title": str(project.paper.get("short_title") or project.paper.get("title") or ""),
         "groups": [dict(group) for group in GROUPS],
         "items": items,
-    }, unread, tuple(notes)
+    }, unread + tuple(f"methods: {why}" for why in unavailable.values()), tuple(notes), unavailable
 
 
 def merge(

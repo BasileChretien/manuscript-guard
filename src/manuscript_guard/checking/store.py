@@ -134,6 +134,21 @@ def _already(one: Decision, stamped: bool, earlier: list[Decision]) -> bool:
     return stamped and any(_said(one) == _said(d) and one.when == d.when for d in earlier)
 
 
+def _unmade(items: Items, item: dict | None, answer: dict, status: str) -> str:
+    """Why an answer is about an item of a group that could not be made this run, or "".
+
+    By the group the page wrote with the answer; a page that wrote none is known only by an
+    answer no other group gives, `code`, which only the methods group asks."""
+    if item is not None or not items.unavailable:
+        return ""
+    group = str(answer.get("group") or "")
+    if group in items.unavailable:
+        return items.unavailable[group]
+    if status not in DEFAULT_ANSWERS and len(items.unavailable) == 1:
+        return next(iter(items.unavailable.values()))
+    return ""
+
+
 def record(project_root: Path, answers: Answers, items: Items) -> Imported:
     """Record one answers file, already read and held to the register.
 
@@ -172,6 +187,12 @@ def record(project_root: Path, answers: Answers, items: Items) -> Imported:
         if not identifier or status not in STATUSES:
             refused.append((called, f"answered {status!r}, which is not one of {STATUSES}"))
             continue
+        unmade = _unmade(items, item, answer, status)
+        if unmade:
+            # Its item is missing because its group could not be made this run, not because
+            # the project no longer has it: recorded, it would be an orphan for no reason.
+            refused.append((called, unmade))
+            continue
         # An item this project no longer has is in no group, so only the answers every group
         # has are taken for it: `code` belongs to a group that lists it, and which group that
         # was cannot be known. It counts for nothing, and is written down for its note.
@@ -182,11 +203,6 @@ def record(project_root: Path, answers: Answers, items: Items) -> Imported:
             refused.append((called, f"answered {status!r}, {why}: one of {allowed}"))  # fmt: skip
             continue
         note = str(answer.get("note") or "").strip()
-        if status != "ok" and not note:
-            # As the page asks: a "does not match" with no reason has someone find the problem
-            # again from nothing.
-            refused.append((called, f"answered {status!r} with no note saying why"))
-            continue
         seen = str(answer.get("digest") or "")
         decision = Decision(
             when=str(answer.get("at") or when),
@@ -202,6 +218,12 @@ def record(project_root: Path, answers: Answers, items: Items) -> Imported:
         earlier = history.setdefault((by, identifier), [])
         if _already(decision, bool(answer.get("at")), earlier):
             skipped += 1
+            continue
+        if status != "ok" and not note:
+            # As the page asks: a "does not match" with no reason has someone find the problem
+            # again from nothing. After the record is asked, so that one written before this
+            # rule, and imported again, is passed over as the rest of the file is.
+            refused.append((called, f"answered {status!r} with no note saying why"))
             continue
         earlier.append(decision)
         written.append(decision)

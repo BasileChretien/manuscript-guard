@@ -294,7 +294,8 @@ function answer(status) {
     return;
   }
   $("why").hidden = true;
-  S.answers[it.id] = { id: it.id, digest: it.digest, title: it.title, status, note, at: stamp() };
+  S.answers[it.id] = { id: it.id, group: it.group, digest: it.digest, title: it.title, status, note,
+    at: stamp() };
   keep();
   if (S.pos < S.list.length - 1) S.pos += 1;
   render();

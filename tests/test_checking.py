@@ -2227,16 +2227,17 @@ def test_a_manuscript_g9_cannot_read_leaves_out_the_methods_alone(
 ) -> None:
     """A file in a code page is refused by G9, so its Methods are not sent and `build` names
     the file; the other groups read it with replacements, as they did, and are sent."""
-    from manuscript_guard.cli import main
+    from manuscript_guard.checking.produce import produce
+    from manuscript_guard.cli import load_project, main
 
     (project / "manuscript" / "notes.md").write_bytes(
-        "# Methods\n\nThe café data were kept apart.\n".encode("cp1252"))
-    document = produced(project)
+        ("# Methods\n\nThe caf" + chr(0xE9) + " data were kept apart.\n").encode("cp1252"))
+    document, unread = produce(load_project(project)[0])
     assert _methods(document) == [] and only(document, "claim")
+    assert [said.split(" the Methods")[0] for said in unread] == ["methods:"], unread
     assert main(["checker", "build", str(project), "--for", "Ada Example"]) == 0
-    said = capsys.readouterr().out
-    assert "notes.md cannot be read as G9 reads it" in said, said
-    assert "so no Methods item is in this round" in said
+    said = capsys.readouterr().err
+    assert "methods: the Methods could not be read:" in said and "notes.md" in said, said
 
 
 def test_a_run_that_kept_no_digest_of_its_script_is_said_by_build(
@@ -2333,19 +2334,131 @@ def test_impact_tells_a_main_text_methods_file_from_the_supplements(project: Pat
     assert main_text.answers == [f"Ada Example on {title!r} (ok, 2026-10-28T09:00:00+09:00)"]
 
 
-def test_a_project_may_not_declare_the_methods_group_or_an_answer_twice(project: Path) -> None:
-    from manuscript_guard.cli import _checking_items, load_project
+def test_a_projects_own_methods_group_is_refused_by_build_and_read_by_import_and_status(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A project that declared a group `methods` before the toolkit had one: `build` says to
+    rename it; `import` and `status` read it as they did, and leave the toolkit's out."""
+    from manuscript_guard.cli import _checking_items, load_project, main
 
     path = write_items(project)
     document = json.loads(path.read_text(encoding="utf-8"))
     document["groups"][1]["id"] = "methods"
     document["items"][1]["group"] = "methods"
     path.write_text(json.dumps(document), encoding="utf-8")
-    with pytest.raises(ItemsError, match="declares the group 'methods', whose id is the toolkit"):
-        _checking_items(load_project(project)[0], None)
-    document["groups"][1]["id"] = "claim"
+    with pytest.raises(ItemsError, match="declares the group 'methods'.*Rename the project's"):
+        _checking_items(load_project(project)[0], None, build=True)
+    assert main(["checker", "build", str(project), "--for", "Ada Example"]) == 2
+    items = _checking_items(load_project(project)[0], None)
+    assert [item["id"] for item in items.items if item["group"] == "methods"] == ["claim-1"]
+    sent = answers_for(items, by="Ada Example", statuses={"claim-1": "ok"})
+    capsys.readouterr()
+    assert main(["checker", "import", str(project), "--answers",
+                 str(_send(project, "own.json", sent))]) == 0  # fmt: skip
+    said = capsys.readouterr().out
+    assert "1 decision(s) recorded for Ada Example" in said, said
+    assert "methods: the toolkit's" in said and "declares that group itself" in said
+    assert main(["checker", "status", str(project)]) == 0
+    assert "Ada Example: 1 ok" in capsys.readouterr().out
+
+
+def test_a_group_may_not_list_an_answer_twice(project: Path) -> None:
+    path = write_items(project)
+    document = json.loads(path.read_text(encoding="utf-8"))
     document["items"][1]["group"] = "claim"
     document["groups"][1]["answers"] = [{"status": "ok", "label": "Yes"}, {"status": "ok"}]
     path.write_text(json.dumps(document), encoding="utf-8")
     with pytest.raises(ItemsError, match="lists the answer 'ok' twice"):
         load_items(project, path)
+
+
+def test_a_results_file_that_does_not_parse_leaves_out_the_methods_alone(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The Methods bind the results; a fragment that cannot be read takes the group out of the
+    round with a line naming it, and every verb goes on with the rest, as on main."""
+    from manuscript_guard.cli import _checking_items, load_project, main
+
+    (project / "results" / "broken.json").write_text("{ not json", encoding="utf-8")
+    items = _checking_items(load_project(project)[0], None)
+    assert not [item for item in items.items if item["group"] == "methods"]
+    assert "methods" in items.unavailable and "broken.json" in items.unavailable["methods"]
+    capsys.readouterr()
+    for verb in (["build", "--for", "Ada Example"], ["status"]):
+        assert main(["checker", verb[0], str(project), *verb[1:]]) == 0
+        said = capsys.readouterr().err
+        assert "methods: the Methods could not be read" in said and "broken.json" in said, said
+
+
+def test_a_bare_answer_already_recorded_is_passed_over_not_refused(tmp_path: Path) -> None:
+    """One written before import asked for a note, and imported again with the rest of its
+    file, is skipped as the rest is."""
+    from manuscript_guard.checking.store import Decision, _append
+
+    path = write_items(tmp_path)
+    items = load_items(tmp_path, path)
+    lit = items.items[0]
+    _append(tmp_path, [Decision("2026-10-08T09:00:00", "A Person", lit["id"], "literature",
+                                lit["title"], "wrong", "", lit["digest"], "b1")])  # fmt: skip
+    sent = answers_for(items, by="A Person", statuses={lit["id"]: "wrong"})
+    sent["answers"][0]["note"] = ""
+    brought = import_answers(tmp_path, _send(tmp_path, "again.json", sent), items)
+    assert brought.skipped == 1 and brought.refused == ()
+
+
+def test_answers_about_methods_that_could_not_be_read_are_refused_with_why(
+    project: Path,
+) -> None:
+    from manuscript_guard.cli import _checking_items, load_project
+
+    items = _checking_items(load_project(project)[0], None)
+    method = [item for item in items.items if item["group"] == "methods"][2]
+    (project / "manuscript" / "notes.md").write_bytes("# Methods\n\nCafé.\n".encode("cp1252"))
+    now = _checking_items(load_project(project)[0], None)
+    sent = {
+        "schema": "manuscript-guard/checking-answers/1", "by": "Ada Example", "bundle": "x",
+        "answers": [
+            {"id": method["id"], "group": "methods", "digest": method["digest"],
+             "status": "ok", "title": method["title"]},
+            {"id": method["id"], "digest": method["digest"], "status": "code",
+             "note": "the interval", "title": "an older page's answer"},
+        ],
+    }  # fmt: skip
+    brought = import_answers(project, _send(project, "m.json", sent), now)
+    assert brought.unknown == () and brought.recorded == ()
+    assert [why.split(":")[0] for _called, why in brought.refused] == [
+        "the Methods could not be read"] * 2
+    assert all("notes.md" in why for _called, why in brought.refused)
+
+
+def test_a_cross_reference_renumbered_stales_the_methods_answers_that_cite_it(
+    project: Path,
+) -> None:
+    main_md = project / "manuscript" / "main.md"
+    _edit(main_md, "S2 describes the model as it was fitted.",
+          "S2 describes the model as fitted, and {{ref.figure.forest}} shows it.")  # fmt: skip
+
+    def adjusted() -> dict:
+        return next(item for item in _methods(produced(project))
+                    if item["facts"][0][1] == "adjusted")  # fmt: skip
+
+    before = adjusted()
+    _edit(main_md, "{{figure.forest}}\n", "")
+    supplement = project / "manuscript" / "supplementary" / "S1_code_lists.md"
+    supplement.write_text(supplement.read_text(encoding="utf-8") + "\n{{figure.forest}}\n",
+                          encoding="utf-8")  # fmt: skip
+    after = adjusted()
+    assert "and Figure S1 shows it." in after["sentences"][0]["text"]
+    assert after["id"] == before["id"] and digest_of(after) != digest_of(before)
+
+
+def test_a_steps_script_that_is_not_there_is_said_by_build(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from manuscript_guard.cli import main
+
+    (project / "analysis" / "01_disproportionality.py").unlink()
+    assert main(["checker", "build", str(project), "--for", "Ada Example"]) == 0
+    said = capsys.readouterr().out
+    assert ("methods: analysis/01_disproportionality.py, where the run recorded step(s) ror, ci, "
+            "signal, adjusted, is not there, so no code is shown for them") in said, said

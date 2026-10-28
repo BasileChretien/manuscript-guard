@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -35,6 +35,10 @@ class Items:
     title: str
     groups: tuple[dict, ...]
     items: tuple[dict, ...]
+    #: The toolkit's groups that could not be made this run, each with why: the Methods when a
+    #: file G9 reads could not be read. An answer about one of their items is refused with that
+    #: reason rather than taken for one about an item the project no longer has.
+    unavailable: dict[str, str] = field(default_factory=dict)
 
     @property
     def by_group(self) -> dict[str, tuple[dict, ...]]:

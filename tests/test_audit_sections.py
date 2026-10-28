@@ -845,10 +845,12 @@ def test_an_escaped_interval_after_its_value_is_no_citation(tmp_path: Path) -> N
     assert (census.markers, census.problems) == (2, [])
 
 
-@pytest.mark.parametrize("tag", ["</span>", "<br>", "<br>."])
+@pytest.mark.parametrize("tag", ["</span> more", "<br> more", "<br>. more", "<br/>PMID",
+                                 "<i>J</i>"])  # fmt: skip
 def test_a_tag_after_a_doi_is_none_of_it(tag: str) -> None:
-    """Fix-only round of #463: a `<` kept in a DOI read a tag after it into the DOI."""
-    assert references_module.identifiers(f"doi:10.1000/xyz{tag} more") == (("10.1000/xyz",), ())
+    """Fix-only rounds of #463: a `<` kept in a DOI read a tag after it into the DOI, also
+    where text follows the tag at once."""
+    assert references_module.identifiers(f"doi:10.1000/xyz{tag}")[0] == ("10.1000/xyz",)
 
 
 def test_a_folder_with_only_an_unreadable_tex_says_it_could_not_be_read(

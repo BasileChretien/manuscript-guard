@@ -86,7 +86,8 @@ def unreadable_said(path: Path) -> str | None:
     try:
         read_text(path)
     except (OSError, UnreadableText) as exc:
-        return f"{path.as_posix()} could not be read, so it was not audited: {exc}"
+        said = str(exc).removeprefix(f"{path.name}: ")  # the error names the file itself
+        return f"{path.as_posix()} could not be read, so it was not audited: {said}"
     return None
 
 

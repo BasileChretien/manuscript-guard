@@ -6079,6 +6079,79 @@ carries them.
 
 It is a warning: a new rule starts as one, until what it says of real papers is known.
 
+A box the journal's profile asks for (`boxes:`, highlights or key points, below) summarises as
+the abstract does, and G8 reads it so: its heading is a summary's, and in LaTeX so is its
+environment, whose numbers the printed view keeps under whatever heading stands over it.
+
+## The boxes a journal prints beside the abstract
+
+Journals print short texts beside the abstract: Elsevier's highlights, JAMA's key points, the
+Lancet's research in context, a plain-language summary. Each comes with rules a desk editor
+holds a submission to (three to five items, 85 characters each, the headings Question,
+Findings and Meaning) and nothing held them. The profile now records each box the page asks
+for under `boxes:`, as data like the rest: its id, the heading it goes under (a regular
+expression, searched in the title as printed), the LaTeX environment that writes it, whether
+it is required, its item and word limits, the headings it carries, and whether the journal
+takes it as a file of its own. Each box is one rule of the page, quoted under `boxes.<id>`.
+Each number of a box above 1, and each of a graphical abstract's lines, is held to its quote as
+a limit's is (`journal-limit-not-in-quote`, naming the box's field): an `item_max_chars` typed
+58 for the page's 85 otherwise passed, since the quote was on the page. A graphical abstract's
+number that is not whole (`max_file_mb: 2.5`) is held to its digits, "2.5", "2.50" or "2,5",
+whatever its size, since a page cannot write it as "a" or "no", though not to a comma before
+three digits ("2,500"), which separates thousands; its `aspect_ratio` to both its parts in
+their order, with a colon, a multiplication sign, an x, a slash or "by" between them, and not
+inside a longer ratio or a date, so that "5:2" and "1:16:9" do not state 16:9 (rounds 1 and 2
+of #464). A block's own `retrieved_on` is held to its age as the instructions' is
+(`journal-profile-stale`, naming the block and, where it gives no address, its page). A
+reread refuses only a block that may name a page of its own and that the schema refuses
+(`boxes: 3`); the rest of a profile the schema refuses is read again as before (round 2 of
+#464: round 1 refused the whole profile). Two blocks that
+name one page with two digests have the one that is not the page's said. A `quotes` key for a
+block the profile does not have is held to the instructions page, as before blocks named
+pages of their own.
+
+A box, the graphical abstract and the sharing policy may each name a page of their own
+(`page_file`, with its `page_sha256`), where the journal gives them apart from its
+instructions: an artwork guide, a self-archiving policy. Their quotes are then held to that
+page and no other, and `journal --reread <file> --page <page_file>` reads that page again on
+its own. Kept in the instructions page's file, a policy's text read as removed each time the
+instructions page was read again (Basile, 2026-10-28).
+
+G4 reads the boxes of the main text (`text/boxes.py`) and holds each to its rules
+(`gates/journal_boxes.py`): `box-missing`, `box-items`, `box-item-long`, `box-over-limit` and
+`box-headings-missing`. In Markdown a box is the section under its heading; in LaTeX its
+environment, or a section under its heading, a chapter's or a part's among them, which runs
+to the next heading of its level or above or to an abstract, whatever the box's level (round 1
+of #464: a LaTeX abstract after a box was read as its last items). An item is a line of the
+box's list, run on over the lines after it, or, where the box has no list, a paragraph: what
+prints as one. A list nested in an item is that item's text: in Markdown an item whose mark
+is indented as far as the open item's text, as CommonMark and pandoc place it, whatever the
+list's own indentation; in LaTeX an `\item` inside a list environment nested in the box's
+list (round 1 of #464: "- A" over "  - a1" counted two items). After a blank line a line is
+the open item's only where it is indented to the item's text, else a paragraph after the
+list, and a thematic break (`- - -`, `***`) is no item. In LaTeX an itemize's or an
+enumerate's label (`\item[--]`) is the item's mark and not its text, a description's term
+is, and a list's options (`\begin{itemize}[noitemsep]`) print nothing, read so in the box's
+reader and not in the mask the other gates share (round 2 of #464). A heading the box must carry
+is found as words of its own: "meaningful" does not carry "Meaning". It is
+measured as printed, a binding as its value's display, a comment and a listing passed over,
+Markdown's marks and LaTeX's commands off. Each finding warns until submission and fails there
+where the box is required, as the author decided (2026-10-28): a box is written last, and a
+draft without one is the ordinary state. A box written only in the supplement is not the box,
+and `box-missing` says where it is. A heading that is no regular expression fails from
+internal review (`box-heading-invalid`), as the profile's other errors do.
+
+The profile also records two blocks no gate reads yet, so that the profile is filled once from
+the page: `graphical_abstract` (required or asked for, its size, aspect, formats and limits,
+each line a rule quoted under `graphical_abstract.<name>`) and `sharing` (for each version of
+the paper, where it may be shared, after how long, under which licence and with which
+statement, quoted under `sharing.<version>`). A required graphical abstract is only noted
+(`graphical-abstract-missing`) while `communication/graphical-abstract/` does not exist: the
+`communicate` commands make it there and hold it to these rules. Without a `sharing:` block
+nothing is refused here; the author decided (2026-10-28) that those commands will then share
+a link to the DOI and upload nothing. The policy is the journal's own page, never Sherpa
+Romeo, which needs a key, and nothing in the toolkit is paid or keyed.
+
 ## An earlier output of the same data is held to this paper
 
 Several papers come out of one database extraction or one cohort: a conference abstract, a
@@ -17942,6 +18015,31 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - With `--skip-checks`, the count of failing checks `build` prints is one short of `check`'s
     when `manuscript.docx` is stale.
   - ci.yml's comment on setup-pandoc names a step that is gone.
+
+- **The boxes a journal prints beside the abstract (2026-10-28), what G4 does not read.**
+  - A box's words count towards the main text's word limit, as any section's do: a journal
+    that counts its highlights apart is held to a count that includes them.
+  - A box is read in one file: a heading in one file and its items in the next, or a LaTeX
+    box's heading over an `\input` that holds its list, is a box of no items.
+  - A citation or a footnote in an item is measured as written (`[@key]`, `[^1]`, `^[...]`,
+    `\footnote{...}`), not as the style prints it, which can make `box-item-long` fire or
+    pass falsely; a LaTeX command the mask prints nothing of (`\,`) joins the words beside
+    it, a character short.
+  - A Markdown box's sub-heading is read as a paragraph of it where it is underlined, and so
+    as an item of a box with no list.
+  - A box has one quote, and each of its numbers is looked for anywhere in it:
+    `items_max: 3` passes against "3 to 5 highlights, 85 characters". Holding each number
+    near the word for it ("highlights", "characters") was not exact: pages write "3 to 5
+    bullet points", "85 characters, including spaces, per highlight" and "characters: 85",
+    and a reading of the nearest word fails a right profile. A quote for each number
+    (`boxes.<id>.<field>`) would be exact, and is a change of the profile's shape.
+  - A LaTeX box's list is read by `itemize`, `enumerate` and `description`, and by the box's
+    environment: an `\item` of another list environment (`compactitem`, `inparaenum`) nested
+    in an item is counted as an item of the box.
+  - `file: separate` is recorded and not acted on: the build still prints the box in the
+    manuscript, and the submission pack writes no file of it.
+  - The graphical abstract's rules and the sharing policy are recorded and not read; the
+    `communicate` commands are to read them.
 
 - **What `audit` reads of a LaTeX paper, its words and its references (Task 3, PR 1,
   2026-10-28).** Each limit, as built:

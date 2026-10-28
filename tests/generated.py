@@ -2441,6 +2441,205 @@ def summaries() -> st.SearchStrategy[str]:
     )
 
 
+#: The boxes a journal's profile may ask for, as `boxes:` writes them, and each way the
+#: manuscript may title one.
+BOX_RULES = (
+    {"id": "highlights", "heading": "^highlights$"},
+    {"id": "key-points", "heading": "^key points$"},
+    {"id": "research-in-context", "heading": "^research in context$"},
+    {"id": "plain-language-summary", "heading": "^plain[- ]language summary$",
+     "environment": "plainsummary"},
+)  # fmt: skip
+BOX_TITLES = {
+    "highlights": ("Highlights", "HIGHLIGHTS"),
+    "key-points": ("Key points", "Key Points"),
+    "research-in-context": ("Research in context", "Research In Context"),
+    "plain-language-summary": ("Plain-language summary", "Plain language summary"),
+}
+#: Each way a box's heading is written in Markdown: ATX, numbered, in bold, numbered and in
+#: bold, and underlined.
+BOX_HEADINGS = ("# {}", "## 2. {}", "### **{}**", "## 1. **{}**", "{}\n===")
+#: Each way an item of a box's list is written, `{0}` and `{1}` words, with what it prints:
+#: each mark of a list, an item run on over a line indented and not, emphasis, and a binding
+#: whose display the reading is given.
+BOX_ITEMS = (
+    ("- {0}", "{0}"), ("* {0}", "{0}"), ("+ {0}", "{0}"), ("1. {0}", "{0}"), ("2) {0}", "{0}"),
+    ("- {0}\n  {1}", "{0} {1}"), ("- {0}\n{1}", "{0} {1}"), ("- **{0}** {1}", "{0} {1}"),
+    ("- {0} {{{{results.or}}}}", "{0} 2.31 (1.84 to 2.90)"),
+    # A list nested in an item, which is that item's text: under a dash, two spaces in, and
+    # under a number, three in (round 1 of #464: each nested item was an item of the box).
+    ("- {0}\n  - {1}\n  - {1}", "{0} {1} {1}"), ("1. {0}\n   1. {1}", "{0} {1}"),
+    # Nested under a tab, four spaces in, and a numbered list in a bulleted one (round 2).
+    ("- {0}\n\t- {1}", "{0} {1}"), ("- {0}\n    - {1}", "{0} {1}"), ("- {0}\n  1. {1}", "{0} {1}"),
+    # After a blank line, a line indented to the item's text is the item's, and one less
+    # indented a paragraph after the list (round 2 of #464: it joined the item).
+    ("1. {0}\n\n   {1}", "{0} {1}"), ("1. {0}\n\n  {1}", "{0}"),
+)  # fmt: skip
+#: What a box holds that prints no item: a comment, a listing, and a thematic break.
+BOX_HIDDEN = ("<!-- - {0} -->", "```\n- {0}\n```", "- - -", "* * *")
+#: What looks like a box and is none: a heading the pattern does not take whole, one in a
+#: comment, one in a listing, one in the front matter, which opens every example.
+BOX_LOOKALIKES = (
+    "# Highlights of the cohort\n\n- {0}\n", "<!--\n# Highlights\n\n- {0}\n-->\n",
+    "```\n# Key points\n- {0}\n```\n",
+)  # fmt: skip
+BOX_FRONT_MATTER = "---\ntitle: A study\n# Highlights\n---\n\n"
+#: The display of the binding `BOX_ITEMS` holds.
+BOX_DISPLAYS = {"results.or": "2.31 (1.84 to 2.90)"}
+
+
+@st.composite
+def box_papers(draw: st.DrawFn) -> tuple[dict[str, Any], dict[str, Any]]:
+    """A Markdown manuscript and a LaTeX one, each holding a box for every way of writing
+    one, every way of writing an item spread among them and every lookalike between them; a
+    box written in paragraphs; a sub-heading inside a box; and a binding in each box and
+    outside them. With what each should read: each box in order, with its items as printed,
+    and the keys G8 takes for a summary's."""
+
+    def words(least: int = 1, most: int = 3) -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=least, max_size=most)))
+
+    ids = draw(st.permutations([rule["id"] for rule in BOX_RULES]))
+    forms = draw(st.permutations(BOX_HEADINGS))
+    paragraphs_in = draw(st.integers(0, len(forms) - 1))
+    lists = [index for index in range(len(forms)) if index != paragraphs_in]
+    pieces = draw(st.permutations([*(("item", f) for f in BOX_ITEMS),
+                                   *(("hidden", h) for h in BOX_HIDDEN)]))  # fmt: skip
+    # Each piece to a box of lists, the first of each in turn so that every box has one.
+    owner = [lists[i % len(lists)] if i < len(lists) else draw(st.sampled_from(lists))
+             for i in range(len(pieces))]  # fmt: skip
+    aside_in = draw(st.sampled_from(lists))
+    # A box whose list comes after a paragraph, which is then no item.
+    lead_in = draw(st.sampled_from(lists))
+    lookalikes = draw(st.permutations(BOX_LOOKALIKES))
+    # The Results first, so that the last box runs to the end of the file.
+    text = (BOX_FRONT_MATTER + "# Results\n\n{{results.reported}} and {{results.b0}}.\n\n"
+            f"# Introduction\n\n{words()}.\n\n")  # fmt: skip
+    expected, given = [], []
+    for index, form in enumerate(forms):
+        box = ids[index % len(ids)]
+        title = draw(st.sampled_from(BOX_TITLES[box]))
+        key = f"results.b{index}"
+        body: list[str] = [f"- {words()} {{{{{key}}}}}"]
+        items = [f"{_last_words(body[0])}"]
+        if index == lead_in:
+            body.insert(0, f"{words()}.\n")
+        if index == paragraphs_in:
+            body, items = [], []
+            for _ in range(draw(st.integers(2, 4))):
+                first, second = words(), words()
+                body.append(f"{first}\n{second} {{{{{key}}}}}.")
+                items.append(f"{first} {second} {{{{{key}}}}}.")
+        mine = [piece for piece, at in zip(pieces, owner, strict=True) if at == index]
+        for number, (kind, piece) in enumerate(mine):
+            if index == aside_in and number == len(mine) // 2:
+                body.append("#### Aside")
+            first, second = words(), words()
+            if kind == "item":
+                written, shown = piece
+                body.append(written.format(first, second))
+                items.append(shown.format(first, second))
+            else:
+                body.append(piece.format(first))
+        separator = "\n\n" if index == paragraphs_in else "\n"
+        text += BOX_HEADINGS_WRITTEN(form, title) + "\n\n" + separator.join(body) + "\n"
+        # Each box but the last closed by the next heading; the last runs to the file's end.
+        if index + 1 < len(forms):
+            text += f"\n# Introduction\n\n{words()} {{{{results.out{index}}}}}.\n\n"
+        if index < len(lookalikes):
+            text += lookalikes[index].format(words()) + "\n"
+        expected.append([box, items])
+        given.append(key)
+    latex, latex_expected, latex_given = draw(_latex_box_paper())
+    return (
+        {"text": text, "latex": latex, "boxes": list(BOX_RULES), "displays": BOX_DISPLAYS},
+        {"markdown": expected, "given": sorted(set(given)), "latex": latex_expected,
+         "latex given": latex_given},
+    )  # fmt: skip
+
+
+def BOX_HEADINGS_WRITTEN(form: str, title: str) -> str:  # noqa: N802 - pairs BOX_HEADINGS
+    """A box's heading in one of the forms of `BOX_HEADINGS`, its underline as long as its
+    title for the form that underlines it."""
+    return form.format(title).replace("\n===", "\n" + "=" * len(title))
+
+
+def _last_words(item: str) -> str:
+    return item.removeprefix("- ")
+
+
+@st.composite
+def _latex_box_paper(draw: st.DrawFn) -> tuple[str, list, list[str]]:
+    """A LaTeX document holding a box in its environment and three under their headings, an
+    item in a comment, a box in a comment and one TeX skips, and a heading the pattern does
+    not take whole, in an order drawn; a box written in paragraphs that an abstract ends, and
+    a box at the end of the document. Each box's heading is written in a way of its own, and
+    each list of a box has a list nested in an item."""
+
+    def words() -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=3)))
+
+    forms = draw(st.permutations(LATEX_BOX_HEADINGS))
+
+    def opened(at: int, title: str) -> str:
+        return forms[at][0].replace("TITLE", title) + "\n"
+
+    def closed(at: int) -> str:
+        return forms[at][1].replace("TITLE", "Introduction") + "\n" + words() + "\n"
+
+    a, b, c, d, e, x = words(), words(), words(), words(), words(), words()
+    # An item's label in the box's own list is its mark, and a list's options print nothing
+    # (round 2 of #464: both were counted to the item).
+    environment = ("\\begin{highlights}\n\\item[--] " + a + " \\begin{enumerate}\\item " + x
+                   + "\\end{enumerate}\n% \\item " + words() + "\n\\item " + b
+                   + " \\mg{results.l1}\n\\end{highlights}\n")  # fmt: skip
+    heading = (opened(0, "Key points") + "\\begin{itemize}\n\\item " + c + " \\mg{results.l2}\n"
+               "\\begin{itemize}[noitemsep]\n\\item " + e + "\n\\end{itemize}\n\\item " + d
+               + "\n\\end{itemize}\n" + closed(0))  # fmt: skip
+    h1, h2 = words(), words()
+    paragraphs = opened(1, "Highlights") + h1 + "\n\n" + h2 + "\n\n" + closed(1)
+    pieces = {
+        "environment": (environment, ["highlights", [a + " " + x, b + " {{results.l1}}"]]),
+        "heading": (heading, ["key-points", [c + " {{results.l2}} " + e, d]]),
+        "paragraphs": (paragraphs, ["highlights", [h1, h2]]),
+        "skipped": ("\\iffalse\n\\begin{highlights}\n\\item " + words()
+                    + "\n\\end{highlights}\n\\fi\n", None),
+        "commented": ("% \\begin{plainsummary} \\item " + words() + " \\end{plainsummary}\n",
+                      None),
+        "lookalike": ("\\section{Highlights of the cohort}\n\\begin{itemize}\n\\item " + words()
+                      + "\n\\end{itemize}\n", None),
+    }  # fmt: skip
+    order = draw(st.permutations(sorted(pieces)))
+    body = "".join(pieces[name][0] + "\\section{Notes}\n" + words() + "\n" for name in order)
+    # A box first that the abstract after it ends (round 1 of #464: the abstract's paragraphs
+    # were its last items), and one last that runs to the end of the document.
+    p1, p2, f, g, y = words(), words(), words(), words(), words()
+    first = (opened(2, "Research in context") + p1 + " \\mg{results.l3}\n\n" + p2 + "\n\n"
+             "\\begin{abstract}\n" + words() + "\n\n" + words() + "\n\\end{abstract}\n")
+    # A description's term is its item's text.
+    last = (opened(3, "Plain language summary") + "\\begin{description}\n\\item[Term] " + f
+            + "\n\\begin{enumerate}\n\\item " + y + "\n\\end{enumerate}\n\\item " + g
+            + "\n\\end{description}\n")  # fmt: skip
+    document = ("\\documentclass{book}\n\\begin{document}\n" + first
+                + "\\section{Results}\n\\mg{results.l0}\n\\chapter{Introduction}\n" + words()
+                + "\n" + body + last + "\\end{document}\n")  # fmt: skip
+    expected = [["research-in-context", [p1 + " {{results.l3}}", p2]],
+                *(pieces[name][1] for name in order if pieces[name][1] is not None),
+                ["plain-language-summary", ["Term " + f + " " + y, g]]]  # fmt: skip
+    return document, expected, ["results.l1", "results.l2", "results.l3"]
+
+
+#: Each way a LaTeX box's heading is written, `TITLE` its title, with the heading of its
+#: level that ends it: starred, with an optional argument, a subsection's and a chapter's
+#: (round 1 of #464: a starred chapter's was never a box's).
+LATEX_BOX_HEADINGS = (
+    ("\\section*{TITLE}", "\\section{TITLE}"),
+    ("\\section[Short]{TITLE}", "\\section{TITLE}"),
+    ("\\subsection*{TITLE}", "\\subsection{TITLE}"),
+    ("\\chapter*{TITLE}", "\\chapter{TITLE}"),
+)
+
+
 #: What a supplement calls its Methods, each a way `classify.SUPPLEMENT_METHODS` takes: with
 #: a number before or after it, with the title of its part after a stop or a colon, under the
 #: label of an appendix. G9 reads each with the main text's Methods, and G2 and G15 hold their
@@ -6852,6 +7051,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "summaries": st.fixed_dictionaries(
         {"text": summaries(), "abstract title": st.sampled_from((None, "Summary"))}
     ),
+    "boxes": box_papers().map(lambda drawn: drawn[0]),
     "numbers": st.fixed_dictionaries(
         {
             "text": texts(POINTED, SUPPLEMENT_HEADINGS + NAMED_BLOCKS),

@@ -4739,6 +4739,35 @@ def test_a_number_a_summary_gives_is_found_unreported_whatever_the_headings_are_
         assert found == unreported, (text[:cut], text[cut:], named)
 
 
+# --------------------------------------------------------------------------------- boxes
+
+from generated import box_papers  # noqa: E402
+
+from manuscript_guard.text import boxes as boxes_module  # noqa: E402
+
+
+@holds(30, box_papers())
+def test_each_box_a_journal_asks_for_is_read_with_its_items_and_nothing_else_is(
+    drawn: tuple[dict[str, Any], dict[str, Any]],
+) -> None:
+    """Every box is found, in Markdown under each way of writing its heading and in LaTeX in
+    its environment and under its heading, with each item as printed: under each mark of a
+    list, run on over its lines, its emphasis off and its binding the value's display, or a
+    paragraph where the box has no list. A heading the pattern does not take whole, and a
+    box or an item in a comment, a listing, the front matter or what TeX skips, is none. And
+    G8 takes a binding in a box for a summary's, in both."""
+    given, expected = drawn
+    read = READINGS["boxes"]()(given)
+    assert [[one[0], one[3]] for one in read["markdown"]] == expected["markdown"], given["text"]
+    keys = {key.removeprefix("results.") for key in expected["given"]} | {"or"}
+    assert {key for key, _heading, _line in read["given"]} == keys, given["text"]
+    assert read["reported"] == ["b0", "reported"], given["text"]
+    assert [[one[0], one[3]] for one in read["latex"]] == expected["latex"], given["latex"]
+    latex_keys = {key.removeprefix("results.") for key in expected["latex given"]}
+    assert {key for key, _heading in read["latex given"]} == latex_keys, given["latex"]
+    assert read["latex reported"] == ["l0"], given["latex"]
+
+
 # --------------------------------------------------------------------------- models named
 
 #: One of every way G15 reads a model named in the Methods, with the kind it names, and
@@ -9438,6 +9467,68 @@ def test_a_limit_is_stated_by_its_number_and_by_no_longer_one(
 
 
 @st.composite
+def _ratios_and_decimals_quoted(draw: st.DrawFn) -> list[tuple[str, object, bool]]:
+    """A graphical abstract's aspect ratio and a number of it that is not whole, each written
+    into a quote each way a page writes it, and each way a quote holds what is not it: one
+    of every kind in each example, among words drawn (round 1 of #464: neither was held)."""
+    wide, high = draw(st.integers(2, 40)), draw(st.integers(1, 30))
+    ratio = f"{wide}:{high}"
+    tenths = draw(st.integers(1, 9))
+    decimal = draw(st.integers(0, 40)) + tenths / 10
+
+    def among(written: str) -> str:
+        before = draw(st.lists(st.sampled_from(FILLER), max_size=3))
+        after = draw(st.lists(st.sampled_from(FILLER), max_size=3))
+        return " ".join([*before, written, *after])
+
+    shown = f"{decimal:.1f}"
+    cases = [
+        (among(f"{wide}:{high}"), ratio, True),
+        (among(f"{wide} : {high}"), ratio, True),
+        (among(f"{wide}{chr(0xD7)}{high}"), ratio, True),
+        (among(f"{wide} x {high}"), ratio, True),
+        (among(f"{wide}:{high}."), ratio, True),
+        (among(f"{high}:{wide + high}"), ratio, False),
+        (among(f"{wide}:{high}0"), ratio, False),
+        (among(f"1{wide}:{high}"), ratio, False),
+        (among(f"{wide}:{high}.5"), ratio, False),
+        (among(f"{wide} {high}"), ratio, False),
+        # A slash and "by", and a ratio inside a longer one or a date (round 2 of #464).
+        (among(f"{wide}/{high}"), ratio, True),
+        (among(f"{wide} by {high}"), ratio, True),
+        (among(f"1:{wide}:{high}"), ratio, False),
+        (among(f"{wide}:{high}:4"), ratio, False),
+        (among(f"{wide}/{high}/2026"), ratio, False),
+        (among(shown), decimal, True),
+        (among(f"{shown}0"), decimal, True),
+        (among(f"{shown}."), decimal, True),
+        # With a comma (round 2 of #464), and not a comma before three digits, which
+        # separates thousands.
+        (among(shown.replace(".", ",")), decimal, True),
+        (among(shown.replace(".", ",") + "0"), decimal, True),
+        (among(shown.replace(".", ",") + "00"), decimal, False),
+        (among(f"{shown}5"), decimal, False),
+        (among(f"1{shown}"), decimal, False),
+        (among(f"{shown}.5"), decimal, False),
+        (among(shown.replace(".", "")), decimal, False),
+    ]
+    return draw(st.permutations(cases))
+
+
+@holds(150, _ratios_and_decimals_quoted())
+def test_a_ratio_and_a_decimal_are_stated_by_their_digits_and_by_no_longer_number(
+    cases: list[tuple[str, object, bool]],
+) -> None:
+    """A graphical abstract's aspect ratio is in its quote as its two parts in their order,
+    a colon, a multiplication sign or an x between them; a number of it that is not whole as
+    its digits, with zeros after them or none; neither inside a longer number."""
+    for quote, value, stated in cases:
+        said = (journal_quotes_gate._states_ratio(quote, value) if isinstance(value, str)
+                else journal_quotes_gate._states(quote, value))  # fmt: skip
+        assert said is stated, (quote, value)
+
+
+@st.composite
 def _quotes_on_pages(draw: st.DrawFn) -> list[tuple[str, str, bool]]:
     """A journal's page and a quote of it: the quote there as words of its own, in another
     case, and after itself inside a longer number; and the quote only as the end or the
@@ -12008,6 +12099,37 @@ def _a_limit_is_read_before_a_decimal(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(journal_quotes_gate, "_DIGITS", r"(?<![0-9.,]){}(?![0-9])")
 
 
+def _a_ratio_is_written_with_a_colon_alone(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(journal_quotes_gate, "_RATIO", r"(?<![0-9.,]){}:{}(?![0-9]|[.,][0-9])")
+
+
+def _a_ratio_is_read_inside_a_longer_number(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(journal_quotes_gate, "_RATIO", "{}" + journal_quotes_gate._RATIO_SIGN + "{}")
+
+
+def _a_decimal_is_read_inside_a_longer_number(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(journal_quotes_gate, "_DECIMAL", "{}()")
+
+
+def _a_decimal_s_zeros_after_it_are_another_number(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(journal_quotes_gate, "_DECIMAL", r"(?<![0-9.,]){}()(?![0-9]|[.,][0-9])")
+
+
+def _a_decimal_is_written_with_a_point_alone(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(journal_quotes_gate, "_DECIMAL_MARKS", (".",))
+
+
+def _a_ratio_s_sign_is_no_slash_nor_by(patch: pytest.MonkeyPatch) -> None:
+    sign = r"[ \t]*[:x" + chr(0xD7) + r"][ \t]*"
+    patch.setattr(journal_quotes_gate, "_RATIO",
+                  r"(?<![0-9.,:/]){}" + sign + r"{}(?![0-9]|[.,:/][0-9])")  # fmt: skip
+
+
+def _a_ratio_is_read_inside_a_longer_ratio(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(journal_quotes_gate, "_RATIO", r"(?<![0-9.,]){}"
+                  + journal_quotes_gate._RATIO_SIGN + r"{}(?![0-9]|[.,][0-9])")  # fmt: skip
+
+
 def _a_limit_has_no_separator_of_thousands(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(journal_quotes_gate, "_forms", lambda value: {str(value)})
 
@@ -12406,6 +12528,91 @@ def _a_key_credits_the_keys_it_begins(patch: pytest.MonkeyPatch) -> None:
     ])  # fmt: skip
 
 
+def _a_box_s_comment_is_read(patch: pytest.MonkeyPatch) -> None:
+    # A box read as typed: an item in a comment or a listing, and a box in either, counted.
+    patch.setattr(boxes_module, "scannable", lambda text: text)
+
+
+def _a_box_item_is_a_dash_s_alone(patch: pytest.MonkeyPatch) -> None:
+    # Only a line opening with a dash opens an item: `*`, `+`, `1.` and `2)` run on.
+    patch.setattr(boxes_module, "_ITEM", re.compile(
+        r"^(?P<indent> *)(?P<mark>-)(?:(?P<gap>[ \t]+)(?P<text>.*)|[ \t]*)$"))  # fmt: skip
+
+
+def _a_box_item_ends_at_its_line(patch: pytest.MonkeyPatch) -> None:
+    # An item is its first line: one run on over the next is cut short.
+    whole = boxes_module.markdown_items
+
+    def first_lines(body: str) -> list[str]:
+        opened = [boxes_module._ITEM.match(line) for line in body.split("\n")]
+        return [found["text"] or "" for found in opened if found] or whole(body)
+
+    patch.setattr(boxes_module, "markdown_items", first_lines)
+
+
+def _a_nested_markdown_item_is_the_box_s(patch: pytest.MonkeyPatch) -> None:
+    # Round 1 of #464: "- A" over "  - a1" counted two items.
+    patch.setattr(boxes_module, "_nested", lambda started, column: False)
+
+
+def _a_markdown_item_indented_three_is_the_box_s(patch: pytest.MonkeyPatch) -> None:
+    # A list's own items read as those indented 0 to 3 spaces, whatever the list nests.
+    patch.setattr(boxes_module, "_nested", lambda started, column: len(started["indent"]) > 3)
+
+
+def _a_nested_latex_item_is_the_box_s(patch: pytest.MonkeyPatch) -> None:
+    # Round 1 of #464: an `\item` of an itemize nested in an item was an item of the box.
+    patch.setattr(boxes_module, "_of_the_box", lambda depth, top: True)
+
+
+def _an_abstract_does_not_end_a_latex_box(patch: pytest.MonkeyPatch) -> None:
+    # Round 1 of #464: the abstract after a box under a heading was read as its last items.
+    patch.setattr(boxes_module, "_closes",
+                  lambda later, heading: later.end >= 0 and later.level <= heading.level)
+
+
+def _a_chapter_heading_is_no_box_s(patch: pytest.MonkeyPatch) -> None:
+    # Round 1 of #464: a heading of level 0, `\chapter*{Highlights}`, was dropped.
+    patch.setattr(boxes_module, "_titled", lambda heading: bool(heading.level)
+                  and heading.end >= 0)  # fmt: skip
+
+
+def _a_thematic_break_is_an_item(patch: pytest.MonkeyPatch) -> None:
+    # Round 2 of #464: `- - -` in a box was counted as an item.
+    patch.setattr(boxes_module, "_BREAK", re.compile(r"(?!)"))
+
+
+def _a_line_after_a_blank_one_runs_on_at_two_spaces(patch: pytest.MonkeyPatch) -> None:
+    # Round 2 of #464: after a blank line, two spaces joined a line to "1. A".
+    patch.setattr(boxes_module, "_runs_on",
+                  lambda line, column, blank: not blank or line.startswith("  "))
+
+
+def _an_itemize_label_is_its_item_s_text(patch: pytest.MonkeyPatch) -> None:
+    # Round 2 of #464: `\item[--] Text` counted its label to the item.
+    patch.setattr(boxes_module, "_label_counts", lambda kind: True)
+
+
+def _a_list_s_options_are_printed(patch: pytest.MonkeyPatch) -> None:
+    # Round 2 of #464: `\begin{itemize}[noitemsep]` printed its option as the box's words.
+    patch.setattr(boxes_module, "list_options", lambda text, start, end, passed: [])
+
+
+def _a_latex_comment_is_printed(patch: pytest.MonkeyPatch) -> None:
+    # Nothing of a LaTeX file passed over: a commented `\item`, and a box TeX skips, read.
+    patch.setattr(boxes_module, "_passed_over", lambda reading: lambda at: False)
+
+
+def _a_box_s_heading_is_no_summary(patch: pytest.MonkeyPatch) -> None:
+    # G8 reads a box's heading as it read any other: a number under it is a summary's to none.
+    patch.setattr(reported_gate, "box_of", lambda title, rules: None)
+
+
+def _a_latex_box_environment_is_no_summary(patch: pytest.MonkeyPatch) -> None:
+    # G8 takes no box written in its LaTeX environment for one.
+    patch.setattr(reported_gate, "_boxed_in", lambda view, sources, rules: None)
+
+
 def _a_chain_keeps_a_cells_crlf(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.checking import recap
 
@@ -12445,6 +12652,66 @@ BROKEN = {
     "any emphasis opening with the word is the keywords label": (
         _any_emphasis_opening_with_the_word_is_the_label,
         test_the_abstract_ends_at_its_keywords_label_and_not_at_a_sentence_about_them,
+    ),
+    "a box's comment is read": (
+        _a_box_s_comment_is_read,
+        test_each_box_a_journal_asks_for_is_read_with_its_items_and_nothing_else_is,
+    ),
+    "a box's item is opened by a dash alone": (
+        _a_box_item_is_a_dash_s_alone,
+        test_each_box_a_journal_asks_for_is_read_with_its_items_and_nothing_else_is,
+    ),
+    "a box's item ends at its line": (
+        _a_box_item_ends_at_its_line,
+        test_each_box_a_journal_asks_for_is_read_with_its_items_and_nothing_else_is,
+    ),
+    "a nested Markdown item is an item of the box": (
+        _a_nested_markdown_item_is_the_box_s,
+        test_each_box_a_journal_asks_for_is_read_with_its_items_and_nothing_else_is,
+    ),
+    "a Markdown item indented up to three spaces is an item of the box": (
+        _a_markdown_item_indented_three_is_the_box_s,
+        test_each_box_a_journal_asks_for_is_read_with_its_items_and_nothing_else_is,
+    ),
+    "a nested LaTeX item is an item of the box": (
+        _a_nested_latex_item_is_the_box_s,
+        test_each_box_a_journal_asks_for_is_read_with_its_items_and_nothing_else_is,
+    ),
+    "an abstract does not end a LaTeX box": (
+        _an_abstract_does_not_end_a_latex_box,
+        test_each_box_a_journal_asks_for_is_read_with_its_items_and_nothing_else_is,
+    ),
+    "a chapter's heading is no box's": (
+        _a_chapter_heading_is_no_box_s,
+        test_each_box_a_journal_asks_for_is_read_with_its_items_and_nothing_else_is,
+    ),
+    "a thematic break is an item": (
+        _a_thematic_break_is_an_item,
+        test_each_box_a_journal_asks_for_is_read_with_its_items_and_nothing_else_is,
+    ),
+    "a line after a blank one runs on at two spaces": (
+        _a_line_after_a_blank_one_runs_on_at_two_spaces,
+        test_each_box_a_journal_asks_for_is_read_with_its_items_and_nothing_else_is,
+    ),
+    "an itemize label is its item's text": (
+        _an_itemize_label_is_its_item_s_text,
+        test_each_box_a_journal_asks_for_is_read_with_its_items_and_nothing_else_is,
+    ),
+    "a list's options are printed": (
+        _a_list_s_options_are_printed,
+        test_each_box_a_journal_asks_for_is_read_with_its_items_and_nothing_else_is,
+    ),
+    "a LaTeX box's comment is printed": (
+        _a_latex_comment_is_printed,
+        test_each_box_a_journal_asks_for_is_read_with_its_items_and_nothing_else_is,
+    ),
+    "a box's heading is no summary to G8": (
+        _a_box_s_heading_is_no_summary,
+        test_each_box_a_journal_asks_for_is_read_with_its_items_and_nothing_else_is,
+    ),
+    "a LaTeX box environment is no summary to G8": (
+        _a_latex_box_environment_is_no_summary,
+        test_each_box_a_journal_asks_for_is_read_with_its_items_and_nothing_else_is,
     ),
     "the abstract's heading is not looked for inside a Div": (
         _a_div_is_not_looked_inside,
@@ -14246,6 +14513,34 @@ BROKEN = {
     "a limit has no separator of thousands": (
         _a_limit_has_no_separator_of_thousands,
         test_a_limit_is_stated_by_its_number_and_by_no_longer_one,
+    ),
+    "a ratio is written with a colon alone": (
+        _a_ratio_is_written_with_a_colon_alone,
+        test_a_ratio_and_a_decimal_are_stated_by_their_digits_and_by_no_longer_number,
+    ),
+    "a ratio is read inside a longer number": (
+        _a_ratio_is_read_inside_a_longer_number,
+        test_a_ratio_and_a_decimal_are_stated_by_their_digits_and_by_no_longer_number,
+    ),
+    "a decimal is read inside a longer number": (
+        _a_decimal_is_read_inside_a_longer_number,
+        test_a_ratio_and_a_decimal_are_stated_by_their_digits_and_by_no_longer_number,
+    ),
+    "a decimal's zeros after it are another number": (
+        _a_decimal_s_zeros_after_it_are_another_number,
+        test_a_ratio_and_a_decimal_are_stated_by_their_digits_and_by_no_longer_number,
+    ),
+    "a decimal is written with a point alone": (
+        _a_decimal_is_written_with_a_point_alone,
+        test_a_ratio_and_a_decimal_are_stated_by_their_digits_and_by_no_longer_number,
+    ),
+    "a ratio's sign is no slash nor by": (
+        _a_ratio_s_sign_is_no_slash_nor_by,
+        test_a_ratio_and_a_decimal_are_stated_by_their_digits_and_by_no_longer_number,
+    ),
+    "a ratio is read inside a longer ratio": (
+        _a_ratio_is_read_inside_a_longer_ratio,
+        test_a_ratio_and_a_decimal_are_stated_by_their_digits_and_by_no_longer_number,
     ),
     "a limit's word is read inside a longer word": (
         _a_limit_s_word_is_read_inside_a_longer_word,

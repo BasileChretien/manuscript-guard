@@ -1,6 +1,6 @@
 ---
 name: journal-profile
-description: Choose a target journal with the author, then read that journal's instructions for authors and fill the annotated profile template with its limits, required sections and required statements. Use when choosing where to submit, when check reports journal-profile-missing, journal-profile-stale, data-statement-forbidden, data-identifier-missing, data-link-temporary, data-doi-uncited, pointer-form-unread, english-variant-mismatch or english-variant-undeclared, or before submitting to a different journal.
+description: Choose a target journal with the author, then read that journal's instructions for authors and fill the annotated profile template with its limits, required sections and required statements. Use when choosing where to submit, when check reports journal-profile-missing, journal-profile-stale, data-statement-forbidden, data-identifier-missing, data-link-temporary, data-doi-uncited, pointer-form-unread, english-variant-mismatch, english-variant-undeclared, box-missing, box-items, box-item-long, box-over-limit, box-headings-missing, box-heading-invalid or graphical-abstract-missing, or before submitting to a different journal.
 ---
 
 # Turning author guidelines into something a build can check
@@ -261,6 +261,13 @@ block out, and G4 reads nothing under the heading. G4 then fails a forbidden phr
 (`data-statement-forbidden`) and a missing identifier (`data-identifier-missing`) from internal
 review, and warns on a shared-drive or bare code-host link (`data-link-temporary`) and on a
 dataset DOI the reference list does not cite (`data-doi-uncited`).
+
+Where the page asks for highlights, key points or another box beside the abstract, or says
+anything of a graphical abstract or of what its authors may share, fill `boxes`,
+`graphical_abstract` and `sharing` as
+[references/boxes-and-sharing.md](references/boxes-and-sharing.md) says, each value
+quoted from the page. Read it too when `check` reports a `box-` finding or
+`graphical-abstract-missing`.
 
 `pointers` is how the journal writes a pointer to a table or a figure, where its page says:
 "Fig. {n}", "eTable {n}", "Supplementary Table {n}", `{n}` standing for the number, with its

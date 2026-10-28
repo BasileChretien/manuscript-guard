@@ -177,6 +177,16 @@ BINDS_AT = {
     "missing-abstract": INTERNAL_REVIEW,
     "abstract-headings-missing": INTERNAL_REVIEW,
     "missing-required-statement": INTERNAL_REVIEW,
+    # A box the profile asks for (highlights, key points): G4 warns while the paper is
+    # written and fails at submission where the box is required, as the author decided
+    # (2026-10-28). Listed so that a run at submission says when they bind.
+    "box-missing": SUBMISSION,
+    "box-items": SUBMISSION,
+    "box-item-long": SUBMISSION,
+    "box-over-limit": SUBMISSION,
+    "box-headings-missing": SUBMISSION,
+    # A box's heading that is no regular expression: the profile is wrong.
+    "box-heading-invalid": INTERNAL_REVIEW,
     # What the journal's data policy, as its profile records it, does not accept: binding when
     # the statement is, since a draft's statement is often written last.
     "data-statement-forbidden": INTERNAL_REVIEW,

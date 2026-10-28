@@ -142,6 +142,9 @@ ROUTES: dict[str, Route] = {
            "data-link-temporary", "data-doi-uncited", "pointer-form-unread", "english-variant-",
            "shortlist-", "latex-"),
     **_all("journal-profile", ("style",), "journal-style-"),
+    # A box the journal prints beside the abstract, held to the profile's rule for it, and
+    # the graphical abstract it asks for: the skill reads the rule and says what to write.
+    **_all("journal-profile", ("check",), "box-", "graphical-abstract-missing"),
     **_all("reporting-checklist", ("checklist",), "checklist-", "guideline-",
            "reporting-guideline-for-design"),
     # -- the panel, the co-authors and the journal's reviewers -----------------------------

@@ -15,6 +15,9 @@ So each key the Abstract or a conclusion binds is looked for where the paper rep
 - or its display printed in a table, or in the text of a figure, that a manuscript file
   places.
 
+A box the journal's profile asks for (`boxes:`, highlights or key points) is read as a
+summary too: under its heading, and in LaTeX in its environment (`text/boxes.py`).
+
 Where none holds, a warning names the key and the heading it was given under. The last
 route matches a display and not a key, so a coincidence can keep the warning back; DESIGN.md's
 Known gaps carries that and the rest.
@@ -24,6 +27,7 @@ from __future__ import annotations
 
 import re
 from bisect import bisect_right
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -32,6 +36,7 @@ from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import Results
 from manuscript_guard.findings import WARN, Finding, Report
 from manuscript_guard.gates.numbers import is_supplementary, printed_order, source_files
+from manuscript_guard.text.boxes import box_of, environment_spans
 from manuscript_guard.text.placeholders import parse
 from manuscript_guard.text.section_names import (
     methods_sections,
@@ -69,9 +74,14 @@ class Walk:
     """The headings a reader is under, carried from one file of the paper into the next as
     G14 carries them, and which of the sections met so far report and which summarise.
 
-    `named` is what the journal's profile calls the abstract where it is not "Abstract"."""
+    `named` is what the journal's profile calls the abstract where it is not "Abstract";
+    `boxes` the boxes it asks for, whose headings summarise; and `boxed`, where it is given,
+    the title of the box an offset of the text is in, or None, for a box a heading does not
+    open (a LaTeX environment)."""
 
     named: str | None = None
+    boxes: list = field(default_factory=list)
+    boxed: Callable[[int], str | None] | None = None
     chain: list[Section] = field(default_factory=list)
     reports: set[int] = field(default_factory=set)
     summaries: set[int] = field(default_factory=set)
@@ -97,6 +107,10 @@ class Walk:
         for placeholder in parse(text)[0]:
             if placeholder.namespace != "results":
                 continue
+            boxed = self.boxed(placeholder.start) if self.boxed is not None else None
+            if boxed is not None:
+                given.append(Given(placeholder.key, boxed, placeholder.line, placeholder.start))
+                continue
             place = places[bisect_right(starts, placeholder.line) - 1]
             if place is REPORTED:
                 reported.add(placeholder.key)
@@ -113,7 +127,9 @@ class Walk:
             below = subsections(sections, index)[1:]
             if any(self._opens(other, methods) for other in below):
                 continue
-            if names_results(section.title):
+            if box_of(section.title, self.boxes) is not None:
+                self.summaries.add(id(section))
+            elif names_results(section.title):
                 self.reports.add(id(section))
             elif names_conclusion(section.title):
                 self.summaries.add(id(section))
@@ -136,11 +152,11 @@ class Walk:
 
 def check_reported(project: Project, results: Results) -> Report:
     """A warning for each results key a summary gives that the paper reports nowhere else."""
-    from manuscript_guard.gates.journal import abstract_title
+    from manuscript_guard.gates.journal import abstract_title, box_rules_of
     from manuscript_guard.text.reader import LATEX, manuscript_format
 
     root = project.path("manuscript")
-    walk = Walk(abstract_title(project))
+    walk = Walk(abstract_title(project), box_rules_of(project))
     if manuscript_format(root) == LATEX:
         given, reported, placed = _latex_read(root, walk)
     else:
@@ -199,6 +215,7 @@ def _latex_read(root: Path, walk: Walk) -> tuple[list[tuple[Path, Given]], set[s
         if supplementary:
             reported |= {p.key for p in placeholders if p.namespace == "results"}
             continue
+        walk.boxed = _boxed_in(view, sources, walk.boxes)
         found, binds = walk.read(view.text)
         for one in found:
             where = view.place(one.start)
@@ -206,6 +223,28 @@ def _latex_read(root: Path, walk: Walk) -> tuple[list[tuple[Path, Given]], set[s
             given.append((root / path, replace(one, line=line)))
         reported |= binds
     return given, reported, placed
+
+
+def _boxed_in(view, sources: list, rules: list) -> Callable[[int], str | None] | None:
+    """The title of the box environment an offset of a LaTeX document's printed view stands
+    in, read back to the file and the place it was printed from, or None. None in place of
+    the function where the document writes no box in its environment."""
+    spans = {source.path: environment_spans(source, rules) for source in sources}
+    spans = {path: found for path, found in spans.items() if found}
+    if not spans:
+        return None
+    starts = [origin[0] for origin in view.origins]
+
+    def boxed(offset: int) -> str | None:
+        index = bisect_right(starts, offset) - 1
+        if index < 0:
+            return None
+        start, source, at, linear = view.origins[index]
+        where = at + (offset - start) if linear else at
+        return next((title for begin, end, _rule, title in spans.get(source.path, ())
+                     if begin <= where < end), None)  # fmt: skip
+
+    return boxed
 
 
 def _markdown_read(root: Path, walk: Walk) -> tuple[list[tuple[Path, Given]], set[str], dict]:

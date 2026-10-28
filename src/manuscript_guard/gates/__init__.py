@@ -15,6 +15,7 @@ from manuscript_guard.gates.figure_source import check_figure_source
 from manuscript_guard.gates.figures import check_figures, content_digest
 from manuscript_guard.gates.freshness import check_freshness
 from manuscript_guard.gates.journal import check_journal
+from manuscript_guard.gates.journal_boxes import check_boxes
 from manuscript_guard.gates.language import check_language
 from manuscript_guard.gates.literature import check_literature_chain
 from manuscript_guard.gates.methods import check_methods, reconcile
@@ -84,6 +85,7 @@ __all__ = [
     "available_checklists",
     "check_freshness",
     "check_journal",
+    "check_boxes",
     "check_language",
     "check_literature_chain",
     "check_methods",

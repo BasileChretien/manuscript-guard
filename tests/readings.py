@@ -493,6 +493,46 @@ def _summaries() -> Reading:
     return summaries
 
 
+class _Shown:
+    """A value as a reading of the boxes needs it: its display alone."""
+
+    def __init__(self, display: str) -> None:
+        self.display = display
+
+
+@reading("boxes")
+def _boxes() -> Reading:
+    """Each box a journal asks for that a Markdown and a LaTeX manuscript write, with its
+    items as printed (G4's reading, `text/boxes.py`), and the results keys G8 takes for a
+    summary's in each, a box's among them."""
+    from manuscript_guard.gates.reported import Walk, _boxed_in
+    from manuscript_guard.text.boxes import box_rules, latex_boxes, markdown_boxes
+    from manuscript_guard.text.latex.printed import printed
+    from manuscript_guard.text.latex.structure import read_tree
+
+    def boxes(given: dict[str, Any]) -> dict[str, Any]:
+        rules, _invalid = box_rules({"boxes": given["boxes"]})
+        namespace = {ref: _Shown(display) for ref, display in given["displays"].items()}
+        markdown = markdown_boxes(given["text"], rules, namespace)
+        found, reported = Walk(None, rules).read(given["text"])
+        sources = [s for s in read_tree({"main.tex": given["latex"]}).sources if not s.loose]
+        latex = [one for source in sources for one in latex_boxes(source, rules, namespace)]
+        view = printed(sources)
+        latex_found, latex_reported = Walk(None, rules, _boxed_in(view, sources, rules)).read(
+            view.text
+        )
+        return {
+            "markdown": [[f.id, f.title, f.line, list(f.items), f.text] for f in markdown],
+            "given": [[one.key, one.heading, one.line] for one in found],
+            "reported": sorted(reported),
+            "latex": [[f.id, f.title, f.line, list(f.items), f.text] for f in latex],
+            "latex given": [[one.key, one.heading] for one in latex_found],
+            "latex reported": sorted(latex_reported),
+        }
+
+    return boxes
+
+
 # ----------------------------------------------------------------------------- numbers
 
 

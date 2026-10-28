@@ -48,6 +48,7 @@ from manuscript_guard.contracts import (
 from manuscript_guard.findings import WARN, Finding, Report, merge_all
 from manuscript_guard.gates import (
     check_bound_units,
+    check_boxes,
     check_citations,
     check_consistency,
     check_datasets,
@@ -186,6 +187,7 @@ def _gate_run(
         ("G7", lambda: check_passages(project, chosen)),
         ("G7", lambda: check_recycling(project, chosen)),
         ("G4", lambda: check_journal(project)),
+        ("G4", lambda: check_boxes(project, namespace, chosen)),
         ("G4", lambda: check_shortlist(project)),
         ("G4", lambda: check_package_doi(project, submission=at_submission)),
         # It reads paper.yaml and the receipts, and none of the manuscript.
@@ -2199,7 +2201,7 @@ def cmd_audit(args: argparse.Namespace) -> int:
     return 1 if args.strict and sections.failed(report) else 0
 
 
-def _reread(project, new: Path) -> int:
+def _reread(project, new: Path, page: str | None = None) -> int:
     """`journal --reread`: the stored page against the page read again, and the rules whose
     quotes it no longer holds. Writes nothing: adopting the page is the author's."""
     from manuscript_guard.gates.journal_quotes import DIFF_LINES, reread
@@ -2209,7 +2211,11 @@ def _reread(project, new: Path) -> int:
     except (OSError, UnicodeDecodeError) as exc:
         print(f"manuscript-guard: {new} cannot be read as UTF-8 text: {exc}", file=sys.stderr)
         return 2
-    found = reread(project, text)
+    try:
+        found = reread(project, text, page)
+    except (LookupError, ValueError) as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 2
     if found is None:
         print("manuscript-guard: paper.yaml names no journal with a profile to read the page "
               "for", file=sys.stderr)  # fmt: skip
@@ -2230,12 +2236,15 @@ def _reread(project, new: Path) -> int:
         print(f"{len(gone)} rule(s) quote words the page no longer has: read each again, and "
               "correct its value and its quote, or remove it.")  # fmt: skip
     stored = found.stored
+    # A box records no date of its own: only the instructions page and the blocks that do.
+    dated = "" if found.blocks and all(b.startswith("boxes.") for b in found.blocks) else (
+        " and today's retrieved_on")  # fmt: skip
     inside = stored.is_relative_to(project.root)
     where = stored.relative_to(project.root).as_posix() if inside else str(stored)
     print(
         f"Read the difference for rules the page added, too. To adopt the page, save it over "
-        f"{where}, then record page_sha256: {found.digest} and today's retrieved_on in the "
-        "profile."
+        f"{where}, then record page_sha256: {found.digest}{dated} in the "
+        + (f"profile's {', '.join(found.blocks)}." if found.blocks else "profile.")
     )
     return 1 if gone else 0
 
@@ -2250,8 +2259,12 @@ def cmd_journal(args: argparse.Namespace) -> int:
         print(contract_report.render(project.root))
         return 2
 
+    if args.page and not args.reread:
+        print("manuscript-guard: --page names the page --reread reads again; give it with "
+              "--reread <file>", file=sys.stderr)  # fmt: skip
+        return 2
     if args.reread:
-        return _reread(project, args.reread)
+        return _reread(project, args.reread, args.page)
 
     if args.template:
         source = SHIPPED_JOURNALS / "TEMPLATE.yaml"
@@ -5411,6 +5424,13 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="the journal's page read again, as text: show what changed from the stored page "
         "and which rules quote words it no longer has; writes nothing",
+    )
+    journal.add_argument(
+        "--page",
+        metavar="FILE",
+        help="with --reread: the page of its own a block of the profile names (its page_file, "
+        "as the profile writes it) that FILE is read again in place of; without it, the "
+        "instructions page",
     )
     journal.set_defaults(func=cmd_journal)
 

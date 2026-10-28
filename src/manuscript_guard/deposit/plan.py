@@ -79,10 +79,11 @@ DESIGN_INPUT = "the analysis plan or its record, deposited with the rest"
 #: The files a package writes of its own, at its root.
 WRITTEN = ("README.md", "CITATION.cff", "BOUND.md", "INPUTS.md", "paper.yaml", "MANIFEST.yaml",
            "SHA256SUMS", ".zenodo.json", "MODELS.md", "RELATIONS.md",
-           "ro-crate-metadata.json")  # fmt: skip
+           "ro-crate-metadata.json", "ro-crate-preview.html", "index.html")  # fmt: skip
 #: What a package describes itself with besides CITATION.cff, by the option that asks for it:
-#: `--citation` adds .zenodo.json, and `--ro-crate` the crate, with the citation files.
-KINDS = ("", "citation", "ro-crate")
+#: `--citation` adds .zenodo.json, `--ro-crate` the crate, with the citation files, and
+#: `--companion` the crate's preview page and its copy index.html, with the crate.
+KINDS = ("", "citation", "ro-crate", "companion")
 GIT_SECONDS = 30
 
 
@@ -129,8 +130,12 @@ class Plan:
     report: Report
     signables: tuple[Signable, ...]
     with_manuscript: bool = False
-    #: "", "citation" or "ro-crate": what the package describes itself with (`KINDS`).
+    #: "", "citation", "ro-crate" or "companion": what the package describes itself with
+    #: (`KINDS`).
     kind: str = ""
+    #: The pandoc the companion page was written with, as it names itself; MANIFEST.yaml says
+    #: it, since the page's bytes depend on it.
+    pandoc: str | None = None
 
 
 def _digest(path: Path) -> str:
@@ -515,13 +520,26 @@ def _licence_findings(project: Project, licence: Path | None) -> list[Finding]:
 
 
 def plan_package(project: Project, results: Results, *, with_manuscript: bool = False,
-                 citation: bool = False, ro_crate: bool = False) -> Plan:  # fmt: skip
+                 citation: bool = False, ro_crate: bool = False,
+                 companion: bool = False) -> Plan:  # fmt: skip
     """Everything the package would hold and leave out, and what stops it. `citation` adds
     .zenodo.json beside CITATION.cff; `ro_crate` adds ro-crate-metadata.json, RELATIONS.md
-    and, where the analysis fitted models, MODELS.md, and implies `citation`."""
+    and, where the analysis fitted models, MODELS.md, and implies `citation`; `companion`
+    adds the crate's preview page, ro-crate-preview.html, and index.html, its copy, and
+    implies `ro_crate`. The page is written with pandoc, and is refused without it."""
     from .texts import generated_entries
 
-    kind = "ro-crate" if ro_crate else "citation" if citation else ""
+    kind = ("companion" if companion else "ro-crate" if ro_crate else "citation" if citation
+            else "")  # fmt: skip
+    pandoc = None
+    if companion:
+        from .prose import pandoc_version
+
+        pandoc = pandoc_version()
+        if pandoc is None:
+            raise PackageError("--companion writes the page's prose with pandoc, which is not "
+                               "on PATH; install it (https://pandoc.org/installing.html), or "
+                               "package without --companion")  # fmt: skip
 
     if not results.fragments:
         raise PackageError(f"no results in {project.path('results')}: there is nothing to "
@@ -563,7 +581,8 @@ def plan_package(project: Project, results: Results, *, with_manuscript: bool = 
                                                  inputs_withheld=len(away))  # fmt: skip
     withheld = collect.withheld + [Withheld(i.path, i.why) for i in away]
     return Plan(name_of(project), tuple(entries), tuple(sorted(withheld, key=lambda w: w.path)),
-                tuple(inputs), report, tuple(signables), with_manuscript, kind)  # fmt: skip
+                tuple(inputs), report, tuple(signables), with_manuscript, kind,
+                pandoc)  # fmt: skip
 
 
 def _collect(collect: _Collector, project: Project, results: Results, inputs: list[Input],
@@ -707,8 +726,14 @@ def package_signables(project: Project, results: Results) -> list[Signable]:
     found: dict[str, Signable] = {}
     for with_manuscript in (False, True):
         for kind in KINDS:
-            planned = plan_package(project, results, with_manuscript=with_manuscript,
-                                   citation=kind == "citation", ro_crate=kind == "ro-crate")
+            try:
+                planned = plan_package(project, results, with_manuscript=with_manuscript,
+                                       citation=kind == "citation", ro_crate=kind == "ro-crate",
+                                       companion=kind == "companion")  # fmt: skip
+            except PackageError:
+                if kind != "companion":
+                    raise
+                continue  # no pandoc, or a page that cannot be made: nothing to sign
             for signable in planned.signables:
                 found.setdefault(signable.id, signable)
     return list(found.values())

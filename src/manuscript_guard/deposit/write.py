@@ -80,6 +80,7 @@ def manifest_text(project: Project, plan: Plan, *, checked: bool) -> str:
             "failing: the results may not be what the analysis writes"
         ),
         "with_manuscript": plan.with_manuscript,
+        **({"companion_written_with": plan.pandoc} if plan.pandoc else {}),
         "files": [{"file": e.path, "bytes": e.size, "sha256": e.sha256} for e in plan.entries],
         "withheld": [{"path": w.path, "why": w.why} for w in plan.withheld],
     }

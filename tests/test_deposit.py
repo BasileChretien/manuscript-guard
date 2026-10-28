@@ -373,9 +373,14 @@ def test_gh_pages_is_the_page_and_the_commands_and_pushes_nothing(project: Path,
     assert contents(root) == {"index.html", ".nojekyll", "SHA256SUMS"}
     assert (root / ".nojekyll").read_bytes() == b""
     assert "<html" in (root / "index.html").read_text(encoding="utf-8")
-    assert "git push origin gh-pages" in said
-    # Whether or not the branch is there yet: `--orphan` alone fails once it is.
-    assert "git switch gh-pages || git switch --orphan gh-pages" in said
+    assert "git -C ../companion-site push origin gh-pages" in said
+    # Whether or not the branch is there yet, one command a line, with no `||`, which Windows
+    # PowerShell 5.1 cannot parse; and what to do where it is checked out already (round 2).
+    commands = [line.strip() for line in said.splitlines() if line.startswith(("  git ", "  cp "))]
+    assert "git worktree add ../companion-site gh-pages" in commands
+    assert "git -C ../companion-site switch --orphan gh-pages" in commands
+    assert not any(mark in line for line in commands for mark in ("||", "&&", ";"))
+    assert "checked out in another worktree" in said and "git worktree list" in said
     assert "Nothing has been uploaded or pushed" in said
 
 
@@ -545,6 +550,54 @@ def test_a_data_statement_that_cites_is_to_be_copied_from_the_document(project: 
     assert "@fictional" not in said and "[" not in said
 
 
+def _sheet_statement(root: Path) -> str:
+    return _sheet(root).split("## Data availability", 1)[1].split("## Licence", 1)[0]
+
+
+@PANDOC
+@pytest.mark.parametrize("formula", ["$5$", "$n = \\mg{results.cohort.n_reports}$"])
+def test_a_latex_statement_with_a_formula_is_to_be_copied_from_the_document(
+    project: Path, formula: str
+) -> None:
+    """The printed view writes an inline formula as a word: "Counts below x" was printed,
+    and a formula holding a binding as "x 5" (round 2 of #460)."""
+    shutil.rmtree(project / "manuscript")
+    shutil.copytree(Path(__file__).parent / "data" / "latex" / "manuscript",
+                    project / "manuscript")  # fmt: skip
+    main_tex = project / "manuscript" / "main.tex"
+    text = main_tex.read_text(encoding="utf-8")
+    anchor = "this repository. No real patient data"
+    assert text.count(anchor) == 1
+    main_tex.write_text(text.replace(anchor, f"this repository. Counts below {formula} are "
+                                             "withheld. No real patient data"),
+                        encoding="utf-8")  # fmt: skip
+    said = _sheet_statement(project)
+    assert "Copy it from the document" in said
+    assert "Counts below" not in said
+
+
+@PANDOC
+def test_the_data_statement_keeps_its_paragraphs_and_no_break_spaces(project: Path) -> None:
+    """As abstract.txt keeps them: they were joined into one line, and a no-break space made
+    a space (round 2 of #460)."""
+    nbsp = chr(0xA0)
+    _statement(project, f"Held apart.\n\nNinety{nbsp}days.")
+    assert f"Held apart.\n\nNinety{nbsp}days. No real patient data" in _sheet_statement(project)
+
+
+@PANDOC
+@pytest.mark.parametrize("added", ["\n\n### Code availability\n\nThe code is on the site.\n",
+                                   "\n\n```\nsecret listing\n```\n"])
+def test_a_statement_with_a_subheading_or_a_listing_is_to_be_copied(project: Path,
+                                                                     added: str) -> None:
+    """A subheading was printed run into the statement, its title as a sentence, and a
+    fenced block dropped while the rest was printed (round 2 of #460)."""
+    _statement(project, added)
+    said = _sheet_statement(project)
+    assert "Copy it from the document" in said
+    assert "Code availability" not in said and "secret listing" not in said
+
+
 def test_the_sheet_says_each_author_as_authors_yaml_records_them(project: Path) -> None:
     """An accented name as it is spelt, several affiliations, no ORCID, an affiliation id
     `affiliations` does not list, and two corresponding authors (round 1 of #460)."""
@@ -666,6 +719,14 @@ def test_a_compiled_pdf_is_signed_off_by_what_it_is_compiled_from(project: Path,
                  "DEPOSIT/custodian/medrxiv/preprint"]) == 0  # fmt: skip
     assert deposit(project, "medrxiv", "preprint") == 0, capsys.readouterr().out
     assert len(calls) == 3
+    # And the engine it is compiled with, which the journal's profile names (round 2 of #460).
+    from manuscript_guard import cli
+
+    named = cli._latex_engine
+    monkeypatch.setattr(cli, "_latex_engine", lambda _project: "lualatex")
+    assert deposit(project, "medrxiv", "preprint") == 1
+    monkeypatch.setattr(cli, "_latex_engine", named)
+    assert deposit(project, "medrxiv", "preprint") == 0
     # What it is compiled from is what was signed.
     (staged / "manuscript.tex").write_text("\\documentclass{article}\n% changed\n",
                                           encoding="utf-8")  # fmt: skip
@@ -685,6 +746,8 @@ def test_the_build_stamp_is_dated_as_the_rest_of_the_document(tmp_path: Path) ->
     with zipfile.ZipFile(document) as opened:
         assert {info.date_time for info in opened.infolist()} == {(1980, 1, 1, 0, 0, 0)}
         assert "docProps/custom.xml" in opened.namelist()
+        # As a Unix .zip's member, whatever system signs it (round 2 of #460).
+        assert opened.getinfo("docProps/custom.xml").create_system == 3
 
 
 def test_a_restricted_input_copied_under_another_name_is_caught_by_its_bytes(
@@ -705,6 +768,48 @@ def test_a_restricted_input_copied_under_another_name_is_caught_by_its_bytes(
                copied(staged / "manuscript.tex", "manuscript.tex", "the source"))  # fmt: skip
     assert [f.message.split(" ")[0] for f in restricted_entries(loaded, results, entries)] == \
         ["table-input.yaml"]  # fmt: skip
+
+
+def test_a_verbatim_copy_of_a_restricted_input_is_caught_by_its_raw_digest(
+    project: Path, monkeypatch
+) -> None:
+    """A run records an input's `sha256` blind to line endings and its `raw_sha256` as it
+    is: a copy of a CRLF input, its original gone, is the bytes of the second (round 2 of
+    #460)."""
+    from manuscript_guard.contracts import load_namespace, load_project
+    from manuscript_guard.deposit.plan import copied
+    from manuscript_guard.deposit.preflight import restricted_entries
+
+    staged = _fake_latex(project, monkeypatch)
+    held = b"site,count\r\nA,3\r\n"
+    (staged / "table-input.csv").write_bytes(held)
+
+    def change(document: dict) -> None:
+        document["provenance"]["inputs"].append(
+            {"path": "data/held.csv", "sha256": hashlib.sha256(held.replace(b"\r\n", b"\n"))
+             .hexdigest(), "raw_sha256": hashlib.sha256(held).hexdigest(), "restricted": True}
+        )
+
+    edit_fragment(project, change)
+    loaded = load_project(project)[0]
+    entries = (copied(staged / "table-input.csv", "table-input.csv", "the source"),)
+    assert [f.code for f in restricted_entries(loaded, load_namespace(loaded)[1], entries)] == \
+        ["deposit-restricted-input"]  # fmt: skip
+
+
+def test_sign_retrospective_is_refused_with_a_finding_that_is_not_a_deposits(
+    project: Path, capsys
+) -> None:
+    """`deposit` refuses `--retrospective` where it labels nothing, and `sign` ignored it
+    with any finding but a deposit's (round 2 of #460)."""
+    ready(project)
+    _custodian(project)
+    minimum(project, minimum_cell_count=5)
+    edit_fragment(project, _small_cell)
+    argv = ["sign", str(project), "--as", "Sample", "--finding", "PACKAGE/custodian/small-counts"]
+    assert main([*argv, "--retrospective", "why"]) == 2
+    assert "--retrospective" in capsys.readouterr().err
+    assert main(argv) == 0
 
 
 def test_retrospective_is_refused_with_a_bundle_that_holds_no_plan(project: Path,

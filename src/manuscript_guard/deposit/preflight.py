@@ -62,13 +62,14 @@ EMPTY = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 
 def _restricted_digests(project: Project, results: Results, keys: set[str],
                         declared: list[dict]) -> set[str]:  # fmt: skip
-    """The SHA-256 of each input declared restricted: as each run recorded it, and as the
-    file in the project is now, where it is there."""
+    """The SHA-256 of each input declared restricted: as each run recorded it, blind to line
+    endings and of its bytes as they are (`raw_sha256`, which a verbatim copy of a CRLF input
+    has: round 2 of #460), and as the file in the project is now, where it is there."""
     from .plan import _digest
 
-    found = {str(record["sha256"]).lower() for fragment in results.fragments
-             for record in fragment.inputs if isinstance(record, dict)
-             and record.get("path") and record.get("sha256")
+    found = {str(record[name]).lower() for fragment in results.fragments
+             for record in fragment.inputs for name in ("sha256", "raw_sha256")
+             if isinstance(record, dict) and record.get("path") and record.get(name)
              and _key(record["path"]) in keys}  # fmt: skip
     for seen in declared:
         path = project.root / seen["path"]

@@ -3563,6 +3563,12 @@ def cmd_sign(args: argparse.Namespace) -> int:
     from manuscript_guard.panel.custodian import send_signables
     from manuscript_guard.sign_offs import CORRESPONDING, ROLES, holder, is_holder, sign
 
+    # As `deposit` refuses it where it labels nothing (round 2 of #460).
+    if args.retrospective is not None and not args.finding.startswith("DEPOSIT/"):
+        print(f"manuscript-guard: --retrospective is for a plan's deposit, "
+              f"DEPOSIT/custodian/<target>/preregistration, and {args.finding} is not a "
+              "deposit's", file=sys.stderr)  # fmt: skip
+        return 2
     project, _ = load_project(args.path)
     _namespace, results, _literature, _loaded = load_namespace(project)
     standing = signables(project, results) + override_signables(project) + \

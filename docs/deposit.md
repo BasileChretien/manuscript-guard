@@ -159,8 +159,11 @@ same `--retrospective` reason for a plan deposited that way. Each target is its 
 `zenodo-sandbox` is not `zenodo`. A release's MANIFEST.yaml is not in what is signed, as it
 is not in a package's: it names the commit, which signing changes. The medRxiv `.docx` is
 built dated 1980-01-01, so that the document signed is the document deposited; a LaTeX
-manuscript's PDF is signed by the folder it is compiled from and the tool's version, since
-TeX may write the clock into it. `--retrospective` with a release or a preprint is refused.
+manuscript's PDF is signed by the folder it is compiled from, the tool's version and the
+LaTeX engine, since TeX may write the clock into it. Building the `.docx` replaces
+`build/manuscript.docx`, and a build with live Zotero fields loses them until the next
+`build`. `--retrospective` with a release or a preprint is refused, by `deposit` and by
+`sign`, and `sign` refuses it with a finding that is not a deposit's.
 
 **VERIFICATION.md** says, gate by gate, what `check --stage submission` found, counted and
 named by code; what each dimension's gates checked by machine and what no gate decides; the last run
@@ -174,7 +177,8 @@ same.
 it: the servers' own pages are what holds. A count the sheet gives, the abstract's length
 against arXiv's 1,920 characters or the archive's size, is the tool's own. The Data
 availability statement is printed with its bindings filled in, as the abstract is, or, where
-it cites or holds what plain text cannot show, the sheet says to copy it from the document.
+it cites or holds what plain text cannot show (maths, a subheading or a listing among
+them), the sheet says to copy it from the document.
 
 Every archive is the same bytes from the same files, on any day and from any folder: the
 .zip as `package` writes it, the .tar.gz with its members in order, each dated 0 and owned by

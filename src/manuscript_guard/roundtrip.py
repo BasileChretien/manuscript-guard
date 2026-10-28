@@ -307,6 +307,9 @@ def stamp_into(
         dated = zin.infolist()[0].date_time if zin.infolist() else (1980, 1, 1, 0, 0, 0)
         info = zipfile.ZipInfo(_CUSTOM, date_time=dated)
         info.compress_type = zipfile.ZIP_DEFLATED
+        # As a Unix member, as `deposit/write._zip` writes them: the platform's default made
+        # a document signed on Windows other bytes on Linux (round 2 of #460).
+        info.create_system = 3
         info.external_attr = 0o600 << 16
         zout.writestr(info, _custom_properties(existing, digest, paragraphs, printed, cited))
     scratch.replace(document)

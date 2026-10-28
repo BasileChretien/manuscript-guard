@@ -10,6 +10,8 @@ length or the archive's size, is the tool's own count.
 
 from __future__ import annotations
 
+import re
+
 from manuscript_guard.contracts.project import Project
 
 #: arXiv's limit on an abstract, in characters, as the sheet names it.
@@ -133,26 +135,51 @@ def _corresponding(project: Project) -> str:
     return f"{name}, whose e-mail address authors.yaml records" if author.get("email") else name
 
 
+def statement_source(text: str, heading: str) -> str | None:
+    """The Data availability statement as it is written: the section `statement_text` finds,
+    with its listings and comments as they are rather than blanked, so that a fenced block
+    in it is seen and not dropped (round 2 of #460)."""
+    from manuscript_guard.text.sections import scannable, split_sections
+
+    scanned = scannable(text)
+    wanted = re.compile(heading, re.IGNORECASE)
+    found = [s for s in split_sections(scanned) if s.title and wanted.search(s.title)]
+    if not found:
+        return None
+    section = min(found, key=lambda s: s.level)
+    # `scannable` keeps every offset, so the section stands where it does in the text.
+    line_start = 0
+    for _ in range(section.line - 1):
+        line_start = scanned.index("\n", line_start) + 1
+    at = scanned.index(section.enclosed, line_start)
+    return text[at : at + len(section.enclosed)]
+
+
 def _statement(project: Project) -> list[str]:
     from manuscript_guard.build.document import BuildError
     from manuscript_guard.build.submission import plain_passage
-    from manuscript_guard.gates.data_statement import HEADING, _profile_heading, _statements
+    from manuscript_guard.gates.data_statement import HEADING, _profile_heading
+    from manuscript_guard.gates.journal import main_text
     from manuscript_guard.gates.revision import displays
     from manuscript_guard.text.placeholders import substitute
 
-    found = _statements(project, [_profile_heading(project) or HEADING])
-    if not found:
+    # A LaTeX manuscript's inline formula as one pandoc reads as maths, as the abstract's is:
+    # the printed view's word for it is no text to paste (round 2 of #460).
+    found = statement_source(main_text(project, formula="$x$"),
+                             _profile_heading(project) or HEADING)  # fmt: skip
+    if found is None:
         return [f"{NOT_RECORDED}: the manuscript has no Data availability statement"]
     # Its bindings as the build prints them, as the abstract's are; and nothing of it where
     # what is left is not plain text (round 1 of #460).
     try:
-        said = plain_passage(substitute(found[0][0], displays(project)))
+        said = plain_passage(substitute(found, displays(project)))
     except BuildError:  # pandoc refused it, or gave nothing in its time
         said = None
     if said is None:
         return ["Copy it from the document: the statement holds what plain text cannot show "
-                "as the document prints it (a citation, a reference, a footnote or maths), or "
-                "pandoc, which writes it as plain text, is not on PATH."]  # fmt: skip
+                "as the document prints it (a citation, a reference, a footnote, maths, a "
+                "subheading or a listing), or pandoc, which writes it as plain text, is not "
+                "on PATH."]  # fmt: skip
     return ["As the document prints it:", "", "```text", said, "```"]
 
 

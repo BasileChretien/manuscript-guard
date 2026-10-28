@@ -118,19 +118,26 @@ def next_steps(made: Bundle, directory: Path, archive: Path) -> str:
     """What the author does next, which the tool does not do."""
     head = "Nothing has been uploaded or pushed: the tool sends nothing in this version."
     if made.target == "gh-pages":
+        # One command a line, which PowerShell and a POSIX shell both run: `||` is no operator
+        # in Windows PowerShell 5.1 (round 2 of #460).
+        site = "../companion-site"
         return "\n".join([
-            head, "To publish the page from a branch of its own, run, in the repository:",
-            "  git worktree add --detach ../companion-site",
-            "  cd ../companion-site",
-            # The branch is taken where it is, here or on the remote, and made where it is not
-            # (round 1 of #460): `--orphan` alone fails once it exists.
+            head, "To publish the page from a branch of its own, run, in the repository, each "
+            "line as a command of its own:",
             "  git fetch origin",
-            "  git switch gh-pages || git switch --orphan gh-pages",
-            f"  cp \"{directory / 'index.html'}\" .",
-            f"  cp \"{directory / '.nojekyll'}\" .",
-            "  git add index.html .nojekyll",
-            "  git commit -m \"The companion page\"",
-            "  git push origin gh-pages",
+            f"  git worktree add {site} gh-pages",
+            "where no gh-pages branch is there yet, here or on the remote, run these two in "
+            "place of the last line:",
+            f"  git worktree add --detach {site}",
+            f"  git -C {site} switch --orphan gh-pages",
+            "where gh-pages is checked out in another worktree already, `git worktree add` "
+            f"refuses it: use that worktree, which `git worktree list` names, for {site} in "
+            "what follows. Then:",
+            f"  cp \"{directory / 'index.html'}\" {site}/",
+            f"  cp \"{directory / '.nojekyll'}\" {site}/",
+            f"  git -C {site} add index.html .nojekyll",
+            f"  git -C {site} commit -m \"The companion page\"",
+            f"  git -C {site} push origin gh-pages",
             "and have the repository's Pages settings publish the gh-pages branch.",
         ])  # fmt: skip
     if made.target == "arxiv":

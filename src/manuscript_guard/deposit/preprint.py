@@ -107,9 +107,11 @@ def _documents(project: Project) -> list[tuple[Path, str, str | None]]:
     digest the custodian signs it by, that of what it is compiled from (`built_from`). A
     .docx is built at a fixed date (`fixed_date`), so that its bytes are signed."""
     if _is_latex(project):
+        from manuscript_guard.cli import _latex_engine
+
         packed = _latex(project)
         _undefined(packed)
-        source = built_from(packed)
+        source = built_from(packed, _latex_engine(project))
         return [(pdf, "a document compiled from the LaTeX source", source)
                 for pdf in packed.documents]  # fmt: skip
     with fixed_date():
@@ -144,10 +146,11 @@ def fixed_date() -> Iterator[None]:
             os.environ["SOURCE_DATE_EPOCH"] = before
 
 
-def built_from(packed) -> str:
-    """What a compiled PDF is signed off by: the tool's version and every file of the folder
-    it was compiled from, with its digest. The PDF's bytes are the author's TeX's, which may
-    write the clock into them, so they are not what is signed (see DESIGN, Known gaps)."""
+def built_from(packed, engine: str) -> str:
+    """What a compiled PDF is signed off by: the tool's version, the LaTeX engine that
+    compiled it (round 2 of #460) and every file of the folder it was compiled from, with its
+    digest. The PDF's bytes are the author's TeX's, which may write the clock into them, so
+    they are not what is signed (see DESIGN, Known gaps)."""
     from manuscript_guard import __version__
     from manuscript_guard.sign_offs import digest_of
 
@@ -158,7 +161,8 @@ def built_from(packed) -> str:
         found = sorted(p for p in path.rglob("*") if p.is_file()) if path.is_dir() else [path]
         files += [(p.relative_to(packed.folder).as_posix(), _digest(p)) for p in found
                   if p.is_file()]  # fmt: skip
-    return digest_of("compiled from", f"manuscript-guard {__version__}", sorted(files))
+    return digest_of("compiled from", f"manuscript-guard {__version__}", f"engine {engine}",
+                     sorted(files))
 
 
 def _word(project: Project) -> list[tuple[Path, str]]:

@@ -708,21 +708,24 @@ def abstract_text(project: Project) -> tuple[str | None, str | None]:
 def plain_passage(text: str) -> str | None:
     """A passage of the manuscript, its bindings already filled in, as pandoc writes it in
     plain text, by the abstract's rule: None where anything in it is what the build formats
-    and plain text cannot (a citation, a footnote, maths, a table, a binding left unfilled),
-    where a bracket is left that a reference defined elsewhere in the text may stand for,
-    and where pandoc is not on PATH."""
+    and plain text cannot (a citation, a footnote, maths, a table, a listing, a binding left
+    unfilled), where it holds a heading of its own, which plain text runs into it, where a
+    bracket is left that a reference defined elsewhere in the text may stand for, and where
+    pandoc is not on PATH. Its paragraphs and no-break spaces are kept, as the abstract's
+    are (round 2 of #460)."""
     import json
 
     if shutil.which("pandoc") is None:
         return None
     document = json.loads(_pandoc("-f", "markdown", "-t", "json", given=text))
     blocks = document["blocks"]
-    if not blocks or not _plain(blocks) or _DISPLAY.search(_text(blocks)) \
+    headed = any(block.get("t") == "Header" for block in blocks)
+    if not blocks or headed or not _plain(blocks) or _DISPLAY.search(_text(blocks)) \
             or _refused_script(blocks):  # fmt: skip
         return None
     document["blocks"] = _unscripted(blocks)
     plain = _pandoc("-f", "json", "-t", "plain", "--wrap=none", given=json.dumps(document))
-    said = " ".join(plain.split())
+    said = plain.strip()
     return None if not said or any(mark in said for mark in ("{{", "}}", "[", "]")) else said
 
 

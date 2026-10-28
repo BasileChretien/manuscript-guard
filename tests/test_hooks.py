@@ -1172,6 +1172,20 @@ def test_a_deposit_that_sends_nothing_is_let_through(
     assert run("guard-submission", _shell(in_claude_code, command), capsys) is None
 
 
+@pytest.mark.parametrize(("turn_id", "decided"), [(None, "ask"), ("t", "deny")])
+def test_a_line_ended_by_a_lone_carriage_return_is_read_as_two(
+    in_claude_code: Path, turn_id: str | None, decided: str, capsys
+) -> None:
+    """Fix-only round of #467 (blocking): a lone carriage return ends a PowerShell line, so
+    the `--stage` of the `deposit` after it is asked, and refused where the tool cannot ask;
+    and an invocation of another subcommand that names `deposit` is not passed over."""
+    command = ("manuscript-guard check --stage submission\rmanuscript-guard deposit --target "
+               "zenodo --bundle release --stage")  # fmt: skip
+    more = {"turn_id": turn_id} if turn_id else {}
+    result = run("guard-submission", _shell(in_claude_code, command, **more), capsys)
+    assert decision(result) == decided, result
+
+
 @pytest.mark.parametrize("turn_id", [None, "t"])
 def test_the_check_a_refusal_names_then_a_dry_run_is_let_through(
     in_claude_code: Path, turn_id: str | None, capsys

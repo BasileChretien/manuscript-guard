@@ -97,10 +97,18 @@ def _reserve(project: Project, args: argparse.Namespace, api: Client,
         draft = zenodo.reserve(api, args.target)
     except zenodo.DraftMade as exc:
         # The draft exists: its id is recorded, so that a run again reserves no second DOI.
-        _record(project, {**base, "id": exc.draft, "doi": None}, "reserved")
-        raise RemoteError(f"{exc}; its id is in {receipts.RECEIPTS}/{args.target}-"
-                          f"{args.bundle}.yaml, and a run again reserves no second one: look "
-                          "at the draft on the host's page") from None  # fmt: skip
+        name = f"{receipts.RECEIPTS}/{args.target}-{args.bundle}.yaml"
+        way_out = (f"To reserve again, delete draft {exc.draft} on the host's page, then "
+                   f"remove {name} yourself: the hooks keep an agent from it")  # fmt: skip
+        try:
+            _record(project, {**base, "id": exc.draft, "doi": None}, "reserved")
+        except OSError as unwritten:
+            raise RemoteError(f"{exc}. DRAFT {exc.draft} WAS MADE, AND IT COULD NOT BE "
+                              f"RECORDED ({unwritten.strerror or type(unwritten).__name__}): "
+                              f"do not run --reserve-doi again until it is deleted on the "
+                              "host's page") from None  # fmt: skip
+        raise RemoteError(f"{exc}; its id is in {name}, and a run again reserves no second "
+                          f"one. {way_out}") from None  # fmt: skip
     made = {**base, **draft}
     made = _record(project, made, "reserved")
     print(f"{api.name} reserved the DOI {draft['doi']} for draft {draft['id']}"
@@ -310,7 +318,10 @@ def _published(project: Project, api: Client, args: argparse.Namespace, receipt:
             receipt = _record(project, {**receipt, **{k: v for k, v in fields.items() if v}},
                               "published")  # fmt: skip
     except OSError as exc:
-        raise RemoteError(_unrecorded(args, receipt, doi, said, exc)) from None
+        missing = (f"`published_on: {receipts.now()}` and `doi: {fields.get('doi')}`"
+                   if receipt.get("publish_sent_on") else
+                   f"`publish_sent_on: {receipts.now()}`")  # fmt: skip
+        raise RemoteError(_unrecorded(args, receipt, doi, said, exc, missing)) from None
     if problem is not None:
         raise RemoteError(f"the publication was sent, and the host answered: {problem}. It is "
                           "recorded, and not sent again: look at the draft's page")  # fmt: skip
@@ -319,13 +330,14 @@ def _published(project: Project, api: Client, args: argparse.Namespace, receipt:
 
 
 def _unrecorded(args: argparse.Namespace, receipt: dict, doi: str, said: str,
-                exc: OSError) -> str:  # fmt: skip
-    """What is said, loudly, where a publication was sent and could not be recorded."""
+                exc: OSError, missing: str) -> str:  # fmt: skip
+    """What is said, loudly, where a publication was sent and could not be recorded, with
+    what the receipt lacks."""
     name = f"{receipts.RECEIPTS}/{args.target}-{args.bundle}.yaml"
     return (f"THE PUBLICATION OF DRAFT {receipt['id']} ({doi}) WAS SENT, AND IT COULD NOT BE "
             f"RECORDED ({exc.strerror or type(exc).__name__}). The host answered: {said}. Do "
-            f"not run --publish again. Add to {name}: `publish_sent_on: "
-            f"{receipts.now()}`, and look at the draft on its page")  # fmt: skip
+            f"not run --publish again. Add to {name}: {missing}, and look at the draft on its "
+            "page")  # fmt: skip
 
 
 def run(args: argparse.Namespace) -> int:

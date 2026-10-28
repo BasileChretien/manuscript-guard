@@ -24,6 +24,7 @@ import http.client
 import json
 import os
 import socket
+import ssl
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Mapping
@@ -31,7 +32,7 @@ from dataclasses import dataclass, field
 from urllib.parse import urlsplit
 
 from manuscript_guard import __version__
-from manuscript_guard.panel.client import without_key
+from manuscript_guard.panel.client import KEY_PART, without_key
 from manuscript_guard.panel.providers import usable_key
 
 TIMEOUT_SECONDS = 120.0
@@ -131,10 +132,21 @@ def default_transport(request: Request, timeout: float) -> Response:
         reason = getattr(exc, "reason", exc)
         if isinstance(reason, TimeoutError) or "timed out" in str(reason):
             raise NoAnswer(f"no answer within {timeout:g} s") from None
-        # Refused, or a name that is no host's: nothing reached it. Anything else may have
-        # come after the request was sent.
-        before = isinstance(reason, (ConnectionRefusedError, socket.gaierror))
-        raise NoAnswer(f"no connection to {parts.hostname}", reached=not before) from None
+        raise NoAnswer(f"no connection to {parts.hostname}", reached=not _before(reason)) \
+            from None  # fmt: skip
+
+
+def _before(reason: object) -> bool:
+    """Whether a failure came before the request could be sent: a connection refused, a name
+    that is no host's, a certificate that failed its check, or a TLS handshake that failed,
+    each before the first byte of the request. A timeout is not among them: urllib does not
+    tell one while connecting from one while sending."""
+    if isinstance(reason, (ConnectionRefusedError, socket.gaierror,
+                           ssl.SSLCertVerificationError)):  # fmt: skip
+        return True
+    said = str(reason).upper()
+    return isinstance(reason, ssl.SSLError) and ("HANDSHAKE" in said
+                                                 or "WRONG_VERSION_NUMBER" in said)
 
 
 def token_from(name: str) -> str:
@@ -150,10 +162,27 @@ def token_from(name: str) -> str:
     return token
 
 
-def scrubbed(text: str, token: str | None) -> str:
+def _without_key_folded(text: str, token: str) -> str:
+    """`text` with any run of the token's characters, four or more in a row, taken out, the
+    two compared in small letters; the rest of `text` as it was."""
+    low, key = text.lower(), token.lower()
+    if len(low) != len(text) or len(key) < KEY_PART:
+        return without_key(low, key)
+    parts = {key[i : i + KEY_PART] for i in range(len(key) - KEY_PART + 1)}
+    hidden = [False] * len(text)
+    for start in range(len(text) - KEY_PART + 1):
+        if low[start : start + KEY_PART] in parts:
+            hidden[start : start + KEY_PART] = [True] * KEY_PART
+    return "".join(char if not hidden[index] else "[key]" if index == 0 or not hidden[index - 1]
+                   else "" for index, char in enumerate(text))  # fmt: skip
+
+
+def scrubbed(text: str, token: str | None, *, folded: bool = False) -> str:
     """Somebody else's words, fit to print: without the token or any part of it, without
-    characters a terminal would act on, and not at length."""
-    text = "".join(char if char.isprintable() else " " for char in without_key(text, token))
+    characters a terminal would act on, and not at length. `folded` looks for the token in
+    small letters too, for what a host may have lowered, a host name."""
+    kept = _without_key_folded(text, token) if folded and token else without_key(text, token)
+    text = "".join(char if char.isprintable() else " " for char in kept)
     text = " ".join(text.split())
     return text if len(text) <= SHOWN else text[:SHOWN] + "..."
 
@@ -199,9 +228,7 @@ class Client:
         """Anything a host returned, fit for a message: without the token or any part of it,
         without characters a terminal would act on, and not at length. `folded` for what is
         read in small letters, a host name: the token is looked for in small letters too."""
-        if folded:
-            return scrubbed(str(said).lower(), self.token.lower())
-        return scrubbed(str(said), self.token)
+        return scrubbed(str(said), self.token, folded=folded)
 
     def kept(self, what: str, said: object) -> str | None:
         """A string a host returned that is to be recorded or printed whole, a DOI or a link;

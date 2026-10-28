@@ -1453,7 +1453,9 @@ def _deposits(command: str) -> tuple[str | None, str | None]:
     invocation of `deposit`: a grep of the documentation, an echo, a pull request's body."""
     # A line continued in bash or PowerShell, read both ways: the break as a space, and as
     # nothing, which is how a shell reads one inside a word (`--sta\` then `ge`).
-    joined = [re.sub(r"[\\`]\r?\n", between, command) for between in (" ", "")]
+    # A lone carriage return ends a line, and so an invocation, as a line feed does.
+    joined = [re.sub(r"\r(?!\n)", "\n", re.sub(r"[\\`]\r?\n", between, command))
+              for between in (" ", "")]  # fmt: skip
     texts = [*joined, *(re.sub("[\\\\`'\"]", "", text) for text in joined)]
     if not any(_NAMES_TOOL.search(text) and re.search(r"(?i)\bdeposit\b", text)
                and re.search(r"(?i)--(?:publish|stage|reserve-doi)\b", text)
@@ -1465,9 +1467,10 @@ def _deposits(command: str) -> tuple[str | None, str | None]:
     for invocations, _clean in readings:
         for words in invocations:
             tool = _tool_words(words)
-            if tool is not None and (not tool or tool[0].casefold() != "deposit"):
-                # The tool running another subcommand: `check --stage submission`, which a
-                # release's refusal tells its reader to run before `deposit`.
+            if tool is not None and (not tool or tool[0].casefold() != "deposit") \
+                    and not any(word.casefold() == "deposit" for word in tool):  # fmt: skip
+                # The tool running another subcommand, and naming no `deposit`: `check --stage
+                # submission`, which a release's refusal tells its reader to run first.
                 continue
             rest = _deposit_words(words)
             sending = {found[1].lower() for word in (rest or words)

@@ -782,23 +782,31 @@ def test_no_connection_is_said_as_reaching_nothing() -> None:
         assert raised.value.reached is reached
 
 
+@pytest.mark.parametrize(
+    ("failing_at", "missing", "not_missing"),
+    [
+        ("publish_answer", "`publish_sent_on: ", "`published_on: "),
+        # The second record, after the first was written (fix-only round of #467).
+        ("published_on", "`published_on: ", "`publish_sent_on: "),
+    ],
+)
 def test_a_publication_sent_and_not_recorded_is_said_loudly(
-    project: Path, hosts, capsys, monkeypatch
+    project: Path, hosts, capsys, monkeypatch, failing_at: str, missing: str, not_missing: str
 ) -> None:
     _staged(project, hosts)
     typed(monkeypatch, SANDBOX)
     real = receipts.write
 
     def failing(project_, made):
-        if "publish_answer" in made:
+        if failing_at in made:
             raise OSError(28, "No space left on device")
         return real(project_, made)
 
     monkeypatch.setattr(receipts, "write", failing)
     assert deposit(project, "zenodo-sandbox", "preregistration", "--publish") == 1
     said = capsys.readouterr().err
-    assert "WAS SENT, AND IT COULD NOT BE RECORDED" in said and "publish_sent_on" in said
-    assert "Traceback" not in said
+    assert "WAS SENT, AND IT COULD NOT BE RECORDED" in said and missing in said
+    assert not_missing not in said and "Traceback" not in said
 
 
 def test_a_reserve_answer_refused_records_the_draft_so_none_is_reserved_twice(
@@ -808,6 +816,8 @@ def test_a_reserve_answer_refused_records_the_draft_so_none_is_reserved_twice(
     assert deposit(project, "zenodo-sandbox", "release", "--reserve-doi") == 1
     said = capsys.readouterr().err
     assert "draft 101 was made" in said and TOKEN not in said
+    # The way out, which the hooks leave to the author (fix-only round of #467).
+    assert "delete draft 101 on the host's page, then remove" in said
     held = receipt(project, "zenodo-sandbox-release")
     assert held["id"] == 101 and held["doi"] is None and "bucket" not in held
     assert deposit(project, "zenodo-sandbox", "release", "--reserve-doi") == 1
@@ -831,3 +841,39 @@ def test_an_osf_project_id_holding_the_token_is_refused() -> None:
     with pytest.raises(RemoteError) as raised:
         osf.create(api, "A title")
     _clean(str(raised.value))
+
+
+# ------------------------------------------------------------------ the fix-only round of #467
+
+
+def test_a_draft_made_and_not_recorded_is_said_loudly(project: Path, hosts, capsys,
+                                                      monkeypatch) -> None:  # fmt: skip
+    hosts.hosts.bucket = f"{hosts.hosts.url}/api/files/{TOKEN}"
+
+    def failing(_project, _made):
+        raise OSError(13, "Permission denied")
+
+    monkeypatch.setattr(receipts, "write", failing)
+    assert deposit(project, "zenodo-sandbox", "release", "--reserve-doi") == 1
+    said = capsys.readouterr().err
+    assert "DRAFT 101 WAS MADE, AND IT COULD NOT BE RECORDED" in said
+    assert "Traceback" not in said and TOKEN not in said
+
+
+def test_failures_before_the_request_is_sent_are_not_a_publication() -> None:
+    import ssl
+
+    from manuscript_guard.deposit.remote.http import _before
+
+    assert _before(ssl.SSLCertVerificationError(1, "certificate verify failed"))
+    assert _before(ssl.SSLError(1, "[SSL: SSLV3_ALERT_HANDSHAKE_FAILURE] handshake failure"))
+    assert _before(ConnectionRefusedError())
+    # A timeout is not told apart from one while sending, and counts as sent.
+    assert not _before(TimeoutError())
+    assert not _before(ConnectionResetError())
+
+
+def test_only_the_token_is_matched_in_small_letters() -> None:
+    api = _client(lambda _request, _timeout: Response(200, {}, b"{}"))
+    said = api.plain(f"Zenodo said HELLO to {TOKEN.lower()}", folded=True)
+    assert said.startswith("Zenodo said HELLO to ") and "secret" not in said

@@ -2859,6 +2859,72 @@ def test_submit_packs_what_each_co_author_checked_and_warns_of_an_open_flag(
     assert "has not answered ok on it since" not in capsys.readouterr().out
 
 
+def test_an_earlier_recap_named_by_hand_is_said_to_be_unverified(project: Path, capsys) -> None:
+    """Round 1 of #465: a row of the record deleted, a row added, and the recap's line naming
+    the earlier recap edited to read "none". `--check` cannot hold that line to anything, and
+    says it took it as the file gives it."""
+    from manuscript_guard.cli import main
+
+    assert main(["checker", "build", str(project), "--all"]) == 0
+    blaise = _checker_page(project, "blaise-sample")
+    _answered(project, blaise, "literature", "wrong", "2026-10-28T09:00:00+09:00")
+    assert main(["checker", "recap", str(project)]) == 0
+    _answered(project, blaise, "claim", "unsure", "2026-10-28T10:00:00+09:00")
+    assert main(["checker", "recap", str(project)]) == 0
+    recap = project / "checks" / "recap.md"
+    text = recap.read_text(encoding="utf-8")
+    assert "- Earlier recap: 3 row(s)" in text
+    line = next(one for one in text.splitlines() if one.startswith("- Earlier recap:"))
+    recap.write_text(text.replace(line, "- Earlier recap: none"), encoding="utf-8")
+    capsys.readouterr()
+    assert main(["checker", "recap", str(project), "--check"]) == 0
+    assert "the earlier recap's head (none) is read from this file and not verified" in (
+        capsys.readouterr().out)  # fmt: skip
+
+
+def test_two_spellings_of_one_name_are_one_row_of_the_recap(project: Path) -> None:
+    """Round 1 of #465: answers under "Jane Doe" and "jane doe" are one person's, as the
+    counts take them, and the table gave each spelling a row with both counts."""
+    from manuscript_guard.cli import main
+
+    assert main(["checker", "build", str(project), "--for", "Ada Example"]) == 0
+    items = _checker_page(project, "ada-example")["items"][:2]
+    for name, by, item in (("j1.json", "Jane Doe", items[0]), ("j2.json", "jane doe", items[1])):
+        (project / name).write_text(json.dumps({
+            "schema": "manuscript-guard/checking-answers/1", "bundle": "made-up", "by": by,
+            "answers": [{"id": item["id"], "digest": item["digest"], "status": "ok",
+                         "at": "2026-10-28T09:00:00+09:00"}],
+        }), encoding="utf-8")  # fmt: skip
+        assert main(["checker", "import", str(project), "--answers", str(project / name)]) == 0
+    assert main(["checker", "recap", str(project)]) == 0
+    text = (project / "checks" / "recap.md").read_text(encoding="utf-8")
+    rows = [line for line in text.splitlines() if line.casefold().startswith("| jane doe")]
+    assert rows == ["| Jane Doe (not an author in authors.yaml) | 2 | 0 | 0 | 0 | 0 | 2 |"], rows
+
+
+def test_a_register_saved_by_a_spreadsheet_leaves_the_pack_with_a_note(
+    project: Path, capsys
+) -> None:
+    """Round 1 of #465: `checks/bundles.csv` re-saved in cp1252 stopped `submit` with a
+    traceback where it packed before. The pack is made without `coauthor-verification.md`, and
+    says why; `checker recap` refuses with a message."""
+    from manuscript_guard.cli import _coauthor_verification, main
+
+    assert main(["checker", "build", str(project), "--all"]) == 0
+    _answered(project, _checker_page(project, "blaise-sample"), "literature", "wrong",
+              "2026-10-28T09:00:00+09:00")  # fmt: skip
+    register = project / "checks" / "bundles.csv"
+    register.write_bytes(register.read_bytes() + "José".encode("cp1252") + b",x\n")
+    made = _coauthor_verification(load_project(project)[0])
+    assert made.text is None and made.flags.findings == ()
+    assert len(made.notes) == 1, made.notes
+    assert made.notes[0].startswith("no coauthor-verification.md is packed: checks/bundles.csv "
+                                    "cannot be read")  # fmt: skip
+    capsys.readouterr()
+    assert main(["checker", "recap", str(project)]) == 2
+    assert "checks/bundles.csv cannot be read" in capsys.readouterr().err
+
+
 # ------------------------------------------------ the unit written after a binding
 
 

@@ -215,10 +215,12 @@ reviewer.
 sentence or in the code with its steps, what is still open, the notes on versions of an item
 that are gone, and a table of who verified each item. It is tamper-evident by a hash chain,
 unsigned: its last section carries the head of a chain over `checks/decisions.csv`, and
-`checker recap --check` makes it again and names the first line that differs, so a hand edit,
-or a row of the record edited, deleted or moved, shows against a copy kept elsewhere. Someone
-who can write the record and every copy can still rewrite both. `submit` packs the tables as
-`coauthor-verification.md` and warns of each `wrong` or `code` still open; it does not refuse.
+`checker recap --check` makes it again and names the first line that differs, so a hand edit
+of any line but the one naming the earlier recap (taken as the file gives it, and said to be
+unverified), or a row of the record edited, deleted or moved, shows against a copy kept
+elsewhere. Someone who can write the record and every copy can still rewrite both. `submit`
+packs the tables as `coauthor-verification.md` and warns of each `wrong` or `code` still
+open, until the person who gave it answers again; it does not refuse.
 
 What this gives you is a record of who looked, at what exactly, when, and what they said. It is
 not a proof that they read it correctly, and nothing here checks their reading.

@@ -2761,3 +2761,142 @@ def test_the_publishers_copy_leaves_out_the_notes_and_is_checked_the_same_way(
     assert "  the file: | Ada Example | 6 |" in capsys.readouterr().out
     assert main(["checker", "status", str(project), "--check"]) == 2
     assert main(["checker", "recap", str(project), "--check", str(project / "none.md")]) == 2
+
+
+# --------------------------------------------------------------- round 1 of #465, the recap
+
+
+def _claimed(project: Path, name: str, by: str, items: list[dict], status: str = "ok",
+             note: str = "") -> Path:  # fmt: skip
+    """An answers file from no registered page, under the name `by`."""
+    return _send(project, name, {
+        "schema": "manuscript-guard/checking-answers/1", "bundle": "made-up", "by": by,
+        "answers": [{"id": item["id"], "digest": item["digest"], "status": status,
+                     "title": item["title"], "note": note, "at": "2026-10-28T09:00:00+09:00"}
+                    for item in items],
+    })  # fmt: skip
+
+
+def test_check_says_the_earlier_recaps_line_is_read_from_the_file_and_not_verified(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Round 1 of #465: nothing outside the file holds the line naming the earlier recap, so
+    `--check` takes it as the file gives it, and says so, whether the rest matches or not."""
+    from manuscript_guard.cli import main
+
+    ada, _ = _round(project)
+    assert main(["checker", "recap", str(project)]) == 0
+    claim = next(item["id"] for item in ada["items"] if item["group"] == "claim")
+    later = _send(project, "a2.json", _later(ada, {claim: "ok"}))
+    assert main(["checker", "import", str(project), "--answers", str(later)]) == 0
+    assert main(["checker", "recap", str(project)]) == 0
+    recap = project / "checks" / "recap.md"
+    text = recap.read_text(encoding="utf-8")
+    line = next(one for one in text.splitlines() if one.startswith("- Earlier recap: 18 row"))
+    recap.write_text(text.replace(line, "- Earlier recap: none"), encoding="utf-8")
+    capsys.readouterr()
+    assert main(["checker", "recap", str(project), "--check"]) == 0
+    out = capsys.readouterr().out
+    assert ("the earlier recap's head (none) is read from this file and not verified: --check "
+            "takes that line as the file gives it") in out, out
+    _rewrite(project, lambda rows: rows[:-1])
+    assert main(["checker", "recap", str(project), "--check"]) == 1
+    assert "is read from this file and not verified" in capsys.readouterr().out
+
+
+def test_a_name_that_is_no_authors_is_one_row_however_it_is_cased(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Round 1 of #465: "Jane Doe" and "jane doe" were two rows, each counting both."""
+    from manuscript_guard.cli import main
+
+    assert main(["checker", "build", str(project), "--for", "Ada Example"]) == 0
+    first, second = _page(project / "checks" / "check-ada-example.html")["items"][:2]
+    files = [_claimed(project, "j1.json", "Jane Doe", [first]),
+             _claimed(project, "j2.json", "jane doe", [second])]  # fmt: skip
+    assert main(["checker", "import", str(project), "--answers", *map(str, files)]) == 0
+    assert main(["checker", "recap", str(project)]) == 0
+    rows = [line for line in _recap(project).splitlines() if "| Jane Doe" in line.casefold()
+            or line.casefold().startswith("| jane doe")]  # fmt: skip
+    assert rows == ["| Jane Doe (not an author in authors.yaml) | 2 | 0 | 0 | 0 | 0 | 2 |"], rows
+
+
+def test_a_register_that_cannot_be_read_stops_the_recap_with_a_message(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Round 1 of #465: `checks/bundles.csv` saved by a spreadsheet in cp1252 raised a
+    traceback from `checker recap`."""
+    from manuscript_guard.cli import main
+
+    _round(project)
+    register = project / "checks" / "bundles.csv"
+    register.write_bytes(register.read_bytes() + "José".encode("cp1252") + b",x\n")
+    capsys.readouterr()
+    assert main(["checker", "recap", str(project)]) == 2
+    err = capsys.readouterr().err
+    assert "checks/bundles.csv cannot be read" in err, err
+
+
+def test_a_note_s_line_endings_are_chained_as_lf(project: Path, capsys) -> None:
+    """Round 1 of #465: a checkout that writes CRLF turns a line break inside a quoted note
+    into CRLF; the row is the same row, and `--check` finds the recap as it is."""
+    from manuscript_guard.cli import main
+
+    assert main(["checker", "build", str(project), "--for", "Ada Example"]) == 0
+    first = _page(project / "checks" / "check-ada-example.html")["items"][0]
+    note = _claimed(project, "n.json", "Cy Stranger", [first], "wrong", "two" + chr(10) + "lines")
+    assert main(["checker", "import", str(project), "--answers", str(note)]) == 0
+    assert main(["checker", "recap", str(project)]) == 0
+    path = project / "checks" / "decisions.csv"
+    lf = path.read_bytes()
+    assert b"two\nlines" in lf
+    path.write_bytes(lf.replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
+    capsys.readouterr()
+    assert main(["checker", "recap", str(project), "--check"]) == 0, capsys.readouterr().out
+
+
+def test_a_recap_names_no_absolute_path(project: Path) -> None:
+    """Round 1 of #465: a `methods.lock` that cannot be read put its whole path into the
+    recap, which then differed from one machine to the next."""
+    from manuscript_guard.cli import main
+
+    _round(project)
+    (project / "methods.lock").unlink()
+    (project / "methods.lock").mkdir()
+    assert main(["checker", "recap", str(project)]) == 0
+    text = _recap(project)
+    said = next(line for line in text.splitlines() if "could not be read against" in line)
+    assert "methods.lock" in said
+    for root in (str(project), str(project.resolve()), project.as_posix()):
+        assert root not in text and root.replace(chr(92), chr(92) * 2) not in text, said
+
+
+def test_a_backslash_before_a_bar_in_a_cell_is_kept() -> None:
+    """Round 1 of #465: `a\\|b` was written `a\\\\|b`, which a table reads as a backslash
+    and a column's end."""
+    from manuscript_guard.checking.recap import _cell
+
+    back = chr(92)
+    assert _cell(f"a{back}|b") == f"a{back * 3}|b"
+    assert _cell("a|b") == f"a{back}|b"
+    assert _cell(f"a{back}b") == f"a{back}b"
+
+
+def test_check_refuses_a_folder_and_reads_a_relative_file_under_the_project(
+    project: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch
+) -> None:
+    """Round 1 of #465: `--check <project>` took the folder for the file, and a relative file
+    was read from the working folder."""
+    from manuscript_guard.cli import main
+
+    _round(project)
+    assert main(["checker", "recap", str(project)]) == 0
+    capsys.readouterr()
+    assert main(["checker", "recap", "--check", str(project)]) == 2
+    assert "is a folder, and --check takes a recap file" in capsys.readouterr().err
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    (project / "copy.md").write_bytes((project / "checks" / "recap.md").read_bytes())
+    assert main(["checker", "recap", str(project), "--check", "copy.md"]) == 0
+    assert main(["checker", "recap", str(project), "--check", "checks/recap.md"]) == 0

@@ -3534,7 +3534,8 @@ class _Coauthors:
 
 def _coauthor_verification(project) -> _Coauthors:
     """The publisher's recap for the pack, and `coauthor-flag-open` for each current `wrong`
-    or `code` with no later ok by the person who gave it. Said, and never refused: whether to
+    or `code` that is still the latest answer of the person who gave it. Said, and never
+    refused: whether to
     send with a co-author's flag open is the corresponding author's call (decision 7 (a))."""
     import io
 
@@ -4272,6 +4273,12 @@ def cmd_checker(args: argparse.Namespace) -> int:
     if getattr(args, "check", None) is not None and args.verb != "recap":
         print("manuscript-guard: --check belongs to `checker recap`", file=sys.stderr)
         return 2
+    if isinstance(getattr(args, "check", None), str) and Path(args.check).is_dir():
+        # `checker recap --check <project>`: the folder is taken for the file.
+        print(f"manuscript-guard: {args.check} is a folder, and --check takes a recap file; "
+              "name the project first and the file after it: `checker recap <project> "
+              "--check [file]`", file=sys.stderr)  # fmt: skip
+        return 2
     project, _ = load_project(args.path)
     try:
         items = _checking_items(project, args.items, build=args.verb == "build")
@@ -4568,7 +4575,9 @@ def _checker_recap(project, items, args) -> int:
 
     try:
         if args.check is not None:
-            path = project.root / recap.RECAP if args.check is True else Path(args.check)
+            # A file named relative to the project, as every path in it is; an absolute
+            # one stands as given.
+            path = project.root / (recap.RECAP if args.check is True else args.check)
             code, said = recap.check(project, items, path)
             for line in said:
                 print(line)
@@ -5838,8 +5847,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     checker.add_argument(
         "--check", nargs="?", const=True, default=None, metavar="FILE",
-        help="recap: make the recap in FILE (checks/recap.md unless given) again from the "
-        "record and the manuscript, and exit 1 at the first line that differs",
+        help="recap: make the recap in FILE (checks/recap.md unless given; a relative FILE "
+        "is under the project) again from the record and the manuscript, and exit 1 at the "
+        "first line that differs; name the project before --check",
     )  # fmt: skip
     checker.set_defaults(func=cmd_checker)
 

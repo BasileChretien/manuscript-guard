@@ -10949,19 +10949,24 @@ said by `checker recap` and written into the recap, and not refused: the recap i
 it, and `--check` against a copy kept elsewhere is what fails.
 
 **`checker recap --check [file]`** reads a recap (`checks/recap.md` unless a file is named: the
-pack's copy, or one kept in git), makes it again from the record and the manuscript as they are,
+pack's copy, or one kept in git; a relative file is under the project, whatever folder the
+command runs in, and a folder is refused with a message, since the project is named before
+`--check`), makes it again from the record and the manuscript as they are,
 naming the earlier recap the file names, and compares the two byte for byte. The same: exit 0,
 with the row count, the head and the root digest. Otherwise exit 1, naming the first line that
 differs, as the file has it and as it is made now, and what the file's footer says of the
 difference: the manuscript has changed since; rows were added to the record since and its first
 are the ones the recap was made from, so the recap is to be made again; or the first rows of the
 record do not give the head the recap records, so a row among them was edited, deleted or moved.
-A file that is not there, or cannot be read, is exit 2. `--check` writes nothing.
+A file that is not there, or cannot be read, is exit 2. `--check` writes nothing. Either way it
+says that the line naming the earlier recap was read from the file and not verified: it is
+taken as the file gives it (round 1 of #465), since nothing outside the file holds it.
 
 **What this shows, and what it does not.** The recap is tamper-evident by a hash chain, unsigned,
 and it says so in those words. Held to a head recorded elsewhere, an earlier recap kept in git,
-the copy in a submission pack or a digest quoted in a message, it shows a hand edit of the
-recap, and a row of the record edited, deleted or moved. It does not show a rewrite: someone who
+the copy in a submission pack or a digest quoted in a message, it shows a hand edit of any
+line of the recap but the one naming the earlier recap, and a row of the record edited,
+deleted or moved. It does not show a rewrite: someone who
 can write to the record and to every copy of the head can make them agree, since nothing in the
 chain is secret. Nothing in it is signed, and it is never called certified. A name on a decision
 is the answers file's claim, as before: a page's token shows which page answers came from, not
@@ -10975,16 +10980,19 @@ where the project has a `checks/decisions.csv`: the publisher's copy of the reca
 last section, and without the co-authors' notes, which are the authors' working and not the
 journal's. It names the earlier recap `checks/recap.md` names, so `checker recap --check
 build/submission/coauthor-verification.md` holds the pack's copy to the record. And it warns,
-`coauthor-flag-open`, of each current `wrong` or `code` with no later ok by the person who gave
-it, with the note: a later `ok` of theirs about the item as it is now is their latest and closes
-it, and so does an edit to the item, which makes the flag about an earlier version. It does not
+`coauthor-flag-open`, of each current `wrong` or `code` that is still the latest answer of the
+person who gave it, with the note: any later answer of theirs about the item as it is now
+takes its place and closes it, an `ok`, or an `unsure`, which leaves the item under "Still
+open" in the recap; and so does an edit to the item, which makes the flag about an earlier
+version. It does not
 refuse: whether to send with a co-author's flag open is the corresponding author's call, as an
 approval missing is. No gate of `check` changes. A LaTeX manuscript, which `checker` refuses, is
 packed without the file, and `submit` says so.
 
 **Tests.** `tests/test_checking.py` holds that a recap made twice is the same bytes, that
 `--check` names the first line where a row of the record was edited or deleted or two were
-swapped, and says rows were added where they were, that the earlier recap is named and held, that
+swapped, says rows were added where they were and that the earlier recap's line is
+unverified, refuses a folder and reads a relative file under the project, that the earlier recap is named and held, that
 stale answers' notes reach it, that a claimed answer is marked, and its wording.
 `tests/test_corruption.py` holds a recap edited by hand and `submit` with a flag open.
 `tests/test_properties.py` holds over generated records (`decision_records`) that each row reads
@@ -11302,7 +11310,9 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   again leaves no trace. What shows a change is a head recorded where that person cannot reach:
   an earlier recap kept in git, the pack's copy sent to a journal, a digest quoted in a message.
   The earlier recap a recap names is that recap's own word: its row count and head are read from
-  the file being checked, so a recap edited to name another earlier head is held to that one.
+  the file being checked, so a recap edited to name another earlier head, or none, is held to
+  that one, and passes `--check` where the rest is as made; `--check` says the line is
+  unverified, and the next recap carries it forward. The root digest does not cover it.
 - **`--check` names a line of the recap, not a row of the record.** The recap stores one head,
   so a row edited, deleted or moved is found to be among the first rows the recap counted, and
   the line named is the first of the recap the change moved: a table's row, a note, or the
@@ -11316,8 +11326,8 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   learns that someone asked for a change, not which. It names every co-author who answered,
   claimed or not, and anyone who is not an author whose answer the record holds.
 - **`coauthor-flag-open` is held to the person, not to the item.** A flag stays open until the
-  person who gave it answers ok about the item as it is now, or the item changes: a co-author's
-  ok on someone else's flag does not close it, and an edit to the sentence closes it whether or
+  person who gave it answers again about the item as it is now, ok or not sure, or the item
+  changes: a co-author's ok on someone else's flag does not close it, and an edit to the sentence closes it whether or
   not it did what was asked, until the item is sent again.
 
 - **G1 fails only on the script that wrote a results file and on the inputs it declared.**

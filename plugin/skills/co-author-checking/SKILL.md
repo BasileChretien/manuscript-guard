@@ -73,11 +73,14 @@ people disagree about the same item**, which is a finding in itself.
 and in the code, with its steps; what is still open; the notes on versions of an item that
 are gone; and who verified each item. Describe it as tamper-evident by a hash chain, unsigned,
 and never as certified or signed: `recap --check` names the first line that no longer matches
-the record, which shows a hand edit or a row edited, deleted or moved against a copy kept
-elsewhere, and does not stop someone who can write the record and every copy. Never write
+the record, which shows a hand edit of any line but the one naming the earlier recap (taken
+as the file gives it, and said to be unverified), or a row edited, deleted or moved, against
+a copy kept elsewhere; it does not stop someone who can write the record and every copy.
+Never write
 `checks/recap.md` by hand; run `recap` again. `submit` packs the tables as
 `coauthor-verification.md` and warns `coauthor-flag-open` of each current `wrong` or `code`
-with no later ok from the person who gave it. It is not refused: change what was asked, or
+that the person who gave it has not answered again (a later `unsure` of theirs closes the
+flag and leaves the item under "Still open"). It is not refused: change what was asked, or
 send the item again, and say which to the author.
 
 ## Telling the person what to do, in one message

@@ -14,9 +14,10 @@ head is the SHA-256 of the previous head, in hex, followed by the canonical JSON
 the record (`chain`). It is computed whenever it is wanted and stored nowhere but in a recap.
 `checker recap --check` makes the recap again and names the first line that differs. Held to a
 head recorded elsewhere, an earlier recap kept in git or the copy in a submission pack, that
-shows a hand edit of the recap and a row of the record edited, deleted or moved. It does not
-show a rewrite of the record and of every copy of the head by someone who can write to them,
-and nothing in it is signed.
+shows a hand edit of any line of the recap but the one naming the earlier recap, which is taken
+as the file gives it and not verified, and a row of the record edited, deleted or moved. It
+does not show a rewrite of the record and of every copy of the head by someone who can write
+to them, and nothing in it is signed.
 
 Nothing in a recap says when it was written: a recap of the same record and the same
 manuscript is the same bytes, whenever it is made.
@@ -51,11 +52,12 @@ TAMPER = (
     "tables. `manuscript-guard checker recap --check` makes the recap again from the record and "
     "the manuscript and names the first line that differs. Held to a head recorded elsewhere "
     "(an earlier recap kept in git, the copy in a submission pack, a digest quoted in a "
-    "message), that shows a hand edit of this file, and a row of the record edited, deleted or "
-    "moved. It does not show a rewrite of the record and of every copy of the head by someone "
-    "who can write to them all, and nothing in it is signed. A name on a decision is the "
-    "answers file's claim: the token of the page it came from shows which page, not who "
-    "answered."
+    "message), that shows a hand edit of any line of this file but the one naming the earlier "
+    "recap, which `--check` takes as the file gives it and does not verify, and a row of the "
+    "record edited, deleted or moved. It does not show a rewrite of the record and of every "
+    "copy of the head by someone who can write to them all, and nothing in it is signed. A "
+    "name on a decision is the answers file's claim: the token of the page it came from "
+    "shows which page, not who answered."
 )
 _MANUSCRIPT = re.compile(r"^- Manuscript: document digest `([0-9a-f]{64})`", re.MULTILINE)
 _RECORD = re.compile(r"^- Record: `checks/decisions\.csv`, (\d+) row\(s\), chain head "
@@ -81,7 +83,7 @@ class Recap:
     text: str
     head: Head
     root: str
-    #: The decisions that are current and ask for a change, with no ok from that person since.
+    #: The decisions that are current and ask for a change, each its maker's latest.
     flags: tuple[Decision, ...]
     earlier: Head | None
     #: Whether the record's first rows still give the earlier recap's head; None with none.
@@ -107,21 +109,33 @@ def record_rows(project_root: Path) -> list[dict]:
         raise RecapError(f"{path} cannot be read: {exc}") from exc
 
 
+def _lf(value: object) -> object:
+    """A cell with its line endings as LF: a checkout that writes CRLF (git's `autocrlf`)
+    turns the line break inside a quoted note into CRLF, and the row is the same row."""
+    if isinstance(value, str):
+        return value.replace("\r\n", "\n").replace("\r", "\n")
+    if isinstance(value, list):
+        return [_lf(one) for one in value]
+    return value
+
+
 def chain(rows: list[dict]) -> list[str]:
     """The head after each number of rows, from none: `chain(rows)[n]` is the head of the
     first n. h0 is the SHA-256 of `CHAIN_SEED`; each next is the SHA-256 of the head before
-    it, in hex, and the row's canonical JSON."""
+    it, in hex, and the row's canonical JSON, each cell's line endings as LF."""
     head = hashlib.sha256(CHAIN_SEED.encode("utf-8")).hexdigest()
     heads = [head]
     for row in rows:
-        head = hashlib.sha256((head + canonical(row)).encode("utf-8")).hexdigest()
+        lf = {key: _lf(value) for key, value in row.items()}
+        head = hashlib.sha256((head + canonical(lf)).encode("utf-8")).hexdigest()
         heads.append(head)
     return heads
 
 
 def open_flags(standing: Standing) -> tuple[Decision, ...]:
-    """Each person's current `wrong` or `code`: about the item as it is now, and not followed
-    by an ok of theirs on it, which would be their latest instead."""
+    """Each person's current `wrong` or `code`: about the item as it is now, and their latest
+    answer on it. Any later answer of theirs on it as it is now takes its place: an ok, or an
+    `unsure`, which leaves the item under "Still open"."""
     return tuple(d for d in standing.wrong if d.status in ("wrong", "code"))
 
 
@@ -129,8 +143,47 @@ def _inline(text: object) -> str:
     return " ".join(str(text or "").split())
 
 
+#: A run of backslashes before a `|`: each is doubled, and the bar escaped, so a cell that
+#: holds `a\|b` neither splits nor loses its backslash.
+_BAR = re.compile(r"(\\*)\|")
+
+
 def _cell(text: object) -> str:
-    return _inline(text).replace("|", "\\|") or "—"
+    return _BAR.sub(lambda found: found[1] * 2 + "\\|", _inline(text)) or "—"
+
+
+def _register(project_root: Path) -> dict:
+    """The register of pages, or `RecapError` where it cannot be read: re-saved by a
+    spreadsheet in another encoding, or holding a byte the CSV reader refuses."""
+    from manuscript_guard.checking.register import read_register, register_path
+
+    try:
+        return read_register(project_root)
+    except (OSError, UnicodeDecodeError, csv.Error) as exc:
+        raise RecapError(f"{_shown(register_path(project_root), project_root)} cannot be read: "
+                         f"{_relative(exc, project_root)}") from exc
+
+
+def _shown(path: Path, project_root: Path) -> str:
+    """A path as the recap may print it: under the project, relative to it; elsewhere, its
+    name alone. A recap holds no absolute path, so it is the same on every machine."""
+    try:
+        return Path(path).resolve().relative_to(Path(project_root).resolve()).as_posix()
+    except ValueError:
+        return Path(path).name
+
+
+def _relative(said: object, project_root: Path) -> str:
+    """A message with the project's folder taken out of every path it names."""
+    text = str(said)
+    root = Path(project_root).resolve()
+    forms = {str(root), root.as_posix(), str(project_root), Path(project_root).as_posix()}
+    # An OSError gives its file name as Python writes a string, each backslash doubled.
+    forms |= {form.replace("\\", "\\\\") for form in forms}
+    for form in sorted(forms, key=len, reverse=True):
+        for sep in ("\\\\", "\\", "/"):
+            text = text.replace(form + sep, "")
+    return text
 
 
 def _found(pattern: re.Pattern[str], text: str) -> Head | None:
@@ -203,14 +256,13 @@ class _Seen:
 
 def make(project, items, *, earlier: Head | None, publisher: bool = False) -> Recap:
     """The recap as the record, the register and the items give it now, naming `earlier`."""
-    from manuscript_guard.checking.register import read_register
     from manuscript_guard.gates.review import document_digest
 
     rows = record_rows(project.root)
     heads = chain(rows)
     head = Head(len(rows), heads[-1])
     standing = status(project.root, items)
-    seen = _Seen(project, items, standing, read_register(project.root),
+    seen = _Seen(project, items, standing, _register(project.root),
                  {str(item["id"]): item for item in items.items})  # fmt: skip
     people = _people_rows(seen)
     reconciled, undescribed = _methods_state(project, items)
@@ -300,15 +352,24 @@ def _working(seen: _Seen, undescribed: list[str]) -> list[str]:
 def _people_rows(seen: _Seen) -> list[list[str]]:
     """One row for each author, in the order `authors.yaml` gives, then each other name the
     record holds: their current answers by status, their answers about earlier versions, and
-    how many current answers came from no page built for them."""
+    how many current answers came from no page built for them.
+
+    A name that is no author's is one person by its folded form, as the counts take it, and
+    written as the record first spells it: "Jane Doe" and "jane doe" are one row, not two
+    each counting both."""
     from manuscript_guard.approvals import authors_of, name_of
     from manuscript_guard.checking.people import fold
+    from manuscript_guard.checking.store import read_decisions
 
     standing = seen.standing
     authors = [name_of(author) for author in authors_of(seen.project)]
     folded = {fold(name) for name in authors}
-    named = sorted({d.by for d in (*standing.counting, *standing.stale)
-                    if fold(d.by) not in folded})  # fmt: skip
+    answered = {fold(d.by) for d in (*standing.counting, *standing.stale)} - folded
+    spelt: dict[str, str] = {}
+    for decision in read_decisions(seen.project.root):
+        if fold(decision.by) in answered:
+            spelt.setdefault(fold(decision.by), decision.by)
+    named = [spelt[key] for key in sorted(spelt)]
     rows = []
     for person in [*authors, *named]:
         mine = [d for d in standing.counting if fold(d.by) == fold(person)]
@@ -435,7 +496,8 @@ def _methods_state(project, items) -> tuple[dict[str, str], list[str]]:
         steps = load_namespace(project)[1].steps
         lock = read_lock(project)
     except (ContractError, yaml.YAMLError, OSError) as exc:
-        return {}, [f"- the Methods could not be read against `methods.lock`: {_inline(exc)}"]
+        said = _inline(_relative(exc, project.root))
+        return {}, [f"- the Methods could not be read against `methods.lock`: {said}"]
     pairs = _judged(claims, steps, _locked(lock) if isinstance(lock, dict) else [])
     out: dict[str, str] = {}
     for identifier, _section, claim in numbered(claims, project.path("manuscript")):
@@ -476,7 +538,15 @@ def write(project, items) -> Recap:
 def check(project, items, path: Path) -> tuple[int, list[str]]:
     """Make again the recap `path` holds, the authors' or the publisher's, naming the earlier
     recap it names, and compare: 0 and what it was made from where they are the same bytes, 1
-    and the first line that differs where they are not."""
+    and the first line that differs where they are not. Either way it says that the line
+    naming the earlier recap was read from the file and not verified: nothing outside the
+    file holds it.
+
+    A folder is refused: `--check` takes a recap, and the project is named before it."""
+    if path.is_dir():
+        raise RecapError(f"{path} is a folder, and --check takes a recap file; name the project "
+                         "first and the file after it: `checker recap <project> --check "
+                         "[file]`")  # fmt: skip
     if not path.is_file():
         raise RecapError(f"{path} does not exist; `manuscript-guard checker recap` writes one")
     try:
@@ -485,17 +555,23 @@ def check(project, items, path: Path) -> tuple[int, list[str]]:
         raise RecapError(f"{path} cannot be read: {exc}") from exc
     publisher = text.split("\n", 1)[0] == PUBLISHER_TITLE
     made = make(project, items, earlier=earlier_in(text), publisher=publisher)
+    unverified = (f"  the earlier recap's head ({_earlier_said(made.earlier)}) is read from "
+                  "this file and not verified: --check takes that line as the file gives it")
     if made.text == text:
         return 0, [f"{path}: the record and the manuscript give it as it is: "
                    f"{made.head.rows} row(s), chain head {made.head.head}, root digest "
-                   f"{made.root}"]  # fmt: skip
+                   f"{made.root}", unverified]  # fmt: skip
     old, new = text.split("\n"), made.text.split("\n")
     at = next((n for n, (one, two) in enumerate(zip(old, new, strict=False)) if one != two),
               min(len(old), len(new)))  # fmt: skip
     said = [f"{path}: line {at + 1} differs from what the record and the manuscript give now",
             f"  the file: {old[at] if at < len(old) else '(it ends here)'}",
             f"  now:      {new[at] if at < len(new) else '(it ends here)'}"]  # fmt: skip
-    return 1, said + _why(text, made)
+    return 1, [*said, *_why(text, made), unverified]
+
+
+def _earlier_said(earlier: Head | None) -> str:
+    return "none" if earlier is None else f"{earlier.rows} row(s), {earlier.head}"
 
 
 def _why(text: str, made: Recap) -> list[str]:

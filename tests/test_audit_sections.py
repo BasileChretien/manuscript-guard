@@ -38,17 +38,43 @@ def tex(text: str) -> str:
     return text.replace("!", BS)
 
 
-def make_docx(path: Path, paragraphs: list[str], heading: str | None = None) -> Path:
+#: Two numberings of one count, decimal from 1 ("1."), and one of bullets.
+NUMBERINGS = (
+    f"<w:numbering {NS}>"
+    "<w:abstractNum w:abstractNumId='0'><w:lvl w:ilvl='0'><w:start w:val='1'/>"
+    "<w:numFmt w:val='decimal'/><w:lvlText w:val='%1.'/></w:lvl></w:abstractNum>"
+    "<w:abstractNum w:abstractNumId='1'><w:lvl w:ilvl='0'><w:start w:val='1'/>"
+    "<w:numFmt w:val='bullet'/><w:lvlText w:val='-'/></w:lvl></w:abstractNum>"
+    "<w:num w:numId='1'><w:abstractNumId w:val='0'/></w:num>"
+    "<w:num w:numId='2'><w:abstractNumId w:val='1'/></w:num>"
+    "<w:num w:numId='3'><w:abstractNumId w:val='0'/></w:num>"
+    "</w:numbering>"
+)
+
+
+def make_docx(
+    path: Path, paragraphs: list[str], heading: str | None = None,
+    numbered: dict[str, str] | None = None,
+) -> Path:  # fmt: skip
+    """A .docx of `paragraphs`, `heading` styled as one, and each of `numbered` numbered by
+    Word with the numbering it names (`NUMBERINGS`)."""
     styles = (f"<w:styles {NS}><w:style w:type='paragraph' w:styleId='Heading1'>"
               "<w:name w:val='heading 1'/></w:style></w:styles>")  # fmt: skip
     body = ""
     for text in paragraphs:
-        styled = "<w:pPr><w:pStyle w:val='Heading1'/></w:pPr>" if text == heading else ""
+        styled = "<w:pStyle w:val='Heading1'/>" if text == heading else ""
+        num = (numbered or {}).get(text)
+        if num is not None:
+            styled += f"<w:numPr><w:ilvl w:val='0'/><w:numId w:val='{num}'/></w:numPr>"
+        styled = f"<w:pPr>{styled}</w:pPr>" if styled else ""
         body += f"<w:p>{styled}<w:r><w:t xml:space='preserve'>{text}</w:t></w:r></w:p>"
     document = f"<?xml version='1.0'?><w:document {NS}><w:body>{body}</w:body></w:document>"
     with zipfile.ZipFile(path, "w") as archive:
         archive.writestr(zipfile.ZipInfo("word/document.xml", (2020, 1, 1, 0, 0, 0)), document)
         archive.writestr(zipfile.ZipInfo("word/styles.xml", (2020, 1, 1, 0, 0, 0)), styles)
+        if numbered:
+            archive.writestr(zipfile.ZipInfo("word/numbering.xml", (2020, 1, 1, 0, 0, 0)),
+                             NUMBERINGS)  # fmt: skip
     return path
 
 
@@ -173,6 +199,51 @@ def test_a_stretch_the_latex_reader_refuses_fails_strict(tmp_path: Path, capsys)
     assert "missing" in capsys.readouterr().out
 
 
+def _document(text: str) -> str:
+    return tex(f"!documentclass{{article}}\n!begin{{document}}\n{text}\n!end{{document}}\n")
+
+
+def test_two_documents_in_a_folder_are_two_papers_and_neither_is_refused(
+    tmp_path: Path, capsys
+) -> None:
+    """Round 1 of #463: each of a folder's complete documents is an entry, read as one, and
+    the other's `tex-second-document` refusal is no stretch that could not be read."""
+    (tmp_path / "main.tex").write_text(_document("Of 412 reports."), encoding="utf-8")
+    (tmp_path / "supplement.tex").write_text(_document("Of 40 cases."), encoding="utf-8")
+    report = audit([tmp_path / "main.tex", tmp_path / "supplement.tex"], None)
+    assert report.unreadable == []
+    assert {path.name for path in report.papers} == {"main.tex", "supplement.tex"}
+    assert main(["audit", str(tmp_path), "--strict"]) == 0
+    assert "Could not read" not in capsys.readouterr().out
+
+
+def test_a_passed_over_file_is_refused_nothing(tmp_path: Path, capsys) -> None:
+    """Round 1 of #463: a `.tex` nothing inputs is not read, so what the reader would refuse
+    in it is not counted; it is named as passed over."""
+    (tmp_path / "main.tex").write_text(_document("Of 412 reports."), encoding="utf-8")
+    (tmp_path / "notes.tex").write_text(tex("!catcode`@=11 Of 3.\n"), encoding="utf-8")
+    report = audit([tmp_path / "main.tex"], None)
+    assert report.unreadable == []
+    assert [said.split(": ", 1)[1] for said in report.passed_over] == [
+        "no entry inputs it, so it was not read; name it, or \\input it from the paper's main "
+        "file"
+    ]
+    assert main(["audit", str(tmp_path / "main.tex"), "--strict"]) == 0
+
+
+def test_a_file_a_class_inputs_is_the_class_text(tmp_path: Path) -> None:
+    """Round 1 of #463: a journal's class inputs its list of journals, which is not the
+    paper's; it is passed over as the class's, not as a file no entry inputs."""
+    (tmp_path / "main.tex").write_text(tex("!documentclass{journal}\n!begin{document}\nOf 412."
+                                           "\n!end{document}\n"), encoding="utf-8")  # fmt: skip
+    (tmp_path / "journal.cls").write_text(tex("!input{journals}\n"), encoding="utf-8")
+    (tmp_path / "journals.tex").write_text("Journal 1, Journal 2.\n", encoding="utf-8")
+    report = audit([tmp_path / "main.tex"], None)
+    [said] = report.passed_over
+    assert said.endswith("journals.tex: a class or a package the paper loads inputs it, so it "
+                         "is theirs and not the paper's text, and was not read"), said
+
+
 # ---------------------------------------------------------------------------- no outputs
 
 
@@ -268,6 +339,9 @@ def test_without_pandoc_a_docx_is_not_converted_and_says_so(
     assert main(["audit", str(paper)]) == 0
     out = capsys.readouterr().out
     assert "G6 and G14 were not run on paper.docx" in out and "pandoc" in out
+    # The note is audit's, not `init --from`'s (round 1 of #463).
+    assert ("pandoc is not on PATH; audit needs it to convert paper.docx to the text G6 and "
+            "G14 read") in out and "init needs it" not in out  # fmt: skip
 
 
 # ---------------------------------------------------------------------------- G7's census
@@ -296,11 +370,13 @@ def test_a_numbered_list_is_held_to_the_citations_by_number(tmp_path: Path) -> N
     assert "[5] cites entry 5" in census.problems[0].message
 
 
+SMITH, JONES = "Smith J. A cohort. Lancet. 2019;393:100-10.", "Jones K. A trial. BMJ 2020;370:m1."
+
+
 def test_a_docx_list_word_numbers_is_numbered_by_place(tmp_path: Path) -> None:
-    paper = make_docx(tmp_path / "paper.docx", [
-        "The rate rose [1, 3].", "References",
-        "Smith J. A cohort. Lancet. 2019;393:100-10.", "Jones K. A trial. BMJ 2020;370:m1.",
-    ], heading="References")  # fmt: skip
+    paper = make_docx(tmp_path / "paper.docx", ["The rate rose [1, 3].", "References", SMITH,
+                                                JONES], heading="References",
+                      numbered={SMITH: "1", JONES: "1"})  # fmt: skip
     [census] = audit([paper], None).references
     assert census.style == "numbered by place"
     # A .docx is read a paragraph to a line, after the line its body opens with.
@@ -309,12 +385,100 @@ def test_a_docx_list_word_numbers_is_numbered_by_place(tmp_path: Path) -> None:
     ]
 
 
+@pytest.mark.parametrize(
+    "numbered",
+    [None, {SMITH: "2", JONES: "2"}, {SMITH: "1", JONES: "2"},
+     {"Methods.": "3", SMITH: "1", JONES: "1"}],
+    ids=["not numbered", "bullets", "two numberings", "a count begun before the list"],
+)
+def test_a_bracket_in_the_text_numbers_no_list_word_does_not_count(tmp_path: Path,
+                                                                   numbered) -> None:  # fmt: skip
+    """Round 1 of #463: one bracketed number in an author-year paper, `range [0, 100]`, made
+    every entry "cited nowhere". A list is numbered by place only where Word counts it 1, 2,
+    3; numberings 1 and 3 share a count, so 3 numbering the Methods begins it there."""
+    paper = make_docx(tmp_path / "paper.docx", ["Methods.", "Scores range [0, 100] (Smith "
+                                                "2019).", "References", SMITH, JONES],
+                      heading="References", numbered=numbered)  # fmt: skip
+    [census] = audit([paper], None).references
+    assert (census.style, census.problems) == ("not numbered", [])
+
+
+def test_a_docx_whose_last_heading_is_the_reference_list_is_counted(tmp_path: Path) -> None:
+    """Round 1 of #463: an empty list under a final heading, with `[1]` in the text, raised
+    ValueError on `max()` of no entries."""
+    paper = make_docx(tmp_path / "paper.docx", ["Text [1].", "References"],
+                      heading="References")  # fmt: skip
+    [census] = audit([paper], None).references
+    assert (census.entries, census.problems) == ((), [])
+
+
 def test_an_author_year_list_is_counted_and_not_held_to_numbers(tmp_path: Path) -> None:
     paper = tmp_path / "paper.md"
     paper.write_text("# Results\n\nThe rate rose (Smith 2019) [7].\n\n# References\n\n"
                      "Smith, J. (2019). A cohort. Lancet, 393, 100.\n", encoding="utf-8")
     [census] = audit([paper], None).references
     assert (len(census.entries), census.style, census.problems) == (1, "not numbered", [])
+
+
+@pytest.mark.parametrize(
+    ("typed", "numbers"),
+    [(("1.", "2.", "3."), [1, 2, 3]), (("1.", "1.", "1."), [1, 2, 3]),
+     (("4.", "4.", "4."), [4, 5, 6]), (("1.", "1)", "1)"), [1, 1, 2]),
+     (("1" + BS + ".", "2" + BS + ".", "3" + BS + "."), [1, 2, 3]),
+     (("1" + BS + ".", "1" + BS + ".", "3" + BS + "."), [1, 1, 3])],
+    ids=["typed in order", "1. on every entry", "from 4", "a new stop starts a new list",
+         "escaped by pandoc", "escaped, printed as typed"],
+)
+def test_a_markdown_list_is_numbered_as_pandoc_prints_it(tmp_path: Path, typed, numbers) -> None:
+    """Round 1 of #463: a list numbered `1.` on every entry is 1, 2, 3, as pandoc prints it,
+    where it was held as one entry; and a number pandoc escaped, `1!.`, is read as typed."""
+    paper = tmp_path / "paper.md"
+    listed = "\n".join(f"{stop} Author {at}. A work. J Ex. 2019;1:1-2."
+                       for at, stop in enumerate(typed))  # fmt: skip
+    paper.write_text(f"# Results\n\nIt rose [1-3].\n\n# References\n\n{listed}\n",
+                     encoding="utf-8")  # fmt: skip
+    [census] = audit([paper], None).references
+    assert census.style == "numbered"
+    assert [entry.number for entry in census.entries] == numbers
+
+
+@pytest.mark.parametrize(
+    "written",
+    ["[10.5555/fictional.1](https://doi.org/10.5555/fictional.1)",
+     "(doi:10.5555/fictional.1).", "https://doi.org/10.5555/fictional.1;",
+     "[https://doi.org/10.5555/fictional.1](https://doi.org/10.5555/fictional.1)"],
+    ids=["a link's text", "in brackets", "before a stop", "a link to itself"],
+)
+def test_a_doi_ends_where_the_sentence_takes_over(written: str) -> None:
+    """Round 1 of #463: `_DOI` ran on through `](`, and the DOI looked up was none."""
+    assert references_module.identifiers(f"Smith J. A cohort. {written}") == (
+        ("10.5555/fictional.1",), ()
+    )
+
+
+def test_a_doi_keeps_the_brackets_it_opens() -> None:
+    doi = "10.1016/s0140-6736(19)30000-0"
+    assert references_module.identifiers(f"Lancet. ({doi})") == ((doi,), ())
+
+
+def test_a_bibitem_is_reported_in_the_file_that_holds_it(tmp_path: Path, capsys) -> None:
+    """Round 1 of #463: a `thebibliography` in a file the paper inputs had its lines shown
+    against the paper's main file."""
+    (tmp_path / "main.tex").write_text(_document("See !cite{a}.\n!input{refs}"),
+                                       encoding="utf-8")  # fmt: skip
+    (tmp_path / "refs.tex").write_text(tex("!begin{thebibliography}{9}\n!bibitem{a} A.\n"
+                                           "!bibitem{x} X.\n!end{thebibliography}\n"),
+                                       encoding="utf-8")  # fmt: skip
+    [census] = audit([tmp_path / "main.tex"], None).references
+    assert [(p.code, p.path.name, p.line) for p in census.problems] == [
+        ("entry-never-cited", "refs.tex", 3)
+    ]
+    assert main(["audit", str(tmp_path / "main.tex"), "--json"]) == 0
+    said = json.loads(capsys.readouterr().out)["findings"]
+    assert [(Path(f["path"]).name, f["line"]) for f in said
+            if f["code"] == "entry-never-cited"] == [("refs.tex", 3)]  # fmt: skip
+    assert main(["audit", str(tmp_path / "main.tex")]) == 0
+    assert "refs.tex line 3: \\bibitem{x} is cited nowhere" in capsys.readouterr().out
 
 
 def test_an_interval_after_its_value_is_no_citation() -> None:
@@ -419,8 +583,43 @@ def test_a_dry_run_lists_what_would_be_sent_and_sends_nothing(tmp_path: Path, re
     assert main(["audit", str(paper), "--lookup", "--dry-run"]) == 0
     out = capsys.readouterr().out
     assert registries.seen == []
-    assert f"would ask Crossref and OpenAlex for doi:{DOI} (entry 1)" in out
+    # Every registry a DOI may be asked of is named (round 1 of #463).
+    assert ("would ask Crossref and OpenAlex, then DataCite and doi.org where Crossref has no "
+            f"record, for doi:{DOI} (entry 1)") in out  # fmt: skip
     assert "would ask PubMed for PMID 31000001 (entry 2)" in out
+
+
+def test_a_doi_and_a_pmid_no_registry_knows_are_said(tmp_path: Path, registries,
+                                                     capsys) -> None:  # fmt: skip
+    """Round 1 of #463: a DOI no registry knows was not reported, and "no registry said a
+    work was retracted" covered a DOI that was never checked."""
+    registries.answers = {"pubmed": (200, {"header": {"type": "esummary"}, "result": {
+        "uids": ["31000001"], "31000001": {"uid": "31000001", "error": "cannot get document "
+                                           "summary"}}}),
+        "doi_org": (404, {"responseCode": 100})}  # fmt: skip
+    paper = tmp_path / "paper.md"
+    paper.write_text(NUMBERED, encoding="utf-8")
+    assert main(["audit", str(paper), "--lookup", "--json"]) == 0
+    said = json.loads(capsys.readouterr().out)["findings"]
+    assert [(f["code"], f["line"]) for f in said
+            if f["code"] in ("doi-unregistered", "pmid-unknown")] == [
+        ("doi-unregistered", 7), ("pmid-unknown", 8)]  # fmt: skip
+    assert main(["audit", str(paper), "--lookup"]) == 0
+    assert "no registry said a work was retracted" not in capsys.readouterr().out
+
+
+def test_no_retraction_says_how_many_were_asked_and_known(tmp_path: Path, registries,
+                                                          capsys) -> None:  # fmt: skip
+    found = {"status": "ok", "message-type": "work",
+             "message": {"DOI": DOI, "type": "journal-article", "title": ["A cohort"]}}
+    registries.answers["crossref"] = (200, found)
+    registries.answers["openalex"] = (200, {"id": "W1", "is_retracted": False,
+                                            "title": "A cohort"})  # fmt: skip
+    paper = tmp_path / "paper.md"
+    paper.write_text(NUMBERED, encoding="utf-8")
+    assert main(["audit", str(paper), "--lookup"]) == 0
+    assert ("no registry said a work was retracted, withdrawn or under concern: 2 asked, 2 "
+            "known to a registry that answered") in capsys.readouterr().out
 
 
 def test_a_retracted_work_is_said_and_kept_only_where_asked(tmp_path: Path, registries,
@@ -448,6 +647,43 @@ def test_lookup_options_go_with_lookup(tmp_path: Path, capsys) -> None:
     paper.write_text(NUMBERED, encoding="utf-8")
     assert main(["audit", str(paper), "--dry-run"]) == 2
     assert "--lookup" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("given", "error"),
+    [(["--dry-run"], "manuscript-guard audit: --dry-run and --lookup-cache go with --lookup"),
+     (["--against", "absent.csv"], "manuscript-guard audit: absent.csv does not exist")],
+    ids=["a lookup option alone", "a path not there"],
+)
+def test_under_json_an_audit_that_did_not_happen_says_why_on_stdout(
+    tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch, given, error
+) -> None:
+    """Round 1 of #463: with `--json`, exit 2 printed nothing to stdout, and a script reading
+    it was handed nothing to parse."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "paper.md").write_text(NUMBERED, encoding="utf-8")
+    assert main(["audit", "paper.md", "--json", *given]) == 2
+    captured = capsys.readouterr()
+    said = json.loads(captured.out)
+    assert (said["ok"], said["error"]) == (False, error)
+    assert error in captured.err
+
+
+def test_the_help_names_every_registry_a_doi_is_asked_of(capsys) -> None:
+    with pytest.raises(SystemExit):
+        main(["audit", "--help"])
+    out = " ".join(capsys.readouterr().out.split())
+    assert "DataCite and then doi.org about one Crossref has no record of" in out
+
+
+def test_the_docs_name_every_registry_and_every_exit_2() -> None:
+    """Round 1 of #463: docs/audit.md named Crossref and OpenAlex only, and said the audit
+    exits 2 only when nothing could be read."""
+    docs = Path(__file__).resolve().parents[1] / "docs" / "audit.md"
+    said = " ".join(docs.read_text(encoding="utf-8").split())
+    assert "DataCite about one Crossref has no record of and doi.org" in said
+    assert "or `--dry-run` or `--lookup-cache` given without `--lookup`" in said
+    assert "exits 2 only when nothing could be read" not in said
 
 
 def test_an_answer_that_did_not_come_is_said_and_not_kept(tmp_path: Path) -> None:

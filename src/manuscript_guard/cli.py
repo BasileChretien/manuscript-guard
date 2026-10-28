@@ -2052,6 +2052,21 @@ def cmd_hook(args: argparse.Namespace) -> int:
     return dispatch(args.event)
 
 
+def _audit_refused(args: argparse.Namespace, said: str, *details: str) -> int:
+    """An audit that did not happen, exit 2: why, on stderr, and under `--json` on stdout as
+    well, as an object whose `ok` is false, so that a script reading stdout is told rather
+    than handed nothing (round 1 of #463)."""
+    for line in (said, *details):
+        print(line, file=sys.stderr)
+    if args.json:
+        import json
+
+        print(json.dumps({"ok": False, "error": said,
+                          "details": [line.strip() for line in details]},
+                         indent=2, ensure_ascii=True))  # fmt: skip
+    return 2
+
+
 def cmd_audit(args: argparse.Namespace) -> int:
     """Check an existing paper's numbers against existing outputs, and what needs none.
 
@@ -2073,9 +2088,8 @@ def cmd_audit(args: argparse.Namespace) -> int:
     from manuscript_guard.auditing.references import look_up
 
     if (args.dry_run or args.lookup_cache) and not args.lookup:
-        print("manuscript-guard audit: --dry-run and --lookup-cache go with --lookup",
-              file=sys.stderr)  # fmt: skip
-        return 2
+        return _audit_refused(args, "manuscript-guard audit: --dry-run and --lookup-cache go "
+                              "with --lookup")  # fmt: skip
     # A `.tex` in a folder is a paper only where it starts a document; the others are read
     # where one inputs them, and named where none does.
     found_tex: list[Path] = []
@@ -2111,37 +2125,31 @@ def cmd_audit(args: argparse.Namespace) -> int:
     given = [*args.paper, *(args.against or []), *(args.figures or [])]
     missing = [path for path in given if not path.exists()]
     if missing:
-        for path in missing:
-            print(f"manuscript-guard audit: {path} does not exist", file=sys.stderr)
-        return 2
+        return _audit_refused(args, *(f"manuscript-guard audit: {path} does not exist"
+                                      for path in missing))  # fmt: skip
 
     papers = expand(args.paper, PAPER_SUFFIXES)
     figures = expand(args.figures or [], FIGURE_SUFFIXES)
     if not papers and not figures:
-        print("nothing to audit: no .docx, .md or .tex that starts a document found in what "
-              "you gave me", file=sys.stderr)  # fmt: skip
-        for doc in docs:
-            print(f"  {doc_passed_over(doc)}", file=sys.stderr)
-        for tex in found_tex:
-            print(f"  {tex.as_posix()} has no \\documentclass, so it starts no document",
-                  file=sys.stderr)  # fmt: skip
-        return 2
+        return _audit_refused(
+            args, "nothing to audit: no .docx, .md or .tex that starts a document found in "
+            "what you gave me", *(f"  {doc_passed_over(doc)}" for doc in docs),
+            *(f"  {tex.as_posix()} has no \\documentclass, so it starts no document"
+              for tex in found_tex),
+        )  # fmt: skip
 
     report = audit(papers, args.against, figures=figures,
                    whole_numbers=tuple(args.whole_numbers), passed_over=docs,
                    found_tex=found_tex)  # fmt: skip
     if args.against and not report.backing_files:
-        print("--against gave the audit nothing it can read:", file=sys.stderr)
-        for item in report.skipped:
-            print(f"  {item}", file=sys.stderr)
-        return 2
+        return _audit_refused(args, "--against gave the audit nothing it can read:",
+                              *(f"  {item}" for item in report.skipped))  # fmt: skip
     if not report.papers:
         # "Audited 0 file(s) … 0 not found" read as a clean report, and exited 0 under
         # --strict, when every paper given was unreadable.
-        print("nothing given could be audited:", file=sys.stderr)
-        for item in (*report.unreadable, *report.passed_over):
-            print(f"  {item}", file=sys.stderr)
-        return 2
+        return _audit_refused(args, "nothing given could be audited:",
+                              *(f"  {item}" for item in (*report.unreadable,
+                                                         *report.passed_over)))  # fmt: skip
     read = set(report.papers)
     report.gates = [
         *(run_gates(path, english=args.english, residue=args.submission_residue)
@@ -5017,9 +5025,10 @@ def build_parser() -> argparse.ArgumentParser:
     audit.add_argument(
         "--lookup",
         action="store_true",
-        help="ask Crossref and OpenAlex about each DOI of the reference list, and PubMed "
-        "about each PMID, whether the work was retracted, withdrawn or put under concern; "
-        "nothing is sent without it",
+        help="ask Crossref and OpenAlex about each DOI of the reference list, DataCite and "
+        "then doi.org about one Crossref has no record of, and PubMed about each PMID, "
+        "whether the work was retracted, withdrawn or put under concern, or is not "
+        "registered; nothing is sent without it",
     )
     audit.add_argument(
         "--dry-run",

@@ -4901,35 +4901,54 @@ def _no_mean(draw: st.DrawFn, count: int, places: int) -> str:
 LatexCell = tuple[str, int, int]
 #: The kinds of row each LaTeX table holds, one of each in an order drawn: cells split at
 #: `&`, an escaped `\&` in a cell, a `\\` inside braces, a `\multicolumn`, a `\multirow`, a
-#: row ended by `\tabularnewline`, and a comment holding `&` and `\\` before a row that opens
-#: with a `\multicolumn`.
-LATEX_ROWS = ("plain", "escaped", "braced", "multicolumn", "multirow", "newline", "commented")
-#: What may stand between two rows: a rule, or nothing.
-LATEX_RULES = ("", "\\hline", "\\midrule", "\\cline{2-3}")
+#: row ended by `\tabularnewline`, a comment holding `&` and `\\` before a row that opens
+#: with a `\multicolumn`, a tabular nested in a cell, and a row coloured by `\rowcolor`
+#: that opens with a `\multicolumn` and a cell coloured by `\cellcolor[rgb]{...}`.
+LATEX_ROWS = ("plain", "escaped", "braced", "multicolumn", "multirow", "newline", "commented",
+              "nested", "coloured")  # fmt: skip
+#: What may stand between two rows: a rule, with its width or without, or nothing.
+LATEX_RULES = ("", "\\hline", "\\midrule", "\\cline{2-3}", "\\midrule[0.5pt]")
+#: What may follow a `\\`: nothing, a length, or a star. The plain row always ends with the
+#: length and the `\multirow` row with the star, so that every table holds both.
+LATEX_BREAKS = ("", "[2pt]", "*")
 
 
 @st.composite
 def latex_table_rows(draw: st.DrawFn) -> tuple[str, list[list[LatexCell]]]:
     """A LaTeX document with a table of three columns, a row of each kind of `LATEX_ROWS`
     in an order drawn, a rule drawn between rows, always one before the `\\multicolumn` row,
-    and a length after a `\\` drawn; with each row as `latex_tables` reads it, its cells'
-    text, line and span."""
+    and a length or a star after a `\\`; with each row as `latex_tables` reads it, its
+    cells' text, line and span, and after them the rows of the table nested in a cell, which
+    is read as a table of its own."""
     word = st.sampled_from(FILLER).map(str.capitalize)
     number = st.integers(0, 999).map(str)
     lines = ["\\documentclass{article}", "\\begin{document}", "\\begin{tabular}{lrr}"]
     expected: list[list[LatexCell]] = []
+    inner: list[list[LatexCell]] = []
     for kind in draw(st.permutations(LATEX_ROWS)):
         # A rule always stands before the row that opens with a `\multicolumn`, which has
         # to be read past to find its span.
         rule = draw(st.sampled_from(LATEX_RULES[1:] if kind == "multicolumn" else LATEX_RULES))
         if rule:
             lines.append(rule)
-        end = "\\\\" + draw(st.sampled_from(("", "[2pt]", "*")))
+        planted = {"plain": "[2pt]", "multirow": "*"}.get(kind)
+        end = "\\\\" + (planted if planted is not None else draw(st.sampled_from(LATEX_BREAKS)))
         at = len(lines) + 1
         label, a, b = draw(word), draw(number), draw(number)
         if kind == "plain":
             lines.append(f"{label} & {a} & {b} {end}")
             expected.append([(label, at, 1), (a, at, 1), (b, at, 1)])
+        elif kind == "nested":
+            p, q, r, s = (draw(number) for _ in range(4))
+            lines.append(f"{label} & \\begin{{tabular}}{{@{{}}cc@{{}}}}{p} & {q} \\\\ {r} & {s}"
+                         f"\\end{{tabular}} & {b} {end}")  # fmt: skip
+            expected.append([(label, at, 1), (f"{p} {q} {r} {s}", at, 1), (b, at, 1)])
+            inner += [[(p, at, 1), (q, at, 1)], [(r, at, 1), (s, at, 1)]]
+        elif kind == "coloured":
+            colour = draw(st.sampled_from(("gray!20", "blue!10")))
+            lines.append(f"\\rowcolor{{{colour}}} \\multicolumn{{2}}{{l}}{{{label}}} & "
+                         f"\\cellcolor[rgb]{{0.9,0.9,0.9}}{a} {end}")  # fmt: skip
+            expected.append([(label, at, 2), (a, at, 1)])
         elif kind == "escaped":
             other = draw(word)
             lines.append(f"{label} \\& {other} & {a} & {b} {end}")
@@ -4955,7 +4974,7 @@ def latex_table_rows(draw: st.DrawFn) -> tuple[str, list[list[LatexCell]]]:
             expected.append([(label, at, 1), (a, at, 1), (b, at, 1)])
             expected.append([(whole, at + 1, 3)])
     lines += ["\\bottomrule", "\\end{tabular}", "\\end{document}", ""]
-    return "\n".join(lines), expected
+    return "\n".join(lines), expected + inner
 
 
 # ------------------------------------------------------------ a reference list and its citations
@@ -5006,6 +5025,50 @@ def numbered_citations(draw: st.DrawFn) -> tuple[str, list[Census]]:
 def word_names() -> st.SearchStrategy[str]:
     """A family name for a reference entry."""
     return st.sampled_from(("Smith", "Jones", "Brown", "Green", "Sato", "Okafor"))
+
+
+#: The kinds of Markdown reference list each draw holds, one of each in an order drawn, each
+#: under its own heading: typed in order, "1." on every entry, a number pandoc escaped on
+#: each entry, `3\.`, printed as typed, and a list whose stop changes from "." to ")", which
+#: starts a list again.
+TYPED_LISTS = ("in order", "lazy", "escaped", "restopped")
+
+
+@st.composite
+def typed_reference_lists(
+    draw: st.DrawFn,
+) -> tuple[list[str], list[tuple[int, int]], list[int]]:
+    """The lines of a reference section holding a list of each kind of `TYPED_LISTS`, each a
+    span of its own, as `audit.bibliography_spans` gives one: the heading's line and the end;
+    with each entry's number as pandoc prints it. The escaped list repeats its first number,
+    which a list would count on from, and the restopped list changes its stop at an entry
+    typed with its list's first number again."""
+    lines: list[str] = []
+    spans: list[tuple[int, int]] = []
+    expected: list[int] = []
+    for kind in draw(st.permutations(TYPED_LISTS)):
+        first, count = draw(st.integers(1, 20)), draw(st.integers(3, 5))
+        start = len(lines)
+        lines += ["References", ""]
+        for at in range(count):
+            if kind == "in order":
+                typed, stop, printed = first + at, ".", first + at
+            elif kind == "lazy":
+                typed = draw(st.sampled_from((first, first + at)) if at > 1 else st.just(first))
+                stop, printed = ".", first + at
+            elif kind == "escaped":
+                typed = first if at < 2 else first + at + draw(st.integers(0, 3))
+                stop, printed = "\\.", typed
+            else:
+                restart = count - 2
+                typed = first if at >= restart else first + at
+                stop = ")" if at >= restart else "."
+                printed = first + at if at < restart else first + at - restart
+            lines.append(f"{typed}{stop} {draw(word_names())} A. A study. J Ex. 2019;1:1-2.")
+            expected.append(printed)
+        lines.append("")
+        spans.append((start, len(lines)))
+    return lines, spans, expected
 
 
 @st.composite

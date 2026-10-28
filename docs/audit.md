@@ -12,17 +12,21 @@ manuscript-guard audit manuscript.docx supplement1.docx \
 It reads a .docx, a Markdown or text file, and a LaTeX paper. A `.tex` named is read with
 the files it inputs, from its own folder, as `check` reads a project's `main.tex`: its
 numbers where they print, at the `.tex` line they stand on, and its tables cell by cell. In
-a folder, only a `.tex` with `\documentclass` starts a paper; a file no paper inputs, an old
-draft or a cover letter, is named under "Passed over" and not read. A `thebibliography` is
-cut as a reference list is, and a stretch the LaTeX reader refuses is named under "Could not
-read", which `--strict` counts.
+a folder, every `.tex` with `\documentclass` starts a paper, and is audited as one: so is an
+old draft, a cover letter or a template written in LaTeX, so name the paper's own file to
+audit it alone. A file no paper inputs is named under "Passed over" and not read, and so is
+a file a class or a package inputs. A `thebibliography` is cut as a reference list is, and a
+stretch the LaTeX reader refuses in a file the paper reads is named under "Could not read",
+which `--strict` counts.
 
 `--against` may be left out. Then no number is compared with the analysis, the report says
 so on its first line, "No outputs given: no number was compared with the analysis", and what
 needs no outputs is read all the same: the numbers against each other, the words and the
-reference list. The audit exits 2 only when nothing could be read: a path that is not there,
-a folder with no paper in it, papers none of which could be read, or outputs named in
-`--against` none of which could.
+reference list. The audit exits 2 when it did not happen: a path that is not there, a
+folder with no paper in it, papers none of which could be read, outputs named in `--against`
+none of which could, or `--dry-run` or `--lookup-cache` given without `--lookup`. With
+`--json` it then prints `{"ok": false, "error": ...}`, with the reason, as well as saying it
+on stderr.
 
 The report comes in sections, after what was read and what was not:
 
@@ -50,15 +54,22 @@ to; without it G14 holds the paper to the English most of its words are in.
 **The references.** The list cut from the text is counted: its entries, and the DOIs and
 PMIDs typed in them. Where the entries carry their numbers, "1." or "[1]", each bracketed
 citation of numbers in the text, `[3]`, `[3, 5]` or `[3-5]`, is held to the list: a number
-the list does not hold is reported, and so is an entry no citation names. A list Word
-numbers itself prints no number, so in a .docx whose text cites by number an entry's number
-is its place in the list. A bracket after a value that encloses it, `64 [55-72]`, is an
-interval and no citation. In LaTeX each `\cite` key is held to the `\bibitem`s. Nothing is
-sent anywhere unless you ask: `--lookup` asks Crossref and OpenAlex about each DOI and
-PubMed about each PMID, and reports a work retracted, withdrawn, under an expression of
-concern or published since, as G7 does in a project; `--lookup --dry-run` lists what would
-be sent and sends nothing; `--lookup-cache DIR` keeps each answer in `DIR` and reads it from
-there the next time. Without `--lookup-cache` nothing is kept.
+the list does not hold is reported, and so is an entry no citation names. A Markdown list is
+numbered as pandoc prints it, from its first number up, so a list typed "1." on every entry
+is 1, 2, 3; a number pandoc escaped, `1\.`, is printed as typed. A list Word numbers itself
+prints no number, so in a .docx an entry's number is its place in the list, where Word
+numbers every entry 1, 2, 3 in one count that starts at the list; a bracketed number in the
+text does not make an unnumbered list a numbered one. A bracket after a value that encloses
+it, `64 [55-72]`, is an interval and no citation. In LaTeX each `\cite` key is held to the
+`\bibitem`s, and an entry is reported in the file that holds it. Nothing is sent anywhere
+unless you ask: `--lookup` asks Crossref and OpenAlex about each DOI, DataCite about one
+Crossref has no record of and doi.org about one DataCite has none of either, and PubMed
+about each PMID. It reports a work retracted, withdrawn, under an expression of concern or
+published since, and a DOI or a PMID no registry has, as G7 does in a project; where none
+says a work was retracted, it says how many entries were asked and how many a registry knew.
+`--lookup --dry-run` lists what would be sent and sends nothing; `--lookup-cache DIR` keeps
+each answer in `DIR` and reads it from there the next time. Without `--lookup-cache` nothing
+is kept.
 
 It reads the .docx with **tracked changes accepted** and **table cells kept apart** (Word
 stores a row with no separator, so a naive read turns `39 | 20 | 26 | 16` into the single

@@ -593,10 +593,13 @@ def _blank(text: str, spans: list[tuple[int, int]]) -> str:
     return "\n".join(lines)
 
 
-def read_paper(path: Path) -> tuple[str, list[tuple[int, int]], list[Table], str]:
+def read_paper(
+    path: Path,
+) -> tuple[str, list[tuple[int, int]], list[Table], str, dict[int, tuple[str, bool]]]:
     """The paper's text with its reference lists blanked, which lines those were, its
-    tables outside them as rows of cells (`text.tables`), and the text before the cut, whose
-    lists G7's census reads (`auditing.references`).
+    tables outside them as rows of cells (`text.tables`), the text before the cut, whose
+    lists G7's census reads (`auditing.references`), and the lines Word numbers in a .docx
+    (`text.docx.DocxText.numbering`).
 
     A .docx's footnotes and endnotes follow its body, and are read after the cut rather than
     through it: they were being dropped along with the bibliography.
@@ -605,7 +608,7 @@ def read_paper(path: Path) -> tuple[str, list[tuple[int, int]], list[Table], str
         text = read_text(path)
         spans = bibliography_spans(text)
         blanked = _blank(text, spans)
-        return blanked, spans, markdown_tables(blanked), text
+        return blanked, spans, markdown_tables(blanked), text, {}
     document = read_docx_text(path)
     spans = bibliography_spans(document.body, document.headings, document.cells)
     body = _blank(document.body, spans)
@@ -614,7 +617,9 @@ def read_paper(path: Path) -> tuple[str, list[tuple[int, int]], list[Table], str
         if not any(start < cell.line <= end for row in table for cell in row
                    for start, end in spans)
     ]  # fmt: skip
-    return (f"{body}\n{document.notes}" if document.notes else body), spans, tables, document.body
+    numbering = {line: (count, from_one) for line, count, from_one in document.numbering}
+    return ((f"{body}\n{document.notes}" if document.notes else body), spans, tables,
+            document.body, numbering)  # fmt: skip
 
 
 def census_of_markdown(path: Path, text: str):
@@ -665,7 +670,7 @@ def _read_sources(
         if path in entries:
             continue
         try:
-            text, spans, tables, original = read_paper(path)
+            text, spans, tables, original, numbering = read_paper(path)
         except (NotADocx, OSError, UnreadableText) as exc:
             report.unreadable.append(str(exc))
             continue
@@ -679,7 +684,8 @@ def _read_sources(
         if not docx:
             report.unreadable += unread_shapes(path, text)
         report.references.append(
-            census_of_text(path, original, spans, hidden, _intervals(text), docx=docx)
+            census_of_text(path, original, spans, hidden, _intervals(text), docx=docx,
+                           numbering=numbering)  # fmt: skip
         )
     if entries or found_tex:
         latex = read_latex(entries, found_tex)

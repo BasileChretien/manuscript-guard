@@ -78,20 +78,25 @@ and `--` between digits is read as a separator and a minus in every format: `-0.
 runs to -0.30, as it does in R's output. A Markdown paper that writes a range as
 `2010--2019`, meaning pandoc's en dash, gets `-2019` reported as not found; check such
 ranges by hand. A `.tex` is read with the files it inputs from its folder, at `.tex` lines;
-in a folder only a `.tex` with `\documentclass` starts a paper, and a file nothing inputs is
-named under `Passed over`. There is no reader for a PDF
+in a folder every `.tex` with `\documentclass` starts a paper, an old draft or a LaTeX
+template too, so name the paper's own file when the folder holds others; a file nothing
+inputs is named under `Passed over`. There is no reader for a PDF
 manuscript. `--figures` takes SVG and PDF files with a text layer; one with no text at all,
 such as a matplotlib SVG with its labels drawn as outlines, is listed as unreadable rather
 than audited. `--strict` exits 1 when a number is in no output, a paper, a figure or a
 stretch of one could not be read, or no number was read, and the audit exits 2 when nothing
-given could be read at all. `--json` gives the report for a script.
+given could be read at all, or `--dry-run` or `--lookup-cache` is given without `--lookup`.
+`--json` gives the report for a script, and on exit 2 an object whose `ok` is false, with
+the reason.
 
 G6 and G14 read the words as `check` does, a .docx through the conversion `init --from`
 makes (skipped with a note without pandoc); ask the author which English the paper is in
 and pass `--english british` or `american`. Neither is counted by `--strict`. The reference
 list is counted and its numbered citations held to it; nothing is sent to a registry
 unless you pass `--lookup`, and then ask the author first: run `--lookup --dry-run`, show
-what would be sent, and keep the answers with `--lookup-cache DIR` if they will audit again.
+what would be sent (each DOI to Crossref and OpenAlex, and to DataCite and doi.org where
+Crossref has no record; each PMID to PubMed), and keep the answers with `--lookup-cache DIR`
+if they will audit again.
 
 ## 3. Read the report
 

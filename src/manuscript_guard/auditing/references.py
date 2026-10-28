@@ -5,24 +5,29 @@ The list is the one `audit` cuts from the text (`audit.bibliography_spans`), or 
 `thebibliography` the reader finds. What is counted: its entries, and the DOIs and PMIDs
 typed in them. Where the entries carry their numbers, "1." or "[1]", a bracketed citation in
 the text, `[3]`, `[3, 5]`, `[3-5]`, is held to the list: a number the list does not hold is
-reported, and so is an entry no citation names. A .docx whose list Word numbers itself
-prints no number in its text, so there an entry's number is its place in the list, and only
-where the text cites by number. A bracket after a value that encloses it, `64 [55-72]`, is
-an interval and no citation (`audit._intervals`). In LaTeX each `\\cite` key is held to the
-`\\bibitem` keys, and a `\\nocite{*}` cites them all.
+reported, and so is an entry no citation names. In Markdown a list numbered "1." or "1)"
+is numbered as pandoc prints it, from its first number up, so a list typed "1." on every
+entry is 1, 2, 3; a number pandoc escaped, `1\\.`, is typed text and printed as typed. A
+.docx whose list Word numbers itself prints no number in its text, so there an entry's
+number is its place in the list: only where every entry is numbered by one Word numbering
+that counts in Arabic numerals from 1 and numbers nothing before the list (`text.docx`). A
+bracket after a value that encloses it, `64 [55-72]`, is an interval and no citation
+(`audit._intervals`). In LaTeX each `\\cite` key is held to the `\\bibitem` keys, and a
+`\\nocite{*}` cites them all; an entry is reported in the file that holds it.
 
-Looking up sends each DOI to Crossref and OpenAlex and each PMID to PubMed, through the
-transport `lookup` uses, and nothing is sent without `--lookup`. What they answer is read as
+Looking up sends each DOI to Crossref and OpenAlex, and to DataCite where Crossref does not
+know it and then to doi.org where DataCite does not either, and each PMID to PubMed, through
+the transport `lookup` uses; nothing is sent without `--lookup`. What they answer is read as
 G7 reads a record (`gates.lookups._standing`): retracted, withdrawn, under concern, published
-since. A record is kept only in the folder `--lookup-cache` names, and read from there the
-next time instead of asking again.
+since, and a DOI or a PMID no registry knows. A record is kept only in the folder
+`--lookup-cache` names, and read from there the next time instead of asking again.
 """
 
 from __future__ import annotations
 
 import json
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
@@ -36,8 +41,10 @@ BY_PLACE = "numbered by place"
 KEYED = "keyed"
 UNNUMBERED = "not numbered"
 
-#: An entry that carries its number: "12." / "12)" / "[12]".
-_NUMBERED_ENTRY = re.compile(r"\s*(?:\[(\d{1,3})\]|(\d{1,3})[.)])(?=\s)")
+#: An entry that carries its number: "12." / "12)" / "[12]", or as pandoc writes one it
+#: escapes, which prints as typed: "12\." / "12\)" / "\[12\]". Groups: the bracketed number,
+#: the number, its escape, its stop.
+_NUMBERED_ENTRY = re.compile(r"\s*(?:\\?\[(\d{1,3})\\?\]|(\d{1,3})(\\?)([.)]))(?=\s)")
 #: A bracketed citation of numbers, as the marker rule reads one (`audit._WHOLE_MARKER`):
 #: "[3]", "[3, 5]", "[3-5]", "[3–5, 8]". Not a link's text, `[3](url)`.
 _MARKER = re.compile(
@@ -47,7 +54,13 @@ _MARKER = re.compile(
 _PART = re.compile(r"(\d{1,3})(?:\s*[-\u2013\u2014]\s*(\d{1,3}))?")
 #: The widest range read as a run of citations, `[3-12]`: a wider one is not expanded.
 MAX_RANGE = 100
-_DOI = re.compile(r"\b10\.\d{4,9}(?:\.\d+)*/[^\s\"<>{}]+")
+#: A DOI, which ends at a space, a quote, an angle bracket or a brace, and before `](`, where
+#: a Markdown link's text ends and its target starts.
+_DOI = re.compile(r"\b10\.\d{4,9}(?:\.\d+)*/(?:(?!\]\()[^\s\"<>{}])+")
+#: What a DOI written in a sentence ends with that is not the DOI's: a stop, and a closing
+#: bracket the DOI did not open.
+_DOI_STOPS = ".,;:'"
+_CLOSING = {")": "(", "]": "["}
 _PMID = re.compile(r"\bPMID\s*:?\s*(\d{1,9})\b", re.IGNORECASE)
 _BIBITEM = re.compile(r"\\bibitem\s*(?:\[[^\]]*\])?\s*\{([^{}]*)\}")
 
@@ -55,7 +68,8 @@ _BIBITEM = re.compile(r"\\bibitem\s*(?:\[[^\]]*\])?\s*\{([^{}]*)\}")
 @dataclass(frozen=True)
 class Entry:
     """One entry of a reference list: how the report names it, the line it starts on, its
-    number or its key, and the DOIs and PMIDs typed in it."""
+    number or its key, the DOIs and PMIDs typed in it, and the file it is in where that is
+    not the paper's own: a LaTeX paper's `thebibliography` in a file it inputs."""
 
     label: str
     line: int
@@ -63,6 +77,7 @@ class Entry:
     key: str | None = None
     dois: tuple[str, ...] = ()
     pmids: tuple[str, ...] = ()
+    path: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -97,16 +112,30 @@ class Census:
 
 def identifiers(text: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
     """The DOIs and the PMIDs typed in `text`, each once, in order."""
-    dois = [normal_doi(found.group(0)).rstrip(".,;:)]").lower() for found in _DOI.finditer(text)]
+    dois = [_trimmed(normal_doi(found.group(0))).lower() for found in _DOI.finditer(text)]
     pmids = [found.group(1) for found in _PMID.finditer(text)]
     return tuple(dict.fromkeys(dois)), tuple(dict.fromkeys(pmids))
+
+
+def _trimmed(doi: str) -> str:
+    """`doi` without the stops and the closing brackets after it that are the sentence's: a
+    bracket the DOI opened is its own, `10.1016/S0140-6736(19)30000-0`, and stays."""
+    while doi and (doi[-1] in _DOI_STOPS or _unopened(doi)):
+        doi = doi[:-1]
+    return doi
+
+
+def _unopened(doi: str) -> bool:
+    """Whether `doi` ends with a closing bracket it did not open."""
+    last = doi[-1]
+    return last in _CLOSING and doi.count(last) > doi.count(_CLOSING[last])
 
 
 def _entries_of(lines: list[str], spans: list[tuple[int, int]], paragraphs: bool) -> list[Entry]:
     """The entries under each list's heading: a paragraph each in a .docx, and in Markdown
     a block, or a line that starts with its number."""
-    found: list[tuple[int, list[str]]] = []
-    for start, end in spans:
+    found: list[tuple[int, list[str], int]] = []
+    for list_at, (start, end) in enumerate(spans):
         current: list[str] | None = None
         for index in range(start + 1, min(end, len(lines))):
             line = lines[index]
@@ -115,18 +144,42 @@ def _entries_of(lines: list[str], spans: list[tuple[int, int]], paragraphs: bool
                 continue
             if paragraphs or current is None or _NUMBERED_ENTRY.match(line):
                 current = [line]
-                found.append((index + 1, current))
+                found.append((index + 1, current, list_at))
             else:
                 current.append(line)
     entries = []
-    for place, (line, parts) in enumerate(found, start=1):
+    # A Markdown list, "1." or "1)" and not escaped: pandoc prints it from its first number
+    # up, whatever the others are typed as. Its stop and its list, while it lasts.
+    run: tuple[int, str, int] | None = None
+    counted = 0
+    for place, (line, parts, list_at) in enumerate(found, start=1):
         text = " ".join(parts)
         numbered = _NUMBERED_ENTRY.match(text)
         number = int(numbered.group(1) or numbered.group(2)) if numbered else None
+        if paragraphs or not _is_list_item(numbered):
+            run = None
+        elif run is not None and _same_list(run, numbered.group(4), list_at):
+            counted += 1
+            number = run[0] + counted
+        else:
+            run, counted = (number, numbered.group(4), list_at), 0
         dois, pmids = identifiers(text)
         label = f"entry {number}" if number is not None else f"entry {place} of the list"
         entries.append(Entry(label, line, number=number, dois=dois, pmids=pmids))
     return entries
+
+
+def _is_list_item(numbered: re.Match[str] | None) -> bool:
+    """Whether an entry's number makes it an item of a Markdown ordered list: "1." or "1)",
+    not escaped, `1\\.`, which pandoc writes for a number it means as typed text."""
+    return numbered is not None and numbered.group(2) is not None and not numbered.group(3)
+
+
+def _same_list(run: tuple[int, str, int], stop: str, list_at: int) -> bool:
+    """Whether an item goes on the list `run` began, its first number, its stop and the
+    reference list it is in: a list ends where the stop changes, as in pandoc and
+    CommonMark, and at the end of its reference list."""
+    return run[1:] == (stop, list_at)
 
 
 def markers_in(hidden: str, intervals: list[tuple[int, int]]) -> list[tuple[int, str, list[int]]]:
@@ -157,9 +210,11 @@ def census_of_text(
     intervals: list[tuple[int, int]],
     *,
     docx: bool,
+    numbering: Mapping[int, tuple[str, bool]] | None = None,
 ) -> Census:
     """A Markdown, text or .docx paper's census: its lists are `spans` of `original`, its
-    citations are read in `hidden`, where the lists are blanked."""
+    citations are read in `hidden`, where the lists are blanked. `numbering` is a .docx's
+    Word numbering, by the line it numbers (`text.docx.DocxText.numbering`)."""
     if not spans:
         return Census(path, note="no reference list was found under a heading, so none was "
                       "counted")  # fmt: skip
@@ -169,7 +224,7 @@ def census_of_text(
     census.markers = len(markers)
     if entries and all(entry.number is not None for entry in entries):
         census.style = NUMBERED
-    elif docx and markers and not any(entry.number is not None for entry in entries):
+    elif docx and _numbered_by_word(entries, numbering or {}):
         census.style = BY_PLACE
         entries = [
             Entry(f"entry {place}", entry.line, number=place, dois=entry.dois, pmids=entry.pmids)
@@ -182,11 +237,29 @@ def census_of_text(
     return census
 
 
+def _numbered_by_word(entries: list[Entry], numbering: Mapping[int, tuple[str, bool]]) -> bool:
+    """Whether Word numbers the list 1, 2, 3 by place: its entries, none typing a number,
+    each numbered by one numbering that counts in Arabic numerals from 1, which numbers
+    nothing before the list, so that its count starts there. A bracketed number in the text
+    is no sign of it: `range [0, 100]` in an author-year paper made every entry "cited
+    nowhere" (round 1 of #463)."""
+    if not entries or any(entry.number is not None for entry in entries):
+        return False
+    keys = {numbering.get(entry.line, ("", False)) for entry in entries}
+    if len(keys) != 1:
+        return False
+    ((key, from_one),) = keys
+    first = entries[0].line
+    return bool(key) and from_one and not any(
+        line < first and numbered[0] == key for line, numbered in numbering.items()
+    )
+
+
 def _held_to_numbers(
     path: Path, entries: list[Entry], markers: list[tuple[int, str, list[int]]]
 ) -> list[Problem]:
     numbers = {entry.number for entry in entries}
-    highest = max(number for number in numbers if number is not None)
+    highest = max((number for number in numbers if number is not None), default=0)
     problems = []
     cited: set[int] = set()
     held = f"{len(numbers)} entr{'y' if len(numbers) == 1 else 'ies'}, the last {highest}"
@@ -228,7 +301,7 @@ def census_of_latex(path: Path, files: list[tuple[Path, Any]]) -> Census:
                 key = item.group(1).strip()
                 entries.append(Entry(
                     f"\\bibitem{{{key}}}", text.count("\n", 0, item.start()) + 1, key=key,
-                    dois=dois, pmids=pmids,
+                    dois=dois, pmids=pmids, path=where,
                 ))  # fmt: skip
         cited += [(where, text.count("\n", 0, use.offset) + 1, use.key) for use in reading.cited]
     if not entries:
@@ -248,7 +321,7 @@ def census_of_latex(path: Path, files: list[tuple[Path, Any]]) -> Census:
     if not every:
         census.problems += [
             Problem("entry-never-cited", f"{entry.label} is cited nowhere in the text",
-                    entry.line, path)
+                    entry.line, entry.path or path)
             for entry in entries if entry.key not in named
         ]  # fmt: skip
     return census
@@ -259,7 +332,8 @@ def census_of_latex(path: Path, files: list[tuple[Path, Any]]) -> Census:
 
 @dataclass(frozen=True)
 class Looked:
-    """What was asked of the registries for one entry, or would be, and what they said."""
+    """What was asked of the registries for one entry, or would be, and what they said;
+    `path` is the census's, and the entry's own file is `entry.path` where it has one."""
 
     path: Path
     entry: Entry
@@ -267,15 +341,47 @@ class Looked:
     problems: tuple[Problem, ...] = ()
     #: Where the record came from: "asked", "kept" (the cache), or "" for a dry run.
     came: str = ""
+    #: Whether a registry asked knows the work: one found its DOI or its PMID.
+    known: bool = False
+
+
+#: Who is asked of a DOI, in turn: DataCite only where Crossref does not know it, and doi.org
+#: only where DataCite does not either (`lookup.run.look_up`).
+DOI_REGISTRIES = "Crossref and OpenAlex, then DataCite and doi.org where Crossref has no record,"
+#: The codes of a DOI or a PMID no registry knows, as `check`'s G7 gives them.
+UNKNOWN = ("doi-unregistered", "pmid-unknown")
 
 
 def _asked(entry: Entry) -> str:
     parts = []
     if entry.dois:
-        parts.append(f"Crossref and OpenAlex for doi:{entry.dois[0]}")
+        parts.append(f"{DOI_REGISTRIES} for doi:{entry.dois[0]}")
     if entry.pmids:
         parts.append(f"PubMed for PMID {entry.pmids[0]}")
     return "; ".join(parts)
+
+
+def _unknown(entry: Entry, answers: dict[str, Any], path: Path | None) -> list[Problem]:
+    """A DOI every registry asked of it says it does not hold, and a PMID PubMed does not:
+    a typo, most often, and no check of the work at all (`gates.lookups._identity`)."""
+    from manuscript_guard.lookup.sources import ABSENT
+
+    said = {name: answer.get("status") for name, answer in answers.items()
+            if isinstance(answer, dict)}  # fmt: skip
+    problems = []
+    if "crossref" in said and all(said.get(name) == ABSENT
+                                  for name in ("crossref", "datacite", "doi_org")):  # fmt: skip
+        problems.append(Problem(
+            "doi-unregistered", f"{entry.label}: no registry has the DOI {entry.dois[0]}: not "
+            "Crossref, not DataCite, not doi.org, so nothing was checked of the work",
+            entry.line, path,
+        ))  # fmt: skip
+    if said.get("pubmed") == ABSENT:
+        problems.append(Problem(
+            "pmid-unknown", f"{entry.label}: PubMed has no PMID {entry.pmids[0]}, so nothing "
+            "was checked of the work", entry.line, path,
+        ))  # fmt: skip
+    return problems
 
 
 def _kept_name(entry: Entry) -> str:
@@ -339,16 +445,20 @@ def look_up(
                     kept.parent.mkdir(parents=True, exist_ok=True)
                     kept.write_text(json.dumps(record, indent=2, ensure_ascii=True) + "\n",
                                     encoding="utf-8")  # fmt: skip
-            found = _standing(entry.label, {}, record.get("sources", {}), census.path, None)
+            answers = record.get("sources", {})
+            where = entry.path or census.path
+            found = _standing(entry.label, {}, answers, where, None)
             problems = tuple(
-                Problem(f.code, f.message.removeprefix("@"), entry.line, census.path)
+                Problem(f.code, f.message.removeprefix("@"), entry.line, where)
                 for f in found
-            ) + tuple(
+            ) + tuple(_unknown(entry, answers, where)) + tuple(
                 Problem("lookup-unanswered", f"{entry.label}: {name} did not answer ({why})",
-                        entry.line, census.path)
+                        entry.line, where)
                 for name, why in _unanswered(record)
             )  # fmt: skip
-            looked.append(Looked(census.path, entry, asked, problems, came))
+            known = any(isinstance(answer, dict) and answer.get("status") == "found"
+                        for answer in answers.values())  # fmt: skip
+            looked.append(Looked(census.path, entry, asked, problems, came, known))
     return looked
 
 

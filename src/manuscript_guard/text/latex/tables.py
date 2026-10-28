@@ -12,8 +12,9 @@ A cell's text is what the file prints there, from its Markdown view
 (`views.markdown_view`), with what the reader blanks taken out, as the classifier takes it
 out (`classify._printed`): so `30.0\\%` is "30.0%", `\\multirow{2}{*}{Age}` prints "Age",
 and `\\multicolumn{2}{c}{Total}` prints "Total" and spans two columns. A rule, `\\hline`,
-`\\midrule`, `\\cline{2-3}` or `\\cmidrule(lr){2-3}`, is no part of a cell, and a row that
-holds nothing but rules is no row. The optional space after a row, `\\\\[2pt]`, is not read.
+`\\midrule[1pt]`, `\\cline{2-3}` or `\\cmidrule(lr){2-3}`, is no part of a cell, nor is a
+colour, `\\rowcolor{gray!20}` or `\\cellcolor[rgb]{0.9,0.9,0.9}`, and a row that holds
+nothing but rules is no row. The optional space after a row, `\\\\[2pt]`, is not read.
 A cell's line is the `.tex` line its text starts on, from 1.
 """
 
@@ -32,13 +33,16 @@ _OPENING = re.compile(r"\\begin\s*\{(?P<name>tabular\*?|tabularx|tabulary|longta
 _WIDTHS = frozenset({"tabular*", "tabularx", "tabulary"})
 #: An environment opened or closed inside a cell.
 _ENVIRONMENT = re.compile(r"\\(?P<how>begin|end)\s*\{[^{}]*\}")
-#: A rule between rows, with its arguments, which prints no cell.
+#: A rule between rows, with its arguments, which prints no cell; and a row's or a cell's
+#: colour, which prints nothing either, so that a `\\multicolumn` after `\\rowcolor` still
+#: opens its cell (round 1 of #463).
 _RULE = re.compile(
-    r"\\(?:hline|toprule|midrule|bottomrule|endhead|endfirsthead|endfoot|endlastfoot"
-    r"|cline\s*\{[^{}]*\}|hhline\s*\{[^{}]*\}"
-    r"|cmidrule\s*(?:\([^()]*\))?\s*\{[^{}]*\}"
-    r"|addlinespace(?:\s*\[[^\]]*\])?"
-    r"|specialrule\s*\{[^{}]*\}\s*\{[^{}]*\}\s*\{[^{}]*\})(?![A-Za-z@])"
+    r"\\(?:(?:hline|endhead|endfirsthead|endfoot|endlastfoot)(?![A-Za-z@])"
+    r"|(?:toprule|midrule|bottomrule|addlinespace)(?![A-Za-z@])(?:\s*\[[^\]]*\])?"
+    r"|(?:cline|hhline)(?![A-Za-z@])\s*\{[^{}]*\}"
+    r"|cmidrule(?![A-Za-z@])\s*(?:\[[^\]]*\])?\s*(?:\([^()]*\))?\s*\{[^{}]*\}"
+    r"|(?:rowcolor|cellcolor)(?![A-Za-z@])\s*(?:\[[^\]]*\])?\s*\{[^{}]*\}"
+    r"|specialrule(?![A-Za-z@])\s*\{[^{}]*\}\s*\{[^{}]*\}\s*\{[^{}]*\})"
 )
 #: What may follow `\\\\`: a star, and a length in brackets.
 _AFTER_BREAK = re.compile(r"\*?(?:[ \t]*\[[^\]\n]*\])?")
@@ -140,19 +144,30 @@ def _split(source: Source, start: int, end: int) -> list[list[tuple[int, int]]]:
                 cells, index = [], after + _AFTER_BREAK.match(text, after).end() - after
                 cell = index
                 continue
-            index += 2
+            index += _ESCAPED
             continue
         if char == "{":
             depth += 1
         elif char == "}":
             depth = max(0, depth - 1)
-        elif char == "&" and masked[index] == " " and _at_top(depth, nested):
+        elif char == "&" and _separates(masked, index) and _at_top(depth, nested):
             cells.append((cell, index))
             cell = index + 1
         index += 1
     cells.append((cell, end))
     rows.append(cells)
     return rows
+
+
+#: How far a backslash reaches that starts no row: the character after it, so that the `&`
+#: of an escaped `\\&`, and the brace of `\\{`, is read as a character and not as LaTeX.
+_ESCAPED = 2
+
+
+def _separates(masked: str, at: int) -> bool:
+    """Whether the `&` at `at` parts cells: the mask reads it as one, a space, where it
+    reads the `&` of `\\&` as nothing it prints there."""
+    return masked[at] == " "
 
 
 def _at_top(depth: int, nested: int) -> bool:

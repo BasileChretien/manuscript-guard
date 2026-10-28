@@ -7513,10 +7513,11 @@ one digit changed in the reporting odds ratio is reported with its line and cont
 The audit read Markdown and Word, and refused a `.tex`. It now reads a LaTeX paper through
 the reader every gate uses (`auditing/latex.py`): a `.tex` named is an entry, and its
 folder's `.tex`, `.sty` and `.cls` files are what its `\input`s resolve to, as they are for a
-project's `main.tex`; in a folder given, only a file with `\documentclass` starts a paper, and
-a file no entry inputs is named under "Passed over" rather than read, since a paper's folder
-keeps old drafts. Each file is read as G2 reads one, at its `.tex` lines, its
-`thebibliography` cut, and each refusal of the reader named where `--strict` counts it. Its
+project's `main.tex`; in a folder given, every file with `\documentclass` starts a paper of
+its own, and a file no entry inputs, or that a class or a package inputs, is named under
+"Passed over" rather than read. Each file is read as G2 reads one, at its `.tex` lines, its
+`thebibliography` cut, and each refusal of the reader in a file the entry reads named where
+`--strict` counts it. Its
 tables are rows of cells (`text/latex/tables.py`), split where LaTeX splits them, so an n (%)
 and a mean of whole numbers are held in a LaTeX table as in a Word one.
 
@@ -7538,6 +7539,23 @@ a record; nothing is kept unless `--lookup-cache` names where.
 
 `--strict` counts exact findings only (the author, 2026-10-28). In this PR that is what it
 counted before; the P worked out from a statistic, G6, G14 and G7 are listed and not counted.
+
+Round 1 of the review of #463 found the reader's refusals counted where the entry reads no
+file: a supplement beside the paper, a document of its own, was refused as a second document
+inside it, and a file passed over had its refusals counted under `--strict`. Only a refusal in
+a file the entry reads is counted now. A `\bibitem` is reported in the file that holds it. A
+.docx's list is numbered by place only where one Word numbering counts every entry 1, 2, 3
+from the list (`text/word_numbering.py`, read from ECMA-376 part 1, 17.9): a bracketed number
+in an author-year paper's text, `range [0, 100]`, had made every entry "cited nowhere", and an
+empty list under a final heading had raised. A Markdown list is numbered as pandoc prints it,
+from its first number up, and a number pandoc escaped, `1\.`, as typed. A DOI ends before
+`](` and before a stop or a closing bracket it did not open; one no registry has, and a PMID
+PubMed does not, is reported, and "no registry said a work was retracted" says how many
+entries were asked and how many a registry knew. A table's rules and colours, `\midrule[1pt]`
+and `\rowcolor{gray!20}`, print nothing (`text/latex/commands.py`), where their arguments had
+been read as the cell's text and as the paper's numbers. Under `--json` an audit that did not
+happen, exit 2, prints `{"ok": false, "error": ...}`: `check --json` prints nothing to stdout
+for its errors, so this is the audit's own.
 
 ## A paper written in Word is brought in through pandoc's tree
 
@@ -17324,8 +17342,11 @@ What papers converted from Word showed (see "What papers converted from Word sho
     a `paper.yaml` is read but the English: no journal profile, no `language:` settings, no
     accepted spellings. A .docx's lines are those of the text pandoc converts it to.
   - The census holds citations to a list only where the entries carry their numbers, or in a
-    .docx whose list Word numbers, by each entry's place, which assumes Word numbers from 1
-    with none skipped. A citation in superscript, `^3^`, or in parentheses, `(3)`, is not
+    .docx whose list one Word numbering counts 1, 2, 3 from its first entry, by each entry's
+    place. A numbering whose count may have begun before the list, one that shares its
+    abstract numbering with a paragraph above the list, one linked to a numbering style, or
+    one in another format or from another start, is taken for none, and such a list is
+    counted and not held to the text's numbers. A citation in superscript, `^3^`, or in parentheses, `(3)`, is not
     read; a bracketed number that is no citation, an equation's `[2]`, is read as one. Two
     lists each numbered from 1 are read as one. A Markdown entry wrapped over lines with no
     blank line between entries is one entry only where each starts with its number. A list
@@ -17337,6 +17358,18 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - `--strict` counts what it counted before, a number in no output, a stretch not read and
     an audit that read no number, and nothing new: the sums and flows that will count come
     in the PRs after this one.
+  - In a folder given, a `.tex` with `\documentclass` is audited as a paper beside the
+    Markdown or Word one: a pandoc template or a LaTeX export of the paper is read as a paper
+    of its own, its numbers are not found in the outputs, and the reader's refusals in it are
+    counted, so `--strict` can fail where the paper alone passes. A `.tex` that cannot be read
+    counts as an entry. Name the paper's own file, not its folder, to audit it alone (round 1
+    of #463).
+  - A table whose rows a tabular `\input`s from another file, as xtable and esttab write
+    them, is read nowhere as cells: its numbers are read where they stand, as text, and no
+    n (%) or mean in it is held to its denominator (round 1 of #463).
+  - A citation that encloses the number before it, `2 studies [1,3]`, is read as an
+    interval after its value and no citation, so the entries it cites can be reported as
+    cited nowhere (round 1 of #463).
 
 Closed since, and why each mattered (an open gap goes above this line):
 

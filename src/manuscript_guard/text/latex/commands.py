@@ -204,6 +204,12 @@ COMMANDS = _specs(
         "real": "{b}",
         "color": "[b]{b}",
         "cmidrule": "[b](b){b}",
+        # A table's rules and colours, booktabs' and xcolor's `table` option's: a rule's
+        # width, a colour's model and its name or values, which print nothing in the cell
+        # (round 1 of #463: `\\cellcolor[rgb]{0.9,0.9,0.9}4` was read "0.9,0.9,0.94").
+        **dict.fromkeys(("toprule", "midrule", "bottomrule"), "[b]"),
+        **dict.fromkeys(("rowcolor", "cellcolor", "columncolor", "arrayrulecolor"), "[b]{b}"),
+        "rowcolors": "*[b]{b}{b}{b}",
         "rule": "[b]{b}{b}",
         "\\": "*[b]",
         # A binding: the value it prints is the results', not the author's.

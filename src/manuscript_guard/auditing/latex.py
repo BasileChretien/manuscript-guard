@@ -2,16 +2,20 @@
 
 A `.tex` named is an entry. Its folder's `.tex`, `.sty` and `.cls` files are the files its
 `\\input`s are looked for in (`structure.read_tree`), as they are for a project's `main.tex`.
-In a folder given, only a file with `\\documentclass` is an entry; the others are read where
-an entry inputs them. A file no entry inputs is not read, and is named under "Passed over":
-a paper's folder often holds old drafts and a cover letter. A file two entries input is read
-once, where the first does.
+In a folder given, every file with `\\documentclass` is an entry, audited as a paper of its
+own: an old draft, a cover letter or a template written in LaTeX is one too, so name the
+paper's file to audit it alone. The other files are read where an entry inputs them. A file
+no entry inputs is not read, and is named under "Passed over", and so is a file a class or a
+package inputs, which is the class's text and not the paper's. A file two entries input is
+read once, where the first does.
 
 Each file is read as G2 reads one (`gates.numbers._latex_read`): its numbers where they print,
 at the `.tex` line they stand on, by the classifier's rules for a file whose headings and
 items are commands. The `thebibliography` is cut as a Markdown paper's reference list is, and
-named under "Not audited". Each refusal of the reader is a stretch not read as LaTeX, so it is
-named under "Could not read", where `--strict` counts it.
+named under "Not audited". Each refusal of the reader in a file the entry reads is a stretch
+not read as LaTeX, so it is named under "Could not read", where `--strict` counts it. A file
+the entry does not read is refused nothing: one that holds a document of its own is an entry,
+or is passed over, and so is one nothing inputs (round 1 of #463).
 """
 
 from __future__ import annotations
@@ -21,7 +25,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from manuscript_guard.text.latex.mask import NUL
-from manuscript_guard.text.latex.structure import Document, Source, read_tree
+from manuscript_guard.text.latex.structure import SECOND_DOCUMENT, Document, Source, read_tree
 from manuscript_guard.text.latex.tables import latex_tables
 from manuscript_guard.text.latex.views import bindings, markdown_view
 from manuscript_guard.text.tables import Table
@@ -78,6 +82,7 @@ def read_latex(entries: list[Path], found: list[Path] = ()) -> LatexRead:
 
     read = LatexRead()
     seen: set[Path] = set()
+    classed: set[Path] = set()
     folders: dict[Path, tuple[dict, dict, dict, frozenset]] = {}
     for entry in entries:
         folder = entry.parent
@@ -105,16 +110,29 @@ def read_latex(entries: list[Path], found: list[Path] = ()) -> LatexRead:
                 for start, end in source.reading.references
             ]
         read.trees.append(Tree(entry, folder, document, tuple(mine)))
-        texts = {source.path: source.text for source in document.sources}
+        classed.update(folder / path for path in document.classes)
+        # A refusal counts only in a file the entry reads. One that holds a document of its
+        # own is an entry, or passed over, and so is one nothing inputs: refused there, each
+        # was said not to be read though it was, or failed --strict as passed over.
+        texts = {source.path: source.text for source in document.sources if not source.loose}
         for where, refusal in document.refusals:
-            text = texts.get(where) or files.get(where, "")
+            if where not in texts or refusal.code == SECOND_DOCUMENT:
+                continue
+            text = texts[where]
             line = text.count("\n", 0, refusal.offset) + 1
             read.unreadable.append(
                 f"{where}: line {line} is not read as LaTeX, so what follows it in the file "
                 f"was read as typed: {refusal.message}"
             )
     for path in sorted({*found, *(p for folder in folders for p in folder.rglob("*.tex"))}):
-        if path not in seen and path not in entries:
+        if path in seen or path in entries:
+            continue
+        if path in classed:
+            read.passed_over.append(
+                f"{path.as_posix()}: a class or a package the paper loads inputs it, so it is "
+                "theirs and not the paper's text, and was not read"
+            )
+        else:
             read.passed_over.append(
                 f"{path.as_posix()}: no entry inputs it, so it was not read; name it, or "
                 "\\input it from the paper's main file"

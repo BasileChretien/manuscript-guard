@@ -56,8 +56,16 @@ def _stage(paper: Path, tree=None) -> _Staged:
 
     suffix = paper.suffix.lower()
     if suffix == ".docx":
+        from manuscript_guard.build.document import BuildError, pandoc
         from manuscript_guard.from_word import convert
 
+        # Asked here, so that the note is audit's: through `convert` it said "init needs it"
+        # (round 1 of #463).
+        try:
+            pandoc()
+        except BuildError as exc:
+            raise ValueError(f"{exc}; audit needs it to convert {paper.name} to the text G6 "
+                             "and G14 read") from None  # fmt: skip
         try:
             converted = convert(paper)
         except ContractError as exc:

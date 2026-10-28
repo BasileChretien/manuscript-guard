@@ -110,14 +110,15 @@ def items(report) -> list[Item]:
         ]  # fmt: skip
     for looked in report.lookups or []:
         entry = looked.entry
+        where = entry.path or looked.path
         if not looked.came:
             found.append(Item(REFERENCES, "G7", "would-ask", f"{entry.label}: would ask "
-                              f"{looked.asked}", INFO, False, looked.path, entry.line))
+                              f"{looked.asked}", INFO, False, where, entry.line))
             continue
         found.append(Item(REFERENCES, "G7", "looked-up", f"{entry.label}: asked "
                           f"{looked.asked}" + (", answered from the records kept"
                                                if looked.came == "kept" else ""),
-                          INFO, False, looked.path, entry.line))  # fmt: skip
+                          INFO, False, where, entry.line))  # fmt: skip
         found += [
             Item(REFERENCES, "G7", p.code, p.message, WARN, False, p.path, p.line)
             for p in looked.problems
@@ -382,21 +383,31 @@ def _references(report, show) -> list[str]:
         lines.append(f"  {show(census.path)}: {count} entr{'y' if count == 1 else 'ies'}, "
                      f"{census.dois} with a DOI, {census.pmids} with a PMID; {style}")  # fmt: skip
         for problem in census.problems[:LISTED]:
-            where = f"line {problem.line}: " if problem.line else ""
-            lines.append(f"    {where}{problem.message}")
+            lines.append(f"    {_at(problem.path, problem.line, census.path, show)}"
+                         f"{problem.message}")  # fmt: skip
         if len(census.problems) > LISTED:
             lines.append(f"    (+{len(census.problems) - LISTED} more)")
-        lines += _looked(looked.get(census.path, []))
+        lines += _looked(looked.get(census.path, []), census.path, show)
     if report.lookups is None:
         lines.append(
-            "  Nothing was looked up: --lookup asks Crossref and OpenAlex of each DOI and "
-            "PubMed of each PMID whether the work was retracted, withdrawn or put under "
-            "concern, and --lookup --dry-run shows what would be sent."
+            "  Nothing was looked up: --lookup asks Crossref and OpenAlex of each DOI, and "
+            "DataCite and doi.org of one Crossref has no record of, and PubMed of each PMID, "
+            "whether the work was retracted, withdrawn or put under concern, and --lookup "
+            "--dry-run shows what would be sent."
         )
     return lines
 
 
-def _looked(looked: list) -> list[str]:
+def _at(path: Path | None, line: int | None, paper: Path, show) -> str:
+    """"line 3: ", or "refs.tex line 3: " where the line is another file's than the paper's:
+    a LaTeX paper's `thebibliography` in a file it inputs (round 1 of #463)."""
+    if not line:
+        return ""
+    return f"{show(path)} line {line}: " if path is not None and path != paper else (
+        f"line {line}: ")  # fmt: skip
+
+
+def _looked(looked: list, paper: Path, show) -> list[str]:
     if not looked:
         return []
     if not looked[0].came:
@@ -405,7 +416,9 @@ def _looked(looked: list) -> list[str]:
     lines = [f"    looked up {len(looked)} entr{'y' if len(looked) == 1 else 'ies'}"
              + (f", {kept} from the records kept" if kept else "")]  # fmt: skip
     said = [problem for one in looked for problem in one.problems]
-    lines += [f"    line {p.line}: {p.message}" for p in said]
+    lines += [f"    {_at(p.path, p.line, paper, show)}{p.message}" for p in said]
     if not said:
-        lines.append("    no registry said a work was retracted, withdrawn or under concern")
+        known = sum(1 for one in looked if one.known)
+        lines.append(f"    no registry said a work was retracted, withdrawn or under concern: "
+                     f"{len(looked)} asked, {known} known to a registry that answered")  # fmt: skip
     return lines

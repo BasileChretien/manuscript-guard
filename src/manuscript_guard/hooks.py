@@ -1583,9 +1583,10 @@ def _first_action(project, report, stage: str, deferred: dict, namespace) -> str
         except Exception:  # noqa: BLE001 - the counts stand without the advice
             said.append(None)
 
+    # A caller that set no deadline still gets the hook's own limit, never an unbounded wait.
     deadline = _DEADLINE.get()
-    left = None if deadline is None else deadline - time.monotonic() - DECIDE_MARGIN
-    if left is not None and left <= 0:
+    left = (CHECK_LIMIT if deadline is None else deadline - time.monotonic()) - DECIDE_MARGIN
+    if left <= 0:
         return None
     worker = threading.Thread(target=work, name="manuscript-guard-next", daemon=True)
     worker.start()

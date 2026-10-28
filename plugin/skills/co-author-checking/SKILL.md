@@ -109,7 +109,7 @@ What the toolkit finds on its own, with no file written by the project:
 A number transcribed from a table in a source document is **not** among them, and cannot be:
 only the project knows that this value came from row 14 of that workbook. A project that traces
 its own numbers writes `checks/items.json` against
-`contracts/schemas/checking.schema.json`, and those items are asked first, before the four
+`contracts/schemas/checking.schema.json`, and those items are asked first, before the five
 kinds above. That file is also where a project puts page images, since rendering a page of a PDF
 needs a renderer this toolkit does not depend on.
 

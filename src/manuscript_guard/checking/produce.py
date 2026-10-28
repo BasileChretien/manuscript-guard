@@ -64,6 +64,9 @@ GROUPS = (
     },
 )
 
+#: Group ids that are the toolkit's alone: a project's own items file may not declare one.
+RESERVED_GROUPS = frozenset({METHODS_GROUP["id"]})
+
 #: A binding, as the manuscript writes it. The toolkit's own pattern, from
 #: `text/placeholders.py`: it accepts `{{ lit.x }}` with spaces, which the renderer resolves and
 #: an exact-string search here did not, so that value's sentences were neither shown nor digested.
@@ -624,18 +627,44 @@ def produce(project) -> tuple[dict[str, Any], tuple[str, ...]]:
 
 def _method_items(project) -> tuple[list[dict], list[str]]:
     """The methods group (`checking/methods.py`): each claim G9 reads and each Methods
-    paragraph that points at no step, and the lines `build` prints about what is not sent."""
+    paragraph that points at no step, and the lines `build` prints about what is not sent.
+
+    Read as G9 reads them, strictly: a file that is not UTF-8 is one G9 refuses, so no Methods
+    item is sent and `build` names the file, while the other groups, which read it with
+    replacements, are sent as before."""
     from manuscript_guard.checking.methods import method_items, ran_of
     from manuscript_guard.contracts import load_namespace
+    from manuscript_guard.contracts._schema import Unreadable
     from manuscript_guard.gates.methods import anchored
+    from manuscript_guard.gates.pointers import display_numbers
 
-    claims, open_ = anchored(project)
-    if not claims and not open_:
-        return [], []
+    try:
+        claims, open_ = anchored(project)
+        if not claims and not open_:
+            return [], []
+        # What a cross-reference prints, "Figure 1", where the document's count is exact.
+        numbers = display_numbers(project).bindings()
+    except Unreadable as exc:
+        return [], [f"methods: {exc.path} cannot be read as G9 reads it ({exc.reason}), so no "
+                    "Methods item is in this round"]  # fmt: skip
     namespace, results = load_namespace(project)[:2]
     shown = {ref: str(value.display or value.value) for ref, value in namespace.items()}
-    return method_items(claims, open_, folder=project.path("manuscript"),
-                        ran=ran_of(project, results), shown=shown)  # fmt: skip
+    folder = project.path("manuscript")
+    return method_items(claims, open_, folder=folder, ran=ran_of(project, results),
+                        shown=numbers | shown, order=_reading_order(folder))  # fmt: skip
+
+
+def _reading_order(folder: Path) -> tuple[str, ...]:
+    """The manuscript's files under `manuscript/` as the documents print them: the main
+    text's, then the supplement's."""
+    from manuscript_guard.gates.numbers import is_supplementary, printed_order, source_files
+
+    files = source_files(folder)
+    main = printed_order([p for p in files if not is_supplementary(folder, p)],
+                         supplementary=False)  # fmt: skip
+    supplement = printed_order([p for p in files if is_supplementary(folder, p)],
+                               supplementary=True)  # fmt: skip
+    return tuple(p.relative_to(folder).as_posix() for p in (*main, *supplement))
 
 
 def produce_with_notes(project) -> tuple[dict[str, Any], tuple[str, ...], tuple[str, ...]]:

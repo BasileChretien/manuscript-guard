@@ -141,11 +141,14 @@ def bound(text: str, shown: dict[str, str]) -> tuple[str, list[str], list[list[s
 
 
 def method_items(
-    claims, open_, *, folder: Path, ran: Ran, shown: dict[str, str]
+    claims, open_, *, folder: Path, ran: Ran, shown: dict[str, str], order: tuple[str, ...] = ()
 ) -> tuple[list[dict], list[str]]:
-    """The items of the methods group, in the order of the files and of their lines, and the
-    lines `build` prints: for each claim not sent, and for each script that changed since its
-    run."""
+    """The items of the methods group, and the lines `build` prints: for each claim not sent,
+    and for each script that changed since its run or whose run recorded no digest of it.
+
+    In the order of the files, `order` (their paths under `manuscript/`, as the documents print
+    them: the main text's, then the supplement's), a file it does not name after those, and in
+    each file by line, a claim and an open paragraph alike."""
     notes: list[str] = []
     placed: dict[str, list[tuple[int, dict]]] = {}
     count: dict[tuple[str, tuple[str, ...]], int] = {}
@@ -187,7 +190,17 @@ def method_items(
             notes.append(f"methods: {script} has changed since the run that recorded step(s) "
                          f"{said}, so the code a co-author is shown may not be what ran; run it "
                          "again before sending the round")  # fmt: skip
-    items = [item for section in placed for _line, item in sorted(placed[section],
+        elif script in ran.unrecorded:
+            notes.append(f"methods: the run that recorded step(s) {said} kept no digest of "
+                         f"{script}, so whether the code a co-author is shown is what ran "
+                         "cannot be told; run it again before sending the round")  # fmt: skip
+    first = list(placed)
+
+    def place(section: str) -> int:
+        return order.index(section) if section in order else len(order) + first.index(section)
+
+    sections = sorted(placed, key=place)
+    items = [item for section in sections for _line, item in sorted(placed[section],
              key=lambda pair: pair[0])]  # fmt: skip
     return items, notes
 

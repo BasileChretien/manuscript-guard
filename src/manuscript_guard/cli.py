@@ -4023,7 +4023,7 @@ def _checking_items(project, named: Path | None, *, build: bool = False):
     that traces its own writes `checks/items.json`, and those go in front.
     """
     from manuscript_guard.checking.items import SCHEMA, ItemsError, items_file, items_from
-    from manuscript_guard.checking.produce import merge, produce_with_notes
+    from manuscript_guard.checking.produce import RESERVED_GROUPS, merge, produce_with_notes
     from manuscript_guard.contracts._schema import read_structured
 
     # The project's file is read raw and checked once, with the toolkit's, after the merge.
@@ -4049,6 +4049,16 @@ def _checking_items(project, named: Path | None, *, build: bool = False):
         # and `group`, so an item written without one — the ordinary authoring mistake this
         # schema exists to report — raised a `KeyError` from inside the merge instead.
         items_from(contributed, source)
+        reserved = [str(group.get("id")) for group in contributed.get("groups") or ()
+                    if str(group.get("id")) in RESERVED_GROUPS]  # fmt: skip
+        if reserved:
+            # Taken whole, it would put the project's items under the toolkit's question and
+            # without the code digest each of the toolkit's carries.
+            raise ItemsError(
+                f"{source} declares the group {reserved[0]!r}, whose id is the toolkit's: its "
+                "items are each Methods text beside the code G9 holds it to. Give the "
+                "project's group another id."
+            )
     elif named is not None:
         # A file named on the command line and not there is a mistake worth saying, where the
         # default being absent only means this project contributes nothing of its own.
@@ -4076,8 +4086,9 @@ def _checking_items(project, named: Path | None, *, build: bool = False):
         raise ItemsError(
             "there is nothing to check yet. A co-author is sent the values quoted from the "
             "literature (literature/ledger.yaml and attested.yaml), the sentences that cite "
-            "something, the references (literature/references.bib) and the authors "
-            "(authors.yaml), and none of those holds anything. A project that traces numbers of "
+            "something, the Methods beside the code their {{method.<step>}} anchors name, the "
+            "references (literature/references.bib) and the authors (authors.yaml), and none "
+            "of those holds anything. A project that traces numbers of "
             f"its own adds them in {source}: see contracts/schemas/checking.schema.json."
         )
     return items_from(document, source)

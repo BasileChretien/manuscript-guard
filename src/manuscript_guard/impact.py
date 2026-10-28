@@ -132,7 +132,7 @@ def impact_of(project: Project, results: Results, literature, target: Path) -> I
         if (root / name).resolve().is_relative_to(manuscript)
     }
     impact.readings = _readings(project, root, read)
-    impact.answers = _answers(project, {Path(name).name for name in files})
+    impact.answers = _answers(project, read)
     return impact
 
 
@@ -274,15 +274,17 @@ def _readings(project: Project, root: Path, files: set[str]) -> list[str]:
     return found
 
 
-def _answers(project: Project, names: set[str]) -> list[str]:
+def _answers(project: Project, read: set[str]) -> list[str]:
     """The co-author answers given on items whose sentences stand in one of the files
-    `names` (by file name: the items record a file's name, and a Methods item its path
-    under `manuscript/`)."""
+    `read`, each a path under `manuscript/`. A Methods item records that path, and is matched
+    by it; the other groups record the file's name alone, and are matched by the name, which
+    a file of the main text and one of the supplement may share (Known gaps)."""
     from manuscript_guard.checking.produce import produce
     from manuscript_guard.checking.store import read_decisions
 
-    if not names:
+    if not read:
         return []
+    names = {Path(name).name for name in read}
     decisions = read_decisions(project.root)
     if not decisions:
         return []
@@ -290,8 +292,9 @@ def _answers(project: Project, names: set[str]) -> list[str]:
     touched = {
         item["id"]
         for item in document.get("items", [])
-        if any(Path(str(sentence.get("section") or "")).name in names
-               for sentence in item.get("sentences") or [])
+        if any(str(sentence.get("section") or "") in (read if item.get("group") == "methods"
+                                                      else names)
+               for sentence in item.get("sentences") or [])  # fmt: skip
     }
     return [
         f"{decision.by} on {decision.title!r} ({decision.status}, {decision.when})"

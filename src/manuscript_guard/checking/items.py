@@ -56,20 +56,26 @@ class Items:
         return tuple(item for item in self.items if not str(item.get("already") or "").strip())
 
 
-def _words_of(block: dict) -> dict:
+#: The toolkit's group whose items hold their code as G9's digest of it, among their facts.
+CODE_BY_DIGEST = "methods"
+
+
+def _words_of(block: dict, *, code_by_digest: bool = False) -> dict:
     """One piece of evidence as a reader reads it: its words, not its rendering.
 
     A quote's text, a table's cells, a text excerpt's lines, a facts table's rows, and the
     caption and note that frame them. Left out: `file`, `img`, `target`, `line` and `mark`,
     which say how it was drawn or where to look, and change nothing a person reads.
 
-    A block of code is its caption alone (decision 1 (a) of Task 1): the code a methods item
-    shows is in its digest as G9's digest of the code read as code, among its facts, so a
-    comment edited and the run made again keeps a co-author's answer. Its lines, which hold
-    the comments, and its note, which says whether the script on this machine is the one that
-    ran, are how to read it and not what was asked.
+    A block of code of the toolkit's methods group (`code_by_digest`) is its caption alone
+    (decision 1 (a) of Task 1): the code such an item shows is in its digest as G9's digest of
+    the code read as code, among its facts, so a comment edited and the run made again keeps a
+    co-author's answer. Its lines, which hold the comments, and its note, which says whether
+    the script on this machine is the one that ran, are how to read it and not what was asked.
+    A project's own `code` block carries no such digest, so its lines are its words, as an
+    excerpt's are.
     """
-    if block.get("kind") == "code":
+    if code_by_digest and block.get("kind") == "code":
         return {"kind": "code", "caption": block.get("caption")}
     return {
         "kind": block.get("kind"),
@@ -128,7 +134,10 @@ def digest_of(item: dict) -> str:
             {"text": sentence.get("text"), "section": sentence.get("section")}
             for sentence in item.get("sentences") or []
         ],
-        "evidence": [_words_of(block) for block in item.get("evidence") or []],
+        "evidence": [
+            _words_of(block, code_by_digest=item.get("group") == CODE_BY_DIGEST)
+            for block in item.get("evidence") or []
+        ],
     }
     canonical = json.dumps(core, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
@@ -185,6 +194,14 @@ def items_from(document: dict, source: Path) -> Items:
 
     groups = tuple(document.get("groups") or ())
     known = {str(group["id"]) for group in groups}
+    for group in groups:
+        statuses = [str(one.get("status")) for one in group.get("answers") or ()]
+        twice = sorted({status for status in statuses if statuses.count(status) > 1})
+        if twice:
+            raise ItemsError(
+                f"{source}: group {group['id']} lists the answer {twice[0]!r} twice; each "
+                "status is one button"
+            )
     items: list[dict] = []
     seen: set[str] = set()
     for item in document.get("items") or ():

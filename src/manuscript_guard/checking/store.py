@@ -26,7 +26,7 @@ from manuscript_guard.checking.answers import (
     Refused,
     read_answers,
 )
-from manuscript_guard.checking.items import Items
+from manuscript_guard.checking.items import DEFAULT_ANSWERS, Items
 
 __all__ = ["ANSWERS_SCHEMA", "Answers", "AnswersError", "Refused", "read_answers"]
 
@@ -172,12 +172,20 @@ def record(project_root: Path, answers: Answers, items: Items) -> Imported:
         if not identifier or status not in STATUSES:
             refused.append((called, f"answered {status!r}, which is not one of {STATUSES}"))
             continue
-        # An item this project no longer has is in no group, and its answer counts for nothing
-        # whatever it is: it is written down for its note, as below.
-        allowed = items.answers_for(item) if item is not None else STATUSES
+        # An item this project no longer has is in no group, so only the answers every group
+        # has are taken for it: `code` belongs to a group that lists it, and which group that
+        # was cannot be known. It counts for nothing, and is written down for its note.
+        allowed = items.answers_for(item) if item is not None else DEFAULT_ANSWERS
         if status not in allowed:
-            refused.append((called, f"answered {status!r}, which its group does not ask: "
-                                    f"one of {allowed}"))  # fmt: skip
+            why = ("which its group does not ask" if item is not None
+                   else "and this project no longer has the item, so its group cannot be known")
+            refused.append((called, f"answered {status!r}, {why}: one of {allowed}"))  # fmt: skip
+            continue
+        note = str(answer.get("note") or "").strip()
+        if status != "ok" and not note:
+            # As the page asks: a "does not match" with no reason has someone find the problem
+            # again from nothing.
+            refused.append((called, f"answered {status!r} with no note saying why"))
             continue
         seen = str(answer.get("digest") or "")
         decision = Decision(
@@ -187,7 +195,7 @@ def record(project_root: Path, answers: Answers, items: Items) -> Imported:
             group=str((item or {}).get("group") or ""),
             title=called,
             status=status,
-            note=str(answer.get("note") or "").strip(),
+            note=note,
             digest=seen,
             bundle=answers.bundle,
         )

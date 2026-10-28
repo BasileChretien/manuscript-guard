@@ -88,7 +88,8 @@ def answers_for(items, *, by: str, statuses: dict[str, str], bundle: str = "b1")
                 "id": item["id"],
                 "digest": item["digest"],
                 "status": statuses[item["id"]],
-                "note": "",
+                # Every answer but ok says why, as the page asks and import requires.
+                "note": "" if statuses[item["id"]] == "ok" else "the source says otherwise",
                 "at": "2026-10-08T09:00:00",
             }
             for item in items.items
@@ -2209,3 +2210,142 @@ def test_the_page_draws_its_answers_from_the_group_with_a_c_key() -> None:
     assert 'e.kind === "code"' in page
     methods = next(group for group in GROUPS if group["id"] == "methods")
     assert [a["status"] for a in methods["answers"]] == ["ok", "wrong", "code", "unsure"]
+
+
+def test_a_projects_own_code_block_keeps_its_lines_in_the_digest() -> None:
+    """Only the methods group holds its code as G9's digest among its facts; a project's own
+    `code` evidence has no such digest, so an edited line stales its answers."""
+    item = {"id": "own", "group": "steps", "title": "t", "evidence": [
+        {"kind": "code", "caption": "the cleaning script", "lines": [[1, "x = 1"]]}]}
+    other = json.loads(json.dumps(item))
+    other["evidence"][0]["lines"] = [[1, "x = 2"]]
+    assert digest_of(item) != digest_of(other)
+
+
+def test_a_manuscript_g9_cannot_read_leaves_out_the_methods_alone(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A file in a code page is refused by G9, so its Methods are not sent and `build` names
+    the file; the other groups read it with replacements, as they did, and are sent."""
+    from manuscript_guard.cli import main
+
+    (project / "manuscript" / "notes.md").write_bytes(
+        "# Methods\n\nThe café data were kept apart.\n".encode("cp1252"))
+    document = produced(project)
+    assert _methods(document) == [] and only(document, "claim")
+    assert main(["checker", "build", str(project), "--for", "Ada Example"]) == 0
+    said = capsys.readouterr().out
+    assert "notes.md cannot be read as G9 reads it" in said, said
+    assert "so no Methods item is in this round" in said
+
+
+def test_a_run_that_kept_no_digest_of_its_script_is_said_by_build(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from manuscript_guard.checking.methods import UNRECORDED
+    from manuscript_guard.cli import main
+
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    del document["provenance"]["generated_by_sha256"]
+    fragment.write_text(json.dumps(document), encoding="utf-8")
+    ror = _methods(produced(project))[2]
+    assert {block.get("note") for block in ror["evidence"]} == {UNRECORDED}
+    assert main(["checker", "build", str(project), "--for", "Ada Example"]) == 0
+    said = capsys.readouterr().out
+    assert ("kept no digest of analysis/01_disproportionality.py, so whether the code a "
+            "co-author is shown is what ran cannot be told") in said, said
+
+
+def test_a_cross_reference_in_a_methods_claim_prints_its_number(project: Path) -> None:
+    _edit(project / "manuscript" / "main.md", "S2 describes the model as it was fitted.",
+          "S2 describes the model as fitted, and {{ref.figure.forest}} shows it.")  # fmt: skip
+    adjusted = next(item for item in _methods(produced(project))
+                    if item["facts"][0][1] == "adjusted")  # fmt: skip
+    assert "and Figure 1 shows it." in adjusted["sentences"][0]["text"]
+
+
+def test_methods_items_stand_in_the_order_the_documents_print_their_files(project: Path) -> None:
+    """A file of the main text holding only an open paragraph stands before a file of the
+    supplement holding a claim, as the documents print them."""
+    (project / "manuscript" / "z_methods.md").write_text(
+        "# Methods\n\nThe data were held on one machine.\n", encoding="utf-8")
+    (project / "manuscript" / "supplementary" / "S3_methods.md").write_text(
+        "# Supplementary methods\n\nThe counts were taken once. {{method.ror}}\n",
+        encoding="utf-8")
+    sections = list(dict.fromkeys(item["sentences"][0]["section"]
+                                  for item in _methods(produced(project))))  # fmt: skip
+    assert sections == ["main.md", "z_methods.md", "supplementary/S3_methods.md"]
+
+
+def test_an_answer_about_an_item_gone_is_not_taken_as_code(tmp_path: Path) -> None:
+    path = write_items(tmp_path)
+    items = load_items(tmp_path, path)
+    brought = import_answers(tmp_path, _send(tmp_path, "gone.json", {
+        "schema": "manuscript-guard/checking-answers/1", "by": "A Person", "bundle": "old",
+        "answers": [
+            {"id": "gone-1", "digest": "0123456789abcdef", "status": "code",
+             "note": "the step is wrong", "title": "A Methods text since removed"},
+            {"id": "gone-2", "digest": "0123456789abcdef", "status": "wrong",
+             "note": "the step is wrong", "title": "Another since removed"},
+        ],
+    }), items)  # fmt: skip
+    assert brought.unknown == ("Another since removed",)
+    assert [called for called, _ in brought.refused] == ["A Methods text since removed"]
+    assert "its group cannot be known" in brought.refused[0][1]
+
+
+def test_an_answer_but_ok_without_a_note_is_refused_at_import(tmp_path: Path) -> None:
+    """The page asks for the reason before it moves on; a file edited by hand, or written by
+    something else, is held to the same."""
+    path = write_items(tmp_path)
+    items = load_items(tmp_path, path)
+    sent = answers_for(items, by="A Person", statuses={"lit-1": "wrong", "claim-1": "ok"})
+    sent["answers"][0]["note"] = "  "
+    brought = import_answers(tmp_path, _send(tmp_path, "bare.json", sent), items)
+    assert [d.id for d in brought.recorded] == ["claim-1"]
+    why = "answered 'wrong' with no note saying why"
+    assert brought.refused == ((items.items[0]["title"], why),)
+
+
+def test_impact_tells_a_main_text_methods_file_from_the_supplements(project: Path) -> None:
+    from manuscript_guard.checking.store import Decision, _append
+    from manuscript_guard.cli import load_project
+    from manuscript_guard.contracts import load_namespace
+    from manuscript_guard.impact import impact_of
+
+    for folder, words in (("", "The main text's data were held apart."),
+                          ("supplementary/", "The supplement's data were held apart.")):
+        (project / "manuscript" / f"{folder}methods.md").write_text(
+            f"# Supplementary methods\n\n{words}\n" if folder else f"# Methods\n\n{words}\n",
+            encoding="utf-8")  # fmt: skip
+    loaded = load_project(project)[0]
+    items = {item["sentences"][0]["text"]: item for item in _methods(produced(project))}
+    _append(project, [
+        Decision("2026-10-28T09:00:00+09:00", "Ada Example", item["id"], "methods",
+                 item["title"], "ok", "", digest_of(item), "b")
+        for item in (items["The main text's data were held apart."],
+                     items["The supplement's data were held apart."])
+    ])  # fmt: skip
+    _namespace, results, literature, _ = load_namespace(loaded)
+    main_text = impact_of(loaded, results, literature, project / "manuscript" / "methods.md")
+    title = items["The main text's data were held apart."]["title"]
+    assert main_text.answers == [f"Ada Example on {title!r} (ok, 2026-10-28T09:00:00+09:00)"]
+
+
+def test_a_project_may_not_declare_the_methods_group_or_an_answer_twice(project: Path) -> None:
+    from manuscript_guard.cli import _checking_items, load_project
+
+    path = write_items(project)
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document["groups"][1]["id"] = "methods"
+    document["items"][1]["group"] = "methods"
+    path.write_text(json.dumps(document), encoding="utf-8")
+    with pytest.raises(ItemsError, match="declares the group 'methods', whose id is the toolkit"):
+        _checking_items(load_project(project)[0], None)
+    document["groups"][1]["id"] = "claim"
+    document["items"][1]["group"] = "claim"
+    document["groups"][1]["answers"] = [{"status": "ok", "label": "Yes"}, {"status": "ok"}]
+    path.write_text(json.dumps(document), encoding="utf-8")
+    with pytest.raises(ItemsError, match="lists the answer 'ok' twice"):
+        load_items(project, path)

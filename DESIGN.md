@@ -10533,8 +10533,9 @@ any machine with a browser.
 ### The items are found, not written
 
 A project should not have to describe its own paper to get a round started. `checking/produce.py`
-reads the files the project already keeps and offers four kinds: values quoted from the
-literature, each with the passage it came from; sentences that cite something; references as
+reads the files the project already keeps and offers five kinds: values quoted from the
+literature, each with the passage it came from; sentences that cite something; the Methods
+beside the code their anchors name ("The Methods against the code"); references as
 `references.bib` holds them; and the authors. Nothing of this is particular to one paper.
 
 What it cannot offer is a number transcribed from a table in a source document, because only the
@@ -10546,12 +10547,14 @@ checker reads is the quote, which is text the ledger already holds.
 
 **A group the project fills is the project's, whole.** Not item by item: the two producers key
 their ids on different inputs, so the same value gets two ids, nothing deduplicates it, and a
-co-author is asked about it twice. The paper this was first run against fills all four of
-these groups itself, with each value traced to a row of a source document the toolkit cannot see;
+co-author is asked about it twice. The paper this was first run against fills the four groups
+it then had itself, with each value traced to a row of a source document the toolkit cannot see;
 asking its own version of each beside them would have added a few hundred duplicate questions to
 someone's afternoon. So one contributed item in a group takes that whole group, and
 `build` prints how many of its own it left out — a thing to notice, rather than to discover from
-a co-author.
+a co-author. Not `methods`: its items carry G9's code digest, which a project's own could not,
+and its answers include `code`, so a project's file that declares a group of that id is
+refused.
 
 ### What the digest covers
 
@@ -10742,17 +10745,24 @@ value as printed. The evidence: a new kind, `code`, numbered lines with no highl
 read from the script on disk: the step's body, and for a Python script each function the run
 followed into, as its own block, found with `ast`; R gives the body only. Where the script's
 digest is not the one its fragment recorded, each block and `build` say the code shown may not
-be what ran. **Not shown**: how the pair stands in `methods.lock`, which would answer for the
+be what ran, and a fragment that records no digest of its script is said by both to leave it
+unknown. The Methods are read strictly, as G9 reads them: a file that is not UTF-8 leaves the
+group out of the round, and `build` names the file, while the other groups, which read it with
+replacements, are sent. **Not shown**: how the pair stands in `methods.lock`, which would answer for the
 co-author before they read anything.
 
 **The identifier and the digest.** The identifier is the file under `manuscript/`, the steps
 joined by `+`, and the claim's place among the claims of the same steps in that file, an open
-paragraph's among the open paragraphs (its steps none): not the words. An edited claim then
+paragraph's among the open paragraphs (its steps none): not the words. The items stand in the
+order the documents print the files, the main text's then the supplement's, and in each file
+by line, claims and open paragraphs alike. An edited claim then
 stales its answers, which keep their notes and are asked again, rather than orphaning them.
 Under decision 1 (a) the digest holds the code as G9's digest of it read as code, among the
 facts; a `code` block's lines, its note and its line numbers are outside it
 (`items._words_of`), so a comment edited, a call re-wrapped or a line added above the step,
-with the run made again, keeps every answer. `Step.where`'s lines are for that reason not
+with the run made again, keeps every answer. Only the methods group's: a project's own `code`
+block carries no code digest, and its lines are in its digest as an excerpt's are.
+`Step.where`'s lines are for that reason not
 among the facts: the page shows them from the block. The values are in it twice, in the
 sentence and in the facts, so a value printed otherwise stales the claims that bind it.
 
@@ -10761,8 +10771,11 @@ button's words); the methods group lists "Text matches the code" (`ok`), "Text n
 changing" (`wrong`), "Code needs changing" (`code`) and "Not sure" (`unsure`). The page draws
 its bar from the item's group, Y, N, C and U, and a key answers only with a status the group
 lists. `code` is refused at import outside a group that lists it, with the reason; an answer
-about an item the project no longer has is written down whatever its status, as before. Every
-answer but `ok` asks for a note. `decisions.csv` keeps its nine columns: `code` is a status like
+about an item the project no longer has is written down with `ok`, `wrong` or `unsure`, as
+before, and refused with `code`, since its group cannot be known. Every answer but `ok` asks
+for a note, on the page and at import, which refuses one without, naming the item. A group may
+not list a status twice, and a project's own items file may not declare a group `methods`: its
+items would carry no code digest, and be asked the toolkit's question. `decisions.csv` keeps its nine columns: `code` is a status like
 the rest. `status` lists a `code` with the `wrong` and the `unsure`.
 
 **Tests.** `tests/test_properties.py` holds over generated Methods (`method_claims`, reading
@@ -11023,6 +11036,20 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   no function it calls. Under decision 1 (a) the comments are outside the digest: a comment
   rewritten to contradict the text, with the code unchanged, keeps a co-author's ok, and so
   does a step whose lines moved.
+- **An "ok" given on code edited and not yet run again is about the old code.** Under
+  decision 1 (a) a methods item's digest holds the code digest the run recorded. A page built
+  after the script was edited and before the analysis was run again shows the edited lines,
+  with the warning that they may not be what ran, while its digest holds the old run's; an ok
+  given on it is recorded against that, and stays current until the run is made, when it goes
+  stale if the code changed.
+- **A cross-reference in a Methods item prints only where the count is exact.**
+  `{{ref.figure.forest}}` is shown as the build prints it, "Figure 1", from G2's count of the
+  displays; where that count is not exact (a display placed by hand, or sent as a file) the
+  binding is shown by its name, `[ref.figure.forest]`, as an unresolved value is.
+- **`impact` finds the answers of the other groups by a file's name.** A methods item records
+  its file's path under `manuscript/` and is matched by it; a cited sentence or a value records
+  the file's name alone, so a file of the main text and one of the supplement with one name
+  match each other's answers in `impact`.
 - **An open Methods paragraph is known by its place.** It has no steps to be known by, so
   its identifier is its place among the open paragraphs of its file: one added above, or one
   given an anchor, moves those below, and their answers go stale (never onto another

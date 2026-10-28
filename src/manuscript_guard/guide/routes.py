@@ -172,6 +172,9 @@ ROUTES: dict[str, Route] = {
     **_all("word-roundtrip", None, "comment-unanswered", who="author"),
     **_all("review-panel", ("review",), "open-major-finding", who="author"),
     **_all("review-panel", ("review", "--design"), "design-major-open", who="author"),
+    # A co-author's flag is closed by the text or code put right and their later answer:
+    # the author settles it with them, and the recap shows what each flag says.
+    **_all("co-author-checking", ("checker", "recap"), "coauthor-flag-open", who="author"),
 }
 
 #: The codes whose answer is a person's own attestation, judgement, approval, reading or

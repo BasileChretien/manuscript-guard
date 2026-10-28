@@ -335,6 +335,7 @@ def test_no_standard_input_at_all_is_an_empty_event(monkeypatch) -> None:
         ("build/manuscript.docx", "regenerated"),
         ("profiles/reporting/STROBE.yaml", "transcribed"),
         ("checks/decisions.csv", "a decision nobody made"),
+        ("checks/bundles.csv", "a page nobody built"),
         # Item 26: the plan as it stood when the first results were written.
         ("design/plan.frozen.yaml", "first results were written"),
         # The copy of an earlier output's project, which G8 holds to its digests.
@@ -1009,6 +1010,58 @@ def test_an_approval_written_by_a_codex_patch_is_put_to_the_author(
     # Codex cannot show an "ask", so the call is refused, with the same reason.
     assert decision(result) == "deny", result
     assert "manuscript-guard approve" in reason(result)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "manuscript-guard checker import --answers answers-ada.json answers-blaise.json",
+        "cd paper && mguard checker import . --answers a.json",
+        "python -m manuscript_guard.cli checker --items checks/items.json import",
+        # Round 2 of #455: cut at the operator inside the quotes, these ran unasked.
+        'manuscript-guard checker --title "Drugs & safety" import --answers a.json',
+        'manuscript-guard checker --for "Smith; Jones" import --answers a.json',
+        'manuscript-guard checker --items "a|b/items.json" import --answers a.json',
+        "echo $(manuscript-guard checker import --answers a.json)",
+        "echo `mguard checker import --answers a.json`",
+        # Round 3 of #455: asked unless plainly not an import, whatever the shell form.
+        'bash -c "manuscript-guard checker import --answers a.json"',
+        "sh -c 'mguard checker import --answers a.json'",
+        'powershell -Command "mguard checker import --answers a.json"',
+        "bash <<< 'mguard checker import --answers a.json'",
+        "@'\nmguard checker import --answers a.json\n'@ | iex",
+        "(mguard checker import --answers a.json)",
+        "& { mguard checker import --answers a.json }",
+        "eval 'mguard checker import --answers a.json'",
+        "alias mg=mguard; mg checker import --answers a.json",
+        "manuscript-guard checker status && git commit -m import",
+        "manuscript-guard checker build --title=import",
+        # Round 4 of #455: obfuscations a reader of commands has to see through.
+        "mguard checker build --title >(eval${IFS}'mguard checker import --answers a.json')",
+        'mguard checker build --title (iex("mguard checker import --answers a.json"))',
+        "mguard checker build --title " + chr(0x201C) + "x" + chr(0x201D)
+        + " ; mguard checker import --answers a.json",
+        "mguard checker imp''ort --answers a.json",
+        "mguard che''cker import --answers a.json",
+        "mguard checker imp\\ort --answers a.json",
+        "mguard checker imp`ort --answers a.json",
+    ],
+)
+def test_an_import_of_answers_run_by_an_agent_is_put_to_the_author(
+    in_claude_code: Path, command: str, capsys
+) -> None:
+    """Task 1, decision 5 (a): an import records a co-author's answers under their name, so an
+    agent that runs one puts a person's word into the record."""
+    result = run("guard-submission", _shell(in_claude_code, command), capsys)
+    assert decision(result) == "ask"
+    assert "checker import" in reason(result) and "a person's word" in reason(result)
+    payload = _shell(in_claude_code, command, turn_id="turn-1", model="gpt-test")
+    assert decision(run("guard-submission", payload, capsys)) == "deny"
+    for other in ("manuscript-guard checker build --all", "mguard checker status",
+                  'manuscript-guard checker build --title "Drug import and safety"',
+                  "python -m manuscript_guard.cli checker status --items import.json",
+                  "mguard checker build --for import"):  # fmt: skip
+        assert run("guard-submission", _shell(in_claude_code, other), capsys) is None, other
 
 
 @pytest.mark.parametrize(

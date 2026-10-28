@@ -1473,9 +1473,18 @@ def _commands_of(parser: argparse.ArgumentParser) -> dict[str, argparse.Argument
     return dict(commands.choices)
 
 
+#: What a pull request changed on purpose in how a recorded command line parses, by (command,
+#: the name the option is kept under), each with its reason. The comparison below skips exactly
+#: these for that command, and nothing else.
+CHANGED_ON_PURPOSE = {
+    ("checker", "answers"): "#455: --answers takes several answers files, so its value is a list",
+}
+
+
 def test_every_command_line_parses_as_it_did_before_the_commands_were_grouped() -> None:
     """The grouping changes what the top-level help prints and nothing a command reads.
-    Only the names recorded are compared, so an option added since leaves this alone."""
+    Only the names recorded are compared, so an option added since leaves this alone. A pull
+    request that changes how an option parses declares it in `CHANGED_ON_PURPOSE`, with why."""
     recorded = json.loads(COMMAND_LINES.read_text(encoding="utf-8"))
     assert len({entry["argv"][0] for entry in recorded}) == 38, "every command of 40dcb675"
     parser = build_parser()
@@ -1488,10 +1497,21 @@ def test_every_command_line_parses_as_it_did_before_the_commands_were_grouped() 
     for entry in recorded:
         namespace = vars(parser.parse_args(entry["argv"]))
         parsed = {key: plain(value) for key, value in namespace.items()}
-        now = {key: parsed.get(key, "<missing>") for key in entry["namespace"]}
-        if now != entry["namespace"]:
-            changed.append((entry["argv"], now, entry["namespace"]))
+        kept = {key: value for key, value in entry["namespace"].items()
+                if (entry["argv"][0], key) not in CHANGED_ON_PURPOSE}  # fmt: skip
+        now = {key: parsed.get(key, "<missing>") for key in kept}
+        if now != kept:
+            changed.append((entry["argv"], now, kept))
+        for (command, key), _why in CHANGED_ON_PURPOSE.items():
+            if entry["argv"][0] == command and key in entry["namespace"]:
+                # The new shape: a value given once is a list of that one value.
+                was = entry["namespace"][key]
+                if parsed.get(key) != (None if was is None else [was]):
+                    changed.append((entry["argv"], parsed.get(key), was))
     assert changed == []
+    # Each exception still names a key some recorded line of its command parses.
+    named = {(entry["argv"][0], key) for entry in recorded for key in entry["namespace"]}
+    assert set(CHANGED_ON_PURPOSE) <= named
 
 
 def test_every_command_but_hook_is_in_exactly_one_group() -> None:

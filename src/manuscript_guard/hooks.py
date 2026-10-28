@@ -74,6 +74,12 @@ FORBIDDEN = (
         "a decision nobody made cannot be written into it by hand",
     ),
     (
+        "checks/bundles.csv",
+        "",
+        "the register of the pages sent to co-authors is appended to by `manuscript-guard "
+        "checker build`; a page nobody built cannot be written into it by hand",
+    ),
+    (
         "design/plan.frozen.yaml",
         "",
         "it is the plan as it stood when the first results were written, kept by the emitter; "
@@ -1166,18 +1172,176 @@ _INVOCATION_END = re.compile(r"[;&|\n]|" + _TOOL + r"[A-Za-z]", re.IGNORECASE)
 _REVIEW = re.compile(_TOOL + r"review\b", re.IGNORECASE)
 _APPROVE = re.compile(_TOOL + r"approve\b", re.IGNORECASE)
 _SIGN = re.compile(_TOOL + r"sign\b", re.IGNORECASE)
+#: The options of `checker` that take a value: what follows one is its value, not the verb.
+_CHECKER_VALUED = ("--for", "--to", "-o", "--output", "--title", "--items", "--except",
+                   "--answers")  # fmt: skip
+#: The command's own name, as a word: under either name, with `.exe`, by a path, or as the
+#: module `python -m` runs.
+_TOOL_WORD = re.compile(
+    r"(?:.*[\\/])?(?:manuscript-guard|mguard)(?:\.exe)?|manuscript_guard\.cli", re.IGNORECASE
+)
+#: The three words a command must hold, anywhere and inside quotes too, to be put to the
+#: person as an import: the tool's name, `checker` and `import`.
+_NAMES_TOOL = re.compile(r"manuscript[-_]guard|mguard", re.IGNORECASE)
+_CHECKER_WORD = re.compile(r"\bchecker\b", re.IGNORECASE)
+_IMPORT_WORD = re.compile(r"\bimport\b", re.IGNORECASE)
+#: What `checker` does that records nothing: the verbs that may stand where `import` is an
+#: option's value.
+_CHECKER_READS = ("build", "status")
+
+
+#: Quotation marks PowerShell reads as quotes and a POSIX shell as letters: a command holding one
+#: is read two ways, and so not cleanly.
+_TYPOGRAPHIC_QUOTES = "".join(chr(c) for c in (0x2018, 0x2019, 0x201A, 0x201B, 0x201C, 0x201D,
+                                               0x201E))  # fmt: skip
+#: What runs a command of its own: substitution, process substitution, a subshell, a block.
+_RUNS_ITS_OWN = ("$(", "<(", ">(", "`")
+
+
+def _command_words(command: str, *, posix: bool) -> tuple[list[list[str]], bool]:
+    """The command as its invocations, each a list of words, read as a shell reads quotes; and
+    whether it read cleanly. A `;`, `&`, `|` or line end outside quotes ends an invocation, and
+    one inside quotes is part of a word. Outside single quotes the character after the escape
+    is kept: a backslash in POSIX mode, a backtick in Windows mode, where a backslash is a
+    character like any other.
+
+    Not read cleanly, since what runs there is not what these words say: a command
+    substitution or a process substitution (`$(`, a backtick, `<(`, `>(`), a word that opens
+    with `(`, `@(` or `{` (a subshell, a PowerShell expression, a block), a typographic quote,
+    an unclosed quote, or a backslash at the end."""
+    invocations: list[list[str]] = [[]]
+    word: list[str] | None = None
+    clean = not any(mark in command for mark in _TYPOGRAPHIC_QUOTES)
+    i, n = 0, len(command)
+
+    def end_word() -> None:
+        nonlocal word
+        if word is not None:
+            invocations[-1].append("".join(word))
+            word = None
+
+    while i < n:
+        c = command[i]
+        if word is None and (c in "({" or command.startswith("@(", i)):
+            clean = False
+        if any(command.startswith(mark, i) for mark in _RUNS_ITS_OWN):
+            clean = False
+        if c in " \t\r":
+            end_word()
+        elif c in ";&|\n":
+            end_word()
+            invocations.append([])
+        elif c == "'":
+            close = command.find("'", i + 1)
+            if close < 0:
+                return invocations, False
+            word = word if word is not None else []
+            word.append(command[i + 1 : close])
+            i = close
+        elif c == '"':
+            word = word if word is not None else []
+            i += 1
+            while i < n and command[i] != '"':
+                if any(command.startswith(mark, i) for mark in ("$(", "`")):
+                    clean = False
+                if command[i] == ("\\" if posix else "`") and i + 1 < n:
+                    i += 1
+                word.append(command[i])
+                i += 1
+            if i >= n:
+                return invocations, False
+        elif (c == "\\" and posix) or (c == "`" and not posix):
+            # The escape of each: a backslash to a POSIX shell, a backtick to PowerShell.
+            if i + 1 >= n:
+                return invocations, False
+            i += 1
+            word = word if word is not None else []
+            word.append(command[i])
+        else:
+            word = word if word is not None else []
+            word.append(c)
+        i += 1
+    end_word()
+    return invocations, clean
+
+
+def _plain_checker(words: list[str]) -> bool:
+    """Whether one invocation is plainly `checker build` or `checker status`, the tool named as
+    its first word, with `import` in it only as the value of an option."""
+    if words and _TOOL_WORD.fullmatch(words[0]):
+        rest = words[1:]
+    elif (len(words) > 2 and re.fullmatch(r"(?i)(?:.*[\\/])?python[\d.]*(?:\.exe)?", words[0])
+          and words[1] == "-m" and words[2] == "manuscript_guard.cli"):  # fmt: skip
+        rest = words[3:]
+    else:
+        return False
+    if not rest or rest[0].casefold() != "checker":
+        return False
+    positionals, valued = [], False
+    for word in rest[1:]:
+        if valued:
+            valued = False
+            continue
+        if word.startswith("-"):
+            if _IMPORT_WORD.search(word):
+                return False
+            valued = word in _CHECKER_VALUED
+            continue
+        positionals.append(word)
+    # The verb, then the project's folder, which may not say `import` either.
+    if not positionals or positionals[0].casefold() not in _CHECKER_READS:
+        return False
+    return not any(_IMPORT_WORD.search(word) for word in positionals)
+
+
+def _imports_answers(joined: str) -> bool:
+    """Whether this command may run `checker import`: asked unless it plainly does not.
+
+    A command that names the tool and holds the words `checker` and `import`, anywhere, inside
+    quotes too, is asked. Every round of review found a shell form that hid an import from a
+    reader of commands, `bash -c`, `eval`, a here-string piped to `iex`, a quote holding an
+    operator. So the one exception is a command read cleanly as a POSIX shell and as Windows
+    read it, with no command substitution and no unclosed quote, in which every word that says
+    `import` stands in an invocation that is plainly `checker build` or `checker status`
+    (`_plain_checker`): `--title "Drug import and safety"`, `--for import`."""
+    # First, cheaply: a reading only takes out quotes and escapes, so a word it would make is
+    # in the text with those taken out. Most commands an agent runs end here, read once.
+    bare = re.sub("[\\\\`'\"‘-„]", "", joined)
+    if not all(word.search(joined) or word.search(bare)
+               for word in (_NAMES_TOOL, _CHECKER_WORD, _IMPORT_WORD)):  # fmt: skip
+        return False
+    readings = [_command_words(joined, posix=posix) for posix in (True, False)]
+    # The raw text and the words each shell would give, so that `imp''ort` is `import` too.
+    texts = [joined] + [" ".join(w for words in read for w in words) for read, _ in readings]
+    if not all(any(word.search(text) for text in texts)
+               for word in (_NAMES_TOOL, _CHECKER_WORD, _IMPORT_WORD)):  # fmt: skip
+        return False
+    for invocations, clean in readings:
+        if not clean:
+            return True
+        for words in invocations:
+            if any(_IMPORT_WORD.search(word) for word in words) and not _plain_checker(words):
+                return True
+    return False
 
 
 def _approves(command: str) -> str | None:
-    """Why an `approve` or a `sign` in this command is put to the person: an approval is an
-    author's statement that they read the manuscript, a sign-off a named person's that a
-    finding is acceptable, and an agent that runs either makes it for them."""
+    """Why an `approve`, a `sign` or a `checker import` in this command is put to the person:
+    an approval is an author's statement that they read the manuscript, a sign-off a named
+    person's that a finding is acceptable, and an import puts a co-author's name to the answers
+    in a file. An agent that runs any of them makes the statement for them."""
     joined = re.sub(r"[\\`]\r?\n", " ", command)
     if _SIGN.search(joined):
         return (
             "`manuscript-guard sign` records that the person authors.yaml names for a role "
             "judged a finding acceptable. Only that person can say so: run it yourself, as "
             "yourself."
+        )
+    if _imports_answers(joined):
+        return (
+            "`manuscript-guard checker import` records a co-author's answers under their name "
+            "in checks/decisions.csv. Which file is taken as a person's word is the author's "
+            "decision: run it yourself, with the files they sent you."
         )
     if not _APPROVE.search(joined):
         return None

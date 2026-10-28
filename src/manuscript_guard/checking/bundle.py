@@ -21,10 +21,13 @@ import json
 import mimetypes
 import re
 import unicodedata
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from manuscript_guard.checking import register
 from manuscript_guard.checking.items import Items, as_payload
+from manuscript_guard.checking.register import state_of
 
 TEMPLATE = Path(__file__).with_name("checker.html")
 #: Big enough for a page image of a scanned table, small enough that nobody's mail server
@@ -74,6 +77,21 @@ def _data_uri(path: Path) -> str:
     return f"data:{kind};base64," + base64.b64encode(raw).decode("ascii")
 
 
+@dataclass(frozen=True)
+class Built:
+    """One page written: where, how large, and what the register keeps of it."""
+
+    path: Path
+    size: int
+    person: str
+    orcid: str
+    bundle: str
+    token: str
+    state: str
+    items: int
+    built_on: str
+
+
 def build_bundle(
     items: Items,
     *,
@@ -83,6 +101,27 @@ def build_bundle(
     to: str = "",
 ) -> tuple[Path, int]:
     """Write the page for one person. Returns the file and its size in bytes."""
+    built = build_page(items, person=person, title=title, out=out, to=to)
+    return built.path, built.size
+
+
+def build_page(
+    items: Items,
+    *,
+    person: str,
+    title: str,
+    out: Path,
+    to: str = "",
+    orcid: str = "",
+    token: str | None = None,
+    shown: str = "",
+) -> Built:
+    """Write the page for one person, carrying their name, their ORCID iD where they have one
+    and a random token of its own (`register.new_token`, unless one is given).
+
+    `person` is the name their answers are recorded under, which the answers file carries;
+    `shown`, where given, the name the page greets them by, which `checker build` makes the
+    same."""
     person = person.strip()
     if not person:
         raise BundleError("say who the file is for: a decision is recorded under their name")
@@ -110,19 +149,28 @@ def build_bundle(
     carried = len(images)
 
     built_on = datetime.now().astimezone().isoformat(timespec="seconds")
-    # The bundle's own name: the project's items and who it went to, so an answers file can be
-    # told from one made against a later state of the manuscript.
-    identity = hashlib.sha256(
-        (json.dumps([i["digest"] for i in payload["items"]], sort_keys=True) + person).encode()
-    ).hexdigest()[:12]
+    token = token or register.new_token()
+    digests = [i["digest"] for i in payload["items"]]
+    # Where the browser keeps a co-author's unsent answers: the items and who they went to, so a
+    # page rebuilt with nothing changed for them keeps their progress.
+    storage = hashlib.sha256((json.dumps(digests, sort_keys=True) + person).encode()).hexdigest()
+    # The page's own name, which the register keys on: that, and the token, so that no two
+    # builds share one and an answers file names the one page it came from.
+    identity = hashlib.sha256((storage + token).encode()).hexdigest()[:12]
+    orcid = orcid.strip()
+    state = state_of(digests)
     payload.update(
         {
             "images": images,
             "bundle": identity,
+            "storage": storage[:12],
             "by": person,
+            "person": {"name": shown.strip() or person, "orcid": orcid},
+            "token": token,
+            "state": state,
             "to": to,
             "built_on": built_on,
-            "filename": f"answers-{slug(person)}.json",
+            "filename": f"answers-{slug(shown.strip() or person)}.json",
         }
     )
 
@@ -156,7 +204,8 @@ def build_bundle(
         )
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(data)
-    return out, size
+    return Built(path=out, size=size, person=person, orcid=orcid, bundle=identity, token=token,
+                 state=state, items=len(digests), built_on=built_on)  # fmt: skip
 
 
 def _escape(text: str) -> str:

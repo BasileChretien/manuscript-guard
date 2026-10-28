@@ -2647,6 +2647,41 @@ def test_submit_says_which_authors_have_not_approved(project: Path, capsys) -> N
     assert "approved" not in capsys.readouterr().out
 
 
+# ------------------------------------------------- a co-author's answers and their page
+
+
+def test_an_answers_file_with_a_forged_token_is_refused(project: Path, capsys, monkeypatch) -> None:
+    """Task 1, PR 1: each page `checker build` writes carries a random token, and the register
+    keeps its digest. An answers file naming Ada's page, with a token made up for it, read as
+    Ada's yes; it is refused, and nothing is recorded."""
+    from manuscript_guard.checking import register
+    from manuscript_guard.cli import main
+
+    made = iter(["a" * 32, "b" * 32])
+    monkeypatch.setattr(register, "new_token", lambda: next(made))
+    assert main(["checker", "build", str(project), "--all"]) == 0
+    rows = (project / "checks" / "bundles.csv").read_text(encoding="utf-8").splitlines()
+    ada_bundle = rows[1].split(",")[3]
+    page = (project / "checks" / "check-ada-example.html").read_text(encoding="utf-8")
+    start = page.index("const BUNDLE = ") + len("const BUNDLE = ")
+    item = json.loads(page[start : page.index(chr(10), start)].rstrip().rstrip(";"))["items"][0]
+    forged = {
+        "schema": "manuscript-guard/checking-answers/2", "bundle": ada_bundle,
+        "by": "Ada Example", "orcid": "0000-0002-1825-0097", "token": "c" * 32,
+        "answers": [{"id": item["id"], "digest": item["digest"], "status": "ok"}],
+    }  # fmt: skip
+    answers = project / "answers-ada-example.json"
+    answers.write_text(json.dumps(forged), encoding="utf-8")
+    capsys.readouterr()
+    assert main(["checker", "import", str(project), "--answers", str(answers)]) == 2
+    assert "its token is not that page's" in capsys.readouterr().err
+    assert not (project / "checks" / "decisions.csv").exists()
+    # The token the page was built with is taken, and the same answer is Ada's.
+    answers.write_text(json.dumps({**forged, "token": "a" * 32}), encoding="utf-8")
+    assert main(["checker", "import", str(project), "--answers", str(answers)]) == 0
+    assert "Ada Example (from the page built for them)" in capsys.readouterr().out
+
+
 # ------------------------------------------------ the unit written after a binding
 
 

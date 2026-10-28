@@ -3462,6 +3462,85 @@ def test_a_model_of_results_the_package_withholds_is_not_published(project: Path
     assert "4000 of 4000" not in (folder / "ro-crate-metadata.json").read_text(encoding="utf-8")
 
 
+def _companion_of(root: Path) -> str:
+    (folder,) = [p for p in (root / "build" / "package").iterdir() if p.is_dir()]
+    return (folder / "ro-crate-preview.html").read_text(encoding="utf-8")
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_value_of_a_results_file_the_package_withholds_never_reaches_the_companion(
+    project: Path,
+) -> None:
+    """A second analysis writes a count the supplement prints, and the first declares that
+    results file a restricted input: the package withholds it, and the companion page shows
+    none of its values, in the evidence map or in the prose that binds them."""
+    import subprocess
+    import sys
+
+    _packable(project, request="Apply to the custodian.")
+    (project / "analysis" / "02_sites.py").write_text(
+        "from manuscript_guard.emit import Emitter\n"
+        "em = Emitter(__file__)\n"
+        'em.add_input("data/reports.csv", synthetic=True)\n'
+        'em.value("sites.rare", 98761)\n'
+        "em.write()\n", encoding="utf-8")  # fmt: skip
+    ran = subprocess.run([sys.executable, "analysis/02_sites.py"], cwd=project,
+                         capture_output=True, text=True)  # fmt: skip
+    assert ran.returncode == 0, ran.stderr
+    page = project / "manuscript" / "supplementary" / "S1_code_lists.md"
+    page.write_text(page.read_text(encoding="utf-8") + "\n## Limitations of the sites\n\nThe "
+                    "rarest site sent {{results.sites.rare}}.\n", encoding="utf-8")  # fmt: skip
+    assert _run_cli(["package", str(project), "--companion"]) == 0
+    assert "98761" in _companion_of(project)
+
+    held = project / "results" / "02_sites.json"
+
+    def withhold(document: dict) -> None:
+        document["provenance"]["inputs"].append({"path": "results/02_sites.json",
+                                                 "sha256": hashlib.sha256(held.read_bytes())
+                                                 .hexdigest(), "restricted": True})  # fmt: skip
+
+    _resign(project, withhold)
+    shutil.rmtree(project / "build" / "package")
+    assert _run_cli(["package", str(project), "--companion", "--skip-checks"]) == 0
+    # Without its pictures, whose base64 could hold any five digits.
+    text = re.sub(r'data:[^"]+', "", _companion_of(project))
+    assert "98761" not in text
+    assert "The rarest site sent [withheld]." in text
+    assert 'id="file-results-02_sites.json"' not in text
+
+    # The page holds what it shows to the plan's reading of the inputs: a results file the
+    # plan withholds, held among the files by mistake, stops the page rather than show it.
+    from manuscript_guard.deposit import PackageError, plan_package
+    from manuscript_guard.deposit.companion import companion_html
+    from manuscript_guard.deposit.plan import copied
+
+    loaded, _ = load_project(project)
+    _namespace, results, _literature, _ = load_namespace(loaded)
+    plan = plan_package(loaded, results, ro_crate=True)
+    assert "results/02_sites.json" not in {entry.path for entry in plan.entries}
+    mistaken = [*plan.entries, copied(held, "results/02_sites.json", "a results file")]
+    with pytest.raises(PackageError, match="results/02_sites.json, a results file the package "
+                       "withholds"):  # fmt: skip
+        companion_html(loaded, results, mistaken, list(plan.inputs))
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_small_count_the_companion_would_show_stops_the_package(project: Path) -> None:
+    """What the page shows is what the package deposits, so the package's own small-count
+    check covers it: a count planted in a table stops the package with the page, and nothing
+    is written."""
+    _packable(project)
+    _custodian(project, 5)
+
+    def plant(document: dict) -> None:
+        document["tables"]["two_by_two"]["rows"][0][1] = "2"
+
+    _resign(project, plant)
+    assert _run_cli(["package", str(project), "--companion"]) == 1
+    assert not (project / "build" / "package").exists()
+
+
 def test_a_statement_that_loses_the_deposits_doi_fails_at_submission(project: Path) -> None:
     from manuscript_guard.gates.data_statement import check_package_doi
 

@@ -12,6 +12,7 @@ declared restricted never does. The tool uploads nothing: depositing is yours.
 manuscript-guard package --dry-run      # what would go in and what would be left out
 manuscript-guard package                # the folder and the .zip
 manuscript-guard package --ro-crate     # with the files below
+manuscript-guard package --companion    # and a page to read it by (needs pandoc)
 ```
 
 `BOUND.md` reads a Markdown manuscript and a LaTeX one alike; of a LaTeX one, the `.tex`
@@ -32,6 +33,7 @@ address, and is the same bytes from one run to the next and from one folder to a
 | `--citation` | `.zenodo.json`, the metadata a Zenodo record of the package is made from: the authors as "Family, Given" with their ORCID iDs and affiliations, the keywords, the licence, and as related works the DOIs of the data sources `design/data_sources.yaml` chose. Its description is a fixed sentence about the package. It does not carry `package.doi`, which Zenodo would read as a DOI another publisher gave the files. Refused while `authors.yaml` names no author, or one with no name, since Zenodo requires a record's creators. |
 | `--ro-crate` | `ro-crate-metadata.json`, the package described as an [RO-Crate 1.1](https://w3id.org/ro/crate/1.1) and a Process Run Crate; `RELATIONS.md`, what the crate does not state and why; `MODELS.md`, each model of the results the package holds as `manuscript-guard models` prints it, and how many models it leaves out with the results it withholds. It implies `--citation`. |
 | `--root-citation` | `CITATION.cff` and `.zenodo.json` at the project's root as well, each only where none is there, which is what GitHub and Zenodo's GitHub integration read. One already there, or made while the package was written, is never written over; the fields where it differs from the package's are named, and a write the system refuses is said. It implies `--citation`. |
+| `--companion` | `ro-crate-preview.html`, the companion page described below, and the same file as `index.html` for a site. It implies `--ro-crate`, and needs pandoc. |
 
 The package holds the citation files whatever is asked for at the root.
 
@@ -65,5 +67,48 @@ calendar, `2026-02-30`, is refused too.
 Where the data custodian restricts sending, the package is written only once they have
 signed off its files and their digests. The crate and the citation files are files of the
 package, so a package with them is signed off apart from one without:
-`PACKAGE/custodian/deposit-citation` and `PACKAGE/custodian/deposit-ro-crate`, with
-`-with-manuscript` before the suffix for the package that carries the manuscript.
+`PACKAGE/custodian/deposit-citation`, `PACKAGE/custodian/deposit-ro-crate` and
+`PACKAGE/custodian/deposit-companion`, with `-with-manuscript` before the suffix for the
+package that carries the manuscript.
+
+## The companion page
+
+`--companion` adds one page a reader opens in a browser, `ro-crate-preview.html`, the name
+RO-Crate gives a crate's page for people, and its copy `index.html`, to publish as a site.
+It is one file: no style, font, picture or script is fetched from anywhere, and its only
+script is the Schema.org description of the paper search engines read (`ScholarlyArticle`:
+the title, the authors by ORCID iD with their affiliations, the keywords, the licence, the
+package's DOI and the crate it is based on, and the version). Every part of it is made from
+what the project records, and none is written for it:
+
+1. **Overview and citation**: the title, the authors, the abstract with its values in, how to
+   cite the package, the dated events the records hold (the plan kept with the first
+   results, each results file written, each revision round, `package.date`), and the
+   digests of the results and of the package's files.
+2. **Key findings and the evidence map**: the abstract's own sentences that print a value,
+   word for word; each value, table and figure the manuscript binds, where, and the results
+   file and script it comes from with their digests; and each cited sentence whose passage a
+   person judged to support it, with where that passage is in the work. The passage's words
+   are the work's, and are not on the page.
+3. **Figures, tables and models**: each figure's SVG where its `*.render.json` still records
+   it, its caption and alternative text, and where its review stands (not who made it); the
+   bound tables; each model's card, as `manuscript-guard models` prints it.
+4. **Methods and reproducibility**: how to run each script again and what it ran with, the
+   lockfiles, the inputs and whether each is in the package, each sentence of the Methods
+   that points at a step of the code and whether either has changed since they were read
+   together, and the last run of `verify`, with the date it recorded.
+5. **Limitations**: the sections of the manuscript and the supplement titled for them, the
+   plan's Deviations as written, what the design check (G12) found, by code, and what no check
+   decides.
+6. **Co-author verification**: what each author checked with `checker`, and whether each
+   author's approval is of the manuscript as it stands.
+
+The page's own parts name nobody but the authors: a reviewer, a figure's reviewer, a
+passage's judge or a checker who is no author is said by the role, counted or dated, and a
+check's finding is given by its code and where it stands, since its words may name someone;
+`manuscript-guard check` says them. The manuscript's prose and the plan's Deviations are
+yours, and are printed as you wrote them. Of a results file the package withholds nothing is
+shown, and a value of it in the prose reads "[withheld]". The prose is written by pandoc,
+whose version MANIFEST.yaml names (`companion_written_with`): the same records and the same
+pandoc give the same bytes, from any folder, on any day. Without pandoc, `--companion` is
+refused and the package without it is not.

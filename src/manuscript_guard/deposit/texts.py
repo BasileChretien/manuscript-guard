@@ -199,6 +199,9 @@ DESCRIBED = {
     "ro-crate-metadata.json": "this package described as an RO-Crate: its files, the runs "
     "that wrote the results and the drawings of the figures, and the authors",
     "RELATIONS.md": "what ro-crate-metadata.json does not state, and why",
+    "ro-crate-preview.html": "the companion page: this package as a reader sees it, made "
+    "from its records, to open in a browser",
+    "index.html": "the companion page again, as the front page of a site",
 }
 
 
@@ -242,19 +245,23 @@ def readme(project: Project, results: Results, inputs: list[Input], entries: lis
 def added_files(results: Results, kind: str) -> tuple[str, ...]:
     """The files an option adds to the package, in the order the README lists them."""
     names: list[str] = []
-    if kind in ("citation", "ro-crate"):
+    if kind in ("citation", "ro-crate", "companion"):
         names.append(".zenodo.json")
-    if kind == "ro-crate":
+    if kind in ("ro-crate", "companion"):
         names += (["MODELS.md"] if results.models else []) + ["ro-crate-metadata.json",
                                                                "RELATIONS.md"]  # fmt: skip
+    if kind == "companion":
+        names += ["ro-crate-preview.html", "index.html"]
     return tuple(names)
 
 
 def generated_entries(project: Project, results: Results, inputs: list[Input],
                       entries: list[Entry], with_manuscript: bool, *,
                       in_git: bool, kind: str = "") -> list[Entry]:  # fmt: skip
-    """The files the package writes of its own. `kind` is "", "citation" or "ro-crate"
-    (`plan.KINDS`); the crate is made last, since it names every other file by its digest."""
+    """The files the package writes of its own. `kind` is "", "citation", "ro-crate" or
+    "companion" (`plan.KINDS`). The crate names every other file by its digest, but the
+    companion page, the crate's preview, which names none of the crate's own; the page is
+    made last, from every other file."""
     added = added_files(results, kind)
     told = readme(project, results, inputs, entries, with_manuscript, in_git, added)
     made = [
@@ -277,7 +284,7 @@ def generated_entries(project: Project, results: Results, inputs: list[Input],
         packaged = {entry.path for entry in entries}
         made.append(generated("MODELS.md", models_text(project, results, packaged) or "",
                               "the models the analysis fitted"))  # fmt: skip
-    if kind == "ro-crate":
+    if kind in ("ro-crate", "companion"):
         from .crate import CRATE, RELATIONS, crate_files
 
         every = sorted([*entries, *made], key=lambda entry: entry.path)
@@ -285,6 +292,11 @@ def generated_entries(project: Project, results: Results, inputs: list[Input],
         made.append(generated(RELATIONS, relations, "what ro-crate-metadata.json does not "
                               "state, and why"))  # fmt: skip
         made.append(generated(CRATE, crate, "the package described as an RO-Crate"))
+    if kind == "companion":
+        from .companion import companion_entries
+
+        every = sorted([*entries, *made], key=lambda entry: entry.path)
+        made += companion_entries(project, results, every, inputs)
     return made
 
 

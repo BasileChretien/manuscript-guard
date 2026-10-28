@@ -2272,7 +2272,7 @@ def cmd_package(args: argparse.Namespace) -> int:
     try:
         plan = plan_package(project, results, with_manuscript=args.with_manuscript,
                             citation=args.citation or args.root_citation,
-                            ro_crate=args.ro_crate)  # fmt: skip
+                            ro_crate=args.ro_crate, companion=args.companion)  # fmt: skip
     except PackageError as exc:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
@@ -3514,7 +3514,10 @@ def cmd_sign(args: argparse.Namespace) -> int:
     # The package's, only where a sign-off of one is asked for: they are worked out from
     # every file the package would hold.
     if args.finding.startswith("PACKAGE/"):
-        standing += package_signables(project, results)
+        notes: list[str] = []
+        standing += package_signables(project, results, notes)
+        for note in dict.fromkeys(notes):
+            print(f"manuscript-guard: {note}", file=sys.stderr)
     found = [signable for signable in standing if signable.id == args.finding]
     if not found:
         ids = ", ".join(signable.id for signable in standing) or "none"
@@ -4725,9 +4728,9 @@ def build_parser() -> argparse.ArgumentParser:
         "only when it is declared synthetic or listed in paper.yaml's package.share; a "
         "restricted one never does. Refused while G1 fails, while a fragment holds a count "
         "below the custodian's minimum, and, where the custodian restricts sending, until "
-        "they sign the package off. It uploads nothing. --citation, --ro-crate and "
-        "--root-citation add a description of the package made from the records "
-        "(docs/deposit.md).",
+        "they sign the package off. It uploads nothing. --citation, --ro-crate, "
+        "--root-citation and --companion add a description of the package made from the "
+        "records (docs/deposit.md).",
     )
     package.add_argument("path", nargs="?", type=Path, default=Path.cwd())
     package.add_argument("--dry-run", action="store_true",
@@ -4749,6 +4752,12 @@ def build_parser() -> argparse.ArgumentParser:
                          help="also write CITATION.cff and .zenodo.json at the project's root, "
                          "each only where none is there; one there is never written over. "
                          "Implies --citation")  # fmt: skip
+    package.add_argument("--companion", action="store_true",
+                         help="add the companion page, ro-crate-preview.html, and its copy "
+                         "index.html: one self-contained page of the paper's findings, the "
+                         "evidence for each, its figures, methods, limitations and the "
+                         "co-authors' checking, made from the records with pandoc; implies "
+                         "--ro-crate")  # fmt: skip
     package.set_defaults(func=cmd_package)
 
     journal = sub.add_parser(

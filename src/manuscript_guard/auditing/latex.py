@@ -78,6 +78,18 @@ def is_entry(path: Path) -> bool:
         return False
 
 
+def unreadable_said(path: Path) -> str | None:
+    """Why a `.tex` found in a folder cannot be read, or None where it can: what the report
+    says of it, rather than that no entry inputs it or that it has no `\\documentclass`."""
+    from manuscript_guard.audit import UnreadableText, read_text
+
+    try:
+        read_text(path)
+    except (OSError, UnreadableText) as exc:
+        return f"{path.as_posix()} could not be read, so it was not audited: {exc}"
+    return None
+
+
 def read_latex(entries: list[Path], found: list[Path] = ()) -> LatexRead:
     """Each entry's tree, read; `found` the other `.tex` files a folder given held, which are
     passed over where no entry inputs them."""
@@ -135,6 +147,10 @@ def read_latex(entries: list[Path], found: list[Path] = ()) -> LatexRead:
                 f"{path.as_posix()}: a class or a package the paper loads inputs it, so it is "
                 "theirs and not the paper's text, and was not read"
             )
+        elif (said := unreadable_said(path)) is not None:
+            # In an entry's folder it is named already, as what could not be read there.
+            if not any(folder in path.parents for folder in folders):
+                read.passed_over.append(said)
         else:
             read.passed_over.append(
                 f"{path.as_posix()}: no entry inputs it, so it was not read; name it, or "

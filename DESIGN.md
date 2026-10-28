@@ -7655,8 +7655,9 @@ text, and an empty paragraph of a numbered list takes its number, as Word 16 pri
 (checked over COM). Word 16 also showed a numbering with a `startOverride` starting again at
 1 after another of the same abstract numbering, and a third with none counting on from the
 first, which is how `word_numbering.py` keys a count. What is compared above the list is the
-count alone: a paragraph with words, numbered in the list's count, makes the list not
-numbered by place; one in another count, or an empty one, is not looked at.
+count alone: a paragraph with words outside a table, numbered in the list's count, makes
+the list not numbered by place; one in another count, an empty one, or one in a table's cell
+is not looked at.
 
 ## A paper written in Word is brought in through pandoc's tree
 
@@ -17668,11 +17669,14 @@ What papers converted from Word showed (see "What papers converted from Word sho
     level), a numbering linked to a numbering style, a level not resolved for sure, or one in
     another format or from another start, is taken for none, and such a list is counted and
     not held to the text's numbers. Only the count is compared: a lower level above the list
-    that restarts it is not looked at. A citation in superscript, `^3^`, or in parentheses, `(3)`, is not
-    read; a bracketed number that is no citation, an equation's `[2]`, is read as one. Two
-    lists each numbered from 1 are read as one. A Markdown entry wrapped over lines with no
-    blank line between entries is one entry only where each starts with its number. A list
-    found by its entries' shape alone, with no heading, is not counted.
+    that restarts it is not looked at. A citation in superscript, `^3^`, or in parentheses,
+    `(3)`, is not read; a bracketed number that is no citation, an equation's `[2]`, is read
+    as one. Two lists each numbered from 1 are read as one. A Markdown entry wrapped over
+    lines with no blank line between entries is one entry only where each starts with its
+    number. A list found by its entries' shape alone, with no heading, is not counted.
+  - A paragraph in a table's cell is given no count, though Word numbers it: one numbered in
+    the list's count above the list does not stop the list being numbered by place, and the
+    entries after it are numbered as though it were not there (fix-only round of #463).
   - `--lookup` asks about the first DOI and the first PMID of an entry, and nothing about one
     with neither: `lookup`'s search by title is not run. A record kept with
     `--lookup-cache` is used however old it is, until the identifiers it was asked for

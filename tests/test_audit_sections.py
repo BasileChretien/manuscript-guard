@@ -829,3 +829,32 @@ def test_the_docs_say_when_the_count_line_appears() -> None:
     said = " ".join(docs.read_text(encoding="utf-8").split())
     assert "where no registry reported anything of any entry" in said
     assert "an entry answered from the records kept counts as asked" in said
+
+
+# ------------------------------------------------------------ the fix-only round of #463
+
+
+def test_an_escaped_interval_after_its_value_is_no_citation(tmp_path: Path) -> None:
+    """Fix-only round of #463: an escaped `!![55-72!!]` was read as a citation once escaped
+    citations were, and a two-entry list reported it beyond itself."""
+    paper = tmp_path / "paper.md"
+    paper.write_text(f"# Results\n\nMedian 64 {BS}[55-72{BS}] days {BS}[1{BS}], {BS}[2{BS}].\n\n"
+                     "# References\n\n1. A. J Ex. 2019;1:1-2.\n2. B. J Ex. 2019;1:1-2.\n",
+                     encoding="utf-8")  # fmt: skip
+    [census] = audit([paper], None).references
+    assert (census.markers, census.problems) == (2, [])
+
+
+@pytest.mark.parametrize("tag", ["</span>", "<br>", "<br>."])
+def test_a_tag_after_a_doi_is_none_of_it(tag: str) -> None:
+    """Fix-only round of #463: a `<` kept in a DOI read a tag after it into the DOI."""
+    assert references_module.identifiers(f"doi:10.1000/xyz{tag} more") == (("10.1000/xyz",), ())
+
+
+def test_a_folder_with_only_an_unreadable_tex_says_it_could_not_be_read(
+    tmp_path: Path, capsys
+) -> None:
+    (tmp_path / "old.tex").write_bytes("Of 3".encode("utf-16-le"))
+    assert main(["audit", str(tmp_path)]) == 2
+    err = capsys.readouterr().err
+    assert "old.tex could not be read" in err and "documentclass" not in err

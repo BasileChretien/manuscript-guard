@@ -11669,6 +11669,25 @@ def test_an_author_s_own_rule_command_leaves_the_paper_read(
 _SICI = "10.1002/(SICI)1097-0258(19980430)17:8<857::AID-SIM777>3.0.CO;2-E"
 
 
+@pytest.mark.parametrize(("cited", "listed"), [("2", []), ("3", ["citation-beyond-list"])])
+def test_an_audited_escaped_interval_is_no_citation(
+    tmp_path: Path, cited: str, listed: list[str]
+) -> None:
+    """Fix-only round of #463: pandoc escapes an interval's brackets as it escapes a
+    citation's, `64 \\[55-72\\]`, and once escaped citations were read, the interval was one,
+    beyond a list of two. A citation beyond it is still reported."""
+    from manuscript_guard.audit import audit
+
+    slash = chr(92)
+    paper = tmp_path / "paper.md"
+    paper.write_text(f"# Results\n\nMedian 64 {slash}[55-72{slash}] days {slash}[1{slash}], "
+                     f"{slash}[{cited}{slash}].\n\n# References\n\n1. A. J Ex. 2019;1:1-2.\n"
+                     "2. B. J Ex. 2019;1:1-2.\n", encoding="utf-8")  # fmt: skip
+    [census] = audit([paper], None).references
+    never = ["entry-never-cited"] if cited == "3" else []
+    assert [p.code for p in census.problems] == listed + never
+
+
 @pytest.mark.parametrize(("written", "listed"), [(_SICI, []),
                                                  ("10.1002/sim.857", ["doi-unregistered"])])
 def test_an_audited_sici_doi_is_looked_up_whole(

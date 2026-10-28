@@ -2063,6 +2063,15 @@ def cmd_hook(args: argparse.Namespace) -> int:
     return dispatch(args.event)
 
 
+def _no_document(tex: Path) -> str:
+    """Why a `.tex` found in a folder starts no paper: it could not be read, or it has no
+    `\\documentclass` (fix-only round of #463)."""
+    from manuscript_guard.auditing.latex import unreadable_said
+
+    return unreadable_said(tex) or (f"{tex.as_posix()} has no \\documentclass, so it starts no "
+                               "document")  # fmt: skip
+
+
 def _audit_refused(args: argparse.Namespace, said: str, *details: str) -> int:
     """An audit that did not happen, exit 2: why, on stderr, and under `--json` on stdout as
     well, as an object whose `ok` is false, so that a script reading stdout is told rather
@@ -2145,8 +2154,7 @@ def cmd_audit(args: argparse.Namespace) -> int:
         return _audit_refused(
             args, "nothing to audit: no .docx, .md or .tex that starts a document found in "
             "what you gave me", *(f"  {doc_passed_over(doc)}" for doc in docs),
-            *(f"  {tex.as_posix()} has no \\documentclass, so it starts no document"
-              for tex in found_tex),
+            *(f"  {_no_document(tex)}" for tex in found_tex),
         )  # fmt: skip
 
     report = audit(papers, args.against, figures=figures,

@@ -783,15 +783,16 @@ _YEAR = re.compile(r"(?:19|20)\d{2}[a-z]?")
 #: read first and as such, and its bounds may be grouped too: read as a decimal comma, `1,204
 #: [1-3]` would enclose 1.204. The bounds are otherwise whole numbers of a citation's size,
 #: which are what the marker rule takes: a bound with a decimal comma would make a citation
-#: of `[4,12-15]` an interval from 4.12.
+#: of `[4,12-15]` an interval from 4.12. Its brackets may be escaped, `64 \\[55-72\\]`, as
+#: pandoc writes them, since the marker rule reads a citation so escaped (round 2 of #463).
 _GROUPED = r"[1-9]\d{0,2}(?:,\d{3})+"
 _AFTER_A_VALUE = re.compile(
     r"(?<![\w.,\[])"
     rf"(?:(?P<grouped>{_GROUPED})\s*"
-    r"\[\s*(?P<grouped_low>\d{1,3}(?:,\d{3})*)\s*(?:[,;]|[-–—])\s*"
-    r"(?P<grouped_high>\d{1,3}(?:,\d{3})*)\s*\]"
+    r"\\?\[\s*(?P<grouped_low>\d{1,3}(?:,\d{3})*)\s*(?:[,;]|[-–—])\s*"
+    r"(?P<grouped_high>\d{1,3}(?:,\d{3})*)\s*\\?\]"
     r"|(?P<value>\d+(?:[.,]\d+)?)(?:\s?%)?\s*"
-    r"\[\s*(?P<low>\d{1,3})\s*(?:[,;]|[-–—])\s*(?P<high>\d{1,3})\s*\])"
+    r"\\?\[\s*(?P<low>\d{1,3})\s*(?:[,;]|[-–—])\s*(?P<high>\d{1,3})\s*\\?\])"
 )
 
 

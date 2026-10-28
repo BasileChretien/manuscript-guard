@@ -95,9 +95,10 @@ class DocxText:
     tables: tuple[Table, ...] = ()
     #: Each line of `body` outside a table whose paragraph Word numbers, 1-based, with the
     #: count it is in, whether that count prints 1, 2, 3 from 1 (`word_numbering`), and its
-    #: place in the count, every paragraph of it counted, an empty one too, which Word
-    #: numbers (Word 16, over COM): what says a reference list is numbered by Word rather
-    #: than typed, and what number Word prints for each entry.
+    #: place in the count, every paragraph of it outside a table counted, an empty one too,
+    #: which Word numbers (Word 16, over COM), and none in a table's cell (DESIGN.md, "Known
+    #: gaps"): what says a reference list is numbered by Word rather than typed, and what
+    #: number Word prints for each entry.
     numbering: tuple[tuple[int, str, bool, int], ...] = ()
 
     @property

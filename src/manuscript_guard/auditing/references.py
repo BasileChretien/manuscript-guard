@@ -57,9 +57,14 @@ _PART = re.compile(r"(\d{1,3})(?:\s*[-\u2013\u2014]\s*(\d{1,3}))?")
 #: The widest range read as a run of citations, `[3-12]`: a wider one is not expanded.
 MAX_RANGE = 100
 #: A DOI, which ends at a space, a quote or a brace, and before `](`, where a Markdown link's
-#: text ends and its target starts. Angle brackets stand in it: a SICI DOI holds them,
-#: `10.1002/(SICI)1097-0258(19980430)17:8<857::AID-SIM777>3.0.CO;2-E` (round 2 of #463).
-_DOI = re.compile(r"\b10\.\d{4,9}(?:\.\d+)*/(?:(?!\]\()[^\s\"{}])+")
+#: text ends and its target starts. A `<` stands in it only where a `>` inside it closes it,
+#: with more of the DOI after, and no `/` after the `<`: a SICI DOI holds such a pair,
+#: `10.1002/(SICI)1097-0258(19980430)17:8<857::AID-SIM777>3.0.CO;2-E` (round 2 of #463),
+#: and a tag after a DOI, `10.1000/xyz</span>` or `10.1000/xyz<br>`, is none of it.
+_DOI = re.compile(
+    r"\b10\.\d{4,9}(?:\.\d+)*/"
+    r"(?:(?!\]\()(?:[^\s\"{}<]|<(?!/)[^\s\"{}<>]*>(?=[^\s\"{}<.,;:'*_`)\]>])))+"
+)
 #: What a DOI written in a sentence ends with that is not the DOI's: a stop, an emphasis or a
 #: code mark, `*doi:10.1000/xyz*`, and a closing bracket the DOI did not open, the `>` of
 #: `<https://doi.org/...>` among them.

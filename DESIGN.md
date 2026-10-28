@@ -16757,6 +16757,30 @@ What papers converted from Word showed (see "What papers converted from Word sho
 - **An e-mail address is one whose domain ends in letters.** "name@host" with no dot, or an
   address at a bare IP number, is read as a number.
 
+- **Left by round 2 of #452 (2026-10-28), to fix later.** Each is small, and none is a
+  regression against main.
+  - The printed view folds an accent beside a letter command from the unfolded mask, so
+    `\L{}\'od\'z` loses its Ł there; the words view reads "Łódź".
+  - The second backslash of `\\` is read as the start of an accent: `a\\`Text'` prints
+    "T̀ext".
+  - Inside `tabbing`, `\=`, `\'` and `\`` are tab commands, read as accents.
+  - A heading's title is not folded: `\section{Caf\'e}` prints "Cafe" in the printed view.
+  - An accent at a line's end does not take the next line's letter, as TeX does (as on main).
+  - A `\par` inside `\verb` or a group ends the paragraph for the pairing of quotation marks.
+  - `classify._names_covering`'s docstring says "PharmD~2~" is no term with D2 declared; it
+    is one, as DESIGN says.
+  - Declaring R2 makes "HR~2~" and "OR~2~" terms (as on main).
+  - G5 reads the rows of a Markdown simple or multiline table as one sentence, so a row that
+    names an undeclared guideline can be joined to another's claim.
+  - G8r takes "(Spring and Summer 2019)" for a citation, and one season name in a group of
+    citations leaves the whole group as words.
+  - `build` sets aside `supplementary.docx`'s staleness when the supplement's folder holds any
+    file, though it builds one only from Markdown there.
+  - A `docx-unreadable` from the live-field check says the journal's review is blind.
+  - With `--skip-checks`, the count of failing checks `build` prints is one short of `check`'s
+    when `manuscript.docx` is stale.
+  - ci.yml's comment on setup-pandoc names a step that is gone.
+
 Closed since, and why each mattered (an open gap goes above this line):
 
 - **`document-stale` blocked the build that would clear it.** At `internal-review` the

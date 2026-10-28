@@ -104,6 +104,19 @@ def test_the_readme_lists_the_commands_the_tool_has() -> None:
     assert set(first_cells(section("Commands"), "`([a-z-]+)`")) == set(choices) - {"hook"}
 
 
+def test_the_readme_groups_the_commands_as_the_help_does() -> None:
+    """One `### ` heading per group of `manuscript-guard --help`, in its order, each over a
+    table of that group's commands in the order the help lists them."""
+    from manuscript_guard.cli import COMMAND_GROUPS
+
+    commands = section("Commands")
+    headings = re.findall(r"^### (.+)$", commands, re.MULTILINE)
+    assert headings == [heading for heading, _ in COMMAND_GROUPS]
+    tables = re.split(r"^### .+$", commands, flags=re.MULTILINE)[1:]
+    for (heading, names), table in zip(COMMAND_GROUPS, tables, strict=True):
+        assert first_cells(table, "`([a-z-]+)`") == list(names), heading
+
+
 def test_the_readme_lists_the_gates_the_tool_has() -> None:
     declared = set()
     for module in pkgutil.iter_modules(manuscript_guard.gates.__path__):

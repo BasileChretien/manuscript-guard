@@ -6851,6 +6851,25 @@ The effect is that `manuscript-guard init` followed by a first analysis script n
 zero failures at `design` and `analysis`, with the outstanding work listed as not yet due,
 and the same items fail from `drafting` onwards.
 
+## The commands are listed in six groups
+
+By October 2026 the tool had 37 commands an author could run, and `manuscript-guard --help`
+printed them in the order they were added to the parser, `stages` beside `palettes` and
+`sync-bib` after `build`. Someone looking for the command that answers a co-author had to
+read the whole list. The top-level help now lists them under six headings, in
+`cli.COMMAND_GROUPS`: Setup & Guide, Checking & Audit, Analysis & Data, Literature,
+Co-Authors & Review, and Build, Release & Communicate. Each command keeps the one-line help it
+had. `hook` is in no group and is not listed: an agent tool calls it and an author never does.
+
+Only what the top-level help prints changed, and with it argparse's own usage line and
+messages, which name the command `<command>` where they listed every name. The commands,
+their options and each command's own `--help` are as they were, and `tests/test_cli.py`
+parses 218 command lines recorded from the parser before the change, every spelling of every
+option and every value of a fixed list among them, and compares what they give. A command added later goes into
+one of the groups, or the test that every command but `hook` is in exactly one fails. The
+README's "Commands" table is split under the same headings in the same order, and
+`tests/test_docs.py` holds each part to its group.
+
 ## `check` says what it rests on, dimension by dimension
 
 A run with no failure read as "the paper is right", and it says much less. So `check` ends

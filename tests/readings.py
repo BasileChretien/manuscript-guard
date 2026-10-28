@@ -533,6 +533,37 @@ def _boxes() -> Reading:
     return boxes
 
 
+# ----------------------------------------------------------------- what is said outside it
+
+
+@reading("communicate anchors")
+def _communicate_anchors() -> Reading:
+    """Each sentence of a communication text that claims or is anchored, as `communicate
+    check` reads it (`communicate/texts.py`): its line, whether it claims, and the
+    statements its anchors name."""
+    from manuscript_guard.communicate import texts
+
+    def anchors(given: dict[str, Any]) -> list[list[Any]]:
+        read = texts.read(given["text"])
+        return [[one.line, one.claims, list(one.anchors)] for one in read.sentences
+                if one.claims or one.anchors]  # fmt: skip
+
+    return anchors
+
+
+@reading("communicate claims")
+def _communicate_claims() -> Reading:
+    """How strongly each said text claims against its source, read whole
+    (`claims.compare_pair`): the code `moved` would give, or None."""
+    from manuscript_guard.claims import compare_pair
+
+    def compared(given: dict[str, Any]) -> list[str | None]:
+        found = [compare_pair(source, said) for source, said in given["pairs"]]
+        return [None if one is None else one.code for one in found]
+
+    return compared
+
+
 # ----------------------------------------------------------------------------- numbers
 
 

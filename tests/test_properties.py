@@ -75,8 +75,10 @@ from generated import (
     bindings,
     bold_planted,
     claim_edits,
+    claim_pairs,
     collection_plans,
     commented,
+    communication_texts,
     count_cells,
     credited_plans,
     decision_records,
@@ -7578,6 +7580,33 @@ def test_a_claim_made_stronger_weaker_or_turned_round_is_told_where_it_stands(
     assert report.ok
 
 
+# ------------------------------------------------- a communication's anchors and its claims
+
+
+@holds(40, communication_texts())
+def test_each_claiming_sentence_of_a_communication_is_read_with_the_statements_it_names(
+    drawn: tuple[str, list[list[Any]]],
+) -> None:
+    """A sentence claims where it holds a word of the ladder, a number or a binding, and not
+    for a look-alike; an anchor is a link with no text to `#brief:` or a comment that is one
+    whole, in the sentence, after its stop, opening its paragraph or alone after it, and
+    not one in code, in another comment or in the front matter (`communicate/texts.py`)."""
+    text, expected = drawn
+    assert READINGS["communicate anchors"]()({"text": text}) == expected, text
+
+
+@holds(40, claim_pairs())
+def test_a_restatement_is_held_to_how_strongly_its_source_claims_read_whole(
+    drawn: tuple[list[list[str]], list[str | None]],
+) -> None:
+    """A hedge or a limit dropped, a word moved up the ladder, a negation gone or new, and
+    a move both ways are told, each as `moved` tells an edit; a synonym, a look-alike, and
+    the same words split, joined or reordered across sentences are not, since the two are
+    read whole (`claims.compare_pair`)."""
+    pairs, expected = drawn
+    assert READINGS["communicate claims"]()({"pairs": pairs}) == expected, pairs
+
+
 # ------------------------------------------------------------------- the marked-up copy
 
 #: What shows a change in a line of `readings.shown`.
@@ -12528,6 +12557,61 @@ def _a_key_credits_the_keys_it_begins(patch: pytest.MonkeyPatch) -> None:
     ])  # fmt: skip
 
 
+def _a_number_is_no_claim(patch: pytest.MonkeyPatch) -> None:
+    # Only a word of the ladder or a binding makes a sentence claim.
+    from manuscript_guard.communicate import texts as texts_module
+
+    patch.setattr(texts_module, "find_atoms", lambda text, masked: [])
+
+
+def _an_anchor_in_code_is_read(patch: pytest.MonkeyPatch) -> None:
+    # Inline code hides no anchor.
+    from manuscript_guard.communicate import texts as texts_module
+
+    patch.setattr(texts_module, "code_spans", lambda masked: [])
+
+
+def _a_comment_anchors_one_statement(patch: pytest.MonkeyPatch) -> None:
+    # A comment that names two statements is no anchor.
+    from manuscript_guard.communicate import texts as texts_module
+
+    patch.setattr(texts_module, "COMMENT", re.compile(
+        r"\A<!--[ \t\n]*brief:[ \t]*(?P<ids>" + texts_module.ID + r")[ \t\n]*-->\Z"))  # fmt: skip
+
+
+def _an_anchor_belongs_to_the_sentence_it_follows(patch: pytest.MonkeyPatch) -> None:
+    # Read from a sentence's first character, an anchor that opens a paragraph is taken for
+    # the sentence before it.
+    from manuscript_guard.communicate import texts as texts_module
+
+    def owner(spans, anchor, blanked):
+        before = None
+        for index, (_piece, first, end) in enumerate(spans):
+            if first <= anchor.start < end:
+                return index
+            if end <= anchor.start:
+                before = index
+        return before
+
+    patch.setattr(texts_module, "_owner", owner)
+
+
+def _a_restatement_is_read_by_its_first_sentence(patch: pytest.MonkeyPatch) -> None:
+    # Two texts compared sentence by sentence, the first of each: a hedge dropped from the
+    # second is not seen, and the words of a sentence split in two are lost.
+    whole = claims_module.compare_pair
+
+    def first(text: str) -> str:
+        return text.split(". ", 1)[0] + "."
+
+    patch.setattr(claims_module, "compare_pair",
+                  lambda source, said: whole(first(source), first(said)))  # fmt: skip
+
+
+def _a_negation_is_not_counted(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(claims_module, "COUNTED", (claims_module.HEDGE, claims_module.LIMIT))
+
+
 def _a_box_s_comment_is_read(patch: pytest.MonkeyPatch) -> None:
     # A box read as typed: an item in a comment or a listing, and a box in either, counted.
     patch.setattr(boxes_module, "scannable", lambda text: text)
@@ -12652,6 +12736,30 @@ BROKEN = {
     "any emphasis opening with the word is the keywords label": (
         _any_emphasis_opening_with_the_word_is_the_label,
         test_the_abstract_ends_at_its_keywords_label_and_not_at_a_sentence_about_them,
+    ),
+    "a number is no claim in a communication": (
+        _a_number_is_no_claim,
+        test_each_claiming_sentence_of_a_communication_is_read_with_the_statements_it_names,
+    ),
+    "an anchor in code is read": (
+        _an_anchor_in_code_is_read,
+        test_each_claiming_sentence_of_a_communication_is_read_with_the_statements_it_names,
+    ),
+    "a comment anchors one statement": (
+        _a_comment_anchors_one_statement,
+        test_each_claiming_sentence_of_a_communication_is_read_with_the_statements_it_names,
+    ),
+    "an anchor opening a paragraph is the sentence's before": (
+        _an_anchor_belongs_to_the_sentence_it_follows,
+        test_each_claiming_sentence_of_a_communication_is_read_with_the_statements_it_names,
+    ),
+    "a restatement is read by its first sentence": (
+        _a_restatement_is_read_by_its_first_sentence,
+        test_a_restatement_is_held_to_how_strongly_its_source_claims_read_whole,
+    ),
+    "a negation is not counted": (
+        _a_negation_is_not_counted,
+        test_a_restatement_is_held_to_how_strongly_its_source_claims_read_whole,
     ),
     "a box's comment is read": (
         _a_box_s_comment_is_read,

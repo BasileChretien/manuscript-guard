@@ -136,6 +136,53 @@
         }
       }
     },
+    "communication": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The `communicate` commands: the brief, the graphical abstract and the texts under communication/, each held to the paper by `communicate check`. Off unless `enabled` is true; `check` never reads communication/.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "true turns the communicate commands on for this paper."
+        },
+        "channels": {
+          "type": "array",
+          "uniqueItems": true,
+          "description": "The channels the paper is shared on, as a text's front matter names them: bluesky, mastodon, linkedin, press-release, plain-language-summary, pitch, newsletter, blog.",
+          "items": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"}
+        },
+        "limits": {
+          "type": "object",
+          "description": "The most a post may hold on a channel, where it is not what src/manuscript_guard/data/channels.yaml records: an instance of Mastodon that takes 1000 characters, `{mastodon: 1000}`.",
+          "propertyNames": {"pattern": "^[a-z][a-z0-9-]*$"},
+          "additionalProperties": {"type": "integer", "minimum": 1}
+        }
+      }
+    },
+    "publication": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Where the paper stands with the journal, which `communicate check` holds a communication text to: a text that says the paper is published, or links its DOI, before it is online fails (`comm-status-ahead`).",
+      "properties": {
+        "status": {
+          "enum": ["submitted", "accepted", "published-online", "in-issue"],
+          "description": "submitted, accepted, published-online or in-issue."
+        },
+        "accepted_on": {"type": "string", "format": "date", "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
+        "published_on": {"type": "string", "format": "date", "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
+        "doi": {
+          "type": "string",
+          "pattern": "^10\\.\\d{4,9}/\\S+$",
+          "description": "The paper's DOI, without the resolver, once the publisher gives it."
+        },
+        "url": {"type": "string", "pattern": "^https?://\\S+$"},
+        "embargo_until": {
+          "type": "string",
+          "minLength": 1,
+          "description": "When the journal's embargo lifts, a date or a date and time, as the journal gives it."
+        }
+      }
+    },
     "stage": {
       "enum": ["design", "analysis", "drafting", "internal-review", "submission"],
       "description": "How far along the work is. Every gate runs at every stage; the stage decides which findings fail rather than being reported as not yet due. A checker that demands everything from the first day is a checker that gets switched off on the second. Defaults to drafting.",

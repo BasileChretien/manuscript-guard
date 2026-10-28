@@ -46,6 +46,23 @@ DESCRIPTIONS = {
 
 # When each finding starts to fail. Everything not listed fails from the beginning.
 BINDS_AT = {
+    # -- the communicate group ----------------------------------------------------
+    # `communicate check` reads no stage: a post, a summary or a graphical abstract is held to
+    # the paper whenever it is written, since it is read outside the team the day it is
+    # shared. Each code is listed where an unlisted one binds, so that the decision is
+    # written down (`communicate/checking.py`); its warnings stay warnings.
+    **dict.fromkeys(
+        (
+            "brief-invalid", "brief-missing", "brief-quote-not-in-source",
+            "comm-binding-unknown", "comm-not-reported", "comm-number-unbound",
+            "comm-primary-missing", "comm-claim-unanchored", "comm-anchor-unknown",
+            "comm-fact-not-in-source", "comm-claim-stronger", "comm-claim-moved",
+            "comm-limitation-dropped", "comm-status-ahead", "comm-doi-malformed",
+            "comm-front-matter", "comm-over-limit", "comm-ga-stale",
+            "comm-ga-text-not-in-statement", "comm-ga-unreadable",
+        ),
+        DESIGN,
+    ),  # fmt: skip
     # -- analysis ---------------------------------------------------------------
     # Results must be trustworthy as soon as they exist. Their *existence* is a drafting
     # requirement, not an analysis one: results appear at the end of the analysis stage,

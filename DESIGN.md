@@ -6152,6 +6152,37 @@ nothing is refused here; the author decided (2026-10-28) that those commands wil
 a link to the DOI and upload nothing. The policy is the journal's own page, never Sherpa
 Romeo, which needs a key, and nothing in the toolkit is paid or keyed.
 
+## What is said of the paper outside it
+
+A post, a press release, a plain-language summary and a graphical abstract each restate the
+paper for readers who will not read it, and none of them passes through the gates. The
+`communicate` group holds them to the paper (`communicate/`; the page is
+[docs/communicate.md](docs/communicate.md)). It is opt-in, `communication.enabled` in
+paper.yaml, and `check` never reads `communication/`: a draft post must not fail the paper,
+and the paper's gates must not depend on a folder an author may never make.
+
+Everything a text says comes through the **brief**, `communication/brief.yaml`: the paper's
+own sentences, each quoted from the file it names, which the check holds it to. A text names
+the statement a claiming sentence restates by an anchor that prints nothing, and is held to
+it: its facts (`reworded.facts`, the bindings, citations and numbers) are among the
+statement's, and its claim is no stronger (`claims.compare_pair`, which reads the two whole,
+since a paraphrase shares no sentence with its source to be lined up by). The author decided
+on 2026-10-28 that a stronger claim fails, with a per-sentence `allow:` and its reason in the
+text's front matter (decision 1), that only a claiming sentence needs an anchor (decision 2),
+that a graphical abstract with no journal rule is drawn at a default size with a note
+(decision 4), and that it is one `communicate` group (decision 5). The scaffold infers nothing
+a person should decide: every finding is written secondary, and the author marks the primary
+one.
+
+The graphical abstract is drawn from the brief with `xml.etree`, the same bytes from the same
+inputs, each line naming its statement and its values, so that the check can hold each line
+to its statement and each value to the results now (`comm-ga-stale`), which a picture drawn
+by hand cannot be held to. It is held to the journal's `graphical_abstract` rules by the
+checks G3 and G4 hold a figure to, called on its path (`figure_files.check_file`,
+`figure_colours.colour_findings`, `figure_alt.alt_text_findings`), not copied. Nothing here
+sends anything: posting and the platforms' interfaces are a later step, and so are the
+sharing policy and the DOI's registration.
+
 ## An earlier output of the same data is held to this paper
 
 Several papers come out of one database extraction or one cohort: a conference abstract, a
@@ -17945,8 +17976,8 @@ What papers converted from Word showed (see "What papers converted from Word sho
     in an item is counted as an item of the box.
   - `file: separate` is recorded and not acted on: the build still prints the box in the
     manuscript, and the submission pack writes no file of it.
-  - The graphical abstract's rules and the sharing policy are recorded and not read; the
-    `communicate` commands are to read them.
+  - The sharing policy is recorded and not read; a later step of the `communicate` commands
+    is to read it. The graphical abstract's rules are read by `communicate check` (below).
 
 - **What `audit` reads of a LaTeX paper, its words and its references (Task 3, PR 1,
   2026-10-28).** Each limit, as built:
@@ -18110,6 +18141,46 @@ What papers converted from Word showed (see "What papers converted from Word sho
   at submission the status line names it at every session start, after the last round as
   before the first. It is `next`'s rule, which offers the optional steps without asking what
   is already done, and not the status line's.
+
+- **What `communicate check` reads of a text, the brief and the graphical abstract (Task 5,
+  PR 2, 2026-10-29).** Each limit, as built:
+  - The claim words are English, and a list (`data/claim_strength.yaml`): "increased" made
+    "decreased" moves no rung of the ladder and is told nothing; a sentence with no word of
+    the ladder, no number and no binding claims nothing, and needs no anchor however much it
+    says.
+  - An anchor proves where a sentence came from, not that it is faithful: a sentence anchored
+    to the right statement that says something else in other words passes, where its facts
+    and its claim words are the statement's.
+  - A claim is compared with its statements read whole, as one stretch: a statement that
+    hedges one sentence and asserts another lends its hedge to a text that drops it from the
+    one that had it.
+  - A claim that moved both ways, a hedge new and a word up the ladder, fails as
+    `comm-claim-moved`, as one made stronger does, and the front matter's `allow:` lets it
+    stand. Whether it should warn instead is open: it is the author's to decide.
+  - A post's length is counted as printed, each binding its display and each anchor nothing;
+    graphemes are counted close to Unicode's clusters (a combining mark, a variation
+    selector, a skin tone and what a zero-width joiner joins count with what they follow),
+    and a flag or another sequence Unicode joins otherwise is miscounted. Mastodon counts a
+    link as 23 characters, and nothing else of its rules is followed. The limits of
+    `data/channels.yaml` were recorded from memory of the platforms' pages on 2026-10-29, not
+    read again from them: a limit that is wrong is put right there, with the page.
+  - `comm-status-ahead` reads "published" in English, not after "be"; a text that says the
+    paper is "out" or "live", or "has been accepted" while it is only submitted, passes.
+  - Only an SVG's text is held to the brief, line by line. A PNG's words are not read at all,
+    and a PDF's only for unbound numbers. A line of an SVG drawn by hand, with no
+    `data-statement`, is a label: its numbers are held to the results and a claim in it
+    fails, and nothing else is read of it.
+  - The graphical abstract's size, aspect, words and labels against the journal's rules warn,
+    as G4's figure rules do; at no stage do they fail. A label is a statement drawn, or a
+    text drawn alone, which may not be what a journal calls one.
+  - The brief's scaffold reads the Abstract's parts by their headings or by a label that
+    opens a sentence ("**Results.**", "Conclusions:"); an abstract that names its parts
+    otherwise has its findings read from every sentence of it that binds a value. A LaTeX
+    manuscript's statements are quoted from its printed view, which is what their quotes are
+    held to, not the `.tex` as typed.
+  - A value the paper reports is one a file of it binds, one declared the same quantity, or a
+    display a table or a figure it places prints: a display that happens to be printed there
+    for another quantity passes, as in G8.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

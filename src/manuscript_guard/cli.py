@@ -2757,6 +2757,44 @@ def cmd_reworded(args: argparse.Namespace) -> int:
     return 0 if report.ok else 1
 
 
+def cmd_communicate(args: argparse.Namespace) -> int:
+    """The `communicate` group: `brief`, `graphical-abstract` and `check`. Each refuses, and
+    exits 2, while paper.yaml leaves it off (`communication.enabled`)."""
+    from manuscript_guard.communicate import Refused, checking, commands
+
+    for flag, verbs in (("force", ("brief",)), ("template", ("graphical-abstract",)),
+                        ("json", ("check",)), ("only", ("check",))):  # fmt: skip
+        if getattr(args, flag) and args.verb not in verbs:
+            print(f"manuscript-guard: --{flag} belongs to `communicate {verbs[0]}`",
+                  file=sys.stderr)  # fmt: skip
+            return 2
+    project, _ = load_project(args.path)
+    try:
+        if args.verb == "brief":
+            path = commands.write_brief(project, force=args.force)
+            print(f"wrote {path}: mark the paper's primary finding `primary: true` in it")
+            return 0
+        if args.verb == "graphical-abstract":
+            drawn = commands.draw(project, args.template)
+            for path in drawn.written:
+                print(f"wrote {path}")
+            print(f"template {drawn.template} ({drawn.why}); {drawn.size.width} by "
+                  f"{drawn.size.height} pixels, {drawn.size.why}")  # fmt: skip
+            if drawn.size.default:
+                print("note: the journal's profile gives no size for a graphical abstract, "
+                      "so the default was drawn")  # fmt: skip
+            return 0
+        report = checking.check(project, only=args.only)
+    except Refused as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(checking.as_json(report, project.root))
+    else:
+        print(checking.render(report, project.root), end="")
+    return 0 if report.ok else 1
+
+
 def cmd_proof(args: argparse.Namespace) -> int:
     """Compare the publisher's proof with the document sent, and list the corrections.
 
@@ -5140,7 +5178,7 @@ COMMAND_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Literature", ("lookup", "search", "sync-bib", "sync-sources", "passages")),
     ("Co-Authors & Review", ("review", "checker", "import", "respond", "approve", "sign")),
     ("Build, Release & Communicate",
-     ("render", "build", "submit", "package", "deposit", "proof")),  # fmt: skip
+     ("render", "build", "submit", "package", "deposit", "proof", "communicate")),  # fmt: skip
 )
 HIDDEN_COMMANDS = frozenset({"hook"})
 
@@ -5707,6 +5745,36 @@ def build_parser() -> argparse.ArgumentParser:
     )  # fmt: skip
     proof.add_argument("--json", action="store_true", help="the report as JSON")
     proof.set_defaults(func=cmd_proof)
+
+    from manuscript_guard.communicate.templates import TEMPLATES
+
+    communicate = sub.add_parser(
+        "communicate",
+        help="write the brief and the graphical abstract, and hold what is said of the paper "
+        "outside it to the paper",
+        description="Opt-in: `communication: {enabled: true}` in paper.yaml. `brief` writes "
+        "communication/brief.yaml, the paper's own sentences that every communication restates; "
+        "`graphical-abstract` draws two concepts of a graphical abstract from it, as SVG, with "
+        "their alternative text; `check` holds the brief to the manuscript, and each text under "
+        "communication/ and the graphical abstract to the brief and the results. Nothing is "
+        "sent, and `check` never reads communication/.",
+    )
+    communicate.add_argument("verb", choices=["brief", "graphical-abstract", "check"])
+    communicate.add_argument("path", nargs="?", type=Path, default=Path.cwd())
+    communicate.add_argument(
+        "--force", action="store_true",
+        help="brief: write it again over the one there is, and what you marked in it",
+    )  # fmt: skip
+    communicate.add_argument(
+        "--template", choices=sorted(TEMPLATES),
+        help="graphical-abstract: the panels' headings, where the study_type's are not wanted",
+    )  # fmt: skip
+    communicate.add_argument("--json", action="store_true", help="check: the report as JSON")
+    communicate.add_argument(
+        "--only", choices=["brief", "texts", "graphical-abstract"],
+        help="check: one part of what is checked",
+    )  # fmt: skip
+    communicate.set_defaults(func=cmd_communicate)
 
     impact = sub.add_parser(
         "impact",

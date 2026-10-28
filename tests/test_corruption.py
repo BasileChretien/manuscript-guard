@@ -25249,6 +25249,96 @@ def test_another_model_named_in_the_methods_is_not_the_fitted_kind_typed(project
     assert [f.code for f in _models_report(project).findings] == ["typed-model-kind"]
 
 
+# ------------------------------------------------------ what is said of the paper outside it
+
+
+def _communicating(project: Path) -> None:
+    """The example with the communicate group on, its brief written, findings.2 primary."""
+    from manuscript_guard.cli import main
+    from manuscript_guard.communicate.brief import dump
+
+    with (project / "paper.yaml").open("a", encoding="utf-8", newline="\n") as handle:
+        handle.write("\ncommunication:\n  enabled: true\n")
+    assert main(["communicate", "brief", str(project)]) == 0
+    path = project / "communication" / "brief.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    for finding in document["findings"]:
+        finding["primary"] = finding["id"] == "findings.2"
+    path.write_bytes(dump(document).encode("utf-8"))
+
+
+def _communication_failures(project: Path) -> set[str]:
+    from manuscript_guard.communicate.checking import check
+
+    return {f.code for f in check(load_project(project)[0]).failures}
+
+
+_POST = (
+    "---\nchannel: bluesky\n---\nThe reporting odds ratio was {{results.ror.point}} (95% CI "
+    "{{results.ror.ci_low}} to {{results.ror.ci_high}}) [](#brief:findings.2).\n"
+)
+
+
+def test_every_binding_of_a_post_when_inlined_is_caught(project: Path) -> None:
+    """The headline, for a post: each value the post binds, typed as its display, fails,
+    though the number on the post is still right."""
+    _communicating(project)
+    post = project / "communication" / "bluesky.md"
+    post.write_text(_POST, encoding="utf-8")
+    assert _communication_failures(project) == set()
+    namespace = load_namespace(load_project(project)[0])[0]
+    for binding in bindings_in(_POST):
+        display = namespace[binding.strip("{}")].display
+        post.write_text(_POST.replace(binding, display), encoding="utf-8")
+        assert "comm-number-unbound" in _communication_failures(project), binding
+
+
+@pytest.mark.parametrize(
+    ("before", "after", "code"),
+    [
+        # A cause where the paper found a disproportion.
+        ("The reporting odds ratio was", "Example-drug caused hepatic injury: the ratio was",
+         "comm-claim-stronger"),
+        # A value the statement does not give.
+        ("(95% CI", "in {{results.cohort.n_reports}} reports (95% CI", "comm-fact-not-in-source"),
+        # The anchor taken off a sentence that claims.
+        (" [](#brief:findings.2)", "", "comm-claim-unanchored"),
+    ],
+)  # fmt: skip
+def test_a_post_that_says_more_than_the_paper_fails(
+    project: Path, before: str, after: str, code: str
+) -> None:
+    _communicating(project)
+    post = project / "communication" / "bluesky.md"
+    post.write_text(_POST.replace(before, after, 1), encoding="utf-8")
+    assert code in _communication_failures(project)
+
+
+def test_a_brief_quote_edited_away_from_the_paper_is_caught(project: Path) -> None:
+    """The paper's sentence changed after the brief quoted it: every post anchored to it
+    restates a sentence the paper no longer has."""
+    _communicating(project)
+    assert _communication_failures(project) == set()
+    _replace_once(main_md(project), "cannot establish risk", "does not establish risk")
+    assert _communication_failures(project) == {"brief-quote-not-in-source"}
+
+
+def test_a_graphical_abstract_drawn_from_old_results_is_caught(project: Path) -> None:
+    """The results ran again after the concepts were drawn: the line that prints the ratio
+    holds the old value, and the check says so where nothing else would."""
+    from manuscript_guard.cli import main
+
+    _communicating(project)
+    assert main(["communicate", "graphical-abstract", str(project)]) == 0
+    assert _communication_failures(project) == set()
+    concept = project / "communication" / "graphical-abstract" / "concept-1.svg"
+    namespace = load_namespace(load_project(project)[0])[0]
+    shown = namespace["results.ror.point"].display
+    concept.write_text(concept.read_text(encoding="utf-8").replace(f"was {shown}", "was 2.71"),
+                       encoding="utf-8")  # fmt: skip
+    assert {"comm-ga-stale", "comm-number-unbound"} <= _communication_failures(project)
+
+
 # -------------------------------------------------------------- the Methods, pair by pair
 
 

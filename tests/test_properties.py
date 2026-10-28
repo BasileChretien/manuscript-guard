@@ -117,6 +117,7 @@ from generated import (
     markdown_for_latex,
     masked_blocks,
     mean_tables,
+    method_claims,
     methods_titled,
     named_numbers,
     numbered_displays,
@@ -4991,6 +4992,35 @@ def test_an_anchors_own_line_is_warned_where_it_ends_a_paragraph_in_the_document
     text, paragraphs, inside = planted
     assert _paragraphs_pandoc_reads(placeholders.substitute(text, {})) == paragraphs, text
     assert methods_gate.anchor_lines(text) == inside, text
+
+
+@holds(60, method_claims())
+def test_each_g9_claim_is_one_methods_item_and_an_edit_stales_only_its_own(
+    drawn: tuple[dict[str, Any], dict[str, Any], dict[str, Any], list[list[Any]], int, list[int]],
+) -> None:
+    """The co-author's methods items are G9's claims, one each, a claim of anchors side by side
+    one item with all their steps, and the Methods paragraphs that point at no step; not a
+    claim naming a step that never ran, nor one that claims no text, nor a paragraph outside
+    the Methods with no anchor. Each item's text is its claim's with the values in. A value
+    printed otherwise changes the digest of the items that bind it and of no other; an edit to
+    one item's words keeps every identifier and changes that item's digest alone, so an answer
+    about it is stale, with its note, rather than about an item the project no longer has."""
+    given, edited, revalued, expected, which, binding = drawn
+    read = READINGS["checker methods"]()
+    now = read(given)
+    ids = [item[0] for item in now]
+
+    def differing(other: list[list[Any]]) -> list[int]:
+        assert [item[0] for item in other] == ids, "an identifier moved with the text"
+        return [at for at, (one, two) in enumerate(zip(now, other, strict=True))
+                if one[3] != two[3]]  # fmt: skip
+
+    assert differing(read(revalued)) == binding, given
+    shown = [[", ".join(steps) or "none: no code is linked to this text", text]
+             for steps, text in expected]  # fmt: skip
+    assert [[item[1], item[2]] for item in now] == shown, given["text"]
+    assert len(set(ids)) == len(ids), given["text"]
+    assert differing(read(edited)) == [which], edited["text"]
 
 
 # ------------------------------------------------------------------- a reply to a reviewer
@@ -11562,6 +11592,26 @@ def _anchors_side_by_side_claim_apart(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(methods_gate, "claims_in", claims_in)
 
 
+def _a_methods_item_is_keyed_on_its_text(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.checking import methods
+
+    real = methods.method_items
+
+    def keyed(*args: Any, **kwargs: Any) -> Any:
+        items, notes = real(*args, **kwargs)
+        return [{**item, "id": methods._identifier("method", item["sentences"][0]["text"])}
+                for item in items], notes  # fmt: skip
+
+    patch.setattr(methods, "method_items", keyed)
+
+
+def _a_methods_item_leaves_out_its_values(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.checking import methods
+
+    real = methods.bound
+    patch.setattr(methods, "bound", lambda text, shown: (real(text, {})[0], [], []))
+
+
 def _a_comment_line_ends_a_paragraph(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.text.masking import blank_comments
 
@@ -13939,6 +13989,14 @@ BROKEN = {
     "a claim keeps the words of a comment inside it": (
         _a_claim_keeps_the_words_of_a_comment,
         test_an_anchor_claims_the_text_back_to_the_anchor_before_it_or_its_paragraph,
+    ),
+    "a methods item is keyed on its text, and an edit orphans its answers": (
+        _a_methods_item_is_keyed_on_its_text,
+        test_each_g9_claim_is_one_methods_item_and_an_edit_stales_only_its_own,
+    ),
+    "a methods item's digest leaves out the values it binds": (
+        _a_methods_item_leaves_out_its_values,
+        test_each_g9_claim_is_one_methods_item_and_an_edit_stales_only_its_own,
     ),
     "a quotation is in straight marks only": (
         _a_quotation_is_in_straight_marks_only,

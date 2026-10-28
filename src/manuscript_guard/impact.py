@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
@@ -132,7 +133,7 @@ def impact_of(project: Project, results: Results, literature, target: Path) -> I
         if (root / name).resolve().is_relative_to(manuscript)
     }
     impact.readings = _readings(project, root, read)
-    impact.answers = _answers(project, {Path(name).name for name in files})
+    impact.answers = _answers(project, read)
     return impact
 
 
@@ -274,22 +275,32 @@ def _readings(project: Project, root: Path, files: set[str]) -> list[str]:
     return found
 
 
-def _answers(project: Project, names: set[str]) -> list[str]:
+def _answers(project: Project, read: set[str]) -> list[str]:
     """The co-author answers given on items whose sentences stand in one of the files
-    `names` (by file name, as the items record them)."""
+    `read`, each a path under `manuscript/`. A Methods item records that path, and is matched
+    by it; the other groups record the file's name alone, and are matched by the name, which
+    a file of the main text and one of the supplement may share (Known gaps)."""
     from manuscript_guard.checking.produce import produce
     from manuscript_guard.checking.store import read_decisions
 
-    if not names:
+    if not read:
         return []
+    names = {Path(name).name for name in read}
     decisions = read_decisions(project.root)
     if not decisions:
         return []
-    document, _unread = produce(project)
+    document, unread = produce(project)
+    for said in unread:
+        if said.startswith("methods: "):
+            # As the checker's verbs say it: with no Methods item made, an answer on one is
+            # matched to no file, and its absence here is not that the file has none.
+            print(f"not read, so no answer on a Methods item is listed — {said}", file=sys.stderr)
     touched = {
         item["id"]
         for item in document.get("items", [])
-        if any(sentence.get("section") in names for sentence in item.get("sentences") or [])
+        if any(str(sentence.get("section") or "") in (read if item.get("group") == "methods"
+                                                      else names)
+               for sentence in item.get("sentences") or [])  # fmt: skip
     }
     return [
         f"{decision.by} on {decision.title!r} ({decision.status}, {decision.when})"

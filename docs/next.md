@@ -110,4 +110,18 @@ for a word `cmd.exe` cannot be given), `argv`, `who` and `placeholders`. A word 
 A field added keeps the schema at `/1`. A field renamed or removed, or a value added to a
 fixed list (a rule, a `kind`, a `who`), makes it `/2`. Rule ids are not renamed.
 
+## In conversation
+
+The `guide` skill is how an agent uses `next` with the author: at each turn it runs
+`next --json`, sums up the stage and the counts in two sentences, puts a due choice to the
+author as numbered options, each with its effect and its command, writes a command before
+running it and calls `next` again after, and hands each step to the skill the action names. It
+never chooses for the author, gives an `author` action to the author, and runs an
+`ask-author` command only after a clear yes to that command. The rules `init` writes to
+`AGENTS.md` say the same in a paragraph, for an agent tool that has no skills.
+
+Where the agent tool runs the toolkit's hooks, the line at the start of a session, and at
+the end of a turn that changed what the gates read, ends with "Next:" and the title of the
+first action, decided on the run of the gates the line already reports: the gates run once.
+
 [Back to the README](../README.md)

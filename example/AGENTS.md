@@ -24,6 +24,13 @@ a person and for any agent tool.
    `manuscript-guard bind` lists the numbers bound to nothing.
 5. Only a person signs `literature/attested.yaml`.
 
+Working with the author in conversation, run `manuscript-guard next --json` at the start of
+each turn: it says where the paper stands, what to do first, and the command that does it.
+Where it offers a choice, give the author every option, with what it changes and its
+command, and let them choose. Say a command before running it. An action it gives to the
+author is theirs to take, and one it says to ask the author about waits for a clear yes to
+that command. The `guide` skill says the rest.
+
 The step-by-step guidance is in the skills that come with manuscript-guard, starting with
 `project-setup`. If your agent tool shows none of them, say so to the author: the README at
 the address above says which agent tools they can be installed in, and how.

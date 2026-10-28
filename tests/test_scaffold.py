@@ -129,6 +129,25 @@ def test_init_writes_the_rules_any_agent_tool_reads(tmp_path: Path) -> None:
     assert b"\r" not in rules.read_bytes()
 
 
+def test_the_rules_say_how_an_agent_works_with_the_author_turn_by_turn(tmp_path: Path) -> None:
+    """Task 2: an agent in conversation with the author starts each turn from `next --json`,
+    gives the author the choices and their part, and asks before a command marked for asking.
+    The worked example carries the same file, which `test_plugin` holds byte for byte."""
+    from manuscript_guard.scaffold import AGENTS, rules_to_add
+
+    text = " ".join(AGENTS.format(title="T").split())
+    assert "run `manuscript-guard next --json` at the start of each turn" in text
+    assert "give the author every option, with what it changes and its command" in text
+    assert "and let them choose" in text and "Say a command before running it" in text
+    assert "waits for a clear yes to that command" in text
+    assert "The `guide` skill says the rest" in text
+    # The rules `init` prints for a repository whose own AGENTS.md lacks them carry it too.
+    (tmp_path / "AGENTS.md").write_text("# House rules\n", encoding="utf-8")
+    for latex in (False, True):
+        printed = " ".join((rules_to_add(tmp_path, latex=latex) or "").split())
+        assert "run `manuscript-guard next --json` at the start of each turn" in printed
+
+
 def test_the_rules_forbid_no_number_that_check_accepts(project: Path, capsys) -> None:
     """The rule on numbers said one is "never a typed literal". `check` accepts a typed number
     that is a convention of writing or a pointer, and the worked example, which carries the

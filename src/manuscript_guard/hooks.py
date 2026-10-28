@@ -1512,14 +1512,14 @@ def _status_in_time(root: Path) -> str | None:
 
 
 def _status_of(root: Path) -> str:
-    """The status line of the project at `root`: its stage, and how many findings fail and
-    warn, or which file of it cannot be used and why."""
-    from manuscript_guard.cli import _run_gates
+    """The status line of the project at `root`: its stage, how many findings fail and warn,
+    and what `next` would put first; or which file of it cannot be used and why."""
+    from manuscript_guard.cli import _gate_run
     from manuscript_guard.contracts import ContractError
     from manuscript_guard.policy import DESCRIPTIONS
 
     try:
-        report, project, stage, deferred = _run_gates(root)
+        report, project, stage, deferred, namespace = _gate_run(root)
     except ContractError as error:
         # Silence here read as "no project", and the author met the file at submission.
         return (
@@ -1539,7 +1539,23 @@ def _status_of(root: Path) -> str:
         parts.append(f"{sum(deferred.values())} more become due at '{upcoming}'.")
     if failing:
         parts.append("Run `manuscript-guard check`.")
+    if (first := _first_action(project, report, stage, deferred, namespace)) is not None:
+        parts.append(f"Next: {first} (`manuscript-guard next`).")
     return " ".join(parts)
+
+
+def _first_action(project, report, stage: str, deferred: dict, namespace) -> str | None:
+    """The title of what `next` would put first, decided on the gate run the status line
+    already has, so that the gates run once. None where nothing is left to do, or where
+    deciding fails: that costs this part of the line, and not the counts before it."""
+    from manuscript_guard.guide import decide
+    from manuscript_guard.guide.reading import from_run
+
+    try:
+        actions = decide(from_run(project, report, stage, deferred, namespace, cwd=project.root))
+    except Exception:  # noqa: BLE001 - the counts stand without the advice
+        return None
+    return actions[0].title if actions else None
 
 
 # Every version is released to PyPI within minutes of being raised, so the index soon has

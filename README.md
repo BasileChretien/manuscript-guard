@@ -349,12 +349,13 @@ claude plugin marketplace add BasileChretien/manuscript-guard
 claude plugin install manuscript-guard@manuscript-guard
 ```
 
-Twenty skills. Start with `project-setup`; most of the others name the finding codes that
-should send you to them.
+Twenty-one skills. Start with `project-setup`, and work through the paper with `guide`;
+most of the others name the finding codes that should send you to them.
 
 | Skill | For |
 |---|---|
 | `project-setup` | starting a paper project, and the daily loop from analysis to .docx |
+| `guide` | the paper worked through with its author turn by turn, from `manuscript-guard next`: each choice put as numbered options, each step handed to its skill |
 | `results-binding` | publishing values from the analysis, and turning a red number into a bound one |
 | `analysis-plan` | writing the plan before the analysis, and recording deviations from it |
 | `data-sources` | the datasets that could answer the question, how each is reached and on what terms, chosen by the author |
@@ -375,10 +376,11 @@ should send you to them.
 | `submission-pack` | everything the journal asks for, and the covering letter |
 | `paper-audit` | a paper that was not written with this toolkit |
 
-Five hooks: one line on the project's state when a session starts, and again at the end of
-a turn that changed the manuscript or what it rests on; a refusal to edit files that are
-machine-written; a note on the numbers just saved in a manuscript file; and the submission
-check before a command that looks like a submission.
+Five hooks: one line on the project's state when a session starts, ending with what
+`manuscript-guard next` puts first, and again at the end of a turn that changed the
+manuscript or what it rests on; a refusal to edit files that are machine-written; a note on
+the numbers just saved in a manuscript file; and the submission check before a command that
+looks like a submission.
 
 ### Codex
 

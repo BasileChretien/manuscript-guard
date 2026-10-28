@@ -1285,6 +1285,45 @@ def test_session_start_reports_the_stage_and_the_count(project: Path, capsys) ->
     assert "0 failing" in text
 
 
+def test_the_status_line_says_what_next_puts_first_from_one_run_of_the_gates(
+    project: Path, monkeypatch, capsys
+) -> None:
+    """The line ends with the title of `next`'s first action, decided on the report the line
+    already has. A gate run is a gate called: one, however the decision reads the project."""
+    from manuscript_guard import cli
+    from manuscript_guard.guide import decide, inspect
+
+    runs: list[Path] = []
+    gate = cli.check_freshness
+
+    def counted(*args, **kwargs):
+        runs.append(args[0].root)
+        return gate(*args, **kwargs)
+
+    monkeypatch.setattr(cli, "check_freshness", counted)
+    monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)  # no notice after the line
+    text = context(run("session-start", {"cwd": str(project)}, capsys))
+    assert len(runs) == 1, runs
+    monkeypatch.setattr(cli, "check_freshness", gate)
+    first = decide(inspect(project, cwd=project))[0].title
+    assert text.endswith(f"Next: {first} (`manuscript-guard next`)."), text
+    assert "0 failing" in text, "the counts come first, as they did"
+
+
+def test_a_decision_that_fails_costs_the_next_part_and_not_the_line(
+    project: Path, monkeypatch, capsys
+) -> None:
+    import manuscript_guard.guide as guide
+
+    def broken(state):
+        raise RuntimeError("a fault of the tool's own")
+
+    monkeypatch.setattr(guide, "decide", broken)
+    text = context(run("session-start", {"cwd": str(project)}, capsys))
+    assert "stage 'drafting'" in text and "0 failing" in text
+    assert "Next:" not in text
+
+
 def test_session_start_names_what_becomes_due_next(tmp_path: Path, capsys) -> None:
     from manuscript_guard.scaffold import init_project
 
@@ -1920,7 +1959,9 @@ def test_a_failure_that_is_not_the_projects_own_still_ends_in_silence(
     def broken(*_args, **_kwargs):
         raise RuntimeError("anything at all")
 
-    monkeypatch.setattr("manuscript_guard.cli._run_gates", broken)
+    # `_gate_run`, which `_run_gates` calls and the status line calls itself, for the namespace
+    # that `next`'s decision reads.
+    monkeypatch.setattr("manuscript_guard.cli._gate_run", broken)
     assert run("guard-submission", {**SUBMIT, "cwd": str(project)}, capsys) is None
     assert run("session-start", {"cwd": str(project), "source": "startup"}, capsys) is None
 

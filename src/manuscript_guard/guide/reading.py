@@ -52,6 +52,13 @@ def inspect(start: Path, *, stage: str | None = None, cwd: Path | None = None) -
     return _project_state(project, report.findings, chosen, deferred, namespace, here)
 
 
+def from_run(project, report, stage: str, deferred, namespace, *, cwd: Path) -> State:
+    """The state of a gate run the caller has already made, `cli._gate_run`'s five parts: the
+    hooks' status line decides on the run it reports, and does not run the gates again."""
+    return _project_state(project, report.findings, stage, deferred, namespace,
+                          Path(cwd).resolve())  # fmt: skip
+
+
 def _kept(notes: list[str], what: str, work, default):
     """`work()`, or `default` with a note: a part of the state that cannot be read is left
     out and said, and `next` still decides on the rest."""

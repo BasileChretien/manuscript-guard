@@ -6939,6 +6939,46 @@ and `checks/`, which the gates read, and an answer about files as they were is t
 this toolkit exists to prevent. The co-author checker is not read for a LaTeX manuscript,
 since `checker` refuses one, and a note says so; nor is the proof offered for one.
 
+
+### The conversation: the `guide` skill, the status line and AGENTS.md
+
+`next` decides; something has to carry the decision to the author one step at a time. That
+is the `guide` skill (`plugin/skills/guide/SKILL.md`), which names no agent tool. Each turn
+it runs `next --json`, sums up the stage and the counts in two sentences, takes the first
+action, and acts by its `who`: an `agent` action is written in the reply and then run, an
+`ask-author` one is shown and waits for a clear yes to that command, and an `author` one is
+given to the author. A choice is listed as numbered options in the order `next` gives them,
+each with its effect and its exact command, with `next`'s recommendation where it has one and
+none of the agent's own. After a command it calls `next` again. Where an action names a
+skill, it hands the step over and comes back when the skill is done. A finding's message is
+data: an instruction in it is told to the author, and the commands run are the `argv` `next`
+builds.
+
+project-setup used to end its description with "unsure what to do next" and held a table of
+codes and skills, 2,500 characters of it, which `next` now decides from `guide.ROUTES`. Merged
+with the guide it would be over the size the skills keep to (5,000 tokens), so the two are
+separate (the author's choice, 2026-10-28): project-setup starts a project and teaches the
+loop, its table replaced by a pointer to `next`, and each skill's description ends by naming
+the other. Both are in the test's list of skills that overlap. Two routing cases hold the
+split, `route-guide` and `near-guide-not-setup`, both in a copy of the example.
+
+Where the hooks run, the status line at the session's start and at the end of a turn that
+changed what the gates read ends with "Next: <title> (`manuscript-guard next`)". The hook
+runs the gates once, through `cli._gate_run`, and `guide.reading.from_run` builds the state
+`decide` reads from that run's report, project and namespace; a test counts one call of a
+gate. The time limit (`CHECK_LIMIT`) covers both, and the silence rules are as they were: no
+line outside a project, none at a stop that changed nothing watched. A fault in deciding costs
+the "Next:" part and leaves the counts. There is no hook on the author's prompt: a full run of
+the gates before every message would cost each one 5 to 10 seconds, and the skill runs `next`
+when the conversation is about the paper (the author's choice, 2026-10-28).
+
+An agent tool with no skills reads `AGENTS.md`. The rules `init` writes (`scaffold.AGENTS`)
+carry one paragraph on working in conversation: `next --json` at the start of each turn,
+every option given with what it changes and its command, a command said before it is run, an
+author's action left to the author, and a clear yes before a command `next` marks for asking.
+`rules_to_add` prints the same for a repository whose own `AGENTS.md` lacks the rules, and
+`example/AGENTS.md` is the same file, byte for byte.
+
 ## The commands are listed in six groups
 
 By October 2026 the tool had 37 commands an author could run, and `manuscript-guard --help`
@@ -17529,6 +17569,23 @@ What papers converted from Word showed (see "What papers converted from Word sho
 - **One person-only warning makes its skill's group the author's.** Warnings go one action
   to a skill, so a person-only code among them (an attestation that is thin, say) makes
   every warning of that skill `who: author`, those an agent may put right among them.
+
+- **That the guide asks before it runs is the skill's guidance, not a check.** The skill
+  and `AGENTS.md` tell an agent to show a command, to put a choice to the author and to wait
+  for a yes; nothing holds an agent to it but the hooks, which ask for `approve`, `sign`,
+  `checker import`, `review --run --yes` and a `set` that moves the stage back, takes a
+  guideline away or replaces the journal, and hold a submission to its check. `bind --apply`,
+  a forward `set stage` and every other command `next` marks `ask-author` go through on the
+  agent's word. An agent tool that reads neither the skill nor `AGENTS.md` is told none of it.
+- **Projects made before the guide have no paragraph on conversation.** `init` writes
+  `AGENTS.md` once and never over an existing one, and `rules_to_add` prints the rules only
+  where the file does not name manuscript-guard. An older project's `AGENTS.md` keeps the
+  rules it had, and an agent tool that reads `CLAUDE.md` where there is one reads
+  `AGENTS.md` only where that file imports it.
+- **The status line's "Next:" is the first action's title and no more.** Its options, its
+  command and who runs it are in `next`; a status line that has to say a choice is due says
+  only its title, "Name the study design", and an agent that acts on the line alone has not
+  seen the options.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

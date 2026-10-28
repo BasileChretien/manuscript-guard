@@ -386,6 +386,36 @@ def _fake_latex(root: Path, monkeypatch) -> Path:
     return staged
 
 
+def _below_submission(root: Path) -> None:
+    """A project that passes `check` at its stage and fails `check --submission`: a reporting
+    item left unanswered, which G5 fails from internal review (`checklist-item-unanswered`)."""
+    from manuscript_guard.cli import _run_gates
+
+    path = root / "reporting" / "DEMO-OBS.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["items"][0] = {"id": document["items"][0]["id"]}
+    path.write_text(yaml.safe_dump(document, sort_keys=False, allow_unicode=True),
+                    encoding="utf-8")  # fmt: skip
+    assert _run_gates(root, stage="drafting")[0].ok
+    assert not _run_gates(root, submission=True)[0].ok
+
+
+@pytest.mark.parametrize("target", ["arxiv", "medrxiv"])
+def test_a_preprint_is_refused_while_the_submission_check_fails(
+    project: Path, monkeypatch, capsys, target: str
+) -> None:
+    """A preprint is public, so it is held to the submission's bar, as a release is, and not
+    to the project's stage."""
+    from manuscript_guard.deposit import preprint
+
+    _fake_latex(project, monkeypatch)
+    monkeypatch.setattr(preprint, "_documents", lambda _project: [])
+    _below_submission(project)
+    assert deposit(project, target, "preprint") == 1
+    assert "failing in `check --submission`" in capsys.readouterr().err
+    assert nothing_written(project)
+
+
 def test_the_arxiv_bundle_is_the_source_as_a_tar_and_its_sheet(project: Path, monkeypatch) -> None:
     _fake_latex(project, monkeypatch)
     assert deposit(project, "arxiv", "preprint") == 0

@@ -8356,9 +8356,9 @@ a masked cell recovered by subtraction, through the one entry point it will fill
 `gates.custodian.recoverable_cells`, which finds nothing yet (see Known gaps). A release is
 taken to carry the results files the package holds, and so is the site, whose page shows
 them; a plan and a preprint carry none. Anything these find stops the deposit before
-anything is built. Then a release, and the site that is its page, is held to `check
---submission`, as `submit` is, and a preprint to `check` at the project's stage, as `build`
-is. Then the bundle is planned in memory, a list of `plan.Entry` with their digests, and
+anything is built. Then a release, the site that is its page, and a preprint are held to
+`check --submission`, as `submit` is: a public preprint is held to the submission's
+standard (Basile, 2026-10-28). Then the bundle is planned in memory, a list of `plan.Entry` with their digests, and
 refused where a file of it is an input declared restricted, by its name or by the file it is
 (`deposit-restricted-input`), where two of its files share a name in the case a system that
 ignores case reads (`deposit-name-taken`), and, where the custodian restricts sending, until

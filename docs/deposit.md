@@ -144,7 +144,8 @@ Any other pair is refused, with the reason.
 | `preprint` for medRxiv | the `.docx` built offline, or for a LaTeX manuscript its PDF, the supplement, the figures, each reporting checklist as a table, the declarations and the CRediT statement, and `medrxiv_submission_sheet.md`. |
 | `release` for `gh-pages` | `index.html`, the companion page, and `.nojekyll`; the git commands to publish it from a `gh-pages` branch are printed, and none is run. |
 
-A preprint is refused while `check` fails at the project's stage, as `build` refuses.
+A preprint is refused while `check --submission` fails, as a release is and as `submit`
+is: a preprint is public, and held to the submission's standard.
 
 **The data custodian's checks come first**, whatever the bundle, and anything they find
 stops it before anything is built or written: a count below `custodian.minimum_cell_count`

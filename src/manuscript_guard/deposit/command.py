@@ -1,8 +1,8 @@
 """`manuscript-guard deposit`: stage a bundle for a target, locally, and send nothing.
 
 The order is the point. The data custodian's checks run first (`preflight.first`), before
-anything is built; a release is then held to `check --submission`, a preprint to `check` at
-the project's stage, as `submit` and `build` hold what they make; the bundle is planned in
+anything is built; a release and a preprint are then held to `check --submission`, as
+`submit` holds what it packs, since both are public; the bundle is planned in
 memory (`bundles.py`, `preprint.py`); a restricted input in it, a name two of its files
 share, and, where the custodian restricts sending, a list of files and digests they have not
 signed off, stop it (`preflight.last`); and only then is anything written, to
@@ -38,17 +38,17 @@ def _carried(project: Project, results: Results, bundle: str) -> frozenset[str]:
     return every - withheld_results(project, results)
 
 
-def _checked(root: Path, *, submission: bool) -> object:
-    """`check`'s report, at submission or at the project's stage; a refusal while it fails."""
+def _checked(root: Path) -> object:
+    """`check --submission`'s report; a refusal while it fails."""
     from manuscript_guard.cli import _run_gates
 
-    report, project, _stage, _deferred = _run_gates(root, submission=submission)
+    report, project, _stage, _deferred = _run_gates(root, submission=True)
     if not report.ok:
         print(report.render(project.root))
-        said = "`check --submission`" if submission else "`check`"
-        raise DepositError(f"{len(report.failures)} failing in {said}. What is deposited is "
-                           "what others read and cite, so it is not staged while the check "
-                           "fails, as `submit` and `build` refuse.")  # fmt: skip
+        raise DepositError(f"{len(report.failures)} failing in `check --submission`. What is "
+                           "deposited is what others read and cite, so it is held to the "
+                           "submission's bar and not staged while the check fails, as "
+                           "`submit` refuses.")  # fmt: skip
     return report
 
 
@@ -60,11 +60,11 @@ def plan(project: Project, results: Results, target: str, bundle: str,
     if bundle == "preregistration":
         made = bundles.preregistration(project, retrospective)
     elif bundle == "release":
-        checked = _checked(project.root, submission=True)
+        checked = _checked(project.root)
         made = bundles.gh_pages(project, results) if target == "gh-pages" else \
             bundles.release(project, results, checked)  # fmt: skip
     else:
-        _checked(project.root, submission=False)
+        _checked(project.root)
         made = preprint.arxiv(project) if target == "arxiv" else preprint.medrxiv(project)
     return replace(made, target=target)
 

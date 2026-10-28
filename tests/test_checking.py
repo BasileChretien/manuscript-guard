@@ -1880,3 +1880,96 @@ def test_status_marks_each_claimed_decision_and_tells_a_namesake_from_a_stranger
                        {"given": "Bea", "family": "Example"}])  # fmt: skip
     assert main(["checker", "status", str(project)]) == 0
     assert "not an author" not in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------- round 3 of #455
+
+
+def test_a_namesake_reached_by_e_mail_or_family_name_is_refused(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """One namesake's e-mail address resolved to the shared name, and merged their decisions."""
+    from manuscript_guard.cli import _checking_items, load_project, main
+
+    _authors(project, [
+        {"given": "Ada", "family": "Example"},
+        {"given": "Wei", "family": "Zhang", "email": "w1@invalid.example"},
+        {"given": "Wei", "family": "Zhang", "email": "w2@invalid.example"},
+    ])  # fmt: skip
+    for said in ("w1@invalid.example", "Zhang"):
+        capsys.readouterr()
+        assert main(["checker", "build", str(project), "--for", said]) == 2, said
+        assert "Wei Zhang" in capsys.readouterr().err
+    items = _checking_items(load_project(project)[0], None)
+    one = {"id": items.items[0]["id"], "digest": items.items[0]["digest"], "status": "ok"}
+    for said in ("w1@invalid.example", "Zhang"):
+        answers = _send(project, "w.json", {
+            "schema": "manuscript-guard/checking-answers/1", "by": said, "answers": [one]})
+        capsys.readouterr()
+        assert main(["checker", "import", str(project), "--answers", str(answers)]) == 2, said
+        assert "Wei Zhang" in capsys.readouterr().err
+    assert _rows(project) == []
+
+
+def test_decisions_under_a_name_that_became_shared_are_marked(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from manuscript_guard.cli import _checking_items, load_project, main
+
+    items = _checking_items(load_project(project)[0], None)
+    one = {"id": items.items[0]["id"], "digest": items.items[0]["digest"], "status": "ok"}
+    answers = _send(project, "a.json", {
+        "schema": "manuscript-guard/checking-answers/1", "by": "Ada Example", "answers": [one]})
+    assert main(["checker", "import", str(project), "--answers", str(answers)]) == 0
+    _authors(project, [{"given": "Ada", "family": "Example", "email": "a1@invalid.example"},
+                       {"given": "Ada", "family": "Example", "email": "a2@invalid.example"}])
+    capsys.readouterr()
+    assert main(["checker", "status", str(project)]) == 0
+    assert "recorded before this name became shared" in capsys.readouterr().out
+
+
+def test_all_refuses_before_writing_anything_where_one_file_is_another_person_s(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A `--for` page for someone else, at the file `--all` gives an author, stopped `--all`
+    half way, with some pages written and others not."""
+    from manuscript_guard.cli import main
+
+    taken = project / "checks" / "check-blaise-sample.html"
+    assert main(["checker", "build", str(project), "--for", "A Colleague",
+                 "-o", str(taken)]) == 0  # fmt: skip
+    stale = project / "checks" / "check-ada-example.html.part"
+    stale.write_text("from a run that failed", encoding="utf-8")
+    capsys.readouterr()
+    assert main(["checker", "build", str(project), "--all"]) == 2
+    said = capsys.readouterr().err
+    assert "checks/check-blaise-sample.html is the page built for A Colleague" in said, said
+    assert [p.name for p in (project / "checks").glob("check-*")] == ["check-blaise-sample.html"]
+    assert len(_register(project)) == 1
+
+
+@pytest.mark.skipif(__import__("os").name != "nt", reason="names differ by case only on Windows")
+def test_a_file_named_in_other_capitals_is_the_same_file(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from manuscript_guard.cli import main
+
+    assert main(["checker", "build", str(project), "--for", "Ada Example"]) == 0
+    other = project / "checks" / "CHECK-ADA-EXAMPLE.html"
+    capsys.readouterr()
+    assert main(["checker", "build", str(project), "--for", "Blaise Sample",
+                 "-o", str(other)]) == 2  # fmt: skip
+    assert "is the page built for Ada Example" in capsys.readouterr().err
+
+
+def test_a_page_outside_the_project_is_registered_by_its_whole_path(
+    project: Path, tmp_path: Path
+) -> None:
+    from manuscript_guard.cli import main
+
+    out = tmp_path / "elsewhere" / "for-ada.html"
+    assert main(["checker", "build", str(project), "--for", "Ada Example", "-o", str(out)]) == 0
+    (row,) = _register(project)
+    assert Path(row["file"]) == out.resolve() and Path(row["file"]).is_absolute()
+    assert main(["checker", "build", str(project), "--for", "Blaise Sample",
+                 "-o", str(out)]) == 2  # fmt: skip

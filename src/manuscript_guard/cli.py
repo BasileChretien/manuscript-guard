@@ -4153,8 +4153,27 @@ def _page_name(name: str, others: list[str]) -> str:
     return f"{named}-{hashlib.sha256(exact.encode('utf-8')).hexdigest()[:6]}"
 
 
-def _registered_to_another(project, shown: str, person: str) -> str | None:
-    """Whom the register says the file at `shown` was last built for, where it is not `person`."""
+def _register_place(project, out: Path) -> str:
+    """How the register names a page's file: relative to the project where it is inside it,
+    and as an absolute path where it is not."""
+    try:
+        return out.resolve().relative_to(project.root.resolve()).as_posix()
+    except ValueError:
+        return str(out.resolve())
+
+
+def _same_file(project, recorded: str, out: Path) -> bool:
+    """Whether the register's name for a file is `out`, as the file system compares names: on
+    Windows without case."""
+    import os
+
+    path = Path(recorded)
+    path = path if path.is_absolute() else project.root / path
+    return os.path.normcase(str(path.resolve())) == os.path.normcase(str(out.resolve()))
+
+
+def _registered_to_another(project, out: Path, person: str) -> str | None:
+    """Whom the register says the file `out` was last built for, where it is not `person`."""
     import csv
 
     from manuscript_guard.checking.people import fold
@@ -4164,7 +4183,8 @@ def _registered_to_another(project, shown: str, person: str) -> str | None:
     if not path.is_file():
         return None
     with path.open(encoding="utf-8", newline="") as handle:
-        rows = [row for row in csv.DictReader(handle) if row.get("file") == shown]
+        rows = [row for row in csv.DictReader(handle)
+                if row.get("file") and _same_file(project, str(row["file"]), out)]  # fmt: skip
     if rows and fold(str(rows[-1].get("person") or "")) != fold(person):
         return str(rows[-1].get("person") or "")
     return None
@@ -4183,14 +4203,28 @@ def _checker_build(project, items, args) -> int:
     # Back to the corresponding author unless told otherwise: the one who sent the page.
     to = args.to or " or ".join(name_of(a) for a in authors_of(project) if a.get("corresponding"))
     folder = (args.output or project.root / "checks") if args.every else None
-    standing = status(project.root, items)
-    asked = items.outstanding
-    answered = sum(1 for item in asked if standing.answered.get(str(item["id"])))
     names = [name_of(a) for a in authors_of(project)] + [shown for _, shown, _ in people]
+    targets = []
     for key, name, orcid in people:
         named = _page_name(name, names)
         out = (folder / f"check-{named}.html" if folder is not None
                else args.output or project.root / "checks" / f"check-{named}.html")  # fmt: skip
+        targets.append((key, name, orcid, out))
+    # Every file is held to the register before any is written: a page that is another
+    # person's, found half way through `--all`, left the round half built.
+    for key, _name, _orcid, out in targets:
+        other = _registered_to_another(project, out, key)
+        if other is not None:
+            for *_, target in targets:  # what a failed run left beside them goes too
+                target.with_name(target.name + ".part").unlink(missing_ok=True)
+            print(f"manuscript-guard: {_register_place(project, out)} is the page built for "
+                  f"{other} ({REGISTER}); it is not replaced with {key}'s, and no page is "
+                  f"written. Name another file or folder with -o.", file=sys.stderr)  # fmt: skip
+            return 2
+    standing = status(project.root, items)
+    asked = items.outstanding
+    answered = sum(1 for item in asked if standing.answered.get(str(item["id"])))
+    for key, name, orcid, out in targets:
         written = _write_page(project, items, out, person=key, shown=name, orcid=orcid,
                               title=title, to=to)  # fmt: skip
         if written is None:
@@ -4222,51 +4256,36 @@ def _write_page(project, items, out: Path, *, person: str, shown: str, orcid: st
 
     The page is written under another name first, recorded, and only then given its own: a page
     whose row could not be written (the register open in a spreadsheet) is not left to be sent.
-    A file the register says was built for someone else is not replaced."""
+    The temporary file goes whatever happens, and one a failed run left goes first."""
     import os
 
     from manuscript_guard.checking import BundleError, build_page
     from manuscript_guard.checking import register as registered
     from manuscript_guard.checking.register import REGISTER, Row, token_sha256
 
-    try:
-        at = out.resolve().relative_to(project.root.resolve()).as_posix()
-    except ValueError:
-        # Outside the project: the register keeps its name only, not the machine's path.
-        at = out.name
-    other = _registered_to_another(project, at, person)
-    if other is not None:
-        print(f"manuscript-guard: {at} is the page built for {other} ({REGISTER}); it is not "
-              f"replaced with {person}'s. Name another file with -o.", file=sys.stderr)  # fmt: skip
-        return None
     part = out.with_name(out.name + ".part")
     try:
-        part.unlink(missing_ok=True)  # one a failed run left
+        part.unlink(missing_ok=True)
         built = build_page(items, person=person, title=title, out=part, to=to, orcid=orcid,
                            shown=shown)  # fmt: skip
         registered.append_row(project.root, Row(
             built_on=built.built_on, person=built.person, orcid=built.orcid,
             bundle=built.bundle, token_sha256=token_sha256(built.token),
-            state=built.state, items=str(built.items), file=at,
+            state=built.state, items=str(built.items), file=_register_place(project, out),
         ))  # fmt: skip
+        # Once the row is written it stays, if this fails: no answers match a page never sent.
+        os.replace(part, out)
+        return built.size
     except BundleError as exc:
-        part.unlink(missing_ok=True)
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return None
     except OSError as exc:
-        part.unlink(missing_ok=True)
         print(f"manuscript-guard: {out} or {REGISTER} could not be written ({exc}), so the page "
               f"for {shown} is not kept. Close whatever holds it open, and build again.",
               file=sys.stderr)  # fmt: skip
         return None
-    try:
-        os.replace(part, out)
-    except OSError as exc:
+    finally:
         part.unlink(missing_ok=True)
-        # The row stays: no answers can match a page that was never sent.
-        print(f"manuscript-guard: {out} could not be written ({exc})", file=sys.stderr)
-        return None
-    return built.size
 
 
 def _checker_import(project, items, args) -> int:

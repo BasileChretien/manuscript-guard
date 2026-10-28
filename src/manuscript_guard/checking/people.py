@@ -90,9 +90,10 @@ class Resolved:
 
 def resolve(project, said: str, orcid: str) -> Resolved:
     """The author a file or `--for` names: by ORCID iD, full name, e-mail address or family
-    name. Raises
-    `AmbiguousAuthor` for a family name two authors share, `Namesakes` for a name two authors
-    share whole, and `SharedOrcid` as `refuse_shared_orcids` does."""
+    name. Raises `Namesakes` where any of these lands on an author whose full name another
+    shares, whichever it was (one's e-mail address resolved to the shared name and merged their
+    decisions, round 3 of #455); `AmbiguousAuthor` for a family name two authors share; and
+    `SharedOrcid` as `refuse_shared_orcids` does."""
     from manuscript_guard.approvals import AmbiguousAuthor, name_of
 
     refuse_shared_orcids(project)
@@ -106,10 +107,11 @@ def resolve(project, said: str, orcid: str) -> Resolved:
     by_name = [a for a in authors if fold(name_of(a)) == wanted] or [
         a for a in authors if fold(str(a.get("email") or "")) == wanted] or [
         a for a in authors if fold(str(a.get("family") or "")) == wanted]  # fmt: skip
+    for landed in by_orcid + by_name:
+        if fold(name_of(landed)) in shared:
+            raise Namesakes(namesakes_message(name_of(landed)))
     if by_orcid:
         (author,) = by_orcid
-        if fold(name_of(author)) in shared:
-            raise Namesakes(namesakes_message(name_of(author)))
         if not by_name or any(a is author for a in by_name):
             return Resolved(name_of(author), author)
         return Resolved(f"{said} <{orcid}>", None, orcid_differs=True)
@@ -129,6 +131,9 @@ def standing_of(project, recorded: str) -> str | None:
     from manuscript_guard.approvals import name_of
 
     names = {fold(name_of(a)) for a in _authors(project)}
+    if fold(recorded) in namesakes(project):
+        # Recorded while one author had the name; whose the decisions are is no longer known.
+        return "recorded before this name became shared"
     if fold(recorded) in names:
         return None
     found = _WITH_ORCID.match(recorded)

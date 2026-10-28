@@ -1024,6 +1024,18 @@ def test_an_approval_written_by_a_codex_patch_is_put_to_the_author(
         'manuscript-guard checker --items "a|b/items.json" import --answers a.json',
         "echo $(manuscript-guard checker import --answers a.json)",
         "echo `mguard checker import --answers a.json`",
+        # Round 3 of #455: asked unless plainly not an import, whatever the shell form.
+        'bash -c "manuscript-guard checker import --answers a.json"',
+        "sh -c 'mguard checker import --answers a.json'",
+        'powershell -Command "mguard checker import --answers a.json"',
+        "bash <<< 'mguard checker import --answers a.json'",
+        "@'\nmguard checker import --answers a.json\n'@ | iex",
+        "(mguard checker import --answers a.json)",
+        "& { mguard checker import --answers a.json }",
+        "eval 'mguard checker import --answers a.json'",
+        "alias mg=mguard; mg checker import --answers a.json",
+        "manuscript-guard checker status && git commit -m import",
+        "manuscript-guard checker build --title=import",
     ],
 )
 def test_an_import_of_answers_run_by_an_agent_is_put_to_the_author(
@@ -1037,8 +1049,8 @@ def test_an_import_of_answers_run_by_an_agent_is_put_to_the_author(
     payload = _shell(in_claude_code, command, turn_id="turn-1", model="gpt-test")
     assert decision(run("guard-submission", payload, capsys)) == "deny"
     for other in ("manuscript-guard checker build --all", "mguard checker status",
-                  "manuscript-guard checker status && git commit -m import",
                   'manuscript-guard checker build --title "Drug import and safety"',
+                  "python -m manuscript_guard.cli checker status --items import.json",
                   "mguard checker build --for import"):  # fmt: skip
         assert run("guard-submission", _shell(in_claude_code, other), capsys) is None, other
 

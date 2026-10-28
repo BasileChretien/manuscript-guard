@@ -1178,7 +1178,14 @@ _CHECKER_VALUED = ("--for", "--to", "-o", "--output", "--title", "--items", "--e
 _TOOL_WORD = re.compile(
     r"(?:.*[\\/])?(?:manuscript-guard|mguard)(?:\.exe)?|manuscript_guard\.cli", re.IGNORECASE
 )
-_CHECKER_AND_IMPORT = re.compile(r"(?is)\bchecker\b.*\bimport\b|\bimport\b.*\bchecker\b")
+#: The three words a command must hold, anywhere and inside quotes too, to be put to the
+#: person as an import: the tool's name, `checker` and `import`.
+_NAMES_TOOL = re.compile(r"manuscript[-_]guard|mguard", re.IGNORECASE)
+_CHECKER_WORD = re.compile(r"\bchecker\b", re.IGNORECASE)
+_IMPORT_WORD = re.compile(r"\bimport\b", re.IGNORECASE)
+#: What `checker` does that records nothing: the verbs that may stand where `import` is an
+#: option's value.
+_CHECKER_READS = ("build", "status")
 
 
 def _command_words(command: str, *, posix: bool) -> tuple[list[list[str]], bool]:
@@ -1237,39 +1244,55 @@ def _command_words(command: str, *, posix: bool) -> tuple[list[list[str]], bool]
     return invocations, clean
 
 
-def _verb_is_import(words: list[str]) -> bool:
-    """Whether `checker`'s verb, the first of its words that is neither an option nor an
-    option's value, is `import`."""
-    valued = False
-    for word in words:
+def _plain_checker(words: list[str]) -> bool:
+    """Whether one invocation is plainly `checker build` or `checker status`, the tool named as
+    its first word, with `import` in it only as the value of an option."""
+    if words and _TOOL_WORD.fullmatch(words[0]):
+        rest = words[1:]
+    elif (len(words) > 2 and re.fullmatch(r"(?i)(?:.*[\\/])?python[\d.]*(?:\.exe)?", words[0])
+          and words[1] == "-m" and words[2] == "manuscript_guard.cli"):  # fmt: skip
+        rest = words[3:]
+    else:
+        return False
+    if not rest or rest[0].casefold() != "checker":
+        return False
+    positionals, valued = [], False
+    for word in rest[1:]:
         if valued:
             valued = False
             continue
         if word.startswith("-"):
+            if _IMPORT_WORD.search(word):
+                return False
             valued = word in _CHECKER_VALUED
             continue
-        return word.casefold() == "import"
-    return False
+        positionals.append(word)
+    # The verb, then the project's folder, which may not say `import` either.
+    if not positionals or positionals[0].casefold() not in _CHECKER_READS:
+        return False
+    return not any(_IMPORT_WORD.search(word) for word in positionals)
 
 
 def _imports_answers(joined: str) -> bool:
-    """Whether this command runs `checker import`, or might.
+    """Whether this command may run `checker import`: asked unless it plainly does not.
 
-    Read as a POSIX shell reads it and as Windows does, after quotes and before the operators,
-    so that `--title "Drugs & safety"` ends nothing and `--title "Drug import"` is not the
-    verb. Where it holds the words `checker` and `import` and cannot be read cleanly, a command
-    substitution among them, it is taken to run one: the answer is to ask."""
-    if not _CHECKER_AND_IMPORT.search(joined):
+    A command that names the tool and holds the words `checker` and `import`, anywhere, inside
+    quotes too, is asked. Every round of review found a shell form that hid an import from a
+    reader of commands, `bash -c`, `eval`, a here-string piped to `iex`, a quote holding an
+    operator. So the one exception is a command read cleanly as a POSIX shell and as Windows
+    read it, with no command substitution and no unclosed quote, in which every word that says
+    `import` stands in an invocation that is plainly `checker build` or `checker status`
+    (`_plain_checker`): `--title "Drug import and safety"`, `--for import`."""
+    if not (_NAMES_TOOL.search(joined) and _CHECKER_WORD.search(joined)
+            and _IMPORT_WORD.search(joined)):  # fmt: skip
         return False
     for posix in (True, False):
         invocations, clean = _command_words(joined, posix=posix)
         if not clean:
             return True
         for words in invocations:
-            for at, word in enumerate(words[:-1]):
-                if (_TOOL_WORD.fullmatch(word) and words[at + 1].casefold() == "checker"
-                        and _verb_is_import(words[at + 2 :])):  # fmt: skip
-                    return True
+            if any(_IMPORT_WORD.search(word) for word in words) and not _plain_checker(words):
+                return True
     return False
 
 

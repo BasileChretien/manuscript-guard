@@ -10361,9 +10361,15 @@ author's; a family name two authors share names neither, and is refused.
 A page's file name is the same in every run. Two names that fold to one, "José García" and
 "Jose Garcia", each add six characters of the SHA-256 of the name as written in Unicode's
 composed form, `check-jose-garcia-<six hex>.html`: numbered by their order instead, "Jose Garcia"
-built alone took the file "José García" had been given in the run before (round 2 of #455). A
-file the register says was last built for someone else is not replaced. A page is written
-under a temporary name, recorded in the register, and only then given its own, so a register
+built alone took the file "José García" had been given in the run before (round 2 of #455).
+Whether a name takes the suffix depends on the authors `authors.yaml` lists (and on whom the run
+builds for): adding a second author whose name folds to the same file name gives the first
+author's next page a new file name. Their answers still match, by the page's identifier; the
+old file stays where it is. A file the register says was last built for someone else is not
+replaced, compared as the file system compares names (on Windows without case), and `--all`
+holds every file it would write to the register before it writes any, so a page found to be
+another person's refuses the run before any page is written, and names the file. A page is
+written under a temporary name, recorded in the register, and only then given its own, so a register
 that cannot be written (open in a spreadsheet) leaves no page to be sent unrecorded; the
 temporary file is removed on any failure, and one a failed run left is removed first.
 
@@ -10376,9 +10382,9 @@ nothing changed for that person keeps their progress.
 
 Every page built is a row of `checks/bundles.csv`, append-only like the decisions and kept from
 an agent's editor by the hooks: when, for whom, the identifier, the token's SHA-256 (never the
-token), the digest of the items, how many, and the file, relative to the project, or its name
-alone where it was written outside it. The page writes `checking-answers/2`, which adds the
-token, the ORCID iD and that digest to what `/1` wrote; both are read.
+token), the digest of the items, how many, and the file, relative to the project where it is
+inside it and by its whole path where it is not. The page writes `checking-answers/2`, which
+adds the token, the ORCID iD and that digest to what `/1` wrote; both are read.
 
 `checker import --answers a.json b.json ...` takes any number of files and needs no `--for`:
 each says whose it is, and is held to the register (Basile's decision 4 (a)):
@@ -10410,9 +10416,13 @@ would move their decisions in a record that is never rewritten. So `checker buil
 authors are named Wei Zhang; checker cannot keep their answers apart; write one of the names in
 a form of its own in authors.yaml (a middle initial, say)": `--for` either of them is refused,
 `--all` builds for every other author and lists the two as left out, and refuses only where
-everyone is a namesake. An answers file by that name, or with either one's iD, is refused the
-same way. Two authors given one ORCID iD are a mistake in `authors.yaml`, and `checker build`
-and `checker import` refuse to start until it is put right, naming the iD.
+everyone is a namesake. Whatever names one of them, the full name, one's ORCID iD, one's e-mail
+address or the family name, is refused the same way, in `--for` and in an answers file: one's
+address resolved to the shared name and merged their decisions (round 3). Decisions recorded
+under a name before a second author with that name was added are marked by `status` as
+"recorded before this name became shared": whose they are is no longer known. Two authors
+given one ORCID iD are a mistake in `authors.yaml`, and `checker build` and `checker import`
+refuse to start until it is put right, naming the iD.
 
 A name that is no author's is recorded as given and marked as such. A name that is an author's
 given with an ORCID iD that is not theirs, or an author's iD given with another's name, is a
@@ -10432,13 +10442,19 @@ built for that name. Nothing is signed.
 
 An agent's `checker import` is put to the person by the hooks, as an `approve` is (decision
 5 (a)): it puts a co-author's name to the answers in a file, and which file is taken as whose
-word is the author's call. The command is read as a POSIX shell reads it and as Windows does:
-quotes first, so that `--title "Drugs & safety"` ends nothing, and then cut into invocations at
-the `;`, `&`, `|` and line ends outside them (round 2 of #455: cut first, `checker --title
-"Drugs & safety" import` ran unasked). The verb is the first argument of `checker` that is
-neither an option nor an option's value, so `--title "Drug import and safety"` is not an import.
-A command that holds the words `checker` and `import` and cannot be read cleanly, a command
-substitution (`$(...)`, a backtick) or an unclosed quote, is taken to run an import, and asked.
+word is the author's call.
+
+**The hook asks unless the command plainly runs no import.** Each round of review of #455 found
+another shell form that hid one from a reader of commands: an operator inside quotes, `$(...)`,
+`bash -c`, `eval`, a here-string piped to `iex`. So a command that holds a word naming the tool
+(`manuscript-guard`, `mguard`, `manuscript_guard`) and the words `checker` and `import`,
+anywhere and inside quotes too, is asked, and refused in Codex. The one exception is a command
+read cleanly as a POSIX shell reads it and as Windows does (quotes first, then the `;`, `&`, `|`
+and line ends outside them; no command substitution, no unclosed quote), in which every word
+that says `import` stands in an invocation that is plainly `checker build` or `checker status`,
+the tool its first word, with `import` only as an option's value: `--title "Drug import and
+safety"`, `--for import`. Main's pattern asked wherever `checker` and then `import` followed the
+tool's name, so this keeps what it asked and asks more.
 
 ### Nothing in it belongs to a vendor
 
@@ -10605,9 +10621,14 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   written by hand, is compared with the person's latest decision only: imported, superseded, and
   imported again, it is the latest once more. The page stamps every answer, so this needs a file
   it did not write.
-- **The hook reads `checker`'s verb from the command's words.** It knows which options take a
-  value, and takes the first other word for the verb. An option it does not know that takes a
-  value, or a command built in a variable, is read wrongly, either way.
+- **The hook asks where it cannot read, and asks of more than imports.** A command that names
+  the tool, `checker` and `import` is asked unless it is plainly `checker build` or `status`, so
+  `checker status && git commit -m import` is asked too. A command that runs an import without
+  writing any of the three words (a variable, a script file) is not asked.
+- **A page's file name can change when an author is added.** A name takes a suffix only while
+  another name in `authors.yaml`, or in the run, folds to the same file name, so adding one
+  gives the next page a new file. Answers match by the page's identifier, not its file, and the
+  old file is not replaced, but a co-author may be sent a file of another name.
 - **Authors who share a full name cannot use checker** until one of the names is written in a
   form of its own in `authors.yaml`. Nothing else tells two people apart in a record that keeps
   a name and never rewrites it.

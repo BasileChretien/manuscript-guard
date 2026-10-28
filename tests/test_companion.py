@@ -215,14 +215,16 @@ def test_co_author_verification_counts_by_author_and_says_whose_approval_stands(
     assert "Blaise Sample: has not approved it" in said
     from manuscript_guard.cli import _checking_items
 
-    first, second = (str(item["id"]) for item in
+    # Each answer carries the digest of the item as it is: one without counts for nothing.
+    first, second = ((str(item["id"]), str(item["digest"])) for item in
                      _checking_items(load_project(project)[0], None).items[:2])  # fmt: skip
     checks = project / "checks"
     checks.mkdir(exist_ok=True)
     (checks / "decisions.csv").write_text(
         "when,by,id,group,title,status,note,digest,bundle\n"
-        f"2026-10-01,Blaise Sample,{first},g,t,ok,,,b\n"
-        f"2026-10-01,Pat Checker,{second},g,t,wrong,,,b\n", encoding="utf-8")  # fmt: skip
+        f"2026-10-01,Blaise Sample,{first[0]},g,t,ok,,{first[1]},b\n"
+        f"2026-10-01,Pat Checker,{second[0]},g,t,wrong,,{second[1]},b\n",
+        encoding="utf-8")  # fmt: skip
     shutil.rmtree(project / "build" / "package")
     package(project)
     text = page(project)
@@ -281,12 +283,13 @@ def test_the_page_changes_no_word_to_keep_a_name_off_it(project: Path) -> None:
     from manuscript_guard.cli import _checking_items
 
     ready(project)
-    first, second = (str(item["id"]) for item in
+    first, second = ((str(item["id"]), str(item["digest"])) for item in
                      _checking_items(load_project(project)[0], None).items[:2])  # fmt: skip
     (project / "checks").mkdir(exist_ok=True)
     (project / "checks" / "decisions.csv").write_text(
         "when,by,id,group,title,status,note,digest,bundle\n"
-        f"2026-10-01,Ana,{first},g,t,ok,,,b\n2026-10-01,Ada,{second},g,t,ok,,,b\n",
+        f"2026-10-01,Ana,{first[0]},g,t,ok,,{first[1]},b\n"
+        f"2026-10-01,Ada,{second[0]},g,t,ok,,{second[1]},b\n",
         encoding="utf-8")  # fmt: skip
     package(project)
     text = page(project)

@@ -3976,6 +3976,58 @@ def test_a_number_given_only_in_a_box_is_a_summary_g8_reports(project: Path) -> 
     assert warned()
 
 
+_BOX_QUOTE = "Include 3 to 4 highlights of no more than 60 characters each."
+_POLICY_QUOTE = "The accepted manuscript may be deposited after 12 months."
+
+
+def _quote_codes(root: Path, box: dict, *, policy_on_own_page: bool) -> list[tuple[str, str]]:
+    """G4's quote findings at submission, for the example quoting a box of highlights from its
+    stored page and a sharing policy from a page of its own, which holds the policy's quote
+    or does not."""
+    from manuscript_guard.gates import check_journal
+    from manuscript_guard.gates.journal_quotes import page_digest
+    from manuscript_guard.policy import SUBMISSION, apply_stage
+
+    sources = root / "profiles" / "journals" / "sources"
+    stored = sources / "demo-journal.txt"
+    text = stored.read_text(encoding="utf-8") + f"\n{_BOX_QUOTE}\n{_POLICY_QUOTE}\n"
+    stored.write_text(text, encoding="utf-8")
+    policy = f"Sharing.\n\n{_POLICY_QUOTE}\n" if policy_on_own_page else "Sharing.\n"
+    (sources / "sharing.txt").write_text(policy, encoding="utf-8")
+    profile = root / "profiles" / "journals" / "demo-journal.yaml"
+    document = yaml.safe_load(profile.read_text(encoding="utf-8"))
+    document["boxes"] = [box]
+    document["sharing"] = {"page_file": "profiles/journals/sources/sharing.txt",
+                           "page_sha256": page_digest(policy),
+                           "accepted": {"where": ["institutional-repository"]}}  # fmt: skip
+    document["page_sha256"] = page_digest(text)
+    document["quotes"].update({"boxes.highlights": _BOX_QUOTE, "sharing.accepted": _POLICY_QUOTE})
+    profile.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    report, _ = apply_stage(check_journal(load_project(root)[0]), SUBMISSION)
+    return sorted((f.code, f.severity) for f in report.findings if f.code.startswith("journal-"))
+
+
+@pytest.mark.parametrize(
+    ("box", "own_page", "said"),
+    [
+        # As the pages say.
+        (_HIGHLIGHTS, True, [("journal-manual-unsigned", "warn")]),
+        # A box's limit typed wrong: 6 items for the page's 4, 65 characters for its 60.
+        ({**_HIGHLIGHTS, "items_max": 6},
+         True, [("journal-limit-not-in-quote", "fail"), ("journal-manual-unsigned", "warn")]),
+        ({**_HIGHLIGHTS, "item_max_chars": 65},
+         True, [("journal-limit-not-in-quote", "fail"), ("journal-manual-unsigned", "warn")]),
+        # The policy's quote on the instructions page, and not on the page the policy names.
+        (_HIGHLIGHTS, False,
+         [("journal-manual-unsigned", "warn"), ("journal-quote-not-on-page", "fail")]),
+    ],
+)  # fmt: skip
+def test_a_box_limit_typed_wrong_or_a_quote_on_the_wrong_page_fails(
+    project: Path, box: dict, own_page: bool, said: list
+) -> None:
+    assert _quote_codes(project, box, policy_on_own_page=own_page) == said
+
+
 # ------------------------------------------------- a placeholder, wherever it is written
 
 

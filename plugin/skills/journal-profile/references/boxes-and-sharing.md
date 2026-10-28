@@ -7,10 +7,16 @@ what its authors may share, or when `check` reports `box-missing`, `box-items`,
 `graphical-abstract-missing`.
 
 Three blocks record what the page says beside the paper itself. Fill each from the page, as
-every other rule, and leave out what it does not say. Each value is quoted, and the quotes
-are held to the stored page like the rest: where the journal gives one of these on a page of
-its own (an artwork guide, a self-archiving policy), save that page's text with the
-instructions page in the stored file, and record the digest `check` then prints.
+every other rule, and leave out what it does not say. Each value is quoted, and the quote of
+a box or of a graphical abstract's line states each of its numbers above 1, as a limit's
+does: `check` fails one that does not (`journal-limit-not-in-quote`).
+
+Where the journal gives one of these on a page of its own (an artwork guide, a self-archiving
+policy), store that page as a file of its own, as text, beside the instructions page, and
+name it in the block: `page_file: profiles/journals/sources/<slug>-sharing.txt`, and then
+`page_sha256` as `check` prints it. The block's quotes are held to that page and no other. Do
+not paste it into the instructions page's file. A year on, read it again on its own:
+`manuscript-guard journal --reread <file> --page <its page_file>`.
 
 `boxes` is the short texts the journal prints beside the abstract: highlights, key points,
 research in context, a plain-language summary. One entry for each the page asks for:
@@ -57,6 +63,8 @@ only where the page states it; quote each under `quotes.sharing.<version>`:
 sharing:
   source_url: https://www.journal-of-examples.org/sharing
   retrieved_on: 2026-10-28
+  page_file: profiles/journals/sources/journal-of-examples-sharing.txt
+  page_sha256: 9b1c...          # as check prints it
   preprint: {where: [personal-site, subject-repository]}
   accepted:
     where: [institutional-repository]

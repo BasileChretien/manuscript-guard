@@ -265,7 +265,7 @@ number in the file and the rule that classified it.
 | `init` | scaffold a new manuscript project; `--latex` starts the manuscript in LaTeX; `--from paper.docx` brings a paper written in Word in, its tables as pipe tables and its title page set aside; `--english en-GB` or `en-US` declares the paper's English (none unless told) |
 | `set` | write one setting of `paper.yaml` (`stage`, `target_journal`, `english_variant`, `reporting_guideline`, `study_type`) and keep its comments and every other line; it refuses, writing nothing, where the file would read back as anything else |
 | `stages` | what each stage means and what binds at it |
-| `journal` | list journal profiles, start one from the annotated template, or read a journal's page again against the stored one (`--reread`) |
+| `journal` | list journal profiles, start one from the annotated template, or read a journal's page again against the stored one (`--reread`, and `--page` for a block's page of its own) |
 | `style` | fetch the journal's citation style from the CSL style repository once, and keep it in `profiles/journals/styles/` for the offline build |
 | `install-skills` | copy the skills to a folder an agent tool reads; `--verify` checks the copy, `--remove` takes it away |
 

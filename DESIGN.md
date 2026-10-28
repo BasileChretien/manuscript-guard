@@ -6093,6 +6093,16 @@ for under `boxes:`, as data like the rest: its id, the heading it goes under (a 
 expression, searched in the title as printed), the LaTeX environment that writes it, whether
 it is required, its item and word limits, the headings it carries, and whether the journal
 takes it as a file of its own. Each box is one rule of the page, quoted under `boxes.<id>`.
+Each number of a box above 1, and each of a graphical abstract's lines, is held to its quote as
+a limit's is (`journal-limit-not-in-quote`, naming the box's field): an `item_max_chars` typed
+58 for the page's 85 otherwise passed, since the quote was on the page.
+
+A box, the graphical abstract and the sharing policy may each name a page of their own
+(`page_file`, with its `page_sha256`), where the journal gives them apart from its
+instructions: an artwork guide, a self-archiving policy. Their quotes are then held to that
+page and no other, and `journal --reread <file> --page <page_file>` reads that page again on
+its own. Kept in the instructions page's file, a policy's text read as removed each time the
+instructions page was read again (Basile, 2026-10-28).
 
 G4 reads the boxes of the main text (`text/boxes.py`) and holds each to its rules
 (`gates/journal_boxes.py`): `box-missing`, `box-items`, `box-item-long`, `box-over-limit` and
@@ -17321,12 +17331,6 @@ What papers converted from Word showed (see "What papers converted from Word sho
 - **The boxes a journal prints beside the abstract (2026-10-28), what G4 does not read.**
   - A box's words count towards the main text's word limit, as any section's do: a journal
     that counts its highlights apart is held to a count that includes them.
-  - Only a limit's number is held to its quote (`journal-limit-not-in-quote`): a box's
-    `items_max` or `item_max_chars`, and a graphical abstract's `width_px`, are held to the
-    page only, as a limit of 0 or 1 is.
-  - The quotes of a box, a graphical abstract and a sharing policy are held to the one stored
-    page. A policy read from a page of its own has to be stored with the instructions page,
-    and `journal --reread` against the instructions page alone then shows it as removed.
   - A box is read in one file: a heading in one file and its items in the next, or a LaTeX
     box's heading over an `\input` that holds its list, is a box of no items.
   - A citation in an item is measured as written (`[@key]`), not as the style prints it; a

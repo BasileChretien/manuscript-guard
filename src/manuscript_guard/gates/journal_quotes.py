@@ -12,7 +12,8 @@ quote. A rule no gate checks goes under `manual:` with its quote, rather than no
 
 * `journal-quote-not-on-page` (fails): a quote that is not in the stored page.
 * `journal-limit-not-in-quote` (fails): a limit above 1 whose number its quote does not
-  state. A limit of 0 or 1 is held to the page only, since its quote may say "no" or "a".
+  state, and so each number above 1 of a box and of a graphical abstract's line. A limit of
+  0 or 1 is held to the page only, since its quote may say "no" or "a".
 * `journal-rule-unquoted` (warning): the rules that carry no quote, named together.
 * `journal-quote-names-no-rule` (warning): a quote for a rule the profile does not have.
 * `journal-page-not-stored` (warning): the page is not there to hold the quotes to.
@@ -22,7 +23,11 @@ quote. A rule no gate checks goes under `manual:` with its quote, rather than no
   as a checklist, `journal-checklist.md` (`journal_checklist`), with their quotes and the
   sign-off, so that a rule no gate holds is still held by a named person.
 
-A profile a year old is read against the page again (`reread`, `journal --reread <file>`):
+A box, the graphical abstract and the sharing policy may name a page of their own
+(`page_file`), read apart from the instructions; their quotes are held to it (`pages_of`).
+
+A profile a year old is read against the page again (`reread`, `journal --reread <file>`,
+with `--page` for a block's page of its own, each read on its own):
 what changed between the stored page and the new one, and which rules' quotes are no longer
 on it, which are the rules to read again.
 """
@@ -93,15 +98,16 @@ def rules_of(document: dict) -> dict[str, object]:
     for name, value in (document.get("latex") or {}).items():
         rules[f"latex.{name}"] = value
     # A graphical abstract's rules, each its own; a box's, one quote for the box; and what
-    # may be shared of each version of the paper. Where the sharing policy was read is no
-    # rule of the page, nor when.
+    # may be shared of each version of the paper. Where a block was read, when, and the page
+    # of its own it was stored as are no rules of the page (`PAGE_KEYS`).
     for name, value in (document.get("graphical_abstract") or {}).items():
-        rules[f"graphical_abstract.{name}"] = value
+        if name not in PAGE_KEYS:
+            rules[f"graphical_abstract.{name}"] = value
     for box in document.get("boxes") or []:
         if isinstance(box, dict) and box.get("id"):
             rules[f"boxes.{box['id']}"] = box
     for name, value in (document.get("sharing") or {}).items():
-        if name not in ("source_url", "retrieved_on"):
+        if name not in PAGE_KEYS:
             rules[f"sharing.{name}"] = value
     return rules
 
@@ -140,78 +146,171 @@ def check_quotes(project: Project, slug: str, document: dict, path: Path) -> Rep
             )
 
     for key, quote in quotes.items():
-        value = rules.get(key)
         # A limit of none or of one is not held to its quote's number: a page writes it in
         # too many ways ("may not include figures", "Figures: none", "a single table") for
         # its words to say it, and each reading of them tried let a wrong limit through or
         # failed a right one. Its quote is still held to the page.
-        if (
-            str(key).startswith("limits.")
-            and isinstance(value, int)
-            and value > 1
-            and not _states(quote, value)
-        ):
-            findings.append(
-                _finding(
-                    "journal-limit-not-in-quote",
-                    FAIL,
-                    f"{key} is {value}, and its quote does not say {value}: \"{quote}\"",
-                    path,
-                    "quote the words that state the limit, or correct the limit to what the "
-                    "page says",
+        for named, value in _numbers_of(str(key), rules.get(key)):
+            if not _states(quote, value):
+                findings.append(
+                    _finding(
+                        "journal-limit-not-in-quote",
+                        FAIL,
+                        f"{named} is {value}, and its quote does not say {value}: \"{quote}\"",
+                        path,
+                        "quote the words that state the limit, or correct the limit to what "
+                        "the page says",
+                    )
                 )
-            )
 
-    page = page_path(project, slug, document)
+    said = [(str(key), quote) for key, quote in quotes.items()]
+    said += [(f"manual: {entry['rule']}", entry["quote"]) for entry in manual]
+    for page in pages_of(project, slug, document):
+        held = [(key, quote) for key, quote in said if page.holds(key)]
+        findings += _held_to(project, page, held, path, bool(quotes or manual))
+    return Report(tuple(findings))
+
+
+#: The numbers of a box, each of which its quote has to state where it is above 1.
+BOX_NUMBERS = ("items_min", "items_max", "item_max_chars", "item_max_words", "max_words")
+#: What a block read from a page of its own says of that page, which is no rule of it.
+PAGE_KEYS = ("page_file", "page_sha256", "source_url", "retrieved_on")
+
+
+def _numbers_of(key: str, value: object) -> list[tuple[str, int]]:
+    """Each whole number above 1 that a rule states, with what the finding calls it: a
+    limit's, a line of the graphical abstract's, and each number of a box's."""
+
+    def whole(number: object) -> int | None:
+        if isinstance(number, bool) or not isinstance(number, (int, float)):
+            return None
+        if isinstance(number, float) and not number.is_integer():
+            return None
+        return int(number) if number > 1 else None
+
+    if key.startswith(("limits.", "graphical_abstract.")):
+        number = whole(value)
+        return [] if number is None else [(key, number)]
+    if key.startswith("boxes.") and isinstance(value, dict):
+        found = [(f"{key} {name}", whole(value.get(name))) for name in BOX_NUMBERS]
+        return [(named, number) for named, number in found if number is not None]
+    return []
+
+
+def _owner(key: str) -> str:
+    """The block a quote belongs to, where a block may name a page of its own:
+    `graphical_abstract`, `sharing` or `boxes.<id>`; "" for every other rule."""
+    if key.startswith(("graphical_abstract.", "sharing.")):
+        return key.split(".", 1)[0]
+    return key if key.startswith("boxes.") else ""
+
+
+@dataclass(frozen=True)
+class Page:
+    """A page the profile's quotes are held to: where it is stored, the digest the profile
+    records of it, where it was read, whether it is the instructions page, and the blocks
+    whose quotes it holds: for a page of a block's own, those that name it (`page_file`);
+    for the instructions page, those that name no other."""
+
+    path: Path
+    recorded: str | None
+    source: str
+    instructions: bool
+    blocks: tuple[str, ...] = ()
+
+    def holds(self, key: str) -> bool:
+        """Whether the quote filed under `key` is held to this page."""
+        owner = _owner(key)
+        return self.instructions if owner == "" else owner in self.blocks
+
+    @property
+    def named(self) -> str:
+        """What the page is called in a finding."""
+        return "the stored page" if self.instructions else f"the page of {', '.join(self.blocks)}"
+
+
+def pages_of(project: Project, slug: str, document: dict) -> list[Page]:
+    """The instructions page, then each page of its own a block names (`page_file`), once
+    each, two blocks naming one page sharing it. A block that names none is held to the
+    instructions page, and so is one that names that page."""
+    blocks = [(name, document[name]) for name in ("graphical_abstract", "sharing")
+              if isinstance(document.get(name), dict)]  # fmt: skip
+    blocks += [(f"boxes.{box['id']}", box) for box in document.get("boxes") or ()
+               if isinstance(box, dict) and box.get("id")]  # fmt: skip
+    instructions = page_path(project, slug, document)
+    own: dict[Path, Page] = {}
+    held_there: list[str] = []
+    for name, block in blocks:
+        where = project.root / str(block["page_file"]) if block.get("page_file") else None
+        if where is None or where == instructions:
+            held_there.append(name)
+            continue
+        known = own.get(where)
+        own[where] = Page(
+            where,
+            (known.recorded if known else None) or block.get("page_sha256"),
+            known.source if known else str(block.get("source_url") or f"the page of {name}"),
+            False,
+            (*(known.blocks if known else ()), name),
+        )
+    first = Page(instructions, document.get("page_sha256"),
+                 str(document.get("source_url") or "the instructions page"), True,
+                 tuple(held_there))  # fmt: skip
+    return [first, *own.values()]
+
+
+def _held_to(project: Project, page: Page, said: list[tuple[str, str]], path: Path,
+             quoted: bool) -> list[Finding]:  # fmt: skip
+    """What the quotes held to `page` say of it: that it is not stored, that it is not the
+    text the profile recorded, and each quote that is not on it."""
     try:
-        text = page.read_text(encoding="utf-8")
+        text = page.path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
-        if quotes or manual:
-            findings.append(
-                _finding(
-                    "journal-page-not-stored",
-                    WARN,
-                    f"the journal's page is not stored at {_where(page, project)}, so no "
-                    "quote of the profile can be held to it",
-                    path,
-                    f"save {document.get('source_url', 'the instructions page')} there as "
-                    "text, as read on the date the profile records",
-                )
-            )
-        return Report(tuple(findings))
-
-    recorded = document.get("page_sha256")
-    if recorded != page_digest(text):
-        said = (
-            f"is not the text the profile recorded (page_sha256 {str(recorded)[:12]}...)"
-            if recorded
+        # The instructions page is said wherever the profile quotes anything, as before; a
+        # page of a block's own only where a quote is held to it.
+        if not (quoted if page.instructions else said):
+            return []
+        held = ("quote of the profile" if page.instructions
+                else f"quote of {', '.join(page.blocks)}")  # fmt: skip
+        return [_finding(
+            "journal-page-not-stored",
+            WARN,
+            f"the journal's page is not stored at {_where(page.path, project)}, so no {held} "
+            "can be held to it",
+            path,
+            f"save {page.source} there as text, as read on the date the profile records",
+        )]  # fmt: skip
+    findings: list[Finding] = []
+    if page.recorded != page_digest(text):
+        said_of = (
+            f"is not the text the profile recorded (page_sha256 {str(page.recorded)[:12]}...)"
+            if page.recorded
             else "has no digest in the profile"
         )
+        under = "" if page.instructions else f" under {', '.join(page.blocks)}"
         findings.append(
             _finding(
                 "journal-page-changed",
                 WARN,
-                f"{_where(page, project)} {said}",
+                f"{_where(page.path, project)} {said_of}",
                 path,
                 f"once the profile is read against this text, record page_sha256: "
-                f"{page_digest(text)}",
+                f"{page_digest(text)}{under}",
             )
         )
-    said = [(key, quote) for key, quote in quotes.items()]
-    said += [(f"manual: {entry['rule']}", entry["quote"]) for entry in manual]
     for key, quote in said:
         if not _on_page(text, quote):
             findings.append(
                 _finding(
                     "journal-quote-not-on-page",
                     FAIL,
-                    f"the quote for {key} is not on the stored page: \"{quote}\"",
+                    f"the quote for {key} is not on {page.named}: \"{quote}\"",
                     path,
                     "copy the words from the page as it writes them, or remove the rule: one "
                     "read wrong, or never on the page, fails as surely as it misleads",
                 )
             )
-    return Report(tuple(findings))
+    return findings
 
 
 def manual_signable(slug: str, document: dict, path: Path) -> Signable | None:
@@ -309,31 +408,46 @@ class Reread:
     #: Each rule, `manual:` ones as "manual: <rule>", and whether its quote is on the new page.
     rules: tuple[tuple[str, bool], ...]
     digest: str
+    #: The blocks whose page it is, where it is a page of their own: where its digest goes.
+    blocks: tuple[str, ...] = ()
 
 
-def reread(project: Project, new_text: str) -> Reread | None:
+def reread(project: Project, new_text: str, page: str | None = None) -> Reread | None:
     """The target journal's stored page against `new_text`, the page read again; None where
-    the project has no profile to read it for. A rule whose quote is not on the new page is
-    one the page may have changed, and is read again; the rest of the difference is for the
-    author to read, a rule the page added among it."""
+    the project has no profile to read it for. `page` is a page of its own that a block names
+    (`page_file`, as the profile writes it), read again in its place; without it, the
+    instructions page. Only the quotes held to that page are read against it, so that the
+    text of a policy kept on its own page is not taken for text gone from the instructions
+    page. A rule whose quote is not on the new page is one the page may have changed, and is
+    read again; the rest of the difference is for the author to read, a rule the page added
+    among it. Raises LookupError where `page` is no page of the profile's."""
     found = _target_profile(project)
     if found is None:
         return None
     slug, document, _path = found
-    stored = page_path(project, slug, document)
+    pages = pages_of(project, slug, document)
+    chosen = pages[0] if page is None else next(
+        (one for one in pages[1:] if one.path == project.root / page), None)  # fmt: skip
+    if chosen is None:
+        named = [_where(one.path, project) for one in pages[1:]]
+        raise LookupError(f"{page} is no page a block of the profile names; its pages of their "
+                          f"own: {', '.join(named) or 'none'}")  # fmt: skip
     try:
-        old = stored.read_text(encoding="utf-8")
+        old = chosen.path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
         old = ""
     diff = tuple(difflib.unified_diff(
         old.splitlines(), new_text.splitlines(), "stored page", "page read again", n=1,
         lineterm="",
     ))  # fmt: skip
-    said = list((document.get("quotes") or {}).items())
-    said += [(f"manual: {entry.get('rule')}", str(entry.get("quote", "")))
-             for entry in document.get("manual") or () if isinstance(entry, dict)]  # fmt: skip
-    rules = tuple((str(key), _on_page(new_text, str(quote))) for key, quote in said)
-    return Reread(stored, diff, rules, page_digest(new_text))
+    said = [(str(key), str(quote)) for key, quote in (document.get("quotes") or {}).items()
+            if chosen.holds(str(key))]  # fmt: skip
+    if chosen.instructions:
+        said += [(f"manual: {entry.get('rule')}", str(entry.get("quote", "")))
+                 for entry in document.get("manual") or () if isinstance(entry, dict)]  # fmt: skip
+    rules = tuple((key, _on_page(new_text, quote)) for key, quote in said)
+    blocks = () if chosen.instructions else chosen.blocks
+    return Reread(chosen.path, diff, rules, page_digest(new_text), blocks)
 
 
 def _cell(text: str) -> str:

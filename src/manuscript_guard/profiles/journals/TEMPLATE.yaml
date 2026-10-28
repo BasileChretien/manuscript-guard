@@ -319,6 +319,7 @@ reporting_guidelines:
 #     # max_words: 100               # the whole box
 #     # headings: [Question, Findings, Meaning]
 #     file: separate                 # or manuscript: how the journal takes it
+#     # page_file: profiles/journals/sources/my-journal-highlights.txt   # its own page
 
 # ── Graphical abstract ───────────────────────────────────────────────────────────────────
 #
@@ -340,6 +341,7 @@ reporting_guidelines:
 #   # max_labels: 5
 #   # alt_text_max_chars: 250
 #   # min_text_pt: 8
+#   # page_file: profiles/journals/sources/my-journal-artwork.txt       # its own page
 
 # ── Sharing ──────────────────────────────────────────────────────────────────────────────
 #
@@ -351,6 +353,8 @@ reporting_guidelines:
 # sharing:
 #   source_url: "https://www.example-journal.org/sharing-policy"
 #   retrieved_on: 2026-01-15
+#   # The policy's page, stored as text as a file of its own; its quotes are held to it.
+#   page_file: profiles/journals/sources/my-journal-sharing.txt
 #   preprint:
 #     where: [personal-site, institutional-repository, subject-repository]
 #   accepted:
@@ -381,11 +385,12 @@ reporting_guidelines:
 # structure.abstract_structured, structure.abstract_headings, structure.abstract_title,
 # required_statements.<id>, references, english_variant, blinding, text_recycling,
 # abbreviations.<key>, reporting_guidelines, pointers.<kind>, boxes.<id>,
-# graphical_abstract.<name>, sharing.<version>. The quotes of a box, a graphical abstract
-# and a sharing policy are held to the one stored page too: where the journal gives them on
-# a page of their own, store that page's text with the instructions page.
-# G4 names every rule that has none. A limit's number must be in its quote, as digits
-# ("3500", "3,500") or as a word up to twenty ("four").
+# graphical_abstract.<name>, sharing.<version>. A box, the graphical abstract or the
+# sharing policy read from a page of its own names that page in its block (`page_file`, and
+# `page_sha256`), and its quotes are held to it; `journal --reread <file> --page <page_file>`
+# reads it again. G4 names every rule that has none. A limit's number must be in its quote,
+# as digits ("3500", "3,500") or as a word up to twenty ("four"), and so must each number
+# above 1 of a box and of a graphical abstract.
 #
 #   limits.abstract_words: "Abstracts should not exceed 250 words."
 #   required_statements.funding: "All sources of funding must be declared."

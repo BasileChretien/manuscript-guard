@@ -339,3 +339,112 @@ def test_the_template_s_example_of_each_new_block_is_a_valid_profile(block: str)
                 "retrieved_on": "2026-10-28", **block_read}  # fmt: skip
     report = validate(document, "journal", Path("TEMPLATE.yaml"))
     assert report.ok, report.render()
+
+
+# ------------------------------------------------- a box's numbers, held to its quote
+
+
+def _quoted(root: Path, **blocks) -> dict[str, str]:
+    """The `journal-limit-not-in-quote` and `journal-quote-not-on-page` messages G4 gives with
+    `blocks` set in the profile, the quotes among them added to its own."""
+    profile = yaml.safe_load((root / PROFILE).read_text(encoding="utf-8"))
+    quotes = {**profile["quotes"], **blocks.pop("quotes", {})}
+    _asks(root, quotes=quotes, **blocks)
+    report = check_journal(load_project(root)[0])
+    codes = ("journal-limit-not-in-quote", "journal-quote-not-on-page", "journal-page-not-stored",
+             "journal-page-changed")  # fmt: skip
+    return sorted((f.code, f.message) for f in report.findings if f.code in codes)
+
+
+def test_each_number_of_a_box_is_held_to_its_quote(project: Path) -> None:
+    """A box's `item_max_chars` typed 58 for the page's 85 passed G4: only a limit's number was
+    held to its quote."""
+    quote = "Include 3 to 5 highlights, each of no more than 85 characters."
+    page = project / "profiles" / "journals" / "sources" / "demo-journal.txt"
+    page.write_text(page.read_text(encoding="utf-8") + "\n" + quote + "\n", encoding="utf-8")
+    box = {**HIGHLIGHTS, "item_max_chars": 58}
+    said = _quoted(project, boxes=[box], quotes={"boxes.highlights": quote})
+    assert ("journal-limit-not-in-quote", "boxes.highlights item_max_chars is 58, and its "
+            f"quote does not say 58: \"{quote}\"") in said  # fmt: skip
+    assert not any("items_min" in m or "items_max" in m for _c, m in said)
+    said = _quoted(project, boxes=[HIGHLIGHTS])
+    assert not [m for c, m in said if c == "journal-limit-not-in-quote"]
+
+
+def test_a_graphical_abstract_s_size_is_held_to_its_quote(project: Path) -> None:
+    quote = "Images should be a minimum of 1328 x 531 pixels."
+    blocks = {"graphical_abstract": {"required": True, "width_px": 1328, "height_px": 513},
+              "quotes": {"graphical_abstract.width_px": quote,
+                         "graphical_abstract.height_px": quote,
+                         "graphical_abstract.required": "A graphical abstract is mandatory."}}
+    said = [m for c, m in _quoted(project, **blocks) if c == "journal-limit-not-in-quote"]
+    assert said == [f"graphical_abstract.height_px is 513, and its quote does not say 513: "
+                    f"\"{quote}\""]  # fmt: skip
+
+
+# ------------------------------------------------- a block's quotes, held to its own page
+
+SHARING_QUOTE = "The accepted manuscript may be deposited after 12 months."
+SHARING = {"page_file": "profiles/journals/sources/demo-journal-sharing.txt",
+           "accepted": {"where": ["institutional-repository"], "embargo_months": 12}}
+
+
+def _sharing_page(root: Path, text: str) -> Path:
+    page = root / SHARING["page_file"]
+    page.write_text(text, encoding="utf-8")
+    return page
+
+
+def test_a_block_s_quotes_are_held_to_the_page_it_names(project: Path) -> None:
+    from manuscript_guard.gates.journal_quotes import page_digest
+
+    text = f"Sharing policy.\n\n{SHARING_QUOTE}\n"
+    _sharing_page(project, text)
+    blocks = {"sharing": {**SHARING, "page_sha256": page_digest(text)},
+              "quotes": {"sharing.accepted": SHARING_QUOTE}}
+    assert _quoted(project, **blocks) == []
+
+
+def test_a_block_s_quote_on_the_wrong_page_fails(project: Path) -> None:
+    """The quote is on the instructions page, and the block names a page of its own: it is
+    held to that one, where it is not."""
+    page = project / "profiles" / "journals" / "sources" / "demo-journal.txt"
+    page.write_text(page.read_text(encoding="utf-8") + SHARING_QUOTE + "\n", encoding="utf-8")
+    _sharing_page(project, "Sharing policy.\n")
+    said = _quoted(project, sharing=SHARING, quotes={"sharing.accepted": SHARING_QUOTE})
+    assert ("journal-quote-not-on-page", f"the quote for sharing.accepted is not on the page of "
+            f"sharing: \"{SHARING_QUOTE}\"") in said  # fmt: skip
+    assert any(c == "journal-page-changed" and "demo-journal-sharing.txt" in m for c, m in said)
+
+
+def test_a_block_s_own_page_not_stored_is_said(project: Path) -> None:
+    said = _quoted(project, sharing=SHARING, quotes={"sharing.accepted": SHARING_QUOTE})
+    assert ("journal-page-not-stored", "the journal's page is not stored at "
+            "profiles/journals/sources/demo-journal-sharing.txt, so no quote of sharing can be "
+            "held to it") in said  # fmt: skip
+    # And no quote of the instructions page is taken for one gone from it.
+    assert not [m for c, m in said if c == "journal-quote-not-on-page"]
+
+
+def test_a_reread_reads_each_page_on_its_own(project: Path, capsys) -> None:
+    """Read again, the instructions page is not held to the sharing policy's quote, and the
+    policy's page, read again with `--page`, is held to it alone."""
+    from manuscript_guard.cli import main
+
+    _sharing_page(project, f"Sharing policy.\n\n{SHARING_QUOTE}\n")
+    _asks(project, sharing=SHARING, quotes={
+        **yaml.safe_load((project / PROFILE).read_text(encoding="utf-8"))["quotes"],
+        "sharing.accepted": SHARING_QUOTE})  # fmt: skip
+    instructions = project / "profiles" / "journals" / "sources" / "demo-journal.txt"
+    again = project / "again.txt"
+    again.write_text(instructions.read_text(encoding="utf-8"), encoding="utf-8")
+    assert main(["journal", str(project), "--reread", str(again)]) == 0
+    assert "sharing.accepted" not in capsys.readouterr().out
+    again.write_text("Sharing policy, revised.\n", encoding="utf-8")
+    assert main(["journal", str(project), "--reread", str(again),
+                 "--page", SHARING["page_file"]]) == 1  # fmt: skip
+    out = capsys.readouterr().out
+    assert "NOT on the page    sharing.accepted" in out
+    assert "limits.abstract_words" not in out and "manual: cover letter" not in out
+    assert "in the profile's sharing." in out
+    assert main(["journal", str(project), "--reread", str(again), "--page", "nowhere.txt"]) == 2

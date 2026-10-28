@@ -12,6 +12,16 @@
       "pattern": "^[^{}]*\\{n\\}[^{}]*$",
       "description": "The pointer with {n}, once, where its number goes: \"Table {n}\", \"Fig. {n}\", \"eTable {n}\", \"Table S{n}\"."
     },
+    "own_page_file": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Where the page this block was read from is stored as text, from the project's root, where it is a page of its own (an artwork guide, a sharing policy): the block's quotes are held to it, not to the instructions page. `journal --reread <file> --page <this>` reads it again on its own."
+    },
+    "own_page_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "The digest of the block's own stored page, as G4 prints it."
+    },
     "sharing_version": {
       "type": "object",
       "additionalProperties": false,
@@ -350,7 +360,11 @@
         "max_words": { "type": "integer", "minimum": 1, "description": "The most words it may hold." },
         "max_labels": { "type": "integer", "minimum": 0, "description": "The most labels it may hold." },
         "alt_text_max_chars": { "type": "integer", "minimum": 1, "description": "The most characters its alternative text may hold." },
-        "min_text_pt": { "type": "number", "exclusiveMinimum": 0, "description": "The smallest text, in points." }
+        "min_text_pt": { "type": "number", "exclusiveMinimum": 0, "description": "The smallest text, in points." },
+        "source_url": { "type": "string", "description": "The page these were read from, where it is not the instructions page." },
+        "retrieved_on": { "type": "string", "format": "date" },
+        "page_file": { "$ref": "#/$defs/own_page_file" },
+        "page_sha256": { "$ref": "#/$defs/own_page_sha256" }
       }
     },
     "boxes": {
@@ -395,7 +409,9 @@
           "file": {
             "enum": ["separate", "manuscript"],
             "description": "Whether the journal takes the box as a file of its own or in the manuscript. Recorded for the submission pack; G4 reads the box in the manuscript either way."
-          }
+          },
+          "page_file": { "$ref": "#/$defs/own_page_file" },
+          "page_sha256": { "$ref": "#/$defs/own_page_sha256" }
         }
       }
     },
@@ -407,6 +423,8 @@
       "properties": {
         "source_url": { "type": "string", "description": "The page the sharing policy was read from." },
         "retrieved_on": { "type": "string", "format": "date" },
+        "page_file": { "$ref": "#/$defs/own_page_file" },
+        "page_sha256": { "$ref": "#/$defs/own_page_sha256" },
         "preprint": { "$ref": "#/$defs/sharing_version" },
         "accepted": { "$ref": "#/$defs/sharing_version" },
         "published": { "$ref": "#/$defs/sharing_version" }

@@ -2142,7 +2142,7 @@ def cmd_audit(args: argparse.Namespace) -> int:
     return 1 if failed and args.strict else 0
 
 
-def _reread(project, new: Path) -> int:
+def _reread(project, new: Path, page: str | None = None) -> int:
     """`journal --reread`: the stored page against the page read again, and the rules whose
     quotes it no longer holds. Writes nothing: adopting the page is the author's."""
     from manuscript_guard.gates.journal_quotes import DIFF_LINES, reread
@@ -2152,7 +2152,11 @@ def _reread(project, new: Path) -> int:
     except (OSError, UnicodeDecodeError) as exc:
         print(f"manuscript-guard: {new} cannot be read as UTF-8 text: {exc}", file=sys.stderr)
         return 2
-    found = reread(project, text)
+    try:
+        found = reread(project, text, page)
+    except LookupError as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 2
     if found is None:
         print("manuscript-guard: paper.yaml names no journal with a profile to read the page "
               "for", file=sys.stderr)  # fmt: skip
@@ -2178,7 +2182,7 @@ def _reread(project, new: Path) -> int:
     print(
         f"Read the difference for rules the page added, too. To adopt the page, save it over "
         f"{where}, then record page_sha256: {found.digest} and today's retrieved_on in the "
-        "profile."
+        + (f"profile's {', '.join(found.blocks)}." if found.blocks else "profile.")
     )
     return 1 if gone else 0
 
@@ -2194,7 +2198,7 @@ def cmd_journal(args: argparse.Namespace) -> int:
         return 2
 
     if args.reread:
-        return _reread(project, args.reread)
+        return _reread(project, args.reread, args.page)
 
     if args.template:
         source = SHIPPED_JOURNALS / "TEMPLATE.yaml"
@@ -5068,6 +5072,13 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="the journal's page read again, as text: show what changed from the stored page "
         "and which rules quote words it no longer has; writes nothing",
+    )
+    journal.add_argument(
+        "--page",
+        metavar="FILE",
+        help="with --reread: the page of its own a block of the profile names (its page_file, "
+        "as the profile writes it) that FILE is read again in place of; without it, the "
+        "instructions page",
     )
     journal.set_defaults(func=cmd_journal)
 

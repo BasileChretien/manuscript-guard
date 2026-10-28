@@ -11,7 +11,8 @@ line.
 
 Every rule is quoted. The page is stored as text (`profiles/journals/sources/<slug>.txt`),
 each rule carries the words it was read from under `quotes:`, and G4 fails a quote that is
-not on the stored page. A limit above 1 must state its number in its quote. A rule no gate
+not on the stored page. A limit above 1 must state its number in its quote, and so must
+each number of a box and of a graphical abstract. A rule no gate
 checks goes under `manual:`, quoted, and the corresponding author signs it off.
 
 Most of the profile is about the paper: word limits, required sections and statements, the
@@ -115,10 +116,33 @@ no rules. It is read from the journal's own policy page, not from a summary of i
 Sherpa Romeo, which needs a key besides. No gate reads the block yet, and without it nothing
 is refused yet.
 
-## Quotes from another page
+## Quotes and their numbers
 
-The quotes of a box, a graphical abstract and a sharing policy are held to the one stored
-page, as every other rule's. Where the journal gives them on a page of their own, an artwork
-guide or a self-archiving policy, store that page's text with the instructions page in the
-stored file, and record the digest `check` prints as `page_sha256`. The Known gaps of
-[DESIGN.md](../DESIGN.md) have what this costs.
+A box's quote states each of its numbers above 1 (`items_min`, `items_max`,
+`item_max_chars`, `item_max_words`, `max_words`), and so does each line of the graphical
+abstract's, as a limit's quote states its number: G4 fails one that does not
+(`journal-limit-not-in-quote`).
+
+## A page of its own
+
+Where the journal gives a box, the graphical abstract or the sharing policy on a page apart
+from its instructions, an artwork guide or a self-archiving policy, store that page as a
+file of its own and name it in the block:
+
+```yaml
+sharing:
+  source_url: https://www.journal-of-examples.org/sharing
+  page_file: profiles/journals/sources/journal-of-examples-sharing.txt
+  page_sha256: 9b1c...    # as check prints it
+```
+
+The block's quotes are then held to that page and no other, its digest is checked as the
+instructions page's is, and it is read again on its own:
+
+```bash
+manuscript-guard journal --reread new-sharing.txt --page profiles/journals/sources/journal-of-examples-sharing.txt
+```
+
+Without `--page`, `--reread` reads the instructions page again, against the quotes held to
+it alone. A box names its page in its own entry; two blocks may name one page. See also
+[DESIGN.md](../DESIGN.md).

@@ -3351,6 +3351,90 @@ def test_a_file_changed_after_the_plan_stops_the_package(project: Path) -> None:
     assert not (project / "build" / "package" / f"{plan.name}.zip").exists()
 
 
+def _crate_of(root: Path) -> tuple[dict, str]:
+    (folder,) = [p for p in (root / "build" / "package").iterdir() if p.is_dir()]
+    document = json.loads((folder / "ro-crate-metadata.json").read_text(encoding="utf-8"))
+    entities = {entity["@id"]: entity for entity in document["@graph"]}
+    return entities, (folder / "RELATIONS.md").read_text(encoding="utf-8")
+
+
+def _stated(entity: dict, relation: str) -> list:
+    found = entity.get(relation, [])
+    return found if isinstance(found, list) else [found]
+
+
+@pytest.mark.parametrize(
+    ("relative", "code", "action", "relation", "said"),
+    [
+        ("analysis/01_disproportionality.py", "script-newer",
+         "#run-results/01_disproportionality.json", "instrument",
+         "the script here has changed since it wrote these results"),
+        ("data/event_terms.txt", "input-changed", "#run-results/01_disproportionality.json",
+         "object", "the file here is not the one the run read"),
+        ("figures/forest.svg", None, "#render-figures/forest.render.json", "result",
+         "the file here is not the one it drew"),
+    ],
+)  # fmt: skip
+def test_a_file_changed_after_its_run_is_not_stated_by_the_crate(
+    project: Path, relative: str, code: str | None, action: str, relation: str, said: str
+) -> None:
+    """A script edited after it wrote its results, an input changed since a run read it, a
+    figure redrawn by hand: the package is written with the checks skipped, and the crate
+    states none of the three as the record has it. Each is in RELATIONS.md, with why."""
+    _packable(project)
+    assert _run_cli(["package", str(project), "--ro-crate"]) == 0
+    entities, relations = _crate_of(project)
+    assert {"@id": relative} in _stated(entities[action], relation)
+    assert "Not as recorded\n\nThe record names it, and the files here do not show that it " \
+           "holds.\n\nNone." in relations  # fmt: skip
+
+    path = project / relative
+    path.write_bytes(path.read_bytes() + b"\n# changed after its run\n")
+    if code is not None:
+        assert code in codes(gate_report(project))
+    assert _run_cli(["package", str(project), "--ro-crate", "--skip-checks"]) == 0
+    entities, relations = _crate_of(project)
+    if relation == "instrument":
+        # The profile requires every action's instrument: the script stays named, and only
+        # RELATIONS.md says it is not the one its record names.
+        assert _stated(entities[action], relation) == [{"@id": relative}]
+    else:
+        assert {"@id": relative} not in _stated(entities[action], relation)
+    assert f"| {action} | {relation} | {relative} | {said}" in relations
+    for entity in entities.values():
+        if entity["@type"] == "CreateAction":
+            assert _stated(entity, "instrument"), entity["@id"]
+
+
+def test_a_model_of_results_the_package_withholds_is_not_published(project: Path) -> None:
+    """A fragment another script declared restricted is withheld, and the custodian's minimum
+    is not read across it: its model card, 271 events and all, would go out in MODELS.md with
+    no sign-off covering it. Here the minimum is above the card's counts, and the package goes
+    without a sign-off only because the card stays out with its results."""
+    import subprocess
+    import sys
+
+    _packable(project, request="Write to the corresponding author.")
+    paper = project / "paper.yaml"
+    document = yaml.safe_load(paper.read_text(encoding="utf-8"))
+    document["custodian"] = {"minimum_cell_count": 5000}
+    paper.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    assert _run_cli(["package", str(project), "--ro-crate"]) == 1
+    (project / "analysis" / "02_next.py").write_text(
+        "from manuscript_guard.emit import Emitter\nem = Emitter(__file__)\n"
+        'em.add_input("results/01_disproportionality.json", restricted=True)\n'
+        'em.value("ratio.next", 0.5, digits=1)\nem.write()\n', encoding="utf-8")  # fmt: skip
+    ran = subprocess.run([sys.executable, "analysis/02_next.py"], cwd=project,
+                         capture_output=True, text=True)  # fmt: skip
+    assert ran.returncode == 0, ran.stderr
+    assert _run_cli(["package", str(project), "--ro-crate"]) == 0
+    (folder,) = [p for p in (project / "build" / "package").iterdir() if p.is_dir()]
+    held = (folder / "MODELS.md").read_text(encoding="utf-8")
+    assert "Adjusted model" not in held and "271" not in held and "4000" not in held
+    assert "left out: withheld with its results" in held
+    assert "4000 of 4000" not in (folder / "ro-crate-metadata.json").read_text(encoding="utf-8")
+
+
 def test_a_statement_that_loses_the_deposits_doi_fails_at_submission(project: Path) -> None:
     from manuscript_guard.gates.data_statement import check_package_doi
 

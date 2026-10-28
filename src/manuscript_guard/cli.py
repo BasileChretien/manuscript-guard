@@ -2269,12 +2269,16 @@ def cmd_package(args: argparse.Namespace) -> int:
         merge_all([contract_report, load_report, check_freshness(project, results),
                    check_restricted_inputs(project, results)]), stage)  # fmt: skip
     try:
-        plan = plan_package(project, results, with_manuscript=args.with_manuscript)
+        plan = plan_package(project, results, with_manuscript=args.with_manuscript,
+                            citation=args.citation or args.root_citation,
+                            ro_crate=args.ro_crate)  # fmt: skip
     except PackageError as exc:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
     if args.dry_run:
         print(_package_listing(project, plan))
+        if args.root_citation:
+            print("\n".join(_root_citation(project, plan, dry_run=True)))
         if not checks.ok:
             print(f"\n{checks.render(project.root)}\n\nIt would not be written while these fail.")
         return 0 if plan.report.ok and checks.ok else 1
@@ -2297,7 +2301,17 @@ def cmd_package(args: argparse.Namespace) -> int:
         return 2
     print(f"{len(plan.entries) + 2} files, {sum(not i.included for i in plan.inputs)} input(s) "
           f"withheld.\n{deposit_steps(project, written)}")  # fmt: skip
+    if args.root_citation:
+        print("\n" + "\n".join(_root_citation(project, plan, dry_run=False)))
     return 0
+
+
+def _root_citation(project, plan, *, dry_run: bool) -> list[str]:
+    """What `--root-citation` did, or would do, at the project's root: each file written
+    where none was, and each kept, with the fields where it differs from the package's."""
+    from manuscript_guard.deposit.metadata import root_citation
+
+    return [f"root: {line}" for line in root_citation(project, plan.entries, dry_run=dry_run)]
 
 
 def _package_listing(project, plan) -> str:
@@ -2537,38 +2551,16 @@ def cmd_models(args: argparse.Namespace) -> int:
     The card is what a co-author reads to say whether the model is the right one: what it is
     called, what the author says it is for, the sentence made from the fit, and each variable
     with the kind it was declared and how it entered."""
-    from manuscript_guard.contracts.models import describe, table_rows
+    from manuscript_guard.cards import model_cards
 
     project, _ = load_project(args.path)
     _namespace, results, _literature, _loaded = load_namespace(project)
     if not results.models:
         print("no models: an analysis records one with em.model() in Python, em$model() in R")
         return 0
-    report = check_models(project, results)
-    for key, model in results.models.items():
-        print(f"{model.name}  (model.{key}, {model.source.name})")
-        print(f"  fitted:      {model.kind or 'a model the toolkit has no name for'}")
-        print(f"  formula:     {model.formula}")
-        print(f"  from fit:    {describe(model, results.variables)}")
-        print(f"  author says: {model.description or '(nothing)'}")
-        rows = [["Variable", "Declared as", "Entered as", "Levels"]]
-        rows += table_rows(model, results.variables)
-        widths = [max(len(row[i]) for row in rows) for i in range(4)]
-        for row in rows:
-            cells = zip(row, widths, strict=True)
-            print("    " + "  ".join(cell.ljust(width) for cell, width in cells))
-        print(f"  converged:   {'yes' if model.converged else 'NO'}")
-        mine = [f for f in report.findings if f.message.startswith(f"model {key!r}:")]
-        for finding in mine:
-            print(f"  [{finding.severity.upper()}] {finding.message.split(': ', 1)[1]}")
-        print()
-    # What G15 says of no one model, of a variable's data or of a name typed in the Methods,
-    # counts in the exit code and so is printed.
-    under_a_card = tuple(f"model {key!r}:" for key in results.models)
-    for finding in report.findings:
-        if not finding.message.startswith(under_a_card):
-            where = f"{finding.path.name}:{finding.line}: " if finding.line else ""
-            print(f"[{finding.severity.upper()}] {where}{finding.message}")
+    lines, report = model_cards(project, results)
+    for line in lines:
+        print(line)
     return 0 if report.ok else 1
 
 
@@ -4699,7 +4691,9 @@ def build_parser() -> argparse.ArgumentParser:
         "only when it is declared synthetic or listed in paper.yaml's package.share; a "
         "restricted one never does. Refused while G1 fails, while a fragment holds a count "
         "below the custodian's minimum, and, where the custodian restricts sending, until "
-        "they sign the package off. It uploads nothing.",
+        "they sign the package off. It uploads nothing. --citation, --ro-crate and "
+        "--root-citation add a description of the package made from the records "
+        "(docs/deposit.md).",
     )
     package.add_argument("path", nargs="?", type=Path, default=Path.cwd())
     package.add_argument("--dry-run", action="store_true",
@@ -4709,6 +4703,18 @@ def build_parser() -> argparse.ArgumentParser:
                          help="add the manuscript's source; BOUND.md is there either way")
     package.add_argument("--skip-checks", action="store_true",
                          help="write it although G1 fails, and say so in MANIFEST.yaml")
+    package.add_argument("--citation", action="store_true",
+                         help="add .zenodo.json, the metadata of a Zenodo record of the "
+                         "package, beside CITATION.cff")  # fmt: skip
+    package.add_argument("--ro-crate", action="store_true",
+                         help="describe the package as an RO-Crate 1.1 "
+                         "(ro-crate-metadata.json), with only the relationships its files "
+                         "show to hold, the rest in RELATIONS.md, and the model cards in "
+                         "MODELS.md; implies --citation")  # fmt: skip
+    package.add_argument("--root-citation", action="store_true",
+                         help="also write CITATION.cff and .zenodo.json at the project's root, "
+                         "each only where none is there; one there is never written over. "
+                         "Implies --citation")  # fmt: skip
     package.set_defaults(func=cmd_package)
 
     journal = sub.add_parser(

@@ -258,8 +258,7 @@ LATEX = {
     "methods": ("reads", ("methods", "{project}")),
     "models": ("reads", ("models", "{project}")),
     # It packages the results, the scripts and the inputs whatever the format, and the `.tex`
-    # sources with `--with-manuscript`; BOUND.md does not read LaTeX's bindings yet, and the
-    # package says so with a warning (`package-bound-not-read`).
+    # sources with `--with-manuscript`; BOUND.md reads LaTeX's bindings (`deposit/bound.py`).
     "package": ("reads", ("package", "{project}")),
     "palettes": ("no manuscript", ("palettes",)),
     "passages": ("reads", ("passages", "{project}")),

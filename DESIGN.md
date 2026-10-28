@@ -8138,27 +8138,35 @@ DOI, the crate and the chosen data sources' DOIs, `identifier` the recorded DOI,
 one more than the revision rounds), every `<`, `>` and `&` in it written as an escape. Its
 six sections are each made from a record. The overview: the abstract, a citation of the
 package, the dated events the records hold (the plan kept with the first results, each
-results file written, each revision round received, `package.date`), the digest of every
-results file as `check` and `verify` take it (`fragments_digest`, the withheld ones too: their
-digest, not what they hold), and a digest of SHA256SUMS's lines for every file but the page, its
+results file written, each revision round received, `package.date`), a digest of every
+results file by name and bytes, the set `fragments_digest` reads for `check` and `verify`
+(the withheld ones too: their digest, not what they hold), taken in the order of the names'
+POSIX spelling so that it is one on every system (`fragments_digest` orders by path, which
+on Windows ignores case), and a digest of SHA256SUMS's lines for every file but the page, its
 copy, the crate, RELATIONS.md, MANIFEST.yaml and SHA256SUMS. The key findings are the
 abstract's own sentences that print a value, word for word with the values in (decision
 1(a)); the evidence map is BOUND.md's rows from the same `bound_rows`, with each results
 file's digest, its script and the script's recorded digest; a sentence that cites a work is
 shown with its G7 passage only where the passage is in the stored copy and a person judged
 that it supports the sentence as it reads, and then by its locator, never its words
-(decision 4(a)). The figures: a picture only where the file in the package is the one its
-`*.render.json` records and the script beside it the one that drew it; the caption, a
+(decision 4(a)). The figures: a picture, the SVG, only where the file in the package is
+the one its `*.render.json` records, the script beside it the one that drew it, and no
+record ties it to a file the package withholds: an input its `*.render.json` lists, or one a
+run of its script declared it read. Which results a figure was drawn from is otherwise
+recorded nowhere, so a figure drawn from a withheld file that no record names is shown. The
+caption, a
 Markdown legend after the binding or the one caption of a LaTeX float that holds the figure
 alone; the alternative text; where G10 says the review stands, and when, but not by whom.
-The bound tables from their fragments, and the G15 cards by `model_cards`, without the
-lines it writes for G15's findings, which are listed by their code and place. The methods: each script and how to run it, what each run
-recorded of its language and platform, the lockfiles with whether the runs recorded the same
+The bound tables from their fragments, and the G15 cards of the held models by
+`model_cards` with `cards_only`, as MODELS.md has them, so that a kind only a withheld
+results file fitted is not said to be unfitted; the lines it writes for G15's findings are
+left out and the findings under a card listed by their code and place. The methods: each
+script and how to run it, what each run recorded of its language and platform, the lockfiles with whether the runs recorded the same
 digest, the inputs, each Methods claim with its step and where it stands against
 `methods.lock`, and the last run of `verify` with the date it recorded. The limitations: each
 section of the manuscript or the supplement titled for them, the plan's Deviations as
-written, G12's findings by their code and place, and each dimension's `unchecked` from `assurance.py`. The
-co-authors: `checker`'s decisions counted by author, anyone else counted together and not
+written, G12's findings by their code and place, and each dimension's `unchecked` from
+`assurance.py`. The co-authors: `checker`'s decisions counted by author, anyone else counted together and not
 named, and each author's approval, current or given to an earlier manuscript.
 
 Prose goes to pandoc in one document, each piece after a mark, and comes back cut at the
@@ -8172,7 +8180,13 @@ page's variant, and says so. The page's own parts name nobody from a record but 
 `authors.yaml` lists, in the byline and beside their approvals: a reviewer, a figure's
 reviewer, a passage's judge, a checker or a role's holder is said by the role, counted or
 dated, and a gate's finding (G12's, G15's; G10's as a fixed phrase for each code) by its code
-and place, never its words, since a message may name whoever a record names. Nothing is taken
+and place, never its words, since a message may name whoever a record names. Its place is
+printed only where it is a file the package ships, the manuscript, the plan or paper.yaml; a
+record under `review/` is placed by the folder of its round, since a named reading's file is
+called after its reader; any other by no place. A finding is given as `check` gives it at
+the project's stage (`policy.apply_stage`), the design rounds read as `check` reads them at
+submission. No record's text can address a piece of the prose: the mark that holds a
+piece's place is a character `esc` takes out of every record's text. Nothing is taken
 out of the page once it is written: a round of review found a scrub of names from the written
 page both missed names and changed words and authors' names, so the page prints no such text
 instead. The manuscript's prose and the plan's Deviations are the authors' text, published
@@ -8186,7 +8200,10 @@ which its small-count check refuses until the custodian signs it off. The bytes 
 function of the records and of pandoc: no clock, no path of the computer (a finding's place
 is from the project's root), no version of the tool (MANIFEST.yaml names it, and pandoc's as
 `companion_written_with`), records sorted, and `\n` line ends. A package with the page is
-another package for the custodian to sign (`PACKAGE/custodian/deposit-companion`). The tests
+another package for the custodian to sign (`PACKAGE/custodian/deposit-companion`), and it
+holds more than the files of the package: every approval, every checker's decision, every
+run of `verify`, a figure review and a G12 finding changes the page, and so stales the
+custodian's sign-off of the package with the page, which is signed again. The tests
 are in `tests/test_companion.py`: each section from the example and from records a test
 adds, a LaTeX manuscript and a supplement, the page twice and from another folder the same
 bytes, the fragments and every mapping of the results in any order the same bytes, a date
@@ -16354,7 +16371,10 @@ Open, recorded as each change landed:
   recorded), and `version` is one more than the revision rounds. The digest of the files
   leaves out the page, its copy, the crate, RELATIONS.md, MANIFEST.yaml and SHA256SUMS, which
   are made beside the page or after it. A figure's picture is not read for a small count,
-  which the custodian's check reads only in the results files.
+  which the custodian's check reads only in the results files; and a figure drawn from a
+  results file or an input the package withholds is shown unless a record says so (its
+  `*.render.json`'s `inputs`, or a run of its script), since what a figure script reads is
+  otherwise recorded nowhere.
 - **The page reads no typed number for a small count.** The custodian's check of the
   package reads the results files, and the page shows their values only through it; a count
   typed into the abstract or a limitation is printed as the authors wrote it. G2's

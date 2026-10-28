@@ -35,6 +35,29 @@ def _link(ref: str) -> str:
     return f"<code>{esc(ref)}</code>"
 
 
+#: The line under a setext heading.
+_UNDERLINE = re.compile(r"[ ]{0,3}(?:=+|-+)[ \t]*")
+
+
+def without_headings(paragraph: str) -> str:
+    """A paragraph of the abstract without its headings' lines, an ATX heading's one line and
+    a setext heading's two: a heading is no sentence, and the text under it is."""
+    lines = paragraph.splitlines()
+    kept, skip = [], False
+    for at, line in enumerate(lines):
+        if skip:
+            skip = False
+            continue
+        if line.lstrip().startswith("#"):
+            continue
+        following = lines[at + 1] if at + 1 < len(lines) else ""
+        if line.strip() and _UNDERLINE.fullmatch(following):
+            skip = True
+            continue
+        kept.append(line)
+    return "\n".join(kept)
+
+
 def key_findings(page: Page, texts: Texts, passages: dict[str, list[dict]]) -> list[str]:
     """The abstract's sentences that carry a value binding, word for word, values in."""
     from manuscript_guard.literature.passages import statement_words
@@ -45,9 +68,7 @@ def key_findings(page: Page, texts: Texts, passages: dict[str, list[dict]]) -> l
            "literature, as the abstract has them.</p>"]  # fmt: skip
     rows = []
     for paragraph in re.split(r"\n[ \t]*\n", abstract):
-        # A heading's line is no sentence; the text under it in the paragraph is.
-        paragraph = "\n".join(line for line in paragraph.splitlines()
-                              if not line.lstrip().startswith("#"))
+        paragraph = without_headings(paragraph)
         for sentence in sentences(paragraph):
             bound = list(dict.fromkeys(f"{ns}.{key}" for ns, key in _VALUE.findall(sentence)))
             if not bound:

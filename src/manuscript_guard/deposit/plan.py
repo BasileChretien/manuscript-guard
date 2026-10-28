@@ -533,9 +533,12 @@ def plan_package(project: Project, results: Results, *, with_manuscript: bool = 
             else "")  # fmt: skip
     pandoc = None
     if companion:
-        from .prose import pandoc_version
+        from .prose import ProseError, pandoc_version
 
-        pandoc = pandoc_version()
+        try:
+            pandoc = pandoc_version()
+        except ProseError as exc:
+            raise PackageError(f"--companion: pandoc could not say its version: {exc}") from None
         if pandoc is None:
             raise PackageError("--companion writes the page's prose with pandoc, which is not "
                                "on PATH; install it (https://pandoc.org/installing.html), or "
@@ -723,11 +726,8 @@ def package_signables(project: Project, results: Results,
     """What the data custodian may sign off of the package as it stands, with the manuscript
     and without it. The companion page is made with pandoc from records a package without it
     never reads: where it cannot be made, only its variant is left out, and `notes` says
-    why. The other packages' sign-offs are the same with the page or without it."""
-    from manuscript_guard.contracts._schema import ContractError
-
-    from .prose import ProseError
-
+    why, with what stopped it. The other packages' sign-offs are the same with the page or
+    without it."""
     if not results.fragments:
         return []
     found: dict[str, Signable] = {}
@@ -740,10 +740,10 @@ def package_signables(project: Project, results: Results,
                 try:
                     planned = plan_package(project, results, with_manuscript=with_manuscript,
                                            companion=True)  # fmt: skip
-                except (ContractError, ProseError, PackageError, OSError) as exc:
+                except Exception as exc:  # noqa: BLE001 - only this variant is left out
                     if notes is not None:
                         notes.append(f"the package with the companion page is not offered "
-                                     f"for signing: {exc}")  # fmt: skip
+                                     f"for signing: {type(exc).__name__}: {exc}")  # fmt: skip
                     continue
             for signable in planned.signables:
                 found.setdefault(signable.id, signable)

@@ -60,8 +60,38 @@ def _matches(path: Path) -> bool:
     script, recorded = document.get("rendered_by"), document.get("rendered_by_sha256")
     if document["outputs"].get(path.name) != sha256_of(path) or not script or not recorded:
         return False
-    drawn_by = path.with_name(str(script))
+    if not isinstance(script, str) or Path(script).name != script or script in (".", ".."):
+        return False  # a record whose script is no file beside the figure matches nothing
+    drawn_by = path.with_name(script)
     return drawn_by.is_file() and source_digest_matches(drawn_by, str(recorded))
+
+
+def drawn_from_withheld(page: Page, key: str) -> str | None:
+    """A file the package withholds that a record says the figure was drawn from: one its
+    `*.render.json` names among `inputs`, or one a run of its script declared it read. Which
+    results a figure was drawn from is otherwise recorded nowhere."""
+    from manuscript_guard.render import read
+
+    from .plan import canonical
+
+    withheld = {canonical(found.path) for found in page.inputs if not found.included}
+    withheld |= {page.rel(f.path) for f in page.results.fragments if not page.held(f.path)}
+    folder = page.project.path("figures")
+    named: list[str] = []
+    for path in sorted(folder.glob(f"{key}.*")):
+        document = read(path) if path.suffix.lower() in PICTURES else None
+        if not isinstance(document, dict):
+            continue
+        listed = document.get("inputs")
+        listed = list(listed) if isinstance(listed, (list, dict)) else []
+        named += [canonical(str(one)) for one in listed if isinstance(one, str)]
+        script = document.get("rendered_by")
+        if isinstance(script, str) and script:
+            drawer = page.rel(path.with_name(Path(script).name))
+            named += [canonical(str(record.get("path"))) for fragment in page.results.fragments
+                      if fragment.generated_by == drawer for record in fragment.inputs
+                      if isinstance(record, dict) and record.get("path")]  # fmt: skip
+    return next((one for one in sorted(named) if one in withheld), None)
 
 
 def _picture(page: Page, key: str) -> str:
@@ -69,6 +99,10 @@ def _picture(page: Page, key: str) -> str:
 
     folder = page.project.path("figures")
     held = {entry.path for entry in page.entries}
+    withheld = drawn_from_withheld(page, key)
+    if withheld is not None:
+        return (f'<p class="note">Not shown: a record says it was drawn from '
+                f"<code>{esc(withheld)}</code>, which the package withholds.</p>")
     for suffix in PICTURES:
         path = folder / f"{key}{suffix}"
         if not path.is_file() or page.rel(path) not in held or not _matches(path):
@@ -227,13 +261,32 @@ def findings_list(page: Page, findings, none: str) -> list[str]:
         return [f"<p>{none}</p>"]
     rows = []
     for finding in findings:
-        where = ""
-        if finding.path is not None:
-            where = page.rel(Path(finding.path)) + (f":{finding.line}" if finding.line else "")
+        where = place(page, finding)
         rows.append(f"<li><strong>{esc(finding.severity)}</strong> "
                     f"<code>{esc(finding.code)}</code>"
                     + (f" (<code>{esc(where)}</code>)" if where else "") + "</li>")
-    return ["<ul>", *dict.fromkeys(rows), "</ul>"]
+    return ["<ul>", *rows, "</ul>"]
+
+
+#: The files a finding's place is printed for besides those the package ships: no record of
+#: a person's is among them.
+NAMED_PLACES = ("paper.yaml", "design/plan.md")
+
+
+def place(page: Page, finding) -> str:
+    """Where a finding stands, as the page may say it: a file the package ships, the
+    manuscript, the plan or paper.yaml with its line; a review record by the folder of its
+    round, since its name holds its reader's; anything else not at all."""
+    if finding.path is None:
+        return ""
+    shown = page.rel(Path(finding.path))
+    if shown.startswith("review/"):
+        folder = shown.rsplit("/", 1)[0]
+        return f"{folder}/" if folder != shown else ""
+    if (shown in {entry.path for entry in page.entries} or shown in NAMED_PLACES
+            or shown.startswith("manuscript/")):  # fmt: skip
+        return shown + (f":{finding.line}" if finding.line else "")
+    return ""
 
 
 def _card_finding_lines(report, keys) -> set[str]:
@@ -259,13 +312,26 @@ def models(page: Page) -> list[str]:
     out = ["<h3>Models</h3>"]
     if not held:
         return [*out, "<p>The analysis recorded no model this package holds.</p>"]
-    lines, report = model_cards(page.project, replace(page.results, models=held))
+    lines, report = model_cards(page.project, replace(page.results, models=held),
+                                cards_only=True)  # fmt: skip
     said = _card_finding_lines(report, held)
     text = "\n".join(line.rstrip() for line in lines if line.rstrip() not in said).strip("\n")
+    under = tuple(f"model {key!r}:" for key in held)
+    carded = [f for f in staged(page, report.findings) if f.message.startswith(under)]
     return [*out, "<p>Each model's card as <code>manuscript-guard models</code> prints it, and "
-            "what the model check (G15) found when the package was made, by its code.</p>",
+            "what the model check (G15) found of each when the package was made, by its code, "
+            "as <code>check</code> gives it at the project's stage.</p>",
             f"<pre>{esc(text)}</pre>",
-            *findings_list(page, report.findings, "G15 found nothing.")]  # fmt: skip
+            *findings_list(page, carded, "G15 found nothing.")]  # fmt: skip
+
+
+def staged(page: Page, findings) -> list:
+    """The findings as `check` gives them at the project's stage (`policy.apply_stage`)."""
+    from manuscript_guard.findings import Report
+    from manuscript_guard.policy import apply_stage, resolve_stage
+
+    stage = resolve_stage(page.project, None, False)
+    return list(apply_stage(Report(tuple(findings)), stage)[0].findings)
 
 
 def displays_section(page: Page, texts: Texts) -> list[str]:
@@ -432,12 +498,13 @@ def _g12(page: Page) -> list:
     from manuscript_guard.gates.design_review import check_design_rounds
     from manuscript_guard.gates.methods_review import check_methods_review
     from manuscript_guard.gates.registration import check_registration
-    from manuscript_guard.policy import resolve_stage
+    from manuscript_guard.policy import SUBMISSION, resolve_stage
 
     project, results = page.project, page.results
     stage = resolve_stage(project, None, False)
     checks = (
-        lambda: check_design(project, results, stage), lambda: check_design_rounds(project),
+        lambda: check_design(project, results, stage),
+        lambda: check_design_rounds(project, submission=stage == SUBMISSION),
         lambda: check_registration(project, results, stage),
         lambda: check_data_sources(project, stage),
         lambda: check_declared_datasets(project, results),
@@ -453,7 +520,7 @@ def _g12(page: Page) -> list:
             found.append(Finding("G12", "gate-errored", type(exc).__name__))
             continue
         found += [finding for finding in report.findings if finding.gate == "G12"]
-    return found
+    return staged(page, found)
 
 
 def limitations(page: Page, texts: Texts) -> list[str]:
@@ -485,16 +552,25 @@ def limitations(page: Page, texts: Texts) -> list[str]:
 
 
 def _checking(page: Page) -> list[str]:
+    import contextlib
+    import io
+
     from manuscript_guard.approvals import authors_of, name_of
-    from manuscript_guard.checking.items import ItemsError
+    from manuscript_guard.checking.items import ItemsError, items_file
     from manuscript_guard.checking.store import STATUSES, status
     from manuscript_guard.cli import _checking_items
 
     out = ["<h3>What the co-authors checked</h3>"]
     try:
-        standing = status(page.project.root, _checking_items(page.project, None))
-    except ItemsError as exc:
-        return [*out, f"<p>Nothing could be offered to check: {esc(exc)}</p>"]
+        # What it prints of the items it leaves out is for `checker`, not for `package`.
+        with contextlib.redirect_stdout(io.StringIO()), \
+                contextlib.redirect_stderr(io.StringIO()):  # fmt: skip
+            items = _checking_items(page.project, None)
+        standing = status(page.project.root, items)
+    except ItemsError:
+        found = items_file(page.project.root, None)
+        named = f" (<code>{esc(page.rel(found))}</code>)" if found.is_file() else ""
+        return [*out, f"<p>The checker's items could not be read{named}.</p>"]
     if not standing.by_person:
         return [*out, "<p>No co-author has recorded a check (<code>manuscript-guard checker"
                 "</code>).</p>"]  # fmt: skip

@@ -19,7 +19,16 @@ import pytest
 import yaml
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
-from test_package import _custodian, _supplement, built, contents, paper, ready, set_paper
+from test_package import (
+    _custodian,
+    _supplement,
+    built,
+    contents,
+    paper,
+    ready,
+    set_paper,
+    with_package,
+)
 
 from manuscript_guard.cli import main
 from manuscript_guard.contracts import load_namespace, load_project
@@ -352,6 +361,176 @@ def test_a_record_the_page_cannot_read_leaves_the_other_packages_to_sign(
     assert main(["package", str(project), "--companion"]) == 2
     said = capsys.readouterr().err
     assert "--companion: the page cannot be made:" in said and "Traceback" not in said
+
+
+def _restricted_sending(root: Path) -> None:
+    _custodian(root)
+    document = paper(root)
+    document["custodian"] = {"restricts_sending": True}
+    set_paper(root, document)
+
+
+def test_anything_that_stops_the_page_leaves_the_rest_to_sign(
+    project: Path, monkeypatch, capsys
+) -> None:
+    """A ValueError from a record nobody foresaw, and a pandoc that cannot say its version:
+    `sign` leaves out the page's variant alone, saying why, and `package --companion` stops
+    with a message."""
+    import manuscript_guard.deposit.companion as companion
+    import manuscript_guard.deposit.prose as prose
+
+    ready(project)
+    _restricted_sending(project)
+
+    def broken(*_args, **_kwargs):
+        raise ValueError("a record nobody foresaw")
+
+    monkeypatch.setattr(companion, "companion_html", broken)
+    capsys.readouterr()
+    assert main(["sign", str(project), "--as", "Sample", "--finding",
+                 "PACKAGE/custodian/deposit"]) == 0  # fmt: skip
+    assert "not offered for signing: PackageError" in capsys.readouterr().err
+    assert main(["package", str(project), "--companion"]) == 2
+    assert "ValueError: a record nobody foresaw" in capsys.readouterr().err
+    monkeypatch.undo()
+
+    def silent() -> str:
+        raise prose.ProseError("pandoc could not be run: denied")
+
+    monkeypatch.setattr(prose, "pandoc_version", silent)
+    assert main(["package", str(project), "--companion"]) == 2
+    assert "pandoc could not say its version" in capsys.readouterr().err
+    assert main(["sign", str(project), "--as", "Sample", "--finding",
+                 "PACKAGE/custodian/deposit-ro-crate"]) == 0  # fmt: skip
+
+
+def test_a_hand_edited_render_record_is_no_match_and_no_crash(project: Path) -> None:
+    ready(project)
+    record = project / "figures" / "forest.render.json"
+    document = json.loads(record.read_text(encoding="utf-8"))
+    document["rendered_by"] = "../elsewhere/forest.py"
+    record.write_text(json.dumps(document), encoding="utf-8")
+    assert main(["package", str(project), "--companion", "--skip-checks"]) == 0
+    figure = re.search(r'<figure id="figure-forest">(.*?)</figure>',
+                       section(page(project), "displays"), re.DOTALL)[1]  # fmt: skip
+    assert "data:image/svg+xml" not in figure and "Not shown" in figure
+
+
+def test_a_figure_a_record_ties_to_a_withheld_file_is_not_shown(project: Path) -> None:
+    from manuscript_guard.deposit.companion import companion_html
+
+    ready(project)
+    with_package(project, share=[], request="Apply to the custodian.")
+    record = project / "figures" / "forest.render.json"
+    document = json.loads(record.read_text(encoding="utf-8"))
+    document["inputs"] = ["data/event_terms.txt"]
+    record.write_text(json.dumps(document), encoding="utf-8")
+    package(project)
+    figure = re.search(r'<figure id="figure-forest">(.*?)</figure>',
+                       section(page(project), "displays"), re.DOTALL)[1]  # fmt: skip
+    assert "data:image/svg+xml" not in figure
+    assert "drawn from <code>data/event_terms.txt</code>, which the package withholds" in figure
+    # And where a run of the figure's script declares it read a withheld file.
+    del document["inputs"]
+    record.write_text(json.dumps(document), encoding="utf-8")
+    loaded, results, plan = _loaded(project)
+    drawn = replace(results, fragments=tuple(replace(f, generated_by="figures/forest.py")
+                                             for f in results.fragments))  # fmt: skip
+    text = companion_html(loaded, drawn, list(plan.entries), list(plan.inputs))
+    figure = re.search(r'<figure id="figure-forest">(.*?)</figure>', text, re.DOTALL)[1]
+    assert "data:image/svg+xml" not in figure and "which the package withholds" in figure
+
+
+def test_a_reading_not_filed_is_placed_by_its_round_never_by_its_reader(project: Path) -> None:
+    ready(project)
+    design = project / "review" / "design"
+    design.mkdir(parents=True)
+    (design / "panel-1.yaml").write_text(yaml.safe_dump({
+        "schema": "manuscript-guard/panel/1", "round": 1, "opened_on": "2026-08-01",
+        "manuscript_sha256": "a" * 64, "blinded": False, "rationale": "The design.",
+        "reviewers": [{"id": "methods", "role": "Methodologist", "remit": "The design.",
+                       "why": "It is the design.", "readers": ["Jane Doe"]}],
+    }), encoding="utf-8")  # fmt: skip
+    package(project)
+    text = section(page(project), "limitations")
+    assert "design-review-missing" in text
+    assert "<code>review/design/round-1/</code>" in text
+    assert "jane-doe" not in page(project) and "Jane Doe" not in page(project)
+
+
+def test_g12_is_given_at_the_projects_stage(project: Path) -> None:
+    ready(project)
+    document = paper(project)
+    document["study_type"] = "trial"
+    set_paper(project, document)
+    assert main(["package", str(project), "--companion", "--skip-checks"]) == 0
+    text = section(page(project), "limitations")
+    assert "<strong>info</strong> <code>registration-missing</code>" in text
+
+
+def test_the_model_cards_list_only_what_g15_says_under_a_card(project: Path, monkeypatch) -> None:
+    import manuscript_guard.gates.models as models
+    from manuscript_guard.findings import WARN, Finding, Report
+
+    ready(project)
+    monkeypatch.setattr(models, "check_models", lambda *a, **k: Report((
+        Finding("G15", "model-carded", "model 'adjusted': a word of the card", severity=WARN),
+        Finding("G15", "methods-model-unfitted", "the Methods name a model none fitted",
+                severity=WARN))))  # fmt: skip
+    package(project)
+    text = section(page(project), "displays")
+    assert "<code>model-carded</code>" in text and "methods-model-unfitted" not in text
+    assert "a word of the card" not in text
+
+
+def test_the_checkers_items_unread_are_said_without_a_path_and_nothing_is_printed(
+    project: Path, monkeypatch, capsys
+) -> None:
+    import manuscript_guard.cli as cli
+    from manuscript_guard.checking.items import ItemsError
+
+    ready(project)
+
+    def unread(found, named):
+        print("NOISE to stdout")
+        print("NOISE to stderr", file=__import__("sys").stderr)
+        raise ItemsError(f"{found.root / 'checks' / 'items.json'} cannot be read: bad")
+
+    monkeypatch.setattr(cli, "_checking_items", unread)
+    capsys.readouterr()
+    package(project)
+    said = capsys.readouterr()
+    assert "NOISE" not in said.out and "NOISE" not in said.err
+    text = section(page(project), "verification")
+    assert "The checker's items could not be read" in text
+    assert str(project) not in text and project.as_posix() not in text
+
+
+def test_no_record_text_can_address_a_piece_of_the_prose(project: Path) -> None:
+    ready(project)
+    document = paper(project)
+    document["title"] = "A" + chr(0) + "0" + chr(0) + "99" + chr(0) + " title"
+    set_paper(project, document)
+    # G0 refuses the title, and a package made all the same holds a page that is whole.
+    assert main(["package", str(project), "--companion", "--skip-checks"]) == 0
+    text = page(project)
+    assert chr(0) not in text
+    assert "<h1>A099 title</h1>" in text
+    # The abstract is where it was, and the title is not swapped for a piece of the prose.
+    assert "The reporting odds ratio was 3.84" in plain(section(text, "overview"))
+
+
+def test_a_setext_heading_in_the_abstract_is_no_sentence(project: Path) -> None:
+    ready(project)
+    main_md = project / "manuscript" / "main.md"
+    main_md.write_text(main_md.read_text(encoding="utf-8").replace(
+        "**Background.**", "Results first\n-------------\nThe ROR was {{results.ror.point}}.\n\n"
+        "**Background.**", 1), encoding="utf-8")  # fmt: skip
+    assert main(["package", str(project), "--companion", "--skip-checks"]) == 0
+    findings = re.search(r"<ol>(.*?)</ol>", section(page(project), "evidence"), re.DOTALL)[1]
+    items = [plain(item) for item in re.findall(r"<li>(.*?)</li>", findings, re.DOTALL)]
+    assert any(item.startswith("The ROR was 3.84.") for item in items)
+    assert not any("Results first" in item or "-----" in item for item in items)
 
 
 # --------------------------------------------------------------------------- the page itself

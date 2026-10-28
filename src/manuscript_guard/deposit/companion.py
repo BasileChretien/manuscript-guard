@@ -7,26 +7,32 @@ runs. Its six sections are each made from what the project records, with no word
 it by a model:
 
 1. Overview and citation: the title, the authors, the abstract, how to cite the package, the
-   history its records date, and the digests of its results and its files.
-2. Key findings and the evidence map: the abstract's own sentences that carry a binding,
-   word for word with the values in; each value, table and figure the manuscript binds, where,
-   and the results file and script it comes from; each cited sentence whose supporting
-   passage a person judged, with where in the work the passage is, never its words.
-3. Figures, tables and models: a figure where its record of drawing matches it, its caption,
-   its alternative text and where its review stands, naming no reviewer; each bound table;
-   each model's card, as `models` prints it.
+   history its records date, and the digests of the results files and of the package's files.
+2. Key findings and the evidence map: the abstract's own sentences that print a value, word
+   for word with the values in; each value, table and figure the manuscript binds, where, and
+   the results file and script it comes from; each cited sentence whose supporting passage a
+   person judged, with where in the work the passage is, never its words.
+3. Figures, tables and models: a figure's SVG where its record of drawing matches it and no
+   record ties it to a file the package withholds, its caption, its alternative text and
+   where its review stands; each bound table; each held model's card, as MODELS.md prints
+   it, and G15's findings under the cards by their code.
 4. Methods and reproducibility: how to run each script again, what it ran with, the
    inputs, the Methods' claims and the steps they describe, and the last run of `verify`.
-5. Limitations: the manuscript's section on them, the plan's Deviations as written, what G12
-   says, and what no gate checks.
-6. Co-author verification: who checked what, by author, and each author's approval.
+5. Limitations: the manuscript's sections on them, the plan's Deviations as written, G12's
+   findings by their code, and what no gate checks.
+6. Co-author verification: what each author checked, anyone else counted together, and each
+   author's approval.
 
-The page names nobody from a record but the authors `authors.yaml` lists, in the byline and
-beside their approvals: a reviewer, a judge of a passage, a checker or a role's holder is
-said by the role, counted or dated, and a gate's finding by its code and place, since its
-words may name someone. The manuscript's prose and the plan's Deviations are the authors'
-text, published with the paper and the package, and are printed as written. Of a results
-file the package withholds nothing is shown.
+The page names nobody from a record but the authors `authors.yaml` lists, in the byline,
+the citation, the checking and beside their approvals: a reviewer, a judge of a passage, a
+checker or a role's holder is said by the role, counted or dated, and a gate's finding by
+its code, at the project's stage, and its place where that is a file of the package, the
+manuscript, the plan or paper.yaml (a review record by its round's folder), since a
+message, and a record's file name, may name someone. The manuscript's prose and the plan's
+Deviations are the authors' text, published with the paper and the package, and are printed
+as written. Of a results file the package withholds no value, table, card or run is shown,
+nor a figure a record says was drawn from a withheld file; a figure is drawn by a script
+whose reads are otherwise not recorded, and the results' digest covers every results file.
 
 The bytes are a function of the records and of pandoc's version, which MANIFEST.yaml names:
 no clock, no path of the computer and no version of this tool is written, and every list is
@@ -57,8 +63,13 @@ UNDIGESTED = (COMPANION, SITE, "ro-crate-metadata.json", "RELATIONS.md", "MANIFE
 WITHHELD = "[withheld]"
 
 
+#: What marks a piece of prose's place in the page until pandoc has written it. `esc` and
+#: `Prose.add` take the character out of every record's text, so none can hold the mark.
+MARK = "\x00"
+
+
 def esc(text: object) -> str:
-    return html.escape(str(text), quote=True)
+    return html.escape(str(text).replace(MARK, ""), quote=True)
 
 
 @dataclass
@@ -71,9 +82,9 @@ class Prose:
 
     def add(self, markdown: str, *, inline: bool = False) -> str:
         # The character that marks a piece's place, and that a masked view may hold.
-        self.texts.append(markdown.replace("\x00", ""))
+        self.texts.append(markdown.replace(MARK, ""))
         self.inline.append(inline)
-        return f"\x00{len(self.texts) - 1}\x00"
+        return f"{MARK}{len(self.texts) - 1}{MARK}"
 
     def fill(self, page: str) -> str:
         from .prose import ProseError, html_fragments
@@ -85,7 +96,7 @@ class Prose:
             raise PackageError(f"--companion: {exc}") from None
         done = [unwrapped(text) if flat else text
                 for text, flat in zip(written, self.inline, strict=True)]  # fmt: skip
-        return re.sub("\x00(\\d+)\x00", lambda found: done[int(found[1])], page)
+        return re.sub(f"{MARK}(\\d+){MARK}", lambda found: done[int(found[1])], page)
 
 
 @dataclass
@@ -313,12 +324,16 @@ def package_digest(entries: list[Entry]) -> str:
 
 
 def results_digest(page: Page) -> str:
-    """`fragments_digest` as `check` and `verify` take it: of every results file of the
-    project, by name and bytes, those the package withholds too. Their digest is shown, and
-    nothing of what they hold."""
-    from manuscript_guard.assurance import fragments_digest
-
-    return fragments_digest(page.project)
+    """The digest of the files `fragments_digest` reads: every results file of the project by
+    name and bytes, those the package withholds too (their digest, not what they hold), taken
+    in the order of their names as POSIX writes them, so that it is one on every system.
+    Where two names differ only in case, `fragments_digest` on Windows orders them otherwise."""
+    digest = hashlib.sha256()
+    results = page.project.path("results")
+    found = results.glob("*.json") if results.is_dir() else []
+    for path in sorted(found, key=lambda p: p.as_posix()):
+        digest.update(path.name.encode("utf-8") + b"\0" + path.read_bytes() + b"\0")
+    return digest.hexdigest()
 
 
 def overview(page: Page, texts: Texts) -> list[str]:
@@ -350,8 +365,8 @@ def overview(page: Page, texts: Texts) -> list[str]:
         "<h3>Digests</h3>", "<dl>",
         "<dt>The results files</dt>",
         f"<dd><code>{results_digest(page)}</code>: the SHA-256 of the names and bytes of "
-        "every results file of the project, those the package withholds too, as "
-        "<code>check</code> and <code>verify</code> take it.</dd>",
+        "every results file of the project, those the package withholds too, in the order of "
+        "their names, as <code>check</code> and <code>verify</code> take it.</dd>",
         "<dt>The files of the package</dt>",
         f"<dd><code>{package_digest(page.entries)}</code>: the SHA-256 of the lines of "
         "<code>SHA256SUMS</code> for every file but "
@@ -546,6 +561,9 @@ def companion_entries(project: Project, results: Results, entries: list[Entry],
         text = companion_html(project, results, entries, inputs)
     except (ContractError, ProseError, OSError, UnicodeDecodeError) as exc:
         raise PackageError(f"--companion: the page cannot be made: {exc}") from None
+    except Exception as exc:  # noqa: BLE001 - a hand-edited record: said, with its kind
+        raise PackageError(f"--companion: the page cannot be made: {type(exc).__name__}: "
+                           f"{exc}") from None
     return [generated(COMPANION, text, "the companion page: the package as a reader sees it"),
             generated(SITE, text, "the companion page, as a site's front page")]  # fmt: skip
 

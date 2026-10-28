@@ -35,7 +35,7 @@ from manuscript_guard.guide.model import (
 )
 from manuscript_guard.guide.reading import inspect
 from manuscript_guard.guide.routes import NO_ACTION, ROUTES, Route, route_of
-from manuscript_guard.guide.rules import RULES, Rule, decide
+from manuscript_guard.guide.rules import RULES, Rule, decide, first_action
 from manuscript_guard.guide.say import render, to_dict, to_json
 
 __all__ = [
@@ -59,6 +59,7 @@ __all__ = [
     "State",
     "argv",
     "decide",
+    "first_action",
     "inspect",
     "render",
     "route_of",

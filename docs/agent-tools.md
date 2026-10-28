@@ -2,7 +2,7 @@
 
 This page is about the part that is optional: the skills and hooks an agent tool can load,
 how each tool installs and updates them, and what each one does and does not enforce. The
-twenty skills are listed in the [README](../README.md#the-claude-code-plugin).
+skills, twenty-one of them, are listed in the [README](../README.md#the-claude-code-plugin).
 
 ## The Claude Code plugin
 
@@ -43,7 +43,7 @@ nothing, but for the submission guard where a command names a project (below).
 
 | Hook | What it does |
 |---|---|
-| session start | One line: the stage, and how many findings fail and warn. Where a file of the project cannot be used, which file and why, in place of that line. And once, when the installed tool is older than the plugin, a notice with the upgrade command |
+| session start | One line: the stage, how many findings fail and warn, and the title of what `manuscript-guard next` puts first, decided on the same run of the gates. Where a file of the project cannot be used, which file and why, in place of that line. And once, when the installed tool is older than the plugin, a notice with the upgrade command |
 | before a write | Refuses edits to `results/`, `build/` and generated checklist profiles. These are written by something else, and editing one desynchronises it. Puts to you an edit of `literature/attested.yaml` that names an attester, or changes one, and an edit of an author's approval or a named person's sign-off under `approvals/` |
 | after a write | For a manuscript file, classifies the numbers just saved and names any bound to nothing, while you are still in the paragraph. For an analysis file, says the results are now stale and the Methods may no longer describe the code |
 | before a submission-shaped shell command | Runs the submission check and blocks if it fails, or if a file of the project cannot be used and the check cannot run. Puts to you a `review --run --yes`, which would send the manuscript without asking, an `approve`, which only the author approving can run, and a `sign`, which only the person `authors.yaml` names for the role can run |
@@ -134,8 +134,8 @@ description.
 
 ## Codex
 
-Codex installs the same plugin from this repository, with the same twenty skills and the
-same five hooks. After the pip package:
+Codex installs the same plugin from this repository, with the same skills, all twenty-one, and
+the same five hooks. After the pip package:
 
 ```bash
 codex plugin marketplace add BasileChretien/manuscript-guard
@@ -199,7 +199,7 @@ Codex's source.
 ## Gemini CLI, Mistral Vibe, Kimi Code CLI and other agent tools
 
 By their own documentation, these tools read skills from a folder, `.agents/skills`, in your
-home or in a project. After the pip package, one command copies the twenty skills there:
+home or in a project. After the pip package, one command copies the skills there, all twenty-one:
 
 ```bash
 manuscript-guard install-skills              # for you, in every project: ~/.agents/skills

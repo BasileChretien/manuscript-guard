@@ -1302,6 +1302,12 @@ def _imports_answers(joined: str) -> bool:
     read it, with no command substitution and no unclosed quote, in which every word that says
     `import` stands in an invocation that is plainly `checker build` or `checker status`
     (`_plain_checker`): `--title "Drug import and safety"`, `--for import`."""
+    # First, cheaply: a reading only takes out quotes and escapes, so a word it would make is
+    # in the text with those taken out. Most commands an agent runs end here, read once.
+    bare = re.sub("[\\\\`'\"‘-„]", "", joined)
+    if not all(word.search(joined) or word.search(bare)
+               for word in (_NAMES_TOOL, _CHECKER_WORD, _IMPORT_WORD)):  # fmt: skip
+        return False
     readings = [_command_words(joined, posix=posix) for posix in (True, False)]
     # The raw text and the words each shell would give, so that `imp''ort` is `import` too.
     texts = [joined] + [" ".join(w for words in read for w in words) for read, _ in readings]

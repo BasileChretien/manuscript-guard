@@ -114,7 +114,9 @@ the manuscript against the last commit, `--since` another, or one file `--before
 `render` (substitute bindings only), `init` (scaffold a project), `set` (write one of
 `stage`, `target_journal`, `english_variant`, `reporting_guideline`, `study_type` into
 `paper.yaml`, its comments kept; the hook asks before an agent moves the stage back,
-takes a guideline away or replaces the journal),
+takes a guideline away or replaces the journal), `next` (what to do now, from one run of
+the gates, with the skill and the exact command; `--json` is `manuscript-guard/next/1`,
+see docs/next.md; it writes nothing and exits 0),
 `review --record <reviewer> --remit … --verdict …` (file the record G11 asks for, with the
 digests filled in; `--record-figure <name> --by …` for G10). Neither can re-stamp an existing
 record: a second reading by the same reader is a further round. `--reading <reader>`

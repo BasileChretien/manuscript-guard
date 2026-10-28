@@ -12,7 +12,8 @@ line.
 Every rule is quoted. The page is stored as text (`profiles/journals/sources/<slug>.txt`),
 each rule carries the words it was read from under `quotes:`, and G4 fails a quote that is
 not on the stored page. A limit above 1 must state its number in its quote, and so must
-each number of a box and of a graphical abstract. A rule no gate
+each number above 1 of a box and of a graphical abstract, each of a graphical abstract's
+numbers that is not whole, and its aspect ratio. A rule no gate
 checks goes under `manual:`, quoted, and the corresponding author signs it off.
 
 Most of the profile is about the paper: word limits, required sections and statements, the
@@ -78,12 +79,13 @@ Results do not report, nor a table or a figure, is `summary-not-reported`.
 ```yaml
 graphical_abstract:
   required: true
-  width_px: 1328
-  height_px: 531
+  min_width_px: 1328
+  min_height_px: 531
   formats: [tiff, png, jpg]
 quotes:
   graphical_abstract.required: "A graphical abstract is mandatory for this journal."
-  graphical_abstract.width_px: "a minimum of 1328 × 531 pixels (w × h)"
+  graphical_abstract.min_width_px: "a minimum of 1328 × 531 pixels (w × h)"
+  graphical_abstract.min_height_px: "a minimum of 1328 × 531 pixels (w × h)"
 ```
 
 Each line is a rule of its own, quoted under `quotes.graphical_abstract.<name>`: `required`,
@@ -121,7 +123,14 @@ is refused yet.
 A box's quote states each of its numbers above 1 (`items_min`, `items_max`,
 `item_max_chars`, `item_max_words`, `max_words`), and so does each line of the graphical
 abstract's, as a limit's quote states its number: G4 fails one that does not
-(`journal-limit-not-in-quote`).
+(`journal-limit-not-in-quote`). A graphical abstract's number that is not whole
+(`max_file_mb: 2.5`) is stated in digits, "2.5" or "2.50". Its `aspect_ratio` is stated with
+both its parts in their order, "16:9", "16 : 9", "16 × 9" or "16 x 9": "5:2" and "16:10" do
+not state 16:9, and a page that says "square" does not state "1:1".
+
+A box has one quote, and each of its numbers is looked for anywhere in it: `items_max: 3`
+passes against "3 to 5 highlights", since 3 is there. Check that each number is the one the
+page gives for that field.
 
 ## A page of its own
 
@@ -143,6 +152,7 @@ instructions page's is, and it is read again on its own:
 manuscript-guard journal --reread new-sharing.txt --page profiles/journals/sources/journal-of-examples-sharing.txt
 ```
 
-Without `--page`, `--reread` reads the instructions page again, against the quotes held to
-it alone. A box names its page in its own entry; two blocks may name one page. See also
+Without `--page`, or with `--page` naming the instructions page's file, `--reread` reads the
+instructions page again, against the quotes held to it alone. `--page` without `--reread` is
+refused. A box names its page in its own entry; two blocks may name one page. See also
 [DESIGN.md](../DESIGN.md).

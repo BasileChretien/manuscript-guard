@@ -2466,6 +2466,9 @@ BOX_ITEMS = (
     ("- {0}", "{0}"), ("* {0}", "{0}"), ("+ {0}", "{0}"), ("1. {0}", "{0}"), ("2) {0}", "{0}"),
     ("- {0}\n  {1}", "{0} {1}"), ("- {0}\n{1}", "{0} {1}"), ("- **{0}** {1}", "{0} {1}"),
     ("- {0} {{{{results.or}}}}", "{0} 2.31 (1.84 to 2.90)"),
+    # A list nested in an item, which is that item's text: under a dash, two spaces in, and
+    # under a number, three in (round 1 of #464: each nested item was an item of the box).
+    ("- {0}\n  - {1}\n  - {1}", "{0} {1} {1}"), ("1. {0}\n   1. {1}", "{0} {1}"),
 )  # fmt: skip
 #: What a box holds that prints no item: a comment, a listing.
 BOX_HIDDEN = ("<!-- - {0} -->", "```\n- {0}\n```")
@@ -2502,7 +2505,10 @@ def box_papers(draw: st.DrawFn) -> tuple[dict[str, Any], dict[str, Any]]:
              for i in range(len(pieces))]  # fmt: skip
     aside_in = draw(st.sampled_from(lists))
     lookalikes = draw(st.permutations(BOX_LOOKALIKES))
-    text, expected, given = BOX_FRONT_MATTER, [], []
+    # The Results first, so that the last box runs to the end of the file.
+    text = (BOX_FRONT_MATTER + "# Results\n\n{{results.reported}} and {{results.b0}}.\n\n"
+            f"# Introduction\n\n{words()}.\n\n")  # fmt: skip
+    expected, given = [], []
     for index, form in enumerate(forms):
         box = ids[index % len(ids)]
         title = draw(st.sampled_from(BOX_TITLES[box]))
@@ -2527,13 +2533,14 @@ def box_papers(draw: st.DrawFn) -> tuple[dict[str, Any], dict[str, Any]]:
             else:
                 body.append(piece.format(first))
         separator = "\n\n" if index == paragraphs_in else "\n"
-        text += (BOX_HEADINGS_WRITTEN(form, title) + "\n\n" + separator.join(body) + "\n\n"
-                 + f"# Introduction\n\n{words()} {{{{results.out{index}}}}}.\n\n")  # fmt: skip
+        text += BOX_HEADINGS_WRITTEN(form, title) + "\n\n" + separator.join(body) + "\n"
+        # Each box but the last closed by the next heading; the last runs to the file's end.
+        if index + 1 < len(forms):
+            text += f"\n# Introduction\n\n{words()} {{{{results.out{index}}}}}.\n\n"
         if index < len(lookalikes):
             text += lookalikes[index].format(words()) + "\n"
         expected.append([box, items])
         given.append(key)
-    text += "# Results\n\n{{results.reported}} and {{results.b0}}.\n"
     latex, latex_expected, latex_given = draw(_latex_box_paper())
     return (
         {"text": text, "latex": latex, "boxes": list(BOX_RULES), "displays": BOX_DISPLAYS},
@@ -2554,21 +2561,36 @@ def _last_words(item: str) -> str:
 
 @st.composite
 def _latex_box_paper(draw: st.DrawFn) -> tuple[str, list, list[str]]:
-    """A LaTeX document holding a box in its environment and one under its heading, an item
-    in a comment, a box in a comment and one TeX skips, and a heading the pattern does not
-    take whole, in an order drawn."""
+    """A LaTeX document holding a box in its environment and three under their headings, an
+    item in a comment, a box in a comment and one TeX skips, and a heading the pattern does
+    not take whole, in an order drawn; a box written in paragraphs that an abstract ends, and
+    a box at the end of the document. Each box's heading is written in a way of its own, and
+    each list of a box has a list nested in an item."""
 
     def words() -> str:
         return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=3)))
 
-    a, b, c, d = words(), words(), words(), words()
-    environment = ("\\begin{highlights}\n\\item " + a + "\n% \\item " + words() + "\n\\item "
-                   + b + " \\mg{results.l1}\n\\end{highlights}\n")  # fmt: skip
-    heading = ("\\section*{Key points}\n\\begin{itemize}\n\\item " + c + " \\mg{results.l2}\n"
-               "\\item " + d + "\n\\end{itemize}\n\\section{Introduction}\n" + words() + "\n")
+    forms = draw(st.permutations(LATEX_BOX_HEADINGS))
+
+    def opened(at: int, title: str) -> str:
+        return forms[at][0].replace("TITLE", title) + "\n"
+
+    def closed(at: int) -> str:
+        return forms[at][1].replace("TITLE", "Introduction") + "\n" + words() + "\n"
+
+    a, b, c, d, e, x = words(), words(), words(), words(), words(), words()
+    environment = ("\\begin{highlights}\n\\item " + a + " \\begin{enumerate}\\item " + x
+                   + "\\end{enumerate}\n% \\item " + words() + "\n\\item " + b
+                   + " \\mg{results.l1}\n\\end{highlights}\n")  # fmt: skip
+    heading = (opened(0, "Key points") + "\\begin{itemize}\n\\item " + c + " \\mg{results.l2}\n"
+               "\\begin{itemize}\n\\item " + e + "\n\\end{itemize}\n\\item " + d
+               + "\n\\end{itemize}\n" + closed(0))  # fmt: skip
+    h1, h2 = words(), words()
+    paragraphs = opened(1, "Highlights") + h1 + "\n\n" + h2 + "\n\n" + closed(1)
     pieces = {
-        "environment": (environment, ["highlights", [a, b + " {{results.l1}}"]]),
-        "heading": (heading, ["key-points", [c + " {{results.l2}}", d]]),
+        "environment": (environment, ["highlights", [a + " " + x, b + " {{results.l1}}"]]),
+        "heading": (heading, ["key-points", [c + " {{results.l2}} " + e, d]]),
+        "paragraphs": (paragraphs, ["highlights", [h1, h2]]),
         "skipped": ("\\iffalse\n\\begin{highlights}\n\\item " + words()
                     + "\n\\end{highlights}\n\\fi\n", None),
         "commented": ("% \\begin{plainsummary} \\item " + words() + " \\end{plainsummary}\n",
@@ -2578,10 +2600,32 @@ def _latex_box_paper(draw: st.DrawFn) -> tuple[str, list, list[str]]:
     }  # fmt: skip
     order = draw(st.permutations(sorted(pieces)))
     body = "".join(pieces[name][0] + "\\section{Notes}\n" + words() + "\n" for name in order)
-    document = ("\\documentclass{article}\n\\begin{document}\n" + body
-                + "\\section{Results}\n\\mg{results.l0}\n\\end{document}\n")  # fmt: skip
-    expected = [pieces[name][1] for name in order if pieces[name][1] is not None]
-    return document, expected, ["results.l1", "results.l2"]
+    # A box first that the abstract after it ends (round 1 of #464: the abstract's paragraphs
+    # were its last items), and one last that runs to the end of the document.
+    p1, p2, f, g, y = words(), words(), words(), words(), words()
+    first = (opened(2, "Research in context") + p1 + " \\mg{results.l3}\n\n" + p2 + "\n\n"
+             "\\begin{abstract}\n" + words() + "\n\n" + words() + "\n\\end{abstract}\n")
+    last = (opened(3, "Plain language summary") + "\\begin{itemize}\n\\item " + f + "\n"
+            "\\begin{enumerate}\n\\item " + y + "\n\\end{enumerate}\n\\item " + g
+            + "\n\\end{itemize}\n")  # fmt: skip
+    document = ("\\documentclass{book}\n\\begin{document}\n" + first
+                + "\\section{Results}\n\\mg{results.l0}\n\\chapter{Introduction}\n" + words()
+                + "\n" + body + last + "\\end{document}\n")  # fmt: skip
+    expected = [["research-in-context", [p1 + " {{results.l3}}", p2]],
+                *(pieces[name][1] for name in order if pieces[name][1] is not None),
+                ["plain-language-summary", [f + " " + y, g]]]  # fmt: skip
+    return document, expected, ["results.l1", "results.l2", "results.l3"]
+
+
+#: Each way a LaTeX box's heading is written, `TITLE` its title, with the heading of its
+#: level that ends it: starred, with an optional argument, a subsection's and a chapter's
+#: (round 1 of #464: a starred chapter's was never a box's).
+LATEX_BOX_HEADINGS = (
+    ("\\section*{TITLE}", "\\section{TITLE}"),
+    ("\\section[Short]{TITLE}", "\\section{TITLE}"),
+    ("\\subsection*{TITLE}", "\\subsection{TITLE}"),
+    ("\\chapter*{TITLE}", "\\chapter{TITLE}"),
+)
 
 
 #: What a supplement calls its Methods, each a way `classify.SUPPLEMENT_METHODS` takes: with

@@ -9242,6 +9242,57 @@ def test_a_limit_is_stated_by_its_number_and_by_no_longer_one(
 
 
 @st.composite
+def _ratios_and_decimals_quoted(draw: st.DrawFn) -> list[tuple[str, object, bool]]:
+    """A graphical abstract's aspect ratio and a number of it that is not whole, each written
+    into a quote each way a page writes it, and each way a quote holds what is not it: one
+    of every kind in each example, among words drawn (round 1 of #464: neither was held)."""
+    wide, high = draw(st.integers(2, 40)), draw(st.integers(1, 30))
+    ratio = f"{wide}:{high}"
+    tenths = draw(st.integers(1, 9))
+    decimal = draw(st.integers(0, 40)) + tenths / 10
+
+    def among(written: str) -> str:
+        before = draw(st.lists(st.sampled_from(FILLER), max_size=3))
+        after = draw(st.lists(st.sampled_from(FILLER), max_size=3))
+        return " ".join([*before, written, *after])
+
+    shown = f"{decimal:.1f}"
+    cases = [
+        (among(f"{wide}:{high}"), ratio, True),
+        (among(f"{wide} : {high}"), ratio, True),
+        (among(f"{wide}{chr(0xD7)}{high}"), ratio, True),
+        (among(f"{wide} x {high}"), ratio, True),
+        (among(f"{wide}:{high}."), ratio, True),
+        (among(f"{high}:{wide + high}"), ratio, False),
+        (among(f"{wide}:{high}0"), ratio, False),
+        (among(f"1{wide}:{high}"), ratio, False),
+        (among(f"{wide}:{high}.5"), ratio, False),
+        (among(f"{wide} {high}"), ratio, False),
+        (among(shown), decimal, True),
+        (among(f"{shown}0"), decimal, True),
+        (among(f"{shown}."), decimal, True),
+        (among(f"{shown}5"), decimal, False),
+        (among(f"1{shown}"), decimal, False),
+        (among(f"{shown}.5"), decimal, False),
+        (among(shown.replace(".", "")), decimal, False),
+    ]
+    return draw(st.permutations(cases))
+
+
+@holds(150, _ratios_and_decimals_quoted())
+def test_a_ratio_and_a_decimal_are_stated_by_their_digits_and_by_no_longer_number(
+    cases: list[tuple[str, object, bool]],
+) -> None:
+    """A graphical abstract's aspect ratio is in its quote as its two parts in their order,
+    a colon, a multiplication sign or an x between them; a number of it that is not whole as
+    its digits, with zeros after them or none; neither inside a longer number."""
+    for quote, value, stated in cases:
+        said = (journal_quotes_gate._states_ratio(quote, value) if isinstance(value, str)
+                else journal_quotes_gate._states(quote, value))  # fmt: skip
+        assert said is stated, (quote, value)
+
+
+@st.composite
 def _quotes_on_pages(draw: st.DrawFn) -> list[tuple[str, str, bool]]:
     """A journal's page and a quote of it: the quote there as words of its own, in another
     case, and after itself inside a longer number; and the quote only as the end or the
@@ -11792,6 +11843,22 @@ def _a_limit_is_read_before_a_decimal(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(journal_quotes_gate, "_DIGITS", r"(?<![0-9.,]){}(?![0-9])")
 
 
+def _a_ratio_is_written_with_a_colon_alone(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(journal_quotes_gate, "_RATIO", r"(?<![0-9.,]){}:{}(?![0-9]|[.,][0-9])")
+
+
+def _a_ratio_is_read_inside_a_longer_number(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(journal_quotes_gate, "_RATIO", "{}" + journal_quotes_gate._RATIO_SIGN + "{}")
+
+
+def _a_decimal_is_read_inside_a_longer_number(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(journal_quotes_gate, "_DECIMAL", "{}")
+
+
+def _a_decimal_s_zeros_after_it_are_another_number(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(journal_quotes_gate, "_DECIMAL", r"(?<![0-9.,]){}(?![0-9]|[.,][0-9])")
+
+
 def _a_limit_has_no_separator_of_thousands(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(journal_quotes_gate, "_forms", lambda value: {str(value)})
 
@@ -12197,7 +12264,8 @@ def _a_box_s_comment_is_read(patch: pytest.MonkeyPatch) -> None:
 
 def _a_box_item_is_a_dash_s_alone(patch: pytest.MonkeyPatch) -> None:
     # Only a line opening with a dash opens an item: `*`, `+`, `1.` and `2)` run on.
-    patch.setattr(boxes_module, "_ITEM", re.compile(r"^ {0,3}-(?:[ \t]+(.*)|[ \t]*)$"))
+    patch.setattr(boxes_module, "_ITEM", re.compile(
+        r"^(?P<indent> *)(?P<mark>-)(?:(?P<gap>[ \t]+)(?P<text>.*)|[ \t]*)$"))  # fmt: skip
 
 
 def _a_box_item_ends_at_its_line(patch: pytest.MonkeyPatch) -> None:
@@ -12206,9 +12274,36 @@ def _a_box_item_ends_at_its_line(patch: pytest.MonkeyPatch) -> None:
 
     def first_lines(body: str) -> list[str]:
         opened = [boxes_module._ITEM.match(line) for line in body.split("\n")]
-        return [found.group(1) or "" for found in opened if found] or whole(body)
+        return [found["text"] or "" for found in opened if found] or whole(body)
 
     patch.setattr(boxes_module, "markdown_items", first_lines)
+
+
+def _a_nested_markdown_item_is_the_box_s(patch: pytest.MonkeyPatch) -> None:
+    # Round 1 of #464: "- A" over "  - a1" counted two items.
+    patch.setattr(boxes_module, "_nested", lambda started, column: False)
+
+
+def _a_markdown_item_indented_three_is_the_box_s(patch: pytest.MonkeyPatch) -> None:
+    # A list's own items read as those indented 0 to 3 spaces, whatever the list nests.
+    patch.setattr(boxes_module, "_nested", lambda started, column: len(started["indent"]) > 3)
+
+
+def _a_nested_latex_item_is_the_box_s(patch: pytest.MonkeyPatch) -> None:
+    # Round 1 of #464: an `\item` of an itemize nested in an item was an item of the box.
+    patch.setattr(boxes_module, "_of_the_box", lambda depth, top: True)
+
+
+def _an_abstract_does_not_end_a_latex_box(patch: pytest.MonkeyPatch) -> None:
+    # Round 1 of #464: the abstract after a box under a heading was read as its last items.
+    patch.setattr(boxes_module, "_closes",
+                  lambda later, heading: later.end >= 0 and later.level <= heading.level)
+
+
+def _a_chapter_heading_is_no_box_s(patch: pytest.MonkeyPatch) -> None:
+    # Round 1 of #464: a heading of level 0, `\chapter*{Highlights}`, was dropped.
+    patch.setattr(boxes_module, "_titled", lambda heading: bool(heading.level)
+                  and heading.end >= 0)  # fmt: skip
 
 
 def _a_latex_comment_is_printed(patch: pytest.MonkeyPatch) -> None:
@@ -12263,6 +12358,26 @@ BROKEN = {
     ),
     "a box's item ends at its line": (
         _a_box_item_ends_at_its_line,
+        test_each_box_a_journal_asks_for_is_read_with_its_items_and_nothing_else_is,
+    ),
+    "a nested Markdown item is an item of the box": (
+        _a_nested_markdown_item_is_the_box_s,
+        test_each_box_a_journal_asks_for_is_read_with_its_items_and_nothing_else_is,
+    ),
+    "a Markdown item indented up to three spaces is an item of the box": (
+        _a_markdown_item_indented_three_is_the_box_s,
+        test_each_box_a_journal_asks_for_is_read_with_its_items_and_nothing_else_is,
+    ),
+    "a nested LaTeX item is an item of the box": (
+        _a_nested_latex_item_is_the_box_s,
+        test_each_box_a_journal_asks_for_is_read_with_its_items_and_nothing_else_is,
+    ),
+    "an abstract does not end a LaTeX box": (
+        _an_abstract_does_not_end_a_latex_box,
+        test_each_box_a_journal_asks_for_is_read_with_its_items_and_nothing_else_is,
+    ),
+    "a chapter's heading is no box's": (
+        _a_chapter_heading_is_no_box_s,
         test_each_box_a_journal_asks_for_is_read_with_its_items_and_nothing_else_is,
     ),
     "a LaTeX box's comment is printed": (
@@ -14000,6 +14115,22 @@ BROKEN = {
     "a limit has no separator of thousands": (
         _a_limit_has_no_separator_of_thousands,
         test_a_limit_is_stated_by_its_number_and_by_no_longer_one,
+    ),
+    "a ratio is written with a colon alone": (
+        _a_ratio_is_written_with_a_colon_alone,
+        test_a_ratio_and_a_decimal_are_stated_by_their_digits_and_by_no_longer_number,
+    ),
+    "a ratio is read inside a longer number": (
+        _a_ratio_is_read_inside_a_longer_number,
+        test_a_ratio_and_a_decimal_are_stated_by_their_digits_and_by_no_longer_number,
+    ),
+    "a decimal is read inside a longer number": (
+        _a_decimal_is_read_inside_a_longer_number,
+        test_a_ratio_and_a_decimal_are_stated_by_their_digits_and_by_no_longer_number,
+    ),
+    "a decimal's zeros after it are another number": (
+        _a_decimal_s_zeros_after_it_are_another_number,
+        test_a_ratio_and_a_decimal_are_stated_by_their_digits_and_by_no_longer_number,
     ),
     "a limit's word is read inside a longer word": (
         _a_limit_s_word_is_read_inside_a_longer_word,

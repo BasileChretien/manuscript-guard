@@ -12,8 +12,9 @@ quote. A rule no gate checks goes under `manual:` with its quote, rather than no
 
 * `journal-quote-not-on-page` (fails): a quote that is not in the stored page.
 * `journal-limit-not-in-quote` (fails): a limit above 1 whose number its quote does not
-  state, and so each number above 1 of a box and of a graphical abstract's line. A limit of
-  0 or 1 is held to the page only, since its quote may say "no" or "a".
+  state, and so each number above 1 of a box and of a graphical abstract's line, a graphical
+  abstract's number that is not whole ("2.5") and its aspect ratio ("16:9"). A limit of 0 or
+  1 is held to the page only, since its quote may say "no" or "a".
 * `journal-rule-unquoted` (warning): the rules that carry no quote, named together.
 * `journal-quote-names-no-rule` (warning): a quote for a rule the profile does not have.
 * `journal-page-not-stored` (warning): the page is not there to hold the quotes to.
@@ -151,7 +152,8 @@ def check_quotes(project: Project, slug: str, document: dict, path: Path) -> Rep
         # its words to say it, and each reading of them tried let a wrong limit through or
         # failed a right one. Its quote is still held to the page.
         for named, value in _numbers_of(str(key), rules.get(key)):
-            if not _states(quote, value):
+            if not (_states_ratio(quote, value) if isinstance(value, str)
+                    else _states(quote, value)):  # fmt: skip
                 findings.append(
                     _finding(
                         "journal-limit-not-in-quote",
@@ -177,22 +179,26 @@ BOX_NUMBERS = ("items_min", "items_max", "item_max_chars", "item_max_words", "ma
 PAGE_KEYS = ("page_file", "page_sha256", "source_url", "retrieved_on")
 
 
-def _numbers_of(key: str, value: object) -> list[tuple[str, int]]:
-    """Each whole number above 1 that a rule states, with what the finding calls it: a
-    limit's, a line of the graphical abstract's, and each number of a box's."""
+def _numbers_of(key: str, value: object) -> list[tuple[str, int | float | str]]:
+    """Each number a rule states that its quote has to state, with what the finding calls
+    it: a limit's, a line of the graphical abstract's, and each number of a box's. A whole
+    number above 1; a number that is not whole, which a page can write only in digits
+    (`max_file_mb: 2.5`); and the graphical abstract's aspect ratio, as its text ("16:9")."""
 
-    def whole(number: object) -> int | None:
+    def held(number: object) -> int | float | None:
         if isinstance(number, bool) or not isinstance(number, (int, float)):
             return None
         if isinstance(number, float) and not number.is_integer():
-            return None
+            return number
         return int(number) if number > 1 else None
 
+    if key == "graphical_abstract.aspect_ratio" and isinstance(value, str):
+        return [(key, value)]
     if key.startswith(("limits.", "graphical_abstract.")):
-        number = whole(value)
+        number = held(value)
         return [] if number is None else [(key, number)]
     if key.startswith("boxes.") and isinstance(value, dict):
-        found = [(f"{key} {name}", whole(value.get(name))) for name in BOX_NUMBERS]
+        found = [(f"{key} {name}", held(value.get(name))) for name in BOX_NUMBERS]
         return [(named, number) for named, number in found if number is not None]
     return []
 
@@ -208,20 +214,25 @@ def _owner(key: str) -> str:
 @dataclass(frozen=True)
 class Page:
     """A page the profile's quotes are held to: where it is stored, the digest the profile
-    records of it, where it was read, whether it is the instructions page, and the blocks
-    whose quotes it holds: for a page of a block's own, those that name it (`page_file`);
-    for the instructions page, those that name no other."""
+    records of it, by each block that names it, where it was read, whether it is the
+    instructions page, and the blocks whose quotes it holds: for a page of a block's own,
+    those that name it (`page_file`); for the instructions page, every other, a block the
+    profile does not have among them, as before blocks named pages (`elsewhere` are those it
+    does not hold)."""
 
     path: Path
-    recorded: str | None
+    recorded: tuple[tuple[str, str | None], ...]
     source: str
     instructions: bool
     blocks: tuple[str, ...] = ()
+    elsewhere: tuple[str, ...] = ()
 
     def holds(self, key: str) -> bool:
         """Whether the quote filed under `key` is held to this page."""
         owner = _owner(key)
-        return self.instructions if owner == "" else owner in self.blocks
+        if self.instructions:
+            return owner not in self.elsewhere
+        return owner != "" and owner in self.blocks
 
     @property
     def named(self) -> str:
@@ -248,14 +259,15 @@ def pages_of(project: Project, slug: str, document: dict) -> list[Page]:
         known = own.get(where)
         own[where] = Page(
             where,
-            (known.recorded if known else None) or block.get("page_sha256"),
+            (*(known.recorded if known else ()), (name, block.get("page_sha256"))),
             known.source if known else str(block.get("source_url") or f"the page of {name}"),
             False,
             (*(known.blocks if known else ()), name),
         )
-    first = Page(instructions, document.get("page_sha256"),
+    elsewhere = tuple(name for page in own.values() for name in page.blocks)
+    first = Page(instructions, (("", document.get("page_sha256")),),
                  str(document.get("source_url") or "the instructions page"), True,
-                 tuple(held_there))  # fmt: skip
+                 tuple(held_there), elsewhere)  # fmt: skip
     return [first, *own.values()]
 
 
@@ -281,13 +293,19 @@ def _held_to(project: Project, page: Page, said: list[tuple[str, str]], path: Pa
             f"save {page.source} there as text, as read on the date the profile records",
         )]  # fmt: skip
     findings: list[Finding] = []
-    if page.recorded != page_digest(text):
+    # Each block that names the page with a digest that is not its text, so that two blocks
+    # naming one page with two digests have the stale one said (round 1 of #464: the first
+    # block's digest was the page's, and the second's was never read).
+    stale = [(name, recorded) for name, recorded in page.recorded
+             if recorded != page_digest(text)]  # fmt: skip
+    if stale:
+        recorded = next((digest for _name, digest in stale if digest), None)
         said_of = (
-            f"is not the text the profile recorded (page_sha256 {str(page.recorded)[:12]}...)"
-            if page.recorded
+            f"is not the text the profile recorded (page_sha256 {str(recorded)[:12]}...)"
+            if recorded
             else "has no digest in the profile"
         )
-        under = "" if page.instructions else f" under {', '.join(page.blocks)}"
+        under = "" if page.instructions else f" under {', '.join(name for name, _ in stale)}"
         findings.append(
             _finding(
                 "journal-page-changed",
@@ -420,18 +438,25 @@ def reread(project: Project, new_text: str, page: str | None = None) -> Reread |
     text of a policy kept on its own page is not taken for text gone from the instructions
     page. A rule whose quote is not on the new page is one the page may have changed, and is
     read again; the rest of the difference is for the author to read, a rule the page added
-    among it. Raises LookupError where `page` is no page of the profile's."""
+    among it. Raises LookupError where `page` is no page of the profile's, the instructions
+    page among them, and ValueError, with what the schema says, where the profile is not
+    valid."""
+    from manuscript_guard.contracts._schema import validate
+
     found = _target_profile(project)
     if found is None:
         return None
-    slug, document, _path = found
+    slug, document, path = found
+    checked = validate(document, "journal", path, gate=GATE)
+    if not checked.ok:
+        raise ValueError(checked.render())
     pages = pages_of(project, slug, document)
     chosen = pages[0] if page is None else next(
-        (one for one in pages[1:] if one.path == project.root / page), None)  # fmt: skip
+        (one for one in pages if _same(one.path, project.root / page)), None)  # fmt: skip
     if chosen is None:
-        named = [_where(one.path, project) for one in pages[1:]]
-        raise LookupError(f"{page} is no page a block of the profile names; its pages of their "
-                          f"own: {', '.join(named) or 'none'}")  # fmt: skip
+        named = [_where(one.path, project) for one in pages]
+        raise LookupError(f"{page} is no page of the profile; its pages: "
+                          f"{', '.join(named)}")  # fmt: skip
     try:
         old = chosen.path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
@@ -448,6 +473,14 @@ def reread(project: Project, new_text: str, page: str | None = None) -> Reread |
     rules = tuple((key, _on_page(new_text, quote)) for key, quote in said)
     blocks = () if chosen.instructions else chosen.blocks
     return Reread(chosen.path, diff, rules, page_digest(new_text), blocks)
+
+
+def _same(one: Path, other: Path) -> bool:
+    """Whether two paths name one file, written as they may be: `a/../b` and `b`."""
+    try:
+        return one.resolve() == other.resolve()
+    except OSError:
+        return one == other
 
 
 def _cell(text: str) -> str:
@@ -496,10 +529,37 @@ def _forms(value: int) -> set[str]:
     return {str(value), f"{value:,}", f"{value:,}".replace(",", " ")}
 
 
-def _states(quote: str, value: int) -> bool:
-    """Whether a quote states a whole number: as digits, with or without a separator of
-    thousands ("3500", "3,500", "3 500"), or as a word up to twenty."""
+#: A number that is not whole, as its digits: "2.5" or "2.50", not inside a longer number.
+_DECIMAL = r"(?<![0-9.,]){}0*(?![0-9]|[.,][0-9])"
+#: Between the two parts of a ratio: a colon or a multiplication sign, or an x, with spaces
+#: or none ("16:9", "16 : 9", "16 x 9").
+_RATIO_SIGN = r"[ \t]*[:x" + chr(0xD7) + r"][ \t]*"
+#: An aspect ratio's two parts, in their order, neither inside a longer number.
+_RATIO = r"(?<![0-9.,]){}" + _RATIO_SIGN.replace("{", "{{") + r"{}(?![0-9]|[.,][0-9])"
+
+
+def _decimal(value: float) -> str:
+    """A number that is not whole as a page writes it in digits: 2.5, not 2.500000."""
+    return f"{value:.10f}".rstrip("0")
+
+
+def _states_ratio(quote: str, ratio: str) -> bool:
+    """Whether a quote states an aspect ratio as the profile writes it ("16:9"): both its
+    parts, in their order, with a colon, a multiplication sign or an x between them, neither
+    inside a longer number. "5:2" and "16:10" do not state 16:9."""
+    first, _colon, second = ratio.partition(":")
+    pattern = _RATIO.format(re.escape(first), re.escape(second))
+    return re.search(pattern, normalise(quote).lower()) is not None
+
+
+def _states(quote: str, value: int | float) -> bool:
+    """Whether a quote states a number: a whole one as digits, with or without a separator
+    of thousands ("3500", "3,500", "3 500"), or as a word up to twenty; one that is not
+    whole as its digits ("2.5", "2.50")."""
     text = normalise(quote).lower()
+    if isinstance(value, float) and not value.is_integer():
+        return re.search(_DECIMAL.format(re.escape(_decimal(value))), text) is not None
+    value = int(value)
     for form in _forms(value):
         for found in re.finditer(_DIGITS.format(re.escape(form)), text):
             three = len(form) == 3 and form.isdigit()

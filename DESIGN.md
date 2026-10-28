@@ -6095,7 +6095,15 @@ it is required, its item and word limits, the headings it carries, and whether t
 takes it as a file of its own. Each box is one rule of the page, quoted under `boxes.<id>`.
 Each number of a box above 1, and each of a graphical abstract's lines, is held to its quote as
 a limit's is (`journal-limit-not-in-quote`, naming the box's field): an `item_max_chars` typed
-58 for the page's 85 otherwise passed, since the quote was on the page.
+58 for the page's 85 otherwise passed, since the quote was on the page. A graphical abstract's
+number that is not whole (`max_file_mb: 2.5`) is held to its digits, "2.5" or "2.50", whatever
+its size, since a page cannot write it as "a" or "no"; its `aspect_ratio` to both its parts in
+their order, with a colon, a multiplication sign or an x between them, so that "5:2" does not
+state 16:9 (round 1 of #464: neither was held). A block's own `retrieved_on` is held to its
+age as the instructions' is (`journal-profile-stale`, naming the block), and two blocks that
+name one page with two digests have the one that is not the page's said. A `quotes` key for a
+block the profile does not have is held to the instructions page, as before blocks named
+pages of their own.
 
 A box, the graphical abstract and the sharing policy may each name a page of their own
 (`page_file`, with its `page_sha256`), where the journal gives them apart from its
@@ -6107,8 +6115,15 @@ instructions page was read again (Basile, 2026-10-28).
 G4 reads the boxes of the main text (`text/boxes.py`) and holds each to its rules
 (`gates/journal_boxes.py`): `box-missing`, `box-items`, `box-item-long`, `box-over-limit` and
 `box-headings-missing`. In Markdown a box is the section under its heading; in LaTeX its
-environment, or a section under its heading. An item is a line of the box's list, run on over
-the lines after it, or, where the box has no list, a paragraph: what prints as one. It is
+environment, or a section under its heading, a chapter's or a part's among them, which runs
+to the next heading of its level or above or to an abstract, whatever the box's level (round 1
+of #464: a LaTeX abstract after a box was read as its last items). An item is a line of the
+box's list, run on over the lines after it, or, where the box has no list, a paragraph: what
+prints as one. A list nested in an item is that item's text: in Markdown an item whose mark
+is indented as far as the open item's text, as CommonMark and pandoc place it, whatever the
+list's own indentation; in LaTeX an `\item` inside a list environment nested in the box's
+list (round 1 of #464: "- A" over "  - a1" counted two items). A heading the box must carry
+is found as words of its own: "meaningful" does not carry "Meaning". It is
 measured as printed, a binding as its value's display, a comment and a listing passed over,
 Markdown's marks and LaTeX's commands off. Each finding warns until submission and fails there
 where the box is required, as the author decided (2026-10-28): a box is written last, and a
@@ -17333,11 +17348,21 @@ What papers converted from Word showed (see "What papers converted from Word sho
     that counts its highlights apart is held to a count that includes them.
   - A box is read in one file: a heading in one file and its items in the next, or a LaTeX
     box's heading over an `\input` that holds its list, is a box of no items.
-  - A citation in an item is measured as written (`[@key]`), not as the style prints it; a
-    LaTeX command the mask prints nothing of (`\,`) joins the words beside it, a character
-    short.
-  - A Markdown box's underlined sub-heading is read as a paragraph of it, and so as an item
-    of a box with no list.
+  - A citation or a footnote in an item is measured as written (`[@key]`, `[^1]`, `^[...]`,
+    `\footnote{...}`), not as the style prints it, which can make `box-item-long` fire or
+    pass falsely; a LaTeX command the mask prints nothing of (`\,`) joins the words beside
+    it, a character short.
+  - A Markdown box's sub-heading is read as a paragraph of it where it is underlined, and so
+    as an item of a box with no list.
+  - A box has one quote, and each of its numbers is looked for anywhere in it:
+    `items_max: 3` passes against "3 to 5 highlights, 85 characters". Holding each number
+    near the word for it ("highlights", "characters") was not exact: pages write "3 to 5
+    bullet points", "85 characters, including spaces, per highlight" and "characters: 85",
+    and a reading of the nearest word fails a right profile. A quote for each number
+    (`boxes.<id>.<field>`) would be exact, and is a change of the profile's shape.
+  - A LaTeX box's list is read by `itemize`, `enumerate` and `description`, and by the box's
+    environment: an `\item` of another list environment (`compactitem`, `inparaenum`) nested
+    in an item is counted as an item of the box.
   - `file: separate` is recorded and not acted on: the build still prints the box in the
     manuscript, and the submission pack writes no file of it.
   - The graphical abstract's rules and the sharing policy are recorded and not read; the

@@ -29,8 +29,12 @@ from manuscript_guard.text.placeholders import parse
 from manuscript_guard.text.section_names import plain
 from manuscript_guard.text.sections import count_words, split_sections
 
-#: A line that opens an item of a Markdown list, and the item's text after its mark.
-_ITEM = re.compile(r"^ {0,3}(?:[-*+]|\d{1,9}[.)])(?:[ \t]+(.*)|[ \t]*)$")
+#: A line that opens an item of a Markdown list, at any indentation: what indents it, its
+#: mark, the space after the mark and the item's text. Whether it is an item of the box's list
+#: or of a list nested in one of them is the indentation's to say (`_nested`).
+_ITEM = re.compile(
+    r"^(?P<indent> *)(?P<mark>[-*+]|\d{1,9}[.)])(?:(?P<gap>[ \t]+)(?P<text>.*)|[ \t]*)$"
+)
 #: A line of a Markdown heading, which is no part of an item or a paragraph.
 _HEADING_LINE = re.compile(r"^ {0,3}#{1,6}(?:[ \t]|$)|^ {0,3}(?:=+|-+)[ \t]*$")
 #: A Markdown link or image, printed as its text.
@@ -38,9 +42,10 @@ _LINK = re.compile(r"!?\[([^\]\n]*)\]\([^)\n]*\)")
 #: Markdown's emphasis and code marks, at the edge of a word.
 _MARKS = re.compile(r"(?<!\w)[*_]+|[*_]+(?!\w)|`+")
 _SPACE = re.compile(r"\s+")
-#: A LaTeX list's item, and the end of the list that holds it.
-_LATEX_ITEM = re.compile(r"\\item(?![A-Za-z@])")
-_LATEX_LIST_END = re.compile(r"\\end\s*\{(?:itemize|enumerate|description)\*?\}")
+#: A LaTeX list's item, and where a list opens and closes, which says how deep an item is.
+_LATEX_LIST = re.compile(
+    r"\\(?P<which>begin|end)\s*\{(?:itemize|enumerate|description)\*?\}|\\item(?![A-Za-z@])"
+)
 _NUL = "\x00"
 
 
@@ -155,36 +160,42 @@ def _unmarked_lines(body: str) -> str:
     for line in body.split("\n"):
         if re.match(r"^ {0,3}(?:=+|-+)[ \t]*$", line):
             continue
-        started = _ITEM.match(line)
+        started = _ITEM.match(line.expandtabs(4))
         if started:
-            line = started.group(1) or ""
+            line = started["text"] or ""
         lines.append(re.sub(r"^ {0,3}#{1,6}(?:[ \t]+|$)", "", line))
     return "\n".join(lines)
 
 
 def markdown_items(body: str) -> list[str]:
     """The items of a box written in Markdown: its list's, or, where it has no list, its
-    paragraphs. A sub-heading is neither."""
+    paragraphs. A sub-heading is neither. An item of a list nested in an item is that item's
+    text, as it prints inside it: "- A" over "  - a1" is one item."""
     items: list[str] = []
     paragraphs: list[str] = []
     current: list[str] | None = None
+    column = 0
     paragraph: list[str] = []
     blank = False
-    for line in body.split("\n"):
+    for line in (raw.expandtabs(4) for raw in body.split("\n")):
         started = _ITEM.match(line)
         if _HEADING_LINE.match(line):
             current, blank = None, False
             paragraph = _closed(paragraph, paragraphs)
             continue
-        if started:
-            current = [started.group(1) or ""]
+        nested = started is not None and current is not None and _nested(started, column)
+        if started and not nested and (current is not None or len(started["indent"]) <= 3):
+            current = [started["text"] or ""]
+            column = _content_column(started)
             items.append("")
             paragraph = _closed(paragraph, paragraphs)
         elif not line.strip():
             blank = True
             paragraph = _closed(paragraph, paragraphs)
             continue
-        elif current is not None and (not blank or line.startswith(("  ", "\t"))):
+        elif current is not None and nested:
+            current.append(started["text"] or "")
+        elif current is not None and (not blank or line.startswith("  ")):
             current.append(line)
         else:
             current = None
@@ -194,6 +205,21 @@ def markdown_items(body: str) -> list[str]:
         blank = False
     _closed(paragraph, paragraphs)
     return items if items else paragraphs
+
+
+def _content_column(started: re.Match[str]) -> int:
+    """Where an item's text starts, as CommonMark and pandoc place it: past its indentation,
+    its mark and the space after it, one space where the text starts five or more past the
+    mark (an indented listing then), or the item has none."""
+    gap = len(started["gap"] or "")
+    return len(started["indent"]) + len(started["mark"]) + (gap if 1 <= gap <= 4 else 1)
+
+
+def _nested(started: re.Match[str], column: int) -> bool:
+    """Whether an item opened while another is open is of a list nested in that one: its
+    mark indented as far as the open item's text (`column`). Less is an item of the same
+    list, whatever the list's own indentation."""
+    return len(started["indent"]) >= column
 
 
 def _closed(paragraph: list[str], paragraphs: list[str]) -> list[str]:
@@ -223,16 +249,29 @@ def latex_spans(source: Any, rules: list[BoxRule]) -> list[tuple[int, int, BoxRu
     reading, text = source.reading, source.text
     passed = _passed_over(reading)
     spans = environment_spans(source, rules)
-    headings = [h for h in reading.headings if h.level and h.end >= 0]
+    headings = sorted(reading.headings, key=lambda h: h.start)
     last = reading.body_end if reading.body_end >= 0 else len(text)
     for index, heading in enumerate(headings):
-        rule = box_of(heading.title, rules)
+        rule = box_of(heading.title, rules) if _titled(heading) else None
         if rule is None or passed(heading.start):
             continue
         closes = next((later.start for later in headings[index + 1 :]
-                       if later.level <= heading.level), last)  # fmt: skip
+                       if _closes(later, heading)), last)  # fmt: skip
         spans.append((heading.end, closes, rule, heading.title))
     return spans
+
+
+def _titled(heading: Any) -> bool:
+    """Whether a heading of a LaTeX file has a title a box may be named by: a sectioning
+    command's, a part's and a chapter's among them. An abstract's has none (`end` -1)."""
+    return heading.end >= 0
+
+
+def _closes(later: Any, heading: Any) -> bool:
+    """Whether a heading after a box's ends the box: one of its level or above, or an
+    abstract, which the printed view reads as a section of its own whatever the box's level
+    (round 1 of #464: an abstract after the box was read as its last items)."""
+    return later.end < 0 or later.level <= heading.level
 
 
 def environment_spans(source: Any, rules: list[BoxRule]) -> list[tuple[int, int, BoxRule, str]]:
@@ -262,20 +301,49 @@ def _passed_over(reading: Any):
 def _latex_found(source: Any, start: int, end: int, rule: BoxRule, title: str,
                  namespace: dict[str, Any]) -> Found:  # fmt: skip
     text, reading = source.text, source.reading
-    passed = _passed_over(reading)
-    starts = [m for m in _LATEX_ITEM.finditer(text, start, end) if not passed(m.start())]
-    items: list[str] = []
-    for index, item in enumerate(starts):
-        stop = starts[index + 1].start() if index + 1 < len(starts) else end
-        listed = _LATEX_LIST_END.search(text, item.end(), stop)
-        items.append(latex_printed(source, item.end(), listed.start() if listed else stop,
-                                   namespace))  # fmt: skip
-    if not starts:
+    spans = latex_item_spans(text, start, end, _passed_over(reading))
+    items = [latex_printed(source, a, b, namespace) for a, b in spans]
+    if not spans:
         items = [latex_printed(source, a, b, namespace) for a, b in _paragraphs(reading.masked,
                                                                               start, end)]
     body = latex_printed(source, start, end, namespace)
     line = text.count("\n", 0, start) + 1
     return Found(rule.id, title, line, tuple(item for item in items if item), body, body)
+
+
+def latex_item_spans(text: str, start: int, end: int, passed) -> list[tuple[int, int]]:
+    """Where each item of a box's own list runs, from past its `\\item` to the next item of
+    that list or the `\\end` that closes the list. An `\\item` of a list nested in an item
+    is that item's text, as it prints inside it: the box's items are those of the least
+    depth, the depth of an environment that is itself a list (Elsevier's highlights) 0."""
+    marks: list[tuple[int, int, int, str]] = []  # (start, end, depth, item / end)
+    depth = 0
+    for found in _LATEX_LIST.finditer(text, start, end):
+        if passed(found.start()):
+            continue
+        if found["which"] == "begin":
+            depth += 1
+        elif found["which"] == "end":
+            marks.append((found.start(), found.end(), depth, "end"))
+            depth -= 1
+        else:
+            marks.append((found.start(), found.end(), depth, "item"))
+    top = min((depth for _a, _b, depth, kind in marks if kind == "item"), default=0)
+    spans: list[tuple[int, int]] = []
+    for index, (_at, after, depth, kind) in enumerate(marks):
+        if kind != "item" or not _of_the_box(depth, top):
+            continue
+        # The next item of its list, or the `\end` of its list, recorded at its depth.
+        stop = next((at for at, _after, later, _kind in marks[index + 1 :]
+                     if later == depth), end)  # fmt: skip
+        spans.append((after, stop))
+    return spans
+
+
+def _of_the_box(depth: int, top: int) -> bool:
+    """Whether an `\\item` as deep as `depth` is an item of the box, whose own are `top`
+    deep: a deeper one is of a list nested in an item."""
+    return depth == top
 
 
 def latex_printed(source: Any, start: int, end: int, namespace: dict[str, Any]) -> str:

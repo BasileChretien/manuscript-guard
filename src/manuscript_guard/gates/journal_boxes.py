@@ -26,6 +26,7 @@ noted while `communication/graphical-abstract/` does not exist: what it is held 
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -139,13 +140,19 @@ def held(entry: dict, box: Found, where: Path, severity: str) -> list[Finding]:
                          f"{limit}", where, box.line,
                          f"{words(box.text) - limit} words over"))  # fmt: skip
     wanted_headings = [str(h) for h in entry.get("headings") or ()]
-    body = box.written.lower()
-    missing = [h for h in wanted_headings if h.lower() not in body]
+    missing = [h for h in wanted_headings if not carries(box.written, h)]
     if missing:
         found.append(_at("box-headings-missing", severity, f"{name} is missing: "
                          f"{', '.join(missing)}", where, box.line,
                          "the journal specifies " + ", ".join(wanted_headings)))  # fmt: skip
     return found
+
+
+def carries(written: str, heading: str) -> bool:
+    """Whether a box's text carries a heading the journal names, as words of its own, in any
+    case: "meaningful" does not carry "Meaning" (round 1 of #464)."""
+    pattern = r"(?<!\w)" + re.escape(heading) + r"(?!\w)"
+    return re.search(pattern, written, re.IGNORECASE) is not None
 
 
 def _missing(entry: dict, rule: BoxRule, severity: str, path: Path, elsewhere: list[Path],

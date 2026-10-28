@@ -390,7 +390,8 @@ reporting_guidelines:
 # `page_sha256`), and its quotes are held to it; `journal --reread <file> --page <page_file>`
 # reads it again. G4 names every rule that has none. A limit's number must be in its quote,
 # as digits ("3500", "3,500") or as a word up to twenty ("four"), and so must each number
-# above 1 of a box and of a graphical abstract.
+# above 1 of a box and of a graphical abstract, a graphical abstract's number that is not
+# whole ("2.5"), and its aspect ratio ("5:2", "5 : 2" or "5 x 2").
 #
 #   limits.abstract_words: "Abstracts should not exceed 250 words."
 #   required_statements.funding: "All sources of funding must be declared."

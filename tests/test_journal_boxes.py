@@ -448,3 +448,96 @@ def test_a_reread_reads_each_page_on_its_own(project: Path, capsys) -> None:
     assert "limits.abstract_words" not in out and "manual: cover letter" not in out
     assert "in the profile's sharing." in out
     assert main(["journal", str(project), "--reread", str(again), "--page", "nowhere.txt"]) == 2
+
+
+# ------------------------------------------------------------------------ round 1 of #464
+
+
+def test_a_nested_list_is_the_text_of_its_item_whatever_the_list_s_indentation() -> None:
+    assert markdown_items("- A\n  - a1\n- B\n") == ["A\na1", "B"]
+    assert markdown_items("1. A\n   1. a1\n   2. a2\n2. B\n") == ["A\na1\na2", "B"]
+    # A list indented as a whole is the box's list, and its own nesting is read from it.
+    assert markdown_items("  - A\n  - B\n    - b1\n") == ["A", "B\nb1"]
+    assert markdown_items("- A\n\n  - a1\n\n- B\n") == ["A\na1", "B"]
+
+
+def test_a_graphical_abstract_s_ratio_and_decimals_are_held_to_their_quotes(
+    project: Path,
+) -> None:
+    times = chr(0xD7)
+    for written in ("16:9", "16 : 9", f"16{times}9", "16 x 9"):
+        quote = f"an aspect ratio of {written}, no larger than 2.50 MB"
+        said = _quoted(project, graphical_abstract={"aspect_ratio": "16:9", "max_file_mb": 2.5},
+                       quotes={"graphical_abstract.aspect_ratio": quote,
+                               "graphical_abstract.max_file_mb": quote})  # fmt: skip
+        assert not [m for c, m in said if c == "journal-limit-not-in-quote"], written
+    quote = "an aspect ratio of 5:2, no larger than 25 MB"
+    said = _quoted(project, graphical_abstract={"aspect_ratio": "16:9", "max_file_mb": 2.5},
+                   quotes={"graphical_abstract.aspect_ratio": quote,
+                           "graphical_abstract.max_file_mb": quote})  # fmt: skip
+    assert [m for c, m in said if c == "journal-limit-not-in-quote"] == [
+        f"graphical_abstract.aspect_ratio is 16:9, and its quote does not say 16:9: \"{quote}\"",
+        f"graphical_abstract.max_file_mb is 2.5, and its quote does not say 2.5: \"{quote}\"",
+    ]
+
+
+def test_a_quote_for_a_block_the_profile_lacks_is_held_to_the_stored_page(
+    project: Path,
+) -> None:
+    said = _quoted(project, quotes={"boxes.nothing": "Words no page has."})
+    assert ("journal-quote-not-on-page", "the quote for boxes.nothing is not on the stored "
+            "page: \"Words no page has.\"") in said  # fmt: skip
+
+
+def test_two_blocks_naming_one_page_with_two_digests_have_the_stale_one_said(
+    project: Path,
+) -> None:
+    from manuscript_guard.gates.journal_quotes import page_digest
+
+    text = f"Sharing policy.\n\n{SHARING_QUOTE}\n"
+    _sharing_page(project, text)
+    blocks = {"sharing": {**SHARING, "page_sha256": page_digest(text)},
+              "graphical_abstract": {"required": False, "page_file": SHARING["page_file"],
+                                     "page_sha256": "0" * 64},
+              "quotes": {"sharing.accepted": SHARING_QUOTE}}  # fmt: skip
+    said = [m for c, m in _quoted(project, **blocks) if c == "journal-page-changed"]
+    assert len(said) == 1 and "0000000000" in said[0], said
+    project_, _ = load_project(project)
+    [finding] = [f for f in check_journal(project_).findings if f.code == "journal-page-changed"]
+    assert finding.hint.endswith(" under graphical_abstract"), finding.hint
+
+
+def test_a_block_s_own_date_is_held_to_its_age(project: Path) -> None:
+    _asks(project, sharing={"retrieved_on": "2020-01-01", **SHARING},
+          graphical_abstract={"required": False, "retrieved_on": "2099-01-01"})
+    said = [f.message for f in check_journal(load_project(project)[0]).findings
+            if f.code == "journal-profile-stale"]  # fmt: skip
+    assert "the sharing rules were read on 2020-01-01" in said
+    assert not any("graphical_abstract" in one for one in said)
+
+
+def test_page_without_reread_is_refused_and_may_name_the_instructions_page(
+    project: Path, capsys
+) -> None:
+    from manuscript_guard.cli import main
+
+    instructions = "profiles/journals/sources/demo-journal.txt"
+    assert main(["journal", str(project), "--page", instructions]) == 2
+    assert "--reread" in capsys.readouterr().err
+    again = project / "again.txt"
+    again.write_text((project / instructions).read_text(encoding="utf-8"), encoding="utf-8")
+    assert main(["journal", str(project), "--reread", str(again), "--page", instructions]) == 0
+    assert "limits.abstract_words" in capsys.readouterr().out
+
+
+def test_a_reread_of_an_invalid_profile_exits_with_the_schema_s_message(
+    project: Path, capsys
+) -> None:
+    from manuscript_guard.cli import main
+
+    path = project / PROFILE
+    path.write_text(path.read_text(encoding="utf-8") + "boxes: 3\n", encoding="utf-8")
+    again = project / "again.txt"
+    again.write_text("A page.\n", encoding="utf-8")
+    assert main(["journal", str(project), "--reread", str(again)]) == 2
+    assert "boxes" in capsys.readouterr().err

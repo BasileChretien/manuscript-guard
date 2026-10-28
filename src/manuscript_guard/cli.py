@@ -2154,7 +2154,7 @@ def _reread(project, new: Path, page: str | None = None) -> int:
         return 2
     try:
         found = reread(project, text, page)
-    except LookupError as exc:
+    except (LookupError, ValueError) as exc:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
     if found is None:
@@ -2177,11 +2177,14 @@ def _reread(project, new: Path, page: str | None = None) -> int:
         print(f"{len(gone)} rule(s) quote words the page no longer has: read each again, and "
               "correct its value and its quote, or remove it.")  # fmt: skip
     stored = found.stored
+    # A box records no date of its own: only the instructions page and the blocks that do.
+    dated = "" if found.blocks and all(b.startswith("boxes.") for b in found.blocks) else (
+        " and today's retrieved_on")  # fmt: skip
     inside = stored.is_relative_to(project.root)
     where = stored.relative_to(project.root).as_posix() if inside else str(stored)
     print(
         f"Read the difference for rules the page added, too. To adopt the page, save it over "
-        f"{where}, then record page_sha256: {found.digest} and today's retrieved_on in the "
+        f"{where}, then record page_sha256: {found.digest}{dated} in the "
         + (f"profile's {', '.join(found.blocks)}." if found.blocks else "profile.")
     )
     return 1 if gone else 0
@@ -2197,6 +2200,10 @@ def cmd_journal(args: argparse.Namespace) -> int:
         print(contract_report.render(project.root))
         return 2
 
+    if args.page and not args.reread:
+        print("manuscript-guard: --page names the page --reread reads again; give it with "
+              "--reread <file>", file=sys.stderr)  # fmt: skip
+        return 2
     if args.reread:
         return _reread(project, args.reread, args.page)
 

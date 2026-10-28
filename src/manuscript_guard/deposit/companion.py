@@ -366,7 +366,8 @@ def overview(page: Page, texts: Texts) -> list[str]:
         "<dt>The results files</dt>",
         f"<dd><code>{results_digest(page)}</code>: the SHA-256 of the names and bytes of "
         "every results file of the project, those the package withholds too, in the order of "
-        "their names, as <code>check</code> and <code>verify</code> take it.</dd>",
+        "their names as written: the files <code>check</code> and <code>verify</code> "
+        "digest.</dd>",
         "<dt>The files of the package</dt>",
         f"<dd><code>{package_digest(page.entries)}</code>: the SHA-256 of the lines of "
         "<code>SHA256SUMS</code> for every file but "

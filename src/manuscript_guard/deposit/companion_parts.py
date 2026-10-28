@@ -72,10 +72,11 @@ def drawn_from_withheld(page: Page, key: str) -> str | None:
     results a figure was drawn from is otherwise recorded nowhere."""
     from manuscript_guard.render import read
 
-    from .plan import canonical
+    from .plan import _key as canonical  # one spelling, in the case the system compares in
 
     withheld = {canonical(found.path) for found in page.inputs if not found.included}
-    withheld |= {page.rel(f.path) for f in page.results.fragments if not page.held(f.path)}
+    withheld |= {canonical(page.rel(f.path)) for f in page.results.fragments
+                 if not page.held(f.path)}  # fmt: skip
     folder = page.project.path("figures")
     named: list[str] = []
     for path in sorted(folder.glob(f"{key}.*")):

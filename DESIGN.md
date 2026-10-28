@@ -8151,9 +8151,11 @@ shown with its G7 passage only where the passage is in the stored copy and a per
 that it supports the sentence as it reads, and then by its locator, never its words
 (decision 4(a)). The figures: a picture, the SVG, only where the file in the package is
 the one its `*.render.json` records, the script beside it the one that drew it, and no
-record ties it to a file the package withholds: an input its `*.render.json` lists, or one a
-run of its script declared it read. Which results a figure was drawn from is otherwise
-recorded nowhere, so a figure drawn from a withheld file that no record names is shown. The
+record ties it to a file the package withholds: an input its `*.render.json` lists, which
+no writer of the tool records yet (only a record edited by hand holds one), or one a run of
+its script declared it read, compared in the case the system compares names in. Which
+results a figure was drawn from is otherwise recorded nowhere, so a figure drawn from a
+withheld file that no record names is shown, the usual case. The
 caption, a
 Markdown legend after the binding or the one caption of a LaTeX float that holds the figure
 alone; the alternative text; where G10 says the review stands, and when, but not by whom.

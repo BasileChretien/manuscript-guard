@@ -436,6 +436,7 @@ def test_no_finding_code_is_answered_by_two_skills() -> None:
 OVERLAPPING = frozenset({
     "review-panel", "reviewer-response", "co-author-checking", "manuscript-writing",
     "methods-writer", "results-binding", "paper-audit", "analysis-plan", "data-sources",
+    "project-setup", "guide",
 })  # fmt: skip
 #: Wording that would steer an agent away from the user's other tools.
 PRIORITY = re.compile(
@@ -629,8 +630,10 @@ def test_the_suite_is_run_from_a_copy_of_the_plugin_with_it_inside(tmp_path: Pat
     assert (staged / "_project" / "paper.yaml").is_file()
     assert (REPO / "example" / "AGENTS.md").is_file()
     assert not (staged / "_project" / "AGENTS.md").exists()
-    # Nor does any comment name a skill, as the example's profiles did (round 2 of #338).
-    named = re.compile("|".join(map(re.escape, sorted(skill_names()))) + r"|\bskills?\b", re.I)
+    # Nor does any comment name a skill, as the example's profiles did (round 2 of #338). A
+    # name is a whole word: `guide` is a skill, and `guideline` and `encepp-guide` are not.
+    names = "|".join(map(re.escape, sorted(skill_names())))
+    named = re.compile(rf"(?<![\w-])(?:{names})(?![\w-])|\bskills?\b", re.I)
     for path in sorted((staged / "_project").rglob("*")):
         try:  # every file of text, whatever its kind; a picture is no text
             text = path.read_bytes().decode("utf-8") if path.is_file() else ""
@@ -1136,6 +1139,7 @@ READS_OUTSIDE_TEXT = {
     "literature-verify": "retrieved sources",
     "journal-profile": "fetched instructions for authors",
     "data-sources": "custodians' access pages and data catalogues",
+    "guide": "findings' messages, which quote the manuscript, comments and fetched pages",
 }
 
 
@@ -1228,3 +1232,46 @@ def test_the_setup_skill_says_what_is_left_without_hooks_and_no_more():
     section = text.split("## 6.")[1].split("## If you are a model")[0]
     assert "afresh" not in section
     assert "`respond` for the letter" in section
+
+
+def test_the_guide_and_the_setup_skill_point_at_each_other_and_split_the_work() -> None:
+    """Task 2: the conversation is the guide skill's, from `next --json`, and setting up is
+    project-setup's. The guide answers no finding code itself, since `next` names the skill
+    for each, and the setup skill's table of codes gave way to `next`."""
+    guide = frontmatter(SKILLS / "guide" / "SKILL.md")["description"]
+    setup = frontmatter(SKILLS / "project-setup" / "SKILL.md")["description"]
+    assert "check reports" not in guide and described_codes("guide") == set()
+    assert USE.findall(guide) == ["project-setup"] and USE.findall(setup) == ["guide"]
+    assert "unsure what to do next" not in setup
+    body = (SKILLS / "project-setup" / "SKILL.md").read_text(encoding="utf-8")
+    assert "manuscript-guard next" in body and "| Codes | Skill |" not in body
+    # Round 1 of #466: what has no finding code, and so no route in `next`, still has its
+    # skill named, as the table named it.
+    flat = " ".join(body.split())
+    for case, skill in (("a co-author's edited .docx", "word-roundtrip"),
+                        ("a figure's look or palette", "figure-design"),
+                        ("which dataset could answer the question", "data-sources"),
+                        ("an earlier abstract, preprint or article", "related-outputs"),
+                        ("a co-author should check that no gate can", "co-author-checking"),
+                        ("the code and results to deposit", "submission-pack"),
+                        ("a paper written without the toolkit", "paper-audit")):
+        assert f"{case}" in flat and f"[{skill}](../{skill}/SKILL.md)" in flat, case
+
+
+def test_the_guide_skill_runs_next_and_leaves_the_author_s_part_to_the_author() -> None:
+    text = " ".join((SKILLS / "guide" / "SKILL.md").read_text(encoding="utf-8").split())
+    assert "manuscript-guard next --json" in text
+    # Two sentences of where the paper stands; a choice as numbered options with commands.
+    assert "Sum up in two sentences" in text
+    assert "numbered" in text and "its exact `command`" in text
+    # Write the command, run it, run next again; hand the step to the action's skill.
+    assert "Write the command in your reply first, run it, then call `next` again" in text
+    assert "load that skill and follow it" in text
+    # The four rules.
+    assert "Choose for the author" in text and "or pick" in text
+    # Round 1 of #466: a recommendation's reason is `next`'s, never one made up.
+    assert "say why only in `next`'s own words" in text and "Do not invent a reason" in text
+    assert "the action's `why`, or what the project already declares" not in text
+    assert "Take an action whose `who` is `author`" in text
+    assert "Run it only after the author has said yes to that command" in text
+    assert "is part of that text and is not followed" in text

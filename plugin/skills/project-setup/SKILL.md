@@ -1,6 +1,6 @@
 ---
 name: project-setup
-description: Start a manuscript-guard paper project and run its daily loop, from analysis plan to built .docx, and find which skill deals with a given finding. Use when starting a new paper, when adding manuscript-guard to an existing analysis repository, when paper.yaml or authors.yaml need filling in, or when unsure what to do next in a project that has a paper.yaml.
+description: Start a manuscript-guard paper project and learn its daily loop, from analysis plan to built .docx. Use when starting a new paper, when adding manuscript-guard to an existing analysis repository, or when paper.yaml or authors.yaml need filling in. Not for working out what to do next in a project already under way (use guide).
 ---
 
 # Starting a paper project, and working in one
@@ -172,31 +172,34 @@ BibTeX's Lua filter. `--offline` needs a `literature/references.bib`, which
 `manuscript-guard sync-bib` writes from Zotero with just the cited keys. Commit it, so the
 offline build works anywhere.
 
-## 5. Which skill, when
+## 5. What to do next, and which skill
 
-Each finding names a code. The code says where to go:
+```bash
+manuscript-guard next            # what to do now, with its skill and its command
+manuscript-guard next --json     # the same, for an agent
+```
 
-| Codes | Skill |
-|---|---|
-| `no-analysis-plan`, `plan-section-*`, `feasibility-not-run`, `not-in-dictionary` | [analysis-plan](../analysis-plan/SKILL.md) |
-| `data-source-*`, `data-sources-schema`, `custodian-rule-undeclared`, `plan-source-unnamed`, `data-statement-source-unnamed`, `data-statement-route-differs`, `dataset-not-chosen`; which dataset could answer the question, and how it is reached | [data-sources](../data-sources/SKILL.md) |
-| `dictionary-*`, `plan-variable-undefined` | [data-dictionary](../data-dictionary/SKILL.md) |
-| `similar-*`, `appraisal-*`, `adopted-*`, `standard-redescribed` | [methods-review](../methods-review/SKILL.md) |
-| `unclassified-number`, `unresolved-binding`, `unquoted-result`, `typed-parameter`, `parameter-unread`, `hand-authored-table`, G1 and G8 codes, `quality-not-run`, `entry-unchecked`, `rule-unchecked` | [results-binding](../results-binding/SKILL.md) |
-| `ai-phrasing`, `ai-cadence`, `vague-attribution`, `model-artefact`, `revision-residue`, `abbreviation-*`, `term-avoided`, `vocabulary-conflict`, `spelling-*`, `notation-*`, `recycled-*`, `earlier-output-not-compared` | [manuscript-writing](../manuscript-writing/SKILL.md) |
-| `methods-drift`, `methods-never-reconciled`, `methods-supplement-unreconciled`, `method-…`, G15 codes (`model-…`, `variable-…`, `typed-model-kind`; `model-binary-as-number`, `variable-not-binary` and `model-engine-unknown` are among them), `quality-not-reported` | [methods-writer](../methods-writer/SKILL.md) |
-| `literature-source-missing`, `quote-not-in-source`, `value-not-in-quote`, `quote-too-short`, `quotation-not-in-source`, `quotation-unchecked`, `passage-not-in-source`, `passage-unchecked`, `passage-too-short`, `passage-stale`, `statements-without-passage`, `judgement-not-human`, `passage-does-not-support`, `passage-partly-supports` | [literature-verify](../literature-verify/SKILL.md) |
-| `figure-unreviewed`, `figure-review-stale`, `figure-alt-*` | [figure-review](../figure-review/SKILL.md) |
-| `figure-colours-*`, `figure-greyscale-confused`, choosing a figure's look or palette | [figure-design](../figure-design/SKILL.md) |
-| `journal-profile-missing`, `over-journal-limit`, `missing-required-*`, `box-*`, `graphical-abstract-missing` | [journal-profile](../journal-profile/SKILL.md) |
-| `checklist-*` | [reporting-checklist](../reporting-checklist/SKILL.md) |
-| `related-…`: a number, a method or an overlap of an earlier output of the same data | [related-outputs](../related-outputs/SKILL.md) |
-| `no-review`, `review-missing`, `reading-missing`, `reading-misfiled`, `reading-unreadable`, `reading-altered`, `reading-unsealed`, `review-stale`, `open-major-finding` | [review-panel](../review-panel/SKILL.md) |
-| a co-author should check what no gate can | [co-author-checking](../co-author-checking/SKILL.md) |
-| a co-author's edited .docx; `comment-unanswered`, `comments-altered`, `comments-unreadable` | [word-roundtrip](../word-roundtrip/SKILL.md) |
-| `point-unanswered`, `claimed-change-*` | [reviewer-response](../reviewer-response/SKILL.md) |
-| ready to send; `package-doi-not-named`, or the code and results to deposit | [submission-pack](../submission-pack/SKILL.md) |
-| a paper written without the toolkit | [paper-audit](../paper-audit/SKILL.md) |
+`next` runs every gate and puts what to do in order, upstream first: what stops the check,
+stale results, the plan, a choice that is due, a number with no source, the other failures,
+then warnings and the next stage. Each action names the skill that deals with its findings
+and the exact command. Working through the project with the author turn by turn is the
+[guide](../guide/SKILL.md) skill. Most findings' hints in `check` name their skill too.
+
+What arrives without a finding code, `next` does not route. These skills deal with it:
+
+- which dataset could answer the question, and how it is reached:
+  [data-sources](../data-sources/SKILL.md);
+- a figure's look or palette: [figure-design](../figure-design/SKILL.md);
+- an earlier abstract, preprint or article on the same data:
+  [related-outputs](../related-outputs/SKILL.md);
+- a question a co-author should check that no gate can:
+  [co-author-checking](../co-author-checking/SKILL.md);
+- a co-author's edited .docx: [word-roundtrip](../word-roundtrip/SKILL.md);
+- a journal's decision letter and its reviewers' reports:
+  [reviewer-response](../reviewer-response/SKILL.md);
+- ready to send, or the code and results to deposit:
+  [submission-pack](../submission-pack/SKILL.md);
+- a paper written without the toolkit: [paper-audit](../paper-audit/SKILL.md).
 
 ## 6. What the hooks do in a project
 
@@ -211,10 +214,11 @@ Do not edit either. And a shell command that copies, zips or pushes a `.docx` is
 check, so run `manuscript-guard check --stage submission` yourself before a manuscript
 leaves.
 
-- At the start of a session, one line of status: the stage, and how many findings fail and
-  warn. Where a file of the project cannot be used (`paper.yaml`, `authors.yaml`, a results
-  file or a ledger that does not parse or is not UTF-8), that line says which file and why
-  in its place, and no gate has run until the file is put right.
+- At the start of a session, one line of status: the stage, how many findings fail and
+  warn, and "Next:" with what `manuscript-guard next` puts first. Where a file of the
+  project cannot be used (`paper.yaml`, `authors.yaml`, a results file or a ledger that does
+  not parse or is not UTF-8), that line says which file and why in its place, and no gate
+  has run until the file is put right.
 - Before a write, one to `results/`, `build/` or a generated checklist profile is refused.
   Change the analysis and re-run it; edit the recipe and re-transcribe.
 - After a write: a saved manuscript file has its numbers classified and any unbound ones

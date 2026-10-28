@@ -37,6 +37,7 @@ the same reason, and the author makes it themselves.
 from __future__ import annotations
 
 import contextlib
+import contextvars
 import json
 import os
 import re
@@ -1462,14 +1463,26 @@ def _submission_refusal(root: Path, *, named_from: Path | None = None) -> str | 
     )
 
 
-#: How long the session start and the stop wait for the gates. The agent tool stops a hook at
-#: the timeout hooks.json gives it, 60 s for both, and drops what it would have said. The
+#: How long the session start and the stop wait for the gates and for deciding what `next`
+#: puts first, which gets what the gates leave of it, less `DECIDE_MARGIN`: a decision that
+#: does not finish costs the line its "Next:" and not its counts. The agent tool stops a hook
+#: at the timeout hooks.json gives it, 60 s for both, and drops what it would have said. The
 #: 15 s left are for what comes before the gates (starting Python, the session start's notice,
 #: loading the project where its folders are not noted, noting the files) and for saying that
 #: the check did not finish. Noting the files has no limit of its own (DESIGN.md, Known gaps).
 CHECK_LIMIT = 45.0
+#: What the status line keeps of `CHECK_LIMIT` to be said in, after it stops waiting for the
+#: decision.
+DECIDE_MARGIN = 0.5
 
-#: The gates a hook stopped waiting for. `main` ends the process without them.
+#: When the status line being made has to be said by: set for the thread `_status_in_time`
+#: starts, and unset where `_status_of` is called on its own, which waits for the decision.
+_DEADLINE: contextvars.ContextVar[float | None] = contextvars.ContextVar(
+    "manuscript_guard_status_deadline", default=None
+)
+
+#: The gates, and the decisions, a hook stopped waiting for. `main` ends the process without
+#: them.
 _LEFT_RUNNING: list = []
 
 
@@ -1490,6 +1503,7 @@ def _status_in_time(root: Path) -> str | None:
     that nothing had been checked. A fault of the tool's own is silence, as it was.
     """
     import threading
+    import time
 
     said: list[str | None] = []
 
@@ -1499,7 +1513,11 @@ def _status_in_time(root: Path) -> str | None:
         except Exception:  # noqa: BLE001 - a fault of the tool's own costs the line, and no more
             said.append(None)
 
-    worker = threading.Thread(target=check, name="manuscript-guard-check", daemon=True)
+    # The decision of what `next` puts first gets what is left of the limit after the gates.
+    context = contextvars.copy_context()
+    context.run(_DEADLINE.set, time.monotonic() + CHECK_LIMIT)
+    worker = threading.Thread(target=context.run, args=(check,), name="manuscript-guard-check",
+                              daemon=True)  # fmt: skip
     worker.start()
     worker.join(CHECK_LIMIT)
     if worker.is_alive():
@@ -1512,14 +1530,14 @@ def _status_in_time(root: Path) -> str | None:
 
 
 def _status_of(root: Path) -> str:
-    """The status line of the project at `root`: its stage, and how many findings fail and
-    warn, or which file of it cannot be used and why."""
-    from manuscript_guard.cli import _run_gates
+    """The status line of the project at `root`: its stage, how many findings fail and warn,
+    and what `next` would put first; or which file of it cannot be used and why."""
+    from manuscript_guard.cli import _gate_run
     from manuscript_guard.contracts import ContractError
     from manuscript_guard.policy import DESCRIPTIONS
 
     try:
-        report, project, stage, deferred = _run_gates(root)
+        report, project, stage, deferred, namespace = _gate_run(root)
     except ContractError as error:
         # Silence here read as "no project", and the author met the file at submission.
         return (
@@ -1539,7 +1557,44 @@ def _status_of(root: Path) -> str:
         parts.append(f"{sum(deferred.values())} more become due at '{upcoming}'.")
     if failing:
         parts.append("Run `manuscript-guard check`.")
+    if (first := _first_action(project, report, stage, deferred, namespace)) is not None:
+        parts.append(f"Next: {first} (`manuscript-guard next`).")
     return " ".join(parts)
+
+
+def _first_action(project, report, stage: str, deferred: dict, namespace) -> str | None:
+    """The title of what `next` would put first, decided on the gate run the status line
+    already has, so that the gates run once. None where nothing is left to do, or where
+    deciding fails or does not finish before the line's deadline: that costs this part of the
+    line, and not the counts before it."""
+    import threading
+    import time
+
+    said: list[str | None] = []
+
+    def work() -> None:
+        try:
+            from manuscript_guard.guide import first_action
+            from manuscript_guard.guide.reading import from_run
+
+            first = first_action(from_run(project, report, stage, deferred, namespace,
+                                          cwd=project.root))  # fmt: skip
+            said.append(first.title if first is not None else None)
+        except Exception:  # noqa: BLE001 - the counts stand without the advice
+            said.append(None)
+
+    # A caller that set no deadline still gets the hook's own limit, never an unbounded wait.
+    deadline = _DEADLINE.get()
+    left = (CHECK_LIMIT if deadline is None else deadline - time.monotonic()) - DECIDE_MARGIN
+    if left <= 0:
+        return None
+    worker = threading.Thread(target=work, name="manuscript-guard-next", daemon=True)
+    worker.start()
+    worker.join(left)
+    if worker.is_alive():
+        _LEFT_RUNNING.append(worker)
+        return None
+    return said[0] if said else None
 
 
 # Every version is released to PyPI within minutes of being raised, so the index soon has

@@ -1307,6 +1307,36 @@ def _checker_sentences() -> Reading:
     return checker_sentences
 
 
+@reading("checker methods")
+def _checker_methods() -> Reading:
+    """The co-author's methods items a Markdown file gives (`checking/methods.py`): each, in
+    order, by its identifier, its steps, its text as the co-author reads it and its digest,
+    with the steps `given["ran"]` names as the ones the run recorded and the values printed as
+    `given["values"]` says. No analysis is on disk, so no code is read."""
+    import hashlib
+
+    from manuscript_guard.checking.items import digest_of
+    from manuscript_guard.checking.methods import Ran, method_items
+    from manuscript_guard.contracts.results import Step
+    from manuscript_guard.gates.methods import _anchored_in, _Read
+
+    nowhere = Path(__file__).resolve().parent / "no analysis"
+
+    def methods(given: dict[str, Any]) -> list[list[Any]]:
+        claims, open_ = _anchored_in(_Read(MAIN, given["text"]))
+        steps = {
+            name: Step(name, "analysis/steps.py", hashlib.sha256(name.encode()).hexdigest(),
+                       Path("results/steps.json"), (1, 2))
+            for name in given["ran"]
+        }  # fmt: skip
+        items, _notes = method_items(claims, open_, folder=MAIN.parent, ran=Ran(steps, nowhere),
+                                     shown=dict(given["values"]))  # fmt: skip
+        return [[item["id"], item["facts"][0][1], item["sentences"][0]["text"], digest_of(item)]
+                for item in items]  # fmt: skip
+
+    return methods
+
+
 @reading("blind names")
 def _blind_names() -> Reading:
     """What names an author of `generated.PEOPLE` in a text, and where: what the build reads

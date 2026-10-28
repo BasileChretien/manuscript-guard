@@ -5115,7 +5115,9 @@ warning.
 `methods --explain` prints every claim with the lines of the step that backs it and how the
 pair stands, then the open paragraphs, then the steps nothing describes. That is what a person
 reads to check the Methods against the code. Whether the text describes the code correctly is
-still theirs to say: an anchor shows that someone pointed a sentence at some code.
+still theirs to say: an anchor shows that someone pointed a sentence at some code. `checker
+build` puts the same claims and open paragraphs to the co-authors, each beside its code
+("The Methods against the code").
 
 **In Word.** An anchor prints nothing, so a co-author never sees it. The round trip does not
 place it by Word's words. Anchors that end their paragraph are set aside before the paragraph
@@ -6848,6 +6850,92 @@ authors file and a merely unfinished one could be told apart.
 The effect is that `manuscript-guard init` followed by a first analysis script now reports
 zero failures at `design` and `analysis`, with the outstanding work listed as not yet due,
 and the same items fail from `drafting` onwards.
+
+## `next` says what to do now
+
+`check` lists what is wrong, and a project at `drafting` can have forty findings, a journal
+not chosen and an English not declared, none of which says where to start. An agent asked
+"what now?" read the list and picked, and two agents picked differently. `manuscript-guard
+next` (the `guide` package) reads the project once and decides in a fixed order. `inspect(start)`
+runs every gate through `cli._gate_run`, which is `_run_gates` with the namespace returned
+too, so that an unbound number can be asked which published value it reads as; it reads the
+choices `paper.yaml` has made, the journals `set target_journal` takes, the English the
+journal's profile asks for and the study designs, and, where a round of co-authors' checks
+has begun (`checks/decisions.csv`) and the manuscript is Markdown, where that round stands.
+It writes nothing. `decide(state)` is a pure function of what was read.
+
+The rules are an ordered table, `guide.RULES`, each with a tier; within a tier, actions go
+by gate, upstream first (`GATE_RANK`), then by code, file and line, so the same findings in
+another order give the same answer:
+
+| Tier | Rule | Why it comes here |
+|---|---|---|
+| 0 | `cannot-check` | a gate that could not read its file has checked nothing |
+| 1 | `start` | no project, or `authors.yaml` without `paper.yaml`: `init`, `init --from` a Word paper in the folder, `init --latex`, or `audit` alone |
+| 2 | `stale-results` | G1: every number bound to stale results waits on them |
+| 3 | `plan` | G12: the plan comes before the numbers that answer it |
+| 4 | the four choices | journal, English, reporting guideline, study design, offered as `set` commands |
+| 5 | `provenance` | G2, G3, G7, G8: a number with no source |
+| 6 | `failures` | the rest that fails, in gate order |
+| 7 | `co-author-checks` | from internal review, a round with answers outstanding, stale or disagreeing |
+| 8 | `warnings` | one action for each skill |
+| 9 | `advance` | nothing fails now: preview the next stage with `check --stage`, or `set stage` |
+| 10 | `optional` | nothing fails, from internal review on: panel, co-author's page, build, package, approvals; the pack and the proof at submission |
+
+Three of these were the author's choices (2026-10-28). A choice is offered as the `set`
+command that makes it, never as a description of an edit, so the guard on `set` sees it.
+Moving on (tier 9) is offered only when nothing fails now, and not at `submission` or from a
+view of an earlier stage than the one declared; the optional steps (tier 10) only when nothing fails at `internal-review` or `submission`: a review panel read while the
+numbers still fail is a reading of the wrong paper. And `next` exits 0 whenever it has
+decided: `check`'s exit is the one that says pass or fail, and a second command that said it
+too would be read as the gate. So it raises nothing: a part of the state it cannot read, the
+co-authors' round in a `decisions.csv` saved in a code page, a profile, the numbers a binding
+would take, is left out and said among the notes, and gates that cannot run at all make the
+project `unreadable`, with the reason. A path that is not there is `missing`, and nothing is
+offered for the folder above it, which is not what was asked about.
+
+The stage is held twice: the stage decided at, which `--stage` can set for a view, and the
+one paper.yaml declares. A move is offered only from the declared stage, one step forward,
+and only where the view is not of an earlier stage: in review round 1, a paper at
+`submission` viewed with `--stage drafting` was offered `set stage internal-review`, a move
+back. The move is `ask-author`, since the stage is the author's statement of where the paper
+is, as another journal or another English than the one declared is. A finding only a named
+person may answer (an attestation, a judgement of a passage, a methods decision, a person's
+reading of the figures, an approval, a sign-off, a reviewer's or co-author's finding left as
+it stands with who decided: `routes.PERSON_ONLY`) routes as the author's: an agent that
+wrote the name would pass the gate with nobody behind it. The text says so on the action's
+`run:` line, or on a line of its own where it has no command, as the JSON says it in `who`.
+A code both the literature's contract and the results' raise (`duplicate-key`,
+`no-display`) is routed by the file its finding names: the literature's to
+literature-verify, the results' to results-binding, both with `check`, since neither is
+put right by `bind`.
+
+A finding's code decides its skill and its command through `guide.ROUTES`: the code's own
+entry, else the longest prefix it begins with (`checklist-`, `spelling-`, `registration-`,
+`design-` …). A code no entry names goes to its gate's skill with `check`, and is never
+dropped. `tests/test_guide.py` reads the package's source for every code it reports (each
+value given as a finding's `code`, by keyword or by position: a string, either side of a
+conditional, a module's constant, a name the function binds, one place of a tuple a helper
+returns or a loop walks; every key of the stage policy; and the design rounds' codes made
+from the review gate's seal) and fails on one that neither `ROUTES` nor `NO_ACTION`, the codes
+said only as a note, names; a code an f-string makes is held to a route by its fixed start.
+What the reading cannot find, the gates say when run: every code reported on the example at
+submission, on an empty project of each format and on the example broken four ways is held
+to a route as well. A second test holds every code a skill's description says it
+answers to that skill. A route names a skill that exists and a command that parses, and every
+command an action or an option offers, its placeholders filled, parses with `build_parser()`.
+
+Each command is given twice: as it is written at a prompt, and as `argv`, its words after the
+program's name, so that an agent runs the words given and not its reading of a sentence. A
+placeholder is a word `<NAME>` the option explains. The JSON is `manuscript-guard/next/1`
+(`contracts/schemas/next.schema.json`, docs/next.md); a field added keeps `/1`, a field
+renamed or removed or a fixed list extended makes it `/2`, and rule ids are not renamed.
+
+There is no cache. Each call runs every gate again, 5 to 10 seconds on the example: a cache
+keyed by the files the hooks watch would miss `design/`, `review/`, `profiles/`, `journals/`
+and `checks/`, which the gates read, and an answer about files as they were is the failure
+this toolkit exists to prevent. The co-author checker is not read for a LaTeX manuscript,
+since `checker` refuses one, and a note says so; nor is the proof offered for one.
 
 ## The commands are listed in six groups
 
@@ -10602,8 +10690,9 @@ any machine with a browser.
 ### The items are found, not written
 
 A project should not have to describe its own paper to get a round started. `checking/produce.py`
-reads the files the project already keeps and offers four kinds: values quoted from the
-literature, each with the passage it came from; sentences that cite something; references as
+reads the files the project already keeps and offers five kinds: values quoted from the
+literature, each with the passage it came from; sentences that cite something; the Methods
+beside the code their anchors name ("The Methods against the code"); references as
 `references.bib` holds them; and the authors. Nothing of this is particular to one paper.
 
 What it cannot offer is a number transcribed from a table in a source document, because only the
@@ -10615,12 +10704,14 @@ checker reads is the quote, which is text the ledger already holds.
 
 **A group the project fills is the project's, whole.** Not item by item: the two producers key
 their ids on different inputs, so the same value gets two ids, nothing deduplicates it, and a
-co-author is asked about it twice. The paper this was first run against fills all four of
-these groups itself, with each value traced to a row of a source document the toolkit cannot see;
+co-author is asked about it twice. The paper this was first run against fills the four groups
+it then had itself, with each value traced to a row of a source document the toolkit cannot see;
 asking its own version of each beside them would have added a few hundred duplicate questions to
 someone's afternoon. So one contributed item in a group takes that whole group, and
 `build` prints how many of its own it left out — a thing to notice, rather than to discover from
-a co-author.
+a co-author. Not `methods`: its items carry G9's code digest, which a project's own could not,
+and its answers include `code`, so `checker build` refuses a project's file that declares a
+group of that id.
 
 ### What the digest covers
 
@@ -10785,6 +10876,73 @@ that says `import` stands in an invocation that is plainly `checker build` or `c
 the tool its first word, with `import` only as an option's value: `--title "Drug import and
 safety"`, `--for import`. Main's pattern asked wherever `checker` and then `import` followed the
 tool's name, so this keeps what it asked and asks more.
+
+### The Methods against the code
+
+G9 records that someone read a claim of the Methods against the step it points at; whether the
+text describes the code is still a person's to say, and a co-author who wrote or reviewed the
+analysis can say it where the author cannot see their own slip. So the toolkit's fifth group,
+`methods` (`checking/methods.py`), asks "Does this Methods text describe what this code
+does?" (Task 1, PR 2, 2026-10-28).
+
+**What an item is.** Exactly a claim of `gates/methods.anchored`, one item each: anchors side by
+side claim one text, and that text is one item showing every step it points at. A claim naming
+a step the run never recorded is not sent, nor one that claims no text, and `build` prints a
+line for each. Under decision 2 (a), each **open** paragraph is an item too, saying "no code is
+linked to this text": a paragraph G9 itself reads as the Methods' and that holds no anchor,
+which is G9's own list of them (`anchored`'s second half, what `methods --explain` lists as
+`open`). That is a paragraph under a heading `classify.is_methods` reads as the Methods, in
+the main text or the supplement, other than a table, a figure placed by its binding, a fenced
+listing or a fenced div. A paragraph with no anchor outside the Methods is no item.
+
+**What it shows.** The claim, its values filled in and marked, its section the file's path
+under `manuscript/`, so a supplement's Methods say they are the supplement's. The facts: the
+steps, each step's script and code digest, and each `results.` value the claim binds with its
+value as printed. The evidence: a new kind, `code`, numbered lines with no highlighting,
+read from the script on disk: the step's body, and for a Python script each function the run
+followed into, as its own block, found with `ast`; R gives the body only. Where the script's
+digest is not the one its fragment recorded, each block and `build` say the code shown may not
+be what ran, and a fragment that records no digest of its script is said by both to leave it
+unknown, and one whose script is not there is said by `build`. The Methods are read strictly,
+as G9 reads them, with the results they bind: a manuscript file that is not UTF-8, or a results
+file that does not parse, leaves the group out of the round, and every verb names the file,
+while the other groups, which read neither so, are sent; `import` refuses the group's answers
+with that reason. **Not shown**: how the pair stands in `methods.lock`, which would answer for the
+co-author before they read anything.
+
+**The identifier and the digest.** The identifier is the file under `manuscript/`, the steps
+joined by `+`, and the claim's place among the claims of the same steps in that file, an open
+paragraph's among the open paragraphs (its steps none): not the words. The items stand in the
+order the documents print the files, the main text's then the supplement's, and in each file
+by line, claims and open paragraphs alike. An edited claim then
+stales its answers, which keep their notes and are asked again, rather than orphaning them.
+Under decision 1 (a) the digest holds the code as G9's digest of it read as code, among the
+facts; a `code` block's lines, its note and its line numbers are outside it
+(`items._words_of`), so a comment edited, a call re-wrapped or a line added above the step,
+with the run made again, keeps every answer. Only the methods group's: a project's own `code`
+block carries no code digest, and its lines are in its digest as an excerpt's are.
+`Step.where`'s lines are for that reason not
+among the facts: the page shows them from the block. The values are in it twice, in the
+sentence and in the facts, so a value printed otherwise stales the claims that bind it.
+
+**The answers.** A group may list its own (`answers` in the schema, each a status and its
+button's words); the methods group lists "Text matches the code" (`ok`), "Text needs
+changing" (`wrong`), "Code needs changing" (`code`) and "Not sure" (`unsure`). The page draws
+its bar from the item's group, Y, N, C and U, and a key answers only with a status the group
+lists. `code` is refused at import outside a group that lists it, with the reason; an answer
+about an item the project no longer has is written down with `ok`, `wrong` or `unsure`, as
+before, and refused with `code`, since its group cannot be known. Every answer but `ok` asks
+for a note, on the page and at import, which refuses one without, naming the item. A group may
+not list a status twice. `checker build` refuses a project's items file that declares a group
+`methods`, which would send the project's items under the toolkit's question and none of the
+toolkit's; `import` and `status` read it as before (Known gaps says how to move). `decisions.csv` keeps its nine columns: `code` is a status like
+the rest. `status` lists a `code` with the `wrong` and the `unsure`.
+
+**Tests.** `tests/test_properties.py` holds over generated Methods (`method_claims`, reading
+`checker methods`) that each claim is one item with its text, that a value printed otherwise
+changes the digests of exactly the items binding it, and that an edit to one item's words keeps
+every identifier and changes that item's digest alone; an identifier keyed on the text, and a
+digest without the bound values, each fail it.
 
 ### Nothing in it belongs to a vendor
 
@@ -11028,7 +11186,55 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   title, facts, sentences and the text of its evidence. A table's outlined cell and an image's
   bytes are not in it, so an answer survives the outline moving to another cell or the image
   being replaced. A bound value is shown by its name (`[reported_incidence]`), so a changed
-  `results.` or `lit.` value leaves the sentence, and an answer about it, as they were.
+  `results.` or `lit.` value leaves the sentence, and an answer about it, as they were. A
+  methods item is the exception: its values are filled in and in its digest, and so is what a
+  cross-reference in it prints, "Figure 1". A figure placed before Figure 1 renumbers it, and
+  the answers about every methods item that points at it go stale, though its words did not
+  change.
+- **A methods item's code is read from disk, and only what the step's digest holds.** The
+  lines shown are the script as it is when the page is built, and a script whose digest is not
+  the one its run recorded is said to be so on the page and by `build`; a fragment that records
+  no digest of its script is said to leave it unknown. A module the script imports is not
+  shown, nor followed, as G9's digest does not follow it; R gives the step's body only, and
+  no function it calls. Under decision 1 (a) the comments are outside the digest: a comment
+  rewritten to contradict the text, with the code unchanged, keeps a co-author's ok, and so
+  does a step whose lines moved.
+- **An "ok" given on code edited and not yet run again is about the old code.** Under
+  decision 1 (a) a methods item's digest holds the code digest the run recorded. A page built
+  after the script was edited and before the analysis was run again shows the edited lines,
+  with the warning that they may not be what ran, while its digest holds the old run's; an ok
+  given on it is recorded against that, and stays current until the run is made, when it goes
+  stale if the code changed.
+- **A cross-reference in a Methods item prints only where the count is exact.**
+  `{{ref.figure.forest}}` is shown as the build prints it, "Figure 1", from G2's count of the
+  displays; where that count is not exact (a display placed by hand, or sent as a file) the
+  binding is shown by its name, `[ref.figure.forest]`, as an unresolved value is.
+- **`impact` finds the answers of the other groups by a file's name.** A methods item records
+  its file's path under `manuscript/` and is matched by it; a cited sentence or a value records
+  the file's name alone, so a file of the main text and one of the supplement with one name
+  match each other's answers in `impact`.
+- **A project's own `methods` group is read, and no longer built.** A project whose
+  `checks/items.json` declared a group `methods` before the toolkit had one has it refused by
+  `checker build`, where earlier releases built the page: on purpose, since the page would send the
+  project's items under the toolkit's question and none of the toolkit's, and the message says
+  to rename it; `import` and `status` read it as before, leaving
+  the toolkit's methods items out, with a line. Renamed, its items keep their ids and their
+  recorded answers, but an item's digest holds its group, so each is asked again, its notes
+  kept.
+- **Answers about a group that could not be made are refused, not kept.** Where the Methods
+  could not be read this run (a manuscript file G9 refuses, a results file that does not
+  parse), `import` refuses each answer the page marks as the methods group's, and each `code`,
+  with that reason, and `status` says the group is out; the files can be imported again once
+  it reads. A page built before it wrote the group with each answer is known by `code` alone,
+  so its ok, wrong and unsure on Methods items are recorded as about items gone.
+- **An open Methods paragraph is known by its place.** It has no steps to be known by, so
+  its identifier is its place among the open paragraphs of its file: one added above, or one
+  given an anchor, moves those below, and their answers go stale (never onto another
+  paragraph, since the digest holds the text). A claim's place among the claims of the same
+  steps works the same way, which matters only where several texts point at one step.
+- **`checker` is still refused for a LaTeX manuscript.** The methods producer reads
+  `anchored`, which reads LaTeX, but the literature and claim producers read Markdown, and
+  every verb draws its items from all of them.
 - **Only comments are left out of the sentences.** A sentence a draft has commented out is not
   offered; one in a fenced code block or in the front matter is, if it cites something.
 - **The highlighter can mark inside a character reference.** A marked word is found in the
@@ -17370,6 +17576,50 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - A citation that encloses the number before it, `2 studies [1,3]`, is read as an
     interval after its value and no citation, so the entries it cites can be reported as
     cited nowhere (round 1 of #463).
+
+- **`next` is advice, and its order is a rule.** It puts what is upstream first, and a
+  project whose author knows the journal's reviewers will read the figures first may want
+  another order; `check` is the gate, and nothing `next` says makes a finding pass. A choice
+  is due by a rule as well: from `drafting` for a journal, an English and a guideline that
+  are not set, wherever for a study design, so a paper that follows no listed design is
+  offered one at every call.
+- **A prefix or a gate names a coarser skill than a code's own.** `registration-` goes to
+  analysis-plan for every registration code, and a code no route names goes to its gate's
+  skill with `check`. The command a route gives is the command that shows or does the work
+  (`verify`, `bind`, `journal`), not one that puts the finding right.
+- **`next` runs every gate at every call.** 5 to 10 seconds on the example, and more on a
+  long paper; there is no cache, by choice (see "`next` says what to do now").
+- **`next` shows no co-author checker for a LaTeX manuscript**, nor offers a page or the
+  proof check, since neither command reads LaTeX yet.
+- **The journals offered are only those the project knows.** `set target_journal` takes a
+  journal with a stored profile or a shortlist candidate's `profile`; another one is offered
+  as a profile to start, and how current the offer is depends on the shortlist and the
+  profiles kept.
+- **Showing the command and asking is an agent's to keep.** `who` says `ask-author` for
+  `review --run`, `bind --apply`, `set stage` and another journal or English, and `author`
+  for what only a named person may answer; the hooks enforce only `approve`, `sign`,
+  `review --run --yes`, the submission guard and `set`'s; that an agent puts a choice to the
+  author rather than picking is the skill's guidance, not a check.
+- **A code made at run time is routed only by its prefix.** The walk of the source reads
+  strings, names, conditionals and helpers' tuples; a code built from data (a table of
+  codes read elsewhere, a whole f-string) is seen only where a gate reports it on the
+  fixtures the test runs, and otherwise goes to its gate's skill with `check`.
+- **Tier 10 lists only the commands there are.** Depositing the package and communicating
+  the paper join it as their commands are added, and the co-author checker's fields in
+  `next --json` are those `checker status` reports now.
+- **`next` quotes a command for `cmd.exe`, not PowerShell, and leaves `%` as it is.** A word
+  holding a space or one of `& | < > ^ ( )` is put in double quotes, but `cmd.exe` still
+  expands `%NAME%` inside them, so a path holding two `%` can be shown as another path. A
+  word holding `"` beside one of those is refused, and only `argv` is said. In PowerShell a
+  bare word holding `,` is an array and one starting with `@` splats, and the command shown
+  is not written for it. `argv` is what an agent runs, and is right on both.
+- **A G15 warning only a sign-off closes is offered as `models`.** `model-few-events` is
+  closed by the statistician's `manuscript-guard sign`, and `next` sends it to methods-writer
+  with `models`, the agent's; `sign` is never offered, since the person who signs is the
+  statistician the hint names and not an option `next` can fill.
+- **One person-only warning makes its skill's group the author's.** Warnings go one action
+  to a skill, so a person-only code among them (an attestation that is thin, say) makes
+  every warning of that skill `who: author`, those an agent may put right among them.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

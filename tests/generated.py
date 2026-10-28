@@ -2499,6 +2499,131 @@ def supplements(draw: st.DrawFn) -> tuple[str, list[tuple[int, bool, bool]]]:
     return text, sections
 
 
+#: Every way a paragraph of the Methods stands to the anchors in it, as the co-author's
+#: methods items read them (`checking/methods.py`). Each example holds one of each.
+METHOD_ITEM_KINDS = (
+    "alone", "side by side", "two in a paragraph", "bound", "two bound", "never ran", "open",
+    "open bound", "the same step again", "opening its paragraph",
+)  # fmt: skip
+#: How a bound value prints, before and after it is printed otherwise.
+METHOD_VALUES = ("12", "0.05", "3.4", "95%", "1,204", "2015")
+
+
+@st.composite
+def method_claims(
+    draw: st.DrawFn,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], list[list[Any]], int, list[int]]:
+    """A manuscript whose Methods hold a paragraph of every kind of `METHOD_ITEM_KINDS`, in
+    an order drawn and with words drawn, and whose Discussion holds a claim, which is sent,
+    and a paragraph pointing at no step, which is not; with the steps the run recorded, which
+    are all but one, and how each bound value prints. Returned as the reading `checker
+    methods` is given it, then the same with one sent item's words changed, then with one
+    value it binds printed otherwise; then each item to be sent, as its steps and its text
+    with its values in, in order; the item whose words were changed; and the items binding
+    the value that was changed."""
+    names = iter([f"step{n}" for n in range(100)])
+    keys = iter([f"results.v{n}" for n in range(100)])
+    values: dict[str, str] = {}
+    says: list[list[list[Any]]] = []
+    #: Each item to be sent: its steps, and the say it is.
+    sent: list[tuple[list[str], int]] = []
+    ghost = next(names)
+
+    def sentence(bound: int = 0) -> list[Any]:
+        words: list[Any] = list(draw(st.lists(st.sampled_from(FILLER), min_size=2, max_size=5)))
+        for _ in range(bound):
+            if values and draw(st.booleans()):
+                key = draw(st.sampled_from(sorted(values)))
+            else:
+                key = next(keys)
+                values[key] = draw(st.sampled_from(METHOD_VALUES))
+            words.insert(draw(st.integers(1, len(words))), ("value", key))
+        return words
+
+    def say(sentences: int = 1, bound: int = 0) -> tuple[str, int]:
+        said = [sentence(bound if n == 0 else 0) for n in range(sentences)]
+        says.append(said)
+        return ("say", len(says) - 1)
+
+    def claim(steps: list[str], **shape: int) -> list[tuple[str, Any]]:
+        drawn = say(**shape)
+        sent.append((steps, drawn[1]))
+        return [drawn, *(("anchor", step) for step in steps)]
+
+    paragraphs: list[list[tuple[str, Any]]] = []
+    for kind in draw(st.permutations(METHOD_ITEM_KINDS)):
+        if kind == "alone":
+            paragraphs.append(claim([next(names)], sentences=draw(st.integers(1, 2))))
+        elif kind == "side by side":
+            paragraphs.append(claim([next(names), next(names)]))
+        elif kind == "two in a paragraph":
+            paragraphs.append(claim([next(names)]) + claim([next(names)]))
+        elif kind in ("bound", "two bound"):
+            paragraphs.append(claim([next(names)], bound=1 if kind == "bound" else 2))
+        elif kind == "never ran":
+            paragraphs.append([say(), ("anchor", ghost)])
+        elif kind in ("open", "open bound"):
+            drawn = say(sentences=2, bound=int(kind == "open bound"))
+            sent.append(([], drawn[1]))
+            paragraphs.append([drawn])
+        elif kind == "the same step again":
+            again = next(names)
+            paragraphs += [claim([again]), claim([again])]
+        else:
+            paragraphs.append([("anchor", next(names)), say()])
+    after = [claim([next(names)]), [say()]]
+    introduction = say(sentences=2)[1]
+    ran = sorted({step for steps, _ in sent for step in steps} | {
+        step for paragraph in paragraphs for kind, step in paragraph
+        if kind == "anchor" and step != ghost})  # fmt: skip
+    joins = [draw(st.sampled_from((" ", "\n"))) for _ in range(len(paragraphs) + len(after))]
+
+    def written(token: Any, shown: dict[str, str] | None) -> str:
+        if isinstance(token, tuple):
+            return "{{" + token[1] + "}}" if shown is None else shown[token[1]]
+        return token
+
+    def spoken(at: int, shown: dict[str, str] | None, edited: int | None) -> str:
+        out = []
+        for number, words in enumerate(says[at]):
+            words = [*words, "again"] if at == edited and number == 0 else words
+            text = " ".join(written(token, shown) for token in words)
+            out.append(text[0].upper() + text[1:] + ".")
+        return " ".join(out)
+
+    def text(edited: int | None = None) -> str:
+        def part(element: tuple[str, Any]) -> str:
+            kind, what = element
+            return spoken(what, None, edited) if kind == "say" else "{{method." + what + "}}"
+
+        blocks = ["# Introduction", spoken(introduction, None, None), "# Methods"]
+        for paragraph, join in zip(paragraphs, joins, strict=False):
+            blocks.append(join.join(part(element) for element in paragraph))
+        blocks.append("# Discussion")
+        for paragraph, join in zip(after, joins[len(paragraphs):], strict=True):
+            blocks.append(join.join(part(element) for element in paragraph))
+        return "\n\n".join(blocks) + "\n"
+
+    which = draw(st.integers(0, len(sent) - 1))
+    used = sorted({token[1] for _steps, at in sent for words in says[at] for token in words
+                   if isinstance(token, tuple)})  # fmt: skip
+    key = draw(st.sampled_from(used))
+    other = dict(values)
+    other[key] = values[key] + "0"
+    original = text()
+    expected = [[steps, spoken(at, values, None)] for steps, at in sent]
+    binding = [index for index, (_steps, at) in enumerate(sent)
+               if ("value", key) in [token for words in says[at] for token in words]]
+    return (
+        {"text": original, "values": values, "ran": ran},
+        {"text": text(edited=sent[which][1]), "values": values, "ran": ran},
+        {"text": original, "values": other, "ran": ran},
+        expected,
+        which,
+        binding,
+    )
+
+
 #: The supplement's names of the Methods as headings in a manuscript drawn from the pool.
 SUPPLEMENT_HEADINGS = tuple(f"\n\n# {heading}\n\n" for heading in SUPPLEMENT_METHODS)
 
@@ -6659,6 +6784,7 @@ CONVERTED_BLOCKS = (
 #: What each reading of `tests/readings.py` is given, by the reading's name.
 INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "checker sentences": texts(),
+    "checker methods": method_claims().flatmap(lambda drawn: st.sampled_from(drawn[:3])),
     "prose quotations": texts(QUOTED),
     "passages": passage_files().map(lambda drawn: drawn[0]),
     "plan citations": credited_plans().map(lambda drawn: drawn[0]),

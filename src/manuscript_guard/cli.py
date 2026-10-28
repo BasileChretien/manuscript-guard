@@ -119,7 +119,18 @@ from manuscript_guard.text.tokens import find_atoms
 def _run_gates(
     start: Path, *, submission: bool = False, stage: str | None = None
 ) -> tuple[Report, object, str, dict]:
-    """Run every gate, then apply the stage policy.
+    """Run every gate, then apply the stage policy: `_gate_run` without the namespace."""
+    report, project, chosen, deferred, _namespace = _gate_run(
+        start, submission=submission, stage=stage
+    )
+    return report, project, chosen, deferred
+
+
+def _gate_run(
+    start: Path, *, submission: bool = False, stage: str | None = None
+) -> tuple[Report, object, str, dict, dict]:
+    """Run every gate, then apply the stage policy; with the namespace the gates read too,
+    which `next` asks which unbound number one published value reads as.
 
     Every gate always runs. What the stage changes is which findings *fail*: someone still
     writing the analysis is told about the unreviewed figures, but not stopped by them.
@@ -229,7 +240,7 @@ def _run_gates(
     reports = [contract_report, load_report, _unreadable_report(project, unreadable, stopped)]
     reports += [check_format(project), Report(tuple(not_read_in_latex(name) for name in unread))]
     report, deferred = apply_stage(merge_all(reports + gate_reports), chosen)
-    return report, project, chosen, deferred
+    return report, project, chosen, deferred, namespace
 
 
 #: The checks that read the manuscript only as Markdown, by the name each entry of
@@ -2399,6 +2410,20 @@ def cmd_set(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_next(args: argparse.Namespace) -> int:
+    """What to do now, from one run of every gate; writes nothing, and exits 0 once it has
+    decided, whatever it found: `check` is the command whose exit says pass or fail."""
+    from manuscript_guard import guide
+
+    state = guide.inspect(args.path, stage=args.stage)
+    actions = guide.decide(state)
+    if args.json:
+        print(guide.to_json(state, actions))
+    else:
+        print(guide.render(state, actions, every=args.all))
+    return 0
+
+
 def cmd_stages(args: argparse.Namespace) -> int:
     """What each stage means, and what starts to bind at it."""
     from manuscript_guard.policy import BINDS_AT
@@ -4099,16 +4124,20 @@ def cmd_checklist(args: argparse.Namespace) -> int:
     return 0
 
 
-def _checking_items(project, named: Path | None):
+def _checking_items(project, named: Path | None, *, build: bool = False,
+                    told: list[str] | None = None):
     """What this project offers a co-author: what the toolkit finds, plus what the project adds.
 
     The toolkit finds the values quoted from the literature, the sentences that cite something,
     the references and the authors. A number transcribed from a table in a source document is not
     among them and cannot be — only the project knows where that one came from — so a project
     that traces its own writes `checks/items.json`, and those go in front.
+
+    With `told`, what would be printed is added to it instead, for `next`, whose `--json` is
+    the whole of what it prints and which says it among its notes.
     """
     from manuscript_guard.checking.items import SCHEMA, ItemsError, items_file, items_from
-    from manuscript_guard.checking.produce import merge, produce
+    from manuscript_guard.checking.produce import RESERVED_GROUPS, merge, produce_with_notes
     from manuscript_guard.contracts._schema import read_structured
 
     # The project's file is read raw and checked once, with the toolkit's, after the merge.
@@ -4139,17 +4168,52 @@ def _checking_items(project, named: Path | None):
         # default being absent only means this project contributes nothing of its own.
         raise ItemsError(f"{named} does not exist")
 
-    produced, unread = produce(project)
+    reserved = sorted({str(group.get("id")) for group in (contributed or {}).get("groups") or ()
+                       if str(group.get("id")) in RESERVED_GROUPS})  # fmt: skip
+    if reserved and build:
+        # Taken whole, it would send the project's items under the toolkit's question, and
+        # the toolkit's would not be sent. Refused where a page is made; read as before by
+        # `import` and `status`, so that answers already given come in and are counted.
+        raise ItemsError(
+            f"{source} declares the group {reserved[0]!r}, whose id is now the toolkit's: its "
+            "items are each Methods text beside the code G9 holds it to. Rename the project's "
+            "group, and the `group` of each of its items, to another id (`methods-own`, say), "
+            "and build again. The items keep their ids, so the answers recorded on them are "
+            "still theirs; the digest holds the group, so they are asked again, notes kept."
+        )
+    produced, unread, notes, unavailable = produce_with_notes(project)
+    if reserved:
+        mine = [item for item in produced["items"] if item["group"] in reserved]
+        produced = {**produced, "items": [i for i in produced["items"] if i not in mine]}
+        unavailable = {}
+        if mine:
+            line = (f"{', '.join(reserved)}: the toolkit's {len(mine)} item(s) are left out, "
+                    f"because {source.name} declares that group itself; rename it there to "
+                    "send them (`checker build` says how).")  # fmt: skip
+            if told is None:
+                print(line)
+            else:
+                told.append(line)
+    for said in notes if build else ():
+        # A Methods claim left out of the round, or code shown from a script that changed
+        # since its run: said where the page is built, which is where it can still be fixed.
+        print(said)
     for said in unread:
         # A ledger the contract cannot read takes every value in it out of the round. Printed
         # rather than left to be noticed as a page that is suspiciously short.
-        print(f"not read, so nothing from it is in this round — {said}", file=sys.stderr)
+        line = f"not read, so nothing from it is in this round — {said}"
+        if told is None:
+            print(line, file=sys.stderr)
+        else:
+            told.append(line)
     document, skipped = merge(produced, contributed)
     for group, count in sorted(skipped.items()):
-        print(
-            f"{group}: {count} item(s) the toolkit found are left out, because this project "
-            f"supplies that group itself in {source.name}."
-        )
+        line = (f"{group}: {count} item(s) the toolkit found are left out, because this project "
+                f"supplies that group itself in {source.name}.")  # fmt: skip
+        if told is None:
+            print(line)
+        else:
+            told.append(line)
     if not document["items"]:
         # Reachable on a project that has not got far enough to have anything to check, where
         # the schema's "items: [] should be non-empty" names a file that does not exist and a
@@ -4157,11 +4221,14 @@ def _checking_items(project, named: Path | None):
         raise ItemsError(
             "there is nothing to check yet. A co-author is sent the values quoted from the "
             "literature (literature/ledger.yaml and attested.yaml), the sentences that cite "
-            "something, the references (literature/references.bib) and the authors "
-            "(authors.yaml), and none of those holds anything. A project that traces numbers of "
+            "something, the Methods beside the code their {{method.<step>}} anchors name, the "
+            "references (literature/references.bib) and the authors (authors.yaml), and none "
+            "of those holds anything. A project that traces numbers of "
             f"its own adds them in {source}: see contracts/schemas/checking.schema.json."
         )
-    return items_from(document, source)
+    from dataclasses import replace
+
+    return replace(items_from(document, source), unavailable=unavailable)
 
 
 def cmd_checker(args: argparse.Namespace) -> int:
@@ -4176,7 +4243,7 @@ def cmd_checker(args: argparse.Namespace) -> int:
 
     project, _ = load_project(args.path)
     try:
-        items = _checking_items(project, args.items)
+        items = _checking_items(project, args.items, build=args.verb == "build")
     except ItemsError as exc:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
@@ -4893,7 +4960,7 @@ def cmd_init(args: argparse.Namespace) -> int:
 #: The commands, under the headings the top-level help lists them by, in that order. Every
 #: command is in one group, but `hook`: an agent tool calls it and an author never does.
 COMMAND_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("Setup & Guide", ("init", "set", "stages", "journal", "style", "install-skills")),
+    ("Setup & Guide", ("init", "next", "set", "stages", "journal", "style", "install-skills")),
     (
         "Checking & Audit",
         (
@@ -5168,6 +5235,26 @@ def build_parser() -> argparse.ArgumentParser:
         "--path", type=Path, default=Path.cwd(), help="the project (default: the one you are in)"
     )
     set_.set_defaults(func=cmd_set)
+
+    next_ = sub.add_parser(
+        "next",
+        help="say what to do now: the first thing to put right, or the choice that is due, "
+        "with the skill and the exact command; writes nothing",
+        description="Runs every gate once, as check does, and decides in a fixed order: what "
+        "stops a gate, stale results, the plan, the choices due (journal, English, reporting "
+        "guideline, study design), the numbers' sources, the other failures, the co-authors' "
+        "checks, the warnings, the next stage, then the steps an author may take once nothing "
+        "fails. Exits 0 whenever it has decided; check is the command whose exit says pass "
+        "or fail.",
+    )
+    next_.add_argument("path", nargs="?", type=Path, default=Path.cwd())
+    next_.add_argument("--json", action="store_true",
+                       help="the decision as JSON (schema manuscript-guard/next/1)")
+    next_.add_argument("--all", action="store_true",
+                       help="show every action in full, not the first three")
+    next_.add_argument("--stage", choices=STAGES,
+                       help="decide as at this stage; overrides `stage` in paper.yaml")
+    next_.set_defaults(func=cmd_next)
 
     stages = sub.add_parser("stages", help="what each stage means and what binds at it")
     stages.set_defaults(func=cmd_stages)

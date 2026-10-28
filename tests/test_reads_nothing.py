@@ -114,6 +114,9 @@ COMMANDS = {
                    argv=("lookup", "{project}")),
     "methods": Zero("the analysis files", why="it prints `analysis_files`, 0 included"),
     "models": Zero("the models the analysis fitted", why="it says when there are none"),
+    # Its exit says it decided, not what it found: that is check's.
+    "next": Zero("every gate, as check runs them, and what the project has chosen", exits=0,
+                 argv=("next", "{project}")),
     "palettes": Zero("the palettes shipped with the toolkit, nothing of a project",
                      why="it lists them all, and says so when a filter leaves none (exit 1)"),
     "passages": Zero("the sentences that cite, and the passages recorded for them",
@@ -262,6 +265,8 @@ LATEX = {
     # G9, G15, G7's passages, G8's earlier outputs and G13 read LaTeX from step 8.
     "methods": ("reads", ("methods", "{project}")),
     "models": ("reads", ("models", "{project}")),
+    # It runs the gates as check does; the co-author checker is left out, with a note.
+    "next": ("reads", ("next", "{project}")),
     # It packages the results, the scripts and the inputs whatever the format, and the `.tex`
     # sources with `--with-manuscript`; BOUND.md reads LaTeX's bindings (`deposit/bound.py`).
     "package": ("reads", ("package", "{project}")),

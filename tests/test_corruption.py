@@ -2731,6 +2731,41 @@ def test_an_answers_file_with_a_forged_token_is_refused(project: Path, capsys, m
     assert "Ada Example (from the page built for them)" in capsys.readouterr().out
 
 
+def test_a_methods_sentence_edited_after_a_co_authors_ok_is_current_no_more(
+    project: Path, capsys
+) -> None:
+    """Task 1, PR 2: a co-author said the signal criterion's text matches its code, and the
+    text was then edited. Their ok is about a sentence nobody has now: `status` says so, and
+    the item is outstanding again, under the same identifier."""
+    from manuscript_guard.cli import main
+
+    assert main(["checker", "build", str(project), "--for", "Ada Example"]) == 0
+    page = (project / "checks" / "check-ada-example.html").read_text(encoding="utf-8")
+    start = page.index("const BUNDLE = ") + len("const BUNDLE = ")
+    bundle = json.loads(page[start : page.index(chr(10), start)].rstrip().rstrip(";"))
+    item = next(one for one in bundle["items"]
+                if one["group"] == "methods" and one["title"].startswith("signal:"))  # fmt: skip
+    answers = project / "answers-ada-example.json"
+    answers.write_text(json.dumps({
+        "schema": "manuscript-guard/checking-answers/2", "bundle": bundle["bundle"],
+        "by": "Ada Example", "orcid": bundle["person"]["orcid"], "token": bundle["token"],
+        "answers": [{"id": item["id"], "digest": item["digest"], "title": item["title"],
+                     "status": "ok"}],
+    }), encoding="utf-8")  # fmt: skip
+    assert main(["checker", "import", str(project), "--answers", str(answers)]) == 0
+    capsys.readouterr()
+    assert main(["checker", "status", str(project)]) == 0
+    assert "Ada Example: 1 ok" in capsys.readouterr().out
+    main_md = project / "manuscript" / "main.md"
+    text = main_md.read_text(encoding="utf-8")
+    assert text.count("at least\n") == 1
+    main_md.write_text(text.replace("at least\n", "at least ten, or\n"), encoding="utf-8")
+    assert main(["checker", "status", str(project)]) == 0
+    said = capsys.readouterr().out
+    assert "1 answer(s) are about text that has changed since" in said, said
+    assert f"Ada Example on {item['title']}" in said and "Ada Example: 1 ok" not in said, said
+
+
 # ------------------------------------------------ the unit written after a binding
 
 
@@ -7500,12 +7535,16 @@ def test_each_check_not_taught_latex_is_not_run_and_the_others_are(
     # the one the runner calls in its own body is `check_format` (round 3).
     assert set(_MARKDOWN_ONLY) == cli._NOT_READ_IN_LATEX
     assert set(_MARKDOWN_BUILD) == cli._MARKDOWN_BUILD
-    body = {name for name in cli._run_gates.__code__.co_names if name.startswith("check_")}
+    # The body is `_gate_run`'s, which `next` calls for the namespace too; `_run_gates`
+    # calls it and no check of its own (#462).
+    wrapper = cli._run_gates.__code__.co_names
+    assert "_gate_run" in wrapper and not [n for n in wrapper if n.startswith("check_")]
+    body = {name for name in cli._gate_run.__code__.co_names if name.startswith("check_")}
     assert body == {"check_format"}
     runner = {
         name
-        for code in cli._run_gates.__code__.co_consts
-        if isinstance(code, type(cli._run_gates.__code__))
+        for code in cli._gate_run.__code__.co_consts
+        if isinstance(code, type(cli._gate_run.__code__))
         for name in code.co_names
         if name.startswith("check_")
     }

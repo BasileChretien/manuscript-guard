@@ -2840,7 +2840,8 @@ def test_submit_packs_what_each_co_author_checked_and_warns_of_an_open_flag(
     assert main(["submit", str(project), "--document", document, "--skip-checks"]) == 0
     said = capsys.readouterr().out
     assert said.count("Blaise Sample answered 'wrong' on ") == 3, said
-    assert "and has not answered ok on it since: the source says 17.4" in said
+    assert ("and has given no later answer on it, nor has it changed since: the source says "
+            "17.4") in said, said
     packed = (pack / "coauthor-verification.md").read_text(encoding="utf-8")
     assert packed.startswith("# Co-author verification\n")
     assert "Blaise Sample: wrong" in packed and "the source says 17.4" not in packed
@@ -2856,7 +2857,7 @@ def test_submit_packs_what_each_co_author_checked_and_warns_of_an_open_flag(
     assert _coauthor_verification(load_project(project)[0]).flags.findings == ()
     capsys.readouterr()
     assert main(["submit", str(project), "--document", document, "--skip-checks"]) == 0
-    assert "has not answered ok on it since" not in capsys.readouterr().out
+    assert "has given no later answer on it" not in capsys.readouterr().out
 
 
 def test_an_earlier_recap_named_by_hand_is_said_to_be_unverified(project: Path, capsys) -> None:
@@ -2882,9 +2883,12 @@ def test_an_earlier_recap_named_by_hand_is_said_to_be_unverified(project: Path, 
         capsys.readouterr().out)  # fmt: skip
 
 
-def test_two_spellings_of_one_name_are_one_row_of_the_recap(project: Path) -> None:
-    """Round 1 of #465: answers under "Jane Doe" and "jane doe" are one person's, as the
-    counts take them, and the table gave each spelling a row with both counts."""
+def test_two_spellings_of_one_name_are_two_rows_each_with_its_own_answers(
+    project: Path,
+) -> None:
+    """Rounds 1 and 2 of #465: answers under "Jane Doe" and "jane doe" are kept apart, as
+    `checker status` keeps them; the table gave each spelling a row counting both, then one
+    row counting both."""
     from manuscript_guard.cli import main
 
     assert main(["checker", "build", str(project), "--for", "Ada Example"]) == 0
@@ -2899,7 +2903,8 @@ def test_two_spellings_of_one_name_are_one_row_of_the_recap(project: Path) -> No
     assert main(["checker", "recap", str(project)]) == 0
     text = (project / "checks" / "recap.md").read_text(encoding="utf-8")
     rows = [line for line in text.splitlines() if line.casefold().startswith("| jane doe")]
-    assert rows == ["| Jane Doe (not an author in authors.yaml) | 2 | 0 | 0 | 0 | 0 | 2 |"], rows
+    assert rows == ["| Jane Doe (not an author in authors.yaml) | 1 | 0 | 0 | 0 | 0 | 1 |",
+                    "| jane doe (not an author in authors.yaml) | 1 | 0 | 0 | 0 | 0 | 1 |"], rows
 
 
 def test_a_register_saved_by_a_spreadsheet_leaves_the_pack_with_a_note(
@@ -2907,7 +2912,8 @@ def test_a_register_saved_by_a_spreadsheet_leaves_the_pack_with_a_note(
 ) -> None:
     """Round 1 of #465: `checks/bundles.csv` re-saved in cp1252 stopped `submit` with a
     traceback where it packed before. The pack is made without `coauthor-verification.md`, and
-    says why; `checker recap` refuses with a message."""
+    says why; the flags, which need the record and the items only, are still warned of (round
+    2); `checker recap` refuses with a message."""
     from manuscript_guard.cli import _coauthor_verification, main
 
     assert main(["checker", "build", str(project), "--all"]) == 0
@@ -2916,7 +2922,8 @@ def test_a_register_saved_by_a_spreadsheet_leaves_the_pack_with_a_note(
     register = project / "checks" / "bundles.csv"
     register.write_bytes(register.read_bytes() + "José".encode("cp1252") + b",x\n")
     made = _coauthor_verification(load_project(project)[0])
-    assert made.text is None and made.flags.findings == ()
+    assert made.text is None
+    assert [f.code for f in made.flags.findings] == ["coauthor-flag-open"] * 3
     assert len(made.notes) == 1, made.notes
     assert made.notes[0].startswith("no coauthor-verification.md is packed: checks/bundles.csv "
                                     "cannot be read")  # fmt: skip

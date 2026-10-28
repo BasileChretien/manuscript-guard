@@ -3535,12 +3535,14 @@ class _Coauthors:
 def _coauthor_verification(project) -> _Coauthors:
     """The publisher's recap for the pack, and `coauthor-flag-open` for each current `wrong`
     or `code` that is still the latest answer of the person who gave it. Said, and never
-    refused: whether to
-    send with a co-author's flag open is the corresponding author's call (decision 7 (a))."""
+    refused: whether to send with a co-author's flag open is the corresponding author's call
+    (decision 7 (a)). The warnings need the record and the items only, so they are said where
+    the copy cannot be made, the register unreadable, say (round 2 of #465)."""
+    import csv
     import io
 
     from manuscript_guard.checking.items import ItemsError
-    from manuscript_guard.checking.recap import RecapError, earlier_for, make
+    from manuscript_guard.checking.recap import RecapError, earlier_for, flags_of, make
     from manuscript_guard.checking.store import decisions_path
     from manuscript_guard.text.reader import LATEX, manuscript_format
 
@@ -3555,22 +3557,31 @@ def _coauthor_verification(project) -> _Coauthors:
         # is said below, since the table is the poorer for it.
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(said):
             items = _checking_items(project, None)
-        made = make(project, items, earlier=earlier_for(project), publisher=True)
-    except (ItemsError, RecapError) as exc:
+    except ItemsError as exc:
         return _Coauthors(notes=(f"no coauthor-verification.md is packed: {exc}",))
+    unread = tuple(f"coauthor-verification.md: {line}" for line in said.getvalue().splitlines())
+    try:
+        text = make(project, items, earlier=earlier_for(project), publisher=True).text
+    except RecapError as exc:
+        text, unread = None, (*unread, f"no coauthor-verification.md is packed: {exc}")
+    try:
+        open_ = flags_of(project.root, items)
+    except (OSError, UnicodeDecodeError, csv.Error):
+        # The record itself cannot be read: the note above says so.
+        open_ = ()
     flags = tuple(
         Finding(
             gate="BUILD", code="coauthor-flag-open", severity=WARN,
             message=f"{flag.by} answered {flag.status!r} on {flag.title or flag.id}, and has "
-            f"not answered ok on it since: {flag.note or 'no note'}",
+            f"given no later answer on it, nor has it changed since: {flag.note or 'no note'}",
             path=decisions_path(project.root),
-            hint="change what they asked for, or ask them again (`checker build`); "
-            "`checker recap` lists each with its sentence or its steps",
+            hint="any later answer of theirs on it, or an edit to the item, closes it: change "
+            "what they asked for, or ask them again (`checker build`); `checker recap` lists "
+            "each with its sentence or its steps",
         )
-        for flag in made.flags
+        for flag in open_
     )  # fmt: skip
-    unread = tuple(f"coauthor-verification.md: {line}" for line in said.getvalue().splitlines())
-    return _Coauthors(made.text, Report(flags), unread)
+    return _Coauthors(text, Report(flags), unread)
 
 
 def _packed(project, report, pack, notes: list[str], coauthors: _Coauthors | None = None) -> int:
@@ -4272,12 +4283,6 @@ def cmd_checker(args: argparse.Namespace) -> int:
 
     if getattr(args, "check", None) is not None and args.verb != "recap":
         print("manuscript-guard: --check belongs to `checker recap`", file=sys.stderr)
-        return 2
-    if isinstance(getattr(args, "check", None), str) and Path(args.check).is_dir():
-        # `checker recap --check <project>`: the folder is taken for the file.
-        print(f"manuscript-guard: {args.check} is a folder, and --check takes a recap file; "
-              "name the project first and the file after it: `checker recap <project> "
-              "--check [file]`", file=sys.stderr)  # fmt: skip
         return 2
     project, _ = load_project(args.path)
     try:
@@ -5843,7 +5848,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--answers", type=Path, nargs="+", help="import: the files the co-authors sent back"
     )
     checker.add_argument(
-        "--items", type=Path, help="the items file, if not checks/items.json"
+        "--items", type=Path,
+        help="the items file, if not checks/items.json; a relative path is read from the "
+        "working folder, where --check's is read under the project",
     )
     checker.add_argument(
         "--check", nargs="?", const=True, default=None, metavar="FILE",

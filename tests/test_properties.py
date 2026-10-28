@@ -5003,7 +5003,8 @@ def test_the_chain_over_the_record_moves_with_every_row(rows: list[dict[str, str
     """The recap's chain is over every row of `checks/decisions.csv` as it was written: each
     row reads back as it went in, a row with no id among them, and a row edited, a row
     deleted or two rows swapped, wherever it stands, gives another head. The head of the
-    first rows is the head the whole record gives after them."""
+    first rows is the head the whole record gives after them, and a cell's CRLF line break is
+    chained as LF, as a checkout that writes CRLF gives the same record (round 2 of #465)."""
     import tempfile
 
     from manuscript_guard.checking import recap
@@ -5017,6 +5018,9 @@ def test_the_chain_over_the_record_moves_with_every_row(rows: list[dict[str, str
     assert len(heads) == len(rows) + 1 and len(set(heads)) == len(heads), rows
     for at in range(1, len(rows) + 1):
         assert recap.chain(rows[:at]) == heads[: at + 1], at
+    crlf, lf = "\r\n", "\n"
+    folded = [{key: value.replace(crlf, lf) for key, value in row.items()} for row in rows]
+    assert folded != rows and recap.chain(folded) == heads, rows
     for at, row in enumerate(rows):
         edited = [*rows[:at], {**row, "note": row["note"] + "."}, *rows[at + 1 :]]
         assert recap.chain(edited)[-1] != heads[-1], ("edited", at, rows)
@@ -12243,6 +12247,12 @@ def _a_key_credits_the_keys_it_begins(patch: pytest.MonkeyPatch) -> None:
     ])  # fmt: skip
 
 
+def _a_chain_keeps_a_cells_crlf(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.checking import recap
+
+    patch.setattr(recap, "_lf", lambda value: value)
+
+
 def _a_chain_passes_over_a_row_with_no_id(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.checking import recap
 
@@ -12302,6 +12312,10 @@ BROKEN = {
         test_a_late_registration_is_said_in_every_way_a_manuscript_says_it_and_no_other,
     ),
     # Task 1, PR 3: chained over the decisions `read_decisions` gives, a row with no id.
+    "the record's chain hashes a cell's CRLF as it was read": (
+        _a_chain_keeps_a_cells_crlf,
+        test_the_chain_over_the_record_moves_with_every_row,
+    ),
     "the record's chain passes over a row with no id": (
         _a_chain_passes_over_a_row_with_no_id,
         test_the_chain_over_the_record_moves_with_every_row,

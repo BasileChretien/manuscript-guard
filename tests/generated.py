@@ -2638,13 +2638,16 @@ RECORD_CELLS = (
 @st.composite
 def decision_records(draw: st.DrawFn) -> list[dict[str, str]]:
     """Rows of the co-authors' record, two to six, each cell drawn from `RECORD_CELLS`. In
-    every example one row has no id and one note holds a comma, a quotation mark and a line
-    break: what a reader of the record has to keep, wherever it stands."""
+    every example one row has no id, one note holds a comma, a quotation mark and a line
+    break, and one title a CRLF line break: what a reader of the record has to keep, wherever
+    it stands."""
     count = draw(st.integers(2, 6))
     rows = [{field: draw(st.sampled_from(RECORD_CELLS)) for field in RECORD_FIELDS}
             for _ in range(count)]  # fmt: skip
     rows[draw(st.integers(0, count - 1))]["id"] = ""
     rows[draw(st.integers(0, count - 1))]["note"] = 'it says "17.4",\nnot 17.2'
+    # A line break as a CRLF checkout writes it inside a quoted cell (round 2 of #465).
+    rows[draw(st.integers(0, count - 1))]["title"] = "a title,\r\non two lines"
     return rows
 
 

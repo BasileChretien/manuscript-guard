@@ -10915,7 +10915,8 @@ this" is answered from:
   the flags given after an answer about this version. They count for nothing, and their notes
   are here (decision 3 (a));
 - **what each co-author checked**: a row for each author, in the order `authors.yaml` gives,
-  then each other name the record holds, with their current answers by status, their answers
+  then each other name the record holds, as it writes it (two spellings of one name are two
+  rows, as `checker status` counts them), with their current answers by status, their answers
   about an earlier version, and how many current answers are **claimed**, from no page built
   for them;
 - **the verification, item by item**: a row for each literature value, cited sentence and
@@ -10949,9 +10950,9 @@ said by `checker recap` and written into the recap, and not refused: the recap i
 it, and `--check` against a copy kept elsewhere is what fails.
 
 **`checker recap --check [file]`** reads a recap (`checks/recap.md` unless a file is named: the
-pack's copy, or one kept in git; a relative file is under the project, whatever folder the
-command runs in, and a folder is refused with a message, since the project is named before
-`--check`), makes it again from the record and the manuscript as they are,
+pack's copy, or one kept in git; a relative file is read under the project, whatever folder
+the command runs in, where `--items` is read from the working folder as before; a folder is
+refused with a message, since the project is named before `--check`), makes it again from the record and the manuscript as they are,
 naming the earlier recap the file names, and compares the two byte for byte. The same: exit 0,
 with the row count, the head and the root digest. Otherwise exit 1, naming the first line that
 differs, as the file has it and as it is made now, and what the file's footer says of the
@@ -10986,7 +10987,8 @@ takes its place and closes it, an `ok`, or an `unsure`, which leaves the item un
 open" in the recap; and so does an edit to the item, which makes the flag about an earlier
 version. It does not
 refuse: whether to send with a co-author's flag open is the corresponding author's call, as an
-approval missing is. No gate of `check` changes. A LaTeX manuscript, which `checker` refuses, is
+approval missing is. The warnings need the record and the items only, so they are said where
+the copy cannot be made, a register a spreadsheet re-saved, say, beside the note saying why. No gate of `check` changes. A LaTeX manuscript, which `checker` refuses, is
 packed without the file, and `submit` says so.
 
 **Tests.** `tests/test_checking.py` holds that a recap made twice is the same bytes, that
@@ -11325,6 +11327,20 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   who verified and who flagged each item, and not what they said: a journal reading a flag
   learns that someone asked for a change, not which. It names every co-author who answered,
   claimed or not, and anyone who is not an author whose answer the record holds.
+- **The record keeps a name as it was written.** `checker status` takes each person's latest
+  answer by the name as recorded, and so does the recap: "Jane Doe" and "jane doe" are two
+  rows, each with its own answers, and the second's wrong does not close the first's ok, nor
+  her later ok her own flag given under the other spelling. An author's answer under another
+  spelling is a row of its own beside the author's. The page writes the name `authors.yaml`
+  gives; a file written by hand may not.
+- **Two authors of one name share their row's counts.** The recap gives each author in
+  `authors.yaml` a row and counts in it every decision recorded under that name, so two
+  authors written alike each get a row counting both's decisions. `checker` refuses such
+  namesakes before a round, so this is a record made before the second was added.
+- **A header that repeats a column hides its first cell from the chain.** The chain reads each
+  row as the CSV reader maps it to the header, so a `decisions.csv` whose header names a column
+  twice keeps the last cell of the two, and an edit to the other leaves the head as it was.
+  `checker import` never writes such a header; one made by hand is not refused.
 - **`coauthor-flag-open` is held to the person, not to the item.** A flag stays open until the
   person who gave it answers again about the item as it is now, ok or not sure, or the item
   changes: a co-author's ok on someone else's flag does not close it, and an edit to the sentence closes it whether or

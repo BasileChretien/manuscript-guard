@@ -1309,8 +1309,8 @@ def _imports_answers(joined: str) -> bool:
     reader of commands, `bash -c`, `eval`, a here-string piped to `iex`, a quote holding an
     operator. So the one exception is a command read cleanly as a POSIX shell and as Windows
     read it, with no command substitution and no unclosed quote, in which every word that says
-    `import` stands in an invocation that is plainly `checker build` or `checker status`
-    (`_plain_checker`): `--title "Drug import and safety"`, `--for import`."""
+    `import` stands in an invocation that is plainly `checker build`, `checker status` or
+    `checker recap` (`_plain_checker`): `--title "Drug import and safety"`, `--for import`."""
     # First, cheaply: a reading only takes out quotes and escapes, so a word it would make is
     # in the text with those taken out. Most commands an agent runs end here, read once.
     bare = re.sub("[\\\\`'\"‘-„]", "", joined)

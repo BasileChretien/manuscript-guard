@@ -2804,21 +2804,32 @@ def test_check_says_the_earlier_recaps_line_is_read_from_the_file_and_not_verifi
     assert "is read from this file and not verified" in capsys.readouterr().out
 
 
-def test_a_name_that_is_no_authors_is_one_row_however_it_is_cased(
+def test_each_spelling_of_a_name_is_counted_as_checker_status_counts_it(
     project: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Round 1 of #465: "Jane Doe" and "jane doe" were two rows, each counting both."""
-    from manuscript_guard.cli import main
+    """Rounds 1 and 2 of #465: the record keeps a name as written, and `checker status` takes
+    each person's latest answer by it. "Jane Doe" says ok on an item and "jane doe" then says
+    wrong on it: two rows, each with its own answer, as the item table and the flags have it.
+    Merged by folded name, one row counted both as current answers."""
+    from manuscript_guard.checking.recap import flags_of
+    from manuscript_guard.cli import _checking_items, load_project, main
 
     assert main(["checker", "build", str(project), "--for", "Ada Example"]) == 0
-    first, second = _page(project / "checks" / "check-ada-example.html")["items"][:2]
+    first = _page(project / "checks" / "check-ada-example.html")["items"][0]
     files = [_claimed(project, "j1.json", "Jane Doe", [first]),
-             _claimed(project, "j2.json", "jane doe", [second])]  # fmt: skip
-    assert main(["checker", "import", str(project), "--answers", *map(str, files)]) == 0
+             _claimed(project, "j2.json", "jane doe", [first], "wrong", "not so")]  # fmt: skip
+    for one in files:
+        assert main(["checker", "import", str(project), "--answers", str(one)]) == 0
     assert main(["checker", "recap", str(project)]) == 0
-    rows = [line for line in _recap(project).splitlines() if "| Jane Doe" in line.casefold()
-            or line.casefold().startswith("| jane doe")]  # fmt: skip
-    assert rows == ["| Jane Doe (not an author in authors.yaml) | 2 | 0 | 0 | 0 | 0 | 2 |"], rows
+    text = _recap(project)
+    rows = [line for line in text.splitlines() if line.casefold().startswith("| jane doe")]
+    assert rows == ["| Jane Doe (not an author in authors.yaml) | 1 | 0 | 0 | 0 | 0 | 1 |",
+                    "| jane doe (not an author in authors.yaml) | 0 | 1 | 0 | 0 | 0 | 1 |"], rows
+    assert "two spellings of one name are two rows" in text
+    row = next(line for line in text.splitlines() if line.startswith("| 1 |"))
+    assert "| Jane Doe (claimed; not an author in authors.yaml) | jane doe (claimed; " in row
+    loaded = load_project(project)[0]
+    assert [f.by for f in flags_of(project, _checking_items(loaded, None))] == ["jane doe"]
 
 
 def test_a_register_that_cannot_be_read_stops_the_recap_with_a_message(
@@ -2892,7 +2903,7 @@ def test_check_refuses_a_folder_and_reads_a_relative_file_under_the_project(
     _round(project)
     assert main(["checker", "recap", str(project)]) == 0
     capsys.readouterr()
-    assert main(["checker", "recap", "--check", str(project)]) == 2
+    assert main(["checker", "recap", str(project), "--check", str(project / "checks")]) == 2
     assert "is a folder, and --check takes a recap file" in capsys.readouterr().err
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()

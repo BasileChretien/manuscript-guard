@@ -220,7 +220,8 @@ of any line but the one naming the earlier recap (taken as the file gives it, an
 unverified), or a row of the record edited, deleted or moved, shows against a copy kept
 elsewhere. Someone who can write the record and every copy can still rewrite both. `submit`
 packs the tables as `coauthor-verification.md` and warns of each `wrong` or `code` still
-open, until the person who gave it answers again; it does not refuse.
+open, until any later answer by the person who gave it, or an edit to the item, closes it;
+it does not refuse.
 
 What this gives you is a record of who looked, at what exactly, when, and what they said. It is
 not a proof that they read it correctly, and nothing here checks their reading.

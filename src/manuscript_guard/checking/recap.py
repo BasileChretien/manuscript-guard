@@ -139,6 +139,18 @@ def open_flags(standing: Standing) -> tuple[Decision, ...]:
     return tuple(d for d in standing.wrong if d.status in ("wrong", "code"))
 
 
+def _in_order(decisions, items) -> tuple[Decision, ...]:
+    """In the order the items are asked, an item gone after them, then by person."""
+    place = {str(item["id"]): n for n, item in enumerate(items.items)}
+    return tuple(sorted(decisions, key=lambda d: (place.get(d.id, len(place)), d.id, d.by)))
+
+
+def flags_of(project_root: Path, items) -> tuple[Decision, ...]:
+    """The open flags (`open_flags`) as the record and the items give them, in the items'
+    order: what `submit` warns of, whether or not the recap could be made."""
+    return _in_order(open_flags(status(project_root, items)), items)
+
+
 def _inline(text: object) -> str:
     return " ".join(str(text or "").split())
 
@@ -281,7 +293,7 @@ def make(project, items, *, earlier: Head | None, publisher: bool = False) -> Re
         out += _working(seen, undescribed)
     out += _people_section(people) + _item_section(table, counted)
     out += _footer_lines(manuscript, head, earlier, holds, root)
-    flags = tuple(seen.ordered(open_flags(standing)))
+    flags = _in_order(open_flags(standing), items)
     return Recap("\n".join(out) + "\n", head, root, flags, earlier, holds, tuple(heads))
 
 
@@ -354,26 +366,20 @@ def _people_rows(seen: _Seen) -> list[list[str]]:
     record holds: their current answers by status, their answers about earlier versions, and
     how many current answers came from no page built for them.
 
-    A name that is no author's is one person by its folded form, as the counts take it, and
-    written as the record first spells it: "Jane Doe" and "jane doe" are one row, not two
-    each counting both."""
+    Counted by the name as the record writes it, as `store.status` takes each person's latest
+    answer (round 2 of #465): "Jane Doe" and "jane doe" are two rows, each with its own
+    answers, and an author's answer under another spelling is a row of its own. Merged by
+    folded name, one row counted an ok and a later wrong on one item as two current answers,
+    where the item table and `coauthor-flag-open` saw two people."""
     from manuscript_guard.approvals import authors_of, name_of
-    from manuscript_guard.checking.people import fold
-    from manuscript_guard.checking.store import read_decisions
 
     standing = seen.standing
     authors = [name_of(author) for author in authors_of(seen.project)]
-    folded = {fold(name) for name in authors}
-    answered = {fold(d.by) for d in (*standing.counting, *standing.stale)} - folded
-    spelt: dict[str, str] = {}
-    for decision in read_decisions(seen.project.root):
-        if fold(decision.by) in answered:
-            spelt.setdefault(fold(decision.by), decision.by)
-    named = [spelt[key] for key in sorted(spelt)]
+    named = sorted({d.by for d in (*standing.counting, *standing.stale)} - set(authors))
     rows = []
     for person in [*authors, *named]:
-        mine = [d for d in standing.counting if fold(d.by) == fold(person)]
-        earlier = [d for d in standing.stale if fold(d.by) == fold(person)]
+        mine = [d for d in standing.counting if d.by == person]
+        earlier = [d for d in standing.stale if d.by == person]
         counts = [sum(d.status == s for d in mine) for s in ("ok", "wrong", "code", "unsure")]
         claimed = sum(d.bundle not in seen.register for d in mine)
         rows.append([_who_name(seen, person), *map(str, counts), str(len(earlier)),
@@ -392,7 +398,8 @@ def _people_section(rows: list[list[str]]) -> list[str]:
     out = ["## What each co-author checked", "",
            "Each person's answers about the items as they are now, and those about an earlier "
            "version of an item, which count for nothing. Claimed: answers from no page "
-           "`checker build` made for them, so the name is the answers file's word.", "",
+           "`checker build` made for them, so the name is the answers file's word. The record "
+           "keeps a name as it was written: two spellings of one name are two rows.", "",
            "| Co-author | Verified | Text to change | Code to change | Not sure "
            "| About an earlier version | Claimed |",
            "|---|---|---|---|---|---|---|"]  # fmt: skip

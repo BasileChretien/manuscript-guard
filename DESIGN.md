@@ -8063,7 +8063,7 @@ the plan's digest; one that changed in between stops the package.
 Basile accepted on 2026-10-28). Each option is the author's to ask for, and the package
 without them is the bytes it was. `--citation` adds `.zenodo.json` (`deposit/metadata.py`):
 the authors as "Family, Given" with their ORCID iDs and affiliations, the keywords, the
-licence, the DOI, and as related works only the DOIs of the data sources
+licence, and as related works only the DOIs of the data sources
 `design/data_sources.yaml` chose, under a fixed sentence about the package, since what the
 paper found is the paper's to say; never `package.doi`, the package's own (see Known gaps),
 and it is refused where `authors.yaml` names no author, or one with no name
@@ -8072,8 +8072,14 @@ and it is refused where `authors.yaml` names no author, or one with no name
 fitted, `MODELS.md`, the G15 cards as `models` prints them (one function writes both,
 `cards.py`), of the models of the fragments the package holds only: a card of a withheld
 fragment would publish its rows and events, which the custodian's minimum was never read
-against, so MODELS.md says how many it leaves out and why. A card's trials are counts the
-minimum reads too. Every entity is made from a record: the authors with no address, each file of
+against, so MODELS.md says how many it leaves out and why. What G15 says of the Methods'
+wording and of a variable's data is left out of it, since held to the held models alone it
+would say a model the Methods name was fitted by none: `check` says it. A card's trials
+are counts the minimum reads too, since they are printed (round 1 of #454): the list of
+small counts is then another list for a fragment whose card has trials, so a package the
+custodian signed off before is to be signed off again (`PACKAGE/custodian/small-counts`),
+and a default package with a card of fewer trials than the minimum is refused until it
+is. Every entity is made from a record: the authors with no address, each file of
 the package with its digest and size, each run of a script from its fragment, each drawing
 of a figure from its `*.render.json`, each withheld input by its recorded digest with
 `package.request` as its conditions of access, and the paper as a contextual article based
@@ -16207,13 +16213,15 @@ Open, recorded as each change landed:
   the R packages the R emitter recorded and the versions the analysis declared as software.
   An R analysis that sources the emitter from a path outside the project, as the tests do,
   runs only where that path is.
-- **BOUND.md places a LaTeX binding only as far as the reader reads the file.** Past a part
-  the LaTeX reader refuses in a `.tex` file BOUND.md reads, a binding is found by its shape,
-  as the gates find it, and no heading over it is known: its row says "after a part the
-  reader refused; heading not known", and the package warns (`package-bound-not-read`),
-  naming the refusal. A refusal with no binding after it, or in a file BOUND.md does not
-  read (a file nothing inputs, a second document beside the entry, the author's `.sty`), is
-  not warned of. A binding in a `.sty` file is not listed.
+- **BOUND.md places a LaTeX binding only as far as the reader reads the manuscript.** The
+  reader stops at the first part it refuses, in a file or at an `\input` it cannot
+  follow. A binding printed after that place, in the same file or in any file read after
+  it, is listed with "after a part the reader refused; heading not known" for its
+  section; a file the reader no longer reaches is read as one nothing inputs, and its
+  bindings are not listed. The package warns of both (`package-bound-not-read`), naming
+  the refusal and each such file that holds a binding. A refusal with nothing bound after
+  it, one in the author's `.sty`, and a second document beside the entry are not warned
+  of. A binding in a `.sty` file is not listed.
 - **The crate states what the records hold, and the records hold less than a reader may
   think.** Which results a figure was drawn from is recorded nowhere (`render.record` takes
   the script and the files drawn), so RELATIONS.md always lists it as not recorded; nor which

@@ -628,3 +628,121 @@ def test_bound_md_of_a_markdown_manuscript_is_what_it_was(project: Path) -> None
     written = re.sub(r"(?m)^(\| `software\.[^`]+` \| )[^|]*( \|)", r"\1VERSION\2", written)
     pinned = (Path(__file__).parent / "data" / "package" / "bound_example.md").read_bytes()
     assert written.encode("utf-8") == pinned
+
+
+# ---------------------------------------------------------------- round 2 of the review (#454)
+
+
+def _tex(root: Path, files: dict[str, str]) -> None:
+    """A LaTeX manuscript of these files, `|` standing for a backslash."""
+    shutil.rmtree(root / "manuscript")
+    (root / "manuscript").mkdir()
+    for name, text in files.items():
+        (root / "manuscript" / name).write_text(text.replace("|", chr(92)), encoding="utf-8")
+
+
+def _bound_warning(root: Path) -> str | None:
+    from manuscript_guard.deposit import plan_package
+
+    loaded, _ = load_project(root)
+    _namespace, results, _literature, _ = load_namespace(loaded)
+    found = [f.message for f in plan_package(loaded, results).report.findings
+             if f.code == "package-bound-not-read"]  # fmt: skip
+    return found[0] if found else None
+
+
+def test_a_file_input_after_a_refusal_is_warned_of(project: Path) -> None:
+    """The reviewer's case: the reader stops at the refusal, the `\\input` after it is never
+    followed, and results.tex is read as a file nothing inputs. BOUND.md cannot list its
+    binding, and says so."""
+    ready(project)
+    _tex(project, {
+        "main.tex": "|documentclass{article}\n|begin{document}\n|catcode`|@=11\n"
+                    "|input{results}\n|end{document}\n",
+        "results.tex": "The odds ratio was |mg{results.ror.point}.\n",
+    })  # fmt: skip
+    warned = _bound_warning(project)
+    assert warned is not None and "manuscript/results.tex" in warned, warned
+    assert "manuscript/main.tex:3" in warned, warned
+
+
+def test_an_input_path_the_reader_cannot_follow_is_warned_of(project: Path) -> None:
+    ready(project)
+    _tex(project, {
+        "main.tex": "|documentclass{article}\n|newcommand{|secdir}{sections}\n"
+                    "|begin{document}\n|section{Results}\n|input{|secdir/results}\n"
+                    "Then |mg{results.ror.ci_low}.\n|end{document}\n",
+    })  # fmt: skip
+    (project / "manuscript" / "sections").mkdir()
+    (project / "manuscript" / "sections" / "results.tex").write_text(
+        "The odds ratio was " + chr(92) + "mg{results.ror.point}.\n", encoding="utf-8")
+    warned = _bound_warning(project)
+    assert warned is not None and "manuscript/sections/results.tex" in warned, warned
+    from manuscript_guard.deposit.bound import PAST_REFUSAL, bound_rows
+
+    loaded, _ = load_project(project)
+    rows = {row.key: row.section for row in bound_rows(loaded) if not row.supplement}
+    assert rows == {"ror.ci_low": PAST_REFUSAL}, rows
+
+
+def test_a_file_read_after_a_refused_one_has_no_heading_known(project: Path) -> None:
+    from manuscript_guard.deposit.bound import PAST_REFUSAL, bound_rows
+
+    ready(project)
+    _tex(project, {
+        "main.tex": "|documentclass{article}\n|begin{document}\n|input{a}\n|input{b}\n"
+                    "|end{document}\n",
+        "a.tex": "|section{Methods}\nOf |mg{results.cohort.n_reports} reports.\n"
+                 "|catcode`|@=11\n|section{Hidden}\nAnd |mg{results.case.n_cases}.\n",
+        "b.tex": "|section{Results}\nAn odds ratio of |mg{results.ror.point}.\n",
+    })  # fmt: skip
+    loaded, _ = load_project(project)
+    found = [(row.file, row.key, row.section, row.past_refusal) for row in bound_rows(loaded)
+             if not row.supplement]  # fmt: skip
+    assert found == [
+        ("manuscript/a.tex", "cohort.n_reports", "Methods", False),
+        ("manuscript/a.tex", "case.n_cases", PAST_REFUSAL, True),
+        ("manuscript/b.tex", "ror.point", PAST_REFUSAL, True),
+    ]  # fmt: skip
+    assert "manuscript/a.tex:3" in (_bound_warning(project) or "")
+
+
+def test_models_md_does_not_hold_the_methods_against_the_held_models_alone(
+    project: Path,
+) -> None:
+    """The reviewer's case: the model the Methods name is in a withheld fragment, and a held
+    model reads variables only that fragment declares. Held to the held models alone, G15
+    would say the Methods' logistic regression was fitted by none and that the held model's
+    variables were never declared."""
+    from manuscript_guard.emit import write_digest
+
+    ready(project)
+    withhold_the_models_results(project)
+    first = json.loads((project / "results" / "01_disproportionality.json")
+                       .read_text(encoding="utf-8"))  # fmt: skip
+    card = dict(first["models"]["adjusted"], name="Count model")
+    card["engine"] = dict(card["engine"], family="Poisson", link="Log")
+    path = project / "results" / "02_next.json"
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document["models"] = {"counts": card}
+    path.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(path)
+    main_md = project / "manuscript" / "main.md"
+    text = main_md.read_text(encoding="utf-8")
+    main_md.write_text(text.replace("# Methods\n", "# Methods\n\nWe fitted a logistic "
+                                    "regression.\n", 1), encoding="utf-8")  # fmt: skip
+    package(project, "--ro-crate", "--skip-checks")
+    held = (built(project) / "MODELS.md").read_text(encoding="utf-8")
+    assert "Count model" in held and "Adjusted model" not in held
+    assert "fitted none" not in held and "never declared" not in held
+    assert "`manuscript-guard check` says it of the whole project" in held
+
+
+def test_a_package_date_no_calendar_has_is_refused(project: Path) -> None:
+    ready(project)
+    with_package(project, date="2026-02-30")
+    assert "package-date-invalid" in _failures(project, ro_crate=True)
+    assert "package-date-invalid" in _failures(project, citation=True)
+    assert "package-date-invalid" not in _failures(project)
+    with_package(project, date="2028-02-29")
+    assert "package-date-invalid" not in _failures(project, ro_crate=True)

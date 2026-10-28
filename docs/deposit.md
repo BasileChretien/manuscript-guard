@@ -15,10 +15,12 @@ manuscript-guard package --ro-crate     # with the files below
 ```
 
 `BOUND.md` reads a Markdown manuscript and a LaTeX one alike; of a LaTeX one, the `.tex`
-files its two documents print, and not a file nothing inputs. Where the LaTeX reader refuses a
-part of a file it reads, each binding past the refusal is found by its shape, and its row
-says "after a part the reader refused; heading not known" in place of the section. The
-package warns of it (`package-bound-not-read`) only where such a row exists.
+files the LaTeX reader follows from each document's entry. The reader stops at the first
+part it refuses, and each binding printed after it, in that file or in a file read after
+it, is listed with "after a part the reader refused; heading not known" in place of the
+section. A `.tex` file it no longer reaches, or that nothing inputs, is not listed. The
+package warns of both (`package-bound-not-read`), and names each such file that holds a
+binding.
 
 ## The files the options add
 
@@ -55,7 +57,8 @@ a figure was drawn from.
 
 `datePublished` is `package.date` where `paper.yaml` gives it, and otherwise the day the
 latest results were written. The tool reads no clock, so where neither is there `--ro-crate`
-is refused: RO-Crate 1.1 requires the date.
+is refused: RO-Crate 1.1 requires the date. A `package.date` that is no day of the
+calendar, `2026-02-30`, is refused too.
 
 ## A custodian's sign-off
 

@@ -647,10 +647,8 @@ def _notes(project: Project, inputs: list[Input], kind: str = "") -> list[Findin
                              severity=WARN, path=project.root))  # fmt: skip
     unread = latex_unread(project)
     if unread is not None:
-        found.append(Finding(GATE, "package-bound-not-read", "BOUND.md lists the bindings of "
-                             f"the LaTeX manuscript as far as its reader reads it: past "
-                             f"{unread}, which it refuses, each binding is found by its shape, "
-                             "and the heading over it is not known", severity=WARN,
+        found.append(Finding(GATE, "package-bound-not-read", "BOUND.md does not place every "
+                             f"binding of the LaTeX manuscript: {unread}", severity=WARN,
                              hint="put the part right, as `check` says of it, and package "
                              "again"))  # fmt: skip
     note = licence_note(project) if kind else None
@@ -680,7 +678,25 @@ def _described(project: Project, results: Results, kind: str) -> list[Finding]:
                              "file records a date that can be read", path=project.root /
                              "paper.yaml", hint="write the day the deposit is published as "
                              "package.date, `date: 2026-11-02`; the tool reads no clock"))
+    said = settings(project).get("date")
+    if kind and said and not _a_day(str(said)):
+        found.append(Finding(GATE, "package-date-invalid", f"package.date is {said}, which is "
+                             "no day of the calendar, and the crate and .zenodo.json would "
+                             "give it as the day the deposit is published", path=project.root /
+                             "paper.yaml", hint="write the day as YYYY-MM-DD, one that "
+                             "exists: `date: 2026-02-28`"))  # fmt: skip
     return found
+
+
+def _a_day(text: str) -> bool:
+    """Whether `text` is a day of the calendar written YYYY-MM-DD: the schema's pattern lets
+    2026-02-30 through."""
+    from datetime import date
+
+    try:
+        return len(text) == 10 and date.fromisoformat(text).isoformat() == text
+    except ValueError:
+        return False
 
 
 def package_signables(project: Project, results: Results) -> list[Signable]:

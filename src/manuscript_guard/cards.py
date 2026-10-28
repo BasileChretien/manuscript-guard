@@ -19,8 +19,11 @@ from manuscript_guard.contracts.results import Results
 from manuscript_guard.findings import Report
 
 
-def model_cards(project: Project, results: Results) -> tuple[list[str], Report]:
-    """The lines `models` prints, and what G15 says, whose failures set its exit code."""
+def model_cards(project: Project, results: Results, *,
+                cards_only: bool = False) -> tuple[list[str], Report]:  # fmt: skip
+    """The lines `models` prints, and what G15 says, whose failures set its exit code. With
+    `cards_only`, what G15 says under no card is left out: of the Methods' wording against
+    the models fitted, and of a variable's data."""
     from manuscript_guard.contracts.models import describe, table_rows
     from manuscript_guard.gates.models import check_models
 
@@ -46,7 +49,7 @@ def model_cards(project: Project, results: Results) -> tuple[list[str], Report]:
     # What G15 says of no one model, of a variable's data or of a name typed in the Methods,
     # counts in the exit code and so is printed.
     under_a_card = tuple(f"model {key!r}:" for key in results.models)
-    for finding in report.findings:
+    for finding in () if cards_only else report.findings:
         if not finding.message.startswith(under_a_card):
             where = f"{finding.path.name}:{finding.line}: " if finding.line else ""
             lines.append(f"[{finding.severity.upper()}] {where}{finding.message}")
@@ -54,18 +57,18 @@ def model_cards(project: Project, results: Results) -> tuple[list[str], Report]:
 
 
 def _held(results: Results, root: Path, packaged: Collection[str]) -> Results:
-    """The results with only the models and variables of the fragments `packaged` names: a
-    card of a fragment the package withholds would publish its counts, which no sign-off of
-    the custodian's has read."""
+    """The results with only the models of the fragments `packaged` names: a card of a
+    fragment the package withholds would publish its counts, which no sign-off of the
+    custodian's has read. The variables stay whole, so that a held model whose variable a
+    withheld fragment declares is not read as entering one nobody declared: a card prints a
+    variable's kind and levels, and none of its counts."""
     def kept(source: Path) -> bool:
         try:
             return source.relative_to(root).as_posix() in packaged
         except ValueError:
             return False
 
-    return replace(results,
-                   models={k: m for k, m in results.models.items() if kept(m.source)},
-                   variables={k: v for k, v in results.variables.items() if kept(v.source)})
+    return replace(results, models={k: m for k, m in results.models.items() if kept(m.source)})
 
 
 def models_text(project: Project, results: Results,
@@ -90,8 +93,13 @@ def models_text(project: Project, results: Results,
     if left:
         out += [f"{left} model(s) left out: withheld with its results ("
                 + ", ".join(f"`{path}`" for path in away) + ").", ""]  # fmt: skip
+    if packaged is not None:
+        # Held to the models of this package alone, G15's reading of the Methods would say
+        # a model they name was fitted by none, where a withheld fragment holds it.
+        out += ["What the model check says of the Methods' wording and of each variable's "
+                "data is left out: `manuscript-guard check` says it of the whole project.", ""]
     if shown.models:
-        lines, _report = model_cards(project, shown)
+        lines, _report = model_cards(project, shown, cards_only=packaged is not None)
         body = "\n".join(line.rstrip() for line in lines).strip("\n")
         # A fence longer than any run of backticks an author's words hold.
         fence = "`" * max([3, *(len(run) + 1 for run in re.findall("`+", body))])

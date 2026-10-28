@@ -132,6 +132,9 @@ COMMANDS = {
                  argv=("sign", "{project}", "--as", "Nobody Listed", "--finding", "G15/x/y")),
     "search": Zero("the query it is given, then the registries' answers", exits=2,
                    argv=("search", "")),
+    "set": Zero("paper.yaml, to write one key of it",
+                why="it refuses where there is no paper.yaml (exit 2), and it reads nothing "
+                "else"),
     "stages": Zero("nothing: it prints the stages", why="it reads the policy table only"),
     "style": Zero("the citation style the journal's profile names", exits=2,
                   argv=("style", "{project}")),
@@ -273,6 +276,7 @@ LATEX = {
     "reworded": ("refuses", ("reworded", "{project}")),
     "search": ("no manuscript", ("search", "hepatic injury")),
     "sign": ("reads", ("sign", "{project}", "--as", "Nobody Listed", "--finding", "G15/x/y")),
+    "set": ("no manuscript", ("set", "stage", "design", "--path", "{project}")),
     "stages": ("no manuscript", ("stages",)),
     "style": ("no manuscript", ("style", "{project}")),
     # It packs the source as one folder that compiles alone (step 10).

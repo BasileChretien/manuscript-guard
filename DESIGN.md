@@ -6846,6 +6846,64 @@ one of the groups, or the test that every command but `hook` is in exactly one f
 README's "Commands" table is split under the same headings in the same order, and
 `tests/test_docs.py` holds each part to its group.
 
+## One setting is written, and the file kept
+
+Five settings of `paper.yaml` are choices an author makes as the work goes on: `stage`,
+`target_journal`, `english_variant`, `reporting_guideline` and `study_type`. Each used to be
+made by editing the file, which an agent does by rewriting it, and a YAML library that loads
+the file and dumps it back drops every comment in it: what each setting means, why each
+convention was added, the stage ladder `init` writes out. `manuscript-guard set <key>
+<value…>` writes one of the five and keeps every other byte (`paper_edit.py`). It edits the
+text in one of three ways:
+
+- the key is at the top level: the characters of its value are replaced, and a comment after
+  it on the line stays. A list written one entry to a line, as the example's guidelines are,
+  is written again in the same layout, its entries' indent and dash kept; an empty list is
+  `[]` on the key's line;
+- it is not, and exactly one line at the left margin reads `# key: …`, the commented example
+  `init` leaves: that line becomes the setting. A line of that shape inside a quoted value is
+  no comment and is passed over, and where there are two `set` cannot tell which was meant
+  and leaves both;
+- otherwise the key is added at the end of the file, with its line ending.
+
+The result is then read back. It must be the settings the file held with that one key
+changed, and the schema must find nothing in it that it did not find before; a file that
+failed the schema elsewhere is still written, since that is `check`'s to report. Only then is
+the file replaced, through a file beside it and a rename. Where a commented example stands
+inside another setting's block, made a setting it would end that block: the read-back says
+so, and the key is added at the end instead. What an edit of one place cannot be trusted
+with is refused before any of this, and the file is left as it was: settings written as one
+mapping between braces, an anchor or an alias anywhere in the file (an edit of one place can
+change another through them), a key written twice in any mapping (YAML keeps the second, and
+which was meant is not for `set` to guess), a value over several lines other than such a
+list, and a list with a comment or a blank line among its entries, which would be lost.
+
+The value is checked before the file is read: a stage `policy.STAGES` names, an English
+`scaffold.ENGLISHES` names, a study type of the schema's, and a journal whose profile the
+project or the toolkit holds or that `journals/shortlist.yaml` gives one of its candidates as
+its `profile`. A guideline is any name: its checklist is retrieved after it is declared, and
+`checklist-not-retrieved` says so. Given no guideline, the list is emptied. A name YAML would
+read as something else, `yes` or `2024`, is written between single quotation marks.
+
+`set stage` to an earlier stage is put to the author: where an agent runs it, the submission
+guard answers "ask" (and refuses it where the agent tool cannot ask), as it does for
+`approve`. Moving back is the one change of these five that makes a failing check pass with
+nothing fixed: every finding that starts to fail after the new stage, up to the old one, is
+listed as not due. Moving on only makes the check stricter, so it is not asked. The guard
+reads the stage of the project at the folder the command is sent from or that `--path`
+names, and of each project a word of the command names, and a `paper.yaml` that declares
+none is at `drafting`, the default.
+
+`tests/test_set.py` sets each key from absent, from its commented example and from a value,
+and holds each refusal to a file left byte for byte. `tests/test_properties.py` sets each
+key in generated files with comments, blank lines and lookalikes of the key in random places
+(a citekey under `lookup: not_indexed:`, an indented comment, a commented line inside a
+quoted title, the commented example beside a setting): the file reads back as it should,
+every comment is there as often as it was, and the lines that changed are one run of the
+key's own. Two broken rules fail it, one that takes the comment above the key with it and
+one that rewrites the first line naming the key, as a regular expression would; two more
+fail the property of refusals, by letting an anchor or a key written twice through.
+
 ## `check` says what it rests on, dimension by dimension
 
 A run with no failure read as "the paper is right", and it says much less. So `check` ends
@@ -16734,6 +16792,17 @@ What papers converted from Word showed (see "What papers converted from Word sho
   opening its word; and "MESHD2" is `d2` after a capital in any case, as "CCR2" is `r2`.
 - **An e-mail address is one whose domain ends in letters.** "name@host" with no dot, or an
   address at a bare IP number, is read as a number.
+- **`set` writes five settings, and only as values.** It cannot take a key out, so a stage,
+  a journal or an English once set is changed and never unset; that is an edit by hand. It
+  refuses a whole file for an anchor or an alias anywhere in it, even one in a setting it
+  does not touch, and for settings written as one mapping between braces; the author writes
+  those out first. A list with a comment among its entries is refused rather than written
+  with the comment lost. A commented example is taken only at the left margin and only where
+  it is the one such line; an indented `  # stage: …` is left, and the key added at the end.
+- **Only `set` is asked about moving the stage back.** The guard reads shell commands. An
+  agent that edits `paper.yaml` itself and lowers `stage:` is not asked, nor is one that
+  passes the stage to `check --stage` for a run, nor a stage changed through a path held in a
+  variable or a glob, which names no project the guard can find.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

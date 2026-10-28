@@ -18161,9 +18161,11 @@ What papers converted from Word showed (see "What papers converted from Word sho
     graphemes are counted close to Unicode's clusters (a combining mark, a variation
     selector, a skin tone and what a zero-width joiner joins count with what they follow),
     and a flag or another sequence Unicode joins otherwise is miscounted. Mastodon counts a
-    link as 23 characters, and nothing else of its rules is followed. The limits of
-    `data/channels.yaml` were recorded from memory of the platforms' pages on 2026-10-29, not
-    read again from them: a limit that is wrong is put right there, with the page.
+    link as 23 characters, and nothing else of its rules is followed. Mastodon's limit and
+    its count of a link, and LinkedIn's limit, were read on their own pages on 2026-10-29
+    (`read_on` in `data/channels.yaml`). Bluesky's 300 graphemes was not: its page redirected to one that
+    served nothing, so it is marked `verified: false` and stands as recorded from memory
+    until it is read there.
   - `comm-status-ahead` reads "published" in English, not after "be"; a text that says the
     paper is "out" or "live", or "has been accepted" while it is only submitted, passes.
   - Only an SVG's text is held to the brief, line by line. A PNG's words are not read at all,

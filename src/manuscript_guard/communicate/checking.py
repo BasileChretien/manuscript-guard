@@ -524,8 +524,10 @@ def _limits(context: Context, path: Path, channel: str, rules: dict, printed_bod
         if length > limit:
             unit = rules.get("unit") or "characters"
             whence = "paper.yaml's communication.limits" if own == limit else (
-                f"{rules.get('source', 'data/channels.yaml')}, recorded "
-                f"{rules.get('recorded_on', '')}")  # fmt: skip
+                f"{rules.get('source', 'data/channels.yaml')}, "
+                + (f"read {rules['read_on']}" if rules.get("verified") and rules.get("read_on")
+                   else "not read on that page")
+            )  # fmt: skip
             found.append(_finding(
                 "comm-over-limit",
                 f"post {number} is {length} {unit} printed, and {channel} takes {limit} "

@@ -399,6 +399,40 @@ def test_edited_figure_number_is_caught(project: Path) -> None:
     assert "figure-number-unbound" in codes(gate_report(project))
 
 
+def _unbound_in_the_figure(root: Path) -> list[str]:
+    project, _ = load_project(root)
+    results = load_namespace(project)[1]
+    return sorted(
+        f.message.split("'")[1]
+        for f in check_figures(project, results).findings
+        if f.code == "figure-number-unbound"
+    )
+
+
+@pytest.mark.parametrize(
+    ("drawn", "declared"),
+    [("\N{MINUS SIGN}0.5", "-0.5"), ("-0.5", "\N{MINUS SIGN}0.5"),
+     ("\N{MINUS SIGN}0.5", "\N{MINUS SIGN}0.5")],
+)  # fmt: skip
+def test_a_minus_sign_in_a_figure_is_the_hyphen_of_its_sidecar(
+    project: Path, drawn: str, declared: str
+) -> None:
+    """Known gaps: matplotlib draws U+2212 before a negative tick, and a sidecar entry typed
+    "-0.5" did not allow it: `figure-number-unbound`. The two signs are one either side; a
+    number neither side declares is still reported."""
+    svg = project / "figures" / "forest.svg"
+    text = svg.read_text(encoding="utf-8")
+    text = text.replace(">0.5</text>", f">{drawn}</text>", 1).replace(
+        ">2</text>", "> \N{MINUS SIGN}0.7</text>", 1
+    )
+    svg.write_text(text, encoding="utf-8")
+    sidecar = project / "figures" / "forest.guard.yaml"
+    guard = sidecar.read_text(encoding="utf-8")
+    sidecar.write_text(guard.replace('value: "0.5"', f'value: "{declared}"', 1),
+                       encoding="utf-8")  # fmt: skip
+    assert _unbound_in_the_figure(project) == ["\N{MINUS SIGN}0.7"]
+
+
 def test_figure_script_that_ignores_results_is_caught(project: Path) -> None:
     script = project / "figures" / "forest.py"
     text = script.read_text(encoding="utf-8")
@@ -806,6 +840,21 @@ def test_an_escaped_threshold_is_still_a_convention(project: Path) -> None:
     typed = sorted(f.message.split()[0] for f in report.failures if f.code == "typed-parameter")
     assert typed == ["'0.05'", "'3'"], report.render(project)
     assert codes(report) == {"typed-parameter"}, report.render(project)
+
+
+def test_an_escaped_threshold_between_escaped_backticks_is_still_a_convention(
+    project: Path,
+) -> None:
+    """`import` writes a backslash before every backtick typed in Word, and G2 paired the
+    escaped backticks as a code span: in `` (\\` ROR \\> 2 \\`) `` the `\\>` was taken for a
+    backslash code prints, and the threshold pandoc prints, `ROR > 2`, was an unbound
+    number. An escaped backtick opens no code span; one before a code span's closing run
+    closes it, as pandoc reads it."""
+    _in_methods(project, "A signal needed (\\` ROR \\> 2 \\`) here.")
+    report = gate_report(project)
+    assert "unclassified-number" not in codes(report), report.render(project)
+    _in_methods(project, "A signal needed `ROR\\` and ROR \\> 2 here.")
+    assert "unclassified-number" not in codes(gate_report(project))
 
 
 @pytest.mark.parametrize(
@@ -2752,18 +2801,26 @@ def test_a_unit_written_after_a_binding_is_the_one_emitted(
 
 
 @pytest.mark.parametrize(("emitted", "written", "said"), [
-    # A divisor after a space is not read: the written unit is its first symbol, and an
-    # emitted one is compared with nothing.
-    ("mg/kg", " mg kg-1", True),
+    # A divisor after a space, with its power below nought, divides as one after a slash:
+    # written, "mg kg-1" was read as "mg" and said to differ from an emitted "mg/kg", and
+    # emitted, it was compared with nothing.
+    ("mg/kg", " mg kg-1", False),
+    ("mg/kg", " mg kg\N{SUPERSCRIPT MINUS}\N{SUPERSCRIPT ONE}", False),
+    ("mg/kg", " mg kg\N{MINUS SIGN}1", False),
+    ("mg/L", " mg L-1", False),
+    ("mg/kg/d", " mg kg-1 d-1", False),
     ("mg kg-1", " mg/kg", False),
-    # A divisor written as a word is not read either.
+    ("mg kg-1", " \N{MICRO SIGN}g/kg", True),
+    ("\N{MICRO SIGN}g/kg", " mg kg-1", True),
+    ("mg/kg", " mg kg-1 d-1", True),
+    # A divisor written as a word is not read.
     ("mg/kg/day", " mg/kg per day", True),
 ])  # fmt: skip
 def test_what_the_unit_reading_gets_wrong_is_pinned(
     project: Path, emitted: str, written: str, said: bool
 ) -> None:
     """Known gaps, as DESIGN.md writes them (round 1 of #279, where it said "mg/kg" and
-    "mg kg-1" were taken for two units both ways)."""
+    "mg kg-1" were taken for two units both ways). A divisor after a space is read now."""
     _unit_emitted(project, "case.pct_serious", emitted)
     path = main_md(project)
     binding = "{{results.case.pct_serious}}"
@@ -2786,6 +2843,9 @@ def test_what_the_unit_reading_gets_wrong_is_pinned(
     ("\N{MASCULINE ORDINAL INDICATOR}F", "\N{DEGREE SIGN}F"),
     ("cm\N{SUPERSCRIPT TWO}", "cm2"), ("cm^2^", "cm2"), ("cm\N{SUPERSCRIPT THREE}", "cm3"),
     ("h\N{MINUS SIGN}1", "h-1"),
+    ("mg kg-1", "mg/kg"), ("mg kg\N{SUPERSCRIPT MINUS}\N{SUPERSCRIPT ONE}", "mg/kg"),
+    ("mg kg^-1^", "mg/kg"), ("mg/kg", "mg kg-1"), ("mg kg-2", "mg/kg2"),
+    ("mg L-1", "mg/l"), ("mg kg\N{MINUS SIGN}1", "mg / kg"),
 ])  # fmt: skip
 def test_every_spelling_of_one_unit_is_one_unit(written: str, emitted: str) -> None:
     """Round 1 of #279: only mcg and mu were held, so an empty list of spellings passed."""
@@ -3089,6 +3149,19 @@ def test_g13_reads_a_quote_in_a_latex_manuscript_as_it_prints(project: Path) -> 
         ("It is shown (Table~\\ref{tab:main}).", "It is shown (Table 1)."),
         ("By Eq.~(\\ref{eq:ror}) it holds.", "By Eq. (2) it holds."),
         ("See Figure~\\ref{fig:forest}A now.", "See Figure 1A now."),
+        # An accent command, a letter typed as one, `\-`, LaTeX's dashes and `\ldots` are
+        # what the PDF prints (Known gaps, 2026-10-27: the accent's mark was dropped).
+        ("As Chr\\'etien and M{\\\"u}ller found in Stra\\ss e, logis\\-tic.",
+         "As Chr\N{LATIN SMALL LETTER E WITH ACUTE}tien and "
+         "M\N{LATIN SMALL LETTER U WITH DIAERESIS}ller found in "
+         "Stra\N{LATIN SMALL LETTER SHARP S}e, logistic."),
+        ("From 2010--2019 it rose---and fell \\ldots{} again.",
+         "From 2010\N{EN DASH}2019 it rose\N{EM DASH}and fell \N{HORIZONTAL ELLIPSIS} again."),
+        # An accent over a letter Unicode composes with none is a letter and a mark: both
+        # in one place, they put every later stretch of the file one place off, and the
+        # words after them were cut.
+        ("Erd\\H{e}s, \\'{x}a, \\t{o}b and \\v{J}c thank \\emph{Smith} for all cases.",
+         "thank Smith for all cases."),
     ],
 )
 def test_g13_finds_a_latex_quote_through_a_formula_or_a_cross_reference(
@@ -4636,6 +4709,8 @@ def test_a_kind_placed_some_other_way_is_not_checked_and_says_so(
         "As Supplemental Table 1 shows.",
         "As Extended Data Fig. 1 shows.",
         "As Table 1 in the Supplement shows.",
+        # JAMA's numbered supplement (Known gaps, 2026-10-27).
+        "As Table 2 in Supplement 1 shows.",
         "As Tables S1\N{EN DASH}2 show.",
         "As eFigure 1 shows.",
     ],
@@ -4865,6 +4940,8 @@ def _journal_forms(root: Path, forms: str) -> None:
         ('{supplementary_table: "eTable {n}"}', "eTable 1", "1"),
         ('{supplementary_table: "Supplementary Table {n}"}', "Supplementary Table 1", "1"),
         ('{supplementary_table: "Table {n} in the Supplement"}', "Table 1 in the Supplement",
+         "1"),
+        ('{supplementary_table: "eTable {n} in Supplement 1"}', "eTable 1 in Supplement 1",
          "1"),
     ],
 )  # fmt: skip
@@ -7496,6 +7573,34 @@ def test_a_delimited_command_where_it_prints_and_an_import_of_nothing_fail_build
     assert not [f for f in report.findings if f.code == "tex-not-input"]
 
 
+def test_a_placed_part_s_preamble_defines_nothing_for_the_paper_s_build(project: Path) -> None:
+    """TeX passes over the preamble of a part `\\subfile` places, and a command defined there
+    with delimited parameters had BUILD refuse the main file's own command of that name
+    (round 1 of #452). One the part's body defines is the paper's, and refused where main
+    prints it."""
+    from manuscript_guard.cli import _run_gates
+
+    entry = _as_latex(project)
+    entry.write_text(
+        "\\documentclass{article}\n\\newcommand{\\x}[1]{[#1]}\n\\begin{document}\n"
+        "We saw \\x{a} cases.\n\\subfile{part}\n\\end{document}\n",
+        encoding="utf-8",
+    )
+    part = entry.parent / "part.tex"
+    opening = "\\documentclass[main.tex]{subfiles}\n"
+    part.write_text(opening + "\\def\\x#1.{(#1)}\n\\begin{document}\nOf 42.\n\\end{document}\n",
+                    encoding="utf-8")  # fmt: skip
+
+    def refused() -> set[tuple[str, int]]:
+        report, _project, _stage, _deferred = _run_gates(project, stage="design")
+        return {(f.path.name, f.line) for f in report.failures if f.code == "tex-refused"}
+
+    assert ("main.tex", 4) not in refused()
+    part.write_text(opening + "\\begin{document}\n\\def\\x#1.{(#1)}\nOf 42.\n\\end{document}\n",
+                    encoding="utf-8")  # fmt: skip
+    assert ("main.tex", 4) in refused()
+
+
 def test_a_classs_own_file_is_not_main_text_and_a_second_document_fails_build(
     project: Path,
 ) -> None:
@@ -7563,6 +7668,83 @@ def test_an_input_in_a_definition_a_standalone_picture_and_a_refused_file_are_re
     assert "tex-not-input" in codes.get("fig.tex", set()), codes
     assert {"tex-not-input", "tex-refused"} <= codes.get("notes.tex", set()), codes
     assert not [f for f in report.findings if f.code == "tex-second-document"], codes
+
+
+def test_a_part_the_paper_places_is_read_there_and_not_warned_of(project: Path) -> None:
+    """A `subfiles` part the paper places by `\\subfile`, and a `standalone` picture it
+    places by `\\includestandalone`, are read where they stand, their numbers reaching the
+    gates, and neither is warned of as a file nothing inputs (Known gaps, 2026-10-27: the
+    `\\subfile` failed BUILD as refused, and the picture was read under no heading and warned
+    of)."""
+    from manuscript_guard.cli import _run_gates
+
+    entry = _as_latex(project)
+    folder = entry.parent
+    entry.write_text(
+        "\\documentclass{article}\n\\usepackage{subfiles}\n\\usepackage{standalone}\n"
+        "\\begin{document}\n\\section{Results}\n\\subfile{sections/results}\n"
+        "\\includestandalone[width=3cm]{fig}\n\\end{document}\n",
+        "utf-8",
+    )
+    (folder / "sections").mkdir()
+    (folder / "sections" / "results.tex").write_text(
+        "\\documentclass[../main.tex]{subfiles}\n\\begin{document}\n"
+        "Of 9183 patients, 12 died.\n\\end{document}\n",
+        "utf-8",
+    )
+    (folder / "fig.tex").write_text(
+        "\\documentclass{standalone}\n\\usepackage{tikz}\n\\begin{document}\n"
+        "\\begin{tikzpicture}\\node{n = 42};\\end{tikzpicture}\n\\end{document}\n",
+        "utf-8",
+    )
+    report, _project, _stage, _deferred = _run_gates(project, stage="submission")
+    codes: dict[str, set[str]] = {}
+    for f in report.findings:
+        codes.setdefault(f.path.name if f.path else "", set()).add(f.code)
+    assert "unclassified-number" in codes.get("results.tex", set()), codes
+    assert not {"tex-not-input", "tex-refused"} & codes.get("results.tex", set()), codes
+    assert not {"tex-not-input", "tex-refused"} & codes.get("main.tex", set()), codes
+    assert "tex-not-input" not in codes.get("fig.tex", set()), codes
+
+
+def test_a_preamble_input_without_braces_is_read_and_not_warned_of(project: Path) -> None:
+    """`\\input macros` in the preamble, TeX's form without braces, reads the author's
+    `macros.tex` as preamble: it is not warned of as a file nothing inputs, and a command it
+    defines prints its text where the paper uses it (Known gaps, 2026-10-27)."""
+    from manuscript_guard.cli import _run_gates
+
+    entry = _as_latex(project)
+    entry.write_text(
+        "\\documentclass{article}\n\\input macros\n\\begin{document}\n\\cohort\n"
+        "\\end{document}\n",
+        "utf-8",
+    )
+    (entry.parent / "macros.tex").write_text(
+        "\\newcommand{\\cohort}{Of 9183 patients, 12 died.}\n", "utf-8"
+    )
+    report, _project, _stage, _deferred = _run_gates(project, stage="submission")
+    found = {(f.code, f.path.name if f.path else "") for f in report.findings}
+    assert ("tex-not-input", "macros.tex") not in found, found
+    assert ("unclassified-number", "macros.tex") in found, found
+
+
+def test_g2_reads_no_number_of_a_typed_reference_list(project: Path) -> None:
+    """A reference list typed in `thebibliography` is not read by G2, as a Markdown project's
+    is never read: its years, volumes and pages are no unbound numbers (Known gaps,
+    2026-10-27: each was `unclassified-number`). A number in the text still is."""
+    from manuscript_guard.cli import _run_gates
+
+    entry = _as_latex(project)
+    entry.write_text(
+        "\\documentclass{article}\n\\begin{document}\nOf 4100 reports, 12 were fatal.\n"
+        "\\begin{thebibliography}{9}\n\\bibitem{smith} Smith J. Title. Journal 2011;34:120-9.\n"
+        "\\end{thebibliography}\n\\end{document}\n",
+        "utf-8",
+    )
+    report, _project, _stage, _deferred = _run_gates(project, stage="submission")
+    lines = {f.line for f in report.findings
+             if f.code == "unclassified-number" and f.path and f.path.name == "main.tex"}
+    assert 3 in lines and 5 not in lines, report.render(project)
 
 
 def test_what_papers_from_arxiv_hold_that_latex_reads_passes_build(project: Path) -> None:
@@ -7997,7 +8179,10 @@ def _g14(root: Path) -> list:
     [
         ("The hazard ratio was HR here.", "abbreviation-undefined", "HR is used once"),
         ("The color of the reports.", "spelling-variant", "'color'"),
-        ("The caf\\'e reports.", "tex-words-not-read", "caf\\\\'e"),
+        ("The caf\\'{}e reports.", "tex-words-not-read", "caf\\\\'{}e"),
+        # A word `\-` or an accent command splits is read as LaTeX prints it (Known gaps,
+        # 2026-10-27: it was said unread, and its spelling not held).
+        ("The co\\-lor of the reports.", "spelling-variant", "'color'"),
         ("The SSRI rose. The SSRI (selective serotonin reuptake inhibitor) class.",
          "abbreviation-used-before-defined", "SSRI"),
     ],
@@ -8262,6 +8447,25 @@ def test_g15_finds_the_model_s_kind_typed_in_the_twin_s_methods_and_nowhere_else
     assert "\\mg{results.model.adjusted.kind}" in report.findings[0].hint, "LaTeX spells it"
 
 
+def test_g15_reads_a_model_s_kind_that_a_hyphenation_command_splits(project: Path) -> None:
+    """`logis\\-tic regression` is the kind LaTeX prints, read in the words G14 reads, and
+    `condi\\-tional` before it makes it another model's (Known gaps, 2026-10-27: the first
+    was not found, and after the second a logistic regression was read as one)."""
+    from manuscript_guard.gates.models import check_models
+
+    entry = _twin(project)
+    _replace_once(entry, "\\section{Methods}\n",
+                  "\\section{Methods}\nThen a logis\\-tic regression was fitted.\n\n"
+                  "A condi\\-tional logistic regression was not.\n")  # fmt: skip
+    projekt = load_project(project)[0]
+    report = check_models(projekt, load_namespace(projekt)[1])
+    text = entry.read_text(encoding="utf-8")
+    lines = [text.count("\n", 0, text.index(said)) + 1 for said in ("Then a", "A condi")]
+    found = [(f.code, f.line) for f in report.findings if f.line in lines]
+    assert ("typed-model-kind", lines[0]) in found, report.findings
+    assert ("typed-model-kind", lines[1]) not in found, report.findings
+
+
 def test_g15_finds_the_model_s_kind_typed_in_an_input_file_and_the_twin_s_supplement(
     project: Path,
 ) -> None:
@@ -8309,6 +8513,48 @@ def test_g8r_names_a_guideline_the_twin_says_it_followed_and_not_one_in_a_commen
     assert found == [("guideline-claimed-not-declared", "main.tex", "PRISMA")], found
 
 
+@pytest.mark.parametrize("latex", [False, True], ids=["markdown", "latex"])
+def test_g8r_reads_a_claim_hard_wrapped_over_two_lines(project: Path, latex: bool) -> None:
+    """A claim whose verb and guideline a hard-wrapped source puts on two lines is read, in
+    Markdown as in LaTeX; one parted by a blank line is not (Known gaps, 2026-10-27: the
+    first was read within one line, and missed)."""
+    from manuscript_guard.gates import check_reporting
+
+    claim = "Our methods followed the\nPRISMA items.\n\nIt follows\n\nCONSORT."
+    if latex:
+        _replace_once(_twin(project), "\\section{Results}", f"{claim}\n\n\\section{{Results}}")
+    else:
+        main = main_md(project)
+        main.write_text(main.read_text("utf-8").replace("# Results\n", f"{claim}\n\n# Results\n",
+                                                        1), "utf-8")  # fmt: skip
+    found = [f.message.split(" followed ")[1].split(",")[0]
+             for f in check_reporting(load_project(project)[0]).findings
+             if f.code == "guideline-claimed-not-declared"]  # fmt: skip
+    assert found == ["PRISMA"], found
+
+
+@pytest.mark.parametrize("marker", ["-", "*", "+", "1.", "2)"])
+def test_g8r_reads_each_item_of_a_list_as_a_sentence_of_its_own(
+    project: Path, marker: str
+) -> None:
+    """A sentence runs over a single line break, and a Markdown list's items ran into one:
+    "reported" in one item and STROBE in the next made a claim of having followed STROBE
+    (round 1 of #452). A line that opens with a list's marker ends the sentence before it;
+    a claim within one item is read."""
+    from manuscript_guard.gates import check_reporting
+
+    items = ("Outcomes were reported by sex", "STROBE flow diagram in Figure 1",
+             "The analysis followed\n  CONSORT")  # fmt: skip
+    listed = "".join(f"{marker} {item}\n" for item in items)
+    main = main_md(project)
+    main.write_text(main.read_text("utf-8").replace("# Results\n", f"{listed}\n# Results\n", 1),
+                    "utf-8")  # fmt: skip
+    found = [f.message.split(" followed ")[1].split(",")[0]
+             for f in check_reporting(load_project(project)[0]).findings
+             if f.code == "guideline-claimed-not-declared"]  # fmt: skip
+    assert found == ["CONSORT"], found
+
+
 _LATEX_QUOTED = (
     "the cohort found that ``incidence {} with age and did not differ meaningfully by sex''"
 )
@@ -8329,6 +8575,10 @@ _LATEX_QUOTED = (
         ("It is ``a fictional national cohort, 2010--2019'' \\cite{fictionalHepaticCohort2021}.",
          []),
         ("They wrote ``The crude incidence \\ldots{} was 14 per 100 000 person-years'' "
+         "\\cite{fictionalHepaticCohort2021}.", []),
+        # A `\par` ends the paragraph and the quotation left open in it, as a blank line
+        # does: the `"` after it closes nothing (Known gaps, 2026-10-27).
+        ("They wrote ``incidence fell with age\\par and a 5\" sample differed by sex "
          "\\cite{fictionalHepaticCohort2021}.", []),
     ],
 )  # fmt: skip
@@ -9616,6 +9866,19 @@ def test_what_is_set_aside_beside_an_identifier_is_no_identifier(field: str, val
     assert [code for code, _said in found] == ["identifier-malformed"], found
 
 
+def test_a_percent_escape_of_a_space_in_a_doi_is_no_malformed_doi() -> None:
+    """A resolver's percent-encoding is read as the character, and `%20` was read as a
+    space, so a DOI written with one was called malformed (round 1 of #452). An escape is
+    read as its character only where that character is printed and no space."""
+    from manuscript_guard.gates.identifiers import doi_of, normal_doi, problems
+
+    for written in ("10.1000/abc%20def", "https://doi.org/10.1000/abc%20def",
+                    "10.1000/abc%09def", "10.1000/abc%7Fdef"):  # fmt: skip
+        assert problems("k", {"type": "misc", "doi": written}) == [], written
+        assert doi_of({"doi": written}) == normal_doi(written).lower(), written
+    assert normal_doi("10.1000/a%28b%29%3C%7E") == "10.1000/a(b)<~"
+
+
 def test_an_isbn_written_in_brackets_alone_is_left_as_it_was() -> None:
     """Round 2 of #345: a bracketed group is set aside as a qualifier, so an ISBN written in
     brackets alone left the field empty, and "holds no ISBN" refused a valid one."""
@@ -10087,6 +10350,17 @@ def _emitted(root: Path, **displays: str) -> None:
         ("The arms differed, z = 3.30, P = 0.01.", ["p-inconsistent"]),
         ("A one-sided t(23) = 2.45, p = .011, as planned.", []),
         ("<!-- t(23) = 2.45, p = .40 -->", []),
+        # A middle dot for the point, as the Lancet sets it, was read as no number, so a
+        # paper set that way had none of its tests judged; and degrees of freedom with a
+        # thousands' comma were read as two.
+        ("Earlier work found t(23) = 2\N{MIDDLE DOT}45, p = 0\N{MIDDLE DOT}40 "
+         "[@fictionalHepaticCohort2021].", ["p-decision-error"]),
+        ("Earlier work found t(23) = 2\N{MIDDLE DOT}45, p = 0\N{MIDDLE DOT}022 "
+         "[@fictionalHepaticCohort2021].", []),
+        ("The arms differed, z = 4\N{MIDDLE DOT}50, P = 6\N{MIDDLE DOT}8\N{MIDDLE DOT}10^-4^.",
+         ["p-inconsistent"]),
+        ("The arms differed, *F*(1, 1,234) = 4.50, *P* = 0.30.", ["p-decision-error"]),
+        ("The arms differed, t = 2.45, df = 1,234, P = 0.30.", ["p-decision-error"]),
     ],
 )
 def test_a_p_that_does_not_follow_from_its_statistic_is_found(
@@ -10401,6 +10675,101 @@ def test_categories_run_on_into_the_next_characteristic_are_not_read(tmp_path: P
     assert audit([paper], []).disagreements == []
     paper.write_text(table, encoding="utf-8")
     assert [d.line for d in audit([paper], []).disagreements] == [4]
+
+
+# ------------------------------------------------- what the audit read as no claim
+# Each of these hid a number from the comparison, so a fabricated one passed `--strict`.
+
+
+def _paragraphs_docx(path: Path, *paragraphs: str) -> Path:
+    """A .docx of plain paragraphs, with no styles: what a paper typed without them is."""
+    from xml.sax.saxutils import escape
+
+    word = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+    body = "".join(f"<w:p><w:r><w:t>{escape(text)}</w:t></w:r></w:p>" for text in paragraphs)
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("word/document.xml",
+                         f"<w:document {word}><w:body>{body}</w:body></w:document>")  # fmt: skip
+    return path
+
+
+def _strictly(paper: Path, outputs: Path) -> int:
+    from manuscript_guard.cli import main
+
+    return main(["audit", str(paper), "--against", str(outputs), "--strict"])
+
+
+@pytest.mark.parametrize(
+    "written",
+    [
+        "Median stay was 1,204 [1,100-1,399] days.\n",
+        "The score was 12,5 [10-19] points.\n",
+        "Rates were 45 % [40-59] overall.\n",
+    ],
+)
+def test_a_fabricated_bound_after_a_comma_or_a_spaced_percent_fails_the_audit(
+    tmp_path: Path, written: str
+) -> None:
+    """The bounds were filed as a citation, `[1,100-1,399]` as references 1, 100 to 1 and
+    399, and never compared with the outputs. (The value `12,5` is read as 125 wherever the
+    audit compares it, which is another matter: the bounds are what is held here.)"""
+    from manuscript_guard.audit import audit
+
+    outputs = tmp_path / "outputs.csv"
+    outputs.write_text("value\n1204\n1100\n1300\n10\n15\n45\n40\n50\n", encoding="utf-8")
+    paper = tmp_path / "paper.md"
+    paper.write_text(written, encoding="utf-8")
+    bounds = re.search(r"\[(.*)\]", written)[1]
+    assert bounds in [c.text for c in audit([paper], [outputs]).unmatched]
+    assert _strictly(paper, outputs) == 1
+    honest = written.replace("399", "300").replace("19]", "15]").replace("59]", "50]")
+    paper.write_text(honest, encoding="utf-8")
+    assert re.search(r"\[(.*)\]", honest)[1] in [c.text for c in audit([paper], [outputs]).matched]
+
+
+def test_a_fabricated_number_between_printed_comment_markers_fails_the_audit(
+    tmp_path: Path,
+) -> None:
+    """Word prints `<!--` as typed, and the audit hid what lay between it and a `-->`."""
+    outputs = tmp_path / "outputs.csv"
+    outputs.write_text("value\n77\n", encoding="utf-8")
+    paper = _paragraphs_docx(tmp_path / "paper.docx", "We saw 77.",
+                             "Notes typed <!-- in Word say 9.99 held, and --> after.")  # fmt: skip
+    assert _strictly(paper, outputs) == 1
+
+
+def test_a_fabricated_number_after_a_docx_list_under_no_heading_style_fails_the_audit(
+    tmp_path: Path,
+) -> None:
+    """With no heading styles the reference list ran to the end of the body, and a figure
+    legend after it was cut with it."""
+    outputs = tmp_path / "outputs.csv"
+    outputs.write_text("value\n77\n", encoding="utf-8")
+    paper = _paragraphs_docx(
+        tmp_path / "paper.docx", "We saw 77.", "References",
+        "Smith J, Jones K. Title. Lancet. 2019;393:100-10.",
+        "Figure 1. Reports by year; 9.99 of them were serious.",
+    )  # fmt: skip
+    assert _strictly(paper, outputs) == 1
+
+
+def test_a_book_in_a_headingless_list_is_listed_apart_and_a_number_in_prose_still_fails(
+    tmp_path: Path,
+) -> None:
+    """A book's year and pages were among the findings, which buried them; read as an entry
+    they are listed apart, and `--strict` still counts a fabricated number in the prose."""
+    from manuscript_guard.audit import audit
+
+    outputs = tmp_path / "outputs.csv"
+    outputs.write_text("value\n77\n", encoding="utf-8")
+    paper = tmp_path / "paper.md"
+    book = "Smith J, Jones K. Hepatic injury. 2nd ed. London: Example Press; 2019. p. 100-10.\n"
+    paper.write_text(f"We saw 77.\n\n{book}", encoding="utf-8")
+    report = audit([paper], [outputs])
+    assert report.unmatched == [] and {c.line for c in report.reference_like} == {3}
+    assert _strictly(paper, outputs) == 0
+    paper.write_text(f"We saw 77 and 9.99.\n\n{book}", encoding="utf-8")
+    assert _strictly(paper, outputs) == 1
 
 
 def _ledger_mean(project: Path, printed: str, declared: dict | None) -> None:
@@ -11757,6 +12126,32 @@ def test_a_pdf_figure_s_fonts_text_and_lines_the_journal_would_refuse_are_a_warn
     assert found == said
 
 
+def test_a_pdf_figure_whose_forms_name_each_other_in_a_ring_is_read(project: Path) -> None:
+    """Known gaps: two forms whose resources name each other were followed until Python's
+    recursion limit raised, and the Type 3 font inside the ring went unsaid. Each form's
+    resources are read once."""
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /Resources << /XObject << /X 4 0 R >> >>"
+        b" /MediaBox [0 0 216 144] /Contents 6 0 R >>",
+        b"<< /Type /XObject /Subtype /Form /BBox [0 0 1 1] /Length 0 /Resources"
+        b" << /XObject << /Y 5 0 R >> >> >>\nstream\n\nendstream",
+        b"<< /Type /XObject /Subtype /Form /BBox [0 0 1 1] /Length 0 /Resources"
+        b" << /XObject << /X 4 0 R >> /Font << /F1 7 0 R >> >> >>\nstream\n\nendstream",
+        b"<< /Length 5 >>\nstream\n/X Do\nendstream",
+        b"<< /Type /Font /Subtype /Type3 /BaseFont /ABCDEF+DejaVuSans >>",
+    ]
+    document = b"%PDF-1.7\n" + b"".join(
+        b"%d 0 obj\n" % number + body + b"\nendobj\n" for number, body in enumerate(objects, 1)
+    )
+    (project / "figures" / "forest.pdf").write_bytes(document)
+    _artwork_said(project, None, widths_mm=[89])
+    found = [(f.code, f.severity) for f in _journal(project).findings
+             if f.code in _PDF_CODES and f.path.name == "forest.pdf"]  # fmt: skip
+    assert found == [("figure-font-type3", "warn")]
+
+
 @pytest.mark.parametrize("written", ["tif", "TIF", "tiff"])
 def test_a_tiff_is_taken_however_the_journal_writes_it(project: Path, written: str) -> None:
     """Round 1 of #291: "tif" in a profile matched no file, and the message said the TIFF
@@ -11916,6 +12311,33 @@ def test_a_methods_and_results_section_is_no_methods_for_g2(project: Path) -> No
         f.code == "unclassified-number" and "0.001" in f.message
         for f in gate_report(project).failures
     )
+
+
+@pytest.mark.parametrize(
+    "heading", ["Methods: data sources", "Methods. Study design", "2. Methods of the study"]
+)
+def test_the_methods_named_with_what_they_hold_are_the_methods_to_g2(
+    project: Path, heading: str
+) -> None:
+    """G2 and G15 read "Methods" alone, "Methods and <anything>" and "<anything> and
+    methods", so a Methods titled "Methods: data sources" or "Methods of the study" was no
+    Methods to them: a threshold the analysis chose, typed there, was an unbound number,
+    where under "Methods" it is the convention it is."""
+    from manuscript_guard.classify import is_methods
+
+    assert is_methods((heading,))
+    assert not is_methods(("Methods: main results",)), "a section of results is not"
+    _methods_retitled(project, heading)
+    main = main_md(project)
+    main.write_text(
+        main.read_text(encoding="utf-8").replace(
+            f"# {heading}\n", f"# {heading}\n\nA difference was significant at p < 0.001.\n",
+            1,
+        ),
+        encoding="utf-8",
+    )
+    found = [f for f in gate_report(project).failures if f.code == "unclassified-number"]
+    assert not found, found
 
 
 @pytest.mark.parametrize(
@@ -13608,6 +14030,37 @@ def test_a_number_typed_in_a_word_table_is_read_once_the_paper_is_brought_in(
     assert "41" in cells and "29 in 2019" in cells
 
 
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_number_in_a_word_abstract_away_from_the_title_is_read_once_brought_in(
+    tmp_path: Path, capsys
+) -> None:
+    """Known gaps: an abstract in Word's Abstract style with a line of the title page before
+    it is no metadata to pandoc, so `init --from` set it aside in the comment with the title
+    page and no gate read the 120 in it. It is the section `# Abstract` now."""
+    import subprocess
+
+    from manuscript_guard.cli import main
+
+    folder = tmp_path / "word"
+    folder.mkdir()
+    (folder / "paper.md").write_text(
+        '---\ntitle: "Outcomes"\nauthor:\n  - Anne Example\n---\n\nDepartment of Things\n\n'
+        '::: {custom-style="Abstract"}\nWe followed 120 patients.\n:::\n\n'
+        "# Introduction\n\nFalls are common.\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["pandoc", "paper.md", "-o", "paper.docx"], cwd=folder, check=True,
+                   timeout=120)  # fmt: skip
+    root = tmp_path / "brought-in"
+    assert main(["init", str(root), "--from", str(folder / "paper.docx")]) == 0
+    capsys.readouterr()
+    main(["check", str(root), "--json", "--stage", "drafting"])
+    found = json.loads(capsys.readouterr().out)["findings"]
+    assert any(
+        f["code"] == "unclassified-number" and "'120'" in f["message"] for f in found
+    ), found
+
+
 @pytest.mark.skipif(
     __import__("shutil").which("pandoc") is None, reason="pandoc is not installed"
 )
@@ -14593,6 +15046,35 @@ def test_a_document_reviewed_blind_is_built_and_packed_only_without_its_authors(
         encoding="utf-8")  # fmt: skip
     assert main(["build", str(project), "--offline", "--skip-checks"]) == 1
     assert "'Anne Fictional' is in the text of manuscript.docx" in capsys.readouterr().out
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_a_blind_build_whose_own_document_cannot_be_read_for_names_exits_1(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Known gaps, the submission pack: the blind check reported `docx-unreadable` of the
+    build's own document and the build exited 0, as though it had read no name there."""
+    from manuscript_guard.build import blinding
+    from manuscript_guard.cli import main
+    from manuscript_guard.safexml import UnsafeDocument
+
+    _blind(project)
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 0
+
+    places = blinding._places
+
+    def unreadable(document: Path) -> list:
+        # The build's own document only: the supplement's was already said to be unsendable.
+        if document.name == "manuscript.docx":
+            raise UnsafeDocument("a part could not be read")
+        return places(document)
+
+    monkeypatch.setattr(blinding, "_places", unreadable)
+    capsys.readouterr()
+    assert main(["build", str(project), "--offline", "--skip-checks"]) == 1
+    out = capsys.readouterr().out
+    assert "docx-unreadable" in out or "could not read manuscript" in out, out
+    assert "do not send it" in out
 
 
 @pytest.mark.skipif(
@@ -22244,6 +22726,24 @@ def test_a_plan_is_asked_for_what_its_design_needs(project: Path) -> None:
                                     "randomisation"]  # fmt: skip
 
 
+@pytest.mark.parametrize(
+    "title", ["Standard deviation of the dose", "Standard deviations", "standard\tdeviation"]
+)
+def test_a_standard_deviation_is_no_deviation_from_the_plan(project: Path, title: str) -> None:
+    """G12 found the Deviations by "deviation" anywhere in a title, so a plan with a section
+    on the dose's standard deviation, and none on what changed after it was agreed, was
+    said to have one."""
+    plan = project / "design" / "plan.md"
+    text = plan.read_text(encoding="utf-8")
+    assert "## Deviations from the plan" in text
+    plan.write_text(text.replace("## Deviations from the plan", f"## {title}"), encoding="utf-8")
+    assert _plan_asked(project) == ["deviations"]
+    plan.write_text(text.replace("## Deviations from the plan",
+                                 f"## {title}\n\nWords.\n\n## Protocol deviations"),
+                    encoding="utf-8")  # fmt: skip
+    assert _plan_asked(project) == []
+
+
 def test_a_section_the_design_needs_says_where_it_comes_from(project: Path) -> None:
     from manuscript_guard.gates import check_design
 
@@ -24181,6 +24681,35 @@ def test_a_citation_number_after_a_capital_inside_a_word_is_a_number(tmp_path: P
         assert kinds == {**dict.fromkeys(raised, UNCLASSIFIED), "^99m^Tc": TERM}
 
 
+def test_a_subscripted_index_after_a_capital_is_a_number(tmp_path: Path) -> None:
+    """A subscript is part of the name it is typed in, and a term holding one counted
+    wherever any term does, after a capital among them: "HR~2~" and "OR~2~" were `r2`, and
+    G2 and the audit passed their numbers. A name opened at its word or at a capital after
+    a lower-case letter, "HbA~1c~", "ppFEV~1~" or, with CO2 declared, "pCO~2~", is a term.
+    Held there, a declared term after capitals was a number: with CO2 declared, "ETCO~2~",
+    "PCO~2~" and "VCO~2~" each gave G2 an unbound 2. A declared term is a name after the
+    capitals that open its word."""
+    from manuscript_guard.audit import audit
+    from manuscript_guard.classify import TERM, UNCLASSIFIED, Classifier
+    from manuscript_guard.text.masking import mask
+    from manuscript_guard.text.tokens import find_atoms
+
+    sunk = ("HR~2~", "OR~2~")
+    declared = ("pCO~2~", "CO~2~", "EtCO~2~", "ETCO~2~", "PCO~2~", "VCO~2~")
+    names = ("HbA~1c~", "ppFEV~1~", *declared)
+    text = f"We read {sunk[0]} and {sunk[1]} beside {', '.join(names)}.\n"
+    paper = tmp_path / "paper.md"
+    paper.write_text(text.replace(", " + ", ".join(declared), ""), encoding="utf-8")
+    found = audit([paper], [_outputs(tmp_path, '{"n": 1}')]).unmatched
+    assert sorted(c.text.rstrip("~") for c in found) == ["HR~2", "OR~2"]
+    for classifier in (Classifier.load(extra_terms=("CO2",)),
+                       Classifier.load(rendered=True, extra_terms=("CO2",))):  # fmt: skip
+        kinds = {a.text.rstrip("~"): classifier.classify(a).kind
+                 for a in find_atoms(text, mask(text))}  # fmt: skip
+        expected = {name.rstrip("~"): TERM for name in names}
+        assert kinds == {**expected, "HR~2": UNCLASSIFIED, "OR~2": UNCLASSIFIED}
+
+
 @pytest.mark.parametrize(
     "title", ["Literatur und Forschungsstand", "Referencias teóricas", "Bibliografia e metodi"]
 )
@@ -24202,3 +24731,244 @@ def test_a_title_that_only_opens_with_a_list_s_title_elsewhere_is_prose(
     assert measure(text).main_text_words == 8 + len(title.split())
     assert not is_bibliography_heading(f"# {title}", marked=True)
     assert _kind_of(title, False, None) != SET_APART
+
+
+def test_g4_reads_the_main_text_files_in_the_order_the_build_prints_them(project: Path) -> None:
+    """G4 joined the main-text files in path order, where the build prints `main.md` first
+    and the rest by file name: an `abstract.md` beside a `main.md` written in `##` headings
+    put the whole paper under the abstract's heading, over its limit."""
+    from manuscript_guard.gates import check_journal
+    from manuscript_guard.gates.journal import main_text
+
+    main = main_md(project)
+    text = main.read_text(encoding="utf-8")
+    opened, rest = text.index("# Abstract"), text.index("# Introduction")
+    (main.parent / "abstract.md").write_text(text[opened:rest], encoding="utf-8")
+    main.write_text(text[:opened] + text[rest:].replace("\n# ", "\n## ").replace(
+        "# Introduction", "## Introduction", 1), encoding="utf-8")
+    loaded, _ = load_project(project)
+    read = main_text(loaded)
+    assert read.index("## Introduction") < read.index("# Abstract")
+    report = check_journal(loaded)
+    assert report.counts["abstract_words"] < 300
+    assert "over-journal-limit" not in {f.code for f in report.findings}
+
+
+_DASHED_TABLES = """
+  -------------------------------------
+  Variable      Exposed    Unexposed
+  ------------- ---------- ------------
+  Dizziness     12 (20)    \N{EM DASH}
+
+  Headache      ---        9 (15)
+  -------------------------------------
+
+Group     N
+--------- ---------
+exposed   \N{EM DASH}
+unexposed ---
+
+"""
+
+
+def test_an_em_dash_in_a_table_is_no_cadence_of_the_prose() -> None:
+    """G6's em-dash rate left out a pipe table's rows but counted a simple or a multiline
+    table's, where "---" or a dash is "not applicable": the papers the threshold was measured
+    on were read with their tables left out."""
+    from manuscript_guard.gates.writing import _hits, _prose, judge_texts, load_rules
+
+    tables = _DASHED_TABLES * 4
+    text = f"{_PROSE_200}\n\nOne aside \N{EM DASH} here.\n{tables}\nThe end of the prose.\n"
+    corpus = [(Path("main.md"), text)]
+    rule = next(rule for rule in load_rules().density if rule["id"] == "em-dash")
+    [(_path, _text, prose)] = _prose(corpus)
+    assert [hit.group(0) for hit in _hits(rule, prose)] == ["\N{EM DASH}"]
+    report, _totals = judge_texts(corpus)
+    assert not [f for f in report.findings if "em-dash" in f.message]
+    # The same dashes in the prose are the cadence the rate is for.
+    prose = f"{_PROSE_200}\n\n" + " and ".join(["a \N{EM DASH} b"] * 16) + "\n"
+    report, _totals = judge_texts([(Path("main.md"), prose)])
+    assert [f for f in report.findings if "em-dash" in f.message]
+
+
+def test_a_citation_by_author_and_year_in_the_earlier_paper_cuts_no_passage() -> None:
+    """The earlier paper cites by author and year, "(Smith et al., 2019)", where the
+    manuscript cites by key: three words the manuscript does not have, which cut the
+    passage, and the words before them were not reported. A number, "[12]", never did."""
+    from manuscript_guard.gates.recycling import recycled_in
+
+    text = ("# Methods\n\nReports came [@smith2019] from the database and were coded by two "
+            "readers [@roe2020] each apart from each other in the study period.\n")  # fmt: skip
+    numbered = ("Reports came [1] from the database and were coded by two readers [2] each "
+                "apart from each other in the study period.")  # fmt: skip
+    whole = [(p.shared, p.excerpt) for p in recycled_in(text, numbered, "earlier")]
+    assert whole[0][0] == 20 and whole[0][1].startswith("Reports came")
+    for cited in ("(Smith et al., 2019)", "(Smith and Roe 2019a)", "(Smith, 2019; Roe, 2020)"):
+        source = numbered.replace("[1]", cited).replace("[2]", "(Roe & Doe,\n2020)")
+        assert [(p.shared, p.excerpt) for p in recycled_in(text, source, "earlier")] == whole
+
+
+@pytest.mark.parametrize("dated", ["(Since 2019)", "(Spring 2019)", "(Until 2020)",
+                                   "(Before 2019; During 2020)", "(Autumn, 2018)"])
+def test_words_and_a_year_in_parentheses_that_cite_no_one_are_the_earlier_paper_s(
+    dated: str,
+) -> None:
+    """Any capitalised word before a year in parentheses was taken for a citation by author
+    and year and blanked in the earlier paper, "(Since 2019)" and "(Spring 2019)" among
+    them: words both papers have, and the passage the two share was cut there (round 1 of
+    #452). A preposition, a season or a month standing alone before the year names no
+    author."""
+    from manuscript_guard.gates.recycling import recycled_in
+
+    sentence = (f"Reports came from the database {dated} and were coded by two readers each "
+                "apart from each other in the study period.")  # fmt: skip
+    text = f"# Methods\n\n{sentence}\n"
+    (found,) = recycled_in(text, sentence, "earlier")
+    assert found.excerpt.startswith("Reports came") and found.excerpt.endswith("period"), found
+
+
+@pytest.mark.parametrize(
+    ("first", "second"),
+    [
+        ({"doi": r"10.5555/x\_1"}, {"doi": "10.5555/x_1"}),
+        ({"doi": "10.1016/S0140-6736(20)30183-5"},
+         {"doi": "https://doi.org/10.1016/s0140-6736%2820%2930183-5"}),
+        ({"doi": r"10.5555/a\%28b\%29"}, {"doi": "10.5555/a(b)"}),
+    ],
+    ids=["tex-underscore", "percent-encoded", "tex-percent"],
+)  # fmt: skip
+def test_one_work_under_a_doi_written_two_ways_fails(
+    project: Path, first: dict, second: dict
+) -> None:
+    """A DOI was compared as the file writes it, so `\\_` was not read as `_` nor `%28` as
+    `(`, and one work cited under two keys passed G7."""
+    _both_have(project, first, second)
+    said = _duplicate_findings(project)
+    assert [(code, severity) for code, severity, _ in said] == [("reference-duplicate", "fail")]
+
+
+def test_two_titles_one_with_tex_accents_are_a_warning(project: Path) -> None:
+    """A title's TeX accents were read as letters, `Caf\\'e` as two words, so two entries
+    of one work, one written in TeX and one in Unicode, were not found."""
+    from manuscript_guard.gates.duplicates import title_of
+
+    assert title_of({"title": r"Caf\'e au lait \"Uber alles"}) == title_of(
+        {"title": "Caf\N{LATIN SMALL LETTER E WITH ACUTE} au lait "
+                  "\N{LATIN CAPITAL LETTER U WITH DIAERESIS}ber alles"}
+    )  # fmt: skip
+    bib = project / "literature" / "references.bib"
+    text = bib.read_text(encoding="utf-8")
+    text = text.replace("A disproportionality signal for a fictional drug class",
+                        r"Hepatic injury in a fictional caf{\'e} cohort", 1)
+    text = text.replace("Hepatic injury in a fictional national cohort, 2010--2019",
+                        "Hepatic injury in a fictional caf\N{LATIN SMALL LETTER E WITH ACUTE} "
+                        "cohort", 1)  # fmt: skip
+    bib.write_text(text, encoding="utf-8")
+    said = _duplicate_findings(project)
+    assert [(code, severity) for code, severity, _ in said] == [
+        ("reference-title-duplicate", "warn")
+    ]  # fmt: skip
+
+
+@pytest.mark.parametrize("title", ["VII. References", "7. References", "**References**",
+                                   "References {#refs}"])  # fmt: skip
+def test_a_numbered_reference_list_is_no_main_text(title: str) -> None:
+    """A number before a heading's name, Roman or not, stopped the reference list being
+    known by it, as did emphasis or an identifier: G4 counted the list's words as main text
+    and G14 read them, where the recycling check, which reads the title as printed, set the
+    list apart."""
+    from manuscript_guard.text.sections import measure, split_sections
+
+    text = (f"# Results\n\nWe saw 412 reports.\n\n# {title}\n\n"
+            "1. Smith J, Roe A. A title of the cited work. Drug Saf. 2019.\n")  # fmt: skip
+    assert split_sections(text)[-1].is_references
+    assert measure(text).main_text_words == 5
+
+
+def _journal_limits(root: Path, **limits: int) -> None:
+    """The example's journal profile, with these limits."""
+    path = root / "profiles" / "journals" / "demo-journal.yaml"
+    profile = yaml.safe_load(path.read_text(encoding="utf-8"))
+    profile["limits"].update(limits)
+    path.write_text(yaml.safe_dump(profile, sort_keys=False), encoding="utf-8")
+
+
+def test_g4_counts_a_figure_placed_by_hand_as_a_display_item(project: Path) -> None:
+    """G4 counted a display item only where a binding placed it: a figure placed by hand,
+    `![caption](file)` alone in its paragraph, which pandoc prints as a numbered figure, counted
+    as none. An image in a sentence, or one with no caption, is no figure pandoc numbers."""
+    from manuscript_guard.gates import check_journal
+    from manuscript_guard.text.sections import measure
+
+    main = main_md(project)
+    text = main.read_text(encoding="utf-8")
+    before = measure(text)
+    end = text.index("# Discussion")
+    placed = (text[:end] + "![The sites, by region.](figures/sites.png){#fig:sites}\n\n"
+              "A map, ![inline](figures/map.png), sits in a sentence.\n\n"
+              "![](figures/bare.png)\n\n<!--\n\n![In a comment.](figures/c.png)\n\n-->\n\n"
+              + text[end:])  # fmt: skip
+    main.write_text(placed, encoding="utf-8")
+    after = measure(placed)
+    assert (after.figures, after.tables) == (before.figures + 1, before.tables)
+    _journal_limits(project, figures=before.figures)
+    loaded, _ = load_project(project)
+    report = check_journal(loaded)
+    assert report.counts["display_items"] == before.figures + before.tables + 1
+    assert any(f.code == "over-journal-limit" and f.message.startswith("figures:")
+               for f in report.findings)  # fmt: skip
+
+
+def test_an_image_with_a_heading_on_the_next_line_is_no_figure_as_pandoc_reads_it() -> None:
+    """Round 1 of #452 took an image with an ATX heading on the line below for a figure G4
+    missed. Pandoc's Markdown wants a blank line before a heading, so that line is a line of
+    the image's paragraph, "# Discussion" its words, and pandoc makes no figure of it: G4
+    counts none, as pandoc does."""
+    import json
+    import subprocess
+
+    from manuscript_guard.text.sections import measure
+
+    text = "\n![Caption](f.png)\n# Discussion\n"
+    assert measure(text).figures == 0
+    pandoc = shutil.which("pandoc")
+    if pandoc is None:
+        pytest.skip("pandoc is not installed")
+    read = subprocess.run([pandoc, "-f", "markdown", "-t", "json"], input=text,
+                          capture_output=True, check=True, encoding="utf-8",
+                          timeout=60)  # fmt: skip
+    assert [block["t"] for block in json.loads(read.stdout)["blocks"]] == ["Para"]
+
+
+def test_g4_counts_every_float_latex_numbers_as_a_display_item(project: Path) -> None:
+    """G4 counted a LaTeX float as a display item only where it placed a `\\mg{figure.key}`
+    or a `\\mg{table.key}`: a figure placed with `\\includegraphics` alone, which LaTeX
+    numbers by its caption, counted as none. A float numbers one display by each caption,
+    whatever it places, and one with no caption counts by the bindings it places, as before."""
+    from manuscript_guard.gates import check_journal
+
+    main = _twin(project)
+    loaded, _ = load_project(project)
+    before = check_journal(loaded).counts["display_items"]
+    text = main.read_text(encoding="utf-8")
+    end = text.index("\\section{Discussion}")
+    added = (
+        "\\begin{figure}\\includegraphics{sites.pdf}\\caption{The sites.}\\label{fig:sites}"
+        "\\end{figure}\n\n"
+        "\\begin{table}\\caption{A table typed by hand.}\\begin{tabular}{ll}a & b\\\\\\end{tabular}"
+        "\\end{table}\n\n"
+        "\\begin{figure}\\includegraphics{map.pdf}\\end{figure}\n\n"
+        "\\begin{figure}\\mg{figure.forest}\\end{figure}\n\n"
+        "\\begin{figure}\\mg{figure.forest}\\mg{figure.forest}\\caption{Two panels.}\\end{figure}"
+        "\n\n"
+    )  # fmt: skip
+    main.write_text(text[:end] + added + text[end:], encoding="utf-8")
+    loaded, _ = load_project(project)
+    report = check_journal(loaded)
+    # The captioned picture and table, the float with no caption by its binding, and the
+    # float of two panels by its one caption: not the picture with neither.
+    assert report.counts["display_items"] == before + 4
+    _journal_limits(project, display_items=before)
+    report = check_journal(load_project(project)[0])
+    assert any(f.code == "over-journal-limit" and f.message.startswith("figures and tables")
+               for f in report.findings)  # fmt: skip

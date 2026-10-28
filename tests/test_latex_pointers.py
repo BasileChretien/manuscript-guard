@@ -55,6 +55,17 @@ def test_a_pointer_past_what_the_document_numbers_is_said_at_its_line(twin: Path
     assert _said(twin) == [("pointer-to-nothing", "fail", "main.tex", _line(twin, "Table~3"))]
 
 
+@pytest.mark.parametrize("typed", ["Table~1 in Supplement~1", "Table 1 in\nSupplement 2",
+                                   "Table~1 of supplement 1"])
+def test_a_pointer_in_a_numbered_supplement_is_the_supplement_s(twin: Path, typed: str) -> None:
+    """JAMA's "eTable 1 in Supplement 1": "in Supplement 1" after a pointer puts it in the
+    supplement, as "in the Supplement" does (Known gaps, 2026-10-27: "Table 2 in Supplement
+    1" before the main text's Table 1 was its Table 2, cited out of order)."""
+    pointer = typed.replace("1", "2", 1)
+    _replaced(twin, "\\section{Results}\n", f"\\section{{Results}}\nAs {pointer}.\n")
+    assert _said(twin) == []
+
+
 def test_a_supplement_s_table_is_counted_in_the_supplement(twin: Path) -> None:
     _replaced(twin, "Table\nS2 describes", "Table\nS3 describes")
     # Placed at the line its first word is typed on.

@@ -1299,12 +1299,13 @@ order is `printed_order`.
   tool writes it, its definitions are the bindings, and `check` compares it with what `values`
   would write.
 - Refused:
-  - a path that is not written out in full, or not written in braces;
+  - a path that is not written out in full, or, in the body, not written in braces: in the
+    preamble TeX's `\input macros` names the file by the name up to a space (2026-10-27);
   - a path outside `manuscript/` or under a `_` folder;
   - a missing file, or a cycle. A bare name input from the preamble that `manuscript/` does not
     hold, such as `\input{glyphtounicode}`, is the distribution's and is passed over, as a
     package is, and so is TeX's form without braces there, `\input glyphtounicode`;
-  - `\subfile`, `\InputIfFileExists`, and the import package's `\inputfrom` and
+  - `\InputIfFileExists`, and the import package's `\inputfrom` and
     `\includefrom` and their `sub` forms, and its starred `\import*` and `\subimport*`;
   - a command that prints a file no gate reads: `\lstinputlisting` and its kin,
     `\verbatiminput`, csvsimple's `\csvautotabular` and `\csvreader`, pgfplotstable's
@@ -1351,8 +1352,10 @@ order is `printed_order`.
   inputs, loose and warned of, as before (round 1 of #445). One is a picture in the
   `standalone` class, which the paper prints, placed by `\includestandalone` or as the PDF
   compiled from it: it failed BUILD at every stage. So is a part in the `subfiles` class,
-  `\documentclass[../main.tex]{subfiles}`, which the paper places by `\subfile`, itself
-  refused (round 2). The last is a file the reader refuses in
+  `\documentclass[../main.tex]{subfiles}`, which the paper places by `\subfile` (round 2).
+  Either, placed by its command, is read where the command stands, past its preamble, under
+  the heading and inside the environments in force there, and is not loose (2026-10-27,
+  `structure._placed`). The last is a file the reader refuses in
   its preamble before it reaches a `\begin{document}`: it keeps that refusal and is read
   past it, where it was refused as a second document at its first character and not read.
   The supplement is the document at `supplementary/main.tex`, as the Markdown
@@ -1758,8 +1761,6 @@ The result is compiled and packed by the code above, and checked three times:
 
 - `babel` with a language whose shorthands make a character active is not refused yet (step
   2): a shorthand changes letters, not digits, so it is left to step 7, which reads words.
-- A bibliography typed by hand, `thebibliography`, is read as prose, so its years and pages are
-  numbers G2 reads; a Markdown project's reference list is built and never read.
 - Only the first refusal of a file is reported: past it the file is read as prose, and the
   next is found once the first is put right.
 - A file whose only `\begin{document}` stands in a `\verb`, a listing or an `\iffalse` opens in
@@ -1816,12 +1817,23 @@ The result is compiled and packed by the code above, and checked three times:
   defining command copied with expl3's `\cs_new_eq:NN` or `\cs_set_eq:NN` is taken for one,
   its next braced group for a body; the generated folders plant the TeX and LaTeX forms,
   and the expl3 and xargs forms are held by unit tests alone.
-- A `standalone` picture, a `subfiles` part, and a document of its own that the reader
-  refuses in its preamble, are read as files nothing inputs, under no heading and warned of:
-  `\includestandalone` is not followed, so a picture's text is not read where the paper
-  places it (and `\subfile` is refused where the paper uses it), and a second
-  document refused before its `\begin{document}` fails BUILD by that refusal rather than as
-  a second document, its preamble and its body read as loose main text (round 1 of #445).
+- A `standalone` picture or a `subfiles` part the paper places nowhere, and a document of
+  its own that the reader refuses in its preamble, are read as files nothing inputs, under
+  no heading and warned of: a second document refused before its `\begin{document}` fails
+  BUILD by that refusal rather than as a second document, its preamble and its body read as
+  loose main text (round 1 of #445). One the paper places by `\includestandalone` or
+  `\subfile` is read where it stands (see "Closed since"), with these limits: its preamble
+  is passed over whole, so a command it defines is not known in its body, where TeX would
+  not know it either, nor in the paper's other files (round 1 of #452: one defined with
+  delimited parameters had main's own command of that name refused). Under `standalone`'s
+  `subpreambles` option a picture's preamble is kept and run where the picture is placed,
+  and the reader passes it over all the same, so the submission folder's packed source
+  loses what that preamble defines or loads, which the compile of the packed source then
+  catches. A file the command places that is in neither class is read as an
+  `\input` of it, and its own `\documentclass` is refused; an `\includestandalone` of a
+  picture whose `.tex` the folder lacks is taken for the image compiled from it and passed
+  over; and the submission folder writes the picture's body in the command's place, so the
+  command's options, a width or a scale, do not size it there (2026-10-27).
 - A file a class inputs, and a document of its own, are left out of each document, but not
   out of the manuscript's file list (`Reader.files`): G11's digests, the review panel's
   prompt and G12's reading of the manuscript's text as typed still take them in (2026-10-23).
@@ -1851,11 +1863,11 @@ The result is compiled and packed by the code above, and checked three times:
   `\AtBeginDocument{\input{x}}` is not followed. It is warned of as `tex-not-input`, whose
   message says no `\input` the reader follows names it, and is read under no heading (round 1
   of #385).
-- An `\input` from the preamble without braces, `\input macros`, is not followed, so an
-  author's `macros.tex` is read as a file nothing inputs, warned of, and its definitions are
-  not known where they are used. A file input from the preamble by a path with no folder that
-  `manuscript/` lacks, `\input{settings.tex}` too, is taken for the distribution's and passes;
-  the compile finds it missing (step 9) (rounds 1 and 2 of #385).
+- A file input from the preamble by a path with no folder that `manuscript/` lacks,
+  `\input{settings.tex}` or `\input settings` too, is taken for the distribution's and
+  passes; the compile finds it missing (step 9) (rounds 1 and 2 of #385). In the body,
+  TeX's `\input name` without braces is refused as before: only the preamble's is followed
+  (2026-10-27).
 - After `\renewcommand{\abstract}` or `\let\abstract\relax`, `\abstract{…}` still opens a
   section titled Abstract, though LaTeX prints what the author defined (round 2 of #385).
 - The Abstract an abstract opens stays in force to the next heading of its level, so text
@@ -1974,9 +1986,13 @@ The result is compiled and packed by the code above, and checked three times:
   count differently by that much (step 6).
 - The heading with no title that closes an abstract is a section of its own to G4, which
   counts it as text and finds no required section in it (step 6).
-- A float counts as a display item only where it places a `\mg{figure.key}` or
-  `\mg{table.key}`; a figure placed with `\includegraphics` alone counts as none. Markdown
-  has the same gap for `![](...)`, met far less often (round 1 of step 6).
+- G4 counts a display item where a float's caption numbers one, and a binding where no
+  caption the view reads numbers its float (see "Closed since"). A `\captionof`, a
+  `longtable`'s caption, a page `\includepdf` takes in and a float numbered by a command of
+  the author's count only by the bindings they place, as G2 leaves their kind uncounted. A
+  table or figure in the appendix counts against the journal's limits, though G2 holds it
+  as the supplement's. The submission pack's title page declares what G4 holds, the
+  numbered displays (`gates.journal.measured`, 2026-10-27).
 - A class's front matter command an author provides for portability, `\providecommand` or
   `\@ifundefined`, is the author's though the class keeps its own, and its argument is read
   as prose, as before the table held it. Highlights, read in the front matter, count as main
@@ -2058,17 +2074,20 @@ The result is compiled and packed by the code above, and checked three times:
   anchor parts the paragraph typed round it, where TeX moves it out and the paragraph goes
   on; and an anchor typed alone after a table set apart claims nothing
   (`method-claim-empty`), as one alone after any paragraph does (round 4).
-- G15 reads a LaTeX file's names of models in the words G14 reads, which hides a word that
-  holds `\-` or an accent command: `logis\-tic regression` is not found, and after
-  `condi\-tional` a logistic regression is read as one. Two or more lines of comments
+- G15 reads a LaTeX file's names of models in the words G14 reads, where a word that holds
+  `\-` or an accent command is written whole from where it starts, NUL after it, which G15
+  reads as spaces between it and the next word (2026-10-27). Two or more lines of comments
   between a word and the name after it are as many line breaks, so "conditional" over them
   does not make the name another model's (round 1 of G15 in step 8). A name a macro of the
   preamble prints, `\newcommand{\mainmodel}{logistic regression}`, is not read where the
   macro is used; past a refusal the headings stay as they were and the rest of the file is
   read as typed, comments too; and a float's caption is read where it is typed, not where
   LaTeX prints the float (round 2).
-- G8r reads a claim to have followed a guideline within one line, in LaTeX as in Markdown,
-  so a claim whose verb and name a hard-wrapped source puts on two lines is not read; a
+- G8r reads a claim to have followed a guideline within a sentence, which runs over single
+  line breaks and stops at a blank line, before a Markdown line that opens with `#` or `|`,
+  and at a typed table's line ends (2026-10-27). A comment line between the two lines of a
+  LaTeX claim is blank in the view, and ends the sentence there; and a Markdown table whose
+  rows open with no `|`, a simple or a multiline table, has its rows read as one sentence. A
   name a command parts, `RECORD\textendash{}PE`, is read as the part before it, RECORD; and
   a heading more than six levels below the shallowest, `\subparagraph` under `\part`, is
   no heading a checklist's answer can point at (round 1 of G8r in step 8). A definition's
@@ -2188,9 +2207,10 @@ The result is compiled and packed by the code above, and checked three times:
   footnote's words stand at its mark, glued to the word before it, and a float typed inside
   a paragraph leaves its bindings there: a quote of a sentence across either is not found.
   A citation is `[@key]` with a space before the stop after it, so a quote that holds one
-  is not found either, as in Markdown (step 8). An accent typed as a command, `Chr\'etien`,
-  prints there without its mark, `\ldots` as nothing and `--` as typed, so a quote copied
-  from the PDF that holds one is not found. A number in a quote may stand where the source
+  is not found either, as in Markdown (step 8). An accent command prints its accented letter
+  there, and a letter typed as a command its letter, only beside a letter the reader reads:
+  `\ss{}` standing alone as a word prints nothing, and an accent in a heading's title loses
+  its mark (2026-10-27). A number in a quote may stand where the source
   has a cross-reference, with the word before it ("Table 1", "(2)"), whatever the compiled
   paper numbered it: the number is not checked, nor whether the name before it is printed
   by the command or by no one, `Table 1` passing where a plain `\ref` prints `1` (round 1
@@ -2217,9 +2237,13 @@ The result is compiled and packed by the code above, and checked three times:
 - A profile's LaTeX template is read by no gate, so text or digits it prints after
   `\begin{document}` are compared with nothing in `build --latex`.
 - `\date` is read by no gate, since a Markdown build prints no date to compare it with.
-- A word holding an accent command or `\-` is not read by G14, which says how many there are
-  in each file. `\=`, `\'` and `\-` are tab commands in `tabbing`, where the word after one is
-  taken for an accented word all the same (step 7).
+- A word holding an accent over no letter, `caf\'{}e`, is not read by G14, which says how
+  many there are in each file.
+  `\=`, `\'` and `\-` are tab commands in `tabbing`, where the word after one is taken for
+  an accented word all the same, and read with the accent (step 7; 2026-10-27). A word made
+  of letters typed as commands alone, `\ss{}`, is not read. LaTeX's dashes stay as typed in
+  the words G14 reads, `--`, which its notation reads as an en dash: written as the
+  character, the NUL after it would part a range in two (2026-10-27).
 - G14 does not read a figure's caption, as it does not read an image's caption in Markdown; a
   table's caption it reads (step 7).
 - A P value or another symbol written in maths, `$P < 0.05$`, is not read by G14's notation,
@@ -11283,14 +11307,6 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   will. G1 holds the results to the inputs the script declared, and no more. The question
   is asked at the `design` stage alone, so a project that starts at a later stage is never
   asked it.
-- **G4 reads the main-text files in path order, and the build prints them in another.** The
-  build puts `main.md` first and sorts the rest by file name, not by path. A section's words
-  count where the headings above it put them, so an `abstract.md` beside a `main.md` written
-  in `##` headings makes the whole paper abstract as far as G4 can tell. The order also
-  decides which comments and fences reach across files: an unclosed `<!--` or fence at the
-  end of a file G4 reads first hides the next file's headings and statements up to the next
-  `-->` or fence, where the build, reading `main.md` first, may print them. A project with
-  one main-text file, which is what `init` writes, is unaffected.
 - **G4's blanking of comments and fences is close to pandoc's reading, not the same.** A
   stray fence line inside a comment, or a fence directly under prose that is tilde or
   indented a space or more, hides what follows from the statement and abstract-heading
@@ -11361,8 +11377,9 @@ Added by the adversarial review, verified and **not** fixed:
   own, "P = .022 (t(23) = 2.45); P = .40 (t(30) = 0.85)", the first statistic is judged
   with the second's P and reported (round 1 of #285, where this said such a P was not
   read; `test_a_p_written_before_its_statistic_is_read_as_the_next_one_s`). A number written
-  with a middle dot or a comma for its point, "0·62" or "0,62", is not read at all, so a
-  paper set that way has none of its tests judged; a comma after a number with its point,
+  with a comma for its point, "0,62", is not read at all, so a paper set that way has none
+  of its tests judged (a middle dot, "0·62", is read as a point; see "Closed since"); a
+  comma after a number with its point,
   "P = 0.40,12", is the sentence's (round 1 of #336), so in such a paper a point that groups
   thousands is read as a point, "1.234,5" as 1.234 (pinned by
   `test_a_point_that_groups_thousands_in_a_decimal_comma_paper_is_read_as_a_point`). A P above 1 is not judged. A sentence ends at a stop before a
@@ -11912,9 +11929,7 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   `opacity` that hide text, a `tspan`'s tail, and a width of 100% with no `viewBox` (read
   as 16 units) are not read as a browser would; `@media` and `@supports` apply always, a
   child combinator matches as a descendant, and `font-size` and the `font` shorthand are
-  not ordered. A run of `{` before one `}` is read again from each brace. In PDF, forms whose
-  resources name each other in a ring, of two or more, or name the page's own, are followed
-  until Python's recursion limit raises; a
+  not ordered. A run of `{` before one `}` is read again from each brace. In PDF, a
   `MediaBox` written as a number or a name, which page is first, an inline image's `EI`
   inside its data, and a form decoded once per use are not handled.
 - **Study designs and their plan sections.** A section is found by words of its heading:
@@ -11961,13 +11976,16 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   for Windows. A release before this one reads a record with `citations` as no record.
 - **Text structure.** On Linux, `Main.MD` is said to be an `.md` file that is not read. Of
   several files, the Methods heading is chosen by name within each file, so an earlier
-  file's "Overview of existing methods" wins over a later "# Methods"; "II. Results" is not
-  set aside. A Lancet "# Summary" with no `abstract_title` is taken for the title, and a
+  file's "Overview of existing methods" wins over a later "# Methods". A Lancet "# Summary" with no `abstract_title` is taken for the title, and a
   Discussion's "Findings in context" or JAMA's "### Findings" reports. A pointer "in
   Appendix 1" or "in Supplementary Material" after its number is not read as the
   supplement's, "S" carries only across a range, and a reference-style image, a one-column
   pipe table, a table set as an image and `\begin{tabular}` are not seen as placed by hand;
-  a caption directly under a heading line counts as a citation.
+  a caption directly under a heading line counts as a citation. The audit takes "VII.
+  References" or "A. Bibliography" for prose, where G4, G14 and the recycling check know the
+  list by it. G4 counts a figure placed by hand where it is an image with a caption alone in
+  a paragraph of its own; one in a list, a block quotation or a div, or written by
+  reference, `![caption][ref]`, is a figure pandoc numbers and G4 counts none.
 - **Placeholders.** "47,XXX reports" (a count in the forty thousands) is read as a
   karyotype, the karyotypes 69,XXX and 92,XXXX as gaps; a bracketed translated title that
   opens with an instruction's verb, or holds a to-come word in capitals, fails in a cited
@@ -11978,11 +11996,8 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   citation key that opens with a CJK character is counted as prose; 々, 〆, 〇, CJK Extensions
   G to I, the compatibility supplement, Hangul Jamo Extended A and B and half-width Hangul
   are not among the blocks.
-- **The submission pack.** `**Keywords**` with no colon is not cut from `abstract.txt`; an
-  abstract heading inside a Div is not found and the abstract is left out without a word;
-  "Abstract screening" is taken for the Abstract's heading; an e-mail autolink is refused
-  as a link with words of its own. The build exits 0 where its own document is
-  `docx-unreadable` to the blind check.
+- **The submission pack.** "Abstract screening" is taken for the Abstract's heading; an
+  e-mail autolink is refused as a link with words of its own.
 - **Blinding.** "J.-P. Example", "Van der Berg" at a sentence's start and an APA "A.
   Example, 2019" in the text are not read as written; a figure in the supplement only is
   reported against `manuscript.docx`; an SVG with an internal subset is read as empty with
@@ -12010,8 +12025,6 @@ Recorded by review, judged contrived or rare by the reviewer that found each, an
   spelt in two cases is two inputs, and a path in another case than the disk's names no
   file in a clone on Linux. A `.txt` input is digested as its bytes, so a copy checked out
   with CRLF line ends reads as changed.
-- **The plan's sections.** A heading "### Standard deviation of the dose" is read by G12 as
-  a Deviations section.
 - **Inputs kept by Git LFS or git-annex.** Results written from an analysis run on an
   unfetched pointer read as `input-changed`; a pointer's size written as "²" raises; a
   large input is hashed twice.
@@ -12091,11 +12104,6 @@ Open, recorded as each change landed:
   and a value is not read with a full stop before it, so a quote holding `…14 per 100 000`
   does not state 14 and is reported `value-not-in-quote`. With a space after the ellipsis
   it does.
-- **A minus sign in a PDF figure is not the hyphen in its sidecar.** A figure saved as PDF
-  with its text kept as text (matplotlib's `pdf.fonttype: 42`) holds U+2212 before a negative
-  tick, and a sidecar entry `"-1.0"` does not allow it: `figure-number-unbound`. Poppler's
-  `pdftotext` always read it so; the one from Xpdf wrote a hyphen until it was asked for
-  UTF-8 and now reads it the same. The entry has to hold the sign the figure does.
 - **Retrieval is not automated.** The skill drives Chrome by hand; there is no DOI-to-PDF
   pipeline, deliberately, because publisher access varies and bulk fetching is not
   something this tool should make easy.
@@ -12172,8 +12180,10 @@ Open, recorded as each change landed:
   and the pointer is typed, as before refs; so is a ref to a key placed twice (Basile's
   choice, 2026-10-20). A form G2 does not read as a pointer cannot be printed: a journal
   that letters its appendix tables "Table A1", or writes "Exhibit 2", has its pointers typed
-  (`pointer-form-unread`). So does JAMA's own form, "eTable 1 in Supplement 1": G2 reads "in
-  the Supplement" after a pointer and not "in Supplement 1" (round 1 of #378).
+  (`pointer-form-unread`) (round 1 of #378). "Table 1 in Supplement 2" is read as a pointer
+  to the supplement's Table 1, which is one supplement: a paper that sends several, as JAMA
+  numbers them, has every one's tables counted as the one supplementary document's
+  (2026-10-27).
 - **`bind --pointers` offers what G2 reads as a pointer, and some of that is not one.**
   "Table 3 of Smith et al." is offered as the paper's own Table 3, and "in Tables 1, 2
   patients were excluded" offers the 2. Either prints as typed when it is applied, and
@@ -12212,9 +12222,10 @@ Open, recorded as each change landed:
   caption, a stop and a space, whatever the journal sets there ("Table 2:", the label in
   bold). Where the count cannot number a table (placed twice, or its kind also placed by
   hand or sent as files in that document) its caption prints with no number, and a caption
-  beside it is not held. A figure's caption in a form other than "Figure 1." ("Fig. 1.",
-  "eFigure 1.") is held by G2 and set in the body font, since the build styles only the
-  paragraph under a figure that opens "Figure" and its number. A caption is held only where
+  beside it is not held. A figure's caption in a form other than "Figure 1.", "Fig. 1." and
+  "eFigure 1." ("Supplementary Figure 1.", "Fig 1.", "Figure 1 - ...", "**Figure 1** ...") is
+  held by G2 and set in the body font, since the build styles only the paragraph under a
+  figure that opens with one of those three and its number. A caption is held only where
   it stands next to its display: one typed two paragraphs above its table names whatever it
   names.
 - **A ref G2 does not see is still printed.** G2 reads the text as the build prints it less
@@ -12229,11 +12240,12 @@ Open, recorded as each change landed:
   with only "method" or "methodology" is no Methods to either gate, as it was none to G4.
   A Methods with a subsection titled only "Results", "Limitations" or "Background" is taken
   for a heading over another part of the paper and is not read. G2 and G15 read
-  "Methods", numbered or not, "<anything> and methods", "Methods and <anything>" and the
-  names of the method's own subsections, and not "Methods: data sources" or "Methods of
-  the study": there G2 reports a number written in the Methods where it could have let it
-  through, and G15 reads no model's name. `methods-not-found` is said only where the
-  project has analysis code, since a case report or a narrative review has no Methods.
+  "Methods", numbered or not, "<anything> and methods", "Methods and <anything>",
+  "Methods" with what they hold after a colon, a stop, a dash or "of", and the names of the
+  method's own subsections, and not "Overview of methods" or "Methods used": there G2
+  reports a number written in the Methods where it could have let it through, and G15
+  reads no model's name. `methods-not-found` is said only where the project has analysis
+  code, since a case report or a narrative review has no Methods.
 - **A body under an abstract heading of a higher level is the abstract's.** With
   `# Abstract` and the paper's sections at `##`, every section is inside the abstract: G4
   finds none of the required sections, and the word count has the whole body as abstract,
@@ -12264,9 +12276,9 @@ Open, recorded as each change landed:
   words is not compared. A chapter or a conference paper cited twice is found only by its
   title, a warning, and a book cited twice with a volume in one entry only is not found. A
   volume is compared without the word it is written with, "Vol. 1" as "1", and otherwise as
-  written: "I" and "1" are two. A
-  DOI is compared as the file writes it, so `\_` is not read as `_` nor `%28` as `(`, and a
-  title's TeX accents and commands are read as letters: `Caf\'e` is two words.
+  written: "I" and "1" are two. A DOI's `%` followed by two hex digits of a printable ASCII
+  character is read as that character, so a DOI registered with such a sequence in it,
+  which the DOI Handbook allows and no registry we know issues, is compared as another.
 - **Some gates read nothing and say nothing, on purpose.** A paper with no figure, no
   citation, no reporting guideline, no analysis code, no fitted model or no revision round
   has nothing for G3, G10, G7, G8, G8r, G9, G12, G15 or G13 to read, and each passes with
@@ -12787,10 +12799,10 @@ Open, recorded as each change landed:
   resumed or compacted one has its note already), and a stop reads every new or changed one
   before it checks, so hundreds of megabytes under `literature/sources/`, read from a cold
   disk ahead of a check that takes nearly 45 s, can still reach the 60 s timeout and end with
-  nothing said. Only hidden files and `__pycache__`
-  are passed over, so Word's `~$main.docx`, Emacs's `#main.md#` and `main.md~`, and Windows'
-  `Thumbs.db` count as changes, and the line can follow a turn that changed nothing the
-  gates read. A file that cannot be read is read again at every stop (round 1 of #366).
+  nothing said. What an editor or the system leaves beside a file is passed over by its
+  name (see "Closed since"), so one under a name of its own, a lock file of an editor not
+  named there, still counts as a change. A file that cannot be read is read again at every
+  stop (round 1 of #366).
 - **On Windows every hook misread a name outside ASCII.** The event was read from standard
   input as text, which on Windows is the system's ANSI code page, what Python gives a pipe,
   and not the console's (so `chcp 65001` changed nothing), and the tools write it as UTF-8
@@ -13246,10 +13258,8 @@ Open, recorded as each change landed:
   another route keeps the older wording: a figure's `.guard.yaml`, `methods.lock`. So does a
   folder under `manuscript/` named like a source, `notes.md`: the gates that read text name
   it, but G11 reads bytes for the digest and reports "PermissionError", and `review` ends
-  in a traceback on it, as before, with or without the dry run of a panel. And a
-  results fragment with the mark of UTF-8 in front,
-  which Notepad's "UTF-8 with BOM" writes, is refused in the parser's words ("Unexpected
-  UTF-8 BOM (decode using utf-8-sig)"), where YAML with that mark is read. Two more are of
+  in a traceback on it, as before, with or without the dry run of a panel. (A results
+  fragment with the mark of UTF-8 in front is read now: see "Closed since".) Two more are of
   the hooks, in a project whose `paper.yaml` parses and is refused for the shape of one
   entry under `paths`, and were found in the review of #134. The write guard does not know
   a folder that another entry moves: with `results: output` beside a `figures:` left empty,
@@ -13269,9 +13279,9 @@ Open, recorded as each change landed:
   after `cp a b &&` or after `cd "example - Copy" &&`, where the folder's name is the verb.
   On the line after such a command it goes through. `review` and `respond` take no `--stage`:
   in a failing project an agent sees the review at submission standard through `check
-  --stage submission`, and `respond --submission` waits until the check passes. The README,
-  the submission-pack and review-panel skills, and the `MANIFEST.yaml` of a pack assembled
-  with `--skip-checks` still write `check --submission`, which costs an agent one refusal
+  --stage submission`, and `respond --submission` waits until the check passes. The
+  `AGENTS.md` that `init` writes into a project (and the example's) and the description of
+  the comments schema still write `check --submission`, which costs an agent one refusal
   before it is told the other spelling. Letting a command through when it is a `check` and
   nothing else was considered and left (Basile, 2026-10-02): the rule has to tell
   `manuscript-guard check --submission` from the same words followed by `&& scp`, and a
@@ -13545,9 +13555,13 @@ Open, recorded as each change landed:
   review rounds went into reading it as pandoc does, and each found a place where pandoc
   does not (fenced code, indented code, HTML comments) and a sign flipped or prose
   vanished. A false alarm is the cheaper mistake.
-- **A .docx without heading styles gives its reference list no end.** The cut then runs to
-  the end of the body, as it always did, but the report names the lines, and footnotes and
-  endnotes are read regardless. Bold text that looks like a heading is not one.
+- **A .docx list under a paragraph that is no heading ends only where its shape does.** The
+  cut ends at a caption, a back-matter title or a table (see "Closed since"), and otherwise
+  runs to the next styled heading or the end of the body, but the report names the lines,
+  and footnotes and endnotes are read regardless. Bold is not in the text the audit reads
+  of a .docx, so a bold title that is neither a caption nor a back-matter title, "Search
+  strategy" over an appendix, does not end it, where `**Search strategy**` in Markdown ends
+  one for `check`.
 - **A text box anchored in a reference heading is cut with the list.** A text box is read
   after the paragraph that holds it, so one anchored in a styled `References` heading is
   the list's first line and is not audited. The report gives the range of lines it cut
@@ -13800,10 +13814,9 @@ Open, recorded as each change landed:
     should be found in the printed text and mapped back, as the rules already are.
   - *Code found by pairing backtick runs.* A run pandoc reads a backtick at a time, a
     backtick inside a comment, math or a `~~~` fence, and an indented block are missed, so a
-    backslash there counts as an escape. An escaped backtick, which `import` writes for every
-    one typed in Word, is taken for a delimiter, so `` (\` ROR \> 2 \`) `` fails. Runs are
-    paired across the front matter's edge, too, and a backtick inside a `~~~` block with
-    one in the prose after it, which pandoc never does. This needs a reader that knows code
+    backslash there counts as an escape. Runs are paired across the front matter's edge,
+    too, and a backtick inside a `~~~` block with one in the prose after it, which pandoc
+    never does. This needs a reader that knows code
     spans as pandoc does. The comment scanner in `text/comments.py` comes closer, since it
     knows escapes, fences and the front matter's edge, but it still ends a code span only at
     a blank line and misreads backticks in maths, links and indented code.
@@ -14001,9 +14014,6 @@ Open, recorded as each change landed:
   Separately, a `~~~` fence, or a backtick fence indented one to three spaces, does not
   interrupt a paragraph in pandoc, which prints it as prose. One pass that finds fences,
   code spans and comments together would close all of these.
-- **The audit masks HTML comments in Word and figure text too.** A `.docx` prints `<!--` as
-  typed, but its text goes through the same `mask()` as Markdown, so a paragraph that
-  mentions both markers hides everything between them.
 - **The other masked patterns match greedily, and can cover a number printed beside them.**
   A bare URL runs to the next space, so in ``https://x.org/a`b`9.99`` the 9.99 pandoc prints
   is masked along with the address. A footnote label, a pandoc attribute and a placeholder
@@ -14065,12 +14075,11 @@ Open, recorded as each change landed:
 - **A unit after a binding is read from a list of symbols.** "mg" is read and "milligrams"
   is not, so a unit written out in words is compared with nothing; one-letter symbols other
   than g and h (m, L, s) are left out as G14 leaves them, so "{{results.length}} m" is not
-  read. A divisor after a space, "mg kg-1", is not read: written, the unit is its first
-  symbol, so "mg kg-1" against an emitted "mg/kg" is said to differ, and emitted, it is
-  compared with nothing. A divisor written as a word, "mg/kg per day" against an emitted
-  "mg/kg/day", is said to differ too (round 1 of #279, where this entry said "mg/kg" and
-  "mg kg-1" were taken for two both ways; pinned by
-  `test_what_the_unit_reading_gets_wrong_is_pinned`).
+  read. A divisor written as a word, "mg/kg per day" against an emitted "mg/kg/day", is
+  said to differ (pinned by `test_what_the_unit_reading_gets_wrong_is_pinned`), and so is
+  one spelt otherwise than the emitted one, "mg kg-1 d-1" against "mg/kg/day". A divisor
+  after a space is read only with a power below nought, "mg kg-1", not with a middle dot
+  between, "mg·kg⁻¹", whose unit is its first symbol.
 - **A heading nested in a list item is read with its marker, or not at all.** Pandoc prints
   `- Results` over an underline as a list item holding a heading titled "Results". The
   gates keep the marker in the title, so it ends the section above; "- Results" is read as
@@ -14218,12 +14227,10 @@ Open, recorded as each change landed:
   discussion" is not, so a "Sensitivity analyses" under it keeps the Methods rules. The
   old scan did the same. Reading every title that starts with "Results" as Results would
   also report the thresholds under a Methods subsection called "Summary statistics".
-- **A heading directly under a captioned `{{table.x}}` is printed inside the caption.** The
-  build writes the caption as a paragraph after the table, and a heading cannot interrupt a
-  paragraph, so the document loses the heading while G2 reads the one the source means. With
-  no caption the table ends at its last row and the two agree. A blank line avoids it, as
-  the example leaves one everywhere. A `{{figure.x}}` line is prose to both: the
-  build writes an image there, and a heading under it is printed as text.
+- **A heading directly under a `{{figure.x}}` line is printed as text.** The line is prose to
+  the gates and to the build: the build writes an image there, and a heading on the next line
+  does not interrupt the paragraph. A blank line avoids it, as the example leaves one
+  everywhere.
 - **Raw HTML and LaTeX beside a heading are read from lists, not from pandoc's parser.** A
   line of nothing but LaTeX commands is a block unless one of them is on a list of inline
   commands. A tag is block-level, "either" (a block at the margin, inline in a paragraph),
@@ -14256,14 +14263,20 @@ Open, recorded as each change landed:
   holds one and names the measure. Four is a rule of thumb, not a measurement.
 - **A headingless reference list is recognised by the signature of its year alone.**
   "Smith J, Jones K. ... 2019;393:100-10." is a reference, and so are "Smith, J. (2019)."
-  and "Fictional, Anne. 2021.". A book, a web page or an online-first article with no
-  volume in a numbered style is not, nor is one with no full stop before the year (the
-  BMJ's house style, "BMJ 2021;372:n71") or with anything after its pages but a DOI, PMID,
-  Epub or availability note, nor a Harvard entry with no full stop after
-  "(2019)", nor one whose names are not in the Latin script, so their numbers are
-  reported: noise rather than a pass. A caption or sentence that has the shape costs
-  nothing hidden, since the line is still compared; its unmatched numbers are listed in a
-  section of their own, which `--strict` does not count.
+  and "Fictional, Anne. 2021.", and the styles named under "Closed since": the BMJ's, a
+  book, a web page, an article online first and Harvard's with no full stop after the year.
+  An entry with anything after its pages but a DOI, PMID, Epub or availability note is not,
+  nor an author-year entry whose author is an organisation, "Example Agency. (2020).", nor
+  a book in a numbered style with no place before its publisher, nor one whose names are not
+  in the Latin script, so their numbers are reported: noise rather than a pass. The shapes
+  of a web page and of Harvard's entry with no full stop after the year can take a line of
+  the Data availability statement for an entry, where it names a source, a year and an
+  address as an entry does: its numbers are then listed apart rather than among the unmatched, so
+  they are not lost, but `--strict` does not count them (round 1 of #452). A caption or
+  sentence that has the shape is still compared, but its unmatched numbers are listed in a
+  section of their own, which `--strict` does not count: each shape added is a little more
+  that `--strict` can miss, which is why each is held to an ending a caption or a sentence
+  does not have, and to lookalikes in the tests (`AUDIT_LOOKALIKES`).
 - **The design gate cannot tell when a plan was written.** It checks that one exists and
   says something; it has no way to know the plan predates the analysis, which is the whole
   point of a plan. Only a timestamped external record — a registry, a signed commit — could,
@@ -14428,13 +14441,12 @@ Open, recorded as each change landed:
   of them by rate, so its 98.9% is not independent of that choice. A percentile of 291 is
   set by the three or four papers at the top: the em-dash threshold was 13.9 while one
   paper's table notes were counted, and is 4.7 without them. The papers were measured with
-  their tables left out. The em-dash rate leaves out a pipe table's row in a manuscript, but
-  not a simple or a multiline table's; and an em dash typed as `---` at the start of a line
-  that holds only masked text after it, `--- [^1]`, is taken for a rule's line (round 1 of
-  #352). The bold rate leaves out a table of each of pandoc's four kinds
-  (`text.tables.table_lines`), but reads as prose a table with one column, and a headless
+  their tables left out. An em dash typed as `---` at the start of a line that holds only
+  masked text after it, `--- [^1]`, is taken for a rule's line (round 1 of #352). The bold
+  and the em-dash rates leave out a table of each of pandoc's four kinds
+  (`text.tables.table_lines`), but read as prose a table with one column, and a headless
   multiline table opened by a line of dashes in one run, which pandoc reads as a table:
-  their bold is counted.
+  their bold and their dashes are counted.
 - **A small count is found where it is bound, by its value.** A count printed in an emitted
   table, a percentage that gives a small count away with its denominator, and a count typed
   rather than bound are not read; G2 fails a typed count for being typed. A whole number
@@ -14875,10 +14887,6 @@ Open, recorded as each change landed:
   which bound is which and G2 uses it in prose; a composed cell records ordered `parts`, and
   a transposition rebuilds the template exactly. The emitter refuses a transposed interval
   through one API and renders one through another.
-- **`document-stale` can block the build that would clear it.** At `internal-review` the
-  gate fails, `build` refuses while anything fails, and `--skip-checks` writes a different
-  filename - so the stale document stays stale and the UNCHECKED copy becomes a second
-  permanent finding. `--output` is the escape and its message is then untrue.
 - **A determined fragment editor is not caught by G2, and never could be.** The table check
   catches an *inconsistent* fragment: a cell that its own `composed` entry does not rebuild,
   a number no value published, a claim of composition attached to the wrong cell. Someone
@@ -14927,10 +14935,12 @@ Open, recorded as each change landed:
   take any run of whole numbers, so a median [IQR] with whole bounds, `64 [55-72]`, was a
   citation too. It is read as an interval when its bounds enclose the value written just
   before it, as an interval does and a citation range, `12% [4-6]`, does not. What that
-  misses: an interval separated from its value, `64 years [55-72]`, or after a value written
-  with a comma or a spaced percent sign, `12,5 [10-15]`, `1,204 [1,100-1,300]`, `45 %
-  [40-50]`, is still a citation. And a citation that happens to enclose a number before it,
-  `found 2 [1,3]`, `Table 2 [1-4]` or `Grade 3 [2,5]`, is listed as unexplained.
+  misses: an interval separated from its value, `64 years [55-72]`, is still a citation, and
+  so is one whose bounds have a decimal comma, `12,5 [10,5-15,5]`, since a bound read so
+  would make a citation such as `[4,12-15]` an interval (a value with a comma or a spaced
+  percent sign is read: see "Closed since"). And a citation that happens to enclose a
+  number before it, `found 2 [1,3]`, `Table 2 [1-4]`, `Grade 3 [2,5]` or `1,5 [1-2]`, is
+  listed as unexplained.
 - **A rule's phrase crosses one line break between words, not two.** "Table" and its 2,
   "STROBE" and 14, "p" and `< 0.05` may be split by a hard wrap, and still match. With a
   blank line between them they are two paragraphs, and the number opening the second is
@@ -16544,9 +16554,7 @@ Open, recorded as each change landed:
   that copied it first. A name is weighed only against the DOIs the manuscript cites: the
   PDF of an uncited `10.1000/a;b` in a shared folder is taken for a cited `10.1000/a:b`,
   since both are `10.1000_a_b`, and the name is all there is to tell them by (round 1;
-  contrived). A DOI that `references.bib` writes with a TeX escape, `10.1000/abc\_def`, is
-  looked for under `10.1000_abc__def` and not found, as G7 reads the same DOI with its
-  backslash (round 1).
+  contrived).
 - **A design record declared as an input in other capitals is not known for it on macOS.**
   Declared paths are compared in the case the system compares names in, which Python
   folds only on Windows, so on a case-insensitive macOS volume `Design/data_dictionary.yaml`
@@ -16910,9 +16918,18 @@ Open, recorded as each change landed:
   a sentence, and a passage across them is cut in two, each half reported only where it has
   twelve shared words. pypdf, where `pdftotext` is not installed, reads a page in the order
   its content draws it.
-- **A reference the earlier paper cites by author and year cuts a passage there.** "(Smith et
-  al., 2019)" is three words the manuscript does not have beside its citation key. A number,
-  "[12]" or "12", is no word and cuts nothing.
+- **A citation by author and year is known in parentheses only.** The earlier paper's "(Smith
+  et al., 2019)" is blanked before its words are compared (see "Closed since"); one in
+  square brackets, "[Smith 2019]", is read as words, and cuts a passage where the
+  manuscript cites by key alone. A parenthesis that reads as such a citation and is none
+  is blanked too, where its words are names in shape: "(England and Wales, 2019)" is two
+  authors to this check, and a single word that is no preposition, season or word of a
+  period, "(Brexit 2019)", one. The words it takes are words the manuscript has and the
+  earlier paper then does not, which cut the passage there. A preposition, a season or a
+  word of a period standing alone before the year, "(Since 2019)", "(Spring 2019)", is no
+  citation (round 1 of #452: each was blanked), so a citation of one author of such a
+  name, "(Winter, 2019)", is read as words; with "et al." or a second author it is a
+  citation (`recycling._NO_AUTHOR`).
 - **A Methods passage counts as cited only where its own paragraph cites the earlier paper.**
   "As described previously [@key]" heading a subsection, with the description two paragraphs
   on, is reported as uncited, a warning from internal-review.
@@ -17119,11 +17136,12 @@ Open, recorded as each change landed:
   short title page, 600 words in all, is set aside with it, and no gate reads its numbers; a
   title page over 600 words stays in the text, where its names and affiliations are read.
   `init` prints which it did and how many words.
-- **An abstract `init --from` does not find in Word's metadata is not a section.** pandoc
-  reads the Abstract style as metadata only straight after the Title, Author and Date
-  paragraphs. An abstract elsewhere before the first heading goes into the comment with the
-  title page, and its numbers are read by no gate until it is moved out; one under a heading
-  of its own stays in the text.
+- **`init --from` finds an abstract on the title page by its style alone.** A paragraph in
+  Word's Abstract style there is the section `# Abstract` only where pandoc's reading of the
+  document with its styles is, the styles taken off, its ordinary reading block for block;
+  where the two differ, it is left in the comment with the rest of the title page, and
+  nothing says so. An abstract in another style, or under a line "Abstract" in bold, stays
+  in the comment, and its numbers are read by no gate until it is moved out.
 - **A Word paper's bold-text headings are no headings.** `init --from` takes as a heading only
   a paragraph in one of Word's heading styles, as pandoc does; six of fifteen papers had none.
   Their sections are paragraphs to every gate, so a Methods section's thresholds are not read
@@ -17152,7 +17170,8 @@ Open, recorded as each change landed:
   `\texttt` a typewriter font prints both as typed, but the reader reads ``` `` ``` there as an
   opening mark already, and a `"` after it as the closing one. Babel's German shorthands other
   than an accent, `"-` and `"=`, inside an open quotation are read as a closing mark too. A
-  quotation is ended by a blank line only, not by `\par`.
+  `\par` a definition's body holds ends the quotation where the body is written, not where
+  the command prints it (2026-10-27).
 - **`lines-cited-alone` is not tried anywhere in a LaTeX document that sets out an algorithm
   or a listing.** A `verbatim` block anywhere in the document turns the rule off for every
   pointer in it, one into the reviewers' copy too: the rule cannot tell a listing's lines
@@ -17194,9 +17213,12 @@ What papers converted from Word showed (see "What papers converted from Word sho
   tells "CCR2" from them. And a word with a capital after a lower-case letter is read as
   a name from that capital, so "preCO2", with CO2 declared, is a term, and so is a word
   that ends in a term's letters after one, "MyIL-2".
-  A subscript is held to none of this, only a superscript is: "HR~2~", "OR~2~" and
-  "PharmD~2~" read as `r2` and `d2`, terms, where main reported them; an index set below
-  the line labels something far more often than it holds a result.
+  A term holding a subscript's place counts where a word opens, at a capital after a
+  lower-case letter, or directly after another term, so that "pCO~2~", "EtCO~2~" and
+  "ppFEV~1~" are terms; "PharmD~2~" is a capital after a lower-case letter too, and reads
+  as `d2`, a term, where main reported it. Told from "EtCO~2~" it would be by its word
+  opening with a capital, and from "pO~2~", with O2 declared, by the one capital before the
+  subscript, and either rule refuses a name an author writes.
 - **A term counts directly after any other.** "PaO2FiO2" and "CD8CD4" are two terms each
   because the second counts where the first ends, and that holds after a term with no
   digit as well: with MeSH among the terms, "meshd2" is `mesh` and `d2`. Holding the second
@@ -17234,7 +17256,328 @@ What papers converted from Word showed (see "What papers converted from Word sho
   agent is usually told outright, and asking at every one would teach the author to wave
   the question through.
 
+- **Left by round 2 of #452 (2026-10-28), to fix later.** Each is small, and none is a
+  regression against main.
+  - The printed view folds an accent beside a letter command from the unfolded mask, so
+    `\L{}\'od\'z` loses its Ł there; the words view reads "Łódź".
+  - The second backslash of `\\` is read as the start of an accent: `a\\`Text'` prints
+    "T̀ext".
+  - Inside `tabbing`, `\=`, `\'` and `\`` are tab commands, read as accents.
+  - A heading's title is not folded: `\section{Caf\'e}` prints "Cafe" in the printed view.
+  - An accent at a line's end does not take the next line's letter, as TeX does (as on main).
+  - A `\par` inside `\verb` or a group ends the paragraph for the pairing of quotation marks.
+  - `classify._names_covering`'s docstring says "PharmD~2~" is no term with D2 declared; it
+    is one, as DESIGN says.
+  - Declaring R2 makes "HR~2~" and "OR~2~" terms (as on main).
+  - G5 reads the rows of a Markdown simple or multiline table as one sentence, so a row that
+    names an undeclared guideline can be joined to another's claim.
+  - G8r takes "(Spring and Summer 2019)" for a citation, and one season name in a group of
+    citations leaves the whole group as words.
+  - `build` sets aside `supplementary.docx`'s staleness when the supplement's folder holds any
+    file, though it builds one only from Markdown there.
+  - A `docx-unreadable` from the live-field check says the journal's review is blind.
+  - With `--skip-checks`, the count of failing checks `build` prints is one short of `check`'s
+    when `manuscript.docx` is stale.
+  - ci.yml's comment on setup-pandoc names a step that is gone.
+
 Closed since, and why each mattered (an open gap goes above this line):
+
+- **`document-stale` blocked the build that would clear it.** At `internal-review` the
+  gate fails, `build` refused while anything failed, and `--skip-checks` wrote
+  `manuscript.UNCHECKED.docx` beside the stale document, which then went stale in its turn:
+  a second finding no build cleared. The Word build now leaves `document-stale`, and only
+  it, out of what it refuses for and of what names a document UNCHECKED, since the document
+  it writes is the one that clears it; a checked build that writes `manuscript.docx` takes
+  away the UNCHECKED copy of an older source; and a build given its name by `--output` no
+  longer says the document is named UNCHECKED (`test_cli.py`,
+  `test_a_stale_document_does_not_block_the_build_that_clears_it`). A LaTeX build writes
+  PDFs, which clear no stale `.docx`, and still counts it. It left every `document-stale`
+  out at first, so a stale `build/x.docx`, which no build rewrites, and `manuscript.docx`
+  under a build that `--output` sends elsewhere were passed without a word: only the
+  documents this build writes over in `build/` are left out now, the paper under its
+  checked or UNCHECKED name where no `--output` is given, the supplement where there is
+  one, the annotated copy for an annotated build (round 1 of #452;
+  `test_the_build_sets_aside_only_the_staleness_of_the_document_it_rewrites`).
+- **The submission pack lost an abstract and passed a document it could not read.**
+  `**Keywords**` and `**Keywords.**`, bold with no colon as the abstract's own labels are
+  written, went into `abstract.txt`; they end the abstract now, as a label with a colon did,
+  and a sentence that opens with the word, emphasised, plain or all in bold, does not. An
+  abstract heading inside a Div was looked for among the text's own blocks only, and the
+  abstract was left out without a word: it is found inside a Div, to the Div's end, and
+  where the gates read an Abstract section and pandoc reads no heading naming it, the pack
+  says why `abstract.txt` is not written. And `build` exited 0 where the blind check could
+  not read its own document (`docx-unreadable`): it exits 1 and says not to send it, as it
+  does for a name it read (properties over `keyword_paragraphs` and `abstract_trees`).
+- **A heading straight under a captioned `{{table.x}}` was printed inside the caption.** The
+  build wrote the caption as a paragraph after the table, a heading on the next line does
+  not interrupt a paragraph, and the document lost the heading G2 read. `render_table`
+  writes a blank line after the caption, as the example leaves one.
+- **The build styled only captions opening "Figure 1."** `figure_caption.lua` set "Fig. 1."
+  and "eFigure 1.", which G2 holds as captions, in the body font. It takes the three forms
+  now, a stop or a colon after the number as before (a property over `figure_captions`, with
+  pandoc).
+- **A minus sign in a PDF figure was not the hyphen in its sidecar.** A figure saved with its
+  text kept as text (matplotlib's `pdf.fonttype: 42`, or an SVG) holds the U+2212 matplotlib
+  draws before a negative tick, and a sidecar entry `"-1.0"` did not allow it:
+  `figure-number-unbound`. G3 writes U+2212 as a hyphen in the figure's numbers, the
+  results' displays and the sidecar's entries alike before comparing them, so either sign
+  allows either; a number allowed only with the opposite sign is still another number (a
+  property over `signed_ticks`).
+- **A PDF figure whose forms named each other in a ring raised RecursionError.** The fonts
+  of forms whose resources name each other, of two or more, or the page's own through
+  another form, were followed until Python's recursion limit. `_fonts` reads each
+  resources dictionary once, and lists the fonts found in the ring.
+- **The skills, the README and a pack's manifest told an agent to run `check --submission`.**
+  The submission guard holds that to the check it names and refused it in a failing project,
+  so an agent was refused once before being told the other spelling. The project-setup,
+  review-panel, submission-pack and word-roundtrip skills, the README, `docs/` and the
+  `MANIFEST.yaml` of a pack assembled with `--skip-checks` write `check --stage submission`
+  now, and `test_plugin.py` holds that no skill or page tells an agent to run the other.
+  What the guard matches is unchanged, as decided (Basile, 2026-10-02); what still writes
+  the old spelling is above.
+- **An abstract `init --from` did not find in Word's metadata was set aside.** pandoc reads
+  the Abstract style as metadata only straight after the Title, Author and Date paragraphs,
+  and an abstract elsewhere on the title page went into the comment with it, its numbers
+  read by no gate. `init --from` reads the document a second time with its styles
+  (`docx+styles`) and, where that reading is the first block for block, puts the title
+  page's paragraphs in the Abstract style in the section `# Abstract`, after any pandoc
+  read as metadata. What it cannot match exactly it leaves as before (above).
+- **The stop counted what an editor or the system leaves as a change.** Only hidden files
+  and `__pycache__` were passed over, so Word's `~$main.docx`, there whenever the document
+  is open, Emacs's `#main.md#` and `main.md~`, and Windows' `Thumbs.db` and `desktop.ini`
+  counted, and the line followed a turn that changed nothing the gates read. Those names
+  are passed over now, and compiled Python outside its cache with them, and a test holds
+  that every name the reproducibility package leaves out as no one's work is passed over
+  too. The list is the hook's own and not imported from `deposit/plan.py`, which brings in
+  the gates, half a second or more at the end of every turn. A name with a `#` or a `~`
+  inside it, `#1 notes.md` or `a~b.json`, is the author's and still counts.
+- **A JSON file with the mark of UTF-8 in front was refused in the parser's words.** A
+  results fragment saved as Notepad's "UTF-8 with BOM", or written by Windows PowerShell 5's
+  `Out-File -Encoding utf8`, stopped `check` with "cannot parse: Unexpected UTF-8 BOM
+  (decode using utf-8-sig)", where YAML with the same mark was always read. The mark is
+  passed over in JSON too now, by `read_structured`, which every structured file of the
+  project is read through. The bytes are not changed, so a digest of the file is as it was.
+- **A headingless reference list knew two styles of entry.** Where no heading says where the
+  list is, the audit knows an entry by its shape, and only a journal article in the
+  numbered styles with a full stop before its year, or in the author-year styles with one
+  after it, had a shape. A book, a chapter, a web page, an article online first, the BMJ's
+  entry ("BMJ 2021;372:n71", no full stop before the year) and a Harvard entry with no full
+  stop after "(2019)" were read as prose, and their years, volumes and pages were reported
+  among the findings. Each is now known by an ending a caption or a sentence does not
+  have: the BMJ's by a capitalised word that is no month's before the year, with the volume
+  and pages and nothing after them but a note, as before; a book by "Place: Publisher;
+  2019." and perhaps its pages; an article online first by its year, or "Published online"
+  and a date, after the journal's full stop and then a DOI, a PMID or an Epub note; a web
+  page, whose author may be an organisation, by "[Internet]" or "[cited ...]", by
+  "Accessed March 5, 2021." and the address at the end, or by "Available at:" and the
+  address at the end, perhaps with the date it was read; and Harvard's year by a title in
+  capitals or quoted after it, where "(2019) found" is a sentence. The lookalikes the tests
+  hold to being none include "Dec 2019;2:14." and "Accessed on 412 sites in 2019".
+- **The audit took an interval after a comma-written value for a citation.** A bracket of
+  whole numbers after a value is an interval where it encloses the value, and the value was
+  read as digits with a point, so `12,5 [10-15]`, `1,204 [1,100-1,300]` and `45 % [40-50]`
+  were filed as citations and their bounds never compared. A decimal comma and a spaced
+  percent sign, a no-break space included, are read now, and a value grouped in thousands
+  is read as one, with bounds that may be grouped too: `1,204 [1-3]` stays a citation,
+  where a decimal comma's reading would take 1.204 to lie inside it.
+- **The audit masked HTML comments in Word and figure text.** A `.docx` and a figure print
+  `<!--` as typed, but their text went through the mask Markdown does, so a paragraph that
+  mentioned both markers hid everything between them from the comparison and from the
+  tests of a statistic against its P. Their text is masked with every `<!--` made to open
+  nothing, so the other regions, an address for one, are masked as before.
+- **A .docx with no heading styles gave its reference list no end.** The cut ran from the
+  paragraph "References" to the end of the body, and a figure legend, a statement or a
+  table after the list was never audited. A list under a paragraph that is no heading now
+  ends where `check` ends one under no heading in Markdown (`text/reference_lists.py`):
+  at a caption of a figure, a table, a box or an appendix, at a back-matter title standing
+  alone, "Funding" or "Figure legends", and at a table. A list under a styled heading runs
+  on to the next heading, as one under `# References` does. What is left is above.
+- **A subscripted index after capitals read as a term.** A term holding a subscript's place
+  counted wherever any term does, after a capital among them, so "HR~2~" and "OR~2~" were
+  `r2`, and G2 and the audit passed their numbers, where main reported them. Such a term
+  counts now where a word opens, at a capital after a lower-case letter, or directly after
+  another term, and not after a capital that ends no term: "HR~2~" and "OR~2~" are unbound
+  numbers, and "CO~2~", "pCO~2~", "HbA~1c~", "ppFEV~1~" and "PaO~2~FiO~2~" names
+  (`test_a_subscripted_index_after_a_capital_is_a_number`). "PharmD~2~" is still a term,
+  above. Held there alone, a term the project declares lost the names that put capitals
+  before it: with CO2 declared, "ETCO~2~", "PCO~2~" and "VCO~2~", which main read as CO2,
+  each gave an unbound 2. A declared term holding a subscript's place counts after
+  capitals as well, where nothing but capitals stands between it and its word's start; a
+  built-in one does not, so "HR~2~" is a number and, with CO2 declared, "ETCO~2~" a name
+  (`test_a_declared_term_with_a_subscript_after_capitals_is_a_name`). A project that
+  declares R2 has "HR~2~" read as R2, as it would have had "HR2" typed.
+
+- **"Methods: data sources" and "Methods of the study" were no Methods to G2 and G15.**
+  `classify.METHODS_SECTIONS` took "Methods" alone or joined to another part's name by
+  "and", so under such a title G2 reported a threshold the analysis chose as an unbound
+  number, and G15 read no model's name. "Methods" followed by a colon, a stop or a dash and
+  what the section holds, or by "of" and words, is the Methods now; a title that also names
+  what was found, "Methods: main results", is not, as "Methods and results" is not
+  (`test_the_methods_named_with_what_they_hold_are_the_methods_to_g2`).
+
+- **A divisor after a space was not read after a binding.** Written, "mg kg-1" was read as
+  its first symbol and said to differ from an emitted "mg/kg"; emitted, it was compared
+  with nothing. A divisor after a space with its power below nought, typed ("kg-1",
+  "kg^-1^", with a minus sign) or in superscript characters ("kg⁻¹"), is read now, among
+  the symbols and the one-letter ones a power below nought tells from a word ("mg L-1",
+  "µg m-3"), and compared as the same divisor after a slash, both ways
+  (`test_what_the_unit_reading_gets_wrong_is_pinned`).
+
+- **The plan's sections.** A heading "### Standard deviation of the dose" was read by G12
+  as a Deviations section, since "deviation" anywhere in a title named them, so a plan with
+  no word on what changed after it was agreed was said to have one. "deviation" after
+  "standard" names no Deviations now; "Protocol deviations" and "Deviations from the plan"
+  still do (`test_a_standard_deviation_is_no_deviation_from_the_plan`).
+
+- **A test set with a middle dot for its point was not read.** "t(23) = 2·45, p = 0·40", as
+  the Lancet sets numbers, was refused as a decimal comma is, so such a paper had none of
+  its tests judged by the reading of a P against its statistic (G8, the
+  audit and the literature check). A middle dot between digits is a point now, in the
+  statistic, its degrees of freedom and its P, and a middle dot before a power of ten is
+  still a multiplication sign, "6·8·10^-4^". Degrees of freedom with a thousands' comma,
+  "F(1, 1,234)" or "df = 1,234", were read as two numbers and the test dropped; a comma
+  that can be either is read the way that gives the test as many degrees of freedom as it
+  has, "F(1,234)" as 1 and 234 and "t(1,234)" as 1,234, and where both ways do, nothing is
+  read (`test_a_p_that_does_not_follow_from_its_statistic_is_found`). The decimal comma is
+  still open, above. The P of an interval's sentence is read by the same pattern, so a P
+  written "0·03" after an interval is read now, though the interval's own numbers with a
+  middle dot are not (`stats/intervals.py`).
+
+- **An escaped backtick opened a code span for G2's escapes.** `import` writes a backslash
+  before every backtick typed in Word, and the pattern that paired backtick runs took the
+  escaped ones for delimiters, so in `` (\` ROR \> 2 \`) `` the `\>` was read as a
+  backslash code prints, and the threshold pandoc prints was an unbound number.
+  `masking._code_spans` reads the runs once now: a backtick after an odd run of backslashes,
+  outside code, is printed and opens nothing, the rest of its run opening as pandoc's does;
+  inside code a backslash prints, so a run after one still closes the span, as pandoc
+  reads `` `a\` `` (`test_an_escaped_threshold_between_escaped_backticks_is_still_a_convention`).
+- **A part the paper placed by `\includestandalone` or `\subfile` was read loose.** A
+  `standalone` picture was read under no heading and warned of as a file nothing inputs,
+  and `\subfile` was refused, failing BUILD, though LaTeX prints both where they stand, as
+  the maintainer asked to have them read (2026-10-27). Each command is now an input of the
+  file it names (`commands.PLACED`), past `\includestandalone`'s options. A file in the
+  `standalone` or the `subfiles` class is read past its preamble, opening the heading and
+  the environments the command stands in at its `\begin{document}`, so a picture placed in
+  a `figure` is the figure's; what its preamble loads, inputs, declares or comments is not
+  the paper's, and its preamble and what follows its `\end{document}` are TeX's to pass
+  over, so the submission folder writes its body alone in the command's place. What is
+  still open, a part placed nowhere and the options the folder drops, is above.
+- **A preamble's `\input macros` was not followed.** TeX's form without braces named no
+  file to the reader, so an author's `macros.tex` was read as a file nothing inputs, warned
+  of, its definitions unknown where they were used. In the preamble the name up to a space,
+  a brace, a command or a comment is now the path, as a class's is read
+  (`mask._BARE_PATH`), and a name the folder lacks is the distribution's as before
+  (2026-10-27).
+- **G2 read a typed `thebibliography` as prose.** Its years, volumes and pages were
+  `unclassified-number`, where a Markdown project's reference list, which the build makes,
+  is never read. G2's LaTeX view, which `explain` and `bind` read too, now blanks each
+  reference list the reader records, a binding typed in one excepted; G6, G8r, G14 and the
+  printed view already passed over it, and no gate needs its numbers read as the text's
+  (2026-10-27).
+- **"Table 2 in Supplement 1" was the main text's Table 2.** JAMA's form names its
+  supplement by number, and G2 read only "in the Supplement" after a pointer as the
+  supplement's, so such a pointer before the main text's Table 1 was cited out of order,
+  and a journal profile that writes the form was `pointer-form-unread`. "in" or "of"
+  "Supplement" and a number after a pointer now put it in the supplement, in Markdown and
+  in LaTeX (2026-10-27).
+- **A LaTeX quotation left open was not ended at `\par`.** A ``` `` ``` that nothing closed
+  before a `\par` was closed by a straight `"` after it, which made the two paragraphs one
+  quotation for G7. A `\par` TeX reads now ends the quotation as a blank line does; one in a
+  comment or in what TeX passes over, and the letters after `\\`, do not (2026-10-27).
+- **G8r read a claim within one line.** A claim whose verb and guideline a hard-wrapped
+  source put on two lines, "prepared following the / PRISMA statement", was not read, and a
+  guideline the paper said it followed went unreconciled with paper.yaml. A sentence now
+  runs over single line breaks, in Markdown as in LaTeX, and stops at a blank line, before
+  a Markdown heading or a table's row, and at a typed table's line ends, so that a table of
+  checklist items is not one claim (2026-10-27). It ran from one item of a list into the
+  next, so "- Outcomes were reported by sex" over "- STROBE flow diagram in Figure 1" said
+  the paper followed STROBE: a line that opens with a list's marker (`-`, `*`, `+`, `1.`,
+  `1)`) ends the sentence before it, and so does an `\item` (round 1 of #452;
+  `test_g8r_reads_each_item_of_a_list_as_a_sentence_of_its_own`).
+- **An accent command lost its mark in the printed view, and its word in G14's.**
+  `Chr\'etien` printed "Chretien", so a quote copied from the PDF was not found by G13, G8
+  or G7; and a word an accent command, a letter typed as a command or `\-` split was not
+  read by G14 or G15 at all, so `co\-lor` was no American spelling and `logis\-tic
+  regression` no model typed. The printed view now writes each accent command whose letter
+  it reads as the accented letter, composed as Unicode composes it, and a letter typed as a
+  command beside a letter it reads as that letter; the words view writes such a word whole,
+  as LaTeX prints it, from where it starts, `\-` dropped (`words.folded`). The printed view
+  already printed LaTeX's dashes and `\ldots` as the characters (2026-10-27). Where Unicode
+  composes no letter of the two, `Erd\H{e}s`, `\'{x}`, `\t{o}` or `\v{J}`, the letter and
+  its combining mark were both written in the command's first place, the view was a
+  character longer from there on, and every stretch of the file after it was read one
+  place off: a quote of the words after such an accent was not found. The mark now goes in
+  the place after the letter (round 1 of #452). G14's message for a word it does not read
+  says it holds an accent over no letter, the one case left, and no longer names `\-`.
+
+
+- **G4 read the main-text files in path order, and the build prints them in another.** The
+  build puts `main.md` first and sorts the rest by file name; G4 joined them as their paths
+  sort, so an `abstract.md` beside a `main.md` written in `##` headings made the whole paper
+  abstract as far as G4 could tell, over the abstract's limit, and an unclosed comment or
+  fence at the end of the file it read first hid the next file's statements. `main_text`
+  now takes the files in the build's order (`gates.numbers.printed_order`), as the paragraph
+  record does (`test_g4_reads_the_main_text_files_in_the_order_the_build_prints_them`).
+
+- **Two keys for one work went unfound where the file wrote the DOI or the title in TeX.**
+  A DOI was compared as `references.bib` writes it, so `10.1000/abc\_def` and
+  `10.1000/abc_def`, or a resolver's `%28` and `(`, were two works to G7; `sync-sources
+  --from` looked for the PDF under `10.1000_abc__def`, and the registry lookup asked for the
+  DOI with its backslash. A title's TeX accents were read as letters, `Caf\'e` as two words.
+  `identifiers.normal_doi` now reads TeX's escape of `_`, `%`, `&`, `#` and `$` as the
+  character and a printable ASCII character's percent-encoding as the character, for every
+  reader of a DOI, and `duplicates.title_of` takes TeX out of a title as the registry lookup
+  does (`test_a_doi_is_compared_as_it_is_registered_however_the_file_writes_it`,
+  `test_a_title_in_tex_is_the_title_in_unicode`). A preprint and its article are still not
+  found, above. A percent-encoded space, `%20`, was read as a space, and the DOI then
+  called malformed: an escape is read as its character only where that character prints
+  and is no space, so `%20` and `%7F` stay as written (round 1 of #452).
+- **A placed part's preamble defined commands for the whole paper.** The commands a part
+  that `\subfile` or `\includestandalone` places defines in its preamble, which TeX passes
+  over, were told to every file of the tree: one defined there with delimited parameters
+  had main's own command of that name refused, and a `\providecommand{\keywords}` made
+  main's `\keywords` the author's. Only what the part's body defines is told now, and its
+  preamble's input encoding is no longer the paper's (round 1 of #452;
+  `test_a_placed_part_s_preamble_defines_nothing_for_the_paper`).
+- **r-interop's R stood still while its cache was warm, and pytest might run under conda's
+  Python.** The conda environment was cached on its package list alone; its key now holds
+  the ISO week, so R follows conda-forge's releases as setup-r followed CRAN's. The tests
+  run in a login shell, where the environment comes first on PATH: they are run by
+  setup-python's interpreter, named, and the step prints which Python is first (round 1 of
+  #452; `test_r_interop_s_environment_moves_with_the_week_and_pytest_runs_on_setup_python_s`).
+
+- **G6's em-dash rate counted the dashes in a simple or a multiline table.** The threshold
+  was measured on papers read with their tables left out, and a table pandoc writes from
+  Word marks "not applicable" with a dash, so a paper with such a table warned for its
+  cells. The `em-dash` rule now leaves tables out as the bold rate does (`in_tables: false`).
+
+- **A number before a heading's name hid the reference list from G4 and G14.** "VII.
+  References", "7. References" and "**References**" were read as typed, so G4 counted the
+  list's words as main text and G14 read its authors' initials as abbreviations, where the
+  recycling check, which reads the title as printed, set the list apart. `Section.
+  is_references` reads the title as printed now (`section_names.plain`), and
+  `NOT_METHODS_SECTIONS` takes a Roman number before a part's name as `METHODS_SECTIONS`
+  does, so "III. Results" is set aside as no Methods. A later file's "# Methods" still
+  loses to an earlier file's "Overview of existing methods", above.
+
+- **An earlier paper's citation by author and year cut a passage the manuscript repeats.**
+  "(Smith et al., 2019)" was three words the manuscript did not have beside its citation key,
+  so the words before it, where fewer than a shingle, were not reported. Such a citation in
+  parentheses is blanked before the earlier paper's words are compared, its line breaks
+  kept (`recycling.without_author_year`): names with a capital, "et al." or "and" between
+  them, a year with a letter after it, several joined by semicolons, "e.g." before and a
+  page after; not a date, "(January 2019)", nor words in lower case before a year.
+
+- **A display item counted only where a binding placed it.** A LaTeX figure placed with
+  `\includegraphics` and captioned, and a Markdown figure placed by hand, `![caption](file)`
+  alone in its paragraph, are numbered figures in the document the journal counts, and G4
+  counted none of them, so a paper over a limit on display items passed. G4 now counts each
+  display a LaTeX float's caption numbers, as G2's pointers count them, and a binding where
+  no caption numbers its float, once a float however many pictures it places
+  (`gates.journal.latex_displays`); and a Markdown image with a caption alone in a paragraph
+  as a figure (`text.sections`). What is still counted by its bindings only, and the title
+  page's count, are above.
+
 
 - **BOUND.md read no LaTeX manuscript.** It listed nothing a LaTeX paper binds and warned
   (`package-bound-not-read`) on every LaTeX project. Its rows are read now by `bound_rows`

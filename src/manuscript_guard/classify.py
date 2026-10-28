@@ -234,7 +234,10 @@ class Classifier:
         matched = _terms_covering(atom.text, self.terms)
         if matched is None and (marked := _unsigned_marked(atom)) is not None:
             # `HbA~1c~` is `HbA1c` with a subscript, and `CO~2~` a declared `CO2`.
-            matched = _names_covering(*marked, self.terms)
+            bare, raised, sunk = marked
+            matched = _names_covering(
+                bare, raised, self.terms, sunk=sunk, declared=self.project_terms
+            )
         if matched is not None:
             return Verdict(TERM, rule="terms", detail=", ".join(matched), terms=tuple(matched))
         if scan is None:
@@ -284,7 +287,10 @@ METHODS_SECTIONS = re.compile(
     r"(?!.*\b(?:results?|findings|discussion|conclusions?)\b)"
     # "Materials and methods", "Patients and methods", "Methods and analysis": the Methods by
     # another name, which G4 has always counted as a required Methods section present.
-    r"(?:[^\n]*?\band\s+methods|methods\s+and\s+[^\n]+|methods|methodology|"
+    # "Methods: data sources", "Methods. Study design", "Methods of the study": the Methods
+    # with what they hold after a stop, a colon or a dash, or after "of".
+    r"(?:[^\n]*?\band\s+methods|methods\s+and\s+[^\n]+|"
+    r"methods\s*[:.\N{EN DASH}\N{EM DASH}][^\n]*|methods\s+of\s+[^\n]+|methods|methodology|"
     r"statistical\s+(?:analysis|analyses|methods)|analysis\s+plan|statistical\s+plan|"
     r"study\s+design|design|protocol|sensitivity\s+analys[ei]s)"
     r"\s*$",
@@ -363,7 +369,7 @@ def _opened_by_the_supplement(section: Sequence[str]) -> bool:
 # as the pre-specified threshold: exactly the failure `methods_only` was built to close,
 # in a subsection that appears in most pharmacoepidemiology papers.
 NOT_METHODS_SECTIONS = re.compile(
-    r"^\s*(?:\d+(?:\.\d+)*[.)]?\s*)?"
+    r"^\s*(?:\d+(?:\.\d+)*[.)]?\s*|[IVXLC]+[.)]\s*)?"  # "3. Results", "III. Results"
     r"(?:results?|findings|discussion|conclusions?|interpretation|introduction|background|"
     r"abstract|summary|limitations)"
     r"\s*$",
@@ -607,22 +613,35 @@ def unsigned(atom: Atom) -> str | None:
     return None if marked is None else marked[0]
 
 
-def _unsigned_marked(atom: Atom) -> tuple[str, frozenset[int]] | None:
-    """`unsigned`, with the places in it that a superscript held."""
+def _unsigned_marked(atom: Atom) -> tuple[str, frozenset[int], frozenset[int]] | None:
+    """`unsigned`, with the places in it that a superscript held and those that a
+    subscript held."""
     text = _with_its_closing_sign(atom)
-    lowered = _SUBSCRIPT.sub(r"\1", text)
+    lowered, sunk, _kept = _signs_out(_SUBSCRIPT, text)
+    bare, raised, kept = _signs_out(_SUPERSCRIPT, lowered)
+    sunk = frozenset(kept[at] for at in sunk if kept[at] >= 0)
+    return None if bare == text else (bare, raised, sunk)
+
+
+def _signs_out(sign: re.Pattern[str], text: str) -> tuple[str, frozenset[int], list[int]]:
+    """`text` with each pair of `sign` taken out round what it holds; the places in the
+    result that what the signs held stands at; and, for each place of `text`, its place in
+    the result, or -1 for a sign taken out."""
     pieces: list[str] = []
-    raised: set[int] = set()
+    held: set[int] = set()
+    kept: list[int] = []
     cut = size = 0
-    for match in _SUPERSCRIPT.finditer(lowered):
-        before, inside = lowered[cut : match.start()], match.group(1)
+    for match in sign.finditer(text):
+        before, inside = text[cut : match.start()], match.group(1)
+        kept += range(size, size + len(before))
         size += len(before)
-        raised.update(range(size, size + len(inside)))
+        held.update(range(size, size + len(inside)))
+        kept += (-1, *range(size, size + len(inside)), -1)
         size += len(inside)
         pieces += (before, inside)
         cut = match.end()
-    bare = "".join((*pieces, lowered[cut:]))
-    return None if bare == text else (bare, frozenset(raised))
+    kept += range(size, size + len(text) - cut)
+    return "".join((*pieces, text[cut:])), frozenset(held), kept
 
 
 def declarable(atom: Atom) -> str | None:
@@ -644,15 +663,31 @@ def declarable(atom: Atom) -> str | None:
 
 
 def _names_covering(
-    text: str, raised: frozenset[int], terms: tuple[str, ...]
+    text: str,
+    raised: frozenset[int],
+    terms: tuple[str, ...],
+    *,
+    sunk: frozenset[int] = frozenset(),
+    declared: frozenset[str] = frozenset(),
 ) -> list[str] | None:
     """`_terms_covering` for a name read without its signs, `raised` being the places in
-    `text` that a superscript held. A term holding one of them counts only where it opens a
-    word: taking the signs out puts a superscript's digits hard against the word before
-    it, and a citation's number typed after a word with a capital inside, "PharmD^2^" or
-    "ApoB^12^", made `d2` and `b12` at that capital. `I^131^` opens its word and is a
-    name, and a subscript is part of the name it is typed in: `pCO~2~` is `co2`."""
-    return _terms_covering(text, terms, raised)
+    `text` that a superscript held and `sunk` those a subscript held. A term holding a
+    raised place counts only where it opens a word: taking the signs out puts a
+    superscript's digits hard against the word before it, and a citation's number typed
+    after a word with a capital inside, "PharmD^2^" or "ApoB^12^", made `d2` and `b12` at
+    that capital. `I^131^` opens its word and is a name.
+
+    A subscript is part of the name it is typed in, `pCO~2~` being `co2` and `ppFEV~1~`
+    `fev1`, so a term holding a sunk place counts where a word opens, where a capital
+    follows a lower-case letter, or directly after another term; but not after a capital,
+    where it counted as any term does: an index set below the line after an abbreviation,
+    "HR~2~" or "OR~2~", was `r2`, and its number went unchecked.
+
+    A term in `declared`, one the project names, counts after capitals as well, where
+    nothing but capitals stands between it and its word's start: with CO2 declared,
+    "ETCO~2~", "PCO~2~" and "VCO~2~" are `co2`, as they were before the subscript was held
+    apart. Built in, `r2` is no name in "HR~2~"; declared, `d2` is none in "PharmD~2~"."""
+    return _terms_covering(text, terms, raised, sunk, declared)
 
 
 def _term_may_start(text: str, at: int) -> bool:
@@ -683,12 +718,18 @@ _AFTER_A_TERM = True
 
 
 def _terms_covering(
-    text: str, terms: tuple[str, ...], raised: frozenset[int] = frozenset()
+    text: str,
+    terms: tuple[str, ...],
+    raised: frozenset[int] = frozenset(),
+    sunk: frozenset[int] = frozenset(),
+    declared: frozenset[str] = frozenset(),
 ) -> list[str] | None:
     """Terms that between them account for every digit in `text`, or None. A term counts
     where `_term_may_start`, or directly after another term; the terms used are given in
     the order of `terms`. A term holding a place in `raised` counts only where
-    `_term_may_start` and a word opens (`_names_covering`).
+    `_term_may_start` and a word opens, and one holding a place in `sunk` not after a
+    capital that ends no term, unless it is in `declared` and only capitals stand before
+    it in its word (`_names_covering`).
 
     A term was found anywhere in an atom as it is written, and only a name read without its
     signs was held to a word's start: taking the signs out puts the digits of a superscript
@@ -718,11 +759,20 @@ def _terms_covering(
     # How many raised places stand before each place, so that whether a term holds one is
     # a subtraction; and where a word opens, which is where a term holding one may.
     below = list(accumulate((at in raised for at in range(size)), initial=0)) if raised else []
+    under = list(accumulate((at in sunk for at in range(size)), initial=0)) if sunk else []
     words = [opens[at] and (at == 0 or not text[at - 1].isalnum()) for at in range(size)]
+    # Whether only capitals stand between each place and its word's start, and one at least.
+    capped = [False] * (size + 1)
+    for at in range(1, size + 1):
+        before = text[at - 1]
+        capped[at] = before.isupper() and (at == 1 or not text[at - 2].isalnum() or capped[at - 1])
 
     def may_open(at: int, term: str, ended: bool) -> bool:
         if below and below[at + len(term)] > below[at]:
             return words[at]
+        if under and under[at + len(term)] > under[at] and not words[at]:
+            stepped = text[at - 1].islower() and text[at].isupper()
+            return stepped or (ended and _AFTER_A_TERM) or (capped[at] and term in declared)
         return opens[at] or (ended and _AFTER_A_TERM)
 
     # `plain[at]`: what follows `at` can be covered, `at` being no term's end; `after[at]`:

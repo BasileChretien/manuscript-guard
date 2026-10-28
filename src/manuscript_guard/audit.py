@@ -54,8 +54,8 @@ from manuscript_guard.text.blocks import Unprinted, heading_shaped, scannable, s
 from manuscript_guard.text.comments import unclear_comment_lines
 from manuscript_guard.text.docx import NotADocx, is_docx, read_docx_text
 from manuscript_guard.text.fences import unclear_fence_lines
-from manuscript_guard.text.masking import front_matter_end, mask
-from manuscript_guard.text.reference_lists import is_bibliography_heading
+from manuscript_guard.text.masking import NUL, front_matter_end, mask
+from manuscript_guard.text.reference_lists import ends_a_list_alone, is_bibliography_heading
 from manuscript_guard.text.tables import Table, markdown_tables
 from manuscript_guard.text.tokens import DIGIT, Atom, find_atoms, trim
 
@@ -387,7 +387,11 @@ _REFERENCE_ENTRY = re.compile(
     r"(?=\s*[,&(]|\s+and\s|\s+et\s+al\b|\s+(?:19|20)\d{2})"
     rf"|[{_CAPITAL}][\w'’-]+(?:\s+[{_CAPITAL}][\w'’-]+)*(?=\s*[,.&]|\s+and\s))"
     + _AUTHOR_LIST
-    + r"(?:\((?:19|20)\d{2}[a-z]?(?:,[^)]{0,20})?\)\.|(?:\.|(?<=\.))\s+(?:19|20)\d{2}[a-z]?\.)",
+    # "(2019)." closing the author list, or "(2019)" before a title in capitals or quoted,
+    # as Harvard writes it with no full stop: "(2019) found ..." is a sentence.
+    + r"(?:\((?:19|20)\d{2}[a-z]?(?:,[^)]{0,20})?\)"
+    + rf"(?:\.|(?=\s+[{_CAPITAL}'‘\"“]))"
+    + r"|(?:\.|(?<=\.))\s+(?:19|20)\d{2}[a-z]?\.)",
 )
 
 # The numbered styles — Vancouver, AMA, ICMJE — put the surname before the initials with no
@@ -401,23 +405,61 @@ _REFERENCE_ENTRY = re.compile(
 # entry must end at its pages. "Figure A. Enrolment to Dec. 2019; 2:1 randomisation. Events
 # 413 …" has a full stop before its year too, and then goes on, as a caption does and an
 # entry does not. After the pages only a DOI, a PMID, an Epub or availability note may
-# follow. A style with no full stop before the year, as the BMJ's own, is not recognised,
-# which is the safe direction.
+# follow.
+#
+# The BMJ's own style puts no full stop before the year, "BMJ 2021;372:n71", and neither does
+# a journal's name abbreviated without stops, "N Engl J Med 2019;380:100-10". There the
+# year follows a capitalised word that is no month's, "Dec 2019;2:1" being a caption's, and
+# the entry still ends at its pages. An article online first has no volume: the year, or
+# "Published online" and a date, after the journal's full stop, and then a DOI, a PMID or an
+# Epub note, which a caption does not end with. A book ends with "Place: Publisher; 2019.",
+# and perhaps its pages, "p. 100-10.".
 #
 # Each whitespace run has one quantifier that can take it: two side by side made every
 # unclassified number on an indented line quadratic.
+_NOT_A_MONTH_BEFORE = (
+    r"(?<!Jan)(?<!Feb)(?<!Mar)(?<!Apr)(?<!Jun)(?<!Jul)(?<!Aug)(?<!Sep)(?<!Sept)"
+    r"(?<!Oct)(?<!Nov)(?<!Dec)(?<!vs)"
+)
+_YEAR_AND_DATE = r"(?:19|20)\d{2}[a-z]?(?:\s+[A-Z][a-z]{2}(?:\s+\d{1,2})?)?"  # "2019 Mar 5"
+_VOLUME_AND_PAGES = (
+    r";\s?\d+(?:\([^)]{1,20}\))?:\s?"                     # ";393:", ";42(3):", ";393(Suppl 1):"
+    r"[A-Za-z]{0,2}\d+(?:[-–][A-Za-z]{0,2}\d+)?"          # "100-10", "e0213", "n71", "S1-S10"
+)
+#: What may follow an entry's last part: a DOI, a PMID, an Epub or availability note.
+_NOTE_KEYWORD = r"(?i:doi\b|https?://|pubmed\b|pmid\b|pmcid\b|epub\b|available\b|published\b)"
+_TRAILING_NOTE = rf"(?:\s+(?:{_NOTE_KEYWORD}|\[)[^\n]*)?\s*$"
 _VANCOUVER_ENTRY = re.compile(
     r"^\s*(?:(?:\[\d{1,4}\]|\d{1,4}[.)])\s*)?"            # "12." / "[12]" / "12)"
     rf"(?:[a-z]{{1,3}}\s+){{0,2}}[{_CAPITAL}][\w'’-]+\s+[{_CAPITAL}](?:-?[{_CAPITAL}]){{0,3}}"
     rf"[,.](?=\s+(?:[{_CAPITAL}]|et\s+al\b))"             # ... then an author or the title
+    r".{0,400}?(?:"
     # The full stop that ends a journal's name, and not one ending "Dec." or "vs.".
-    r".{0,400}?(?<!Jan)(?<!Feb)(?<!Mar)(?<!Apr)(?<!Jun)(?<!Jul)(?<!Aug)(?<!Sep)(?<!Sept)"
-    r"(?<!Oct)(?<!Nov)(?<!Dec)(?<!vs)\.\s+(?:19|20)\d{2}[a-z]?"  # "Lancet. 2019"
-    r"(?:\s+[A-Z][a-z]{2}(?:\s+\d{1,2})?)?"               # "2019 Mar", "2019 Mar 5"
-    r";\s?\d+(?:\([^)]{1,20}\))?:\s?"                     # ";393:", ";42(3):", ";393(Suppl 1):"
-    r"[A-Za-z]{0,2}\d+(?:[-–][A-Za-z]{0,2}\d+)?"          # "100-10", "e0213", "n71", "S1-S10"
-    r"\.?(?:\s+(?:(?i:doi\b|https?://|pubmed\b|pmid\b|pmcid\b|epub\b|available\b"
-    r"|published\b)|\[)[^\n]*)?\s*$"
+    rf"{_NOT_A_MONTH_BEFORE}\.\s+{_YEAR_AND_DATE}{_VOLUME_AND_PAGES}\.?{_TRAILING_NOTE}"
+    # Or a capitalised word that is no month's: "BMJ 2021;372:n71".
+    r"|\s(?!(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\b)[A-Z][A-Za-z]{0,30}\s+"
+    rf"{_YEAR_AND_DATE}{_VOLUME_AND_PAGES}\.?{_TRAILING_NOTE}"
+    # Online first: "Drug Saf. 2019. doi:...", "Drug Saf. Published online March 5, 2019."
+    rf"|{_NOT_A_MONTH_BEFORE}\.\s+(?:{_YEAR_AND_DATE}|Published\s+online\s+[A-Z][a-z]+\.?"
+    r"\s+\d{1,2},?\s+(?:19|20)\d{2})\.\s+(?i:doi\b|https?://|pmid\b|epub\b)[^\n]*$"
+    # A book: "London: Example Press; 2019." and perhaps "p. 100-10.".
+    rf"|:\s?[{_CAPITAL}][^;:\n]{{0,100}};\s?(?:19|20)\d{{2}}[a-z]?\."
+    rf"(?:\s+pp?\.\s?\d+(?:[-–]\d+)?\.)?{_TRAILING_NOTE})"
+)
+
+# A web page, in the numbered styles and in Harvard's: an entry whose author may be an
+# organisation, "Example Agency.", so it is known by what only a web page's entry has, and
+# ends with: "[Internet]" or "[cited 2021 Mar 5]", "Accessed March 5, 2021." and the address,
+# or "Available at:" and the address, perhaps with the date it was read. The line has a year.
+_WEB_ENTRY = re.compile(
+    rf"^\s*(?:(?:\[\d{{1,4}}\]|\d{{1,4}}[.)])\s*)?[{_CAPITAL}]"
+    r"(?=[^\n]{0,800}?\b(?:19|20)\d{2}\b)"
+    r"[^\n]{0,600}?(?:"
+    r"\[Internet\]|\[(?:cited|accessed)\s[^\]\n]{0,40}\]"
+    r"|\bAccessed\s[A-Z][a-z]+\.?\s\d{1,2},\s(?:19|20)\d{2}\."
+    r"(?:\s+<?(?:https?://|www\.)\S+)?\s*$"
+    r"|\bAvailable\s(?:from|at):?\s*<?(?:https?://|www\.)\S+?>?\.?"
+    r"(?:\s+\((?:Accessed|cited):?\s[^)\n]{0,40}\)\.?)?\s*$)"
 )
 
 # A Markdown footnote definition. It can sit after the bibliography heading, and it is the
@@ -428,7 +470,9 @@ _FOOTNOTE = re.compile(r"^\s{0,3}\[\^[^\]]+\]:")
 def looks_like_reference(line: str) -> bool:
     """Whether a line has the shape of a reference entry. A shape can be wrong, and every
     number on a line it accepts goes uncompared, so the audit names the lines it accepted."""
-    return bool(_REFERENCE_ENTRY.match(line) or _VANCOUVER_ENTRY.match(line))
+    return bool(
+        _REFERENCE_ENTRY.match(line) or _VANCOUVER_ENTRY.match(line) or _WEB_ENTRY.match(line)
+    )
 
 
 def _markdown_heading_lines(text: str) -> frozenset[int]:
@@ -492,8 +536,22 @@ def bibliography_spans(
             if i > start
             and not is_bibliography_heading(lines[i], marked=True, markdown=markdown)
         )
-        spans.append((start, next(after, last)))
+        end = next(after, last)
+        if not markdown and start not in headings:
+            end = _end_under_no_heading(lines, start, end)
+        spans.append((start, end))
     return spans
+
+
+def _end_under_no_heading(lines: list[str], start: int, end: int) -> int:
+    """Where a .docx's list under a paragraph that is no heading ends, before `end`: at a
+    paragraph that ends a list under no heading in Markdown for `check`
+    (`ends_a_list_alone`), a caption, a back-matter title or a table, whose rows the reader
+    opens with a line of their own, ` | `, which is a pipe table's shape. With no heading
+    styles in the document the cut ran to the end of the body, and what came after the list
+    was never audited. A list under a styled heading runs on to the next, as one under
+    `# References` does in Markdown."""
+    return next((i for i in range(start + 1, end) if ends_a_list_alone(lines[i])), end)
 
 
 def strip_bibliography(
@@ -619,10 +677,31 @@ _YEAR = re.compile(r"(?:19|20)\d{2}[a-z]?")
 
 
 #: A bracketed range or pair of whole numbers after a value, `64 [55-72]` or `7 [4, 12]`.
+#: The value may have a decimal point or a decimal comma, `12,5 [10-15]`, and a percent sign
+#: spaced or not, `45 % [40-50]`. A value grouped in thousands, `1,204 [1,100-1,300]`, is
+#: read first and as such, and its bounds may be grouped too: read as a decimal comma, `1,204
+#: [1-3]` would enclose 1.204. The bounds are otherwise whole numbers of a citation's size,
+#: which are what the marker rule takes: a bound with a decimal comma would make a citation
+#: of `[4,12-15]` an interval from 4.12.
+_GROUPED = r"[1-9]\d{0,2}(?:,\d{3})+"
 _AFTER_A_VALUE = re.compile(
-    r"(?<![\w.,\[])(?P<value>\d+(?:\.\d+)?)%?\s*"
-    r"\[\s*(?P<low>\d{1,3})\s*(?:[,;]|[-–—])\s*(?P<high>\d{1,3})\s*\]"
+    r"(?<![\w.,\[])"
+    rf"(?:(?P<grouped>{_GROUPED})\s*"
+    r"\[\s*(?P<grouped_low>\d{1,3}(?:,\d{3})*)\s*(?:[,;]|[-–—])\s*"
+    r"(?P<grouped_high>\d{1,3}(?:,\d{3})*)\s*\]"
+    r"|(?P<value>\d+(?:[.,]\d+)?)(?:\s?%)?\s*"
+    r"\[\s*(?P<low>\d{1,3})\s*(?:[,;]|[-–—])\s*(?P<high>\d{1,3})\s*\])"
 )
+
+
+def _encloses(match: re.Match[str]) -> bool:
+    """Whether the bounds `_AFTER_A_VALUE` found enclose the value written before them."""
+    if match["grouped"]:
+        low, value, high = (
+            int(match[name].replace(",", "")) for name in ("grouped_low", "grouped", "grouped_high")
+        )
+        return low <= value <= high
+    return int(match["low"]) <= float(match["value"].replace(",", ".")) <= int(match["high"])
 
 
 def _within(spans: list[tuple[int, int]], starts: list[int], atom: Atom) -> bool:
@@ -640,10 +719,24 @@ def _intervals(text: str) -> list[tuple[int, int]]:
     happens to enclose a number before it, `found 2 [1,3]`, is read as an interval and listed.
     """
     return [
-        (match.end("value"), match.end())
+        (match.end("grouped") if match["grouped"] else match.end("value"), match.end())
         for match in _AFTER_A_VALUE.finditer(text)
-        if int(match["low"]) <= float(match["value"]) <= int(match["high"])
+        if _encloses(match)
     ]
+
+
+def _masked(text: str, printed_as_typed: bool) -> str:
+    """`text` masked, as `mask` does for Markdown, or, where `printed_as_typed`, with no HTML
+    comment: a .docx and a figure print `<!--` as typed, and their text went through the
+    same mask as Markdown, so a paragraph that mentions both markers hid everything between
+    them. There each `<!--` is masked with its last hyphen made another character, so that
+    it opens nothing and every other region is masked as before, and the hyphen is put back
+    wherever it was left readable."""
+    if not printed_as_typed:
+        return mask(text)
+    opens_nothing = mask(text.replace("<!--", "<!-\N{HYPHEN}"))
+    kept = zip(opens_nothing, text, strict=True)
+    return "".join(NUL if hidden == NUL else typed for hidden, typed in kept)
 
 
 def doc_passed_over(path: Path) -> str:
@@ -744,7 +837,9 @@ def audit(
     )
 
     for path, text, by_shape, lines_are_blocks in sources:
-        found = _disagreements(path, text, tables.get(path, []))
+        # A .docx and a figure are the sources whose lines are blocks, and they print `<!--`.
+        hidden = _masked(text, printed_as_typed=lines_are_blocks)
+        found = _disagreements(path, hidden, tables.get(path, []))
         if whole_numbers:
             found = sorted(found + _whole_number_means(report, path, tables.get(path, [])),
                            key=lambda d: d.line)  # fmt: skip
@@ -753,7 +848,7 @@ def audit(
         source_scan = None
         intervals = _intervals(text)
         starts = [start for start, _end in intervals]
-        pieces = [piece for atom in find_atoms(text, mask(text)) for piece in _apart(atom)]
+        pieces = [piece for atom in find_atoms(text, hidden) for piece in _apart(atom)]
         for atom, read_apart in pieces:
             if not _within(intervals, starts, atom):
                 verdict = classifier.classify(atom, None, scan)
@@ -820,12 +915,11 @@ def _whole_number_means(report: AuditReport, path: Path, tables: list[Table]) ->
     return found
 
 
-def _disagreements(path: Path, text: str, tables: list[Table]) -> list[Disagreement]:
+def _disagreements(path: Path, hidden: str, tables: list[Table]) -> list[Disagreement]:
     """The tests in a paper whose P does not follow from the statistic beside it, the
     estimates whose interval or P does not fit them, and the n (%) in its tables whose share
-    is not what the count gives of its denominator."""
+    is not what the count gives of its denominator, read in its text as masked (`_masked`)."""
     found = []
-    hidden = mask(text)
     for test in reported_tests(hidden):
         verdict = judge(test)
         if verdict is None or not verdict.inconsistent:

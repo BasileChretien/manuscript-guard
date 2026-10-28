@@ -325,7 +325,7 @@ sign it with `manuscript-guard sign`, as the warning's hint says. Never run `sig
 
 ```bash
 manuscript-guard review                # where things stand
-manuscript-guard check --submission    # submission standards: open findings fail
+manuscript-guard check --stage submission    # submission standards: open findings fail
 ```
 
 Ordinary builds warn, so you can keep producing a document to read. The version you send

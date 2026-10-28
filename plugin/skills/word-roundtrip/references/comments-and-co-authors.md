@@ -19,8 +19,8 @@ A finding there holds:
 It is filed as `comment`; raise it to `minor` or `major` as you judge.
 
 G11 reports every filed comment that has neither a `resolution` nor an `overridden` reason,
-whatever its severity: a warning while you write, a failure in `check --submission`. Answer
-each in its record, under the finding:
+whatever its severity: a warning while you write, a failure in `check --stage submission`.
+Answer each in its record, under the finding:
 
 ```yaml
   resolution: Added the 2024 review to the Introduction.

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://manuscript-guard.org/schemas/comments/1",
   "title": "manuscript-guard comments record",
-  "description": "The Word comments one commenter left in a document this tool built, filed by `manuscript-guard import` as findings the author answers. One record per commenter per document built, at review/comments/<document>-<build>/<commenter>.yaml, outside every panel round. G11 reports each finding until it has a resolution or an override with a reason, and fails `check --submission` while one has neither, whatever its severity. Internal: nothing in it goes into a build or a submission pack.",
+  "description": "The Word comments one commenter left in a document this tool built, filed by `manuscript-guard import` as findings the author answers. One record per commenter per document built, at review/comments/<document>-<build>/<commenter>.yaml, outside every panel round. G11 reports each finding until it has a resolution or an override with a reason, and fails `check --stage submission` while one has neither, whatever its severity. Internal: nothing in it goes into a build or a submission pack.",
   "type": "object",
   "required": ["schema", "commenter", "document", "built_from", "filed_on", "words_sha256", "findings"],
   "additionalProperties": false,

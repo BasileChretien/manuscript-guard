@@ -1088,6 +1088,47 @@ def latex_lengths(draw: st.DrawFn) -> tuple[str, list[tuple[int, str, bool]]]:
     return text + "\n", planted
 
 
+#: Where a number stands in a reference list typed in `thebibliography`, each `{}` the
+#: number: the list's widest label, an entry's label, its year, its volume and pages, a
+#: `\\newblock`, a DOI and a note; and where one stands round the list, in the text before
+#: and after it, which G2 reads (2026-10-27).
+LATEX_REFERENCE_PLACES = (
+    ("\\begin{{thebibliography}}{{{}}}\n", False),
+    ("\\bibitem[Smith({})]{{smith}} Smith J. ", False),
+    ("Title. Journal {};", False),
+    ("34:{}-9.\n", False),
+    ("\\newblock Vol. {}, pp. 1--9.\n", False),
+    ("\\bibitem{{jones}} Jones. doi:10.{}/x. ", False),
+    ("(accessed {} May).\n\\end{{thebibliography}}\n", False),
+)
+LATEX_PROSE_PLACES = ("Of {} reports, ", "{} were fatal.\n\n")
+
+
+@st.composite
+def latex_reference_lists(draw: st.DrawFn) -> tuple[str, list[tuple[int, str, bool]]]:
+    """A LaTeX document's body holding a reference list typed in `thebibliography`, a number
+    at each place of `LATEX_REFERENCE_PLACES` in that order, with prose holding a number
+    before it and after it; each place's words drawn round it. And where each number stands,
+    and whether G2 reads it. Every kind is in every document."""
+    text, planted, count = "", [], 0
+
+    def put(template: str, read: bool) -> None:
+        nonlocal text, count
+        before, after = template.split("{}")
+        number = str(4101 + count)
+        count += 1
+        text += before.replace("{{", "{").replace("}}", "}")
+        planted.append((len(text), number, read))
+        text += number + after.replace("{{", "{").replace("}}", "}")
+
+    put(draw(st.sampled_from(LATEX_PROSE_PLACES)), True)
+    for template, read in LATEX_REFERENCE_PLACES:
+        text += draw(st.sampled_from(("", "A. ", "\\emph{B.} ")))
+        put(template, read)
+    put(draw(st.sampled_from(LATEX_PROSE_PLACES)), True)
+    return text, planted
+
+
 #: Where a command defined with delimited parameters is used, each `{}` the use, and whether
 #: what it makes prints there: where it prints the reader cannot know what it takes, and
 #: refuses it; in a blanked argument, a comment, an unprinted block, code and a definition's
@@ -1429,6 +1470,15 @@ LATEX_PRINTED_PLACES = (
     # A formula and a typed table print the bindings they hold (round 1 of step 8).
     ("$n = \\mg{{results.{}}}$ ", ("bound",)),
     ("\\begin{{tabular}}{{l}}\\mg{{results.{}}}\\end{{tabular}}\n", ("bound",)),
+    # An accent command and a letter typed as one print their letter, beside the rest of
+    # the word; one in a comment prints nothing (2026-10-27).
+    ("{}Chr\\'etien ", ("folded:{}Chr\N{LATIN SMALL LETTER E WITH ACUTE}tien",)),
+    ("M{{\\\"u}}ller{} ", ("folded:M\N{LATIN SMALL LETTER U WITH DIAERESIS}ller{}",)),
+    ("Stra\\ss e{} ", ("folded:Stra\N{LATIN SMALL LETTER SHARP S}e{}",)),
+    ("% caf\\'e {}\n", ("hidden",)),
+    # An accent over a letter Unicode composes with none prints the letter and its mark,
+    # each in a place of its own, so that what follows is read where it stands.
+    ("Erd\\H{{e}}s{} ", ("folded:Erde\N{COMBINING DOUBLE ACUTE ACCENT}s{}",)),
 )  # fmt: skip
 
 
@@ -1510,9 +1560,15 @@ def latex_quotations(draw: st.DrawFn) -> tuple[str, list[tuple[str, bool]]]:
 #: opened a quotation in its paragraph that nothing closed, and not after a blank line, nor
 #: alone, nor after a quotation closed, nor before a letter (babel's German accent), nor where
 #: the ``` `` ``` is in a comment, nor in `\verb`. Two in one paragraph each close their own.
+#: Nor after a `\par`, which ends a paragraph as a blank line does, on its line or on one of
+#: its own; but after a `\par` in a comment, or the letters after `\\`, it closes (2026-10-27).
 LATEX_STRAIGHT_QUOTES = (
     ('``{} words" {}', (True,)),
     ('``{} words\n\n{} words" here', (False,)),
+    ('``{} words\\par {} words" here', (False,)),
+    ('``{} words\n\\par\n{} words" here', (False,)),
+    ('``{} words % \\par\n{} words" here', (True,)),
+    ('``{} words\\\\par {} words" here', (True,)),
     ('{} words" {}', (False,)),
     ("``{} words'' then\" {}", (False,)),
     ('``{} words"a {}', (False,)),
@@ -1558,10 +1614,50 @@ LATEX_CLAIM_PLACES = (
     ("\\iffalse This report follows {}. \\fi\n", False),
     ("\\begin{{thebibliography}}{{9}}\n\\bibitem{{k}} The {} statement.\n"
      "\\end{{thebibliography}}\n", False),
+    # Hard-wrapped, the verb and the name on two lines, is read; over a blank line, or over
+    # a typed table's rows, it is not (2026-10-27).
+    ("This report\nfollows {}.\n", True),
+    ("The report follows the\n{} items.\n", True),
+    ("The report follows\n\n{} here.\n", False),
+    ("\\begin{{tabular}}{{ll}}\nChecklist & page \\\\\n{} & 3 \\\\\n\\end{{tabular}}\n", False),
+    # A list's items are sentences of their own (round 1 of #452).
+    ("\\begin{{itemize}}\n\\item Outcomes were reported\n\\item {} flow here.\n"
+     "\\end{{itemize}}\n", False),
+)  # fmt: skip
+#: Where a Markdown paper says it followed a reporting guideline, and whether G8r reads the
+#: claim there: each `{}` is a guideline's name. A sentence runs over a single line break
+#: and not over a blank line, nor from one item of a list into the next, whatever its
+#: marker (round 1 of #452: "reported" in one item and the name in the next were a claim).
+MARKDOWN_CLAIM_PLACES = (
+    ("This report follows {}.\n", True),
+    ("This report\nfollows {}.\n", True),
+    ("The report follows\n\n{} here.\n", False),
+    ("- Outcomes were reported by sex\n- {} flow diagram in Figure 1\n", False),
+    ("* Outcomes were reported\n* {} flow here\n", False),
+    ("+ Outcomes were reported\n+ {} flow here\n", False),
+    ("1. Outcomes were reported\n2. {} flow here\n", False),
+    ("3) Outcomes were reported\n4) {} flow here\n", False),
+    ("- The analysis followed\n  {} items\n", True),
+    ("<!-- This report follows {}. -->\n", False),
 )  # fmt: skip
 #: A guideline's name for each place, none the start of another.
 _GUIDELINES_CLAIMED = ("STROBE", "CONSORT", "SPIRIT", "PRISMA", "TRIPOD", "ARRIVE", "SQUIRE",
-                       "COREQ")  # fmt: skip
+                       "COREQ", "STARD", "MOOSE", "CHEERS", "SRQR", "ENTREQ")  # fmt: skip
+
+
+@st.composite
+def markdown_claims(draw: st.DrawFn) -> tuple[str, list[tuple[str, bool]]]:
+    """A Markdown paper with a claim in every place of `MARKDOWN_CLAIM_PLACES`, in an order
+    drawn, each its own paragraph; and each guideline named, with whether G8r reads it."""
+    order = draw(st.permutations(range(len(MARKDOWN_CLAIM_PLACES))))
+    planted: list[tuple[str, bool]] = []
+    text = ""
+    for index in order:
+        template, read = MARKDOWN_CLAIM_PLACES[index]
+        name = _GUIDELINES_CLAIMED[index]
+        planted.append((name, read))
+        text += "\n" + template.replace("{}", name)
+    return text, planted
 
 
 @st.composite
@@ -1877,9 +1973,11 @@ def latex_model_names(draw: st.DrawFn) -> tuple[str, list[tuple[int, str]]]:
 #: Where a LaTeX document holds a word, as G14 reads it (`text/latex/words.py`): each `{}`
 #: holds a word, and its kind says what the words view makes of it. A word in prose, a
 #: heading, a footnote or a table's caption is read where it stands; one in maths, code, a
-#: figure's caption, a comment or a label is not; one an accent command or `\\-` splits is not
-#: read and is given as unread; and a count written as a subscript after a word's last letter
-#: is written `~2~`.
+#: figure's caption, a comment or a label is not; one an accent command, a letter typed as a
+#: command or `\\-` splits is read as LaTeX prints it, from where it starts (`folded:` and the
+#: word, `{}` its key; 2026-10-27), and one whose accent marks no letter is not read and is
+#: given as unread; and a count written as a subscript after a word's last letter is written
+#: `~2~`.
 LATEX_WORDS_PLACES = (
     ("prose {} words ", ("read",)),
     ("\\section{{{}}}\n", ("read",)),
@@ -1892,8 +1990,12 @@ LATEX_WORDS_PLACES = (
     ("\\texttt{{{}}} ", ("hidden",)),
     ("% {}\n", ("hidden",)),
     ("\\label{{{}}} ", ("hidden",)),
-    ("caf\\'e{} ", ("split",)),
-    ("{}co\\-op ", ("split",)),
+    ("caf\\'e{} ", ("folded:caf\N{LATIN SMALL LETTER E WITH ACUTE}{}",)),
+    ("{}co\\-op ", ("folded:{}coop",)),
+    ("{}na\\\"{{\\i}}ve ", ("folded:{}na\N{LATIN SMALL LETTER I WITH DIAERESIS}ve",)),
+    ("Stra\\ss e{} ", ("folded:Stra\N{LATIN SMALL LETTER SHARP S}e{}",)),
+    ("{{\\c c}}a{} ", ("folded:\N{LATIN SMALL LETTER C WITH CEDILLA}a{}",)),
+    ("caf\\'{{ }}e{} ", ("split",)),
     ("{}X$_2$ ", ("subscript",)),
 )  # fmt: skip
 
@@ -2094,7 +2196,12 @@ def latex_trees(
     by its folder under the one the file it stands in was imported from, which the first file
     writes; and `\\input` by its path from that folder, which LaTeX looks in where the entry
     file's folder does not hold the file, which the first file writes too. The folder a file
-    was imported from is worked out here apart from the reader."""
+    was imported from is worked out here apart from the reader.
+
+    And the entry file places two parts after its second input (2026-10-27): a `subfiles`
+    part by `\\subfile`, whose body opens a heading, and a `standalone` picture by
+    `\\includestandalone` inside a `figure`, each with a preamble that inputs or comments
+    something the paper does not read."""
     count = draw(st.integers(min_value=5, max_value=6))
     stems = ["main", *(f"part{index}" for index in range(1, count))]
     # The first file is imported from a folder, and the third and fourth are under it, so
@@ -2116,10 +2223,17 @@ def latex_trees(
                   if kind == "input" and child < count]  # fmt: skip
         rest = [item for item in drawn if item[0] != "input"]
         opening = [("heading", -1), ("heading", 0), ("heading", 1), ("input", (1, "import")),
-                   ("heading", 3), ("input", (2, "input"))]  # fmt: skip
+                   ("heading", 3), ("input", (2, "input")), ("place", PLACED_PART),
+                   ("place", PLACED_PICTURE)]  # fmt: skip
         planted = {0: opening, 1: [("heading", 2), ("input", (3, "subimport")),
                                    ("input", (4, "from-imported"))]}  # fmt: skip
         items[name] = planted.get(index, []) + rest + inputs
+    # A part the paper places by `\\subfile`, which opens a heading, and a picture it places
+    # by `\\includestandalone` inside a figure, after it (2026-10-27).
+    placing = draw(st.sampled_from(("", "parts/")))
+    items[placing + PLACED_PART] = [("heading", draw(st.integers(min_value=1, max_value=3))),
+                                    ("words", draw(st.sampled_from(FILLER)))]  # fmt: skip
+    items[placing + PLACED_PICTURE] = [("words", draw(st.sampled_from(FILLER)))]
     files, under, marks, seen, counter = {}, {}, {}, {"main.tex"}, [0]
 
     def named(child: int, how: str | None, imported: str) -> tuple[str, str]:
@@ -2145,6 +2259,12 @@ def latex_trees(
     def visit(name: str, chain: list[tuple[int, str]], imported: str) -> list[tuple[int, str]]:
         under[name] = [title for _, title in chain]
         text = "\\documentclass{article}\n\\begin{document}\n" if name == "main.tex" else ""
+        if name.endswith(PLACED_PART):
+            up = "../" if placing else ""
+            text = (f"\\documentclass[{up}main.tex]{{subfiles}}\n\\input{{./x}}\n"
+                    "\\begin{document}\n")
+        elif name.endswith(PLACED_PICTURE):
+            text = "\\documentclass[tikz]{standalone}\n% x\n\\begin{document}\n"
         for kind, value in items[name]:
             if kind == "heading":
                 counter[0] += 1
@@ -2160,9 +2280,19 @@ def latex_trees(
                 if child not in seen:
                     seen.add(child)
                     chain = visit(child, chain, folder)
+            elif kind == "place":
+                child = placing + value
+                stem = child.removesuffix(".tex")
+                if value == PLACED_PART:
+                    text += f"\\subfile{{{stem}}}"
+                else:
+                    text += (f"\\begin{{figure}}\\includestandalone[width=3cm]{{{stem}}}"
+                             "\\end{figure}")
+                chain = visit(child, chain, "")
             else:
                 text += f"{value} "
-        files[name] = text + ("\n\\end{document}\n" if name == "main.tex" else "")
+        ends = name == "main.tex" or name.endswith((PLACED_PART, PLACED_PICTURE))
+        files[name] = text + ("\n\\end{document}\n" if ends else "")
         return chain
 
     visit("main.tex", [], "")
@@ -2171,6 +2301,8 @@ def latex_trees(
     return files, under, marks
 
 
+#: The files `latex_trees` places, a part by `\\subfile` and a picture by `\\includestandalone`.
+PLACED_PART, PLACED_PICTURE = "placed.tex", "picture.tex"
 #: Each way a class or a package names a file it inputs, as `{}` takes the file's path.
 CLASS_INPUTS = ("\\input{{{}}}", "\\input {}\n", "\\@input{{{}}}",
                 "\\InputIfFileExists{{{}}}{{}}{{}}")  # fmt: skip
@@ -2208,10 +2340,13 @@ def latex_folders(draw: st.DrawFn) -> tuple[dict[str, str], dict[str, set[str]]]
     that shows a `\\begin{document}` in each way of `NOT_A_DOCUMENT`; and a document of its
     own. And since round 1 of #445: the class loads a class with `\\LoadClass`, which inputs
     one, and defines a command to input one in each way of `DEFINED_INPUTS`, a file the paper
-    prints and so loose; a picture in the `standalone` class, which the paper places with
-    `\\includestandalone`, loose; a part in the `subfiles` class, loose (round 2); and a file
-    refused in its preamble, in a way drawn from `PREAMBLE_REFUSALS`, before a
-    `\\begin{document}` it shows in a listing, loose and `refused`."""
+    prints and so loose; a picture in the `standalone` class and a part in the `subfiles`
+    class (round 2), each once where the paper places it, with `\\includestandalone` or
+    `\\subfile`, and read (2026-10-27), and once placed nowhere, and loose; a file of
+    settings the paper's preamble inputs by TeX's `\\input name` without braces, read
+    (2026-10-27); and a file refused in its preamble, in a way drawn from
+    `PREAMBLE_REFUSALS`, before a `\\begin{document}` it shows in a listing, loose and
+    `refused`."""
 
     def words() -> str:
         return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
@@ -2251,25 +2386,34 @@ def latex_folders(draw: st.DrawFn) -> tuple[dict[str, str], dict[str, set[str]]]
     if second.startswith("supplementary/"):
         files["supplementary/main.tex"] = (f"\\documentclass{{article}}\n\\begin{{document}}\n"
                                            f"{words()}\n\\end{{document}}\n")  # fmt: skip
-    picture = draw(st.sampled_from(("fig.tex", "figures/fig.tex")))
+    folder = draw(st.sampled_from(("", "figures/")))
+    picture, unplaced = f"{folder}fig.tex", f"{folder}unplaced.tex"
     options = draw(st.sampled_from(("", "[tikz, border=2pt]")))
-    files[picture] = (f"\\documentclass{options}{{standalone}}\n\\usepackage{{tikz}}\n"
-                      "\\begin{document}\n\\begin{tikzpicture}\\node{n = 42};\\end{tikzpicture}\n"
-                      "\\end{document}\n")  # fmt: skip
-    part = draw(st.sampled_from(("part.tex", "sections/part.tex")))
-    files[part] = (f"\\documentclass[{'../' if '/' in part else ''}main.tex]{{subfiles}}\n"
-                   f"\\begin{{document}}\n{words()} 7.\n\\end{{document}}\n")  # fmt: skip
+    for name in (picture, unplaced):
+        files[name] = (f"\\documentclass{options}{{standalone}}\n\\usepackage{{tikz}}\n"
+                       "\\begin{document}\n\\begin{tikzpicture}\\node{n = 42};\\end{tikzpicture}\n"
+                       "\\end{document}\n")  # fmt: skip
+    folder = draw(st.sampled_from(("", "sections/")))
+    part, placed = f"{folder}part.tex", f"{folder}placed.tex"
+    for name in (part, placed):
+        files[name] = (f"\\documentclass[{'../' if folder else ''}main.tex]{{subfiles}}\n"
+                       f"\\begin{{document}}\n{words()} 7.\n\\end{{document}}\n")  # fmt: skip
     refused = draw(st.sampled_from(("refused.tex", "a/b/refused.tex")))
     files[refused] = (f"{draw(st.sampled_from(PREAMBLE_REFUSALS))} {words()} 5.\n"
                       "\\begin{verbatim}\\begin{document}\\end{verbatim}\n")  # fmt: skip
+    settings = draw(st.sampled_from(("settings.tex", "a/settings.tex")))
+    files[settings] = "\\newcommand{\\cohort}{a cohort}\n"
+    bare = draw(st.sampled_from(("{} ", "{}\n", "{}%\n", "{}\\relax\n", "{}.tex\n")))
     files["main.tex"] = (f"\\documentclass[{words()}]{{{style}{stem}}}\n\\usepackage{{mine}}\n"
-                         "\\usepackage{standalone}\n"
+                         + "\\input " + bare.format(settings.removesuffix(".tex"))
+                         + "\\usepackage{standalone}\n"
                          f"\\begin{{document}}\n{words()}\n\\input{{{shared}}}\n{words()}\n"
                          f"\\includestandalone[width=3cm]{{{picture.removesuffix('.tex')}}}\n"
+                         f"\\subfile{{{placed.removesuffix('.tex')}}}\n"
                          "\\end{document}\n")  # fmt: skip
-    expected = {"read": {"main.tex", shared, "mine.sty"},
+    expected = {"read": {"main.tex", shared, "mine.sty", picture, placed, settings},
                 "classes": {*listed, deeper, macros, based},
-                "loose": {commented, unloaded, shows, loose, *defined, picture, part, refused},
+                "loose": {commented, unloaded, shows, loose, *defined, unplaced, part, refused},
                 "second": {second}, "refused": {refused}}  # fmt: skip
     return files, expected
 
@@ -2546,6 +2690,132 @@ def bold_planted(draw: st.DrawFn) -> tuple[str, int]:
     return text, count
 
 
+def _inlines(words: str) -> list[dict]:
+    """Words as pandoc's tree holds them: a Str each, a Space between."""
+    out: list[dict] = []
+    for word in words.split(" "):
+        out += [{"t": "Space"}, {"t": "Str", "c": word}] if out else [{"t": "Str", "c": word}]
+    return out
+
+
+@st.composite
+def keyword_paragraphs(draw: st.DrawFn) -> list[tuple[dict, bool]]:
+    """Paragraphs of pandoc's tree that open an abstract's keywords, and paragraphs that open
+    with the word and are a sentence, every kind in each example, in an order drawn; and
+    whether each is the label. The word is drawn in each case and spelling: "Keywords", "Key
+    words", "Key-words", "Keyword"."""
+    word = draw(st.sampled_from(("Keywords", "Key words", "Key-words", "Keyword")))
+    word = draw(st.sampled_from((word, word.upper(), word.lower())))
+    listed = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=3)))
+    sentence = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=2, max_size=5)))
+
+    def strong(said: str) -> dict:
+        return {"t": "Strong", "c": _inlines(said)}
+
+    def para(*inlines: dict | list[dict]) -> dict:
+        flat: list[dict] = []
+        for piece in inlines:
+            flat += piece if isinstance(piece, list) else [piece]
+        return {"t": "Para", "c": flat}
+
+    space = {"t": "Space"}
+    kinds = [
+        # In bold with no colon, as the abstract's own labels are written.
+        (para(strong(word), space, _inlines(listed)), True),
+        (para(strong(word + "."), space, _inlines(listed)), True),
+        (para(strong(word), {"t": "Str", "c": "."}, space, _inlines(listed)), True),
+        # With a colon, in bold, emphasised or plain.
+        (para(strong(word + ":"), space, _inlines(listed)), True),
+        (para({"t": "Emph", "c": _inlines(word)}, {"t": "Str", "c": ":"}, space,
+              _inlines(listed)), True),
+        (para(_inlines(word + ": " + listed)), True),
+        # A sentence that opens with the word: emphasised, plain, or a bold sentence.
+        (para({"t": "Emph", "c": _inlines(word)}, space, _inlines(sentence)), False),
+        (para(_inlines(word + " " + sentence)), False),
+        (para(strong(word + " " + sentence)), False),
+        (para(strong(word.replace(" ", "").replace("-", "") + "search"), space,
+              _inlines(sentence)), False),
+    ]  # fmt: skip
+    return draw(st.permutations(kinds))
+
+
+@st.composite
+def abstract_trees(draw: st.DrawFn) -> list[tuple[list[dict], list[dict] | None]]:
+    """Texts as pandoc's tree holds them, each with its heading "Abstract" at the top, inside
+    a Div, inside a Div inside a Div, after a Div of words, or nowhere; and the blocks under
+    the heading, up to the next of its level or above, or the end of its Div. Every kind in
+    each example, in an order drawn."""
+    title = draw(st.sampled_from(("Abstract", "ABSTRACT", "Structured abstract", "1. Abstract")))
+    level = draw(st.integers(1, 3))
+
+    def paragraphs(least: int = 1) -> list[dict]:
+        return [
+            {"t": "Para", "c": _inlines(" ".join(draw(st.lists(st.sampled_from(FILLER),
+                                                                min_size=1, max_size=4))))}
+            for _ in range(draw(st.integers(least, 3)))
+        ]  # fmt: skip
+
+    def heading(said: str, at: int) -> dict:
+        return {"t": "Header", "c": [at, ["", [], []], _inlines(said)]}
+
+    def div(blocks: list[dict]) -> dict:
+        classes = draw(st.sampled_from(([], ["abstract"], ["section"])))
+        return {"t": "Div", "c": [["", classes, []], blocks]}
+
+    def section() -> tuple[list[dict], list[dict]]:
+        under = paragraphs()
+        after = [heading("Introduction", draw(st.integers(1, level))), *paragraphs()]
+        return [heading(title, level), *under, *after], under
+
+    kinds: list[tuple[list[dict], list[dict] | None]] = []
+    blocks, under = section()
+    kinds.append(([*paragraphs(0), *blocks], under))
+    blocks, under = section()
+    kinds.append(([*paragraphs(0), div(blocks), *paragraphs(0)], under))
+    blocks, under = section()
+    kinds.append(([div([*paragraphs(0), div(blocks)]), *paragraphs(0)], under))
+    blocks, under = section()
+    kinds.append(([div(paragraphs()), *blocks], under))
+    # The Div ends the abstract: what stands after it is the text's.
+    under = paragraphs()
+    kinds.append(([div([heading(title, level), *under]), *paragraphs()], under))
+    words = [{"t": "Para", "c": _inlines("Abstract " + " ".join(draw(st.lists(
+        st.sampled_from(FILLER), min_size=1, max_size=3))))}]  # fmt: skip
+    kinds.append(([div(words), *paragraphs()], None))
+    return draw(st.permutations(kinds))
+
+
+#: A figure's caption, as `figure_caption.lua` sets it in the caption's style, and words that
+#: open as one and are prose. `{n}` is the figure's number.
+CAPTIONS = (
+    "Figure {n}. The estimate.", "Figure S{n}: The estimate.", "Fig. {n}. The estimate.",
+    "Fig.\N{NO-BREAK SPACE}S{n}: The estimate.", "**Fig. {n}.** The estimate.",
+    "eFigure {n}. The estimate.", "eFigure S{n}. The estimate.", "**eFigure {n}.** The estimate.",
+)  # fmt: skip
+NOT_CAPTIONS = (
+    "Fig. {n} shows the estimate.", "Figs. {n}. The estimates.", "Fig {n}. The estimate.",
+    "eFigure {n}.5-fold higher.", "efigure {n}. The estimate.", "Figure {n} shows it.",
+    "eFigure {n} shows it.",
+)  # fmt: skip
+
+
+@st.composite
+def figure_captions(draw: st.DrawFn) -> tuple[str, list[str]]:
+    """A text of figures, each with a paragraph under it, a caption or prose, every kind in
+    each example in an order drawn; and a caption also standing under no figure. With the
+    text of each paragraph the filter should set as a caption, in order, bold taken off."""
+    kinds = [(form, True) for form in CAPTIONS] + [(form, False) for form in NOT_CAPTIONS]
+    out, styled = [], []
+    for form, is_caption in draw(st.permutations(kinds)):
+        said = form.format(n=draw(st.integers(1, 12)))
+        out += ["![](figure.png)", said]
+        if is_caption:
+            styled.append(said.replace("**", ""))
+        if draw(st.booleans()):
+            out.append(draw(st.sampled_from(CAPTIONS)).format(n=draw(st.integers(1, 12))))
+    return "\n\n".join(out) + "\n", styled
+
+
 #: A reference list's titles, in English and in the languages `text.section_names` knows,
 #: and titles that open with such a word and name something else.
 REFERENCE_TITLES = (
@@ -2574,6 +2844,81 @@ def reference_titled(draw: st.DrawFn) -> list[tuple[str, bool]]:
     return draw(st.permutations(cased))
 
 
+#: Titles of the Methods, `{}` standing for words drawn each time: the word alone, with
+#: another part's name joined by "and", and with what the Methods hold after a colon, a
+#: stop, a dash or "of". And titles that are not the Methods: a part that reports what was
+#: found, under any of those joints, and a word that only opens with "method".
+METHODS_TITLES = (
+    "Methods", "Materials and methods", "Methods and {}", "Methods: {}", "Methods. {}",
+    "Methods \N{EN DASH} {}", "Methods of {}", "Statistical analysis",
+)  # fmt: skip
+NOT_METHODS_TITLES = (
+    "Results", "Methods and results", "Methods: main results of {}", "Methods of {} findings",
+    "Methodological notes on {}", "Methodsof {}",
+)  # fmt: skip
+_METHODS_WORDS = ("data", "sources", "the", "study", "cohort", "setting", "analysis")
+
+
+@st.composite
+def methods_titled(draw: st.DrawFn) -> list[tuple[str, bool]]:
+    """Every title above, with words drawn for its `{}`, numbered or not, written as drawn,
+    upper case, lower case or as it stands, in an order drawn; and whether it titles the
+    Methods."""
+    planted = [(title, True) for title in METHODS_TITLES]
+    planted += [(title, False) for title in NOT_METHODS_TITLES]
+    written = []
+    for title, methods in planted:
+        words = " ".join(draw(st.lists(st.sampled_from(_METHODS_WORDS), min_size=1, max_size=3)))
+        title = draw(st.sampled_from(("", "2. ", "II. "))) + title.replace("{}", words)
+        written.append((draw(st.sampled_from((title, title.upper(), title.lower()))), methods))
+    return draw(st.permutations(written))
+
+
+#: Titles of a plan's Deviations, and titles that hold "deviation" as a statistic's name.
+DEVIATION_TITLES = (
+    "Deviations from the plan", "Protocol deviations", "Changes to the plan", "Amendments",
+    "Standard deviation and deviations from the plan",
+)  # fmt: skip
+NOT_DEVIATION_TITLES = (
+    "Standard deviation of the dose", "Standard deviations", "Pooled standard deviation",
+)  # fmt: skip
+
+
+@st.composite
+def deviation_titled(draw: st.DrawFn) -> tuple[str, list[str]]:
+    """A plan with a section under every title above, numbered or not, written as drawn,
+    upper case, lower case or as it stands, in an order drawn, each saying a word of its
+    own; and the words said under the Deviations, in order."""
+    planted = [(title, True) for title in DEVIATION_TITLES]
+    planted += [(title, False) for title in NOT_DEVIATION_TITLES]
+    text, said = "# Analysis plan\n\n", []
+    for number, (title, deviation) in enumerate(draw(st.permutations(planted))):
+        title = draw(st.sampled_from(("", "7. "))) + title
+        title = draw(st.sampled_from((title, title.upper(), title.lower())))
+        text += f"## {title}\n\nword{number}\n\n"
+        if deviation:
+            said.append(f"word{number}")
+    return text, said
+
+
+#: How a heading's title is numbered or marked, which is no part of its name: Arabic, Roman,
+#: a letter, a number in brackets, a subsection's number, and bold around it.
+TITLE_NUMBERINGS = (
+    lambda title: f"7. {title}", lambda title: f"VII. {title}", lambda title: f"A. {title}",
+    lambda title: f"(3) {title}", lambda title: f"2.1 {title}", lambda title: f"**{title}**",
+    lambda title: f"**IV. {title}**",
+)  # fmt: skip
+
+
+@st.composite
+def numbered_reference_titled(draw: st.DrawFn) -> list[tuple[str, bool]]:
+    """`reference_titled`, each title numbered or marked as `TITLE_NUMBERINGS` writes one,
+    every way among them in each example."""
+    titled = draw(reference_titled())
+    ways = list(draw(st.permutations(TITLE_NUMBERINGS)))
+    return [(ways[at % len(ways)](title), is_list) for at, (title, is_list) in enumerate(titled)]
+
+
 #: Names a number stands in, which `check` and the audit read as no number: an e-mail
 #: address (structural) and an interleukin, abbreviated or written out (a term). And what
 #: is a number however near it stands: a count, and digits round an `@` with no domain.
@@ -2596,7 +2941,20 @@ TERM_LOOKALIKES = ("April-12", "Brazil-3", "until-15")
 #: without its signs it stands hard against that capital, "PharmD2" holding `d2` and
 #: "ApoB12" `b12`, and it is a number still.
 RAISED_AFTER_A_CAPITAL = ("PharmD^2^", "ApoB^12^", "dB^12^")
-NOT_NAMES = ("12", "3.4", "12@3.5", "40@lab", *TERM_LOOKALIKES, *RAISED_AFTER_A_CAPITAL)
+#: A subscript is part of the name it is typed in, where the name opens its word, at a
+#: capital after a lower-case letter, or after another name: "HbA~1c~", "ppFEV~1~" and
+#: "PaO~2~FiO~2~" are names. An index set below the line after a capital, "HR~2~" and
+#: "OR~2~", is a number, though `r2` is a term. A term the project declares is a name after
+#: capitals that open its word: with CO2 declared (`DECLARED_TERMS`), "ETCO~2~", "PCO~2~"
+#: and "VCO~2~".
+SUNK_NAMES = ("HbA~1c~", "ppFEV~1~", "PaO~2~FiO~2~", "ETCO~2~", "PCO~2~", "VCO~2~")
+#: The terms a project declares where `named_numbers` is read.
+DECLARED_TERMS = ("CO2",)
+SUNK_AFTER_A_CAPITAL = ("HR~2~", "OR~2~")
+NOT_NAMES = (
+    "12", "3.4", "12@3.5", "40@lab", *TERM_LOOKALIKES, *RAISED_AFTER_A_CAPITAL,
+    *SUNK_AFTER_A_CAPITAL,
+)  # fmt: skip
 #: Words to put between them: none names a class or a time, which a number after it is a
 #: label of ("cohort 12", "week 12").
 _BETWEEN_NAMES = ("reports", "were", "included", "the", "of", "and", "found", "among")
@@ -2608,7 +2966,7 @@ def named_numbers(draw: st.DrawFn) -> tuple[str, dict[str, str]]:
     words and a separator drawn between them; and what each is: "address", "name" or
     "number"."""
     planted = [(text, "address") for text in NUMBERED_ADDRESSES]
-    planted += [(text, "name") for text in (*INTERLEUKINS, *NAMES_IN_WORDS)]
+    planted += [(text, "name") for text in (*INTERLEUKINS, *NAMES_IN_WORDS, *SUNK_NAMES)]
     planted += [(text, "number") for text in NOT_NAMES]
     gaps = st.sampled_from((" ", ", ", "; ", " and ", " (", ") ", ". "))
     # Words first, so that no number opens the line, where it is a list's numbering.
@@ -2616,7 +2974,8 @@ def named_numbers(draw: st.DrawFn) -> tuple[str, dict[str, str]]:
     for piece, _kind in draw(st.permutations(planted)):
         filler = " ".join(draw(st.lists(st.sampled_from(_BETWEEN_NAMES), max_size=3)))
         text += f"{draw(gaps)}{filler} {piece}{draw(gaps)}"
-    return text.strip() + "\n", dict(planted)
+    # An atom is cut before the `~` that closes its last subscript.
+    return text.strip() + "\n", {piece.removesuffix("~"): kind for piece, kind in planted}
 
 
 # -------------------------------------------------------------------------- quotations
@@ -2822,12 +3181,34 @@ RECYCLED = (
 )
 
 #: What a page sets in place of a word or between two: a ligature, a word broken at the end
-#: of a line, a reference's number, a page's end.
+#: of a line, a reference's number or its authors and year, a page's end.
 _SET_IN_TYPE = (
     ("fi", "\N{LATIN SMALL LIGATURE FI}"), ("ff", "\N{LATIN SMALL LIGATURE FF}"),
     ("fl", "\N{LATIN SMALL LIGATURE FL}"),
 )  # fmt: skip
-_TYPESET_GAPS = (*SOURCE_GAPS, ".12 ", "\N{SUPERSCRIPT TWO} ", "\f", "-\n")
+#: A citation by author and year in parentheses, as an earlier paper prints one where the
+#: manuscript cites by key: each is no word of the passage it stands in.
+AUTHOR_YEAR_CITED = (
+    "(Smith et al., 2019)", "(Smith et al. 2019)", "(Smith, 2019)", "(Smith 2019a)",
+    "(Smith and Roe, 2019)", "(Smith & Roe, 2019)", "(Smith, Roe, and Doe, 2019)",
+    "(Smith et al., 2019; Roe, 2020)", "(van der Berg et al., 2018)", "(O'Brien, 2017)",
+    "(M\N{LATIN SMALL LETTER U WITH DIAERESIS}ller-Roe et al.,\n2019)",
+    "(e.g., Smith et al., 2019)", "(see Roe 2020)", "(Smith et al., 2019, 2020b)",
+    "(Smith, 2019, p. 12)", "( Smith  et  al. ,  2019 )",
+    # A word that opens a date is a name where "et al." or a second author follows it.
+    "(Winter et al., 2019)", "(Spring and Roe, 2019)",
+)  # fmt: skip
+#: Words in parentheses that are no citation by author and year: a date, a name with no
+#: year, a table, a year with no name, and words in lower case before a year; and a
+#: preposition, a season or a word of a period standing alone before the year (round 1 of
+#: #452).
+NOT_AUTHOR_YEAR = (
+    "(January 2019)", "(Smith et al.)", "(Table 2, 2019)", "(in 2019)", "(two readers, 2019)",
+    "(n = 2019)", "(2019)", "(Since 2019)", "(Spring 2019)", "(Autumn, 2018)",
+    "(Smith, 2019; Until 2020)",
+)  # fmt: skip
+_TYPESET_GAPS = (*SOURCE_GAPS, ".12 ", "\N{SUPERSCRIPT TWO} ", "\f", "-\n",
+                 " (Smith et al., 2019) ", " (Roe and Doe 2020a) ")  # fmt: skip
 
 
 @st.composite
@@ -3041,6 +3422,55 @@ def pdf_document(
     for number, body in enumerate(objects, 1):
         out += b"%d 0 obj\n" % number + body + b"\nendobj\n"
     return out + b"%%EOF\n"
+
+
+#: The signs a figure's negative number is drawn with and a sidecar or a display types it
+#: with: the hyphen, and the minus sign matplotlib draws (`axes.unicode_minus`).
+MINUS_SIGNS = ("-", "\N{MINUS SIGN}")
+
+
+@st.composite
+def signed_ticks(draw: st.DrawFn) -> tuple[str, list[str], list[str], list[str]]:
+    """A figure's text, a number to a line, with the displays of the results and the entries
+    of its sidecar beside it; and the numbers of the text neither allows. Every kind in each
+    example, in an order drawn: a negative number drawn with either sign and allowed by an
+    entry or a display typed with the other or the same, one allowed by nothing, one with
+    separators of thousands allowed without them, and a number allowed only with the
+    opposite sign, which is another number."""
+    values = draw(st.lists(st.integers(100, 99999), min_size=11, max_size=11, unique=True))
+    numbers = iter(f"{value / 100:.2f}" for value in values)
+
+    def sign() -> str:
+        return draw(st.sampled_from(MINUS_SIGNS))
+
+    other = {"-": MINUS_SIGNS[1], MINUS_SIGNS[1]: "-"}
+    drawn: list[str] = []
+    displays: list[str] = []
+    ticks: list[str] = []
+    unbound: list[str] = []
+    for kind in ("tick", "display"):
+        for written in MINUS_SIGNS:
+            number = next(numbers)
+            drawn.append(written + number)
+            typed = draw(st.sampled_from((other[written], written))) + number
+            (ticks if kind == "tick" else displays).append(typed)
+    for _ in range(2):
+        number = sign() + next(numbers)
+        drawn.append(number)
+        unbound.append(number)
+    thousands = f"{draw(st.integers(1, 99))},{draw(st.integers(100, 999))}.{next(numbers)[-2:]}"
+    drawn.append(sign() + thousands)
+    displays.append(sign() + thousands.replace(",", ""))
+    positive = next(numbers)
+    drawn.append(positive)
+    ticks.append(sign() + positive)
+    unbound.append(positive)
+    negative = sign() + next(numbers)
+    drawn.append(negative)
+    displays.append(negative.lstrip("".join(MINUS_SIGNS)))
+    unbound.append(negative)
+    order = draw(st.permutations(range(len(drawn))))
+    return "\n".join(drawn[at] for at in order), displays, ticks, unbound
 
 
 def _row(left: tuple[float, ...], right: tuple[float, ...]) -> tuple[float, ...]:
@@ -5591,6 +6021,359 @@ def reference_lists(draw: st.DrawFn) -> tuple[str, str]:
     return "".join(listed) + "\n", "".join(passed) + "\n"
 
 
+# ------------------------------------------------- the audit's entries, intervals and markers
+
+#: A reference entry of each style the audit knows by its shape where no heading says where
+#: the list is, beyond the plain Vancouver and author-year ones: the BMJ's with no full stop
+#: before the year, a book and a chapter, a web page in four styles, an article online first
+#: in two, and Harvard's with no full stop after the year.
+AUDIT_ENTRIES = {
+    "the BMJ's style": "{a} {i}, {b} {j}. {title}. {journal} {year};{vol}:{page}.",
+    "the BMJ's style, numbered, with a DOI": (
+        "{n}. {a} {i}. {title}. {journal} {year};{vol}({issue}):{page}-{end}. "
+        "doi:10.1016/j.x.{year}.01.001"
+    ),
+    "a book": "{a} {i}, {b} {j}. {title}. 2nd ed. {place}: {publisher}; {year}.",
+    "a chapter": (
+        "{a} {i}. {title}. In: {b} {j}, editor. {title}. {place}: {publisher}; {year}. "
+        "p. {page}-{end}."
+    ),
+    "a web page": (
+        "{a} {i}. {title} [Internet]. {place}: {publisher}; {year} [cited {later} Mar {day}]. "
+        "Available from: https://example.org/{vol}"
+    ),
+    "a web page in AMA style": (
+        "{a} {i}. {title}. {publisher}. Published {year}. Accessed March {day}, {later}. "
+        "https://example.org/{vol}"
+    ),
+    "a web page in Harvard style": (
+        "{a}, {h}. ({year}) {title}. Available at: https://example.org/{vol} "
+        "(Accessed: {day} March {later})."
+    ),
+    "an organisation's web page": (
+        "{publisher}. {title} [Internet]. {year} [cited {later} Mar {day}]. Available from: "
+        "https://example.org/{vol}"
+    ),
+    "online first": "{a} {i}, {b} {j}. {title}. {journal}. {year}. doi:10.1007/s{vol}-{year}-1",
+    "online first in AMA style": (
+        "{a} {i}. {title}. {journal}. Published online March {day}, {year}. doi:10.1001/x.{vol}"
+    ),
+    "Harvard with no stop after the year": (
+        "{a}, {h}. and {b}, {k}. ({year}) '{title}', {long}, {vol}({issue}), pp. {page}-{end}."
+    ),
+    "Harvard with no stop, a title in capitals": (
+        "{a}, {h}. ({year}) {title}. {long}, {vol}, {page}-{end}."
+    ),
+}
+#: Captions and sentences with some of an entry's parts, which are none: a month before a
+#: year and a volume, a year after "to", a caption's full stop after its year, a place and
+#: a year after a colon, "available from", "Accessed", and names with a year and a verb.
+AUDIT_LOOKALIKES = (
+    "Figure A. Enrolment to {month} {year};2:{page}.",
+    "Figure A. Enrolment to {month} {year};2:1 randomisation followed.",
+    "Figure A. Case-control design, {earlier} to {year};1:{page} matching.",
+    "Figure A. Enrolment in {year}. Events were counted.",
+    "Table S1. Characteristics by site: {place}; {year} and {page} reports.",
+    "{a} {i} reported {page} cases in {year}, available from the registry.",
+    "Data were taken from the registry (available from https://example.org) in {year}.",
+    "{a}, {b} and {c} ({year}) found {page} cases.",
+    "Figure A. Reports by year. Accessed on {page} sites in {year}, and more.",
+    "The code is in the Internet archive, {year} release, at https://example.org.",
+)
+_SURNAMES = ("Smith", "Tanaka", "Østergaard", "Dupont", "Okafor", "Novak")
+_INITIALS = ("J", "JA", "K", "MB", "H")
+_TITLES = ("Hepatic injury in reports", "Renal events after exposure", "Falls in older adults")
+_NO_STOP_JOURNALS = ("BMJ", "Lancet", "N Engl J Med", "J Clin Epidemiol", "PLoS One", "Drug Saf")
+_LONG_JOURNALS = ("Drug Safety", "The Lancet", "Clinical Epidemiology")
+
+
+@st.composite
+def audit_entries(draw: st.DrawFn) -> list[tuple[str, bool]]:
+    """Each of `AUDIT_ENTRIES` and each of `AUDIT_LOOKALIKES`, in an order drawn, with names,
+    titles, journals, years and pages drawn, and whether each is an entry. Every kind in
+    every example."""
+    year = st.integers(1990, 2025)
+    names = draw(st.permutations(_SURNAMES))
+    fill = {
+        "a": names[0], "b": names[1], "c": names[2],
+        "i": draw(st.sampled_from(_INITIALS)), "j": draw(st.sampled_from(_INITIALS)),
+        "h": draw(st.sampled_from("JKMH")), "k": draw(st.sampled_from("JKMH")),
+        "title": draw(st.sampled_from(_TITLES)),
+        "journal": draw(st.sampled_from(_NO_STOP_JOURNALS)),
+        "long": draw(st.sampled_from(_LONG_JOURNALS)),
+        "place": draw(st.sampled_from(("London", "Geneva", "Paris"))),
+        "publisher": draw(st.sampled_from(("Example Press", "Example Agency", "Sample House"))),
+        "month": draw(st.sampled_from(("Jan", "Mar", "Dec", "Sept"))),
+        "year": draw(year), "earlier": draw(year), "later": draw(year),
+        "n": draw(st.integers(1, 99)), "vol": draw(st.integers(1, 400)),
+        "issue": draw(st.integers(1, 12)), "page": draw(st.integers(1, 900)),
+        "end": draw(st.integers(1, 99)), "day": draw(st.integers(1, 28)),
+    }  # fmt: skip
+    lines = [(shape.format(**fill), True) for shape in AUDIT_ENTRIES.values()]
+    lines += [(shape.format(**fill), False) for shape in AUDIT_LOOKALIKES]
+    return draw(st.permutations(lines))
+
+
+#: A value and a bracket after it, by the value's format: `{v}` the value as printed and
+#: `{b}` the bracket. Whether the bracket encloses the value is drawn apart.
+INTERVAL_VALUES = ("decimal comma", "thousands", "spaced percent", "no-break percent", "point")
+
+
+@st.composite
+def glued_intervals(draw: st.DrawFn) -> tuple[str, list[tuple[int, int]]]:
+    """Sentences with a value of each of `INTERVAL_VALUES` before a bracket that encloses it,
+    an interval, and before one that does not, a citation, in an order drawn; and where
+    each interval's bracket runs, from the end of its value to its `]`, as the audit's
+    `_intervals` is to give it. A citation after a value in thousands is `[1-c]` after
+    1,xxx, which a decimal comma's reading would take to enclose it, and a list of three,
+    `[1,100,200]`."""
+    parts: list[str] = []
+    expected: list[tuple[int, int]] = []
+    kinds = draw(st.permutations([(kind, True) for kind in INTERVAL_VALUES]
+                                 + [(kind, False) for kind in INTERVAL_VALUES]))  # fmt: skip
+    for kind, encloses in kinds:
+        whole = draw(st.integers(20, 900))
+        low, high = draw(st.integers(1, whole - 1)), draw(st.integers(whole + 1, 999))
+        if not encloses:
+            low, high = draw(st.integers(1, 9)), draw(st.integers(10, 19))
+        separator = draw(st.sampled_from(("-", "–", ", ", "; ")))
+        bracket = f"[{low}{separator}{high}]"
+        if kind == "decimal comma":
+            value, after = f"{whole},{draw(st.integers(1, 9))}", ""
+        elif kind == "point":
+            value, after = f"{whole}.{draw(st.integers(1, 9))}", ""
+        elif kind == "spaced percent":
+            value, after = str(whole), " %"
+        elif kind == "no-break percent":
+            value, after = str(whole), chr(0xA0) + "%"
+        elif encloses:
+            grouped = draw(st.integers(1000, 99999))
+            low, high = draw(st.integers(100, grouped - 1)), draw(st.integers(grouped + 1, 999999))
+            value, after, bracket = f"{grouped:,}", "", f"[{low:,}{separator}{high:,}]"
+        elif draw(st.booleans()):
+            value, after = f"1,{draw(st.integers(0, 999)):03d}", ""
+            bracket = f"[1{separator}{draw(st.integers(2, 9))}]"
+        else:
+            value, after, bracket = f"{draw(st.integers(1000, 99999)):,}", "", "[1,100,200]"
+        opening = f"The {draw(st.sampled_from(FILLER))} was "
+        start = len("".join(parts)) + len(opening) + len(value)
+        if encloses:
+            expected.append((start, start + len(after) + 1 + len(bracket)))
+        parts.append(f"{opening}{value}{after} {bracket} in the {draw(st.sampled_from(FILLER))}. ")
+    return "".join(parts), expected
+
+
+#: Paragraphs of a .docx or text of a figure with HTML's comment markers printed as typed,
+#: `{n}` and `{m}` numbers each listed, `{u}` one in an address, which is masked.
+PRINTED_MARKERS = {
+    "both markers in a paragraph": ("We strip <!-- from the notes; {n} held; and -->.",),
+    "a comment opened in one paragraph and closed in the next": (
+        "<!-- opens here and {n} was said", "{m} and --> closes it",
+    ),
+    "markers around an address": ("See <!-- https://example.org/report/{u} --> and {n} held.",),
+    "an opening marker alone": ("Only <!-- here, and {n} held.",),
+    "a closing marker alone": ("Only --> here, and {n} held.",),
+    "markers in backticks": ("Type `<!--` then {n} and `-->` after.",),
+}  # fmt: skip
+
+
+@st.composite
+def printed_markers(draw: st.DrawFn) -> tuple[list[str], list[str]]:
+    """Lines with each of `PRINTED_MARKERS`, in an order drawn, and the numbers in them that
+    are to be listed: each distinct, none in an address."""
+    numbers = iter(draw(st.lists(st.integers(100, 999), min_size=20, max_size=20, unique=True)))
+
+    def number() -> str:
+        drawn = next(numbers)
+        return f"{drawn // 100}.{drawn % 100:02d}"
+
+    lines: list[str] = []
+    planted: list[str] = []
+    for kind in draw(st.permutations(list(PRINTED_MARKERS))):
+        fill = {"n": number(), "m": number(), "u": number()}
+        shapes = PRINTED_MARKERS[kind]
+        lines += [shape.format(**fill) for shape in shapes]
+        planted += [fill[key] for key in "nm" if any("{" + key + "}" in s for s in shapes)]
+    return lines, planted
+
+
+#: What ends a reference list under a paragraph that is no heading in a .docx, as `check`
+#: ends one in Markdown: paragraphs, `{n}` the number after the end that is to be listed,
+#: `{k}` a caption's number, `{title}` a back-matter title; `TABLE` a table holding `{n}`.
+DOCX_LIST_ENDS = {
+    "a figure's caption": ("Figure {k}. Reports by year; {n} were serious.",),
+    "a caption, Fig.": ("Fig. {k} Reports by year; {n} were serious.",),
+    "a table's caption": ("Table {k}. Characteristics; {n} were serious.",),
+    "a supplementary table's caption": ("Supplementary Table S{k}. Sites; {n} were serious.",),
+    "an appendix": ("Appendix A. Search terms; {n} records were found.",),
+    "a box": ("Box {k}. Definitions; {n} were serious.",),
+    "a back-matter title": ("{title}", "Reports by year; {n} were serious."),
+    "a table": ("TABLE",),
+}
+#: Entries of a numbered list, with volumes and pages that are cut with it.
+_CUT_ENTRIES = (
+    "Smith J, Jones K. Title. Lancet. {year};{vol}:{page}-10.",
+    "Doe A. Title. BMJ {year};{vol}:m{page}.",
+    "Roe MB. Title. Example Press; {year}.",
+)
+
+
+@st.composite
+def docx_reference_ends(draw: st.DrawFn) -> tuple[list[str | tuple[str, str]], list[str]]:
+    """The paragraphs of a .docx with no heading styles: a list under "References" ended by
+    each of `DOCX_LIST_ENDS`, in an order drawn, and a table as `(label, number)`; and the
+    numbers after each end, which are to be listed. Every entry's numbers are cut."""
+    numbers = iter(draw(st.lists(st.integers(100, 999), min_size=10, max_size=10, unique=True)))
+    paragraphs: list[str | tuple[str, str]] = ["We saw what was reported."]
+    planted: list[str] = []
+    for kind in draw(st.permutations(list(DOCX_LIST_ENDS))):
+        paragraphs.append("References")
+        for entry in draw(st.lists(st.sampled_from(_CUT_ENTRIES), min_size=1, max_size=3)):
+            paragraphs.append(entry.format(year=draw(st.integers(1990, 2025)),
+                                           vol=draw(st.integers(1, 400)),
+                                           page=draw(st.integers(1, 99))))  # fmt: skip
+        drawn = next(numbers)
+        number = f"{drawn // 100}.{drawn % 100:02d}"
+        planted.append(number)
+        for line in DOCX_LIST_ENDS[kind]:
+            if line == "TABLE":
+                paragraphs.append(("Serious", number))
+                continue
+            paragraphs.append(line.format(n=number, k=draw(st.integers(1, 9)),
+                                          title=draw(st.sampled_from(BACK_MATTER))))  # fmt: skip
+    return paragraphs, planted
+
+
+# --------------------------------------------------- a display item placed by hand, G4
+
+#: A figure placed by hand that pandoc numbers, as a paragraph of the text: an image with a
+#: caption alone in its paragraph, with attributes, a bracketed pair in its caption, a title
+#: and parentheses in its target, three spaces in, and on the line under a heading.
+FIGURES_PLACED = (
+    "![The sites, by region.](figures/sites.png)",
+    "![A map](map.png){#fig:map width=50%}",
+    '![Panel [a] and b](f(1).png "A title")',
+    "   ![Three spaces in.](x.png)",
+    "## A heading\n![Under a heading.](h.png)",
+)  # fmt: skip
+#: An image pandoc numbers not, or that is not printed: in a sentence, with no caption, in a
+#: comment, in a fence, four spaces in (a code block), two on two lines of one paragraph,
+#: one on a paragraph's second line, and one with a heading's line straight below it, which
+#: pandoc reads as a line of the image's paragraph (round 1 of #452).
+NOT_FIGURES_PLACED = (
+    "![Above a heading.](above.png)\n# Not a heading",
+    "A map, ![inline](m.png), in a sentence.",
+    "![](bare.png)",
+    "![ ](space.png)",
+    "<!--\n\n![In a comment.](c.png)\n\n-->",
+    "```\n![In a fence.](f.png)\n```",
+    "    ![Four spaces in.](i.png)",
+    "![Two](a.png)\n![lines](b.png)",
+    "Words above it\n![On the second line.](l.png)",
+)  # fmt: skip
+
+
+@st.composite
+def figures_placed(draw: st.DrawFn) -> tuple[str, int]:
+    """Paragraphs of filler words with every image above between them, each a paragraph of
+    its own, in an order drawn; and how many figures pandoc numbers of them."""
+
+    def words() -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=5))) + "."
+
+    pieces = [(piece, 1) for piece in FIGURES_PLACED]
+    pieces += [(piece, 0) for piece in NOT_FIGURES_PLACED]
+    text, count = words(), 0
+    for piece, counted in draw(st.permutations(pieces)):
+        text += f"\n\n{piece}\n\n{words()}"
+        count += counted
+    return text + "\n", count
+
+
+#: A LaTeX display a journal counts, and how many: a picture and a typed table, each in a
+#: float with its caption; a float with no caption by the binding it places; a binding in no
+#: float; a float of two panels and one caption; two captions in one float.
+LATEX_DISPLAYS = (
+    ("\\begin{figure}\\includegraphics{a.pdf}\\caption{A picture.}\\end{figure}", 1),
+    ("\\begin{table}\\caption{Typed.}\\begin{tabular}{l}a\\\\\\end{tabular}\\end{table}", 1),
+    ("\\begin{figure}\\mg{figure.forest}\\end{figure}", 1),
+    ("\\mg{table.baseline}", 1),
+    ("\\begin{figure}\\mg{figure.forest}\\mg{figure.forest}\\caption{Two panels.}\\end{figure}", 1),
+    ("\\begin{figure}\\includegraphics{b.pdf}\\caption{One.}\\includegraphics{c.pdf}"
+     "\\caption{Two.}\\end{figure}", 2),
+    # And what counts as none: a picture with no caption, a float with a starred caption
+    # only, and a float in a comment.
+    ("\\begin{figure}\\includegraphics{d.pdf}\\end{figure}", 0),
+    ("\\begin{figure}\\includegraphics{e.pdf}\\caption*{Unnumbered.}\\end{figure}", 0),
+    ("% \\begin{figure}\\includegraphics{f.pdf}\\caption{Commented.}\\end{figure}", 0),
+)  # fmt: skip
+
+
+@st.composite
+def latex_displays_placed(draw: st.DrawFn) -> tuple[str, int]:
+    """A LaTeX document's body with every display above among paragraphs of filler words,
+    in an order drawn; and how many display items a journal counts of them."""
+
+    def words() -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=5))) + "."
+
+    body, count = words(), 0
+    for piece, counted in draw(st.permutations(LATEX_DISPLAYS)):
+        body += f"\n\n{piece}\n\n{words()}"
+        count += counted
+    document = ("\\documentclass{article}\n\\usepackage{graphicx}\n\\begin{document}\n"
+                f"\\section{{Results}}\n\n{body}\n\n\\end{{document}}\n")  # fmt: skip
+    return document, count
+
+
+# ------------------------------------------------- one reference written two ways, G7
+
+#: DOIs with what a `.bib` file or a resolver's link writes otherwise: an underscore, a
+#: percent sign, an ampersand, brackets.
+DOIS_WRITTEN = (
+    "10.5555/abc_def", "10.1016/S0140-6736(20)30183-5", "10.1002/(SICI)1097-0258(1998)17:1<1::AID>",
+    "10.5555/a&b_c", "10.5555/x_1(2)",
+    # A percent-escape of a space is no space: the DOI is as written (round 1 of #452).
+    "10.5555/abc%20def",
+)  # fmt: skip
+#: Each way a DOI is written beside its registered form, as a function of it: TeX's escapes
+#: of `_`, `%`, `&`, a resolver's link with brackets percent-encoded, and TeX's escape of the
+#: percent sign such a link writes.
+DOI_WRITINGS = (
+    lambda doi: doi,
+    lambda doi: doi.replace("_", "\\_").replace("&", "\\&"),
+    lambda doi: "https://doi.org/" + doi.replace("(", "%28").replace(")", "%29"),
+    lambda doi: doi.replace("(", "\\%28").replace(")", "\\%29").replace("_", "\\_"),
+    lambda doi: "doi:" + doi.replace("<", "%3C").replace(">", "%3E").replace("&", "%26"),
+)  # fmt: skip
+#: A letter with an accent, as TeX writes it and as Unicode does.
+TEX_ACCENTED = (
+    ("\\'e", "\N{LATIN SMALL LETTER E WITH ACUTE}"),
+    ('\\"u', "\N{LATIN SMALL LETTER U WITH DIAERESIS}"),
+    ("\\^o", "\N{LATIN SMALL LETTER O WITH CIRCUMFLEX}"),
+    ("\\`a", "\N{LATIN SMALL LETTER A WITH GRAVE}"),
+    ("\\~n", "\N{LATIN SMALL LETTER N WITH TILDE}"),
+    ('\\"O', "\N{LATIN CAPITAL LETTER O WITH DIAERESIS}"),
+    ("\\c c", "\N{LATIN SMALL LETTER C WITH CEDILLA}"),
+    ("\\ss ", "ss"),
+)  # fmt: skip
+
+
+@st.composite
+def titles_in_tex(draw: st.DrawFn) -> tuple[str, str]:
+    """A title of filler words with every accented letter of `TEX_ACCENTED` inside a word,
+    in an order drawn: as TeX writes it and as Unicode does."""
+    tex, unicode = [], []
+    for accented, letter in draw(st.permutations(TEX_ACCENTED)):
+        before, after = draw(st.sampled_from(FILLER)), draw(st.sampled_from(FILLER))
+        tex.append(before + accented + after)
+        unicode.append(before + letter + after)
+        filler = " ".join(draw(st.lists(st.sampled_from(FILLER), max_size=2)))
+        tex.append(filler)
+        unicode.append(filler)
+    return " ".join(tex), " ".join(unicode)
+
+
 # --------------------------------------------------- e-mail addresses beside citations
 
 #: An e-mail address as a manuscript gives one: in brackets, in a mailto link as Word writes
@@ -5633,6 +6416,38 @@ def addressed(draw: st.DrawFn) -> tuple[str, list[str]]:
         for piece in draw(st.permutations(pieces))
     )
     return text, keys
+
+
+# --------------------------------------------- escaped backticks beside an escaped comparison
+
+#: Pieces of a paragraph with backticks and escaped comparisons in them, each closing every
+#: code span it opens, with the places in it of the backslashes that escape a comparison: a
+#: comparison between backticks `import` escaped, as it writes one typed in Word, which
+#: open no code span; a code span closed by a run after a backslash, which code prints;
+#: code after a backtick escaped, and after a backslash printed; an escaped backtick after a
+#: run of three backslashes; and a comparison in code and out of it.
+ESCAPED_BACKTICKS = (
+    ("(\\` ROR \\> 2 \\`)", (8,)),
+    ("`ROR\\` and ROR \\> 2", (15,)),
+    ("\\``c \\> 4`", ()),
+    ("x\\\\`b \\> 1` y", ()),
+    ("\\\\\\` d \\> 5", (7,)),
+    ("`a \\> 3`", ()),
+    ("e \\> 6", (2,)),
+)  # fmt: skip
+
+
+@st.composite
+def escaped_backticks(draw: st.DrawFn) -> tuple[str, list[int]]:
+    """Every piece above in one paragraph, in an order and among words drawn each time, and
+    where each backslash that escapes a comparison stands."""
+    text, found = "", []
+    for piece, escapes in draw(st.permutations(ESCAPED_BACKTICKS)):
+        words = " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=3)))
+        text += words + draw(st.sampled_from((" ", "\n", ", ")))
+        found += [len(text) + at for at in escapes]
+        text += piece + draw(st.sampled_from((" ", "\n", "; ")))
+    return text, found
 
 
 # ------------------------------------------------------------------------------ inputs

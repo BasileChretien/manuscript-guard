@@ -37,12 +37,26 @@ _SPACE = (
 _GAP = rf"{_SPACE}*(?:\r?\n{_SPACE}*)?"
 _SYMBOLS = (*UNITS, "%", "\u2030")
 _SYMBOL = "|".join(sorted(map(re.escape, _SYMBOLS), key=len, reverse=True))
-#: A power as it is typed: cm2, with a superscript two, cm^2^, s-1.
-_POWER = r"(?:[\u00b2\u00b3]|\^?[-\u2212]?[123]\^?)?"
-#: A unit as written after a number: a symbol and its power, and after a slash whatever
-#: letters follow, since "mmol/L" divides by a litre the list of symbols leaves out.
+#: A power as it is typed: cm2, with a superscript two, cm^2^, s-1, kg with a superscript
+#: minus one.
+_SUPERSCRIPTS = r"[\N{SUPERSCRIPT ONE}\N{SUPERSCRIPT TWO}\N{SUPERSCRIPT THREE}]"
+_POWER = rf"(?:\N{{SUPERSCRIPT MINUS}}?{_SUPERSCRIPTS}|\^?[-\N{{MINUS SIGN}}]?[123]\^?)?"
+_NEGATIVE = rf"(?:\N{{SUPERSCRIPT MINUS}}{_SUPERSCRIPTS}|\^?[-\N{{MINUS SIGN}}][123]\^?)"
+#: What divides after a space, with a power below nought: the symbols, and the one-letter
+#: ones G14 leaves out, which a power below nought tells from a word: "mg L-1", "µg m-3",
+#: "mg kg-1 d-1".
+_DIVISOR = "|".join(sorted((*map(re.escape, UNITS), "L", "l", "m", "s", "d", "day"),
+                           key=len, reverse=True))  # fmt: skip
+_SPACED = (
+    r"(?:[ \N{NO-BREAK SPACE}\N{THIN SPACE}\N{NARROW NO-BREAK SPACE}](?:" + _DIVISOR + r")"
+    + _NEGATIVE + r"(?![\w\N{DEGREE SIGN}]))*"
+)
+#: A unit as written after a number: a symbol and its power; after a space, a divisor with
+#: its power below nought, "mg kg-1", read as "mg/kg"; and after a slash whatever letters
+#: follow, since "mmol/L" divides by a litre the list of symbols leaves out.
 _UNIT = re.compile(
-    _GAP + r"(?P<unit>(?:" + _SYMBOL + r")" + _POWER + r"(?:/[^\W\d_]+" + _POWER
+    _GAP + r"(?P<unit>(?:" + _SYMBOL + r")" + _POWER + _SPACED
+    + r"(?:/[^\W\d_]+" + _POWER
     + r")*)(?![\w\u00b0])"
 )
 #: Spellings of one unit, each to the one it is compared as.
@@ -52,7 +66,11 @@ _SAME = {
     "\u03bcm": "\u00b5m", "\u03bcmol": "\u00b5mol", "\u03bcM": "\u00b5M", "\u03bcSv": "\u00b5Sv",
     "\u00baC": "\u00b0C", "\u2103": "\u00b0C", "\u00baF": "\u00b0F",
     "\u2212": "-", "\u00b2": "2", "\u00b3": "3", "^": "",
+    "\N{SUPERSCRIPT MINUS}": "-", "\N{SUPERSCRIPT ONE}": "1",
 }  # fmt: skip
+#: A divisor after a space, as `_canonical` reads it once its signs are spelt alike: the
+#: symbol and the power below nought, "kg-1" in "mg kg-1".
+_SPACED_DIVISOR = re.compile(r"\s+([^\W\d_]+)-([123])")
 #: A litre after a slash is one litre however it is cased: mmol/l is mmol/L.
 _PER_LITRE = re.compile(r"/l(?![^\W\d_])")
 _ONE_SYMBOL = re.compile(_SYMBOL)
@@ -94,17 +112,26 @@ _BLANKED = re.compile(r"\\(?!(?:thinspace|nobreakspace|enspace)(?![A-Za-z]))[A-Z
 
 
 def same_unit(written: str, emitted: str) -> bool | None:
-    """Whether two units are one, None where the emitted one is no unit of symbols."""
-    emitted = "".join(emitted.split())
+    """Whether two units are one, None where the emitted one is no unit of symbols.
+
+    An emitted unit is read with its spaces one space each, so that "mg kg-1" divides by
+    the kilogram, and where so it is none, with no space at all, as "mg / kg" is "mg/kg"."""
+    spaced = " ".join(emitted.split())
+    emitted = spaced if _UNIT.fullmatch(spaced) else "".join(emitted.split())
     if not _UNIT.fullmatch(emitted):
         return None
     return _canonical(written) == _canonical(emitted)
 
 
 def _canonical(unit: str) -> str:
+    """A unit spelt as the one it is compared as: one spelling of each symbol and power,
+    and a divisor after a space, "mg kg-1", after a slash, "mg/kg"."""
     out = unit
     for spelt, one in sorted(_SAME.items(), key=lambda pair: len(pair[0]), reverse=True):
         out = out.replace(spelt, one)
+    out = _SPACED_DIVISOR.sub(
+        lambda divisor: "/" + divisor[1] + ("" if divisor[2] == "1" else divisor[2]), out
+    )
     return _PER_LITRE.sub("/L", out)
 
 

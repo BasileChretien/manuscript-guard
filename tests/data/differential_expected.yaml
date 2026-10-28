@@ -145,10 +145,16 @@ expected:
       listing of a file with CRLF line ends where it was NUL
   - reading: latex mask
     why: >-
-      a straight `"` in prose closes the quotation a ``` `` ``` opened in its paragraph, and
-      is read as the closing mark, as the font prints it; not after a blank line, nor before
-      a letter, babel's German accent; the inputs now hold such quotations (corpus round,
-      2026-10-23)
+      a `\par` TeX reads ends a quotation left open as a blank line does, so a straight `"`
+      after it closes nothing and stays as typed; one in a comment, and the letters after
+      `\\`, end none; the inputs now hold such quotations (Known gaps, 2026-10-27)
+  - reading: latex documents
+    why: >-
+      a `subfiles` part the paper places by `\subfile` and a `standalone` picture it places
+      by `\includestandalone` are read where the command stands, past their preambles, and
+      are no longer loose, and the preamble's `\input name` without braces is followed; the
+      inputs now hold placed parts and pictures, inside a figure and under headings
+      (Known gaps, 2026-10-27)
   - reading: abbreviations
     why: >-
       the brackets this pull request plants: one whose short form is followed by an equals
@@ -163,3 +169,9 @@ expected:
       definition without giving it twice, and a manuscript with no heading is read as one
       text, with no `abbreviation-redefined` (the reading gives no stage, so no
       `no-headings` note); the inputs hold a glossary and captions, and many have no heading
+  - reading: recycled passages
+    why: >-
+      a citation by author and year in parentheses in the earlier paper, "(Smith et al.,
+      2019)", is blanked before its words are compared, so it no longer cuts a passage the
+      manuscript repeats where the manuscript cites by key; the earlier papers drawn now
+      set such citations between words, as they set a reference's number

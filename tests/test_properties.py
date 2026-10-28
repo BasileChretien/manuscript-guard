@@ -43,6 +43,7 @@ from generated import (
     CLAIMED,
     CREDITING,
     DATA_IDENTIFIERS,
+    DECLARED_TERMS,
     DEPOSIT_DOI,
     EDIT_GAPS,
     EDIT_WORDS,
@@ -69,6 +70,7 @@ from generated import (
     TYPOGRAPHY,
     UNCLAIMED,
     WRITTEN_WORDS,
+    abstract_trees,
     alt_texts,
     bindings,
     bold_planted,
@@ -78,9 +80,13 @@ from generated import (
     count_cells,
     credited_plans,
     deposit_statements,
+    deviation_titled,
     dictionary_pairs,
+    escaped_backticks,
+    figure_captions,
     generated,
     holds,
+    keyword_paragraphs,
     laid_out,
     latex_bound,
     latex_cited,
@@ -99,6 +105,7 @@ from generated import (
     latex_pointers,
     latex_printed,
     latex_quotations,
+    latex_reference_lists,
     latex_refusal_trees,
     latex_straight_quotes,
     latex_texts,
@@ -106,9 +113,11 @@ from generated import (
     latex_words,
     latex_writing,
     lines,
+    markdown_claims,
     markdown_for_latex,
     masked_blocks,
     mean_tables,
+    methods_titled,
     named_numbers,
     numbered_displays,
     painted_pdfs,
@@ -126,6 +135,7 @@ from generated import (
     revisions,
     set_hazards,
     share_tables,
+    signed_ticks,
     signs,
     sources,
     suggestion_paragraphs,
@@ -553,6 +563,40 @@ def _the_mask_keeps_a_comment_s_line_breaks(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(masking, "_blank", blank)
 
 
+@holds(100, escaped_backticks())
+def test_an_escaped_backtick_opens_no_code_span_and_code_ends_at_its_run(
+    drawn: tuple[str, list[int]],
+) -> None:
+    """`import` writes a backslash before every backtick typed in Word, and the backticks
+    were paired as code all the same, so a comparison between them was taken for one code
+    prints. A backtick after an odd run of backslashes opens no code span; inside code a
+    backslash prints, and the run after it closes the span. Every backslash that escapes a
+    comparison outside code is found, and none other."""
+    from manuscript_guard.text.masking import comparison_escapes
+
+    text, expected = drawn
+    assert comparison_escapes(text) == expected, text
+
+
+#: How the code spans were found before an escaped backtick was read as one printed.
+_PAIRED_RUNS = re.compile(r"(?<!`)(`+)(?!`)(?:[^\n]|\n(?![ \t]*\n))+?(?<!`)\1(?!`)")
+
+
+def _an_escaped_backtick_opens_a_code_span(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import masking
+
+    patch.setattr(masking, "_code_spans",
+                  lambda text: [match.span() for match in _PAIRED_RUNS.finditer(text)])  # fmt: skip
+
+
+def _a_backslash_before_a_closing_run_escapes_it(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import masking
+
+    # A backtick after a backslash read as escaped inside code too: a code span with one
+    # before its closing run runs on to the next run as long.
+    patch.setattr(masking, "_BACKTICKS", re.compile(r"(?<!\\)`+"))
+
+
 # ------------------------------------------------------------------------- the LaTeX reader
 
 
@@ -624,6 +668,24 @@ def test_a_tex_length_is_layout_in_a_definition_s_body_and_a_number_in_the_text(
     for at, length, layout in planted:
         rules = {rule for start, end, rule in judged if start < at + len(length) and at < end}
         assert rules == ({"tex-length"} if layout else {UNCLASSIFIED}), (length, rules, text)
+
+
+@holds(60, latex_reference_lists())
+def test_g2_reads_no_number_of_a_typed_reference_list_and_every_one_round_it(
+    drawn: tuple[str, list[tuple[int, str, bool]]],
+) -> None:
+    """A number at every place of a reference list typed in `thebibliography`, its label, a
+    year, pages, a DOI, is no number G2 reads, as a Markdown project's list is never read;
+    one in the text before and after the list is (Known gaps, 2026-10-27)."""
+    text, planted = drawn
+    judged = _g2_rules_in_latex(text)
+    for at, number, read in planted:
+        rules = {rule for start, end, rule in judged if start < at + len(number) and at < end}
+        assert bool(rules) == read, (number, rules, text)
+
+
+def _a_typed_reference_list_is_read(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(numbers_gate, "_outside", lambda spans, placeholders: [])
 
 
 def _an_escaped_percent_opens_a_comment(patch: pytest.MonkeyPatch) -> None:
@@ -1051,7 +1113,11 @@ def test_each_latex_file_starts_under_the_headings_in_force_where_it_is_input(
     file that opened a section is read under that section, as LaTeX prints them: worked out
     apart from the reader, over manuscripts of a few files that input one another. So is the
     text after each heading (`Source.chain_at`), a heading where an `\\input` ends and a
-    chapter under its part among them."""
+    chapter under its part among them. A part placed by `\\subfile` and a picture placed by
+    `\\includestandalone` inside a figure are read there, past their preambles, the picture's
+    body inside the figure (2026-10-27)."""
+    from generated import PLACED_PICTURE
+
     files, expected, marks = drawn
     document = latex_structure.read_tree(files)
     found = {source.path: [h.title for h in source.under] for source in document.sources}
@@ -1062,6 +1128,35 @@ def test_each_latex_file_starts_under_the_headings_in_force_where_it_is_input(
         (source,) = [s for s in document.sources if f"{mark} " in s.text]
         chain = source.chain_at(source.text.index(f"{mark} "))
         assert [h.title for h in chain] == titles, (mark, source.path, files)
+    (picture,) = [s for s in document.sources if s.path.endswith(PLACED_PICTURE)]
+    body = picture.reading.body_start
+    assert any(start <= body < end for start, end in picture.reading.figures), picture
+
+
+def _a_preamble_input_without_braces_names_nothing(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_BARE_PATH", re.compile(r"(?!)"))
+
+
+def _a_placed_part_is_not_followed(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "PLACED", frozenset())
+
+
+def _a_placed_part_is_read_from_its_first_line(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_structure, "part", lambda text: False)
+
+
+def _a_placed_part_opens_no_environment_at_its_document(patch: pytest.MonkeyPatch) -> None:
+    inherit = latex_mask._Reader._inherit
+
+    def broken(self, environments: tuple[str, ...], at: int) -> None:
+        if not at:
+            inherit(self, environments, at)
+
+    patch.setattr(latex_mask._Reader, "_inherit", broken)
+
+
+def _a_placed_part_s_preamble_is_the_paper_s(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_structure, "_placed", lambda reading, _text: reading)
 
 
 @holds(60, latex_folders())
@@ -1387,6 +1482,8 @@ def test_latex_s_printed_view_holds_what_it_prints_as_markdown_writes_it(
             assert view.count(key) == 1, (key, view)
         elif kind == "hidden":
             assert key not in view, (key, view)
+        elif kind.startswith("folded:"):
+            assert kind.removeprefix("folded:").format(key) in view, (key, view)
         else:
             written = {"bound": "{{results.%s}}", "table": "{{table.%s}}", "cited": "[@%s]",
                        "tight": "({{results.%s}})."}  # fmt: skip
@@ -1398,6 +1495,25 @@ def test_latex_s_printed_view_holds_what_it_prints_as_markdown_writes_it(
     # A word in prose is in no code span: LaTeX's single quote opens none (round 1 of step 6).
     spans = "".join(re.findall(r"`[^`\n]+`", view))
     assert not [k for k, kind in planted if kind == "prose" and k in spans], view
+
+
+def _the_printed_view_drops_an_accent_s_mark(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_print, "accented", lambda text, masked: masked)
+
+
+def _an_accent_s_letter_and_mark_share_a_place(patch: pytest.MonkeyPatch) -> None:
+    accented = latex_print.accented
+
+    def broken(text: str, masked: str) -> str:
+        out = list(accented(text, masked))
+        for found in latex_words_view._FOLDING.finditer(text):
+            written = latex_words_view.folded(found)
+            if len(written) > 1 and out[found.start()] == written[0]:
+                out[found.start()] = written
+                out[found.start() + 1] = latex_mask.NUL
+        return "".join(out)
+
+    patch.setattr(latex_print, "accented", broken)
 
 
 @holds(60, latex_trees())
@@ -1480,9 +1596,11 @@ def test_latex_s_words_hold_each_word_where_latex_prints_it(
 ) -> None:
     """A word planted in every place a LaTeX document holds one is in the view G14 reads, at
     its own offset, where LaTeX prints it as prose; it is not in it in maths, code, a figure's
-    caption, a comment, a label or the preamble's title; a word an accent command or `\\-`
-    splits is not in it and is given as unread, and no other word is; and a count written as
-    a subscript after a letter is written as Markdown writes it (step 7)."""
+    caption, a comment, a label or the preamble's title; a word an accent command, a letter
+    typed as a command or `\\-` splits is in it as LaTeX prints it, whole and followed by NUL
+    (2026-10-27); one whose accent marks no letter is not in it and is given as unread, and
+    no other word is; and a count written as a subscript after a letter is written as
+    Markdown writes it (step 7)."""
     text, planted = drawn
     reading = latex_mask.read(text)
     assert reading.refusals == (), (reading.refusals, text)
@@ -1494,6 +1612,12 @@ def test_latex_s_words_hold_each_word_where_latex_prints_it(
             assert seen.text.count(key) == 1 and seen.text.find(key) == text.find(key), key
         elif kind == "subscript":
             assert f"{key}X~2~" in seen.text, (key, seen.text)
+        elif kind.startswith("folded:"):
+            written = kind.removeprefix("folded:").format(key)
+            at = seen.text.find(written)
+            assert at >= 0 and seen.text.count(written) == 1, (written, seen.text)
+            after = seen.text[at + len(written) :]
+            assert after[: len(after) - len(after.lstrip(NUL))] and not after[:1].isalnum()
         else:
             assert key not in seen.text, (key, kind, seen.text)
         if kind == "split":
@@ -1527,6 +1651,27 @@ def _an_accented_word_is_cut_at_its_accent(patch: pytest.MonkeyPatch) -> None:
 
 def _a_subscripts_count_is_maths(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(latex_words_view, "_subscripts", lambda out, text: None)
+
+
+def _an_accent_command_drops_its_mark(patch: pytest.MonkeyPatch) -> None:
+    folded = latex_words_view.folded
+
+    def broken(found: re.Match[str]) -> str | None:
+        written = folded(found)
+        return written if not written else written[:1].encode("ascii", "ignore").decode()
+
+    patch.setattr(latex_words_view, "folded", broken)
+
+
+def _an_accent_over_no_letter_is_read(patch: pytest.MonkeyPatch) -> None:
+    folded = latex_words_view.folded
+    patch.setattr(latex_words_view, "folded", lambda found: folded(found) or "")
+
+
+def _a_letter_command_s_space_ends_its_word(patch: pytest.MonkeyPatch) -> None:
+    letter = r"\\(?:ss|ae|AE|oe|OE|aa|AA|o|O|l|L|i|j)(?![A-Za-z])(?:[ \t]*\{\})?"
+    patch.setattr(latex_words_view, "_SPLITS",
+                  re.compile(rf"{latex_words_view._ACCENT}|{letter}|\\-"))  # fmt: skip
 
 
 @holds(60, latex_trees())
@@ -1907,7 +2052,8 @@ def test_a_latex_claim_to_have_followed_a_guideline_is_read_where_it_prints(
     drawn: tuple[str, list[tuple[str, bool]]],
 ) -> None:
     """A claim in prose or a footnote is read; one in a comment, code, a listing or what
-    `\\iffalse` leaves out is no claim (G8r, step 8)."""
+    `\\iffalse` leaves out is no claim (G8r, step 8). One hard-wrapped over two lines is
+    read; over a blank line or a table's rows it is not (2026-10-27)."""
     from manuscript_guard.gates import reporting as reporting_gate
 
     text, planted = drawn
@@ -1967,6 +2113,22 @@ def _a_straight_quote_closes_nothing(patch: pytest.MonkeyPatch) -> None:
 
 def _a_quotation_runs_past_its_paragraph(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(latex_mask, "_PARAGRAPH_END", re.compile("(?!)"))
+
+
+def _a_quotation_runs_past_a_par(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_PAR", re.compile("(?P<par>(?!))"))
+
+
+def _a_par_in_a_comment_ends_a_quotation(patch: pytest.MonkeyPatch) -> None:
+    def broken(self: Any, start: int, end: int) -> bool:
+        return (latex_mask._PARAGRAPH_END.search(self.text, start, end) is not None
+                or latex_mask._PAR.search(self.text, start, end) is not None)  # fmt: skip
+
+    patch.setattr(latex_mask._Reader, "_paragraph_ended", broken)
+
+
+def _the_letters_after_a_line_break_are_a_par(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(latex_mask, "_PAR", re.compile(r"(?P<par>\\par)(?![A-Za-z@])"))
 
 
 def _a_straight_quote_before_a_letter_closes(patch: pytest.MonkeyPatch) -> None:
@@ -2034,6 +2196,54 @@ def _g8r_reads_a_latex_file_s_code(patch: pytest.MonkeyPatch) -> None:
         return reporting_gate._blanked(view, source.reading.references)
 
     patch.setattr(reporting_gate, "_latex_prose", prose)
+
+
+def _a_claim_stops_at_a_line_break(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import reporting as reporting_gate
+
+    patch.setattr(reporting_gate, "_SENTENCE", re.compile(r"[^.!?\n]+(?:[.!?]|\n|$)"))
+
+
+def _a_claim_runs_over_a_blank_line(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import reporting as reporting_gate
+
+    patch.setattr(reporting_gate, "_SENTENCE", re.compile(r"[^.!?]+(?:[.!?]|$)"))
+
+
+def _a_claim_runs_over_a_table_s_rows(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import reporting as reporting_gate
+
+    def prose(source, view):
+        return reporting_gate._blanked(view, (*source.reading.code, *source.reading.references))
+
+    patch.setattr(reporting_gate, "_latex_prose", prose)
+
+
+def _a_claim_runs_over_a_latex_list_s_items(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import reporting as reporting_gate
+
+    patch.setattr(reporting_gate, "_ITEM", re.compile(r"(?!)"))
+
+
+def _a_claim_runs_over_a_list_s_items(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import reporting as reporting_gate
+
+    patch.setattr(reporting_gate, "_SENTENCE",
+                  re.compile(r"(?:[^.!?\n]|\n(?![ \t]*(?:\n|$|[#|])))+(?:[.!?]|\n|$)"))
+
+
+@holds(60, markdown_claims())
+def test_a_markdown_claim_to_have_followed_a_guideline_is_read_within_its_sentence(
+    drawn: tuple[str, list[tuple[str, bool]]],
+) -> None:
+    """A claim is read within its sentence, which runs over a single line break and not
+    over a blank line, nor from one item of a list into the next, whatever the list's
+    marker; one in a comment is no claim (round 1 of #452)."""
+    from manuscript_guard.gates import reporting as reporting_gate
+
+    text, planted = drawn
+    named = reporting_gate._claims([(Path("main.md"), mask(text))])
+    assert sorted(named) == sorted(name for name, read in planted if read), text
 
 
 def _g8r_reads_a_typed_reference_list(patch: pytest.MonkeyPatch) -> None:
@@ -2918,6 +3128,28 @@ def test_a_deviation_rewrapped_says_what_it_said_and_a_word_more_does_not(
     assert deviations_said(plan) != deviations_said(longer), longer
 
 
+@holds(100, deviation_titled())
+def test_the_deviations_are_known_by_their_title_and_a_standard_deviation_is_not(
+    drawn: tuple[str, list[str]],
+) -> None:
+    """G12 found the Deviations by "deviation" anywhere in a title, so a section on the
+    dose's standard deviation was the plan's Deviations. What a plan says under each title
+    of its Deviations is read, numbered or not and in any case, and nothing under a title
+    that names a standard deviation alone."""
+    from manuscript_guard.gates.design import deviations_said
+
+    plan, said = drawn
+    assert deviations_said(plan) == " ".join(said), plan
+
+
+def _a_standard_deviation_is_a_deviation(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import design
+
+    patch.setattr(design, "REQUIRED", tuple(
+        (name, rule.replace(r"(?<!standard\s)", ""), why) for name, rule, why in design.REQUIRED
+    ))  # fmt: skip
+
+
 # ------------------------------------------------------------- the results a plan promises
 
 
@@ -3268,7 +3500,7 @@ def _reported_tests(draw: st.DrawFn) -> tuple[str, list[tuple[Any, ...]]]:
     for index in range(len(_TEST_FORMS)):
         plans += [(index, kind) for kind in ("moderate", "large", "far", "near", "quiet")]
     plans += [(-1, "next sentence"), (-1, "two statistics"), (-1, "middle dot"),
-              (-1, "decimal comma"), (-1, "reference after")]  # fmt: skip
+              (-1, "decimal comma"), (-1, "reference after"), (-1, "thousands")]  # fmt: skip
     shapes = draw(st.permutations(("e", "x10", "<")))
     sentences: list[tuple[str, tuple[Any, ...] | None]] = []
     for number, (index, plan) in enumerate(draw(st.permutations(plans))):
@@ -3276,15 +3508,41 @@ def _reported_tests(draw: st.DrawFn) -> tuple[str, list[tuple[Any, ...]]]:
             s, df, _p = statistic("t", _MODERATE)
             sentences.append((f"t({df[0]}) = {s}. {words().capitalize()} p = .40", None))
             continue
-        if plan in ("middle dot", "decimal comma"):
-            # A decimal written with a middle dot, in the P, or a comma, in the statistic:
-            # not read at all, rather than read as its whole part (round 1 of #285).
-            s, df, p = statistic("t", _MODERATE)
-            if plan == "middle dot":
-                printed = f"{p:.3f}".replace(".", "\N{MIDDLE DOT}")
-                sentences.append((f"t({df[0]}) = {s}, p = {printed}", None))
+        if plan == "middle dot":
+            # A decimal written with a middle dot, as the Lancet sets one, in the statistic
+            # and the P, and in a P's mantissa before a middle dot that multiplies by a
+            # power of ten: read with its point, where none was read at all.
+            kind = draw(st.sampled_from(("t", "z")))
+            s, df, p = statistic(kind, _MODERATE if kind == "t" else _LARGE)
+            dot = "\N{MIDDLE DOT}"
+            if kind == "t":
+                printed = f"{p:.3f}".replace(".", dot)
             else:
-                sentences.append((f"t({df[0]}) = {s.replace('.', ',')}, p = {p:.3f}", None))
+                mantissa, exponent = f"{p:.1e}".split("e")
+                printed = f"{mantissa.replace('.', dot)}{dot}10^{int(exponent)}^"
+            symbol = f"t({df[0]})" if kind == "t" else "z"
+            s = s.replace(".", dot)
+            sentences.append((f"{symbol} = {s}, p = {printed}",
+                              (0, kind, s, df, "=", printed, "right")))  # fmt: skip
+            continue
+        if plan == "decimal comma":
+            # A decimal written with a comma, in the statistic: not read at all, rather
+            # than read as its whole part (round 1 of #285).
+            s, df, p = statistic("t", _MODERATE)
+            sentences.append((f"t({df[0]}) = {s.replace('.', ',')}, p = {p:.3f}", None))
+            continue
+        if plan == "thousands":
+            # Degrees of freedom with a thousands' comma, in brackets after another and
+            # after "df =" alone: read whole, where no test was read.
+            kind = draw(st.sampled_from(("t", "F")))
+            value = draw(st.integers(*_MODERATE[kind])) / 1000 + 0.0003
+            df = (draw(st.integers(1, 5)),) * (kind == "F") + (draw(st.integers(1000, 99999)),)
+            s = f"{value:.2f}"
+            sign, printed = _printed_p(draw, _true_p(kind, value, df), "=")
+            written = tuple(f"{d:,}" for d in df)
+            text = (f"F({written[0]}, {written[1]}) = {s}, p {sign} {printed}" if kind == "F"
+                    else f"t = {s}, df = {written[0]}, P {sign} {printed}")  # fmt: skip
+            sentences.append((text, (0, kind, s, written, sign, printed, "right")))
             continue
         if plan == "reference after":
             # A reference set inline after a number that has its point, as text taken from
@@ -3385,10 +3643,28 @@ def _less_than_is_read_as_equal_to(patch: pytest.MonkeyPatch) -> None:
 def _a_decimal_comma_is_read_as_a_whole_number(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.stats import reported
 
-    refusal = r"(?(stat_point)|(?![\N{MIDDLE DOT},]\d))"
+    refusal = r"(?(stat_point)|(?!,\d))"
     assert refusal in reported._STATISTIC.pattern
     pattern = reported._STATISTIC.pattern.replace(refusal, "")
     patch.setattr(reported, "_STATISTIC", re.compile(pattern))
+
+
+def _a_middle_dot_is_no_decimal_point(patch: pytest.MonkeyPatch) -> None:
+    """The rule before a middle dot was read as a point: a number written with one was not
+    read at all."""
+    from manuscript_guard.stats import reported
+
+    point, refusal = r"[.\N{MIDDLE DOT}]", r"(?(stat_point)|(?!,\d))"
+    assert point in reported._STATISTIC.pattern and refusal in reported._STATISTIC.pattern
+    pattern = reported._STATISTIC.pattern.replace(point, r"\.").replace(
+        refusal, r"(?(stat_point)|(?![\N{MIDDLE DOT},]\d))")  # fmt: skip
+    patch.setattr(reported, "_STATISTIC", re.compile(pattern))
+
+
+def _degrees_with_a_thousands_comma_are_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import reported
+
+    patch.setattr(reported, "_GROUPED", re.compile(r"(?!)"))
 
 
 def _a_comma_after_a_point_is_taken_for_a_decimal_comma(patch: pytest.MonkeyPatch) -> None:
@@ -3396,7 +3672,7 @@ def _a_comma_after_a_point_is_taken_for_a_decimal_comma(patch: pytest.MonkeyPatc
     the number had its point already."""
     from manuscript_guard.stats import reported
 
-    refusal = r"(?![\N{MIDDLE DOT},]\d)"
+    refusal = r"(?!,\d)"
     for name, conditional in (("_STATISTIC", rf"(?(stat_point)|{refusal})"),
                               ("_P", rf"(?(p_point)|(?(power)|{refusal}))")):  # fmt: skip
         expression = getattr(reported, name)
@@ -3408,7 +3684,7 @@ def _a_comma_after_a_point_is_taken_for_a_decimal_comma(patch: pytest.MonkeyPatc
 def _a_middle_dot_is_read_as_the_end_of_a_p(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.stats import reported
 
-    pattern = reported._P.pattern.replace(r"[\N{MIDDLE DOT},]\d", r"\d")
+    pattern = reported._P.pattern.replace(r"(?P<p_point>\.|", r"(?P<p_point>\.|(?!)")
     assert pattern != reported._P.pattern
     patch.setattr(reported, "_P", re.compile(pattern))
 
@@ -4971,7 +5247,30 @@ def _planted_pointers(draw: st.DrawFn) -> tuple[str, str, set[tuple[str, bool, i
         form = draw(st.sampled_from(_SUPPLEMENTARY))
         parts[False].append(f"{words().capitalize()} {form % ('Figure', number)}.\n")
     planted.add(("figure", True, last + 1))
+    # Past the supplement's tables in each way the words after a pointer name it, at a
+    # number past the main text's too and apart from every other planted (2026-10-27).
+    for index, after in enumerate(_AFTER_SUPPLEMENT):
+        past = 50 + 30 * index + draw(st.integers(0, 20))
+        gap = draw(st.sampled_from(_GAPS))
+        written = after.format(n=past, gap=gap, s=draw(st.integers(1, 3)))
+        parts[False].append(f"{words().capitalize()} {written}.\n")
+        planted.add(("table", True, past))
     return "\n".join(parts[False]), "\n".join(parts[True]), planted, as_files
+
+
+#: The words after a pointer that put it in the supplement: "in the Supplement", and JAMA's
+#: numbered one, "in Supplement 1".
+_AFTER_SUPPLEMENT = ("Table {n} in{gap}the Supplement", "Table {n} in{gap}Supplement {s}",
+                     "Table {n} of the{gap}online appendix")
+
+
+def _a_numbered_supplement_after_a_pointer_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import pointers
+
+    numbered = "|supplement" + pointers._GAP + r"\d+\b"
+    assert numbered in pointers._POINTER.pattern
+    patch.setattr(pointers, "_POINTER",
+                  re.compile(pointers._POINTER.pattern.replace(numbered, ""), re.IGNORECASE))
 
 
 @holds(100, _planted_pointers())
@@ -5515,6 +5814,181 @@ def _an_item_of_a_list_opens_one(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(reference_lists_module, "_in_a_list", lambda lines, number: False)
 
 
+# ---------------------------------------------- the audit's entries, intervals and markers
+
+# Imported here, not at the top, to keep clear of the import block other branches edit.
+from generated import (  # noqa: E402
+    audit_entries,
+    docx_reference_ends,
+    glued_intervals,
+    printed_markers,
+)
+
+from manuscript_guard import audit as audit_module  # noqa: E402
+
+_WORD_NAMESPACE = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+
+
+def _docx_of(path: Path, paragraphs: list[str | tuple[str, str]]) -> Path:
+    """A .docx of `paragraphs` with no styles, each pair a table of one row of two cells."""
+    import zipfile
+    from xml.sax.saxutils import escape
+
+    def cell(text: str) -> str:
+        return f"<w:tc><w:p><w:r><w:t>{escape(text)}</w:t></w:r></w:p></w:tc>"
+
+    body = "".join(
+        f"<w:tbl><w:tr>{cell(each[0])}{cell(each[1])}</w:tr></w:tbl>" if isinstance(each, tuple)
+        else f"<w:p><w:r><w:t xml:space=\"preserve\">{escape(each)}</w:t></w:r></w:p>"
+        for each in paragraphs
+    )  # fmt: skip
+    with zipfile.ZipFile(path, "w") as archive:
+        document = f"<w:document {_WORD_NAMESPACE}><w:body>{body}</w:body></w:document>"
+        archive.writestr("word/document.xml", document)
+    return path
+
+
+def _listed(papers: list[Path], figures: list[Path] | None = None) -> list[str]:
+    """What the audit lists as found in no output, given none."""
+    return sorted(c.text for c in audit_module.audit(papers, [], figures=figures).unmatched)
+
+
+@holds(100, audit_entries())
+def test_an_entry_of_each_style_is_known_by_its_shape_and_no_lookalike_is(
+    drawn: list[tuple[str, bool]],
+) -> None:
+    """Where no heading says where the list is, a book, a chapter, a web page in four styles,
+    an article online first, the BMJ's entry with no full stop before its year and Harvard's
+    with none after it are each known by their shape, and a caption or a sentence with some
+    of their parts is not (`looks_like_reference`)."""
+    assert [(line, audit_module.looks_like_reference(line)) for line, _ in drawn] == drawn
+
+
+def _without(patch: pytest.MonkeyPatch, name: str, part: str, instead: str = "") -> None:
+    """The audit's pattern `name` with `part` of it replaced."""
+    pattern = getattr(audit_module, name).pattern
+    assert pattern.count(part) == 1, (name, part)
+    patch.setattr(audit_module, name, re.compile(pattern.replace(part, instead)))
+
+
+_NO_MONTH = r"(?!(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\b)"
+
+
+def _no_web_page_is_an_entry(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(audit_module, "_WEB_ENTRY", re.compile("(?!)"))
+
+
+def _an_entry_needs_a_stop_before_its_year(patch: pytest.MonkeyPatch) -> None:
+    _without(patch, "_VANCOUVER_ENTRY", rf"|\s{_NO_MONTH}[A-Z][A-Za-z]{{0,30}}\s+", "|(?!)")
+
+
+def _a_month_is_a_journal_s_name(patch: pytest.MonkeyPatch) -> None:
+    _without(patch, "_VANCOUVER_ENTRY", _NO_MONTH)
+
+
+def _a_book_is_no_entry(patch: pytest.MonkeyPatch) -> None:
+    _without(patch, "_VANCOUVER_ENTRY", r"|:\s?[", r"|(?!):\s?[")
+
+
+def _an_article_online_first_is_no_entry(patch: pytest.MonkeyPatch) -> None:
+    _without(patch, "_VANCOUVER_ENTRY", r"\.\s+(?i:doi\b|https?://|pmid\b|epub\b)[^\n]*$", "(?!)")
+
+
+def _harvard_s_year_needs_its_full_stop(patch: pytest.MonkeyPatch) -> None:
+    _without(patch, "_REFERENCE_ENTRY", r"(?:\.|(?=\s+[", r"(?:\.|(?!)(?=\s+[")
+
+
+@holds(100, glued_intervals())
+def test_an_interval_after_a_value_in_any_format_is_told_from_a_citation(
+    drawn: tuple[str, list[tuple[int, int]]],
+) -> None:
+    """A bracket of whole numbers after a value is an interval where it encloses the value,
+    whether the value has a decimal point or a decimal comma, is grouped in thousands, or
+    has a percent sign spaced from it, and a citation where it does not (`_intervals`)."""
+    text, expected = drawn
+    assert audit_module._intervals(text) == expected, text
+
+
+def _a_percent_sign_must_touch_its_value(patch: pytest.MonkeyPatch) -> None:
+    _without(patch, "_AFTER_A_VALUE", r"(?:\s?%)?", "%?")
+
+
+def _a_decimal_comma_ends_the_value(patch: pytest.MonkeyPatch) -> None:
+    _without(patch, "_AFTER_A_VALUE", r"(?P<value>\d+(?:[.,]\d+)?)", r"(?P<value>\d+(?:\.\d+)?)")
+
+
+def _a_thousands_comma_is_read_as_a_decimal_one(patch: pytest.MonkeyPatch) -> None:
+    read = audit_module._encloses
+
+    def encloses(match: re.Match[str]) -> bool:
+        if not match["grouped"]:
+            return read(match)
+        low, high = (int(match[name].replace(",", "")) for name in ("grouped_low", "grouped_high"))
+        return low <= float(match["grouped"].replace(",", ".")) <= high
+
+    patch.setattr(audit_module, "_encloses", encloses)
+
+
+@holds(30, printed_markers())
+def test_the_markers_of_an_html_comment_hide_nothing_in_word_or_a_figure(
+    drawn: tuple[list[str], list[str]],
+) -> None:
+    """A .docx and a figure print `<!--` and `-->` as typed: every number beside them, or
+    between them in one paragraph or across two, is listed, and an address between them is
+    still masked, as one is anywhere (`_masked`)."""
+    import tempfile
+    from xml.sax.saxutils import escape
+
+    lines, planted = drawn
+    with tempfile.TemporaryDirectory() as folder:
+        docx = _docx_of(Path(folder) / "paper.docx", lines)
+        svg = Path(folder) / "figure.svg"
+        svg.write_text(
+            '<svg xmlns="http://www.w3.org/2000/svg">'
+            + "".join(f'<text y="{n}">{escape(line)}</text>' for n, line in enumerate(lines))
+            + "</svg>",
+            encoding="utf-8",
+        )
+        assert _listed([docx]) == sorted(planted), lines
+        assert _listed([], [svg]) == sorted(planted), lines
+
+
+def _printed_text_hides_its_comments(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(audit_module, "_masked", lambda text, printed_as_typed: audit_module.mask(text))
+
+
+def _printed_text_is_not_masked(patch: pytest.MonkeyPatch) -> None:
+    masked = audit_module._masked
+
+    def unmasked(text: str, printed_as_typed: bool) -> str:
+        return text if printed_as_typed else masked(text, False)
+
+    patch.setattr(audit_module, "_masked", unmasked)
+
+
+@holds(30, docx_reference_ends())
+def test_a_docx_list_under_no_heading_style_ends_where_check_ends_one(
+    drawn: tuple[list[str | tuple[str, str]], list[str]],
+) -> None:
+    """In a .docx with no heading styles, a list under "References" ends at a caption of each
+    shape, a back-matter title and a table, as `check` ends one under no heading in
+    Markdown, and every number after it is listed (`_end_under_no_heading`); the entries'
+    volumes and pages are not."""
+    import tempfile
+
+    paragraphs, planted = drawn
+    with tempfile.TemporaryDirectory() as folder:
+        assert _listed([_docx_of(Path(folder) / "paper.docx", paragraphs)]) == sorted(planted)
+
+
+def _a_docx_list_runs_to_the_end(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(audit_module, "_end_under_no_heading", lambda lines, start, end: end)
+
+
+def _a_caption_ends_no_docx_list(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(reference_lists_module, "_NO_ENTRY", re.compile("(?!)"))
+
+
 # --------------------------------------------------- e-mail addresses beside citations
 
 
@@ -5694,10 +6168,17 @@ def test_every_residue_is_found_by_its_rule_and_nothing_that_reads_like_one(
 # ------------------------------------------------------------------------ an em dash typed
 
 #: What G6 counts as an em dash, the character and three hyphens, spaced or not; and what it
-#: does not: two hyphens, four, and a line of dashes, a rule or a table's.
+#: does not: two hyphens, four, a line of dashes, a rule or a table's, and a dash in a cell
+#: of a table of each kind pandoc reads, simple, headless simple, multiline and grid.
 _EM_DASHES = ("\N{EM DASH}", "---", " --- ", " \N{EM DASH} ")
 _NO_EM_DASHES = ("--", " -- ", "----", "\n\n---\n\n", "\n\n|---|:---:|\n\n", "\n\n--- ---\n\n",
-                 "\n\n+---+---+\n\n", " `---` ", "\n\n| a | --- |\n\n")  # fmt: skip
+                 "\n\n+---+---+\n\n", " `---` ", "\n\n| a | --- |\n\n",
+                 "\n\nGroup     N\n--------- ---------\nexposed   \N{EM DASH}\nunexposed ---\n\n",
+                 "\n\n-------  -------\nexposed  \N{EM DASH}\nother    ---\n-------  -------\n\n",
+                 "\n\n  ------------------\n  Drug      Dose\n  --------- --------\n"
+                 "  a         \N{EM DASH}\n\n  b         ---\n  ------------------\n\n",
+                 "\n\n+-----+-----+\n| a   | --- |\n+=====+=====+\n| b   | \N{EM DASH}   |\n"
+                 "+-----+-----+\n\n")  # fmt: skip
 
 
 @st.composite
@@ -5751,6 +6232,10 @@ def _any_run_of_hyphens_is_an_em_dash(patch: pytest.MonkeyPatch) -> None:
     _em_dash_rule(patch, pattern="\N{EM DASH}|-{2,}")
 
 
+def _an_em_dash_in_a_table_is_counted(patch: pytest.MonkeyPatch) -> None:
+    _em_dash_rule(patch, in_tables=True)
+
+
 # ------------------------------------------------------------------ bold in a table
 
 @holds(100, bold_planted())
@@ -5766,6 +6251,56 @@ def test_bold_is_counted_in_the_prose_and_not_in_a_table(planted: tuple[str, int
     rule = next(rule for rule in load_rules().density if rule["id"] == "boldface")
     [(_path, _text, prose)] = _prose([(Path("main.md"), text)])
     assert len(_hits(rule, prose)) == count, text
+
+
+@holds(100, keyword_paragraphs())
+def test_the_abstract_ends_at_its_keywords_label_and_not_at_a_sentence_about_them(
+    planted: list[tuple[dict, bool]],
+) -> None:
+    """`abstract.txt` is the abstract up to its keywords. Their label opens a paragraph in
+    bold with no colon (Known gaps: it went into the file), or with a colon however set; a
+    sentence that opens with the word, emphasised, plain or all in bold, is the abstract's."""
+    from manuscript_guard.build.submission import _until_keywords
+
+    words = {"t": "Para", "c": [{"t": "Str", "c": "reports"}]}
+    for paragraph, is_label in planted:
+        kept = _until_keywords([words, paragraph, words])
+        assert kept == ([words] if is_label else [words, paragraph, words]), paragraph
+
+
+def _a_bold_keywords_label_needs_a_colon(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.build import submission
+
+    patch.setattr(submission, "_bold_keywords", lambda block: False)
+
+
+def _any_emphasis_opening_with_the_word_is_the_label(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.build import submission
+
+    patch.setattr(submission, "_bold_keywords", lambda block: bool(block.get("c")) and block[
+        "c"][0].get("t") in ("Strong", "Emph") and submission._text(block["c"][0]).lower()
+        .replace(" ", "").replace("-", "").startswith("keyword"))  # fmt: skip
+
+
+@holds(100, abstract_trees())
+def test_the_abstract_is_found_under_its_heading_wherever_a_div_holds_it(
+    planted: list[tuple[list[dict], list[dict] | None]],
+) -> None:
+    """The pack's abstract is what stands under the heading that names it, to the next of
+    its level or the end of the Div it is in. A heading inside a Div was not looked for
+    (Known gaps), and the abstract was left out without a word."""
+    from manuscript_guard.build.submission import _abstract_blocks
+
+    for blocks, under in planted:
+        assert _abstract_blocks(blocks) == under, blocks
+
+
+def _a_div_is_not_looked_inside(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.build import submission
+
+    found = submission._abstract_blocks
+    patch.setattr(submission, "_abstract_blocks",
+                  lambda blocks: found([b for b in blocks if b.get("t") != "Div"]))  # fmt: skip
 
 
 def _bold_in_a_table_is_counted(patch: pytest.MonkeyPatch) -> None:
@@ -5813,6 +6348,136 @@ def test_a_reference_list_is_known_by_its_title_in_each_language(
         assert section.is_references == is_list, title
         assert is_bibliography_heading(f"# {title}", marked=True) == is_list, title
         assert (_kind_of(title, False, None) == SET_APART) == is_list, title
+
+
+@holds(100, methods_titled())
+def test_the_methods_are_known_by_their_title_with_what_they_hold_after_it(
+    titled: list[tuple[str, bool]],
+) -> None:
+    """G2 and G15 read "Methods" alone, or joined to another part's name by "and", and not
+    "Methods: data sources" or "Methods of the study". Each title that names the Methods,
+    with what they hold after a colon, a stop, a dash or "of", is the Methods for what stands
+    under it, numbered or not and in any case; a title that also names what was found, or a
+    word that only opens with "method", is not."""
+    from manuscript_guard.classify import is_methods
+
+    text = "".join(f"# {title}\n\nText {n}.\n\n" for n, (title, _is) in enumerate(titled))
+    headings, notes = heading_index(text), footnote_index(text)
+    for n, (title, methods) in enumerate(titled):
+        chains = chains_at(headings, notes, text.index(f"Text {n}."))
+        assert [is_methods(chain) for chain in chains] == [methods] * len(chains), title
+
+
+def _methods_only_alone_or_joined_by_and(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import classify
+
+    joints = r"methods\s*[:.\N{EN DASH}\N{EM DASH}][^\n]*|methods\s+of\s+[^\n]+|"
+    pattern = classify.METHODS_SECTIONS
+    assert joints in pattern.pattern
+    patch.setattr(classify, "METHODS_SECTIONS",
+                  re.compile(pattern.pattern.replace(joints, ""), pattern.flags))  # fmt: skip
+
+
+from generated import numbered_reference_titled  # noqa: E402
+
+
+@holds(100, numbered_reference_titled())
+def test_a_reference_list_is_known_by_its_title_however_it_is_numbered(
+    titled: list[tuple[str, bool]],
+) -> None:
+    """A number before a heading's name, "VII. References" or "7. References", or bold
+    around it, stopped G4's count and G14 knowing the reference list by it, where the
+    recycling check, which reads the title as printed, set the list apart. Both know it by
+    its title however it is numbered or marked, and neither takes a title that only opens
+    with such a word for one."""
+    from manuscript_guard.gates.recycling import SET_APART, _kind_of
+    from manuscript_guard.text.sections import split_sections
+
+    text = "".join(f"# {title}\n\nText {n}.\n\n" for n, (title, _is) in enumerate(titled))
+    sections = split_sections(text)
+    assert len(sections) == len(titled), text
+    for section, (title, is_list) in zip(sections, titled, strict=True):
+        assert section.is_references == is_list, title
+        assert (_kind_of(title, False, None) == SET_APART) == is_list, title
+
+
+def _a_reference_list_s_title_is_read_as_typed(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import sections
+
+    patch.setattr(sections, "plain", lambda title: title)
+
+
+# ------------------------------------------------- a display item placed by hand, G4
+
+from generated import figures_placed, latex_displays_placed  # noqa: E402
+
+
+@holds(100, figures_placed())
+def test_a_figure_placed_by_hand_counts_where_pandoc_numbers_it(planted: tuple[str, int]) -> None:
+    """G4 counted a figure only where a binding placed it, so a figure placed by hand, which
+    pandoc prints as a numbered figure, was no display item. An image with a caption alone in
+    its paragraph counts; one in a sentence, with no caption, in a comment, a fence or a code
+    block, or on a line of a longer paragraph, does not."""
+    from manuscript_guard.text.sections import measure
+
+    text, count = planted
+    assert measure(text).figures == count, text
+
+
+def _a_figure_placed_by_hand_is_no_display(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import sections
+
+    patch.setattr(sections, "_figures_placed", lambda text: 0)
+
+
+def _every_image_is_a_figure(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import sections
+
+    patch.setattr(sections, "_figures_placed",
+                  lambda text: len(re.findall(r"!\[[^\]\n]*\]\(", text)))  # fmt: skip
+
+
+def _a_heading_s_line_below_an_image_ends_its_paragraph(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import sections
+
+    placed = sections._figures_placed
+
+    def broken(text: str) -> int:
+        lines = sections.scannable(text).split("\n")
+        under = sum(1 for at in range(1, len(lines) - 1)
+                    if sections._FIGURE_LINE.fullmatch(lines[at])
+                    and not lines[at - 1].strip() and sections._ATX_LINE.fullmatch(lines[at + 1]))
+        return placed(text) + under
+
+    patch.setattr(sections, "_figures_placed", broken)
+
+
+@holds(25, latex_displays_placed())
+def test_a_latex_display_counts_as_latex_numbers_it(planted: tuple[str, int]) -> None:
+    """G4 counted a LaTeX float as a display item only where it placed a binding, so a
+    figure placed with `\\includegraphics` and captioned was none. Each caption a float
+    numbers counts, whatever the float places, and a binding in a float with no caption or
+    in none counts as before; a picture with no caption, a starred caption and a float in a
+    comment count as none."""
+    import tempfile
+
+    from manuscript_guard.gates.journal import latex_displays
+
+    document, count = planted
+    with tempfile.TemporaryDirectory() as folder:
+        (Path(folder) / "main.tex").write_text(document, encoding="utf-8")
+        assert sum(latex_displays(Path(folder))) == count, document
+
+
+def _a_latex_display_counts_by_its_bindings(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import journal
+    from manuscript_guard.text.latex.printed import printed_document
+
+    def bound(folder: Path) -> tuple[int, int]:
+        text = printed_document(folder, supplementary=False)
+        return text.count("{{table."), text.count("{{figure.")
+
+    patch.setattr(journal, "latex_displays", bound)
 
 
 def _english_only(patch: pytest.MonkeyPatch, module: Any) -> None:
@@ -5871,7 +6536,9 @@ def test_an_address_and_an_interleukin_are_no_numbers_and_a_number_beside_them_i
     expected = {"address": STRUCTURAL, "name": TERM, "number": UNCLASSIFIED}
     atoms = find_atoms(text, mask(text))
     assert sorted(atom.text for atom in atoms) == sorted(kinds), text
-    for classifier in (Classifier.load(), Classifier.load(rendered=True)):
+    declared = DECLARED_TERMS
+    for classifier in (Classifier.load(extra_terms=declared),
+                       Classifier.load(rendered=True, extra_terms=declared)):  # fmt: skip
         scan = classifier.scan(text)
         for atom in atoms:
             verdict = classifier.classify(atom, None, scan)
@@ -5915,7 +6582,7 @@ def _an_interleukin_is_a_number(patch: pytest.MonkeyPatch) -> None:
 def _a_term_is_found_inside_a_word(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard import classify
 
-    def anywhere(text: str, terms: tuple[str, ...]) -> list[str] | None:
+    def anywhere(text: str, terms: tuple[str, ...], *_marked: frozenset[int]) -> list[str] | None:
         rest, used = text.lower(), []
         for term in terms:
             if term and term in rest:
@@ -5960,9 +6627,38 @@ def _a_capital_opens_no_term_after_it(patch: pytest.MonkeyPatch) -> None:
 def _a_superscript_s_digits_open_a_term_at_a_capital(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard import classify
 
-    terms_covering = classify._terms_covering
+    names_covering = classify._names_covering
     patch.setattr(classify, "_names_covering",
-                  lambda text, _raised, terms: terms_covering(text, terms))  # fmt: skip
+                  lambda text, _raised, terms, **marked: names_covering(text, frozenset(), terms,
+                                                                        **marked))  # fmt: skip
+
+
+def _a_subscript_s_digits_open_a_term_after_a_capital(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import classify
+
+    names_covering = classify._names_covering
+    patch.setattr(classify, "_names_covering",
+                  lambda text, raised, terms, **_marked: names_covering(text, raised, terms))
+
+
+def _a_subscript_s_digits_open_a_term_only_at_a_word(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import classify
+
+    names_covering = classify._names_covering
+    patch.setattr(classify, "_names_covering",
+                  lambda text, raised, terms, sunk, **_declared: names_covering(
+                      text, raised | sunk, terms))  # fmt: skip
+
+
+def _a_declared_term_with_a_subscript_opens_no_term_after_capitals(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    from manuscript_guard import classify
+
+    names_covering = classify._names_covering
+    patch.setattr(classify, "_names_covering",
+                  lambda text, raised, terms, sunk, **_declared: names_covering(
+                      text, raised, terms, sunk=sunk))  # fmt: skip
 
 
 def _no_term_counts_directly_after_another(patch: pytest.MonkeyPatch) -> None:
@@ -6798,6 +7494,8 @@ _EARLIER_WORDS = tuple(
                   "pel", "bru", "hok", "lom", "wib", "fen")  # fmt: skip
     for end in ("ade", "ine", "ost", "eth", "ond", "ix", "um", "orb", "ask", "elp", "aunt")
 )  # fmt: skip
+from generated import AUTHOR_YEAR_CITED, NOT_AUTHOR_YEAR  # noqa: E402
+
 #: Words a page sets with a ligature.
 _LIGATURED = ("zoruffa", "velifle", "quanflan", "mibaffe", "teshoffin")
 #: Words the earlier paper has between the passages a manuscript repeats.
@@ -6840,7 +7538,8 @@ def _planted_recycling(draw: st.DrawFn) -> tuple[str, str, set[tuple[int, ...]]]
     one under the Discussion's principal findings, beside its interpretation and its
     conclusions, as the Discussion's. Not reported: a run of eleven, and runs in a listing, a
     comment, a heading and the reference list. The earlier paper sets each run in type: a
-    word broken at the end of a line, a ligature, a reference's number."""
+    word broken at the end of a line, a ligature, a reference's number, and a citation by
+    author and year where the manuscript cites by key."""
     pool = list(draw(st.permutations(_EARLIER_WORDS)))
     text, source, expected = "", "", set()
 
@@ -6867,6 +7566,8 @@ def _planted_recycling(draw: st.DrawFn) -> tuple[str, str, set[tuple[int, ...]]]
         typeset[broken] = f"{typeset[broken][:cut]}-\n{typeset[broken][cut:]}"
         numbered = draw(st.integers(0, size - 2))
         typeset[numbered] += draw(st.sampled_from((".12", "12", "\N{SUPERSCRIPT TWO}", " [3]")))
+        cited = draw(st.integers(0, size - 2))
+        typeset[cited] += " " + draw(st.sampled_from(AUTHOR_YEAR_CITED))
         own = draw(st.lists(st.sampled_from(_ITS_OWN), min_size=_APART_BY, max_size=8))
         source += " ".join(own) + "\n" + " ".join(typeset) + "\n"
         # The manuscript.
@@ -6944,6 +7645,127 @@ def test_a_passage_of_an_earlier_paper_is_found_where_it_stands_however_it_is_se
         for p in recycling_gate.recycled_in(text, source, "earlier")
     }
     assert found == expected, (text, source)
+
+
+@st.composite
+def _author_year_planted(draw: st.DrawFn) -> tuple[str, str]:
+    """Words, with every citation by author and year and every parenthesis that is none
+    between them, in an order drawn each time; and the text with the citations blanked."""
+
+    def words() -> str:
+        return " ".join(draw(st.lists(st.sampled_from(FILLER), min_size=1, max_size=4)))
+
+    pieces = [(cited, True) for cited in AUTHOR_YEAR_CITED]
+    pieces += [(other, False) for other in NOT_AUTHOR_YEAR]
+    text = blanked = words()
+    for piece, cited in draw(st.permutations(pieces)):
+        gap, after = draw(st.sampled_from((" ", "\n"))), " " + words()
+        text += gap + piece + after
+        blanked += gap + (re.sub(r"[^\n]", " ", piece) if cited else piece) + after
+    return text, blanked
+
+
+@holds(100, _author_year_planted())
+def test_a_citation_by_author_and_year_is_no_word_of_an_earlier_paper(
+    planted: tuple[str, str],
+) -> None:
+    """An earlier paper that cites by author and year, "(Smith et al., 2019)", has words
+    where the manuscript cites by key, and they cut a passage the two share. Each such
+    citation is blanked, its line breaks kept; a date, a name with no year, a table, or
+    words in lower case before a year are not."""
+    text, blanked = planted
+    assert recycling_gate.without_author_year(text) == blanked, text
+
+
+def _an_author_year_citation_is_words(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(recycling_gate, "without_author_year", lambda source: source)
+
+
+def _a_cited_name_needs_no_capital(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(recycling_gate, "_is_author_year", lambda cited: True)
+
+
+def _a_word_that_opens_a_date_names_an_author(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(recycling_gate, "_NO_AUTHOR", frozenset())
+
+
+def _a_word_that_opens_a_date_names_no_author_among_several(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(recycling_gate, "_AUTHORS", re.compile(r"(?!)"))
+
+
+def _a_citation_names_one_author(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(recycling_gate, "_AUTHOR_YEAR", re.compile(
+        r"\(\s*[^\W\d_]+(?:\s+et\s+al\.?)?\s*,?\s+(?:1[5-9]|20)\d\d[a-z]?\s*\)"
+    ))  # fmt: skip
+
+
+# ---------------------------------------------------- one reference written two ways, G7
+
+from generated import DOI_WRITINGS, DOIS_WRITTEN, titles_in_tex  # noqa: E402
+
+
+@st.composite
+def _dois_written(draw: st.DrawFn) -> list[tuple[str, str]]:
+    """Every DOI of `DOIS_WRITTEN` written every way of `DOI_WRITINGS`, in capitals or as
+    it stands, in an order drawn; each beside its registered form."""
+    written = [
+        (writing(draw(st.sampled_from((doi, doi.upper())))), doi)
+        for doi in DOIS_WRITTEN
+        for writing in DOI_WRITINGS
+    ]
+    return draw(st.permutations(written))
+
+
+@holds(50, _dois_written())
+def test_a_doi_is_compared_as_it_is_registered_however_the_file_writes_it(
+    written: list[tuple[str, str]],
+) -> None:
+    """A DOI was compared as `references.bib` writes it, so `\\_` was not `_` nor `%28` `(`:
+    one work cited under two keys was not found, and a PDF named for its DOI was looked for
+    under another name. A TeX escape and a resolver's percent-encoding are read as the
+    character; the DOI is then the one registered."""
+    from manuscript_guard.gates.duplicates import identifiers_of
+    from manuscript_guard.gates.identifiers import doi_of
+
+    for doi, registered in written:
+        assert doi_of({"doi": doi}) == registered.lower(), doi
+        assert identifiers_of({"doi": doi}) == {("DOI", registered.lower())}, doi
+
+
+def _a_tex_escape_in_a_doi_is_kept(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import identifiers
+
+    patch.setattr(identifiers, "_TEX_ESCAPED", re.compile(r"(?!)(.)"))
+
+
+def _a_doi_s_percent_encoding_is_kept(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import identifiers
+
+    patch.setattr(identifiers, "_PERCENT_ENCODED", re.compile(r"(?!)(..)"))
+
+
+def _a_doi_s_escaped_space_is_a_space(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import identifiers
+
+    patch.setattr(identifiers, "_PERCENT_ENCODED", re.compile(r"%([2-7][0-9A-Fa-f])"))
+
+
+@holds(100, titles_in_tex())
+def test_a_title_in_tex_is_the_title_in_unicode(written: tuple[str, str]) -> None:
+    """A title's TeX accents were read as letters, `Caf\\'e` as two words, so an entry
+    written in TeX and one of the same work in Unicode were not found to share a title.
+    Each accent TeX writes as a command is the letter it makes."""
+    from manuscript_guard.gates.duplicates import title_of
+
+    tex, unicode = written
+    assert title_of({"title": tex}) == title_of({"title": unicode}) is not None, tex
+
+
+def _a_title_s_tex_is_letters(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import duplicates
+
+    patch.setattr(duplicates, "_SIGN", re.compile(r"(?!)"))
+    patch.setattr(duplicates, "_untex", lambda found: found.group())
 
 
 #: Where a LaTeX document repeats a run of an earlier paper, whether G7's text recycling reads
@@ -7614,6 +8436,89 @@ def _a_line_is_not_widened(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(figure_svg, "_widened", lambda matrix: 1.0)
 
 
+@holds(100, signed_ticks())
+def test_a_figure_s_minus_sign_and_a_hyphen_are_one_sign_either_side(
+    planted: tuple[str, list[str], list[str], list[str]],
+) -> None:
+    """G3 allows a number of a figure's text that a display of the results or an entry of
+    its sidecar types. A minus sign there and a hyphen here were two numbers (Known gaps):
+    matplotlib draws U+2212. A number allowed only with the other sign, or not at all, is
+    still reported, as written."""
+    from manuscript_guard.classify import Classifier
+    from manuscript_guard.gates.figures import _allowed, _allowed_ticks, _unbound
+    from manuscript_guard.text.tokens import find_atoms
+
+    text, displays, ticks, unbound = planted
+    classifier = Classifier.load((), ())
+    found = _unbound(find_atoms(text, text), _allowed(displays), _allowed_ticks(ticks),
+                     classifier, classifier.scan(text, lines_are_blocks=True))  # fmt: skip
+    assert sorted(atom.text for atom in found) == sorted(unbound), text
+
+
+def _a_minus_sign_is_not_a_hyphen(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figures
+
+    patch.setattr(figures, "_signed", lambda number: number)
+
+
+def _a_number_s_sign_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import figures
+
+    patch.setattr(figures, "_signed", lambda number: number.lstrip("-\N{MINUS SIGN}"))
+
+
+@holds(25, figure_captions())
+def test_a_figure_s_caption_is_styled_in_every_form_g2_holds_and_prose_is_not(
+    planted: tuple[str, list[str]],
+) -> None:
+    """`figure_caption.lua` sets in the caption's style the paragraph under a figure that
+    opens with its label and number and a stop or a colon: "Figure 1.", "Fig. 1." and
+    "eFigure 1." (Known gaps: only the first), and no paragraph under no figure, nor prose
+    that opens with the words."""
+    from manuscript_guard.build import document
+
+    if shutil.which("pandoc") is None:
+        pytest.skip("pandoc is not installed, and the filter is one pandoc runs")
+    markdown, styled = planted
+    done = subprocess.run(
+        [document.pandoc(), "-f", "markdown", "-t", "json", "--lua-filter",
+         str(document.FIGURE_CAPTION_LUA)],
+        input=markdown, capture_output=True, text=True, encoding="utf-8", check=True,
+        timeout=120,
+    )  # fmt: skip
+
+    def said(node: object) -> str:
+        if isinstance(node, list):
+            return "".join(said(item) for item in node)
+        if not isinstance(node, dict):
+            return ""
+        if node.get("t") == "Str":
+            return node["c"]
+        if node.get("t") in ("Space", "SoftBreak"):
+            return " "
+        return said(node.get("c"))
+
+    found = [
+        said(block["c"][1]).replace("\N{NO-BREAK SPACE}", " ")
+        for block in json.loads(done.stdout)["blocks"]
+        if block["t"] == "Div" and ["custom-style", "Figure Caption"] in block["c"][0][2]
+    ]
+    assert found == [text.replace("\N{NO-BREAK SPACE}", " ") for text in styled], markdown
+
+
+def _only_figure_opens_a_caption(patch: pytest.MonkeyPatch) -> None:
+    import tempfile
+
+    from manuscript_guard.build import document
+
+    lua = document.FIGURE_CAPTION_LUA.read_text(encoding="utf-8")
+    broken = lua.replace("{ 'Figure', 'Fig%.', 'eFigure' }", "{ 'Figure' }")
+    assert broken != lua
+    path = Path(tempfile.mkdtemp(prefix="mg-broken-lua-")) / "figure_caption.lua"
+    path.write_text(broken, encoding="utf-8")
+    patch.setattr(document, "FIGURE_CAPTION_LUA", path)
+
+
 @holds(100, pdf_figures())
 def test_a_pdf_figure_s_text_and_lines_are_read_at_the_size_they_are_drawn(
     drawn: tuple[bytes, list[float], list[float]],
@@ -8173,6 +9078,16 @@ _AFTER_A_BINDING = (
     (" min-1", "min-1"),
     (" \N{DEGREE SIGN}C", "\N{DEGREE SIGN}C"),
     (" mg/kg/day", "mg/kg/day"),
+    # A divisor after a space, with its power below nought; not a word with a number after
+    # a hyphen, nor a power of two digits.
+    (" mg kg-1", "mg kg-1"),
+    (
+        " mg kg\N{SUPERSCRIPT MINUS}\N{SUPERSCRIPT ONE}",
+        "mg kg\N{SUPERSCRIPT MINUS}\N{SUPERSCRIPT ONE}",
+    ),
+    ("\N{NO-BREAK SPACE}\N{MICRO SIGN}g L-1 d-1", "\N{MICRO SIGN}g L-1 d-1"),
+    (" mg COX-2", "mg"),
+    (" mg kg-12", "mg"),
     (" minutes", None),
     (" mgs", None),
     (" group", None),
@@ -10785,6 +11700,12 @@ def _a_heading_is_part_of_the_paragraph_under_it(patch: pytest.MonkeyPatch) -> N
     patch.setattr(methods_gate, "_HEADING", re.compile(r"(?!)"))
 
 
+def _a_divisor_after_a_space_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    assert bound_units_gate._SPACED in bound_units_gate._UNIT.pattern
+    pattern = bound_units_gate._UNIT.pattern.replace(bound_units_gate._SPACED, "")
+    patch.setattr(bound_units_gate, "_UNIT", re.compile(pattern))
+
+
 def _a_unit_is_read_after_a_plain_space_only(patch: pytest.MonkeyPatch) -> None:
     pattern = bound_units_gate._UNIT.pattern.replace(bound_units_gate._GAP, " ?", 1)
     patch.setattr(bound_units_gate, "_UNIT", re.compile(pattern))
@@ -11259,6 +12180,30 @@ BROKEN = {
         _fold_keeps_dashes,
         test_a_registered_outcome_is_found_however_it_was_copied_and_not_with_a_word_changed,
     ),
+    "a bold keywords label needs a colon": (
+        _a_bold_keywords_label_needs_a_colon,
+        test_the_abstract_ends_at_its_keywords_label_and_not_at_a_sentence_about_them,
+    ),
+    "any emphasis opening with the word is the keywords label": (
+        _any_emphasis_opening_with_the_word_is_the_label,
+        test_the_abstract_ends_at_its_keywords_label_and_not_at_a_sentence_about_them,
+    ),
+    "the abstract's heading is not looked for inside a Div": (
+        _a_div_is_not_looked_inside,
+        test_the_abstract_is_found_under_its_heading_wherever_a_div_holds_it,
+    ),
+    "a figure's minus sign is not its sidecar's hyphen": (
+        _a_minus_sign_is_not_a_hyphen,
+        test_a_figure_s_minus_sign_and_a_hyphen_are_one_sign_either_side,
+    ),
+    "a figure's number is read without its sign": (
+        _a_number_s_sign_is_not_read,
+        test_a_figure_s_minus_sign_and_a_hyphen_are_one_sign_either_side,
+    ),
+    "only Figure opens a caption the build styles": (
+        _only_figure_opens_a_caption,
+        test_a_figure_s_caption_is_styled_in_every_form_g2_holds_and_prose_is_not,
+    ),
     "a registry is read as a registration": (
         _retrospective_any_regist_word,
         test_a_late_registration_is_said_in_every_way_a_manuscript_says_it_and_no_other,
@@ -11503,6 +12448,30 @@ BROKEN = {
         _a_standalone_picture_is_a_second_document,
         test_a_latex_document_reads_its_own_files_and_no_class_s_nor_another_document_s,
     ),
+    "in LaTeX, a preamble's \\input without braces names nothing": (
+        _a_preamble_input_without_braces_names_nothing,
+        test_a_latex_document_reads_its_own_files_and_no_class_s_nor_another_document_s,
+    ),
+    "in LaTeX, a part \\subfile or \\includestandalone places is not followed": (
+        _a_placed_part_is_not_followed,
+        test_a_latex_document_reads_its_own_files_and_no_class_s_nor_another_document_s,
+    ),
+    "in LaTeX, a placed part is not followed, so not read under its heading": (
+        _a_placed_part_is_not_followed,
+        test_each_latex_file_starts_under_the_headings_in_force_where_it_is_input,
+    ),
+    "in LaTeX, a placed part is read from its first line, its preamble as body": (
+        _a_placed_part_is_read_from_its_first_line,
+        test_each_latex_file_starts_under_the_headings_in_force_where_it_is_input,
+    ),
+    "in LaTeX, a placed picture's body is outside the figure it is placed in": (
+        _a_placed_part_opens_no_environment_at_its_document,
+        test_each_latex_file_starts_under_the_headings_in_force_where_it_is_input,
+    ),
+    "in LaTeX, what a placed part's preamble inputs is the paper's": (
+        _a_placed_part_s_preamble_is_the_paper_s,
+        test_each_latex_file_starts_under_the_headings_in_force_where_it_is_input,
+    ),
     "in LaTeX, a subfiles part is a second document": (
         _a_subfiles_part_is_a_second_document,
         test_a_latex_document_reads_its_own_files_and_no_class_s_nor_another_document_s,
@@ -11586,6 +12555,10 @@ BROKEN = {
     "in LaTeX, a TikZ matrix of nodes is blanked": (
         _a_matrix_of_nodes_prints_no_text,
         test_a_number_in_latex_is_read_where_it_prints_and_nowhere_else,
+    ),
+    "in LaTeX, G2 reads a typed reference list as prose": (
+        _a_typed_reference_list_is_read,
+        test_g2_reads_no_number_of_a_typed_reference_list_and_every_one_round_it,
     ),
     "in LaTeX, a TeX length is layout in the text too": (
         _a_tex_length_is_layout_in_the_text_too,
@@ -11815,6 +12788,26 @@ BROKEN = {
         _an_accented_word_is_cut_at_its_accent,
         test_latex_s_words_hold_each_word_where_latex_prints_it,
     ),
+    "in LaTeX's words, an accent command drops its mark": (
+        _an_accent_command_drops_its_mark,
+        test_latex_s_words_hold_each_word_where_latex_prints_it,
+    ),
+    "in LaTeX's words, an accent over no letter is read": (
+        _an_accent_over_no_letter_is_read,
+        test_latex_s_words_hold_each_word_where_latex_prints_it,
+    ),
+    "in LaTeX's words, the space after \\ss ends its word": (
+        _a_letter_command_s_space_ends_its_word,
+        test_latex_s_words_hold_each_word_where_latex_prints_it,
+    ),
+    "in LaTeX's printed view, an accent command drops its mark": (
+        _the_printed_view_drops_an_accent_s_mark,
+        test_latex_s_printed_view_holds_what_it_prints_as_markdown_writes_it,
+    ),
+    "in LaTeX's printed view, an accent's letter and its mark share a place": (
+        _an_accent_s_letter_and_mark_share_a_place,
+        test_latex_s_printed_view_holds_what_it_prints_as_markdown_writes_it,
+    ),
     "in LaTeX's words, a subscript's count is maths": (
         _a_subscripts_count_is_maths,
         test_latex_s_words_hold_each_word_where_latex_prints_it,
@@ -11827,9 +12820,21 @@ BROKEN = {
         _the_mask_hides_every_line_break,
         test_the_mask_keeps_the_line_breaks_of_what_it_hides_but_a_comment_s,
     ),
+    "a standard deviation is a deviation": (
+        _a_standard_deviation_is_a_deviation,
+        test_the_deviations_are_known_by_their_title_and_a_standard_deviation_is_not,
+    ),
     "the mask keeps a comment's line breaks": (
         _the_mask_keeps_a_comment_s_line_breaks,
         test_the_mask_keeps_the_line_breaks_of_what_it_hides_but_a_comment_s,
+    ),
+    "an escaped backtick opens a code span": (
+        _an_escaped_backtick_opens_a_code_span,
+        test_an_escaped_backtick_opens_no_code_span_and_code_ends_at_its_run,
+    ),
+    "a backslash before a closing run escapes it": (
+        _a_backslash_before_a_closing_run_escapes_it,
+        test_an_escaped_backtick_opens_no_code_span_and_code_ends_at_its_run,
     ),
     "in LaTeX, a straight quote closes no quotation": (
         _a_straight_quote_closes_nothing,
@@ -11837,6 +12842,18 @@ BROKEN = {
     ),
     "in LaTeX, a quotation runs past the end of its paragraph": (
         _a_quotation_runs_past_its_paragraph,
+        test_a_straight_quote_closes_a_latex_quotation_opened_in_its_paragraph,
+    ),
+    "in LaTeX, a quotation runs past a \\par": (
+        _a_quotation_runs_past_a_par,
+        test_a_straight_quote_closes_a_latex_quotation_opened_in_its_paragraph,
+    ),
+    "in LaTeX, a \\par in a comment ends a quotation": (
+        _a_par_in_a_comment_ends_a_quotation,
+        test_a_straight_quote_closes_a_latex_quotation_opened_in_its_paragraph,
+    ),
+    "in LaTeX, the letters after \\\\ are a \\par": (
+        _the_letters_after_a_line_break_are_a_par,
         test_a_straight_quote_closes_a_latex_quotation_opened_in_its_paragraph,
     ),
     "in LaTeX, a straight quote before a letter closes a quotation": (
@@ -12026,6 +13043,30 @@ BROKEN = {
     "in LaTeX, G8r reads a file's code": (
         _g8r_reads_a_latex_file_s_code,
         test_a_latex_claim_to_have_followed_a_guideline_is_read_where_it_prints,
+    ),
+    "G8r reads a claim within one line": (
+        _a_claim_stops_at_a_line_break,
+        test_a_latex_claim_to_have_followed_a_guideline_is_read_where_it_prints,
+    ),
+    "G8r reads a claim over a blank line": (
+        _a_claim_runs_over_a_blank_line,
+        test_a_latex_claim_to_have_followed_a_guideline_is_read_where_it_prints,
+    ),
+    "in LaTeX, G8r reads a claim over a typed table's rows": (
+        _a_claim_runs_over_a_table_s_rows,
+        test_a_latex_claim_to_have_followed_a_guideline_is_read_where_it_prints,
+    ),
+    "in LaTeX, G8r reads a claim from one item into the next": (
+        _a_claim_runs_over_a_latex_list_s_items,
+        test_a_latex_claim_to_have_followed_a_guideline_is_read_where_it_prints,
+    ),
+    "G8r reads a claim from one item of a list into the next": (
+        _a_claim_runs_over_a_list_s_items,
+        test_a_markdown_claim_to_have_followed_a_guideline_is_read_within_its_sentence,
+    ),
+    "G8r reads a Markdown claim within one line": (
+        _a_claim_stops_at_a_line_break,
+        test_a_markdown_claim_to_have_followed_a_guideline_is_read_within_its_sentence,
     ),
     "in LaTeX, G8r reads a typed reference list": (
         _g8r_reads_a_typed_reference_list,
@@ -12423,6 +13464,14 @@ BROKEN = {
         _a_middle_dot_is_read_as_the_end_of_a_p,
         test_a_reported_test_is_found_where_it_stands_and_its_p_judged_by_its_statistic,
     ),
+    "a statistic written with a middle dot is not read": (
+        _a_middle_dot_is_no_decimal_point,
+        test_a_reported_test_is_found_where_it_stands_and_its_p_judged_by_its_statistic,
+    ),
+    "degrees of freedom with a thousands' comma are not read": (
+        _degrees_with_a_thousands_comma_are_not_read,
+        test_a_reported_test_is_found_where_it_stands_and_its_p_judged_by_its_statistic,
+    ),
     "a test its sentence calls one-sided or adjusted is judged as two-sided": (
         _a_test_that_is_not_the_textbook_one_is_judged,
         test_a_reported_test_is_found_where_it_stands_and_its_p_judged_by_its_statistic,
@@ -12727,6 +13776,42 @@ BROKEN = {
         _a_quotation_is_recycled_text,
         test_a_passage_of_an_earlier_paper_is_found_where_it_stands_however_it_is_set,
     ),
+    "an earlier paper's citation by author and year is words": (
+        _an_author_year_citation_is_words,
+        test_a_passage_of_an_earlier_paper_is_found_where_it_stands_however_it_is_set,
+    ),
+    "a cited name needs no capital": (
+        _a_cited_name_needs_no_capital,
+        test_a_citation_by_author_and_year_is_no_word_of_an_earlier_paper,
+    ),
+    "a word that opens a date names an author": (
+        _a_word_that_opens_a_date_names_an_author,
+        test_a_citation_by_author_and_year_is_no_word_of_an_earlier_paper,
+    ),
+    "a word that opens a date names no author among several": (
+        _a_word_that_opens_a_date_names_no_author_among_several,
+        test_a_citation_by_author_and_year_is_no_word_of_an_earlier_paper,
+    ),
+    "a citation by author and year names one author": (
+        _a_citation_names_one_author,
+        test_a_citation_by_author_and_year_is_no_word_of_an_earlier_paper,
+    ),
+    "a TeX escape in a DOI is kept": (
+        _a_tex_escape_in_a_doi_is_kept,
+        test_a_doi_is_compared_as_it_is_registered_however_the_file_writes_it,
+    ),
+    "a DOI's percent-encoding is kept": (
+        _a_doi_s_percent_encoding_is_kept,
+        test_a_doi_is_compared_as_it_is_registered_however_the_file_writes_it,
+    ),
+    "a DOI's percent-escape of a space is read as a space": (
+        _a_doi_s_escaped_space_is_a_space,
+        test_a_doi_is_compared_as_it_is_registered_however_the_file_writes_it,
+    ),
+    "a title's TeX is read as letters": (
+        _a_title_s_tex_is_letters,
+        test_a_title_in_tex_is_the_title_in_unicode,
+    ),
     "a word changed ends a passage": (
         _a_word_changed_ends_the_passage,
         test_a_passage_of_an_earlier_paper_is_found_where_it_stands_however_it_is_set,
@@ -12786,6 +13871,10 @@ BROKEN = {
     "a heading is part of the paragraph under it": (
         _a_heading_is_part_of_the_paragraph_under_it,
         test_an_anchor_claims_the_text_back_to_the_anchor_before_it_or_its_paragraph,
+    ),
+    "a divisor after a space is not read": (
+        _a_divisor_after_a_space_is_not_read,
+        test_the_unit_after_a_binding_is_read_however_spaced_and_no_word_is,
     ),
     "a unit is read after a plain space only": (
         _a_unit_is_read_after_a_plain_space_only,
@@ -13471,6 +14560,30 @@ BROKEN = {
         _any_run_of_hyphens_is_an_em_dash,
         test_an_em_dash_is_counted_however_it_is_typed,
     ),
+    "an em dash in a table is counted": (
+        _an_em_dash_in_a_table_is_counted,
+        test_an_em_dash_is_counted_however_it_is_typed,
+    ),
+    "a reference list's title is read as typed": (
+        _a_reference_list_s_title_is_read_as_typed,
+        test_a_reference_list_is_known_by_its_title_however_it_is_numbered,
+    ),
+    "a figure placed by hand is no display item": (
+        _a_figure_placed_by_hand_is_no_display,
+        test_a_figure_placed_by_hand_counts_where_pandoc_numbers_it,
+    ),
+    "every image is a figure": (
+        _every_image_is_a_figure,
+        test_a_figure_placed_by_hand_counts_where_pandoc_numbers_it,
+    ),
+    "a heading's line straight below an image ends its paragraph": (
+        _a_heading_s_line_below_an_image_ends_its_paragraph,
+        test_a_figure_placed_by_hand_counts_where_pandoc_numbers_it,
+    ),
+    "a LaTeX display counts by its bindings": (
+        _a_latex_display_counts_by_its_bindings,
+        test_a_latex_display_counts_as_latex_numbers_it,
+    ),
     "bold in a table is counted": (
         _bold_in_a_table_is_counted,
         test_bold_is_counted_in_the_prose_and_not_in_a_table,
@@ -13483,6 +14596,58 @@ BROKEN = {
         _the_audit_knows_english_titles_only,
         test_a_reference_list_is_known_by_its_title_in_each_language,
     ),
+    "a web page is no reference entry": (
+        _no_web_page_is_an_entry,
+        test_an_entry_of_each_style_is_known_by_its_shape_and_no_lookalike_is,
+    ),
+    "a numbered entry needs a full stop before its year": (
+        _an_entry_needs_a_stop_before_its_year,
+        test_an_entry_of_each_style_is_known_by_its_shape_and_no_lookalike_is,
+    ),
+    "a month before a year is a journal's name": (
+        _a_month_is_a_journal_s_name,
+        test_an_entry_of_each_style_is_known_by_its_shape_and_no_lookalike_is,
+    ),
+    "a book is no reference entry": (
+        _a_book_is_no_entry,
+        test_an_entry_of_each_style_is_known_by_its_shape_and_no_lookalike_is,
+    ),
+    "an article online first is no reference entry": (
+        _an_article_online_first_is_no_entry,
+        test_an_entry_of_each_style_is_known_by_its_shape_and_no_lookalike_is,
+    ),
+    "a Harvard entry's year needs its full stop": (
+        _harvard_s_year_needs_its_full_stop,
+        test_an_entry_of_each_style_is_known_by_its_shape_and_no_lookalike_is,
+    ),
+    "a percent sign must touch the value an interval follows": (
+        _a_percent_sign_must_touch_its_value,
+        test_an_interval_after_a_value_in_any_format_is_told_from_a_citation,
+    ),
+    "a decimal comma ends the value an interval follows": (
+        _a_decimal_comma_ends_the_value,
+        test_an_interval_after_a_value_in_any_format_is_told_from_a_citation,
+    ),
+    "a thousands comma before an interval is read as a decimal one": (
+        _a_thousands_comma_is_read_as_a_decimal_one,
+        test_an_interval_after_a_value_in_any_format_is_told_from_a_citation,
+    ),
+    "the audit hides an HTML comment in Word and figure text": (
+        _printed_text_hides_its_comments,
+        test_the_markers_of_an_html_comment_hide_nothing_in_word_or_a_figure,
+    ),
+    "the audit masks nothing in Word and figure text": (
+        _printed_text_is_not_masked,
+        test_the_markers_of_an_html_comment_hide_nothing_in_word_or_a_figure,
+    ),
+    "a list in a .docx with no heading styles runs to the end": (
+        _a_docx_list_runs_to_the_end,
+        test_a_docx_list_under_no_heading_style_ends_where_check_ends_one,
+    ),
+    "a caption or a table ends no list in a .docx": (
+        _a_caption_ends_no_docx_list,
+        test_a_docx_list_under_no_heading_style_ends_where_check_ends_one,
+    ),
     "a section knows a reference list's English titles only": (
         _the_sections_know_english_titles_only,
         test_a_reference_list_is_known_by_its_title_in_each_language,
@@ -13494,6 +14659,10 @@ BROKEN = {
     "a section takes a title elsewhere by its opening": (
         _a_section_takes_a_title_elsewhere_by_its_opening,
         test_a_reference_list_is_known_by_its_title_in_each_language,
+    ),
+    "the methods are only alone or joined by and": (
+        _methods_only_alone_or_joined_by_and,
+        test_the_methods_are_known_by_their_title_with_what_they_hold_after_it,
     ),
     "an e-mail address is a number": (
         _an_email_address_is_a_number,
@@ -13525,6 +14694,18 @@ BROKEN = {
     ),
     "a superscript's digits open a term at a capital": (
         _a_superscript_s_digits_open_a_term_at_a_capital,
+        test_an_address_and_an_interleukin_are_no_numbers_and_a_number_beside_them_is,
+    ),
+    "a subscript's digits open a term after a capital": (
+        _a_subscript_s_digits_open_a_term_after_a_capital,
+        test_an_address_and_an_interleukin_are_no_numbers_and_a_number_beside_them_is,
+    ),
+    "a subscript's digits open a term only at a word": (
+        _a_subscript_s_digits_open_a_term_only_at_a_word,
+        test_an_address_and_an_interleukin_are_no_numbers_and_a_number_beside_them_is,
+    ),
+    "a declared term with a subscript opens no term after capitals": (
+        _a_declared_term_with_a_subscript_opens_no_term_after_capitals,
         test_an_address_and_an_interleukin_are_no_numbers_and_a_number_beside_them_is,
     ),
     "no term counts directly after another": (
@@ -13680,6 +14861,10 @@ BROKEN = {
     ),
     "a list of tables is read as its first": (
         _a_list_of_pointers_is_its_first,
+        test_a_pointer_names_what_the_document_carries_or_is_said,
+    ),
+    "\"in Supplement 1\" after a pointer leaves it the main text's": (
+        _a_numbered_supplement_after_a_pointer_is_not_read,
         test_a_pointer_names_what_the_document_carries_or_is_said,
     ),
     "the supplement's tables are counted as the paper's": (

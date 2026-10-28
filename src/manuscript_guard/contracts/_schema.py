@@ -132,7 +132,10 @@ def read_structured(path: Path) -> Any:
     text = read_text(path)
     try:
         if path.suffix.lower() == ".json":
-            return json.loads(text)
+            # Without the mark of UTF-8 in front, which Notepad's "UTF-8 with BOM" writes
+            # and YAML's parser has always passed over: `json` refused it, "Unexpected UTF-8
+            # BOM", and `check` stopped on a fragment it could read.
+            return json.loads(text.removeprefix("\N{ZERO WIDTH NO-BREAK SPACE}"))
         return _plain(yaml.safe_load(text))
     except Exception as exc:  # noqa: BLE001 - whatever the parser raises is about this file
         # Not only the parsers' own two errors. `verified_on: 2026-09-31` is a date to YAML

@@ -7,7 +7,8 @@ typesetting will do this; the author reading a draft, and the co-author reading 
 get it here.
 
 The caption of a figure is the paragraph that follows it: a paragraph whose text begins
-"Figure 1.", "Figure 2:", "Figure S1." and so on, directly after the figure it belongs to.
+"Figure 1.", "Figure 2:", "Figure S1.", "Fig. 1.", "eFigure 1." and so on, directly after
+the figure it belongs to.
 That is the convention the manuscript already follows, and this filter only reads it — a
 paragraph that does not follow a figure is left alone, whatever it says, and so is a figure
 whose next paragraph is prose.
@@ -66,6 +67,11 @@ local function is_figure(block)
   return images == 1
 end
 
+-- The words a caption's number follows, as Lua patterns: "Figure 1.", "Fig. 1." and a
+-- supplement's "eFigure 1.". G2 holds each as the figure's caption, and the build set only
+-- the first in the caption's style.
+local LABELS = { 'Figure', 'Fig%.', 'eFigure' }
+
 local function is_caption(block)
   if block.t ~= 'Para' then
     return false
@@ -75,7 +81,12 @@ local function is_caption(block)
   local text = pandoc.utils.stringify(block) .. ' '
   -- SPACE_CLASS, not %s: Lua patterns know nothing of U+00A0, and a caption pasted from Word
   -- or typeset by pandoc after an abbreviation has a no-break space where a space was typed.
-  return text:match('^Figure' .. SPACE_CLASS .. '+S?%d+[%.:]' .. SPACE_CLASS) ~= nil
+  for _, word in ipairs(LABELS) do
+    if text:match('^' .. word .. SPACE_CLASS .. '+S?%d+[%.:]' .. SPACE_CLASS) then
+      return true
+    end
+  end
+  return false
 end
 
 function Blocks(blocks)

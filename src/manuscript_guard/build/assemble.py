@@ -89,8 +89,10 @@ def render_table(table: Table, label: str | None = None) -> str:
     if label:
         caption = f"{label}. {caption}" if caption else label
     if caption:
-        out.append("")
-        out.append(f": {caption}")
+        # The caption is a paragraph, which a heading on the next line does not interrupt:
+        # without the blank line after it, the heading the source means was printed inside
+        # the caption.
+        out += ["", f": {caption}", ""]
     return "\n".join(out)
 
 

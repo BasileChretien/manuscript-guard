@@ -243,3 +243,12 @@ def _ends_a_list(lines: list[str], number: int) -> bool:
     return (
         len(paragraph) == 1 and joined[:1].isupper() and bool(_BACK_MATTER.fullmatch(joined))
     )
+
+
+def ends_a_list_alone(paragraph: str) -> bool:
+    """Whether a paragraph written on one line, as each of a .docx's is read, ends a
+    reference list under a line that is no heading, by the rules `_ends_a_list` holds a
+    Markdown paragraph to. The audit ends a .docx's list there, as `check` ends one in
+    Markdown. Bold is not in a .docx's text, so a title in bold ends it only where it is a
+    back-matter title or a caption's shape."""
+    return _ends_a_list([paragraph.strip()], 0)

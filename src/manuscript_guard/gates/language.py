@@ -1369,8 +1369,8 @@ def _whole(files: list[_File]) -> list[Passage]:
 
 
 def _not_read(files: list[_File]) -> Report:
-    """Once for each LaTeX file, how many of its words hold an accent command or `\\-`, which
-    the reader cannot write with their letters side by side, and so G14 does not read."""
+    """Once for each LaTeX file, how many of its words hold an accent command over no letter,
+    which the reader cannot write as a letter, and so G14 does not read."""
     unread: dict[Path, list[tuple[_File, tuple[int, int]]]] = {}
     for file in files:
         unread.setdefault(file.path, []).extend((file, span) for span in file.unread)
@@ -1385,10 +1385,10 @@ def _not_read(files: list[_File]) -> Report:
         findings.append(Finding(
             gate=GATE, code="tex-words-not-read", severity=WARN, path=path,
             message=f"{count} word{'s' if many else ''} here hold{'' if many else 's'} an accent "
-            f"command or \\-, and G14 does not read {'them' if many else 'it'}: the first is "
-            f"{typed[start:end]!r}",
+            f"command over no letter, and G14 does not read {'them' if many else 'it'}: the "
+            f"first is {typed[start:end]!r}",
             line=file.line_of(start), context=context(typed, start, end - start),
-            hint="the file is read as UTF-8, so type an accented letter as itself rather than "
-            "as an accent command, and leave the hyphenation to LaTeX",
+            hint="put the accent over its letter, `\\'{e}` rather than `\\'{}e`, or type the "
+            "accented letter as itself: the file is read as UTF-8",
         ))  # fmt: skip
     return Report(tuple(findings))

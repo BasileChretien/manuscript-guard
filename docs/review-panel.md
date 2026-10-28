@@ -162,8 +162,8 @@ A co-author's comments are not a panel's reading, and they are not lost either. 
 `review/comments/<manuscript|supplementary>-<build>/<commenter>.yaml`, outside every round:
 the comment word for word, its replies, the words it was made on and its paragraph. G11
 reports each one until it has a `resolution` or an `overridden` reason, whatever its
-severity, and `check --submission` fails while one has neither. The records are sealed like a
-reading, so a comment reworded or deleted by hand is `comments-altered`, and they never go
-into a build or the submission pack. The word-roundtrip skill has the details.
+severity, and `check --stage submission` fails while one has neither. The records are sealed
+like a reading, so a comment reworded or deleted by hand is `comments-altered`, and they
+never go into a build or the submission pack. The word-roundtrip skill has the details.
 
 [Back to the README](../README.md)

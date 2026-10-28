@@ -144,6 +144,14 @@ def test_a_rule_leaves_a_real_measurement_alone(rule_id: str, text: str, atom: s
         pytest.param(r"a \\\> 3", [4], id="a-backslash-printed-then-an-escape"),
         pytest.param(r"`a \> 3` and \> 3", [13], id="printed-in-code"),
         pytest.param("```\na \\> 3\n```", [], id="printed-in-a-listing"),
+        # A backtick after an odd run of backslashes is printed and opens no code span, as
+        # `import` writes one typed in Word; inside code a backslash before the closing run
+        # prints, and the run closes it.
+        pytest.param(r"(\` ROR \> 2 \`)", [8], id="between-escaped-backticks"),
+        pytest.param(r"\``a \> 3` and \> 3", [15], id="an-escaped-backtick-then-code"),
+        pytest.param(r"x\\`a \> 3` y", [], id="a-backslash-printed-then-code"),
+        pytest.param(r"`a\` \> 3", [5], id="a-backslash-printed-in-code-before-its-end"),
+        pytest.param(r"`a` \` \> 1 `b`", [7], id="an-escaped-backtick-between-code"),
     ],
 )
 def test_only_a_backslash_that_prints_nothing_escapes_a_comparison(
@@ -220,3 +228,12 @@ def test_a_tex_length_in_a_definition_s_body_is_layout_and_in_the_text_a_number(
         "20cc@7": UNCLASSIFIED, "8pc@7": UNCLASSIFIED, "24pt@9": UNCLASSIFIED,
         "24@9": UNCLASSIFIED, "500bp@9": UNCLASSIFIED, "12mu@9": UNCLASSIFIED,
     }  # fmt: skip
+
+
+@pytest.mark.parametrize("title", ["Results", "3. Results", "III. Results", "IV) Discussion"])
+def test_a_part_that_reports_is_not_the_methods_however_it_is_numbered(title: str) -> None:
+    """`NOT_METHODS_SECTIONS` took an Arabic number before the name but not a Roman one,
+    as `METHODS_SECTIONS` does, so "III. Results" was not set aside (Known gaps, 11544)."""
+    from manuscript_guard.classify import NOT_METHODS_SECTIONS
+
+    assert NOT_METHODS_SECTIONS.match(title.lower())

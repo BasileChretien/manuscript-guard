@@ -2766,6 +2766,99 @@ def test_a_methods_sentence_edited_after_a_co_authors_ok_is_current_no_more(
     assert f"Ada Example on {item['title']}" in said and "Ada Example: 1 ok" not in said, said
 
 
+# ------------------------------------------------- the recap of a round, and the pack's copy
+
+
+def _checker_page(project: Path, name: str) -> dict:
+    page = (project / "checks" / f"check-{name}.html").read_text(encoding="utf-8")
+    start = page.index("const BUNDLE = ") + len("const BUNDLE = ")
+    return json.loads(page[start : page.index(chr(10), start)].rstrip().rstrip(";"))
+
+
+def _answered(project: Path, bundle: dict, group: str, status: str, at: str) -> None:
+    """Every item of `group` on `bundle`'s page answered `status` at `at`, and imported."""
+    from manuscript_guard.cli import main
+
+    answers = project / f"answers-{bundle['person']['orcid']}-{at[11:13]}.json"
+    answers.write_text(json.dumps({
+        "schema": "manuscript-guard/checking-answers/2", "bundle": bundle["bundle"],
+        "by": bundle["by"], "orcid": bundle["person"]["orcid"], "token": bundle["token"],
+        "answers": [{"id": item["id"], "digest": item["digest"], "title": item["title"],
+                     "status": status, "note": "" if status == "ok" else "the source says 17.4",
+                     "at": at} for item in bundle["items"] if item["group"] == group],
+    }), encoding="utf-8")  # fmt: skip
+    assert main(["checker", "import", str(project), "--answers", str(answers)]) == 0
+
+
+def test_a_recap_edited_by_hand_fails_its_check(project: Path, capsys) -> None:
+    """Task 1, PR 3: Blaise said the literature values are wrong, and the recap was edited to
+    read as though Blaise had verified one. `checker recap --check` makes the recap again from
+    the record and names the line; the record itself is untouched."""
+    from manuscript_guard.cli import main
+
+    assert main(["checker", "build", str(project), "--all"]) == 0
+    blaise = _checker_page(project, "blaise-sample")
+    _answered(project, blaise, "literature", "wrong", "2026-10-28T09:00:00+09:00")
+    assert main(["checker", "recap", str(project)]) == 0
+    recap = project / "checks" / "recap.md"
+    text = recap.read_text(encoding="utf-8")
+    row = next(line for line in text.splitlines() if line.startswith("| 1 | literature |"))
+    assert "| — | Blaise Sample: wrong |" in row, row
+    forged = row.replace("| — | Blaise Sample: wrong |", "| Blaise Sample | — |")
+    recap.write_text(text.replace(row, forged), encoding="utf-8")
+    capsys.readouterr()
+    assert main(["checker", "recap", str(project), "--check"]) == 1
+    said = capsys.readouterr().out
+    assert "differs from what the record and the manuscript give now" in said, said
+    assert f"  the file: {forged}" in said and f"  now:      {row}" in said, said
+    # The footer still matches the record: the edit is the recap's, not the record's.
+    assert "edited, deleted or moved" not in said and "were added" not in said, said
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+def test_submit_packs_what_each_co_author_checked_and_warns_of_an_open_flag(
+    project: Path, capsys
+) -> None:
+    """Task 1, PR 3, decision 7 (a): `submit` packs `coauthor-verification.md` where the
+    project has a record, and warns `coauthor-flag-open` of each current wrong or code with no
+    later ok by its maker. It does not refuse."""
+    from manuscript_guard.cli import _coauthor_verification, main
+
+    assert main(["build", str(project), "--offline"]) == 0
+    document = str(project / "build" / "manuscript.docx")
+    pack = project / "build" / "submission"
+    assert main(["submit", str(project), "--document", document, "--skip-checks"]) == 0
+    assert not (pack / "coauthor-verification.md").exists()
+
+    assert main(["checker", "build", str(project), "--all"]) == 0
+    blaise = _checker_page(project, "blaise-sample")
+    _answered(project, blaise, "literature", "wrong", "2026-10-28T09:00:00+09:00")
+    flags = _coauthor_verification(load_project(project)[0]).flags.findings
+    assert [f.code for f in flags] == ["coauthor-flag-open"] * 3
+    assert all(f.severity == "warn" for f in flags)
+    capsys.readouterr()
+    assert main(["submit", str(project), "--document", document, "--skip-checks"]) == 0
+    said = capsys.readouterr().out
+    assert said.count("Blaise Sample answered 'wrong' on ") == 3, said
+    assert "and has not answered ok on it since: the source says 17.4" in said
+    packed = (pack / "coauthor-verification.md").read_text(encoding="utf-8")
+    assert packed.startswith("# Co-author verification\n")
+    assert "Blaise Sample: wrong" in packed and "the source says 17.4" not in packed
+    assert "tamper-evident by a hash chain, unsigned" in packed
+    assert "coauthor-verification.md" in (pack / "MANIFEST.yaml").read_text(encoding="utf-8")
+    capsys.readouterr()
+    assert main(["checker", "recap", str(project), "--check",
+                 str(pack / "coauthor-verification.md")]) == 0  # fmt: skip
+
+    # Blaise's later ok on the same items closes the flags; an unsure is no flag.
+    _answered(project, blaise, "literature", "ok", "2026-10-28T10:00:00+09:00")
+    _answered(project, blaise, "claim", "unsure", "2026-10-28T10:00:00+09:00")
+    assert _coauthor_verification(load_project(project)[0]).flags.findings == ()
+    capsys.readouterr()
+    assert main(["submit", str(project), "--document", document, "--skip-checks"]) == 0
+    assert "has not answered ok on it since" not in capsys.readouterr().out
+
+
 # ------------------------------------------------ the unit written after a binding
 
 

@@ -336,6 +336,8 @@ def test_no_standard_input_at_all_is_an_empty_event(monkeypatch) -> None:
         ("profiles/reporting/STROBE.yaml", "transcribed"),
         ("checks/decisions.csv", "a decision nobody made"),
         ("checks/bundles.csv", "a page nobody built"),
+        # Task 1, PR 3: the recap is made from the record, and held to it by `--check`.
+        ("checks/recap.md", "a recap nobody made"),
         # Item 26: the plan as it stood when the first results were written.
         ("design/plan.frozen.yaml", "first results were written"),
         # The copy of an earlier output's project, which G8 holds to its digests.
@@ -1045,6 +1047,8 @@ def test_an_approval_written_by_a_codex_patch_is_put_to_the_author(
         "mguard che''cker import --answers a.json",
         "mguard checker imp\\ort --answers a.json",
         "mguard checker imp`ort --answers a.json",
+        # Task 1, PR 3: `--check` takes a value, and the verb after it is still read.
+        "mguard checker --check recap.md import --answers a.json",
     ],
 )
 def test_an_import_of_answers_run_by_an_agent_is_put_to_the_author(
@@ -1060,7 +1064,8 @@ def test_an_import_of_answers_run_by_an_agent_is_put_to_the_author(
     for other in ("manuscript-guard checker build --all", "mguard checker status",
                   'manuscript-guard checker build --title "Drug import and safety"',
                   "python -m manuscript_guard.cli checker status --items import.json",
-                  "mguard checker build --for import"):  # fmt: skip
+                  "mguard checker build --for import",
+                  "mguard checker recap --check imports/recap.md"):  # fmt: skip
         assert run("guard-submission", _shell(in_claude_code, other), capsys) is None, other
 
 

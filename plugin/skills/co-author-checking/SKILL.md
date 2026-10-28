@@ -1,6 +1,6 @@
 ---
 name: co-author-checking
-description: Send a co-author the numbers, quotes and references to confirm, and record what they answered. Use when a draft is ready for the question no gate can ask - does the source really say this - or when a co-author has sent back an answers file. Not for a review panel (use review-panel), nor for a journal's reviewers (use reviewer-response).
+description: Send a co-author the numbers, quotes and references to confirm, and record what they answered. Use when a draft is ready for the question no gate can ask - does the source really say this - or when a co-author has sent back an answers file, or when submit reports coauthor-flag-open. Not for a review panel (use review-panel), nor for a journal's reviewers (use reviewer-response).
 ---
 
 # Having a person check what no gate can
@@ -33,6 +33,7 @@ manuscript-guard checker build --all                 # one file per author in au
 manuscript-guard checker build --for "A Colleague"   # or one file, for one person
 manuscript-guard checker import --answers answers-ada-example.json answers-blaise-sample.json
 manuscript-guard checker status
+manuscript-guard checker recap                     # checks/recap.md, who checked what
 ```
 
 `build` writes **one file**: a page carrying every item, the sentences each value appears in, and
@@ -67,6 +68,17 @@ from whom and let the author run it. Never write `checks/decisions.csv` or `chec
 
 `status` says how many items nobody has answered, what each person answered, and **where two
 people disagree about the same item**, which is a finding in itself.
+
+`recap` writes `checks/recap.md`: each change asked for in the manuscript, with its sentence,
+and in the code, with its steps; what is still open; the notes on versions of an item that
+are gone; and who verified each item. Describe it as tamper-evident by a hash chain, unsigned,
+and never as certified or signed: `recap --check` names the first line that no longer matches
+the record, which shows a hand edit or a row edited, deleted or moved against a copy kept
+elsewhere, and does not stop someone who can write the record and every copy. Never write
+`checks/recap.md` by hand; run `recap` again. `submit` packs the tables as
+`coauthor-verification.md` and warns `coauthor-flag-open` of each current `wrong` or `code`
+with no later ok from the person who gave it. It is not refused: change what was asked, or
+send the item again, and say which to the author.
 
 ## Telling the person what to do, in one message
 

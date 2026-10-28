@@ -80,6 +80,13 @@ FORBIDDEN = (
         "checker build`; a page nobody built cannot be written into it by hand",
     ),
     (
+        "checks/recap.md",
+        "",
+        "the recap is written from the record by `manuscript-guard checker recap`, and "
+        "`checker recap --check` holds it to the record; a recap nobody made cannot be "
+        "written by hand",
+    ),
+    (
         "design/plan.frozen.yaml",
         "",
         "it is the plan as it stood when the first results were written, kept by the emitter; "
@@ -1174,7 +1181,7 @@ _APPROVE = re.compile(_TOOL + r"approve\b", re.IGNORECASE)
 _SIGN = re.compile(_TOOL + r"sign\b", re.IGNORECASE)
 #: The options of `checker` that take a value: what follows one is its value, not the verb.
 _CHECKER_VALUED = ("--for", "--to", "-o", "--output", "--title", "--items", "--except",
-                   "--answers")  # fmt: skip
+                   "--answers", "--check")  # fmt: skip
 #: The command's own name, as a word: under either name, with `.exe`, by a path, or as the
 #: module `python -m` runs.
 _TOOL_WORD = re.compile(
@@ -1187,7 +1194,7 @@ _CHECKER_WORD = re.compile(r"\bchecker\b", re.IGNORECASE)
 _IMPORT_WORD = re.compile(r"\bimport\b", re.IGNORECASE)
 #: What `checker` does that records nothing: the verbs that may stand where `import` is an
 #: option's value.
-_CHECKER_READS = ("build", "status")
+_CHECKER_READS = ("build", "status", "recap")
 
 
 #: Quotation marks PowerShell reads as quotes and a POSIX shell as letters: a command holding one
@@ -1266,7 +1273,7 @@ def _command_words(command: str, *, posix: bool) -> tuple[list[list[str]], bool]
 
 
 def _plain_checker(words: list[str]) -> bool:
-    """Whether one invocation is plainly `checker build` or `checker status`, the tool named as
+    """Whether one invocation is plainly `checker build`, `status` or `recap`, the tool named as
     its first word, with `import` in it only as the value of an option."""
     if words and _TOOL_WORD.fullmatch(words[0]):
         rest = words[1:]

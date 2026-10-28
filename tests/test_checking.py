@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -2482,3 +2483,281 @@ def test_impact_says_when_the_methods_could_not_be_read(
     said = capsys.readouterr().err
     assert "not read, so no answer on a Methods item is listed" in said, said
     assert "broken.json" in said
+
+
+# --------------------------------------------------------------------- the recap (Task 1, PR 3)
+#
+# `checker recap` writes `checks/recap.md` from the record, the register and the items as the
+# project has them now, and `--check` makes it again and names the first line that differs.
+# Its footer carries the head of a hash chain over the record, so a row edited, deleted or
+# moved after a recap was made shows against it.
+
+
+def _by_group(page: dict, statuses: dict[str, str]) -> dict[str, str]:
+    """Each item of a page answered by its group's status, where the group has one."""
+    return {item["id"]: statuses[item["group"]] for item in page["items"]
+            if item["group"] in statuses}  # fmt: skip
+
+
+def _round(project: Path) -> tuple[dict, dict]:
+    """Ada says ok to the literature and the references and `code` to the Methods; Blaise
+    says wrong to the literature and is not sure of the cited sentences. Each from the page
+    built for them."""
+    from manuscript_guard.cli import main
+
+    assert main(["checker", "build", str(project), "--all"]) == 0
+    ada = _page(project / "checks" / "check-ada-example.html")
+    blaise = _page(project / "checks" / "check-blaise-sample.html")
+    files = [
+        _send(project, "a.json", _saved(ada, _by_group(ada, {
+            "literature": "ok", "methods": "code", "reference": "ok"}))),
+        _send(project, "b.json", _saved(blaise, _by_group(blaise, {
+            "literature": "wrong", "claim": "unsure"}))),
+    ]  # fmt: skip
+    assert main(["checker", "import", str(project), "--answers", *map(str, files)]) == 0
+    return ada, blaise
+
+
+def _recap(project: Path) -> str:
+    return (project / "checks" / "recap.md").read_text(encoding="utf-8")
+
+
+def _rewrite(project: Path, change) -> None:
+    """The record, its data rows changed by `change`, written back byte for byte otherwise."""
+    path = project / "checks" / "decisions.csv"
+    header, *rows = path.read_bytes().decode("utf-8").splitlines(keepends=True)
+    path.write_bytes((header + "".join(change(rows))).encode("utf-8"))
+
+
+def _later(page: dict, statuses: dict[str, str]) -> dict:
+    """An answers file from `page` given an hour after `_saved`'s."""
+    document = _saved(page, statuses)
+    for answer in document["answers"]:
+        answer["at"] = "2026-10-28T10:00:00+09:00"
+    return document
+
+
+def test_a_recap_made_twice_of_one_record_is_the_same_bytes(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Nothing in a recap says when it was made, so the same record and the same manuscript
+    give the same file; and `--check` finds it as it is."""
+    from manuscript_guard.cli import main
+
+    _round(project)
+    assert main(["checker", "recap", str(project)]) == 0
+    first = (project / "checks" / "recap.md").read_bytes()
+    assert main(["checker", "recap", str(project)]) == 0
+    assert (project / "checks" / "recap.md").read_bytes() == first
+    capsys.readouterr()
+    assert main(["checker", "recap", str(project), "--check"]) == 0
+    assert "give it as it is: 18 row(s)" in capsys.readouterr().out
+    assert "- Earlier recap: none" in first.decode("utf-8")
+    assert b"\r" not in first
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        # A note rewritten: what Blaise said is not what the record says now.
+        lambda rows: [*rows[:-1], rows[-1].replace("the source says otherwise", "it is fine")],
+        lambda rows: rows[:-1],
+        # Two rows swapped, every word of the record kept.
+        lambda rows: [rows[1], rows[0], *rows[2:]],
+    ],
+    ids=["a row edited", "a row deleted", "a pair moved"],
+)
+def test_check_names_the_first_line_a_changed_record_gives_otherwise(
+    project: Path, capsys: pytest.CaptureFixture[str], change
+) -> None:
+    from manuscript_guard.cli import main
+
+    _round(project)
+    assert main(["checker", "recap", str(project)]) == 0
+    before = _recap(project)
+    rows = _rows(project)
+    _rewrite(project, change)
+    assert _rows(project) != rows
+    capsys.readouterr()
+    assert main(["checker", "recap", str(project), "--check"]) == 1
+    out = capsys.readouterr().out
+    found = re.search(r"line (\d+) differs", out)
+    assert found, out
+    assert f"  the file: {before.split(chr(10))[int(found[1]) - 1]}" in out, out
+    assert "a row among them was edited, deleted or moved since it was made" in out, out
+    # `--check` writes nothing.
+    assert _recap(project) == before
+
+
+def test_check_says_rows_were_added_since_where_the_first_are_the_recaps(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A later import is no edit: the record's first rows still give the head the recap
+    records, and `--check` says to make the recap again."""
+    from manuscript_guard.cli import main
+
+    ada, _ = _round(project)
+    assert main(["checker", "recap", str(project)]) == 0
+    claim = next(item["id"] for item in ada["items"] if item["group"] == "claim")
+    later = _send(project, "a2.json", _later(ada, {claim: "ok"}))
+    assert main(["checker", "import", str(project), "--answers", str(later)]) == 0
+    capsys.readouterr()
+    assert main(["checker", "recap", str(project), "--check"]) == 1
+    out = capsys.readouterr().out
+    assert "1 row(s) were added to the record since; its first 18 are those" in out, out
+
+
+def test_a_recap_names_the_earlier_one_and_whether_the_record_still_begins_with_it(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from manuscript_guard.cli import main
+
+    ada, _ = _round(project)
+    assert main(["checker", "recap", str(project)]) == 0
+    head = re.search(r"chain head `([0-9a-f]{64})`", _recap(project))[1]
+    claim = next(item["id"] for item in ada["items"] if item["group"] == "claim")
+    later = _send(project, "a2.json", _later(ada, {claim: "ok"}))
+    assert main(["checker", "import", str(project), "--answers", str(later)]) == 0
+    assert main(["checker", "recap", str(project)]) == 0
+    text = _recap(project)
+    assert (f"- Earlier recap: 18 row(s), chain head `{head}`; the first 18 row(s) of the "
+            "record still give it") in text
+    # Made again of the same record, it names the same earlier recap.
+    assert main(["checker", "recap", str(project)]) == 0
+    assert _recap(project) == text
+    _rewrite(project, lambda rows: [rows[1], rows[0], *rows[2:]])
+    capsys.readouterr()
+    assert main(["checker", "recap", str(project)]) == 0
+    assert "the record's first rows no longer give it" in capsys.readouterr().out
+    assert "- Earlier recap: 19 row(s), chain head `" in _recap(project)
+    assert "of the record do not give it: a row among them was edited" in _recap(project)
+
+
+def test_the_chain_is_the_one_its_definition_gives(project: Path) -> None:
+    """h0 is the SHA-256 of `manuscript-guard/decisions-chain/1`; each next head the SHA-256 of
+    the head before it, in hex, and the row's canonical JSON."""
+    import hashlib
+
+    from manuscript_guard.checking.recap import canonical, chain, record_rows
+
+    _round(project)
+    rows = record_rows(project)
+    fields = {"when", "by", "id", "group", "title", "status", "note", "digest", "bundle"}
+    assert len(rows) == 18 and set(rows[0]) == fields
+    seed = hashlib.sha256(b"manuscript-guard/decisions-chain/1").hexdigest()
+    head = seed
+    for row in rows:
+        head = hashlib.sha256((head + canonical(row)).encode("utf-8")).hexdigest()
+    assert chain(rows)[-1] == head
+    assert chain([]) == [seed]
+
+
+def test_the_recap_says_what_its_chain_shows_and_claims_no_signature(project: Path) -> None:
+    """Decision of 2026-10-28: tamper-evident by a hash chain, unsigned; never "certified",
+    and "signed" only to say that nothing is."""
+    from manuscript_guard.checking.recap import PUBLISHER_TITLE, TAMPER
+    from manuscript_guard.cli import main
+
+    _round(project)
+    assert main(["checker", "recap", str(project)]) == 0
+    for text in (_recap(project), TAMPER):
+        assert "tamper-evident by a hash chain, unsigned" in text
+        assert "certif" not in text.casefold()
+        assert re.findall(r"\b\w*signed\b", text) == ["unsigned", "signed"], text
+        assert "nothing in it is signed" in text
+        assert "It does not show a rewrite of the record" in text
+        assert "which page, not who answered" in text
+    assert PUBLISHER_TITLE not in _recap(project)
+
+
+def _section(text: str, heading: str) -> str:
+    return text.split(f"## {heading}\n")[1].split("\n## ")[0]
+
+
+def test_the_recap_lists_each_change_asked_for_with_its_sentence_or_its_steps(
+    project: Path,
+) -> None:
+    from manuscript_guard.cli import main
+
+    _round(project)
+    assert main(["checker", "recap", str(project)]) == 0
+    text = _recap(project)
+    wanted = _section(text, "Changes asked for in the manuscript")
+    assert "- **2.6 — lit.background.class_ror** (literature): Blaise Sample, " in wanted
+    assert '  - main.md:113: "The reporting odds ratio observed here exceeds' in wanted
+    code = _section(text, "Changes asked for in the code")
+    assert ("- **signal**, at main.md:53: Ada Example, 2026-10-28T09:00:00+09:00: the source "
+            "says otherwise") in code, code
+    still = _section(text, "Still open")
+    assert ("disagreement on **2.6 — lit.background.class_ror**: Ada Example says ok; Blaise "
+            "Sample says wrong") in still, still
+    assert "(claim): Blaise Sample, " in still
+    assert "| Ada Example | 5 | 0 | 7 | 0 | 0 | 0 |" in text
+    assert "| Blaise Sample | 0 | 3 | 0 | 3 | 0 | 0 |" in text
+    row = next(line for line in text.splitlines() if "| methods | signal:" in line)
+    assert row.endswith("| — | Ada Example: code | — | on 2026-10-22 |"), row
+    assert "References: 2 item(s); 2 verified by at least one person, 0 flagged, 0 not " in text
+    assert "Authors: 2 item(s); 0 verified by at least one person" in text
+
+
+def test_an_answer_about_an_earlier_version_reaches_the_recap_with_its_note(
+    project: Path,
+) -> None:
+    """Decision 3 (a): stale answers count for nothing, and their notes reach the recap."""
+    from manuscript_guard.cli import main
+
+    _round(project)
+    _edit(project / "manuscript" / "main.md", "the classical criterion", "the usual criterion")
+    assert main(["checker", "recap", str(project)]) == 0
+    text = _recap(project)
+    gone = _section(text, "Said of a version of an item that is gone")
+    assert "- [code] **signal: A signal was defined by the classical criterion" in gone, gone
+    assert "Ada Example, 2026-10-28T09:00:00+09:00: the source says otherwise" in gone
+    assert "| Ada Example | 5 | 0 | 6 | 0 | 1 | 0 |" in text
+    row = next(line for line in text.splitlines() if "| methods | signal:" in line)
+    assert row.endswith("| — | — | Ada Example | text changed since 2026-10-22 |"), row
+    assert "**signal**" not in _section(text, "Changes asked for in the code")
+
+
+def test_a_claimed_answer_is_marked_in_the_recap(project: Path) -> None:
+    """An answers file from no page in the register is recorded under the name it gives,
+    and the recap says so wherever that name stands."""
+    from manuscript_guard.cli import main
+
+    assert main(["checker", "build", str(project), "--for", "Ada Example"]) == 0
+    first = _page(project / "checks" / "check-ada-example.html")["items"][0]
+    claimed = _send(project, "c.json", {
+        "schema": "manuscript-guard/checking-answers/1", "bundle": "made-up", "by": "Cy Stranger",
+        "answers": [{"id": first["id"], "digest": first["digest"], "status": "ok",
+                     "title": first["title"], "at": "2026-10-28T09:00:00+09:00"}],
+    })  # fmt: skip
+    assert main(["checker", "import", str(project), "--answers", str(claimed)]) == 0
+    assert main(["checker", "recap", str(project)]) == 0
+    text = _recap(project)
+    assert "| Cy Stranger (not an author in authors.yaml) | 1 | 0 | 0 | 0 | 0 | 1 |" in text
+    row = next(line for line in text.splitlines() if line.startswith("| 1 |"))
+    assert "| Cy Stranger (claimed; not an author in authors.yaml) |" in row, row
+
+
+def test_the_publishers_copy_leaves_out_the_notes_and_is_checked_the_same_way(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from manuscript_guard.checking.recap import PUBLISHER_TITLE, earlier_for, make
+    from manuscript_guard.cli import _checking_items, load_project, main
+
+    _round(project)
+    loaded = load_project(project)[0]
+    made = make(loaded, _checking_items(loaded, None), earlier=earlier_for(loaded),
+                publisher=True)  # fmt: skip
+    assert made.text.startswith(PUBLISHER_TITLE + "\n")
+    assert "the source says otherwise" not in made.text
+    assert "## Verification, item by item" in made.text
+    copy = project / "copy.md"
+    copy.write_text(made.text, encoding="utf-8")
+    capsys.readouterr()
+    assert main(["checker", "recap", str(project), "--check", str(copy)]) == 0
+    copy.write_text(made.text.replace("| Ada Example | 5 |", "| Ada Example | 6 |"), "utf-8")
+    assert main(["checker", "recap", str(project), "--check", str(copy)]) == 1
+    assert "  the file: | Ada Example | 6 |" in capsys.readouterr().out
+    assert main(["checker", "status", str(project), "--check"]) == 2
+    assert main(["checker", "recap", str(project), "--check", str(project / "none.md")]) == 2

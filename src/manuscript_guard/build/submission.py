@@ -712,6 +712,7 @@ def assemble_pack(
     checked: bool = True,
     extra: Sequence[tuple[Path, str]] = (),
     supplements: Sequence[Path] | None = None,
+    coauthor_verification: str | None = None,
 ) -> Pack:
     """Copy or generate every part of the submission into build/submission/.
 
@@ -719,6 +720,10 @@ def assemble_pack(
     at a revision, the marked-up copies that show what changed since the round's document, and
     a LaTeX manuscript's source in `latex/`. `supplements` are the supplement's documents,
     where the caller made them, a LaTeX manuscript's PDF; None looks for the Word one.
+
+    `coauthor_verification` is the publisher's copy of the co-author recap
+    (`checking.recap`), written as `coauthor-verification.md` where the caller made one: the
+    project has a record of co-author answers.
 
     `checked=False` records in the manifest that the submission check was overridden. A
     pack assembled with `--skip-checks` was previously byte-indistinguishable from one that
@@ -771,6 +776,8 @@ def assemble_pack(
         ("journal-checklist.md", journal_checklist(project)),
         # For the portal's box for each figure's alternative text, where it has one.
         ("alt-text.md", alt_texts(project)),
+        # What each co-author checked, item by item, with the record's chain head (Task 1).
+        ("coauthor-verification.md", coauthor_verification),
     ]
     for name, text in generated:
         if text is None:

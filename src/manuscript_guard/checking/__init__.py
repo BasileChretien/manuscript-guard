@@ -22,6 +22,9 @@ and run a server. So:
   down and counts for nothing. `checker status` says who has answered what, which answers are
   about text that has changed since — those items are outstanding again — and where two
   people disagree.
+* `checker recap` writes `checks/recap.md` (`recap.py`): the changes asked for, what is open,
+  who verified each item, and the head of a hash chain over the record, which `--check`
+  holds the record to. `submit` packs its tables as `coauthor-verification.md`.
 
 **What is the toolkit's and what is the project's.** The toolkit finds five kinds of item from
 files every project keeps (`produce.py`): values quoted from the literature with the passage

@@ -79,6 +79,7 @@ from generated import (
     commented,
     count_cells,
     credited_plans,
+    decision_records,
     deposit_statements,
     deviation_titled,
     dictionary_pairs,
@@ -4992,6 +4993,37 @@ def test_each_g9_claim_is_one_methods_item_and_an_edit_stales_only_its_own(
     assert [[item[1], item[2]] for item in now] == shown, given["text"]
     assert len(set(ids)) == len(ids), given["text"]
     assert differing(read(edited)) == [which], edited["text"]
+
+
+# ------------------------------------------------------- the chain over the co-authors' record
+
+
+@holds(60, decision_records())
+def test_the_chain_over_the_record_moves_with_every_row(rows: list[dict[str, str]]) -> None:
+    """The recap's chain is over every row of `checks/decisions.csv` as it was written: each
+    row reads back as it went in, a row with no id among them, and a row edited, a row
+    deleted or two rows swapped, wherever it stands, gives another head. The head of the
+    first rows is the head the whole record gives after them."""
+    import tempfile
+
+    from manuscript_guard.checking import recap
+    from manuscript_guard.checking.store import Decision, _append
+
+    with tempfile.TemporaryDirectory() as folder:
+        _append(Path(folder), [Decision(**row) for row in rows])
+        read = recap.record_rows(Path(folder))
+    assert read == rows
+    heads = recap.chain(read)
+    assert len(heads) == len(rows) + 1 and len(set(heads)) == len(heads), rows
+    for at in range(1, len(rows) + 1):
+        assert recap.chain(rows[:at]) == heads[: at + 1], at
+    for at, row in enumerate(rows):
+        edited = [*rows[:at], {**row, "note": row["note"] + "."}, *rows[at + 1 :]]
+        assert recap.chain(edited)[-1] != heads[-1], ("edited", at, rows)
+        assert recap.chain(rows[:at] + rows[at + 1 :])[-1] != heads[-1], ("deleted", at, rows)
+        if at and rows[at - 1] != row:
+            swapped = [*rows[: at - 1], row, rows[at - 1], *rows[at + 1 :]]
+            assert recap.chain(swapped)[-1] != heads[-1], ("swapped", at, rows)
 
 
 # ------------------------------------------------------------------- a reply to a reviewer
@@ -12211,6 +12243,13 @@ def _a_key_credits_the_keys_it_begins(patch: pytest.MonkeyPatch) -> None:
     ])  # fmt: skip
 
 
+def _a_chain_passes_over_a_row_with_no_id(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.checking import recap
+
+    real = recap.chain
+    patch.setattr(recap, "chain", lambda rows: real([row for row in rows if row.get("id")]))
+
+
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
@@ -12261,6 +12300,11 @@ BROKEN = {
     "a late registration is said on one line only": (
         _retrospective_on_one_line,
         test_a_late_registration_is_said_in_every_way_a_manuscript_says_it_and_no_other,
+    ),
+    # Task 1, PR 3: chained over the decisions `read_decisions` gives, a row with no id.
+    "the record's chain passes over a row with no id": (
+        _a_chain_passes_over_a_row_with_no_id,
+        test_the_chain_over_the_record_moves_with_every_row,
     ),
     "every stop ends a sentence, after et al. and Suppl. too": (
         _every_stop_ends_a_sentence,

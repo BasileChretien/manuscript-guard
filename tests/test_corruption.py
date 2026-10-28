@@ -8221,7 +8221,7 @@ _NOT_THE_MANUSCRIPT = (
 #: registration looks for an identifier and a sentence, which a `.tex` file holds
 #: as plainly as a Markdown one.
 _READS_LATEX = (
-    "check_latex", "check_numbers", "check_bound_units", "check_small_cells",
+    "check_latex", "check_numbers", "check_bound_units", "check_small_cells", "check_recoverable",
     "check_synthetic_inputs", "check_citations", "check_journal", "check_language",
     "check_writing", "check_values", "check_registration", "check_reported",
     "check_recomputed", "check_methods", "check_models", "check_related", "check_revision",

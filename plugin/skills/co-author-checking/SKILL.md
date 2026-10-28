@@ -57,9 +57,9 @@ A file whose page is in the register must carry that page's token, name and ORCI
 whole import is refused and nothing is recorded. A file from no registered page, or one written
 by a page from before the register, is recorded as **claimed**: the name is the file's word,
 whatever it says, and `status` marks each such decision. A file of the wrong shape refuses the
-whole import. Importing a file twice adds nothing. Two authors who share a full name are
-recorded apart, by their ORCID iDs: if neither has one, `checker build --all` refuses until one is
-added to `authors.yaml`.
+whole import. Importing a file twice adds nothing. Two authors who share a full name cannot
+be told apart in the record, so checker refuses them (`--all` builds for everyone else and says
+so) until one name is written in a form of its own in `authors.yaml`, a middle initial, say.
 
 **Leave the import to the author.** It puts a co-author's name to the answers in a file, so the
 hooks put an agent's `checker import` to the person, as they do `approve`. Say which files came

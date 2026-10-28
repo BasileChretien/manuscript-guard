@@ -120,8 +120,8 @@ def build_page(
     and a random token of its own (`register.new_token`, unless one is given).
 
     `person` is the name their answers are recorded under, which the answers file carries;
-    `shown`, where given, the name the page greets them by. The two differ only for authors who
-    share a full name, recorded as "Name <ORCID iD>" (`people.keyed`)."""
+    `shown`, where given, the name the page greets them by, which `checker build` makes the
+    same."""
     person = person.strip()
     if not person:
         raise BundleError("say who the file is for: a decision is recorded under their name")

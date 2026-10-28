@@ -1018,6 +1018,12 @@ def test_an_approval_written_by_a_codex_patch_is_put_to_the_author(
         "manuscript-guard checker import --answers answers-ada.json answers-blaise.json",
         "cd paper && mguard checker import . --answers a.json",
         "python -m manuscript_guard.cli checker --items checks/items.json import",
+        # Round 2 of #455: cut at the operator inside the quotes, these ran unasked.
+        'manuscript-guard checker --title "Drugs & safety" import --answers a.json',
+        'manuscript-guard checker --for "Smith; Jones" import --answers a.json',
+        'manuscript-guard checker --items "a|b/items.json" import --answers a.json',
+        "echo $(manuscript-guard checker import --answers a.json)",
+        "echo `mguard checker import --answers a.json`",
     ],
 )
 def test_an_import_of_answers_run_by_an_agent_is_put_to_the_author(

@@ -1170,37 +1170,106 @@ _INVOCATION_END = re.compile(r"[;&|\n]|" + _TOOL + r"[A-Za-z]", re.IGNORECASE)
 _REVIEW = re.compile(_TOOL + r"review\b", re.IGNORECASE)
 _APPROVE = re.compile(_TOOL + r"approve\b", re.IGNORECASE)
 _SIGN = re.compile(_TOOL + r"sign\b", re.IGNORECASE)
-_CHECKER = re.compile(_TOOL + r"checker\b", re.IGNORECASE)
 #: The options of `checker` that take a value: what follows one is its value, not the verb.
 _CHECKER_VALUED = ("--for", "--to", "-o", "--output", "--title", "--items", "--except",
                    "--answers")  # fmt: skip
+#: The command's own name, as a word: under either name, with `.exe`, by a path, or as the
+#: module `python -m` runs.
+_TOOL_WORD = re.compile(
+    r"(?:.*[\\/])?(?:manuscript-guard|mguard)(?:\.exe)?|manuscript_guard\.cli", re.IGNORECASE
+)
+_CHECKER_AND_IMPORT = re.compile(r"(?is)\bchecker\b.*\bimport\b|\bimport\b.*\bchecker\b")
+
+
+def _command_words(command: str, *, posix: bool) -> tuple[list[list[str]], bool]:
+    """The command as its invocations, each a list of words, read as a shell reads quotes; and
+    whether it read cleanly. A `;`, `&`, `|` or line end outside quotes ends an invocation, and
+    one inside quotes is part of a word. In POSIX mode a backslash keeps the character after
+    it, outside single quotes; in Windows mode it is a character like any other. A command
+    substitution, `$(...)` or a backtick, an unclosed quote or a backslash at the end is not
+    read cleanly: what runs there is not what these words say."""
+    invocations: list[list[str]] = [[]]
+    word: list[str] | None = None
+    clean = True
+    i, n = 0, len(command)
+    while i < n:
+        c = command[i]
+        if c in " \t\r":
+            if word is not None:
+                invocations[-1].append("".join(word))
+                word = None
+        elif c in ";&|\n":
+            if word is not None:
+                invocations[-1].append("".join(word))
+                word = None
+            invocations.append([])
+        elif c == "'":
+            close = command.find("'", i + 1)
+            if close < 0:
+                return invocations, False
+            word = (word or []) + [command[i + 1 : close]]
+            i = close
+        elif c == '"':
+            word = word or []
+            i += 1
+            while i < n and command[i] != '"':
+                if command[i] == "`" or command.startswith("$(", i):
+                    clean = False
+                if posix and command[i] == "\\" and i + 1 < n:
+                    i += 1
+                word.append(command[i])
+                i += 1
+            if i >= n:
+                return invocations, False
+        elif c == "`" or command.startswith("$(", i) or command.startswith("<(", i):
+            clean = False
+            word = (word or []) + [c]
+        elif c == "\\" and posix:
+            if i + 1 >= n:
+                return invocations, False
+            i += 1
+            word = (word or []) + [command[i]]
+        else:
+            word = (word or []) + [c]
+        i += 1
+    if word is not None:
+        invocations[-1].append("".join(word))
+    return invocations, clean
+
+
+def _verb_is_import(words: list[str]) -> bool:
+    """Whether `checker`'s verb, the first of its words that is neither an option nor an
+    option's value, is `import`."""
+    valued = False
+    for word in words:
+        if valued:
+            valued = False
+            continue
+        if word.startswith("-"):
+            valued = word in _CHECKER_VALUED
+            continue
+        return word.casefold() == "import"
+    return False
 
 
 def _imports_answers(joined: str) -> bool:
-    """Whether a `checker` in this command has the verb `import`: its first argument that is
-    neither an option nor an option's value. `import` anywhere in the line was read as the verb,
-    in `--title "Drug import and safety"` too."""
-    import shlex
+    """Whether this command runs `checker import`, or might.
 
-    for found in _CHECKER.finditer(joined):
-        rest = joined[found.end() :]
-        end = _INVOCATION_END.search(rest)
-        arguments = rest[: end.start() if end else len(rest)]
-        try:
-            words = shlex.split(arguments, posix=True)
-        except ValueError:  # an unclosed quote: read it as the shell would not
-            words = arguments.split()
-        valued = False
-        for word in words:
-            if valued:
-                valued = False
-                continue
-            if word.startswith("-"):
-                valued = word in _CHECKER_VALUED
-                continue
-            if word == "import":
-                return True
-            break
+    Read as a POSIX shell reads it and as Windows does, after quotes and before the operators,
+    so that `--title "Drugs & safety"` ends nothing and `--title "Drug import"` is not the
+    verb. Where it holds the words `checker` and `import` and cannot be read cleanly, a command
+    substitution among them, it is taken to run one: the answer is to ask."""
+    if not _CHECKER_AND_IMPORT.search(joined):
+        return False
+    for posix in (True, False):
+        invocations, clean = _command_words(joined, posix=posix)
+        if not clean:
+            return True
+        for words in invocations:
+            for at, word in enumerate(words[:-1]):
+                if (_TOOL_WORD.fullmatch(word) and words[at + 1].casefold() == "checker"
+                        and _verb_is_import(words[at + 2 :])):  # fmt: skip
+                    return True
     return False
 
 

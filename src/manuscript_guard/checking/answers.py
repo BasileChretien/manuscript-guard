@@ -13,11 +13,11 @@ What the file says about who made it is then held to `checks/bundles.csv` (`regi
   the name in it is whatever the file says, and nothing holds it to anything;
 * a `/1` file that names a registered page is refused: no registered page writes one.
 
-The name is then looked up in `authors.yaml` (`people.resolve`): by the name the record keeps
-for an author, their ORCID iD, their full name or their family name, compared in Unicode's
-composed form and without case, and recorded under the author's name in the record (two authors
-who share a full name are recorded apart, `people.keyed`). A name that is no author's is
-recorded as the file gives it, and the import says so. A name that is an author's with an ORCID
+The name is then looked up in `authors.yaml` (`people.resolve`): by ORCID iD, full name or
+family name, compared in Unicode's composed form and without case, and recorded under the
+author's name as `authors.yaml` writes it. A file by a name two authors share is refused
+(`people.Namesakes`). A name that is no author's is recorded as the file gives it, and the
+import says so. A name that is an author's with an ORCID
 iD that is not theirs is refused in a file from a registered page, and in any other file is
 recorded as "Name <iD>", apart from the author, and marked.
 
@@ -100,8 +100,8 @@ def read_answers(answers_file: Path, *, project_root: Path, project=None,
         raise Refused(
             f"{answers_file} names page {row.bundle} ({REGISTER}), built for {row.person} with "
             f"the ORCID iD {row.orcid or 'none'}, and authors.yaml does not give that name that "
-            f"iD now. Nothing from it is recorded: put authors.yaml right, or build the page "
-            f"again."
+            f"iD now. Nothing from it is recorded: rebuild the page for them with "
+            f"`checker build`, and ask them to answer on the new one."
         )
     return Answers(path=answers_file, document=document, by=found.by,
                    author=found.author is not None, claimed=row is None, bundle=bundle,
@@ -171,9 +171,9 @@ def _resolved(project, said: str, orcid: str, answers_file: Path):
     if project is None:
         return None
     from manuscript_guard.approvals import AmbiguousAuthor
-    from manuscript_guard.checking.people import Namesakes, resolve
+    from manuscript_guard.checking.people import Namesakes, SharedOrcid, resolve
 
     try:
         return resolve(project, said, orcid)
-    except (AmbiguousAuthor, Namesakes) as exc:
+    except (AmbiguousAuthor, Namesakes, SharedOrcid) as exc:
         raise AnswersError(f"{answers_file}: {exc}") from exc

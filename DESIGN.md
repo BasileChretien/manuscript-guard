@@ -10356,13 +10356,20 @@ later one from the same person, which made its old answer the latest once more (
 `checker build --all` writes `checks/check-<name>.html` for every author `authors.yaml` lists,
 the corresponding author among them (`--except` leaves one out, `-o` names the folder);
 `--for` still writes one page, for an author or for anyone else, and says when the name is no
-author's; a family name two authors share names neither, and is refused. Two names that fold to
-one file name, "José García" and "Jose Garcia", get `check-jose-garcia.html` and
-`check-jose-garcia-2.html`. A page is written under a temporary name, recorded in the register,
-and only then given its own, so a register that cannot be written (open in a spreadsheet) leaves
-no page to be sent unrecorded. Answers go back to the corresponding author unless `--to` names
-someone. Each page carries `person` (name and ORCID iD), a random 128-bit token (`secrets.token_hex(16)`), and the
-digest of the items it asks; its header says "Made for NAME. Your answers will carry this
+author's; a family name two authors share names neither, and is refused.
+
+A page's file name is the same in every run. Two names that fold to one, "José García" and
+"Jose Garcia", each add six characters of the SHA-256 of the name as written in Unicode's
+composed form, `check-jose-garcia-<six hex>.html`: numbered by their order instead, "Jose Garcia"
+built alone took the file "José García" had been given in the run before (round 2 of #455). A
+file the register says was last built for someone else is not replaced. A page is written
+under a temporary name, recorded in the register, and only then given its own, so a register
+that cannot be written (open in a spreadsheet) leaves no page to be sent unrecorded; the
+temporary file is removed on any failure, and one a failed run left is removed first.
+
+Answers go back to the corresponding author unless `--to` names someone. Each page carries
+`person` (name and ORCID iD), a random 128-bit token (`secrets.token_hex(16)`), and the digest
+of the items it asks; its header says "Made for NAME. Your answers will carry this
 name." The page's identifier digests its items, its person and its token, so no two builds
 share one; the browser keeps unsent answers under the first two only, so a page rebuilt with
 nothing changed for that person keeps their progress.
@@ -10389,22 +10396,30 @@ each says whose it is, and is held to the register (Basile's decision 4 (a)):
 Every file is checked whole before any is recorded: a field of the wrong type, an `answers` that
 is not a list or an answer that names no item refuses the import (round 1 of #455).
 
-The name is looked up in `authors.yaml` (`checking.people`): by the name the record keeps for an
-author, by ORCID iD, by full name or by family name, compared in Unicode's composed form and
-without case, so "Example" and "Ada Example" are one person and a name typed with a combining
-accent is the name spelt with a precomposed one. Decisions are kept by person and item, so no
-two people may share a name in the record: an author is recorded under their name, and where two
-authors share a full name, under the name and their ORCID iD, "Wei Zhang <0000-0002-1825-0097>",
-or for one of them with no iD under their place among the namesakes, "Wei Zhang (2)". Both were
-recorded as "Wei Zhang", and one's "wrong" was replaced by the other's "ok" (round 1 of #455).
-Two namesakes with no iD between them get no pages until one is added. The page greets each by
-their name; the answers file carries the name they are recorded under.
+The name is looked up in `authors.yaml` (`checking.people`): by ORCID iD, full name, e-mail
+address or family name, compared in Unicode's composed form and without case, so "Example" and
+"Ada Example" are one person and a name typed with a combining accent is the name spelt with a
+precomposed one. It is recorded as `authors.yaml` writes it, as before this register.
+
+**Two authors whose full names are one name are refused by checker.** Decisions are kept by
+person and item, so the two would share every decision: both were recorded as "Wei Zhang", and
+one's "wrong" was replaced by the other's "ok" (round 1 of #455). Telling them apart by a key
+made of what `authors.yaml` says of them, "Wei Zhang <ORCID iD>" or "Wei Zhang (2)", was tried
+and dropped (round 2): an iD corrected, or an author added above them, changes the key, and
+would move their decisions in a record that is never rewritten. So `checker build` says "two
+authors are named Wei Zhang; checker cannot keep their answers apart; write one of the names in
+a form of its own in authors.yaml (a middle initial, say)": `--for` either of them is refused,
+`--all` builds for every other author and lists the two as left out, and refuses only where
+everyone is a namesake. An answers file by that name, or with either one's iD, is refused the
+same way. Two authors given one ORCID iD are a mistake in `authors.yaml`, and `checker build`
+and `checker import` refuse to start until it is put right, naming the iD.
 
 A name that is no author's is recorded as given and marked as such. A name that is an author's
 given with an ORCID iD that is not theirs, or an author's iD given with another's name, is a
-mismatch: in a file from a registered page it is refused (authors.yaml has changed since the
-page was built), and in any other file it is recorded as "Name <iD>", apart from the author, and
-marked "ORCID differs".
+mismatch. In a file from a registered page it is refused, since `authors.yaml` has changed since
+the page was built (an iD corrected, say), and the message says to rebuild the page. In any
+other file it is recorded as "Name <iD>", apart from the author, claimed, and marked "ORCID
+differs".
 
 **What this proves.** The token shows which page a file came from, not who answered. Whoever
 holds a page holds its token: a page forwarded is answered by whoever it was forwarded to, and
@@ -10417,8 +10432,13 @@ built for that name. Nothing is signed.
 
 An agent's `checker import` is put to the person by the hooks, as an `approve` is (decision
 5 (a)): it puts a co-author's name to the answers in a file, and which file is taken as whose
-word is the author's call. The verb is the first argument of `checker` that is neither an option
-nor an option's value, so `--title "Drug import and safety"` is not an import.
+word is the author's call. The command is read as a POSIX shell reads it and as Windows does:
+quotes first, so that `--title "Drugs & safety"` ends nothing, and then cut into invocations at
+the `;`, `&`, `|` and line ends outside them (round 2 of #455: cut first, `checker --title
+"Drugs & safety" import` ran unasked). The verb is the first argument of `checker` that is
+neither an option nor an option's value, so `--title "Drug import and safety"` is not an import.
+A command that holds the words `checker` and `import` and cannot be read cleanly, a command
+substitution (`$(...)`, a backtick) or an unclosed quote, is taken to run an import, and asked.
 
 ### Nothing in it belongs to a vendor
 
@@ -10588,6 +10608,12 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
 - **The hook reads `checker`'s verb from the command's words.** It knows which options take a
   value, and takes the first other word for the verb. An option it does not know that takes a
   value, or a command built in a variable, is read wrongly, either way.
+- **Authors who share a full name cannot use checker** until one of the names is written in a
+  form of its own in `authors.yaml`. Nothing else tells two people apart in a record that keeps
+  a name and never rewrites it.
+- **The latest decision is the latest imported, not the latest given.** Among a person's answers
+  about the item as it is now, the one imported last counts, whatever its `at` says, as before
+  this register. Answers imported in another order than they were given count in that order.
 - **A file rebuilt after the items changed loses a co-author's unsent progress.** The page keeps
   answers in the browser under a digest of the items' own digests and the person's name (not
   under its identifier, which digests the token too): a rebuild that changes nothing they were

@@ -25,13 +25,13 @@ never denied.
 
 **A decision that is the author's is put to the author.** Sending the manuscript to model
 providers without being asked (`review --run --yes`), naming who attested a value they
-read in a source (`attested_by`), and moving the paper back to an earlier stage (`set stage`),
-are statements only the author can make, and nothing else
-can tell an agent's from theirs. There the hook answers "ask", and the agent tool shows the
-person the call and the reason before it runs. Claude Code honours "ask". Codex reads it and
-does not support it yet: it fails the hook and lets the call through. So where the tool is
-not known to ask, the hook refuses the call instead, with the same reason, and the author
-makes it themselves.
+read in a source (`attested_by`), and releasing the paper from a check (`set` of an
+earlier stage, of fewer guidelines or of another journal) are statements only the author
+can make, and nothing else can tell an agent's from theirs. There the hook answers "ask",
+and the agent tool shows the person the call and the reason before it runs. Claude Code
+honours "ask". Codex reads it and does not support it yet: it fails the hook and lets the
+call through. So where the tool is not known to ask, the hook refuses the call instead, with
+the same reason, and the author makes it themselves.
 """
 
 from __future__ import annotations
@@ -40,7 +40,6 @@ import contextlib
 import json
 import os
 import re
-import shlex
 import sys
 from collections import Counter
 from pathlib import Path
@@ -1136,7 +1135,7 @@ def guard_submission(payload: dict) -> int:
     command = _without_messages(str(payload.get("tool_input", {}).get("command", "")))
     sends = _or_nothing(lambda _path: _sends_without_asking(command, payload), Path("."))
     sends = sends or _or_nothing(lambda _path: _approves(command), Path("."))
-    sends = sends or _or_nothing(lambda _path: _moves_stage_back(command, payload), Path("."))
+    sends = sends or _moves_stage_back(command, payload)
     if not SUBMISSION_MARKERS.search(command):
         return _ask("PreToolUse", sends, payload) if sends else 0
 
@@ -1188,85 +1187,14 @@ def _approves(command: str) -> str | None:
     )
 
 
-_SET = re.compile(_TOOL + r"set\b", re.IGNORECASE)
-
-
-def _arguments(text: str) -> list[str]:
-    """The words of one invocation, with the quotation marks around each taken off. Not
-    read as a POSIX shell reads them, which would take the backslashes out of a Windows
-    path."""
-    try:
-        words = shlex.split(text, posix=False)
-    except ValueError:  # a quotation mark left open
-        words = text.split()
-    return [word[1:-1] if word[:1] == word[-1:] and word[:1] in "\"'" else word for word in words]
-
-
-def _set_stage(words: list[str]) -> tuple[str, str | None] | None:
-    """The stage a `set` invocation's words write, and the folder its `--path` names; None
-    where it writes another setting."""
-    positional: list[str] = []
-    folder = None
-    given = iter(words)
-    for word in given:
-        if word == "--path":
-            folder = next(given, None)
-        elif word.startswith("--path="):
-            folder = word.partition("=")[2]
-        elif not word.startswith("-"):
-            positional.append(word)
-    if len(positional) < 2 or positional[0] != "stage":
-        return None
-    return positional[1], folder
-
-
-def _declared_stage(root: Path) -> str | None:
-    """The stage the project's `paper.yaml` declares, the default where it declares none,
-    and None where it cannot be read."""
-    import yaml
-
-    from manuscript_guard.policy import DRAFTING
-
-    paper = yaml.safe_load((root / "paper.yaml").read_text(encoding="utf-8"))
-    if paper is None:
-        return DRAFTING
-    return paper.get("stage", DRAFTING) if isinstance(paper, dict) else None
-
-
 def _moves_stage_back(command: str, payload: dict) -> str | None:
-    """Why a `set stage` in this command is put to the author: it moves the project to an
-    earlier stage, and every finding that starts to fail after that one, up to the stage
-    it leaves, is then listed as not due. That turns a failing check into a passing one
-    with nothing fixed, which is the author's to decide. Moving on is not asked: it only
-    makes the check stricter.
+    """Why a `set` in this command is put to the author (`set_guard`): it moves the stage
+    back, takes a guideline away or replaces the journal, or the guard cannot read what it
+    changes."""
+    from manuscript_guard.set_guard import asks
 
-    The project is the one `--path` names from the folder the command was sent from, or
-    that folder's, and each other project a word of the command names (`cd paper && ...`).
-    """
-    from manuscript_guard.policy import STAGES
-
-    joined = re.sub(r"[\\`]\r?\n", " ", command)
     cwd = Path(payload.get("cwd") or Path.cwd()).resolve()
-    for found in _SET.finditer(joined):
-        rest = joined[found.end() :]
-        end = _INVOCATION_END.search(rest)
-        asked = _set_stage(_arguments(rest[: end.start() if end else len(rest)]))
-        if asked is None or asked[0] not in STAGES:
-            continue
-        stage, folder = asked
-        here = (cwd / folder) if folder else cwd
-        roots = [up for up in (here, *here.parents) if (up / "paper.yaml").exists()][:1]
-        roots += _named_projects(command, cwd)
-        for root in dict.fromkeys(roots):
-            declared = _or_nothing(_declared_stage, root)
-            if declared in STAGES and STAGES.index(stage) < STAGES.index(declared):
-                return (
-                    f"`manuscript-guard set stage {stage}` moves {root.name} back from "
-                    f"{declared}, and every finding that starts to fail after {stage}, up to "
-                    f"{declared}, is then listed as not due: the check passes with nothing "
-                    "fixed. Whether the paper is back at that stage is the author's decision."
-                )
-    return None
+    return asks(command, cwd, _TOOL, _INVOCATION_END)
 
 
 def _sends_without_asking(command: str, payload: dict) -> str | None:

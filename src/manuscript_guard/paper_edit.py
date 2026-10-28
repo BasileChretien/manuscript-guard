@@ -24,6 +24,7 @@ from __future__ import annotations
 import contextlib
 import os
 import re
+import shutil
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -40,9 +41,21 @@ LIST_KEYS = frozenset({"reporting_guideline"})
 
 #: What is written without quotation marks: a name, read back by YAML as the same text.
 _PLAIN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]*\Z")
+#: What a YAML 1.2 reader types as other than text, by the core schema's own patterns: a
+#: name PyYAML, a YAML 1.1 reader, keeps as text (`1e3`, `0o17`) is quoted all the same,
+#: since another tool that reads the file may take it for a number.
+_YAML_12 = re.compile(
+    r"(?:null|Null|NULL|~|true|True|TRUE|false|False|FALSE"
+    r"|[-+]?[0-9]+|0o[0-7]+|0x[0-9a-fA-F]+"
+    r"|[-+]?(?:\.[0-9]+|[0-9]+(?:\.[0-9]*)?)(?:[eE][-+]?[0-9]+)?"
+    r"|[-+]?\.(?:inf|Inf|INF)|\.(?:nan|NaN|NAN))\Z"
+)
 _BOM = chr(0xFEFF)
 #: What one edit could reach another setting through.
 _UNSAFE = (yaml.AnchorToken, yaml.AliasToken)
+#: What PyYAML reads as the end of a line and an editor, or this module, may not: a file
+#: that holds one has lines `set` cannot count as YAML does.
+_OTHER_BREAKS = {chr(0x85): "U+0085", chr(0x2028): "U+2028", chr(0x2029): "U+2029"}
 
 
 class Refused(Exception):
@@ -63,7 +76,8 @@ def written(value: Any) -> str:
     list between brackets."""
     if isinstance(value, list):
         return "[" + ", ".join(written(entry) for entry in value) + "]"
-    if _PLAIN.match(value) and yaml.safe_load(f"k: {value}") == {"k": value}:
+    plain = _PLAIN.match(value) and not _YAML_12.match(value)
+    if plain and yaml.safe_load(f"k: {value}") == {"k": value}:
         return value
     return "'" + value.replace("'", "''") + "'"
 
@@ -217,7 +231,17 @@ def _uncommented(text: str, key: str, new: Any, scalars: list[tuple[int, int]]) 
     if len(found) != 1:
         return None
     line = found[0]
-    return text[: line.start()] + f"{key}: {written(new)}" + text[line.end() :]
+    # The line without its `#`, read as a setting, has its value replaced as a setting's
+    # is: a note after it on the line stays. Where it is not one line of YAML, it is left.
+    rest = line[0][1:]
+    inner = rest[1:] if rest[:1] in (" ", "\t") else rest
+    try:
+        entry = yaml.compose(inner, Loader=yaml.SafeLoader)
+        name, value = entry.value[0]
+        made = _replaced(inner, name, value, new)
+    except (yaml.YAMLError, AttributeError, IndexError, TypeError, Refused):
+        return None
+    return text[: line.start()] + made + text[line.end() :]
 
 
 def _appended(text: str, key: str, new: Any) -> str:
@@ -245,6 +269,13 @@ def edit(text: str, key: str, new: Any) -> Edited:
     wrong = next(iter(held.iter_errors(new)), None)
     if wrong is not None:
         raise Refused(f"`{key}` cannot be {written(new)}: {wrong.message}")
+    other = next((name for character, name in _OTHER_BREAKS.items() if character in text), None)
+    if other is not None:
+        raise Refused(
+            f"it holds {other}, which YAML reads as the end of a line where an editor may show "
+            "none, so the lines `set` would edit are not the lines YAML reads; take it out, "
+            "or write it as an escape between double quotation marks"
+        )
     root, scalars = _structure(text)
     before = _loaded(text)
     if key in before and before[key] == new:
@@ -311,11 +342,33 @@ def write(path: Path, text: str) -> None:
             out.write(text.encode("utf-8"))
             out.flush()
             os.fsync(out.fileno())
+        # `mkstemp` makes the file readable by its owner only: the old file's mode is kept.
+        shutil.copymode(path, temporary)
         os.replace(temporary, path)
     except BaseException:
         with contextlib.suppress(OSError):
             os.unlink(temporary)
         raise
+
+
+def _one_file(path: Path) -> None:
+    """Refuse a `paper.yaml` that is a link: replacing it would write a file of its own in
+    its place, and the file it points to, or shares its contents with, would keep the old
+    text."""
+    if path.is_symlink():
+        raise Refused(
+            "it is a symbolic link, which `set` would replace by a file; run it on the file "
+            "the link points to"
+        )
+    try:
+        links = path.stat().st_nlink
+    except OSError:
+        return  # `read` says why it cannot be read
+    if links > 1:
+        raise Refused(
+            "it has more than one hard link, and `set` would write a new file under this "
+            "name only; edit it by hand"
+        )
 
 
 def value_of(key: str, words: list[str]) -> Any:
@@ -336,14 +389,14 @@ def value_of(key: str, words: list[str]) -> Any:
     return words[0]
 
 
-def journals(root: Path, paper: dict) -> list[str]:
+def journals(root: Path) -> list[str]:
     """The journals `target_journal` can name: each profile the project or the toolkit
     holds, and each profile the shortlist gives one of its candidates."""
     from manuscript_guard.contracts import ContractError, Project, read_structured
     from manuscript_guard.gates.journal import available_profiles
     from manuscript_guard.shortlist import shortlist_path
 
-    project = Project(root, paper, None)
+    project = Project(root, {}, None)  # neither reads a setting
     named = set(available_profiles(project))
     try:
         shortlist = read_structured(shortlist_path(project))
@@ -357,14 +410,14 @@ def journals(root: Path, paper: dict) -> list[str]:
     return sorted(named)
 
 
-def _choices(root: Path, key: str, paper: dict) -> list[str] | None:
+def _choices(root: Path, key: str) -> list[str] | None:
     """The values `key` may take in this project, or None where any name will do."""
     from manuscript_guard.policy import STAGES
 
     if key == "stage":
         return list(STAGES)
     if key == "target_journal":
-        return journals(root, paper)
+        return journals(root)
     if key in ("english_variant", "study_type"):
         return list(load_schema("paper")["properties"][key]["enum"])
     return None
@@ -374,9 +427,9 @@ def set_key(path: Path, key: str, words: list[str]) -> Edited:
     """Set `key` of the `paper.yaml` at `path` from the words given, and write the file;
     `Refused`, with the file as it was, where that cannot be done."""
     new = value_of(key, words)
-    mark, text = read(path)
-    paper = _loaded(text)
-    choices = _choices(path.parent, key, paper)
+    # Before the file is read: the choices are the policy's, the schema's, and for a
+    # journal the profiles and the shortlist of the project, none of them in paper.yaml.
+    choices = _choices(path.parent, key)
     if choices is not None and new not in choices:
         said = (
             f"it takes one of {', '.join(choices)}"
@@ -390,9 +443,14 @@ def set_key(path: Path, key: str, words: list[str]) -> Edited:
                 "the journal's candidate in journals/shortlist.yaml its `profile`"
             )
         raise Refused(f"`{key}` cannot be {new!r}: {said}")
+    _one_file(path)
+    mark, text = read(path)
     done = edit(text, key, new)
     if done.how != "unchanged":
-        write(path, mark + done.text)
+        try:
+            write(path, mark + done.text)
+        except OSError as exc:
+            raise Refused(f"it could not be written: {exc.strerror or exc}") from exc
     return done
 
 

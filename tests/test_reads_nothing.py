@@ -132,9 +132,10 @@ COMMANDS = {
                  argv=("sign", "{project}", "--as", "Nobody Listed", "--finding", "G15/x/y")),
     "search": Zero("the query it is given, then the registries' answers", exits=2,
                    argv=("search", "")),
-    "set": Zero("paper.yaml, to write one key of it",
-                why="it refuses where there is no paper.yaml (exit 2), and it reads nothing "
-                "else"),
+    # The empty project's stage is already `design`, which `set stage design` leaves with
+    # exit 0; a journal, where the project has no profile and no shortlist, is refused.
+    "set": Zero("paper.yaml, and for target_journal the journal profiles and the shortlist",
+                exits=2, argv=("set", "target_journal", "any-journal", "--path", "{project}")),
     "stages": Zero("nothing: it prints the stages", why="it reads the policy table only"),
     "style": Zero("the citation style the journal's profile names", exits=2,
                   argv=("style", "{project}")),

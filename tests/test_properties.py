@@ -5991,7 +5991,9 @@ def _one_setting_changed(before: str, after: str, key: str, value: Any) -> None:
     for mark in set(re.findall(r"# c\d+\b", before)):
         counted = re.compile(re.escape(mark) + r"\b")
         assert len(counted.findall(after)) == len(counted.findall(before)), (key, mark)
-    old, new = before.splitlines(), after.splitlines()
+    # With their endings: a line whose CRLF became LF, or that lost its trailing spaces, is
+    # a line changed.
+    old, new = before.splitlines(keepends=True), after.splitlines(keepends=True)
     same = 0
     while same < min(len(old), len(new)) and old[same] == new[same]:
         same += 1
@@ -6003,36 +6005,37 @@ def _one_setting_changed(before: str, after: str, key: str, value: Any) -> None:
     assert all(own.match(line) for line in changed), (key, changed)
 
 
-@holds(60, paper_files())
-def test_set_changes_one_setting_and_keeps_every_other_line(
-    drawn: tuple[dict[str, Any], dict[str, str]],
-) -> None:
-    """Each key, set on its own in a `paper.yaml` with comments in random places: the file
-    reads back as the settings it held with that key changed, every comment is there as many
-    times as it was, and the lines that changed are one run of the key's own."""
-    given, _forms = drawn
-    for key, value in given["values"].items():
-        try:
-            done = paper_edit.edit(given["text"], key, value)
-        except paper_edit.Refused as refused:
-            raise AssertionError(f"{key}: {refused}") from refused
-        _one_setting_changed(given["text"], done.text, key, value)
+@holds(40, paper_files())
+def test_set_changes_one_setting_and_keeps_every_other_line(files: list[dict[str, Any]]) -> None:
+    """Each key, set on its own in two `paper.yaml` files with comments in random places and
+    each key in every form between them: the file reads back as the settings it held with
+    that key changed, every comment is there as many times as it was, and the lines that
+    changed, endings included, are one run of the key's own."""
+    for paper in files:
+        for key, value in paper["values"].items():
+            try:
+                done = paper_edit.edit(paper["text"], key, value)
+            except paper_edit.Refused as refused:
+                raise AssertionError(f"{key}: {refused}") from refused
+            _one_setting_changed(paper["text"], done.text, key, value)
 
 
-@holds(30, paper_files())
+@holds(20, paper_files())
 def test_set_refuses_a_file_it_cannot_edit_safely_whichever_key(
-    drawn: tuple[dict[str, Any], dict[str, str]],
+    files: list[dict[str, Any]],
 ) -> None:
     """An anchor and its alias, a key written twice, the settings as one mapping between
-    braces: each is refused for every key, whatever else the file holds."""
-    given, _forms = drawn
-    for hazard, text in set_hazards(given["text"]).items():
-        for key, value in given["values"].items():
-            try:
-                paper_edit.edit(text, key, value)
-            except paper_edit.Refused:
-                continue
-            raise AssertionError(f"with {hazard}, {key} was written")
+    braces: each is refused for every key, whatever else the file holds, and for that
+    reason."""
+    for paper in files:
+        for hazard, (text, said) in set_hazards(paper["text"]).items():
+            for key, value in paper["values"].items():
+                try:
+                    paper_edit.edit(text, key, value)
+                except paper_edit.Refused as refused:
+                    assert said in str(refused), (hazard, key, str(refused))
+                    continue
+                raise AssertionError(f"with {hazard}, {key} was written")
 
 
 def _the_comment_above_goes_with_the_key(patch: pytest.MonkeyPatch) -> None:
@@ -6041,7 +6044,9 @@ def _the_comment_above_goes_with_the_key(patch: pytest.MonkeyPatch) -> None:
     def careless(text: str, key: Any, value: Any, new: Any) -> str:
         out = replaced(text, key, value, new)
         start = paper_edit._line_start(out, key.start_mark.index)
-        above = paper_edit._line_start(out, start - 1) if start else 0
+        # Back over the whole line break, CRLF as well as LF, to the line above.
+        ended = start - (2 if out[max(start - 2, 0) : start] == chr(13) + chr(10) else 1)
+        above = paper_edit._line_start(out, ended) if start else 0
         return out[:above] + out[start:] if out[above:start].startswith("#") else out
 
     patch.setattr(paper_edit, "_replaced", careless)

@@ -6861,48 +6861,78 @@ text in one of three ways:
   is written again in the same layout, its entries' indent and dash kept; an empty list is
   `[]` on the key's line;
 - it is not, and exactly one line at the left margin reads `# key: …`, the commented example
-  `init` leaves: that line becomes the setting. A line of that shape inside a quoted value is
-  no comment and is passed over, and where there are two `set` cannot tell which was meant
-  and leaves both;
+  `init` leaves: that line becomes the setting, and a note after the value on that line
+  stays, as it does for a setting. A line of that shape inside a quoted value is no comment
+  and is passed over, and where there are two `set` cannot tell which was meant and leaves
+  both;
 - otherwise the key is added at the end of the file, with its line ending.
 
 The result is then read back. It must be the settings the file held with that one key
 changed, and the schema must find nothing in it that it did not find before; a file that
 failed the schema elsewhere is still written, since that is `check`'s to report. Only then is
-the file replaced, through a file beside it and a rename. Where a commented example stands
-inside another setting's block, made a setting it would end that block: the read-back says
-so, and the key is added at the end instead. What an edit of one place cannot be trusted
+the file replaced, through a file beside it, given the old file's mode, and a rename; a
+failure to write is said in a sentence, and the old file stands. A `paper.yaml` that is a
+symbolic link, or has a second hard link, is refused: the rename would put a file of its own
+in its place and leave the file it shares its text with as it was. Where a commented example
+stands inside another setting's block, made a setting it would end that block: the read-back
+says so, and the key is added at the end instead. What an edit of one place cannot be trusted
 with is refused before any of this, and the file is left as it was: settings written as one
 mapping between braces, an anchor or an alias anywhere in the file (an edit of one place can
 change another through them), a key written twice in any mapping (YAML keeps the second, and
 which was meant is not for `set` to guess), a value over several lines other than such a
-list, and a list with a comment or a blank line among its entries, which would be lost.
+list, a list with a comment or a blank line among its entries, which would be lost, and a
+character PyYAML takes for the end of a line where `set` and an editor see none (U+0085,
+U+2028, U+2029), which makes the lines `set` counts other than the lines YAML reads.
 
-The value is checked before the file is read: a stage `policy.STAGES` names, an English
-`scaffold.ENGLISHES` names, a study type of the schema's, and a journal whose profile the
-project or the toolkit holds or that `journals/shortlist.yaml` gives one of its candidates as
-its `profile`. A guideline is any name: its checklist is retrieved after it is declared, and
-`checklist-not-retrieved` says so. Given no guideline, the list is emptied. A name YAML would
-read as something else, `yes` or `2024`, is written between single quotation marks.
+The value is checked first, and paper.yaml is read only once it passes: a stage
+`policy.STAGES` names, an English `scaffold.ENGLISHES` names, a study type of the schema's,
+and a journal whose profile the project or the toolkit holds or that
+`journals/shortlist.yaml` gives one of its candidates as its `profile` (those files are read
+for it; paper.yaml is not). A guideline is any name: its checklist is retrieved after it is
+declared, and `checklist-not-retrieved` says so. Given no guideline, the list is emptied. A
+name a reader would type as other than text is written between single quotation marks: what
+PyYAML, a YAML 1.1 reader, resolves to a number, a date or a yes or no (`yes`, `2024`,
+`1_000`), and what the YAML 1.2 core schema's patterns do (`1e3`, `0o17`, `.inf`, `.nan`),
+since another tool may read the file by those.
 
-`set stage` to an earlier stage is put to the author: where an agent runs it, the submission
-guard answers "ask" (and refuses it where the agent tool cannot ask), as it does for
-`approve`. Moving back is the one change of these five that makes a failing check pass with
-nothing fixed: every finding that starts to fail after the new stage, up to the old one, is
-listed as not due. Moving on only makes the check stricter, so it is not asked. The guard
-reads the stage of the project at the folder the command is sent from or that `--path`
-names, and of each project a word of the command names, and a `paper.yaml` that declares
-none is at `drafting`, the default.
+Three of these changes can make a failing check pass with nothing fixed, and each is put to
+the author (Basile, 2026-10-28: moving the stage back is allowed, with the hook asking
+first). `set stage` to an earlier stage lists every finding that starts to fail after the
+new stage, up to the old one, as not due. `set reporting_guideline` without a guideline the
+paper declares now, the list emptied included, stops asking for that guideline's checklist,
+and its findings go. `set target_journal` to another journal than the one declared drops the
+old journal's limits and required statements, which the paper was failing or meeting. Where
+an agent runs one of them, the submission guard answers "ask", and refuses it where the agent
+tool cannot ask, as it does for `approve` (`set_guard.py`). Moving the stage on, adding a
+guideline and choosing the first journal only add to what is checked, so they are not asked.
+Nor are the English and the study type: a change of either is a change of what is asked,
+G14's spelling or G12's sections, more than a release from it (Known gaps).
+
+The guard reads the command as text, and where it cannot say what a `set` would change, it
+asks: that is the guarantee, since a guard that let a command through when unsure could be
+stepped round by writing it another way. It reads each invocation's words as a POSIX shell
+does and as PowerShell does, and asks where either reading is one of the three changes. It
+follows a plain `cd`, `Set-Location`, `pushd` or `chdir` to one folder before the `set` on the
+line, and resolves `--path` from where that leaves it; any other change of folder before it,
+`popd`, a `cd` with no folder, one through a variable or inside a longer command, is asked.
+So are a key or a value given through the shell (`$STAGE`), a project not found where the
+command looks, and a `paper.yaml` that cannot be read. Only the project the invocation itself
+names is read; another the line mentions is not. A `paper.yaml` that declares no stage is at
+`drafting`, the default.
 
 `tests/test_set.py` sets each key from absent, from its commented example and from a value,
-and holds each refusal to a file left byte for byte. `tests/test_properties.py` sets each
-key in generated files with comments, blank lines and lookalikes of the key in random places
-(a citekey under `lookup: not_indexed:`, an indented comment, a commented line inside a
-quoted title, the commented example beside a setting): the file reads back as it should,
-every comment is there as often as it was, and the lines that changed are one run of the
-key's own. Two broken rules fail it, one that takes the comment above the key with it and
-one that rewrites the first line naming the key, as a regular expression would; two more
-fail the property of refusals, by letting an anchor or a key written twice through.
+holds each refusal to a file left byte for byte, and each case of the guard to its answer.
+`tests/test_properties.py` sets each key in pairs of generated files, between which each key
+is in every form (absent, commented, plain, quoted, empty, a list one entry to a line or
+between brackets), one file in CRLF with a byte-order mark and the other in LF with spaces at
+the ends of its lines, each with a block scalar, comments and blank lines in random places,
+and lookalikes of the key (a citekey under `lookup: not_indexed:`, an indented comment, a
+commented line inside a quoted title, the commented example beside a setting). The file reads
+back as it should, every comment is there as often as it was, and the lines that changed,
+their endings compared, are one run of the key's own. Two broken rules fail it, one that
+takes the comment above the key with it and one that rewrites the first line naming the key,
+as a regular expression would; two more fail the property of refusals, which asks each
+refusal for its own reason, by letting an anchor or a key written twice through.
 
 ## `check` says what it rests on, dimension by dimension
 
@@ -16796,13 +16826,21 @@ What papers converted from Word showed (see "What papers converted from Word sho
   a journal or an English once set is changed and never unset; that is an edit by hand. It
   refuses a whole file for an anchor or an alias anywhere in it, even one in a setting it
   does not touch, and for settings written as one mapping between braces; the author writes
-  those out first. A list with a comment among its entries is refused rather than written
-  with the comment lost. A commented example is taken only at the left margin and only where
+  those out first, and for a line separator YAML reads (U+0085, U+2028, U+2029) anywhere,
+  inside quotation marks too. A list with a comment among its entries is refused rather
+  than written with the comment lost. A commented example is taken only at the left margin and only where
   it is the one such line; an indented `  # stage: …` is left, and the key added at the end.
-- **Only `set` is asked about moving the stage back.** The guard reads shell commands. An
-  agent that edits `paper.yaml` itself and lowers `stage:` is not asked, nor is one that
-  passes the stage to `check --stage` for a run, nor a stage changed through a path held in a
-  variable or a glob, which names no project the guard can find.
+- **The guard on `set` reads shell commands only.** An agent that edits `paper.yaml`
+  itself and lowers `stage:`, takes a guideline out or changes the journal is not asked, nor
+  is one that passes a stage to `check --stage` for a run. And reading each command two
+  ways, as a POSIX shell and as PowerShell would, it asks more than it must: a `--path`
+  written with backslashes is, to a POSIX reading, a folder with none, where no project is
+  found, and so a forward move given such a path is asked too.
+- **A change of English or of study type is not asked.** Either changes what is asked of
+  the paper, G14's spelling or G12's plan sections, and could clear a failing finding as a
+  journal change can; they are left free because each is a statement about the paper an
+  agent is usually told outright, and asking at every one would teach the author to wave
+  the question through.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

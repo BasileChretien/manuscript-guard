@@ -5175,92 +5175,130 @@ SET_VALUES = {
 #: Guidelines a list may name. A name YAML reads as something else, `yes`, `2024`, or one
 #: with a space or a quotation mark in it, has to be written between quotation marks.
 SET_GUIDELINES = ("STROBE", "RECORD-PE", "CONSORT", "yes", "2024", "A guideline", "it's")
-#: The forms a key is in before it is set. Every example holds each of them, and a list one
-#: to a line besides, which is `reporting_guideline`'s; the other four keys share these out.
-SET_FORMS = ("absent", "commented", "one line")
+#: The forms a key of one value is in before it is set: not there, its commented example,
+#: a plain value, a quoted one, and nothing after its colon. A list is written one entry to
+#: a line, or between brackets on one line.
+SET_FORMS = ("absent", "commented", "plain", "quoted", "empty")
+SET_LIST_FORMS = ("block", "flow")
+#: Settings no key `set` writes is among. Each line ends in spaces in one of the two files.
 _SET_FILLER = (
     "terms: []\n",
     "demonstration: true\n",
     "keywords:\n  - pharmacovigilance\n  - hepatotoxicity\n",
     'language:\n  known_abbreviations:\n    - "CI"\n',
 )
+#: A value over several lines, in each file.
+_SET_BLOCK_SCALAR = "short_title: |\n  Hepatic injury\n  with example-drug\n"
 
 
-@st.composite
-def paper_files(draw: st.DrawFn) -> tuple[dict[str, Any], dict[str, str]]:
-    """A `paper.yaml` with comments, blank lines and settings in an order nobody chose, the
-    value to set each key to, and the form each key is in.
-
-    Each comment carries a mark of its own, `cN`, which `set` must leave as many times as it
-    found it. And each key stands where a careless edit would take it: as a citekey under
-    `lookup: not_indexed:`, in an indented comment there, as the commented example beside
-    the setting where it is set, and, where it is not set, in a commented line inside a
-    quoted title, which is no comment."""
+def _paper_file(
+    draw: st.DrawFn, form_of: dict[str, str], *, crlf: bool, bom: bool, spaced: bool
+) -> dict[str, Any]:
+    """One `paper.yaml` with each key in the form `form_of` gives it; see `paper_files`."""
     marks = iter(range(1000))
 
     def comment(about: str = "") -> str:
-        return f"# c{next(marks)} {about}".rstrip() + "\n"
+        return f"# c{next(marks)} {about}".rstrip() + ("   \n" if spaced else "\n")
 
     keys = list(SET_VALUES)
-    forms = draw(st.permutations([*SET_FORMS, draw(st.sampled_from(SET_FORMS))]))
-    form_of = {**dict(zip(keys, forms, strict=True)), "reporting_guideline": "list"}
-    hidden = draw(st.sampled_from([key for key in keys if form_of[key] == "absent"]))
+    hidden = [key for key in keys if form_of[key] == "absent"]
     title = (
-        f'title: "A paper\n# {hidden}: {SET_VALUES[hidden][0]}\n  on hepatic injury"\n'
-        if draw(st.booleans())
+        f'title: "A paper\n# {hidden[0]}: {SET_VALUES[hidden[0]][0]}\n  on hepatic injury"\n'
+        if hidden and draw(st.booleans())
         else 'title: "A paper on hepatic injury"\n'
     )
-    blocks = []
+    blocks = [_SET_BLOCK_SCALAR]
     for key in keys:
         was = draw(st.sampled_from(SET_VALUES[key]))
         above = "".join(comment(key) for _ in range(draw(st.integers(1, 2))))
-        if form_of[key] == "one line":
-            tail = "  " + comment().rstrip("\n") if draw(st.booleans()) else ""
-            blocks.append(f"{above}{key}: {was}{tail}\n")
+        tail = "  " + comment().rstrip(" \n") if draw(st.booleans()) else ""
+        quote = draw(st.sampled_from(("'", '"')))
+        written = {"plain": f" {was}", "quoted": f" {quote}{was}{quote}", "empty": ""}
+        if form_of[key] in written:
+            blocks.append(f"{above}{key}:{written[form_of[key]]}{tail}\n")
             # The example as `init` leaves it, beside the setting: no setting itself.
             blocks.append(f"# {key}: {SET_VALUES[key][-1]}\n")
         elif form_of[key] == "commented":
-            blocks.append(f"{above}# {key}: {was}\n")
+            blocks.append(f"{above}# {key}: {was}{tail}\n")
     entries = draw(st.lists(st.sampled_from(SET_GUIDELINES[:3]), min_size=1, max_size=3,
                             unique=True))  # fmt: skip
-    indent = draw(st.sampled_from(("", "  ", "    ")))
-    blocks.append(
-        comment("guidelines")
-        + "reporting_guideline:\n"
-        + "".join(f"{indent}- {entry}\n" for entry in entries)
-    )
+    if form_of["reporting_guideline"] == "block":
+        indent = draw(st.sampled_from(("", "  ", "    ")))
+        listed = ":\n" + "".join(f"{indent}- {entry}\n" for entry in entries)
+    else:
+        listed = f": [{', '.join(entries)}]\n"
+    blocks.append(comment("guidelines") + "reporting_guideline" + listed)
     nested = "".join(f"    {key}: invented for this example\n"
                      for key in (*keys, "reporting_guideline"))  # fmt: skip
     blocks.append(f"lookup:\n  # {draw(st.sampled_from(keys))}: an indented comment\n"
                   f"  not_indexed:\n{nested}")  # fmt: skip
-    blocks += draw(st.lists(st.sampled_from(_SET_FILLER), unique=True, max_size=4))
+    filler = draw(st.lists(st.sampled_from(_SET_FILLER), unique=True, max_size=4))
+    blocks += [part.replace("\n", "  \n") if spaced else part for part in filler]
     blocks += [comment() for _ in range(draw(st.integers(0, 3)))]
     blocks += ["\n"] * draw(st.integers(0, 3))
     blocks = draw(st.permutations(blocks))
     text = "schema: manuscript-guard/paper/1\n" + comment("the title") + title + "".join(blocks)
-    if draw(st.booleans()):
-        text = text.replace("\n", "\r\n")
+    text = text.replace("\n", "\r\n") if crlf else text
     values: dict[str, Any] = {key: draw(st.sampled_from(each)) for key, each in SET_VALUES.items()}
     values["reporting_guideline"] = draw(
         st.lists(st.sampled_from(SET_GUIDELINES), max_size=3, unique=True)
     )
-    return {"text": text, "values": values}, form_of
+    return {"text": (chr(0xFEFF) if bom else "") + text, "values": values}
 
 
-#: What makes a `paper.yaml` one `set` must refuse, whichever key it is asked to write.
+@st.composite
+def paper_files(draw: st.DrawFn) -> list[dict[str, Any]]:
+    """Two `paper.yaml` files with comments, blank lines and settings in an order nobody
+    chose, each with the value to set each key to.
+
+    Between them every form a key can be in is there (`SET_FORMS`, `SET_LIST_FORMS`), and
+    one file ends its lines in CRLF and opens on a byte-order mark, the other in LF and with
+    spaces at the end of its lines. Each holds a value over several lines. Each comment
+    carries a mark of its own, `cN`, which `set` must leave as many times as it found it.
+    And each key stands where a careless edit would take it: as a citekey under `lookup:
+    not_indexed:`, in an indented comment there, as the commented example beside the
+    setting where it is set, and, where it is not set, in a commented line inside a quoted
+    title, which is no comment."""
+    keys = list(SET_VALUES)
+    more = [draw(st.sampled_from(SET_FORMS)) for _ in range(3)]
+    forms = draw(st.permutations([*SET_FORMS, *more]))
+    lists = draw(st.permutations(SET_LIST_FORMS))
+    first = draw(st.booleans())
+    return [
+        _paper_file(
+            draw,
+            {**dict(zip(keys, forms[4 * which : 4 * which + 4], strict=True)),
+             "reporting_guideline": lists[which]},
+            crlf=first == bool(which), bom=first == bool(which), spaced=first != bool(which),
+        )
+        for which in (0, 1)
+    ]  # fmt: skip
+
+
+#: What makes a `paper.yaml` one `set` must refuse, whichever key it is asked to write, and
+#: what the refusal says. The anchor is under a key no filler draws, so that the refusal is
+#: the anchor's and not a key's written twice.
 SET_HAZARDS = {
-    "an anchor and an alias": "short_title: &short Hepatic injury\nkeywords:\n  - *short\n",
-    "a key written twice": "terms: []\nterms: [CYP3A4]\n",
+    "an anchor and an alias": (
+        "conventions:\n  - pattern: &named example\n    why: *named\n",
+        "anchor or an alias",
+    ),
+    "a key written twice": ("custodian: {}\ncustodian:\n  minimum_cell_count: 5\n",
+                            "written twice"),  # fmt: skip
 }
 
 
-def set_hazards(text: str) -> dict[str, str]:
+def set_hazards(text: str) -> dict[str, tuple[str, str]]:
     """The text once with each hazard after it, and the settings as one mapping between
-    braces."""
+    braces, each with what the refusal says."""
     end = "\r\n" if "\r\n" in text else "\n"
-    planted = {name: text + hazard.replace("\n", end) for name, hazard in SET_HAZARDS.items()}
+    planted = {
+        name: (text + hazard.replace("\n", end), said)
+        for name, (hazard, said) in SET_HAZARDS.items()
+    }
     planted["a mapping between braces"] = (
-        '{schema: manuscript-guard/paper/1, title: "A paper", stage: design}' + end
+        '{schema: manuscript-guard/paper/1, title: "A paper", stage: design}' + end,
+        "between braces",
     )
     return planted
 
@@ -5772,9 +5810,9 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "reworded": edits(),
     "marked up": revisions().map(lambda drawn: drawn[0]),
     "paper.yaml set": paper_files().flatmap(
-        lambda drawn: st.sampled_from([
-            drawn[0],
-            *({**drawn[0], "text": text} for text in set_hazards(drawn[0]["text"]).values()),
+        lambda files: st.sampled_from([
+            *files,
+            *({**files[0], "text": text} for text, _said in set_hazards(files[0]["text"]).values()),
         ])
     ),  # fmt: skip
 }

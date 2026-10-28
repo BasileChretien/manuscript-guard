@@ -8,6 +8,8 @@ Each refusal leaves the file as it was, byte for byte.
 from __future__ import annotations
 
 import json
+import os
+import stat
 from pathlib import Path
 
 import pytest
@@ -363,3 +365,187 @@ def test_a_project_with_no_stage_is_at_drafting(tmp_path: Path, monkeypatch, cap
     command = "manuscript-guard set stage analysis"
     assert _decision(_hook(tmp_path, command, monkeypatch, capsys)) == "ask"
     assert _hook(tmp_path, "manuscript-guard set stage submission", monkeypatch, capsys) is None
+
+
+def _project(folder: Path, settings: str = "stage: submission\n") -> Path:
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "paper.yaml").write_text(
+        "schema: manuscript-guard/paper/1\ntitle: A\n" + settings, encoding="utf-8"
+    )
+    return folder
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        # Round 1: the `cd` was not followed, `--path` was read from the hook's folder, no
+        # project was found there, and the stage moved back unasked.
+        "cd papers && manuscript-guard set stage drafting --path paper",
+        "Set-Location papers; manuscript-guard set stage drafting --path paper",
+        "cd papers/paper && manuscript-guard set stage drafting",
+    ],
+)
+def test_a_folder_changed_before_the_set_is_followed(
+    tmp_path: Path, command: str, monkeypatch, capsys
+) -> None:
+    _project(tmp_path / "papers" / "paper")
+    assert _decision(_hook(tmp_path, command, monkeypatch, capsys)) == "ask"
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "pushd $HOME/papers && manuscript-guard set stage design",
+        "popd && manuscript-guard set stage design",
+        "cd && manuscript-guard set stage design",
+        "git status && (cd elsewhere/x; manuscript-guard set stage design)",
+        "x=1 cd papers && manuscript-guard set stage design",
+        "manuscript-guard set stage $STAGE",
+        "manuscript-guard set stage design --path nowhere-at-all",
+        "manuscript-guard set reporting_guideline --path $P",
+    ],
+)
+def test_what_the_guard_cannot_read_is_asked(
+    tmp_path: Path, command: str, monkeypatch, capsys
+) -> None:
+    """Fail closed: a change of folder the guard does not follow, a value through the shell,
+    or no project where the command looks."""
+    cwd = tmp_path / "here"
+    cwd.mkdir()
+    assert _decision(_hook(cwd, command, monkeypatch, capsys)) == "ask", command
+
+
+def test_an_unreadable_paper_yaml_is_asked(tmp_path: Path, monkeypatch, capsys) -> None:
+    (tmp_path / "paper.yaml").write_text("stage: [\n", encoding="utf-8")
+    command = "manuscript-guard set stage submission"
+    assert _decision(_hook(tmp_path, command, monkeypatch, capsys)) == "ask"
+
+
+@pytest.mark.parametrize("stage", ["dr''afting", "draf\\ting", '"drafting"'])
+def test_a_stage_a_posix_shell_unquotes_is_read_as_the_shell_reads_it(
+    tmp_path: Path, stage: str, monkeypatch, capsys
+) -> None:
+    _project(tmp_path)
+    command = f"manuscript-guard set stage {stage}"
+    assert _decision(_hook(tmp_path, command, monkeypatch, capsys)) == "ask", stage
+
+
+def test_only_the_set_s_own_project_is_read(tmp_path: Path, monkeypatch, capsys) -> None:
+    """Round 1: a forward move for one project was asked because the line named another at
+    a later stage."""
+    _project(tmp_path / "a", "stage: design\n")
+    _project(tmp_path / "b", "stage: submission\n")
+    command = "ls b && manuscript-guard set stage analysis --path a"
+    assert _hook(tmp_path, command, monkeypatch, capsys) is None
+    command = "cd a && manuscript-guard set stage analysis && cat ../b/paper.yaml"
+    assert _hook(tmp_path, command, monkeypatch, capsys) is None
+
+
+@pytest.mark.parametrize(
+    ("settings", "command", "asked"),
+    [
+        ("reporting_guideline: [STROBE, RECORD]\n",
+         "manuscript-guard set reporting_guideline RECORD", True),
+        ("reporting_guideline: [STROBE]\n", "manuscript-guard set reporting_guideline", True),
+        ("reporting_guideline: [STROBE]\n",
+         "manuscript-guard set reporting_guideline STROBE RECORD", False),
+        ("reporting_guideline: []\n", "manuscript-guard set reporting_guideline STROBE", False),
+        ("", "manuscript-guard set reporting_guideline STROBE", False),
+        ("target_journal: journal-one\n", "manuscript-guard set target_journal journal-two",
+         True),
+        ("target_journal: journal-one\n", "manuscript-guard set target_journal journal-one",
+         False),
+        ("", "manuscript-guard set target_journal journal-one", False),
+        ("stage: design\n", "manuscript-guard set english_variant en-US", False),
+    ],
+)  # fmt: skip
+def test_taking_a_guideline_away_or_replacing_the_journal_is_asked(
+    tmp_path: Path, settings: str, command: str, asked: bool, monkeypatch, capsys
+) -> None:
+    _project(tmp_path, settings)
+    result = _hook(tmp_path, command, monkeypatch, capsys)
+    assert (_decision(result) == "ask") is asked, result
+
+
+# ------------------------------------------------------------------ the file it writes
+
+
+def test_a_note_after_the_commented_example_stays(paper: Path) -> None:
+    paper.write_bytes(
+        b"schema: manuscript-guard/paper/1\ntitle: A\n# stage: design  # until the plan is frozen\n"
+    )
+    assert _set(paper, "stage", "analysis") == 0
+    assert paper.read_bytes() == (
+        b"schema: manuscript-guard/paper/1\ntitle: A\nstage: analysis  # until the plan is frozen\n"
+    )
+
+
+@pytest.mark.parametrize("code", [0x85, 0x2028, 0x2029])
+@pytest.mark.parametrize("where", ["comment", "quoted"])
+def test_a_line_break_only_yaml_reads_is_refused(
+    paper: Path, code: int, where: str, capsys
+) -> None:
+    held = f"# a note{chr(code)}more\n" if where == "comment" else f'short_title: "A{chr(code)}B"\n'
+    text = f"schema: manuscript-guard/paper/1\ntitle: A\n{held}stage: design\n".encode()
+    paper.write_bytes(text)
+    assert _set(paper, "stage", "analysis") == 2
+    assert f"U+{code:04X}" in capsys.readouterr().err
+    assert paper.read_bytes() == text
+
+
+@pytest.mark.parametrize(
+    "name", ["1e3", "0o17", "0x1F", ".inf", "-.Inf", ".nan", "1_000", "+1", "1.5", "null",
+             "True", "yes", "2024-01-01", "~"],
+)  # fmt: skip
+def test_a_name_any_yaml_reader_types_is_quoted(name: str) -> None:
+    from manuscript_guard.paper_edit import written
+
+    assert written(name).startswith("'"), name
+    assert yaml.safe_load(f"k: {written(name)}") == {"k": name}
+    assert written("RECORD-PE") == "RECORD-PE" and written("journal.one") == "journal.one"
+
+
+def test_the_value_is_checked_before_the_file_is_read(paper: Path, capsys) -> None:
+    paper.write_bytes(b"\xff not even UTF-8\n")
+    assert _set(paper, "stage", "finished") == 2
+    assert "takes one of" in capsys.readouterr().err
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX modes")
+def test_the_file_keeps_its_mode(paper: Path) -> None:
+    paper.write_bytes(b"schema: manuscript-guard/paper/1\ntitle: A\n")
+    paper.chmod(0o664)
+    assert _set(paper, "stage", "analysis") == 0
+    assert stat.S_IMODE(paper.stat().st_mode) == 0o664
+
+
+def test_a_file_that_cannot_be_replaced_is_said(paper: Path, monkeypatch, capsys) -> None:
+    text = b"schema: manuscript-guard/paper/1\ntitle: A\n"
+    paper.write_bytes(text)
+
+    def refused(*_args) -> None:
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(os, "replace", refused)
+    assert _set(paper, "stage", "analysis") == 2
+    assert "could not be written: Permission denied" in capsys.readouterr().err
+    monkeypatch.undo()
+    assert paper.read_bytes() == text
+    assert [p.name for p in paper.parent.iterdir() if p.name.startswith(".paper.")] == []
+
+
+def test_a_linked_paper_yaml_is_refused(paper: Path, capsys) -> None:
+    text = b"schema: manuscript-guard/paper/1\ntitle: A\n"
+    target = paper.parent / "real.yaml"
+    target.write_bytes(text)
+    os.link(target, paper)
+    assert _set(paper, "stage", "analysis") == 2
+    assert "hard link" in capsys.readouterr().err
+    paper.unlink()
+    try:
+        paper.symlink_to(target)
+    except OSError:
+        pytest.skip("this system makes no symbolic link here")
+    assert _set(paper, "stage", "analysis") == 2
+    assert "symbolic link" in capsys.readouterr().err
+    assert target.read_bytes() == text

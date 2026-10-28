@@ -61,6 +61,10 @@ class NoSuchAuthor(Exception):
     """`--as` names nobody `authors.yaml` lists, or more than one of them."""
 
 
+class AmbiguousAuthor(NoSuchAuthor):
+    """`--as` names more than one author: a family name two of them share."""
+
+
 def authors_of(project: Project) -> list[dict]:
     listed = (project.authors or {}).get("authors") if isinstance(project.authors, dict) else []
     return [a for a in listed or [] if isinstance(a, dict)]
@@ -107,7 +111,7 @@ def find_author(project: Project, said: str) -> dict:
         if len(found) == 1:
             return found[0]
         if len(found) > 1:
-            raise NoSuchAuthor(f"{said!r} names {len(found)} authors; give the ORCID iD")
+            raise AmbiguousAuthor(f"{said!r} names {len(found)} authors; give the ORCID iD")
     names = ", ".join(name_of(a) for a in authors) or "none"
     raise NoSuchAuthor(f"{said!r} is not an author in authors.yaml (they are: {names})")
 

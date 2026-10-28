@@ -29,8 +29,9 @@ file tools and give the command the file.
 ## What a round is
 
 ```bash
-manuscript-guard checker build --for "A Co-Author"   # one file, to send to one person
-manuscript-guard checker import --answers answers-a-co-author.json
+manuscript-guard checker build --all                 # one file per author in authors.yaml
+manuscript-guard checker build --for "A Colleague"   # or one file, for one person
+manuscript-guard checker import --answers answers-ada-example.json answers-blaise-sample.json
 manuscript-guard checker status
 ```
 
@@ -42,10 +43,24 @@ made, no network is used, and nothing is sent anywhere by the page. Its own butt
 answers file and copy the answers, and the person sends that one file back however they already
 send files.
 
-`import` reads an answers file and appends to `checks/decisions.csv`: when, who, which item,
+`--all` writes `checks/check-<name>.html` for every author (`-o` names another folder;
+`--except "<author>"` leaves one out). Each page says whom it was made for, carries their name
+and ORCID iD and a random token, and is recorded in `checks/bundles.csv` with the token's
+SHA-256, never the token. Answers go back to the corresponding author unless `--to` says
+otherwise.
+
+`import` reads answers files and appends to `checks/decisions.csv`: when, who, which item,
 what they said (`ok`, `wrong` or `unsure`), their note, and the digest of the item as they saw
 it. The file is append-only, because "was this checked, and by whom, and when" is asked months
 later by whoever is answering a reviewer, and a file that gets rewritten cannot answer it.
+A file whose page is in the register must carry that page's token, name and ORCID iD, or the
+whole import is refused and nothing is recorded. A file from no registered page, or one written
+by a page from before the register, is recorded as **claimed**: the name is the file's word.
+Importing a file twice adds nothing.
+
+**Leave the import to the author.** It puts a co-author's name to the answers in a file, so the
+hooks put an agent's `checker import` to the person, as they do `approve`. Say which files came
+from whom and let the author run it. Never write `checks/decisions.csv` or `checks/bundles.csv`.
 
 `status` says how many items nobody has answered, what each person answered, and **where two
 people disagree about the same item**, which is a finding in itself.
@@ -100,12 +115,13 @@ the same value arrives twice under two identifiers — they are keyed on differe
 nothing can tell they are the same — and the person reads it twice. To take the toolkit's items
 for a group instead, leave that group out of the project's file.
 
-## When an answer is refused
+## When an answer counts for nothing
 
 An answer carries the digest of the item as its maker saw it. If the sentence or the value moved
-after they looked, the digest no longer matches and **the answer is not recorded as agreement**:
-their yes is about text nobody has now. The item goes back to outstanding and the refusal says
-which item and which person.
+after they looked, the digest no longer matches and **the answer does not count as agreement**:
+their yes is about text nobody has now. It is written down with the digest they saw and its
+note, because the note may say what is wrong, and the item goes back to outstanding. The import
+says which item and which person; so does `status`.
 
 That is not a malfunction to work around. Rebuild the file and ask again for those items, and
 say why — a co-author who is asked twice about the same sentence and told nothing will assume
@@ -130,5 +146,7 @@ what they said it says, and nothing here checks their reading. What it gives you
 at what exactly, when, and what they said — and an answer that cannot quietly survive the text
 it was about being edited afterwards.
 
-A file is also not a guarantee that anyone opened it. `status` says who has answered; it cannot
+The token shows which page a file came from, not who answered: whoever holds the page holds
+the token, and the corresponding author who sent it holds them all. A file is also not a
+guarantee that anyone opened it. `status` says who has answered; it cannot
 say who meant to.

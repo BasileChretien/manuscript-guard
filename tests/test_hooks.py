@@ -335,6 +335,7 @@ def test_no_standard_input_at_all_is_an_empty_event(monkeypatch) -> None:
         ("build/manuscript.docx", "regenerated"),
         ("profiles/reporting/STROBE.yaml", "transcribed"),
         ("checks/decisions.csv", "a decision nobody made"),
+        ("checks/bundles.csv", "a page nobody built"),
         # Item 26: the plan as it stood when the first results were written.
         ("design/plan.frozen.yaml", "first results were written"),
         # The copy of an earlier output's project, which G8 holds to its digests.
@@ -1009,6 +1010,29 @@ def test_an_approval_written_by_a_codex_patch_is_put_to_the_author(
     # Codex cannot show an "ask", so the call is refused, with the same reason.
     assert decision(result) == "deny", result
     assert "manuscript-guard approve" in reason(result)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "manuscript-guard checker import --answers answers-ada.json answers-blaise.json",
+        "cd paper && mguard checker . import --answers a.json",
+        "python -m manuscript_guard.cli checker --items checks/items.json import",
+    ],
+)
+def test_an_import_of_answers_run_by_an_agent_is_put_to_the_author(
+    in_claude_code: Path, command: str, capsys
+) -> None:
+    """Task 1, decision 5 (a): an import records a co-author's answers under their name, so an
+    agent that runs one puts a person's word into the record."""
+    result = run("guard-submission", _shell(in_claude_code, command), capsys)
+    assert decision(result) == "ask"
+    assert "checker import" in reason(result) and "a person's word" in reason(result)
+    payload = _shell(in_claude_code, command, turn_id="turn-1", model="gpt-test")
+    assert decision(run("guard-submission", payload, capsys)) == "deny"
+    for other in ("manuscript-guard checker build --all", "mguard checker status",
+                  "manuscript-guard checker status && git commit -m import"):  # fmt: skip
+        assert run("guard-submission", _shell(in_claude_code, other), capsys) is None, other
 
 
 @pytest.mark.parametrize(

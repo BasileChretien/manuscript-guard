@@ -176,8 +176,8 @@ passing. On the first manuscript written with this toolkit, that is what happene
 co-author reading one item against one quote is what found it.
 
 ```bash
-manuscript-guard checker build --for "A Co-Author"      # one file to send them
-manuscript-guard checker import --answers answers.json  # what they said, into checks/decisions.csv
+manuscript-guard checker build --all                    # one file per author, to send each
+manuscript-guard checker import --answers a.json b.json # what they said, into checks/decisions.csv
 manuscript-guard checker status                         # outstanding, stale, and who disagrees
 ```
 
@@ -200,8 +200,10 @@ toolkit's are added to it, since the two are keyed differently and a co-author w
 read the same value twice.
 
 Every answer carries the digest of the item as its maker saw it. If the sentence or the value
-moved after they looked, the answer is **not** recorded as agreement: their yes was about text
-nobody has now, and the item is outstanding again. `checks/decisions.csv` is append-only, because
+moved after they looked, the answer does **not** count as agreement: their yes was about text
+nobody has now, and the item is outstanding again. Each page carries the name it was built for
+and a token whose digest `checks/bundles.csv` keeps, so a file that names a page and does not
+match it is refused; one from no page this project built is recorded as claimed. `checks/decisions.csv` is append-only, because
 "was this checked, by whom, and when" is a question asked months later, by whoever is answering a
 reviewer.
 

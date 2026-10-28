@@ -80,7 +80,8 @@
 <body>
 <header>
   <h1>__TITLE__</h1>
-  <div class="who">Checked by <b id="who"></b> · <span id="progress"></span></div>
+  <div class="who">Made for <b id="who"></b>. Your answers will carry this name. ·
+    <span id="progress"></span></div>
 </header>
 
 <div class="wrap">
@@ -114,7 +115,9 @@
 
 <script>
 const BUNDLE = __BUNDLE__;
-const KEY = "mg-checks-" + BUNDLE.bundle;
+// Kept under what the page asks and whom, not under its own identifier, which a rebuild
+// changes: a page sent again with nothing changed for this person keeps their progress.
+const KEY = "mg-checks-" + (BUNDLE.storage || BUNDLE.bundle);
 const S = { group: null, filter: "todo", list: [], pos: 0, answers: {} };
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) =>
@@ -274,8 +277,9 @@ function pressed(act) {
 
 function answersFile() {
   return JSON.stringify({
-    schema: "manuscript-guard/checking-answers/1",
+    schema: "manuscript-guard/checking-answers/2",
     bundle: BUNDLE.bundle, by: BUNDLE.by, built_on: BUNDLE.built_on,
+    orcid: (BUNDLE.person || {}).orcid || "", token: BUNDLE.token, state: BUNDLE.state,
     saved_on: stamp(),
     answers: Object.values(S.answers),
   }, null, 1);

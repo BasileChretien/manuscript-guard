@@ -291,7 +291,7 @@ def test_answers_are_recorded_under_the_name_of_whoever_made_them(tmp_path: Path
     assert "Ada Example" in written and "lit-1" in written
 
 
-def test_an_answer_about_an_item_that_has_changed_is_not_recorded(tmp_path: Path) -> None:
+def test_an_answer_about_an_item_that_has_changed_counts_for_nothing(tmp_path: Path) -> None:
     """The sentence was reworded after they read it. Their yes is about text nobody has now, so
     the item is outstanding again rather than silently confirmed."""
     path = write_items(tmp_path)
@@ -317,9 +317,14 @@ def test_an_answer_about_an_item_that_has_changed_is_not_recorded(tmp_path: Path
     assert brought.stale[0][0] != "lit-1"
     assert "changed after it was checked" in brought.stale[0][1]
     assert status(tmp_path, moved).outstanding == 1
+    # Written down all the same, with the digest they saw (decision 3 of 2026-10-28).
+    (kept,) = brought.kept
+    assert kept.id == "lit-1" and kept.digest == items.items[0]["digest"]
 
 
-def test_an_answer_to_an_item_this_project_does_not_have_is_not_recorded(tmp_path: Path) -> None:
+def test_an_answer_to_an_item_this_project_does_not_have_counts_for_nothing(
+    tmp_path: Path,
+) -> None:
     items = load_items(tmp_path, write_items(tmp_path))
     answers = tmp_path / "answers.json"
     answers.write_text(
@@ -1295,7 +1300,7 @@ def test_an_answer_whose_sentence_changed_is_named_by_person_and_sentence(
     capsys.readouterr()
     main(["checker", "import", str(project), "--answers", str(answers)])
     said = capsys.readouterr().out
-    assert f"not recorded: {claim['title']}" in said and claim["id"] not in said, said
+    assert f"counting for nothing: {claim['title']}" in said and claim["id"] not in said, said
 
 
 def test_a_disagreement_is_named_by_the_item_and_build_counts_each_item_once(
@@ -1339,3 +1344,248 @@ def test_the_page_asks_for_the_reason_keeps_no_focus_and_leaves_modified_keys_al
         assert f'$("{button}").onclick = pressed(' in page, button
     assert "if (e.ctrlKey || e.metaKey || e.altKey) return;" in page
     assert "title: it.title" in page
+
+
+# ---------------------------------------------------------------- a page for each author
+#
+# Task 1, PR 1 (2026-10-28). Each page carries the name and ORCID iD it was built for and a random
+# token, and `checks/bundles.csv` keeps the token's digest. An answers file naming a page in the
+# register is held to it; one naming none is recorded as claimed. What the token proves is which
+# page a file came from, not who answered.
+
+
+def _page(path: Path) -> dict:
+    """What a built page carries, read back out of it."""
+    page = path.read_text(encoding="utf-8")
+    start = page.index("const BUNDLE = ") + len("const BUNDLE = ")
+    return json.loads(page[start : page.index(chr(10), start)].rstrip().rstrip(";"))
+
+
+def _register(root: Path) -> list[dict]:
+    import csv
+
+    with (root / "checks" / "bundles.csv").open(encoding="utf-8", newline="") as handle:
+        return list(csv.DictReader(handle))
+
+
+def _saved(page: dict, statuses: dict[str, str], **changed) -> dict:
+    """The answers file the page writes, as its own `answersFile()` writes it."""
+    document = {
+        "schema": "manuscript-guard/checking-answers/2",
+        "bundle": page["bundle"], "by": page["by"], "built_on": page["built_on"],
+        "orcid": page["person"]["orcid"], "token": page["token"], "state": page["state"],
+        "answers": [
+            {"id": item["id"], "digest": item["digest"], "title": item["title"],
+             "status": statuses[item["id"]], "note": "" if statuses[item["id"]] == "ok"
+             else "the source says otherwise", "at": "2026-10-28T09:00:00+09:00"}
+            for item in page["items"] if item["id"] in statuses
+        ],
+    }  # fmt: skip
+    document.update(changed)
+    return document
+
+
+def _send(root: Path, name: str, document: dict) -> Path:
+    path = root / name
+    path.write_text(json.dumps(document), encoding="utf-8")
+    return path
+
+
+def _rows(root: Path) -> list[str]:
+    path = root / "checks" / "decisions.csv"
+    return path.read_text(encoding="utf-8").splitlines()[1:] if path.is_file() else []
+
+
+def test_all_writes_one_page_per_author_each_with_its_own_token(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from manuscript_guard.checking.register import token_sha256
+    from manuscript_guard.cli import main
+
+    assert main(["checker", "build", str(project), "--all"]) == 0
+    pages = sorted((project / "checks").glob("check-*.html"))
+    assert [p.name for p in pages] == ["check-ada-example.html", "check-blaise-sample.html"]
+    carried = [_page(p) for p in pages]
+    assert [c["person"] for c in carried] == [
+        {"name": "Ada Example", "orcid": "0000-0002-1825-0097"},
+        {"name": "Blaise Sample", "orcid": "0000-0001-5109-3700"},
+    ]
+    tokens = [c["token"] for c in carried]
+    assert len(set(tokens)) == 2 and all(len(t) == 32 for t in tokens)
+    assert len({c["bundle"] for c in carried}) == 2
+    # Back to the corresponding author, unless --to says otherwise.
+    assert {c["to"] for c in carried} == {"Ada Example"}
+    rows = _register(project)
+    assert [(r["person"], r["bundle"], r["token_sha256"]) for r in rows] == [
+        (c["by"], c["bundle"], token_sha256(c["token"])) for c in carried
+    ]
+    assert [r["file"] for r in rows] == [f"checks/{p.name}" for p in pages]
+    # The register keeps the token's digest and never the token.
+    register = (project / "checks" / "bundles.csv").read_text(encoding="utf-8")
+    assert not any(token in register for token in tokens)
+    assert "Your answers will carry this name." in pages[0].read_text(encoding="utf-8")
+
+
+def test_all_leaves_out_who_except_names_and_writes_where_o_says(project: Path) -> None:
+    from manuscript_guard.cli import main
+
+    folder = project / "round-2"
+    assert main(["checker", "build", str(project), "--all", "--except", "Sample",
+                 "-o", str(folder)]) == 0  # fmt: skip
+    assert [p.name for p in folder.glob("*.html")] == ["check-ada-example.html"]
+    assert [r["file"] for r in _register(project)] == ["round-2/check-ada-example.html"]
+    assert main(["checker", "build", str(project), "--all", "--except", "Nobody"]) == 2
+    assert main(["checker", "build", str(project), "--all", "--for", "Ada Example"]) == 2
+
+
+def test_a_file_that_does_not_match_its_registered_page_is_refused(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Decision 4 (a): a registered page's file with another token, or another name, is refused
+    whole, with the reason, and nothing from any file of the import is recorded."""
+    from manuscript_guard.cli import main
+
+    assert main(["checker", "build", str(project), "--all"]) == 0
+    ada = _page(project / "checks" / "check-ada-example.html")
+    blaise = _page(project / "checks" / "check-blaise-sample.html")
+    statuses = {ada["items"][0]["id"]: "ok"}
+    good = _send(project, "blaise.json", _saved(blaise, statuses))
+    for name, document, why in [
+        ("token.json", _saved(ada, statuses, token="0" * 32), "its token is not that page's"),
+        ("name.json", _saved(ada, statuses, by="Blaise Sample"), "says it is by Blaise Sample"),
+        ("orcid.json", _saved(ada, statuses, orcid="0000-0001-5109-3700"), "ORCID iD"),
+        ("none.json", {k: v for k, v in _saved(ada, statuses).items() if k != "token"},
+         "its token is not that page's"),
+        ("old.json", _saved(ada, statuses, schema="manuscript-guard/checking-answers/1"),
+         "that page writes"),
+    ]:  # fmt: skip
+        capsys.readouterr()
+        bad = _send(project, name, document)
+        assert main(["checker", "import", str(project), "--answers", str(good), str(bad)]) == 2
+        assert why in capsys.readouterr().err, name
+        assert _rows(project) == [], name
+
+
+def test_answers_from_several_pages_come_in_at_once_and_twice_adds_nothing(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from manuscript_guard.cli import main
+
+    assert main(["checker", "build", str(project), "--all"]) == 0
+    ada = _page(project / "checks" / "check-ada-example.html")
+    blaise = _page(project / "checks" / "check-blaise-sample.html")
+    first, second = ada["items"][0]["id"], ada["items"][1]["id"]
+    files = [
+        str(_send(project, "a.json", _saved(ada, {first: "ok", second: "wrong"}))),
+        str(_send(project, "b.json", _saved(blaise, {first: "ok"}))),
+    ]
+    capsys.readouterr()
+    assert main(["checker", "import", str(project), "--answers", *files]) == 0
+    said = capsys.readouterr().out
+    assert "a.json: 2 decision(s) recorded for Ada Example (from the page built for them)" in said
+    assert "b.json: 1 decision(s) recorded for Blaise Sample" in said
+    before = _rows(project)
+    assert len(before) == 3
+    assert main(["checker", "import", str(project), "--answers", *files]) == 0
+    assert "2 answer(s) already recorded, not written again" in capsys.readouterr().out
+    assert _rows(project) == before
+    # A changed answer is a new decision, and the identical one beside it is still skipped.
+    changed = _send(project, "a.json", _saved(ada, {first: "ok", second: "ok"}))
+    assert main(["checker", "import", str(project), "--answers", str(changed)]) == 0
+    assert len(_rows(project)) == 4
+
+
+def test_a_stale_and_an_unknown_answer_are_recorded_with_their_notes_and_count_for_nothing(
+    tmp_path: Path,
+) -> None:
+    """Decision 3 (a): the digest they saw is written down, the note in it reaches the record,
+    and neither answer counts."""
+    from manuscript_guard.checking.store import read_decisions
+
+    path = write_items(tmp_path)
+    items = load_items(tmp_path, path)
+    lit = items.items[0]
+    answers = _send(tmp_path, "answers.json", {
+        "schema": "manuscript-guard/checking-answers/1", "by": "A Person", "bundle": "old",
+        "answers": [
+            {"id": "lit-1", "digest": "0123456789abcdef", "status": "wrong",
+             "note": "the source says 17.4", "title": lit["title"]},
+            {"id": "gone-1", "digest": "fedcba9876543210", "status": "unsure",
+             "note": "which table?", "title": "A sentence since removed"},
+            {"id": "claim-1", "digest": items.items[1]["digest"], "status": "maybe"},
+        ],
+    })  # fmt: skip
+    brought = import_answers(tmp_path, answers, items)
+    assert brought.recorded == ()
+    assert [c for c, _ in brought.stale] == [lit["title"]]
+    assert brought.unknown == ("A sentence since removed",)
+    assert [c for c, _ in brought.refused] == ["Arrests reflect enforcement"]
+    written = {d.id: d for d in read_decisions(tmp_path)}
+    assert set(written) == {"lit-1", "gone-1"}
+    assert written["lit-1"].digest == "0123456789abcdef"
+    assert written["lit-1"].note == "the source says 17.4"
+    assert written["gone-1"].note == "which table?"
+    standing = status(tmp_path, items)
+    assert standing.outstanding == len(items.outstanding)
+    assert [d.id for d in standing.stale] == ["lit-1"]
+    assert [d.id for d in standing.orphaned] == ["gone-1"]
+    assert standing.wrong == () and standing.counting == ()
+
+
+def test_an_old_answer_imported_late_does_not_take_the_place_of_a_current_one(
+    tmp_path: Path,
+) -> None:
+    """Recording stale answers made it possible: an earlier round's file imported after this
+    round's would otherwise have put every item it named back in the queue."""
+    path = write_items(tmp_path)
+    items = load_items(tmp_path, path)
+    current = answers_for(items, by="A Person", statuses={"lit-1": "ok"})
+    import_answers(tmp_path, _send(tmp_path, "now.json", current), items)
+    old = answers_for(items, by="A Person", statuses={"lit-1": "wrong"}, bundle="b0")
+    old["answers"][0]["digest"] = "0123456789abcdef"
+    old["answers"][0]["note"] = "an earlier version"
+    import_answers(tmp_path, _send(tmp_path, "then.json", old), items)
+    standing = status(tmp_path, items)
+    assert standing.answered == {"lit-1": {"A Person"}} and standing.stale == ()
+
+
+def test_a_file_from_no_registered_page_is_recorded_as_claimed(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Decision 4 (a): a `/1` file, or one from a page built on another clone, is recorded, and
+    said to be the file's word. A name `authors.yaml` has is recorded as the author's name; one
+    it has not is recorded as given, and marked."""
+    from manuscript_guard.cli import _checking_items, load_project, main
+
+    items = _checking_items(load_project(project)[0], None)
+    first = items.items[0]
+    files = []
+    for name, by in [("ada.json", "Example"), ("cy.json", "Cy Stranger")]:
+        files.append(str(_send(project, name, {
+            "schema": "manuscript-guard/checking-answers/1", "by": by, "bundle": "elsewhere",
+            "answers": [{"id": first["id"], "digest": first["digest"], "status": "ok"}],
+        })))  # fmt: skip
+    capsys.readouterr()
+    assert main(["checker", "import", str(project), "--answers", *files]) == 0
+    said = capsys.readouterr().out
+    assert "ada.json: 1 decision(s) recorded for Ada Example (claimed:" in said, said
+    assert "cy.json: 1 decision(s) recorded for Cy Stranger (claimed:" in said, said
+    assert "not an author in authors.yaml" in said.splitlines()[1]
+    assert main(["checker", "status", str(project)]) == 0
+    said = capsys.readouterr().out
+    assert "  Ada Example: 1 ok (1 claimed, from no page in checks/bundles.csv)" in said, said
+    assert ("  Cy Stranger: 1 ok (1 claimed, from no page in checks/bundles.csv; not an "
+            "author in authors.yaml)") in said, said
+
+
+def test_a_page_for_someone_not_an_author_is_built_and_says_so(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from manuscript_guard.cli import main
+
+    assert main(["checker", "build", str(project), "--for", "Dee Colleague", "--to", "Me"]) == 0
+    assert "Dee Colleague is not an author in authors.yaml" in capsys.readouterr().out
+    page = _page(project / "checks" / "check-dee-colleague.html")
+    assert page["person"] == {"name": "Dee Colleague", "orcid": ""} and page["to"] == "Me"
+    assert main(["checker", "build", str(project)]) == 2
+    assert "--all" in capsys.readouterr().err

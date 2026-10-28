@@ -10295,8 +10295,12 @@ a co-author.
 ### What the digest covers
 
 Every answer carries the digest of the item as its maker saw it. An answer whose digest no longer
-matches is not recorded as agreement: the sentence moved after they looked, so their yes is about
-text nobody has now, and the item is outstanding again.
+matches is not counted as agreement: the sentence moved after they looked, so their yes is about
+text nobody has now, and the item is outstanding again. It is written down all the same, with
+the digest they saw, and so is an answer about an item the project no longer has: both count
+for nothing, and the note in each is kept, because "the source says 17.4" is worth having
+whatever happened to the sentence since (decision 3 of Task 1, 2026-10-28). They were refused
+at import before.
 
 The digest therefore covers the words — the title, the facts, each sentence's text and
 section, **and the words of each piece of evidence**: a quote's text, a table's cells, an
@@ -10330,6 +10334,58 @@ file that gets rewritten cannot answer it. The latest decision by one person for
 the superseded ones stay and say what changed. Where two people answered the same item
 differently, `status` reports it, because a disagreement between two readers of the same source
 is itself a finding.
+
+Which decision counts is the latest about the item **as it is now**, where the person gave one,
+and otherwise the latest of all (`store._latest`). With stale answers written down, an earlier
+round's file imported after this round's would otherwise have taken the place of every current
+answer it named, and put those items back in the queue. An answer identical to the person's
+latest on the item, the same status, note and digest from the same page, is not written again,
+so importing a file twice adds nothing; when it was given is not compared, because an answer
+the page did not stamp takes the time of the import.
+
+### A page for each author, and whose word an answer is
+
+`checker build --all` writes `checks/check-<name>.html` for every author `authors.yaml` lists,
+the corresponding author among them (`--except` leaves one out, `-o` names the folder);
+`--for` still writes one page, for an author or for anyone else, and says when the name is no
+author's. Answers go back to the corresponding author unless `--to` names someone. Each page
+carries `person` (name and ORCID iD), a random 128-bit token (`secrets.token_hex(16)`), and the
+digest of the items it asks; its header says "Made for NAME. Your answers will carry this
+name." The page's identifier digests its items, its person and its token, so no two builds
+share one; the browser keeps unsent answers under the first two only, so a page rebuilt with
+nothing changed for that person keeps their progress.
+
+Every page built is a row of `checks/bundles.csv`, append-only like the decisions and kept from
+an agent's editor by the hooks: when, for whom, the identifier, the token's SHA-256 (never the
+token), the digest of the items, how many, and the file, relative to the project, or its name
+alone where it was written outside it. The page writes `checking-answers/2`, which adds the
+token, the ORCID iD and that digest to what `/1` wrote; both are read.
+
+`checker import --answers a.json b.json ...` takes any number of files and needs no `--for`:
+each says whose it is, and is held to the register (Basile's decision 4 (a)):
+
+- a file naming a registered page must carry that page's token, name and ORCID iD. Otherwise it
+  is refused with the reason, exit 2, and since every file is read before any is recorded,
+  nothing from that import is recorded;
+- a `/1` file naming a registered page is refused: no registered page writes one;
+- a file naming no registered page, a `/1` file or one built on another clone, is recorded, and
+  its decisions are **claimed**: `import` and `status` say so, and a later reader can tell them
+  from the rest by their page's absence from the register.
+
+The name is looked up as `approve --as` looks one up (`find_author`), and recorded as the
+author's name, so "Example" and "Ada Example" are one person. A name that is no author's is
+recorded as given and marked as such; a family name two authors share is refused.
+
+**What this proves.** The token shows which page a file came from, not who answered. Whoever
+holds a page holds its token: a page forwarded is answered by whoever it was forwarded to, and
+the corresponding author, who sent every page, holds every token. What it stops is an answers
+file edited to read as another co-author's, and one page's answers passed off as another
+page's or another round's. The name on a decision is a claim, and the register says whether
+the page it names was built for that name. Nothing is signed.
+
+An agent's `checker import` is put to the person by the hooks, as an `approve` is (decision
+5 (a)): it puts a co-author's name to the answers in a file, and which file is taken as whose
+word is the author's call.
 
 ### Nothing in it belongs to a vendor
 
@@ -10477,17 +10533,30 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   what; it cannot say who read anything. Nothing proves the file was opened, that the evidence was
   looked at, or that a `ok` was not a row of clicks. The record is a person's word written down
   accurately, with the text they were shown pinned to it, and that is the whole of the claim.
-- **An answers file is not signed.** `by` is the name the build put in it, and whoever holds the
-  file can edit any part of it before sending it back. Within a group of co-authors that is the
-  same trust as mail, which is how the file travels; it is not evidence against a person who
+- **An answers file is not signed, and its name is a claim.** `by` is the name the build put in
+  it, and whoever holds the file can edit any part of it before sending it back. A registered
+  page's token stops the file being made to read as another co-author's, but whoever holds the
+  page holds the token: a forwarded page is answered by whoever has it, and the corresponding
+  author, who built and sent every page, holds every token. Within a group of co-authors that is
+  the same trust as mail, which is how the file travels; it is not evidence against a person who
   wants to misreport, and it is not meant to be. The attestation of a source, where that bar does
   apply, stays in `literature/attested.yaml` and is signed by one person.
+- **A page built on another clone reads as claimed.** `checks/bundles.csv` is the clone's own
+  register. Two clones that each build pages and each append to it conflict when merged, as two
+  appends to `checks/decisions.csv` do; a page built on one and imported on the other is
+  recorded as claimed, as a page built before the register is. Nothing marks a claimed decision
+  in the record but its page's absence from the register, so a register row removed by hand
+  turns that page's decisions into claimed ones.
+- **A re-import is skipped by its answer, not by its file.** An answer is not written again where
+  it has the status, note, digest and page of the person's latest decision on the item. One
+  imported, changed, and the old file imported again, records the old answer again, as the
+  latest: the file is not remembered.
 - **A file rebuilt after the items changed loses a co-author's unsent progress.** The page keeps
-  answers in the browser under the bundle's identifier, which is a digest of the items' own
-  digests and the person's name: a rebuild that changes nothing they were asked keeps their
-  progress, and one that changes any item does not. So import what someone has before rebuilding
-  a round they are part of, or that part of their reading is done twice. Nothing is lost that was
-  saved and sent.
+  answers in the browser under a digest of the items' own digests and the person's name (not
+  under its identifier, which digests the token too): a rebuild that changes nothing they were
+  asked keeps their progress, and one that changes any item does not. So import what someone has
+  before rebuilding a round they are part of, or that part of their reading is done twice.
+  Nothing is lost that was saved and sent.
 - **A sentence is split by punctuation, and the list of abbreviations is finite.** The split is
   a stop, a space, then a capital letter or an opening quote or bracket — except after a word with
   a stop inside it ("U.S.", "e.g.", "Ph.D.", "b.i.d."), after a word in `NOT_AN_END` ("et al.",
@@ -10549,11 +10618,12 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
 - **The splitter's time grows with the square of a paragraph's length.** Each stop is judged on
   the text before it, taken from the paragraph's start. A paragraph of ordinary length is split
   at once; one of hundreds of sentences is not.
-- **`checks/decisions.csv` is for this toolkit to write and a person to read.** Opened in a
-  spreadsheet and saved again, it can come back in another encoding, which ends the next
-  `status` in a `UnicodeDecodeError`, or as UTF-8 with a byte order mark, which takes the name of
-  its first column (`when`) with it. A note opening with `=` is read by a spreadsheet as a formula.
-  Read it in a spreadsheet; write it only with `checker import`.
+- **`checks/decisions.csv` and `checks/bundles.csv` are for this toolkit to write and a person
+  to read.** Opened in a spreadsheet and saved again, one can come back in another encoding,
+  which ends the next `status` in a `UnicodeDecodeError`, or as UTF-8 with a byte order mark,
+  which takes the name of its first column (`when`, `built_on`) with it. A note opening with `=`
+  is read by a spreadsheet as a formula.
+  Read them in a spreadsheet; write them only with `checker import` and `checker build`.
 
 - **G1 fails only on the script that wrote a results file and on the inputs it declared.**
   The digests it compares are of the emitting script and of each path given to the emitter

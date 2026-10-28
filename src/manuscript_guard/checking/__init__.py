@@ -11,14 +11,17 @@ A co-author who can find that is rarely a co-author who will clone a repository,
 and run a server. So:
 
 * `checker build --for "<name>"` writes **one file**: a page carrying every item, the sentences
-  each appears in, and the evidence already rendered into it. It opens by double-clicking, in
-  any current browser, offline, with nothing installed, no account and no network.
+  each appears in, and the evidence already rendered into it, and `--all` one for each author.
+  It opens by double-clicking, in any current browser, offline, with nothing installed, no
+  account and no network. Each page carries the name it was built for and a token of its own,
+  and `checks/bundles.csv` (`register.py`) keeps the token's digest.
 * The co-author clicks through the items and saves their answers — a few kilobytes — or copies
   them to the clipboard where a download is blocked.
-* `checker import --answers <file>` records them under their name, refusing any answer whose
-  item has changed since they saw it; and `checker status` says who has answered what, which
-  answers are about text that has changed since — those items are outstanding again — and where
-  two people disagree.
+* `checker import --answers <file> ...` records them under their name, held to the page each
+  file names (`answers.py`); an answer whose item has changed since they saw it is written
+  down and counts for nothing. `checker status` says who has answered what, which answers are
+  about text that has changed since — those items are outstanding again — and where two
+  people disagree.
 
 **What is the toolkit's and what is the project's.** The toolkit finds four kinds of item from
 files every project keeps (`produce.py`): values quoted from the literature with the passage
@@ -41,10 +44,11 @@ back, is the rest of this package. Nothing here needs a dependency the toolkit d
 have, and nothing in it is particular to one model, one vendor or one agent.
 """
 
-from manuscript_guard.checking.bundle import BundleError, build_bundle
+from manuscript_guard.checking.bundle import BundleError, build_bundle, build_page
 from manuscript_guard.checking.items import ItemsError, load_items
 from manuscript_guard.checking.store import (
     AnswersError,
+    Refused,
     import_answers,
     read_decisions,
     status,
@@ -54,7 +58,9 @@ __all__ = [
     "AnswersError",
     "BundleError",
     "ItemsError",
+    "Refused",
     "build_bundle",
+    "build_page",
     "import_answers",
     "load_items",
     "read_decisions",

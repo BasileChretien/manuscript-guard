@@ -4052,19 +4052,11 @@ def cmd_checker(args: argparse.Namespace) -> int:
     """Send a co-author the numbers to check, and take their answers back.
 
     Three verbs, and they are the whole of a round: `build` writes one file per person, `import`
-    records what one of them sent back, `status` says where the round stands. Nothing here asks
-    the co-author to install, sign in or configure anything, and nothing here is particular to a
+    records what they sent back, `status` says where the round stands. Nothing here asks the
+    co-author to install, sign in or configure anything, and nothing here is particular to a
     model or a vendor: the file is a page, the answers are JSON, the record is a CSV.
     """
-    from manuscript_guard.checking import (
-        AnswersError,
-        BundleError,
-        ItemsError,
-        build_bundle,
-        import_answers,
-        status,
-    )
-    from manuscript_guard.checking.bundle import slug
+    from manuscript_guard.checking import ItemsError
 
     project, _ = load_project(args.path)
     try:
@@ -4072,67 +4064,171 @@ def cmd_checker(args: argparse.Namespace) -> int:
     except ItemsError as exc:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
-
-    title = args.title or str(project.paper.get("short_title") or project.paper.get("title") or "")
     if args.verb == "build":
-        out = args.output or project.root / "checks" / f"check-{slug(args.name)}.html"
+        return _checker_build(project, items, args)
+    if args.verb == "import":
+        return _checker_import(project, items, args)
+    return _checker_status(project, items)
+
+
+def _checker_people(project, args) -> list[tuple[str, str]] | str:
+    """Whom `build` writes a page for, each as (name, ORCID iD), or why it cannot say."""
+    from manuscript_guard.approvals import (
+        AmbiguousAuthor,
+        NoSuchAuthor,
+        authors_of,
+        find_author,
+        name_of,
+    )
+
+    if args.every and args.name:
+        return "give --for or --all, not both"
+    if not args.every:
+        if args.leave_out:
+            return "--except is for --all"
+        if not args.name.strip():
+            return ("say who the file is for, with --for \"<name>\", or write one for every "
+                    "author with --all: a decision is recorded under their name")  # fmt: skip
         try:
-            written, size = build_bundle(
-                items, person=args.name, title=title, out=out, to=args.to or ""
-            )
+            author = find_author(project, args.name)
+        except AmbiguousAuthor as exc:
+            return str(exc)
+        except NoSuchAuthor:
+            print(f"{args.name.strip()} is not an author in authors.yaml: the page is built for "
+                  "them all the same, and their answers will say so.")  # fmt: skip
+            return [(args.name.strip(), "")]
+        return [(name_of(author), str(author.get("orcid") or ""))]
+    left_out = []
+    for said in args.leave_out:
+        try:
+            left_out.append(find_author(project, said))
+        except NoSuchAuthor as exc:
+            return f"--except: {exc}"
+    people = [(name_of(a), str(a.get("orcid") or "")) for a in authors_of(project)
+              if not any(a is other for other in left_out)]  # fmt: skip
+    if not people:
+        return ("--all writes a page for each author in authors.yaml, and that leaves nobody"
+                if left_out else "--all writes a page for each author in authors.yaml, and "
+                "it lists none")  # fmt: skip
+    return people
+
+
+def _checker_build(project, items, args) -> int:
+    from manuscript_guard.approvals import authors_of, name_of
+    from manuscript_guard.checking import BundleError, build_page, status
+    from manuscript_guard.checking.bundle import slug
+    from manuscript_guard.checking.register import REGISTER, Row, append_row, token_sha256
+
+    people = _checker_people(project, args)
+    if isinstance(people, str):
+        print(f"manuscript-guard: {people}", file=sys.stderr)
+        return 2
+    title = args.title or str(project.paper.get("short_title") or project.paper.get("title") or "")
+    # Back to the corresponding author unless told otherwise: the one who sent the page.
+    to = args.to or " or ".join(name_of(a) for a in authors_of(project) if a.get("corresponding"))
+    folder = (args.output or project.root / "checks") if args.every else None
+    names = [slug(name) for name, _ in people]
+    standing = status(project.root, items)
+    asked = items.outstanding
+    answered = sum(1 for item in asked if standing.answered.get(str(item["id"])))
+    for (name, orcid), named in zip(people, names, strict=True):
+        # Two authors whose names fold to one file name are told apart by their ORCID iD.
+        named = named if names.count(named) == 1 else f"{named}-{slug(orcid or name)}"
+        out = (folder / f"check-{named}.html" if folder is not None
+               else args.output or project.root / "checks" / f"check-{named}.html")  # fmt: skip
+        try:
+            built = build_page(items, person=name, title=title, out=out, to=to, orcid=orcid)
         except BundleError as exc:
             print(f"manuscript-guard: {exc}", file=sys.stderr)
             return 2
-        asked = items.outstanding
+        try:
+            shown = built.path.resolve().relative_to(project.root.resolve()).as_posix()
+        except ValueError:
+            # Outside the project: the register keeps its name only, not the machine's path.
+            shown = built.path.name
+        append_row(project.root, Row(
+            built_on=built.built_on, person=built.person, orcid=built.orcid,
+            bundle=built.bundle, token_sha256=token_sha256(built.token), state=built.state,
+            items=str(built.items), file=shown,
+        ))  # fmt: skip
+        print(f"wrote {built.path} ({built.size // 1024} kB)")
         # From the record as well as from the items file. "0 already checked by someone" was
-        # printed after a whole round had come back and been imported, because this counted only
-        # the `already` field a project may write. Then "10 item(s) to check, 10 already checked"
-        # counted the same items twice: what the page asks, and who has answered those. So the
-        # second number is a part of the first, and the items the page shows as done already
-        # are counted apart.
-        standing = status(project.root, items)
-        answered = sum(1 for item in asked if standing.answered.get(str(item["id"])))
-        print(f"wrote {written} ({size // 1024} kB)")
+        # printed after a whole round had come back and been imported, because this counted
+        # only the `already` field a project may write. Then "10 item(s) to check, 10 already
+        # checked" counted the same items twice: what the page asks, and who has answered
+        # those. So the second number is a part of the first, and the items the page shows as
+        # done already are counted apart.
         print(
-            f"{len(asked)} item(s) for {args.name} to check, {answered} of them already "
+            f"{len(asked)} item(s) for {name} to check, {answered} of them already "
             f"answered by someone else."
         )
-        if standing.already:
-            print(
-                f"{standing.already} more on the page are marked as checked before this round."
-            )
-        print(
-            "Send that one file. It opens by double-clicking, needs nothing installed and no "
-            "network, and its own button writes the answers file to send back."
-        )
-        return 0
+    if standing.already:
+        print(f"{standing.already} more on the page are marked as checked before this round.")
+    print(f"Each page is recorded in {REGISTER}, with the digest of its token.")
+    print(
+        "Send each person their one file. It opens by double-clicking, needs nothing installed "
+        "and no network, and its own button writes the answers file to send back."
+    )
+    return 0
 
-    if args.verb == "import":
-        if args.answers is None:
-            # Without this the missing flag reached `Path.read_text` on `None` and the author
-            # got an AttributeError. A forgotten flag is not a bug in the project.
-            print(
-                "manuscript-guard: checker import needs the file a co-author sent back: "
-                "`checker import --answers answers-<name>.json`",
-                file=sys.stderr,
-            )
-            return 2
-        try:
-            brought = import_answers(project.root, args.answers, items)
-        except AnswersError as exc:
-            print(f"manuscript-guard: {exc}", file=sys.stderr)
-            return 2
-        print(f"{len(brought.recorded)} decision(s) recorded for {brought.by}")
+
+def _checker_import(project, items, args) -> int:
+    from manuscript_guard.checking.register import read_register
+    from manuscript_guard.checking.store import AnswersError, read_answers, record
+
+    if not args.answers:
+        # Without this the missing flag reached `Path.read_text` on `None` and the author
+        # got an AttributeError. A forgotten flag is not a bug in the project.
+        print(
+            "manuscript-guard: checker import needs the files the co-authors sent back: "
+            "`checker import --answers answers-<name>.json [more.json ...]`",
+            file=sys.stderr,
+        )
+        return 2
+    register = read_register(project.root)
+    # Every file is read and held to the register before any is recorded: one refused file
+    # leaves the record as it was, and the import can be run again without it.
+    try:
+        read = [read_answers(path, project_root=project.root, project=project,
+                             register=register) for path in args.answers]  # fmt: skip
+    except AnswersError as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 2
+    counted, troubled = 0, False
+    for answers in read:
+        brought = record(project.root, answers, items)
+        counted += len(brought.recorded)
+        troubled = troubled or bool(brought.stale or brought.unknown or brought.refused)
+        said = [] if brought.claimed is False else [
+            "claimed: the file names no page in checks/bundles.csv, so the name is its word"]
+        if brought.author is False:
+            said.append("not an author in authors.yaml")
+        marks = f" ({'; '.join(said)})" if said else " (from the page built for them)"
+        print(f"{answers.path.name}: {len(brought.recorded)} decision(s) recorded for "
+              f"{brought.by}{marks}")  # fmt: skip
+        if brought.skipped:
+            print(f"  {brought.skipped} answer(s) already recorded, not written again")
         for called, why in brought.stale:
-            print(f"  not recorded: {called} — {why}")
+            print(f"  recorded, counting for nothing: {called} — {why}; the note is kept")
         for called in brought.unknown:
             print(
-                f"  not recorded: {called} — this project has no such item now; a cited "
-                f"sentence edited since the page was built is a new item, to send again"
+                f"  recorded, counting for nothing: {called} — this project has no such item "
+                f"now; a cited sentence edited since the page was built is a new item, to "
+                f"send again"
             )
-        return 1 if (brought.stale or brought.unknown) and not brought.recorded else 0
+        for called, why in brought.refused:
+            print(f"  not recorded: {called} — {why}")
+    # As before: nothing that counts came in, and something was wrong with what did.
+    return 1 if troubled and not counted else 0
+
+
+def _checker_status(project, items) -> int:
+    from manuscript_guard.approvals import NoSuchAuthor, find_author
+    from manuscript_guard.checking import status
+    from manuscript_guard.checking.register import read_register
 
     standing = status(project.root, items)
+    register = read_register(project.root)
     print(f"{len(items.items)} item(s); {standing.outstanding} nobody has answered")
     if standing.already:
         print(f"{standing.already} were already checked before this round")
@@ -4142,7 +4238,8 @@ def cmd_checker(args: argparse.Namespace) -> int:
             f"items are outstanding again:"
         )
         for decision in standing.stale:
-            print(f"  {decision.by} on {decision.title or decision.id}")
+            note = f": {decision.note}" if decision.note else ""
+            print(f"  {decision.by} on {decision.title or decision.id}{note}")
     if standing.orphaned:
         print(
             f"{len(standing.orphaned)} answer(s) are about items this project no longer has; "
@@ -4155,7 +4252,13 @@ def cmd_checker(args: argparse.Namespace) -> int:
     for person in standing.people:
         counts = standing.by_person[person]
         said = ", ".join(f"{n} {name}" for name, n in sorted(counts.items()))
-        print(f"  {person}: {said}")
+        claimed = sum(1 for d in standing.counting if d.by == person and d.bundle not in register)
+        marks = [f"{claimed} claimed, from no page in checks/bundles.csv"] if claimed else []
+        try:
+            find_author(project, person)
+        except NoSuchAuthor:
+            marks.append("not an author in authors.yaml")
+        print(f"  {person}: {said}" + (f" ({'; '.join(marks)})" if marks else ""))
     for decision in standing.wrong:
         print(f"  [{decision.status}] {decision.by} on {decision.title}: {decision.note or '—'}")
     for identifier, decisions in standing.disagreements:
@@ -5213,11 +5316,25 @@ def build_parser() -> argparse.ArgumentParser:
     checker.add_argument("verb", choices=["build", "import", "status"])
     checker.add_argument("path", nargs="?", type=Path, default=Path.cwd())
     checker.add_argument("--for", dest="name", default="", help="build: who the file is for")
-    checker.add_argument("--to", default="", help="build: who they send the answers back to")
-    checker.add_argument("-o", "--output", type=Path, help="build: where to write the file")
+    checker.add_argument(
+        "--all", dest="every", action="store_true",
+        help="build: one page for each author in authors.yaml",
+    )  # fmt: skip
+    checker.add_argument(
+        "--except", dest="leave_out", action="append", default=[], metavar="AUTHOR",
+        help="build --all: leave this author out (again for more)",
+    )  # fmt: skip
+    checker.add_argument(
+        "--to", default="",
+        help="build: who they send the answers back to (the corresponding author unless given)",
+    )  # fmt: skip
+    checker.add_argument(
+        "-o", "--output", type=Path,
+        help="build: where to write the file, or with --all the folder for the files",
+    )  # fmt: skip
     checker.add_argument("--title", help="build: what the page calls itself")
     checker.add_argument(
-        "--answers", type=Path, help="import: the file a co-author sent back"
+        "--answers", type=Path, nargs="+", help="import: the files the co-authors sent back"
     )
     checker.add_argument(
         "--items", type=Path, help="the items file, if not checks/items.json"

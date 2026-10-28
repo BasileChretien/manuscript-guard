@@ -73,6 +73,12 @@ FORBIDDEN = (
         "a decision nobody made cannot be written into it by hand",
     ),
     (
+        "checks/bundles.csv",
+        "",
+        "the register of the pages sent to co-authors is appended to by `manuscript-guard "
+        "checker build`; a page nobody built cannot be written into it by hand",
+    ),
+    (
         "design/plan.frozen.yaml",
         "",
         "it is the plan as it stood when the first results were written, kept by the emitter; "
@@ -1164,18 +1170,38 @@ _INVOCATION_END = re.compile(r"[;&|\n]|" + _TOOL + r"[A-Za-z]", re.IGNORECASE)
 _REVIEW = re.compile(_TOOL + r"review\b", re.IGNORECASE)
 _APPROVE = re.compile(_TOOL + r"approve\b", re.IGNORECASE)
 _SIGN = re.compile(_TOOL + r"sign\b", re.IGNORECASE)
+_CHECKER = re.compile(_TOOL + r"checker\b", re.IGNORECASE)
+_IMPORT_VERB = re.compile(r"(?<![\w./\\-])[\"']?import[\"']?(?![\w./\\-])")
+
+
+def _imports_answers(joined: str) -> bool:
+    """Whether a `checker` in this command has the verb `import`, wherever it stands among the
+    options."""
+    for found in _CHECKER.finditer(joined):
+        rest = joined[found.end() :]
+        end = _INVOCATION_END.search(rest)
+        if _IMPORT_VERB.search(rest[: end.start() if end else len(rest)]):
+            return True
+    return False
 
 
 def _approves(command: str) -> str | None:
-    """Why an `approve` or a `sign` in this command is put to the person: an approval is an
-    author's statement that they read the manuscript, a sign-off a named person's that a
-    finding is acceptable, and an agent that runs either makes it for them."""
+    """Why an `approve`, a `sign` or a `checker import` in this command is put to the person:
+    an approval is an author's statement that they read the manuscript, a sign-off a named
+    person's that a finding is acceptable, and an import puts a co-author's name to the answers
+    in a file. An agent that runs any of them makes the statement for them."""
     joined = re.sub(r"[\\`]\r?\n", " ", command)
     if _SIGN.search(joined):
         return (
             "`manuscript-guard sign` records that the person authors.yaml names for a role "
             "judged a finding acceptable. Only that person can say so: run it yourself, as "
             "yourself."
+        )
+    if _imports_answers(joined):
+        return (
+            "`manuscript-guard checker import` records a co-author's answers under their name "
+            "in checks/decisions.csv. Which file is taken as a person's word is the author's "
+            "decision: run it yourself, with the files they sent you."
         )
     if not _APPROVE.search(joined):
         return None

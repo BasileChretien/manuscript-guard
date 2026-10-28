@@ -190,7 +190,10 @@ file.
 
 What is asked is found from the project's own files: the values quoted from the literature with
 the passage each came from, the sentences that cite something, with the passage of the cited
-work recorded as supporting each where there is one, the references, and the authors.
+work recorded as supporting each where there is one, each Methods text beside the code of the
+steps it points at (and each Methods paragraph pointing at none, as "no code is linked to this
+text"), the references, and the authors. A Methods item is answered "Text matches the code",
+"Text needs changing", "Code needs changing" or "Not sure".
 A number transcribed from a table in a source document is not among them and cannot be — only
 the project knows which row it came from — so a project that traces its own numbers adds them in
 `checks/items.json`.

@@ -277,6 +277,57 @@ def test_the_command_shown_is_quoted_for_the_prompt_it_is_typed_at() -> None:
         "manuscript-guard audit 'C:/My papers/a.docx' --against <OUTPUTS...>")
 
 
+def test_a_word_cmd_exe_would_split_is_quoted_and_one_it_cannot_take_is_refused(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Round 2: `C:/R&D/p` was shown bare, and cmd.exe ran `D/p` as a second command."""
+    for word in ("C:/R&D/p", "a|b", "a<b", "a>b", "a^b", "f(1)", "a\tb"):
+        assert shown(("check", word), windows=True) == f'manuscript-guard check "{word}"'
+    assert shown(("check", "C:/a b" + chr(92)), windows=True) == (
+        'manuscript-guard check "C:/a b' + chr(92) * 2 + '"')
+    # `%` is left as it is (a known gap), and a `"` alone is escaped as list2cmdline does.
+    assert shown(("check", "C:/100%/p"), windows=True) == "manuscript-guard check C:/100%/p"
+    assert shown(("set", "x", 'a"b'), windows=True) == "manuscript-guard set x a" + chr(92) + '"b'
+    # A word holding `"` beside a metacharacter is a value no quoting gives cmd.exe safely.
+    refused = ("set", "reporting_guideline", 'R"&D')
+    assert shown(refused, windows=True) is None
+    assert shown(refused, windows=False) is not None
+    from manuscript_guard.guide import model, say
+
+    monkeypatch.setattr(say, "shown", lambda words: model.shown(words, windows=True))
+    state = settled(tmp_path, reporting_guidelines=('R"&D',), findings=(
+        at(tmp_path, "G5", "reporting-guideline-for-design", line=None),))
+    actions = decide(state)
+    text = say.render(state, actions, every=True)
+    assert "which cmd.exe cannot be given safely" in text
+    assert "manuscript-guard set reporting_guideline" not in text
+    VALIDATOR.validate(say.to_dict(state, actions))
+
+
+def test_the_text_says_which_actions_are_the_authors(tmp_path: Path) -> None:
+    """Round 2: an author's action printed its title, reason and skill, and only options
+    said who runs them."""
+    from manuscript_guard.guide.say import render
+
+    state = settled(tmp_path, findings=(
+        at(tmp_path, "G7", "attestation-not-human"),
+        at(tmp_path, "G11", "open-major-finding", file="review/panel-1.yaml")))
+    text = render(state, decide(state), every=True)
+    assert "the author decides it, or runs it" in text  # no command
+    assert "run: manuscript-guard review  (the author runs it)" in text
+    agents = settled(tmp_path, findings=(at(tmp_path, "G6", "model-artefact"),))
+    assert "author" not in render(agents, decide(agents), every=True).split("\n", 3)[3]
+
+
+def test_an_earlier_view_with_nothing_to_do_says_it_is_a_view(tmp_path: Path) -> None:
+    from manuscript_guard.guide.say import render
+
+    view = settled(tmp_path, stage="drafting", declared_stage="submission")
+    assert decide(view) == []
+    assert "Nothing to do at this view" in render(view, [])
+    assert "Nothing to do: every gate" in render(settled(tmp_path, stage="submission"), [])
+
+
 def test_the_optional_steps_are_those_the_tool_has(tmp_path: Path) -> None:
     ids = {a.id for a in decide(settled(tmp_path, stage="internal-review"))}
     assert ids == {"advance", "optional:review", "optional:checker", "optional:build",
@@ -537,7 +588,9 @@ def test_every_person_only_code_is_the_authors() -> None:
     listed = {"attestation-not-human", "attestation-thin", "judgement-not-human",
               "similar-decision-not-human", "data-source-not-a-person",
               "design-override-unsigned", "figures-not-seen", "journal-manual-unsigned",
-              "approval-missing", "approval-stale"}  # fmt: skip
+              "approval-missing", "approval-stale",
+              # Round 2: a finding left as it stands records who decided (`overridden_by`).
+              "comment-unanswered", "open-major-finding", "design-major-open"}  # fmt: skip
     assert listed == PERSON_ONLY
     assert {code: route_of(code).who for code in listed} == dict.fromkeys(listed, "author")
     assert listed <= reported_codes().codes
@@ -568,6 +621,50 @@ def test_a_route_names_a_skill_there_is_and_a_command_that_parses() -> None:
         assert route.skill is None or route.skill in skill_names(), key
         if route.argv is not None:
             parser.parse_args(list(route.argv))
+
+
+def test_what_a_contract_refuses_is_not_sent_to_bind(tmp_path: Path) -> None:
+    """Round 2: `duplicate-` sent a key the ledger and attested.yaml both define, and the
+    results' own duplicates, to `bind`, which does nothing for either."""
+    state = settled(tmp_path, findings=(
+        at(tmp_path, "G0", "duplicate-key", file="literature/attested.yaml", line=None),
+        at(tmp_path, "G0", "duplicate-key", file="results/a.json", line=None),
+        at(tmp_path, "G0", "no-display", file="literature/ledger.yaml", line=None),
+        at(tmp_path, "G0", "duplicate-table", file="results/a.json", line=None)))
+    found = {(a.id, a.skill, a.argv) for a in decide(state) if a.rule != "advance"}
+    assert found == {
+        ("cannot-check:duplicate-key:literature-verify", "literature-verify", ("check",)),
+        ("cannot-check:duplicate-key", "results-binding", ("check",)),
+        ("failures:no-display:literature-verify", "literature-verify", ("check",)),
+        ("failures:duplicate-table", "results-binding", ("check",)),
+    }
+    # Each code a prefix caught by accident, routed where the work is done.
+    assert {code: (route_of(code).skill, route_of(code).argv) for code in (
+        "duplicate-step", "duplicate-model", "variable-declared-twice", "bound-dangling",
+        "bound-duplicated", "bound-uncheckable", "front-matter-unreadable",
+        "front-matter-abstract", "reference-uncited", "reference-duplicate",
+        "reference-title-duplicate")} == {
+        "duplicate-step": ("results-binding", ("check",)),
+        "duplicate-model": ("results-binding", ("check",)),
+        "variable-declared-twice": ("results-binding", ("check",)),
+        "bound-dangling": ("results-binding", ("check",)),
+        "bound-duplicated": ("results-binding", ("check",)),
+        "bound-uncheckable": ("results-binding", ("check",)),
+        "front-matter-unreadable": ("project-setup", ("check",)),
+        "front-matter-abstract": ("manuscript-writing", None),
+        "reference-uncited": ("literature-verify", ("sync-bib",)),
+        "reference-duplicate": ("literature-verify", None),
+        "reference-title-duplicate": ("literature-verify", None),
+    }  # fmt: skip
+
+
+def test_a_round_with_disagreements_or_stale_answers_is_the_authors(tmp_path: Path) -> None:
+    def who(checker: Checker) -> str:
+        state = settled(tmp_path, stage="internal-review", checker=checker)
+        return next(a for a in decide(state) if a.rule == "co-author-checks").who
+
+    assert (who(Checker(10, 2, 0, 0)), who(Checker(10, 0, 1, 0)), who(Checker(10, 0, 0, 1))
+            ) == ("agent", "author", "author")  # fmt: skip
 
 
 def test_the_longest_prefix_wins() -> None:

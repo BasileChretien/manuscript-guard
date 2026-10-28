@@ -5,7 +5,8 @@ itself first, then by the longest prefix it begins with. A code that neither nam
 its gate's skill, with `check` (`GATE_SKILLS`): it is never dropped, and the test that every
 code the package reports is in this table, or in `NO_ACTION`, says when one is added
 without a route (tests/test_guide.py). Where a skill's description says it answers a code,
-the code routes to that skill, and a test holds that as well.
+the code routes to that skill, and a test holds that as well. A code two contracts raise is
+told apart by the file its finding names (`route_for`).
 
 `argv` is the command's words after the program's name, the project's folder left out: `next`
 puts it where the command takes it. None where the skill does the work and no command does.
@@ -14,6 +15,10 @@ puts it where the command takes it. None where the skill does the work and no co
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
+
+from manuscript_guard.contracts.literature import ATTESTED_FILE, LEDGER_FILE
+from manuscript_guard.findings import Finding
 
 
 @dataclass(frozen=True)
@@ -81,14 +86,22 @@ ROUTES: dict[str, Route] = {
            "figure-number-unbound", "figure-source-", "figure-script-ignores-results",
            "figure-render-unproven", "figure-not-inspectable", "figure-no-text-layer",
            "figure-unreadable", "figure-estimates", "figure-missing", "table-missing",
-           "bound-", "unit-differs-from-emitted", "estimate-outside-interval", "interval-",
-           "threshold-undeclared", "prose-as-value", "quoted-alone", "front-matter-",
+           "unit-differs-from-emitted", "estimate-outside-interval", "interval-",
+           "threshold-undeclared", "prose-as-value", "quoted-alone",
            "project-exemption", "code-list-does-not-match", "composition-does-not-match",
            "unemitted-table-number", "relation-", "flow-broken", "declared-same-",
            "same-as-unresolved", "family-uncorrected", "p-against-interval",
-           "ratio-interval-asymmetric", "spread-label-differs", "duplicate-", "no-display",
-           "variable-declared-twice", "quality-not-run", "entry-unchecked", "rule-unchecked",
-           "manuscript-empty", "p-decision-error", "p-inconsistent", "summary-not-reported"),
+           "ratio-interval-asymmetric", "spread-label-differs", "quality-not-run",
+           "entry-unchecked", "rule-unchecked", "manuscript-empty", "p-decision-error",
+           "p-inconsistent", "summary-not-reported"),
+    # What the results' contract refuses is put right in the script that emits it, so `bind`
+    # does nothing for it. The literature's own `duplicate-key` and `no-display` are told
+    # apart by the file they name (`route_for`).
+    **_all("results-binding", ("check",), "duplicate-key", "duplicate-table", "duplicate-step",
+           "duplicate-model", "no-display", "variable-declared-twice", "bound-dangling",
+           "bound-duplicated", "bound-uncheckable"),
+    **_all("project-setup", ("check",), "front-matter-unreadable"),
+    **_all("manuscript-writing", None, "front-matter-abstract"),
     **_all("results-binding", ("bind", "--pointers"), "pointer-", "display-not-cited",
            "cited-out-of-order", "ref-number-unknown", "caption-names-another"),
     **_all("results-binding", ("values",), "values-file-", "value-not-printable"),
@@ -111,6 +124,10 @@ ROUTES: dict[str, Route] = {
     **_all("literature-verify", ("passages",), "passage-"),
     **_all("literature-verify", ("lookup",), "reference-", "lookup-", "doi-unregistered",
            "pmid-", "preprint-", "pages-placeholder", "identifier-malformed"),
+    # Neither is answered by asking the registries: one is rebuilt from what is cited, the
+    # other is put right in Zotero.
+    **_all("literature-verify", ("sync-bib",), "reference-uncited"),
+    **_all("literature-verify", None, "reference-duplicate", "reference-title-duplicate"),
     **_all("related-outputs", ("related",), "related-"),
     # -- figures --------------------------------------------------------------------------
     **_all("figure-review", None, "figure-unreviewed", "figure-review-", "figure-alt-"),
@@ -150,15 +167,30 @@ ROUTES: dict[str, Route] = {
     **_all("data-sources", None, "data-source-not-a-person", who="author"),
     **_all("review-panel", None, "design-override-unsigned", "figures-not-seen", who="author"),
     **_all("journal-profile", None, "journal-manual-unsigned", who="author"),
+    # A reviewer's or a co-author's finding left as it stands records who decided
+    # (`overridden_by`, the manifest's `decided_by`): the decision is the author's.
+    **_all("word-roundtrip", None, "comment-unanswered", who="author"),
+    **_all("review-panel", ("review",), "open-major-finding", who="author"),
+    **_all("review-panel", ("review", "--design"), "design-major-open", who="author"),
 }
 
 #: The codes whose answer is a person's own attestation, judgement, approval, reading or
-#: sign-off: each routes with `who="author"`, and a test holds the list to that.
+#: sign-off, or a decision to leave a finding as it stands: each routes with
+#: `who="author"`, and a test holds the list to that.
 PERSON_ONLY = frozenset({
     "attestation-not-human", "attestation-thin", "judgement-not-human",
     "similar-decision-not-human", "data-source-not-a-person", "design-override-unsigned",
     "figures-not-seen", "journal-manual-unsigned", "approval-missing", "approval-stale",
+    "comment-unanswered", "open-major-finding", "design-major-open",
 })  # fmt: skip
+
+#: A code both the literature's contract and the results' raise. The literature's names its
+#: ledger or attested.yaml, and is put right there; the results' is put right in the script.
+_LITERATURE_FILES = frozenset({LEDGER_FILE, ATTESTED_FILE})
+LITERATURE_ROUTES = {
+    "duplicate-key": Route("literature-verify", ("check",)),
+    "no-display": Route("literature-verify", ("check",)),
+}
 
 #: Codes that are only ever said as a note and ask nothing: no action is built for them,
 #: and the test that every code is routed takes them as answered.
@@ -172,3 +204,12 @@ def route_of(code: str) -> Route | None:
         return ROUTES[code]
     prefixes = [key for key in ROUTES if key.endswith("-") and code.startswith(key)]
     return ROUTES[max(prefixes, key=len)] if prefixes else None
+
+
+def route_for(finding: Finding) -> Route | None:
+    """The route for a finding: the literature's where its code is one the literature and
+    the results both raise and it names a literature file, else its code's."""
+    named = Path(finding.path).name if finding.path is not None else None
+    if finding.code in LITERATURE_ROUTES and named in _LITERATURE_FILES:
+        return LITERATURE_ROUTES[finding.code]
+    return route_of(finding.code)

@@ -115,6 +115,9 @@ def render(state: State, actions: list[Action], *, every: bool = False, shown_at
     lines += [f"note: {note}" for note in state.notes]
     if not actions and state.kind == MISSING:
         lines.append("\nNothing is offered: name the folder that holds the paper.")
+    elif not actions and _earlier_view(state):
+        lines.append(f"\nNothing to do at this view: every gate passes as at {state.stage} and "
+                     f"no step is due; paper.yaml says {state.declared_stage}.")
     elif not actions:
         lines.append("\nNothing to do: every gate passes and no step is due.")
     full = actions if every else actions[:shown_at_most]
@@ -127,13 +130,36 @@ def render(state: State, actions: list[Action], *, every: bool = False, shown_at
     return "\n".join(lines)
 
 
+def _earlier_view(state: State) -> bool:
+    """Whether `--stage` views the paper as at a stage before the one paper.yaml declares."""
+    declared = state.declared_stage
+    return (declared in STAGES and state.stage in STAGES
+            and STAGES.index(state.stage) < STAGES.index(declared))  # fmt: skip
+
+
+#: What the text says of an action or an option that is not the agent's alone: on its
+#: `run:` line, and for an action on a line of its own where it has no command.
+_WHO_SAID = {AUTHOR: "the author runs it", ASK: "ask the author first"}
+
+
+def _command_line(words: tuple[str, ...]) -> str:
+    """The command as typed, or its words where this prompt cannot be given them safely."""
+    typed = shown(words)
+    if typed is not None:
+        return typed
+    return (f"manuscript-guard with the words {json.dumps(list(words), ensure_ascii=True)}, "
+            "which cmd.exe cannot be given safely")
+
+
 def _rendered(number: int, action: Action, root: Path) -> list[str]:
     lines = [f"{number}. {action.title}", f"   {action.why}"]
     if action.skill:
         lines.append(f"   skill: {action.skill}")
+    said = _WHO_SAID.get(action.who)
     if action.argv is not None:
-        lines.append(f"   run: {shown(action.argv)}" + ("  (ask the author first)"
-                                                       if action.who == ASK else ""))
+        lines.append(f"   run: {_command_line(action.argv)}" + (f"  ({said})" if said else ""))
+    elif action.who == AUTHOR:
+        lines.append("   the author decides it, or runs it: an agent may draft it, not do it")
     for finding in action.findings[:SHOWN_FINDINGS]:
         where = _where(finding, root)
         where = f" {where}" + (f":{finding.line}" if finding.line else "") if where else ""
@@ -144,8 +170,7 @@ def _rendered(number: int, action: Action, root: Path) -> list[str]:
         lines.append(f"   {action.choice.question}")
         for index, option in enumerate(action.choice.options, 1):
             mark = " (recommended)" if option.id == action.choice.recommended else ""
-            who = {AUTHOR: "; the author runs it", ASK: "; ask the author first"}.get(
-                option.who, "")
+            who = f"; {_WHO_SAID[option.who]}" if option.who in _WHO_SAID else ""
             lines.append(f"   {index}) {option.label}{mark}: {option.effect}{who}")
-            lines.append(f"      {shown(option.argv)}")
+            lines.append(f"      {_command_line(option.argv)}")
     return lines

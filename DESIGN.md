@@ -6884,8 +6884,8 @@ another order give the same answer:
 
 Three of these were the author's choices (2026-10-28). A choice is offered as the `set`
 command that makes it, never as a description of an edit, so the guard on `set` sees it.
-Moving on (tier 9) is offered exactly when nothing fails now, and the optional steps (tier 10)
-only when nothing fails at `internal-review` or `submission`: a review panel read while the
+Moving on (tier 9) is offered only when nothing fails now, and not at `submission` or from a
+view of an earlier stage than the one declared; the optional steps (tier 10) only when nothing fails at `internal-review` or `submission`: a review panel read while the
 numbers still fail is a reading of the wrong paper. And `next` exits 0 whenever it has
 decided: `check`'s exit is the one that says pass or fail, and a second command that said it
 too would be read as the gate. So it raises nothing: a part of the state it cannot read, the
@@ -6901,8 +6901,14 @@ and only where the view is not of an earlier stage: in review round 1, a paper a
 back. The move is `ask-author`, since the stage is the author's statement of where the paper
 is, as another journal or another English than the one declared is. A finding only a named
 person may answer (an attestation, a judgement of a passage, a methods decision, a person's
-reading of the figures, an approval, a sign-off: `routes.PERSON_ONLY`) routes as the
-author's: an agent that wrote the name would pass the gate with nobody behind it.
+reading of the figures, an approval, a sign-off, a reviewer's or co-author's finding left as
+it stands with who decided: `routes.PERSON_ONLY`) routes as the author's: an agent that
+wrote the name would pass the gate with nobody behind it. The text says so on the action's
+`run:` line, or on a line of its own where it has no command, as the JSON says it in `who`.
+A code both the literature's contract and the results' raise (`duplicate-key`,
+`no-display`) is routed by the file its finding names: the literature's to
+literature-verify, the results' to results-binding, both with `check`, since neither is
+put right by `bind`.
 
 A finding's code decides its skill and its command through `guide.ROUTES`: the code's own
 entry, else the longest prefix it begins with (`checklist-`, `spelling-`, `registration-`,
@@ -17390,6 +17396,19 @@ What papers converted from Word showed (see "What papers converted from Word sho
 - **Tier 10 lists only the commands there are.** Depositing the package and communicating
   the paper join it as their commands are added, and the co-author checker's fields in
   `next --json` are those `checker status` reports now.
+- **`next` quotes a command for `cmd.exe`, not PowerShell, and leaves `%` as it is.** A word
+  holding a space or one of `& | < > ^ ( )` is put in double quotes, but `cmd.exe` still
+  expands `%NAME%` inside them, so a path holding two `%` can be shown as another path. A
+  word holding `"` beside one of those is refused, and only `argv` is said. In PowerShell a
+  bare word holding `,` is an array and one starting with `@` splats, and the command shown
+  is not written for it. `argv` is what an agent runs, and is right on both.
+- **A G15 warning only a sign-off closes is offered as `models`.** `model-few-events` is
+  closed by the statistician's `manuscript-guard sign`, and `next` sends it to methods-writer
+  with `models`, the agent's; `sign` is never offered, since the person who signs is the
+  statistician the hint names and not an option `next` can fill.
+- **One person-only warning makes its skill's group the author's.** Warnings go one action
+  to a skill, so a person-only code among them (an attestation that is thin, say) makes
+  every warning of that skill `who: author`, those an agent may put right among them.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

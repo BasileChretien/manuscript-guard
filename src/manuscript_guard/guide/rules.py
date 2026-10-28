@@ -33,7 +33,7 @@ from manuscript_guard.guide.model import (
     argv,
     shown,
 )
-from manuscript_guard.guide.routes import CANNOT_CHECK, GATE_SKILLS, Route, route_of
+from manuscript_guard.guide.routes import CANNOT_CHECK, GATE_SKILLS, Route, route_for, route_of
 from manuscript_guard.policy import DESCRIPTIONS, DRAFTING, INTERNAL_REVIEW, STAGES, SUBMISSION
 
 
@@ -48,21 +48,22 @@ def _tier_of(finding: Finding) -> int:
 
 
 def _grouped(state: State, rule: str, tier: int, findings, verb: str) -> list[Action]:
-    """One action per code: its route's skill and command, or its gate's where it has none."""
-    by_code: dict[str, list[Finding]] = {}
+    """One action per code and route: its route's skill and command, or its gate's where it
+    has none. A code two contracts raise is two actions where both raise it."""
+    by_code: dict[tuple[str, Route | None], list[Finding]] = {}
     for finding in findings:
-        by_code.setdefault(finding.code, []).append(finding)
+        by_code.setdefault((finding.code, route_for(finding)), []).append(finding)
     actions = []
-    for code, group in by_code.items():
+    for (code, route), group in by_code.items():
         ordered = _in_order(group, state.root)
         first = ordered[0]
-        route = route_of(code)
+        name = f"{rule}:{code}" if route == route_of(code) else f"{rule}:{code}:{route.skill}"
         why = WHY[rule]
         if route is None:
             route = Route(GATE_SKILLS.get(first.gate), ("check",))
             why += f" No route names {code}, so it is sent to {first.gate}'s skill, with `check`."
         actions.append(Action(
-            id=f"{rule}:{code}", rule=rule, tier=tier,
+            id=name, rule=rule, tier=tier,
             title=f"{verb}: {code}, {len(group)} in {first.gate}", why=why, who=route.who,
             skill=route.skill, argv=argv(state, *route.argv) if route.argv else None,
             codes=(code,), findings=ordered,
@@ -244,8 +245,11 @@ def _co_author_checks(state: State) -> list[Action]:
         return []
     if not (checked.outstanding or checked.stale or checked.disagreements):
         return []
+    # A disagreement or an answer about changed text is the co-authors' to settle with the
+    # author; answers only outstanding an agent may chase.
+    who = AUTHOR if checked.stale or checked.disagreements else AGENT
     return [Action(
-        id="co-author-checks", rule="co-author-checks", tier=7,
+        id="co-author-checks", rule="co-author-checks", tier=7, who=who,
         title=f"Co-authors' checks: {checked.outstanding} of {checked.items} unanswered, "
         f"{checked.stale} stale, {checked.disagreements} disagreed on",
         why=WHY["co-author-checks"], skill="co-author-checking",
@@ -258,7 +262,7 @@ def _warnings(state: State) -> list[Action]:
     for finding in state.findings:
         if finding.severity != WARN or finding.code in CHOICE_CODES:
             continue
-        route = route_of(finding.code)
+        route = route_for(finding)
         if route is not None and route.skill:
             name = route.skill
         elif route is not None and route.argv:
@@ -269,7 +273,7 @@ def _warnings(state: State) -> list[Action]:
     actions = []
     for name, group in by_skill.items():
         ordered = _in_order(group, state.root)
-        routes = {route_of(f.code) for f in ordered}
+        routes = {route_for(f) for f in ordered}
         commands = {r.argv for r in routes if r is not None}
         words = commands.pop() if len(commands) == 1 and None not in routes else ("check",)
         warned = f"{len(ordered)} warning{'s' if len(ordered) != 1 else ''}"
@@ -278,7 +282,8 @@ def _warnings(state: State) -> list[Action]:
             title = f"{warned} of {ordered[0].gate}, which no route names"
         elif name.startswith("command:"):
             skill = None
-            title = f"{warned}: run `{shown(argv(state, *words))}`"
+            line = shown(argv(state, *words)) or f"manuscript-guard {words[0]}"
+            title = f"{warned}: run `{line}`"
         else:
             skill, title = name, f"{warned} for the {name} skill"
         who = AUTHOR if any(r is not None and r.who == AUTHOR for r in routes) else AGENT

@@ -49,7 +49,10 @@ not offered, since neither reads LaTeX yet, and a note says so.
 
 ## Who runs it
 
-Every action and every option says who runs it:
+Every action and every option says who runs it, in `who` in the JSON and in the text: an
+action's `run:` line ends "(the author runs it)" or "(ask the author first)", an author's
+action with no command has a line saying so, and an option ends "; the author runs it" or
+"; ask the author first":
 
 - `agent`: an agent may run it;
 - `author`: the author decides it, or runs it, as `approve` is the author's own act;
@@ -58,7 +61,8 @@ Every action and every option says who runs it:
   into the manuscript, `set stage`, or another journal or English than the one declared.
 
 A finding only a named person may answer, an attestation, a judgement of a passage, a
-methods decision, an approval, a sign-off or a person's reading of the figures, is the
+methods decision, an approval, a sign-off, a person's reading of the figures, or a
+reviewer's or co-author's finding left as it stands (whose record names who decided), is the
 author's (`who: author`): an agent may draft it, and an agent that wrote the person's name
 would pass the gate with nobody behind it.
 
@@ -93,12 +97,12 @@ Each action:
 | `codes`, `count` | the finding codes it answers, and how many findings |
 | `skill` | the skill that deals with it, or null |
 | `who` | `agent`, `author` or `ask-author` |
-| `command`, `argv` | the command as typed at this system's prompt (quoted for `cmd.exe` on Windows, for a POSIX shell elsewhere), and its words after `manuscript-guard`, which are what runs; null where the skill does the work |
+| `command`, `argv` | the command as typed at this system's prompt (quoted for `cmd.exe` on Windows, for a POSIX shell elsewhere), and its words after `manuscript-guard`, which are what runs; null where the skill does the work. On Windows `command` is also null where a word holds `"` beside one of `& \| < > ^ ( )`, which `cmd.exe` cannot be given safely, and only `argv` is said |
 | `findings` | the first five findings: `code`, `path` (from the project's folder), `line`, `message` |
 | `choice` | null, or `question`, `recommended` (an option's id, or null) and `options` |
 
-Each option of a choice has `id`, `label`, `effect`, `command`, `argv`, `who` and
-`placeholders`. A word of `argv` written `<NAME>` is a placeholder for one word, and
+Each option of a choice has `id`, `label`, `effect`, `command` (null as an action's is,
+for a word `cmd.exe` cannot be given), `argv`, `who` and `placeholders`. A word of `argv` written `<NAME>` is a placeholder for one word, and
 `<NAME...>` for one or more, and `placeholders` says what goes there:
 `checker build --for <NAME>`, `approve --as <AUTHOR>`, `audit paper.docx --against
 <OUTPUTS...>`. A command names the project's folder where `next` was run from another one.

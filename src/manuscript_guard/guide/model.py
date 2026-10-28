@@ -138,7 +138,11 @@ _NO_PATH = frozenset({"stages", "palettes", "search", "fetch", "transcribe", "in
 _PATH_SECOND = frozenset({"checker", "proof", "import"})
 #: A placeholder: `<NAME>` for one word, `<NAME...>` for one or more.
 PLACEHOLDER = re.compile(r"<([A-Z_]+)(\.\.\.)?>")
+#: A word either shell passes on as it stands: none of cmd.exe's metacharacters is in it.
 _PLAIN_WORD = re.compile(r"[A-Za-z0-9_./:@%+=,-]+")
+#: What cmd.exe reads outside double quotes: a word holding one is put in them.
+_CMD_METACHARACTERS = frozenset("&|<>^()")
+_BACKSLASH = chr(92)
 
 
 def argv(state: State, *words: str) -> tuple[str, ...]:
@@ -157,17 +161,35 @@ def argv(state: State, *words: str) -> tuple[str, ...]:
 def shown(words: tuple[str, ...] | None, *, windows: bool | None = None) -> str | None:
     """The command as it is typed at this system's prompt, a placeholder left as it stands:
     quoted as `cmd.exe` reads it on Windows, as a POSIX shell does elsewhere. `argv` is what
-    runs; this is for the eye."""
+    runs; this is for the eye. None on Windows where a word holds `"` beside one of cmd.exe's
+    metacharacters, which no quoting here gives it safely: then only `argv` is said."""
     if words is None:
         return None
     windows = os.name == "nt" if windows is None else windows
+    typed = [_cmd_quoted(word) if windows else _posix_quoted(word) for word in words]
+    return None if None in typed else " ".join(("manuscript-guard", *typed))
 
-    def quoted(word: str) -> str:
-        if _PLAIN_WORD.fullmatch(word) or PLACEHOLDER.fullmatch(word):
-            return word
-        return subprocess.list2cmdline([word]) if windows else shlex.quote(word)
 
-    return " ".join(("manuscript-guard", *(quoted(word) for word in words)))
+def _posix_quoted(word: str) -> str:
+    if _PLAIN_WORD.fullmatch(word) or PLACEHOLDER.fullmatch(word):
+        return word
+    return shlex.quote(word)
+
+
+def _cmd_quoted(word: str) -> str | None:
+    """A word as cmd.exe passes it on whole: in double quotes where it holds a metacharacter
+    or a space, a trailing backslash doubled as `list2cmdline` doubles it. `%` still expands
+    inside quotes (DESIGN, Known gaps). A file name on Windows cannot hold `"`, so a word
+    holding one beside a metacharacter is a value, and is refused rather than shown wrong."""
+    if PLACEHOLDER.fullmatch(word) or _PLAIN_WORD.fullmatch(word):
+        return word
+    special = any(char in _CMD_METACHARACTERS for char in word)
+    if '"' in word:
+        return None if special else subprocess.list2cmdline([word])
+    if special or not word or any(char.isspace() for char in word):
+        bare = word.rstrip(_BACKSLASH)
+        return f'"{bare}{_BACKSLASH * 2 * (len(word) - len(bare))}"'
+    return word
 
 
 def _file(state: State, name: str) -> str:

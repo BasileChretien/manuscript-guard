@@ -49,7 +49,7 @@
         "id": { "$ref": "#/$defs/text" },
         "label": { "$ref": "#/$defs/text" },
         "effect": { "$ref": "#/$defs/text" },
-        "command": { "$ref": "#/$defs/text" },
+        "command": { "type": ["string", "null"], "minLength": 1 },
         "argv": { "$ref": "#/$defs/argv" },
         "placeholders": {
           "type": "object",

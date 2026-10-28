@@ -6851,6 +6851,68 @@ The effect is that `manuscript-guard init` followed by a first analysis script n
 zero failures at `design` and `analysis`, with the outstanding work listed as not yet due,
 and the same items fail from `drafting` onwards.
 
+## `next` says what to do now
+
+`check` lists what is wrong, and a project at `drafting` can have forty findings, a journal
+not chosen and an English not declared, none of which says where to start. An agent asked
+"what now?" read the list and picked, and two agents picked differently. `manuscript-guard
+next` (the `guide` package) reads the project once and decides in a fixed order. `inspect(start)`
+runs every gate through `cli._gate_run`, which is `_run_gates` with the namespace returned
+too, so that an unbound number can be asked which published value it reads as; it reads the
+choices `paper.yaml` has made, the journals `set target_journal` takes, the English the
+journal's profile asks for and the study designs, and, where a round of co-authors' checks
+has begun (`checks/decisions.csv`) and the manuscript is Markdown, where that round stands.
+It writes nothing. `decide(state)` is a pure function of what was read.
+
+The rules are an ordered table, `guide.RULES`, each with a tier; within a tier, actions go
+by gate, upstream first (`GATE_RANK`), then by code, file and line, so the same findings in
+another order give the same answer:
+
+| Tier | Rule | Why it comes here |
+|---|---|---|
+| 0 | `cannot-check` | a gate that could not read its file has checked nothing |
+| 1 | `start` | no project, or `authors.yaml` without `paper.yaml`: `init`, `init --from` a Word paper in the folder, `init --latex`, or `audit` alone |
+| 2 | `stale-results` | G1: every number bound to stale results waits on them |
+| 3 | `plan` | G12: the plan comes before the numbers that answer it |
+| 4 | the four choices | journal, English, reporting guideline, study design, offered as `set` commands |
+| 5 | `provenance` | G2, G3, G7, G8: a number with no source |
+| 6 | `failures` | the rest that fails, in gate order |
+| 7 | `co-author-checks` | from internal review, a round with answers outstanding, stale or disagreeing |
+| 8 | `warnings` | one action for each skill |
+| 9 | `advance` | nothing fails now: preview the next stage with `check --stage`, or `set stage` |
+| 10 | `optional` | nothing fails, from internal review on: panel, co-author's page, build, package, approvals; the pack and the proof at submission |
+
+Three of these were the author's choices (2026-10-28). A choice is offered as the `set`
+command that makes it, never as a description of an edit, so the guard on `set` sees it.
+Moving on (tier 9) is offered exactly when nothing fails now, and the optional steps (tier 10)
+only when nothing fails at `internal-review` or `submission`: a review panel read while the
+numbers still fail is a reading of the wrong paper. And `next` exits 0 whenever it has
+decided: `check`'s exit is the one that says pass or fail, and a second command that said it
+too would be read as the gate.
+
+A finding's code decides its skill and its command through `guide.ROUTES`: the code's own
+entry, else the longest prefix it begins with (`checklist-`, `spelling-`, `registration-`,
+`design-` …). A code no entry names goes to its gate's skill with `check`, and is never
+dropped. `tests/test_guide.py` reads the package's source for every code it reports (each
+string given as a finding's `code`, by keyword or by position, either side of a conditional
+or as a module's constant, every key of the stage policy, and the design rounds' codes made
+from the review gate's seal) and fails on one that neither `ROUTES` nor `NO_ACTION`, the codes
+said only as a note, names. A second test holds every code a skill's description says it
+answers to that skill. A route names a skill that exists and a command that parses, and every
+command an action or an option offers, its placeholders filled, parses with `build_parser()`.
+
+Each command is given twice: as it is written at a prompt, and as `argv`, its words after the
+program's name, so that an agent runs the words given and not its reading of a sentence. A
+placeholder is a word `<NAME>` the option explains. The JSON is `manuscript-guard/next/1`
+(`contracts/schemas/next.schema.json`, docs/next.md); a field added keeps `/1`, a field
+renamed or removed or a fixed list extended makes it `/2`, and rule ids are not renamed.
+
+There is no cache. Each call runs every gate again, 5 to 10 seconds on the example: a cache
+keyed by the files the hooks watch would miss `design/`, `review/`, `profiles/`, `journals/`
+and `checks/`, which the gates read, and an answer about files as they were is the failure
+this toolkit exists to prevent. The co-author checker is not read for a LaTeX manuscript,
+since `checker` refuses one, and a note says so; nor is the proof offered for one.
+
 ## The commands are listed in six groups
 
 By October 2026 the tool had 37 commands an author could run, and `manuscript-guard --help`
@@ -17279,6 +17341,32 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - With `--skip-checks`, the count of failing checks `build` prints is one short of `check`'s
     when `manuscript.docx` is stale.
   - ci.yml's comment on setup-pandoc names a step that is gone.
+
+- **`next` is advice, and its order is a rule.** It puts what is upstream first, and a
+  project whose author knows the journal's reviewers will read the figures first may want
+  another order; `check` is the gate, and nothing `next` says makes a finding pass. A choice
+  is due by a rule as well: from `drafting` for a journal, an English and a guideline that
+  are not set, wherever for a study design, so a paper that follows no listed design is
+  offered one at every call.
+- **A prefix or a gate names a coarser skill than a code's own.** `registration-` goes to
+  analysis-plan for every registration code, and a code no route names goes to its gate's
+  skill with `check`. The command a route gives is the command that shows or does the work
+  (`verify`, `bind`, `journal`), not one that puts the finding right.
+- **`next` runs every gate at every call.** 5 to 10 seconds on the example, and more on a
+  long paper; there is no cache, by choice (see "`next` says what to do now").
+- **`next` shows no co-author checker for a LaTeX manuscript**, nor offers a page or the
+  proof check, since neither command reads LaTeX yet.
+- **The journals offered are only those the project knows.** `set target_journal` takes a
+  journal with a stored profile or a shortlist candidate's `profile`; another one is offered
+  as a profile to start, and how current the offer is depends on the shortlist and the
+  profiles kept.
+- **Showing the command and asking is an agent's to keep.** `who` says `ask-author` for
+  `review --run` and `bind --apply`, and the hooks enforce only `approve`, `sign`,
+  `review --run --yes`, the submission guard and `set`'s; that an agent puts a choice to the
+  author rather than picking is the skill's guidance, not a check.
+- **Tier 10 lists only the commands there are.** Depositing the package and communicating
+  the paper join it as their commands are added, and the co-author checker's fields in
+  `next --json` are those `checker status` reports now.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

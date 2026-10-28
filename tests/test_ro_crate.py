@@ -48,6 +48,16 @@ def ids(links: object) -> list[str]:
     return [link["@id"] for link in links]
 
 
+def assert_instruments(entities: dict[str, dict]) -> None:
+    """Every action names its instrument, as the Process Run Crate profile requires, and
+    the instrument is a script."""
+    actions = [e for e in entities.values() if e["@type"] == "CreateAction"]
+    assert actions
+    for action in actions:
+        (script,) = ids(action["instrument"])
+        assert "SoftwareSourceCode" in entities[script]["@type"], action["@id"]
+
+
 def relations(root: Path) -> str:
     return (built(root) / "RELATIONS.md").read_text(encoding="utf-8")
 
@@ -76,6 +86,7 @@ def test_the_crate_is_json_ld_with_its_descriptor_and_every_reference_defined(
     for field in ("name", "description", "datePublished", "license", "hasPart", "author"):
         assert root[field], field
     assert set(referenced(document["@graph"])) <= set(entities)
+    assert_instruments(entities)
     # Every file of the package is a part of it, with its digest and size.
     folder = built(project)
     assert set(ids(root["hasPart"])) == contents(folder) - UNNAMED
@@ -205,7 +216,8 @@ def test_the_zenodo_record_is_made_from_the_records(project: Path) -> None:
         "affiliation": "Department of Clinical Pharmacology, Example University Graduate "
         "School of Medicine, Springfield, Japan"}  # fmt: skip
     assert record["license"] == "mit" and record["upload_type"] == "software"
-    assert record["doi"] == "10.5281/zenodo.1234567"
+    # The package's own DOI is not one a publisher gave the files: Zenodo reads `doi` so.
+    assert "doi" not in record and "10.5281/zenodo.1234567" not in json.dumps(record)
     assert record["keywords"] == paper(project)["keywords"]
     assert record["related_identifiers"] == [{"identifier": "10.1234/abc", "relation":
                                               "isDerivedFrom", "resource_type": "dataset",
@@ -378,3 +390,241 @@ def test_a_custodian_signs_the_crate_package_as_its_own(project: Path, capsys) -
     assert main(["sign", str(project), "--as", "Sample", "--finding",
                  "PACKAGE/custodian/deposit-ro-crate"]) == 0  # fmt: skip
     package(project, "--ro-crate")
+
+
+# ---------------------------------------------------------------- round 1 of the review (#454)
+
+
+def withhold_the_models_results(root: Path) -> None:
+    """A second script that declares the example's results restricted as its input: the
+    fragment that holds the model is withheld, and its card with it."""
+    import subprocess
+    import sys
+
+    (root / "analysis" / "02_next.py").write_text(
+        "from manuscript_guard.emit import Emitter\n"
+        "em = Emitter(__file__)\n"
+        'em.add_input("results/01_disproportionality.json", restricted=True)\n'
+        'em.value("ratio.next", 0.5, digits=1)\n'
+        "em.write()\n", encoding="utf-8")  # fmt: skip
+    ran = subprocess.run([sys.executable, "analysis/02_next.py"], cwd=root,
+                         capture_output=True, text=True)  # fmt: skip
+    assert ran.returncode == 0, ran.stderr
+    with_package(root, request="Write to the corresponding author.")
+
+
+def test_a_model_of_withheld_results_is_left_out_of_models_md(project: Path) -> None:
+    ready(project)
+    withhold_the_models_results(project)
+    package(project, "--ro-crate")
+    folder = built(project)
+    assert "results/01_disproportionality.json" not in contents(folder)
+    held = (folder / "MODELS.md").read_text(encoding="utf-8")
+    assert "Adjusted model" not in held and " rows, " not in held and "events" not in held
+    assert "1 model(s) left out: withheld with its results " \
+           "(`results/01_disproportionality.json`)." in held  # fmt: skip
+    text = (folder / "ro-crate-metadata.json").read_text(encoding="utf-8")
+    assert "Adjusted model" not in text and "4000 of 4000" not in text
+    assert "about" not in graph(project)["MODELS.md"]
+
+
+def test_a_card_counts_its_trials_as_the_custodian_reads_counts(project: Path) -> None:
+    from test_package import edit_fragment
+
+    from manuscript_guard.deposit import small_counts
+
+    ready(project)
+
+    def trials(document: dict) -> None:
+        document["models"]["adjusted"]["trials"] = 3
+
+    edit_fragment(project, trials)
+    document = paper(project)
+    document["custodian"] = {"minimum_cell_count": 5}
+    set_paper(project, document)
+    loaded, _ = load_project(project)
+    _namespace, results, _literature, _ = load_namespace(loaded)
+    named = {small.where for small in small_counts(loaded, results)}
+    assert "model adjusted, trials" in named
+
+
+def test_a_run_whose_script_is_gone_names_it_by_its_record(project: Path) -> None:
+    ready(project)
+    recorded = json.loads((project / "results" / "01_disproportionality.json")
+                          .read_text(encoding="utf-8"))["provenance"]["generated_by_sha256"]
+    (project / "analysis" / "01_disproportionality.py").unlink()
+    assert main(["package", str(project), "--ro-crate", "--skip-checks"]) == 0
+    entities = graph(project)
+    assert_instruments(entities)
+    run = entities["#run-results/01_disproportionality.json"]
+    script = entities[run["instrument"]["@id"]]
+    assert script["@id"] == "#script-analysis/01_disproportionality.py"
+    assert script["name"] == "analysis/01_disproportionality.py"
+    assert recorded in script["description"]
+    assert "| #run-results/01_disproportionality.json | instrument | " \
+           "analysis/01_disproportionality.py | the script is not in this package |" \
+           in relations(project)  # fmt: skip
+
+
+def test_a_crate_with_no_date_to_give_is_refused(project: Path, capsys) -> None:
+    from test_package import edit_fragment
+
+    ready(project)
+
+    def undated(document: dict) -> None:
+        document["provenance"]["generated_at"] = "some time last week"
+
+    edit_fragment(project, undated)
+    assert "package-crate-undated" in _failures(project, ro_crate=True)
+    assert main(["package", str(project), "--ro-crate", "--skip-checks"]) == 1
+    assert "package.date" in capsys.readouterr().out
+    assert not (project / "build" / "package").exists()
+    with_package(project, date="2027-01-15")
+    assert "package-crate-undated" not in _failures(project, ro_crate=True)
+    # Without the crate nothing asks for a date.
+    document = paper(project)
+    document["package"].pop("date")
+    set_paper(project, document)
+    assert "package-crate-undated" not in _failures(project, citation=True)
+
+
+def test_the_citation_files_name_no_creator_nobody_listed(project: Path) -> None:
+    ready(project)
+    (project / "authors.yaml").unlink()
+    assert "package-no-creators" in _failures(project, citation=True)
+    assert "package-no-creators" in _failures(project, ro_crate=True)
+    assert "package-no-creators" not in _failures(project)
+
+
+def _failures(root: Path, **options: bool) -> set[str]:
+    from manuscript_guard.deposit import plan_package
+
+    loaded, _ = load_project(root)
+    _namespace, results, _literature, _ = load_namespace(loaded)
+    return {f.code for f in plan_package(loaded, results, **options).report.failures}
+
+
+def test_a_root_file_made_while_it_is_written_is_kept(project: Path, monkeypatch) -> None:
+    from manuscript_guard.deposit import metadata
+
+    ready(project)
+    real = open
+
+    def made_meanwhile(path, mode="r", *args, **kwargs):
+        if "x" in mode:
+            Path(path).write_bytes(b'{"title": "Theirs"}\n')
+        return real(path, mode, *args, **kwargs)
+
+    monkeypatch.setattr(metadata, "open", made_meanwhile, raising=False)
+    package(project, "--citation")
+    folder = built(project)
+    said = metadata.root_citation(load_project(project)[0], tuple(_entries(project)),
+                                  dry_run=False)  # fmt: skip
+    assert (project / ".zenodo.json").read_bytes() == b'{"title": "Theirs"}\n'
+    assert any(line.startswith(".zenodo.json at the root is kept; it differs") for line in said)
+    assert (folder / ".zenodo.json").read_bytes() != b'{"title": "Theirs"}\n'
+
+
+def test_a_root_the_system_will_not_write_in_is_said_not_raised(
+    project: Path, monkeypatch, capsys
+) -> None:
+    from manuscript_guard.deposit import metadata
+
+    ready(project)
+
+    def refused(path, mode="r", *args, **kwargs):
+        raise PermissionError(13, "Permission denied", str(path))
+
+    monkeypatch.setattr(metadata, "open", refused, raising=False)
+    package(project, "--root-citation")
+    said = capsys.readouterr().out
+    assert "root: CITATION.cff could not be written at the root (Permission denied)" in said
+    assert "root: .zenodo.json could not be written at the root (Permission denied)" in said
+    assert not (project / "CITATION.cff").exists() and not (project / ".zenodo.json").exists()
+
+
+def _entries(root: Path):
+    from manuscript_guard.deposit import plan_package
+
+    loaded, _ = load_project(root)
+    _namespace, results, _literature, _ = load_namespace(loaded)
+    return plan_package(loaded, results, citation=True).entries
+
+
+def test_a_second_document_beside_the_entry_is_not_warned_of(project: Path) -> None:
+    ready(project)
+    _latex(project)
+    (project / "manuscript" / "cover_letter.tex").write_text(
+        "\\documentclass{letter}\n\\begin{document}\nDear editor, \\catcode`\\@=11 the "
+        "estimate was \\mg{results.ror.point}.\n\\end{document}\n", encoding="utf-8")  # fmt: skip
+    assert "package-bound-not-read" not in _codes(project)
+    package(project)
+    assert "cover_letter.tex" not in (built(project) / "BOUND.md").read_text(encoding="utf-8")
+
+
+def test_a_refusal_with_no_binding_after_it_is_not_warned_of(project: Path) -> None:
+    ready(project)
+    _latex(project)
+    entry = project / "manuscript" / "main.tex"
+    text = entry.read_text(encoding="utf-8")
+    entry.write_text(text.replace("\\end{document}", "\\catcode`\\@=11\n\\end{document}"),
+                     encoding="utf-8")  # fmt: skip
+    assert "package-bound-not-read" not in _codes(project)
+
+
+def test_a_row_past_a_refusal_says_no_heading_is_known(project: Path) -> None:
+    from manuscript_guard.deposit.bound import PAST_REFUSAL, bound_rows
+
+    ready(project)
+    _latex(project)
+    (project / "manuscript" / "main.tex").write_text(
+        "\\documentclass{article}\n\\begin{document}\n\\section{Methods}\nOf "
+        "\\mg{results.cohort.n_reports} reports.\n\\catcode`\\@=11\n\\section{Results}\nAn odds "
+        "ratio of \\mg{results.ror.point}.\n\\end{document}\n", encoding="utf-8")  # fmt: skip
+    loaded, _ = load_project(project)
+    found = [(row.key, row.section, row.past_refusal) for row in bound_rows(loaded)
+             if not row.supplement]  # fmt: skip
+    assert found == [("cohort.n_reports", "Methods", False), ("ror.point", PAST_REFUSAL, True)]
+    package(project)
+    rows = (built(project) / "BOUND.md").read_text(encoding="utf-8")
+    assert f"manuscript/main.tex, {PAST_REFUSAL} |" in rows
+
+
+def test_a_file_nothing_inputs_is_not_in_bound_md(project: Path) -> None:
+    ready(project)
+    _latex(project)
+    (project / "manuscript" / "notes.tex").write_text(
+        "Kept aside: the estimate was \\mg{results.ror.ci90_low}.\n", encoding="utf-8")
+    package(project)
+    assert "notes.tex" not in (built(project) / "BOUND.md").read_text(encoding="utf-8")
+
+
+def test_a_binding_in_a_heading_or_a_caption_is_placed_under_its_section(project: Path) -> None:
+    from manuscript_guard.deposit.bound import bound_rows
+
+    ready(project)
+    _latex(project)
+    (project / "manuscript" / "main.tex").write_text(
+        "\\documentclass{article}\n\\begin{document}\n\\section{Methods}\nText.\n"
+        "\\section{Reports from \\mg{results.cohort.n_reports} cases}\nText.\n"
+        "\\subsection{Figures}\n\\begin{figure}\n\\caption{An odds ratio of "
+        "\\mg{results.ror.point}.}\n\\end{figure}\n\\end{document}\n", encoding="utf-8")
+    loaded, _ = load_project(project)
+    found = {row.key: row.section for row in bound_rows(loaded) if not row.supplement}
+    assert found["cohort.n_reports"].startswith("Reports from"), found
+    assert found["ror.point"] == "Figures", found
+
+
+def test_bound_md_of_a_markdown_manuscript_is_what_it_was(project: Path) -> None:
+    """BOUND.md of the example, Markdown, byte for byte as main wrote it before its rows were
+    read by `bound_rows`. `tests/data/package/bound_example.md` was written by main's own
+    `deposit.texts.bound` at 40dcb675 (`git archive 40dcb675 src`, that `src` first on the
+    path, run on `example/`), with the version each `software.*` row prints put as VERSION,
+    since it is the Python and the statsmodels a run has; the same is done here."""
+    import re
+
+    package(ready(project))
+    written = (built(project) / "BOUND.md").read_text(encoding="utf-8")
+    written = re.sub(r"(?m)^(\| `software\.[^`]+` \| )[^|]*( \|)", r"\1VERSION\2", written)
+    pinned = (Path(__file__).parent / "data" / "package" / "bound_example.md").read_bytes()
+    assert written.encode("utf-8") == pinned

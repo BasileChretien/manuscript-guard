@@ -116,8 +116,8 @@ def zenodo(project: Project) -> str:
         "title": title(project),
         "upload_type": UPLOAD_TYPE,
         "description": description(project),
-        "creators": [_creator(person) for person in people(project)]
-        or [{"name": "The authors of the paper"}],
+        # `creators_note` refuses the package where there is no one to name.
+        "creators": [_creator(person) for person in people(project) if person.name],
     }
     words = keywords(project)
     if words:
@@ -126,9 +126,9 @@ def zenodo(project: Project) -> str:
     if len(found) == 1:
         # Zenodo's licences are named by their SPDX identifiers in small letters.
         record["license"] = found[0].lower()
+    # Never `package.doi`: it is the package's own DOI, and the legacy API reads `doi` as one
+    # a publisher assigned already, which a GitHub release read from the root would take.
     package = settings(project)
-    if package.get("doi"):
-        record["doi"] = str(package["doi"])
     if package.get("date"):
         record["publication_date"] = str(package["date"])
     related = [{"identifier": doi, "relation": "isDerivedFrom", "resource_type": "dataset",
@@ -140,7 +140,7 @@ def zenodo(project: Project) -> str:
 
 def _creator(person: Person) -> dict:
     name = ", ".join(part for part in (person.family, person.given) if part)
-    creator: dict = {"name": name or "An author of the paper"}
+    creator: dict = {"name": name}
     if person.orcid:
         creator["orcid"] = person.orcid
     if person.affiliations:
@@ -156,6 +156,19 @@ def licence_note(project: Project) -> str | None:
     if len(found) > 1:
         return (f"package.licence names {len(found)} licences, and a Zenodo record takes one: "
                 ".zenodo.json names none, so choose it on the record's form")  # fmt: skip
+    return None
+
+
+def creators_note(project: Project) -> str | None:
+    """Why the citation files cannot be written: Zenodo requires each record's creators, and
+    `authors.yaml` names none, or lists an author with no name."""
+    found = people(project)
+    if not found:
+        return "authors.yaml lists no author, and a Zenodo record has to name its creators"
+    nameless = sum(not person.name for person in found)
+    if nameless:
+        return (f"authors.yaml lists {nameless} author(s) with neither a given nor a family "
+                "name, and a Zenodo record names each of its creators")  # fmt: skip
     return None
 
 
@@ -191,27 +204,47 @@ def root_citation(project: Project, entries: tuple[Entry, ...], *, dry_run: bool
             continue
         target: Path = project.root / name
         if target.exists() or target.is_symlink():
-            try:
-                kept = target.read_bytes()
-            except OSError:
-                said.append(f"{name} at the root is kept; it could not be read")
-                continue
-            fields = differing(name, kept, entry.data)
-            if fields is None:
-                said.append(f"{name} at the root is kept; it could not be read as "
-                            f"{'JSON' if name == ZENODO else 'YAML'}")  # fmt: skip
-            elif fields:
-                said.append(f"{name} at the root is kept; it differs from the package's in "
-                            + ", ".join(fields))  # fmt: skip
-            else:
-                said.append(f"{name} at the root is kept; it says what the package's says")
+            said.append(_kept(name, target, entry.data))
         elif dry_run:
             said.append(f"{name} would be written at the root")
         else:
-            target.write_bytes(entry.data)
-            said.append(f"{name} written at the root")
+            said.append(_created(name, target, entry.data))
     return said
 
 
-__all__ = ["CITATION", "ZENODO", "Person", "data_dois", "description", "differing",
-           "keywords", "licence_note", "people", "root_citation", "title", "zenodo"]  # fmt: skip
+def _created(name: str, target: Path, data: bytes) -> str:
+    """Write `data` at `target` only if nothing is there as it is opened: a file made since
+    it was looked for is kept, and a write the system refuses is said, not raised."""
+    try:
+        handle = open(target, "xb")  # noqa: SIM115 -- the file it made is removed on failure
+    except FileExistsError:
+        return _kept(name, target, data)
+    except OSError as exc:
+        return f"{name} could not be written at the root ({exc.strerror or exc})"
+    try:
+        with handle:
+            handle.write(data)
+    except OSError as exc:
+        # The file is the one this call made: what it holds is not the package's.
+        target.unlink(missing_ok=True)
+        return f"{name} could not be written at the root ({exc.strerror or exc})"
+    return f"{name} written at the root"
+
+
+def _kept(name: str, target: Path, data: bytes) -> str:
+    try:
+        kept = target.read_bytes()
+    except OSError:
+        return f"{name} at the root is kept; it could not be read"
+    fields = differing(name, kept, data)
+    if fields is None:
+        return (f"{name} at the root is kept; it could not be read as "
+                f"{'JSON' if name == ZENODO else 'YAML'}")  # fmt: skip
+    if fields:
+        return f"{name} at the root is kept; it differs from the package's in " + ", ".join(fields)
+    return f"{name} at the root is kept; it says what the package's says"
+
+
+__all__ = ["CITATION", "ZENODO", "Person", "creators_note", "data_dois", "description",
+           "differing", "keywords", "licence_note", "people", "root_citation", "title",
+           "zenodo"]  # fmt: skip

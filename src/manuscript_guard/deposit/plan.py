@@ -539,7 +539,7 @@ def plan_package(project: Project, results: Results, *, with_manuscript: bool = 
                                 path=project.root, hint="run `git status` there: git may not "
                                 "be on PATH, or may refuse the folder as of dubious "
                                 "ownership"))  # fmt: skip
-    findings += _notes(project, inputs, kind)
+    findings += _notes(project, inputs, kind) + _described(project, results, kind)
     entries = sorted(collect.entries.values(), key=lambda entry: entry.path)
     findings += _names_taken(project, entries)
     entries += generated_entries(project, results, inputs, entries, with_manuscript,
@@ -657,6 +657,29 @@ def _notes(project: Project, inputs: list[Input], kind: str = "") -> list[Findin
     if note is not None:
         found.append(Finding(GATE, "package-zenodo-licence", note, severity=WARN,
                              path=project.root / "paper.yaml"))  # fmt: skip
+    return found
+
+
+def _described(project: Project, results: Results, kind: str) -> list[Finding]:
+    """What refuses the files a package describes itself with: a Zenodo record with no one
+    to name as its creators, and a crate with no day to give as published, which RO-Crate
+    1.1 requires of its root."""
+    from .crate import date_published
+    from .metadata import creators_note
+
+    found = []
+    nobody = creators_note(project) if kind else None
+    if nobody is not None:
+        found.append(Finding(GATE, "package-no-creators", nobody, path=project.root /
+                             "authors.yaml", hint="list the authors, each with a given or a "
+                             "family name, in authors.yaml; the tool names no one it is not "
+                             "told of"))  # fmt: skip
+    if kind == "ro-crate" and date_published(project, results) is None:
+        found.append(Finding(GATE, "package-crate-undated", "an RO-Crate gives the day it was "
+                             "published, and paper.yaml gives no package.date and no results "
+                             "file records a date that can be read", path=project.root /
+                             "paper.yaml", hint="write the day the deposit is published as "
+                             "package.date, `date: 2026-11-02`; the tool reads no clock"))
     return found
 
 

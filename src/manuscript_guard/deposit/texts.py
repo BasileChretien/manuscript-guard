@@ -272,7 +272,10 @@ def generated_entries(project: Project, results: Results, inputs: list[Input],
     if "MODELS.md" in added:
         from manuscript_guard.cards import models_text
 
-        made.append(generated("MODELS.md", models_text(project, results) or "",
+        # Only the cards of the results the package holds: one of a withheld fragment would
+        # publish counts the custodian's minimum was never read against.
+        packaged = {entry.path for entry in entries}
+        made.append(generated("MODELS.md", models_text(project, results, packaged) or "",
                               "the models the analysis fitted"))  # fmt: skip
     if kind == "ro-crate":
         from .crate import CRATE, RELATIONS, crate_files

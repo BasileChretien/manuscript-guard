@@ -3394,8 +3394,45 @@ def test_a_file_changed_after_its_run_is_not_stated_by_the_crate(
         assert code in codes(gate_report(project))
     assert _run_cli(["package", str(project), "--ro-crate", "--skip-checks"]) == 0
     entities, relations = _crate_of(project)
-    assert {"@id": relative} not in _stated(entities[action], relation)
+    if relation == "instrument":
+        # The profile requires every action's instrument: the script stays named, and only
+        # RELATIONS.md says it is not the one its record names.
+        assert _stated(entities[action], relation) == [{"@id": relative}]
+    else:
+        assert {"@id": relative} not in _stated(entities[action], relation)
     assert f"| {action} | {relation} | {relative} | {said}" in relations
+    for entity in entities.values():
+        if entity["@type"] == "CreateAction":
+            assert _stated(entity, "instrument"), entity["@id"]
+
+
+def test_a_model_of_results_the_package_withholds_is_not_published(project: Path) -> None:
+    """A fragment another script declared restricted is withheld, and the custodian's minimum
+    is not read across it: its model card, 271 events and all, would go out in MODELS.md with
+    no sign-off covering it. Here the minimum is above the card's counts, and the package goes
+    without a sign-off only because the card stays out with its results."""
+    import subprocess
+    import sys
+
+    _packable(project, request="Write to the corresponding author.")
+    paper = project / "paper.yaml"
+    document = yaml.safe_load(paper.read_text(encoding="utf-8"))
+    document["custodian"] = {"minimum_cell_count": 5000}
+    paper.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    assert _run_cli(["package", str(project), "--ro-crate"]) == 1
+    (project / "analysis" / "02_next.py").write_text(
+        "from manuscript_guard.emit import Emitter\nem = Emitter(__file__)\n"
+        'em.add_input("results/01_disproportionality.json", restricted=True)\n'
+        'em.value("ratio.next", 0.5, digits=1)\nem.write()\n', encoding="utf-8")  # fmt: skip
+    ran = subprocess.run([sys.executable, "analysis/02_next.py"], cwd=project,
+                         capture_output=True, text=True)  # fmt: skip
+    assert ran.returncode == 0, ran.stderr
+    assert _run_cli(["package", str(project), "--ro-crate"]) == 0
+    (folder,) = [p for p in (project / "build" / "package").iterdir() if p.is_dir()]
+    held = (folder / "MODELS.md").read_text(encoding="utf-8")
+    assert "Adjusted model" not in held and "271" not in held and "4000" not in held
+    assert "left out: withheld with its results" in held
+    assert "4000 of 4000" not in (folder / "ro-crate-metadata.json").read_text(encoding="utf-8")
 
 
 def test_a_statement_that_loses_the_deposits_doi_fails_at_submission(project: Path) -> None:

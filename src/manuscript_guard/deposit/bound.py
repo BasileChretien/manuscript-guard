@@ -3,9 +3,11 @@ BOUND.md, read from a Markdown manuscript or a LaTeX one.
 
 A Markdown file is read as `placeholders.parse` reads it; a LaTeX one as the reader of the
 gates reads it (`text/latex/views.bindings`), each binding with the headings in force where
-it stands. A LaTeX file nothing inputs is not printed, and is passed over. Past a part the
-LaTeX reader refuses, a binding is found by its shape and the headings over it are not known:
-`latex_unread` names the first such part, and the package warns of it.
+it stands. Of a LaTeX manuscript only the `.tex` files its documents print are read: a file
+nothing inputs, a second document beside the entry and the author's packages are passed
+over. Past a part the LaTeX reader refuses in a file it reads, a binding is found by its
+shape and the heading over it is not known: its row says so (`PAST_REFUSAL`), and
+`latex_unread` names the first refusal such a row stands after, which the package warns of.
 """
 
 from __future__ import annotations
@@ -19,12 +21,15 @@ from manuscript_guard.text.reader import LATEX, manuscript_format
 KINDS = ("results", "table", "figure")
 #: The section of a binding above every heading.
 NO_HEADING = "before the first heading"
+#: The section of a binding found past a part the LaTeX reader refused.
+PAST_REFUSAL = "after a part the reader refused; heading not known"
 
 
 @dataclass(frozen=True)
 class BoundRow:
     """One binding: its namespace and key, the file it stands in from the project's root,
-    the nearest heading over it, its line, and whether the supplement prints it."""
+    the nearest heading over it, its line, whether the supplement prints it, and whether it
+    stands past a part the LaTeX reader refused, where no heading is known."""
 
     namespace: str
     key: str
@@ -32,6 +37,7 @@ class BoundRow:
     section: str
     line: int
     supplement: bool
+    past_refusal: bool = False
 
 
 def bound_rows(project: Project) -> list[BoundRow]:
@@ -41,7 +47,7 @@ def bound_rows(project: Project) -> list[BoundRow]:
     if not folder.is_dir():
         return []
     if manuscript_format(folder) == LATEX:
-        return _latex_rows(project)
+        return [row for row, _refusal in _latex_rows(project)]
     return _markdown_rows(project)
 
 
@@ -77,7 +83,9 @@ def _markdown_rows(project: Project) -> list[BoundRow]:
     return rows
 
 
-def _latex_rows(project: Project) -> list[BoundRow]:
+def _latex_rows(project: Project) -> list[tuple[BoundRow, str | None]]:
+    """Each row of a LaTeX manuscript, with where the refusal it stands past is, as
+    `file:line (why)`, or None."""
     from manuscript_guard.text.latex.structure import read_document
     from manuscript_guard.text.latex.views import bindings
 
@@ -85,37 +93,38 @@ def _latex_rows(project: Project) -> list[BoundRow]:
     rows = []
     for supplement in (False, True):
         for source in read_document(folder, supplementary=supplement).sources:
-            if source.loose:
+            if source.loose or not source.path.lower().endswith(".tex"):
                 continue
             shown = (folder / source.path).relative_to(project.root).as_posix()
+            refusals = source.reading.refusals
+            # As `views._uses` reads a file: past its first refusal, bindings by their shape.
+            refused = refusals[0].offset if refusals else None
             for placeholder in bindings(source)[0]:
                 if placeholder.namespace not in KINDS:
                     continue
+                if refused is not None and placeholder.start >= refused:
+                    line = source.text.count("\n", 0, refused) + 1
+                    where = f"{shown}:{line} ({refusals[0].message})"
+                    rows.append((BoundRow(placeholder.namespace, placeholder.key, shown,
+                                          PAST_REFUSAL, placeholder.line, supplement, True),
+                                 where))  # fmt: skip
+                    continue
                 chain = source.chain_at(placeholder.start)
                 section = " ".join(chain[-1].title.split()) if chain else ""
-                rows.append(BoundRow(placeholder.namespace, placeholder.key, shown,
-                                     section or NO_HEADING, placeholder.line,
-                                     supplement))  # fmt: skip
+                rows.append((BoundRow(placeholder.namespace, placeholder.key, shown,
+                                      section or NO_HEADING, placeholder.line, supplement),
+                             None))  # fmt: skip
     return rows
 
 
 def latex_unread(project: Project) -> str | None:
-    """The first part of a LaTeX manuscript its reader refuses, as `file:line (why)`, or None
-    where it reads every part, or the manuscript is Markdown."""
+    """The first refusal of the LaTeX reader that a row of BOUND.md stands past, as
+    `file:line (why)`, or None where no row does or the manuscript is Markdown. A refusal in
+    a file BOUND.md does not read, or with no binding after it, changes no row."""
     folder = project.path("manuscript")
     if not folder.is_dir() or manuscript_format(folder) != LATEX:
         return None
-    from manuscript_guard.text.latex.structure import read_document
-
-    for supplement in (False, True):
-        for path, refusal in read_document(folder, supplementary=supplement).refusals:
-            try:
-                text = (folder / path).read_text(encoding="utf-8", errors="replace")
-            except OSError:
-                return f"manuscript/{path} ({refusal.message})"
-            line = text.count("\n", 0, refusal.offset) + 1
-            return f"manuscript/{path}:{line} ({refusal.message})"
-    return None
+    return next((where for _row, where in _latex_rows(project) if where), None)
 
 
-__all__ = ["KINDS", "BoundRow", "bound_rows", "latex_unread"]
+__all__ = ["KINDS", "NO_HEADING", "PAST_REFUSAL", "BoundRow", "bound_rows", "latex_unread"]

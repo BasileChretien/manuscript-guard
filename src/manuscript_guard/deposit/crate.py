@@ -7,19 +7,22 @@ SHA-256 and size, each run of a script that wrote results from its fragment, eac
 a figure from its `*.render.json`, each input the package withholds from the digest the run
 recorded, with how to obtain it.
 
-A relationship goes into `@graph` only where it holds now, as the files here show it:
+Every action names its instrument, which the Process Run Crate profile requires: the script
+in the package, or, where the package does not hold it, a contextual entity with the path
+and the digest the record gives. That a script is the one its record names is checked
+(`generated_by_sha256`, line endings left out as G1 compares it, or `rendered_by_sha256`),
+and where it is not, RELATIONS.md says so. Every other relationship goes into `@graph` only
+where it holds now, as the files here show it:
 
-- a run's instrument, where the script here is the one whose digest the fragment recorded
-  (`generated_by_sha256`, line endings left out as G1 compares it);
 - each input a run read, where the file here, or on this computer for one the package
   withholds, has the digest the run recorded;
 - the results a run wrote, where the fragment here has the digest of its `.sha256` file;
-- a figure's script and each file it drew, where they have the digests its `*.render.json`
-  recorded.
+- each file a figure's script drew, where it has the digest its `*.render.json` recorded.
 
 Each other relationship is in RELATIONS.md, as not as recorded or as not recorded: which
 results a figure was drawn from is never recorded, and so never stated. Nothing reads the
-clock: `datePublished` is `package.date`, or the day the latest results were written.
+clock: `datePublished` is `package.date`, or the day the latest results were written, and a
+crate with neither is refused, since RO-Crate 1.1 requires the date.
 """
 
 from __future__ import annotations
@@ -84,7 +87,7 @@ class _Crate:
         return False
 
 
-def _date(project: Project, results: Results) -> str | None:
+def date_published(project: Project, results: Results) -> str | None:
     """`package.date`, or the day the latest results were written, as their records say."""
     said = settings(project).get("date")
     if said:
@@ -195,6 +198,30 @@ def _bytes_check(recorded: str):
     return lambda source: sha256_of(source) == recorded
 
 
+def _instrument(crate: _Crate, script: str, recorded: str | None) -> dict:
+    """What a run names as its instrument, which a Process Run Crate requires of every
+    action: the script in the package, whether or not it is the one the record's digest
+    names (RELATIONS.md says which), or, where the package does not hold it, a contextual
+    entity naming the path and the digest the record gives."""
+    if script in crate.files:
+        return {"@id": file_id(script)}
+    at = "#script-" + quote(script, safe="/")
+    said = (f"; its SHA-256, line endings left out, was recorded as {recorded}" if recorded
+            else "")  # fmt: skip
+    crate.entities[at] = {"@id": at, "@type": "SoftwareSourceCode", "name": script,
+                          "description": f"the script a record names, not in this package{said}"}
+    return {"@id": at}
+
+
+def _unnamed_script(crate: _Crate, record: str, stem: str) -> dict:
+    """The instrument of a drawing whose record names no script."""
+    at = "#script-of-" + quote(record, safe="/")
+    crate.entities[at] = {"@id": at, "@type": "SoftwareSourceCode",
+                          "name": f"the script that drew {stem}",
+                          "description": f"{record} does not name it"}
+    return {"@id": at}
+
+
 def _runs(crate: _Crate, results: Results, inputs: list[Input]) -> list[dict]:
     by_path = {found.path: found for found in inputs}
     actions = []
@@ -210,15 +237,14 @@ def _runs(crate: _Crate, results: Results, inputs: list[Input]) -> list[dict]:
             action["endTime"] = str(fragment.generated_at)
         script, recorded = fragment.generated_by, fragment.generated_by_sha256
         held = crate.matches(script, _script_check(recorded)) if recorded else None
+        action["instrument"] = _instrument(crate, script, recorded)
         if not recorded:
             crate.leave(NOT_RECORDED, run, "instrument", script, "the results were written "
                         "before the emitter recorded the script's digest")  # fmt: skip
-        elif held is True:
-            action["instrument"] = {"@id": file_id(script)}
         elif held is False:
             crate.leave(UNVERIFIED, run, "instrument", script, "the script here has changed "
                         "since it wrote these results")  # fmt: skip
-        else:
+        elif held is None:
             crate.leave(UNVERIFIED, run, "instrument", script, "the script is not in this "
                         "package")  # fmt: skip
         objects = [link for record in fragment.inputs if isinstance(record, dict)
@@ -259,6 +285,7 @@ def _renders(crate: _Crate) -> tuple[list[dict], set[str], set[str]]:
         action: dict = {"@id": run, "@type": "CreateAction",
                         "name": f"The drawing of the figure {stem}, as {path} records it"}
         if not isinstance(document, dict):
+            action["instrument"] = _unnamed_script(crate, path, stem)
             crate.leave(UNVERIFIED, run, "instrument", path, "it cannot be read as a record "
                         "of a drawing")  # fmt: skip
             crate.entities[run] = action
@@ -269,15 +296,15 @@ def _renders(crate: _Crate) -> tuple[list[dict], set[str], set[str]]:
             script = (folder / named).as_posix()
             scripts.add(script)
             held = crate.matches(script, _script_check(str(recorded))) if recorded else None
-            if held is True:
-                action["instrument"] = {"@id": file_id(script)}
-            elif not recorded:
+            action["instrument"] = _instrument(crate, script, str(recorded) if recorded else None)
+            if not recorded:
                 crate.leave(NOT_RECORDED, run, "instrument", script, "no digest of the script")
-            else:
+            elif held is not True:
                 crate.leave(UNVERIFIED, run, "instrument", script, "the script here has changed "
                             "since it drew the figure" if held is False else "the script is "
                             "not in this package")  # fmt: skip
         else:
+            action["instrument"] = _unnamed_script(crate, path, stem)
             crate.leave(NOT_RECORDED, run, "instrument", path, "it names no script")
         outputs = document.get("outputs") if isinstance(document.get("outputs"), dict) else {}
         made = []
@@ -319,11 +346,12 @@ def _unrecorded(crate: _Crate, drawn: set[str]) -> None:
 
 def relations_text(left: list[tuple[str, str, str, str, str]]) -> str:
     out = ["# What ro-crate-metadata.json does not state", "",
-           "ro-crate-metadata.json states a relationship between two things only where the "
-           "files of this package show that it holds: a script is the one whose digest its "
-           "results recorded, an input and a results file have the digests the run recorded, "
-           "a figure and its script have the digests its `*.render.json` recorded. Each "
-           "relationship it does not state is here, with why.", ""]  # fmt: skip
+           "ro-crate-metadata.json names the script of every run and every drawing, and "
+           "states any other relationship only where the files of this package show that it "
+           "holds: an input and a results file have the digests the run recorded, a file a "
+           "figure's script drew has the digest its `*.render.json` recorded. Each script that "
+           "is not the one its record names, and each relationship the crate does not state, "
+           "is here, with why.", ""]  # fmt: skip
     for kind, heading, said in (
         (UNVERIFIED, "Not as recorded", "The record names it, and the files here do not show "
          "that it holds."),
@@ -353,7 +381,7 @@ def _root(project: Project, results: Results, authors: list[dict], parts: list[s
                   "description": description(project), "conformsTo": {"@id": PROFILE},
                   "hasPart": [{"@id": file_id(path)} for path in parts],
                   "mentions": mentions}  # fmt: skip
-    when = _date(project, results)
+    when = date_published(project, results)
     if when:
         root["datePublished"] = when
     found = [{"@id": f"https://spdx.org/licenses/{quote(one, safe='')}"} for one in
@@ -419,4 +447,5 @@ def crate_files(project: Project, results: Results, entries: list[Entry], inputs
     return relations, json.dumps(document, indent=2, ensure_ascii=False, sort_keys=True) + "\n"
 
 
-__all__ = ["CRATE", "RELATIONS", "crate_files", "file_id", "input_id", "relations_text"]
+__all__ = ["CRATE", "RELATIONS", "crate_files", "date_published", "file_id", "input_id",
+           "relations_text"]  # fmt: skip

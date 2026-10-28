@@ -10,6 +10,9 @@ the package's copy is the command's word for word.
 from __future__ import annotations
 
 import re
+from collections.abc import Collection
+from dataclasses import replace
+from pathlib import Path
 
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import Results
@@ -50,22 +53,50 @@ def model_cards(project: Project, results: Results) -> tuple[list[str], Report]:
     return lines, report
 
 
-def models_text(project: Project, results: Results) -> str | None:
-    """MODELS.md: the cards as `models` prints them, or None where no model was fitted."""
+def _held(results: Results, root: Path, packaged: Collection[str]) -> Results:
+    """The results with only the models and variables of the fragments `packaged` names: a
+    card of a fragment the package withholds would publish its counts, which no sign-off of
+    the custodian's has read."""
+    def kept(source: Path) -> bool:
+        try:
+            return source.relative_to(root).as_posix() in packaged
+        except ValueError:
+            return False
+
+    return replace(results,
+                   models={k: m for k, m in results.models.items() if kept(m.source)},
+                   variables={k: v for k, v in results.variables.items() if kept(v.source)})
+
+
+def models_text(project: Project, results: Results,
+                packaged: Collection[str] | None = None) -> str | None:  # fmt: skip
+    """MODELS.md: the cards as `models` prints them, or None where no model was fitted. With
+    `packaged`, the paths of the files a package holds, only the models of the results files
+    it holds are printed, and how many were left out is said."""
     if not results.models:
         return None
-    lines, _report = model_cards(project, results)
-    body = "\n".join(line.rstrip() for line in lines).strip("\n")
-    # A fence longer than any run of backticks an author's words hold.
-    fence = "`" * max([3, *(len(run) + 1 for run in re.findall("`+", body))])
-    return (
-        "# The models the analysis fitted\n\n"
-        "Each model the results record, as `manuscript-guard models` prints it: its name, what "
-        "was fitted, the sentence made from the fit, what the author says it is for, each "
-        "variable with the kind it was declared and how it entered, and what the model check "
-        "(G15) said of it when the package was made.\n\n"
-        f"{fence}text\n{body}\n{fence}\n"
-    )
+    shown = results if packaged is None else _held(results, project.root, packaged)
+    withheld = [m.source for k, m in results.models.items() if k not in shown.models]
+    away = sorted({(p.relative_to(project.root) if p.is_relative_to(project.root) else
+                    Path(p.name)).as_posix() for p in withheld})  # fmt: skip
+    left = len(withheld)
+    out = [
+        "# The models the analysis fitted", "",
+        "Each model the results of this package record, as `manuscript-guard models` prints "
+        "it: its name, what was fitted, the sentence made from the fit, what the author says "
+        "it is for, each variable with the kind it was declared and how it entered, and what "
+        "the model check (G15) said of it when the package was made.", "",
+    ]  # fmt: skip
+    if left:
+        out += [f"{left} model(s) left out: withheld with its results ("
+                + ", ".join(f"`{path}`" for path in away) + ").", ""]  # fmt: skip
+    if shown.models:
+        lines, _report = model_cards(project, shown)
+        body = "\n".join(line.rstrip() for line in lines).strip("\n")
+        # A fence longer than any run of backticks an author's words hold.
+        fence = "`" * max([3, *(len(run) + 1 for run in re.findall("`+", body))])
+        out += [f"{fence}text", body, fence]
+    return "\n".join(out).rstrip("\n") + "\n"
 
 
 __all__ = ["model_cards", "models_text"]

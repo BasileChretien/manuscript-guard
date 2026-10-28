@@ -11,6 +11,24 @@
       "type": "string",
       "pattern": "^[^{}]*\\{n\\}[^{}]*$",
       "description": "The pointer with {n}, once, where its number goes: \"Table {n}\", \"Fig. {n}\", \"eTable {n}\", \"Table S{n}\"."
+    },
+    "sharing_version": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "What the journal lets its authors share of one version of the paper.",
+      "properties": {
+        "where": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": ["personal-site", "institutional-repository", "subject-repository", "academic-network", "social-media-link"]
+          },
+          "description": "Where it may be shared. Empty: nowhere."
+        },
+        "embargo_months": { "type": "integer", "minimum": 0, "description": "How long after publication it may be shared." },
+        "licence": { "type": "string", "minLength": 1, "description": "The licence it is to be shared under, as the page names it (CC BY-NC-ND 4.0)." },
+        "set_statement": { "type": "string", "minLength": 1, "description": "The words the journal asks a shared copy to carry." }
+      }
     }
   },
   "properties": {
@@ -35,7 +53,7 @@
     },
     "quotes": {
       "type": "object",
-      "description": "For each rule, the words of the page it was read from, as the page writes them, keyed by the rule: limits.abstract_words, structure.required_sections, required_statements.<id>, references, english_variant, blinding, text_recycling, abbreviations.<key>, reporting_guidelines, pointers.<kind>. G4 holds each to the stored page, and a limit's number to its quote.",
+      "description": "For each rule, the words of the page it was read from, as the page writes them, keyed by the rule: limits.abstract_words, structure.required_sections, required_statements.<id>, references, english_variant, blinding, text_recycling, abbreviations.<key>, reporting_guidelines, pointers.<kind>, graphical_abstract.<name>, boxes.<id>, sharing.<version>. G4 holds each to the stored page, and a limit's number to its quote.",
       "propertyNames": { "type": "string", "minLength": 1 },
       "additionalProperties": { "type": "string", "minLength": 1 }
     },
@@ -302,6 +320,98 @@
           }
         }
       },
+    "graphical_abstract": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "description": "What the journal says of a graphical abstract, each rule quoted under `quotes:` as graphical_abstract.<name>. Required: G4 notes it while communication/graphical-abstract/ does not exist. Omit anything the page does not state.",
+      "properties": {
+        "required": {
+          "type": "boolean",
+          "description": "true where the journal requires a graphical abstract, false where it asks for or accepts one."
+        },
+        "width_px": { "type": "integer", "minimum": 1, "description": "The width it must be, in pixels." },
+        "height_px": { "type": "integer", "minimum": 1, "description": "The height it must be, in pixels." },
+        "min_width_px": { "type": "integer", "minimum": 1, "description": "The least width, in pixels." },
+        "min_height_px": { "type": "integer", "minimum": 1, "description": "The least height, in pixels." },
+        "aspect_ratio": {
+          "type": "string",
+          "pattern": "^[0-9]+(\\.[0-9]+)?:[0-9]+(\\.[0-9]+)?$",
+          "description": "Its width to its height, as the page writes it: \"16:9\", \"2.5:1\"."
+        },
+        "min_dpi": { "type": "number", "exclusiveMinimum": 0, "description": "The least resolution." },
+        "formats": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "enum": ["tiff", "tif", "eps", "pdf", "png", "jpeg", "jpg", "svg"] },
+          "description": "The file formats the journal takes for it."
+        },
+        "max_file_mb": { "type": "number", "exclusiveMinimum": 0, "description": "The largest file, in MB." },
+        "max_words": { "type": "integer", "minimum": 1, "description": "The most words it may hold." },
+        "max_labels": { "type": "integer", "minimum": 0, "description": "The most labels it may hold." },
+        "alt_text_max_chars": { "type": "integer", "minimum": 1, "description": "The most characters its alternative text may hold." },
+        "min_text_pt": { "type": "number", "exclusiveMinimum": 0, "description": "The smallest text, in points." }
+      }
+    },
+    "boxes": {
+      "type": "array",
+      "minItems": 1,
+      "description": "The boxes the journal prints beside the abstract (highlights, key points, research in context, a plain-language summary), each quoted under `quotes:` as boxes.<id>. G4 holds the main text to each: a warning until submission, a failure at submission where the box is required. A box written only in the supplement is not the box.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "heading"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]*$",
+            "description": "highlights, key-points, research-in-context, plain-language-summary, or a name of the profile's own."
+          },
+          "heading": {
+            "type": "string",
+            "minLength": 1,
+            "description": "A Python regular expression the box's heading matches, searched case-insensitively in the title as printed, its number off: \"^highlights$\", \"^key points$\"."
+          },
+          "environment": {
+            "type": "string",
+            "pattern": "^[A-Za-z@]+\\*?$",
+            "description": "The LaTeX environment that writes the box (Elsevier's highlights). Without it, the id with its hyphens taken out."
+          },
+          "required": {
+            "type": "boolean",
+            "description": "true where the journal requires the box; false, or left out, where it asks for one. Required: G4 fails at submission what the box does not meet."
+          },
+          "items_min": { "type": "integer", "minimum": 1, "description": "The fewest items: a line of the box's list, or, where it has none, a paragraph." },
+          "items_max": { "type": "integer", "minimum": 1, "description": "The most items." },
+          "item_max_chars": { "type": "integer", "minimum": 1, "description": "The most characters an item may hold, spaces included, as printed." },
+          "item_max_words": { "type": "integer", "minimum": 1, "description": "The most words an item may hold." },
+          "max_words": { "type": "integer", "minimum": 1, "description": "The most words the box may hold." },
+          "headings": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "minLength": 1 },
+            "description": "The headings the box must carry, in the journal's words: Question, Findings, Meaning."
+          },
+          "file": {
+            "enum": ["separate", "manuscript"],
+            "description": "Whether the journal takes the box as a file of its own or in the manuscript. Recorded for the submission pack; G4 reads the box in the manuscript either way."
+          }
+        }
+      }
+    },
+    "sharing": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "description": "What the journal lets its authors share of each version of the paper, and where, each version quoted under `quotes:` as sharing.<version>. Recorded now; the communicate commands read it. Without the block, nothing is refused yet.",
+      "properties": {
+        "source_url": { "type": "string", "description": "The page the sharing policy was read from." },
+        "retrieved_on": { "type": "string", "format": "date" },
+        "preprint": { "$ref": "#/$defs/sharing_version" },
+        "accepted": { "$ref": "#/$defs/sharing_version" },
+        "published": { "$ref": "#/$defs/sharing_version" }
+      }
+    },
     "limits": {
       "type": "object",
       "additionalProperties": false,

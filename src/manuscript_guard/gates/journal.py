@@ -246,6 +246,16 @@ def figure_rules(project: Project) -> dict:
     return rules if isinstance(rules, dict) else {}
 
 
+def box_rules_of(project: Project) -> list:
+    """The boxes the target journal asks for (`boxes:`), for G8, which reads a box's numbers
+    as a summary's. None where there is no profile, or none that can be read, and not a box
+    whose heading is no regular expression: G4 says why."""
+    from manuscript_guard.text.boxes import box_rules
+
+    document = _profile(project)
+    return [] if document is None else box_rules(document)[0]
+
+
 def abbreviations_asked(project: Project) -> tuple[bool, frozenset[str]]:
     """What the target journal asks to be defined though G14 would let it stand: whether the
     statistical abbreviations are (`abbreviations.define_statistics`), and which by name

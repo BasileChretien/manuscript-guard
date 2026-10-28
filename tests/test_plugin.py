@@ -890,6 +890,7 @@ NAMED_NOWHERE = {
     "literature/related.yaml": "written with the author by the related-outputs skill",
     "manuscript/main.tex": "written by `init --latex`, in place of main.md",
     "manuscript/media/": "written by `init --from`, the pictures of a Word paper",
+    "communication/graphical-abstract/": "made by the communicate commands, still to come",
 }
 
 

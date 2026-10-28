@@ -4578,6 +4578,35 @@ def test_a_number_a_summary_gives_is_found_unreported_whatever_the_headings_are_
         assert found == unreported, (text[:cut], text[cut:], named)
 
 
+# --------------------------------------------------------------------------------- boxes
+
+from generated import box_papers  # noqa: E402
+
+from manuscript_guard.text import boxes as boxes_module  # noqa: E402
+
+
+@holds(30, box_papers())
+def test_each_box_a_journal_asks_for_is_read_with_its_items_and_nothing_else_is(
+    drawn: tuple[dict[str, Any], dict[str, Any]],
+) -> None:
+    """Every box is found, in Markdown under each way of writing its heading and in LaTeX in
+    its environment and under its heading, with each item as printed: under each mark of a
+    list, run on over its lines, its emphasis off and its binding the value's display, or a
+    paragraph where the box has no list. A heading the pattern does not take whole, and a
+    box or an item in a comment, a listing, the front matter or what TeX skips, is none. And
+    G8 takes a binding in a box for a summary's, in both."""
+    given, expected = drawn
+    read = READINGS["boxes"]()(given)
+    assert [[one[0], one[3]] for one in read["markdown"]] == expected["markdown"], given["text"]
+    keys = {key.removeprefix("results.") for key in expected["given"]} | {"or"}
+    assert {key for key, _heading, _line in read["given"]} == keys, given["text"]
+    assert read["reported"] == ["b0", "reported"], given["text"]
+    assert [[one[0], one[3]] for one in read["latex"]] == expected["latex"], given["latex"]
+    latex_keys = {key.removeprefix("results.") for key in expected["latex given"]}
+    assert {key for key, _heading in read["latex given"]} == latex_keys, given["latex"]
+    assert read["latex reported"] == ["l0"], given["latex"]
+
+
 # --------------------------------------------------------------------------- models named
 
 #: One of every way G15 reads a model named in the Methods, with the kind it names, and
@@ -12161,6 +12190,42 @@ def _a_key_credits_the_keys_it_begins(patch: pytest.MonkeyPatch) -> None:
     ])  # fmt: skip
 
 
+def _a_box_s_comment_is_read(patch: pytest.MonkeyPatch) -> None:
+    # A box read as typed: an item in a comment or a listing, and a box in either, counted.
+    patch.setattr(boxes_module, "scannable", lambda text: text)
+
+
+def _a_box_item_is_a_dash_s_alone(patch: pytest.MonkeyPatch) -> None:
+    # Only a line opening with a dash opens an item: `*`, `+`, `1.` and `2)` run on.
+    patch.setattr(boxes_module, "_ITEM", re.compile(r"^ {0,3}-(?:[ \t]+(.*)|[ \t]*)$"))
+
+
+def _a_box_item_ends_at_its_line(patch: pytest.MonkeyPatch) -> None:
+    # An item is its first line: one run on over the next is cut short.
+    whole = boxes_module.markdown_items
+
+    def first_lines(body: str) -> list[str]:
+        opened = [boxes_module._ITEM.match(line) for line in body.split("\n")]
+        return [found.group(1) or "" for found in opened if found] or whole(body)
+
+    patch.setattr(boxes_module, "markdown_items", first_lines)
+
+
+def _a_latex_comment_is_printed(patch: pytest.MonkeyPatch) -> None:
+    # Nothing of a LaTeX file passed over: a commented `\item`, and a box TeX skips, read.
+    patch.setattr(boxes_module, "_passed_over", lambda reading: lambda at: False)
+
+
+def _a_box_s_heading_is_no_summary(patch: pytest.MonkeyPatch) -> None:
+    # G8 reads a box's heading as it read any other: a number under it is a summary's to none.
+    patch.setattr(reported_gate, "box_of", lambda title, rules: None)
+
+
+def _a_latex_box_environment_is_no_summary(patch: pytest.MonkeyPatch) -> None:
+    # G8 takes no box written in its LaTeX environment for one.
+    patch.setattr(reported_gate, "_boxed_in", lambda view, sources, rules: None)
+
+
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
@@ -12187,6 +12252,30 @@ BROKEN = {
     "any emphasis opening with the word is the keywords label": (
         _any_emphasis_opening_with_the_word_is_the_label,
         test_the_abstract_ends_at_its_keywords_label_and_not_at_a_sentence_about_them,
+    ),
+    "a box's comment is read": (
+        _a_box_s_comment_is_read,
+        test_each_box_a_journal_asks_for_is_read_with_its_items_and_nothing_else_is,
+    ),
+    "a box's item is opened by a dash alone": (
+        _a_box_item_is_a_dash_s_alone,
+        test_each_box_a_journal_asks_for_is_read_with_its_items_and_nothing_else_is,
+    ),
+    "a box's item ends at its line": (
+        _a_box_item_ends_at_its_line,
+        test_each_box_a_journal_asks_for_is_read_with_its_items_and_nothing_else_is,
+    ),
+    "a LaTeX box's comment is printed": (
+        _a_latex_comment_is_printed,
+        test_each_box_a_journal_asks_for_is_read_with_its_items_and_nothing_else_is,
+    ),
+    "a box's heading is no summary to G8": (
+        _a_box_s_heading_is_no_summary,
+        test_each_box_a_journal_asks_for_is_read_with_its_items_and_nothing_else_is,
+    ),
+    "a LaTeX box environment is no summary to G8": (
+        _a_latex_box_environment_is_no_summary,
+        test_each_box_a_journal_asks_for_is_read_with_its_items_and_nothing_else_is,
     ),
     "the abstract's heading is not looked for inside a Div": (
         _a_div_is_not_looked_inside,

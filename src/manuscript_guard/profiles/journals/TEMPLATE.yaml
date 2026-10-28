@@ -295,6 +295,72 @@ reporting_guidelines:
 #   # for them, and the rest above still hold.
 #   # supplementary: {max_dpi: 300, max_file_mb: 10}
 
+# ── Boxes beside the abstract ────────────────────────────────────────────────────────────
+#
+# The short texts the journal prints beside the abstract, where its page asks for any:
+# highlights, key points, a research-in-context panel, a plain-language summary. G4 looks for
+# each in the main text, under a heading `heading` matches (a regular expression, read
+# case-insensitively in the title as printed) or, in LaTeX, in its environment, and holds it
+# to what is given here: a warning while the paper is written, a failure at submission where
+# `required: true`. A box written only in the supplement is not the box. An item is a line
+# of the box's list, or, where the box has no list, a paragraph. Quote each box under
+# `quotes.boxes.<id>`. Delete the block where the page asks for none, and any line it does
+# not state.
+#
+# boxes:
+#   - id: highlights                 # or key-points, research-in-context,
+#     heading: '^highlights$'        #    plain-language-summary, or a name of your own
+#     # environment: highlights      # the LaTeX environment; the id without its hyphens
+#     required: true                 # false, or delete the line, where it is asked for
+#     items_min: 3
+#     items_max: 5
+#     item_max_chars: 85             # spaces included, each binding as its display
+#     # item_max_words: 20
+#     # max_words: 100               # the whole box
+#     # headings: [Question, Findings, Meaning]
+#     file: separate                 # or manuscript: how the journal takes it
+
+# ── Graphical abstract ───────────────────────────────────────────────────────────────────
+#
+# What the journal says of a graphical abstract, where its page says anything. Required:
+# G4 notes it until communication/graphical-abstract/ exists. Quote each line under
+# `quotes.graphical_abstract.<name>`. Delete the block, or any line, the page does not state.
+#
+# graphical_abstract:
+#   required: false                  # true where it is required, false where it is asked for
+#   width_px: 1328
+#   height_px: 531
+#   # min_width_px: 531
+#   # min_height_px: 1328
+#   # aspect_ratio: "5:2"
+#   # min_dpi: 300
+#   formats: [tiff, png, jpg]
+#   # max_file_mb: 10
+#   # max_words: 50
+#   # max_labels: 5
+#   # alt_text_max_chars: 250
+#   # min_text_pt: 8
+
+# ── Sharing ──────────────────────────────────────────────────────────────────────────────
+#
+# What the journal lets you share of each version of the paper, and where, from its own
+# sharing or self-archiving policy. Quote each version under `quotes.sharing.<version>`.
+# No gate reads it yet; without the block, nothing is refused yet. Delete any version the
+# page does not state.
+#
+# sharing:
+#   source_url: "https://www.example-journal.org/sharing-policy"
+#   retrieved_on: 2026-01-15
+#   preprint:
+#     where: [personal-site, institutional-repository, subject-repository]
+#   accepted:
+#     where: [institutional-repository]
+#     embargo_months: 12
+#     licence: CC BY-NC-ND 4.0
+#     set_statement: "This is the accepted manuscript of an article published in ..."
+#   published:
+#     where: [social-media-link]     # a link to it, and nowhere a copy
+
 # ── Pointers to tables and figures ───────────────────────────────────────────────────────
 #
 # How the journal writes a pointer to a table or a figure, {n} standing for its number.
@@ -314,7 +380,10 @@ reporting_guidelines:
 # them, under the rule's key: limits.<name>, structure.required_sections,
 # structure.abstract_structured, structure.abstract_headings, structure.abstract_title,
 # required_statements.<id>, references, english_variant, blinding, text_recycling,
-# abbreviations.<key>, reporting_guidelines, pointers.<kind>.
+# abbreviations.<key>, reporting_guidelines, pointers.<kind>, boxes.<id>,
+# graphical_abstract.<name>, sharing.<version>. The quotes of a box, a graphical abstract
+# and a sharing policy are held to the one stored page too: where the journal gives them on
+# a page of their own, store that page's text with the instructions page.
 # G4 names every rule that has none. A limit's number must be in its quote, as digits
 # ("3500", "3,500") or as a word up to twenty ("four").
 #

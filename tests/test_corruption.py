@@ -3894,6 +3894,88 @@ def test_a_declaration_of_english_deleted_under_a_journal_that_names_one_is_note
     ]  # fmt: skip
 
 
+# ------------------------------------------------------- the boxes the journal asks for
+
+_HIGHLIGHTS = {"id": "highlights", "heading": "^highlights$", "required": True, "items_min": 3,
+               "items_max": 4, "item_max_chars": 60}  # fmt: skip
+_HIGHLIGHTS_BOX = ("# Highlights\n\n- Hepatic injury was reported disproportionately.\n"
+        "- The reporting odds ratio was {{results.ror.point}}.\n"
+        "- Disproportionality is not incidence.\n\n")  # fmt: skip
+
+
+def _box_profile(root: Path) -> None:
+    profile = root / "profiles" / "journals" / "demo-journal.yaml"
+    document = yaml.safe_load(profile.read_text(encoding="utf-8"))
+    document["boxes"] = [_HIGHLIGHTS]
+    profile.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+
+def _box_codes(root: Path, edit) -> list[tuple[str, str]]:
+    """G4's box findings at submission, for the example with a box of highlights the journal
+    requires, as `edit` leaves it."""
+    from manuscript_guard.gates import check_boxes
+    from manuscript_guard.policy import SUBMISSION, apply_stage
+
+    _box_profile(root)
+    text = main_md(root).read_text(encoding="utf-8")
+    written = edit(_HIGHLIGHTS_BOX) + "# Abstract\n"
+    main_md(root).write_text(text.replace("# Abstract\n", written, 1), encoding="utf-8")
+    project, _ = load_project(root)
+    report, _ = apply_stage(check_boxes(project, load_namespace(project)[0], SUBMISSION),
+                            SUBMISSION)  # fmt: skip
+    return sorted((f.code, f.severity) for f in report.findings)
+
+
+@pytest.mark.parametrize(
+    ("edit", "said"),
+    [
+        # The box as the journal asks: nothing.
+        (lambda box: box, []),
+        # Deleted, or its heading reworded.
+        (lambda box: "", [("box-missing", "fail")]),
+        (lambda box: box.replace("# Highlights", "# Main points"), [("box-missing", "fail")]),
+        # Moved into a comment.
+        (lambda box: f"<!--\n{box}-->\n\n", [("box-missing", "fail")]),
+        # An item cut, an item hidden in a comment, and items added past the most.
+        (lambda box: box.replace("- Disproportionality is not incidence.\n", ""),
+         [("box-items", "fail")]),
+        (lambda box: box.replace("- Disproportionality is not incidence.",
+                                 "<!-- - Disproportionality is not incidence. -->"),
+         [("box-items", "fail")]),
+        (lambda box: box.replace("incidence.\n", "incidence.\n- One more.\n- And another.\n"),
+         [("box-items", "fail")]),
+        # An item lengthened past its characters.
+        (lambda box: box.replace("not incidence.", "not incidence, and cannot establish risk."),
+         [("box-item-long", "fail")]),
+    ],
+)  # fmt: skip
+def test_a_box_the_journal_requires_fails_at_submission_when_it_is_broken(
+    project: Path, edit, said: list
+) -> None:
+    assert _box_codes(project, edit) == said
+
+
+def test_a_number_given_only_in_a_box_is_a_summary_g8_reports(project: Path) -> None:
+    """A key a box binds, and the Methods and the Results do not, is a number the paper
+    reports nowhere: G8 warns once the profile names the box, and not before."""
+    from manuscript_guard.gates import check_reported
+
+    text = main_md(project).read_text(encoding="utf-8")
+    main_md(project).write_text(text.replace(
+        "# Abstract\n", "# Highlights\n\n- The signal was met: {{results.signal.met}}.\n\n"
+        "# Abstract\n", 1), encoding="utf-8")  # fmt: skip
+
+    def warned() -> bool:
+        project_, _ = load_project(project)
+        results = load_namespace(project_)[1]
+        return any("results.signal.met" in f.message
+                   for f in check_reported(project_, results).findings)  # fmt: skip
+
+    assert not warned()
+    _box_profile(project)
+    assert warned()
+
+
 # ------------------------------------------------- a placeholder, wherever it is written
 
 

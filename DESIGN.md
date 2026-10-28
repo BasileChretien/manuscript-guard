@@ -6079,6 +6079,44 @@ carries them.
 
 It is a warning: a new rule starts as one, until what it says of real papers is known.
 
+A box the journal's profile asks for (`boxes:`, highlights or key points, below) summarises as
+the abstract does, and G8 reads it so: its heading is a summary's, and in LaTeX so is its
+environment, whose numbers the printed view keeps under whatever heading stands over it.
+
+## The boxes a journal prints beside the abstract
+
+Journals print short texts beside the abstract: Elsevier's highlights, JAMA's key points, the
+Lancet's research in context, a plain-language summary. Each comes with rules a desk editor
+holds a submission to (three to five items, 85 characters each, the headings Question,
+Findings and Meaning) and nothing held them. The profile now records each box the page asks
+for under `boxes:`, as data like the rest: its id, the heading it goes under (a regular
+expression, searched in the title as printed), the LaTeX environment that writes it, whether
+it is required, its item and word limits, the headings it carries, and whether the journal
+takes it as a file of its own. Each box is one rule of the page, quoted under `boxes.<id>`.
+
+G4 reads the boxes of the main text (`text/boxes.py`) and holds each to its rules
+(`gates/journal_boxes.py`): `box-missing`, `box-items`, `box-item-long`, `box-over-limit` and
+`box-headings-missing`. In Markdown a box is the section under its heading; in LaTeX its
+environment, or a section under its heading. An item is a line of the box's list, run on over
+the lines after it, or, where the box has no list, a paragraph: what prints as one. It is
+measured as printed, a binding as its value's display, a comment and a listing passed over,
+Markdown's marks and LaTeX's commands off. Each finding warns until submission and fails there
+where the box is required, as the author decided (2026-10-28): a box is written last, and a
+draft without one is the ordinary state. A box written only in the supplement is not the box,
+and `box-missing` says where it is. A heading that is no regular expression fails from
+internal review (`box-heading-invalid`), as the profile's other errors do.
+
+The profile also records two blocks no gate reads yet, so that the profile is filled once from
+the page: `graphical_abstract` (required or asked for, its size, aspect, formats and limits,
+each line a rule quoted under `graphical_abstract.<name>`) and `sharing` (for each version of
+the paper, where it may be shared, after how long, under which licence and with which
+statement, quoted under `sharing.<version>`). A required graphical abstract is only noted
+(`graphical-abstract-missing`) while `communication/graphical-abstract/` does not exist: the
+`communicate` commands make it there and hold it to these rules. Without a `sharing:` block
+nothing is refused here; the author decided (2026-10-28) that those commands will then share
+a link to the DOI and upload nothing. The policy is the journal's own page, never Sherpa
+Romeo, which needs a key, and nothing in the toolkit is paid or keyed.
+
 ## An earlier output of the same data is held to this paper
 
 Several papers come out of one database extraction or one cohort: a conference abstract, a
@@ -17279,6 +17317,27 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - With `--skip-checks`, the count of failing checks `build` prints is one short of `check`'s
     when `manuscript.docx` is stale.
   - ci.yml's comment on setup-pandoc names a step that is gone.
+
+- **The boxes a journal prints beside the abstract (2026-10-28), what G4 does not read.**
+  - A box's words count towards the main text's word limit, as any section's do: a journal
+    that counts its highlights apart is held to a count that includes them.
+  - Only a limit's number is held to its quote (`journal-limit-not-in-quote`): a box's
+    `items_max` or `item_max_chars`, and a graphical abstract's `width_px`, are held to the
+    page only, as a limit of 0 or 1 is.
+  - The quotes of a box, a graphical abstract and a sharing policy are held to the one stored
+    page. A policy read from a page of its own has to be stored with the instructions page,
+    and `journal --reread` against the instructions page alone then shows it as removed.
+  - A box is read in one file: a heading in one file and its items in the next, or a LaTeX
+    box's heading over an `\input` that holds its list, is a box of no items.
+  - A citation in an item is measured as written (`[@key]`), not as the style prints it; a
+    LaTeX command the mask prints nothing of (`\,`) joins the words beside it, a character
+    short.
+  - A Markdown box's underlined sub-heading is read as a paragraph of it, and so as an item
+    of a box with no list.
+  - `file: separate` is recorded and not acted on: the build still prints the box in the
+    manuscript, and the submission pack writes no file of it.
+  - The graphical abstract's rules and the sharing policy are recorded and not read; the
+    `communicate` commands are to read them.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

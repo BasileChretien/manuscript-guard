@@ -92,6 +92,17 @@ def rules_of(document: dict) -> dict[str, object]:
     # How the journal takes a LaTeX source, each part of it a rule of the page.
     for name, value in (document.get("latex") or {}).items():
         rules[f"latex.{name}"] = value
+    # A graphical abstract's rules, each its own; a box's, one quote for the box; and what
+    # may be shared of each version of the paper. Where the sharing policy was read is no
+    # rule of the page, nor when.
+    for name, value in (document.get("graphical_abstract") or {}).items():
+        rules[f"graphical_abstract.{name}"] = value
+    for box in document.get("boxes") or []:
+        if isinstance(box, dict) and box.get("id"):
+            rules[f"boxes.{box['id']}"] = box
+    for name, value in (document.get("sharing") or {}).items():
+        if name not in ("source_url", "retrieved_on"):
+            rules[f"sharing.{name}"] = value
     return rules
 
 

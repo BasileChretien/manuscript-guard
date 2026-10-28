@@ -47,6 +47,7 @@ from manuscript_guard.contracts import (
 from manuscript_guard.findings import Report, merge_all
 from manuscript_guard.gates import (
     check_bound_units,
+    check_boxes,
     check_citations,
     check_consistency,
     check_datasets,
@@ -174,6 +175,7 @@ def _run_gates(
         ("G7", lambda: check_passages(project, chosen)),
         ("G7", lambda: check_recycling(project, chosen)),
         ("G4", lambda: check_journal(project)),
+        ("G4", lambda: check_boxes(project, namespace, chosen)),
         ("G4", lambda: check_shortlist(project)),
         ("G4", lambda: check_package_doi(project, submission=at_submission)),
         ("G4", lambda: check_statement_sources(project)),

@@ -11431,6 +11431,70 @@ def test_a_second_latex_document_in_an_audited_folder_is_read_as_a_paper(
     assert main(["audit", str(tmp_path), "--strict"]) == strict
 
 
+@pytest.mark.parametrize(
+    "defined",
+    ["!let!toprule!hline", "!def!toprule{!hline}", "!newcommand{!midrule}{!hline}",
+     "!renewcommand{!bottomrule}{!hline}"],
+    ids=["let", "def", "newcommand", "renewcommand"],
+)
+@pytest.mark.parametrize(("printed", "unmatched"), [("412", []), ("413", ["413"])])
+def test_an_author_s_own_rule_command_leaves_the_paper_read(
+    tmp_path: Path, defined: str, printed: str, unmatched: list[str]
+) -> None:
+    """Round 2 of #463: the mask knew booktabs' rules, and refused an author's own
+    definition of one as defined again, so the rest of the file was read as typed and
+    `--strict` failed, in `audit` and in every gate of `check`. A number changed after it is
+    still found."""
+    from manuscript_guard.audit import audit
+
+    paper = tmp_path / "paper.tex"
+    paper.write_text(
+        (f"!documentclass{{article}}\n{defined}\n!begin{{document}}\nOf {printed} reports.\n"
+         "!end{document}\n").replace("!", chr(92)), encoding="utf-8",
+    )  # fmt: skip
+    outputs = tmp_path / "outputs.csv"
+    outputs.write_text("n\n412\n", encoding="utf-8")
+    report = audit([paper], [outputs])
+    assert (report.unreadable, [c.text for c in report.unmatched]) == ([], unmatched)
+
+
+_SICI = "10.1002/(SICI)1097-0258(19980430)17:8<857::AID-SIM777>3.0.CO;2-E"
+
+
+@pytest.mark.parametrize(("written", "listed"), [(_SICI, []),
+                                                 ("10.1002/sim.857", ["doi-unregistered"])])
+def test_an_audited_sici_doi_is_looked_up_whole(
+    tmp_path: Path, written: str, listed: list[str]
+) -> None:
+    """Round 2 of #463: a SICI DOI was cut at its `<`, and the registries, asked of the
+    part before it, had no such DOI: the audit said no registry had a real work's DOI."""
+    import json
+
+    from manuscript_guard.audit import audit
+    from manuscript_guard.auditing.references import look_up
+    from manuscript_guard.lookup import run
+    from manuscript_guard.lookup.http import Response
+
+    def registry(request, timeout):
+        known = "aid-sim777" in request.base.lower()
+        if "crossref" in request.base and known:
+            body = {"status": "ok", "message-type": "work", "message": {
+                "DOI": _SICI.lower(), "type": "journal-article", "title": ["A trial"]}}
+            return Response(200, {"Content-Type": "application/json"}, json.dumps(body).encode())
+        if "openalex" in request.base and known:
+            body = {"id": "W1", "is_retracted": False, "title": "A trial"}
+            return Response(200, {"Content-Type": "application/json"}, json.dumps(body).encode())
+        return Response(404, {"Content-Type": "application/json"},
+                        json.dumps({"responseCode": 100}).encode())  # fmt: skip
+
+    paper = tmp_path / "paper.md"
+    paper.write_text(f"# Results\n\nIt rose [1].\n\n# References\n\n1. Smith J. A trial. "
+                     f"Stat Med. 1998;17:857-72. doi:{written}.\n", encoding="utf-8")  # fmt: skip
+    looked = look_up(audit([paper], None).references, transport=registry,
+                     pacer=run.Pacer(sleep=lambda seconds: None))  # fmt: skip
+    assert [p.code for one in looked for p in one.problems] == listed
+
+
 # --------------------------------------------------------------------- the journal gate
 # A journal's limits, sections and statements are about the document the editor receives,
 # and the build strips every file's front matter before printing it.

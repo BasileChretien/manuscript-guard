@@ -7645,6 +7645,19 @@ been read as the cell's text and as the paper's numbers. Under `--json` an audit
 happen, exit 2, prints `{"ok": false, "error": ...}`: `check --json` prints nothing to stdout
 for its errors, so this is the audit's own.
 
+Round 2 found the table's rules and colours the mask now knows refused where an author
+defines them, `\let\toprule\hline` among them, and the rest of the file read as typed by
+every gate: they are a package's commands now, an author's own where booktabs or colortbl
+is not loaded, and an author may define them again where it is. A SICI DOI keeps its
+`<...>`, and an emphasis or a code mark after a DOI is no part of it. A Word level is read
+as counting 1, 2, 3 only where it is resolved for sure, its own level's number alone in its
+text, and an empty paragraph of a numbered list takes its number, as Word 16 prints it
+(checked over COM). Word 16 also showed a numbering with a `startOverride` starting again at
+1 after another of the same abstract numbering, and a third with none counting on from the
+first, which is how `word_numbering.py` keys a count. What is compared above the list is the
+count alone: a paragraph with words, numbered in the list's count, makes the list not
+numbered by place; one in another count, or an empty one, is not looked at.
+
 ## A paper written in Word is brought in through pandoc's tree
 
 The route the skills gave for moving a Word paper into a project was `pandoc paper.docx -t
@@ -17549,10 +17562,12 @@ What papers converted from Word showed (see "What papers converted from Word sho
     accepted spellings. A .docx's lines are those of the text pandoc converts it to.
   - The census holds citations to a list only where the entries carry their numbers, or in a
     .docx whose list one Word numbering counts 1, 2, 3 from its first entry, by each entry's
-    place. A numbering whose count may have begun before the list, one that shares its
-    abstract numbering with a paragraph above the list, one linked to a numbering style, or
-    one in another format or from another start, is taken for none, and such a list is
-    counted and not held to the text's numbers. A citation in superscript, `^3^`, or in parentheses, `(3)`, is not
+    place in its count. A count that a paragraph with words above the list is numbered in
+    too (the same abstract numbering and level, or the same numbering where it restarts the
+    level), a numbering linked to a numbering style, a level not resolved for sure, or one in
+    another format or from another start, is taken for none, and such a list is counted and
+    not held to the text's numbers. Only the count is compared: a lower level above the list
+    that restarts it is not looked at. A citation in superscript, `^3^`, or in parentheses, `(3)`, is not
     read; a bracketed number that is no citation, an equation's `[2]`, is read as one. Two
     lists each numbered from 1 are read as one. A Markdown entry wrapped over lines with no
     blank line between entries is one entry only where each starts with its number. A list

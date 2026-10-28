@@ -5027,12 +5027,14 @@ LatexCell = tuple[str, int, int]
 #: The kinds of row each LaTeX table holds, one of each in an order drawn: cells split at
 #: `&`, an escaped `\&` in a cell, a `\\` inside braces, a `\multicolumn`, a `\multirow`, a
 #: row ended by `\tabularnewline`, a comment holding `&` and `\\` before a row that opens
-#: with a `\multicolumn`, a tabular nested in a cell, and a row coloured by `\rowcolor`
-#: that opens with a `\multicolumn` and a cell coloured by `\cellcolor[rgb]{...}`.
+#: with a `\multicolumn`, a tabular nested in a cell, a row coloured by `\rowcolor` with
+#: colortbl's overhangs that opens with a `\multicolumn` and a cell coloured by
+#: `\cellcolor[rgb]{...}`, and a `\verb` holding `&`, which the mask reads as no separator.
 LATEX_ROWS = ("plain", "escaped", "braced", "multicolumn", "multirow", "newline", "commented",
-              "nested", "coloured")  # fmt: skip
-#: What may stand between two rows: a rule, with its width or without, or nothing.
-LATEX_RULES = ("", "\\hline", "\\midrule", "\\cline{2-3}", "\\midrule[0.5pt]")
+              "nested", "coloured", "verbatim")  # fmt: skip
+#: What may stand between two rows: a rule, with its width or without, a colour, or nothing.
+LATEX_RULES = ("", "\\hline", "\\midrule", "\\cline{2-3}", "\\midrule[0.5pt]", "\\Xhline{1pt}",
+               "\\hdashline", "\\noalign{\\vskip 2pt}", "\\arrayrulecolor{gray}")  # fmt: skip
 #: What may follow a `\\`: nothing, a length, or a star. The plain row always ends with the
 #: length and the `\multirow` row with the star, so that every table holds both.
 LATEX_BREAKS = ("", "[2pt]", "*")
@@ -5071,9 +5073,13 @@ def latex_table_rows(draw: st.DrawFn) -> tuple[str, list[list[LatexCell]]]:
             inner += [[(p, at, 1), (q, at, 1)], [(r, at, 1), (s, at, 1)]]
         elif kind == "coloured":
             colour = draw(st.sampled_from(("gray!20", "blue!10")))
-            lines.append(f"\\rowcolor{{{colour}}} \\multicolumn{{2}}{{l}}{{{label}}} & "
+            lines.append(f"\\rowcolor{{{colour}}}[2pt][2pt] \\multicolumn{{2}}{{l}}{{{label}}} & "
                          f"\\cellcolor[rgb]{{0.9,0.9,0.9}}{a} {end}")  # fmt: skip
             expected.append([(label, at, 2), (a, at, 1)])
+        elif kind == "verbatim":
+            c = draw(number)
+            lines.append(f"{label} & \\verb|{a}&{c}| & {b} {end}")
+            expected.append([(label, at, 1), (f"{a}&{c}", at, 1), (b, at, 1)])
         elif kind == "escaped":
             other = draw(word)
             lines.append(f"{label} \\& {other} & {a} & {b} {end}")

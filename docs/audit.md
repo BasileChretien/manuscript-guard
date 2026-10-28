@@ -57,7 +57,7 @@ citation of numbers in the text, `[3]`, `[3, 5]` or `[3-5]`, is held to the list
 the list does not hold is reported, and so is an entry no citation names. A Markdown list is
 numbered as pandoc prints it, from its first number up, so a list typed "1." on every entry
 is 1, 2, 3; a number pandoc escaped, `1\.`, is printed as typed. A list Word numbers itself
-prints no number, so in a .docx an entry's number is its place in the list, where Word
+prints no number, so in a .docx an entry's number is its place in Word's count, where Word
 numbers every entry 1, 2, 3 in one count that starts at the list; a bracketed number in the
 text does not make an unnumbered list a numbered one. A bracket after a value that encloses
 it, `64 [55-72]`, is an interval and no citation. In LaTeX each `\cite` key is held to the
@@ -65,8 +65,10 @@ it, `64 [55-72]`, is an interval and no citation. In LaTeX each `\cite` key is h
 unless you ask: `--lookup` asks Crossref and OpenAlex about each DOI, DataCite about one
 Crossref has no record of and doi.org about one DataCite has none of either, and PubMed
 about each PMID. It reports a work retracted, withdrawn, under an expression of concern or
-published since, and a DOI or a PMID no registry has, as G7 does in a project; where none
-says a work was retracted, it says how many entries were asked and how many a registry knew.
+published since, a DOI or a PMID no registry has, and a registry that did not answer, as G7
+does in a project. Only where no registry reported anything of any entry does it say how many
+entries were asked and how many a registry knew; an entry answered from the records kept
+counts as asked.
 `--lookup --dry-run` lists what would be sent and sends nothing; `--lookup-cache DIR` keeps
 each answer in `DIR` and reads it from there the next time. Without `--lookup-cache` nothing
 is kept.

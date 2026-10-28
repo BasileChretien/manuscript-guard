@@ -94,9 +94,11 @@ class DocxText:
     #: in. A superscript is written `^a^`, as Markdown writes one.
     tables: tuple[Table, ...] = ()
     #: Each line of `body` outside a table whose paragraph Word numbers, 1-based, with the
-    #: count it is in and whether that count prints 1, 2, 3 from 1 (`word_numbering`): what
-    #: says a reference list is numbered by Word rather than typed.
-    numbering: tuple[tuple[int, str, bool], ...] = ()
+    #: count it is in, whether that count prints 1, 2, 3 from 1 (`word_numbering`), and its
+    #: place in the count, every paragraph of it counted, an empty one too, which Word
+    #: numbers (Word 16, over COM): what says a reference list is numbered by Word rather
+    #: than typed, and what number Word prints for each entry.
+    numbering: tuple[tuple[int, str, bool, int], ...] = ()
 
     @property
     def text(self) -> str:
@@ -448,7 +450,7 @@ def read_docx_text(path: Path) -> DocxText:
             raise NotADocx(str(exc)) from exc
         return _part_text(root, styles, fonts, numbering, counts)
 
-    counts: list[tuple[str, bool]] = []
+    counts: list = []
     raw = text_of(BODY, _heading_styles(archive, names, path.name),
                   Numbering.of(archive, names, path.name), counts)  # fmt: skip
     raw, counts = _numbered_lines(raw, counts)
@@ -475,17 +477,22 @@ def _numbered_lines(raw: str, counts: list) -> tuple[str, list]:
     """`raw` without the numbering mark of a line that holds nothing else, and the counts of
     the marks kept: an empty line is one `_tidy` may fold into the blank lines around it, as
     it did before lines were marked, and a mark on it would keep it and move every line
-    after it down one."""
+    after it down one. Each count kept carries its place in its count, which the empty
+    paragraph takes too: Word prints its number, and the next one's after it (round 2 of
+    #463)."""
     parts: list[str] = []
     kept = []
+    places: dict[str, int] = {}
     at = 0
     for index, found in enumerate(re.finditer(_NUMBERED_MARK, raw)):
         end = raw.find("\n", found.end())
         rest = raw[found.end() : end if end >= 0 else len(raw)]
         parts.append(raw[at : found.start()])
+        count, from_one = counts[index]
+        places[count] = places.get(count, 0) + 1
         if rest:
             parts.append(_NUMBERED_MARK)
-            kept.append(counts[index])
+            kept.append((count, from_one, places[count]))
         at = found.end()
     parts.append(raw[at:])
     return "".join(parts), kept

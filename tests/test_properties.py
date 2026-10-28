@@ -4269,6 +4269,13 @@ def _an_escaped_ampersand_parts_cells(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(tables, "_separates", lambda masked, at: True)
 
 
+def _every_ampersand_parts_cells(patch: pytest.MonkeyPatch) -> None:
+    """Round 2 of #463: an `&` the mask reads as no separator, in a `\\verb`, parts cells."""
+    from manuscript_guard.text.latex import tables
+
+    patch.setattr(tables, "_separates", lambda masked, at: True)
+
+
 def _what_follows_a_row_break_is_the_next_cell(patch: pytest.MonkeyPatch) -> None:
     """Round 1 of #463: the star and the length after `\\\\` read as the next row's text."""
     from manuscript_guard.text.latex import tables
@@ -13888,6 +13895,10 @@ BROKEN = {
     ),
     "an escaped \\& parts LaTeX cells": (
         _an_escaped_ampersand_parts_cells,
+        test_a_latex_table_is_read_as_rows_of_cells_where_latex_splits_them,
+    ),
+    "an & the mask reads as no separator parts LaTeX cells": (
+        _every_ampersand_parts_cells,
         test_a_latex_table_is_read_as_rows_of_cells_where_latex_splits_them,
     ),
     "what follows a LaTeX \\\\ is read as the next cell": (

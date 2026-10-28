@@ -66,13 +66,16 @@ class LatexRead:
 
 
 def is_entry(path: Path) -> bool:
-    """Whether a `.tex` found in a folder starts a document of its own."""
+    """Whether a `.tex` found in a folder starts a document of its own. One that cannot be
+    read, UTF-16 with no byte-order mark or a renamed .doc, says nothing of the kind, and is
+    passed over: taken for an entry, it failed `--strict` beside a Markdown paper (round 2
+    of #463). Named, it is an entry, and its reading fails where it fails."""
     from manuscript_guard.audit import UnreadableText, read_text
 
     try:
         return bool(_DOCUMENT_CLASS.search(read_text(path)))
     except (OSError, UnreadableText):
-        return True
+        return False
 
 
 def read_latex(entries: list[Path], found: list[Path] = ()) -> LatexRead:

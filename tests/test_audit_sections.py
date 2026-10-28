@@ -54,17 +54,20 @@ NUMBERINGS = (
 
 def make_docx(
     path: Path, paragraphs: list[str], heading: str | None = None,
-    numbered: dict[str, str] | None = None,
+    numbered: dict[str, str] | None = None, numberings: str = "",
 ) -> Path:  # fmt: skip
     """A .docx of `paragraphs`, `heading` styled as one, and each of `numbered` numbered by
-    Word with the numbering it names (`NUMBERINGS`)."""
+    Word with the numbering it names (`NUMBERINGS`, or `numberings`), or with the
+    paragraph properties it gives, where they start with `<`."""
     styles = (f"<w:styles {NS}><w:style w:type='paragraph' w:styleId='Heading1'>"
               "<w:name w:val='heading 1'/></w:style></w:styles>")  # fmt: skip
     body = ""
     for text in paragraphs:
         styled = "<w:pStyle w:val='Heading1'/>" if text == heading else ""
         num = (numbered or {}).get(text)
-        if num is not None:
+        if num is not None and num.startswith("<"):
+            styled += num
+        elif num is not None:
             styled += f"<w:numPr><w:ilvl w:val='0'/><w:numId w:val='{num}'/></w:numPr>"
         styled = f"<w:pPr>{styled}</w:pPr>" if styled else ""
         body += f"<w:p>{styled}<w:r><w:t xml:space='preserve'>{text}</w:t></w:r></w:p>"
@@ -74,7 +77,7 @@ def make_docx(
         archive.writestr(zipfile.ZipInfo("word/styles.xml", (2020, 1, 1, 0, 0, 0)), styles)
         if numbered:
             archive.writestr(zipfile.ZipInfo("word/numbering.xml", (2020, 1, 1, 0, 0, 0)),
-                             NUMBERINGS)  # fmt: skip
+                             numberings or NUMBERINGS)  # fmt: skip
     return path
 
 
@@ -698,3 +701,131 @@ def test_an_answer_that_did_not_come_is_said_and_not_kept(tmp_path: Path) -> Non
                                        pacer=lookup.Pacer(sleep=lambda s: None))  # fmt: skip
     assert any(p.code == "lookup-unanswered" for one in looked for p in one.problems)
     assert not cache.exists() or not list(cache.iterdir())
+
+
+# ---------------------------------------------------------------------- round 2 of #463
+
+
+@pytest.mark.parametrize(
+    "defined",
+    ["!let!toprule!hline", "!def!toprule{!hline}", "!newcommand{!midrule}{!hline}",
+     "!renewcommand{!bottomrule}{!hline}", "!newcommand{!rowcolor}[1]{}",
+     "!usepackage{booktabs}!renewcommand{!bottomrule}{!hline}",
+     "!usepackage{colortbl}!let!cellcolor!relax"],
+)
+def test_an_author_s_own_rule_or_colour_command_is_not_refused(defined: str) -> None:
+    """Round 2 of #463: the mask's new table commands refused an author's own definition of
+    them as defined again, and read the rest of the file as typed, for every gate."""
+    text = tex(f"!documentclass{{article}}\n{defined}\n!begin{{document}}\nOf 412.\n"
+               "!end{document}\n")  # fmt: skip
+    assert read_tree({"p.tex": text}, "p.tex").refusals == ()
+
+
+def test_every_rule_and_colour_before_a_cell_prints_nothing_in_it() -> None:
+    """Round 2 of #463: a `!multicolumn` after these opened no cell, and an overhang's
+    lengths were read as the cell's text."""
+    rules = ["!columncolor{red}", "!arrayrulecolor{blue}", "!rowcolors{2}{gray}{white}",
+             "!Xhline{2pt}", "!hdashline", "!cdashline{1-2}", "!noalign{!vskip 2pt}",
+             "!rowcolor{gray}[2pt][3pt]"]  # fmt: skip
+    rows = "\n".join(f"{rule} !multicolumn{{2}}{{l}}{{A}} & {at} !!"
+                     for at, rule in enumerate(rules))  # fmt: skip
+    text = tex("!documentclass{article}\n!begin{document}\n!begin{tabular}{lrr}\n"
+               f"{rows}\n!end{{tabular}}\n!end{{document}}\n")  # fmt: skip
+    found = [[(c.text, c.span) for c in row] for table in latex_tables(_source(text))
+             for row in table]  # fmt: skip
+    assert found == [[("A", 2), (str(at), 1)] for at in range(len(rules))]
+
+
+def test_a_colour_s_overhangs_are_no_numbers_of_the_paper(tmp_path: Path) -> None:
+    paper = tmp_path / "paper.tex"
+    paper.write_text(_document("!begin{tabular}{lr}\n!rowcolor{gray}[2pt][3pt] A & 412 !!\n"
+                               "!end{tabular}"), encoding="utf-8")  # fmt: skip
+    report = audit([paper], [])
+    assert [c.text for c in report.unmatched] == ["412"]
+
+
+def test_an_unreadable_tex_beside_a_markdown_paper_is_passed_over(tmp_path: Path) -> None:
+    """Round 2 of #463: a `.tex` that could not be read was taken for an entry, and failed
+    `--strict` beside a Markdown paper."""
+    (tmp_path / "paper.md").write_text("# Results\n\nOf 412 reports.\n", encoding="utf-8")
+    (tmp_path / "old.tex").write_bytes("Of 3".encode("utf-16-le"))
+    assert main(["audit", str(tmp_path), "--strict"]) == 0
+
+
+@pytest.mark.parametrize(
+    "written",
+    ["10.1002/(SICI)1097-0258(19980430)17:8<857::AID-SIM777>3.0.CO;2-E.",
+     "*doi:10.1002/(SICI)1097-0258(19980430)17:8<857::AID-SIM777>3.0.CO;2-E*",
+     "<https://doi.org/10.1002/(SICI)1097-0258(19980430)17:8<857::AID-SIM777>3.0.CO;2-E>",
+     "`10.1002/(SICI)1097-0258(19980430)17:8<857::AID-SIM777>3.0.CO;2-E`"],
+    ids=["a SICI DOI", "in emphasis", "in an autolink", "in code"],
+)
+def test_a_sici_doi_keeps_its_angle_brackets(written: str) -> None:
+    """Round 2 of #463: a SICI DOI was cut at its `<`, and emphasis and code marks were kept
+    after a DOI."""
+    assert references_module.identifiers(f"Smith J. {written}") == (
+        ("10.1002/(sici)1097-0258(19980430)17:8<857::aid-sim777>3.0.co;2-e",), ()
+    )
+
+
+def test_a_citation_pandoc_escaped_is_read(tmp_path: Path) -> None:
+    """Round 2 of #463: `!![3!!]`, as pandoc writes a citation it escapes, was not read."""
+    paper = tmp_path / "paper.md"
+    paper.write_text(NUMBERED.replace("[1]", BS + "[1" + BS + "]").replace("[5]", BS + "[5"
+                     + BS + "]"), encoding="utf-8")  # fmt: skip
+    [census] = audit([paper], None).references
+    assert [(p.code, p.line) for p in census.problems] == [
+        ("citation-beyond-list", 3), ("entry-never-cited", 9)
+    ]
+
+
+TWO_LEVELS = (
+    f"<w:numbering {NS}><w:abstractNum w:abstractNumId='0'><w:lvl w:ilvl='0'><w:start "
+    "w:val='1'/><w:numFmt w:val='decimal'/><w:lvlText w:val='%1.'/></w:lvl><w:lvl "
+    "w:ilvl='1'><w:start w:val='1'/><w:numFmt w:val='decimal'/><w:lvlText w:val='%1.%2'/>"
+    "</w:lvl></w:abstractNum><w:num w:numId='1'><w:abstractNumId w:val='0'/></w:num>"
+    "</w:numbering>"
+)
+
+
+SUPERSCRIPT_TWO = chr(0xB2)
+
+
+@pytest.mark.parametrize(
+    ("props", "numberings"),
+    [("<w:numPr><w:ilvl w:val='1'/><w:numId w:val='1'/></w:numPr>", TWO_LEVELS),
+     ("<w:numPr><w:numId w:val='1'/></w:numPr>", TWO_LEVELS),
+     (f"<w:numPr><w:ilvl w:val='{SUPERSCRIPT_TWO}'/><w:numId w:val='1'/></w:numPr>",
+      TWO_LEVELS.replace("w:ilvl='1'", f"w:ilvl='{SUPERSCRIPT_TWO}'"))],
+    ids=["another level's number printed", "no level written", "a level not a digit"],
+)
+def test_a_level_word_may_not_count_1_2_3_is_no_numbering(
+    tmp_path: Path, props: str, numberings: str
+) -> None:
+    """Round 2 of #463: "%1.%2" prints 1.1, 1.2; a level left out is not resolved for sure;
+    and a superscript two, taken for a digit, raised."""
+    paper = make_docx(tmp_path / "paper.docx", ["The rate rose [1, 3].", "References", SMITH,
+                                                JONES], heading="References",
+                      numbered={SMITH: props, JONES: props}, numberings=numberings)  # fmt: skip
+    [census] = audit([paper], None).references
+    assert (census.style, census.problems) == ("not numbered", [])
+
+
+def test_an_empty_numbered_paragraph_takes_its_number(tmp_path: Path) -> None:
+    """Round 2 of #463: Word prints the number of an empty paragraph of a numbered list
+    (Word 16, over COM: 1, 2, 3 for the empty one, 4), and every entry after it was
+    numbered one less."""
+    paper = make_docx(tmp_path / "paper.docx", ["The rate rose [1, 3].", "References", SMITH,
+                                                "", JONES], heading="References",
+                      numbered={SMITH: "1", "": "1", JONES: "1"})  # fmt: skip
+    [census] = audit([paper], None).references
+    assert census.style == "numbered by place"
+    assert [entry.number for entry in census.entries] == [1, 3]
+    assert census.problems == []
+
+
+def test_the_docs_say_when_the_count_line_appears() -> None:
+    docs = Path(__file__).resolve().parents[1] / "docs" / "audit.md"
+    said = " ".join(docs.read_text(encoding="utf-8").split())
+    assert "where no registry reported anything of any entry" in said
+    assert "an entry answered from the records kept counts as asked" in said

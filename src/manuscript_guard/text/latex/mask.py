@@ -50,6 +50,7 @@ from manuscript_guard.text.latex.commands import (
     SIUNITX,
     SPACES,
     SYMBOLS,
+    TABLE_COMMANDS,
     TABLES,
     TYPED_TABLES,
 )
@@ -257,8 +258,8 @@ _PLACE_OPTIONS = re.compile(r"[ \t]*(?:\r?\n[ \t]*)?\[[^\]]{0,300}\]")
 #: Commands the reader knows that an author may define again, which it then reads as before:
 #: `\abstract` was an unknown command, its arguments read, until it was given a heading; a
 #: class's front matter, `\keywords` among it, is passed over however it is defined; and
-#: pandoc's citeproc commands, which its template defines.
-_REDEFINABLE = frozenset({"abstract"}) | FRONT_MATTER_COMMANDS | CITEPROC
+#: pandoc's citeproc commands, which its template defines; and a table's rules and colours.
+_REDEFINABLE = frozenset({"abstract"}) | FRONT_MATTER_COMMANDS | CITEPROC | TABLE_COMMANDS
 _PACKAGES = re.compile(r"\s*(?:\[([^\]]{0,300})\])?\s*\{([^{}]{0,300})\}")
 _NAMESPACE = "(?:" + "|".join(NAMESPACES) + r")\."
 #: What TeX passes over before an argument: spaces, and one line break (round 1 of #400).

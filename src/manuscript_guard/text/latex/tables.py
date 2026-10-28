@@ -35,13 +35,19 @@ _WIDTHS = frozenset({"tabular*", "tabularx", "tabulary"})
 _ENVIRONMENT = re.compile(r"\\(?P<how>begin|end)\s*\{[^{}]*\}")
 #: A rule between rows, with its arguments, which prints no cell; and a row's or a cell's
 #: colour, which prints nothing either, so that a `\\multicolumn` after `\\rowcolor` still
-#: opens its cell (round 1 of #463).
+#: opens its cell (round 1 of #463); with colortbl's overhangs after a row's or a column's
+#: colour, `[2pt][2pt]`, arydshln's dashed rules, makecell's `\\Xhline` and TeX's `\\noalign`
+#: (round 2).
 _RULE = re.compile(
     r"\\(?:(?:hline|endhead|endfirsthead|endfoot|endlastfoot)(?![A-Za-z@])"
-    r"|(?:toprule|midrule|bottomrule|addlinespace)(?![A-Za-z@])(?:\s*\[[^\]]*\])?"
-    r"|(?:cline|hhline)(?![A-Za-z@])\s*\{[^{}]*\}"
+    r"|(?:toprule|midrule|bottomrule|addlinespace|hdashline)(?![A-Za-z@])(?:\s*\[[^\]]*\])?"
+    r"|(?:cline|hhline|Xhline|noalign)(?![A-Za-z@])\s*\{[^{}]*\}"
+    r"|cdashline(?![A-Za-z@])\s*\{[^{}]*\}(?:\s*\[[^\]]*\])?"
     r"|cmidrule(?![A-Za-z@])\s*(?:\[[^\]]*\])?\s*(?:\([^()]*\))?\s*\{[^{}]*\}"
-    r"|(?:rowcolor|cellcolor)(?![A-Za-z@])\s*(?:\[[^\]]*\])?\s*\{[^{}]*\}"
+    r"|(?:rowcolor|columncolor)(?![A-Za-z@])\s*(?:\[[^\]]*\])?\s*\{[^{}]*\}"
+    r"(?:\s*\[[^\]]*\]){0,2}"
+    r"|(?:cellcolor|arrayrulecolor)(?![A-Za-z@])\s*(?:\[[^\]]*\])?\s*\{[^{}]*\}"
+    r"|rowcolors(?![A-Za-z@])\*?\s*(?:\[[^\]]*\])?\s*(?:\{[^{}]*\}\s*){3}"
     r"|specialrule(?![A-Za-z@])\s*\{[^{}]*\}\s*\{[^{}]*\}\s*\{[^{}]*\})"
 )
 #: What may follow `\\\\`: a star, and a length in brackets.

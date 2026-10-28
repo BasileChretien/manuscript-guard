@@ -595,7 +595,7 @@ def _blank(text: str, spans: list[tuple[int, int]]) -> str:
 
 def read_paper(
     path: Path,
-) -> tuple[str, list[tuple[int, int]], list[Table], str, dict[int, tuple[str, bool]]]:
+) -> tuple[str, list[tuple[int, int]], list[Table], str, dict[int, tuple[str, bool, int]]]:
     """The paper's text with its reference lists blanked, which lines those were, its
     tables outside them as rows of cells (`text.tables`), the text before the cut, whose
     lists G7's census reads (`auditing.references`), and the lines Word numbers in a .docx
@@ -617,7 +617,8 @@ def read_paper(
         if not any(start < cell.line <= end for row in table for cell in row
                    for start, end in spans)
     ]  # fmt: skip
-    numbering = {line: (count, from_one) for line, count, from_one in document.numbering}
+    numbering = {line: (count, from_one, place)
+                 for line, count, from_one, place in document.numbering}  # fmt: skip
     return ((f"{body}\n{document.notes}" if document.notes else body), spans, tables,
             document.body, numbering)  # fmt: skip
 

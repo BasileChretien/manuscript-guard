@@ -9,8 +9,9 @@ reported, and so is an entry no citation names. In Markdown a list numbered "1."
 is numbered as pandoc prints it, from its first number up, so a list typed "1." on every
 entry is 1, 2, 3; a number pandoc escaped, `1\\.`, is typed text and printed as typed. A
 .docx whose list Word numbers itself prints no number in its text, so there an entry's
-number is its place in the list: only where every entry is numbered by one Word numbering
-that counts in Arabic numerals from 1 and numbers nothing before the list (`text.docx`). A
+number is its place in Word's count: only where every entry is numbered by one Word numbering
+that counts in Arabic numerals from 1, a count no paragraph with words above the list is in
+(`text.word_numbering`). A
 bracket after a value that encloses it, `64 [55-72]`, is an interval and no citation
 (`audit._intervals`). In LaTeX each `\\cite` key is held to the `\\bibitem` keys, and a
 `\\nocite{*}` cites them all; an entry is reported in the file that holds it.
@@ -36,7 +37,7 @@ from typing import Any
 from manuscript_guard.gates.identifiers import normal_doi
 
 NUMBERED = "numbered"
-#: A .docx list whose numbers Word prints: an entry's number is its place.
+#: A .docx list whose numbers Word prints: an entry's number is its place in the count.
 BY_PLACE = "numbered by place"
 KEYED = "keyed"
 UNNUMBERED = "not numbered"
@@ -45,22 +46,25 @@ UNNUMBERED = "not numbered"
 #: escapes, which prints as typed: "12\." / "12\)" / "\[12\]". Groups: the bracketed number,
 #: the number, its escape, its stop.
 _NUMBERED_ENTRY = re.compile(r"\s*(?:\\?\[(\d{1,3})\\?\]|(\d{1,3})(\\?)([.)]))(?=\s)")
-#: A bracketed citation of numbers, as the marker rule reads one (`audit._WHOLE_MARKER`):
+#: A bracketed citation of numbers, as the marker rule reads one (`audit._WHOLE_MARKER`),
+#: or as pandoc escapes one, `\\[3\\]` (round 2 of #463):
 #: "[3]", "[3, 5]", "[3-5]", "[3–5, 8]". Not a link's text, `[3](url)`.
 _MARKER = re.compile(
-    r"\[\s*(\d{1,3}(?:\s*[-\u2013\u2014]\s*\d{1,3})?"
-    r"(?:\s*[,;]\s*\d{1,3}(?:\s*[-\u2013\u2014]\s*\d{1,3})?)*)\s*\](?!\()"
+    r"\\?\[\s*(\d{1,3}(?:\s*[-\u2013\u2014]\s*\d{1,3})?"
+    r"(?:\s*[,;]\s*\d{1,3}(?:\s*[-\u2013\u2014]\s*\d{1,3})?)*)\s*\\?\](?!\()"
 )
 _PART = re.compile(r"(\d{1,3})(?:\s*[-\u2013\u2014]\s*(\d{1,3}))?")
 #: The widest range read as a run of citations, `[3-12]`: a wider one is not expanded.
 MAX_RANGE = 100
-#: A DOI, which ends at a space, a quote, an angle bracket or a brace, and before `](`, where
-#: a Markdown link's text ends and its target starts.
-_DOI = re.compile(r"\b10\.\d{4,9}(?:\.\d+)*/(?:(?!\]\()[^\s\"<>{}])+")
-#: What a DOI written in a sentence ends with that is not the DOI's: a stop, and a closing
-#: bracket the DOI did not open.
-_DOI_STOPS = ".,;:'"
-_CLOSING = {")": "(", "]": "["}
+#: A DOI, which ends at a space, a quote or a brace, and before `](`, where a Markdown link's
+#: text ends and its target starts. Angle brackets stand in it: a SICI DOI holds them,
+#: `10.1002/(SICI)1097-0258(19980430)17:8<857::AID-SIM777>3.0.CO;2-E` (round 2 of #463).
+_DOI = re.compile(r"\b10\.\d{4,9}(?:\.\d+)*/(?:(?!\]\()[^\s\"{}])+")
+#: What a DOI written in a sentence ends with that is not the DOI's: a stop, an emphasis or a
+#: code mark, `*doi:10.1000/xyz*`, and a closing bracket the DOI did not open, the `>` of
+#: `<https://doi.org/...>` among them.
+_DOI_STOPS = ".,;:'*_`"
+_CLOSING = {")": "(", "]": "[", ">": "<"}
 _PMID = re.compile(r"\bPMID\s*:?\s*(\d{1,9})\b", re.IGNORECASE)
 _BIBITEM = re.compile(r"\\bibitem\s*(?:\[[^\]]*\])?\s*\{([^{}]*)\}")
 
@@ -210,7 +214,7 @@ def census_of_text(
     intervals: list[tuple[int, int]],
     *,
     docx: bool,
-    numbering: Mapping[int, tuple[str, bool]] | None = None,
+    numbering: Mapping[int, tuple[str, bool, int]] | None = None,
 ) -> Census:
     """A Markdown, text or .docx paper's census: its lists are `spans` of `original`, its
     citations are read in `hidden`, where the lists are blanked. `numbering` is a .docx's
@@ -226,9 +230,12 @@ def census_of_text(
         census.style = NUMBERED
     elif docx and _numbered_by_word(entries, numbering or {}):
         census.style = BY_PLACE
+        # The number Word prints: the entry's place in its count, where an empty numbered
+        # paragraph takes one too (round 2 of #463).
+        places = [numbering[entry.line][2] for entry in entries]
         entries = [
             Entry(f"entry {place}", entry.line, number=place, dois=entry.dois, pmids=entry.pmids)
-            for place, entry in enumerate(entries, start=1)
+            for place, entry in zip(places, entries, strict=True)
         ]
         census.entries = tuple(entries)
     else:
@@ -237,15 +244,19 @@ def census_of_text(
     return census
 
 
-def _numbered_by_word(entries: list[Entry], numbering: Mapping[int, tuple[str, bool]]) -> bool:
+def _numbered_by_word(
+    entries: list[Entry], numbering: Mapping[int, tuple[str, bool, int]]
+) -> bool:
     """Whether Word numbers the list 1, 2, 3 by place: its entries, none typing a number,
-    each numbered by one numbering that counts in Arabic numerals from 1, which numbers
-    nothing before the list, so that its count starts there. A bracketed number in the text
-    is no sign of it: `range [0, 100]` in an author-year paper made every entry "cited
-    nowhere" (round 1 of #463)."""
+    each numbered in one count that prints Arabic numerals from 1, and no paragraph with
+    words above the list numbered in that count (`word_numbering`: the same abstract
+    numbering and level, or the same numbering where it restarts the level). What is
+    compared is the count only: a paragraph above in another count, or empty, is not looked
+    at (round 2 of #463). A bracketed number in the text is no sign of it: `range [0, 100]`
+    in an author-year paper made every entry "cited nowhere" (round 1 of #463)."""
     if not entries or any(entry.number is not None for entry in entries):
         return False
-    keys = {numbering.get(entry.line, ("", False)) for entry in entries}
+    keys = {numbering.get(entry.line, ("", False, 0))[:2] for entry in entries}
     if len(keys) != 1:
         return False
     ((key, from_one),) = keys

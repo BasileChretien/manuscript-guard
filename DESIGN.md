@@ -6098,11 +6098,16 @@ takes it as a file of its own. Each box is one rule of the page, quoted under `b
 Each number of a box above 1, and each of a graphical abstract's lines, is held to its quote as
 a limit's is (`journal-limit-not-in-quote`, naming the box's field): an `item_max_chars` typed
 58 for the page's 85 otherwise passed, since the quote was on the page. A graphical abstract's
-number that is not whole (`max_file_mb: 2.5`) is held to its digits, "2.5" or "2.50", whatever
-its size, since a page cannot write it as "a" or "no"; its `aspect_ratio` to both its parts in
-their order, with a colon, a multiplication sign or an x between them, so that "5:2" does not
-state 16:9 (round 1 of #464: neither was held). A block's own `retrieved_on` is held to its
-age as the instructions' is (`journal-profile-stale`, naming the block), and two blocks that
+number that is not whole (`max_file_mb: 2.5`) is held to its digits, "2.5", "2.50" or "2,5",
+whatever its size, since a page cannot write it as "a" or "no", though not to a comma before
+three digits ("2,500"), which separates thousands; its `aspect_ratio` to both its parts in
+their order, with a colon, a multiplication sign, an x, a slash or "by" between them, and not
+inside a longer ratio or a date, so that "5:2" and "1:16:9" do not state 16:9 (rounds 1 and 2
+of #464). A block's own `retrieved_on` is held to its age as the instructions' is
+(`journal-profile-stale`, naming the block and, where it gives no address, its page). A
+reread refuses only a block that may name a page of its own and that the schema refuses
+(`boxes: 3`); the rest of a profile the schema refuses is read again as before (round 2 of
+#464: round 1 refused the whole profile). Two blocks that
 name one page with two digests have the one that is not the page's said. A `quotes` key for a
 block the profile does not have is held to the instructions page, as before blocks named
 pages of their own.
@@ -6124,7 +6129,12 @@ box's list, run on over the lines after it, or, where the box has no list, a par
 prints as one. A list nested in an item is that item's text: in Markdown an item whose mark
 is indented as far as the open item's text, as CommonMark and pandoc place it, whatever the
 list's own indentation; in LaTeX an `\item` inside a list environment nested in the box's
-list (round 1 of #464: "- A" over "  - a1" counted two items). A heading the box must carry
+list (round 1 of #464: "- A" over "  - a1" counted two items). After a blank line a line is
+the open item's only where it is indented to the item's text, else a paragraph after the
+list, and a thematic break (`- - -`, `***`) is no item. In LaTeX an itemize's or an
+enumerate's label (`\item[--]`) is the item's mark and not its text, a description's term
+is, and a list's options (`\begin{itemize}[noitemsep]`) print nothing, read so in the box's
+reader and not in the mask the other gates share (round 2 of #464). A heading the box must carry
 is found as words of its own: "meaningful" does not carry "Meaning". It is
 measured as printed, a binding as its value's display, a comment and a listing passed over,
 Markdown's marks and LaTeX's commands off. Each finding warns until submission and fails there

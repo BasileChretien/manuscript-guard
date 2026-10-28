@@ -331,7 +331,11 @@ def _check_freshness(document: dict, path: Path) -> Report:
         if date.today() - retrieved <= STALE_AFTER:
             continue
         these = f"the {name} rules were" if name else "these guidelines were"
-        source = block.get("source_url") or document.get("source_url", "the instructions")
+        # The block's own page where it names one and no address (round 2 of #464: the hint
+        # named the instructions' address).
+        source = block.get("source_url") or (
+            f"its page ({block['page_file']})" if name and block.get("page_file")
+            else document.get("source_url", "the instructions"))  # fmt: skip
         findings.append(
             Finding(
                 gate=GATE,

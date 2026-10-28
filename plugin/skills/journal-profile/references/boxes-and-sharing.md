@@ -9,8 +9,9 @@ what its authors may share, or when `check` reports `box-missing`, `box-items`,
 Three blocks record what the page says beside the paper itself. Fill each from the page, as
 every other rule, and leave out what it does not say. Each value is quoted, and the quote of
 a box or of a graphical abstract's line states each of its numbers above 1, as a limit's
-does, and a graphical abstract's quote its numbers that are not whole ("2.5") and its aspect
-ratio, both parts in order ("5:2", "5 : 2", "5 x 2"): `check` fails one that does not
+does, and a graphical abstract's quote its numbers that are not whole ("2.5", "2,5") and its
+aspect ratio, both parts in order ("5:2", "5 : 2", "5 x 2", "5/2", "5 by 2"): `check` fails
+one that does not
 (`journal-limit-not-in-quote`). A box has one quote, and each of its numbers is found
 anywhere in it, so check that each is the page's number for that field.
 

@@ -541,3 +541,70 @@ def test_a_reread_of_an_invalid_profile_exits_with_the_schema_s_message(
     again.write_text("A page.\n", encoding="utf-8")
     assert main(["journal", str(project), "--reread", str(again)]) == 2
     assert "boxes" in capsys.readouterr().err
+
+
+# ------------------------------------------------------------------------ round 2 of #464
+
+
+def test_a_reread_reads_a_profile_the_schema_refuses_outside_the_paged_blocks(
+    project: Path, capsys
+) -> None:
+    """Base read the page again for a profile with an unknown key; round 1 refused it."""
+    from manuscript_guard.cli import main
+
+    path = project / PROFILE
+    path.write_text(path.read_text(encoding="utf-8") + "not_a_key: 1\n", encoding="utf-8")
+    instructions = project / "profiles" / "journals" / "sources" / "demo-journal.txt"
+    again = project / "again.txt"
+    again.write_text(instructions.read_text(encoding="utf-8"), encoding="utf-8")
+    assert main(["journal", str(project), "--reread", str(again)]) == 0
+    assert "limits.abstract_words" in capsys.readouterr().out
+
+
+def test_a_thematic_break_is_no_item_and_a_line_after_a_blank_needs_the_item_s_indent() -> None:
+    assert markdown_items("- A\n- - -\n- B\n* * *\n***\n___\n") == ["A", "B"]
+    # After a blank line, a line joins the open item only indented to its text.
+    assert markdown_items("1. A\n\n  B\n") == ["A"]
+    assert markdown_items("1. A\n\n   B\n") == ["A\n   B"]
+    assert markdown_items("- A\n\n  B\n") == ["A\n  B"]
+
+
+@pytest.mark.parametrize(
+    ("body", "items"),
+    [
+        # An itemize's label is its mark; a description's is its term.
+        ("\\begin{itemize}\n\\item[--] One two.\n\\item [--] Three.\n\\end{itemize}\n",
+         ("One two.", "Three.")),
+        ("\\begin{description}\n\\item[Term] One.\n\\end{description}\n", ("Term One.",)),
+        # A list's options print nothing.
+        ("\\begin{itemize}[noitemsep]\nIntro.\n\\item One \\begin{enumerate}[label=(\\alph*)]"
+         "\\item x\\end{enumerate}\n\\end{itemize}\n", ("One x",)),
+    ],
+)  # fmt: skip
+def test_a_latex_item_s_label_and_a_list_s_options_are_read_as_printed(
+    body: str, items: tuple
+) -> None:
+    from manuscript_guard.text.boxes import latex_boxes
+    from manuscript_guard.text.latex.structure import read_tree
+
+    rules, _ = box_rules({"boxes": [HIGHLIGHTS]})
+    document = ("\\documentclass{article}\n\\begin{document}\n\\section*{Highlights}\n" + body
+                + "\\end{document}\n")  # fmt: skip
+    [source] = [s for s in read_tree({"main.tex": document}).sources if not s.loose]
+    [found] = latex_boxes(source, rules, {})
+    assert found.items == items
+    assert "noitemsep" not in found.text
+
+
+def test_a_block_s_staleness_names_its_own_page(project: Path) -> None:
+    _asks(project, sharing={**SHARING, "retrieved_on": "2020-01-01"})
+    [hint] = [f.hint for f in check_journal(load_project(project)[0]).findings
+              if f.code == "journal-profile-stale" and "sharing" in f.message]  # fmt: skip
+    assert SHARING["page_file"] in hint, hint
+
+
+def test_the_template_s_least_size_is_its_size() -> None:
+    from manuscript_guard.paths import SHIPPED_JOURNALS
+
+    text = (SHIPPED_JOURNALS / "TEMPLATE.yaml").read_text(encoding="utf-8")
+    assert "#   # min_width_px: 1328\n#   # min_height_px: 531\n" in text

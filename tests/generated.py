@@ -2469,9 +2469,14 @@ BOX_ITEMS = (
     # A list nested in an item, which is that item's text: under a dash, two spaces in, and
     # under a number, three in (round 1 of #464: each nested item was an item of the box).
     ("- {0}\n  - {1}\n  - {1}", "{0} {1} {1}"), ("1. {0}\n   1. {1}", "{0} {1}"),
+    # Nested under a tab, four spaces in, and a numbered list in a bulleted one (round 2).
+    ("- {0}\n\t- {1}", "{0} {1}"), ("- {0}\n    - {1}", "{0} {1}"), ("- {0}\n  1. {1}", "{0} {1}"),
+    # After a blank line, a line indented to the item's text is the item's, and one less
+    # indented a paragraph after the list (round 2 of #464: it joined the item).
+    ("1. {0}\n\n   {1}", "{0} {1}"), ("1. {0}\n\n  {1}", "{0}"),
 )  # fmt: skip
-#: What a box holds that prints no item: a comment, a listing.
-BOX_HIDDEN = ("<!-- - {0} -->", "```\n- {0}\n```")
+#: What a box holds that prints no item: a comment, a listing, and a thematic break.
+BOX_HIDDEN = ("<!-- - {0} -->", "```\n- {0}\n```", "- - -", "* * *")
 #: What looks like a box and is none: a heading the pattern does not take whole, one in a
 #: comment, one in a listing, one in the front matter, which opens every example.
 BOX_LOOKALIKES = (
@@ -2504,6 +2509,8 @@ def box_papers(draw: st.DrawFn) -> tuple[dict[str, Any], dict[str, Any]]:
     owner = [lists[i % len(lists)] if i < len(lists) else draw(st.sampled_from(lists))
              for i in range(len(pieces))]  # fmt: skip
     aside_in = draw(st.sampled_from(lists))
+    # A box whose list comes after a paragraph, which is then no item.
+    lead_in = draw(st.sampled_from(lists))
     lookalikes = draw(st.permutations(BOX_LOOKALIKES))
     # The Results first, so that the last box runs to the end of the file.
     text = (BOX_FRONT_MATTER + "# Results\n\n{{results.reported}} and {{results.b0}}.\n\n"
@@ -2515,6 +2522,8 @@ def box_papers(draw: st.DrawFn) -> tuple[dict[str, Any], dict[str, Any]]:
         key = f"results.b{index}"
         body: list[str] = [f"- {words()} {{{{{key}}}}}"]
         items = [f"{_last_words(body[0])}"]
+        if index == lead_in:
+            body.insert(0, f"{words()}.\n")
         if index == paragraphs_in:
             body, items = [], []
             for _ in range(draw(st.integers(2, 4))):
@@ -2579,11 +2588,13 @@ def _latex_box_paper(draw: st.DrawFn) -> tuple[str, list, list[str]]:
         return forms[at][1].replace("TITLE", "Introduction") + "\n" + words() + "\n"
 
     a, b, c, d, e, x = words(), words(), words(), words(), words(), words()
-    environment = ("\\begin{highlights}\n\\item " + a + " \\begin{enumerate}\\item " + x
+    # An item's label in the box's own list is its mark, and a list's options print nothing
+    # (round 2 of #464: both were counted to the item).
+    environment = ("\\begin{highlights}\n\\item[--] " + a + " \\begin{enumerate}\\item " + x
                    + "\\end{enumerate}\n% \\item " + words() + "\n\\item " + b
                    + " \\mg{results.l1}\n\\end{highlights}\n")  # fmt: skip
     heading = (opened(0, "Key points") + "\\begin{itemize}\n\\item " + c + " \\mg{results.l2}\n"
-               "\\begin{itemize}\n\\item " + e + "\n\\end{itemize}\n\\item " + d
+               "\\begin{itemize}[noitemsep]\n\\item " + e + "\n\\end{itemize}\n\\item " + d
                + "\n\\end{itemize}\n" + closed(0))  # fmt: skip
     h1, h2 = words(), words()
     paragraphs = opened(1, "Highlights") + h1 + "\n\n" + h2 + "\n\n" + closed(1)
@@ -2605,15 +2616,16 @@ def _latex_box_paper(draw: st.DrawFn) -> tuple[str, list, list[str]]:
     p1, p2, f, g, y = words(), words(), words(), words(), words()
     first = (opened(2, "Research in context") + p1 + " \\mg{results.l3}\n\n" + p2 + "\n\n"
              "\\begin{abstract}\n" + words() + "\n\n" + words() + "\n\\end{abstract}\n")
-    last = (opened(3, "Plain language summary") + "\\begin{itemize}\n\\item " + f + "\n"
-            "\\begin{enumerate}\n\\item " + y + "\n\\end{enumerate}\n\\item " + g
-            + "\n\\end{itemize}\n")  # fmt: skip
+    # A description's term is its item's text.
+    last = (opened(3, "Plain language summary") + "\\begin{description}\n\\item[Term] " + f
+            + "\n\\begin{enumerate}\n\\item " + y + "\n\\end{enumerate}\n\\item " + g
+            + "\n\\end{description}\n")  # fmt: skip
     document = ("\\documentclass{book}\n\\begin{document}\n" + first
                 + "\\section{Results}\n\\mg{results.l0}\n\\chapter{Introduction}\n" + words()
                 + "\n" + body + last + "\\end{document}\n")  # fmt: skip
     expected = [["research-in-context", [p1 + " {{results.l3}}", p2]],
                 *(pieces[name][1] for name in order if pieces[name][1] is not None),
-                ["plain-language-summary", [f + " " + y, g]]]  # fmt: skip
+                ["plain-language-summary", ["Term " + f + " " + y, g]]]  # fmt: skip
     return document, expected, ["results.l1", "results.l2", "results.l3"]
 
 

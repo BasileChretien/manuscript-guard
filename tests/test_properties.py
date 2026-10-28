@@ -9298,9 +9298,20 @@ def _ratios_and_decimals_quoted(draw: st.DrawFn) -> list[tuple[str, object, bool
         (among(f"1{wide}:{high}"), ratio, False),
         (among(f"{wide}:{high}.5"), ratio, False),
         (among(f"{wide} {high}"), ratio, False),
+        # A slash and "by", and a ratio inside a longer one or a date (round 2 of #464).
+        (among(f"{wide}/{high}"), ratio, True),
+        (among(f"{wide} by {high}"), ratio, True),
+        (among(f"1:{wide}:{high}"), ratio, False),
+        (among(f"{wide}:{high}:4"), ratio, False),
+        (among(f"{wide}/{high}/2026"), ratio, False),
         (among(shown), decimal, True),
         (among(f"{shown}0"), decimal, True),
         (among(f"{shown}."), decimal, True),
+        # With a comma (round 2 of #464), and not a comma before three digits, which
+        # separates thousands.
+        (among(shown.replace(".", ",")), decimal, True),
+        (among(shown.replace(".", ",") + "0"), decimal, True),
+        (among(shown.replace(".", ",") + "00"), decimal, False),
         (among(f"{shown}5"), decimal, False),
         (among(f"1{shown}"), decimal, False),
         (among(f"{shown}.5"), decimal, False),
@@ -11902,11 +11913,26 @@ def _a_ratio_is_read_inside_a_longer_number(patch: pytest.MonkeyPatch) -> None:
 
 
 def _a_decimal_is_read_inside_a_longer_number(patch: pytest.MonkeyPatch) -> None:
-    patch.setattr(journal_quotes_gate, "_DECIMAL", "{}")
+    patch.setattr(journal_quotes_gate, "_DECIMAL", "{}()")
 
 
 def _a_decimal_s_zeros_after_it_are_another_number(patch: pytest.MonkeyPatch) -> None:
-    patch.setattr(journal_quotes_gate, "_DECIMAL", r"(?<![0-9.,]){}(?![0-9]|[.,][0-9])")
+    patch.setattr(journal_quotes_gate, "_DECIMAL", r"(?<![0-9.,]){}()(?![0-9]|[.,][0-9])")
+
+
+def _a_decimal_is_written_with_a_point_alone(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(journal_quotes_gate, "_DECIMAL_MARKS", (".",))
+
+
+def _a_ratio_s_sign_is_no_slash_nor_by(patch: pytest.MonkeyPatch) -> None:
+    sign = r"[ \t]*[:x" + chr(0xD7) + r"][ \t]*"
+    patch.setattr(journal_quotes_gate, "_RATIO",
+                  r"(?<![0-9.,:/]){}" + sign + r"{}(?![0-9]|[.,:/][0-9])")  # fmt: skip
+
+
+def _a_ratio_is_read_inside_a_longer_ratio(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(journal_quotes_gate, "_RATIO", r"(?<![0-9.,]){}"
+                  + journal_quotes_gate._RATIO_SIGN + r"{}(?![0-9]|[.,][0-9])")  # fmt: skip
 
 
 def _a_limit_has_no_separator_of_thousands(patch: pytest.MonkeyPatch) -> None:
@@ -12356,6 +12382,27 @@ def _a_chapter_heading_is_no_box_s(patch: pytest.MonkeyPatch) -> None:
                   and heading.end >= 0)  # fmt: skip
 
 
+def _a_thematic_break_is_an_item(patch: pytest.MonkeyPatch) -> None:
+    # Round 2 of #464: `- - -` in a box was counted as an item.
+    patch.setattr(boxes_module, "_BREAK", re.compile(r"(?!)"))
+
+
+def _a_line_after_a_blank_one_runs_on_at_two_spaces(patch: pytest.MonkeyPatch) -> None:
+    # Round 2 of #464: after a blank line, two spaces joined a line to "1. A".
+    patch.setattr(boxes_module, "_runs_on",
+                  lambda line, column, blank: not blank or line.startswith("  "))
+
+
+def _an_itemize_label_is_its_item_s_text(patch: pytest.MonkeyPatch) -> None:
+    # Round 2 of #464: `\item[--] Text` counted its label to the item.
+    patch.setattr(boxes_module, "_label_counts", lambda kind: True)
+
+
+def _a_list_s_options_are_printed(patch: pytest.MonkeyPatch) -> None:
+    # Round 2 of #464: `\begin{itemize}[noitemsep]` printed its option as the box's words.
+    patch.setattr(boxes_module, "list_options", lambda text, start, end, passed: [])
+
+
 def _a_latex_comment_is_printed(patch: pytest.MonkeyPatch) -> None:
     # Nothing of a LaTeX file passed over: a commented `\item`, and a box TeX skips, read.
     patch.setattr(boxes_module, "_passed_over", lambda reading: lambda at: False)
@@ -12428,6 +12475,22 @@ BROKEN = {
     ),
     "a chapter's heading is no box's": (
         _a_chapter_heading_is_no_box_s,
+        test_each_box_a_journal_asks_for_is_read_with_its_items_and_nothing_else_is,
+    ),
+    "a thematic break is an item": (
+        _a_thematic_break_is_an_item,
+        test_each_box_a_journal_asks_for_is_read_with_its_items_and_nothing_else_is,
+    ),
+    "a line after a blank one runs on at two spaces": (
+        _a_line_after_a_blank_one_runs_on_at_two_spaces,
+        test_each_box_a_journal_asks_for_is_read_with_its_items_and_nothing_else_is,
+    ),
+    "an itemize label is its item's text": (
+        _an_itemize_label_is_its_item_s_text,
+        test_each_box_a_journal_asks_for_is_read_with_its_items_and_nothing_else_is,
+    ),
+    "a list's options are printed": (
+        _a_list_s_options_are_printed,
         test_each_box_a_journal_asks_for_is_read_with_its_items_and_nothing_else_is,
     ),
     "a LaTeX box's comment is printed": (
@@ -14188,6 +14251,18 @@ BROKEN = {
     ),
     "a decimal's zeros after it are another number": (
         _a_decimal_s_zeros_after_it_are_another_number,
+        test_a_ratio_and_a_decimal_are_stated_by_their_digits_and_by_no_longer_number,
+    ),
+    "a decimal is written with a point alone": (
+        _a_decimal_is_written_with_a_point_alone,
+        test_a_ratio_and_a_decimal_are_stated_by_their_digits_and_by_no_longer_number,
+    ),
+    "a ratio's sign is no slash nor by": (
+        _a_ratio_s_sign_is_no_slash_nor_by,
+        test_a_ratio_and_a_decimal_are_stated_by_their_digits_and_by_no_longer_number,
+    ),
+    "a ratio is read inside a longer ratio": (
+        _a_ratio_is_read_inside_a_longer_ratio,
         test_a_ratio_and_a_decimal_are_stated_by_their_digits_and_by_no_longer_number,
     ),
     "a limit's word is read inside a longer word": (

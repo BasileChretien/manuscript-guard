@@ -439,17 +439,15 @@ def reread(project: Project, new_text: str, page: str | None = None) -> Reread |
     page. A rule whose quote is not on the new page is one the page may have changed, and is
     read again; the rest of the difference is for the author to read, a rule the page added
     among it. Raises LookupError where `page` is no page of the profile's, the instructions
-    page among them, and ValueError, with what the schema says, where the profile is not
-    valid."""
-    from manuscript_guard.contracts._schema import validate
-
+    page among them, and ValueError, with what the schema says, where a block that may name
+    a page of its own is not valid."""
     found = _target_profile(project)
     if found is None:
         return None
     slug, document, path = found
-    checked = validate(document, "journal", path, gate=GATE)
-    if not checked.ok:
-        raise ValueError(checked.render())
+    wrong = _blocks_invalid(document)
+    if wrong:
+        raise ValueError(f"{_where(path, project)}: " + "; ".join(wrong))
     pages = pages_of(project, slug, document)
     chosen = pages[0] if page is None else next(
         (one for one in pages if _same(one.path, project.root / page)), None)  # fmt: skip
@@ -473,6 +471,25 @@ def reread(project: Project, new_text: str, page: str | None = None) -> Reread |
     rules = tuple((key, _on_page(new_text, quote)) for key, quote in said)
     blocks = () if chosen.instructions else chosen.blocks
     return Reread(chosen.path, diff, rules, page_digest(new_text), blocks)
+
+
+#: The blocks `pages_of` reads, which may each name a page of their own.
+PAGED_BLOCKS = ("boxes", "graphical_abstract", "sharing")
+
+
+def _blocks_invalid(document: dict) -> list[str]:
+    """What the schema says is wrong with the blocks `pages_of` reads, and nothing else of
+    the profile: a reread reads the page again for a profile the schema refuses elsewhere,
+    as it did before blocks named pages (round 2 of #464), and is kept from a block it
+    cannot read (`boxes: 3`, round 1)."""
+    from jsonschema import Draft202012Validator
+
+    from manuscript_guard.contracts._schema import load_schema
+
+    validator = Draft202012Validator(load_schema("journal"))
+    return [f"{'/'.join(str(p) for p in error.absolute_path)}: {error.message}"
+            for error in validator.iter_errors(document)
+            if error.absolute_path and error.absolute_path[0] in PAGED_BLOCKS]  # fmt: skip
 
 
 def _same(one: Path, other: Path) -> bool:
@@ -529,13 +546,19 @@ def _forms(value: int) -> set[str]:
     return {str(value), f"{value:,}", f"{value:,}".replace(",", " ")}
 
 
-#: A number that is not whole, as its digits: "2.5" or "2.50", not inside a longer number.
-_DECIMAL = r"(?<![0-9.,]){}0*(?![0-9]|[.,][0-9])"
-#: Between the two parts of a ratio: a colon or a multiplication sign, or an x, with spaces
-#: or none ("16:9", "16 : 9", "16 x 9").
-_RATIO_SIGN = r"[ \t]*[:x" + chr(0xD7) + r"][ \t]*"
-#: An aspect ratio's two parts, in their order, neither inside a longer number.
-_RATIO = r"(?<![0-9.,]){}" + _RATIO_SIGN.replace("{", "{{") + r"{}(?![0-9]|[.,][0-9])"
+#: A number that is not whole, as its digits: "2.5" or "2.50", or with a comma, "2,5" or
+#: "2,50"; not inside a longer number, and not a comma before three digits, a separator of
+#: thousands ("2,500").
+_DECIMAL = r"(?<![0-9.,]){}(0*)(?![0-9]|[.,][0-9])"
+#: The marks a page writes a decimal with: a point, or a comma (round 2 of #464).
+_DECIMAL_MARKS = (".", ",")
+#: Between the two parts of a ratio: a colon, a multiplication sign, an x or a slash, with
+#: spaces or none, or "by" between spaces ("16:9", "16 : 9", "16 x 9", "16/9", "16 by 9").
+_RATIO_SIGN = r"(?:[ \t]*[:x/" + chr(0xD7) + r"][ \t]*|[ \t]+by[ \t]+)"
+#: An aspect ratio's two parts, in their order, neither inside a longer number nor a longer
+#: ratio or date: "1:16:9", "16:9:4" and "16/9/2026" do not state 16:9.
+_RATIO = (r"(?<![0-9.,:/]){}" + _RATIO_SIGN.replace("{", "{{")
+          + r"{}(?![0-9]|[.,:/][0-9])")  # fmt: skip
 
 
 def _decimal(value: float) -> str:
@@ -545,8 +568,9 @@ def _decimal(value: float) -> str:
 
 def _states_ratio(quote: str, ratio: str) -> bool:
     """Whether a quote states an aspect ratio as the profile writes it ("16:9"): both its
-    parts, in their order, with a colon, a multiplication sign or an x between them, neither
-    inside a longer number. "5:2" and "16:10" do not state 16:9."""
+    parts, in their order, with a colon, a multiplication sign, an x, a slash or "by" between
+    them, neither inside a longer number or ratio. "5:2", "16:10" and "1:16:9" do not state
+    16:9."""
     first, _colon, second = ratio.partition(":")
     pattern = _RATIO.format(re.escape(first), re.escape(second))
     return re.search(pattern, normalise(quote).lower()) is not None
@@ -555,10 +579,17 @@ def _states_ratio(quote: str, ratio: str) -> bool:
 def _states(quote: str, value: int | float) -> bool:
     """Whether a quote states a number: a whole one as digits, with or without a separator
     of thousands ("3500", "3,500", "3 500"), or as a word up to twenty; one that is not
-    whole as its digits ("2.5", "2.50")."""
+    whole as its digits, with a point or a comma ("2.5", "2.50", "2,5")."""
     text = normalise(quote).lower()
     if isinstance(value, float) and not value.is_integer():
-        return re.search(_DECIMAL.format(re.escape(_decimal(value))), text) is not None
+        point = _decimal(value)
+        whole, _point, tenths = point.partition(".")
+        for form in (f"{whole}{mark}{tenths}" for mark in _DECIMAL_MARKS):
+            for found in re.finditer(_DECIMAL.format(re.escape(form)), text):
+                after = len(tenths) + len(found.group(1))
+                if "," not in form or after != 3:
+                    return True
+        return False
     value = int(value)
     for form in _forms(value):
         for found in re.finditer(_DIGITS.format(re.escape(form)), text):

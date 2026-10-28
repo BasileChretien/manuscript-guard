@@ -44,8 +44,13 @@ _MARKS = re.compile(r"(?<!\w)[*_]+|[*_]+(?!\w)|`+")
 _SPACE = re.compile(r"\s+")
 #: A LaTeX list's item, and where a list opens and closes, which says how deep an item is.
 _LATEX_LIST = re.compile(
-    r"\\(?P<which>begin|end)\s*\{(?:itemize|enumerate|description)\*?\}|\\item(?![A-Za-z@])"
+    r"\\(?P<which>begin|end)\s*\{(?P<kind>itemize|enumerate|description)\*?\}"
+    r"|\\item(?![A-Za-z@])"
 )
+#: An optional argument's `[`, past the spaces and the one line break TeX passes over.
+_OPTION = re.compile(r"[ \t]*(?:\n[ \t]*)?\[")
+#: A thematic break, three or more of one mark with spaces or none, which is no item.
+_BREAK = re.compile(r"^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$")
 _NUL = "\x00"
 
 
@@ -158,7 +163,7 @@ def _unmarked_lines(body: str) -> str:
     sub-heading's `#`s and an underline. An ordered list's "1." was otherwise a word."""
     lines = []
     for line in body.split("\n"):
-        if re.match(r"^ {0,3}(?:=+|-+)[ \t]*$", line):
+        if re.match(r"^ {0,3}(?:=+|-+)[ \t]*$", line) or _BREAK.match(line.expandtabs(4)):
             continue
         started = _ITEM.match(line.expandtabs(4))
         if started:
@@ -179,7 +184,8 @@ def markdown_items(body: str) -> list[str]:
     blank = False
     for line in (raw.expandtabs(4) for raw in body.split("\n")):
         started = _ITEM.match(line)
-        if _HEADING_LINE.match(line):
+        if _HEADING_LINE.match(line) or _BREAK.match(line):
+            # A sub-heading, and a thematic break (`- - -`, `***`), end a list and are none.
             current, blank = None, False
             paragraph = _closed(paragraph, paragraphs)
             continue
@@ -195,7 +201,7 @@ def markdown_items(body: str) -> list[str]:
             continue
         elif current is not None and nested:
             current.append(started["text"] or "")
-        elif current is not None and (not blank or line.startswith("  ")):
+        elif current is not None and _runs_on(line, column, blank):
             current.append(line)
         else:
             current = None
@@ -220,6 +226,14 @@ def _nested(started: re.Match[str], column: int) -> bool:
     mark indented as far as the open item's text (`column`). Less is an item of the same
     list, whatever the list's own indentation."""
     return len(started["indent"]) >= column
+
+
+def _runs_on(line: str, column: int, blank: bool) -> bool:
+    """Whether a line that opens no item is text of the open item: straight after it, as a
+    lazy line of its paragraph, or after a blank line indented to its text (`column`), as
+    CommonMark reads it. Less indented after a blank line, it is a paragraph after the list
+    (round 2 of #464: "1. A", a blank line, then "  B" joined B to A)."""
+    return not blank or len(line) - len(line.lstrip(" ")) >= column
 
 
 def _closed(paragraph: list[str], paragraphs: list[str]) -> list[str]:
@@ -301,12 +315,15 @@ def _passed_over(reading: Any):
 def _latex_found(source: Any, start: int, end: int, rule: BoxRule, title: str,
                  namespace: dict[str, Any]) -> Found:  # fmt: skip
     text, reading = source.text, source.reading
-    spans = latex_item_spans(text, start, end, _passed_over(reading))
-    items = [latex_printed(source, a, b, namespace) for a, b in spans]
+    passed = _passed_over(reading)
+    spans = latex_item_spans(text, start, end, passed)
+    # A list's options print nothing, whatever the mask leaves of them.
+    omit = list_options(text, start, end, passed)
+    items = [latex_printed(source, a, b, namespace, omit) for a, b in spans]
     if not spans:
-        items = [latex_printed(source, a, b, namespace) for a, b in _paragraphs(reading.masked,
-                                                                              start, end)]
-    body = latex_printed(source, start, end, namespace)
+        items = [latex_printed(source, a, b, namespace, omit)
+                 for a, b in _paragraphs(reading.masked, start, end)]  # fmt: skip
+    body = latex_printed(source, start, end, namespace, omit)
     line = text.count("\n", 0, start) + 1
     return Found(rule.id, title, line, tuple(item for item in items if item), body, body)
 
@@ -317,17 +334,21 @@ def latex_item_spans(text: str, start: int, end: int, passed) -> list[tuple[int,
     is that item's text, as it prints inside it: the box's items are those of the least
     depth, the depth of an environment that is itself a list (Elsevier's highlights) 0."""
     marks: list[tuple[int, int, int, str]] = []  # (start, end, depth, item / end)
-    depth = 0
+    lists: list[str] = []
     for found in _LATEX_LIST.finditer(text, start, end):
         if passed(found.start()):
             continue
         if found["which"] == "begin":
-            depth += 1
+            lists.append(found["kind"])
         elif found["which"] == "end":
-            marks.append((found.start(), found.end(), depth, "end"))
-            depth -= 1
+            marks.append((found.start(), found.end(), len(lists), "end"))
+            lists = lists[:-1]
         else:
-            marks.append((found.start(), found.end(), depth, "item"))
+            # An itemize's or an enumerate's label (`\item[--]`) is its mark, and no text of
+            # the item; a description's is its term, printed with it.
+            kind = lists[-1] if lists else ""
+            after = found.end() if _label_counts(kind) else _past_option(text, found.end(), end)
+            marks.append((found.start(), after, len(lists), "item"))
     top = min((depth for _a, _b, depth, kind in marks if kind == "item"), default=0)
     spans: list[tuple[int, int]] = []
     for index, (_at, after, depth, kind) in enumerate(marks):
@@ -346,10 +367,54 @@ def _of_the_box(depth: int, top: int) -> bool:
     return depth == top
 
 
-def latex_printed(source: Any, start: int, end: int, namespace: dict[str, Any]) -> str:
+def _label_counts(kind: str) -> bool:
+    """Whether an `\\item`'s label is text of its item: a description's term is; an
+    itemize's or an enumerate's mark, or that of a box's own environment, is not."""
+    return kind == "description"
+
+
+def _past_option(text: str, at: int, end: int) -> int:
+    """Past an optional argument that opens at `at`, spaces and one line break before it
+    as TeX reads them, to the `]` that closes it outside braces; `at` where none opens, or
+    none closes before a blank line or `end`."""
+    opened = _OPTION.match(text, at, end)
+    if opened is None:
+        return at
+    depth = 0
+    for index in range(opened.end(), end):
+        character = text[index]
+        if character == "{":
+            depth += 1
+        elif character == "}":
+            depth -= 1
+        elif character == "]" and depth == 0:
+            return index + 1
+        elif character == "\n" and text.startswith("\n", index + 1):
+            return at
+    return at
+
+
+def list_options(text: str, start: int, end: int, passed) -> list[tuple[int, int]]:
+    """Where each list of a box writes its options (`\\begin{itemize}[noitemsep]`), which
+    print nothing."""
+    spans = []
+    for found in _LATEX_LIST.finditer(text, start, end):
+        if found["which"] == "begin" and not passed(found.start()):
+            after = _past_option(text, found.end(), end)
+            if after > found.end():
+                spans.append((found.end(), after))
+    return spans
+
+
+def latex_printed(source: Any, start: int, end: int, namespace: dict[str, Any],
+                  omit: list[tuple[int, int]] = ()) -> str:  # fmt: skip
     """What a stretch of a LaTeX file prints, as G4 reads it: its prose as the mask leaves
-    it, each binding its value's display, white space folded."""
+    it, each binding its value's display, white space folded; what `omit` names, a list's
+    options, left out."""
     masked = source.reading.masked
+    for a, b in omit:
+        if a < end and b > start:
+            masked = masked[:a] + " " * (b - a) + masked[b:]
     out: list[str] = []
     at = start
     for use in sorted(source.reading.bindings, key=lambda b: b.start):

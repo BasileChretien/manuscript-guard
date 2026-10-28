@@ -3991,6 +3991,15 @@ def _box_codes(root: Path, edit) -> list[tuple[str, str]]:
                                  "1. Not incidence.\n   1. Reports.\n   2. Cases.\n"), []),
         (lambda box: box.replace("incidence.\n", "incidence.\n- One.\n  - a.\n- Two.\n"),
          [("box-items", "fail")]),
+        # A thematic break is no item, and a line after a blank one less indented than the
+        # item's text is a paragraph after the list (round 2 of #464: five items; a long item).
+        (lambda box: box.replace("incidence.\n", "incidence.\n- - -\n* * *\n- - -\n"), []),
+        (lambda box: box.replace("- Disproportionality is not incidence.\n",
+                                 "1. Not incidence.\n\n  A paragraph after the list, which runs "
+                                 "past sixty characters.\n"), []),
+        (lambda box: box.replace("- Disproportionality is not incidence.\n",
+                                 "1. Not incidence.\n\n   A paragraph of the item, which runs "
+                                 "past sixty characters.\n"), [("box-item-long", "fail")]),
     ],
 )  # fmt: skip
 def test_a_box_the_journal_requires_fails_at_submission_when_it_is_broken(
@@ -4113,6 +4122,17 @@ _LATEX_ABSTRACT = "\\begin{abstract}\nWe read reports.\n\nWe found a signal.\n\\
          "\\end{itemize}\n", []),
         ("\\chapter*{Highlights}\n\\begin{itemize}\n\\item One.\n\\item Two.\n\\end{itemize}\n",
          [("box-items", "fail")]),
+        # An itemize's label is its mark, and a list's options print nothing (round 2 of #464:
+        # both were counted to the item's characters); a description's term is its text.
+        ("\\section*{Highlights}\n\\begin{itemize}\n\\item[{A label that runs well past the "
+         "sixty characters an item may hold}] One.\n\\item Two.\n\\item Three.\n"
+         "\\end{itemize}\n", []),
+        ("\\section*{Highlights}\n\\begin{itemize}\n\\item One. \\begin{itemize}[leftmargin="
+         "2em, itemsep=0pt, topsep=0pt, partopsep=0pt, parsep=0pt]\\item a.\\end{itemize}\n"
+         "\\item Two.\n\\item Three.\n\\end{itemize}\n", []),
+        ("\\section*{Highlights}\n\\begin{description}\n\\item[{A term that runs well past the "
+         "sixty characters an item may hold}] One.\n\\item[Two] Two.\n\\item[Three] Three.\n"
+         "\\end{description}\n", [("box-item-long", "fail")]),
     ],
 )  # fmt: skip
 def test_a_latex_box_is_counted_by_its_own_items_up_to_an_abstract(
@@ -4154,34 +4174,62 @@ _ARTWORK_QUOTE = (f"Images should be 16 {chr(0xD7)} 9, no larger than 2.5 MB, wi
 
 
 @pytest.mark.parametrize(
-    ("block", "said"),
+    ("quote", "block", "said"),
     [
-        ({"aspect_ratio": "16:9", "max_file_mb": 2.5, "min_text_pt": 6.5}, []),
+        (_ARTWORK_QUOTE, {"aspect_ratio": "16:9", "max_file_mb": 2.5, "min_text_pt": 6.5}, []),
         # The ratio, and the numbers that are not whole, typed wrong (round 1 of #464: none
         # was held to its quote).
-        ({"aspect_ratio": "5:2"}, ["graphical_abstract.aspect_ratio is 5:2"]),
-        ({"aspect_ratio": "16:10"}, ["graphical_abstract.aspect_ratio is 16:10"]),
-        ({"max_file_mb": 25.5}, ["graphical_abstract.max_file_mb is 25.5"]),
-        ({"min_text_pt": 6.4}, ["graphical_abstract.min_text_pt is 6.4"]),
+        (_ARTWORK_QUOTE, {"aspect_ratio": "5:2"}, ["graphical_abstract.aspect_ratio is 5:2"]),
+        (_ARTWORK_QUOTE, {"aspect_ratio": "16:10"},
+         ["graphical_abstract.aspect_ratio is 16:10"]),
+        (_ARTWORK_QUOTE, {"max_file_mb": 25.5}, ["graphical_abstract.max_file_mb is 25.5"]),
+        (_ARTWORK_QUOTE, {"min_text_pt": 6.4}, ["graphical_abstract.min_text_pt is 6.4"]),
+        # A comma's decimal, a slash's and a "by"'s ratio state them (round 2 of #464: each
+        # failed a right profile); a ratio inside a longer one does not.
+        ("Images 16/9 or 16 by 9, no larger than 2,5 MB.",
+         {"aspect_ratio": "16:9", "max_file_mb": 2.5}, []),
+        ("Panels are laid out 1:16:9, no larger than 2,500 MB.",
+         {"aspect_ratio": "16:9", "max_file_mb": 2.5},
+         ["graphical_abstract.aspect_ratio is 16:9", "graphical_abstract.max_file_mb is 2.5"]),
     ],
 )  # fmt: skip
 def test_a_graphical_abstract_s_ratio_or_decimal_typed_wrong_fails(
-    project: Path, block: dict, said: list
+    project: Path, quote: str, block: dict, said: list
 ) -> None:
     from manuscript_guard.gates import check_journal
 
     stored = project / "profiles" / "journals" / "sources" / "demo-journal.txt"
-    stored.write_text(stored.read_text(encoding="utf-8") + f"\n{_ARTWORK_QUOTE}\n",
+    stored.write_text(stored.read_text(encoding="utf-8") + f"\n{quote}\n",
                       encoding="utf-8")  # fmt: skip
     profile = project / "profiles" / "journals" / "demo-journal.yaml"
     document = yaml.safe_load(profile.read_text(encoding="utf-8"))
     document["graphical_abstract"] = block
-    document["quotes"].update({f"graphical_abstract.{name}": _ARTWORK_QUOTE for name in block})
+    document["quotes"].update({f"graphical_abstract.{name}": quote for name in block})
     profile.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
     report = check_journal(load_project(project)[0])
     found = [f.message.split(",")[0] for f in report.findings
              if f.code == "journal-limit-not-in-quote"]  # fmt: skip
     assert found == said
+
+
+def test_a_policy_read_long_ago_from_its_own_page_is_stale_and_names_that_page(
+    project: Path,
+) -> None:
+    """Round 2 of #464: the hint named the instructions' address, which the policy was not
+    read from."""
+    from manuscript_guard.gates import check_journal
+
+    profile = project / "profiles" / "journals" / "demo-journal.yaml"
+    document = yaml.safe_load(profile.read_text(encoding="utf-8"))
+    document["sharing"] = {"page_file": "profiles/journals/sources/sharing.txt",
+                           "retrieved_on": "2020-01-01",
+                           "accepted": {"where": ["institutional-repository"]}}  # fmt: skip
+    profile.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    stale = [(f.message, f.hint) for f in check_journal(load_project(project)[0]).findings
+             if f.code == "journal-profile-stale"]  # fmt: skip
+    assert ("the sharing rules were read on 2020-01-01", "re-read its page "
+            "(profiles/journals/sources/sharing.txt) before submitting; journals change them "
+            "without announcement") in stale  # fmt: skip
 
 
 # ------------------------------------------------- a placeholder, wherever it is written

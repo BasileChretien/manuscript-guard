@@ -124,9 +124,10 @@ A box's quote states each of its numbers above 1 (`items_min`, `items_max`,
 `item_max_chars`, `item_max_words`, `max_words`), and so does each line of the graphical
 abstract's, as a limit's quote states its number: G4 fails one that does not
 (`journal-limit-not-in-quote`). A graphical abstract's number that is not whole
-(`max_file_mb: 2.5`) is stated in digits, "2.5" or "2.50". Its `aspect_ratio` is stated with
-both its parts in their order, "16:9", "16 : 9", "16 × 9" or "16 x 9": "5:2" and "16:10" do
-not state 16:9, and a page that says "square" does not state "1:1".
+(`max_file_mb: 2.5`) is stated in digits, "2.5", "2.50" or "2,5". Its `aspect_ratio` is
+stated with both its parts in their order, "16:9", "16 : 9", "16 × 9", "16 x 9", "16/9" or
+"16 by 9": "5:2", "16:10" and "1:16:9" do not state 16:9, and a page that says "square" does
+not state "1:1".
 
 A box has one quote, and each of its numbers is looked for anywhere in it: `items_max: 3`
 passes against "3 to 5 highlights", since 3 is there. Check that each number is the one the

@@ -1463,6 +1463,33 @@ def test_a_count_below_the_custodians_minimum_is_not_printed(project: Path) -> N
     assert "count-below-minimum" in codes(report)
 
 
+def test_set_moves_the_stage_and_not_the_lines_that_look_like_it(project: Path) -> None:
+    """`set stage` writes the setting at the top level of paper.yaml, and the check then
+    holds the paper to it: a small count fails from internal review. A regular expression
+    for `stage:` would have hit the commented example above the setting, or a citekey
+    named `stage` under `lookup: not_indexed:`, and left the stage where it was."""
+    from manuscript_guard.cli import _run_gates
+
+    paper = project / "paper.yaml"
+    text = paper.read_text(encoding="utf-8").replace(
+        "  not_indexed:\n",
+        "  not_indexed:\n    # stage: where a careless edit would write\n"
+        "    stage: a citekey named like the setting\n",
+    )
+    text += "\ncustodian:\n  minimum_cell_count: 5\n# stage: internal-review\nstage: drafting\n"
+    paper.write_bytes(text.encode("utf-8"))
+    _value_has(project, "case.n_serious", value=3, display="3", unit=None, label=False)
+    report, _project, chosen, _deferred = _run_gates(project)
+    assert chosen == "drafting" and "count-below-minimum" not in codes(report)
+
+    assert _run_cli(["set", "stage", "internal-review", "--path", str(project)]) == 0
+    report, _project, chosen, _deferred = _run_gates(project)
+    assert chosen == "internal-review" and "count-below-minimum" in codes(report)
+    after = paper.read_bytes().decode("utf-8")
+    assert after == text.replace("\nstage: drafting\n", "\nstage: internal-review\n")
+    assert yaml.safe_load(after)["lookup"]["not_indexed"]["stage"].startswith("a citekey")
+
+
 @pytest.mark.parametrize("fields", [
     {"value": 3.0, "display": "3"},  # a count emitted as a float
     {"value": 3, "display": "3", "unit": "patients"},  # a count given a unit of people

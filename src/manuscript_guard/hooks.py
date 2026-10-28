@@ -24,13 +24,14 @@ always wrong. Prose that trips the AI-writing lint is not, so that is reported a
 never denied.
 
 **A decision that is the author's is put to the author.** Sending the manuscript to model
-providers without being asked (`review --run --yes`), and naming who attested a value they
-read in a source (`attested_by`), are statements only the author can make, and nothing else
-can tell an agent's from theirs. There the hook answers "ask", and the agent tool shows the
-person the call and the reason before it runs. Claude Code honours "ask". Codex reads it and
-does not support it yet: it fails the hook and lets the call through. So where the tool is
-not known to ask, the hook refuses the call instead, with the same reason, and the author
-makes it themselves.
+providers without being asked (`review --run --yes`), naming who attested a value they
+read in a source (`attested_by`), and releasing the paper from a check (`set` of an
+earlier stage, of fewer guidelines or of another journal) are statements only the author
+can make, and nothing else can tell an agent's from theirs. There the hook answers "ask",
+and the agent tool shows the person the call and the reason before it runs. Claude Code
+honours "ask". Codex reads it and does not support it yet: it fails the hook and lets the
+call through. So where the tool is not known to ask, the hook refuses the call instead, with
+the same reason, and the author makes it themselves.
 """
 
 from __future__ import annotations
@@ -1134,6 +1135,7 @@ def guard_submission(payload: dict) -> int:
     command = _without_messages(str(payload.get("tool_input", {}).get("command", "")))
     sends = _or_nothing(lambda _path: _sends_without_asking(command, payload), Path("."))
     sends = sends or _or_nothing(lambda _path: _approves(command), Path("."))
+    sends = sends or _moves_stage_back(command, payload)
     if not SUBMISSION_MARKERS.search(command):
         return _ask("PreToolUse", sends, payload) if sends else 0
 
@@ -1183,6 +1185,19 @@ def _approves(command: str) -> str | None:
         "`manuscript-guard approve` records that an author read the manuscript and approves "
         "it. Only that author can say so: run it yourself, as yourself."
     )
+
+
+def _moves_stage_back(command: str, payload: dict) -> str | None:
+    """Why a `set` in this command is put to the author (`set_guard`): it moves the stage
+    back, takes a guideline away or replaces the journal, or the guard cannot read what it
+    changes."""
+    from manuscript_guard.set_guard import asks
+
+    try:
+        cwd: Path | None = Path(payload.get("cwd") or Path.cwd()).resolve()
+    except (OSError, RuntimeError, ValueError, TypeError):
+        cwd = None  # asked: the hook's own folder is not the command's
+    return asks(command, cwd)
 
 
 def _sends_without_asking(command: str, payload: dict) -> str | None:

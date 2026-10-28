@@ -111,7 +111,10 @@ and kept in `profiles/journals/styles/` for the offline build), `explain` (how e
 number in a file was classified),
 `reworded` (an edit changed the wording and no binding, citation key or typed number:
 the manuscript against the last commit, `--since` another, or one file `--before` a copy),
-`render` (substitute bindings only), `init` (scaffold a project),
+`render` (substitute bindings only), `init` (scaffold a project), `set` (write one of
+`stage`, `target_journal`, `english_variant`, `reporting_guideline`, `study_type` into
+`paper.yaml`, its comments kept; the hook asks before an agent moves the stage back,
+takes a guideline away or replaces the journal),
 `review --record <reviewer> --remit … --verdict …` (file the record G11 asks for, with the
 digests filled in; `--record-figure <name> --by …` for G10). Neither can re-stamp an existing
 record: a second reading by the same reader is a further round. `--reading <reader>`

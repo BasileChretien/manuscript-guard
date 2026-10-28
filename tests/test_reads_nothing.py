@@ -132,6 +132,10 @@ COMMANDS = {
                  argv=("sign", "{project}", "--as", "Nobody Listed", "--finding", "G15/x/y")),
     "search": Zero("the query it is given, then the registries' answers", exits=2,
                    argv=("search", "")),
+    # The empty project's stage is already `design`, which `set stage design` leaves with
+    # exit 0; a journal, where the project has no profile and no shortlist, is refused.
+    "set": Zero("paper.yaml, and for target_journal the journal profiles and the shortlist",
+                exits=2, argv=("set", "target_journal", "any-journal", "--path", "{project}")),
     "stages": Zero("nothing: it prints the stages", why="it reads the policy table only"),
     "style": Zero("the citation style the journal's profile names", exits=2,
                   argv=("style", "{project}")),
@@ -272,6 +276,7 @@ LATEX = {
     "reworded": ("refuses", ("reworded", "{project}")),
     "search": ("no manuscript", ("search", "hepatic injury")),
     "sign": ("reads", ("sign", "{project}", "--as", "Nobody Listed", "--finding", "G15/x/y")),
+    "set": ("no manuscript", ("set", "stage", "design", "--path", "{project}")),
     "stages": ("no manuscript", ("stages",)),
     "style": ("no manuscript", ("style", "{project}")),
     # It packs the source as one folder that compiles alone (step 10).

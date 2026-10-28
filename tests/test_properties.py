@@ -113,6 +113,7 @@ from generated import (
     numbered_displays,
     painted_pdfs,
     painted_svgs,
+    paper_files,
     passage_files,
     pdf_figures,
     plan_pairs,
@@ -123,6 +124,7 @@ from generated import (
     quoted_references,
     reference_titled,
     revisions,
+    set_hazards,
     share_tables,
     signs,
     sources,
@@ -139,6 +141,7 @@ from hypothesis.database import InMemoryExampleDatabase
 from readings import MAIN, PAPER, PEOPLE, READINGS, Unavailable, answer, plain_of
 
 from manuscript_guard import claims as claims_module
+from manuscript_guard import paper_edit
 from manuscript_guard import reworded as reworded_module
 from manuscript_guard.build import blinding, latex_values
 from manuscript_guard.build.blinding import names_in, sought
@@ -5966,6 +5969,139 @@ def _no_term_counts_directly_after_another(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard import classify
 
     patch.setattr(classify, "_AFTER_A_TERM", False)
+
+
+# ------------------------------------------------------- one setting of paper.yaml, written
+
+
+def _the_key_s_own_lines(lines: list[str], key: str) -> set[int]:
+    """The lines `set` may write or take away for `key`: the setting at the margin, its
+    commented example there, and the entries of its list, which are the lines after the
+    setting up to the next that stands at the margin and is no entry."""
+    starts = re.compile(rf"{chr(0xFEFF)}?(?:#[ \t]?)?{re.escape(key)}:")
+    owned: set[int] = set()
+    for at, line in enumerate(lines):
+        if not starts.match(line):
+            continue
+        owned.add(at)
+        after = at + 1
+        while after < len(lines) and re.match(r"[ \t]+\S|- ", lines[after]):
+            owned.add(after)
+            after += 1
+    return owned
+
+
+def _one_setting_changed(before: str, after: str, key: str, value: Any) -> None:
+    import yaml
+
+    try:
+        read_back = yaml.safe_load(after)
+    except yaml.YAMLError as error:
+        raise AssertionError(f"{key}: written, the file is no YAML: {error}") from error
+    assert read_back == {**yaml.safe_load(before), key: value}, key
+    for mark in set(re.findall(r"# c\d+\b", before)):
+        counted = re.compile(re.escape(mark) + r"\b")
+        assert len(counted.findall(after)) == len(counted.findall(before)), (key, mark)
+    # With their endings: a line whose CRLF became LF, or that lost its trailing spaces, is
+    # a line changed.
+    old, new = before.splitlines(keepends=True), after.splitlines(keepends=True)
+    same = 0
+    while same < min(len(old), len(new)) and old[same] == new[same]:
+        same += 1
+    tail = 0
+    while tail < min(len(old), len(new)) - same and old[-1 - tail] == new[-1 - tail]:
+        tail += 1
+    for text_lines, end in ((old, len(old) - tail), (new, len(new) - tail)):
+        owned = _the_key_s_own_lines(text_lines, key)
+        stray = [text_lines[at] for at in range(same, end) if at not in owned]
+        assert not stray, (key, stray)
+
+
+@holds(40, paper_files())
+def test_set_changes_one_setting_and_keeps_every_other_line(files: list[dict[str, Any]]) -> None:
+    """Each key, set on its own in two `paper.yaml` files with comments in random places and
+    each key in every form between them: the file reads back as the settings it held with
+    that key changed, every comment is there as many times as it was, and the lines that
+    changed, endings included, are one run of the key's own."""
+    for paper in files:
+        for key, value in paper["values"].items():
+            try:
+                done = paper_edit.edit(paper["text"], key, value)
+            except paper_edit.Refused as refused:
+                raise AssertionError(f"{key}: {refused}") from refused
+            _one_setting_changed(paper["text"], done.text, key, value)
+
+
+@holds(20, paper_files())
+def test_set_refuses_a_file_it_cannot_edit_safely_whichever_key(
+    files: list[dict[str, Any]],
+) -> None:
+    """An anchor and its alias, a key written twice, the settings as one mapping between
+    braces: each is refused for every key, whatever else the file holds, and for that
+    reason."""
+    for paper in files:
+        for hazard, (text, said) in set_hazards(paper["text"]).items():
+            for key, value in paper["values"].items():
+                try:
+                    paper_edit.edit(text, key, value)
+                except paper_edit.Refused as refused:
+                    assert said in str(refused), (hazard, key, str(refused))
+                    continue
+                raise AssertionError(f"with {hazard}, {key} was written")
+
+
+def _the_comment_above_goes_with_the_key(patch: pytest.MonkeyPatch) -> None:
+    replaced = paper_edit._replaced
+
+    def careless(text: str, key: Any, value: Any, new: Any) -> str:
+        out = replaced(text, key, value, new)
+        start = paper_edit._line_start(out, key.start_mark.index)
+        # Back over the whole line break, CRLF as well as LF, to the line above.
+        ended = start - (2 if out[max(start - 2, 0) : start] == chr(13) + chr(10) else 1)
+        above = paper_edit._line_start(out, ended) if start else 0
+        return out[:above] + out[start:] if out[above:start].startswith("#") else out
+
+    patch.setattr(paper_edit, "_replaced", careless)
+
+
+def _the_first_line_naming_the_key_is_set(patch: pytest.MonkeyPatch) -> None:
+    """What a regular expression makes of the edit: the first line that names the key,
+    nested or commented, is the one rewritten."""
+
+    def naive(text: str, key: str, new: Any) -> Any:
+        line = f"{key}: {paper_edit.written(new)}"
+        found = re.search(rf"(?m)^[ \t#]*{re.escape(key)}:[^\r\n]*", text)
+        if found is None:
+            return paper_edit.Edited(text + line + "\n", "appended", None)
+        return paper_edit.Edited(text[: found.start()] + line + text[found.end() :], "", None)
+
+    patch.setattr(paper_edit, "edit", naive)
+
+
+def _another_list_loses_its_trailing_spaces(patch: pytest.MonkeyPatch) -> None:
+    """Round 2 of #456: the property took any list entry for the key's own, so an edit that
+    tidied another list's entries passed."""
+    edit = paper_edit.edit
+
+    def tidying(text: str, key: str, new: Any) -> Any:
+        done = edit(text, key, new)
+        lines = done.text.splitlines(keepends=True)
+        owned = _the_key_s_own_lines(lines, key)
+        tidied = [
+            line if at in owned else re.sub(r"^([ \t]*- [^\r\n]*?)[ \t]+(\r?\n?)$", r"\1\2", line)
+            for at, line in enumerate(lines)
+        ]
+        return dataclasses.replace(done, text="".join(tidied))
+
+    patch.setattr(paper_edit, "edit", tidying)
+
+
+def _an_anchor_is_not_refused(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(paper_edit, "_UNSAFE", ())
+
+
+def _a_key_twice_is_not_refused(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(paper_edit, "_no_key_twice", lambda root: None)
 
 
 # ------------------------------------------------------------------- a suggested edit
@@ -13777,6 +13913,26 @@ BROKEN = {
     "an apostrophe is matched as it is typed": (
         _an_apostrophe_is_matched_as_typed,
         test_an_author_is_found_in_a_blind_document_however_written_and_no_one_else,
+    ),
+    "set takes the comment above the key with it": (
+        _the_comment_above_goes_with_the_key,
+        test_set_changes_one_setting_and_keeps_every_other_line,
+    ),
+    "set rewrites the first line that names the key": (
+        _the_first_line_naming_the_key_is_set,
+        test_set_changes_one_setting_and_keeps_every_other_line,
+    ),
+    "set takes the spaces off the end of another list's entries": (
+        _another_list_loses_its_trailing_spaces,
+        test_set_changes_one_setting_and_keeps_every_other_line,
+    ),
+    "set writes a file with an anchor": (
+        _an_anchor_is_not_refused,
+        test_set_refuses_a_file_it_cannot_edit_safely_whichever_key,
+    ),
+    "set writes a file with a key written twice": (
+        _a_key_twice_is_not_refused,
+        test_set_refuses_a_file_it_cannot_edit_safely_whichever_key,
     ),
     "a name is not read with the family name first": (
         _a_name_is_not_read_family_name_first,

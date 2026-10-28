@@ -96,6 +96,7 @@ from manuscript_guard.gates.registration import check_registration
 from manuscript_guard.gates.related import check_related
 from manuscript_guard.gates.shortlist import check_shortlist
 from manuscript_guard.gates.synthetic import check_synthetic_inputs
+from manuscript_guard.paper_edit import KEYS as PAPER_KEYS
 from manuscript_guard.policy import (
     DESCRIPTIONS,
     STAGES,
@@ -2328,6 +2329,39 @@ def _package_listing(project, plan) -> str:
     return "\n".join(lines)
 
 
+def cmd_set(args: argparse.Namespace) -> int:
+    """Write one setting of paper.yaml, keeping every comment and every other line."""
+    from manuscript_guard.contracts import find_root
+    from manuscript_guard.paper_edit import Refused, set_key, value_of, written
+
+    try:
+        path = find_root(args.path) / "paper.yaml"
+    except ContractError as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 2
+    try:
+        done = set_key(path, args.key, list(args.value))
+    except Refused as exc:
+        print(f"manuscript-guard: {path} is as it was, since {exc}", file=sys.stderr)
+        return 2
+    new = value_of(args.key, list(args.value))
+    if done.how == "unchanged":
+        print(f"{path}: {args.key} is already {written(new)}; nothing written")
+        return 0
+    try:
+        was = "not set" if done.before is None else written(done.before)
+    except (TypeError, AttributeError):  # a value the schema refuses: a number, a mapping
+        was = repr(done.before)
+    print(f"{path}: {args.key} is now {written(new)} (it was {was})")
+    back = args.key == "stage" and done.before in STAGES
+    if back and STAGES.index(new) < STAGES.index(done.before):
+        print(
+            f"The stage moved back: a finding that starts to fail after {new}, up to "
+            f"{done.before}, is now listed as not due."
+        )
+    return 0
+
+
 def cmd_stages(args: argparse.Namespace) -> int:
     """What each stage means, and what starts to bind at it."""
     from manuscript_guard.policy import BINDS_AT
@@ -4533,7 +4567,7 @@ def cmd_init(args: argparse.Namespace) -> int:
 #: The commands, under the headings the top-level help lists them by, in that order. Every
 #: command is in one group, but `hook`: an agent tool calls it and an author never does.
 COMMAND_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("Setup & Guide", ("init", "stages", "journal", "style", "install-skills")),
+    ("Setup & Guide", ("init", "set", "stages", "journal", "style", "install-skills")),
     (
         "Checking & Audit",
         (
@@ -4739,6 +4773,26 @@ def build_parser() -> argparse.ArgumentParser:
         "and which rules quote words it no longer has; writes nothing",
     )
     journal.set_defaults(func=cmd_journal)
+
+    set_ = sub.add_parser(
+        "set",
+        help="write one setting of paper.yaml (stage, target journal, English, reporting "
+        "guidelines, study type), keeping its comments",
+        description="Writes one key of paper.yaml and leaves every comment and every other "
+        "line as it was: it replaces the value, or makes the commented example `# key: ...` "
+        "the setting, or adds the key at the end. The file is read back before it is "
+        "written, and refused, unchanged, where it would hold anything else.",
+    )
+    set_.add_argument("key", choices=PAPER_KEYS)
+    set_.add_argument(
+        "value",
+        nargs="*",
+        help="the value; for reporting_guideline each guideline, or none for an empty list",
+    )
+    set_.add_argument(
+        "--path", type=Path, default=Path.cwd(), help="the project (default: the one you are in)"
+    )
+    set_.set_defaults(func=cmd_set)
 
     stages = sub.add_parser("stages", help="what each stage means and what binds at it")
     stages.set_defaults(func=cmd_stages)

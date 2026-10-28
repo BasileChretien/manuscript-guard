@@ -1497,6 +1497,26 @@ def _suggestion_written() -> Reading:
     return written
 
 
+@reading("paper.yaml set")
+def _paper_set() -> Reading:
+    """Each key of `paper.yaml` that `set` writes, set on its own in the same text: the text
+    `set` would write, and how it wrote the key, or why it refuses."""
+    from manuscript_guard.paper_edit import Refused, edit
+
+    def set_each(given: dict[str, Any]) -> dict[str, Any]:
+        out: dict[str, Any] = {}
+        for key, value in given["values"].items():
+            try:
+                done = edit(given["text"], key, value)
+            except Refused as refused:
+                out[key] = {"refused": str(refused)}
+            else:
+                out[key] = {"text": done.text, "how": done.how}
+        return out
+
+    return set_each
+
+
 # -------------------------------------------------------------------- a whole project
 
 

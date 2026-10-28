@@ -12,6 +12,7 @@ import json
 import random
 import re
 import sys
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
@@ -33,6 +34,8 @@ from manuscript_guard.guide import (
     shown,
     to_dict,
 )
+from manuscript_guard.guide.model import MISSING, PLACEHOLDER
+from manuscript_guard.guide.routes import PERSON_ONLY
 from manuscript_guard.policy import BINDS_AT, STAGES
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -101,7 +104,7 @@ def test_no_project_offers_init_and_init_from(tmp_path: Path) -> None:
     assert options["from:paper.docx"] == ("init", "--from", "paper.docx")
     assert options["latex:thesis.tex"] == ("init", "--latex")
     assert options["markdown:draft.md"] == ("init",)
-    assert options["audit:paper.docx"] == ("audit", "paper.docx", "--against", "<OUTPUTS>")
+    assert options["audit:paper.docx"] == ("audit", "paper.docx", "--against", "<OUTPUTS...>")
     assert action.choice.recommended == "from:paper.docx"
 
 
@@ -231,9 +234,47 @@ def test_moving_on_is_offered_when_nothing_fails(tmp_path: Path) -> None:
     preview, move = action.choice.options
     assert preview.argv == ("check", "--stage", "internal-review")
     assert "3 findings" in preview.effect
-    assert move.argv == ("set", "stage", "internal-review")
+    assert move.argv == ("set", "stage", "internal-review") and move.who == "ask-author"
     assert decide(settled(tmp_path)) and decide(settled(tmp_path))[0].choice.recommended == "move"
     assert decide(settled(tmp_path, stage="submission", format="latex"))[0].rule == "optional"
+
+
+def test_a_view_of_an_earlier_stage_moves_nothing(tmp_path: Path) -> None:
+    """paper.yaml says submission, and `next --stage drafting` is a view of drafting: no
+    `set stage internal-review`, which would move the paper back."""
+    view = settled(tmp_path, stage="drafting", declared_stage="submission")
+    assert of(view, "advance") == []
+    assert not [w for w in every_argv(decide(view)) if w[:2] == ("set", "stage")]
+    assert of(settled(tmp_path, stage="drafting", declared_stage="internal-review"),
+              "advance") == []  # fmt: skip
+    # A view of a later stage moves from the declared one, never past the next.
+    (ahead,) = of(settled(tmp_path, stage="internal-review", declared_stage="drafting"),
+                  "advance")  # fmt: skip
+    assert ahead.choice.options[1].argv == ("set", "stage", "internal-review")
+
+
+def test_the_english_replaced_is_asked_of_the_author(tmp_path: Path) -> None:
+    state = settled(tmp_path, findings=(
+        at(tmp_path, "G4", "english-variant-mismatch", line=None),))
+    (action,) = of(state, "choose-english")
+    assert [(o.id, o.who) for o in action.choice.options] == [("en-US", "ask-author")]
+    (first,) = of(settled(tmp_path, english_variant=None), "choose-english")
+    assert {o.who for o in first.choice.options} == {"agent"}
+
+
+def test_a_warning_with_a_command_and_no_skill_names_the_command(tmp_path: Path) -> None:
+    state = settled(tmp_path, findings=(at(tmp_path, "G1", "document-stale", WARN),))
+    (action,) = of(state, "warnings")
+    assert action.skill is None and action.argv == ("build",)
+    assert "manuscript-guard build" in action.title and "no route" not in action.title
+
+
+def test_the_command_shown_is_quoted_for_the_prompt_it_is_typed_at() -> None:
+    words = ("audit", "C:/My papers/a.docx", "--against", "<OUTPUTS...>")
+    assert shown(words, windows=True) == (
+        'manuscript-guard audit "C:/My papers/a.docx" --against <OUTPUTS...>')
+    assert shown(words, windows=False) == (
+        "manuscript-guard audit 'C:/My papers/a.docx' --against <OUTPUTS...>")
 
 
 def test_the_optional_steps_are_those_the_tool_has(tmp_path: Path) -> None:
@@ -264,6 +305,7 @@ def drawn(rng: random.Random, root: Path) -> State:
     )  # fmt: skip
     return settled(
         root, stage=rng.choice(STAGES), findings=findings,
+        declared_stage=rng.choice((None, *STAGES)),
         format=rng.choice(("markdown", "latex")),
         deferred={stage: rng.randint(1, 4) for stage in rng.sample(STAGES, rng.randint(0, 2))},
         target_journal=rng.choice((None, "demo")), english_variant=rng.choice((None, "en-GB")),
@@ -287,8 +329,13 @@ def test_moving_on_is_offered_exactly_when_nothing_fails(tmp_path: Path) -> None
     for _ in range(200):
         state = drawn(rng, tmp_path)
         failing = any(f.severity == FAIL for f in state.findings)
+        declared = state.declared_stage or state.stage
+        behind = STAGES.index(state.stage) < STAGES.index(declared)
         offered = "advance" in rules(decide(state))
-        assert offered == (not failing and state.stage != "submission"), state
+        assert offered == (not failing and declared != "submission" and not behind), state
+        # Never a move back, and never further than the stage after the declared one.
+        moves = [w[2] for w in every_argv(decide(state)) if w[:2] == ("set", "stage")]
+        assert all(STAGES.index(m) == STAGES.index(declared) + 1 for m in moves), state
 
 
 def test_the_optional_steps_come_only_once_nothing_fails_from_internal_review(
@@ -303,7 +350,12 @@ def test_the_optional_steps_come_only_once_nothing_fails_from_internal_review(
 
 
 def _filled(words: tuple[str, ...]) -> list[str]:
-    return [re.sub(r"<[A-Z_]+>", "1", word) for word in words]
+    """Each placeholder filled: `<NAME>` with one word, `<NAME...>` with two."""
+    filled: list[str] = []
+    for word in words:
+        held = PLACEHOLDER.fullmatch(word)
+        filled += (["1", "2"] if held.group(2) else ["1"]) if held else [word]
+    return filled
 
 
 def test_every_command_offered_parses(tmp_path: Path) -> None:
@@ -340,60 +392,164 @@ def test_a_command_names_the_folder_where_next_was_run_elsewhere(tmp_path: Path)
 
 
 _SHAPE = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)+")
+#: The fixed start of a code an f-string makes: `f"design-{f.code}"`.
+_PREFIX = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*-")
 
 
-def _given(value: ast.expr, constants: dict[str, object]) -> set[str]:
-    """The codes an expression given as a `code` can be: a string, either side of a
-    conditional, or a constant of the module."""
+@dataclass
+class _Walk:
+    """What the walk of the source found: the codes, and the prefixes of codes made at run
+    time, with where each code-taking function takes its `code`."""
+
+    codes: set[str] = field(default_factory=set)
+    prefixes: set[str] = field(default_factory=set)
+    positions: dict[str, set[int]] = field(default_factory=lambda: {"Finding": {1}})
+    #: What each function returns, by place in a returned tuple (-1 for a bare value).
+    returns: dict[str, dict[int, list[ast.expr]]] = field(default_factory=dict)
+
+
+def _strings(value: ast.expr, names: dict[str, list[ast.expr]], walk: _Walk,
+             depth: int = 0) -> None:  # fmt: skip
+    """Add the codes `value` can be to `walk`: a string, either side of a conditional, a name
+    bound to one in the function or the module, an element of a tuple a helper returns, or
+    the fixed start of an f-string."""
+    if depth > 6:
+        return
     if isinstance(value, ast.IfExp):
-        return _given(value.body, constants) | _given(value.orelse, constants)
-    said = constants.get(value.id) if isinstance(value, ast.Name) else getattr(value, "value", None)
-    return {said} if isinstance(said, str) and _SHAPE.fullmatch(said) else set()
+        for side in (value.body, value.orelse):
+            _strings(side, names, walk, depth + 1)
+    elif isinstance(value, ast.Constant) and isinstance(value.value, str):
+        if _SHAPE.fullmatch(value.value):
+            walk.codes.add(value.value)
+    elif isinstance(value, ast.JoinedStr) and value.values:
+        first = value.values[0]
+        fixed = _PREFIX.match(first.value) if isinstance(first, ast.Constant) else None
+        if fixed:
+            walk.prefixes.add(fixed.group())
+    elif isinstance(value, ast.Name):
+        for bound in names.get(value.id, ()):
+            _strings(bound, names, walk, depth + 1)
 
 
-def reported_codes() -> set[str]:
-    """Every code the package reports, as far as reading its source says: each string given
-    as a finding's `code` (by keyword, by position to a function whose parameter is `code`,
-    either side of a conditional, or a constant of the module named for one), each code the
-    stage policy lists, and the design rounds' codes made from the review gate's seal."""
+def _called(call: ast.expr) -> str | None:
+    if not isinstance(call, ast.Call):
+        return None
+    return getattr(call.func, "id", None) or getattr(call.func, "attr", None)
+
+
+def _bindings(scope: ast.AST, walk: _Walk) -> dict[str, list[ast.expr]]:
+    """Each name the scope binds, with what it may be bound to: an assignment, one place of a
+    tuple unpacked from a tuple or from a helper's return, or one place of the items of a
+    loop over a literal list or tuple."""
+    names: dict[str, list[ast.expr]] = {}
+
+    def bind(target: ast.expr, value: ast.expr) -> None:
+        if isinstance(target, ast.Name):
+            names.setdefault(target.id, []).append(value)
+            for held in walk.returns.get(_called(value) or "", {}).get(-1, ()):
+                names[target.id].append(held)
+        elif isinstance(target, (ast.Tuple, ast.List)):
+            if isinstance(value, (ast.Tuple, ast.List)) and len(value.elts) == len(target.elts):
+                for part, held in zip(target.elts, value.elts, strict=True):
+                    bind(part, held)
+            for index, part in enumerate(target.elts):
+                for held in walk.returns.get(_called(value) or "", {}).get(index, ()):
+                    bind(part, held)
+
+    for node in ast.walk(scope):
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                bind(target, node.value)
+        elif isinstance(node, ast.For) and isinstance(node.iter, (ast.Tuple, ast.List)):
+            for item in node.iter.elts:
+                bind(node.target, item)
+    return names
+
+
+def _returns(tree: ast.AST, walk: _Walk) -> None:
+    """Where each function takes its `code`, and what it returns, by place."""
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        names = [a.arg for a in node.args.args if a.arg != "self"]
+        if "code" in names:
+            walk.positions.setdefault(node.name, set()).add(names.index("code"))
+        held = walk.returns.setdefault(node.name, {})
+        for returned in ast.walk(node):
+            if not isinstance(returned, ast.Return) or returned.value is None:
+                continue
+            if isinstance(returned.value, ast.Tuple):
+                for index, part in enumerate(returned.value.elts):
+                    held.setdefault(index, []).append(part)
+            else:
+                held.setdefault(-1, []).append(returned.value)
+
+
+def reported_codes() -> _Walk:
+    """Every code the package reports, as far as reading its source says: each value given
+    as a finding's `code`, by keyword or by position to a function whose parameter is `code`,
+    read through `_strings`; each code the stage policy lists; and the design rounds' codes
+    made from the review gate's seal. A code made at run time leaves its fixed start."""
     trees = {path: ast.parse(path.read_text(encoding="utf-8")) for path in SRC.rglob("*.py")}
-    positions: dict[str, set[int]] = {"Finding": {1}}
+    walk = _Walk()
     for tree in trees.values():
-        for node in ast.walk(tree):
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                names = [a.arg for a in node.args.args if a.arg != "self"]
-                if "code" in names:
-                    positions.setdefault(node.name, set()).add(names.index("code"))
-    found: set[str] = set()
+        _returns(tree, walk)
     for tree in trees.values():
-        constants = {
-            target.id: node.value.value
-            for node in tree.body if isinstance(node, ast.Assign)
-            and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str)
-            for target in node.targets if isinstance(target, ast.Name)
-        }  # fmt: skip
-
-        for node in ast.walk(tree):
-            if isinstance(node, ast.keyword) and node.arg == "code":
-                found |= _given(node.value, constants)
-            elif isinstance(node, ast.Call):
-                name = getattr(node.func, "id", None) or getattr(node.func, "attr", None)
-                for index in positions.get(name, ()):
+        top = ast.Module(body=[n for n in tree.body if isinstance(n, ast.Assign)], type_ignores=[])
+        module = _bindings(top, walk)
+        scopes = [node for node in ast.walk(tree)
+                  if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))]  # fmt: skip
+        for scope in [tree, *scopes]:
+            names = {**module, **(_bindings(scope, walk) if scope is not tree else {})}
+            for node in ast.walk(scope):
+                if isinstance(node, ast.keyword) and node.arg == "code":
+                    _strings(node.value, names, walk)
+                for index in walk.positions.get(_called(node) or "", ()):
                     if index < len(node.args):
-                        found |= _given(node.args[index], constants)
+                        _strings(node.args[index], names, walk)
     seal = next(node for node in ast.walk(trees[SRC / "gates" / "review.py"])
                 if isinstance(node, ast.FunctionDef) and node.name == "_check_seal")  # fmt: skip
     sealed = {node.value for node in ast.walk(seal) if isinstance(node, ast.Constant)
               and isinstance(node.value, str) and _SHAPE.fullmatch(node.value)}  # fmt: skip
-    return found | set(BINDS_AT) | {f"design-{code}" for code in sealed}
+    walk.codes |= set(BINDS_AT) | {f"design-{code}" for code in sealed}
+    return walk
+
+
+def _routed(code: str) -> bool:
+    return route_of(code) is not None or code in NO_ACTION
 
 
 def test_every_code_is_routed_or_asks_nothing() -> None:
-    codes = reported_codes()
-    assert len(codes) > 400, "the walk found the codes"
-    assert {"design-reading-altered", "p-decision-error", "summary-not-reported"} <= codes
-    unrouted = sorted(code for code in codes if route_of(code) is None and code not in NO_ACTION)
-    assert unrouted == []
+    walk = reported_codes()
+    assert len(walk.codes) > 400, "the walk found the codes"
+    # Through a module constant, a conditional, a local name, a tuple unpacked.
+    assert {"design-reading-altered", "p-decision-error", "summary-not-reported",
+            "file-lost", "figure-line-thin", "claim-moved"} <= walk.codes  # fmt: skip
+    assert sorted(code for code in walk.codes if not _routed(code)) == []
+    # A code made at run time is routed by the prefix it is made with.
+    assert "design-" in walk.prefixes
+    assert sorted(prefix for prefix in walk.prefixes if route_of(prefix + "x") is None) == []
+
+
+def test_every_person_only_code_is_the_authors() -> None:
+    """An agent may draft these; only the person the hint names signs, judges, attests,
+    approves or reads, and an agent that wrote the name would pass the gate."""
+    listed = {"attestation-not-human", "attestation-thin", "judgement-not-human",
+              "similar-decision-not-human", "data-source-not-a-person",
+              "design-override-unsigned", "figures-not-seen", "journal-manual-unsigned",
+              "approval-missing", "approval-stale"}  # fmt: skip
+    assert listed == PERSON_ONLY
+    assert {code: route_of(code).who for code in listed} == dict.fromkeys(listed, "author")
+    assert listed <= reported_codes().codes
+
+
+def test_a_person_only_failure_and_warning_are_the_authors(tmp_path: Path) -> None:
+    state = settled(tmp_path, findings=(
+        at(tmp_path, "G7", "attestation-not-human"),
+        at(tmp_path, "G12", "similar-decision-not-human", WARN)))
+    by_rule = {action.rule: action for action in decide(state)}
+    assert by_rule["provenance"].who == "author"
+    assert by_rule["warnings"].who == "author"
 
 
 def test_a_code_a_skill_says_it_answers_goes_to_that_skill() -> None:
@@ -426,9 +582,16 @@ def test_the_longest_prefix_wins() -> None:
 VALIDATOR = Draft202012Validator(load_schema("next"))
 
 
-def tree_bytes(root: Path) -> dict[str, bytes]:
-    return {path.relative_to(root).as_posix(): path.read_bytes()
-            for path in sorted(root.rglob("*")) if path.is_file()}  # fmt: skip
+def tree_bytes(root: Path) -> dict[str, tuple]:
+    """Every path under `root`, folders included, with its size, its time of change and, for a
+    file, its bytes: a folder added or a file rewritten with the same bytes is seen too."""
+    found = {}
+    for path in sorted([root, *root.rglob("*")]):
+        held = path.stat()
+        found[path.relative_to(root).as_posix()] = (
+            path.is_dir(), held.st_size, held.st_mtime_ns,
+            None if path.is_dir() else path.read_bytes())
+    return found
 
 
 def test_next_on_the_example_writes_nothing_and_its_json_is_the_schemas(
@@ -532,3 +695,74 @@ def test_an_open_round_of_checks_is_read_and_left_as_it_was(
     assert sorted(VALIDATOR.iter_errors(said), key=str) == []
     assert said["checker"]["outstanding"] == state.checker.items
     assert "co-author-checks" in [action["rule"] for action in said["actions"]]
+
+
+def test_a_path_that_is_not_there_is_said_and_nothing_offered(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (tmp_path / "paper.docx").write_bytes(b"")
+    assert main(["next", str(tmp_path / "papr"), "--json"]) == 0
+    said = json.loads(capsys.readouterr().out)
+    assert sorted(VALIDATOR.iter_errors(said), key=str) == []
+    assert said["project"]["kind"] == MISSING and "does not exist" in said["project"]["error"]
+    assert said["actions"] == []
+    assert main(["next", str(tmp_path / "papr")]) == 0
+    assert "does not exist" in capsys.readouterr().out
+
+
+def test_a_repositorys_own_notes_are_no_paper(tmp_path: Path) -> None:
+    for name in ("README.md", "readme.de.md", "CODE_OF_CONDUCT.md", "SECURITY.md", "NEWS.md",
+                 "HISTORY.md", "TODO.md", "CONTRIBUTING.md", "AGENTS.md", "CLAUDE.md",
+                 "GEMINI.md", "LICENSE.md", "Licence.md", "CHANGELOG.md", "draft.md"):
+        (tmp_path / name).write_text("x", encoding="utf-8")
+    assert guide.inspect(tmp_path).candidates == ("draft.md",)
+
+
+@pytest.mark.parametrize("broken", ["cp1252", "authors"])
+def test_what_cannot_be_read_of_a_round_is_a_note_and_next_still_decides(
+    project: Path, broken: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    record = project / "checks" / "decisions.csv"
+    record.parent.mkdir()
+    header = "when,by,id,group,title,status,note,digest,bundle\n"
+    if broken == "cp1252":
+        record.write_bytes((header + "2026-10-28,Ren\u00e9e,x,values,Caf\u00e9,ok,,,\n")
+                           .encode("cp1252"))
+    else:
+        record.write_text(header, encoding="utf-8")
+        (project / "authors.yaml").write_text("- just a list\n", encoding="utf-8")
+    assert main(["next", str(project), "--json", "--stage", "internal-review"]) == 0
+    said = json.loads(capsys.readouterr().out)
+    assert sorted(VALIDATOR.iter_errors(said), key=str) == []
+    assert said["checker"] is None
+    assert any("co-authors' checks stand could not be read" in note for note in said["notes"])
+
+
+def _codes_of(root: Path, stage: str) -> set[str]:
+    from manuscript_guard.cli import _run_gates
+
+    report, *_ = _run_gates(root, stage=stage)
+    return {finding.code for finding in report.findings}
+
+
+def test_every_code_the_gates_report_here_is_routed(
+    project: Path, tmp_path: Path
+) -> None:
+    """What the walk of the source cannot find, the gates say when run: the example at
+    submission, an empty project of each format, and the example with its results edited,
+    its English, its profile and its guideline taken away."""
+    seen = _codes_of(project, "submission")
+    for latex in (False, True):
+        root = tmp_path / f"empty-{latex}"
+        assert main(["init", str(root), *(["--latex"] if latex else [])]) == 0
+        seen |= _codes_of(root, "submission")
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"]["ror.point"]["display"] = "9.99"
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    _paper(project, "english_variant: en-GB\n", "")
+    _paper(project, "reporting_guideline:\n  - DEMO-OBS\n", "reporting_guideline: []\n")
+    (project / "profiles" / "journals" / "demo-journal.yaml").unlink()
+    seen |= _codes_of(project, "submission")
+    assert len(seen) > 20
+    assert sorted(code for code in seen if not _routed(code)) == []

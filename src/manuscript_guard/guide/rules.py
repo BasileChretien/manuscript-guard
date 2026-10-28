@@ -31,6 +31,7 @@ from manuscript_guard.guide.model import (
     _stage_at_least,
     _where,
     argv,
+    shown,
 )
 from manuscript_guard.guide.routes import CANNOT_CHECK, GATE_SKILLS, Route, route_of
 from manuscript_guard.policy import DESCRIPTIONS, DRAFTING, INTERNAL_REVIEW, STAGES, SUBMISSION
@@ -74,7 +75,7 @@ def _cannot_check(state: State) -> list[Action]:
     if state.kind == UNREADABLE:
         return [Action(
             id="cannot-check:paper.yaml", rule="cannot-check", tier=0, who=AUTHOR,
-            title="paper.yaml cannot be read, so nothing has been checked",
+            title="The project's files cannot be read, so nothing has been checked",
             why=f"{WHY['cannot-check']} {state.error}", skill="project-setup",
             argv=argv(state, "check"),
         )]  # fmt: skip
@@ -180,7 +181,9 @@ def _choose_english(state: State) -> list[Action]:
     options = tuple(
         Option(english, ENGLISH_NAMES.get(english, english),
                f"paper.yaml declares {english}, and G14 holds the spelling to it",
-               argv(state, "set", "english_variant", english))
+               argv(state, "set", "english_variant", english),
+               # Another English than the one declared is the author's to say, as a journal is.
+               who=ASK if state.english_variant else AGENT)
         for english in state.englishes if english != state.english_variant
     )  # fmt: skip
     wanted = state.journal_english if state.journal_english in state.englishes else None
@@ -256,23 +259,32 @@ def _warnings(state: State) -> list[Action]:
         if finding.severity != WARN or finding.code in CHOICE_CODES:
             continue
         route = route_of(finding.code)
-        skill = route.skill if route else None
-        by_skill.setdefault(skill or f"gate:{finding.gate}", []).append(finding)
+        if route is not None and route.skill:
+            name = route.skill
+        elif route is not None and route.argv:
+            name = "command:" + " ".join(route.argv)  # a command and no skill
+        else:
+            name = f"gate:{finding.gate}"
+        by_skill.setdefault(name, []).append(finding)
     actions = []
     for name, group in by_skill.items():
         ordered = _in_order(group, state.root)
         routes = {route_of(f.code) for f in ordered}
         commands = {r.argv for r in routes if r is not None}
         words = commands.pop() if len(commands) == 1 and None not in routes else ("check",)
-        skill = None if name.startswith("gate:") else name
-        if skill is None:
+        warned = f"{len(ordered)} warning{'s' if len(ordered) != 1 else ''}"
+        if name.startswith("gate:"):
             skill = GATE_SKILLS.get(ordered[0].gate)
-        title = (f"{len(ordered)} warning{'s' if len(ordered) != 1 else ''} for "
-                 + (f"the {skill} skill" if not name.startswith("gate:") else
-                    f"{ordered[0].gate}, which no route names"))  # fmt: skip
+            title = f"{warned} of {ordered[0].gate}, which no route names"
+        elif name.startswith("command:"):
+            skill = None
+            title = f"{warned}: run `{shown(argv(state, *words))}`"
+        else:
+            skill, title = name, f"{warned} for the {name} skill"
+        who = AUTHOR if any(r is not None and r.who == AUTHOR for r in routes) else AGENT
         actions.append(Action(
             id=f"warnings:{name}", rule="warnings", tier=8, title=title, why=WHY["warnings"],
-            skill=skill, argv=argv(state, *words) if words else None,
+            who=who, skill=skill, argv=argv(state, *words) if words else None,
             codes=tuple(sorted({f.code for f in ordered})), findings=ordered,
             key=(_rank(ordered[0].gate), name, "", 0),
         ))  # fmt: skip
@@ -280,25 +292,32 @@ def _warnings(state: State) -> list[Action]:
 
 
 def _advance(state: State) -> list[Action]:
+    """The stage after the one paper.yaml declares, never before it: a view `--stage` gives
+    of an earlier stage moves nothing, and the move is the author's to make."""
+    declared = state.declared_stage or state.stage
     if state.kind != PROJECT or _failing(state) or state.stage not in STAGES:
         return []
-    if state.stage == SUBMISSION:
+    if declared not in STAGES or declared == SUBMISSION:
         return []
-    following = STAGES[STAGES.index(state.stage) + 1]
-    due = state.deferred.get(following, 0)
+    if STAGES.index(state.stage) < STAGES.index(declared):
+        return []
+    following = STAGES[STAGES.index(declared) + 1]
+    between = STAGES[STAGES.index(state.stage) + 1:STAGES.index(following) + 1]
+    due = sum(state.deferred.get(stage, 0) for stage in between)
     said = f"{due} finding{'' if due == 1 else 's'} not due now would then fail"
     options = (
         Option("preview", f"See what {following} asks first",
                f"runs every gate as at {following} and writes nothing: {said}",
                argv(state, "check", "--stage", following)),
-        Option("move", f"Move on to {following}", f"paper.yaml says {following}: {said}",
-               argv(state, "set", "stage", following)),
+        Option("move", f"Move on to {following}",
+               f"paper.yaml says {following} instead of {declared}: {said}",
+               argv(state, "set", "stage", following), who=ASK),
     )  # fmt: skip
     return [Action(
         id="advance", rule="advance", tier=9, who=AUTHOR, title=f"Move on to {following}",
         why=WHY["advance"], skill="project-setup",
-        choice=Choice(f"Nothing fails at {state.stage}. Move on to {following} "
-                      f"({DESCRIPTIONS[following]})?", options,
+        choice=Choice(f"Nothing fails at {state.stage}, and paper.yaml says {declared}. Move "
+                      f"on to {following} ({DESCRIPTIONS[following]})?", options,
                       "preview" if due else "move"),
     )]  # fmt: skip
 
@@ -394,8 +413,8 @@ def _start(state: State) -> list[Action]:
                 f"audit:{name}", f"Only audit {name}'s numbers",
                 "checks the paper's typed numbers against the analysis outputs, with the "
                 "paper-audit skill, and makes no project",
-                argv(state, "audit", _file(state, name), "--against", "<OUTPUTS>"),
-                placeholders={"OUTPUTS": "the analysis outputs: files or folders"},
+                argv(state, "audit", _file(state, name), "--against", "<OUTPUTS...>"),
+                placeholders={"OUTPUTS": "the analysis outputs: one or more files or folders"},
             ))  # fmt: skip
     options += [
         Option("markdown", "A new Markdown project", "writes the project here, its "

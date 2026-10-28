@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import os
 import re
 import shlex
+import subprocess
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -15,6 +17,8 @@ from manuscript_guard.scaffold import ENGLISHES
 
 SCHEMA = "manuscript-guard/next/1"
 NO_PROJECT, AUTHORS_ONLY, UNREADABLE, PROJECT = "none", "authors-only", "unreadable", "project"
+#: A path given to `next` that is not there: nothing is read, and nothing offered for its parent.
+MISSING = "missing"
 AGENT, AUTHOR, ASK = "agent", "author", "ask-author"
 #: The gates `counts.by_gate` always holds, failing or not; another gate a finding names is
 #: added beside them.
@@ -29,8 +33,13 @@ CHOICE_CODES = frozenset({
 #: Papers `next` offers to bring in where there is no project: in the folder itself, not
 #: below it, and not a repository's own notes.
 PAPER_SUFFIXES = (".docx", ".md", ".tex")
-NOT_PAPERS = frozenset({"readme", "changelog", "contributing", "licence", "license", "agents",
-                        "claude"})  # fmt: skip
+#: A file's name up to its first stop, in small letters: README.md and readme.de.md alike.
+NOT_PAPERS = frozenset({
+    "readme", "changelog", "changes", "news", "history", "todo", "contributing",
+    "code_of_conduct", "code-of-conduct", "security", "support", "governance", "maintainers",
+    "authors", "contributors", "licence", "license", "copying", "notice", "citation",
+    "agents", "claude", "gemini", "copilot-instructions", "codeowners", "funding",
+})  # fmt: skip
 SHOWN_FINDINGS = 5
 LATEX_CHECKER = ("the co-author checker does not read a LaTeX manuscript yet, so where its "
                  "round stands is not shown and no page is offered")  # fmt: skip
@@ -58,7 +67,11 @@ class State:
     error: str | None = None
     #: Where there is no project: the papers in the folder, by name.
     candidates: tuple[str, ...] = ()
+    #: The stage the view is decided at: `--stage`, else the one paper.yaml declares.
     stage: str | None = DRAFTING
+    #: The stage paper.yaml declares (drafting where it declares none); None means `stage`. A
+    #: move is only ever from this one, and only forward.
+    declared_stage: str | None = None
     findings: tuple[Finding, ...] = ()
     deferred: Mapping[str, int] = field(default_factory=dict)
     #: Each `FILE:LINE` whose unbound numbers each read as one published value, with the
@@ -123,7 +136,9 @@ _PATH_OPTION = frozenset({"set", "checklist"})
 _NO_PATH = frozenset({"stages", "palettes", "search", "fetch", "transcribe", "install-skills",
                       "explain", "audit"})  # fmt: skip
 _PATH_SECOND = frozenset({"checker", "proof", "import"})
-_PLAIN_WORD = re.compile(r"[A-Za-z0-9_./:@%+=,-]+|<[A-Z_]+>")
+#: A placeholder: `<NAME>` for one word, `<NAME...>` for one or more.
+PLACEHOLDER = re.compile(r"<([A-Z_]+)(\.\.\.)?>")
+_PLAIN_WORD = re.compile(r"[A-Za-z0-9_./:@%+=,-]+")
 
 
 def argv(state: State, *words: str) -> tuple[str, ...]:
@@ -139,12 +154,20 @@ def argv(state: State, *words: str) -> tuple[str, ...]:
     return (command, where, *rest)
 
 
-def shown(words: tuple[str, ...] | None) -> str | None:
-    """The command as it is written at a prompt, a placeholder left as it stands."""
+def shown(words: tuple[str, ...] | None, *, windows: bool | None = None) -> str | None:
+    """The command as it is typed at this system's prompt, a placeholder left as it stands:
+    quoted as `cmd.exe` reads it on Windows, as a POSIX shell does elsewhere. `argv` is what
+    runs; this is for the eye."""
     if words is None:
         return None
-    quoted = (w if _PLAIN_WORD.fullmatch(w) else shlex.quote(w) for w in words)
-    return " ".join(("manuscript-guard", *quoted))
+    windows = os.name == "nt" if windows is None else windows
+
+    def quoted(word: str) -> str:
+        if _PLAIN_WORD.fullmatch(word) or PLACEHOLDER.fullmatch(word):
+            return word
+        return subprocess.list2cmdline([word]) if windows else shlex.quote(word)
+
+    return " ".join(("manuscript-guard", *(quoted(word) for word in words)))
 
 
 def _file(state: State, name: str) -> str:

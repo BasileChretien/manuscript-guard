@@ -140,7 +140,25 @@ ROUTES: dict[str, Route] = {
     **_all("submission-pack", ("package",), "package-"),
     **_all("submission-pack", ("build",), "blind-document-names-author"),
     **_all("submission-pack", None, "approval-", who="author"),
+    # -- what only a named person may do ----------------------------------------------------
+    # Last, so that each overrides its prefix: an agent may draft, and only the person the
+    # hint names signs, judges, attests, approves or reads. An agent that wrote the name
+    # would pass the gate with no person behind it.
+    **_all("literature-verify", None, "attestation-not-human", "attestation-thin",
+           "judgement-not-human", who="author"),
+    **_all("methods-review", None, "similar-decision-not-human", who="author"),
+    **_all("data-sources", None, "data-source-not-a-person", who="author"),
+    **_all("review-panel", None, "design-override-unsigned", "figures-not-seen", who="author"),
+    **_all("journal-profile", None, "journal-manual-unsigned", who="author"),
 }
+
+#: The codes whose answer is a person's own attestation, judgement, approval, reading or
+#: sign-off: each routes with `who="author"`, and a test holds the list to that.
+PERSON_ONLY = frozenset({
+    "attestation-not-human", "attestation-thin", "judgement-not-human",
+    "similar-decision-not-human", "data-source-not-a-person", "design-override-unsigned",
+    "figures-not-seen", "journal-manual-unsigned", "approval-missing", "approval-stale",
+})  # fmt: skip
 
 #: Codes that are only ever said as a note and ask nothing: no action is built for them,
 #: and the test that every code is routed takes them as answered.

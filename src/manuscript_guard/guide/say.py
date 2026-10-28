@@ -11,6 +11,7 @@ from manuscript_guard.guide.model import (
     ASK,
     AUTHOR,
     COUNTED_GATES,
+    MISSING,
     PROJECT,
     SCHEMA,
     SHOWN_FINDINGS,
@@ -76,6 +77,7 @@ def to_dict(state: State, actions: list[Action]) -> dict:
         "project": {"kind": state.kind, "format": state.format if project else None,
                     "error": state.error},
         "stage": {"current": state.stage, "next": _next_stage(state),
+                  "declared": state.declared_stage or state.stage,
                   "description": DESCRIPTIONS.get(state.stage or "")},
         "counts": _counts(state),
         "checker": None if checked is None else {
@@ -99,15 +101,21 @@ def render(state: State, actions: list[Action], *, every: bool = False, shown_at
         following = _next_stage(state)
         lines.append(f"stage: {state.stage} ({DESCRIPTIONS[state.stage]})"
                      + (f"; next: {following}" if following else ""))  # fmt: skip
+        if state.declared_stage and state.declared_stage != state.stage:
+            lines.append(f"(decided as at {state.stage}; paper.yaml says {state.declared_stage})")
         waiting = sum(counts["deferred"].values())
         lines.append(f"{counts[FAIL]} failing, {counts[WARN]} warnings, {counts[INFO]} notes"
                      + (f"; {waiting} not due yet" if waiting else ""))  # fmt: skip
     elif state.kind == UNREADABLE:
-        lines.append(f"paper.yaml cannot be read: {state.error}")
+        lines.append(f"the project cannot be read: {state.error}")
+    elif state.kind == MISSING:
+        lines.append(f"nothing read: {state.error}")
     else:
         lines.append("no manuscript-guard project here")
     lines += [f"note: {note}" for note in state.notes]
-    if not actions:
+    if not actions and state.kind == MISSING:
+        lines.append("\nNothing is offered: name the folder that holds the paper.")
+    elif not actions:
         lines.append("\nNothing to do: every gate passes and no step is due.")
     full = actions if every else actions[:shown_at_most]
     for number, action in enumerate(full, 1):

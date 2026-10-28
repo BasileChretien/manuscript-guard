@@ -15,7 +15,7 @@
       "enum": ["agent", "author", "ask-author"]
     },
     "argv": {
-      "description": "The command's words after the program's name. A word written <NAME> is a placeholder its option's `placeholders` explains.",
+      "description": "The command's words after the program's name. A word written <NAME> is a placeholder for one word, and <NAME...> for one or more, which its option's `placeholders` explains.",
       "type": "array",
       "minItems": 1,
       "items": { "type": "string" }
@@ -104,17 +104,24 @@
       "required": ["kind", "format", "error"],
       "additionalProperties": false,
       "properties": {
-        "kind": { "enum": ["none", "authors-only", "unreadable", "project"] },
+        "kind": { "enum": ["none", "missing", "authors-only", "unreadable", "project"] },
         "format": { "enum": ["markdown", "latex", null] },
         "error": { "type": ["string", "null"] }
       }
     },
     "stage": {
       "type": "object",
-      "required": ["current", "next", "description"],
+      "required": ["current", "next", "declared", "description"],
       "additionalProperties": false,
       "properties": {
-        "current": { "oneOf": [{ "$ref": "#/$defs/stage" }, { "type": "null" }] },
+        "current": {
+          "description": "The stage decided at: --stage, else the one paper.yaml declares.",
+          "oneOf": [{ "$ref": "#/$defs/stage" }, { "type": "null" }]
+        },
+        "declared": {
+          "description": "The stage paper.yaml declares (drafting where it declares none). A move is offered only from this one, and only forward.",
+          "oneOf": [{ "$ref": "#/$defs/stage" }, { "type": "null" }]
+        },
         "next": { "oneOf": [{ "$ref": "#/$defs/stage" }, { "type": "null" }] },
         "description": { "type": ["string", "null"] }
       }

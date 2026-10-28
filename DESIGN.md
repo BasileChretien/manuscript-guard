@@ -6888,16 +6888,34 @@ Moving on (tier 9) is offered exactly when nothing fails now, and the optional s
 only when nothing fails at `internal-review` or `submission`: a review panel read while the
 numbers still fail is a reading of the wrong paper. And `next` exits 0 whenever it has
 decided: `check`'s exit is the one that says pass or fail, and a second command that said it
-too would be read as the gate.
+too would be read as the gate. So it raises nothing: a part of the state it cannot read, the
+co-authors' round in a `decisions.csv` saved in a code page, a profile, the numbers a binding
+would take, is left out and said among the notes, and gates that cannot run at all make the
+project `unreadable`, with the reason. A path that is not there is `missing`, and nothing is
+offered for the folder above it, which is not what was asked about.
+
+The stage is held twice: the stage decided at, which `--stage` can set for a view, and the
+one paper.yaml declares. A move is offered only from the declared stage, one step forward,
+and only where the view is not of an earlier stage: in review round 1, a paper at
+`submission` viewed with `--stage drafting` was offered `set stage internal-review`, a move
+back. The move is `ask-author`, since the stage is the author's statement of where the paper
+is, as another journal or another English than the one declared is. A finding only a named
+person may answer (an attestation, a judgement of a passage, a methods decision, a person's
+reading of the figures, an approval, a sign-off: `routes.PERSON_ONLY`) routes as the
+author's: an agent that wrote the name would pass the gate with nobody behind it.
 
 A finding's code decides its skill and its command through `guide.ROUTES`: the code's own
 entry, else the longest prefix it begins with (`checklist-`, `spelling-`, `registration-`,
 `design-` …). A code no entry names goes to its gate's skill with `check`, and is never
 dropped. `tests/test_guide.py` reads the package's source for every code it reports (each
-string given as a finding's `code`, by keyword or by position, either side of a conditional
-or as a module's constant, every key of the stage policy, and the design rounds' codes made
+value given as a finding's `code`, by keyword or by position: a string, either side of a
+conditional, a module's constant, a name the function binds, one place of a tuple a helper
+returns or a loop walks; every key of the stage policy; and the design rounds' codes made
 from the review gate's seal) and fails on one that neither `ROUTES` nor `NO_ACTION`, the codes
-said only as a note, names. A second test holds every code a skill's description says it
+said only as a note, names; a code an f-string makes is held to a route by its fixed start.
+What the reading cannot find, the gates say when run: every code reported on the example at
+submission, on an empty project of each format and on the example broken four ways is held
+to a route as well. A second test holds every code a skill's description says it
 answers to that skill. A route names a skill that exists and a command that parses, and every
 command an action or an option offers, its placeholders filled, parses with `build_parser()`.
 
@@ -17361,9 +17379,14 @@ What papers converted from Word showed (see "What papers converted from Word sho
   as a profile to start, and how current the offer is depends on the shortlist and the
   profiles kept.
 - **Showing the command and asking is an agent's to keep.** `who` says `ask-author` for
-  `review --run` and `bind --apply`, and the hooks enforce only `approve`, `sign`,
+  `review --run`, `bind --apply`, `set stage` and another journal or English, and `author`
+  for what only a named person may answer; the hooks enforce only `approve`, `sign`,
   `review --run --yes`, the submission guard and `set`'s; that an agent puts a choice to the
   author rather than picking is the skill's guidance, not a check.
+- **A code made at run time is routed only by its prefix.** The walk of the source reads
+  strings, names, conditionals and helpers' tuples; a code built from data (a table of
+  codes read elsewhere, a whole f-string) is seen only where a gate reports it on the
+  fixtures the test runs, and otherwise goes to its gate's skill with `check`.
 - **Tier 10 lists only the commands there are.** Depositing the package and communicating
   the paper join it as their commands are added, and the co-author checker's fields in
   `next --json` are those `checker status` reports now.

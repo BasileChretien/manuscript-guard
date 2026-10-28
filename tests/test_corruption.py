@@ -7840,12 +7840,16 @@ def test_each_check_not_taught_latex_is_not_run_and_the_others_are(
     # the one the runner calls in its own body is `check_format` (round 3).
     assert set(_MARKDOWN_ONLY) == cli._NOT_READ_IN_LATEX
     assert set(_MARKDOWN_BUILD) == cli._MARKDOWN_BUILD
-    body = {name for name in cli._run_gates.__code__.co_names if name.startswith("check_")}
+    # The body is `_gate_run`'s, which `next` calls for the namespace too; `_run_gates`
+    # calls it and no check of its own (#462).
+    wrapper = cli._run_gates.__code__.co_names
+    assert "_gate_run" in wrapper and not [n for n in wrapper if n.startswith("check_")]
+    body = {name for name in cli._gate_run.__code__.co_names if name.startswith("check_")}
     assert body == {"check_format"}
     runner = {
         name
-        for code in cli._run_gates.__code__.co_consts
-        if isinstance(code, type(cli._run_gates.__code__))
+        for code in cli._gate_run.__code__.co_consts
+        if isinstance(code, type(cli._gate_run.__code__))
         for name in code.co_names
         if name.startswith("check_")
     }

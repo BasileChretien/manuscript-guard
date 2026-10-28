@@ -21,8 +21,12 @@ it by a model:
    says, and what no gate checks.
 6. Co-author verification: who checked what, by author, and each author's approval.
 
-No name is shown but the authors'. Of a results file the package withholds nothing is
-shown, and a small count the data custodian has not signed off stops the package.
+The page names nobody from a record but the authors `authors.yaml` lists, in the byline and
+beside their approvals: a reviewer, a judge of a passage, a checker or a role's holder is
+said by the role, counted or dated, and a gate's finding by its code and place, since its
+words may name someone. The manuscript's prose and the plan's Deviations are the authors'
+text, published with the paper and the package, and are printed as written. Of a results
+file the package withholds nothing is shown.
 
 The bytes are a function of the records and of pandoc's version, which MANIFEST.yaml names:
 no clock, no path of the computer and no version of this tool is written, and every list is
@@ -51,8 +55,6 @@ SITE = "index.html"
 UNDIGESTED = (COMPANION, SITE, "ro-crate-metadata.json", "RELATIONS.md", "MANIFEST.yaml",
               "SHA256SUMS")  # fmt: skip
 WITHHELD = "[withheld]"
-#: What stands in the page for a name it does not show.
-A_READER = "a reader"
 
 
 def esc(text: object) -> str:
@@ -200,100 +202,6 @@ def limitations_of(text: str) -> list[tuple[str, str]]:
     return found
 
 
-# ------------------------------------------------------------------- who may be named
-
-
-def _authors(project: Project) -> list[str]:
-    from manuscript_guard.approvals import authors_of, name_of
-
-    return [name_of(author) for author in authors_of(project)]
-
-
-def unnamed(project: Project) -> list[str]:
-    """Every name a record holds of someone who is not an author: a role's holder, a
-    reviewer of the panel, of a figure or of the design, a checker, a passage's judge, an
-    attestor. The page shows none of them; the longest is replaced first."""
-    from manuscript_guard.approvals import NoSuchAuthor
-    from manuscript_guard.checking.store import read_decisions
-    from manuscript_guard.sign_offs import ROLES, holder
-
-    names: set[str] = set()
-    roles = project.authors.get("roles") if isinstance(project.authors, dict) else None
-    for role in ROLES:
-        try:
-            found = holder(project, role)
-        except NoSuchAuthor:
-            # A role naming someone `authors.yaml` does not list: the name as written.
-            said = (roles or {}).get(role) if isinstance(roles, dict) else None
-            names.add(str(said.get("author") if isinstance(said, dict) else said))
-            continue
-        if found is not None:
-            names.add(found.name)
-    keys = ("reviewed_by", "judged_by", "attested_by", "decided_by", "read_by", "signed_by",
-            "person")  # fmt: skip
-    for path in _records(project):
-        names |= _named_in(path, keys)
-    names |= {decision.by for decision in read_decisions(project.root)}
-    allowed = set(_authors(project))
-    return sorted({n.strip() for n in names if len(n.strip()) > 2} - allowed,
-                  key=lambda name: (-len(name), name))  # fmt: skip
-
-
-def _records(project: Project) -> list[Path]:
-    """The records that name people: the panel's and the co-authors' comments, the figures'
-    reviews, the passages and attestations, the design's records, the sign-offs."""
-    found: list[Path] = []
-    for place, pattern in ((project.root / "review", "*.yaml"),
-                           (project.path("figures"), "*.review.yaml"),
-                           (project.root / "design", "*.yaml"),
-                           (project.root / "approvals", "*.yaml")):  # fmt: skip
-        if place.is_dir():
-            found += sorted(p for p in place.rglob(pattern) if p.is_file())
-    for name in ("passages.yaml", "attested.yaml"):
-        if (project.path("literature") / name).is_file():
-            found.append(project.path("literature") / name)
-    return found
-
-
-def _named_in(path: Path, keys: tuple[str, ...]) -> set[str]:
-    from manuscript_guard.contracts._schema import ContractError, read_structured
-
-    try:
-        document = read_structured(path)
-    except (ContractError, OSError, ValueError):
-        return set()
-    found: set[str] = set()
-
-    def walk(node: object) -> None:
-        if isinstance(node, dict):
-            for key, value in node.items():
-                if key in keys and isinstance(value, str):
-                    found.add(value)
-                walk(value)
-        elif isinstance(node, list):
-            for item in node:
-                walk(item)
-
-    walk(document)
-    return found
-
-
-def scrubbed(text: str, names: list[str], root: Path) -> str:
-    """`text` with no name of `unnamed` and no path of the computer the package was made on.
-    A picture's data URI is left as it is: its base64 is no text."""
-    parts = re.split(r'(data:[^"]*)', text)
-    roots = sorted({str(root), root.as_posix(), esc(str(root)), esc(root.as_posix())},
-                   key=len, reverse=True)  # fmt: skip
-    for at in range(0, len(parts), 2):
-        for name in names:
-            for form in {name, esc(name)}:
-                parts[at] = parts[at].replace(form, A_READER)
-        for form in roots:
-            if len(form) > 3:
-                parts[at] = parts[at].replace(form, ".")
-    return "".join(parts)
-
-
 # ------------------------------------------------------------------------ the head
 
 
@@ -405,13 +313,12 @@ def package_digest(entries: list[Entry]) -> str:
 
 
 def results_digest(page: Page) -> str:
-    """`fragments_digest`, of the results files the package holds as they are here."""
-    digest = hashlib.sha256()
-    for entry in sorted(page.entries, key=lambda e: e.path):
-        if entry.path in page.shown and entry.path.endswith(".json"):
-            data = entry.data if entry.data is not None else entry.source.read_bytes()
-            digest.update(entry.path.rsplit("/", 1)[-1].encode("utf-8") + b"\0" + data + b"\0")
-    return digest.hexdigest()
+    """`fragments_digest` as `check` and `verify` take it: of every results file of the
+    project, by name and bytes, those the package withholds too. Their digest is shown, and
+    nothing of what they hold."""
+    from manuscript_guard.assurance import fragments_digest
+
+    return fragments_digest(page.project)
 
 
 def overview(page: Page, texts: Texts) -> list[str]:
@@ -442,7 +349,8 @@ def overview(page: Page, texts: Texts) -> list[str]:
     out += [
         "<h3>Digests</h3>", "<dl>",
         "<dt>The results files</dt>",
-        f"<dd><code>{results_digest(page)}</code>: the SHA-256 of their names and bytes, as "
+        f"<dd><code>{results_digest(page)}</code>: the SHA-256 of the names and bytes of "
+        "every results file of the project, those the package withholds too, as "
         "<code>check</code> and <code>verify</code> take it.</dd>",
         "<dt>The files of the package</dt>",
         f"<dd><code>{package_digest(page.entries)}</code>: the SHA-256 of the lines of "
@@ -551,7 +459,7 @@ def companion_html(project: Project, results: Results, entries: list[Entry],
             printed[f"results.{key}"] = WITHHELD
     page = Page(project, results, entries, inputs, Prose(), shown, printed,
                 bound_rows(project))  # fmt: skip
-    _small_counts_held(project, results, shown, held)
+    shows_nothing_withheld(project, results, shown, inputs)
     texts = manuscript_texts(project)
     body = [*overview(page, texts), *evidence(page, texts), *displays_section(page, texts),
             *methods(page), *limitations(page, texts), *verification(page)]  # fmt: skip
@@ -577,7 +485,6 @@ def companion_html(project: Project, results: Results, entries: list[Entry],
         "made with.</footer>", "</body>", "</html>",
     ])  # fmt: skip
     page_text = page.prose.fill(page_text)
-    page_text = scrubbed(page_text, unnamed(project), project.root)
     return page_text.replace("\r\n", "\n").rstrip("\n") + "\n"
 
 
@@ -603,30 +510,42 @@ def _ordered(results: Results) -> Results:
     )
 
 
-def _small_counts_held(project: Project, results: Results, shown: frozenset[str],
-                       held: set[str]) -> None:  # fmt: skip
-    """Every count below the custodian's minimum in what the page shows is one the package
-    holds already, and so one its own check refuses until the custodian signs it off. One that
-    is not would be a count nobody was asked about."""
-    from .counts import small_counts
+def withheld_results(project: Project, results: Results, inputs: list[Input]) -> frozenset[str]:
+    """The results files the package withholds, as the plan decides them: each declared as an
+    input that does not go (`plan_package`'s `withheld_results`)."""
+    from .plan import _key
 
-    every = frozenset(_rel(project, f.path) for f in results.fragments)
-    deposited = small_counts(project, results, every - frozenset(held))
-    shown_small = small_counts(project, results, every - shown)
-    left = [small for small in shown_small if small not in deposited]
-    if left:
-        first = left[0]
-        raise PackageError(f"--companion would show {first.fragment}: {first.where}, "
-                           f"{first.count}, a count below the data custodian's minimum that "
-                           "the package does not deposit")  # fmt: skip
+    produced = {_key(_rel(project, f.path)): _rel(project, f.path) for f in results.fragments}
+    return frozenset(produced[_key(found.path)] for found in inputs
+                     if not found.included and _key(found.path) in produced)  # fmt: skip
+
+
+def shows_nothing_withheld(project: Project, results: Results, shown: frozenset[str],
+                           inputs: list[Input]) -> None:  # fmt: skip
+    """The page shows no results file the package withholds. What it shows is read from the
+    files the package holds; this holds that to the plan's own reading of the inputs, so that
+    a file held by mistake is a refusal and not a page. A count below the custodian's minimum
+    in what the page shows is then one of the package's own, which its small-count check
+    refuses until the custodian signs it off."""
+    both = sorted(shown & withheld_results(project, results, inputs))
+    if both:
+        raise PackageError(f"--companion would show {both[0]}, a results file the package "
+                           "withholds")  # fmt: skip
 
 
 def companion_entries(project: Project, results: Results, entries: list[Entry],
                       inputs: list[Input]) -> list[Entry]:  # fmt: skip
-    """ro-crate-preview.html and index.html, the same bytes."""
-    from .plan import generated
+    """ro-crate-preview.html and index.html, the same bytes. A record the page reads that
+    cannot be read stops the page with what stopped it, not with a traceback."""
+    from manuscript_guard.contracts._schema import ContractError
 
-    text = companion_html(project, results, entries, inputs)
+    from .plan import generated
+    from .prose import ProseError
+
+    try:
+        text = companion_html(project, results, entries, inputs)
+    except (ContractError, ProseError, OSError, UnicodeDecodeError) as exc:
+        raise PackageError(f"--companion: the page cannot be made: {exc}") from None
     return [generated(COMPANION, text, "the companion page: the package as a reader sees it"),
             generated(SITE, text, "the companion page, as a site's front page")]  # fmt: skip
 

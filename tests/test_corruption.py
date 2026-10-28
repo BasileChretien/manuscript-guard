@@ -3482,17 +3482,27 @@ def test_a_value_of_a_results_file_the_package_withholds_never_reaches_the_compa
     assert "The rarest site sent [withheld]." in text
     assert 'id="file-results-02_sites.json"' not in text
 
+    # The page holds what it shows to the plan's reading of the inputs: a results file the
+    # plan withholds, held among the files by mistake, stops the page rather than show it.
+    from manuscript_guard.deposit import PackageError, plan_package
+    from manuscript_guard.deposit.companion import companion_html
+    from manuscript_guard.deposit.plan import copied
+
+    loaded, _ = load_project(project)
+    _namespace, results, _literature, _ = load_namespace(loaded)
+    plan = plan_package(loaded, results, ro_crate=True)
+    assert "results/02_sites.json" not in {entry.path for entry in plan.entries}
+    mistaken = [*plan.entries, copied(held, "results/02_sites.json", "a results file")]
+    with pytest.raises(PackageError, match="results/02_sites.json, a results file the package "
+                       "withholds"):  # fmt: skip
+        companion_html(loaded, results, mistaken, list(plan.inputs))
+
 
 @pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
-def test_a_small_count_the_companion_would_show_and_the_package_not_deposit_stops_it(
-    project: Path,
-) -> None:
-    """The page's own check of its counts: one in a results file it shows that the package's
-    list of small counts does not hold is a count nobody was asked about, and stops the
-    page. The package shows what it deposits, so here the page is made to show more."""
-    from manuscript_guard.deposit import PackageError
-    from manuscript_guard.deposit.companion import _small_counts_held
-
+def test_a_small_count_the_companion_would_show_stops_the_package(project: Path) -> None:
+    """What the page shows is what the package deposits, so the package's own small-count
+    check covers it: a count planted in a table stops the package with the page, and nothing
+    is written."""
     _packable(project)
     _custodian(project, 5)
 
@@ -3500,13 +3510,6 @@ def test_a_small_count_the_companion_would_show_and_the_package_not_deposit_stop
         document["tables"]["two_by_two"]["rows"][0][1] = "2"
 
     _resign(project, plant)
-    loaded, _ = load_project(project)
-    _namespace, results, _literature, _ = load_namespace(loaded)
-    every = frozenset(f.path.relative_to(project).as_posix() for f in results.fragments)
-    _small_counts_held(loaded, results, every, set(every))
-    with pytest.raises(PackageError, match="table two_by_two, row 1, column 2, 2"):
-        _small_counts_held(loaded, results, every, set())
-    # And the package with the page is refused as the package is, writing nothing.
     assert _run_cli(["package", str(project), "--companion"]) == 1
     assert not (project / "build" / "package").exists()
 

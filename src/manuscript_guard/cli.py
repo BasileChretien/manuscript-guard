@@ -3480,7 +3480,10 @@ def cmd_sign(args: argparse.Namespace) -> int:
     # The package's, only where a sign-off of one is asked for: they are worked out from
     # every file the package would hold.
     if args.finding.startswith("PACKAGE/"):
-        standing += package_signables(project, results)
+        notes: list[str] = []
+        standing += package_signables(project, results, notes)
+        for note in dict.fromkeys(notes):
+            print(f"manuscript-guard: {note}", file=sys.stderr)
     found = [signable for signable in standing if signable.id == args.finding]
     if not found:
         ids = ", ".join(signable.id for signable in standing) or "none"

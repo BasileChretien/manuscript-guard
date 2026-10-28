@@ -220,6 +220,35 @@ def tables(page: Page) -> list[str]:
     return _parted("Tables", parts, "The manuscript binds no table.")
 
 
+def findings_list(page: Page, findings, none: str) -> list[str]:
+    """A gate's findings by their severity, code and place, never their words: a message may
+    name the people a record names. `manuscript-guard check` says each in words."""
+    if not findings:
+        return [f"<p>{none}</p>"]
+    rows = []
+    for finding in findings:
+        where = ""
+        if finding.path is not None:
+            where = page.rel(Path(finding.path)) + (f":{finding.line}" if finding.line else "")
+        rows.append(f"<li><strong>{esc(finding.severity)}</strong> "
+                    f"<code>{esc(finding.code)}</code>"
+                    + (f" (<code>{esc(where)}</code>)" if where else "") + "</li>")
+    return ["<ul>", *dict.fromkeys(rows), "</ul>"]
+
+
+def _card_finding_lines(report, keys) -> set[str]:
+    """The lines `model_cards` writes for G15's findings, as it writes them."""
+    under = tuple(f"model {key!r}:" for key in keys)
+    lines = set()
+    for finding in report.findings:
+        if finding.message.startswith(under):
+            lines.add(f"  [{finding.severity.upper()}] {finding.message.split(': ', 1)[1]}")
+        else:
+            where = f"{finding.path.name}:{finding.line}: " if finding.line else ""
+            lines.add(f"[{finding.severity.upper()}] {where}{finding.message}")
+    return {line.rstrip() for line in lines}
+
+
 def models(page: Page) -> list[str]:
     from dataclasses import replace
 
@@ -230,13 +259,13 @@ def models(page: Page) -> list[str]:
     out = ["<h3>Models</h3>"]
     if not held:
         return [*out, "<p>The analysis recorded no model this package holds.</p>"]
-    lines, _report = model_cards(page.project, replace(page.results, models=held))
-    text = "\n".join(line.rstrip() for line in lines).strip("\n")
-    # A sign-off's holder is named by the role alone.
-    text = re.sub(r"; signed off by .+?, (the [a-z ]+), on ", r"; signed off by \1, on ", text)
-    return [*out, "<p>Each model as <code>manuscript-guard models</code> prints it, with what "
-            "the model check (G15) said of it when the package was made.</p>",
-            f"<pre>{esc(text)}</pre>"]  # fmt: skip
+    lines, report = model_cards(page.project, replace(page.results, models=held))
+    said = _card_finding_lines(report, held)
+    text = "\n".join(line.rstrip() for line in lines if line.rstrip() not in said).strip("\n")
+    return [*out, "<p>Each model's card as <code>manuscript-guard models</code> prints it, and "
+            "what the model check (G15) found when the package was made, by its code.</p>",
+            f"<pre>{esc(text)}</pre>",
+            *findings_list(page, report.findings, "G15 found nothing.")]  # fmt: skip
 
 
 def displays_section(page: Page, texts: Texts) -> list[str]:
@@ -385,7 +414,9 @@ def _deviations(page: Page) -> str | None:
     path = plan_path(page.project)
     if not path.is_file():
         return None
-    text = _read_plan(path)[0]
+    from manuscript_guard.text.masking import blank_comments
+
+    text = blank_comments(_read_plan(path)[0])
     pattern = {name: rule for name, rule, _purpose in REQUIRED}["deviations"]
     for section in _plan_sections(text):
         if re.search(pattern, section.title):
@@ -393,7 +424,7 @@ def _deviations(page: Page) -> str | None:
     return None
 
 
-def _g12(page: Page) -> list[tuple[str, str]]:
+def _g12(page: Page) -> list:
     """What G12 says of the plan, the design's review, the registration, the data sources,
     the datasets and the methods of similar studies, as `check` runs it."""
     from manuscript_guard.gates.data_sources import check_data_sources, check_declared_datasets
@@ -412,18 +443,17 @@ def _g12(page: Page) -> list[tuple[str, str]]:
         lambda: check_declared_datasets(project, results),
         lambda: check_methods_review(project),
     )  # fmt: skip
-    found: list[tuple[str, str]] = []
+    from manuscript_guard.findings import Finding
+
+    found: list[Finding] = []
     for check in checks:
         try:
             report = check()
         except Exception as exc:  # noqa: BLE001 - said on the page, as `check` says gate-errored
-            found.append(("fail", f"a check of G12 stopped ({type(exc).__name__}); run "
-                          "`manuscript-guard check` to see it"))  # fmt: skip
+            found.append(Finding("G12", "gate-errored", type(exc).__name__))
             continue
-        for finding in report.findings:
-            if finding.gate == "G12":
-                found.append((finding.severity, finding.message))
-    return list(dict.fromkeys(found))
+        found += [finding for finding in report.findings if finding.gate == "G12"]
+    return found
 
 
 def limitations(page: Page, texts: Texts) -> list[str]:
@@ -442,11 +472,10 @@ def limitations(page: Page, texts: Texts) -> list[str]:
     said = _deviations(page)
     out.append(page.prose.add(said) if said else "<p>The plan records no section of its "
                "deviations.</p>")  # fmt: skip
-    out.append("<h3>What the design check (G12) says</h3>")
-    found = _g12(page)
-    out += (["<ul>"] + [f"<li><strong>{esc(severity)}</strong>: {esc(message)}</li>"
-                        for severity, message in found] + ["</ul>"]) if found else \
-        ["<p>Nothing.</p>"]  # fmt: skip
+    out.append("<h3>What the design check (G12) found</h3>")
+    out.append("<p>Each finding by its code and where it stands; <code>manuscript-guard check"
+               "</code> says what each is.</p>")
+    out += findings_list(page, _g12(page), "Nothing.")
     out += ["<h3>What no check decides</h3>", "<ul>"]
     out += [f"<li><strong>{esc(d.name)}</strong>: {esc(d.unchecked)}</li>" for d in DIMENSIONS]
     return [*out, "</ul>", "</section>"]

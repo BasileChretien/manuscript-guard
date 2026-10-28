@@ -8138,8 +8138,9 @@ DOI, the crate and the chosen data sources' DOIs, `identifier` the recorded DOI,
 one more than the revision rounds), every `<`, `>` and `&` in it written as an escape. Its
 six sections are each made from a record. The overview: the abstract, a citation of the
 package, the dated events the records hold (the plan kept with the first results, each
-results file written, each revision round received, `package.date`), the results' digest
-as `check` takes it, and a digest of SHA256SUMS's lines for every file but the page, its
+results file written, each revision round received, `package.date`), the digest of every
+results file as `check` and `verify` take it (`fragments_digest`, the withheld ones too: their
+digest, not what they hold), and a digest of SHA256SUMS's lines for every file but the page, its
 copy, the crate, RELATIONS.md, MANIFEST.yaml and SHA256SUMS. The key findings are the
 abstract's own sentences that print a value, word for word with the values in (decision
 1(a)); the evidence map is BOUND.md's rows from the same `bound_rows`, with each results
@@ -8150,13 +8151,13 @@ that it supports the sentence as it reads, and then by its locator, never its wo
 `*.render.json` records and the script beside it the one that drew it; the caption, a
 Markdown legend after the binding or the one caption of a LaTeX float that holds the figure
 alone; the alternative text; where G10 says the review stands, and when, but not by whom.
-The bound tables from their fragments, and the G15 cards by `model_cards`, a sign-off's
-holder named by the role. The methods: each script and how to run it, what each run
+The bound tables from their fragments, and the G15 cards by `model_cards`, without the
+lines it writes for G15's findings, which are listed by their code and place. The methods: each script and how to run it, what each run
 recorded of its language and platform, the lockfiles with whether the runs recorded the same
 digest, the inputs, each Methods claim with its step and where it stands against
 `methods.lock`, and the last run of `verify` with the date it recorded. The limitations: each
 section of the manuscript or the supplement titled for them, the plan's Deviations as
-written, what G12 says, and each dimension's `unchecked` from `assurance.py`. The
+written, G12's findings by their code and place, and each dimension's `unchecked` from `assurance.py`. The
 co-authors: `checker`'s decisions counted by author, anyone else counted together and not
 named, and each author's approval, current or given to an earlier manuscript.
 
@@ -8165,22 +8166,34 @@ marks: two runs for the whole page (`deposit/prose.py`). Pandoc's reader has eve
 that passes HTML or TeX through or sets an attribute turned off; a picture becomes its
 description, a link not to the web or an address its words, a footnote its text in
 brackets; pandoc's user data directory is not read. Without pandoc `--companion` is refused
-and the rest of `package` is not. No name but an author's is shown: every name a review,
-figure review, passage, attestation, sign-off or role records of someone who is no author is
-replaced, and a checker who is none is counted with the others. Of a results file the
-package withholds nothing is shown, its values printed as "[withheld]" in the prose too, and
-the counts the page shows are held to the package's own small-count check: one the package
-does not deposit stops it. The bytes are a function of the records and of pandoc: no clock,
-no path of the computer (the project's root is taken out of whatever a gate's message
-holds), no version of the tool (MANIFEST.yaml names it, and pandoc's as
+and the rest of `package` is not, nor is a sign-off of a package without the page: a record
+the page cannot read stops the page with what stopped it, and `sign` leaves out only the
+page's variant, and says so. The page's own parts name nobody from a record but the authors
+`authors.yaml` lists, in the byline and beside their approvals: a reviewer, a figure's
+reviewer, a passage's judge, a checker or a role's holder is said by the role, counted or
+dated, and a gate's finding (G12's, G15's; G10's as a fixed phrase for each code) by its code
+and place, never its words, since a message may name whoever a record names. Nothing is taken
+out of the page once it is written: a round of review found a scrub of names from the written
+page both missed names and changed words and authors' names, so the page prints no such text
+instead. The manuscript's prose and the plan's Deviations are the authors' text, published
+with the paper and the package, and are printed as written, with the plan's comments blanked
+as the manuscript's are; the design's "no reviewer or checker names" is about what the page
+itself lists. Of a results file the package withholds nothing is shown, its values printed
+as "[withheld]" in the prose too, and what the page shows is held to the plan's own list of
+the results files it withholds (`shows_nothing_withheld`): one held by mistake stops the
+page. So a count below the custodian's minimum the page shows is one of the package's own,
+which its small-count check refuses until the custodian signs it off. The bytes are a
+function of the records and of pandoc: no clock, no path of the computer (a finding's place
+is from the project's root), no version of the tool (MANIFEST.yaml names it, and pandoc's as
 `companion_written_with`), records sorted, and `\n` line ends. A package with the page is
 another package for the custodian to sign (`PACKAGE/custodian/deposit-companion`). The tests
 are in `tests/test_companion.py`: each section from the example and from records a test
 adds, a LaTeX manuscript and a supplement, the page twice and from another folder the same
 bytes, the fragments and every mapping of the results in any order the same bytes, a date
-only where a record has it, no name but the authors', no passage's words, and one script,
-whose JSON-LD parses. In `tests/test_corruption.py`, the values of a results file the
-package withholds are never in the page, and a small count the page would show stops it.
+only where a record has it, no name but the authors', no passage's words, a G12 message
+by its code, no word changed for a name, and one script, whose JSON-LD parses. In
+`tests/test_corruption.py`, the values of a results file the package withholds are never in
+the page, one held by mistake stops it, and a small count the page would show stops it.
 
 What this rests on: deterministic tests in CI (`tests/test_package.py`): the example packaged,
 unzipped and run again by `verify` from the unpacked folder with every value reproduced; an R
@@ -16342,11 +16355,14 @@ Open, recorded as each change landed:
   leaves out the page, its copy, the crate, RELATIONS.md, MANIFEST.yaml and SHA256SUMS, which
   are made beside the page or after it. A figure's picture is not read for a small count,
   which the custodian's check reads only in the results files.
-- **A name is kept off the page by the records that hold it.** The names taken out are those
-  a review, a figure review, a passage, an attestation, a design or a data-sources decision,
-  a sign-off, a role and `checks/decisions.csv` record of someone who is not an author, each
-  as written; a name the same person is given otherwise elsewhere, or a reviewer named only
-  in the prose of a G12 message, is not known to be one.
+- **The page reads no typed number for a small count.** The custodian's check of the
+  package reads the results files, and the page shows their values only through it; a count
+  typed into the abstract or a limitation is printed as the authors wrote it. G2's
+  `count-below-minimum` reads the manuscript's bound counts, and an unbound number is G2's
+  to refuse; the package does not run G2.
+- **A gate's finding on the page is its code and its place.** What G12 and G15 say in words
+  is `check`'s: a reader of the page alone learns that a finding stands and where, not what
+  it says.
 - **.zenodo.json is the legacy deposition API's metadata, as written down, not as Zenodo was
   seen to read it.** It calls the deposit `software`, as CITATION.cff does, names the licence
   in Zenodo's small-letter SPDX spelling and none where `package.licence` names several (the

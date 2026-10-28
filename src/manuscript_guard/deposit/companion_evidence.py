@@ -45,8 +45,9 @@ def key_findings(page: Page, texts: Texts, passages: dict[str, list[dict]]) -> l
            "literature, as the abstract has them.</p>"]  # fmt: skip
     rows = []
     for paragraph in re.split(r"\n[ \t]*\n", abstract):
-        if paragraph.lstrip().startswith("#"):
-            continue
+        # A heading's line is no sentence; the text under it in the paragraph is.
+        paragraph = "\n".join(line for line in paragraph.splitlines()
+                              if not line.lstrip().startswith("#"))
         for sentence in sentences(paragraph):
             bound = list(dict.fromkeys(f"{ns}.{key}" for ns, key in _VALUE.findall(sentence)))
             if not bound:

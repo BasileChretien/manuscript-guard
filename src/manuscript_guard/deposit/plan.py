@@ -691,7 +691,7 @@ def _described(project: Project, results: Results, kind: str) -> list[Finding]:
                              "authors.yaml", hint="list the authors, each with a given or a "
                              "family name, in authors.yaml; the tool names no one it is not "
                              "told of"))  # fmt: skip
-    if kind == "ro-crate" and date_published(project, results) is None:
+    if kind in ("ro-crate", "companion") and date_published(project, results) is None:
         found.append(Finding(GATE, "package-crate-undated", "an RO-Crate gives the day it was "
                              "published, and paper.yaml gives no package.date and no results "
                              "file records a date that can be read", path=project.root /
@@ -718,22 +718,33 @@ def _a_day(text: str) -> bool:
         return False
 
 
-def package_signables(project: Project, results: Results) -> list[Signable]:
+def package_signables(project: Project, results: Results,
+                      notes: list[str] | None = None) -> list[Signable]:  # fmt: skip
     """What the data custodian may sign off of the package as it stands, with the manuscript
-    and without it."""
+    and without it. The companion page is made with pandoc from records a package without it
+    never reads: where it cannot be made, only its variant is left out, and `notes` says
+    why. The other packages' sign-offs are the same with the page or without it."""
+    from manuscript_guard.contracts._schema import ContractError
+
+    from .prose import ProseError
+
     if not results.fragments:
         return []
     found: dict[str, Signable] = {}
     for with_manuscript in (False, True):
         for kind in KINDS:
-            try:
+            if kind != "companion":
                 planned = plan_package(project, results, with_manuscript=with_manuscript,
-                                       citation=kind == "citation", ro_crate=kind == "ro-crate",
-                                       companion=kind == "companion")  # fmt: skip
-            except PackageError:
-                if kind != "companion":
-                    raise
-                continue  # no pandoc, or a page that cannot be made: nothing to sign
+                                       citation=kind == "citation", ro_crate=kind == "ro-crate")
+            else:
+                try:
+                    planned = plan_package(project, results, with_manuscript=with_manuscript,
+                                           companion=True)  # fmt: skip
+                except (ContractError, ProseError, PackageError, OSError) as exc:
+                    if notes is not None:
+                        notes.append(f"the package with the companion page is not offered "
+                                     f"for signing: {exc}")  # fmt: skip
+                    continue
             for signable in planned.signables:
                 found.setdefault(signable.id, signable)
     return list(found.values())

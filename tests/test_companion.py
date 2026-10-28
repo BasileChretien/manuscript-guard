@@ -81,6 +81,9 @@ def test_the_overview_is_the_abstract_the_citation_the_history_and_the_digests(
     written = json.loads((project / "results" / "01_disproportionality.json")
                          .read_text(encoding="utf-8"))["provenance"]["generated_at"]  # fmt: skip
     assert frozen["frozen_at"] in said and written in said
+    from manuscript_guard.assurance import fragments_digest
+
+    assert fragments_digest(load_project(project)[0]) in said
     # The package's digest is the one SHA256SUMS gives, less the files made beside the page.
     import hashlib
 
@@ -185,7 +188,9 @@ def test_limitations_are_the_manuscripts_the_plans_deviations_g12_and_what_no_ga
     assert "Limitations of the code lists (supplement) One event term" in said
     assert "Six. The first two came after the first review round" in said
     assert "<ol" in text, "the plan's list is a list"
-    assert "<strong>info</strong>: analysis plan covers all" in text
+    assert "<strong>info</strong> <code>plan-complete</code> (<code>design/plan.md</code>)" \
+        in text  # fmt: skip
+    assert "analysis plan covers all" not in text, "a finding's words are check's"
     assert "<strong>methodological validity</strong>: whether the design supports the " \
            "conclusion" in text  # fmt: skip
 
@@ -240,6 +245,113 @@ def test_no_name_but_the_authors_and_no_passage_word_is_shown(project: Path) -> 
     assert "@fictionalClassSignal2019" in cited and "Abstract, Results" in cited
     assert "2026-10-20" in cited
     assert "A signal was detected for the class as a whole" not in text
+
+
+def test_a_gates_finding_is_shown_by_its_code_and_place_never_its_words(
+    project: Path, monkeypatch
+) -> None:
+    """A G12 message may name whoever a record names: the page gives the code and where it
+    stands, and the words are `check`'s to say."""
+    import manuscript_guard.gates.design as design
+    from manuscript_guard.findings import WARN, Finding, Report
+
+    ready(project)
+    plan = project / "design" / "plan.md"
+    monkeypatch.setattr(design, "check_design", lambda *a, **k: Report((Finding(
+        "G12", "plan-read-by", "read by Rex Reviewer on 2026-01-01", severity=WARN,
+        path=plan, line=3),)))  # fmt: skip
+    package(project)
+    text = section(page(project), "limitations")
+    assert "Rex Reviewer" not in text
+    assert "<code>plan-read-by</code> (<code>design/plan.md:3</code>)" in text
+
+
+def test_the_page_changes_no_word_to_keep_a_name_off_it(project: Path) -> None:
+    """Nothing is taken out of the text after it is written: a checker called "Ana" or
+    "Ada", who is no author, leaves "Analysis" and the author Ada Example as they are."""
+    from manuscript_guard.cli import _checking_items
+
+    ready(project)
+    first, second = (str(item["id"]) for item in
+                     _checking_items(load_project(project)[0], None).items[:2])  # fmt: skip
+    (project / "checks").mkdir(exist_ok=True)
+    (project / "checks" / "decisions.csv").write_text(
+        "when,by,id,group,title,status,note,digest,bundle\n"
+        f"2026-10-01,Ana,{first},g,t,ok,,,b\n2026-10-01,Ada,{second},g,t,ok,,,b\n",
+        encoding="utf-8")  # fmt: skip
+    package(project)
+    text = page(project)
+    assert "Disproportionality analysis of a synthetic" in text
+    assert "Ada Example" in section(text, "verification")
+    assert ">Ana<" not in text and ">Ada<" not in text
+    assert "others, not authors 2 0 0" in plain(section(text, "verification"))
+
+
+def test_a_heading_opening_an_abstract_paragraph_keeps_the_sentence_under_it(
+    project: Path,
+) -> None:
+    ready(project)
+    main_md = project / "manuscript" / "main.md"
+    main_md.write_text(main_md.read_text(encoding="utf-8").replace(
+        "**Background.**", "### Results\nThe ROR was {{results.ror.point}}.\n\n**Background.**",
+        1), encoding="utf-8")  # fmt: skip
+    assert main(["package", str(project), "--companion", "--skip-checks"]) == 0
+    findings = re.search(r"<ol>(.*?)</ol>", section(page(project), "evidence"), re.DOTALL)[1]
+    assert "The ROR was 3.84." in plain(findings)
+
+
+def test_the_plans_comments_are_not_printed(project: Path) -> None:
+    ready(project)
+    plan = project / "design" / "plan.md"
+    plan.write_text(plan.read_text(encoding="utf-8").replace(
+        "## Deviations from the plan\n", "## Deviations from the plan\n\n<!-- a note to self "
+        "-->\n", 1), encoding="utf-8")  # fmt: skip
+    assert main(["package", str(project), "--companion", "--skip-checks"]) == 0
+    text = section(page(project), "limitations")
+    assert "a note to self" not in text and "Six. The first two came" in plain(text)
+
+
+def test_a_crate_with_no_date_to_give_is_refused_with_the_page_too(project: Path) -> None:
+    from test_package import edit_fragment
+
+    from manuscript_guard.deposit import plan_package
+
+    ready(project)
+
+    def undated(document: dict) -> None:
+        document["provenance"]["generated_at"] = "some time last week"
+
+    edit_fragment(project, undated)
+    loaded, _ = load_project(project)
+    _namespace, results, _literature, _ = load_namespace(loaded)
+    codes = {f.code for f in plan_package(loaded, results, companion=True).report.failures}
+    assert "package-crate-undated" in codes
+    assert main(["package", str(project), "--companion", "--skip-checks"]) == 1
+    assert not (project / "build" / "package").exists()
+
+
+def test_a_record_the_page_cannot_read_leaves_the_other_packages_to_sign(
+    project: Path, capsys
+) -> None:
+    """An approval that does not parse stops the page, with a message, and not the custodian's
+    sign-off of the package without it."""
+    ready(project)
+    _custodian(project)
+    document = paper(project)
+    document["custodian"] = {"restricts_sending": True}
+    set_paper(project, document)
+    approvals = project / "approvals"
+    approvals.mkdir()
+    (approvals / "0000-0002-1825-0097.yaml").write_text(
+        "schema: manuscript-guard/approval/1\nauthor: Ada Example\napproved_on: 2026-09-31\n"
+        f"document_sha256: {'a' * 64}\n", encoding="utf-8")  # fmt: skip
+    capsys.readouterr()
+    assert main(["sign", str(project), "--as", "Sample", "--finding",
+                 "PACKAGE/custodian/deposit"]) == 0  # fmt: skip
+    assert "not offered for signing" in capsys.readouterr().err
+    assert main(["package", str(project), "--companion"]) == 2
+    said = capsys.readouterr().err
+    assert "--companion: the page cannot be made:" in said and "Traceback" not in said
 
 
 # --------------------------------------------------------------------------- the page itself

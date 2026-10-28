@@ -98,13 +98,16 @@ what the project records, and none is written for it:
    that points at a step of the code and whether either has changed since they were read
    together, and the last run of `verify`, with the date it recorded.
 5. **Limitations**: the sections of the manuscript and the supplement titled for them, the
-   plan's Deviations as written, what the design check (G12) says, and what no check
+   plan's Deviations as written, what the design check (G12) found, by code, and what no check
    decides.
 6. **Co-author verification**: what each author checked with `checker`, and whether each
    author's approval is of the manuscript as it stands.
 
-The page names nobody but the authors: a reviewer, a figure's reviewer, a passage's judge or
-a checker who is no author is not named. Of a results file the package withholds nothing is
+The page's own parts name nobody but the authors: a reviewer, a figure's reviewer, a
+passage's judge or a checker who is no author is said by the role, counted or dated, and a
+check's finding is given by its code and where it stands, since its words may name someone;
+`manuscript-guard check` says them. The manuscript's prose and the plan's Deviations are
+yours, and are printed as you wrote them. Of a results file the package withholds nothing is
 shown, and a value of it in the prose reads "[withheld]". The prose is written by pandoc,
 whose version MANIFEST.yaml names (`companion_written_with`): the same records and the same
 pandoc give the same bytes, from any folder, on any day. Without pandoc, `--companion` is

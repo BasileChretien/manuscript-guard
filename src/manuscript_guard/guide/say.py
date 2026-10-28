@@ -158,7 +158,8 @@ def _rendered(number: int, action: Action, root: Path) -> list[str]:
     said = _WHO_SAID.get(action.who)
     if action.argv is not None:
         lines.append(f"   run: {_command_line(action.argv)}" + (f"  ({said})" if said else ""))
-    elif action.who == AUTHOR:
+    elif action.who == AUTHOR and action.choice is None:
+        # A choice's options each say who runs them, and some are an agent's to run.
         lines.append("   the author decides it, or runs it: an agent may draft it, not do it")
     for finding in action.findings[:SHOWN_FINDINGS]:
         where = _where(finding, root)

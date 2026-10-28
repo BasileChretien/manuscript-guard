@@ -317,6 +317,10 @@ def test_the_text_says_which_actions_are_the_authors(tmp_path: Path) -> None:
     assert "run: manuscript-guard review  (the author runs it)" in text
     agents = settled(tmp_path, findings=(at(tmp_path, "G6", "model-artefact"),))
     assert "author" not in render(agents, decide(agents), every=True).split("\n", 3)[3]
+    # A choice says who runs each option, and some are the agent's (fix-only round).
+    moving = settled(tmp_path, stage="internal-review")
+    text = render(moving, decide(moving), every=True)
+    assert "1) " in text and "an agent may draft it, not do it" not in text
 
 
 def test_an_earlier_view_with_nothing_to_do_says_it_is_a_view(tmp_path: Path) -> None:

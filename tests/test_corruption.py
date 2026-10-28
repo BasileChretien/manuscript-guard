@@ -3699,6 +3699,51 @@ def test_a_restricted_input_never_goes_into_a_deposit(project: Path) -> None:
     assert not (project / "build" / "deposit").exists()
 
 
+def test_a_restricted_input_copied_into_a_latex_folder_under_another_name_stops_it(
+    project: Path,
+) -> None:
+    """`pack_latex` copies each file the LaTeX build read into the folder arXiv is sent,
+    under a name of its own: an input declared restricted among them is found by its bytes,
+    and an unrestricted one is not (round 1 of #460)."""
+    from manuscript_guard.deposit.plan import copied
+    from manuscript_guard.deposit.preflight import restricted_entries
+
+    folder = project / "build" / "latex" / "submission"
+    folder.mkdir(parents=True)
+    shutil.copyfile(project / "data" / "event_terms.txt", folder / "terms-table.txt")
+    entries = (copied(folder / "terms-table.txt", "terms-table.txt", "the LaTeX source"),)
+
+    def found() -> list[str]:
+        loaded = load_project(project)[0]
+        return [f.code for f in restricted_entries(loaded, load_namespace(loaded)[1], entries)]
+
+    assert found() == []
+    _resign(project, _restricted)
+    assert found() == ["deposit-restricted-input"]
+
+
+def test_the_release_manifest_is_not_what_the_custodian_signs(project: Path) -> None:
+    """MANIFEST.yaml names the commit and whether the tree is clean, which a sign-off written
+    into the tree changes: a release signed off stays signed when only it changes, and is
+    signed again when a file it lists does (round 1 of #460)."""
+    from manuscript_guard.deposit.plan import generated
+    from manuscript_guard.deposit.preflight import signable
+
+    paper = project / "paper.yaml"
+    document = yaml.safe_load(paper.read_text(encoding="utf-8"))
+    document["custodian"] = {"restricts_sending": True}
+    paper.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    loaded = load_project(project)[0]
+
+    def digest(manifest: str, readme: str) -> str:
+        entries = (generated("MANIFEST.yaml", manifest, "the manifest"),
+                   generated("README.md", readme, "the readme"))  # fmt: skip
+        return signable(loaded, "zenodo", "release", entries).digest
+
+    assert digest("tree: clean\n", "a") == digest("tree: 1 file(s) changed\n", "a")
+    assert digest("tree: clean\n", "a") != digest("tree: clean\n", "b")
+
+
 def test_a_statement_that_loses_the_deposits_doi_fails_at_submission(project: Path) -> None:
     from manuscript_guard.gates.data_statement import check_package_doi
 

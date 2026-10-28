@@ -5082,7 +5082,7 @@ def build_parser() -> argparse.ArgumentParser:
         "git tracks or that it would carry; and, where the custodian restricts sending, a "
         "bundle they have not signed off (DEPOSIT/custodian/<target>/<bundle>). A plan the "
         "first results were written from is no pre-registration, and goes only with "
-        "--retrospective. A release and a preprint are refused while `check --submission` "
+        "--retrospective. A release and a preprint are refused while `check --stage submission` "
         "fails. Nothing is uploaded and nothing is pushed (docs/deposit.md).",
     )
     deposit.add_argument("path", nargs="?", type=Path, default=Path.cwd())

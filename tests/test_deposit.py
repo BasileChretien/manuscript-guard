@@ -301,7 +301,7 @@ def test_a_release_is_refused_while_the_submission_check_fails(project: Path, ca
     assert deposit(project, "zenodo", "release") == 1
     captured = capsys.readouterr()
     assert "has been modified since the analysis" in captured.out
-    assert "check --submission" in captured.err
+    assert "check --stage submission" in captured.err
     assert nothing_written(project)
     assert deposit(project, "gh-pages", "release") == 1
 
@@ -325,7 +325,7 @@ def test_the_release_is_the_package_with_its_page_and_how_it_was_checked(project
     assert [a["author"] for a in record["approvals"]] == ["Ada Example", "Blaise Sample"]
     assert {d["dimension"] for d in record["assurance"]} >= {"computational reproducibility"}
     markdown = (root / "VERIFICATION.md").read_text(encoding="utf-8")
-    assert "`check --submission`: passed" in markdown
+    assert "`check --stage submission`: passed" in markdown
     # No reviewer is named who is not an author, as on the companion page.
     for text in (markdown, json.dumps(record)):
         assert "claude-opus-5" not in text and "Claude Code" not in text
@@ -345,6 +345,26 @@ def test_the_release_is_the_same_bytes_twice(project: Path) -> None:
 
 
 @PANDOC
+@GIT
+def test_a_signed_release_stays_signed_in_a_committed_project(project: Path, capsys) -> None:
+    """MANIFEST.yaml names the commit and whether the tree is clean, and the sign-off is a
+    file written into the tree: what the custodian signs leaves it out, as `package` does,
+    so that signing does not stale the sign-off it writes (round 1 of #460)."""
+    ready(project)
+    _custodian(project)
+    minimum(project, restricts_sending=True)
+    _git(project, "init", "-q")
+    _git(project, "add", "-A")
+    _git(project, "commit", "-q", "-m", "x")
+    assert deposit(project, "zenodo", "release") == 1
+    assert "--finding DEPOSIT/custodian/zenodo/release" in capsys.readouterr().out
+    assert main(["sign", str(project), "--as", "Sample", "--finding",
+                 "DEPOSIT/custodian/zenodo/release"]) == 0  # fmt: skip
+    assert deposit(project, "zenodo", "release") == 0, capsys.readouterr().out
+    assert "MANIFEST.yaml" in contents(folder(project, "zenodo-release"))
+
+
+@PANDOC
 def test_gh_pages_is_the_page_and_the_commands_and_pushes_nothing(project: Path, capsys) -> None:
     ready(project)
     assert deposit(project, "gh-pages", "release") == 0
@@ -354,6 +374,8 @@ def test_gh_pages_is_the_page_and_the_commands_and_pushes_nothing(project: Path,
     assert (root / ".nojekyll").read_bytes() == b""
     assert "<html" in (root / "index.html").read_text(encoding="utf-8")
     assert "git push origin gh-pages" in said
+    # Whether or not the branch is there yet: `--orphan` alone fails once it is.
+    assert "git switch gh-pages || git switch --orphan gh-pages" in said
     assert "Nothing has been uploaded or pushed" in said
 
 
@@ -387,8 +409,9 @@ def _fake_latex(root: Path, monkeypatch) -> Path:
 
 
 def _below_submission(root: Path) -> None:
-    """A project that passes `check` at its stage and fails `check --submission`: a reporting
-    item left unanswered, which G5 fails from internal review (`checklist-item-unanswered`)."""
+    """A project that passes `check` at its stage and fails `check --stage submission`: a
+    reporting item left unanswered, which G5 fails from internal review
+    (`checklist-item-unanswered`)."""
     from manuscript_guard.cli import _run_gates
 
     path = root / "reporting" / "DEMO-OBS.yaml"
@@ -412,7 +435,7 @@ def test_a_preprint_is_refused_while_the_submission_check_fails(
     monkeypatch.setattr(preprint, "_documents", lambda _project: [])
     _below_submission(project)
     assert deposit(project, target, "preprint") == 1
-    assert "failing in `check --submission`" in capsys.readouterr().err
+    assert "failing in `check --stage submission`" in capsys.readouterr().err
     assert nothing_written(project)
 
 
@@ -462,13 +485,123 @@ def test_a_markdown_manuscript_without_tex_is_refused_for_arxiv(project: Path, m
     assert nothing_written(project)
 
 
-def test_the_medrxiv_bundle_and_its_sheet(project: Path, monkeypatch) -> None:
+def _fake_docx(root: Path, monkeypatch) -> Path:
     from manuscript_guard.deposit import preprint
 
-    built = project / "build" / "manuscript.docx"
+    built = root / "build" / "manuscript.docx"
     built.parent.mkdir(parents=True, exist_ok=True)
     built.write_bytes(b"PK docx")
-    monkeypatch.setattr(preprint, "_documents", lambda _project: [(built, "the manuscript")])
+    monkeypatch.setattr(preprint, "_documents", lambda _project: [(built, "the manuscript", None)])
+    return built
+
+
+def _sheet(root: Path) -> str:
+    """The medRxiv sheet of the project as it stands, asked of the sheet itself, so that an
+    edit no gate is asked about at submission can be made first."""
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.deposit.sheets import medrxiv_sheet
+
+    return medrxiv_sheet(load_project(root)[0], files=[])
+
+
+def _authors(root: Path, change) -> None:
+    path = root / "authors.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    change(document)
+    path.write_text(yaml.safe_dump(document, sort_keys=False, allow_unicode=True),
+                    encoding="utf-8")  # fmt: skip
+
+
+def _statement(root: Path, added: str) -> None:
+    path = root / "manuscript" / "main.md"
+    text = path.read_text(encoding="utf-8")
+    at = text.index("this repository. No real patient data")
+    path.write_text(text[:at] + f"this repository. {added} " + text[at + len("this repository. "):],
+                    encoding="utf-8")  # fmt: skip
+
+
+@PANDOC
+def test_the_data_statement_is_printed_with_its_bindings_filled(project: Path) -> None:
+    """As the abstract is: a binding in the statement is its display, never `{{…}}`
+    (round 1 of #460)."""
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.gates.revision import displays
+    from manuscript_guard.text.placeholders import substitute
+
+    _statement(project, "The cohort held {{results.cohort.n_reports}} reports.")
+    shown = substitute("{{results.cohort.n_reports}}", displays(load_project(project)[0]))
+    assert "{{" not in shown
+    sheet = _sheet(project)
+    said = sheet.split("## Data availability", 1)[1].split("## Licence", 1)[0]
+    assert f"The cohort held {shown} reports." in said
+    assert "{{" not in said
+
+
+@PANDOC
+def test_a_data_statement_that_cites_is_to_be_copied_from_the_document(project: Path) -> None:
+    _statement(project, "The method is described elsewhere [@fictionalClassSignal2019].")
+    said = _sheet(project).split("## Data availability", 1)[1].split("## Licence", 1)[0]
+    assert "Copy it from the document" in said
+    assert "@fictional" not in said and "[" not in said
+
+
+def test_the_sheet_says_each_author_as_authors_yaml_records_them(project: Path) -> None:
+    """An accented name as it is spelt, several affiliations, no ORCID, an affiliation id
+    `affiliations` does not list, and two corresponding authors (round 1 of #460)."""
+
+    def change(document: dict) -> None:
+        ada, blaise = document["authors"]
+        ada["given"] = "Hélène"
+        ada["affiliations"] = ["uni", "chu", "nowhere"]
+        blaise.pop("orcid")
+        blaise["corresponding"] = True
+
+    _authors(project, change)
+    sheet = _sheet(project)
+    assert ("- Hélène Example, ORCID 0000-0002-1825-0097; Department of Clinical "
+            "Pharmacology") in sheet  # fmt: skip
+    line = next(row for row in sheet.splitlines() if row.startswith("- Hélène Example"))
+    assert "Regional Pharmacovigilance Centre" in line
+    assert "affiliation `nowhere`: not recorded" in line
+    assert "- Blaise Sample, ORCID not recorded; Regional Pharmacovigilance" in sheet
+    assert ("authors.yaml marks 2 authors `corresponding: true`, Hélène Example, Blaise "
+            "Sample") in sheet  # fmt: skip
+    assert "no single author" not in sheet
+
+
+def _medrxiv(root: Path, monkeypatch):
+    from manuscript_guard.contracts import load_project
+    from manuscript_guard.deposit import preprint
+
+    _fake_docx(root, monkeypatch)
+    return preprint.medrxiv(load_project(root)[0])
+
+
+def test_a_figure_medrxiv_is_not_sent_is_named(project: Path, monkeypatch) -> None:
+    """A .jpg beside the document is named as left out, not dropped (round 1 of #460)."""
+    shutil.copyfile(project / "figures" / "forest.png", project / "figures" / "photo.jpg")
+    made = _medrxiv(project, monkeypatch)
+    assert "figures/photo.jpg" not in {entry.path for entry in made.entries}
+    assert "figures/photo.jpg" in {held.path for held in made.withheld}
+
+
+def test_a_linked_figure_is_withheld_as_the_package_withholds_one(
+    project: Path, monkeypatch, tmp_path: Path
+) -> None:
+    outside = tmp_path / "elsewhere.png"
+    shutil.copyfile(project / "figures" / "forest.png", outside)
+    try:
+        (project / "figures" / "linked.png").symlink_to(outside)
+    except OSError:
+        pytest.skip("this system makes no symbolic link without a privilege")
+    made = _medrxiv(project, monkeypatch)
+    assert "figures/linked.png" not in {entry.path for entry in made.entries}
+    assert [held.why for held in made.withheld if held.path == "figures/linked.png"] == \
+        ["a link, whose target is outside what a bundle holds"]  # fmt: skip
+
+
+def test_the_medrxiv_bundle_and_its_sheet(project: Path, monkeypatch) -> None:
+    _fake_docx(project, monkeypatch)
     assert deposit(project, "medrxiv", "preprint") == 0
     root = folder(project, "medrxiv-preprint")
     held = contents(root)
@@ -481,10 +614,110 @@ def test_the_medrxiv_bundle_and_its_sheet(project: Path, monkeypatch) -> None:
     assert "not recorded: the project keeps no record of ethics approval" in sheet
     assert "not recorded: paper.yaml lists no registration" in sheet
     assert "DEMO-OBS; the completed checklist(s): checklist-DEMO-OBS.md" in sheet
-    assert "## Data availability\n\nAs the manuscript writes it:" in sheet
+    if shutil.which("pandoc") is not None:
+        assert "## Data availability\n\nAs the document prints it:" in sheet
     assert "Ada Example, whose e-mail address authors.yaml records" in sheet
-    assert "@" not in sheet
+    # That an address is recorded is said, and the address is never printed.
+    assert "ada.example@invalid.example" not in sheet
     assert (project / "build" / "deposit" / "medrxiv-preprint.zip").is_file()
+
+
+@PANDOC
+def test_a_medrxiv_bundle_signed_off_is_the_same_bytes_when_deposited(project: Path,
+                                                                     capsys) -> None:  # fmt: skip
+    """The custodian signs the bytes that go out: the .docx is built at a fixed date, so the
+    build `sign` makes and the one `deposit` makes are one file (round 1 of #460)."""
+    _custodian(project)
+    minimum(project, restricts_sending=True)
+    assert deposit(project, "medrxiv", "preprint") == 1
+    assert "--finding DEPOSIT/custodian/medrxiv/preprint" in capsys.readouterr().out
+    assert main(["sign", str(project), "--as", "Sample", "--finding",
+                 "DEPOSIT/custodian/medrxiv/preprint"]) == 0  # fmt: skip
+    assert deposit(project, "medrxiv", "preprint") == 0, capsys.readouterr().out
+    first = (folder(project, "medrxiv-preprint") / "manuscript.docx").read_bytes()
+    assert deposit(project, "medrxiv", "preprint") == 0
+    assert (folder(project, "medrxiv-preprint") / "manuscript.docx").read_bytes() == first
+    with zipfile.ZipFile(folder(project, "medrxiv-preprint") / "manuscript.docx") as opened:
+        assert {info.date_time for info in opened.infolist()} == {(1980, 1, 1, 0, 0, 0)}
+
+
+def test_a_compiled_pdf_is_signed_off_by_what_it_is_compiled_from(project: Path, monkeypatch,
+                                                                  capsys) -> None:  # fmt: skip
+    """The author's TeX may write the clock into a PDF, so a LaTeX manuscript's PDF is signed
+    by the folder it is compiled from and the tool's version, not by its bytes."""
+    from manuscript_guard.deposit import preprint
+
+    staged = _fake_latex(project, monkeypatch)
+    packed = preprint._latex(project)
+    calls = []
+
+    def compiled(_project):
+        calls.append(1)
+        (staged / "manuscript.pdf").write_bytes(f"%PDF compiled at call {len(calls)}\n".encode())
+        return packed
+
+    monkeypatch.setattr(preprint, "_latex", compiled)
+    monkeypatch.setattr(preprint, "_is_latex", lambda _project: True)
+    _custodian(project)
+    minimum(project, restricts_sending=True)
+    assert deposit(project, "medrxiv", "preprint") == 1
+    capsys.readouterr()
+    assert main(["sign", str(project), "--as", "Sample", "--finding",
+                 "DEPOSIT/custodian/medrxiv/preprint"]) == 0  # fmt: skip
+    assert deposit(project, "medrxiv", "preprint") == 0, capsys.readouterr().out
+    assert len(calls) == 3
+    # What it is compiled from is what was signed.
+    (staged / "manuscript.tex").write_text("\\documentclass{article}\n% changed\n",
+                                          encoding="utf-8")  # fmt: skip
+    assert deposit(project, "medrxiv", "preprint") == 1
+
+
+def test_the_build_stamp_is_dated_as_the_rest_of_the_document(tmp_path: Path) -> None:
+    from manuscript_guard.roundtrip import stamp_into
+
+    document = tmp_path / "made.docx"
+    with zipfile.ZipFile(document, "w") as out:
+        out.writestr(zipfile.ZipInfo("[Content_Types].xml", date_time=(1980, 1, 1, 0, 0, 0)),
+                     "<Types></Types>")  # fmt: skip
+        out.writestr(zipfile.ZipInfo("_rels/.rels", date_time=(1980, 1, 1, 0, 0, 0)),
+                     "<Relationships></Relationships>")  # fmt: skip
+    stamp_into(document, "0" * 64)
+    with zipfile.ZipFile(document) as opened:
+        assert {info.date_time for info in opened.infolist()} == {(1980, 1, 1, 0, 0, 0)}
+        assert "docProps/custom.xml" in opened.namelist()
+
+
+def test_a_restricted_input_copied_under_another_name_is_caught_by_its_bytes(
+    project: Path, monkeypatch
+) -> None:
+    """`pack_latex` copies each file the build read into one folder, under a name of its own:
+    a restricted input among them is the same bytes (round 1 of #460)."""
+    from manuscript_guard.contracts import load_namespace, load_project
+    from manuscript_guard.deposit.plan import copied
+    from manuscript_guard.deposit.preflight import restricted_entries
+
+    _restricted_dictionary(project)
+    staged = _fake_latex(project, monkeypatch)
+    shutil.copyfile(project / "design" / "data_dictionary.yaml", staged / "table-input.yaml")
+    loaded = load_project(project)[0]
+    results = load_namespace(loaded)[1]
+    entries = (copied(staged / "table-input.yaml", "table-input.yaml", "the source"),
+               copied(staged / "manuscript.tex", "manuscript.tex", "the source"))  # fmt: skip
+    assert [f.message.split(" ")[0] for f in restricted_entries(loaded, results, entries)] == \
+        ["table-input.yaml"]  # fmt: skip
+
+
+def test_retrospective_is_refused_with_a_bundle_that_holds_no_plan(project: Path,
+                                                                    capsys) -> None:  # fmt: skip
+    for target, bundle in (("zenodo", "release"), ("arxiv", "preprint")):
+        assert deposit(project, target, bundle, "--retrospective", "why") == 2
+        said = capsys.readouterr()
+        assert f"--bundle {bundle} deposits no plan" in said.err
+        assert "sign --as" not in said.out
+    assert main(["sign", str(project), "--as", "Sample", "--finding",
+                 "DEPOSIT/custodian/zenodo/release", "--retrospective", "why"]) == 2
+    assert "deposits no plan" in capsys.readouterr().err
+    assert nothing_written(project)
 
 
 @PANDOC

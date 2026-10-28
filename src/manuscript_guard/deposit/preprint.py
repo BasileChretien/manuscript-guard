@@ -18,16 +18,22 @@ interface the tool sends through.
 from __future__ import annotations
 
 import argparse
+import contextlib
+import os
+from collections.abc import Iterator
 from pathlib import Path
 
 from manuscript_guard.contracts.project import Project
 
 from .archive import entry_bytes, tar_bytes
 from .bundles import Bundle, DepositError, _checklists
-from .plan import Entry, copied, generated
+from .plan import Entry, Withheld, _is_junction, copied, generated
 
 #: The figures medRxiv takes beside the document, as `submit` packs them.
 PICTURES = {".png", ".pdf", ".tif", ".tiff", ".eps"}
+#: The other pictures the build puts in a document (`assemble.FIGURE_PREFERENCE`), each
+#: named as left out beside it.
+OTHER_PICTURES = {".jpg", ".jpeg", ".svg"}
 ARXIV_SHEET = "arxiv_submission_sheet.md"
 MEDRXIV_SHEET = "medrxiv_submission_sheet.md"
 
@@ -95,15 +101,67 @@ def arxiv(project: Project) -> Bundle:
                   tarred=tuple(names), notes=tuple(notes))  # fmt: skip
 
 
-def _documents(project: Project) -> list[tuple[Path, str]]:
+def _documents(project: Project) -> list[tuple[Path, str, str | None]]:
     """The documents medRxiv is sent, each with why: the .docx of a Markdown manuscript
-    built offline, or the PDF of a LaTeX one, and the supplement's."""
-    from manuscript_guard.text.reader import LATEX, manuscript_format
-
-    if manuscript_format(project.path("manuscript")) == LATEX:
+    built offline, or the PDF of a LaTeX one, and the supplement's; and, for a PDF, the
+    digest the custodian signs it by, that of what it is compiled from (`built_from`). A
+    .docx is built at a fixed date (`fixed_date`), so that its bytes are signed."""
+    if _is_latex(project):
         packed = _latex(project)
         _undefined(packed)
-        return [(pdf, "a document compiled from the LaTeX source") for pdf in packed.documents]
+        source = built_from(packed)
+        return [(pdf, "a document compiled from the LaTeX source", source)
+                for pdf in packed.documents]  # fmt: skip
+    with fixed_date():
+        return [(path, why, None) for path, why in _word(project)]
+
+
+def _is_latex(project: Project) -> bool:
+    from manuscript_guard.text.reader import LATEX, manuscript_format
+
+    return manuscript_format(project.path("manuscript")) == LATEX
+
+
+#: The date a document built for a deposit carries: 1980-01-01, the first a .zip can hold, as
+#: the archives' members carry. Not the clock, so that the same sources give the same bytes,
+#: and not the last commit's, which the sign-off's own commit moves.
+FIXED_DATE = "315532800"
+
+
+@contextlib.contextmanager
+def fixed_date() -> Iterator[None]:
+    """SOURCE_DATE_EPOCH set to `FIXED_DATE` while the documents build: pandoc dates the
+    .docx's members and its core properties by it, and the build's stamp dates its own
+    part as pandoc dated the rest."""
+    before = os.environ.get("SOURCE_DATE_EPOCH")
+    os.environ["SOURCE_DATE_EPOCH"] = FIXED_DATE
+    try:
+        yield
+    finally:
+        if before is None:
+            os.environ.pop("SOURCE_DATE_EPOCH", None)
+        else:
+            os.environ["SOURCE_DATE_EPOCH"] = before
+
+
+def built_from(packed) -> str:
+    """What a compiled PDF is signed off by: the tool's version and every file of the folder
+    it was compiled from, with its digest. The PDF's bytes are the author's TeX's, which may
+    write the clock into them, so they are not what is signed (see DESIGN, Known gaps)."""
+    from manuscript_guard import __version__
+    from manuscript_guard.sign_offs import digest_of
+
+    from .plan import _digest
+
+    files = []
+    for path in packed.files:
+        found = sorted(p for p in path.rglob("*") if p.is_file()) if path.is_dir() else [path]
+        files += [(p.relative_to(packed.folder).as_posix(), _digest(p)) for p in found
+                  if p.is_file()]  # fmt: skip
+    return digest_of("compiled from", f"manuscript-guard {__version__}", sorted(files))
+
+
+def _word(project: Project) -> list[tuple[Path, str]]:
     from manuscript_guard.build import OFFLINE, BuildError, MisreadError, assemble, build_document
     from manuscript_guard.cli import _build_supplement, _journal_style, _print_assembly_warnings
     from manuscript_guard.contracts import load_namespace
@@ -135,11 +193,27 @@ def medrxiv(project: Project) -> Bundle:
     """The documents, the figures, the checklists, the declarations, and the sheet."""
     from manuscript_guard.build.submission import SubmissionError, credit_statement, declarations
 
-    entries = [copied(path, path.name, why) for path, why in _documents(project)]
+    documents = _documents(project)
+    entries = [copied(path, path.name, why) for path, why, _source in documents]
+    signed_as = tuple((path.name, source) for path, _why, source in documents if source)
+    withheld = []
     figures = project.path("figures")
     for path in sorted(figures.iterdir()) if figures.is_dir() else []:
-        if path.is_file() and path.suffix.lower() in PICTURES:
-            entries.append(copied(path, f"figures/{path.name}", "a figure"))
+        suffix = path.suffix.lower()
+        if suffix not in PICTURES and suffix not in OTHER_PICTURES:
+            continue
+        at = f"figures/{path.name}"
+        if path.is_symlink() or _is_junction(str(path)):
+            # As `package` withholds a link: what it leads to is not the project's to send.
+            withheld.append(Withheld(at, "a link, whose target is outside what a bundle holds"))
+        elif not path.is_file():
+            continue
+        elif suffix in OTHER_PICTURES:
+            withheld.append(Withheld(at, "a picture in a format `submit` does not pack beside "
+                                     "the document, which takes "
+                                     + ", ".join(sorted(PICTURES))))  # fmt: skip
+        else:
+            entries.append(copied(path, at, "a figure"))
     entries += _checklists(project)
     try:
         entries.append(generated("declarations.md", declarations(project),
@@ -153,7 +227,8 @@ def medrxiv(project: Project) -> Bundle:
     names = sorted(entry.path for entry in entries)
     entries.append(generated(MEDRXIV_SHEET, medrxiv_sheet(project, files=names),
                              "what medRxiv's form asks, and what the project records"))
-    return Bundle("medrxiv", "preprint", tuple(sorted(entries, key=lambda e: e.path)))
+    return Bundle("medrxiv", "preprint", tuple(sorted(entries, key=lambda e: e.path)),
+                  tuple(withheld), signed_as=signed_as)  # fmt: skip
 
 
 __all__ = ["ARXIV_SHEET", "MEDRXIV_SHEET", "arxiv", "medrxiv"]

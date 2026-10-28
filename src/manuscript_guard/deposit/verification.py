@@ -1,7 +1,7 @@
 """VERIFICATION.md and VERIFICATION.json: how the released paper was checked, as `check
 --submission` and the records say, and what was checked by no one.
 
-They hold, for the release as it is deposited: `check --submission` gate by gate, its
+They hold, for the release as it is deposited: `check --stage submission` gate by gate, its
 failures, warnings and notes counted and named by their codes; each dimension of `check`'s
 assurance, what its gates found by machine and what no gate decides; the last run of
 `verify` in this checkout, with the date it recorded; where the co-authors' checking stands,
@@ -154,9 +154,10 @@ _STATES = {"current": "approved it on {on}, as it stands", "missing": "has not a
 def _markdown(record: dict) -> str:
     check = record["check"]
     lines = [f"# How this release was checked: {record['title']}", "",
-             "Written by `manuscript-guard deposit` from `check --submission` and the "
+             "Written by `manuscript-guard deposit` from `check --stage submission` and the "
              "project's records. No score: none of this says the paper is right.", "",
-             f"## `check --submission`: {'passed' if check['passed'] else 'did not pass'}", "",
+             "## `check --stage submission`: "
+             f"{'passed' if check['passed'] else 'did not pass'}", "",
              "| Gate | Failing | Warnings | Notes | Codes |", "|---|---|---|---|---|"]  # fmt: skip
     for gate, said in check["gates"].items():
         codes = ", ".join(f"`{code}`" for code in said["codes"]) or "none"
@@ -209,7 +210,7 @@ def _markdown(record: dict) -> str:
 
 
 def verification(project: Project, report: Report) -> tuple[str, str]:
-    """VERIFICATION.md and VERIFICATION.json, from the report of `check --submission`."""
+    """VERIFICATION.md and VERIFICATION.json, from the report of `check --stage submission`."""
     record = record_of(project, report)
     return _markdown(record), json.dumps(record, indent=2, sort_keys=True,
                                          ensure_ascii=False) + "\n"

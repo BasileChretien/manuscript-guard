@@ -10,7 +10,7 @@ A bundle is a list of files, each with its digest and why it goes, made from the
   `--retrospective "<why>"`, labelled as a plan deposited after them.
 - `release`: the package with its crate and its companion page (`package --companion`), with
   VERIFICATION.md and VERIFICATION.json (`verification.py`), the data dictionary's exports
-  and each reporting checklist as a table. Refused while `check --submission` fails.
+  and each reporting checklist as a table. Refused while `check --stage submission` fails.
 - `preprint`: for arXiv, the LaTeX source as one folder that compiles alone, as a .tar.gz,
   and for medRxiv, the built documents and what its form asks (`preprint.py`).
 - for `gh-pages`, the release's companion page as `index.html`, and `.nojekyll`.
@@ -77,6 +77,9 @@ class Bundle:
     #: The files the .tar.gz holds, where the target reads one; otherwise the .zip is of all.
     tarred: tuple[str, ...] | None = None
     notes: tuple[str, ...] = ()
+    #: The files the custodian signs off by what they are made from rather than their bytes,
+    #: each with that digest: a PDF the author's TeX compiled (`preprint.built_from`).
+    signed_as: tuple[tuple[str, str], ...] = ()
 
     @property
     def name(self) -> str:
@@ -90,6 +93,15 @@ def pair_refusal(target: str, bundle: str) -> str | None:
     why = WHY_NOT.get(target, f"{target} keeps a record of the plan or of the release; a "
                               "preprint goes to arxiv or medrxiv")  # fmt: skip
     return f"--target {target} does not take --bundle {bundle}: {why}"
+
+
+def retrospective_refusal(bundle: str, retrospective: str | None) -> str | None:
+    """Why `--retrospective` is refused with this bundle, or None where it is taken: it
+    labels a plan, and a release or a preprint has none to label (round 1 of #460)."""
+    if retrospective is None or bundle == "preregistration":
+        return None
+    return (f"--retrospective labels an analysis plan deposited after its first results, and "
+            f"--bundle {bundle} deposits no plan; leave the option out")  # fmt: skip
 
 
 def frozen_at(project: Project) -> str | None:
@@ -275,7 +287,7 @@ def release(project: Project, results: Results, checked: Report) -> Bundle:
                              "every file of the package and its SHA-256"))  # fmt: skip
     markdown, record = verification(project, checked)
     entries.append(generated("VERIFICATION.md", markdown, "how the paper was checked, as "
-                             "`check --submission` and the records say"))  # fmt: skip
+                             "`check --stage submission` and the records say"))  # fmt: skip
     entries.append(generated("VERIFICATION.json", record, "the same, for a machine"))
     if (project.root / "design" / "data_dictionary.yaml").is_file():
         _dictionary_exports(project, entries, notes, redcap=True)
@@ -307,4 +319,5 @@ def name_taken(entries: tuple[Entry, ...]) -> list[Finding]:
 
 
 __all__ = ["BUNDLES", "PAIRS", "TARGETS", "Bundle", "DepositError", "frozen_at", "gh_pages",
-           "name_taken", "pair_refusal", "preregistration", "release"]  # fmt: skip
+           "name_taken", "pair_refusal", "preregistration", "release",
+           "retrospective_refusal"]  # fmt: skip

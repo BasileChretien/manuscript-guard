@@ -302,7 +302,13 @@ def stamp_into(
             elif item.filename == "word/settings.xml":
                 data = _NO_MOVES.sub("", data.decode("utf-8")).encode("utf-8")
             zout.writestr(item, data)
-        zout.writestr(_CUSTOM, _custom_properties(existing, digest, paragraphs, printed, cited))
+        # Dated as pandoc dated the rest, not by the clock: under SOURCE_DATE_EPOCH the
+        # document is then the same bytes from the same sources (round 1 of #460).
+        dated = zin.infolist()[0].date_time if zin.infolist() else (1980, 1, 1, 0, 0, 0)
+        info = zipfile.ZipInfo(_CUSTOM, date_time=dated)
+        info.compress_type = zipfile.ZIP_DEFLATED
+        info.external_attr = 0o600 << 16
+        zout.writestr(info, _custom_properties(existing, digest, paragraphs, printed, cited))
     scratch.replace(document)
 
 

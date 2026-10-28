@@ -24,15 +24,22 @@ RULES = ("The rules below are named as this sheet was written; the server's own 
 def _authors(project: Project) -> list[str]:
     from .metadata import people
 
+    listed = (project.authors or {}).get("authors") or []
     lines = []
-    for person in people(project):
+    for author, person in zip(listed, people(project), strict=False):
         if not person.name:
             continue
-        said = person.name
-        if person.orcid:
-            said += f", ORCID {person.orcid}"
-        if person.affiliations:
-            said += "; " + "; ".join(text for _id, text in person.affiliations)
+        said = person.name + (f", ORCID {person.orcid}" if person.orcid
+                              else f", ORCID {NOT_RECORDED}")  # fmt: skip
+        named = [text for _id, text in person.affiliations]
+        known = {identifier for identifier, _text in person.affiliations}
+        given = author.get("affiliations") if isinstance(author, dict) else None
+        # An id `affiliations` does not list is said, not dropped (round 1 of #460).
+        named += [f"affiliation `{identifier}`: {NOT_RECORDED}, authors.yaml lists no "
+                  "affiliation of this id with its text" for identifier in map(str, given or [])
+                  if identifier not in known]  # fmt: skip
+        if named:
+            said += "; " + "; ".join(named)
         lines.append(f"- {said}")
     return lines or [f"- {NOT_RECORDED}: authors.yaml lists no author"]
 
@@ -111,21 +118,42 @@ def _declared(project: Project, key: str) -> list[str]:
 def _corresponding(project: Project) -> str:
     listed = (project.authors or {}).get("authors") or []
     marked = [a for a in listed if isinstance(a, dict) and a.get("corresponding") is True]
-    if len(marked) != 1:
-        return f"{NOT_RECORDED}: authors.yaml marks no single author `corresponding: true`"
+
+    def name_of(author: dict) -> str:
+        return " ".join(str(author.get(k) or "") for k in ("given", "family")).strip()
+
+    if not marked:
+        return f"{NOT_RECORDED}: authors.yaml marks no author `corresponding: true`"
+    if len(marked) > 1:
+        return (f"authors.yaml marks {len(marked)} authors `corresponding: true`, "
+                f"{', '.join(name_of(a) for a in marked)}; medRxiv's form names one, yours to "
+                "choose")  # fmt: skip
     author = marked[0]
-    name = " ".join(str(author.get(k) or "") for k in ("given", "family")).strip()
+    name = name_of(author)
     return f"{name}, whose e-mail address authors.yaml records" if author.get("email") else name
 
 
 def _statement(project: Project) -> list[str]:
+    from manuscript_guard.build.document import BuildError
+    from manuscript_guard.build.submission import plain_passage
     from manuscript_guard.gates.data_statement import HEADING, _profile_heading, _statements
+    from manuscript_guard.gates.revision import displays
+    from manuscript_guard.text.placeholders import substitute
 
     found = _statements(project, [_profile_heading(project) or HEADING])
     if not found:
         return [f"{NOT_RECORDED}: the manuscript has no Data availability statement"]
-    return ["As the manuscript writes it:", "", "```text",
-            " ".join(found[0][0].split()), "```"]  # fmt: skip
+    # Its bindings as the build prints them, as the abstract's are; and nothing of it where
+    # what is left is not plain text (round 1 of #460).
+    try:
+        said = plain_passage(substitute(found[0][0], displays(project)))
+    except BuildError:  # pandoc refused it, or gave nothing in its time
+        said = None
+    if said is None:
+        return ["Copy it from the document: the statement holds what plain text cannot show "
+                "as the document prints it (a citation, a reference, a footnote or maths), or "
+                "pandoc, which writes it as plain text, is not on PATH."]  # fmt: skip
+    return ["As the document prints it:", "", "```text", said, "```"]
 
 
 def medrxiv_sheet(project: Project, *, files: list[str]) -> str:

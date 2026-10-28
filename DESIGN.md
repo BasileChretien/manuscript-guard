@@ -8357,14 +8357,28 @@ a masked cell recovered by subtraction, through the one entry point it will fill
 taken to carry the results files the package holds, and so is the site, whose page shows
 them; a plan and a preprint carry none. Anything these find stops the deposit before
 anything is built. Then a release, the site that is its page, and a preprint are held to
-`check --submission`, as `submit` is: a public preprint is held to the submission's
+`check --stage submission`, as `submit` is: a public preprint is held to the submission's
 standard (Basile, 2026-10-28). Then the bundle is planned in memory, a list of `plan.Entry` with their digests, and
-refused where a file of it is an input declared restricted, by its name or by the file it is
+refused where a file of it is an input declared restricted, by its name, by the file it is,
+or by its bytes, those a run recorded or the input holds now, since `pack_latex` copies each
+file the LaTeX build read into the arXiv folder under a name of its own
 (`deposit-restricted-input`), where two of its files share a name in the case a system that
 ignores case reads (`deposit-name-taken`), and, where the custodian restricts sending, until
 they have signed off its list of files and digests as it stands,
 `DEPOSIT/custodian/<target>/<bundle>`, through `sign_offs.settle` as every sign-off is. Each
-target is another place, so `zenodo-sandbox` is signed off apart from `zenodo`. The
+target is another place, so `zenodo-sandbox` is signed off apart from `zenodo`. A release's
+MANIFEST.yaml is left out of that list, as `package` leaves it out of its own: it names the
+commit and whether the tree is clean, which writing the sign-off changes, and every file it
+lists is in the list by its own digest (round 1 of #460). What is signed is the bytes that
+go out, so a document `deposit` builds is built to the same bytes every time: the medRxiv
+`.docx` is built with `SOURCE_DATE_EPOCH` set to 1980-01-01, the date the archives' members
+carry, by which pandoc dates the .docx's members and its core properties, and the build's
+stamp dates its own part as pandoc dated the rest (`preprint.fixed_date`,
+`roundtrip.stamp_into`). Not the last commit's date, which committing the sign-off would
+move. A LaTeX manuscript's PDF is compiled by the author's TeX, which may write the clock
+into it and which the tool never runs in a test, so it is signed by what it is compiled
+from: every file of the folder and their digests, with the tool's version
+(`preprint.built_from`, Known gaps). The
 package's findings that the deposit asks itself, its small counts and its own sign-off, are
 left out of a release's report, so that the custodian signs one list. Only then is anything
 written (`deposit/archive.py`): the folder, its SHA256SUMS, and the .zip `package` writes or,
@@ -8375,11 +8389,13 @@ no pre-registration once `design/plan.frozen.yaml` records the first results: th
 then refused unless `--retrospective "<why>"` is given, and it is labelled "Analysis plan,
 deposited after results were first written on" the day the record gives, with the reason and
 the frozen copy (`bundles.preregistration`); the custodian signs a plan deposited that way
-with the same reason (`sign --retrospective`), since its README holds it. The release is the
+with the same reason (`sign --retrospective`), since its README holds it. `--retrospective`
+with a release or a preprint, which hold no plan to label, is refused (exit 2) by `deposit`
+and by `sign`, and is never written into a command the refusal suggests. The release is the
 package with its crate and companion page, its MANIFEST.yaml, the dictionary's exports, each
 reporting checklist as `submit`'s table, and VERIFICATION.md and .json
-(`deposit/verification.py`, decision 5(a)): `check --submission` by gate, counted and named
-by code; each dimension's machine line and what no gate decides, from `assurance.py`, without
+(`deposit/verification.py`, decision 5(a)): `check --stage submission` by gate, counted and
+named by code; each dimension's machine line and what no gate decides, from `assurance.py`, without
 the lines that name a panel's readers, a figure's reviewer or a passage's judge, by decision
 4(a); the last `verify` run as `build/verify.json` records it; `checker`'s counts by author;
 each author's approval; and the document, front and results digests the approvals and
@@ -8388,17 +8404,30 @@ each author's approval; and the document, front and results digests the approval
 `arxiv_submission_sheet.md`; the medRxiv bundle is the `.docx` built offline, or a LaTeX
 manuscript's PDF, the supplement, the figures, the checklists, the declarations and the
 CRediT statement, with `medrxiv_submission_sheet.md` mapping each question of the form to
-what the project records or "not recorded" (`deposit/preprint.py`, `deposit/sheets.py`). What
+what the project records or "not recorded" (`deposit/preprint.py`, `deposit/sheets.py`). A
+figure is one of the formats `submit` packs; a picture in another (`.jpg`, `.jpeg`, `.svg`)
+and a link are each named as left out, a link as `package` withholds one. The sheet names
+each author as `authors.yaml` spells them, with "ORCID not recorded" where it gives none,
+every affiliation, and an affiliation id that `affiliations` does not list as not recorded,
+which no gate reports; two authors marked corresponding are said to be two. The Data
+availability statement is printed as the document prints it: its bindings are their
+displays, as the abstract's are, and pandoc writes it as plain text by the abstract's rule
+(`submission.plain_passage`); where anything is left that plain text cannot show, a
+citation, a footnote, maths, a bracket or a binding left unfilled, the sheet says to copy
+it from the document and prints none of it. What
 a sheet says of a server's rules is the rule as the sheet names it: the abstract's length
 against 1,920 characters and the archive's size are the tool's counts, the limits arXiv's.
 The site is `index.html` and `.nojekyll`, and the git commands to publish them are printed,
-never run. The tests are in `tests/test_deposit.py`: every bad pair, each bundle's files, the
+never run; they take the `gh-pages` branch where it is, here or on the remote, and make it
+where it is not. The tests are in `tests/test_deposit.py`: every bad pair, each bundle's files, the
 retrospective label, each check of the custodian's stopping it with nothing written, the
 sign-off and its staling, a release refused while the submission check fails, the archives
 twice and from another folder the same bytes, both sheets, the site, and no connection
 opened; the preprint bundles with LaTeX and Word stood in for, so that no test compiles. In
 `tests/test_corruption.py`, a count planted in a table stops a release and the site before
-anything is built, and a restricted input a plan would carry stops it.
+anything is built, a restricted input a plan would carry stops it, one copied into a LaTeX
+folder under another name is found by its bytes, and a release's sign-off does not change
+with its MANIFEST.yaml.
 
 What this rests on: deterministic tests in CI (`tests/test_package.py`): the example packaged,
 unzipped and run again by `verify` from the unpacked folder with every value reproduced; an R
@@ -17360,8 +17389,19 @@ What papers converted from Word showed (see "What papers converted from Word sho
   publication of type "other".
 - **A preprint's documents are built again, and the arXiv archive holds one document.** The
   medRxiv bundle builds the `.docx` offline into `build/`, over the last build, and a LaTeX
-  manuscript's PDF with TeX; its `.docx` bytes are pandoc's, not fixed as the archives are.
-  The arXiv archive leaves out the supplement and keeps every other file of the folder, one
+  manuscript's PDF with TeX. The `.docx` is dated 1980-01-01 so that its bytes repeat, and
+  `build/manuscript.docx` keeps that date until the next `build`; another pandoc writes other
+  bytes, which the custodian then signs again. A LaTeX manuscript's PDF is signed by the
+  folder it is compiled from and the tool's version, not by its bytes: the custodian's
+  sign-off holds for a PDF another TeX installation compiles from the same folder, which
+  may differ from the one they saw, and the tool sets no date for that compile. A
+  restricted input is found in a bundle by its name, by the file it is and by its bytes, so
+  one the LaTeX build reads in part or rewrites (a table cut from it, a file re-encoded) is
+  not found, and an empty one is not looked for. The Data availability statement is read
+  for the sheet as its own passage: a footnote or a reference link it uses that is defined
+  elsewhere stops it being printed, by the bracket left, and no generated input holds the
+  statement's rule in `tests/test_properties.py`; it is the abstract's rule, read through
+  pandoc. The arXiv archive leaves out the supplement and keeps every other file of the folder, one
   only the supplement uses among them. Neither sheet counts pages. A dry run of a preprint
   builds its documents, and writes nothing under `build/deposit/`.
 

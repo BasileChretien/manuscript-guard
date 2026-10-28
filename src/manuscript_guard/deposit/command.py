@@ -1,7 +1,7 @@
 """`manuscript-guard deposit`: stage a bundle for a target, locally, and send nothing.
 
 The order is the point. The data custodian's checks run first (`preflight.first`), before
-anything is built; a release and a preprint are then held to `check --submission`, as
+anything is built; a release and a preprint are then held to `check --stage submission`, as
 `submit` holds what it packs, since both are public; the bundle is planned in
 memory (`bundles.py`, `preprint.py`); a restricted input in it, a name two of its files
 share, and, where the custodian restricts sending, a list of files and digests they have not
@@ -22,7 +22,15 @@ from manuscript_guard.sign_offs import Signable
 
 from . import preflight
 from .archive import TAR, ZIP, stage, sums
-from .bundles import BUNDLES, TARGETS, Bundle, DepositError, name_taken, pair_refusal
+from .bundles import (
+    BUNDLES,
+    TARGETS,
+    Bundle,
+    DepositError,
+    name_taken,
+    pair_refusal,
+    retrospective_refusal,
+)
 from .plan import PackageError
 
 
@@ -39,13 +47,13 @@ def _carried(project: Project, results: Results, bundle: str) -> frozenset[str]:
 
 
 def _checked(root: Path) -> object:
-    """`check --submission`'s report; a refusal while it fails."""
+    """`check --stage submission`'s report; a refusal while it fails."""
     from manuscript_guard.cli import _run_gates
 
     report, project, _stage, _deferred = _run_gates(root, submission=True)
     if not report.ok:
         print(report.render(project.root))
-        raise DepositError(f"{len(report.failures)} failing in `check --submission`. What is "
+        raise DepositError(f"{len(report.failures)} failing in `check --stage submission`. What is "
                            "deposited is what others read and cite, so it is held to the "
                            "submission's bar and not staged while the check fails, as "
                            "`submit` refuses.")  # fmt: skip
@@ -80,8 +88,11 @@ def deposit_signable(project: Project, results: Results, finding: str,
     target, bundle = parts[2], parts[3]
     if target not in TARGETS or bundle not in BUNDLES or pair_refusal(target, bundle):
         return None
+    refusal = retrospective_refusal(bundle, retrospective)
+    if refusal is not None:
+        raise DepositError(refusal, 2)
     made = plan(project, results, target, bundle, retrospective)
-    return preflight.signable(project, target, bundle, made.entries)
+    return preflight.signable(project, target, bundle, made.entries, made.signed_as)
 
 
 def listing(project: Project, made: Bundle, *, written: bool) -> str:
@@ -111,8 +122,12 @@ def next_steps(made: Bundle, directory: Path, archive: Path) -> str:
             head, "To publish the page from a branch of its own, run, in the repository:",
             "  git worktree add --detach ../companion-site",
             "  cd ../companion-site",
-            "  git switch --orphan gh-pages",
-            f"  cp \"{directory / 'index.html'}\" \"{directory / '.nojekyll'}\" .",
+            # The branch is taken where it is, here or on the remote, and made where it is not
+            # (round 1 of #460): `--orphan` alone fails once it exists.
+            "  git fetch origin",
+            "  git switch gh-pages || git switch --orphan gh-pages",
+            f"  cp \"{directory / 'index.html'}\" .",
+            f"  cp \"{directory / '.nojekyll'}\" .",
             "  git add index.html .nojekyll",
             "  git commit -m \"The companion page\"",
             "  git push origin gh-pages",
@@ -137,7 +152,8 @@ def _refused(exc: DepositError) -> int:
 def run(args: argparse.Namespace) -> int:
     from manuscript_guard.contracts import load_namespace, load_project
 
-    refusal = pair_refusal(args.target, args.bundle)
+    refusal = pair_refusal(args.target, args.bundle) or retrospective_refusal(
+        args.bundle, args.retrospective)  # fmt: skip
     if refusal is not None:
         print(f"manuscript-guard deposit: {refusal}", file=sys.stderr)
         return 2
@@ -155,7 +171,8 @@ def run(args: argparse.Namespace) -> int:
     except DepositError as exc:
         return _refused(exc)
     every = (*made.entries, sums(made.entries))
-    stopped, signable = preflight.last(project, results, args.target, args.bundle, made.entries)
+    stopped, signable = preflight.last(project, results, args.target, args.bundle, made.entries,
+                                       made.signed_as)  # fmt: skip
     report = made.report.merge(stopped).with_findings(*name_taken(every))
     if args.dry_run:
         # What would go is listed even where it is refused: it is what the custodian signs.
@@ -163,7 +180,8 @@ def run(args: argparse.Namespace) -> int:
     if report.findings:
         print(("\n" if args.dry_run else "") + report.render(project.root))
     if not report.ok:
-        if args.retrospective is not None and signable is not None:
+        if args.bundle == "preregistration" and args.retrospective is not None \
+                and signable is not None:  # fmt: skip
             print(f"\nThe data custodian signs it off with the same reason: `manuscript-guard "
                   f"sign --as <them> --finding {signable.id} --retrospective "
                   f"\"{args.retrospective}\"`.")  # fmt: skip

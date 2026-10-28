@@ -11332,7 +11332,10 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   rows, each with its own answers, and the second's wrong does not close the first's ok, nor
   her later ok her own flag given under the other spelling. An author's answer under another
   spelling is a row of its own beside the author's. The page writes the name `authors.yaml`
-  gives; a file written by hand may not.
+  gives; a file written by hand may not. Two names that differ only in inner spaces or in
+  their Unicode form ("Jane  Doe", or "José" composed and decomposed) are two rows that print
+  alike, since a cell's spaces are joined. `checker recap --check <project>` run from outside
+  any project fails with the project's own error, not the hint to name the project first.
 - **Two authors of one name share their row's counts.** The recap gives each author in
   `authors.yaml` a row and counts in it every decision recorded under that name, so two
   authors written alike each get a row counting both's decisions. `checker` refuses such

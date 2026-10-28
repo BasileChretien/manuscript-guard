@@ -80,7 +80,8 @@ Never write
 `checks/recap.md` by hand; run `recap` again. `submit` packs the tables as
 `coauthor-verification.md` and warns `coauthor-flag-open` of each current `wrong` or `code`
 that the person who gave it has not answered again (a later `unsure` of theirs closes the
-flag and leaves the item under "Still open"). It is not refused: change what was asked, or
+flag and leaves the item under "Still open"), and whose item has not changed since (an edit
+closes it too). It is not refused: change what was asked, or
 send the item again, and say which to the author.
 
 ## Telling the person what to do, in one message

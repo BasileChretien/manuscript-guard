@@ -5184,11 +5184,12 @@ SET_LIST_FORMS = ("block", "flow")
 _SET_FILLER = (
     "terms: []\n",
     "demonstration: true\n",
-    "keywords:\n  - pharmacovigilance\n  - hepatotoxicity\n",
     'language:\n  known_abbreviations:\n    - "CI"\n',
 )
-#: A value over several lines, in each file.
+#: A value over several lines, and a list of another key's, in each file: in the file
+#: whose lines end in spaces, the list's entries do too.
 _SET_BLOCK_SCALAR = "short_title: |\n  Hepatic injury\n  with example-drug\n"
+_SET_OTHER_LIST = "keywords:\n  - pharmacovigilance\n  - hepatotoxicity\n"
 
 
 def _paper_file(
@@ -5207,7 +5208,8 @@ def _paper_file(
         if hidden and draw(st.booleans())
         else 'title: "A paper on hepatic injury"\n'
     )
-    blocks = [_SET_BLOCK_SCALAR]
+    other_list = _SET_OTHER_LIST.replace("\n", "  \n") if spaced else _SET_OTHER_LIST
+    blocks = [_SET_BLOCK_SCALAR, other_list]
     for key in keys:
         was = draw(st.sampled_from(SET_VALUES[key]))
         above = "".join(comment(key) for _ in range(draw(st.integers(1, 2))))

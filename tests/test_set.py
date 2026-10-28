@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import stat
 from pathlib import Path
 
@@ -346,9 +347,14 @@ def test_moving_the_stage_back_is_put_to_the_author(
     [
         "manuscript-guard set stage internal-review",
         "manuscript-guard set stage drafting",
-        "manuscript-guard set stage finished",
         "manuscript-guard set target_journal design",
-        "manuscript-guard stages && echo set stage design",
+        "manuscript-guard set english_variant en-US",
+        "manuscript-guard set stage submission 2>&1",
+        "manuscript-guard set stage submission > log.txt 2>&1",
+        "mguard.exe set stage submission >> log.txt",
+        "python -m manuscript_guard.cli set stage submission 2> err.txt",
+        "cd . && manuscript-guard set stage submission --path .",
+        "manuscript-guard stages && git status",
     ],
 )
 def test_moving_the_stage_on_or_setting_anything_else_is_not_asked(
@@ -357,6 +363,45 @@ def test_moving_the_stage_on_or_setting_anything_else_is_not_asked(
     (tmp_path / "paper.yaml").write_text("schema: manuscript-guard/paper/1\ntitle: A\n"
                                          "stage: drafting\n", encoding="utf-8")  # fmt: skip
     assert _hook(tmp_path, command, monkeypatch, capsys) is None
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        # Round 2 of #456: each of these moved the stage back unasked.
+        "manuscript-guard set stage design 2>&1",
+        "bash -c 'manuscript-guard set stage design'",
+        'sh -c "manuscript-guard set stage design"',
+        'powershell -Command "manuscript-guard set stage design"',
+        "echo design | xargs manuscript-guard set stage",
+        "manuscript-guard set stage $('design')",
+        "manuscript-guard set stage (Get-Content s.txt)",
+        "$s = 'design'; manuscript-guard set stage $s",
+        "manuscript-guard set stage @args",
+        "env -C elsewhere manuscript-guard set stage submission",
+        "uv run --directory elsewhere manuscript-guard set stage submission",
+        "manuscript-guard 'set' stage design",
+        "manuscript-guard -- set stage design",
+        "manuscript-guard set -- stage design",
+        "(cd elsewhere && manuscript-guard set stage submission)",
+        "cd elsewhere || manuscript-guard set stage submission",
+        "{ manuscript-guard set stage submission; }",
+        "eval manuscript-guard set stage design",
+        "manuscript-guard set stage `echo design`",
+        "manuscript-guard set stage finished",
+        "manuscript-guard set stage submission | tee log.txt",
+        "manuscript-guard set stage submission && git status",
+        "manuscript-guard stages && echo set stage design",
+    ],
+)
+def test_a_set_the_guard_does_not_read_exactly_is_asked(
+    tmp_path: Path, command: str, monkeypatch, capsys
+) -> None:
+    """Ask by default: only a plain invocation, after plain `cd` steps and before plain
+    redirections, is read and let through."""
+    (tmp_path / "paper.yaml").write_text("schema: manuscript-guard/paper/1\ntitle: A\n"
+                                         "stage: drafting\n", encoding="utf-8")  # fmt: skip
+    assert _decision(_hook(tmp_path, command, monkeypatch, capsys)) == "ask", command
 
 
 def test_a_project_with_no_stage_is_at_drafting(tmp_path: Path, monkeypatch, capsys) -> None:
@@ -435,10 +480,31 @@ def test_only_the_set_s_own_project_is_read(tmp_path: Path, monkeypatch, capsys)
     a later stage."""
     _project(tmp_path / "a", "stage: design\n")
     _project(tmp_path / "b", "stage: submission\n")
-    command = "ls b && manuscript-guard set stage analysis --path a"
+    command = "manuscript-guard set stage analysis --path a"
     assert _hook(tmp_path, command, monkeypatch, capsys) is None
-    command = "cd a && manuscript-guard set stage analysis && cat ../b/paper.yaml"
+    command = "cd a && manuscript-guard set stage analysis > ../b/log.txt"
     assert _hook(tmp_path, command, monkeypatch, capsys) is None
+    # Round 2 of #456: `sl` inside an earlier word was taken for a change of folder.
+    command = "cd docs/sl && manuscript-guard set stage analysis --path ../../a"
+    (tmp_path / "docs" / "sl").mkdir(parents=True)
+    assert _hook(tmp_path, command, monkeypatch, capsys) is None
+
+
+@pytest.mark.skipif(os.name != "nt", reason="a backslash separates folders on Windows only")
+def test_a_windows_folder_with_backslashes_is_read_as_one(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """Round 2 of #456: `cd papers\\a; …` was read as `papersa` too, found no project, and
+    asked for a forward move."""
+    _project(tmp_path / "papers" / "a", "stage: design\n")
+    for command in (
+        "cd papers\\a; manuscript-guard set stage analysis",
+        "manuscript-guard set stage analysis --path papers\\a",
+    ):
+        assert _hook(tmp_path, command, monkeypatch, capsys) is None, command
+    command = "cd papers\\a; manuscript-guard set stage design --path ."
+    _project(tmp_path / "papers" / "a", "stage: drafting\n")
+    assert _decision(_hook(tmp_path, command, monkeypatch, capsys)) == "ask"
 
 
 @pytest.mark.parametrize(
@@ -495,7 +561,7 @@ def test_a_line_break_only_yaml_reads_is_refused(
 
 @pytest.mark.parametrize(
     "name", ["1e3", "0o17", "0x1F", ".inf", "-.Inf", ".nan", "1_000", "+1", "1.5", "null",
-             "True", "yes", "2024-01-01", "~"],
+             "True", "yes", "2024-01-01", "~", "y", "Y", "n", "N", "On", "oFF", "nO"],
 )  # fmt: skip
 def test_a_name_any_yaml_reader_types_is_quoted(name: str) -> None:
     from manuscript_guard.paper_edit import written
@@ -517,6 +583,39 @@ def test_the_file_keeps_its_mode(paper: Path) -> None:
     paper.chmod(0o664)
     assert _set(paper, "stage", "analysis") == 0
     assert stat.S_IMODE(paper.stat().st_mode) == 0o664
+
+
+@pytest.mark.skipif(hasattr(os, "geteuid") and os.geteuid() == 0, reason="root writes anyway")
+def test_a_read_only_paper_yaml_is_refused_and_nothing_left(paper: Path, capsys) -> None:
+    """Round 2 of #456: on Windows the copied mode left the new file read-only, the rename
+    and the clean-up both failed, and a read-only `.paper.*.tmp` stayed in the project; on
+    a POSIX system the file was replaced anyway."""
+    text = b"schema: manuscript-guard/paper/1\ntitle: A\n"
+    paper.write_bytes(text)
+    paper.chmod(stat.S_IREAD)
+    try:
+        assert _set(paper, "stage", "analysis") == 2
+        assert "read-only" in capsys.readouterr().err
+        assert paper.read_bytes() == text
+        assert [p.name for p in paper.parent.iterdir() if p.name.startswith(".paper.")] == []
+    finally:
+        paper.chmod(stat.S_IREAD | stat.S_IWRITE)
+
+
+def test_a_temporary_file_marked_read_only_is_cleaned_up(paper: Path, monkeypatch) -> None:
+    """The clean-up unmarks the file before deleting it."""
+    from manuscript_guard import paper_edit
+
+    paper.write_bytes(b"schema: manuscript-guard/paper/1\ntitle: A\n")
+
+    def read_only_then_fail(source, target) -> None:
+        os.chmod(target, stat.S_IREAD)
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(shutil, "copymode", read_only_then_fail)
+    with pytest.raises(PermissionError):
+        paper_edit.write(paper, "stage: analysis\n")
+    assert [p.name for p in paper.parent.iterdir() if p.name.startswith(".paper.")] == []
 
 
 def test_a_file_that_cannot_be_replaced_is_said(paper: Path, monkeypatch, capsys) -> None:

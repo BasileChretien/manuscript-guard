@@ -25,6 +25,7 @@ import contextlib
 import os
 import re
 import shutil
+import stat
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -48,7 +49,10 @@ _YAML_12 = re.compile(
     r"(?:null|Null|NULL|~|true|True|TRUE|false|False|FALSE"
     r"|[-+]?[0-9]+|0o[0-7]+|0x[0-9a-fA-F]+"
     r"|[-+]?(?:\.[0-9]+|[0-9]+(?:\.[0-9]*)?)(?:[eE][-+]?[0-9]+)?"
-    r"|[-+]?\.(?:inf|Inf|INF)|\.(?:nan|NaN|NAN))\Z"
+    r"|[-+]?\.(?:inf|Inf|INF)|\.(?:nan|NaN|NAN)"
+    # The YAML 1.1 booleans as its type repository lists them, in any case: PyYAML leaves
+    # `y` and `n` as text, and a reader that follows the list does not.
+    r"|(?i:y|n|yes|no|on|off|true|false))\Z"
 )
 _BOM = chr(0xFEFF)
 #: What one edit could reach another setting through.
@@ -347,8 +351,19 @@ def write(path: Path, text: str) -> None:
         os.replace(temporary, path)
     except BaseException:
         with contextlib.suppress(OSError):
+            # On Windows a file marked read-only cannot be deleted until it is unmarked.
+            os.chmod(temporary, stat.S_IWRITE | stat.S_IREAD)
+        with contextlib.suppress(OSError):
             os.unlink(temporary)
         raise
+
+
+def _writable(path: Path) -> None:
+    """Refuse a `paper.yaml` its owner made read-only: `set` would replace it anyway on a
+    POSIX system, where the folder is what a rename asks, and on Windows the copy of its
+    mode left the new file read-only and the rename refused."""
+    if path.exists() and not os.access(path, os.W_OK):
+        raise Refused("it is read-only; make it writable first if it is to be changed")
 
 
 def _one_file(path: Path) -> None:
@@ -443,6 +458,7 @@ def set_key(path: Path, key: str, words: list[str]) -> Edited:
                 "the journal's candidate in journals/shortlist.yaml its `profile`"
             )
         raise Refused(f"`{key}` cannot be {new!r}: {said}")
+    _writable(path)
     _one_file(path)
     mark, text = read(path)
     done = edit(text, key, new)

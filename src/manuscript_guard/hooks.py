@@ -1193,8 +1193,11 @@ def _moves_stage_back(command: str, payload: dict) -> str | None:
     changes."""
     from manuscript_guard.set_guard import asks
 
-    cwd = Path(payload.get("cwd") or Path.cwd()).resolve()
-    return asks(command, cwd, _TOOL, _INVOCATION_END)
+    try:
+        cwd = Path(payload.get("cwd") or Path.cwd()).resolve()
+    except (OSError, RuntimeError, ValueError):
+        cwd = Path.cwd()
+    return asks(command, cwd)
 
 
 def _sends_without_asking(command: str, payload: dict) -> str | None:

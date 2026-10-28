@@ -9,102 +9,89 @@ allowed, with the hook asking first"):
 - `set reporting_guideline` without a guideline the paper declares now: its checklist is no
   longer asked for, and its findings go;
 - `set target_journal` to another journal than the one declared: the old journal's limits
-  and required statements are no longer held. Choosing the first journal adds rules, and is
-  not asked; nor is moving the stage on, or adding a guideline.
+  and required statements are no longer held.
 
-The guard reads the command as text and cannot always know what it does, and where it
-cannot, it asks: no project where the command would find one, a `paper.yaml` it cannot
-read, a change of folder before the `set` it does not follow, a value held in a variable.
-A guard that let a change through whenever it was unsure would be one an agent could step
-round by writing the command another way.
+The guard reads a shell command as text, and two rounds of review each found another way of
+writing one that it misread. So it asks by default. A command that names the tool, the word
+`set` and one of those three keys anywhere, inside quotation marks too, is asked, unless the
+guard reads it exactly: plain `cd <folder>` steps joined by `&&` or `;`, then the tool, `set`,
+the key, plain values and at most one `--path`, then nothing but redirections of its output.
+Only then is the project read, and the command let through where it moves the stage on,
+adds guidelines or sets a first journal. Everything else is asked: another shell started
+with the command (`bash -c`, `powershell -Command`), `xargs`, `eval`, a subshell, an alias, a
+substitution, a quotation mark, `--`, a variable, any value it cannot read.
 """
 
 from __future__ import annotations
 
-import contextlib
+import os
 import re
-import shlex
 from pathlib import Path
 
 #: The keys whose change may be the author's to decide.
 WATCHED = ("stage", "reporting_guideline", "target_journal")
-#: Commands that change the folder the next one runs in.
-_CHANGES_FOLDER = ("cd", "chdir", "pushd", "popd", "set-location", "push-location",
-                   "pop-location", "sl")  # fmt: skip
-_A_CHANGE = re.compile(
-    r"(?i)(?<![\w.-])(?:" + "|".join(map(re.escape, _CHANGES_FOLDER)) + r")(?![\w.-])"
+
+#: What makes a command one the guard looks at: a word naming the tool, the word `set`, and
+#: a watched key, anywhere in it.
+_NAMES_TOOL = re.compile(r"(?i)manuscript[-_]guard|mguard")
+_NAMES_SET = re.compile(r"(?i)(?<![\w])set(?![\w])")
+_NAMES_KEY = re.compile(r"(?i)(?<![\w])(?:" + "|".join(WATCHED) + r")(?![\w])")
+
+#: A word the guard reads exactly: no quotation mark, no sign a shell expands or treats
+#: specially. A backslash is a folder's separator on Windows, and an escape to a POSIX
+#: shell, so it is plain on Windows only (DESIGN.md, Known gaps).
+_PLAIN = r"[A-Za-z0-9._/:+-]+" if os.name != "nt" else r"[A-Za-z0-9._/:+\\-]+"
+_TOOL = (
+    rf"(?:(?:{_PLAIN}[/\\])?(?:manuscript-guard|mguard)(?:\.exe)?"
+    rf"|(?:{_PLAIN}[/\\])?(?:python3?|py)(?:\.exe)?[ \t]+-m[ \t]+manuscript_guard\.cli)"
 )
-#: Where one command of a line ends and the next begins.
-_BETWEEN = re.compile(r"&&|\|\||[;&|\r\n]")
-#: What the shell expands before the command sees it: a variable, a substitution, a home
-#: folder, a pattern.
-_EXPANDED = re.compile(r"[$`%~*?]")
-#: What a `set` invocation sets when the guard cannot say.
-_UNSURE = "unsure"
+_CD = re.compile(rf"(?i)[ \t]*(?:cd|chdir|pushd|set-location|sl)[ \t]+({_PLAIN})[ \t]*")
+_INVOCATION = re.compile(
+    rf"[ \t]*{_TOOL}[ \t]+set[ \t]+(?P<key>{_PLAIN})(?P<rest>(?:[ \t]+{_PLAIN})*?)"
+    rf"(?P<path>[ \t]+--path(?:[ \t]+|=)(?P<folder>{_PLAIN}))?"
+    rf"(?P<redirected>(?:[ \t]*(?:[12]?>>?[ \t]*{_PLAIN}|2>&1))*)[ \t]*"
+)
+#: How the steps before the invocation are joined; `||` runs the next only where one fails.
+_JOINED = re.compile(r"[ \t]*(&&|;)[ \t]*")
+
+_DECIDES = (
+    "Whether the paper is back at that stage, without that guideline or for another journal "
+    "is the author's decision."
+)
 
 
-def _readings(text: str) -> list[list[str]]:
-    """The words of `text` as a POSIX shell gives them, and as PowerShell and cmd do, with
-    the quotation marks around a word taken off. Each once."""
-    readings = []
-    with contextlib.suppress(ValueError):  # a quotation mark left open
-        readings.append(shlex.split(text, posix=True))
-    try:
-        words = shlex.split(text, posix=False)
-    except ValueError:
-        words = text.split()
-    readings.append(
-        [
-            word[1:-1] if len(word) > 1 and word[0] == word[-1] and word[0] in "\"'" else word
-            for word in words
-        ]  # fmt: skip
+def _looked_at(command: str) -> bool:
+    return bool(
+        _NAMES_TOOL.search(command) and _NAMES_SET.search(command) and _NAMES_KEY.search(command)
     )
-    return [list(words) for words in dict.fromkeys(tuple(words) for words in readings)]
 
 
-def _folders(before: str, cwd: Path) -> list[Path] | None:
-    """Each folder the commands before a `set` leave the shell in, from `cwd`; None where
-    one of them changes the folder in a way the guard does not follow."""
-    folders = [cwd]
-    for command in _BETWEEN.split(before):
-        command = command.strip().lstrip("({& ").strip()
-        if not _A_CHANGE.search(command):
-            continue
-        moved: list[Path] = []
-        for words in _readings(command):
-            if not words or words[0].lower() not in _CHANGES_FOLDER:
-                return None  # a change of folder further into the command
-            if words[0].lower() in ("popd", "pop-location"):
-                return None
-            given = [word for word in words[1:] if word.lower() not in ("-path", "-literalpath")]
-            if len(given) != 1 or given[0].startswith("-") or _EXPANDED.search(given[0]):
-                return None
-            moved += [folder / given[0] for folder in folders]
-        folders = list(dict.fromkeys(moved))
-    return folders
-
-
-def _asked(words: list[str]) -> tuple[str, list[str], str | None] | None:
-    """The key a `set` invocation's words write, its values and the folder `--path` names,
-    as argparse reads them; None where it writes a key the guard does not watch."""
-    positional: list[str] = []
-    folder = None
-    given = iter(words)
-    for word in given:
-        if word == "--":
-            positional += list(given)
-        elif word == "--path":
-            folder = next(given, None)
-        elif word.startswith("--path="):
-            folder = word.partition("=")[2]
-        elif not word.startswith("-"):
-            positional.append(word)
-    if not positional:
+def _read(
+    command: str, cwd: Path
+) -> tuple[list[tuple[Path, bool]], str, list[str], str | None] | None:
+    """The folders the `set` may run in, each with whether it is one only a `cd` that
+    failed leaves it in, then its key, its values and its `--path`, where the command is one
+    the guard reads exactly; None where it is not."""
+    text = command.strip()
+    folders = [(cwd, False)]
+    at = 0
+    while True:
+        step = _CD.match(text, at)
+        joined = _JOINED.match(text, step.end()) if step else None
+        if not step or not joined:
+            break
+        # Where `cd` fails, a `;` runs the rest in the folder it was in, and a `&&` nothing.
+        moved = [(folder / step[1], failed) for folder, failed in folders]
+        stayed = [(folder, True) for folder, _failed in folders] if joined[1] == ";" else []
+        folders = moved + stayed
+        at = joined.end()
+    found = _INVOCATION.fullmatch(text, at)
+    if found is None:
         return None
-    key, values = positional[0], positional[1:]
-    if _EXPANDED.search(key):
-        return _UNSURE, values, folder
-    return (key, values, folder) if key in WATCHED else None
+    values = found["rest"].split()
+    if any(value.startswith("-") for value in values) or found["key"].startswith("-"):
+        return None  # an option the guard does not read: `--`, `--help`, another
+    return list(dict.fromkeys(folders)), found["key"], values, found["folder"]
 
 
 def _paper(here: Path) -> tuple[Path, dict] | None:
@@ -124,98 +111,64 @@ def _paper(here: Path) -> tuple[Path, dict] | None:
     return None
 
 
-def _why(key: str, values: list[str], root: Path, paper: dict) -> str | None:
-    """Why setting `key` to `values` in this project is the author's to decide, or None."""
+def _free(key: str, values: list[str], paper: dict) -> bool:
+    """Whether setting `key` to `values` only adds to what is checked: the stage moved on
+    or kept, guidelines added, a first journal chosen or the same one."""
     from manuscript_guard.policy import DRAFTING, STAGES
 
-    asked = "`" + " ".join(["manuscript-guard set", key, *values]) + "`"
     if key == "stage":
         declared = paper.get("stage", DRAFTING)
-        new = values[0] if len(values) == 1 else None
-        if new not in STAGES:
-            return None  # `set` refuses it
-        if declared not in STAGES:
-            return f"{asked} sets the stage of {root.name}, whose stage cannot be read."
-        if STAGES.index(new) >= STAGES.index(declared):
-            return None
         return (
-            f"{asked} moves {root.name} back from {declared}, and every finding that starts "
-            f"to fail after {new}, up to {declared}, is then listed as not due: the check "
-            "passes with nothing fixed."
+            len(values) == 1
+            and values[0] in STAGES
+            and declared in STAGES
+            and STAGES.index(values[0]) >= STAGES.index(declared)
         )
     if key == "reporting_guideline":
         declared = paper.get("reporting_guideline")
         if declared is None:
-            return None
-        if not isinstance(declared, list):
-            return f"{asked} replaces what {root.name} declares, which cannot be read as a list."
-        dropped = [str(name) for name in declared if name not in values]
-        if not dropped:
-            return None
-        return (
-            f"{asked} takes {', '.join(dropped)} from {root.name}'s guidelines, and the "
-            "checklist of each is then no longer asked for: its findings go with nothing "
-            "done."
-        )
+            return True
+        return isinstance(declared, list) and all(name in values for name in declared)
     declared = paper.get("target_journal")
-    if declared in (None, "") or values == [declared]:
+    return len(values) == 1 and (declared in (None, "") or values == [declared])
+
+
+def asks(command: str, cwd: Path) -> str | None:
+    """Why a `set` in `command` is put to the author, or None where none is."""
+    if not _looked_at(command):
         return None
-    return (
-        f"{asked} moves {root.name} from {declared}, whose limits and required statements "
-        "are then no longer held."
-    )
-
-
-def _invocation(words: list[str], folders: list[Path] | None) -> str | None:
-    asked = _asked(words)
-    if asked is None:
-        return None
-    key, values, folder = asked
-    if key == _UNSURE or any(_EXPANDED.search(word) for word in [*values, folder or ""]):
-        return "this `manuscript-guard set` names its setting or its value through the shell."
-    if folders is None:
-        return (
-            f"the folder this `manuscript-guard set {key}` runs in is changed before it in a "
-            "way the guard does not follow, so what it changes cannot be read."
-        )
-    for here in folders:
-        found = _paper(here / folder if folder else here)
-        if found is None:
-            return (
-                f"no paper.yaml that can be read was found where this `manuscript-guard set "
-                f"{key}` looks, so what it changes cannot be read."
-            )
-        why = _why(key, values, *found)
-        if why:
-            return why
-    return None
-
-
-def asks(command: str, cwd: Path, tool: str, ends: re.Pattern[str]) -> str | None:
-    """Why a `set` in `command` is put to the author, or None where none is. `tool` is the
-    pattern of the command's name, `ends` where one invocation ends."""
-    joined = re.sub(r"[\\`]\r?\n", " ", command)
-    found_any = False
     try:
-        for found in re.finditer(tool + r"set\b", joined, re.IGNORECASE):
-            found_any = True
-            rest = joined[found.end() :]
-            end = ends.search(rest)
-            folders = _folders(joined[: found.start()], cwd)
-            for words in _readings(rest[: end.start() if end else len(rest)]):
-                why = _invocation(words, folders)
-                if why:
-                    return f"{why} {_DECIDES}"
+        read = _read(command, cwd)
+        if read is None:
+            return (
+                "this command names `manuscript-guard set` and a setting the author decides "
+                f"in a form the guard does not read exactly. {_DECIDES}"
+            )
+        folders, key, values, folder = read
+        if key not in WATCHED:
+            return None
+        asked = "`" + " ".join(["manuscript-guard set", key, *values]) + "`"
+        for here, failed in folders:
+            found = _paper(here / folder if folder else here)
+            if found is None and failed:
+                # Only a `cd` that failed leaves the shell here, and `set` finds no project
+                # in it: it refuses, and changes nothing.
+                continue
+            if found is None:
+                return (
+                    f"no paper.yaml that can be read was found where {asked} looks, so what "
+                    f"it changes cannot be read. {_DECIDES}"
+                )
+            root, paper = found
+            if not _free(key, values, paper):
+                return (
+                    f"{asked} moves the stage of {root.name} back, takes a guideline away or "
+                    "replaces its journal, or sets a value the guard cannot read: the check "
+                    f"may then pass with nothing fixed. {_DECIDES}"
+                )
     except Exception:  # noqa: BLE001 - unsure is asked, never let through
-        if found_any:
-            return f"what this `manuscript-guard set` changes cannot be read. {_DECIDES}"
+        return f"what this `manuscript-guard set` changes cannot be read. {_DECIDES}"
     return None
-
-
-_DECIDES = (
-    "Whether the paper is back at that stage, without that guideline or for another journal "
-    "is the author's decision."
-)
 
 
 __all__ = ["WATCHED", "asks"]

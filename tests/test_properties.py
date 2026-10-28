@@ -5974,10 +5974,21 @@ def _no_term_counts_directly_after_another(patch: pytest.MonkeyPatch) -> None:
 # ------------------------------------------------------- one setting of paper.yaml, written
 
 
-def _the_key_s_own_line(key: str) -> re.Pattern[str]:
-    """A line `set` may write or take away for `key`: the setting, its commented example,
-    or an entry of its list."""
-    return re.compile(rf"(?:#[ \t]?)?{re.escape(key)}:|[ \t]*- ")
+def _the_key_s_own_lines(lines: list[str], key: str) -> set[int]:
+    """The lines `set` may write or take away for `key`: the setting at the margin, its
+    commented example there, and the entries of its list, which are the lines after the
+    setting up to the next that stands at the margin and is no entry."""
+    starts = re.compile(rf"{chr(0xFEFF)}?(?:#[ \t]?)?{re.escape(key)}:")
+    owned: set[int] = set()
+    for at, line in enumerate(lines):
+        if not starts.match(line):
+            continue
+        owned.add(at)
+        after = at + 1
+        while after < len(lines) and re.match(r"[ \t]+\S|- ", lines[after]):
+            owned.add(after)
+            after += 1
+    return owned
 
 
 def _one_setting_changed(before: str, after: str, key: str, value: Any) -> None:
@@ -6000,9 +6011,10 @@ def _one_setting_changed(before: str, after: str, key: str, value: Any) -> None:
     tail = 0
     while tail < min(len(old), len(new)) - same and old[-1 - tail] == new[-1 - tail]:
         tail += 1
-    changed = old[same : len(old) - tail] + new[same : len(new) - tail]
-    own = _the_key_s_own_line(key)
-    assert all(own.match(line) for line in changed), (key, changed)
+    for text_lines, end in ((old, len(old) - tail), (new, len(new) - tail)):
+        owned = _the_key_s_own_lines(text_lines, key)
+        stray = [text_lines[at] for at in range(same, end) if at not in owned]
+        assert not stray, (key, stray)
 
 
 @holds(40, paper_files())
@@ -6064,6 +6076,24 @@ def _the_first_line_naming_the_key_is_set(patch: pytest.MonkeyPatch) -> None:
         return paper_edit.Edited(text[: found.start()] + line + text[found.end() :], "", None)
 
     patch.setattr(paper_edit, "edit", naive)
+
+
+def _another_list_loses_its_trailing_spaces(patch: pytest.MonkeyPatch) -> None:
+    """Round 2 of #456: the property took any list entry for the key's own, so an edit that
+    tidied another list's entries passed."""
+    edit = paper_edit.edit
+
+    def tidying(text: str, key: str, new: Any) -> Any:
+        done = edit(text, key, new)
+        lines = done.text.splitlines(keepends=True)
+        owned = _the_key_s_own_lines(lines, key)
+        tidied = [
+            line if at in owned else re.sub(r"^([ \t]*- [^\r\n]*?)[ \t]+(\r?\n?)$", r"\1\2", line)
+            for at, line in enumerate(lines)
+        ]
+        return dataclasses.replace(done, text="".join(tidied))
+
+    patch.setattr(paper_edit, "edit", tidying)
 
 
 def _an_anchor_is_not_refused(patch: pytest.MonkeyPatch) -> None:
@@ -13890,6 +13920,10 @@ BROKEN = {
     ),
     "set rewrites the first line that names the key": (
         _the_first_line_naming_the_key_is_set,
+        test_set_changes_one_setting_and_keeps_every_other_line,
+    ),
+    "set takes the spaces off the end of another list's entries": (
+        _another_list_loses_its_trailing_spaces,
         test_set_changes_one_setting_and_keeps_every_other_line,
     ),
     "set writes a file with an anchor": (

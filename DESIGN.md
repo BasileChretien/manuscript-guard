@@ -6921,9 +6921,12 @@ three keys, anywhere and inside quotation marks too, is asked, unless the guard 
 it exactly: plain `cd`, `chdir`, `pushd`, `Set-Location` or `sl` steps to one folder each,
 joined by `&&` or `;`; then the tool by one of its names (`manuscript-guard`, `mguard`, the
 `.exe`, `python -m manuscript_guard.cli`, each with a plain folder before it); `set`, the key,
-plain values and at most one `--path`; then nothing but `>`, `>>`, `2>` to a plain file or
-`2>&1`. A plain word holds letters, digits and `. _ / : + -`, and on Windows a backslash; no
-quotation mark, no sign a shell expands. After a `;` the guard reads the project of the
+plain values and at most one `--path`; then nothing but `>` or `>>` after any descriptor's
+number to a plain file, or `2>&1`, and never to a file named `paper.yaml` or `authors.yaml`.
+A plain word holds letters, digits and `. _ / : + -`, and no quotation mark, no backslash and
+no sign a shell expands; a folder, of a `cd` or of `--path`, may hold a backslash on Windows,
+never one before a space, and never begins with `-` or `+`, so `cd -` and `pushd +1` are
+asked. After a `;` the guard reads the project of the
 folder a failed `cd` leaves too, where `set` would find one. Only then is the project read,
 and the command let through where it moves the stage on or keeps it, adds guidelines, or
 sets a first journal or the same one. Everything else is asked: another command before or

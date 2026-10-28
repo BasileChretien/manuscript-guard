@@ -648,3 +648,75 @@ def test_a_linked_paper_yaml_is_refused(paper: Path, capsys) -> None:
     assert _set(paper, "stage", "analysis") == 2
     assert "symbolic link" in capsys.readouterr().err
     assert target.read_bytes() == text
+
+
+@pytest.mark.skipif(hasattr(os, "geteuid") and os.geteuid() == 0, reason="root writes anyway")
+def test_a_read_only_paper_yaml_that_holds_the_value_already_is_no_failure(paper: Path) -> None:
+    paper.write_bytes(b"schema: manuscript-guard/paper/1\ntitle: A\nstage: analysis\n")
+    paper.chmod(stat.S_IREAD)
+    try:
+        assert _set(paper, "stage", "analysis") == 0
+    finally:
+        paper.chmod(stat.S_IREAD | stat.S_IWRITE)
+
+
+# --------------------------------------------- the fix-only round of #456: what the guard reads
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        # `cd -` goes back to the folder before: here, to a project at a later stage.
+        "cd {late} && cd {early} && cd - && manuscript-guard set stage drafting",
+        "cd -P {early} && manuscript-guard set stage drafting",
+        "cd -- {early} && manuscript-guard set stage drafting",
+        "pushd +1 && manuscript-guard set stage drafting",
+        "Set-Location - ; manuscript-guard set stage drafting",
+        "cd && manuscript-guard set stage drafting",
+        # A backslash in a value, and one before a space anywhere, is the guard's to refuse
+        # on every system: Git Bash reads `X\ RECORD` as one word.
+        "manuscript-guard set reporting_guideline STROBE X\\ RECORD --path {early}",
+        "manuscript-guard set reporting_guideline STROBE RECORD\\x --path {early}",
+        "cd {early}\\ x && manuscript-guard set stage drafting",
+        # Output written over a file the tool reads.
+        "manuscript-guard set stage submission --path {early} > {early}/paper.yaml",
+        "manuscript-guard set stage submission --path {early} 2> authors.yaml",
+        "manuscript-guard set stage drafting --path {late} 3>log.txt",
+    ],
+)
+def test_what_the_fix_only_round_found_is_asked(
+    tmp_path: Path, command: str, monkeypatch, capsys
+) -> None:
+    """Each a forward move for `early` or an added guideline, which the guard let through,
+    where the shell moves `late` back or reads the words otherwise."""
+    early = _project(tmp_path / "early", "stage: design\nreporting_guideline: [STROBE]\n")
+    late = _project(tmp_path / "late", "stage: submission\n")
+    command = command.format(early=early.as_posix(), late=late.as_posix())
+    assert _decision(_hook(tmp_path, command, monkeypatch, capsys)) == "ask", command
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "manuscript-guard set stage submission --path {early} 3>log.txt",
+        "manuscript-guard set stage submission --path {early} 10>>log.txt 2>&1",
+        "cd {early} && manuscript-guard set reporting_guideline STROBE RECORD > out.txt",
+    ],
+)
+def test_a_redirection_by_any_descriptor_is_read(
+    tmp_path: Path, command: str, monkeypatch, capsys
+) -> None:
+    early = _project(tmp_path / "early", "stage: analysis\nreporting_guideline: [STROBE]\n")
+    command = command.format(early=early.as_posix())
+    assert _hook(tmp_path, command, monkeypatch, capsys) is None, command
+
+
+def test_a_folder_that_cannot_be_had_is_asked(tmp_path: Path, monkeypatch, capsys) -> None:
+    from manuscript_guard.set_guard import asks
+
+    assert "cannot be read" in asks("manuscript-guard set stage submission", None)
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
+    payload = {"cwd": "a" + chr(0) + "b", "tool_name": "Bash",
+               "tool_input": {"command": "manuscript-guard set stage submission"}}  # fmt: skip
+    assert hooks.dispatch("guard-submission", payload) == 0
+    assert json.loads(capsys.readouterr().out)["hookSpecificOutput"]["permissionDecision"] == "ask"

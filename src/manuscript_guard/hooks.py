@@ -1194,9 +1194,9 @@ def _moves_stage_back(command: str, payload: dict) -> str | None:
     from manuscript_guard.set_guard import asks
 
     try:
-        cwd = Path(payload.get("cwd") or Path.cwd()).resolve()
-    except (OSError, RuntimeError, ValueError):
-        cwd = Path.cwd()
+        cwd: Path | None = Path(payload.get("cwd") or Path.cwd()).resolve()
+    except (OSError, RuntimeError, ValueError, TypeError):
+        cwd = None  # asked: the hook's own folder is not the command's
     return asks(command, cwd)
 
 

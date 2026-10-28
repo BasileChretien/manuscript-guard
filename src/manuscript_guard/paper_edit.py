@@ -458,15 +458,16 @@ def set_key(path: Path, key: str, words: list[str]) -> Edited:
                 "the journal's candidate in journals/shortlist.yaml its `profile`"
             )
         raise Refused(f"`{key}` cannot be {new!r}: {said}")
-    _writable(path)
-    _one_file(path)
     mark, text = read(path)
     done = edit(text, key, new)
-    if done.how != "unchanged":
-        try:
-            write(path, mark + done.text)
-        except OSError as exc:
-            raise Refused(f"it could not be written: {exc.strerror or exc}") from exc
+    if done.how == "unchanged":
+        return done  # nothing is written, so a read-only or linked file is no matter
+    _writable(path)
+    _one_file(path)
+    try:
+        write(path, mark + done.text)
+    except OSError as exc:
+        raise Refused(f"it could not be written: {exc.strerror or exc}") from exc
     return done
 
 

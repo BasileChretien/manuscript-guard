@@ -17,9 +17,10 @@ writing one that it misread. So it asks by default. A command that names the too
 guard reads it exactly: plain `cd <folder>` steps joined by `&&` or `;`, then the tool, `set`,
 the key, plain values and at most one `--path`, then nothing but redirections of its output.
 Only then is the project read, and the command let through where it moves the stage on,
-adds guidelines or sets a first journal. Everything else is asked: another shell started
-with the command (`bash -c`, `powershell -Command`), `xargs`, `eval`, a subshell, an alias, a
-substitution, a quotation mark, `--`, a variable, any value it cannot read.
+adds guidelines, or sets a first journal or the same journal. Everything else is asked:
+another shell started with the command (`bash -c`, `powershell -Command`), `xargs`, `eval`, a
+subshell, an alias, a substitution, a quotation mark, `--`, a variable, a backslash outside a
+folder, any value it cannot read.
 """
 
 from __future__ import annotations
@@ -37,20 +38,28 @@ _NAMES_TOOL = re.compile(r"(?i)manuscript[-_]guard|mguard")
 _NAMES_SET = re.compile(r"(?i)(?<![\w])set(?![\w])")
 _NAMES_KEY = re.compile(r"(?i)(?<![\w])(?:" + "|".join(WATCHED) + r")(?![\w])")
 
-#: A word the guard reads exactly: no quotation mark, no sign a shell expands or treats
-#: specially. A backslash is a folder's separator on Windows, and an escape to a POSIX
-#: shell, so it is plain on Windows only (DESIGN.md, Known gaps).
-_PLAIN = r"[A-Za-z0-9._/:+-]+" if os.name != "nt" else r"[A-Za-z0-9._/:+\\-]+"
+#: A word the guard reads exactly: no quotation mark, no backslash, no sign a shell expands
+#: or treats specially.
+_PLAIN = r"[A-Za-z0-9._/:+-]+"
+#: A folder, which on Windows may hold a backslash, its separator there; to a POSIX shell it
+#: is an escape, so elsewhere it may not (DESIGN.md, Known gaps). A folder never begins
+#: with `-` or `+`: `cd -`, `cd -P` and `pushd +1` are no folder the guard can follow.
+_FOLDER = r"(?![-+])" + (r"[A-Za-z0-9._/:+\\-]+" if os.name == "nt" else _PLAIN)
 _TOOL = (
-    rf"(?:(?:{_PLAIN}[/\\])?(?:manuscript-guard|mguard)(?:\.exe)?"
-    rf"|(?:{_PLAIN}[/\\])?(?:python3?|py)(?:\.exe)?[ \t]+-m[ \t]+manuscript_guard\.cli)"
+    rf"(?:(?:{_FOLDER}[/\\])?(?:manuscript-guard|mguard)(?:\.exe)?"
+    rf"|(?:{_FOLDER}[/\\])?(?:python3?|py)(?:\.exe)?[ \t]+-m[ \t]+manuscript_guard\.cli)"
 )
-_CD = re.compile(rf"(?i)[ \t]*(?:cd|chdir|pushd|set-location|sl)[ \t]+({_PLAIN})[ \t]*")
+_CD = re.compile(rf"(?i)[ \t]*(?:cd|chdir|pushd|set-location|sl)[ \t]+({_FOLDER})[ \t]*")
+#: Where the output goes: any descriptor's number before `>` or `>>`, then a plain file;
+#: or the errors sent where the output goes.
+_REDIRECTION = re.compile(rf"[0-9]*>>?[ \t]*({_PLAIN})|2>&1")
 _INVOCATION = re.compile(
     rf"[ \t]*{_TOOL}[ \t]+set[ \t]+(?P<key>{_PLAIN})(?P<rest>(?:[ \t]+{_PLAIN})*?)"
-    rf"(?P<path>[ \t]+--path(?:[ \t]+|=)(?P<folder>{_PLAIN}))?"
-    rf"(?P<redirected>(?:[ \t]*(?:[12]?>>?[ \t]*{_PLAIN}|2>&1))*)[ \t]*"
+    rf"(?P<path>[ \t]+--path(?:[ \t]+|=)(?P<folder>{_FOLDER}))?"
+    rf"(?P<redirected>(?:[ \t]*(?:{_REDIRECTION.pattern}))*)[ \t]*"
 )
+#: Files the tool reads, which a redirection must not write.
+_READ_BY_THE_TOOL = ("paper.yaml", "authors.yaml")
 #: How the steps before the invocation are joined; `||` runs the next only where one fails.
 _JOINED = re.compile(r"[ \t]*(&&|;)[ \t]*")
 
@@ -73,6 +82,8 @@ def _read(
     failed leaves it in, then its key, its values and its `--path`, where the command is one
     the guard reads exactly; None where it is not."""
     text = command.strip()
+    if re.search(r"\\[ \t]", text):
+        return None  # a POSIX shell joins the words on either side into one
     folders = [(cwd, False)]
     at = 0
     while True:
@@ -91,6 +102,9 @@ def _read(
     values = found["rest"].split()
     if any(value.startswith("-") for value in values) or found["key"].startswith("-"):
         return None  # an option the guard does not read: `--`, `--help`, another
+    for target in _REDIRECTION.finditer(found["redirected"]):
+        if target[1] and re.split(r"[/\\]", target[1])[-1].lower() in _READ_BY_THE_TOOL:
+            return None  # the output written over a file the tool reads
     return list(dict.fromkeys(folders)), found["key"], values, found["folder"]
 
 
@@ -133,10 +147,13 @@ def _free(key: str, values: list[str], paper: dict) -> bool:
     return len(values) == 1 and (declared in (None, "") or values == [declared])
 
 
-def asks(command: str, cwd: Path) -> str | None:
-    """Why a `set` in `command` is put to the author, or None where none is."""
+def asks(command: str, cwd: Path | None) -> str | None:
+    """Why a `set` in `command` is put to the author, or None where none is. `cwd` is None
+    where the folder the command was sent from cannot be had."""
     if not _looked_at(command):
         return None
+    if cwd is None:
+        return f"the folder this `manuscript-guard set` runs in cannot be read. {_DECIDES}"
     try:
         read = _read(command, cwd)
         if read is None:

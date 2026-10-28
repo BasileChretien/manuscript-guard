@@ -41,19 +41,29 @@ def _field(document: object, *path: str) -> object:
 
 
 def create(api: Client, title: str) -> dict:
-    """A private project titled `title`: its id and page."""
+    """A project titled `title`, asked for as private: its id, its page, and whether OSF
+    answered that it is private. Whether it is is the caller's to judge, once the id is
+    recorded: the project exists either way, and a second one must not be made."""
     answer = api.call("POST", f"{HOSTS['api']}/v2/nodes/", document={"data": {
         "type": "nodes", "attributes": {"title": title, "category": "project",
                                         "public": False}}},
         content_type="application/vnd.api+json", expect=(201,))  # fmt: skip
     found = _field(answer, "data", "id")
-    if not isinstance(found, str) or not found.isascii() or not found.isalnum():
+    if not isinstance(found, str) or not found.isascii() or not found.isalnum() \
+            or len(found) > 64:  # fmt: skip
         raise RemoteError(f"{NAME} answered without the project's id")
-    if _field(answer, "data", "attributes", "public") is not False:
-        raise RemoteError(f"{NAME} made project {found} and did not answer that it is private; "
-                          "nothing was uploaded to it: look at it on OSF's page")  # fmt: skip
-    page = _field(answer, "data", "links", "html")
-    return {"id": found, "doi": None, "page": page if isinstance(page, str) else None}
+    try:
+        page = api.kept("page", _field(answer, "data", "links", "html"))
+    except RemoteError:
+        page = None  # the id is what must be recorded; the page is OSF's to show again
+    private = _field(answer, "data", "attributes", "public") is False
+    return {"id": found, "doi": None, "page": page, "private": private}
+
+
+def not_private(project: str) -> RemoteError:
+    return RemoteError(f"{NAME} made project {project} and did not answer that it is private; "
+                       "nothing is uploaded to it, now or later: look at it on OSF's "
+                       "page")  # fmt: skip
 
 
 def upload(api: Client, node: str, files: list[tuple[str, bytes]]) -> dict[str, str]:
@@ -71,10 +81,10 @@ def upload(api: Client, node: str, files: list[tuple[str, bytes]]) -> dict[str, 
                               "and the bundle is not recorded as staged")  # fmt: skip
         if theirs.lower() != mine:
             raise RemoteError(f"{NAME} holds {name} as other bytes than were sent (md5 "
-                              f"{theirs.lower()}, sent {mine}); stopped, and nothing after it "
-                              "was sent")  # fmt: skip
+                              f"{api.plain(theirs.lower())}, sent {mine}); stopped, and nothing "
+                              "after it was sent")  # fmt: skip
         sent[name] = mine
     return sent
 
 
-__all__ = ["HOSTS", "NAME", "REFUSED", "TOKEN", "client", "create", "upload"]
+__all__ = ["HOSTS", "NAME", "REFUSED", "TOKEN", "client", "create", "not_private", "upload"]

@@ -1400,36 +1400,79 @@ def _imports_answers(joined: str) -> bool:
     return False
 
 
-_DEPOSIT = re.compile(_TOOL + r"deposit\b", re.IGNORECASE)
+
+#: The options of `deposit` that send, as a word of the command.
+_SENDING = re.compile(r"--(publish|stage|reserve-doi)(?:=.*)?", re.IGNORECASE | re.DOTALL)
+#: `NAME=value` before a command, which a POSIX shell sets for it alone.
+_ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=.*", re.DOTALL)
+_PUBLISHES = (
+    "`manuscript-guard deposit --publish` publishes the staged draft at Zenodo, where it "
+    "cannot be deleted. It asks the author to type the DOI at a terminal, and --yes does not "
+    "answer that: run it yourself."
+)
+_SENDS = (
+    "`manuscript-guard deposit --stage` or `--reserve-doi` sends the bundle to the repository, "
+    "or asks it for a DOI, with the author's token from the environment. What goes where is "
+    "the author's decision: `deposit --dry-run` lists what the bundle holds."
+)
+_NAMES_DEPOSIT = (
+    "this command names `manuscript-guard deposit` with an option that sends, in a form the "
+    "guard does not read exactly as an invocation of it. Sending a deposit, and publishing "
+    "one, is the author's decision."
+)
+
+
+def _deposit_words(words: list[str]) -> list[str] | None:
+    """The words after `deposit` where an invocation is plainly the tool's `deposit`: the tool
+    named first, by either name, a path or `python -m`, after any `NAME=value`; else None."""
+    while words and _ASSIGNMENT.fullmatch(words[0]):
+        words = words[1:]
+    if words and _TOOL_WORD.fullmatch(words[0]):
+        rest = words[1:]
+    elif (len(words) > 2 and re.fullmatch(r"(?i)(?:.*[\\/])?python[\d.]*(?:\.exe)?", words[0])
+          and words[1] == "-m" and words[2] == "manuscript_guard.cli"):  # fmt: skip
+        rest = words[3:]
+    else:
+        return None
+    return rest[1:] if rest and rest[0].casefold() == "deposit" else None
 
 
 def _deposits(command: str) -> tuple[str | None, str | None]:
-    """Why a `deposit` in this command is refused, and why one is put to the person: the
-    first for `--publish`, which makes a record public that cannot be deleted, and is the
-    author's to run at a terminal, typing its DOI; the second for `--stage` and
-    `--reserve-doi`, which send the bundle, or ask for a DOI, with the author's token."""
+    """Why a `deposit` in this command is refused, and why one is put to the person.
+
+    Refused: `--publish` in an invocation of `deposit` read exactly, the same words in both
+    shells' reading (`_command_words`, as the guards of `set` and `checker import` read a
+    command). It makes a record public that cannot be deleted, and is the author's to run at
+    a terminal, typing its DOI. Put to the person: `--stage` and `--reserve-doi`, which send
+    the bundle or ask for a DOI with the author's token; and any command that names the
+    tool, `deposit` and one of the three options in a form not read exactly, or outside an
+    invocation of `deposit`: a grep of the documentation, an echo, a pull request's body."""
     joined = re.sub(r"[\\`]\r?\n", " ", command)  # a line continued in bash or PowerShell
-    sends = None
-    for found in _DEPOSIT.finditer(joined):
-        rest = joined[found.end() :]
-        end = _INVOCATION_END.search(rest)
-        arguments = rest[: end.start() if end else len(rest)]
-        flags = set(re.findall(r"(?<![\w-])--(publish|stage|reserve-doi)\b", arguments))
-        if "publish" in flags:
-            return (
-                "`manuscript-guard deposit --publish` publishes the staged draft at Zenodo, "
-                "where it cannot be deleted. It asks the author to type the DOI at a terminal, "
-                "and --yes does not answer that: run it yourself.",
-                None,
-            )
-        if flags and sends is None:
-            sends = (
-                "`manuscript-guard deposit --stage` or `--reserve-doi` sends the bundle to the "
-                "repository, or asks it for a DOI, with the author's token from the "
-                "environment. What goes where is the author's decision: `deposit --dry-run` "
-                "lists what the bundle holds."
-            )
-    return None, sends
+    bare = re.sub("[\\\\`'\"]", "", joined)
+    if not any(_NAMES_TOOL.search(text) and re.search(r"(?i)\bdeposit\b", text)
+               and re.search(r"(?i)--(?:publish|stage|reserve-doi)\b", text)
+               for text in (joined, bare)):  # fmt: skip
+        return None, None
+    readings = [_command_words(joined, posix=posix) for posix in (True, False)]
+    flags: set[str] = set()
+    named_elsewhere = False
+    for invocations, _clean in readings:
+        for words in invocations:
+            rest = _deposit_words(words)
+            sending = {found[1].lower() for word in (rest or words)
+                       if (found := _SENDING.fullmatch(word))}  # fmt: skip
+            if rest is None:
+                named_elsewhere = named_elsewhere or bool(sending) or any(
+                    _SENDING.search(word) for word in words)  # fmt: skip
+            else:
+                flags |= sending
+    exact = all(clean for _invocations, clean in readings)
+    if exact and "publish" in flags:
+        return _PUBLISHES, None
+    if exact and flags and not named_elsewhere:
+        return None, _SENDS
+    # Named, and not read exactly as an invocation: asked, never refused.
+    return None, _NAMES_DEPOSIT
 
 
 def _approves(command: str) -> str | None:

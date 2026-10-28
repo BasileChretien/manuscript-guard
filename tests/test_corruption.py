@@ -4088,11 +4088,14 @@ def test_a_sandbox_doi_given_as_the_packages_fails_at_every_stage(project: Path)
     assert "package-doi-test-prefix" in codes(report)
 
 
-def _receipt(root: Path, target: str, bundle: str, doi: str) -> None:
+def _receipt(root: Path, target: str, bundle: str, doi: str, *, published: bool = True) -> None:
     from manuscript_guard.deposit.remote import receipts
 
-    receipts.write(load_project(root)[0], {"target": target, "bundle": bundle,
-                                           "host": "https://zenodo.org", "id": 7, "doi": doi})
+    made = {"target": target, "bundle": bundle, "host": "https://zenodo.org", "id": 7, "doi": doi,
+            "reserved_on": "2026-10-28T00:00:00Z"}  # fmt: skip
+    if published:
+        made["published_on"] = "2026-10-29T00:00:00Z"
+    receipts.write(load_project(root)[0], made)
 
 
 def test_a_package_doi_that_is_not_the_receipts_warns_then_fails_at_submission(
@@ -4113,6 +4116,10 @@ def test_a_package_doi_that_is_not_the_receipts_warns_then_fails_at_submission(
     _receipt(project, "zenodo-sandbox", "release", "10.5072/zenodo.2222222")
     assert said(submission=True) == {}
     _receipt(project, "zenodo", "release", "10.5281/ZENODO.7654320")
+    assert said(submission=True) == {}
+    # A draft reserved and never published holds the paper to nothing (round 1 of #467): the
+    # author may drop it and deposit by hand.
+    _receipt(project, "zenodo", "release", "10.5281/zenodo.7654321", published=False)
     assert said(submission=True) == {}
     _receipt(project, "zenodo", "release", "10.5281/zenodo.7654321")
     assert said(submission=False) == {"deposit-doi-differs": "warn"}

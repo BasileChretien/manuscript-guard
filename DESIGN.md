@@ -8692,19 +8692,37 @@ The draft's files are held to the receipt's md5s, so that a file changed on the 
 not published; for a release, every author's approval is of the manuscript as it stands
 (`check_approvals` says nothing), since its companion page prints the manuscript's abstract;
 and the author types the draft's DOI at a terminal, which standard input that is no terminal
-cannot do. `--yes` answers none of it (decision 2(a)). OSF's `--reserve-doi` and `--publish`
+cannot do. `--yes` answers none of it (decision 2(a)). Once the publication is sent it is
+recorded in the receipt and the history, with what the host answered, before anything can
+raise (`publish_sent_on`, `publish_answer`), and a run again refuses to send it twice: an
+answer that is not the one expected, another DOI or none, is said and kept, not swallowed
+after the one act that cannot be taken back (round 1 of #467). OSF's `--reserve-doi` and `--publish`
 are refused with the reason: it mints a DOI only for what is public, and making a project
-public is the author's, on its own page. Each answer is recorded in
-`deposit/receipts/<target>-<bundle>.yaml` (host, id, DOI, each action's date, the bundle's
-digest, each file's md5 and SHA-256) and appended to `deposit/history.yaml`, which is opened
-for appending and never rewritten; both are in the hooks' FORBIDDEN. `guard_submission`
-refuses `deposit --publish` to an agent, "run it yourself", and puts `--stage` and
-`--reserve-doi` to the person, refused where the tool cannot ask; `guard_write` puts to the
+public is the author's, on its own page. The OSF project's id is recorded as soon as OSF
+answers, before its answer is judged, so a run again never makes a second project; one OSF
+did not answer is private gets nothing, then or later (round 1). The bundle's `.zenodo.json`
+is read and held to be a JSON object before anything is sent, exit 2 where it is not. Every
+string a host returns is either said through `Client.plain`, the scrubber with terminal
+control characters taken out, a file name, a checksum, a DOI, a host name; or, where it is
+recorded or printed whole, a DOI, a bucket or a page link, held by `Client.kept`, which
+refuses one that holds the token, or eight of its characters in a row, or a character a
+terminal acts on, before it is written anywhere (round 1, blocking). Each answer is recorded in
+`deposit/receipts/<target>-<bundle>.yaml` (host, id, DOI, bucket and page links, each action's
+date, the bundle's digest, each file's md5 and SHA-256, the publication's answer) and
+appended to `deposit/history.yaml`, which is opened for appending and never rewritten; both
+are in the hooks' FORBIDDEN. `guard_submission` reads the command's words as both shells read
+them, as the guards of `set` and `checker import` do (`_command_words`), so a `;`, `&` or `|`
+inside quotes ends nothing; it refuses `deposit --publish` to an agent, "run it yourself",
+only where both readings are clean and an invocation is plainly the tool's `deposit`, and
+puts `--stage` and `--reserve-doi` to the person, as it does any other command that names
+the tool, `deposit` and one of the three options, a grep, an echo or a pull request's body
+(round 1); refused where the tool cannot ask. `guard_write` puts to the
 person an Edit or Write of paper.yaml after which `package.doi` is not what it was, and a
 patch whose lines name a `doi:`. G4 holds the DOI: `package-doi-test-prefix` fails a 10.5072
 `package.doi` at every stage, and `deposit-doi-differs` warns while `package.doi` is not the
-DOI a release's receipt at a host other than the sandbox records, and fails at submission
-(`gates.data_statement.check_deposit_doi`); with no such receipt it says nothing. The tests
+DOI of a release a receipt records as published (`published_on`) at a host other than the
+sandbox, and fails at submission; a draft reserved or staged and not published says nothing,
+since the author may drop it and deposit by hand (round 1) (`gates.data_statement.check_deposit_doi`); with no such receipt it says nothing. The tests
 are in `tests/test_deposit_remote.py`, against a server on a loopback port that answers as
 the two APIs are documented to: the token in the header and in no URL, body, file or
 message, a part of it a host echoes scrubbed; a redirect refused, from a table and from the
@@ -8714,8 +8732,13 @@ draft holds that nobody sent; publishing refused without the typed DOI, with a w
 with `--yes` alone, on a bundle changed since staging, on a draft changed at the host, and on
 a release an author has not approved, then staged again and published; a sandbox DOI and a
 test DOI from Zenodo itself never written; a release's DOI written with every comment kept;
-OSF's refusals. In `tests/test_hooks.py`, the ask, the deny and the guarded edit; in
-`tests/test_corruption.py`, both G4 codes.
+OSF's refusals; and, from round 1, the token planted in each field a host answers with, a
+publication answered unexpectedly or refused and recorded, never sent twice, a
+`.zenodo.json` missing or not an object refused before anything is sent, and an OSF project
+not answered private recorded and given nothing. In `tests/test_hooks.py`, the ask, the deny,
+a quoted `&`, a command that only names the option asked and not refused, and the guarded
+edit; in `tests/test_corruption.py`, both G4 codes, and a reserved draft never published
+saying nothing.
 
 What this rests on: deterministic tests in CI (`tests/test_package.py`): the example packaged,
 unzipped and run again by `verify` from the unpacked folder with every value reproduced; an R
@@ -17994,13 +18017,26 @@ What papers converted from Word showed (see "What papers converted from Word sho
   is held to the files sent, and a file left from an earlier staging stops it by name; the
   tool deletes nothing at the host, so the author deletes the file on the draft's page.
 - **The hooks read commands and edits, not every way of running them.** `deposit --publish`
-  is refused to an agent where its command names the tool and the option in one invocation,
-  and `--stage` and `--reserve-doi` are asked there; a script, an alias or `bash -c` with the
+  is refused to an agent where its command is read exactly as an invocation of `deposit`,
+  and asked where it is named in any other form; a script, an alias or `bash -c` with the
   option in a variable is not read. `--publish` itself asks for the DOI at a terminal, which
   an agent's standard input is not, so a command the hook misses still publishes nothing. An
   edit of `package.doi` is put to the person for an Edit, a Write and a Codex patch; a `sed` or
   a script that rewrites `paper.yaml` is not read (the same as every other edit the write
   guard reads), and `deposit-doi-differs` then names a DOI that is not the receipt's.
+- **A terminal can be stood in for.** `--publish` takes the typed DOI only from standard input
+  that is a terminal, and a pseudo-terminal a wrapper makes (`script -qc ...` with its input
+  piped) is one: an agent that runs the command that way, past the hook, can type the DOI.
+  Only the hook stands between an agent and that (round 1 of #467, finding 3).
+- **A patch that renames a key above an unchanged `doi:` line is not put to the person.** The
+  write guard reads a patch's removed and added lines, and asks where one names `doi:`; a patch
+  that renames the key the `doi:` line stands under, into `package`, changes no such line, and
+  moves a DOI under `package` unasked (round 1 of #467, finding 11). Contrived, and G4 then
+  holds the DOI to a published release's receipt where there is one.
+- **A later version's DOI is not a receipt's.** A Zenodo record's new version, made on its
+  page, has a DOI of its own, which no receipt records; `package.doi` set to it fails
+  `deposit-doi-differs` at submission against the first version's receipt, and the remedy is
+  the author's: a receipt is not edited by an agent, and the tool makes no new version.
 - **A receipt that cannot be read is not a receipt to G4.** `deposit-doi-differs` reads the
   receipts that parse and name their own target and bundle; one damaged by hand, which the
   write guard refuses to an agent, is passed over, and `deposit` itself refuses to act on it.

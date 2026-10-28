@@ -202,8 +202,8 @@ manuscript-guard deposit --target osf --bundle preregistration --stage
 | Option | What it does |
 |---|---|
 | `--reserve-doi` | Zenodo only. Makes a draft with its DOI reserved, through Zenodo's deposition API. For a release at Zenodo itself, the DOI is then written into `paper.yaml` as `package.doi`, under `package:` with every comment and other line kept, once you type `yes`, or with `--yes`. A plan's DOI is not the package's, and is kept in the receipt only. A test DOI (10.5072), which the sandbox mints, is never written into `paper.yaml`. A second reservation of the same bundle is refused. |
-| `--stage` | Stages the bundle as above, with every check first, then sends its archive and each file at its top level. At Zenodo, to the draft `--reserve-doi` made (the two may be given together), each file's md5 checked against Zenodo's answer, then the draft's list of files held to exactly those, then the bundle's `.zenodo.json` put as its metadata. At OSF, as a new private project. The first file whose md5 differs stops it, and nothing after it is sent. Staging a Zenodo draft again replaces its files; OSF's project is staged once. |
-| `--publish` | Zenodo only. Publishes the draft, only when the bundle, planned again now, is the one staged, by the digest of its files (MANIFEST.yaml left out, as the custodian's sign-off leaves it out); the draft holds exactly the files sent; for a release, every author's approval is of the manuscript as it stands; and you, at a terminal, type the draft's DOI. `--yes` answers none of this. A published record cannot be deleted. |
+| `--stage` | Stages the bundle as above, with every check first, then sends its archive and each file at its top level. At Zenodo, to the draft `--reserve-doi` made (the two may be given together), each file's md5 checked against Zenodo's answer, then the draft's list of files held to exactly those, then the bundle's `.zenodo.json` put as its metadata; a bundle whose `.zenodo.json` is missing or is not a JSON object is refused before anything is sent. At OSF, as a new private project, its id recorded as soon as OSF answers; a project OSF does not answer is private gets nothing uploaded, then or later. The first file whose md5 differs stops it, and nothing after it is sent. Staging a Zenodo draft again sends each file again under its name, which replaces it; a file an earlier staging left there that the bundle no longer has stops it, by name, for you to delete on the draft's page, since the tool deletes nothing at the host. OSF's project is staged once. |
+| `--publish` | Zenodo only. Publishes the draft, only when the bundle, planned again now, is the one staged, by the digest of its files (MANIFEST.yaml left out, as the custodian's sign-off leaves it out); the draft holds exactly the files sent; for a release, every author's approval is of the manuscript as it stands; and you, at a terminal, type the draft's DOI. `--yes` answers none of this. A published record cannot be deleted. Once the request is sent it is recorded, with what Zenodo answered, before anything else is done, and it is never sent again: where the answer was not the one expected, look at the draft's page. |
 
 OSF mints a DOI only for a project or a registration that is public, so `--reserve-doi` is
 refused there, and making the project public is done on OSF's own page, so `--publish` is
@@ -211,16 +211,24 @@ refused too. arXiv, medRxiv and a site take nothing sent by the tool. `--dry-run
 the three is refused: run it on its own first.
 
 Each answer is kept in `deposit/receipts/<target>-<bundle>.yaml`: the host, the deposit's id
-there, its DOI, the date of each action, the bundle's digest and each file's md5 and
-SHA-256. Each action is appended to `deposit/history.yaml`. Commit both. They are the tool's
-to write, and the hooks refuse an agent's edit of either. G4 holds `package.doi` to the
-release's receipt: a DOI that is not the receipt's is a warning while the paper is written
-and a failure at submission (`deposit-doi-differs`); a test DOI fails at every stage
-(`package-doi-test-prefix`); without a receipt nothing is said of it.
+there, its DOI, the links to its bucket and its page, the date of each action, the bundle's
+digest, each file's md5 and SHA-256, and what the host answered a publication with. A DOI or
+a link a host gives that holds your token, or a character a terminal acts on, is refused
+rather than recorded. Each action is appended to `deposit/history.yaml`. Commit both. They
+are the tool's to write, and the hooks refuse an agent's edit of either.
 
-The hooks put `--stage` and `--reserve-doi` to the author when an agent runs them, refuse
-`--publish` to an agent, and put to the author an agent's edit of `paper.yaml` that adds or
-changes `package.doi`.
+G4 holds `package.doi` to the receipt of a release once it is published: a DOI that is not
+that receipt's is a warning while the paper is written and a failure at submission
+(`deposit-doi-differs`). A draft reserved or staged and never published says nothing, so a
+reservation you drop to deposit by hand does not hold the paper to it. A test DOI fails at
+every stage (`package-doi-test-prefix`). Without a receipt of a published release nothing
+is said of the DOI.
+
+The hooks refuse `--publish` to an agent where the command is plainly an invocation of
+`deposit`, read as both a POSIX shell and PowerShell read it; they put `--stage` and
+`--reserve-doi` to the author, and so any other command that names `deposit` with one of
+the three options, a search of these pages or an echo among them. They put to the author an
+agent's edit of `paper.yaml` that adds or changes `package.doi`.
 
 What is not known: the clients were run against servers this machine stands up that answer
 as Zenodo's and OSF's documentation says, and against neither host itself.

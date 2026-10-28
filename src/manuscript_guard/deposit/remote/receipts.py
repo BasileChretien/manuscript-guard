@@ -6,8 +6,18 @@ host, the deposit's id there, its DOI, the date of each action, and the digests 
 sent and of the bundle they were staged from. It is what `--stage` and `--publish` read back,
 and what G4 holds `package.doi` to. `deposit/history.yaml` is each action, one entry
 appended at a time and never rewritten. Both are the tool's to write, and the hooks refuse an
-edit of either by an agent (`hooks.FORBIDDEN`). Neither holds a token, a link with one in
-it, or anything a host said that is not an identifier.
+edit of either by an agent (`hooks.FORBIDDEN`).
+
+A receipt holds: `target`, `bundle` and `host`; the deposit's `id` at the host; its `doi`
+(none at OSF); `bucket`, the link Zenodo sends a draft's files to, and `page`, the link a
+person opens it at; for OSF, `private`, whether the host answered that the project is
+private; the date of each action, `reserved_on`, `created_on`, `staged_on`,
+`publish_sent_on` and `published_on`; `bundle_sha256`, the bundle as its files and their
+digests; `files`, the md5 and SHA-256 of each file sent; and `publish_answer`, what the host
+answered the publication with, in our words. Each DOI and link a host gave is refused
+before it is recorded where it holds the token, or a stretch of it, or a character a
+terminal acts on (`http.Client.kept`), and the answer is scrubbed of both
+(`http.Client.plain`): neither file holds the token. G4 reads `published_on` and `doi`.
 """
 
 from __future__ import annotations

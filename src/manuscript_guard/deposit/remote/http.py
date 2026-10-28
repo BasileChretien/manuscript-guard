@@ -38,6 +38,12 @@ MAX_BYTES = 8 * 1024 * 1024
 LOOPBACK = frozenset({"localhost", "127.0.0.1", "::1"})
 #: As much of a host's own words as a message quotes.
 SHOWN = 300
+#: The longest DOI or link a host's answer is recorded with.
+MAX_KEPT = 2000
+#: As many characters of the token in a row as make a value a host returned one that is
+#: refused rather than recorded: fewer, as a message is scrubbed of, would refuse a link
+#: that shares four digits with a token by chance.
+TOKEN_STRETCH = 8
 
 
 @dataclass(frozen=True)
@@ -174,15 +180,39 @@ class Client:
                 return True
         return False
 
+    def plain(self, said: object) -> str:
+        """Anything a host returned, fit for a message: without the token or any part of it,
+        without characters a terminal would act on, and not at length."""
+        return scrubbed(str(said), self.token)
+
+    def kept(self, what: str, said: object) -> str | None:
+        """A string a host returned that is to be recorded or printed whole, a DOI or a link;
+        None where it gave none. Refused where it holds the token, or a stretch of it long
+        enough not to be chance, or a character a terminal would act on: such a value is
+        written nowhere."""
+        if said is None:
+            return None
+        if not isinstance(said, str) or not said or len(said) > MAX_KEPT:
+            raise RemoteError(f"{self.name} answered a {what} that is not one")
+        stretches = {self.token[i : i + TOKEN_STRETCH]
+                     for i in range(max(len(self.token) - TOKEN_STRETCH + 1, 1))}  # fmt: skip
+        if any(part in said for part in stretches) or not said.isprintable():
+            raise RemoteError(f"{self.name} answered a {what} that holds part of the token or a "
+                              "character a terminal acts on; it is recorded nowhere, and "
+                              "nothing more is done")  # fmt: skip
+        return said
+
     def call(self, method: str, url: str, *, document: object = None, data: bytes | None = None,
              content_type: str | None = None, expect: tuple[int, ...] = (200, 201, 202),
              ) -> dict:  # fmt: skip
         """Send one request and return the JSON object it answered with; `RemoteError` where
         no answer came, the host refused, or its answer is not an object."""
         if not self._same_origin(url) or not allowed(url):
+            parts = urlsplit(url)
             raise RemoteError(f"{self.name} named a place to send to that is not its own "
-                              f"({urlsplit(url).scheme}://{urlsplit(url).hostname}); nothing "
-                              "was sent there, since the token would go with it")  # fmt: skip
+                              f"({self.plain(parts.scheme)}://{self.plain(parts.hostname)}); "
+                              "nothing was sent there, since the token would go with "
+                              "it")  # fmt: skip
         headers = {"Authorization": f"Bearer {self.token}", "Accept": "application/json",
                    "User-Agent": f"manuscript-guard/{__version__}"}  # fmt: skip
         body = b""

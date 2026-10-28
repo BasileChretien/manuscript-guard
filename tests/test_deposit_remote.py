@@ -89,6 +89,9 @@ class FakeHosts:
         self.extra: str | None = None
         self.bucket = f"{url}/api/files/bucket-101"
         self.override: tuple | None = None
+        #: What a publication is answered with, where not the record as documented.
+        self.publish_answer: dict | None = None
+        self.osf_public = False
 
     def _deposition(self) -> dict:
         return {"id": 101, "metadata": {"prereserve_doi": {"doi": self.doi, "recid": 101}},
@@ -116,10 +119,12 @@ class FakeHosts:
                 **self.metadata, "prereserve_doi": {"doi": self.doi}}}, {}  # fmt: skip
         if method == "POST" and parts.path == "/api/deposit/depositions/101/actions/publish":
             self.published = True
+            if self.publish_answer is not None:
+                return 202, self.publish_answer, {}
             page = f"{self.url}/records/101"
             return 202, {"id": 101, "doi": self.doi, "links": {"html": page}}, {}
         if method == "POST" and parts.path == "/v2/nodes/":
-            return 201, {"data": {"id": "ab1cd", "attributes": {"public": False},
+            return 201, {"data": {"id": "ab1cd", "attributes": {"public": self.osf_public},
                                   "links": {"html": f"{self.url}/ab1cd/"}}}, {}  # fmt: skip
         if method == "PUT" and parts.path == "/v1/resources/ab1cd/providers/osfstorage/":
             name = parse_qs(parts.query)["name"][0]
@@ -312,7 +317,8 @@ def test_publishing_needs_the_doi_typed_and_yes_does_not_answer_it(
     held = receipt(project, "zenodo-sandbox-preregistration")
     assert held["published_on"] and held["page"].endswith("/records/101")
     history = yaml.safe_load((project / "deposit" / "history.yaml").read_text("utf-8"))
-    assert [entry["action"] for entry in history] == ["reserved", "staged", "published"]
+    assert [entry["action"] for entry in history] == ["reserved", "staged", "publish_sent",
+                                                       "published"]
     # Published once, it is not published or staged again.
     assert deposit(project, "zenodo-sandbox", "preregistration", "--publish") == 1
     assert deposit(project, "zenodo-sandbox", "preregistration", "--stage") == 1
@@ -573,3 +579,160 @@ def test_a_doi_that_cannot_be_written_safely_is_refused(text: str, doi: str, sai
     with pytest.raises(Refused) as raised:
         edit_package_doi(text, doi)
     assert said in str(raised.value)
+
+
+# ------------------------------------------------------------------ round 1 of #467
+
+
+def _answering(document: object, status: int = 201):
+    sent: list[Request] = []
+
+    def answer(request: Request, _timeout: float) -> Response:
+        sent.append(request)
+        return Response(status, {}, json.dumps(document).encode())
+
+    return _client(answer), sent
+
+
+def _clean(message: str) -> None:
+    assert TOKEN not in message and "SECRET" not in message, message
+    assert chr(27) not in message, message
+
+
+def _deposition(**links: str) -> dict:
+    return {"id": 1, "metadata": {"prereserve_doi": {"doi": links.pop("doi", REAL)}},
+            "links": {"bucket": "https://zenodo.org/api/files/b",
+                      "html": "https://zenodo.org/deposit/1", **links}}  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    "planted",
+    [
+        {"doi": f"10.5281/{TOKEN}"},
+        {"bucket": f"https://zenodo.org/api/files/{TOKEN}"},
+        {"html": f"https://zenodo.org/deposit/1?t={TOKEN}"},
+        {"html": "https://zenodo.org/deposit/1" + chr(27) + "[2J"},
+    ],
+)
+def test_a_doi_or_link_holding_the_token_is_refused_before_it_is_recorded(planted) -> None:
+    """Round 1 of #467 (blocking): a DOI or a link a host returns is recorded and printed
+    whole, so one that holds the token, or a character a terminal acts on, is refused."""
+    api, _sent = _answering(_deposition(**planted))
+    with pytest.raises(RemoteError) as raised:
+        zenodo.reserve(api, "zenodo")
+    _clean(str(raised.value))
+    assert "recorded nowhere" in str(raised.value)
+
+
+def test_every_string_a_host_returns_is_said_without_the_token() -> None:
+    """Round 1 of #467 (blocking): a checksum, a file name, a DOI, OSF's md5 and the host of
+    a link, each with the token planted, reach a message without it."""
+    api, _sent = _answering({"checksum": f"md5:{TOKEN}" + chr(27) + "[31m"})
+    with pytest.raises(RemoteError) as raised:
+        zenodo.upload(api, {"bucket": "https://zenodo.org/api/files/b"}, [("a.txt", b"a")])
+    _clean(str(raised.value))
+    api, _sent = _answering({})
+    with pytest.raises(RemoteError) as raised:
+        zenodo.compare(api, {TOKEN: "0" * 32}, {})
+    _clean(str(raised.value))
+    api, _sent = _answering({"metadata": {"prereserve_doi": {"doi": f"10.1/{TOKEN}"}}}, 200)
+    with pytest.raises(RemoteError) as raised:
+        zenodo.describe(api, "zenodo", {"id": 1, "doi": REAL}, {})
+    _clean(str(raised.value))
+    _fields, problem = zenodo.published(api, {"id": 1, "doi": REAL}, {"doi": f"10.1/{TOKEN}"})
+    _clean(str(problem))
+    hashed = _answering({"data": {"attributes": {"extra": {"hashes": {"md5": TOKEN}}}}})[0]
+    osf_api = Client("OSF", ("https://files.osf.io",), TOKEN, "OSF_TOKEN", hashed.transport)
+    with pytest.raises(RemoteError) as raised:
+        osf.upload(osf_api, "ab1cd", [("a.txt", b"a")])
+    _clean(str(raised.value))
+    # A host name is written in small letters, so the token planted in one is too.
+    small = Client("Zenodo", ("https://zenodo.org",), "zt-0123456789abcdefsecret",
+                   "ZENODO_TOKEN", api.transport)  # fmt: skip
+    with pytest.raises(RemoteError) as raised:
+        small.call("GET", f"https://{small.token}.example/x")
+    assert "secret" not in str(raised.value) and "0123456789" not in str(raised.value)
+
+
+def test_an_unexpected_answer_to_a_publication_is_recorded_and_never_sent_again(
+    project: Path, hosts, capsys, monkeypatch
+) -> None:
+    """Round 1 of #467: once the publication is sent, it is recorded with the host's answer
+    before anything can raise, and a run again does not send it twice."""
+    _staged(project, hosts)
+    hosts.hosts.publish_answer = {}
+    typed(monkeypatch, SANDBOX)
+    assert deposit(project, "zenodo-sandbox", "preregistration", "--publish") == 1
+    assert "the publication was sent, and the host answered" in capsys.readouterr().err
+    held = receipt(project, "zenodo-sandbox-preregistration")
+    assert held["publish_sent_on"] and "published_on" not in held
+    assert "the DOI None" in held["publish_answer"]
+    history = yaml.safe_load((project / "deposit" / "history.yaml").read_text("utf-8"))
+    assert history[-1]["action"] == "publish_sent"
+    count = len(hosts.seen)
+    assert deposit(project, "zenodo-sandbox", "preregistration", "--publish") == 1
+    assert "It is not sent again" in capsys.readouterr().err
+    assert len(hosts.seen) == count
+
+
+def test_a_publication_the_host_refuses_is_recorded_too(
+    project: Path, hosts, capsys, monkeypatch
+) -> None:
+    _staged(project, hosts)
+    typed(monkeypatch, SANDBOX)
+    original = hosts.hosts.answer
+
+    def refusing(method: str, path: str, body: bytes):
+        if path.endswith("/actions/publish"):
+            return 500, {"message": "the server tripped"}, {}
+        return original(method, path, body)
+
+    hosts.hosts.answer = refusing
+    assert deposit(project, "zenodo-sandbox", "preregistration", "--publish") == 1
+    held = receipt(project, "zenodo-sandbox-preregistration")
+    assert "HTTP 500: the server tripped" in held["publish_answer"]
+    assert held["publish_sent_on"] and "published_on" not in held
+
+
+@pytest.mark.parametrize("written", [None, "{not json", "[1, 2]"])
+def test_a_zenodo_json_that_cannot_describe_the_draft_stops_before_anything_is_sent(
+    project: Path, hosts, capsys, monkeypatch, written: str | None
+) -> None:
+    """Round 1 of #467: `.zenodo.json` is read before any file is sent, and refused (exit 2)
+    where it is missing, not JSON, or not an object."""
+    from manuscript_guard.deposit import command as local
+
+    real = local.written
+
+    def spoiled(project_, made, every):
+        staged = real(project_, made, every)
+        path = staged.directory / ".zenodo.json"
+        if written is None:
+            path.unlink()
+        else:
+            path.write_text(written, encoding="utf-8")
+        return staged
+
+    monkeypatch.setattr(local, "written", spoiled)
+    root = unfrozen(project)
+    assert deposit(root, "zenodo-sandbox", "preregistration", "--reserve-doi") == 0
+    assert deposit(root, "zenodo-sandbox", "preregistration", "--stage") == 2
+    assert ".zenodo.json" in capsys.readouterr().err
+    assert not [path for method, path, _h, _b in hosts.seen if method == "PUT"]
+
+
+def test_an_osf_project_not_answered_private_is_recorded_and_gets_nothing(
+    project: Path, hosts, capsys
+) -> None:
+    """Round 1 of #467: the project's id is recorded before its answer is judged, so a run
+    again makes no second project, and one not answered private gets nothing, ever."""
+    hosts.hosts.osf_public = True
+    root = unfrozen(project)
+    assert deposit(root, "osf", "preregistration", "--stage") == 1
+    assert "did not answer that it is private" in capsys.readouterr().err
+    held = receipt(project, "osf-preregistration")
+    assert held["id"] == "ab1cd" and held["private"] is False and "staged_on" not in held
+    assert hosts.hosts.files == {}
+    assert deposit(root, "osf", "preregistration", "--stage") == 1
+    assert "did not answer that it is private" in capsys.readouterr().err
+    assert [method for method, *_rest in hosts.seen] == ["POST"]

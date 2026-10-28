@@ -1120,6 +1120,12 @@ def _writes(cwd: Path, tool: str = "Write", **tool_input: str) -> dict:
         "python -m manuscript_guard.cli deposit --target zenodo-sandbox --bundle release \\\n"
         "  --publish",
         'manuscript-guard deposit --target zenodo --bundle release "--publish"',
+        # A quoted `&` ends nothing (round 1 of #467): the words are read as the shells read
+        # them.
+        'manuscript-guard deposit --target zenodo --bundle preregistration --retrospective '
+        '"R&D" --publish',
+        "ZENODO_TOKEN=x manuscript-guard deposit --publish --target zenodo --bundle release",
+        r'& "C:\Tools\mguard.exe" deposit --target zenodo --bundle release --publish',
     ],
 )
 def test_publishing_a_deposit_is_refused_to_an_agent(
@@ -1155,13 +1161,34 @@ def test_staging_or_reserving_a_deposit_is_put_to_the_author(
         "manuscript-guard deposit --target zenodo --bundle release",
         "manuscript-guard deposit --target zenodo --bundle release --dry-run",
         'git commit -m "manuscript-guard deposit --publish"',
-        "manuscript-guard deposit --target zenodo --bundle release; echo --publish",
+        'grep -n "deposit --publish" docs/deposit.md',
     ],
 )
 def test_a_deposit_that_sends_nothing_is_let_through(
     in_claude_code: Path, command: str, capsys
 ) -> None:
     assert run("guard-submission", _shell(in_claude_code, command), capsys) is None
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        'grep -n "manuscript-guard deposit --publish" docs/deposit.md',
+        'echo "manuscript-guard deposit --target zenodo --bundle release --publish" >> notes.md',
+        'gh pr create --body "the author runs manuscript-guard deposit --publish themselves"',
+        "manuscript-guard deposit --target zenodo --bundle release; echo --publish",
+        "manuscript-guard deposit --target zenodo --bundle release --publish $(cat extra)",
+    ],
+)
+def test_a_command_that_only_names_publishing_is_asked_not_refused(
+    in_claude_code: Path, command: str, capsys
+) -> None:
+    """Round 1 of #467: a search of the documentation, an echo or a pull request's body that
+    names the option is put to the person, as the guards of `set` and `checker import` put
+    what they cannot read exactly; only an invocation read exactly is refused."""
+    result = run("guard-submission", _shell(in_claude_code, command), capsys)
+    assert decision(result) == "ask", result
+    assert "does not read exactly" in reason(result)
 
 
 def test_an_edit_of_the_package_doi_is_put_to_the_author(in_claude_code: Path, capsys) -> None:

@@ -44,25 +44,27 @@ def _field(document: object, *path: str) -> object:
     return document
 
 
-def _draft(name: str, document: dict) -> dict:
-    """The draft's id, DOI, bucket and page from a deposition as Zenodo gives one."""
+
+
+def _draft(api: Client, document: dict) -> dict:
+    """The draft's id, DOI, bucket and page from a deposition as Zenodo gives one, each
+    refused where it holds the token or a character a terminal acts on."""
     found = document.get("id")
-    doi = _field(document, "metadata", "prereserve_doi", "doi")
-    bucket = _field(document, "links", "bucket")
     if not isinstance(found, int) or isinstance(found, bool):
-        raise RemoteError(f"{name} answered without the draft's id")
-    if not isinstance(bucket, str) or not bucket:
-        raise RemoteError(f"{name} answered without the draft's bucket")
-    page = _field(document, "links", "html")
-    return {"id": found, "doi": doi if isinstance(doi, str) else None, "bucket": bucket,
-            "page": page if isinstance(page, str) else None}  # fmt: skip
+        raise RemoteError(f"{api.name} answered without the draft's id")
+    bucket = api.kept("bucket", _field(document, "links", "bucket"))
+    if bucket is None:
+        raise RemoteError(f"{api.name} answered without the draft's bucket")
+    doi = _field(document, "metadata", "prereserve_doi", "doi")
+    return {"id": found, "doi": api.kept("DOI", doi), "bucket": bucket,
+            "page": api.kept("page", _field(document, "links", "html"))}  # fmt: skip
 
 
 def reserve(api: Client, target: str) -> dict:
     """Make a draft with its DOI reserved; its id, DOI, bucket and page."""
     answer = api.call("POST", _depositions(target),
                       document={"metadata": {"prereserve_doi": True}}, expect=(201,))  # fmt: skip
-    draft = _draft(api.name, answer)
+    draft = _draft(api, answer)
     if draft["doi"] is None:
         raise RemoteError(f"{api.name} made draft {draft['id']} and reserved no DOI for it")
     return draft
@@ -94,18 +96,20 @@ def held(api: Client, target: str, draft: int) -> dict[str, str]:
     return listed
 
 
-def compare(name: str, listed: dict[str, str], sent: dict[str, str]) -> None:
-    """Refuse a draft whose files are not exactly those sent, by name and md5."""
+def compare(api: Client, listed: dict[str, str], sent: dict[str, str]) -> None:
+    """Refuse a draft whose files are not exactly those sent, by name and md5. A name only
+    the host gave is said as `Client.plain` says a host's words."""
     other = sorted(set(listed) - set(sent))
     if other:
-        raise RemoteError(f"the draft at {name} holds files the bundle does not: "
-                          f"{', '.join(other)}; delete them on its page first")  # fmt: skip
+        raise RemoteError(f"the draft at {api.name} holds files the bundle does not: "
+                          f"{api.plain(', '.join(other))}; delete them on its page "
+                          "first")  # fmt: skip
     missing = sorted(set(sent) - set(listed))
     if missing:
-        raise RemoteError(f"the draft at {name} lacks {', '.join(missing)}")
+        raise RemoteError(f"the draft at {api.name} lacks {', '.join(missing)}")
     changed = sorted(file for file in sent if listed[file] != sent[file])
     if changed:
-        raise RemoteError(f"the draft at {name} holds other bytes than the bundle for "
+        raise RemoteError(f"the draft at {api.name} holds other bytes than the bundle for "
                           f"{', '.join(changed)}")  # fmt: skip
 
 
@@ -125,8 +129,8 @@ def upload(api: Client, draft: dict, files: list[tuple[str, bytes]]) -> dict[str
                               "stopped, and the bundle is not recorded as staged")  # fmt: skip
         if theirs != mine:
             raise RemoteError(f"{api.name} holds {name} as other bytes than were sent (md5 "
-                              f"{theirs}, sent {mine}); stopped, and nothing after it was "
-                              "sent")  # fmt: skip
+                              f"{api.plain(theirs)}, sent {mine}); stopped, and nothing after "
+                              "it was sent")  # fmt: skip
         sent[name] = mine
     return sent
 
@@ -138,21 +142,31 @@ def describe(api: Client, target: str, draft: dict, metadata: dict) -> None:
                       document={"metadata": wanted}, expect=(200,))  # fmt: skip
     kept = _field(answer, "metadata", "prereserve_doi", "doi")
     if draft.get("doi") and kept != draft["doi"]:
-        raise RemoteError(f"{api.name} answered the metadata with the DOI {kept}, and the "
-                          f"draft's reserved DOI is {draft['doi']}")  # fmt: skip
+        raise RemoteError(f"{api.name} answered the metadata with the DOI {api.plain(kept)}, "
+                          f"and the draft's reserved DOI is {draft['doi']}")  # fmt: skip
 
 
-def publish(api: Client, target: str, draft: dict) -> dict:
-    """Publish the draft; its DOI and page as Zenodo gives them."""
-    answer = api.call("POST", f"{_depositions(target)}/{draft['id']}/actions/publish",
-                      expect=(202,))  # fmt: skip
+def request_publish(api: Client, target: str, draft: dict) -> dict:
+    """Send the request that publishes the draft, and return what Zenodo answered. After this
+    call nothing may be taken back: the caller records it before reading the answer."""
+    return api.call("POST", f"{_depositions(target)}/{draft['id']}/actions/publish",
+                    expect=(202,))  # fmt: skip
+
+
+def published(api: Client, draft: dict, answer: dict) -> tuple[dict, str | None]:
+    """The DOI and page of a published draft, as Zenodo answered; and what in the answer is
+    not as expected, or None. It never raises: the record is published by then."""
     doi = answer.get("doi") or _field(answer, "metadata", "prereserve_doi", "doi")
     if doi != draft.get("doi"):
-        raise RemoteError(f"{api.name} published draft {draft['id']} with the DOI {doi}, and "
-                          f"the DOI it reserved was {draft.get('doi')}")  # fmt: skip
-    page = _field(answer, "links", "html") or _field(answer, "links", "record_html")
-    return {"doi": doi, "page": page if isinstance(page, str) else draft.get("page")}
+        return {}, (f"{api.name} answered the publication of draft {draft['id']} with the DOI "
+                    f"{api.plain(doi)}, and the DOI it reserved was {draft.get('doi')}")
+    try:
+        page = api.kept("page", _field(answer, "links", "html")
+                        or _field(answer, "links", "record_html"))  # fmt: skip
+    except RemoteError as exc:
+        return {"doi": doi}, str(exc)
+    return {"doi": doi, "page": page or draft.get("page")}, None
 
 
 __all__ = ["HOSTS", "NAMES", "TOKENS", "client", "compare", "describe", "held", "md5",
-           "publish", "reserve", "upload"]  # fmt: skip
+           "published", "request_publish", "reserve", "upload"]  # fmt: skip

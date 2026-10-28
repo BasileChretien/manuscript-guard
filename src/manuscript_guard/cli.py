@@ -2318,6 +2318,14 @@ def cmd_package(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_deposit(args: argparse.Namespace) -> int:
+    """Stage a bundle for a target in build/deposit/, once the data custodian's checks pass;
+    nothing is sent anywhere (`deposit/command.py`)."""
+    from manuscript_guard.deposit.command import run
+
+    return run(args)
+
+
 def _root_citation(project, plan, *, dry_run: bool) -> list[str]:
     """What `--root-citation` did, or would do, at the project's root: each file written
     where none was, and each kept, with the fields where it differs from the package's."""
@@ -3580,6 +3588,12 @@ def cmd_sign(args: argparse.Namespace) -> int:
     from manuscript_guard.panel.custodian import send_signables
     from manuscript_guard.sign_offs import CORRESPONDING, ROLES, holder, is_holder, sign
 
+    # As `deposit` refuses it where it labels nothing (round 2 of #460).
+    if args.retrospective is not None and not args.finding.startswith("DEPOSIT/"):
+        print(f"manuscript-guard: --retrospective is for a plan's deposit, "
+              f"DEPOSIT/custodian/<target>/preregistration, and {args.finding} is not a "
+              "deposit's", file=sys.stderr)  # fmt: skip
+        return 2
     project, _ = load_project(args.path)
     _namespace, results, _literature, _loaded = load_namespace(project)
     standing = signables(project, results) + override_signables(project) + \
@@ -3591,6 +3605,19 @@ def cmd_sign(args: argparse.Namespace) -> int:
         standing += package_signables(project, results, notes)
         for note in dict.fromkeys(notes):
             print(f"manuscript-guard: {note}", file=sys.stderr)
+    # A bundle's, only where one is asked for: it is worked out from every file it holds.
+    if args.finding.startswith("DEPOSIT/"):
+        from manuscript_guard.deposit.bundles import DepositError
+        from manuscript_guard.deposit.command import deposit_signable
+
+        try:
+            bundled = deposit_signable(project, results, args.finding, args.retrospective)
+        except DepositError as exc:
+            if str(exc):
+                print(f"manuscript-guard: {args.finding} cannot be planned: {exc}",
+                      file=sys.stderr)  # fmt: skip
+            return exc.status
+        standing += [bundled] if bundled is not None else []
     found = [signable for signable in standing if signable.id == args.finding]
     if not found:
         ids = ", ".join(signable.id for signable in standing) or "none"
@@ -4942,7 +4969,8 @@ COMMAND_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Analysis & Data", ("verify", "values", "models", "dictionary", "palettes", "related")),
     ("Literature", ("lookup", "search", "sync-bib", "sync-sources", "passages")),
     ("Co-Authors & Review", ("review", "checker", "import", "respond", "approve", "sign")),
-    ("Build, Release & Communicate", ("render", "build", "submit", "package", "proof")),
+    ("Build, Release & Communicate",
+     ("render", "build", "submit", "package", "deposit", "proof")),  # fmt: skip
 )
 HIDDEN_COMMANDS = frozenset({"hook"})
 
@@ -5112,6 +5140,37 @@ def build_parser() -> argparse.ArgumentParser:
                          "co-authors' checking, made from the records with pandoc; implies "
                          "--ro-crate")  # fmt: skip
     package.set_defaults(func=cmd_package)
+
+    from manuscript_guard.deposit.bundles import BUNDLES, TARGETS
+
+    deposit = sub.add_parser(
+        "deposit",
+        help="stage a bundle for Zenodo, OSF, arXiv, medRxiv or a GitHub Pages site in "
+        "build/deposit/, with a deterministic archive, once the data custodian's checks pass; "
+        "it sends nothing",
+        description="Writes build/deposit/<target>-<bundle>/ and a .zip of it, or for arXiv "
+        "a .tar.gz of the LaTeX source, and lists what went in and what stayed out. The data "
+        "custodian's checks come first and stop it: a count below the minimum in the results "
+        "it carries, or for a preprint in the manuscript; an input declared restricted that "
+        "git tracks or that it would carry; and, where the custodian restricts sending, a "
+        "bundle they have not signed off (DEPOSIT/custodian/<target>/<bundle>). A plan the "
+        "first results were written from is no pre-registration, and goes only with "
+        "--retrospective. A release and a preprint are refused while `check --stage submission` "
+        "fails. Nothing is uploaded and nothing is pushed (docs/deposit.md).",
+    )
+    deposit.add_argument("path", nargs="?", type=Path, default=Path.cwd())
+    deposit.add_argument("--target", required=True, choices=TARGETS,
+                         help="where the bundle is for")  # fmt: skip
+    deposit.add_argument("--bundle", required=True, choices=BUNDLES,
+                         help="what it holds: the analysis plan, the release of the package "
+                         "and how it was checked, or the preprint")  # fmt: skip
+    deposit.add_argument("--dry-run", action="store_true",
+                         help="list what would go in and what would stay out, and write "
+                         "nothing in build/deposit/")  # fmt: skip
+    deposit.add_argument("--retrospective", metavar="WHY",
+                         help="deposit a plan the first results were already written from, "
+                         "labelled as deposited after them, with why it is deposited now")
+    deposit.set_defaults(func=cmd_deposit)
 
     journal = sub.add_parser(
         "journal",
@@ -5392,6 +5451,10 @@ def build_parser() -> argparse.ArgumentParser:
         "G15/model-few-events/adjusted",
     )  # fmt: skip
     sign_.add_argument("--note", help="anything the person says with the sign-off")
+    sign_.add_argument("--retrospective", metavar="WHY",
+                       help="for a plan deposited after its first results "
+                       "(DEPOSIT/custodian/<target>/preregistration): the reason `deposit` was "
+                       "given, which its README holds")  # fmt: skip
     sign_.set_defaults(func=cmd_sign)
 
     explain = sub.add_parser("explain", help="show how each number in a file was classified")

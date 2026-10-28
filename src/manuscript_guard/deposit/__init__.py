@@ -2,7 +2,9 @@
 ran with and how to run it again, and never the data a custodian keeps. `plan` decides what
 goes in and what stops it, `counts` reads the custodian's minimum across a whole fragment,
 `texts` and `readme` write what the package says of itself, and `write` makes the folder and
-the .zip. Uploading is the author's: nothing here sends anything anywhere."""
+the .zip. `command` stages a bundle for a repository, a preprint server or a site, from
+`bundles` and `preprint`, once `preflight` has asked what the data custodian forbids, and
+`archive` writes it. Uploading is the author's: nothing here sends anything anywhere."""
 
 from manuscript_guard.deposit.counts import SMALL_COUNTS, count_in_cell, small_counts
 from manuscript_guard.deposit.plan import (

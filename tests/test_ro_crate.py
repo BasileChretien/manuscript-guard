@@ -591,10 +591,13 @@ def test_a_row_past_a_refusal_says_no_heading_is_known(project: Path) -> None:
 
 
 def test_a_file_nothing_inputs_is_not_in_bound_md(project: Path) -> None:
+    """Nor warned of where nothing is refused: a draft kept beside the paper, which `check`
+    already warns of, is no binding BOUND.md failed to place."""
     ready(project)
     _latex(project)
     (project / "manuscript" / "notes.tex").write_text(
         "Kept aside: the estimate was \\mg{results.ror.ci90_low}.\n", encoding="utf-8")
+    assert "package-bound-not-read" not in _codes(project)
     package(project)
     assert "notes.tex" not in (built(project) / "BOUND.md").read_text(encoding="utf-8")
 

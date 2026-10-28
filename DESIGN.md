@@ -16232,15 +16232,22 @@ Open, recorded as each change landed:
   the R packages the R emitter recorded and the versions the analysis declared as software.
   An R analysis that sources the emitter from a path outside the project, as the tests do,
   runs only where that path is.
-- **BOUND.md places a LaTeX binding only as far as the reader reads the manuscript.** The
-  reader stops at the first part it refuses, in a file or at an `\input` it cannot
-  follow. A binding printed after that place, in the same file or in any file read after
-  it, is listed with "after a part the reader refused; heading not known" for its
-  section; a file the reader no longer reaches is read as one nothing inputs, and its
+- **BOUND.md places a LaTeX binding only as far as the reader reads the manuscript.** A
+  refusal in a file stops the reading of that file; one at an `\input` the reader cannot
+  follow, or of the file's encoding, stops nothing, but BOUND.md takes the first refusal of
+  either kind as the place past which it knows no heading. A binding printed after that
+  place, in the same file or in any file read after it, is listed with "after a part the
+  reader refused; heading not known" for its section, though a later file's own heading
+  may be known; a file the reader no longer reaches is read as one nothing inputs, and its
   bindings are not listed. The package warns of both (`package-bound-not-read`), naming
-  the refusal and each such file that holds a binding. A refusal with nothing bound after
-  it, one in the author's `.sty`, and a second document beside the entry are not warned
-  of. A binding in a `.sty` file is not listed.
+  the refusal and each such file that holds a binding; a loose file holding a binding in a
+  document with no refusal is a draft or a figure's source, which `check` warns of, and the
+  package does not. A refusal with nothing bound after it, one in the author's `.sty`, and a
+  second document beside the entry are not warned of. A binding in a `.sty` file is not
+  listed. A file input twice is placed by the first input met in the tree's order, not in
+  print order, so a binding after its second input may miss the mark. A file the reader
+  never reads (under a `_` folder, not UTF-8, or input by a class) is in no document, and
+  its bindings are neither listed nor warned of; `check` refuses such an input.
 - **The crate states what the records hold, and the records hold less than a reader may
   think.** Which results a figure was drawn from is recorded nowhere (`render.record` takes
   the script and the files drawn), so RELATIONS.md always lists it as not recorded; nor which

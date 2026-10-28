@@ -172,12 +172,14 @@ def latex_unread(project: Project) -> str | None:
         loose = [f"manuscript/{source.path}" for source in document.sources
                  if source.loose and source.path.lower().endswith(".tex")
                  and any(p.namespace in KINDS for p in bindings(source)[0])]  # fmt: skip
-        if loose:
-            first = _first_refusal(document)
+        # A loose file is one a refusal may have kept the reader from; with no refusal it is
+        # a draft or a figure's source, which `check` already warns of.
+        first = _first_refusal(document) if loose else None
+        if first:
             said.append(", ".join(loose) + (" holds" if len(loose) == 1 else " hold")
                         + " bindings, and nothing the reader reads inputs "
                         + ("it" if len(loose) == 1 else "them") + ", so they are not listed"
-                        + (f" (the reader stops at {first[1]})" if first else ""))
+                        + f" (the reader stops at {first[1]})")
     past = next((where for _row, where in _latex_rows(project) if where), None)
     if past is not None:
         said.append(f"past {past}, which the reader refuses, each binding is listed with no "

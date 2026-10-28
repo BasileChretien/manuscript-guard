@@ -7788,6 +7788,39 @@ count alone: a paragraph with words outside a table, numbered in the list's coun
 the list not numbered by place; one in another count, an empty one, or one in a table's cell
 is not looked at.
 
+### A table's totals, and a count held back that they give away (2026-10-28)
+
+A total printed beside its counts is arithmetic a reader can do, and nothing did it.
+`stats/margins.py` reads a table, a paper's in `audit` or an emitted one in `check`, as
+lines: a total and the two or more counts it totals. A row labelled Total, All or Overall,
+anchored at both ends, any case, nothing after the word but an n, an "n (%)", footnote marks
+and punctuation, totals the rows above it back to the last row with no count in it or the
+last total row; a column so headed totals the columns before it back to the last total
+column or the labels. A count is a whole number or the n of an n (%) that `stats/shares.py`
+reads as one; a count held back, "<5" or "≤4", is the interval from 0 to the largest its
+bound allows (`gates.custodian.held_largest`, which `_small` uses too). A line with a cell
+that is no count is not read, nor a row or a column that names another statistic, a P or a
+ratio. One routine, `feasible`, serves both checks: each member's range given the total is
+the total less the others' highs up to the total less their lows, within its own, and no
+range at all is a total the printed counts cannot make, `sum-off`. A range of one value is
+a count held back that the line gives away. Categories whose shares add up to 100
+(`shares._summed`) and whose counts add up to more than their column's header n are the one
+contradiction read of a header n (`over-header-n`); fewer is missing data.
+
+In `check`, G2's `count-recoverable` (from internal review, as `count-below-minimum`) reads
+each emitted table the manuscript or the supplement binds, each declared sum, and each step
+and the arms of each flow whose keys are all bound; a step whose reasons overlap is no
+partition and is not read. It fails where a printed total gives the count away, and warns
+where only a column's header n does, since the n is the categories' total only where none of
+the column lacks the characteristic (the author, 2026-10-28). Nought is no small cell, so a
+count given away as 0 is not said. `deposit`'s preflight asks the same of every table of the
+results files it carries, through `recoverable_cells`. In `audit` the Arithmetic section
+lists the totals off and the categories over their n, and "Small cells recoverable by
+subtraction" each count given away with its value, at `--minimum-cell-count` or, without
+one, from 1; `--strict` counts `sum-off`, `over-header-n` and a count a printed total gives
+away, and not one only the header n gives (the author's rule of 2026-10-28: exact findings
+only). Two lines are never put together: see Known gaps.
+
 ## A paper written in Word is brought in through pandoc's tree
 
 The route the skills gave for moving a Word paper into a project was `pandoc paper.docx -t
@@ -8630,8 +8663,8 @@ the point. First the data custodian's checks (`deposit/preflight.py`): the small
 the results files the bundle carries, through `package`'s own reading of them and its
 sign-off (`PACKAGE/custodian/small-counts`); for a preprint G2's `count-below-minimum` over
 the manuscript, since a preprint prints it; `check_restricted_inputs`; and Task 3's check of
-a masked cell recovered by subtraction, through the one entry point it will fill,
-`gates.custodian.recoverable_cells`, which finds nothing yet (see Known gaps). A release is
+a masked cell recovered by subtraction from a table the bundle carries,
+`gates.custodian.recoverable_cells` (`count-recoverable`). A release is
 taken to carry the results files the package holds, and so is the site, whose page shows
 them; a plan and a preprint carry none. Anything these find stops the deposit before
 anything is built. Then a release, the site that is its page, and a preprint are held to
@@ -17997,11 +18030,29 @@ What papers converted from Word showed (see "What papers converted from Word sho
     interval after its value and no citation, so the entries it cites can be reported as
     cited nowhere (round 1 of #463).
 
-- **A masked cell recovered by subtraction is not looked for.** `deposit`'s preflight calls
-  `gates.custodian.recoverable_cells`, the one entry point for Task 3's check that a count
-  held back ("<5") cannot be worked out from a row's total and its other cells; it finds
-  nothing yet, so a bundle whose results let a reader subtract their way to a small count is
-  deposited. The deposit depends on Task 3 for it.
+- **A table's totals are read in English, as partitions, a line at a time** (Task 3, PR 2,
+  `stats/margins.py`).
+  - Only Total, All and Overall, alone in their cell, make a total: "Gesamt", "Totale",
+    "All patients" and "Subtotal" total nothing, and their lines are not read.
+  - A total is taken to be the sum of the counts above it or before it. One that is not, a
+    "Total" of patients with any of several events that overlap, or rows that are subtypes
+    of the row above them, is said to be off when it is right (`sum-off`, a false alarm).
+  - A row of whole-number measures, a median of 24 months printed bare, under a Total
+    column is read as counts unless its label names the statistic.
+  - A total header spanning several columns, the "n | %" pairs under one, totals none of
+    them.
+  - A characteristic's categories are a line under their column's header n only where they
+    stand under a label of their own; a table that is one characteristic with no such label
+    has no header line.
+- **A count held back is worked out a line at a time** (Task 3, PR 2). Each line, a total
+  and its counts, is read alone: a cell that only its row and its column together pin down,
+  a count worked out from two tables, from a table and a sentence, or from another
+  publication of the same data, is not found. A count held back is taken to be anything from
+  0 to its bound, so a cell that must be at least 1 (a category no row can lack) has a wider
+  range than it does, and a count that this would disclose is not said: the 0 errs to
+  silence. A sum or a flow is read only where every key of it is bound; one printed as a
+  typed number beside the bound ones is not seen. `deposit` reads the tables of the results
+  files it carries, and the values in them through `deposit.counts`, not their sums.
 - **A deposit is staged, not sent.** `deposit` uploads nothing in this version: the Zenodo
   and OSF clients, the receipts and the DOI written to `paper.yaml` are the next pull
   request's. arXiv and medRxiv have no interface to send through, so what they accept, their
@@ -18112,6 +18163,12 @@ What papers converted from Word showed (see "What papers converted from Word sho
   is already done, and not the status line's.
 
 Closed since, and why each mattered (an open gap goes above this line):
+
+- **A masked cell recovered by subtraction was not looked for (Task 3, PR 2, 2026-10-28).**
+  `deposit`'s preflight called `gates.custodian.recoverable_cells`, which found nothing, so a
+  bundle whose results let a reader subtract their way to a small count was deposited. It
+  reads each table carried now, and G2 the tables, sums and flows the manuscript binds; see
+  "A table's totals, and a count held back that they give away".
 
 - **`audit` refused a LaTeX paper (Task 3, PR 1, 2026-10-28).** A `.tex` named was refused,
   and a folder of them had nothing to audit, so a LaTeX paper outside a project had its

@@ -10,8 +10,9 @@ whatever the bundle and wherever it goes (`first`):
   (`count-below-minimum`): a preprint prints the manuscript;
 - every input declared restricted that git tracks (`restricted-input-tracked`), a copy of the
   data outside the custodian's hands already;
-- every masked count a reader could work out from the rest of the results files carried
-  (`gates.custodian.recoverable_cells`, which finds nothing until Task 3 writes it).
+- every count held back that a table of the results files carried gives away by one of
+  its totals (`gates.custodian.recoverable_cells`, `count-recoverable`): a "<5" whose row's
+  total and other cells are printed.
 
 Then, once the bundle is planned (`last`): no file of it is an input declared restricted, by
 its name or by the file it is, and, where the custodian restricts sending, they have signed

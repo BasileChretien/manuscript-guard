@@ -84,8 +84,13 @@ inputs is named under `Passed over`. There is no reader for a PDF
 manuscript. `--figures` takes SVG and PDF files with a text layer; one with no text at all,
 such as a matplotlib SVG with its labels drawn as outlines, is listed as unreadable rather
 than audited. `--strict` exits 1 when a number is in no output, a paper, a figure or a
-stretch of one could not be read, or no number was read, and the audit exits 2 when nothing
-given could be read at all, or `--dry-run` or `--lookup-cache` is given without `--lookup`.
+stretch of one could not be read, no number was read, or the arithmetic of a table is
+exactly wrong (a total off, categories over their column's n, a count held back that a
+printed total gives away), and the audit exits 2 when nothing given could be read at all,
+`--minimum-cell-count` is below 1, or `--dry-run` or `--lookup-cache` is given without
+`--lookup`. Ask the author for the data custodian's minimum and pass it as
+`--minimum-cell-count N`; without it a count held back is taken to hide every count from 1
+to its bound.
 `--json` gives the report for a script, and on exit 2 an object whose `ok` is false, with
 the reason.
 
@@ -101,13 +106,16 @@ if they will audit again.
 ## 3. Read the report
 
 What was read and what was not comes first, then a section for each check: `Membership`,
-`Arithmetic`, `Writing (G6) and Language (G14)`, `References (G7)`. Membership lists the
+`Arithmetic`, `Small cells recoverable by subtraction`, `Writing (G6) and Language (G14)`,
+`References (G7)`. Membership lists the
 unmatched numbers by file, up to 40 per file and then only a count, followed
 by `What a match is worth here`: the
 share of integers 1–100, of integers 1–1000, and of two-decimal values that would match by
 chance against this backing set, with a verdict. Arithmetic lists the numbers that do not
 fit the ones beside them, a P and its statistic or an n (%) and its denominator, which
-needs no outputs. Report each section apart; a finding of G6 or G14 is about the words, and
+needs no outputs, and apart a table's total its counts do not add up to. Small cells lists
+each count held back ("<5") that a total gives away, with the count it can only be: a
+disclosure to report to the author before the paper goes anywhere, never to work round. Report each section apart; a finding of G6 or G14 is about the words, and
 no evidence about the numbers.
 
 Two things about the list. `line N` is a line of the extracted text, which in a `.docx` is

@@ -151,7 +151,9 @@ is: a preprint is public, and held to the submission's standard.
 stops it before anything is built or written: a count below `custodian.minimum_cell_count`
 in a results file the bundle carries (a release carries those the package holds; a plan and
 a preprint carry none), and for a preprint a count the manuscript binds below it (G2's
-`count-below-minimum`); an input declared restricted that git tracks; and, once the bundle
+`count-below-minimum`); a count held back ("<5") that a total of a table the bundle
+carries gives away by subtraction (G2's `count-recoverable`, as `check` reads a table the
+manuscript binds); an input declared restricted that git tracks; and, once the bundle
 is planned, a file of it that is an input declared restricted. Where the custodian restricts
 sending, they sign the bundle off as its list of files and their digests stands:
 `manuscript-guard sign --as <them> --finding DEPOSIT/custodian/<target>/<bundle>`, with the

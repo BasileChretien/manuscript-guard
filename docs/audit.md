@@ -24,7 +24,8 @@ so on its first line, "No outputs given: no number was compared with the analysi
 needs no outputs is read all the same: the numbers against each other, the words and the
 reference list. The audit exits 2 when it did not happen: a path that is not there, a
 folder with no paper in it, papers none of which could be read, outputs named in `--against`
-none of which could, or `--dry-run` or `--lookup-cache` given without `--lookup`. With
+none of which could, `--minimum-cell-count` below 1, or `--dry-run` or `--lookup-cache`
+given without `--lookup`. With
 `--json` it then prints `{"ok": false, "error": ...}`, with the reason, as well as saying it
 on stderr.
 
@@ -33,12 +34,14 @@ The report comes in sections, after what was read and what was not:
 | Section | What it holds | Counted by `--strict` |
 |---|---|---|
 | Membership | each number against the outputs, and what a match is worth there | a number in no output |
-| Arithmetic | a P and its statistic, an estimate and its interval, an n (%) and its denominator, a mean of whole numbers and its n | no |
+| Arithmetic | a table's totals and the counts they total, a characteristic's categories and their column's n; a P and its statistic, an estimate and its interval, an n (%) and its denominator, a mean of whole numbers and its n | a total off, categories over their n |
+| Small cells recoverable by subtraction | each count held back ("<5") that a total beside it gives away, with the count it can only be | one a printed total gives away |
 | Writing (G6) and Language (G14) | what `check` says of the words, on a project made for the paper | no |
 | References (G7) | the reference list counted, its numbered citations held to it, and with `--lookup` what the registries say | no |
 
 `--strict` also counts a paper, a figure or a stretch of one that could not be read, and an
-audit that read no number. `--json` prints the report in the shape `check --json` gives,
+audit that read no number. Of the arithmetic it counts what is exact, and nothing that rests
+on reading a sentence or rounding (the author, 2026-10-28). `--json` prints the report in the shape `check --json` gives,
 each finding with its section and whether `--strict` counts it; `ok` is what `--strict`
 would say.
 
@@ -135,6 +138,32 @@ up to 100, and a share of its categories' own total, where they do, are not list
 subtype of another row, or a share of those with data. A row whose label carries a footnote
 marker is listed as uncertain, since a note may give it another denominator. Pipe tables are
 read in Markdown, and every table in a .docx.
+
+**Totals.** A row labelled Total, All or Overall, in any case and with nothing after the
+word but an n ("Total (n = 1,200)"), an "n (%)", footnote marks and punctuation, totals the
+counts of the rows above it, back to the last row with no count in it, a characteristic's
+own label, or the last total row; a column so headed totals the counts of the columns before
+it, back to the last total column or the column of labels. "Total cholesterol", "Overall
+survival" and "All other drugs" are no totals. A count is a whole number, "1,200", or the
+count of an n (%) read as one; a cell held back, "<5" or "≤4", is every count from 0 to the
+largest its bound allows. A line with a cell in it that is no count (a dash, an empty cell,
+a mean and its SD) is not read, nor a column headed by a P, a ratio, a mean or a "%" with no
+n. A total its counts do not add up to is listed, `sum-off`, with what they add up to.
+Where a characteristic's categories have shares that add up to 100 and counts that add up to
+more than the n of their column's header, that is listed too, `over-header-n`; fewer is what
+missing data look like, and is not said.
+
+**Small cells recoverable by subtraction.** A count printed "<5" because the data custodian
+forbids printing it is printed all the same where a total and the other counts beside it
+are: the total less the others is the count. Each line, a total and its counts, is read for
+the range each count held back can be, the total less the others' highest up to the total
+less their lowest, within its own bound; where that is one count it is listed with that
+count. `--minimum-cell-count N` gives the custodian's minimum: a count of N or more given
+away is not listed. Without it, any count from 1 is: the cell held back says it hides what
+it holds. A count only a column's header n gives away is listed apart and not counted, since
+the n is the categories' total only where none of the column lacks the characteristic.
+Each line is read on its own: a count that only a row and a column together give away is not
+found.
 
 A mean of whole numbers, answers on a Likert-type scale or a count, is a whole total over
 its n, so not every mean can be printed for it: 28 answers average 3.46 or 3.50, never 3.47

@@ -202,6 +202,31 @@ def test_a_small_count_in_the_results_stops_a_release_before_anything_is_built(
     assert not (project / "build" / "package").exists()
 
 
+def _given_away(document: dict) -> None:
+    """The two-by-two table with a total row, which gives the "<5" held back away: 197
+    less 194 is 3. The manuscript binds the table; a deposit carries it whether or not."""
+    document["tables"]["two_by_two"]["rows"] = [
+        ["example-drug", "<5", "349"], ["All other drugs", "194", "3380"],
+        ["Total", "197", "3729"]]  # fmt: skip
+
+
+def test_a_count_a_carried_tables_total_gives_away_stops_a_release(
+    project: Path, capsys
+) -> None:
+    ready(project)
+    minimum(project, minimum_cell_count=5)
+    edit_fragment(project, _given_away)
+    assert deposit(project, "zenodo", "release") == 1
+    said = " ".join(capsys.readouterr().out.split())
+    shown = "table.two_by_two in results/01_disproportionality.json: <5 in row 'example-drug'"
+    assert shown in said
+    assert "can only be 3" in said and "Nothing is built" in said
+    assert nothing_written(project)
+    # A plan carries no results, and their tables do not stop it.
+    unfrozen(project)
+    assert deposit(project, "zenodo", "preregistration") == 0
+
+
 def test_a_plan_carries_no_results_and_their_counts_do_not_stop_it(project: Path) -> None:
     unfrozen(project)
     minimum(project, minimum_cell_count=5)

@@ -1512,6 +1512,52 @@ def test_a_count_below_the_custodians_minimum_is_not_printed(project: Path) -> N
     assert "count-below-minimum" in codes(report)
 
 
+def _two_by_two(root: Path, first: str, total: str = "197") -> None:
+    """The example's two-by-two table with a total row, its first cell printed `first`."""
+    fragment = next((root / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["tables"]["two_by_two"]["rows"] = [
+        ["example-drug", first, "349"], ["All other drugs", "194", "3380"],
+        ["Total", total, "3729"]]  # fmt: skip
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+
+
+def test_a_count_held_back_that_a_bound_tables_total_gives_away_fails(project: Path) -> None:
+    """Task 3: "<5" beside a total row is 197 less 194, which is 3. G2's count-recoverable
+    fails from internal review, as count-below-minimum does; with no total that gives it,
+    two counts held back where it could be several, or a count printed as it is, it says
+    nothing."""
+    from manuscript_guard.cli import _run_gates
+
+    _custodian(project, 5)
+    _two_by_two(project, "<5")
+    report, _project, _chosen, _deferred = _run_gates(project, stage="drafting")
+    assert "count-recoverable" not in {f.code for f in report.failures}
+    report, _project, _chosen, _deferred = _run_gates(project, stage="internal-review")
+    found = [f for f in report.findings if f.code == "count-recoverable"]
+    assert [(f.severity, f.gate) for f in found] == [("fail", "G2")]
+    assert "can only be 3" in found[0].message
+    _two_by_two(project, "3")
+    report, _project, _chosen, _deferred = _run_gates(project, stage="internal-review")
+    assert "count-recoverable" not in codes(report)
+
+
+def test_a_total_its_counts_do_not_add_up_to_fails_an_audit_under_strict(
+    tmp_path: Path,
+) -> None:
+    """Task 3: a total row is held to the rows above it, exactly, and --strict counts it."""
+    from manuscript_guard.cli import main
+
+    paper = tmp_path / "paper.md"
+    table = ("| | Cases | Controls |\n|---|---|---|\n| Men | 60 | 50 |\n| Women | 40 | 47 |\n"
+             "| Total | 100 | 97 |\n")  # fmt: skip
+    paper.write_text(f"# Results\n\n{table}", encoding="utf-8")
+    assert main(["audit", str(paper), "--strict"]) == 0
+    paper.write_text(f"# Results\n\n{table.replace('| 47 |', '| 41 |')}", encoding="utf-8")
+    assert main(["audit", str(paper), "--strict"]) == 1
+
+
 def test_set_moves_the_stage_and_not_the_lines_that_look_like_it(project: Path) -> None:
     """`set stage` writes the setting at the top level of paper.yaml, and the check then
     holds the paper to it: a small count fails from internal review. A regular expression

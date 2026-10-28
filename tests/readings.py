@@ -1131,6 +1131,34 @@ def _table_shares() -> Reading:
     return read
 
 
+@reading("table margins")
+def _table_margins() -> Reading:
+    """Each pipe table's totals its counts do not add up to, with what is said of each; its
+    characteristics whose categories add up to more than their column's n; and each count it
+    holds back that a total gives away, at a data custodian's minimum of five and with none,
+    as `audit` and G2 read them."""
+    from manuscript_guard.gates.custodian import recoverable
+    from manuscript_guard.stats.margins import over_n, said, sums_off
+    from manuscript_guard.text.tables import markdown_tables
+
+    def read(text: str) -> dict[str, list[list[Any]]]:
+        tables = markdown_tables(text)
+
+        def held(minimum: int | None) -> list[list[Any]]:
+            return [[found.member.count.line, found.value, found.line.explicit, said(found)]
+                    for table in tables for found in recoverable(table, minimum)]  # fmt: skip
+
+        return {
+            "off": [[line.total.count.line, wrong] for table in tables
+                    for line, wrong in sums_off(table)],
+            "over": [[found.line, found.message] for table in tables for found in over_n(table)],
+            "five": held(5),
+            "none": held(None),
+        }  # fmt: skip
+
+    return read
+
+
 @reading("whole-number means")
 def _whole_number_means() -> Reading:
     """Each mean in a pipe table's rows the auditor names, as it is printed, with its

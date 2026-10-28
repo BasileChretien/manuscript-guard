@@ -2462,3 +2462,23 @@ def test_a_steps_script_that_is_not_there_is_said_by_build(
     said = capsys.readouterr().out
     assert ("methods: analysis/01_disproportionality.py, where the run recorded step(s) ror, ci, "
             "signal, adjusted, is not there, so no code is shown for them") in said, said
+
+
+def test_impact_says_when_the_methods_could_not_be_read(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from manuscript_guard.checking.store import Decision, _append
+    from manuscript_guard.cli import load_project
+    from manuscript_guard.contracts import load_namespace
+    from manuscript_guard.impact import impact_of
+
+    loaded = load_project(project)[0]
+    _namespace, results, literature, _ = load_namespace(loaded)
+    _append(project, [Decision("2026-10-28T09:00:00+09:00", "Ada Example", "x", "methods",
+                               "a Methods text", "ok", "", "0" * 16, "b")])  # fmt: skip
+    (project / "results" / "broken.json").write_text("{ not json", encoding="utf-8")
+    capsys.readouterr()
+    impact_of(loaded, results, literature, project / "manuscript" / "main.md")
+    said = capsys.readouterr().err
+    assert "not read, so no answer on a Methods item is listed" in said, said
+    assert "broken.json" in said

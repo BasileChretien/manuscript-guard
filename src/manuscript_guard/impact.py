@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
@@ -288,7 +289,12 @@ def _answers(project: Project, read: set[str]) -> list[str]:
     decisions = read_decisions(project.root)
     if not decisions:
         return []
-    document, _unread = produce(project)
+    document, unread = produce(project)
+    for said in unread:
+        if said.startswith("methods: "):
+            # As the checker's verbs say it: with no Methods item made, an answer on one is
+            # matched to no file, and its absence here is not that the file has none.
+            print(f"not read, so no answer on a Methods item is listed — {said}", file=sys.stderr)
     touched = {
         item["id"]
         for item in document.get("items", [])

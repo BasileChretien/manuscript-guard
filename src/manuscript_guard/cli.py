@@ -4072,9 +4072,10 @@ def _checking_items(project, named: Path | None, *, build: bool = False):
         mine = [item for item in produced["items"] if item["group"] in reserved]
         produced = {**produced, "items": [i for i in produced["items"] if i not in mine]}
         unavailable = {}
-        print(f"{', '.join(reserved)}: the toolkit's {len(mine)} item(s) are left out, because "
-              f"{source.name} declares that group itself; rename it there to send them "
-              "(`checker build` says how).")  # fmt: skip
+        if mine:
+            print(f"{', '.join(reserved)}: the toolkit's {len(mine)} item(s) are left out, "
+                  f"because {source.name} declares that group itself; rename it there to send "
+                  "them (`checker build` says how).")  # fmt: skip
     for said in notes if build else ():
         # A Methods claim left out of the round, or code shown from a script that changed
         # since its run: said where the page is built, which is where it can still be fixed.

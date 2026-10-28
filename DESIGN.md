@@ -11058,7 +11058,9 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   match each other's answers in `impact`.
 - **A project's own `methods` group is read, and no longer built.** A project whose
   `checks/items.json` declared a group `methods` before the toolkit had one has it refused by
-  `checker build`, which says to rename it; `import` and `status` read it as before, leaving
+  `checker build`, where earlier releases built the page: on purpose, since the page would send the
+  project's items under the toolkit's question and none of the toolkit's, and the message says
+  to rename it; `import` and `status` read it as before, leaving
   the toolkit's methods items out, with a line. Renamed, its items keep their ids and their
   recorded answers, but an item's digest holds its group, so each is asked again, its notes
   kept.

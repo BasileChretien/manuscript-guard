@@ -8381,8 +8381,10 @@ move. A LaTeX manuscript's PDF is compiled by the author's TeX, which may write 
 into it and which the tool never runs in a test, so it is signed by what it is compiled
 from: every file of the folder and their digests, with the tool's version and the LaTeX
 engine the journal's profile names (`preprint.built_from`, Known gaps). The stamp's own
-part is a Unix member, as the archives' are, so that a `.docx` signed on Windows is the same
-bytes on Linux (round 2 of #460). A restricted input is looked for by both digests a run
+part is a Unix member, as the archives' are, so that the system a `.docx` is signed on is
+not written into it (round 2 of #460); its bytes still depend on pandoc's version and on the
+zlib that compresses it, so a custodian who signs on one machine may have to sign again on
+another (Known gaps). A restricted input is looked for by both digests a run
 records, the one blind to line endings and `raw_sha256`, so that a verbatim copy of a CRLF
 input is found with its original gone. The
 package's findings that the deposit asks itself, its small counts and its own sign-off, are
@@ -17524,8 +17526,9 @@ What papers converted from Word showed (see "What papers converted from Word sho
   manuscript's PDF with TeX: a `build/manuscript.docx` built with live Zotero fields is
   replaced by one whose citations are citeproc's text, with no field in it, until the next
   `build` makes it again. The `.docx` is dated 1980-01-01 so that its bytes repeat, and
-  `build/manuscript.docx` keeps that date until the next `build`; another pandoc writes other
-  bytes, which the custodian then signs again. A LaTeX manuscript's PDF is signed by the
+  `build/manuscript.docx` keeps that date until the next `build`; another pandoc, or a zlib
+  that compresses otherwise (zlib-ng), writes other bytes, which the custodian then signs
+  again. A LaTeX manuscript's PDF is signed by the
   folder it is compiled from and the tool's version, not by its bytes: the custodian's
   sign-off holds for a PDF another TeX installation compiles from the same folder, which
   may differ from the one they saw, and the tool sets no date for that compile. A

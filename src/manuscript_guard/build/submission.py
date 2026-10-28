@@ -725,7 +725,8 @@ def plain_passage(text: str) -> str | None:
         return None
     document["blocks"] = _unscripted(blocks)
     plain = _pandoc("-f", "json", "-t", "plain", "--wrap=none", given=json.dumps(document))
-    said = plain.strip()
+    # A comment pandoc drops leaves the two spaces around it; a no-break space is kept.
+    said = re.sub(" {2,}", " ", plain.strip())
     return None if not said or any(mark in said for mark in ("{{", "}}", "[", "]")) else said
 
 

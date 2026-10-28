@@ -16856,6 +16856,12 @@ What papers converted from Word showed (see "What papers converted from Word sho
   it; Git Bash takes it as an escape, so `cd papers\a` there names `papersa`. After `&&` that
   `cd` fails and nothing runs; after `;` the guard reads the folder a failed `cd` leaves as
   well, so what is left unread is a folder `papersa` that holds another project.
+- **The guard on `set` is for an agent's ordinary commands, not a deliberate evasion.** It
+  reads a command's words as a POSIX shell and as PowerShell give them, its quotation marks
+  taken out, typographic ones included, so `st''age`, `s''et` and `mgu''ard` are seen and
+  asked. A command that builds the tool's name, `set` or the key at run time is not
+  recognised: a variable (`$v`), `eval "$(…)"` of a file's text, an alias defined elsewhere.
+  `tests/test_set.py` holds the forms it catches.
 - **A change of English or of study type is not asked.** Either changes what is asked of
   the paper, G14's spelling or G12's plan sections, and could clear a failing finding as a
   journal change can; they are left free because each is a statement about the paper an

@@ -720,3 +720,28 @@ def test_a_folder_that_cannot_be_had_is_asked(tmp_path: Path, monkeypatch, capsy
                "tool_input": {"command": "manuscript-guard set stage submission"}}  # fmt: skip
     assert hooks.dispatch("guard-submission", payload) == 0
     assert json.loads(capsys.readouterr().out)["hookSpecificOutput"]["permissionDecision"] == "ask"
+
+
+#: Typographic quotation marks, which PowerShell reads as `'` and `"`.
+_LEFT, _RIGHT, _LOW = chr(0x2018), chr(0x2019), chr(0x201E)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "manuscript-guard set st''age drafting",
+        'manuscript-guard s""et stage drafting',
+        "mgu''ard set stage drafting",
+        "manuscript-guard set st\\age drafting",
+        f"manuscript-guard set st{_LEFT}{_RIGHT}age drafting",
+        f"manuscript-guard set stage {_LOW}drafting{chr(0x201C)}",
+        f"m{chr(0x201C)}{chr(0x201D)}guard set stage drafting",
+    ],
+)
+def test_words_the_shell_puts_together_are_read_together(
+    tmp_path: Path, command: str, monkeypatch, capsys
+) -> None:
+    """Each moves a project at submission back to drafting once the shell has taken the
+    quotation marks out; the raw text names no watched key or no tool."""
+    _project(tmp_path)
+    assert _decision(_hook(tmp_path, command, monkeypatch, capsys)) == "ask", command

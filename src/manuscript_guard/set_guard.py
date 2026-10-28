@@ -69,10 +69,34 @@ _DECIDES = (
 )
 
 
+#: Quotation marks PowerShell reads as quotation marks, as it reads `'` and `"`.
+_TYPOGRAPHIC_QUOTES = "".join(map(chr, (0x2018, 0x2019, 0x201A, 0x201B, 0x201C, 0x201D, 0x201E)))
+
+
+def _readings(command: str) -> list[str]:
+    """The command as written, and its words as a POSIX shell and as PowerShell give them,
+    the quotation marks taken out, so that `st''age` and `s“”et` are read as the shell reads
+    them."""
+    import shlex
+
+    plain = command.translate({ord(mark): None for mark in _TYPOGRAPHIC_QUOTES})
+    readings = [command, plain]
+    for posix in (True, False):
+        try:
+            words = shlex.split(plain, posix=posix)
+        except ValueError:  # a quotation mark left open
+            words = plain.replace('"', " ").replace("'", " ").split()
+        readings.append(" ".join(word.replace('"', "").replace("'", "") for word in words))
+    return readings
+
+
+def _names_all(text: str) -> bool:
+    return bool(_NAMES_TOOL.search(text) and _NAMES_SET.search(text) and _NAMES_KEY.search(text))
+
+
 def _looked_at(command: str) -> bool:
-    return bool(
-        _NAMES_TOOL.search(command) and _NAMES_SET.search(command) and _NAMES_KEY.search(command)
-    )
+    """Whether some reading of the command names the tool, `set` and a watched key."""
+    return any(_names_all(reading) for reading in _readings(command))
 
 
 def _read(

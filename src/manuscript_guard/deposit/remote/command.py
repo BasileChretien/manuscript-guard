@@ -99,7 +99,7 @@ def _reserve(project: Project, args: argparse.Namespace, api: Client,
         # The draft exists: its id is recorded, so that a run again reserves no second DOI.
         name = f"{receipts.RECEIPTS}/{args.target}-{args.bundle}.yaml"
         way_out = (f"To reserve again, delete draft {exc.draft} on the host's page, then "
-                   f"remove {name} yourself: the hooks keep an agent from it")  # fmt: skip
+                   f"remove {name} yourself: the hooks refuse an agent's edit of it")  # fmt: skip
         try:
             _record(project, {**base, "id": exc.draft, "doi": None}, "reserved")
         except OSError as unwritten:

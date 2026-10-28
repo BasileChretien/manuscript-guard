@@ -12,8 +12,8 @@ custodian's minimum, each fragment is read for a count from one to below it:
   with its share in brackets, or both: "3", "3/412", "3 (0.7%)", "3/412 (0.7%)", the share
   with a middle dot or a decimal comma or behind a bound, "3 (<1%)" (`count_in_cell`). The
   first column names the rows, and a row named "2" is a category;
-- in a model card, the rows it read, used and dropped, its events, and its events at each
-  level of each variable;
+- in a model card, the rows it read, used and dropped, its events and its trials, and its
+  events at each level of each variable;
 - in a variable card, the rows it is missing from.
 
 A cell that reads as a count and is none, a reference ratio of 1 typed bare, is said like the
@@ -66,7 +66,7 @@ _COUNT_CELL = re.compile(
 )
 
 #: The fields of a model card that count rows or events.
-_MODEL_COUNTS = ("n_input", "n_used", "n_dropped", "events")
+_MODEL_COUNTS = ("n_input", "n_used", "n_dropped", "events", "trials")
 
 
 @dataclass(frozen=True)

@@ -10640,10 +10640,15 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   written by hand, is compared with the person's latest decision only: imported, superseded, and
   imported again, it is the latest once more. The page stamps every answer, so this needs a file
   it did not write.
-- **The hook asks where it cannot read, and asks of more than imports.** A command that names
-  the tool, `checker` and `import` is asked unless it is plainly `checker build` or `status`, so
-  `checker status && git commit -m import` is asked too. A command that runs an import without
-  writing any of the three words (a variable, a script file) is not asked.
+- **The hook is a guard against an agent's ordinary commands, not against a deliberate
+  evasion.** It reads a command's words as a POSIX shell and as Windows give them, and asks
+  where the tool's name, `checker` and `import` stand in the text or in those words (so
+  `imp''ort` is `import`), unless the command is plainly `checker build` or `status`; so
+  `checker status && git commit -m import` is asked too. A substitution, `<(`, `>(`, a word
+  opening with `(`, `@(` or `{`, or a typographic quote is not read, and asked. A command that
+  builds the tool's name or its verb at run time, `$v`, `eval "$(...)"` reading from a file, an
+  alias defined elsewhere, a script file, is not recognised. `tests/test_hooks.py` holds the
+  forms it does catch.
 - **A page's file name can change when an author is added.** A name takes a suffix only while
   another name in `authors.yaml`, or in the run, folds to the same file name, so adding one
   gives the next page a new file. Answers match by the page's identifier, not its file, and the

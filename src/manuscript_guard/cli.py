@@ -4166,12 +4166,18 @@ def _register_place(project, out: Path) -> str:
 
 def _same_file(project, recorded: str, out: Path) -> bool:
     """Whether the register's name for a file is `out`, as the file system compares names: on
-    Windows without case."""
+    Windows without case, and, for a file that is there, as the file system itself says (a
+    volume on macOS ignores case too)."""
     import os
 
     path = Path(recorded)
     path = path if path.is_absolute() else project.root / path
-    return os.path.normcase(str(path.resolve())) == os.path.normcase(str(out.resolve()))
+    if os.path.normcase(str(path.resolve())) == os.path.normcase(str(out.resolve())):
+        return True
+    try:
+        return path.exists() and out.exists() and os.path.samefile(path, out)
+    except OSError:
+        return False
 
 
 def _registered_to_another(project, out: Path, person: str) -> str | None:

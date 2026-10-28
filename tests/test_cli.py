@@ -1502,6 +1502,12 @@ def test_every_command_line_parses_as_it_did_before_the_commands_were_grouped() 
         now = {key: parsed.get(key, "<missing>") for key in kept}
         if now != kept:
             changed.append((entry["argv"], now, kept))
+        for (command, key), _why in CHANGED_ON_PURPOSE.items():
+            if entry["argv"][0] == command and key in entry["namespace"]:
+                # The new shape: a value given once is a list of that one value.
+                was = entry["namespace"][key]
+                if parsed.get(key) != (None if was is None else [was]):
+                    changed.append((entry["argv"], parsed.get(key), was))
     assert changed == []
     # Each exception still names a key some recorded line of its command parses.
     named = {(entry["argv"][0], key) for entry in recorded for key in entry["namespace"]}

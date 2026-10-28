@@ -1188,59 +1188,78 @@ _IMPORT_WORD = re.compile(r"\bimport\b", re.IGNORECASE)
 _CHECKER_READS = ("build", "status")
 
 
+#: Quotation marks PowerShell reads as quotes and a POSIX shell as letters: a command holding one
+#: is read two ways, and so not cleanly.
+_TYPOGRAPHIC_QUOTES = "".join(chr(c) for c in (0x2018, 0x2019, 0x201A, 0x201B, 0x201C, 0x201D,
+                                               0x201E))  # fmt: skip
+#: What runs a command of its own: substitution, process substitution, a subshell, a block.
+_RUNS_ITS_OWN = ("$(", "<(", ">(", "`")
+
+
 def _command_words(command: str, *, posix: bool) -> tuple[list[list[str]], bool]:
     """The command as its invocations, each a list of words, read as a shell reads quotes; and
     whether it read cleanly. A `;`, `&`, `|` or line end outside quotes ends an invocation, and
-    one inside quotes is part of a word. In POSIX mode a backslash keeps the character after
-    it, outside single quotes; in Windows mode it is a character like any other. A command
-    substitution, `$(...)` or a backtick, an unclosed quote or a backslash at the end is not
-    read cleanly: what runs there is not what these words say."""
+    one inside quotes is part of a word. Outside single quotes the character after the escape
+    is kept: a backslash in POSIX mode, a backtick in Windows mode, where a backslash is a
+    character like any other.
+
+    Not read cleanly, since what runs there is not what these words say: a command
+    substitution or a process substitution (`$(`, a backtick, `<(`, `>(`), a word that opens
+    with `(`, `@(` or `{` (a subshell, a PowerShell expression, a block), a typographic quote,
+    an unclosed quote, or a backslash at the end."""
     invocations: list[list[str]] = [[]]
     word: list[str] | None = None
-    clean = True
+    clean = not any(mark in command for mark in _TYPOGRAPHIC_QUOTES)
     i, n = 0, len(command)
+
+    def end_word() -> None:
+        nonlocal word
+        if word is not None:
+            invocations[-1].append("".join(word))
+            word = None
+
     while i < n:
         c = command[i]
+        if word is None and (c in "({" or command.startswith("@(", i)):
+            clean = False
+        if any(command.startswith(mark, i) for mark in _RUNS_ITS_OWN):
+            clean = False
         if c in " \t\r":
-            if word is not None:
-                invocations[-1].append("".join(word))
-                word = None
+            end_word()
         elif c in ";&|\n":
-            if word is not None:
-                invocations[-1].append("".join(word))
-                word = None
+            end_word()
             invocations.append([])
         elif c == "'":
             close = command.find("'", i + 1)
             if close < 0:
                 return invocations, False
-            word = (word or []) + [command[i + 1 : close]]
+            word = word if word is not None else []
+            word.append(command[i + 1 : close])
             i = close
         elif c == '"':
-            word = word or []
+            word = word if word is not None else []
             i += 1
             while i < n and command[i] != '"':
-                if command[i] == "`" or command.startswith("$(", i):
+                if any(command.startswith(mark, i) for mark in ("$(", "`")):
                     clean = False
-                if posix and command[i] == "\\" and i + 1 < n:
+                if command[i] == ("\\" if posix else "`") and i + 1 < n:
                     i += 1
                 word.append(command[i])
                 i += 1
             if i >= n:
                 return invocations, False
-        elif c == "`" or command.startswith("$(", i) or command.startswith("<(", i):
-            clean = False
-            word = (word or []) + [c]
-        elif c == "\\" and posix:
+        elif (c == "\\" and posix) or (c == "`" and not posix):
+            # The escape of each: a backslash to a POSIX shell, a backtick to PowerShell.
             if i + 1 >= n:
                 return invocations, False
             i += 1
-            word = (word or []) + [command[i]]
+            word = word if word is not None else []
+            word.append(command[i])
         else:
-            word = (word or []) + [c]
+            word = word if word is not None else []
+            word.append(c)
         i += 1
-    if word is not None:
-        invocations[-1].append("".join(word))
+    end_word()
     return invocations, clean
 
 
@@ -1283,11 +1302,13 @@ def _imports_answers(joined: str) -> bool:
     read it, with no command substitution and no unclosed quote, in which every word that says
     `import` stands in an invocation that is plainly `checker build` or `checker status`
     (`_plain_checker`): `--title "Drug import and safety"`, `--for import`."""
-    if not (_NAMES_TOOL.search(joined) and _CHECKER_WORD.search(joined)
-            and _IMPORT_WORD.search(joined)):  # fmt: skip
+    readings = [_command_words(joined, posix=posix) for posix in (True, False)]
+    # The raw text and the words each shell would give, so that `imp''ort` is `import` too.
+    texts = [joined] + [" ".join(w for words in read for w in words) for read, _ in readings]
+    if not all(any(word.search(text) for text in texts)
+               for word in (_NAMES_TOOL, _CHECKER_WORD, _IMPORT_WORD)):  # fmt: skip
         return False
-    for posix in (True, False):
-        invocations, clean = _command_words(joined, posix=posix)
+    for invocations, clean in readings:
         if not clean:
             return True
         for words in invocations:

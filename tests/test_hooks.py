@@ -1036,6 +1036,15 @@ def test_an_approval_written_by_a_codex_patch_is_put_to_the_author(
         "alias mg=mguard; mg checker import --answers a.json",
         "manuscript-guard checker status && git commit -m import",
         "manuscript-guard checker build --title=import",
+        # Round 4 of #455: obfuscations a reader of commands has to see through.
+        "mguard checker build --title >(eval${IFS}'mguard checker import --answers a.json')",
+        'mguard checker build --title (iex("mguard checker import --answers a.json"))',
+        "mguard checker build --title " + chr(0x201C) + "x" + chr(0x201D)
+        + " ; mguard checker import --answers a.json",
+        "mguard checker imp''ort --answers a.json",
+        "mguard che''cker import --answers a.json",
+        "mguard checker imp\\ort --answers a.json",
+        "mguard checker imp`ort --answers a.json",
     ],
 )
 def test_an_import_of_answers_run_by_an_agent_is_put_to_the_author(

@@ -2402,9 +2402,9 @@ def method_claims(
         return ("say", len(says) - 1)
 
     def claim(steps: list[str], **shape: int) -> list[tuple[str, Any]]:
-        spoken = say(**shape)
-        sent.append((steps, spoken[1]))
-        return [spoken, *(("anchor", step) for step in steps)]
+        drawn = say(**shape)
+        sent.append((steps, drawn[1]))
+        return [drawn, *(("anchor", step) for step in steps)]
 
     paragraphs: list[list[tuple[str, Any]]] = []
     for kind in draw(st.permutations(METHOD_ITEM_KINDS)):
@@ -2419,9 +2419,9 @@ def method_claims(
         elif kind == "never ran":
             paragraphs.append([say(), ("anchor", ghost)])
         elif kind in ("open", "open bound"):
-            spoken = say(sentences=2, bound=int(kind == "open bound"))
-            sent.append(([], spoken[1]))
-            paragraphs.append([spoken])
+            drawn = say(sentences=2, bound=int(kind == "open bound"))
+            sent.append(([], drawn[1]))
+            paragraphs.append([drawn])
         elif kind == "the same step again":
             again = next(names)
             paragraphs += [claim([again]), claim([again])]

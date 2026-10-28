@@ -52,11 +52,18 @@ def inspect(start: Path, *, stage: str | None = None, cwd: Path | None = None) -
     return _project_state(project, report.findings, chosen, deferred, namespace, here)
 
 
-def from_run(project, report, stage: str, deferred, namespace, *, cwd: Path) -> State:
-    """The state of a gate run the caller has already made, `cli._gate_run`'s five parts: the
-    hooks' status line decides on the run it reports, and does not run the gates again."""
-    return _project_state(project, report.findings, stage, deferred, namespace,
-                          Path(cwd).resolve())  # fmt: skip
+def from_run(project, report, stage: str, deferred, namespace, *, cwd: Path):
+    """What reads the state of a gate run the caller has already made, `cli._gate_run`'s five
+    parts, for `rules.first_action`: the hooks' status line decides on the run it reports and
+    does not run the gates again, and reads which numbers one published value reads as and
+    where the co-authors' round stands only where the first action turns on them."""
+    here = Path(cwd).resolve()
+
+    def read(bindable: bool, checker: bool) -> State:
+        return _project_state(project, report.findings, stage, deferred, namespace, here,
+                              bindable=bindable, checker=checker)  # fmt: skip
+
+    return read
 
 
 def _kept(notes: list[str], what: str, work, default):
@@ -82,7 +89,11 @@ def _candidates(folder: Path) -> tuple[str, ...]:
     ))  # fmt: skip
 
 
-def _project_state(project, findings, chosen, deferred, namespace, here: Path) -> State:
+def _project_state(project, findings, chosen, deferred, namespace, here: Path, *,
+                   bindable: bool = True, checker: bool = True) -> State:
+    """The state `decide` reads. Without `bindable`, no number is asked which published value
+    it reads as (a second classification of every number), and without `checker` the
+    co-authors' round is not read: `rules.first_action` asks for each only where it counts."""
     from manuscript_guard.gates.design import study_types
     from manuscript_guard.paper_edit import journals
     from manuscript_guard.policy import DRAFTING, STAGES
@@ -91,9 +102,10 @@ def _project_state(project, findings, chosen, deferred, namespace, here: Path) -
     notes: list[str] = []
     fmt = _kept(notes, "the manuscript's format",
                 lambda: manuscript_format(project.path("manuscript")), "markdown")
-    failing = any(f.severity == FAIL and f.code == "unclassified-number" for f in findings)
-    checker = _kept(notes, "where the co-authors' checks stand",
-                    lambda: _checker(project, fmt, notes), None)
+    failing = bindable and any(
+        f.severity == FAIL and f.code == "unclassified-number" for f in findings)
+    standing = _kept(notes, "where the co-authors' checks stand",
+                     lambda: _checker(project, fmt, notes), None) if checker else None
     paper = project.paper if isinstance(project.paper, dict) else {}
     journal = paper.get("target_journal") if isinstance(paper.get("target_journal"), str) else None
     declared = paper.get("stage") if paper.get("stage") in STAGES else DRAFTING
@@ -105,7 +117,7 @@ def _project_state(project, findings, chosen, deferred, namespace, here: Path) -
         declared_stage=declared, findings=tuple(findings), deferred=dict(deferred),
         bindable=_kept(notes, "which numbers read as one published value",
                        lambda: _bindable(project, namespace), {}) if failing else {},
-        checker=checker, target_journal=journal,
+        checker=standing, target_journal=journal,
         english_variant=_kept(notes, "paper.yaml's English",
                               lambda: project.english_variant, None),
         reporting_guidelines=_kept(notes, "paper.yaml's reporting guidelines", lambda: tuple(

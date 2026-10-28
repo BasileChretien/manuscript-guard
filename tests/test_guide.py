@@ -368,6 +368,42 @@ def drawn(rng: random.Random, root: Path) -> State:
     )  # fmt: skip
 
 
+def test_the_first_action_reads_the_slow_parts_only_where_they_change_it(
+    tmp_path: Path,
+) -> None:
+    """Round 1 of #466: the status line decided on the whole state, and classified every
+    number a second time to find the bindable places. `first_action` reads them, and the
+    co-authors' round, only where the first action can turn on them, and says what `decide`
+    says first of the whole state. Without the second reading it would not, in both ways."""
+    rng = random.Random(19)
+    differs = {"bindable": 0, "checker": 0}
+    for _ in range(300):
+        state = drawn(rng, tmp_path)
+        places = sorted({f"{f.path.relative_to(tmp_path).as_posix()}:{f.line}"
+                         for f in state.findings if f.code == "unclassified-number"})
+        state = State(**{**vars(state), "bindable": {
+            place: "{{results.n}}" for place in places if rng.random() < 0.5}})
+        asked: list[tuple[bool, bool]] = []
+
+        def read(bindable: bool, checker: bool, state=state, asked=asked) -> State:
+            asked.append((bindable, checker))
+            return State(**{**vars(state), "bindable": state.bindable if bindable else {},
+                            "checker": state.checker if checker else None})
+
+        whole = decide(state)
+        expected = whole[0].id if whole else None
+        first = guide.first_action(read)
+        assert (first.id if first else None) == expected, state
+        assert asked[0] == (False, False) and len(asked) <= 2, asked
+        if whole and whole[0].tier < 5:
+            assert len(asked) == 1, "nothing slow to read was needed"
+        light = decide(State(**{**vars(state), "bindable": {}, "checker": None}))
+        if (light[0].id if light else None) != expected:
+            differs["bindable" if whole and whole[0].tier == 5 else "checker"] += 1
+    # The draws hold states where reading neither part would have said the wrong thing.
+    assert differs["bindable"] and differs["checker"], differs
+
+
 def test_the_order_of_the_findings_changes_nothing(tmp_path: Path) -> None:
     rng = random.Random(7)
     for _ in range(40):

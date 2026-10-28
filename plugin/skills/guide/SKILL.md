@@ -83,9 +83,9 @@ Where the first action has a `choice`, it is the author's. Put it to them:
 1. Ask the `question`.
 2. List the `options` numbered, in the order given, each on its own line with its `label`,
    its `effect`, and its exact `command`.
-3. Where `recommended` names an option, say that `next` recommends it and why (the action's
-   `why`, or what the project already declares). Do not add a recommendation of your own,
-   and do not pick.
+3. Where `recommended` names an option, say that `next` recommends it, and say why only in
+   `next`'s own words, its `effect` as given; where they give no reason, give none. Do not
+   invent a reason, add a recommendation of your own, or pick.
 4. Wait for the author's answer.
 
 A word of a command written `<NAME>` is a placeholder, and the option's `placeholders` says

@@ -476,3 +476,26 @@ def decide(state: State) -> list[Action]:
     """What to do, in order: a pure function of `state`."""
     actions = [action for rule in RULES if rule.applies(state) for action in rule.build(state)]
     return sorted(actions, key=lambda action: (action.tier, action.key, action.id))
+
+
+#: The tiers whose actions turn on a part of the state that is slow to read: which numbers
+#: read as one published value splits the provenance tier's actions and nothing else, and
+#: where the co-authors' round stands makes the tier of their checks and nothing else.
+BINDABLE_TIER, CHECKER_TIER = 5, 7
+
+
+def first_action(read: Callable[[bool, bool], State]) -> Action | None:
+    """What `decide` puts first, reading the two slow parts of the state only where they can
+    change it. `read(bindable, checker)` is the state with or without each.
+
+    Actions go by tier first, so a first action decided without them is the first action:
+    unless it is of the provenance tier, whose actions the bindable places split, or comes
+    after the co-authors' tier, or there is none, where their checks could come first."""
+    actions = decide(read(False, False))
+    first = actions[0] if actions else None
+    bindable = first is not None and first.tier == BINDABLE_TIER
+    checker = first is None or first.tier > CHECKER_TIER
+    if not (bindable or checker):
+        return first
+    actions = decide(read(bindable, checker))
+    return actions[0] if actions else None

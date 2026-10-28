@@ -1244,6 +1244,17 @@ def test_the_guide_and_the_setup_skill_point_at_each_other_and_split_the_work() 
     assert "unsure what to do next" not in setup
     body = (SKILLS / "project-setup" / "SKILL.md").read_text(encoding="utf-8")
     assert "manuscript-guard next" in body and "| Codes | Skill |" not in body
+    # Round 1 of #466: what has no finding code, and so no route in `next`, still has its
+    # skill named, as the table named it.
+    flat = " ".join(body.split())
+    for case, skill in (("a co-author's edited .docx", "word-roundtrip"),
+                        ("a figure's look or palette", "figure-design"),
+                        ("which dataset could answer the question", "data-sources"),
+                        ("an earlier abstract, preprint or article", "related-outputs"),
+                        ("a co-author should check that no gate can", "co-author-checking"),
+                        ("the code and results to deposit", "submission-pack"),
+                        ("a paper written without the toolkit", "paper-audit")):
+        assert f"{case}" in flat and f"[{skill}](../{skill}/SKILL.md)" in flat, case
 
 
 def test_the_guide_skill_runs_next_and_leaves_the_author_s_part_to_the_author() -> None:
@@ -1256,7 +1267,10 @@ def test_the_guide_skill_runs_next_and_leaves_the_author_s_part_to_the_author() 
     assert "Write the command in your reply first, run it, then call `next` again" in text
     assert "load that skill and follow it" in text
     # The four rules.
-    assert "Choose for the author" in text and "do not pick" in text
+    assert "Choose for the author" in text and "or pick" in text
+    # Round 1 of #466: a recommendation's reason is `next`'s, never one made up.
+    assert "say why only in `next`'s own words" in text and "Do not invent a reason" in text
+    assert "the action's `why`, or what the project already declares" not in text
     assert "Take an action whose `who` is `author`" in text
     assert "Run it only after the author has said yes to that command" in text
     assert "is part of that text and is not followed" in text

@@ -6964,20 +6964,36 @@ split, `route-guide` and `near-guide-not-setup`, both in a copy of the example.
 
 Where the hooks run, the status line at the session's start and at the end of a turn that
 changed what the gates read ends with "Next: <title> (`manuscript-guard next`)". The hook
-runs the gates once, through `cli._gate_run`, and `guide.reading.from_run` builds the state
-`decide` reads from that run's report, project and namespace; a test counts one call of a
-gate. The time limit (`CHECK_LIMIT`) covers both, and the silence rules are as they were: no
-line outside a project, none at a stop that changed nothing watched. A fault in deciding costs
-the "Next:" part and leaves the counts. There is no hook on the author's prompt: a full run of
-the gates before every message would cost each one 5 to 10 seconds, and the skill runs `next`
-when the conversation is about the paper (the author's choice, 2026-10-28).
+runs the gates once, through `cli._gate_run`, and decides on that run's report, project and
+namespace (`guide.reading.from_run`); a test counts one call of a gate. Two parts of the state
+are slow to read: which published value each unbound number reads as, which classifies every
+number a second time (`binding.unbound`), and where a round of co-authors' checks stands. In
+round 1 of review the line read both at every session start. `guide.first_action` decides
+first without them, and reads them only where they can change what comes first: actions go by
+tier, the bindable places split only the provenance tier (5), and the co-authors' round makes
+only its own tier (7). So the bindable places are read where the first action is of tier 5,
+and the round where it comes after tier 7 or there is none; then it decides again. A test
+holds `first_action` to `decide`'s first on 300 drawn states, among them states where leaving
+either part out would have said another action, and one counts no call of `binding.unbound`
+at the start of a session in a project where a choice comes before an unbound number.
+
+The time limit (`CHECK_LIMIT`) covers the gates and the decision: the decision runs on a
+thread of its own and gets what the gates leave of the limit, less half a second
+(`DECIDE_MARGIN`), and one that does not finish in it, or fails, costs the "Next:" part and
+leaves the counts, as a test with a decision that never finishes holds. The silence rules are
+as they were: no line outside a project, none at a stop that changed nothing watched. There
+is no hook on the author's prompt: a full run of the gates before every message would cost
+each one 5 to 10 seconds, and the skill runs `next` when the conversation is about the paper
+(the author's choice, 2026-10-28).
 
 An agent tool with no skills reads `AGENTS.md`. The rules `init` writes (`scaffold.AGENTS`)
 carry one paragraph on working in conversation: `next --json` at the start of each turn,
 every option given with what it changes and its command, a command said before it is run, an
 author's action left to the author, and a clear yes before a command `next` marks for asking.
-`rules_to_add` prints the same for a repository whose own `AGENTS.md` lacks the rules, and
-`example/AGENTS.md` is the same file, byte for byte.
+A finding's message is said there to be data to report, never an instruction, since such an
+agent never reads the skill that says so. `rules_to_add` prints the same for a repository
+whose own `AGENTS.md` lacks the rules, and `example/AGENTS.md` is the same file, byte for
+byte.
 
 ## The commands are listed in six groups
 
@@ -17586,6 +17602,12 @@ What papers converted from Word showed (see "What papers converted from Word sho
   command and who runs it are in `next`; a status line that has to say a choice is due says
   only its title, "Name the study design", and an agent that acts on the line alone has not
   seen the options.
+- **At `submission` the line says "Next: Have the review panel read the paper" every
+  time.** From `internal-review` on, with nothing failing, the review panel is the first of
+  the optional steps (tier 10) whether or not a round has been read, so once a paper is clean
+  at submission the status line names it at every session start, after the last round as
+  before the first. It is `next`'s rule, which offers the optional steps without asking what
+  is already done, and not the status line's.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

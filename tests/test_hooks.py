@@ -1319,9 +1319,70 @@ def test_a_decision_that_fails_costs_the_next_part_and_not_the_line(
         raise RuntimeError("a fault of the tool's own")
 
     monkeypatch.setattr(guide, "decide", broken)
+    monkeypatch.setattr(guide.rules, "decide", broken)
     text = context(run("session-start", {"cwd": str(project)}, capsys))
     assert "stage 'drafting'" in text and "0 failing" in text
     assert "Next:" not in text
+
+
+def test_the_status_line_does_not_classify_the_numbers_again(
+    project: Path, monkeypatch, capsys
+) -> None:
+    """Round 1 of #466: with a number bound to nothing, the usual state while drafting, the
+    line asked each unbound number which published value it reads as, a second
+    classification of every number, at every session start. It is asked only where the first
+    action is a number's source; here a choice comes before it."""
+    import manuscript_guard.binding as binding
+
+    add(project / "manuscript" / "main.md", "\nThe mean was 3.84.\n")
+    asked: list[int] = []
+    unbound = binding.unbound
+
+    def counted(*args, **kwargs):
+        asked.append(1)
+        return unbound(*args, **kwargs)
+
+    monkeypatch.setattr(binding, "unbound", counted)
+    text = context(run("session-start", {"cwd": str(project)}, capsys))
+    assert "1 failing" in text and "Next: Name the study design" in text, text
+    assert asked == []
+
+
+@pytest.fixture
+def slow_decision(project: Path, monkeypatch):
+    """Gates that answer at once with the project's real report, a decision that does not
+    finish until the test lets it, and a limit of two seconds."""
+    import manuscript_guard.guide as guide
+    from manuscript_guard import cli
+
+    ran = cli._gate_run(project)
+    finish = threading.Event()
+
+    def wait(*_args, **_kwargs):
+        finish.wait(60)
+        return []
+
+    monkeypatch.setattr(cli, "_gate_run", lambda *_a, **_k: ran)
+    monkeypatch.setattr(guide, "decide", wait)
+    monkeypatch.setattr(guide.rules, "decide", wait)
+    monkeypatch.setattr(hooks, "CHECK_LIMIT", 2.0)
+    monkeypatch.setattr(hooks, "_LEFT_RUNNING", [])
+    yield
+    finish.set()
+    for worker in hooks._LEFT_RUNNING:
+        worker.join(60)
+
+
+@pytest.mark.usefixtures("slow_decision")
+def test_a_decision_that_does_not_finish_in_time_costs_the_next_part_only(
+    project: Path, capsys
+) -> None:
+    """Round 1 of #466: the decision ran inside the gates' limit, and one that did not finish
+    lost the whole line, the counts the gates had already given with it."""
+    text = context(run("session-start", {"cwd": str(project)}, capsys))
+    assert "stage 'drafting'" in text and "0 failing" in text, text
+    assert "did not finish" not in text and "Next:" not in text
+    assert hooks._LEFT_RUNNING, "the decision is left running, and the process ends without it"
 
 
 def test_session_start_names_what_becomes_due_next(tmp_path: Path, capsys) -> None:

@@ -185,6 +185,22 @@ then warnings and the next stage. Each action names the skill that deals with it
 and the exact command. Working through the project with the author turn by turn is the
 [guide](../guide/SKILL.md) skill. Most findings' hints in `check` name their skill too.
 
+What arrives without a finding code, `next` does not route. These skills deal with it:
+
+- which dataset could answer the question, and how it is reached:
+  [data-sources](../data-sources/SKILL.md);
+- a figure's look or palette: [figure-design](../figure-design/SKILL.md);
+- an earlier abstract, preprint or article on the same data:
+  [related-outputs](../related-outputs/SKILL.md);
+- a question a co-author should check that no gate can:
+  [co-author-checking](../co-author-checking/SKILL.md);
+- a co-author's edited .docx: [word-roundtrip](../word-roundtrip/SKILL.md);
+- a journal's decision letter and its reviewers' reports:
+  [reviewer-response](../reviewer-response/SKILL.md);
+- ready to send, or the code and results to deposit:
+  [submission-pack](../submission-pack/SKILL.md);
+- a paper written without the toolkit: [paper-audit](../paper-audit/SKILL.md).
+
 ## 6. What the hooks do in a project
 
 Not every agent tool runs hooks, and one that does may ask you to approve them first. Where

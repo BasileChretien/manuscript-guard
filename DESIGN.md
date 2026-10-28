@@ -8550,8 +8550,8 @@ the page, one held by mistake stops it, and a small count the page would show st
 **A deposit is staged where it can be read, and the custodian is asked first** (Task 4,
 part C and its third pull request, the design Basile accepted on 2026-10-28). `deposit
 --target <target> --bundle <bundle>` (`deposit/command.py`) writes
-`build/deposit/<target>-<bundle>/` and its archive, and sends nothing: the clients that
-upload to Zenodo and OSF are the next pull request's. A pair that makes no sense, arXiv with
+`build/deposit/<target>-<bundle>/` and its archive, and sends nothing unless asked (below).
+A pair that makes no sense, arXiv with
 a plan or a site with a preprint, is refused with the reason (`bundles.PAIRS`). The order is
 the point. First the data custodian's checks (`deposit/preflight.py`): the small counts of
 the results files the bundle carries, through `package`'s own reading of them and its
@@ -8647,6 +8647,75 @@ with its MANIFEST.yaml. A verbatim copy of a CRLF restricted input is found by i
 digest, a PDF compiled with another engine is signed off again, a stray `--retrospective`
 leaves the small counts unsigned, and a statement with a LaTeX formula, a subheading or a
 listing is not printed in the medRxiv sheet.
+
+**A deposit is sent only when the author asks** (Task 4, its fourth pull request; decisions
+2(a) and 6(a) of 2026-10-28). Three options of `deposit` send, each opt-in and each with a
+token the author keeps in the environment, `ZENODO_TOKEN`, `ZENODO_SANDBOX_TOKEN` or
+`OSF_TOKEN`, never in the repository (`deposit/remote/`). The client is `urllib` with the
+transport an argument, as `lookup` and the panel's are (`remote/http.py`): https only, plain
+http to this machine only, no redirect followed, no proxy for loopback, the token in the
+`Authorization` header and nowhere else, and every message built from a host's words
+scrubbed of any four characters of it in a row (`panel.client.without_key`); a token
+refused gets our words, since a host's may quote it. A link a host gives is followed only to
+the origin it came from: Zenodo names the bucket the files go to, and a bucket on another
+host, scheme or port is refused before the token goes there. Zenodo is spoken to through its
+legacy deposition API, as developers.zenodo.org documents it, read on 2026-10-28: `POST
+/api/deposit/depositions` with `metadata.prereserve_doi` true makes a draft and reserves its
+DOI, given at `metadata.prereserve_doi.doi`, with the bucket at `links.bucket`; `PUT
+<bucket>/<name>` takes a file and answers its `checksum` as `md5:<hex>`; `PUT
+/api/deposit/depositions/<id>` takes the metadata; `POST .../actions/publish` publishes,
+answered 202. The page does not say the API is deprecated, and presents it alongside the
+records API; the sandbox, `sandbox.zenodo.org`, takes its own token and mints 10.5072 DOIs.
+OSF's is `POST https://api.osf.io/v2/nodes/` with `public: false`, then WaterButler's `PUT
+https://files.osf.io/v1/resources/<id>/providers/osfstorage/?kind=file&name=<name>`, answered
+201; the md5 is read from the file entity's `extra.hashes`, which the WaterButler page does
+not document (Known gaps), and a file OSF gives no md5 for stops the staging as one whose md5
+differs does. `--reserve-doi` (Zenodo) refuses a second draft for a bundle that has one, and
+for a release at Zenodo itself writes the DOI into `paper.yaml` as `package.doi`, once the
+author types yes at a terminal or gave `--yes`, through `paper_edit.set_package_doi`: the
+`set` command's editor taught one nested key, the value replaced where `doi:` is a line of
+its own and a line added under `package:` at its keys' indent where it is not, read back as
+the old settings with that one key changed, held to the schema, and written atomically; a
+`package` in braces is refused. A test DOI, 10.5072, is never written: the target is the
+sandbox, or the prefix is the test one, or the editor refuses it, three guards for one rule.
+A plan's DOI stays in its receipt. `--stage` runs `deposit`'s whole staging, every check of
+the custodian and of the submission first, then sends the archive and each file at the
+bundle's top level, so that a reader opens the README on the record's page; each file's md5
+is held to the host's answer, and the first that differs stops it with nothing after it
+sent. At Zenodo the draft's list of files is then held to exactly those sent, a file nobody
+sent refused by name, and the bundle's `.zenodo.json` is put as its metadata with the
+reserved DOI kept, the answer's DOI held to it. At OSF a private project is made, and staged
+once. `--publish` (Zenodo) plans the bundle again, every check with it, and publishes only
+when its digest is the receipt's: the files and their digests as the custodian signs them,
+MANIFEST.yaml left out, since it names the commit, which committing the receipt changes.
+The draft's files are held to the receipt's md5s, so that a file changed on the host's page is
+not published; for a release, every author's approval is of the manuscript as it stands
+(`check_approvals` says nothing), since its companion page prints the manuscript's abstract;
+and the author types the draft's DOI at a terminal, which standard input that is no terminal
+cannot do. `--yes` answers none of it (decision 2(a)). OSF's `--reserve-doi` and `--publish`
+are refused with the reason: it mints a DOI only for what is public, and making a project
+public is the author's, on its own page. Each answer is recorded in
+`deposit/receipts/<target>-<bundle>.yaml` (host, id, DOI, each action's date, the bundle's
+digest, each file's md5 and SHA-256) and appended to `deposit/history.yaml`, which is opened
+for appending and never rewritten; both are in the hooks' FORBIDDEN. `guard_submission`
+refuses `deposit --publish` to an agent, "run it yourself", and puts `--stage` and
+`--reserve-doi` to the person, refused where the tool cannot ask; `guard_write` puts to the
+person an Edit or Write of paper.yaml after which `package.doi` is not what it was, and a
+patch whose lines name a `doi:`. G4 holds the DOI: `package-doi-test-prefix` fails a 10.5072
+`package.doi` at every stage, and `deposit-doi-differs` warns while `package.doi` is not the
+DOI a release's receipt at a host other than the sandbox records, and fails at submission
+(`gates.data_statement.check_deposit_doi`); with no such receipt it says nothing. The tests
+are in `tests/test_deposit_remote.py`, against a server on a loopback port that answers as
+the two APIs are documented to: the token in the header and in no URL, body, file or
+message, a part of it a host echoes scrubbed; a redirect refused, from a table and from the
+server; a link to another host not followed and nothing sent; a host that does not answer
+said in our words; an md5 mismatch stopping at that file, at Zenodo and at OSF; a file the
+draft holds that nobody sent; publishing refused without the typed DOI, with a wrong one,
+with `--yes` alone, on a bundle changed since staging, on a draft changed at the host, and on
+a release an author has not approved, then staged again and published; a sandbox DOI and a
+test DOI from Zenodo itself never written; a release's DOI written with every comment kept;
+OSF's refusals. In `tests/test_hooks.py`, the ask, the deny and the guarded edit; in
+`tests/test_corruption.py`, both G4 codes.
 
 What this rests on: deterministic tests in CI (`tests/test_package.py`): the example packaged,
 unzipped and run again by `verify` from the unpacked folder with every value reproduced; an R
@@ -17234,7 +17303,8 @@ Open, recorded as each change landed:
   package's own DOI, which Zenodo reserves or gives itself, and the legacy API reads `doi` as
   one a publisher assigned already, so a `.zenodo.json` at the root that GitHub's
   integration reads would tie every release to it. The paper's own DOI is recorded nowhere,
-  so no `isSupplementTo` is written. Nothing sends the file to Zenodo, and no test has.
+  so no `isSupplementTo` is written. `deposit --stage` puts it as a draft's metadata, and
+  only a server on a loopback port has read it.
 - **A proof is compared as far as its text can be read, and no further.** `proof` reads what
   `pdftotext` or pypdf gives. A figure's picture, the text inside a figure, an equation and
   emphasis (an italic P, a gene's name) are not read; a figure is held to its caption alone. A
@@ -17904,9 +17974,42 @@ What papers converted from Word showed (see "What papers converted from Word sho
   held back ("<5") cannot be worked out from a row's total and its other cells; it finds
   nothing yet, so a bundle whose results let a reader subtract their way to a small count is
   deposited. The deposit depends on Task 3 for it.
-- **A deposit is staged, not sent.** `deposit` uploads nothing in this version: the Zenodo
-  and OSF clients, the receipts and the DOI written to `paper.yaml` are the next pull
-  request's. arXiv and medRxiv have no interface to send through, so what they accept, their
+- **What is sent to Zenodo and OSF was sent to servers that stand in for them.** The clients
+  were run against servers on a loopback port that answer as each API's documentation says,
+  and against neither host: the sandbox by hand is still to be done. Where a host answers in
+  another shape, the client refuses rather than guesses, and the author learns it at the
+  first real use. Three things the documentation read does not settle: whether a metadata
+  `PUT` with `prereserve_doi` true keeps the DOI reserved (the answer's DOI is held to it, and
+  a different one stops the staging); whether Zenodo takes a file name with a slash in it,
+  which the tool avoids by sending the archive and only the top-level files; and where
+  WaterButler puts a file's md5, which is read from `data.attributes.extra.hashes.md5` and,
+  where it is not there, stops the staging. A file is read whole into memory to be sent.
+- **OSF gives a private project no DOI, and is staged once.** `--reserve-doi` and
+  `--publish` are refused at OSF; a project the author makes public on OSF's page is minted a
+  DOI there, which the tool does not learn of, so no receipt holds it and `deposit-doi-differs`
+  says nothing of it. A second `--stage` to OSF is refused: OSF keeps a file sent again as a
+  new version, which the tool does not do. A staging stopped part way leaves the project, with
+  what was sent before the stop, and a receipt with no `staged_on`.
+- **A Zenodo draft staged again keeps a file the new bundle no longer has.** The draft's list
+  is held to the files sent, and a file left from an earlier staging stops it by name; the
+  tool deletes nothing at the host, so the author deletes the file on the draft's page.
+- **The hooks read commands and edits, not every way of running them.** `deposit --publish`
+  is refused to an agent where its command names the tool and the option in one invocation,
+  and `--stage` and `--reserve-doi` are asked there; a script, an alias or `bash -c` with the
+  option in a variable is not read. `--publish` itself asks for the DOI at a terminal, which
+  an agent's standard input is not, so a command the hook misses still publishes nothing. An
+  edit of `package.doi` is put to the person for an Edit, a Write and a Codex patch; a `sed` or
+  a script that rewrites `paper.yaml` is not read (the same as every other edit the write
+  guard reads), and `deposit-doi-differs` then names a DOI that is not the receipt's.
+- **A receipt that cannot be read is not a receipt to G4.** `deposit-doi-differs` reads the
+  receipts that parse and name their own target and bundle; one damaged by hand, which the
+  write guard refuses to an agent, is passed over, and `deposit` itself refuses to act on it.
+- **"Preprint-related" is read as every release.** Decision 2(a) asks every author's current
+  approval before a release related to a preprint is published. The tool asks it of every
+  release, since a release's companion page prints the manuscript's abstract and key
+  sentences; a release with no page of the manuscript would not need it, and none is made.
+- **arXiv and medRxiv take nothing from the tool.** arXiv and medRxiv have no interface to
+  send through, so what they accept, their
   TeX Live, their moderation and their scope, is theirs; the sheets name their rules as
   written down, and the tool checked none of them. A plan deposited by the tool is a file with
   a date, not an entry in a registry of studies, and "deposited before any results were

@@ -285,6 +285,10 @@ BINDS_AT = {
     # anywhere, whatever its severity, and its record held to what was filed.
     "comment-unanswered": SUBMISSION,
     "comments-altered": SUBMISSION,
+    # `package.doi` that is not the DOI the release's receipt records: G4 warns while the
+    # paper is written and fails it at submission, as it does a DOI no statement names. A
+    # test DOI (`package-doi-test-prefix`) is listed nowhere, and fails at every stage.
+    "deposit-doi-differs": SUBMISSION,
 }
 
 

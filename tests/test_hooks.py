@@ -340,6 +340,9 @@ def test_no_standard_input_at_all_is_an_empty_event(monkeypatch) -> None:
         ("checks/recap.md", "a recap nobody made"),
         # Item 26: the plan as it stood when the first results were written.
         ("design/plan.frozen.yaml", "first results were written"),
+        # What a repository answered, which G4 holds package.doi to, and every action.
+        ("deposit/receipts/zenodo-release.yaml", "a deposit nobody made"),
+        ("deposit/history.yaml", "never rewritten"),
         # The copy of an earlier output's project, which G8 holds to its digests.
         ("literature/related/abstract/results/01_disproportionality.json", "related --take"),
         ("literature/related/abstract/design/plan.md", "related --take"),
@@ -1104,6 +1107,82 @@ def _attested(project: Path) -> Path:
 
 def _writes(cwd: Path, tool: str = "Write", **tool_input: str) -> dict:
     return {"cwd": str(cwd), "tool_name": tool, "tool_input": tool_input}
+
+
+# ---------------------------------------------------------------- what is deposited
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "manuscript-guard deposit --target zenodo --bundle release --publish",
+        "cd paper && mguard deposit --publish --target zenodo --bundle release --yes",
+        "python -m manuscript_guard.cli deposit --target zenodo-sandbox --bundle release \\\n"
+        "  --publish",
+        'manuscript-guard deposit --target zenodo --bundle release "--publish"',
+    ],
+)
+def test_publishing_a_deposit_is_refused_to_an_agent(
+    in_claude_code: Path, command: str, capsys
+) -> None:
+    """A record once published cannot be deleted: the author runs it, at a terminal."""
+    result = run("guard-submission", _shell(in_claude_code, command), capsys)
+    assert decision(result) == "deny"
+    assert "run it yourself" in reason(result)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "manuscript-guard deposit --target zenodo --bundle release --stage",
+        "manuscript-guard deposit --target zenodo --bundle release --reserve-doi --yes",
+        "mguard deposit --target osf --bundle preregistration --stage",
+    ],
+)
+def test_staging_or_reserving_a_deposit_is_put_to_the_author(
+    in_claude_code: Path, command: str, capsys
+) -> None:
+    result = run("guard-submission", _shell(in_claude_code, command), capsys)
+    assert decision(result) == "ask"
+    assert "author's decision" in reason(result)
+    payload = _shell(in_claude_code, command, turn_id="turn-1", model="gpt-test")
+    assert decision(run("guard-submission", payload, capsys)) == "deny"
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "manuscript-guard deposit --target zenodo --bundle release",
+        "manuscript-guard deposit --target zenodo --bundle release --dry-run",
+        'git commit -m "manuscript-guard deposit --publish"',
+        "manuscript-guard deposit --target zenodo --bundle release; echo --publish",
+    ],
+)
+def test_a_deposit_that_sends_nothing_is_let_through(
+    in_claude_code: Path, command: str, capsys
+) -> None:
+    assert run("guard-submission", _shell(in_claude_code, command), capsys) is None
+
+
+def test_an_edit_of_the_package_doi_is_put_to_the_author(in_claude_code: Path, capsys) -> None:
+    path = in_claude_code / "paper.yaml"
+    text = path.read_text(encoding="utf-8")
+    added = text.replace("package:\n", "package:\n  doi: 10.5281/zenodo.42\n", 1)
+    assert added != text
+    result = run("guard-write", _writes(in_claude_code, file_path=str(path), content=added), capsys)
+    assert decision(result) == "ask"
+    assert "package.doi (not set to 10.5281/zenodo.42)" in reason(result)
+    path.write_text(added, encoding="utf-8")
+    changed = _writes(in_claude_code, "Edit", file_path=str(path), old_string="zenodo.42",
+                      new_string="zenodo.43")  # fmt: skip
+    assert decision(run("guard-write", changed, capsys)) == "ask"
+    # An edit that leaves the DOI as it was asks nothing.
+    other = _writes(in_claude_code, "Edit", file_path=str(path), old_string="package:",
+                    new_string="# the deposit\npackage:")  # fmt: skip
+    assert run("guard-write", other, capsys) is None
+    # Codex cannot ask: refused, with the same reason.
+    payload = {**changed, "turn_id": "turn-1"}
+    assert decision(run("guard-write", payload, capsys)) == "deny"
 
 
 def test_naming_an_attester_is_put_to_the_author(in_claude_code: Path, capsys) -> None:

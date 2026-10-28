@@ -93,6 +93,20 @@ FORBIDDEN = (
         "it is the plan as it stood when the first results were written, kept by the emitter; "
         "change the plan in design/plan.md and say why under its Deviations",
     ),
+    (
+        # What a repository answered when the author sent it a bundle, which G4 holds
+        # `package.doi` to, and the history of every deposit action, appended to only.
+        "deposit/receipts/",
+        ".yaml",
+        "a receipt is written by `manuscript-guard deposit` from what the repository answered; "
+        "a deposit nobody made cannot be recorded by hand",
+    ),
+    (
+        "deposit/history.yaml",
+        "",
+        "the history of deposits is appended to by `manuscript-guard deposit`, one action at a "
+        "time, and never rewritten",
+    ),
 )
 
 # The copy `related --take` keeps of an earlier output's project, under any output's id: its
@@ -651,9 +665,57 @@ def guard_write(payload: dict) -> int:
         said for path in paths if (said := _or_nothing(lambda file: _decides(file, payload), path))
     ]
     named += [said for path in paths if (said := _or_nothing(_an_approval, path))]
+    named += [
+        said for path in paths if (said := _or_nothing(lambda file: _reserves(file, payload), path))
+    ]
     if not named:
         return 0
     return _ask("PreToolUse", "\n".join(named), payload)
+
+
+#: `doi` as a key, on a line that is not a comment, in block or flow style.
+_DOI_KEY = re.compile(r"""(?m)^(?![ \t]*#).*?\bdoi["']?[ \t]*:""")
+
+
+def _package_doi(text: str) -> object:
+    """`package.doi` of a paper.yaml's text, None where it has none, and the text itself
+    where YAML cannot read it, so that two unreadable texts differ unless they are equal."""
+    import yaml
+
+    try:
+        document = yaml.safe_load(text)
+    except Exception:  # noqa: BLE001 - `2026-02-30` is a ValueError, not a YAML error
+        return ("unreadable", text) if _DOI_KEY.search(text) else None
+    package = document.get("package") if isinstance(document, dict) else None
+    return package.get("doi") if isinstance(package, dict) else None
+
+
+def _reserves(path: Path, payload: dict) -> str | None:
+    """Why an edit of paper.yaml that adds, changes or takes away `package.doi` is put to the
+    person: it is the DOI a repository reserved for the deposit, which `deposit
+    --reserve-doi` writes from the repository's answer, and the statement and the package
+    name it. G4 holds it to the receipt once there is one, and before that it is the
+    author's word that the deposit has it. None where the edit leaves it as it was."""
+    found = _relative_to_project(path)
+    if found is None or found[1] != "paper.yaml":
+        return None
+    before, after = _whole_texts(payload, path)
+    if after is None:
+        # A patch, or an edit whose text is not in the file: only the lines it changes.
+        if not any(_DOI_KEY.search(text) for text in before[1:]):
+            return None
+        was, now = "a line with `doi:` in it", "what it changes"
+    else:
+        held = _package_doi(before[0]), _package_doi(after)
+        if held[0] == held[1]:
+            return None
+        was, now = ("not set" if value is None else "a text YAML cannot read"
+                    if isinstance(value, tuple) else str(value) for value in held)  # fmt: skip
+    return (
+        f"paper.yaml: this edit changes package.doi ({was} to {now}). It is the DOI the "
+        "repository gave the deposit, which `manuscript-guard deposit --reserve-doi` writes from "
+        "the repository's answer; one typed by an agent is no repository's answer."
+    )
 
 
 def _an_approval(path: Path) -> str | None:
@@ -1147,7 +1209,12 @@ def guard_submission(payload: dict) -> int:
     # What a commit is told to say is no command and names no file: it is left out before
     # the markers are asked, and before the words are read for a project.
     command = _without_messages(str(payload.get("tool_input", {}).get("command", "")))
-    sends = _or_nothing(lambda _path: _sends_without_asking(command, payload), Path("."))
+    publishes, deposits = _deposits(command)
+    if publishes:
+        return _deny("PreToolUse", publishes)
+    sends = deposits
+    sends = sends or _or_nothing(lambda _path: _sends_without_asking(command, payload),
+                                 Path("."))  # fmt: skip
     sends = sends or _or_nothing(lambda _path: _approves(command), Path("."))
     sends = sends or _moves_stage_back(command, payload)
     if not SUBMISSION_MARKERS.search(command):
@@ -1331,6 +1398,38 @@ def _imports_answers(joined: str) -> bool:
             if any(_IMPORT_WORD.search(word) for word in words) and not _plain_checker(words):
                 return True
     return False
+
+
+_DEPOSIT = re.compile(_TOOL + r"deposit\b", re.IGNORECASE)
+
+
+def _deposits(command: str) -> tuple[str | None, str | None]:
+    """Why a `deposit` in this command is refused, and why one is put to the person: the
+    first for `--publish`, which makes a record public that cannot be deleted, and is the
+    author's to run at a terminal, typing its DOI; the second for `--stage` and
+    `--reserve-doi`, which send the bundle, or ask for a DOI, with the author's token."""
+    joined = re.sub(r"[\\`]\r?\n", " ", command)  # a line continued in bash or PowerShell
+    sends = None
+    for found in _DEPOSIT.finditer(joined):
+        rest = joined[found.end() :]
+        end = _INVOCATION_END.search(rest)
+        arguments = rest[: end.start() if end else len(rest)]
+        flags = set(re.findall(r"(?<![\w-])--(publish|stage|reserve-doi)\b", arguments))
+        if "publish" in flags:
+            return (
+                "`manuscript-guard deposit --publish` publishes the staged draft at Zenodo, "
+                "where it cannot be deleted. It asks the author to type the DOI at a terminal, "
+                "and --yes does not answer that: run it yourself.",
+                None,
+            )
+        if flags and sends is None:
+            sends = (
+                "`manuscript-guard deposit --stage` or `--reserve-doi` sends the bundle to the "
+                "repository, or asks it for a DOI, with the author's token from the "
+                "environment. What goes where is the author's decision: `deposit --dry-run` "
+                "lists what the bundle holds."
+            )
+    return None, sends
 
 
 def _approves(command: str) -> str | None:

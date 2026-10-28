@@ -50,7 +50,7 @@ SHA-256, never the token. Answers go back to the corresponding author unless `--
 otherwise.
 
 `import` reads answers files and appends to `checks/decisions.csv`: when, who, which item,
-what they said (`ok`, `wrong` or `unsure`), their note, and the digest of the item as they saw
+what they said (`ok`, `wrong` or `unsure`, and in the Methods group `code`), their note, and the digest of the item as they saw
 it. The file is append-only, because "was this checked, and by whom, and when" is asked months
 later by whoever is answering a reviewer, and a file that gets rewritten cannot answer it.
 A file whose page is in the register must carry that page's token, name and ORCID iD, or the
@@ -102,6 +102,7 @@ What the toolkit finds on its own, with no file written by the project:
 |---|---|
 | values quoted from the literature | does the quoted passage say this number |
 | sentences that cite something, each with the passage of the cited work `literature/passages.yaml` records for it | does the cited source say what this sentence says |
+| each Methods text G9 reads, beside the code of the steps its anchors name; and each Methods paragraph with no anchor, shown as "no code is linked to this text" | does this Methods text describe what this code does |
 | references | is the record right, and does the work exist |
 | authors | is this person's name, degrees, affiliation and role right |
 
@@ -117,6 +118,23 @@ toolkit offers none of its own in that group, and `build` says how many it left 
 the same value arrives twice under two identifiers — they are keyed on different things, so
 nothing can tell they are the same — and the person reads it twice. To take the toolkit's items
 for a group instead, leave that group out of the project's file.
+
+## The Methods against the code
+
+A Methods item shows the text with its values filled in, the steps and the lines of each
+step's code as the script now holds them; a step written in Python shows each function it
+calls as well. Its buttons are "Text matches the code", "Text needs changing", "Code needs
+changing" (key C) and "Not sure", and every one but the first asks for a note. A `code`
+answer is a finding about the analysis, not the prose: change the code, run it again, and read
+the text against it (the [methods-writer](../methods-writer/SKILL.md) skill). `code` is
+refused in any other group.
+
+The page does not say whether the author reconciled the pair in `methods.lock`, so as not to
+answer for the co-author. `build` prints a line for each claim it leaves out (a step that never
+ran, or an anchor with no text before it) and for a script changed since its run, whose code
+on the page may not be what ran: run the analysis again before sending the round. Editing a
+Methods sentence, or changing what a step's code does, makes the answers about it stale; a
+comment edited in the code, after a run, does not.
 
 ## When an answer counts for nothing
 

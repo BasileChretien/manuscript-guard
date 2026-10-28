@@ -33,8 +33,12 @@ __all__ = ["ANSWERS_SCHEMA", "Answers", "AnswersError", "Refused", "read_answers
 DECISIONS = "checks/decisions.csv"
 FIELDS = ["when", "by", "id", "group", "title", "status", "note", "digest", "bundle"]
 #: What a person may answer. "unsure" is not a failure of the checker; it is the honest answer
-#: when a document is ambiguous, and it keeps the item outstanding for someone else.
-STATUSES = ("ok", "wrong", "unsure")
+#: when a document is ambiguous, and it keeps the item outstanding for someone else. "code",
+#: the code needs changing and not the text, is an answer only in a group that lists it
+#: (`items.answers_of`), the methods group.
+STATUSES = ("ok", "wrong", "code", "unsure")
+#: What a person flags: the item needs something done, or someone else's reading.
+FLAGS = ("wrong", "code", "unsure")
 
 
 @dataclass(frozen=True)
@@ -168,6 +172,13 @@ def record(project_root: Path, answers: Answers, items: Items) -> Imported:
         if not identifier or status not in STATUSES:
             refused.append((called, f"answered {status!r}, which is not one of {STATUSES}"))
             continue
+        # An item this project no longer has is in no group, and its answer counts for nothing
+        # whatever it is: it is written down for its note, as below.
+        allowed = items.answers_for(item) if item is not None else STATUSES
+        if status not in allowed:
+            refused.append((called, f"answered {status!r}, which its group does not ask: "
+                                    f"one of {allowed}"))  # fmt: skip
+            continue
         seen = str(answer.get("digest") or "")
         decision = Decision(
             when=str(answer.get("at") or when),
@@ -217,7 +228,7 @@ class Standing:
     people: tuple[str, ...]
     by_person: dict[str, dict[str, int]]          # person -> status -> how many
     answered: dict[str, set[str]]                 # item id -> the people who answered it
-    wrong: tuple[Decision, ...]                   # anything anyone called wrong or was unsure of
+    wrong: tuple[Decision, ...]                   # anything anyone flagged (`FLAGS`)
     disagreements: tuple[tuple[str, tuple[Decision, ...]], ...]
     outstanding: int
     already: int
@@ -307,7 +318,7 @@ def status(project_root: Path, items: Items) -> Standing:
         people=tuple(sorted(by_person)),
         by_person=by_person,
         answered=answered,
-        wrong=tuple(d for d in counting if d.status in ("wrong", "unsure")),
+        wrong=tuple(d for d in counting if d.status in FLAGS),
         disagreements=tuple(disagreements),
         outstanding=len(outstanding),
         already=len(items.items) - len(items.outstanding),

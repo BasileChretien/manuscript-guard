@@ -45,6 +45,11 @@ class Items:
             for group in self.groups
         }
 
+    def answers_for(self, item: dict | None) -> tuple[str, ...]:
+        """The statuses `item` may be answered with, by its group (`answers_of`)."""
+        group = None if item is None else item.get("group")
+        return answers_of(next((g for g in self.groups if g.get("id") == group), None))
+
     @property
     def outstanding(self) -> tuple[dict, ...]:
         """The items a person is actually asked about: those nobody has answered already."""
@@ -57,7 +62,15 @@ def _words_of(block: dict) -> dict:
     A quote's text, a table's cells, a text excerpt's lines, a facts table's rows, and the
     caption and note that frame them. Left out: `file`, `img`, `target`, `line` and `mark`,
     which say how it was drawn or where to look, and change nothing a person reads.
+
+    A block of code is its caption alone (decision 1 (a) of Task 1): the code a methods item
+    shows is in its digest as G9's digest of the code read as code, among its facts, so a
+    comment edited and the run made again keeps a co-author's answer. Its lines, which hold
+    the comments, and its note, which says whether the script on this machine is the one that
+    ran, are how to read it and not what was asked.
     """
+    if block.get("kind") == "code":
+        return {"kind": "code", "caption": block.get("caption")}
     return {
         "kind": block.get("kind"),
         "caption": block.get("caption"),
@@ -70,6 +83,17 @@ def _words_of(block: dict) -> dict:
         # sentence's line: a value that moved down a page is the same value.
         "lines": [pair[1] for pair in block.get("lines") or [] if len(pair) > 1],
     }
+
+
+#: What a person may answer about an item of a group that lists no answers of its own.
+DEFAULT_ANSWERS = ("ok", "wrong", "unsure")
+
+
+def answers_of(group: dict | None) -> tuple[str, ...]:
+    """The statuses a group's items may be answered with: those it lists, or the three every
+    group has. `code`, "the code needs changing", is an answer only where a group lists it."""
+    listed = (group or {}).get("answers") or ()
+    return tuple(str(one.get("status")) for one in listed) or DEFAULT_ANSWERS
 
 
 def digest_of(item: dict) -> str:

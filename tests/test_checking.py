@@ -471,10 +471,10 @@ def only(document: dict, group: str) -> list[dict]:
     return [item for item in document["items"] if item["group"] == group]
 
 
-def test_produce_finds_all_four_kinds_in_the_example(project: Path) -> None:
+def test_produce_finds_all_five_kinds_in_the_example(project: Path) -> None:
     document = produced(project)
     found = {item["group"] for item in document["items"]}
-    assert found == {"literature", "claim", "reference", "author"}
+    assert found == {"literature", "claim", "methods", "reference", "author"}
 
 
 def test_a_ledger_value_travels_with_the_quote_it_came_from(project: Path) -> None:
@@ -1340,8 +1340,10 @@ def test_the_page_asks_for_the_reason_keeps_no_focus_and_leaves_modified_keys_al
     page = TEMPLATE.read_text(encoding="utf-8")
     assert 'if (status !== "ok" && !note)' in page and '$("note").focus()' in page
     assert "e.currentTarget.blur()" in page
-    for button in ("yes", "no", "hm", "prev", "next"):
+    for button in ("prev", "next"):
         assert f'$("{button}").onclick = pressed(' in page, button
+    # The answer buttons are drawn from the item's group, each pressed the same way.
+    assert "b.onclick = pressed(() => answer(b.dataset.s))" in page
     assert "if (e.ctrlKey || e.metaKey || e.altKey) return;" in page
     assert "title: it.title" in page
 
@@ -1973,3 +1975,237 @@ def test_a_page_outside_the_project_is_registered_by_its_whole_path(
     assert Path(row["file"]) == out.resolve() and Path(row["file"]).is_absolute()
     assert main(["checker", "build", str(project), "--for", "Blaise Sample",
                  "-o", str(out)]) == 2  # fmt: skip
+
+
+# ---------------------------------------------------------------- the Methods against the code
+#
+# Task 1, PR 2 (2026-10-28). Each claim G9 reads is an item beside the code of the steps it
+# points at, and each Methods paragraph that points at no step is one saying no code is linked
+# to it. The id is the file, the steps and the claim's place, so an edited text stales its item
+# rather than orphaning it; the digest holds the code through G9's digest of it read as code.
+
+
+def _methods(document: dict) -> list[dict]:
+    return [item for item in document["items"] if item["group"] == "methods"]
+
+
+def _rerun(root: Path) -> None:
+    """What running the analysis again records of its steps and its script, without the
+    minute the run takes: each step's lines and digest, as the emitter takes them, and the
+    script's digest."""
+    from manuscript_guard.emit import source_digest, step_code
+
+    for path in (root / "results").glob("*.json"):
+        document = json.loads(path.read_text(encoding="utf-8"))
+        if not document.get("steps"):
+            continue
+        script = root / document["provenance"]["generated_by"]
+        for name, spec in document["steps"].items():
+            found = step_code(script, spec["lines"][0] - 1, name)
+            assert found is not None, name
+            document["steps"][name] = found
+        document["provenance"]["generated_by_sha256"] = source_digest(script)
+        path.write_text(json.dumps(document, indent=1), encoding="utf-8")
+
+
+def _edit(path: Path, old: str, new: str) -> None:
+    text = path.read_text(encoding="utf-8")
+    assert text.count(old) == 1, old
+    path.write_text(text.replace(old, new), encoding="utf-8")
+
+
+def test_each_g9_claim_is_one_methods_item_with_its_text(project: Path) -> None:
+    """One item per claim G9 reads, the anchors side by side giving one item with both steps,
+    the claim's text with its values filled in and marked; and each open Methods paragraph."""
+    from manuscript_guard.checking.methods import NO_CODE
+    from manuscript_guard.cli import load_project
+    from manuscript_guard.gates.methods import anchored
+
+    claims, open_ = anchored(load_project(project)[0])
+    items = _methods(produced(project))
+    stepped = [item for item in items if item["facts"][0][1] != f"none: {NO_CODE}"]
+    assert [item["facts"][0][1] for item in stepped] == [", ".join(c.steps) for c in claims]
+    assert [item["facts"][0][1] for item in stepped] == ["ror, ci", "signal", "adjusted"]
+    ror = stepped[0]
+    assert ror["sentences"][0]["text"].endswith("for comparison with signal-detection practice.")
+    assert "alpha of 0.05;" in ror["sentences"][0]["text"]
+    assert ror["sentences"][0]["mark"] == ["0.05"]
+    assert ["results.param.alpha", "0.05"] in ror["facts"]
+    assert [e["caption"] for e in ror["evidence"]] == [
+        "step ror, in analysis/01_disproportionality.py",
+        "step ci, in analysis/01_disproportionality.py",
+    ]
+    assert ror["evidence"][0]["lines"][0][1].strip().startswith("a = sum(")
+    assert len(items) - len(stepped) == len(open_) > 0
+    # How the pair stands in methods.lock is not shown: it would give the answer away.
+    shown = json.dumps(items)
+    assert "read_on" not in shown and "never read" not in shown and "methods.lock" not in shown
+
+
+def test_editing_one_methods_claim_stales_only_its_item(project: Path) -> None:
+    before = {item["id"]: item for item in _methods(produced(project))}
+    _edit(project / "manuscript" / "main.md", "No p-value threshold was used",
+          "No P value threshold was used")  # fmt: skip
+    after = {item["id"]: item for item in _methods(produced(project))}
+    assert set(after) == set(before)
+    changed = [key for key in after if digest_of(after[key]) != digest_of(before[key])]
+    assert [after[key]["facts"][0][1] for key in changed] == ["signal"]
+
+
+def test_a_comment_edit_in_a_step_keeps_the_digest_and_a_code_edit_changes_it(
+    project: Path,
+) -> None:
+    """Decision 1 (a): the code is in the digest as G9's digest of it read as code. A comment
+    edited, or lines added above the step, and the run made again, keeps every answer; a
+    change to what the code does stales the items of that step only."""
+    script = project / "analysis" / "01_disproportionality.py"
+
+    def digests() -> dict[str, str]:
+        return {item["facts"][0][1]: digest_of(item) for item in _methods(produced(project))}
+
+    first = digests()
+    _edit(script, "# The normal quantile for that alpha", "# The quantile of the normal for alpha")
+    _edit(script, '    with em.step("ror"):', '    # Counted once.\n\n    with em.step("ror"):')
+    _rerun(project)
+    assert digests() == first
+    _edit(script, "high90 = math.exp(math.log(ror) + 1.645 * se)",
+          "high90 = math.exp(math.log(ror) + 1.64 * se)")  # fmt: skip
+    _rerun(project)
+    now = digests()
+    assert [steps for steps in first if now[steps] != first[steps]] == ["ror, ci"]
+
+
+def test_code_changed_since_its_run_is_said_on_the_page_and_by_build(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from manuscript_guard.checking.methods import CHANGED
+    from manuscript_guard.cli import main
+
+    _edit(project / "analysis" / "01_disproportionality.py", "+ 1.645 * se)", "+ 1.64 * se)")
+    ci = next(item for item in _methods(produced(project)) if "ci" in item["facts"][0][1])
+    assert {block.get("note") for block in ci["evidence"]} == {CHANGED}
+    assert main(["checker", "build", str(project), "--for", "Ada Example"]) == 0
+    said = capsys.readouterr().out
+    assert ("methods: analysis/01_disproportionality.py has changed since the run that recorded "
+            "step(s) ror, ci, signal, adjusted, so the code a co-author is shown may not be what "
+            "ran") in said, said
+
+
+def test_an_unanchored_methods_paragraph_is_an_item_and_one_elsewhere_is_not(
+    project: Path,
+) -> None:
+    """Decision 2 (a). A paragraph G9 reads as the Methods' and holding no anchor is asked with
+    "no code is linked to this text"; a paragraph outside the Methods holding none is not."""
+    from manuscript_guard.checking.methods import NO_CODE
+
+    main_md = project / "manuscript" / "main.md"
+    _edit(main_md, "Reporting follows the checklist declared in `paper.yaml`.",
+          "Reporting follows the checklist declared in `paper.yaml`.\n\n"
+          "Ethics approval was not needed for synthetic data.")  # fmt: skip
+    text = main_md.read_text(encoding="utf-8")
+    main_md.write_text(text + "\n\n# Afterword\n\nNobody wrote code for this sentence.\n",
+                       encoding="utf-8")  # fmt: skip
+    items = _methods(produced(project))
+    said = {item["sentences"][0]["text"]: item for item in items}
+    ethics = said["Ethics approval was not needed for synthetic data."]
+    assert ethics["facts"][0] == ["Steps", f"none: {NO_CODE}"]
+    assert ethics["evidence"][0]["kind"] == "none"
+    assert ethics["evidence"][0]["caption"] == NO_CODE
+    assert "Nobody wrote code for this sentence." not in said
+
+
+def test_a_claim_naming_a_step_that_never_ran_is_not_sent_and_build_says_so(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from manuscript_guard.cli import main
+
+    _edit(project / "manuscript" / "main.md", "S2 describes the model as it was fitted.",
+          "S2 describes the model as it was fitted. A sensitivity analysis left out "
+          "spontaneous reports from 2015. {{method.sensitivity}}")  # fmt: skip
+    items = _methods(produced(project))
+    assert not any("sensitivity analysis" in item["sentences"][0]["text"] for item in items)
+    assert main(["checker", "build", str(project), "--for", "Ada Example"]) == 0
+    said = capsys.readouterr().out
+    assert "{{method.sensitivity}} names no step the analysis ran, so its text is not sent" in (
+        said), said
+
+
+def test_a_supplements_methods_item_shows_its_path(project: Path) -> None:
+    (project / "manuscript" / "supplementary" / "S3_methods.md").write_text(
+        "# Supplementary methods\n\n"
+        "The counts of the two by two table were taken once over every report. {{method.ror}}\n"
+        "\n"
+        "The data were held on one machine.\n",
+        encoding="utf-8",
+    )
+    items = _methods(produced(project))
+    shown = {item["sentences"][0]["text"]: item["sentences"][0]["section"] for item in items}
+    counted = "The counts of the two by two table were taken once over every report."
+    assert shown[counted] == "supplementary/S3_methods.md"
+    assert shown["The data were held on one machine."] == "supplementary/S3_methods.md"
+
+
+def test_code_is_answered_only_in_a_group_that_asks_for_it(project: Path) -> None:
+    """A "code needs changing" is an answer in the methods group, and refused in any other,
+    with the reason: a cited sentence has no code to change."""
+    from manuscript_guard.cli import _checking_items, load_project
+
+    items = _checking_items(load_project(project)[0], None)
+    method = next(item for item in items.items if item["group"] == "methods")
+    claim = next(item for item in items.items if item["group"] == "claim")
+    sent = {
+        "schema": "manuscript-guard/checking-answers/1", "by": "Ada Example", "bundle": "x",
+        "answers": [
+            {"id": item["id"], "digest": item["digest"], "status": "code",
+             "note": "the 90% interval uses 1.645 and the text says nothing of it"}
+            for item in (method, claim)
+        ],
+    }  # fmt: skip
+    brought = import_answers(project, _send(project, "code.json", sent), items)
+    assert [d.id for d in brought.recorded] == [method["id"]]
+    assert [called for called, _why in brought.refused] == [claim["title"]]
+    assert "which its group does not ask" in brought.refused[0][1]
+    assert [d.status for d in status(project, items).wrong] == ["code"]
+
+
+def test_a_python_step_shows_each_function_it_calls_as_a_block(tmp_path: Path) -> None:
+    from manuscript_guard.checking.methods import Ran, code_blocks
+    from manuscript_guard.contracts.results import Step
+
+    (tmp_path / "a.py").write_text(
+        "import x\n\n\n@cache\ndef helper(v):\n    return v + 1\n\n\n"
+        "with em.step('s'):\n    y = helper(2)\n",
+        encoding="utf-8",
+    )
+    step = Step("s", "a.py", "d" * 64, tmp_path / "r.json", (10, 10), ("helper", "gone"))
+    blocks = code_blocks(step, Ran({"s": step}, tmp_path))
+    assert [b["lines"] for b in blocks[:2]] == [
+        [[10, "    y = helper(2)"]],
+        [[4, "@cache"], [5, "def helper(v):"], [6, "    return v + 1"]],
+    ]
+    assert blocks[2]["lines"] == [] and "not defined" in blocks[2]["note"]
+    r_step = Step("s", "b.R", "d" * 64, tmp_path / "r.json", (1, 1), ("helper",))
+    (tmp_path / "b.R").write_text("em$step('s', { helper(2) })\n", encoding="utf-8")
+    assert len(code_blocks(r_step, Ran({"s": r_step}, tmp_path))) == 1
+
+
+def test_the_digest_of_code_is_its_caption_not_its_lines() -> None:
+    item = {"id": "m", "group": "methods", "title": "t", "evidence": [
+        {"kind": "code", "caption": "step s, in a.py", "lines": [[1, "x = 1  # one"]]}]}
+    other = json.loads(json.dumps(item))
+    other["evidence"][0]["lines"] = [[3, "x = 1  # the first"]]
+    other["evidence"][0]["note"] = "this script has changed since the run"
+    assert digest_of(item) == digest_of(other)
+    other["evidence"][0]["caption"] = "step s, in b.py"
+    assert digest_of(item) != digest_of(other)
+
+
+def test_the_page_draws_its_answers_from_the_group_with_a_c_key() -> None:
+    from manuscript_guard.checking.bundle import TEMPLATE
+    from manuscript_guard.checking.produce import GROUPS
+
+    page = TEMPLATE.read_text(encoding="utf-8")
+    assert 'code: "C"' in page and "answersOf(groupOf(it.group)).some(" in page
+    assert 'e.kind === "code"' in page
+    methods = next(group for group in GROUPS if group["id"] == "methods")
+    assert [a["status"] for a in methods["answers"]] == ["ok", "wrong", "code", "unsure"]

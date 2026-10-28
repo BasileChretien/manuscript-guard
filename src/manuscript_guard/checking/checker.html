@@ -7,7 +7,7 @@
 <style>
   :root {
     --ink: #1a1a18; --quiet: #6b6b66; --line: #d9d7d0; --page: #fbfaf7; --card: #ffffff;
-    --ok: #1f7a4d; --bad: #a3321f; --maybe: #8a6a12; --mark: #ffe9a8; --row: #dce9f7;
+    --ok: #1f7a4d; --bad: #a3321f; --maybe: #8a6a12; --code: #3d5a99; --mark: #ffe9a8; --row: #dce9f7;
   }
   * { box-sizing: border-box; }
   body { margin: 0; font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -28,7 +28,7 @@
   .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 7px;
          background: var(--line); vertical-align: 1px; }
   .dot.ok { background: var(--ok); } .dot.wrong { background: var(--bad); }
-  .dot.unsure { background: var(--maybe); }
+  .dot.unsure { background: var(--maybe); } .dot.code { background: var(--code); }
   main { padding: 18px 20px 90px; max-width: 980px; }
   .tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
   .tabs button { border: 1px solid var(--line); background: var(--card); border-radius: 999px;
@@ -58,6 +58,7 @@
                      white-space: pre-wrap; }
   pre.lines { font: 13px/1.5 ui-monospace, Consolas, monospace; white-space: pre-wrap; margin: 0; }
   pre.lines .tl { background: var(--row); display: block; }
+  pre.lines.code { white-space: pre; overflow-x: auto; }
   .bar { position: fixed; bottom: 0; left: 0; right: 0; background: var(--card);
          border-top: 1px solid var(--line); padding: 10px 16px; display: flex; gap: 10px;
          align-items: center; flex-wrap: wrap; z-index: 4; }
@@ -66,6 +67,8 @@
   .bar button.yes { background: var(--ok); color: #fff; border-color: var(--ok); }
   .bar button.no { background: var(--bad); color: #fff; border-color: var(--bad); }
   .bar button.hm { background: var(--maybe); color: #fff; border-color: var(--maybe); }
+  .bar button.cd { background: var(--code); color: #fff; border-color: var(--code); }
+  #answers { display: contents; }
   .bar input { font: inherit; padding: 8px; border: 1px solid var(--line); border-radius: 4px;
                flex: 1 1 220px; min-width: 160px; }
   .done { padding: 10px 14px; background: #eef7f1; border: 1px solid #bfdcc9; border-radius: 4px; }
@@ -93,11 +96,9 @@
 </div>
 
 <div class="bar">
-  <button class="yes" id="yes">Matches (Y)</button>
-  <button class="no" id="no">Does not match (N)</button>
-  <button class="hm" id="hm">Not sure (U)</button>
+  <span id="answers"></span>
   <input id="note" placeholder="A note, if anything needs saying">
-  <span id="why" class="warn" hidden>Say what is wrong, or why you are not sure, then press it again.</span>
+  <span id="why" class="warn" hidden>Say in the note what needs changing, or why you are not sure, then press it again.</span>
   <button id="prev">◀ back</button>
   <button id="next">next ▶</button>
   <button id="save"><b>Save my answers</b></button>
@@ -139,6 +140,16 @@ try { S.answers = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { S
 function keep() { try { localStorage.setItem(KEY, JSON.stringify(S.answers)); } catch (e) {} }
 
 const groupOf = (id) => BUNDLE.groups.find((g) => g.id === id) || { title: id, ask: "", seconds: 20 };
+// The answers a group asks for, and their buttons: the group's own where it lists them, as the
+// methods group does with "Code needs changing", and otherwise the three every group has. A key
+// answers only with a status the item's group lists, so C does nothing outside the methods.
+const SAID = { ok: "Matches", wrong: "Does not match", code: "Code needs changing", unsure: "Not sure" };
+const KEYS = { ok: "Y", wrong: "N", code: "C", unsure: "U" };
+const LOOK = { ok: "yes", wrong: "no", code: "cd", unsure: "hm" };
+const answersOf = (g) => (g.answers && g.answers.length ? g.answers
+  : [{ status: "ok" }, { status: "wrong" }, { status: "unsure" }]);
+const labelOf = (g, status) =>
+  ((answersOf(g).find((a) => a.status === status) || {}).label) || SAID[status] || status;
 const statusOf = (it) => (S.answers[it.id] || {}).status || (it.already ? "already" : "todo");
 const marks = (text, needles) => {
   let out = esc(text);
@@ -215,6 +226,16 @@ function evidence(e) {
     ).join("\n") + `</pre>`;
   } else if (e.kind === "quote") {
     body = `<blockquote class="quote">${marks(e.text || "", e.mark)}</blockquote>`;
+  } else if (e.kind === "code") {
+    // Numbered and not highlighted: what is asked is whether the text says what this does, and
+    // a highlight would be this page's reading of the code put in front of the person's.
+    const at = (e.lines || []).map(([n]) => n);
+    const span = at.length ? ` · lines ${esc(at[0])}–${esc(at[at.length - 1])}` : "";
+    const warn = e.note ? `<p class="warn">${esc(e.note)}</p>` : "";
+    const code = at.length ? `<pre class="lines code">` + e.lines.map(([n, t]) =>
+      `<span>${esc(String(n).padStart(5))}  ${esc(t)}</span>`).join("\n") + `</pre>` : "";
+    return `<div class="ev"><div class="evhead">${esc(e.caption || "code")}${span}</div>` +
+      `<div class="evbody">${warn}${code}</div></div>`;
   } else if (e.kind === "facts") {
     body = `<table class="facts">` + (e.rows || []).map(([k, v]) =>
       `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join("") + `</table>`;
@@ -225,11 +246,20 @@ function evidence(e) {
   return `<div class="ev">${head}<div class="evbody">${body}</div></div>`;
 }
 
+function renderBar(g) {
+  $("answers").innerHTML = answersOf(g).map((a) =>
+    `<button class="${LOOK[a.status] || ""}" data-s="${esc(a.status)}">` +
+    `${esc(labelOf(g, a.status))} (${esc(KEYS[a.status] || "")})</button>`).join("");
+  $("answers").querySelectorAll("[data-s]").forEach((b) =>
+    b.onclick = pressed(() => answer(b.dataset.s)));
+}
+
 function render() {
   renderTabs(); renderSide();
   const it = S.list[S.pos];
   if (!it) { $("item").innerHTML = `<p class="note">Nothing here.</p>`; return; }
   const g = groupOf(it.group);
+  renderBar(g);
   const a = S.answers[it.id] || {};
   const facts = (it.facts || []).map(([k, v]) =>
     `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join("");
@@ -243,7 +273,7 @@ function render() {
     `<p class="ask">${esc(g.ask)}</p><p class="title">${esc(it.title)}</p>` +
     (facts ? `<table class="facts">${facts}</table>` : "") + sentences + more +
     (it.evidence || [{ kind: "none" }]).map(evidence).join("") +
-    (a.status ? `<p class="note">You answered: <b>${esc(a.status)}</b>${a.note ? " — " + esc(a.note) : ""}</p>` : "");
+    (a.status ? `<p class="note">You answered: <b>${esc(labelOf(g, a.status))}</b>${a.note ? " — " + esc(a.note) : ""}</p>` : "");
   $("note").value = a.note || "";
   $("why").hidden = true;
 }
@@ -256,6 +286,7 @@ function render() {
 function answer(status) {
   const it = S.list[S.pos];
   if (!it) return;
+  if (!answersOf(groupOf(it.group)).some((a) => a.status === status)) return;
   const note = $("note").value.trim();
   if (status !== "ok" && !note) {
     $("why").hidden = false;
@@ -300,9 +331,6 @@ function save() {
   $("sent").showModal();
 }
 
-$("yes").onclick = pressed(() => answer("ok"));
-$("no").onclick = pressed(() => answer("wrong"));
-$("hm").onclick = pressed(() => answer("unsure"));
 $("prev").onclick = pressed(() => { S.pos = Math.max(0, S.pos - 1); render(); });
 $("next").onclick = pressed(() => { S.pos = Math.min(S.list.length - 1, S.pos + 1); render(); });
 $("save").onclick = save;
@@ -320,9 +348,10 @@ document.addEventListener("keydown", (e) => {
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
   const k = e.key.toLowerCase();
-  if (k === "y") answer("ok");
-  else if (k === "n") answer("wrong");
-  else if (k === "u") answer("unsure");
+  const keyed = Object.keys(KEYS).find((status) => KEYS[status].toLowerCase() === k);
+  // The key is the answer's and not the note's: an answer waiting for its reason puts the
+  // focus in the note, and the letter pressed was typed there.
+  if (keyed) { e.preventDefault(); answer(keyed); }
   else if (k === "arrowleft") { S.pos = Math.max(0, S.pos - 1); render(); }
   else if (k === "arrowright") { S.pos = Math.min(S.list.length - 1, S.pos + 1); render(); }
 });

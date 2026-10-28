@@ -23,9 +23,10 @@ and run a server. So:
   about text that has changed since — those items are outstanding again — and where two
   people disagree.
 
-**What is the toolkit's and what is the project's.** The toolkit finds four kinds of item from
+**What is the toolkit's and what is the project's.** The toolkit finds five kinds of item from
 files every project keeps (`produce.py`): values quoted from the literature with the passage
-each came from, sentences that cite something, the references, and the authors. So a round can
+each came from, sentences that cite something, the Methods beside the code their anchors name
+(`methods.py`), the references, and the authors. So a round can
 be sent from a project that has written nothing of its own.
 
 What only the project knows, it contributes: that this number came from row 14 of that workbook,

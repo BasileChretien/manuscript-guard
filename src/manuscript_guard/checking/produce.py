@@ -1,15 +1,17 @@
 """The items a project offers a co-author, found by the toolkit itself.
 
-Four of them need nothing a project has to write:
+Five of them need nothing a project has to write:
 
 * **every value quoted from the literature** — the ledger holds the value, the quote it came
   from, the source and the locator, and the manuscript says where it is used;
 * **every sentence that cites something** — the sentence is the claim, and whether the cited
   paper supports it is the judgement no gate can make;
+* **every Methods text G9 reads** — each claim beside the code of the steps it points at, and
+  each Methods paragraph that points at none (`checking/methods.py`);
 * **every reference** — the record as `references.bib` holds it, and whether a copy is stored;
 * **every author** — their name, degrees, identifier, affiliations and roles.
 
-A fifth kind, a number transcribed from a table in a source document, is not here and cannot be:
+A sixth kind, a number transcribed from a table in a source document, is not here and cannot be:
 only the project knows that this value came from row 14 of that workbook, which is what its own
 tracing records. A project contributes those by writing `checks/items.json`, and they are merged
 with these — its groups first, because a project that went to the trouble knows what it wants
@@ -29,6 +31,7 @@ from pathlib import Path
 from typing import Any
 
 from manuscript_guard.checking.items import SCHEMA
+from manuscript_guard.checking.methods import GROUP as METHODS_GROUP
 from manuscript_guard.literature.bibfile import read_entries as _records_read_here
 from manuscript_guard.text.placeholders import PLACEHOLDER
 
@@ -46,6 +49,7 @@ GROUPS = (
         "ask": "Does the cited source say what this sentence says?",
         "seconds": 40,
     },
+    METHODS_GROUP,
     {
         "id": "reference",
         "title": "References",
@@ -614,6 +618,29 @@ def produce(project) -> tuple[dict[str, Any], tuple[str, ...]]:
     in silence — a page with two items instead of a hundred and thirty, and three ordinary lines
     of output. The warnings come back with the document now, and `build` prints them.
     """
+    document, unread, _notes = produce_with_notes(project)
+    return document, unread
+
+
+def _method_items(project) -> tuple[list[dict], list[str]]:
+    """The methods group (`checking/methods.py`): each claim G9 reads and each Methods
+    paragraph that points at no step, and the lines `build` prints about what is not sent."""
+    from manuscript_guard.checking.methods import method_items, ran_of
+    from manuscript_guard.contracts import load_namespace
+    from manuscript_guard.gates.methods import anchored
+
+    claims, open_ = anchored(project)
+    if not claims and not open_:
+        return [], []
+    namespace, results = load_namespace(project)[:2]
+    shown = {ref: str(value.display or value.value) for ref, value in namespace.items()}
+    return method_items(claims, open_, folder=project.path("manuscript"),
+                        ran=ran_of(project, results), shown=shown)  # fmt: skip
+
+
+def produce_with_notes(project) -> tuple[dict[str, Any], tuple[str, ...], tuple[str, ...]]:
+    """As `produce`, and the lines `build` prints about the methods group: each claim not sent,
+    and each script changed since the run that recorded its steps."""
     from manuscript_guard.contracts.literature import load_literature
     from manuscript_guard.literature.passages import read_passages
 
@@ -626,10 +653,12 @@ def produce(project) -> tuple[dict[str, Any], tuple[str, ...]]:
         for finding in (*report.failures, *passages_report.failures)
     )
     documents = _manuscript(project)
+    methods, notes = _method_items(project)
 
     items = (
         _literature_items(project, literature, documents)
         + _claim_items(project, literature, documents, passages)
+        + methods
         + _reference_items(project, literature)
         + _author_items(project)
     )
@@ -638,7 +667,7 @@ def produce(project) -> tuple[dict[str, Any], tuple[str, ...]]:
         "title": str(project.paper.get("short_title") or project.paper.get("title") or ""),
         "groups": [dict(group) for group in GROUPS],
         "items": items,
-    }, unread
+    }, unread, tuple(notes)
 
 
 def merge(

@@ -276,7 +276,8 @@ def _readings(project: Project, root: Path, files: set[str]) -> list[str]:
 
 def _answers(project: Project, names: set[str]) -> list[str]:
     """The co-author answers given on items whose sentences stand in one of the files
-    `names` (by file name, as the items record them)."""
+    `names` (by file name: the items record a file's name, and a Methods item its path
+    under `manuscript/`)."""
     from manuscript_guard.checking.produce import produce
     from manuscript_guard.checking.store import read_decisions
 
@@ -289,7 +290,8 @@ def _answers(project: Project, names: set[str]) -> list[str]:
     touched = {
         item["id"]
         for item in document.get("items", [])
-        if any(sentence.get("section") in names for sentence in item.get("sentences") or [])
+        if any(Path(str(sentence.get("section") or "")).name in names
+               for sentence in item.get("sentences") or [])
     }
     return [
         f"{decision.by} on {decision.title!r} ({decision.status}, {decision.when})"

@@ -4014,7 +4014,7 @@ def cmd_checklist(args: argparse.Namespace) -> int:
     return 0
 
 
-def _checking_items(project, named: Path | None):
+def _checking_items(project, named: Path | None, *, build: bool = False):
     """What this project offers a co-author: what the toolkit finds, plus what the project adds.
 
     The toolkit finds the values quoted from the literature, the sentences that cite something,
@@ -4023,7 +4023,7 @@ def _checking_items(project, named: Path | None):
     that traces its own writes `checks/items.json`, and those go in front.
     """
     from manuscript_guard.checking.items import SCHEMA, ItemsError, items_file, items_from
-    from manuscript_guard.checking.produce import merge, produce
+    from manuscript_guard.checking.produce import merge, produce_with_notes
     from manuscript_guard.contracts._schema import read_structured
 
     # The project's file is read raw and checked once, with the toolkit's, after the merge.
@@ -4054,7 +4054,11 @@ def _checking_items(project, named: Path | None):
         # default being absent only means this project contributes nothing of its own.
         raise ItemsError(f"{named} does not exist")
 
-    produced, unread = produce(project)
+    produced, unread, notes = produce_with_notes(project)
+    for said in notes if build else ():
+        # A Methods claim left out of the round, or code shown from a script that changed
+        # since its run: said where the page is built, which is where it can still be fixed.
+        print(said)
     for said in unread:
         # A ledger the contract cannot read takes every value in it out of the round. Printed
         # rather than left to be noticed as a page that is suspiciously short.
@@ -4091,7 +4095,7 @@ def cmd_checker(args: argparse.Namespace) -> int:
 
     project, _ = load_project(args.path)
     try:
-        items = _checking_items(project, args.items)
+        items = _checking_items(project, args.items, build=args.verb == "build")
     except ItemsError as exc:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2

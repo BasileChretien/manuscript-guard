@@ -2682,6 +2682,41 @@ def test_an_answers_file_with_a_forged_token_is_refused(project: Path, capsys, m
     assert "Ada Example (from the page built for them)" in capsys.readouterr().out
 
 
+def test_a_methods_sentence_edited_after_a_co_authors_ok_is_current_no_more(
+    project: Path, capsys
+) -> None:
+    """Task 1, PR 2: a co-author said the signal criterion's text matches its code, and the
+    text was then edited. Their ok is about a sentence nobody has now: `status` says so, and
+    the item is outstanding again, under the same identifier."""
+    from manuscript_guard.cli import main
+
+    assert main(["checker", "build", str(project), "--for", "Ada Example"]) == 0
+    page = (project / "checks" / "check-ada-example.html").read_text(encoding="utf-8")
+    start = page.index("const BUNDLE = ") + len("const BUNDLE = ")
+    bundle = json.loads(page[start : page.index(chr(10), start)].rstrip().rstrip(";"))
+    item = next(one for one in bundle["items"]
+                if one["group"] == "methods" and one["title"].startswith("signal:"))  # fmt: skip
+    answers = project / "answers-ada-example.json"
+    answers.write_text(json.dumps({
+        "schema": "manuscript-guard/checking-answers/2", "bundle": bundle["bundle"],
+        "by": "Ada Example", "orcid": bundle["person"]["orcid"], "token": bundle["token"],
+        "answers": [{"id": item["id"], "digest": item["digest"], "title": item["title"],
+                     "status": "ok"}],
+    }), encoding="utf-8")  # fmt: skip
+    assert main(["checker", "import", str(project), "--answers", str(answers)]) == 0
+    capsys.readouterr()
+    assert main(["checker", "status", str(project)]) == 0
+    assert "Ada Example: 1 ok" in capsys.readouterr().out
+    main_md = project / "manuscript" / "main.md"
+    text = main_md.read_text(encoding="utf-8")
+    assert text.count("at least\n") == 1
+    main_md.write_text(text.replace("at least\n", "at least ten, or\n"), encoding="utf-8")
+    assert main(["checker", "status", str(project)]) == 0
+    said = capsys.readouterr().out
+    assert "1 answer(s) are about text that has changed since" in said, said
+    assert f"Ada Example on {item['title']}" in said and "Ada Example: 1 ok" not in said, said
+
+
 # ------------------------------------------------ the unit written after a binding
 
 

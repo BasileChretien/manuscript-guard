@@ -5093,7 +5093,9 @@ warning.
 `methods --explain` prints every claim with the lines of the step that backs it and how the
 pair stands, then the open paragraphs, then the steps nothing describes. That is what a person
 reads to check the Methods against the code. Whether the text describes the code correctly is
-still theirs to say: an anchor shows that someone pointed a sentence at some code.
+still theirs to say: an anchor shows that someone pointed a sentence at some code. `checker
+build` puts the same claims and open paragraphs to the co-authors, each beside its code
+("The Methods against the code").
 
 **In Word.** An anchor prints nothing, so a co-author never sees it. The round trip does not
 place it by Word's words. Anchors that end their paragraph are set aside before the paragraph
@@ -10715,6 +10717,60 @@ the tool its first word, with `import` only as an option's value: `--title "Drug
 safety"`, `--for import`. Main's pattern asked wherever `checker` and then `import` followed the
 tool's name, so this keeps what it asked and asks more.
 
+### The Methods against the code
+
+G9 records that someone read a claim of the Methods against the step it points at; whether the
+text describes the code is still a person's to say, and a co-author who wrote or reviewed the
+analysis can say it where the author cannot see their own slip. So the toolkit's fifth group,
+`methods` (`checking/methods.py`), asks "Does this Methods text describe what this code
+does?" (Task 1, PR 2, 2026-10-28).
+
+**What an item is.** Exactly a claim of `gates/methods.anchored`, one item each: anchors side by
+side claim one text, and that text is one item showing every step it points at. A claim naming
+a step the run never recorded is not sent, nor one that claims no text, and `build` prints a
+line for each. Under decision 2 (a), each **open** paragraph is an item too, saying "no code is
+linked to this text": a paragraph G9 itself reads as the Methods' and that holds no anchor,
+which is G9's own list of them (`anchored`'s second half, what `methods --explain` lists as
+`open`). That is a paragraph under a heading `classify.is_methods` reads as the Methods, in
+the main text or the supplement, other than a table, a figure placed by its binding, a fenced
+listing or a fenced div. A paragraph with no anchor outside the Methods is no item.
+
+**What it shows.** The claim, its values filled in and marked, its section the file's path
+under `manuscript/`, so a supplement's Methods say they are the supplement's. The facts: the
+steps, each step's script and code digest, and each `results.` value the claim binds with its
+value as printed. The evidence: a new kind, `code`, numbered lines with no highlighting,
+read from the script on disk: the step's body, and for a Python script each function the run
+followed into, as its own block, found with `ast`; R gives the body only. Where the script's
+digest is not the one its fragment recorded, each block and `build` say the code shown may not
+be what ran. **Not shown**: how the pair stands in `methods.lock`, which would answer for the
+co-author before they read anything.
+
+**The identifier and the digest.** The identifier is the file under `manuscript/`, the steps
+joined by `+`, and the claim's place among the claims of the same steps in that file, an open
+paragraph's among the open paragraphs (its steps none): not the words. An edited claim then
+stales its answers, which keep their notes and are asked again, rather than orphaning them.
+Under decision 1 (a) the digest holds the code as G9's digest of it read as code, among the
+facts; a `code` block's lines, its note and its line numbers are outside it
+(`items._words_of`), so a comment edited, a call re-wrapped or a line added above the step,
+with the run made again, keeps every answer. `Step.where`'s lines are for that reason not
+among the facts: the page shows them from the block. The values are in it twice, in the
+sentence and in the facts, so a value printed otherwise stales the claims that bind it.
+
+**The answers.** A group may list its own (`answers` in the schema, each a status and its
+button's words); the methods group lists "Text matches the code" (`ok`), "Text needs
+changing" (`wrong`), "Code needs changing" (`code`) and "Not sure" (`unsure`). The page draws
+its bar from the item's group, Y, N, C and U, and a key answers only with a status the group
+lists. `code` is refused at import outside a group that lists it, with the reason; an answer
+about an item the project no longer has is written down whatever its status, as before. Every
+answer but `ok` asks for a note. `decisions.csv` keeps its nine columns: `code` is a status like
+the rest. `status` lists a `code` with the `wrong` and the `unsure`.
+
+**Tests.** `tests/test_properties.py` holds over generated Methods (`method_claims`, reading
+`checker methods`) that each claim is one item with its text, that a value printed otherwise
+changes the digests of exactly the items binding it, and that an edit to one item's words keeps
+every identifier and changes that item's digest alone; an identifier keyed on the text, and a
+digest without the bound values, each fail it.
+
 ### Nothing in it belongs to a vendor
 
 The file is a page, the answers are JSON, the record is a CSV. No model, no provider and no agent
@@ -10957,7 +11013,24 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   title, facts, sentences and the text of its evidence. A table's outlined cell and an image's
   bytes are not in it, so an answer survives the outline moving to another cell or the image
   being replaced. A bound value is shown by its name (`[reported_incidence]`), so a changed
-  `results.` or `lit.` value leaves the sentence, and an answer about it, as they were.
+  `results.` or `lit.` value leaves the sentence, and an answer about it, as they were. A
+  methods item is the exception: its values are filled in and in its digest.
+- **A methods item's code is read from disk, and only what the step's digest holds.** The
+  lines shown are the script as it is when the page is built, and a script whose digest is not
+  the one its run recorded is said to be so on the page and by `build`; a fragment that records
+  no digest of its script is said to leave it unknown. A module the script imports is not
+  shown, nor followed, as G9's digest does not follow it; R gives the step's body only, and
+  no function it calls. Under decision 1 (a) the comments are outside the digest: a comment
+  rewritten to contradict the text, with the code unchanged, keeps a co-author's ok, and so
+  does a step whose lines moved.
+- **An open Methods paragraph is known by its place.** It has no steps to be known by, so
+  its identifier is its place among the open paragraphs of its file: one added above, or one
+  given an anchor, moves those below, and their answers go stale (never onto another
+  paragraph, since the digest holds the text). A claim's place among the claims of the same
+  steps works the same way, which matters only where several texts point at one step.
+- **`checker` is still refused for a LaTeX manuscript.** The methods producer reads
+  `anchored`, which reads LaTeX, but the literature and claim producers read Markdown, and
+  every verb draws its items from all of them.
 - **Only comments are left out of the sentences.** A sentence a draft has commented out is not
   offered; one in a fenced code block or in the front matter is, if it cites something.
 - **The highlighter can mark inside a character reference.** A marked word is found in the

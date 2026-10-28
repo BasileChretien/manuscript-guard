@@ -47,6 +47,32 @@
             "type": "integer",
             "minimum": 1,
             "description": "How long one item of this group takes, for the page's estimate of the work left."
+          },
+          "answers": {
+            "type": "array",
+            "minItems": 1,
+            "description": "The answers a person may give an item of this group, in the order the page shows them, each with what its button says. Without it: ok (\"Matches\"), wrong (\"Does not match\") and unsure (\"Not sure\"). `code`, the code needs changing, is an answer only in a group that lists it, as the toolkit's methods group does; every answer but ok asks for a note.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "status"
+              ],
+              "properties": {
+                "status": {
+                  "enum": [
+                    "ok",
+                    "wrong",
+                    "code",
+                    "unsure"
+                  ]
+                },
+                "label": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
           }
         }
       }
@@ -135,6 +161,7 @@
                     "text",
                     "quote",
                     "facts",
+                    "code",
                     "none"
                   ]
                 },
@@ -178,7 +205,7 @@
                 },
                 "lines": {
                   "type": "array",
-                  "description": "text only: the lines around the value, each [number, text].",
+                  "description": "text: the lines around the value, each [number, text]. code: the lines of a step's code or of a function it calls, as the script on disk holds them, each [number, text], shown numbered and not highlighted, and outside the item's digest, which holds the code through the code digest among its facts.",
                   "items": {
                     "type": "array",
                     "minItems": 2,

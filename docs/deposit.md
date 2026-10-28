@@ -112,3 +112,63 @@ shown, and a value of it in the prose reads "[withheld]". The prose is written b
 whose version MANIFEST.yaml names (`companion_written_with`): the same records and the same
 pandoc give the same bytes, from any folder, on any day. Without pandoc, `--companion` is
 refused and the package without it is not.
+
+## Staging a deposit
+
+`manuscript-guard deposit` stages one bundle for one place, in
+`build/deposit/<target>-<bundle>/`, with an archive beside it and a list of what went in and
+what stayed out. It sends nothing and pushes nothing: uploading is yours.
+
+```bash
+manuscript-guard deposit --target zenodo --bundle preregistration --dry-run
+manuscript-guard deposit --target osf --bundle preregistration --retrospective "why now"
+manuscript-guard deposit --target zenodo --bundle release
+manuscript-guard deposit --target arxiv --bundle preprint
+manuscript-guard deposit --target medrxiv --bundle preprint
+manuscript-guard deposit --target gh-pages --bundle release
+```
+
+| Target | Bundles it takes |
+|---|---|
+| `zenodo`, `zenodo-sandbox`, `osf` | `preregistration`, `release` |
+| `arxiv`, `medrxiv` | `preprint` |
+| `gh-pages` | `release` (its companion page) |
+
+Any other pair is refused, with the reason.
+
+| Bundle | What it holds |
+|---|---|
+| `preregistration` | `design/plan.md`, the data dictionary and its plain CSV, `design/data_sources.yaml`, a README, `CITATION.cff` and `.zenodo.json`. Once `design/plan.frozen.yaml` exists, results have been written from the plan and it is no pre-registration: it is refused unless `--retrospective "<why>"` is given, and then labelled "Analysis plan, deposited after results were first written on" the day that record gives, with the reason, and the frozen copy beside it. |
+| `release` | the package with its crate and its companion page (`package --companion`), its MANIFEST.yaml, `VERIFICATION.md` and `VERIFICATION.json`, the data dictionary as a plain CSV and as REDCap's, and each reporting checklist as a table. Refused while `check --submission` fails. |
+| `preprint` for arXiv | the LaTeX source as one folder that compiles alone, as `submit` writes it, and a `.tar.gz` of the main document's files; a Markdown manuscript is written as LaTeX first, as `build --latex` does. Both need TeX, and are refused without it. With it, `arxiv_submission_sheet.md`. |
+| `preprint` for medRxiv | the `.docx` built offline, or for a LaTeX manuscript its PDF, the supplement, the figures, each reporting checklist as a table, the declarations and the CRediT statement, and `medrxiv_submission_sheet.md`. |
+| `release` for `gh-pages` | `index.html`, the companion page, and `.nojekyll`; the git commands to publish it from a `gh-pages` branch are printed, and none is run. |
+
+A preprint is refused while `check` fails at the project's stage, as `build` refuses.
+
+**The data custodian's checks come first**, whatever the bundle, and anything they find
+stops it before anything is built or written: a count below `custodian.minimum_cell_count`
+in a results file the bundle carries (a release carries those the package holds; a plan and
+a preprint carry none), and for a preprint a count the manuscript binds below it (G2's
+`count-below-minimum`); an input declared restricted that git tracks; and, once the bundle
+is planned, a file of it that is an input declared restricted. Where the custodian restricts
+sending, they sign the bundle off as its list of files and their digests stands:
+`manuscript-guard sign --as <them> --finding DEPOSIT/custodian/<target>/<bundle>`, with the
+same `--retrospective` reason for a plan deposited that way. Each target is its own sign-off:
+`zenodo-sandbox` is not `zenodo`.
+
+**VERIFICATION.md** says, gate by gate, what `check --submission` found, counted and named by
+code; what each dimension's gates checked by machine and what no gate decides; the last run
+of `verify` in this checkout, with the date it recorded; the co-authors' checking, counted by
+author; each author's approval; and the digests the approvals and the results are held to.
+It names no one but the authors, as the companion page does. VERIFICATION.json holds the
+same.
+
+**The sheets** list what each server's form asks and what the project records for it, or
+"not recorded". What they say of arXiv's and medRxiv's rules is each rule as the sheet names
+it: the servers' own pages are what holds. A count the sheet gives, the abstract's length
+against arXiv's 1,920 characters or the archive's size, is the tool's own.
+
+Every archive is the same bytes from the same files, on any day and from any folder: the
+.zip as `package` writes it, the .tar.gz with its members in order, each dated 0 and owned by
+nobody, and its gzip stream dated 0.

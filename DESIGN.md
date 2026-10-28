@@ -8342,6 +8342,64 @@ by its code, no word changed for a name, and one script, whose JSON-LD parses. I
 `tests/test_corruption.py`, the values of a results file the package withholds are never in
 the page, one held by mistake stops it, and a small count the page would show stops it.
 
+**A deposit is staged where it can be read, and the custodian is asked first** (Task 4,
+part C and its third pull request, the design Basile accepted on 2026-10-28). `deposit
+--target <target> --bundle <bundle>` (`deposit/command.py`) writes
+`build/deposit/<target>-<bundle>/` and its archive, and sends nothing: the clients that
+upload to Zenodo and OSF are the next pull request's. A pair that makes no sense, arXiv with
+a plan or a site with a preprint, is refused with the reason (`bundles.PAIRS`). The order is
+the point. First the data custodian's checks (`deposit/preflight.py`): the small counts of
+the results files the bundle carries, through `package`'s own reading of them and its
+sign-off (`PACKAGE/custodian/small-counts`); for a preprint G2's `count-below-minimum` over
+the manuscript, since a preprint prints it; `check_restricted_inputs`; and Task 3's check of
+a masked cell recovered by subtraction, through the one entry point it will fill,
+`gates.custodian.recoverable_cells`, which finds nothing yet (see Known gaps). A release is
+taken to carry the results files the package holds, and so is the site, whose page shows
+them; a plan and a preprint carry none. Anything these find stops the deposit before
+anything is built. Then a release, and the site that is its page, is held to `check
+--submission`, as `submit` is, and a preprint to `check` at the project's stage, as `build`
+is. Then the bundle is planned in memory, a list of `plan.Entry` with their digests, and
+refused where a file of it is an input declared restricted, by its name or by the file it is
+(`deposit-restricted-input`), where two of its files share a name in the case a system that
+ignores case reads (`deposit-name-taken`), and, where the custodian restricts sending, until
+they have signed off its list of files and digests as it stands,
+`DEPOSIT/custodian/<target>/<bundle>`, through `sign_offs.settle` as every sign-off is. Each
+target is another place, so `zenodo-sandbox` is signed off apart from `zenodo`. The
+package's findings that the deposit asks itself, its small counts and its own sign-off, are
+left out of a release's report, so that the custodian signs one list. Only then is anything
+written (`deposit/archive.py`): the folder, its SHA256SUMS, and the .zip `package` writes or,
+for arXiv, a .tar.gz of the source with its members in order, each dated 0, owned by user and
+group 0 with no names and mode 644, in the POSIX format, and the gzip stream dated 0 with no
+name in it, so that the same files are the same bytes from any folder on any day. A plan is
+no pre-registration once `design/plan.frozen.yaml` records the first results: the bundle is
+then refused unless `--retrospective "<why>"` is given, and it is labelled "Analysis plan,
+deposited after results were first written on" the day the record gives, with the reason and
+the frozen copy (`bundles.preregistration`); the custodian signs a plan deposited that way
+with the same reason (`sign --retrospective`), since its README holds it. The release is the
+package with its crate and companion page, its MANIFEST.yaml, the dictionary's exports, each
+reporting checklist as `submit`'s table, and VERIFICATION.md and .json
+(`deposit/verification.py`, decision 5(a)): `check --submission` by gate, counted and named
+by code; each dimension's machine line and what no gate decides, from `assurance.py`, without
+the lines that name a panel's readers, a figure's reviewer or a passage's judge, by decision
+4(a); the last `verify` run as `build/verify.json` records it; `checker`'s counts by author;
+each author's approval; and the document, front and results digests the approvals and
+`check` hold to. The arXiv bundle is `pack_latex`'s folder, or for a Markdown manuscript
+`build --latex`'s, both needing TeX, the main document's files only, with
+`arxiv_submission_sheet.md`; the medRxiv bundle is the `.docx` built offline, or a LaTeX
+manuscript's PDF, the supplement, the figures, the checklists, the declarations and the
+CRediT statement, with `medrxiv_submission_sheet.md` mapping each question of the form to
+what the project records or "not recorded" (`deposit/preprint.py`, `deposit/sheets.py`). What
+a sheet says of a server's rules is the rule as the sheet names it: the abstract's length
+against 1,920 characters and the archive's size are the tool's counts, the limits arXiv's.
+The site is `index.html` and `.nojekyll`, and the git commands to publish them are printed,
+never run. The tests are in `tests/test_deposit.py`: every bad pair, each bundle's files, the
+retrospective label, each check of the custodian's stopping it with nothing written, the
+sign-off and its staling, a release refused while the submission check fails, the archives
+twice and from another folder the same bytes, both sheets, the site, and no connection
+opened; the preprint bundles with LaTeX and Word stood in for, so that no test compiles. In
+`tests/test_corruption.py`, a count planted in a table stops a release and the site before
+anything is built, and a restricted input a plan would carry stops it.
+
 What this rests on: deterministic tests in CI (`tests/test_package.py`): the example packaged,
 unzipped and run again by `verify` from the unpacked folder with every value reproduced; an R
 analysis the same way where R is installed; a restricted input, an input nobody declared
@@ -17279,6 +17337,33 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - With `--skip-checks`, the count of failing checks `build` prints is one short of `check`'s
     when `manuscript.docx` is stale.
   - ci.yml's comment on setup-pandoc names a step that is gone.
+
+- **A masked cell recovered by subtraction is not looked for.** `deposit`'s preflight calls
+  `gates.custodian.recoverable_cells`, the one entry point for Task 3's check that a count
+  held back ("<5") cannot be worked out from a row's total and its other cells; it finds
+  nothing yet, so a bundle whose results let a reader subtract their way to a small count is
+  deposited. The deposit depends on Task 3 for it.
+- **A deposit is staged, not sent.** `deposit` uploads nothing in this version: the Zenodo
+  and OSF clients, the receipts and the DOI written to `paper.yaml` are the next pull
+  request's. arXiv and medRxiv have no interface to send through, so what they accept, their
+  TeX Live, their moderation and their scope, is theirs; the sheets name their rules as
+  written down, and the tool checked none of them. A plan deposited by the tool is a file with
+  a date, not an entry in a registry of studies, and "deposited before any results were
+  written" rests on there being no `design/plan.frozen.yaml`, which a project whose results
+  were written before the emitter kept one also lacks.
+- **What a bundle holds beyond the package is not in the crate.** VERIFICATION.md and .json,
+  the dictionary's exports and the checklist tables are files of a release that
+  `ro-crate-metadata.json` and the package's MANIFEST.yaml do not list; the release's
+  SHA256SUMS lists every file. VERIFICATION reads `build/verify.json`, which is the
+  checkout's, so a release made in another checkout says no run of `verify` is recorded.
+  CITATION.cff calls a plan a dataset, having no word for a plan, and .zenodo.json a
+  publication of type "other".
+- **A preprint's documents are built again, and the arXiv archive holds one document.** The
+  medRxiv bundle builds the `.docx` offline into `build/`, over the last build, and a LaTeX
+  manuscript's PDF with TeX; its `.docx` bytes are pandoc's, not fixed as the archives are.
+  The arXiv archive leaves out the supplement and keeps every other file of the folder, one
+  only the supplement uses among them. Neither sheet counts pages. A dry run of a preprint
+  builds its documents, and writes nothing under `build/deposit/`.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

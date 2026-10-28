@@ -3649,6 +3649,56 @@ def test_a_small_count_the_companion_would_show_stops_the_package(project: Path)
     assert not (project / "build" / "package").exists()
 
 
+def _deposit_preflight(root: Path, bundle: str):
+    from manuscript_guard.deposit import preflight
+    from manuscript_guard.deposit.command import _carried
+
+    loaded, _ = load_project(root)
+    _namespace, results, _literature, _ = load_namespace(loaded)
+    return preflight.first(loaded, results, _carried(loaded, results, bundle),
+                           preprint=bundle == "preprint")[0]  # fmt: skip
+
+
+def test_a_count_below_the_minimum_planted_in_a_table_stops_the_deposit(project: Path) -> None:
+    """The custodian's check comes before anything of a release is built: a count planted in
+    a table of the results it carries stops it, for a repository and for the site, and
+    nothing is written."""
+    _packable(project)
+    _custodian(project, 5)
+    assert _deposit_preflight(project, "release").ok
+
+    def plant(document: dict) -> None:
+        document["tables"]["two_by_two"]["rows"][0][1] = "2"
+
+    _resign(project, plant)
+    assert {f.code for f in _deposit_preflight(project, "release").failures} == \
+        {"package-small-count"}  # fmt: skip
+    for target in ("zenodo", "gh-pages"):
+        assert _run_cli(["deposit", str(project), "--target", target, "--bundle",
+                         "release"]) == 1  # fmt: skip
+        assert not (project / "build" / "deposit").exists()
+        assert not (project / "build" / "package").exists()
+
+
+def test_a_restricted_input_never_goes_into_a_deposit(project: Path) -> None:
+    """A record the bundle carries, the data dictionary, declared a restricted input of the
+    analysis: the bundle is refused, and nothing is written."""
+    (project / "design" / "plan.frozen.yaml").unlink()
+    argv = ["deposit", str(project), "--target", "zenodo", "--bundle", "preregistration"]
+    assert _run_cli([*argv, "--dry-run"]) == 0
+    dictionary = project / "design" / "data_dictionary.yaml"
+    digest = hashlib.sha256(dictionary.read_bytes()).hexdigest()
+
+    def plant(document: dict) -> None:
+        document["provenance"]["inputs"].append(
+            {"path": "design/data_dictionary.yaml", "sha256": digest, "restricted": True}
+        )
+
+    _resign(project, plant)
+    assert _run_cli(argv) == 1
+    assert not (project / "build" / "deposit").exists()
+
+
 def test_a_statement_that_loses_the_deposits_doi_fails_at_submission(project: Path) -> None:
     from manuscript_guard.gates.data_statement import check_package_doi
 

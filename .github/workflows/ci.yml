@@ -269,6 +269,12 @@ jobs:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: pyproject.toml
+      # The cache is keyed on the package list and on the ISO week, so R follows conda-forge's
+      # releases as setup-r followed CRAN's: keyed on the list alone, a warm cache kept the R of
+      # its first run for as long as it stayed warm (round 1 of #452).
+      - name: The week, for the R environment's cache
+        id: week
+        run: echo "week=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
       - uses: mamba-org/setup-micromamba@v2
         timeout-minutes: 8
         with:
@@ -280,7 +286,9 @@ jobs:
               - conda-forge
             channel_priority: strict
           cache-environment: true
+          cache-environment-key: environment-${{ steps.week.outputs.week }}
           cache-downloads: true
+          cache-downloads-key: downloads-${{ steps.week.outputs.week }}
           post-cleanup: none
       # micromamba puts the environment on PATH only for a login shell; pytest finds Rscript
       # on PATH, so the steps that need it run in one.
@@ -294,8 +302,13 @@ jobs:
         with:
           pandoc-version: ${{ env.MANUSCRIPT_GUARD_REQUIRE_PANDOC }}
       - run: pip install -e ".[dev]"
+      # The login shell puts the conda environment first on PATH, where a Python of its own
+      # would run pytest without the package pip installed: setup-python's is named.
       - shell: bash -el {0}
-        run: python -m pytest -q tests/test_r_emitter.py tests/test_r_quality.py
+        run: |
+          which python; python --version; which Rscript
+          "$pythonLocation/bin/python" --version
+          "$pythonLocation/bin/python" -m pytest -q tests/test_r_emitter.py tests/test_r_quality.py
 
   wheel:
     # Every other job installs editable, which reads src/ where it stands. A data file, a schema

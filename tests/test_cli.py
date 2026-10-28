@@ -894,6 +894,39 @@ def test_a_build_given_its_name_does_not_say_it_is_named_unchecked(
 
 
 @needs_pandoc
+def test_the_build_sets_aside_only_the_staleness_of_the_document_it_rewrites(
+    project: Path, tmp_path: Path, capsys
+) -> None:
+    """Every `document-stale` was set aside, so a stale `build/x.docx`, which no build
+    rewrites, and `manuscript.docx` under a build sent elsewhere by `--output`, were passed
+    without a word (round 1 of #452). Only the documents the build writes over are its to
+    clear."""
+    from manuscript_guard.build.document import SOURCE_STAMP
+
+    assert run("build", str(project), "--offline", "--stage", "internal-review") == 0
+    other = project / "build" / "x.docx"
+    other.write_bytes((project / "build" / "manuscript.docx").read_bytes())
+    other.with_name(other.name + SOURCE_STAMP).write_text("0" * 64 + "\n", encoding="utf-8")
+    capsys.readouterr()
+    assert run("build", str(project), "--offline", "--stage", "internal-review") == 1
+    out = capsys.readouterr().out
+    assert "x.docx was built from a different manuscript" in out
+    assert "manuscript.docx was built from" not in out
+    other.unlink()
+    other.with_name(other.name + SOURCE_STAMP).unlink()
+
+    path = project / "manuscript" / "main.md"
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text.replace("remains among the commonest", "is among the commonest", 1),
+                    encoding="utf-8")  # fmt: skip
+    target = tmp_path / "mine.docx"
+    capsys.readouterr()
+    assert run("build", str(project), "--offline", "--stage", "internal-review",
+               "--output", str(target)) == 1  # fmt: skip
+    assert "manuscript.docx was built from a different manuscript" in capsys.readouterr().out
+
+
+@needs_pandoc
 def test_a_stale_document_beside_another_failure_still_refuses(project: Path) -> None:
     """Only `document-stale` is set aside: any other failure still stops the build."""
     assert run("build", str(project), "--offline", "--stage", "internal-review") == 0

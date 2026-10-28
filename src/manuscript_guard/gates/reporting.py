@@ -142,8 +142,13 @@ _NAMED = re.compile(r"\b(" + "|".join(sorted(CLAIMABLE, key=len, reverse=True)) 
 #: first, because the match consumed the text the second one needed. A sentence runs over a
 #: single line break, as a hard-wrapped source writes one, and stops at a blank line and
 #: before a line that opens a Markdown heading or a table's row (Known gaps, 2026-10-27: a
-#: claim whose verb and name stood on two lines was not read).
-_SENTENCE = re.compile(r"(?:[^.!?\n]|\n(?![ \t]*(?:\n|$|[#|])))+(?:[.!?]|\n|$)")
+#: claim whose verb and name stood on two lines was not read), and before one that opens a
+#: list's item, `- `, `* `, `+ `, `1. ` or `1) `: run into one, "reported" in one item and
+#: STROBE in the next were a claim (round 1 of #452).
+_SENTENCE = re.compile(
+    r"(?:[^.!?\n]|\n(?![ \t]*(?:\n|$|[#|]|[-*+](?:[ \t]|$)|\d{1,9}[.)](?:[ \t]|$))))+"
+    r"(?:[.!?]|\n|$)"
+)
 
 
 def _claimed_in_prose(project: Project, declared: set[str]) -> Report:
@@ -248,13 +253,22 @@ def _latex_prose(source, view: str) -> str:
     `thebibliography`, which cites a guideline's statement and claims nothing, as a Markdown
     paper's list from `references.bib` is never read (round 2 of G8r in step 8). A typed
     table's line ends end a sentence, as a Markdown table's rows do (`_SENTENCE`), since a
-    sentence runs over a line break (2026-10-27)."""
+    sentence runs over a line break (2026-10-27). So does an `\\item`, as a Markdown list's
+    marker does: the view blanks it, and a list's items ran into one sentence (round 1 of
+    #452)."""
     out = list(_blanked(view, (*source.reading.code, *source.reading.references)))
     for start, end in source.reading.tables:
         for index in range(start, min(end, len(out))):
             if out[index] == "\n":
                 out[index] = "."
+    for found in _ITEM.finditer(source.text):
+        if found.start() < len(out) and out[found.start()] == " ":
+            out[found.start()] = "."
     return "".join(out)
+
+
+#: A list's item in LaTeX, which ends the sentence before it (`_latex_prose`).
+_ITEM = re.compile(r"\\item(?![A-Za-z@])")
 
 
 def _blanked(text: str, spans) -> str:

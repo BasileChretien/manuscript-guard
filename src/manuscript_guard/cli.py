@@ -3068,11 +3068,30 @@ def _build_markdown_latex(project, report, args: argparse.Namespace) -> int:
     return _pdfs_built(project, report, args, list(packed.each))
 
 
-def _without_stale_document(report):
-    """`report` less `document-stale`, the one finding a Word build clears by running."""
+def _without_stale_document(report, project, args: argparse.Namespace):
+    """`report` less the `document-stale` of each document in `build/` that this Word build
+    writes over, the one finding it clears by running: the paper, under its checked or
+    UNCHECKED name, where `--output` sends it nowhere else; the supplement, where there is
+    one; and the annotated copy, which an annotated build writes in their place. Every
+    `document-stale` was set aside, so a stale `build/x.docx`, which no build rewrites, was
+    passed without a word (round 1 of #452)."""
     from dataclasses import replace
 
-    kept = tuple(f for f in report.findings if f.code != "document-stale")
+    if getattr(args, "annotated", False):
+        rewritten = {"manuscript.annotated.docx"}
+    else:
+        named = args.output is not None
+        rewritten = set() if named else {"manuscript.docx", "manuscript.UNCHECKED.docx"}
+        supplement = project.path("manuscript") / "supplementary"
+        if supplement.is_dir() and any(path.is_file() for path in supplement.rglob("*")):
+            rewritten.add("supplementary.docx")
+    build = project.path("build").resolve()
+
+    def rewrites(finding) -> bool:
+        where = Path(finding.path).resolve() if finding.path else None
+        return where is not None and where.parent == build and where.name in rewritten
+
+    kept = tuple(f for f in report.findings if not (f.code == "document-stale" and rewrites(f)))
     return replace(report, findings=kept)
 
 
@@ -3113,7 +3132,7 @@ def cmd_build(args: argparse.Namespace) -> int:
         return _build_markdown_latex(project, report, args)
     # A stale .docx is this build's to clear: counted, it refused the build that would
     # rewrite it, and `--skip-checks` wrote an UNCHECKED copy beside it, a second finding.
-    report = _without_stale_document(report)
+    report = _without_stale_document(report, project, args)
     if marked_up:
         refused = _refused_inputs([args.since, args.since_supplement])
         if refused is not None:

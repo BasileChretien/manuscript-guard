@@ -5,8 +5,10 @@ order the document prints."""
 from __future__ import annotations
 
 import shutil
+import unicodedata
 from pathlib import Path
 
+import pytest
 import yaml
 
 from manuscript_guard.contracts import load_project
@@ -93,6 +95,24 @@ def test_a_word_holding_an_accent_command_is_read_as_latex_prints_it() -> None:
     assert len(seen.text) == len(text)
     start = text.index("caf\\'e")
     assert seen.text[start : start + 6] == "caf\N{LATIN SMALL LETTER E WITH ACUTE}" + NUL * 2
+
+
+@pytest.mark.parametrize("command", ["Erd\\H{e}s", "\\'{x}", "\\t{o}", "\\v{J}"])
+def test_an_accent_with_no_composed_letter_keeps_every_place_of_the_file(command: str) -> None:
+    """Where Unicode has no letter composed of the two, an accent command is a letter and a
+    combining mark, and both were written at the command's backslash: the view of the file
+    was a character longer from there on, and every number after it was read one place off.
+    The mark goes in the place after the letter."""
+    from manuscript_guard.text.latex.mask import read
+    from manuscript_guard.text.latex.words import accented
+
+    text = f"We thank {command} for 412 cases.\n"
+    out = accented(text, read(text).masked)
+    assert len(out) == len(text)
+    at = text.index("412")
+    assert out[at : at + 3] == "412"
+    start = text.index("\\")
+    assert out[start].isalpha() and unicodedata.combining(out[start + 1])
 
 
 def test_a_count_written_as_a_subscript_reads_as_markdown_writes_it() -> None:
@@ -199,9 +219,11 @@ def test_g14_says_once_a_file_how_many_words_it_did_not_read(project: Path) -> N
     found = sorted((f for f in report.findings if f.code == "tex-words-not-read"),
                    key=lambda f: f.path.name)  # fmt: skip
     assert [(f.path.name, f.line, f.message) for f in found] == [
-        ("main.tex", 4, "2 words here hold an accent command or \\-, and G14 does not read "
-                        "them: the first is \"caf\\\\'{}e\""),
-        ("more.tex", 1, "1 word here holds an accent command or \\-, and G14 does not read "
-                        "it: the first is \"co\\\\'{}operate\""),
+        ("main.tex", 4, "2 words here hold an accent command over no letter, and G14 does "
+                        "not read them: the first is \"caf\\\\'{}e\""),
+        ("more.tex", 1, "1 word here holds an accent command over no letter, and G14 does "
+                        "not read it: the first is \"co\\\\'{}operate\""),
     ]  # fmt: skip
     assert all(f.severity == "warn" for f in found)
+    # The message named `\-` long after a word it splits was read (round 1 of #452).
+    assert not any("\\-" in f.message or "hyphenation" in f.hint for f in found)

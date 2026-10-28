@@ -508,3 +508,23 @@ def test_only_the_upload_asks_for_an_identity_and_only_the_release_job_may_write
     ]
     assert granted["release"] == {"contents": "write"}
     assert granted["publish"] == {"id-token": "write"}
+
+
+def test_r_interop_s_environment_moves_with_the_week_and_pytest_runs_on_setup_python_s():
+    """r-interop's conda environment was cached on its package list alone, so R stayed at
+    the release of the cache's first run for as long as it stayed warm; and its pytest ran
+    under a login shell, where the environment comes first on PATH and a Python of its own
+    would run the tests without the package (round 1 of #452). The cache's key holds the ISO
+    week, and pytest is run by setup-python's interpreter, named."""
+    import yaml
+
+    ci = yaml.safe_load((REPO / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
+    steps = ci["jobs"]["r-interop"]["steps"]
+    (conda,) = [step for step in steps if "setup-micromamba" in step.get("uses", "")]
+    (week,) = [step for step in steps if step.get("id") == "week"]
+    assert "%G-W%V" in week["run"] and steps.index(week) < steps.index(conda)
+    for key in ("cache-environment-key", "cache-downloads-key"):
+        assert "${{ steps.week.outputs.week }}" in conda["with"][key], key
+    (tests,) = [step for step in steps if "pytest" in step.get("run", "")]
+    assert '"$pythonLocation/bin/python" -m pytest' in tests["run"]
+    assert "which python" in tests["run"]

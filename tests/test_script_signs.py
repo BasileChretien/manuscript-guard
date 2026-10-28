@@ -420,6 +420,25 @@ def test_a_subscript_after_a_capital_makes_no_term() -> None:
                            sunk=frozenset({3, 7})) == ["pao2", "fio2"]  # fmt: skip
 
 
+def test_a_declared_term_with_a_subscript_after_capitals_is_a_name() -> None:
+    """Held to a word's start or a capital after a lower-case letter, a declared term with a
+    subscript lost the names that put capitals before it: with CO2 declared, "ETCO~2~",
+    "PCO~2~" and "VCO~2~" each gave an unbound 2. A term the project declares counts after
+    capitals that open its word; a built-in term does not, nor a declared one after a
+    capital in a word with a lower-case letter before it."""
+    from manuscript_guard.classify import _names_covering
+
+    assert unbound("ETCO~2~, PCO~2~, VCO~2~ and P~ET~CO~2~ rose.", ("CO2",)) == []
+    assert unbound("A VO~2~ max and a DO~2~ fell.", ("O2",)) == []
+    # Built in, `r2` is no name after a capital.
+    assert unbound("An HR~2~ and an OR~2~ were sought.", ("CO2",)) == ["HR~2", "OR~2"]
+    sunk = frozenset({2})
+    assert _names_covering("HR2", frozenset(), ("r2",), sunk=sunk) is None
+    assert _names_covering("HR2", frozenset(), ("r2",), sunk=sunk, declared=frozenset({"r2"}))
+    assert _names_covering("aBR2", frozenset(), ("r2",), sunk=frozenset({3}),
+                           declared=frozenset({"r2"})) is None  # fmt: skip
+
+
 #: What the child process of the test below runs: the atoms of its first argument that
 #: nothing classifies, with a term of one space declared, as `unbound` gives them.
 READ_WITH_A_SPACE_DECLARED = N.join(

@@ -284,6 +284,31 @@ def test_a_placed_part_is_read_where_it_is_placed(placing: str, declared: str) -
     assert kept[0].endswith("\\begin{document}") and kept[1] == "\\end{document}\ntrailing\n"
 
 
+@pytest.mark.parametrize("declared", ["{standalone}", "[../main.tex]{subfiles}"])
+def test_a_placed_part_s_preamble_defines_nothing_for_the_paper(declared: str) -> None:
+    """TeX passes over the preamble of a part the paper places, and what it defines there was
+    told to every file of the tree all the same (round 1 of #452): a command it defines with
+    delimited parameters had main's own command of that name refused, and its definition of a
+    class's front matter made main's `\\keywords` the author's. What its body defines is
+    the paper's."""
+    main = ("\\documentclass{article}\n\\def\\x#1{[#1]}\n\\begin{document}\n"
+            "\\keywords{alpha 77}\nWe saw \\x{3} cases.\n\\subfile{part}\n" + END)
+    preamble = "\\def\\x#1.{(#1)}\n\\providecommand{\\keywords}[1]{}\n"
+    part = f"\\documentclass{declared}\n{preamble}\\begin{{document}}\nOf 42.\n" + END
+    plain = f"\\documentclass{declared}\n\\begin{{document}}\nOf 42.\n" + END
+    for placing in ("\\subfile{part}", "\\includestandalone{part}"):
+        told = read_tree({"main.tex": main.replace("\\subfile{part}", placing),
+                          "part.tex": part})  # fmt: skip
+        alone = read_tree({"main.tex": main.replace("\\subfile{part}", placing),
+                           "part.tex": plain})  # fmt: skip
+        assert told.refusals == alone.refusals == (), told.refusals
+        assert told.sources[0].reading.masked == alone.sources[0].reading.masked
+    # Defined in the part's body, a command with delimited parameters is the paper's.
+    body = f"\\documentclass{declared}\n\\begin{{document}}\n\\def\\x#1.{{(#1)}}\nOf 42.\n" + END
+    defined = read_tree({"main.tex": main, "part.tex": body})
+    assert defined.refusals, "a command the part's body defines is told to the tree"
+
+
 def test_a_standalone_picture_the_folder_lacks_is_an_image_and_a_plain_file_is_an_input() -> None:
     """An `\\includestandalone` of a picture whose `.tex` the folder lacks places the image
     compiled from it, which no gate reads: passed over, as before. A `\\subfile` of a file

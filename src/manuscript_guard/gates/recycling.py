@@ -159,15 +159,34 @@ _MONTHS = frozenset(
      "october", "november", "december"}
 )  # fmt: skip
 _LETTERS = re.compile(r"(?<!\d)[^\W\d_]+")
+#: Words that open a date in parentheses where a citation names its one author: a
+#: preposition, "(Since 2019)", a season, "(Spring 2019)", and a word of a period, "(Early
+#: 2020)". Each was taken for a surname and its date blanked in the earlier paper (round 1
+#: of #452). A citation of an author of one of these names, "(Winter, 2019)", is not
+#: blanked; one with "et al." or a second author is.
+_NO_AUTHOR = frozenset(
+    {"about", "after", "around", "as", "at", "before", "between", "by", "circa", "ca",
+     "during", "for", "from", "in", "on", "since", "through", "throughout", "till", "to",
+     "until", "up", "within", "spring", "summer", "autumn", "fall", "winter", "early", "late",
+     "mid", "end", "year"}
+)  # fmt: skip
+#: More than one author, or "et al.": a citation, whatever its names.
+_AUTHORS = re.compile(r"\bet\s+al\b|\band\b|&")
 
 
 def _is_author_year(cited: str) -> bool:
-    """Whether a match of `_AUTHOR_YEAR` names its authors: each name with a capital, and no
-    month among them."""
+    """Whether a match of `_AUTHOR_YEAR` names its authors: each name with a capital, no
+    month among them, and no citation of one author whose name is a word that opens a date
+    (`_NO_AUTHOR`)."""
     names = [word for word in _LETTERS.findall(cited) if word.casefold() not in _CITED_LOWER]
-    return bool(names) and all(
-        name[0].isupper() and name.casefold() not in _MONTHS for name in names
-    )
+    if not names or not all(name[0].isupper() and name.casefold() not in _MONTHS
+                            for name in names):  # fmt: skip
+        return False
+    for one in cited.strip("() \t\n").split(";"):
+        alone = [word for word in _LETTERS.findall(one) if word.casefold() not in _CITED_LOWER]
+        if len(alone) == 1 and alone[0].casefold() in _NO_AUTHOR and not _AUTHORS.search(one):
+            return False
+    return True
 
 
 def without_author_year(source: str) -> str:

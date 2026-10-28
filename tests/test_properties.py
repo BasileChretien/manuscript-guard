@@ -43,6 +43,7 @@ from generated import (
     CLAIMED,
     CREDITING,
     DATA_IDENTIFIERS,
+    DECLARED_TERMS,
     DEPOSIT_DOI,
     EDIT_GAPS,
     EDIT_WORDS,
@@ -112,6 +113,7 @@ from generated import (
     latex_words,
     latex_writing,
     lines,
+    markdown_claims,
     markdown_for_latex,
     masked_blocks,
     mean_tables,
@@ -1151,7 +1153,7 @@ def _a_placed_part_opens_no_environment_at_its_document(patch: pytest.MonkeyPatc
 
 
 def _a_placed_part_s_preamble_is_the_paper_s(patch: pytest.MonkeyPatch) -> None:
-    patch.setattr(latex_structure, "_placed", lambda reading: reading)
+    patch.setattr(latex_structure, "_placed", lambda reading, _text: reading)
 
 
 @holds(60, latex_folders())
@@ -1494,6 +1496,21 @@ def test_latex_s_printed_view_holds_what_it_prints_as_markdown_writes_it(
 
 def _the_printed_view_drops_an_accent_s_mark(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(latex_print, "accented", lambda text, masked: masked)
+
+
+def _an_accent_s_letter_and_mark_share_a_place(patch: pytest.MonkeyPatch) -> None:
+    accented = latex_print.accented
+
+    def broken(text: str, masked: str) -> str:
+        out = list(accented(text, masked))
+        for found in latex_words_view._FOLDING.finditer(text):
+            written = latex_words_view.folded(found)
+            if len(written) > 1 and out[found.start()] == written[0]:
+                out[found.start()] = written
+                out[found.start() + 1] = latex_mask.NUL
+        return "".join(out)
+
+    patch.setattr(latex_print, "accented", broken)
 
 
 @holds(60, latex_trees())
@@ -2197,6 +2214,33 @@ def _a_claim_runs_over_a_table_s_rows(patch: pytest.MonkeyPatch) -> None:
         return reporting_gate._blanked(view, (*source.reading.code, *source.reading.references))
 
     patch.setattr(reporting_gate, "_latex_prose", prose)
+
+
+def _a_claim_runs_over_a_latex_list_s_items(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import reporting as reporting_gate
+
+    patch.setattr(reporting_gate, "_ITEM", re.compile(r"(?!)"))
+
+
+def _a_claim_runs_over_a_list_s_items(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import reporting as reporting_gate
+
+    patch.setattr(reporting_gate, "_SENTENCE",
+                  re.compile(r"(?:[^.!?\n]|\n(?![ \t]*(?:\n|$|[#|])))+(?:[.!?]|\n|$)"))
+
+
+@holds(60, markdown_claims())
+def test_a_markdown_claim_to_have_followed_a_guideline_is_read_within_its_sentence(
+    drawn: tuple[str, list[tuple[str, bool]]],
+) -> None:
+    """A claim is read within its sentence, which runs over a single line break and not
+    over a blank line, nor from one item of a list into the next, whatever the list's
+    marker; one in a comment is no claim (round 1 of #452)."""
+    from manuscript_guard.gates import reporting as reporting_gate
+
+    text, planted = drawn
+    named = reporting_gate._claims([(Path("main.md"), mask(text))])
+    assert sorted(named) == sorted(name for name, read in planted if read), text
 
 
 def _g8r_reads_a_typed_reference_list(patch: pytest.MonkeyPatch) -> None:
@@ -6390,6 +6434,21 @@ def _every_image_is_a_figure(patch: pytest.MonkeyPatch) -> None:
                   lambda text: len(re.findall(r"!\[[^\]\n]*\]\(", text)))  # fmt: skip
 
 
+def _a_heading_s_line_below_an_image_ends_its_paragraph(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text import sections
+
+    placed = sections._figures_placed
+
+    def broken(text: str) -> int:
+        lines = sections.scannable(text).split("\n")
+        under = sum(1 for at in range(1, len(lines) - 1)
+                    if sections._FIGURE_LINE.fullmatch(lines[at])
+                    and not lines[at - 1].strip() and sections._ATX_LINE.fullmatch(lines[at + 1]))
+        return placed(text) + under
+
+    patch.setattr(sections, "_figures_placed", broken)
+
+
 @holds(25, latex_displays_placed())
 def test_a_latex_display_counts_as_latex_numbers_it(planted: tuple[str, int]) -> None:
     """G4 counted a LaTeX float as a display item only where it placed a binding, so a
@@ -6474,7 +6533,9 @@ def test_an_address_and_an_interleukin_are_no_numbers_and_a_number_beside_them_i
     expected = {"address": STRUCTURAL, "name": TERM, "number": UNCLASSIFIED}
     atoms = find_atoms(text, mask(text))
     assert sorted(atom.text for atom in atoms) == sorted(kinds), text
-    for classifier in (Classifier.load(), Classifier.load(rendered=True)):
+    declared = DECLARED_TERMS
+    for classifier in (Classifier.load(extra_terms=declared),
+                       Classifier.load(rendered=True, extra_terms=declared)):  # fmt: skip
         scan = classifier.scan(text)
         for atom in atoms:
             verdict = classifier.classify(atom, None, scan)
@@ -6565,8 +6626,8 @@ def _a_superscript_s_digits_open_a_term_at_a_capital(patch: pytest.MonkeyPatch) 
 
     names_covering = classify._names_covering
     patch.setattr(classify, "_names_covering",
-                  lambda text, _raised, terms, sunk: names_covering(text, frozenset(), terms,
-                                                                    sunk=sunk))  # fmt: skip
+                  lambda text, _raised, terms, **marked: names_covering(text, frozenset(), terms,
+                                                                        **marked))  # fmt: skip
 
 
 def _a_subscript_s_digits_open_a_term_after_a_capital(patch: pytest.MonkeyPatch) -> None:
@@ -6574,7 +6635,7 @@ def _a_subscript_s_digits_open_a_term_after_a_capital(patch: pytest.MonkeyPatch)
 
     names_covering = classify._names_covering
     patch.setattr(classify, "_names_covering",
-                  lambda text, raised, terms, sunk: names_covering(text, raised, terms))
+                  lambda text, raised, terms, **_marked: names_covering(text, raised, terms))
 
 
 def _a_subscript_s_digits_open_a_term_only_at_a_word(patch: pytest.MonkeyPatch) -> None:
@@ -6582,7 +6643,19 @@ def _a_subscript_s_digits_open_a_term_only_at_a_word(patch: pytest.MonkeyPatch) 
 
     names_covering = classify._names_covering
     patch.setattr(classify, "_names_covering",
-                  lambda text, raised, terms, sunk: names_covering(text, raised | sunk, terms))
+                  lambda text, raised, terms, sunk, **_declared: names_covering(
+                      text, raised | sunk, terms))  # fmt: skip
+
+
+def _a_declared_term_with_a_subscript_opens_no_term_after_capitals(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    from manuscript_guard import classify
+
+    names_covering = classify._names_covering
+    patch.setattr(classify, "_names_covering",
+                  lambda text, raised, terms, sunk, **_declared: names_covering(
+                      text, raised, terms, sunk=sunk))  # fmt: skip
 
 
 def _no_term_counts_directly_after_another(patch: pytest.MonkeyPatch) -> None:
@@ -7476,6 +7549,14 @@ def _a_cited_name_needs_no_capital(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(recycling_gate, "_is_author_year", lambda cited: True)
 
 
+def _a_word_that_opens_a_date_names_an_author(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(recycling_gate, "_NO_AUTHOR", frozenset())
+
+
+def _a_word_that_opens_a_date_names_no_author_among_several(patch: pytest.MonkeyPatch) -> None:
+    patch.setattr(recycling_gate, "_AUTHORS", re.compile(r"(?!)"))
+
+
 def _a_citation_names_one_author(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(recycling_gate, "_AUTHOR_YEAR", re.compile(
         r"\(\s*[^\W\d_]+(?:\s+et\s+al\.?)?\s*,?\s+(?:1[5-9]|20)\d\d[a-z]?\s*\)"
@@ -7525,6 +7606,12 @@ def _a_doi_s_percent_encoding_is_kept(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import identifiers
 
     patch.setattr(identifiers, "_PERCENT_ENCODED", re.compile(r"(?!)(..)"))
+
+
+def _a_doi_s_escaped_space_is_a_space(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.gates import identifiers
+
+    patch.setattr(identifiers, "_PERCENT_ENCODED", re.compile(r"%([2-7][0-9A-Fa-f])"))
 
 
 @holds(100, titles_in_tex())
@@ -12581,6 +12668,10 @@ BROKEN = {
         _the_printed_view_drops_an_accent_s_mark,
         test_latex_s_printed_view_holds_what_it_prints_as_markdown_writes_it,
     ),
+    "in LaTeX's printed view, an accent's letter and its mark share a place": (
+        _an_accent_s_letter_and_mark_share_a_place,
+        test_latex_s_printed_view_holds_what_it_prints_as_markdown_writes_it,
+    ),
     "in LaTeX's words, a subscript's count is maths": (
         _a_subscripts_count_is_maths,
         test_latex_s_words_hold_each_word_where_latex_prints_it,
@@ -12828,6 +12919,18 @@ BROKEN = {
     "in LaTeX, G8r reads a claim over a typed table's rows": (
         _a_claim_runs_over_a_table_s_rows,
         test_a_latex_claim_to_have_followed_a_guideline_is_read_where_it_prints,
+    ),
+    "in LaTeX, G8r reads a claim from one item into the next": (
+        _a_claim_runs_over_a_latex_list_s_items,
+        test_a_latex_claim_to_have_followed_a_guideline_is_read_where_it_prints,
+    ),
+    "G8r reads a claim from one item of a list into the next": (
+        _a_claim_runs_over_a_list_s_items,
+        test_a_markdown_claim_to_have_followed_a_guideline_is_read_within_its_sentence,
+    ),
+    "G8r reads a Markdown claim within one line": (
+        _a_claim_stops_at_a_line_break,
+        test_a_markdown_claim_to_have_followed_a_guideline_is_read_within_its_sentence,
     ),
     "in LaTeX, G8r reads a typed reference list": (
         _g8r_reads_a_typed_reference_list,
@@ -13545,6 +13648,14 @@ BROKEN = {
         _a_cited_name_needs_no_capital,
         test_a_citation_by_author_and_year_is_no_word_of_an_earlier_paper,
     ),
+    "a word that opens a date names an author": (
+        _a_word_that_opens_a_date_names_an_author,
+        test_a_citation_by_author_and_year_is_no_word_of_an_earlier_paper,
+    ),
+    "a word that opens a date names no author among several": (
+        _a_word_that_opens_a_date_names_no_author_among_several,
+        test_a_citation_by_author_and_year_is_no_word_of_an_earlier_paper,
+    ),
     "a citation by author and year names one author": (
         _a_citation_names_one_author,
         test_a_citation_by_author_and_year_is_no_word_of_an_earlier_paper,
@@ -13555,6 +13666,10 @@ BROKEN = {
     ),
     "a DOI's percent-encoding is kept": (
         _a_doi_s_percent_encoding_is_kept,
+        test_a_doi_is_compared_as_it_is_registered_however_the_file_writes_it,
+    ),
+    "a DOI's percent-escape of a space is read as a space": (
+        _a_doi_s_escaped_space_is_a_space,
         test_a_doi_is_compared_as_it_is_registered_however_the_file_writes_it,
     ),
     "a title's TeX is read as letters": (
@@ -14325,6 +14440,10 @@ BROKEN = {
         _every_image_is_a_figure,
         test_a_figure_placed_by_hand_counts_where_pandoc_numbers_it,
     ),
+    "a heading's line straight below an image ends its paragraph": (
+        _a_heading_s_line_below_an_image_ends_its_paragraph,
+        test_a_figure_placed_by_hand_counts_where_pandoc_numbers_it,
+    ),
     "a LaTeX display counts by its bindings": (
         _a_latex_display_counts_by_its_bindings,
         test_a_latex_display_counts_as_latex_numbers_it,
@@ -14447,6 +14566,10 @@ BROKEN = {
     ),
     "a subscript's digits open a term only at a word": (
         _a_subscript_s_digits_open_a_term_only_at_a_word,
+        test_an_address_and_an_interleukin_are_no_numbers_and_a_number_beside_them_is,
+    ),
+    "a declared term with a subscript opens no term after capitals": (
+        _a_declared_term_with_a_subscript_opens_no_term_after_capitals,
         test_an_address_and_an_interleukin_are_no_numbers_and_a_number_beside_them_is,
     ),
     "no term counts directly after another": (

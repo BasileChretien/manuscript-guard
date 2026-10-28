@@ -179,17 +179,30 @@ def part(text: str) -> bool:
     return reading.body_start > 0 and bool(classes & _PARTS)
 
 
-def _placed(reading: Reading) -> Reading:
+def _placed(reading: Reading, text: str) -> Reading:
     """A part's reading where the paper places it: what its preamble and the end of its
     document hold, which the package that places it passes over, is TeX's to pass over
-    (`unprinted`), and what the preamble loads, inputs, declares or comments is not the
-    paper's. So the submission folder writes its body in the place of the command."""
+    (`unprinted`), and what the preamble loads, inputs, declares, defines, encodes or
+    comments is not the paper's. So the submission folder writes its body in the place of
+    the command.
+
+    The commands a part defines, told to every file of the tree, are those its body defines,
+    read from the body alone: told of its preamble's as well, main's own `\\x` was refused
+    for the part's `\\def\\x#1.{...}`, and a part's `\\providecommand{\\keywords}` made main's
+    `\\keywords` the author's (round 1 of #452)."""
     start, length = reading.body_start, len(reading.masked)
     end = reading.body_end if reading.body_end >= 0 else length
 
     def inside(at: int) -> bool:
         return start <= at < end
 
+    if reading.delimited or reading.own or reading.literal:
+        # The body, in its places, with the preamble and what follows it as spaces.
+        body = read("".join(ch if ch == "\n" or inside(at) else " "
+                            for at, ch in enumerate(text)), body=True)  # fmt: skip
+        defined = {"delimited": body.delimited, "own": body.own, "literal": body.literal}
+    else:
+        defined = {}
     return replace(
         reading,
         inputs=tuple(put for put in reading.inputs if inside(put.offset)),
@@ -198,8 +211,10 @@ def _placed(reading: Reading) -> Reading:
         comments=tuple(span for span in reading.comments if inside(span[0])),
         bindings=tuple(found for found in reading.bindings if inside(found.start)),
         graphics=tuple(found for found in reading.graphics if inside(found[0])),
+        encodings=tuple(at for at in reading.encodings if inside(at)),
         unprinted=((0, start), *(span for span in reading.unprinted if inside(span[0])),
                    *(((end, length),) if end < length else ())),
+        **defined,
     )
 
 
@@ -501,7 +516,7 @@ def _read_tree(
         (`_placed`)."""
         text = files[path]
         if placed and part(text):
-            reading = _placed(told.read(text, body=None, environments=environments))
+            reading = _placed(told.read(text, body=None, environments=environments), text)
         else:
             reading = told.read(text, body=body, environments=environments)
         place = len(sources)

@@ -1824,7 +1824,12 @@ The result is compiled and packed by the code above, and checked three times:
   loose main text (round 1 of #445). One the paper places by `\includestandalone` or
   `\subfile` is read where it stands (see "Closed since"), with these limits: its preamble
   is passed over whole, so a command it defines is not known in its body, where TeX would
-  not know it either; a file the command places that is in neither class is read as an
+  not know it either, nor in the paper's other files (round 1 of #452: one defined with
+  delimited parameters had main's own command of that name refused). Under `standalone`'s
+  `subpreambles` option a picture's preamble is kept and run where the picture is placed,
+  and the reader passes it over all the same, so the submission folder's packed source
+  loses what that preamble defines or loads, which the compile of the packed source then
+  catches. A file the command places that is in neither class is read as an
   `\input` of it, and its own `\documentclass` is refused; an `\includestandalone` of a
   picture whose `.tex` the folder lacks is taken for the image compiled from it and passed
   over; and the submission folder writes the picture's body in the command's place, so the
@@ -2233,7 +2238,7 @@ The result is compiled and packed by the code above, and checked three times:
   `\begin{document}` are compared with nothing in `build --latex`.
 - `\date` is read by no gate, since a Markdown build prints no date to compare it with.
 - A word holding an accent over no letter, `caf\'{}e`, is not read by G14, which says how
-  many there are in each file, in a message that still names any accent command or `\-`.
+  many there are in each file.
   `\=`, `\'` and `\-` are tab commands in `tabbing`, where the word after one is taken for
   an accented word all the same, and read with the accent (step 7; 2026-10-27). A word made
   of letters typed as commands alone, `\ss{}`, is not read. LaTeX's dashes stay as typed in
@@ -13845,7 +13850,11 @@ Open, recorded as each change landed:
   An entry with anything after its pages but a DOI, PMID, Epub or availability note is not,
   nor an author-year entry whose author is an organisation, "Example Agency. (2020).", nor
   a book in a numbered style with no place before its publisher, nor one whose names are not
-  in the Latin script, so their numbers are reported: noise rather than a pass. A caption or
+  in the Latin script, so their numbers are reported: noise rather than a pass. The shapes
+  of a web page and of Harvard's entry with no full stop after the year can take a line of
+  the Data availability statement for an entry, where it names a source, a year and an
+  address as an entry does: its numbers are then listed apart rather than among the unmatched, so
+  they are not lost, but `--strict` does not count them (round 1 of #452). A caption or
   sentence that has the shape is still compared, but its unmatched numbers are listed in a
   section of their own, which `--strict` does not count: each shape added is a little more
   that `--strict` can miss, which is why each is held to an ending a caption or a sentence
@@ -16423,10 +16432,15 @@ Open, recorded as each change landed:
 - **A citation by author and year is known in parentheses only.** The earlier paper's "(Smith
   et al., 2019)" is blanked before its words are compared (see "Closed since"); one in
   square brackets, "[Smith 2019]", is read as words, and cuts a passage where the
-  manuscript cites by key alone. A parenthesis
-  that reads as such a citation and is none, "(Spring, 2019)", is blanked too; the word it
-  takes is one the manuscript has and the earlier paper then does not, which a passage
-  bridges as it bridges any word changed.
+  manuscript cites by key alone. A parenthesis that reads as such a citation and is none
+  is blanked too, where its words are names in shape: "(England and Wales, 2019)" is two
+  authors to this check, and a single word that is no preposition, season or word of a
+  period, "(Brexit 2019)", one. The words it takes are words the manuscript has and the
+  earlier paper then does not, which cut the passage there. A preposition, a season or a
+  word of a period standing alone before the year, "(Since 2019)", "(Spring 2019)", is no
+  citation (round 1 of #452: each was blanked), so a citation of one author of such a
+  name, "(Winter, 2019)", is read as words; with "et al." or a second author it is a
+  citation (`recycling._NO_AUTHOR`).
 - **A Methods passage counts as cited only where its own paragraph cites the earlier paper.**
   "As described previously [@key]" heading a subsection, with the description two paragraphs
   on, is reported as uncited, a warning from internal-review.
@@ -16735,7 +16749,13 @@ Closed since, and why each mattered (an open gap goes above this line):
   away the UNCHECKED copy of an older source; and a build given its name by `--output` no
   longer says the document is named UNCHECKED (`test_cli.py`,
   `test_a_stale_document_does_not_block_the_build_that_clears_it`). A LaTeX build writes
-  PDFs, which clear no stale `.docx`, and still counts it.
+  PDFs, which clear no stale `.docx`, and still counts it. It left every `document-stale`
+  out at first, so a stale `build/x.docx`, which no build rewrites, and `manuscript.docx`
+  under a build that `--output` sends elsewhere were passed without a word: only the
+  documents this build writes over in `build/` are left out now, the paper under its
+  checked or UNCHECKED name where no `--output` is given, the supplement where there is
+  one, the annotated copy for an annotated build (round 1 of #452;
+  `test_the_build_sets_aside_only_the_staleness_of_the_document_it_rewrites`).
 - **The submission pack lost an abstract and passed a document it could not read.**
   `**Keywords**` and `**Keywords.**`, bold with no colon as the abstract's own labels are
   written, went into `abstract.txt`; they end the abstract now, as a label with a colon did,
@@ -16837,7 +16857,13 @@ Closed since, and why each mattered (an open gap goes above this line):
   another term, and not after a capital that ends no term: "HR~2~" and "OR~2~" are unbound
   numbers, and "CO~2~", "pCO~2~", "HbA~1c~", "ppFEV~1~" and "PaO~2~FiO~2~" names
   (`test_a_subscripted_index_after_a_capital_is_a_number`). "PharmD~2~" is still a term,
-  above.
+  above. Held there alone, a term the project declares lost the names that put capitals
+  before it: with CO2 declared, "ETCO~2~", "PCO~2~" and "VCO~2~", which main read as CO2,
+  each gave an unbound 2. A declared term holding a subscript's place counts after
+  capitals as well, where nothing but capitals stands between it and its word's start; a
+  built-in one does not, so "HR~2~" is a number and, with CO2 declared, "ETCO~2~" a name
+  (`test_a_declared_term_with_a_subscript_after_capitals_is_a_name`). A project that
+  declares R2 has "HR~2~" read as R2, as it would have had "HR2" typed.
 
 - **"Methods: data sources" and "Methods of the study" were no Methods to G2 and G15.**
   `classify.METHODS_SECTIONS` took "Methods" alone or joined to another part's name by
@@ -16921,7 +16947,11 @@ Closed since, and why each mattered (an open gap goes above this line):
   guideline the paper said it followed went unreconciled with paper.yaml. A sentence now
   runs over single line breaks, in Markdown as in LaTeX, and stops at a blank line, before
   a Markdown heading or a table's row, and at a typed table's line ends, so that a table of
-  checklist items is not one claim (2026-10-27).
+  checklist items is not one claim (2026-10-27). It ran from one item of a list into the
+  next, so "- Outcomes were reported by sex" over "- STROBE flow diagram in Figure 1" said
+  the paper followed STROBE: a line that opens with a list's marker (`-`, `*`, `+`, `1.`,
+  `1)`) ends the sentence before it, and so does an `\item` (round 1 of #452;
+  `test_g8r_reads_each_item_of_a_list_as_a_sentence_of_its_own`).
 - **An accent command lost its mark in the printed view, and its word in G14's.**
   `Chr\'etien` printed "Chretien", so a quote copied from the PDF was not found by G13, G8
   or G7; and a word an accent command, a letter typed as a command or `\-` split was not
@@ -16930,7 +16960,13 @@ Closed since, and why each mattered (an open gap goes above this line):
   it reads as the accented letter, composed as Unicode composes it, and a letter typed as a
   command beside a letter it reads as that letter; the words view writes such a word whole,
   as LaTeX prints it, from where it starts, `\-` dropped (`words.folded`). The printed view
-  already printed LaTeX's dashes and `\ldots` as the characters (2026-10-27).
+  already printed LaTeX's dashes and `\ldots` as the characters (2026-10-27). Where Unicode
+  composes no letter of the two, `Erd\H{e}s`, `\'{x}`, `\t{o}` or `\v{J}`, the letter and
+  its combining mark were both written in the command's first place, the view was a
+  character longer from there on, and every stretch of the file after it was read one
+  place off: a quote of the words after such an accent was not found. The mark now goes in
+  the place after the letter (round 1 of #452). G14's message for a word it does not read
+  says it holds an accent over no letter, the one case left, and no longer names `\-`.
 
 
 - **G4 read the main-text files in path order, and the build prints them in another.** The
@@ -16951,7 +16987,22 @@ Closed since, and why each mattered (an open gap goes above this line):
   reader of a DOI, and `duplicates.title_of` takes TeX out of a title as the registry lookup
   does (`test_a_doi_is_compared_as_it_is_registered_however_the_file_writes_it`,
   `test_a_title_in_tex_is_the_title_in_unicode`). A preprint and its article are still not
-  found, above.
+  found, above. A percent-encoded space, `%20`, was read as a space, and the DOI then
+  called malformed: an escape is read as its character only where that character prints
+  and is no space, so `%20` and `%7F` stay as written (round 1 of #452).
+- **A placed part's preamble defined commands for the whole paper.** The commands a part
+  that `\subfile` or `\includestandalone` places defines in its preamble, which TeX passes
+  over, were told to every file of the tree: one defined there with delimited parameters
+  had main's own command of that name refused, and a `\providecommand{\keywords}` made
+  main's `\keywords` the author's. Only what the part's body defines is told now, and its
+  preamble's input encoding is no longer the paper's (round 1 of #452;
+  `test_a_placed_part_s_preamble_defines_nothing_for_the_paper`).
+- **r-interop's R stood still while its cache was warm, and pytest might run under conda's
+  Python.** The conda environment was cached on its package list alone; its key now holds
+  the ISO week, so R follows conda-forge's releases as setup-r followed CRAN's. The tests
+  run in a login shell, where the environment comes first on PATH: they are run by
+  setup-python's interpreter, named, and the step prints which Python is first (round 1 of
+  #452; `test_r_interop_s_environment_moves_with_the_week_and_pytest_runs_on_setup_python_s`).
 
 - **G6's em-dash rate counted the dashes in a simple or a multiline table.** The threshold
   was measured on papers read with their tables left out, and a table pandoc writes from

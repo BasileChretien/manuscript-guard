@@ -94,10 +94,15 @@ def accented(text: str, masked: str) -> str:
         elif not (start and masked[start - 1].isalpha()) and not (
                 end < len(masked) and masked[end].isalpha()):
             continue
-        out[start] = written
-        for index in range(start + 1, end):
-            if out[index] not in "\r\n":
-                out[index] = NUL
+        # A letter Unicode composes with no accent, `Erd\\H{e}s`, is a letter and a combining
+        # mark, and the mark goes in the place after it: written into one place, both made
+        # the view a character longer from there on, every later slice one place off. An
+        # accent command spans three places at least, so the mark has one.
+        places = [index for index in range(start + 1, end) if out[index] not in "\r\n"]
+        out[start] = written[0]
+        rest = iter(written[1 : 1 + len(places)])
+        for index in places:
+            out[index] = next(rest, NUL)
     return "".join(out)
 #: A count written as a subscript: `$_2$`, `$_{12}$`, `\\textsubscript{2}`.
 _SUBSCRIPT = re.compile(r"\$_(?:\{(\d{1,2})\}|(\d))\$|\\textsubscript\{(\d{1,2})\}")
@@ -112,7 +117,7 @@ class Words:
 
 
 def words(source: Source) -> Words:
-    """The file's words, NUL elsewhere, and the words holding an accent command or `\\-`."""
+    """The file's words, NUL elsewhere, and the words holding an accent over no letter."""
     reading = source.reading
     out = list(reading.masked)
     text = source.text

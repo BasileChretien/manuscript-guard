@@ -65,7 +65,9 @@ REQUIRED: dict[str, tuple[tuple[str, ...], ...]] = {
 _TEX_ESCAPED = re.compile(r"\\([_%&#$])")
 #: A printable ASCII character a resolver's link encodes, `%28` for `(`; one outside ASCII,
 #: whose bytes a single escape does not make, stays as written.
-_PERCENT_ENCODED = re.compile(r"%([2-7][0-9A-Fa-f])")
+#: Only a printed character other than a space: `%20` read as a space, a DOI written with
+#: one was called malformed (round 1 of #452), and `%7F` is no character that prints.
+_PERCENT_ENCODED = re.compile(r"%(2[1-9A-Fa-f]|[3-6][0-9A-Fa-f]|7[0-9A-Ea-e])")
 
 
 def normal_doi(written: str) -> str:

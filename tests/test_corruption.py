@@ -3095,6 +3095,11 @@ def test_g13_reads_a_quote_in_a_latex_manuscript_as_it_prints(project: Path) -> 
          "Stra\N{LATIN SMALL LETTER SHARP S}e, logistic."),
         ("From 2010--2019 it rose---and fell \\ldots{} again.",
          "From 2010\N{EN DASH}2019 it rose\N{EM DASH}and fell \N{HORIZONTAL ELLIPSIS} again."),
+        # An accent over a letter Unicode composes with none is a letter and a mark: both
+        # in one place, they put every later stretch of the file one place off, and the
+        # words after them were cut.
+        ("Erd\\H{e}s, \\'{x}a, \\t{o}b and \\v{J}c thank \\emph{Smith} for all cases.",
+         "thank Smith for all cases."),
     ],
 )
 def test_g13_finds_a_latex_quote_through_a_formula_or_a_cross_reference(
@@ -7343,6 +7348,34 @@ def test_a_delimited_command_where_it_prints_and_an_import_of_nothing_fail_build
     assert not [f for f in report.findings if f.code == "tex-not-input"]
 
 
+def test_a_placed_part_s_preamble_defines_nothing_for_the_paper_s_build(project: Path) -> None:
+    """TeX passes over the preamble of a part `\\subfile` places, and a command defined there
+    with delimited parameters had BUILD refuse the main file's own command of that name
+    (round 1 of #452). One the part's body defines is the paper's, and refused where main
+    prints it."""
+    from manuscript_guard.cli import _run_gates
+
+    entry = _as_latex(project)
+    entry.write_text(
+        "\\documentclass{article}\n\\newcommand{\\x}[1]{[#1]}\n\\begin{document}\n"
+        "We saw \\x{a} cases.\n\\subfile{part}\n\\end{document}\n",
+        encoding="utf-8",
+    )
+    part = entry.parent / "part.tex"
+    opening = "\\documentclass[main.tex]{subfiles}\n"
+    part.write_text(opening + "\\def\\x#1.{(#1)}\n\\begin{document}\nOf 42.\n\\end{document}\n",
+                    encoding="utf-8")  # fmt: skip
+
+    def refused() -> set[tuple[str, int]]:
+        report, _project, _stage, _deferred = _run_gates(project, stage="design")
+        return {(f.path.name, f.line) for f in report.failures if f.code == "tex-refused"}
+
+    assert ("main.tex", 4) not in refused()
+    part.write_text(opening + "\\begin{document}\n\\def\\x#1.{(#1)}\nOf 42.\n\\end{document}\n",
+                    encoding="utf-8")  # fmt: skip
+    assert ("main.tex", 4) in refused()
+
+
 def test_a_classs_own_file_is_not_main_text_and_a_second_document_fails_build(
     project: Path,
 ) -> None:
@@ -8273,6 +8306,28 @@ def test_g8r_reads_a_claim_hard_wrapped_over_two_lines(project: Path, latex: boo
              for f in check_reporting(load_project(project)[0]).findings
              if f.code == "guideline-claimed-not-declared"]  # fmt: skip
     assert found == ["PRISMA"], found
+
+
+@pytest.mark.parametrize("marker", ["-", "*", "+", "1.", "2)"])
+def test_g8r_reads_each_item_of_a_list_as_a_sentence_of_its_own(
+    project: Path, marker: str
+) -> None:
+    """A sentence runs over a single line break, and a Markdown list's items ran into one:
+    "reported" in one item and STROBE in the next made a claim of having followed STROBE
+    (round 1 of #452). A line that opens with a list's marker ends the sentence before it;
+    a claim within one item is read."""
+    from manuscript_guard.gates import check_reporting
+
+    items = ("Outcomes were reported by sex", "STROBE flow diagram in Figure 1",
+             "The analysis followed\n  CONSORT")  # fmt: skip
+    listed = "".join(f"{marker} {item}\n" for item in items)
+    main = main_md(project)
+    main.write_text(main.read_text("utf-8").replace("# Results\n", f"{listed}\n# Results\n", 1),
+                    "utf-8")  # fmt: skip
+    found = [f.message.split(" followed ")[1].split(",")[0]
+             for f in check_reporting(load_project(project)[0]).findings
+             if f.code == "guideline-claimed-not-declared"]  # fmt: skip
+    assert found == ["CONSORT"], found
 
 
 _LATEX_QUOTED = (
@@ -9584,6 +9639,19 @@ def test_what_is_set_aside_beside_an_identifier_is_no_identifier(field: str, val
 
     found = problems("k", {"type": "misc", field: value})
     assert [code for code, _said in found] == ["identifier-malformed"], found
+
+
+def test_a_percent_escape_of_a_space_in_a_doi_is_no_malformed_doi() -> None:
+    """A resolver's percent-encoding is read as the character, and `%20` was read as a
+    space, so a DOI written with one was called malformed (round 1 of #452). An escape is
+    read as its character only where that character is printed and no space."""
+    from manuscript_guard.gates.identifiers import doi_of, normal_doi, problems
+
+    for written in ("10.1000/abc%20def", "https://doi.org/10.1000/abc%20def",
+                    "10.1000/abc%09def", "10.1000/abc%7Fdef"):  # fmt: skip
+        assert problems("k", {"type": "misc", "doi": written}) == [], written
+        assert doi_of({"doi": written}) == normal_doi(written).lower(), written
+    assert normal_doi("10.1000/a%28b%29%3C%7E") == "10.1000/a(b)<~"
 
 
 def test_an_isbn_written_in_brackets_alone_is_left_as_it_was() -> None:
@@ -24392,17 +24460,21 @@ def test_a_subscripted_index_after_a_capital_is_a_number(tmp_path: Path) -> None
     """A subscript is part of the name it is typed in, and a term holding one counted
     wherever any term does, after a capital among them: "HR~2~" and "OR~2~" were `r2`, and
     G2 and the audit passed their numbers. A name opened at its word or at a capital after
-    a lower-case letter, "HbA~1c~", "ppFEV~1~" or, with CO2 declared, "pCO~2~", is a term."""
+    a lower-case letter, "HbA~1c~", "ppFEV~1~" or, with CO2 declared, "pCO~2~", is a term.
+    Held there, a declared term after capitals was a number: with CO2 declared, "ETCO~2~",
+    "PCO~2~" and "VCO~2~" each gave G2 an unbound 2. A declared term is a name after the
+    capitals that open its word."""
     from manuscript_guard.audit import audit
     from manuscript_guard.classify import TERM, UNCLASSIFIED, Classifier
     from manuscript_guard.text.masking import mask
     from manuscript_guard.text.tokens import find_atoms
 
     sunk = ("HR~2~", "OR~2~")
-    names = ("HbA~1c~", "ppFEV~1~", "pCO~2~", "CO~2~", "EtCO~2~")
+    declared = ("pCO~2~", "CO~2~", "EtCO~2~", "ETCO~2~", "PCO~2~", "VCO~2~")
+    names = ("HbA~1c~", "ppFEV~1~", *declared)
     text = f"We read {sunk[0]} and {sunk[1]} beside {', '.join(names)}.\n"
     paper = tmp_path / "paper.md"
-    paper.write_text(text.replace(", pCO~2~, CO~2~, EtCO~2~", ""), encoding="utf-8")
+    paper.write_text(text.replace(", " + ", ".join(declared), ""), encoding="utf-8")
     found = audit([paper], [_outputs(tmp_path, '{"n": 1}')]).unmatched
     assert sorted(c.text.rstrip("~") for c in found) == ["HR~2", "OR~2"]
     for classifier in (Classifier.load(extra_terms=("CO2",)),
@@ -24511,6 +24583,25 @@ def test_a_citation_by_author_and_year_in_the_earlier_paper_cuts_no_passage() ->
         assert [(p.shared, p.excerpt) for p in recycled_in(text, source, "earlier")] == whole
 
 
+@pytest.mark.parametrize("dated", ["(Since 2019)", "(Spring 2019)", "(Until 2020)",
+                                   "(Before 2019; During 2020)", "(Autumn, 2018)"])
+def test_words_and_a_year_in_parentheses_that_cite_no_one_are_the_earlier_paper_s(
+    dated: str,
+) -> None:
+    """Any capitalised word before a year in parentheses was taken for a citation by author
+    and year and blanked in the earlier paper, "(Since 2019)" and "(Spring 2019)" among
+    them: words both papers have, and the passage the two share was cut there (round 1 of
+    #452). A preposition, a season or a month standing alone before the year names no
+    author."""
+    from manuscript_guard.gates.recycling import recycled_in
+
+    sentence = (f"Reports came from the database {dated} and were coded by two readers each "
+                "apart from each other in the study period.")  # fmt: skip
+    text = f"# Methods\n\n{sentence}\n"
+    (found,) = recycled_in(text, sentence, "earlier")
+    assert found.excerpt.startswith("Reports came") and found.excerpt.endswith("period"), found
+
+
 @pytest.mark.parametrize(
     ("first", "second"),
     [
@@ -24601,6 +24692,27 @@ def test_g4_counts_a_figure_placed_by_hand_as_a_display_item(project: Path) -> N
     assert report.counts["display_items"] == before.figures + before.tables + 1
     assert any(f.code == "over-journal-limit" and f.message.startswith("figures:")
                for f in report.findings)  # fmt: skip
+
+
+def test_an_image_with_a_heading_on_the_next_line_is_no_figure_as_pandoc_reads_it() -> None:
+    """Round 1 of #452 took an image with an ATX heading on the line below for a figure G4
+    missed. Pandoc's Markdown wants a blank line before a heading, so that line is a line of
+    the image's paragraph, "# Discussion" its words, and pandoc makes no figure of it: G4
+    counts none, as pandoc does."""
+    import json
+    import subprocess
+
+    from manuscript_guard.text.sections import measure
+
+    text = "\n![Caption](f.png)\n# Discussion\n"
+    assert measure(text).figures == 0
+    pandoc = shutil.which("pandoc")
+    if pandoc is None:
+        pytest.skip("pandoc is not installed")
+    read = subprocess.run([pandoc, "-f", "markdown", "-t", "json"], input=text,
+                          capture_output=True, check=True, encoding="utf-8",
+                          timeout=60)  # fmt: skip
+    assert [block["t"] for block in json.loads(read.stdout)["blocks"]] == ["Para"]
 
 
 def test_g4_counts_every_float_latex_numbers_as_a_display_item(project: Path) -> None:

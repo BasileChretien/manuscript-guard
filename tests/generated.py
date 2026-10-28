@@ -1476,6 +1476,9 @@ LATEX_PRINTED_PLACES = (
     ("M{{\\\"u}}ller{} ", ("folded:M\N{LATIN SMALL LETTER U WITH DIAERESIS}ller{}",)),
     ("Stra\\ss e{} ", ("folded:Stra\N{LATIN SMALL LETTER SHARP S}e{}",)),
     ("% caf\\'e {}\n", ("hidden",)),
+    # An accent over a letter Unicode composes with none prints the letter and its mark,
+    # each in a place of its own, so that what follows is read where it stands.
+    ("Erd\\H{{e}}s{} ", ("folded:Erde\N{COMBINING DOUBLE ACUTE ACCENT}s{}",)),
 )  # fmt: skip
 
 
@@ -1617,10 +1620,44 @@ LATEX_CLAIM_PLACES = (
     ("The report follows the\n{} items.\n", True),
     ("The report follows\n\n{} here.\n", False),
     ("\\begin{{tabular}}{{ll}}\nChecklist & page \\\\\n{} & 3 \\\\\n\\end{{tabular}}\n", False),
+    # A list's items are sentences of their own (round 1 of #452).
+    ("\\begin{{itemize}}\n\\item Outcomes were reported\n\\item {} flow here.\n"
+     "\\end{{itemize}}\n", False),
+)  # fmt: skip
+#: Where a Markdown paper says it followed a reporting guideline, and whether G8r reads the
+#: claim there: each `{}` is a guideline's name. A sentence runs over a single line break
+#: and not over a blank line, nor from one item of a list into the next, whatever its
+#: marker (round 1 of #452: "reported" in one item and the name in the next were a claim).
+MARKDOWN_CLAIM_PLACES = (
+    ("This report follows {}.\n", True),
+    ("This report\nfollows {}.\n", True),
+    ("The report follows\n\n{} here.\n", False),
+    ("- Outcomes were reported by sex\n- {} flow diagram in Figure 1\n", False),
+    ("* Outcomes were reported\n* {} flow here\n", False),
+    ("+ Outcomes were reported\n+ {} flow here\n", False),
+    ("1. Outcomes were reported\n2. {} flow here\n", False),
+    ("3) Outcomes were reported\n4) {} flow here\n", False),
+    ("- The analysis followed\n  {} items\n", True),
+    ("<!-- This report follows {}. -->\n", False),
 )  # fmt: skip
 #: A guideline's name for each place, none the start of another.
 _GUIDELINES_CLAIMED = ("STROBE", "CONSORT", "SPIRIT", "PRISMA", "TRIPOD", "ARRIVE", "SQUIRE",
-                       "COREQ", "STARD", "MOOSE", "CHEERS", "SRQR")  # fmt: skip
+                       "COREQ", "STARD", "MOOSE", "CHEERS", "SRQR", "ENTREQ")  # fmt: skip
+
+
+@st.composite
+def markdown_claims(draw: st.DrawFn) -> tuple[str, list[tuple[str, bool]]]:
+    """A Markdown paper with a claim in every place of `MARKDOWN_CLAIM_PLACES`, in an order
+    drawn, each its own paragraph; and each guideline named, with whether G8r reads it."""
+    order = draw(st.permutations(range(len(MARKDOWN_CLAIM_PLACES))))
+    planted: list[tuple[str, bool]] = []
+    text = ""
+    for index in order:
+        template, read = MARKDOWN_CLAIM_PLACES[index]
+        name = _GUIDELINES_CLAIMED[index]
+        planted.append((name, read))
+        text += "\n" + template.replace("{}", name)
+    return text, planted
 
 
 @st.composite
@@ -2907,8 +2944,12 @@ RAISED_AFTER_A_CAPITAL = ("PharmD^2^", "ApoB^12^", "dB^12^")
 #: A subscript is part of the name it is typed in, where the name opens its word, at a
 #: capital after a lower-case letter, or after another name: "HbA~1c~", "ppFEV~1~" and
 #: "PaO~2~FiO~2~" are names. An index set below the line after a capital, "HR~2~" and
-#: "OR~2~", is a number, though `r2` is a term.
-SUNK_NAMES = ("HbA~1c~", "ppFEV~1~", "PaO~2~FiO~2~")
+#: "OR~2~", is a number, though `r2` is a term. A term the project declares is a name after
+#: capitals that open its word: with CO2 declared (`DECLARED_TERMS`), "ETCO~2~", "PCO~2~"
+#: and "VCO~2~".
+SUNK_NAMES = ("HbA~1c~", "ppFEV~1~", "PaO~2~FiO~2~", "ETCO~2~", "PCO~2~", "VCO~2~")
+#: The terms a project declares where `named_numbers` is read.
+DECLARED_TERMS = ("CO2",)
 SUNK_AFTER_A_CAPITAL = ("HR~2~", "OR~2~")
 NOT_NAMES = (
     "12", "3.4", "12@3.5", "40@lab", *TERM_LOOKALIKES, *RAISED_AFTER_A_CAPITAL,
@@ -3154,12 +3195,17 @@ AUTHOR_YEAR_CITED = (
     "(M\N{LATIN SMALL LETTER U WITH DIAERESIS}ller-Roe et al.,\n2019)",
     "(e.g., Smith et al., 2019)", "(see Roe 2020)", "(Smith et al., 2019, 2020b)",
     "(Smith, 2019, p. 12)", "( Smith  et  al. ,  2019 )",
+    # A word that opens a date is a name where "et al." or a second author follows it.
+    "(Winter et al., 2019)", "(Spring and Roe, 2019)",
 )  # fmt: skip
 #: Words in parentheses that are no citation by author and year: a date, a name with no
-#: year, a table, a year with no name, and words in lower case before a year.
+#: year, a table, a year with no name, and words in lower case before a year; and a
+#: preposition, a season or a word of a period standing alone before the year (round 1 of
+#: #452).
 NOT_AUTHOR_YEAR = (
     "(January 2019)", "(Smith et al.)", "(Table 2, 2019)", "(in 2019)", "(two readers, 2019)",
-    "(n = 2019)", "(2019)",
+    "(n = 2019)", "(2019)", "(Since 2019)", "(Spring 2019)", "(Autumn, 2018)",
+    "(Smith, 2019; Until 2020)",
 )  # fmt: skip
 _TYPESET_GAPS = (*SOURCE_GAPS, ".12 ", "\N{SUPERSCRIPT TWO} ", "\f", "-\n",
                  " (Smith et al., 2019) ", " (Roe and Doe 2020a) ")  # fmt: skip
@@ -6070,8 +6116,10 @@ FIGURES_PLACED = (
 )  # fmt: skip
 #: An image pandoc numbers not, or that is not printed: in a sentence, with no caption, in a
 #: comment, in a fence, four spaces in (a code block), two on two lines of one paragraph,
-#: and one on a paragraph's second line.
+#: one on a paragraph's second line, and one with a heading's line straight below it, which
+#: pandoc reads as a line of the image's paragraph (round 1 of #452).
 NOT_FIGURES_PLACED = (
+    "![Above a heading.](above.png)\n# Not a heading",
     "A map, ![inline](m.png), in a sentence.",
     "![](bare.png)",
     "![ ](space.png)",
@@ -6143,6 +6191,8 @@ def latex_displays_placed(draw: st.DrawFn) -> tuple[str, int]:
 DOIS_WRITTEN = (
     "10.5555/abc_def", "10.1016/S0140-6736(20)30183-5", "10.1002/(SICI)1097-0258(1998)17:1<1::AID>",
     "10.5555/a&b_c", "10.5555/x_1(2)",
+    # A percent-escape of a space is no space: the DOI is as written (round 1 of #452).
+    "10.5555/abc%20def",
 )  # fmt: skip
 #: Each way a DOI is written beside its registered form, as a function of it: TeX's escapes
 #: of `_`, `%`, `&`, a resolver's link with brackets percent-encoded, and TeX's escape of the

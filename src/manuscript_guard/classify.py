@@ -235,7 +235,9 @@ class Classifier:
         if matched is None and (marked := _unsigned_marked(atom)) is not None:
             # `HbA~1c~` is `HbA1c` with a subscript, and `CO~2~` a declared `CO2`.
             bare, raised, sunk = marked
-            matched = _names_covering(bare, raised, self.terms, sunk=sunk)
+            matched = _names_covering(
+                bare, raised, self.terms, sunk=sunk, declared=self.project_terms
+            )
         if matched is not None:
             return Verdict(TERM, rule="terms", detail=", ".join(matched), terms=tuple(matched))
         if scan is None:
@@ -666,6 +668,7 @@ def _names_covering(
     terms: tuple[str, ...],
     *,
     sunk: frozenset[int] = frozenset(),
+    declared: frozenset[str] = frozenset(),
 ) -> list[str] | None:
     """`_terms_covering` for a name read without its signs, `raised` being the places in
     `text` that a superscript held and `sunk` those a subscript held. A term holding a
@@ -678,8 +681,13 @@ def _names_covering(
     `fev1`, so a term holding a sunk place counts where a word opens, where a capital
     follows a lower-case letter, or directly after another term; but not after a capital,
     where it counted as any term does: an index set below the line after an abbreviation,
-    "HR~2~" or "OR~2~", was `r2`, and its number went unchecked."""
-    return _terms_covering(text, terms, raised, sunk)
+    "HR~2~" or "OR~2~", was `r2`, and its number went unchecked.
+
+    A term in `declared`, one the project names, counts after capitals as well, where
+    nothing but capitals stands between it and its word's start: with CO2 declared,
+    "ETCO~2~", "PCO~2~" and "VCO~2~" are `co2`, as they were before the subscript was held
+    apart. Built in, `r2` is no name in "HR~2~"; declared, `d2` is none in "PharmD~2~"."""
+    return _terms_covering(text, terms, raised, sunk, declared)
 
 
 def _term_may_start(text: str, at: int) -> bool:
@@ -714,12 +722,14 @@ def _terms_covering(
     terms: tuple[str, ...],
     raised: frozenset[int] = frozenset(),
     sunk: frozenset[int] = frozenset(),
+    declared: frozenset[str] = frozenset(),
 ) -> list[str] | None:
     """Terms that between them account for every digit in `text`, or None. A term counts
     where `_term_may_start`, or directly after another term; the terms used are given in
     the order of `terms`. A term holding a place in `raised` counts only where
     `_term_may_start` and a word opens, and one holding a place in `sunk` not after a
-    capital that ends no term (`_names_covering`).
+    capital that ends no term, unless it is in `declared` and only capitals stand before
+    it in its word (`_names_covering`).
 
     A term was found anywhere in an atom as it is written, and only a name read without its
     signs was held to a word's start: taking the signs out puts the digits of a superscript
@@ -751,13 +761,18 @@ def _terms_covering(
     below = list(accumulate((at in raised for at in range(size)), initial=0)) if raised else []
     under = list(accumulate((at in sunk for at in range(size)), initial=0)) if sunk else []
     words = [opens[at] and (at == 0 or not text[at - 1].isalnum()) for at in range(size)]
+    # Whether only capitals stand between each place and its word's start, and one at least.
+    capped = [False] * (size + 1)
+    for at in range(1, size + 1):
+        before = text[at - 1]
+        capped[at] = before.isupper() and (at == 1 or not text[at - 2].isalnum() or capped[at - 1])
 
     def may_open(at: int, term: str, ended: bool) -> bool:
         if below and below[at + len(term)] > below[at]:
             return words[at]
         if under and under[at + len(term)] > under[at] and not words[at]:
             stepped = text[at - 1].islower() and text[at].isupper()
-            return stepped or (ended and _AFTER_A_TERM)
+            return stepped or (ended and _AFTER_A_TERM) or (capped[at] and term in declared)
         return opens[at] or (ended and _AFTER_A_TERM)
 
     # `plain[at]`: what follows `at` can be covered, `at` being no term's end; `after[at]`:

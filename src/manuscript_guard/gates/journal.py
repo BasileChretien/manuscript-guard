@@ -246,6 +246,16 @@ def figure_rules(project: Project) -> dict:
     return rules if isinstance(rules, dict) else {}
 
 
+def box_rules_of(project: Project) -> list:
+    """The boxes the target journal asks for (`boxes:`), for G8, which reads a box's numbers
+    as a summary's. None where there is no profile, or none that can be read, and not a box
+    whose heading is no regular expression: G4 says why."""
+    from manuscript_guard.text.boxes import box_rules
+
+    document = _profile(project)
+    return [] if document is None else box_rules(document)[0]
+
+
 def abbreviations_asked(project: Project) -> tuple[bool, frozenset[str]]:
     """What the target journal asks to be defined though G14 would let it stand: whether the
     statistical abbreviations are (`abbreviations.define_statistics`), and which by name
@@ -306,25 +316,38 @@ def _check_abstract_found(document: dict, text: str, path: Path) -> Report:
 
 
 def _check_freshness(document: dict, path: Path) -> Report:
-    try:
-        retrieved = date.fromisoformat(str(document["retrieved_on"]))
-    except ValueError:
-        return Report()
-    if date.today() - retrieved <= STALE_AFTER:
-        return Report()
-    return Report(
-        (
+    """A warning for the instructions read too long ago, and one for each block read from a
+    page of its own on a date of its own (`graphical_abstract`, `sharing`), which is held to
+    its age as the instructions' date is (round 1 of #464: it was never read)."""
+    dated = [("", document)] + [(name, document[name]) for name in ("graphical_abstract",
+             "sharing") if isinstance(document.get(name), dict)
+             and document[name].get("retrieved_on")]  # fmt: skip
+    findings = []
+    for name, block in dated:
+        try:
+            retrieved = date.fromisoformat(str(block["retrieved_on"]))
+        except ValueError:
+            continue
+        if date.today() - retrieved <= STALE_AFTER:
+            continue
+        these = f"the {name} rules were" if name else "these guidelines were"
+        # The block's own page where it names one and no address (round 2 of #464: the hint
+        # named the instructions' address).
+        source = block.get("source_url") or (
+            f"its page ({block['page_file']})" if name and block.get("page_file")
+            else document.get("source_url", "the instructions"))  # fmt: skip
+        findings.append(
             Finding(
                 gate=GATE,
                 code="journal-profile-stale",
                 severity=WARN,
-                message=f"these guidelines were read on {retrieved.isoformat()}",
+                message=f"{these} read on {retrieved.isoformat()}",
                 path=path,
-                hint=f"re-read {document.get('source_url', 'the instructions')} before "
-                f"submitting; journals change them without announcement",
-            ),
+                hint=f"re-read {source} before submitting; journals change them without "
+                "announcement",
+            )
         )
-    )
+    return Report(tuple(findings))
 
 
 _LIMIT_LABELS = {

@@ -4303,6 +4303,309 @@ def test_a_declaration_of_english_deleted_under_a_journal_that_names_one_is_note
     ]  # fmt: skip
 
 
+# ------------------------------------------------------- the boxes the journal asks for
+
+_HIGHLIGHTS = {"id": "highlights", "heading": "^highlights$", "required": True, "items_min": 3,
+               "items_max": 4, "item_max_chars": 60}  # fmt: skip
+_HIGHLIGHTS_BOX = ("# Highlights\n\n- Hepatic injury was reported disproportionately.\n"
+        "- The reporting odds ratio was {{results.ror.point}}.\n"
+        "- Disproportionality is not incidence.\n\n")  # fmt: skip
+
+
+def _box_profile(root: Path) -> None:
+    profile = root / "profiles" / "journals" / "demo-journal.yaml"
+    document = yaml.safe_load(profile.read_text(encoding="utf-8"))
+    document["boxes"] = [_HIGHLIGHTS]
+    profile.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+
+
+def _box_codes(root: Path, edit) -> list[tuple[str, str]]:
+    """G4's box findings at submission, for the example with a box of highlights the journal
+    requires, as `edit` leaves it."""
+    from manuscript_guard.gates import check_boxes
+    from manuscript_guard.policy import SUBMISSION, apply_stage
+
+    _box_profile(root)
+    text = main_md(root).read_text(encoding="utf-8")
+    written = edit(_HIGHLIGHTS_BOX) + "# Abstract\n"
+    main_md(root).write_text(text.replace("# Abstract\n", written, 1), encoding="utf-8")
+    project, _ = load_project(root)
+    report, _ = apply_stage(check_boxes(project, load_namespace(project)[0], SUBMISSION),
+                            SUBMISSION)  # fmt: skip
+    return sorted((f.code, f.severity) for f in report.findings)
+
+
+@pytest.mark.parametrize(
+    ("edit", "said"),
+    [
+        # The box as the journal asks: nothing.
+        (lambda box: box, []),
+        # Deleted, or its heading reworded.
+        (lambda box: "", [("box-missing", "fail")]),
+        (lambda box: box.replace("# Highlights", "# Main points"), [("box-missing", "fail")]),
+        # Moved into a comment.
+        (lambda box: f"<!--\n{box}-->\n\n", [("box-missing", "fail")]),
+        # An item cut, an item hidden in a comment, and items added past the most.
+        (lambda box: box.replace("- Disproportionality is not incidence.\n", ""),
+         [("box-items", "fail")]),
+        (lambda box: box.replace("- Disproportionality is not incidence.",
+                                 "<!-- - Disproportionality is not incidence. -->"),
+         [("box-items", "fail")]),
+        (lambda box: box.replace("incidence.\n", "incidence.\n- One more.\n- And another.\n"),
+         [("box-items", "fail")]),
+        # An item lengthened past its characters.
+        (lambda box: box.replace("not incidence.", "not incidence, and cannot establish risk."),
+         [("box-item-long", "fail")]),
+        # A list nested in an item is that item's text, and not items of the box (round 1 of
+        # #464: two nested items made five), whether it is indented two or three spaces; a
+        # nested list on an item added past the most still counts that item.
+        (lambda box: box.replace("- Disproportionality is not incidence.\n",
+                                 "- Not incidence.\n  - Reports.\n  - Cases.\n"), []),
+        (lambda box: box.replace("- Disproportionality is not incidence.\n",
+                                 "1. Not incidence.\n   1. Reports.\n   2. Cases.\n"), []),
+        (lambda box: box.replace("incidence.\n", "incidence.\n- One.\n  - a.\n- Two.\n"),
+         [("box-items", "fail")]),
+        # A thematic break is no item, and a line after a blank one less indented than the
+        # item's text is a paragraph after the list (round 2 of #464: five items; a long item).
+        (lambda box: box.replace("incidence.\n", "incidence.\n- - -\n* * *\n- - -\n"), []),
+        (lambda box: box.replace("- Disproportionality is not incidence.\n",
+                                 "1. Not incidence.\n\n  A paragraph after the list, which runs "
+                                 "past sixty characters.\n"), []),
+        (lambda box: box.replace("- Disproportionality is not incidence.\n",
+                                 "1. Not incidence.\n\n   A paragraph of the item, which runs "
+                                 "past sixty characters.\n"), [("box-item-long", "fail")]),
+    ],
+)  # fmt: skip
+def test_a_box_the_journal_requires_fails_at_submission_when_it_is_broken(
+    project: Path, edit, said: list
+) -> None:
+    assert _box_codes(project, edit) == said
+
+
+def test_a_number_given_only_in_a_box_is_a_summary_g8_reports(project: Path) -> None:
+    """A key a box binds, and the Methods and the Results do not, is a number the paper
+    reports nowhere: G8 warns once the profile names the box, and not before."""
+    from manuscript_guard.gates import check_reported
+
+    text = main_md(project).read_text(encoding="utf-8")
+    main_md(project).write_text(text.replace(
+        "# Abstract\n", "# Highlights\n\n- The signal was met: {{results.signal.met}}.\n\n"
+        "# Abstract\n", 1), encoding="utf-8")  # fmt: skip
+
+    def warned() -> bool:
+        project_, _ = load_project(project)
+        results = load_namespace(project_)[1]
+        return any("results.signal.met" in f.message
+                   for f in check_reported(project_, results).findings)  # fmt: skip
+
+    assert not warned()
+    _box_profile(project)
+    assert warned()
+
+
+_BOX_QUOTE = "Include 3 to 4 highlights of no more than 60 characters each."
+_POLICY_QUOTE = "The accepted manuscript may be deposited after 12 months."
+
+
+def _quote_codes(root: Path, box: dict, *, policy_on_own_page: bool) -> list[tuple[str, str]]:
+    """G4's quote findings at submission, for the example quoting a box of highlights from its
+    stored page and a sharing policy from a page of its own, which holds the policy's quote
+    or does not."""
+    from manuscript_guard.gates import check_journal
+    from manuscript_guard.gates.journal_quotes import page_digest
+    from manuscript_guard.policy import SUBMISSION, apply_stage
+
+    sources = root / "profiles" / "journals" / "sources"
+    stored = sources / "demo-journal.txt"
+    text = stored.read_text(encoding="utf-8") + f"\n{_BOX_QUOTE}\n{_POLICY_QUOTE}\n"
+    stored.write_text(text, encoding="utf-8")
+    policy = f"Sharing.\n\n{_POLICY_QUOTE}\n" if policy_on_own_page else "Sharing.\n"
+    (sources / "sharing.txt").write_text(policy, encoding="utf-8")
+    profile = root / "profiles" / "journals" / "demo-journal.yaml"
+    document = yaml.safe_load(profile.read_text(encoding="utf-8"))
+    document["boxes"] = [box]
+    document["sharing"] = {"page_file": "profiles/journals/sources/sharing.txt",
+                           "page_sha256": page_digest(policy),
+                           "accepted": {"where": ["institutional-repository"]}}  # fmt: skip
+    document["page_sha256"] = page_digest(text)
+    document["quotes"].update({"boxes.highlights": _BOX_QUOTE, "sharing.accepted": _POLICY_QUOTE})
+    profile.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    report, _ = apply_stage(check_journal(load_project(root)[0]), SUBMISSION)
+    return sorted((f.code, f.severity) for f in report.findings if f.code.startswith("journal-"))
+
+
+@pytest.mark.parametrize(
+    ("box", "own_page", "said"),
+    [
+        # As the pages say.
+        (_HIGHLIGHTS, True, [("journal-manual-unsigned", "warn")]),
+        # A box's limit typed wrong: 6 items for the page's 4, 65 characters for its 60.
+        ({**_HIGHLIGHTS, "items_max": 6},
+         True, [("journal-limit-not-in-quote", "fail"), ("journal-manual-unsigned", "warn")]),
+        ({**_HIGHLIGHTS, "item_max_chars": 65},
+         True, [("journal-limit-not-in-quote", "fail"), ("journal-manual-unsigned", "warn")]),
+        # The policy's quote on the instructions page, and not on the page the policy names.
+        (_HIGHLIGHTS, False,
+         [("journal-manual-unsigned", "warn"), ("journal-quote-not-on-page", "fail")]),
+    ],
+)  # fmt: skip
+def test_a_box_limit_typed_wrong_or_a_quote_on_the_wrong_page_fails(
+    project: Path, box: dict, own_page: bool, said: list
+) -> None:
+    assert _quote_codes(project, box, policy_on_own_page=own_page) == said
+
+
+def _latex_box_codes(root: Path, body: str) -> list[tuple[str, str]]:
+    """G4's box findings at submission for a LaTeX manuscript whose body opens with `body`,
+    the journal requiring 3 or 4 highlights."""
+    from manuscript_guard.gates import check_boxes
+    from manuscript_guard.policy import SUBMISSION, apply_stage
+
+    _box_profile(root)
+    folder = root / "manuscript"
+    for path in folder.rglob("*.md"):
+        path.unlink()
+    (folder / "main.tex").write_text(
+        "\\documentclass{book}\n\\begin{document}\n" + body + "\\chapter{Introduction}\nx\n"
+        "\\section{Results}\nThe ROR was \\mg{results.ror.point}.\n\\end{document}\n",
+        encoding="utf-8",
+    )
+    project, _ = load_project(root)
+    report, _ = apply_stage(check_boxes(project, load_namespace(project)[0], SUBMISSION),
+                            SUBMISSION)  # fmt: skip
+    return sorted((f.code, f.severity) for f in report.findings)
+
+
+_LATEX_ABSTRACT = "\\begin{abstract}\nWe read reports.\n\nWe found a signal.\n\\end{abstract}\n"
+
+
+@pytest.mark.parametrize(
+    ("body", "said"),
+    [
+        # Three paragraphs under the heading, then the abstract: the abstract ends the box
+        # (round 1 of #464: its two paragraphs made five items).
+        ("\\section*{Highlights}\nOne.\n\nTwo.\n\nThree.\n" + _LATEX_ABSTRACT, []),
+        ("\\section*{Highlights}\nOne.\n\nTwo.\n" + _LATEX_ABSTRACT, [("box-items", "fail")]),
+        # A list nested in an item is that item's text (round 1 of #464: five items).
+        ("\\section*{Highlights}\n\\begin{itemize}\n\\item One.\n\\begin{itemize}\n\\item a.\n"
+         "\\item b.\n\\end{itemize}\n\\item Two.\n\\item Three.\n\\end{itemize}\n", []),
+        ("\\begin{highlights}\n\\item One. \\begin{enumerate}\\item a. \\item b.\\end{enumerate}"
+         "\n\\item Two.\n\\end{highlights}\n", [("box-items", "fail")]),
+        # A starred chapter's heading is a box's (round 1 of #464: box-missing).
+        ("\\chapter*{Highlights}\n\\begin{itemize}\n\\item One.\n\\item Two.\n\\item Three.\n"
+         "\\end{itemize}\n", []),
+        ("\\chapter*{Highlights}\n\\begin{itemize}\n\\item One.\n\\item Two.\n\\end{itemize}\n",
+         [("box-items", "fail")]),
+        # An itemize's label is its mark, and a list's options print nothing (round 2 of #464:
+        # both were counted to the item's characters); a description's term is its text.
+        ("\\section*{Highlights}\n\\begin{itemize}\n\\item[{A label that runs well past the "
+         "sixty characters an item may hold}] One.\n\\item Two.\n\\item Three.\n"
+         "\\end{itemize}\n", []),
+        ("\\section*{Highlights}\n\\begin{itemize}\n\\item One. \\begin{itemize}[leftmargin="
+         "2em, itemsep=0pt, topsep=0pt, partopsep=0pt, parsep=0pt]\\item a.\\end{itemize}\n"
+         "\\item Two.\n\\item Three.\n\\end{itemize}\n", []),
+        ("\\section*{Highlights}\n\\begin{description}\n\\item[{A term that runs well past the "
+         "sixty characters an item may hold}] One.\n\\item[Two] Two.\n\\item[Three] Three.\n"
+         "\\end{description}\n", [("box-item-long", "fail")]),
+    ],
+)  # fmt: skip
+def test_a_latex_box_is_counted_by_its_own_items_up_to_an_abstract(
+    project: Path, body: str, said: list
+) -> None:
+    assert _latex_box_codes(project, body) == said
+
+
+@pytest.mark.parametrize(
+    ("written", "said"),
+    [
+        ("**Question** Is it reported more? **Findings** It is. **Meaning** A signal.", []),
+        # A heading the box must carry, only inside a longer word (round 1 of #464: passed).
+        ("**Question** Is it reported more? **Findings** It is. A meaningful signal.",
+         [("box-headings-missing", "warn")]),
+    ],
+)  # fmt: skip
+def test_a_box_that_does_not_carry_a_heading_as_a_word_is_reported(
+    project: Path, written: str, said: list
+) -> None:
+    from manuscript_guard.gates import check_boxes
+    from manuscript_guard.policy import DRAFTING
+
+    profile = project / "profiles" / "journals" / "demo-journal.yaml"
+    document = yaml.safe_load(profile.read_text(encoding="utf-8"))
+    document["boxes"] = [{"id": "key-points", "heading": "^key points$",
+                          "headings": ["Question", "Findings", "Meaning"]}]  # fmt: skip
+    profile.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    text = main_md(project).read_text(encoding="utf-8")
+    main_md(project).write_text(text.replace("# Abstract\n", f"# Key points\n\n{written}\n\n"
+                                             "# Abstract\n", 1), encoding="utf-8")  # fmt: skip
+    project_, _ = load_project(project)
+    report = check_boxes(project_, load_namespace(project_)[0], DRAFTING)
+    assert sorted((f.code, f.severity) for f in report.findings) == said
+
+
+_ARTWORK_QUOTE = (f"Images should be 16 {chr(0xD7)} 9, no larger than 2.5 MB, with text of at "
+                  "least 6.5 pt.")  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("quote", "block", "said"),
+    [
+        (_ARTWORK_QUOTE, {"aspect_ratio": "16:9", "max_file_mb": 2.5, "min_text_pt": 6.5}, []),
+        # The ratio, and the numbers that are not whole, typed wrong (round 1 of #464: none
+        # was held to its quote).
+        (_ARTWORK_QUOTE, {"aspect_ratio": "5:2"}, ["graphical_abstract.aspect_ratio is 5:2"]),
+        (_ARTWORK_QUOTE, {"aspect_ratio": "16:10"},
+         ["graphical_abstract.aspect_ratio is 16:10"]),
+        (_ARTWORK_QUOTE, {"max_file_mb": 25.5}, ["graphical_abstract.max_file_mb is 25.5"]),
+        (_ARTWORK_QUOTE, {"min_text_pt": 6.4}, ["graphical_abstract.min_text_pt is 6.4"]),
+        # A comma's decimal, a slash's and a "by"'s ratio state them (round 2 of #464: each
+        # failed a right profile); a ratio inside a longer one does not.
+        ("Images 16/9 or 16 by 9, no larger than 2,5 MB.",
+         {"aspect_ratio": "16:9", "max_file_mb": 2.5}, []),
+        ("Panels are laid out 1:16:9, no larger than 2,500 MB.",
+         {"aspect_ratio": "16:9", "max_file_mb": 2.5},
+         ["graphical_abstract.aspect_ratio is 16:9", "graphical_abstract.max_file_mb is 2.5"]),
+    ],
+)  # fmt: skip
+def test_a_graphical_abstract_s_ratio_or_decimal_typed_wrong_fails(
+    project: Path, quote: str, block: dict, said: list
+) -> None:
+    from manuscript_guard.gates import check_journal
+
+    stored = project / "profiles" / "journals" / "sources" / "demo-journal.txt"
+    stored.write_text(stored.read_text(encoding="utf-8") + f"\n{quote}\n",
+                      encoding="utf-8")  # fmt: skip
+    profile = project / "profiles" / "journals" / "demo-journal.yaml"
+    document = yaml.safe_load(profile.read_text(encoding="utf-8"))
+    document["graphical_abstract"] = block
+    document["quotes"].update({f"graphical_abstract.{name}": quote for name in block})
+    profile.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    report = check_journal(load_project(project)[0])
+    found = [f.message.split(",")[0] for f in report.findings
+             if f.code == "journal-limit-not-in-quote"]  # fmt: skip
+    assert found == said
+
+
+def test_a_policy_read_long_ago_from_its_own_page_is_stale_and_names_that_page(
+    project: Path,
+) -> None:
+    """Round 2 of #464: the hint named the instructions' address, which the policy was not
+    read from."""
+    from manuscript_guard.gates import check_journal
+
+    profile = project / "profiles" / "journals" / "demo-journal.yaml"
+    document = yaml.safe_load(profile.read_text(encoding="utf-8"))
+    document["sharing"] = {"page_file": "profiles/journals/sources/sharing.txt",
+                           "retrieved_on": "2020-01-01",
+                           "accepted": {"where": ["institutional-repository"]}}  # fmt: skip
+    profile.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    stale = [(f.message, f.hint) for f in check_journal(load_project(project)[0]).findings
+             if f.code == "journal-profile-stale"]  # fmt: skip
+    assert ("the sharing rules were read on 2020-01-01", "re-read its page "
+            "(profiles/journals/sources/sharing.txt) before submitting; journals change them "
+            "without announcement") in stale  # fmt: skip
+
+
 # ------------------------------------------------- a placeholder, wherever it is written
 
 
@@ -7883,6 +8186,8 @@ _READS_LATEX = (
     # They read the documents as they print, and place a finding in its `.tex` file, or
     # read the supplement's bindings (step 13).
     "check_statement_sources", "check_recycling", "check_quality_reported",
+    # It reads a box in its LaTeX environment or under its heading (`text/boxes.py`).
+    "check_boxes",
 )  # fmt: skip
 
 

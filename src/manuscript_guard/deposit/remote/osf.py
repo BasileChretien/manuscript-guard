@@ -48,9 +48,8 @@ def create(api: Client, title: str) -> dict:
         "type": "nodes", "attributes": {"title": title, "category": "project",
                                         "public": False}}},
         content_type="application/vnd.api+json", expect=(201,))  # fmt: skip
-    found = _field(answer, "data", "id")
-    if not isinstance(found, str) or not found.isascii() or not found.isalnum() \
-            or len(found) > 64:  # fmt: skip
+    found = api.kept("project id", _field(answer, "data", "id"))
+    if found is None or not found.isascii() or not found.isalnum() or len(found) > 64:
         raise RemoteError(f"{NAME} answered without the project's id")
     try:
         page = api.kept("page", _field(answer, "data", "links", "html"))

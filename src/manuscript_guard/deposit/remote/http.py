@@ -23,6 +23,7 @@ from __future__ import annotations
 import http.client
 import json
 import os
+import socket
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Mapping
@@ -63,12 +64,22 @@ class Response:
 
 
 class NoAnswer(Exception):
-    """No answer came back. The message is ours, and quotes no URL."""
+    """No answer came back. The message is ours, and quotes no URL. `reached` is False where
+    the request cannot have reached the host: refused before it was sent, or no connection."""
+
+    def __init__(self, message: str, *, reached: bool = True) -> None:
+        super().__init__(message)
+        self.reached = reached
 
 
 class RemoteError(Exception):
     """The host refused, or answered in a way that is not taken: a sentence for the author,
-    with no token in it."""
+    with no token in it. `reached` is False where the request cannot have been acted on: never
+    sent, no connection made, or the token refused."""
+
+    def __init__(self, message: str, *, reached: bool = True) -> None:
+        super().__init__(message)
+        self.reached = reached
 
 
 Transport = Callable[[Request, float], Response]
@@ -89,7 +100,8 @@ def default_transport(request: Request, timeout: float) -> Response:
     """Send one request with `urllib`. A status that is not 2xx is an answer, not an error."""
     parts = urlsplit(request.url)
     if not allowed(request.url):
-        raise NoAnswer(f"refused to send a request to {parts.scheme}://{parts.hostname}")
+        raise NoAnswer(f"refused to send a request to {parts.scheme}://{parts.hostname}",
+                       reached=False)
     handlers: list = [_NoRedirect]
     if parts.hostname in LOOPBACK:
         # The proxy that `http_proxy` names is not asked for this machine.
@@ -114,12 +126,15 @@ def default_transport(request: Request, timeout: float) -> Response:
     except ValueError:
         # Raised while the request is built, and its words quote what it was built from: for
         # a header `http.client` will not send, the header, token and all. Never repeated.
-        raise NoAnswer("the request could not be made as written") from None
+        raise NoAnswer("the request could not be made as written", reached=False) from None
     except (urllib.error.URLError, OSError) as exc:
         reason = getattr(exc, "reason", exc)
         if isinstance(reason, TimeoutError) or "timed out" in str(reason):
             raise NoAnswer(f"no answer within {timeout:g} s") from None
-        raise NoAnswer(f"no connection to {parts.hostname}") from None
+        # Refused, or a name that is no host's: nothing reached it. Anything else may have
+        # come after the request was sent.
+        before = isinstance(reason, (ConnectionRefusedError, socket.gaierror))
+        raise NoAnswer(f"no connection to {parts.hostname}", reached=not before) from None
 
 
 def token_from(name: str) -> str:
@@ -180,9 +195,12 @@ class Client:
                 return True
         return False
 
-    def plain(self, said: object) -> str:
+    def plain(self, said: object, *, folded: bool = False) -> str:
         """Anything a host returned, fit for a message: without the token or any part of it,
-        without characters a terminal would act on, and not at length."""
+        without characters a terminal would act on, and not at length. `folded` for what is
+        read in small letters, a host name: the token is looked for in small letters too."""
+        if folded:
+            return scrubbed(str(said).lower(), self.token.lower())
         return scrubbed(str(said), self.token)
 
     def kept(self, what: str, said: object) -> str | None:
@@ -210,9 +228,10 @@ class Client:
         if not self._same_origin(url) or not allowed(url):
             parts = urlsplit(url)
             raise RemoteError(f"{self.name} named a place to send to that is not its own "
-                              f"({self.plain(parts.scheme)}://{self.plain(parts.hostname)}); "
-                              "nothing was sent there, since the token would go with "
-                              "it")  # fmt: skip
+                              f"({self.plain(parts.scheme, folded=True)}://"
+                              f"{self.plain(parts.hostname, folded=True)}); nothing was sent "
+                              "there, since the token would go with it",
+                              reached=False)  # fmt: skip
         headers = {"Authorization": f"Bearer {self.token}", "Accept": "application/json",
                    "User-Agent": f"manuscript-guard/{__version__}"}  # fmt: skip
         body = b""
@@ -225,7 +244,8 @@ class Client:
         try:
             answer = self.transport(Request(method, url, headers, body), self.timeout)
         except NoAnswer as exc:
-            raise RemoteError(f"{self.name}: {scrubbed(str(exc), self.token)}") from None
+            raise RemoteError(f"{self.name}: {self.plain(exc, folded=True)}",
+                              reached=exc.reached) from None
         return self._read(answer, expect)
 
     def _read(self, answer: Response, expect: tuple[int, ...]) -> dict:
@@ -233,7 +253,8 @@ class Client:
         if status in (401, 403):
             # Our words, not the host's: its message for a bad token can quote part of it.
             raise RemoteError(f"{self.name} refused the token in {self.token_env} (HTTP "
-                              f"{status}): it may have expired, or lack the scope this needs")
+                              f"{status}): it may have expired, or lack the scope this needs",
+                              reached=False)
         if 300 <= status < 400:
             raise RemoteError(f"{self.name} answered with a redirect (HTTP {status}), which is "
                               "not followed: it would carry the token and the files to "

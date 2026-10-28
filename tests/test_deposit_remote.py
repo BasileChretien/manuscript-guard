@@ -672,6 +672,9 @@ def test_an_unexpected_answer_to_a_publication_is_recorded_and_never_sent_again(
     count = len(hosts.seen)
     assert deposit(project, "zenodo-sandbox", "preregistration", "--publish") == 1
     assert "It is not sent again" in capsys.readouterr().err
+    # Nor staged again (round 2 of #467).
+    assert deposit(project, "zenodo-sandbox", "preregistration", "--stage") == 1
+    assert "a publication of the draft was sent" in capsys.readouterr().err
     assert len(hosts.seen) == count
 
 
@@ -717,7 +720,9 @@ def test_a_zenodo_json_that_cannot_describe_the_draft_stops_before_anything_is_s
     root = unfrozen(project)
     assert deposit(root, "zenodo-sandbox", "preregistration", "--reserve-doi") == 0
     assert deposit(root, "zenodo-sandbox", "preregistration", "--stage") == 2
-    assert ".zenodo.json" in capsys.readouterr().err
+    said = capsys.readouterr().err
+    # The reservation was sent; no file of the bundle was (round 2 of #467).
+    assert ".zenodo.json" in said and "no file of it was sent" in said
     assert not [path for method, path, _h, _b in hosts.seen if method == "PUT"]
 
 
@@ -736,3 +741,93 @@ def test_an_osf_project_not_answered_private_is_recorded_and_gets_nothing(
     assert deposit(root, "osf", "preregistration", "--stage") == 1
     assert "did not answer that it is private" in capsys.readouterr().err
     assert [method for method, *_rest in hosts.seen] == ["POST"]
+
+
+# ------------------------------------------------------------------ round 2 of #467
+
+
+def test_a_publication_that_reached_nothing_is_not_recorded_as_sent(
+    project: Path, hosts, capsys, monkeypatch
+) -> None:
+    """A token refused, or no connection made, published nothing: a later `--publish` tries
+    again."""
+    _staged(project, hosts)
+    typed(monkeypatch, SANDBOX)
+    original = hosts.hosts.answer
+
+    def refusing(method: str, path: str, body: bytes):
+        if path.endswith("/actions/publish"):
+            return 401, {"message": "expired"}, {}
+        return original(method, path, body)
+
+    hosts.hosts.answer = refusing
+    assert deposit(project, "zenodo-sandbox", "preregistration", "--publish") == 1
+    assert "refused the token" in capsys.readouterr().err
+    assert "publish_sent_on" not in receipt(project, "zenodo-sandbox-preregistration")
+    hosts.hosts.answer = original
+    assert deposit(project, "zenodo-sandbox", "preregistration", "--publish") == 0
+    assert receipt(project, "zenodo-sandbox-preregistration")["published_on"]
+
+
+def test_no_connection_is_said_as_reaching_nothing() -> None:
+    def silent(_request: Request, _timeout: float) -> Response:
+        raise NoAnswer("no connection to zenodo.org", reached=False)
+
+    def slow(_request: Request, _timeout: float) -> Response:
+        raise NoAnswer("no answer within 2 s")
+
+    for transport, reached in ((silent, False), (slow, True)):
+        with pytest.raises(RemoteError) as raised:
+            _client(transport).call("POST", "https://zenodo.org/api/deposit/depositions/1")
+        assert raised.value.reached is reached
+
+
+def test_a_publication_sent_and_not_recorded_is_said_loudly(
+    project: Path, hosts, capsys, monkeypatch
+) -> None:
+    _staged(project, hosts)
+    typed(monkeypatch, SANDBOX)
+    real = receipts.write
+
+    def failing(project_, made):
+        if "publish_answer" in made:
+            raise OSError(28, "No space left on device")
+        return real(project_, made)
+
+    monkeypatch.setattr(receipts, "write", failing)
+    assert deposit(project, "zenodo-sandbox", "preregistration", "--publish") == 1
+    said = capsys.readouterr().err
+    assert "WAS SENT, AND IT COULD NOT BE RECORDED" in said and "publish_sent_on" in said
+    assert "Traceback" not in said
+
+
+def test_a_reserve_answer_refused_records_the_draft_so_none_is_reserved_twice(
+    project: Path, hosts, capsys
+) -> None:
+    hosts.hosts.bucket = f"{hosts.hosts.url}/api/files/{TOKEN}"
+    assert deposit(project, "zenodo-sandbox", "release", "--reserve-doi") == 1
+    said = capsys.readouterr().err
+    assert "draft 101 was made" in said and TOKEN not in said
+    held = receipt(project, "zenodo-sandbox-release")
+    assert held["id"] == 101 and held["doi"] is None and "bucket" not in held
+    assert deposit(project, "zenodo-sandbox", "release", "--reserve-doi") == 1
+    assert "a second would reserve a second DOI" in capsys.readouterr().err
+    assert [method for method, *_rest in hosts.seen] == ["POST"]
+
+
+def test_a_host_name_holding_the_token_is_said_without_it_in_small_letters() -> None:
+    api = _client(lambda _request, _timeout: Response(200, {}, b"{}"))
+    with pytest.raises(RemoteError) as raised:
+        api.call("GET", f"https://{TOKEN}.example/x")
+    said = str(raised.value).lower()
+    assert "secret" not in said and "0123456789" not in said
+
+
+def test_an_osf_project_id_holding_the_token_is_refused() -> None:
+    planted = "a" + TOKEN[3:11] + "b"
+    api = Client("OSF", ("https://api.osf.io",), TOKEN, "OSF_TOKEN",
+                 _answering({"data": {"id": planted, "attributes": {"public": False}}})[0]
+                 .transport)  # fmt: skip
+    with pytest.raises(RemoteError) as raised:
+        osf.create(api, "A title")
+    _clean(str(raised.value))

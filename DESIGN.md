@@ -8696,7 +8696,7 @@ cannot do. `--yes` answers none of it (decision 2(a)). Once the publication is s
 recorded in the receipt and the history, with what the host answered, before anything can
 raise (`publish_sent_on`, `publish_answer`), and a run again refuses to send it twice: an
 answer that is not the one expected, another DOI or none, is said and kept, not swallowed
-after the one act that cannot be taken back (round 1 of #467). OSF's `--reserve-doi` and `--publish`
+after the one act that cannot be taken back (round 1 of #467). Only a request that may have reached the host is recorded so: no connection made, or the token refused (401, 403), published nothing, and a later `--publish` tries again; a timeout or an error after the request was sent stays recorded (round 2). A record that cannot be written is said loudly, with what to add to the receipt by hand, and the exit is 1 (round 2). A reserve answer that is refused records the draft's id, so that a run again reserves no second DOI, and `--stage` is refused once a publication was sent (round 2). OSF's `--reserve-doi` and `--publish`
 are refused with the reason: it mints a DOI only for what is public, and making a project
 public is the author's, on its own page. The OSF project's id is recorded as soon as OSF
 answers, before its answer is judged, so a run again never makes a second project; one OSF
@@ -8720,8 +8720,8 @@ the tool, `deposit` and one of the three options, a grep, an echo or a pull requ
 person an Edit or Write of paper.yaml after which `package.doi` is not what it was, and a
 patch whose lines name a `doi:`. G4 holds the DOI: `package-doi-test-prefix` fails a 10.5072
 `package.doi` at every stage, and `deposit-doi-differs` warns while `package.doi` is not the
-DOI of a release a receipt records as published (`published_on`) at a host other than the
-sandbox, and fails at submission; a draft reserved or staged and not published says nothing,
+DOI of a release a receipt records as published (`published_on`), whose DOI is not a test
+DOI (10.5072), and fails at submission; a draft reserved or staged and not published says nothing,
 since the author may drop it and deposit by hand (round 1) (`gates.data_statement.check_deposit_doi`); with no such receipt it says nothing. The tests
 are in `tests/test_deposit_remote.py`, against a server on a loopback port that answers as
 the two APIs are documented to: the token in the header and in no URL, body, file or
@@ -18018,16 +18018,27 @@ What papers converted from Word showed (see "What papers converted from Word sho
   tool deletes nothing at the host, so the author deletes the file on the draft's page.
 - **The hooks read commands and edits, not every way of running them.** `deposit --publish`
   is refused to an agent where its command is read exactly as an invocation of `deposit`,
-  and asked where it is named in any other form; a script, an alias or `bash -c` with the
-  option in a variable is not read. `--publish` itself asks for the DOI at a terminal, which
-  an agent's standard input is not, so a command the hook misses still publishes nothing. An
+  and only asked where it is named in any other form, which takes in real invocations: a
+  `NAME=$(...)` before it, PowerShell's `$env:NAME = ...;` before it, `uv run`, `env`, `py
+  -m` and `bash -c` (round 2 of #467, finding 11). An agent the person lets through there
+  runs it; a script, an alias or the option in a variable is not read at all. The tool
+  itself, the tool running another subcommand, is passed over, so `check --stage submission`
+  before a `deposit --dry-run` asks nothing. `--publish` itself asks for the DOI at a
+  terminal, which an agent's standard input is not, so a command the hook misses still
+  publishes nothing but through a wrapper (below). An
   edit of `package.doi` is put to the person for an Edit, a Write and a Codex patch; a `sed` or
   a script that rewrites `paper.yaml` is not read (the same as every other edit the write
   guard reads), and `deposit-doi-differs` then names a DOI that is not the receipt's.
 - **A terminal can be stood in for.** `--publish` takes the typed DOI only from standard input
   that is a terminal, and a pseudo-terminal a wrapper makes (`script -qc ...` with its input
   piped) is one: an agent that runs the command that way, past the hook, can type the DOI.
-  Only the hook stands between an agent and that (round 1 of #467, finding 3).
+  Only the hook stands between an agent and that (round 1 of #467, finding 3), and where the
+  command is one of the forms above the hook only asks.
+- **A release published with an answer not taken is not held to its DOI.** Where Zenodo
+  answers a publication with no DOI or another one, or with a page link that is refused, the
+  receipt records the publication as sent (`publish_sent_on`, `publish_answer`) and not as
+  published, so `deposit-doi-differs`, which reads `published_on`, says nothing of that
+  release; the author looks at its page (round 2 of #467, finding 3).
 - **A patch that renames a key above an unchanged `doi:` line is not put to the person.** The
   write guard reads a patch's removed and added lines, and asks where one names `doi:`; a patch
   that renames the key the `doi:` line stands under, into `package`, changes no such line, and

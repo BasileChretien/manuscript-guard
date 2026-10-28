@@ -46,18 +46,31 @@ def _field(document: object, *path: str) -> object:
 
 
 
+class DraftMade(RemoteError):
+    """A draft was made and its answer is not taken: `draft` is its id, which the caller
+    records, so that a run again reserves no second DOI."""
+
+    def __init__(self, message: str, draft: int) -> None:
+        super().__init__(message)
+        self.draft = draft
+
+
 def _draft(api: Client, document: dict) -> dict:
     """The draft's id, DOI, bucket and page from a deposition as Zenodo gives one, each
     refused where it holds the token or a character a terminal acts on."""
     found = document.get("id")
     if not isinstance(found, int) or isinstance(found, bool):
         raise RemoteError(f"{api.name} answered without the draft's id")
-    bucket = api.kept("bucket", _field(document, "links", "bucket"))
-    if bucket is None:
-        raise RemoteError(f"{api.name} answered without the draft's bucket")
-    doi = _field(document, "metadata", "prereserve_doi", "doi")
-    return {"id": found, "doi": api.kept("DOI", doi), "bucket": bucket,
-            "page": api.kept("page", _field(document, "links", "html"))}  # fmt: skip
+    try:
+        bucket = api.kept("bucket", _field(document, "links", "bucket"))
+        if bucket is None:
+            raise RemoteError(f"{api.name} answered without the draft's bucket")
+        doi = _field(document, "metadata", "prereserve_doi", "doi")
+        draft = {"id": found, "doi": api.kept("DOI", doi), "bucket": bucket,
+                 "page": api.kept("page", _field(document, "links", "html"))}  # fmt: skip
+    except RemoteError as exc:
+        raise DraftMade(f"{exc} (draft {found} was made)", found) from None
+    return draft
 
 
 def reserve(api: Client, target: str) -> dict:
@@ -66,7 +79,8 @@ def reserve(api: Client, target: str) -> dict:
                       document={"metadata": {"prereserve_doi": True}}, expect=(201,))  # fmt: skip
     draft = _draft(api, answer)
     if draft["doi"] is None:
-        raise RemoteError(f"{api.name} made draft {draft['id']} and reserved no DOI for it")
+        raise DraftMade(f"{api.name} made draft {draft['id']} and reserved no DOI for it",
+                        draft["id"])  # fmt: skip
     return draft
 
 
@@ -168,5 +182,6 @@ def published(api: Client, draft: dict, answer: dict) -> tuple[dict, str | None]
     return {"doi": doi, "page": page or draft.get("page")}, None
 
 
-__all__ = ["HOSTS", "NAMES", "TOKENS", "client", "compare", "describe", "held", "md5",
+__all__ = ["HOSTS", "NAMES", "TOKENS", "DraftMade", "client", "compare", "describe", "held",
+           "md5",
            "published", "request_publish", "reserve", "upload"]  # fmt: skip

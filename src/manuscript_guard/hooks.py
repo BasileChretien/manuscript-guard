@@ -1422,18 +1422,22 @@ _NAMES_DEPOSIT = (
 )
 
 
-def _deposit_words(words: list[str]) -> list[str] | None:
-    """The words after `deposit` where an invocation is plainly the tool's `deposit`: the tool
-    named first, by either name, a path or `python -m`, after any `NAME=value`; else None."""
+def _tool_words(words: list[str]) -> list[str] | None:
+    """The words after the tool's name where an invocation is plainly the tool: named first,
+    by either name, a path or `python -m`, after any `NAME=value`; else None."""
     while words and _ASSIGNMENT.fullmatch(words[0]):
         words = words[1:]
     if words and _TOOL_WORD.fullmatch(words[0]):
-        rest = words[1:]
-    elif (len(words) > 2 and re.fullmatch(r"(?i)(?:.*[\\/])?python[\d.]*(?:\.exe)?", words[0])
-          and words[1] == "-m" and words[2] == "manuscript_guard.cli"):  # fmt: skip
-        rest = words[3:]
-    else:
-        return None
+        return words[1:]
+    if (len(words) > 2 and re.fullmatch(r"(?i)(?:.*[\\/])?python[\d.]*(?:\.exe)?", words[0])
+            and words[1] == "-m" and words[2] == "manuscript_guard.cli"):  # fmt: skip
+        return words[3:]
+    return None
+
+
+def _deposit_words(words: list[str]) -> list[str] | None:
+    """The words after `deposit` where an invocation is plainly the tool's `deposit`."""
+    rest = _tool_words(words)
     return rest[1:] if rest and rest[0].casefold() == "deposit" else None
 
 
@@ -1447,17 +1451,24 @@ def _deposits(command: str) -> tuple[str | None, str | None]:
     the bundle or ask for a DOI with the author's token; and any command that names the
     tool, `deposit` and one of the three options in a form not read exactly, or outside an
     invocation of `deposit`: a grep of the documentation, an echo, a pull request's body."""
-    joined = re.sub(r"[\\`]\r?\n", " ", command)  # a line continued in bash or PowerShell
-    bare = re.sub("[\\\\`'\"]", "", joined)
+    # A line continued in bash or PowerShell, read both ways: the break as a space, and as
+    # nothing, which is how a shell reads one inside a word (`--sta\` then `ge`).
+    joined = [re.sub(r"[\\`]\r?\n", between, command) for between in (" ", "")]
+    texts = [*joined, *(re.sub("[\\\\`'\"]", "", text) for text in joined)]
     if not any(_NAMES_TOOL.search(text) and re.search(r"(?i)\bdeposit\b", text)
                and re.search(r"(?i)--(?:publish|stage|reserve-doi)\b", text)
-               for text in (joined, bare)):  # fmt: skip
+               for text in texts):  # fmt: skip
         return None, None
-    readings = [_command_words(joined, posix=posix) for posix in (True, False)]
+    readings = [_command_words(text, posix=posix) for text in joined for posix in (True, False)]
     flags: set[str] = set()
     named_elsewhere = False
     for invocations, _clean in readings:
         for words in invocations:
+            tool = _tool_words(words)
+            if tool is not None and (not tool or tool[0].casefold() != "deposit"):
+                # The tool running another subcommand: `check --stage submission`, which a
+                # release's refusal tells its reader to run before `deposit`.
+                continue
             rest = _deposit_words(words)
             sending = {found[1].lower() for word in (rest or words)
                        if (found := _SENDING.fullmatch(word))}  # fmt: skip
@@ -1469,8 +1480,8 @@ def _deposits(command: str) -> tuple[str | None, str | None]:
     exact = all(clean for _invocations, clean in readings)
     if exact and "publish" in flags:
         return _PUBLISHES, None
-    if exact and flags and not named_elsewhere:
-        return None, _SENDS
+    if exact and not named_elsewhere:
+        return None, _SENDS if flags else None
     # Named, and not read exactly as an invocation: asked, never refused.
     return None, _NAMES_DEPOSIT
 

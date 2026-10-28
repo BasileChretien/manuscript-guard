@@ -1143,6 +1143,8 @@ def test_publishing_a_deposit_is_refused_to_an_agent(
         "manuscript-guard deposit --target zenodo --bundle release --stage",
         "manuscript-guard deposit --target zenodo --bundle release --reserve-doi --yes",
         "mguard deposit --target osf --bundle preregistration --stage",
+        # A continuation inside a word, which a shell joins (round 2 of #467).
+        "manuscript-guard deposit --target zenodo --bundle release --sta\\\nge",
     ],
 )
 def test_staging_or_reserving_a_deposit_is_put_to_the_author(
@@ -1168,6 +1170,18 @@ def test_a_deposit_that_sends_nothing_is_let_through(
     in_claude_code: Path, command: str, capsys
 ) -> None:
     assert run("guard-submission", _shell(in_claude_code, command), capsys) is None
+
+
+@pytest.mark.parametrize("turn_id", [None, "t"])
+def test_the_check_a_refusal_names_then_a_dry_run_is_let_through(
+    in_claude_code: Path, turn_id: str | None, capsys
+) -> None:
+    """Round 2 of #467 (blocking): `--stage` belongs to `check` there, the tool running
+    another subcommand, as on main; in Claude Code, and in Codex, which cannot ask."""
+    command = ("manuscript-guard check --stage submission && manuscript-guard deposit "
+               "--target zenodo --bundle release --dry-run")  # fmt: skip
+    more = {"turn_id": turn_id} if turn_id else {}
+    assert run("guard-submission", _shell(in_claude_code, command, **more), capsys) is None
 
 
 @pytest.mark.parametrize(

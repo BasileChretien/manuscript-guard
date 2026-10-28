@@ -92,9 +92,16 @@ def _reserve(project: Project, args: argparse.Namespace, api: Client,
                           f"{receipt.get('host')} with the DOI {receipt.get('doi')} "
                           f"({receipts.RECEIPTS}/{args.target}-{args.bundle}.yaml); a second "
                           "would reserve a second DOI")  # fmt: skip
-    draft = zenodo.reserve(api, args.target)
-    made = {"target": args.target, "bundle": args.bundle, "host": zenodo.HOSTS[args.target],
-            **draft}  # fmt: skip
+    base = {"target": args.target, "bundle": args.bundle, "host": zenodo.HOSTS[args.target]}
+    try:
+        draft = zenodo.reserve(api, args.target)
+    except zenodo.DraftMade as exc:
+        # The draft exists: its id is recorded, so that a run again reserves no second DOI.
+        _record(project, {**base, "id": exc.draft, "doi": None}, "reserved")
+        raise RemoteError(f"{exc}; its id is in {receipts.RECEIPTS}/{args.target}-"
+                          f"{args.bundle}.yaml, and a run again reserves no second one: look "
+                          "at the draft on the host's page") from None  # fmt: skip
+    made = {**base, **draft}
     made = _record(project, made, "reserved")
     print(f"{api.name} reserved the DOI {draft['doi']} for draft {draft['id']}"
           f"{' (' + draft['page'] + ')' if draft['page'] else ''}.")  # fmt: skip
@@ -151,15 +158,15 @@ def _metadata(staged) -> dict:
     and a bundle without one, or with one that is not a JSON object, is not sent at all."""
     path = Path(staged.directory) / ".zenodo.json"
     if not path.is_file():
-        raise Unfit("the bundle holds no .zenodo.json to describe the draft by; nothing was "
-                    "sent")  # fmt: skip
+        raise Unfit("the bundle holds no .zenodo.json to describe the draft by; no file of "
+                    "it was sent")  # fmt: skip
     try:
         document = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, ValueError, RecursionError) as exc:
         raise Unfit(f"the bundle's .zenodo.json cannot be read as JSON ({type(exc).__name__}); "
-                    "nothing was sent") from None  # fmt: skip
+                    "no file of it was sent") from None  # fmt: skip
     if not isinstance(document, dict):
-        raise Unfit("the bundle's .zenodo.json is not a JSON object; nothing was sent")
+        raise Unfit("the bundle's .zenodo.json is not a JSON object; no file of it was sent")
     return document
 
 
@@ -180,6 +187,11 @@ def _built(args: argparse.Namespace) -> tuple[Project, object, str] | int:
 
 
 def _stage(args: argparse.Namespace, api: Client, receipt: dict | None) -> int:
+    if receipt is not None and receipt.get("publish_sent_on"):
+        raise RemoteError(f"a publication of the draft was sent on "
+                          f"{receipt['publish_sent_on']}, and a published record's files "
+                          "cannot be changed: look at its page; a new version is made "
+                          "there")  # fmt: skip
     if receipt is not None and receipt.get("published_on"):
         raise RemoteError(f"the draft was published on {receipt['published_on']}, and a "
                           "published record's files cannot be changed: a new version is made "
@@ -286,16 +298,34 @@ def _published(project: Project, api: Client, args: argparse.Namespace, receipt:
         answer = zenodo.request_publish(api, args.target, receipt)
         fields, problem = zenodo.published(api, receipt, answer)
     except RemoteError as exc:
+        if not exc.reached:
+            # Never sent, no connection made, or the token refused: nothing was published,
+            # and a later `--publish` may try again.
+            raise
         fields, problem = {}, str(exc)
     said = problem or f"published, with the DOI {fields.get('doi')}"
-    receipt = _record(project, {**receipt, "publish_answer": said}, "publish_sent")
+    try:
+        receipt = _record(project, {**receipt, "publish_answer": said}, "publish_sent")
+        if problem is None:
+            receipt = _record(project, {**receipt, **{k: v for k, v in fields.items() if v}},
+                              "published")  # fmt: skip
+    except OSError as exc:
+        raise RemoteError(_unrecorded(args, receipt, doi, said, exc)) from None
     if problem is not None:
         raise RemoteError(f"the publication was sent, and the host answered: {problem}. It is "
                           "recorded, and not sent again: look at the draft's page")  # fmt: skip
-    receipt = _record(project, {**receipt, **{k: v for k, v in fields.items() if v}},
-                      "published")  # fmt: skip
     print(f"Published {doi}{' at ' + receipt['page'] if receipt.get('page') else ''}.")
     return 0
+
+
+def _unrecorded(args: argparse.Namespace, receipt: dict, doi: str, said: str,
+                exc: OSError) -> str:  # fmt: skip
+    """What is said, loudly, where a publication was sent and could not be recorded."""
+    name = f"{receipts.RECEIPTS}/{args.target}-{args.bundle}.yaml"
+    return (f"THE PUBLICATION OF DRAFT {receipt['id']} ({doi}) WAS SENT, AND IT COULD NOT BE "
+            f"RECORDED ({exc.strerror or type(exc).__name__}). The host answered: {said}. Do "
+            f"not run --publish again. Add to {name}: `publish_sent_on: "
+            f"{receipts.now()}`, and look at the draft on its page")  # fmt: skip
 
 
 def run(args: argparse.Namespace) -> int:

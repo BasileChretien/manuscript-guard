@@ -3850,6 +3850,214 @@ def test_a_small_count_the_companion_would_show_stops_the_package(project: Path)
     assert not (project / "build" / "package").exists()
 
 
+def _deposit_preflight(root: Path, bundle: str):
+    from manuscript_guard.deposit import preflight
+    from manuscript_guard.deposit.command import _carried
+
+    loaded, _ = load_project(root)
+    _namespace, results, _literature, _ = load_namespace(loaded)
+    return preflight.first(loaded, results, _carried(loaded, results, bundle),
+                           preprint=bundle == "preprint")[0]  # fmt: skip
+
+
+def test_a_count_below_the_minimum_planted_in_a_table_stops_the_deposit(project: Path) -> None:
+    """The custodian's check comes before anything of a release is built: a count planted in
+    a table of the results it carries stops it, for a repository and for the site, and
+    nothing is written."""
+    _packable(project)
+    _custodian(project, 5)
+    assert _deposit_preflight(project, "release").ok
+
+    def plant(document: dict) -> None:
+        document["tables"]["two_by_two"]["rows"][0][1] = "2"
+
+    _resign(project, plant)
+    assert {f.code for f in _deposit_preflight(project, "release").failures} == \
+        {"package-small-count"}  # fmt: skip
+    for target in ("zenodo", "gh-pages"):
+        assert _run_cli(["deposit", str(project), "--target", target, "--bundle",
+                         "release"]) == 1  # fmt: skip
+        assert not (project / "build" / "deposit").exists()
+        assert not (project / "build" / "package").exists()
+
+
+def test_a_restricted_input_never_goes_into_a_deposit(project: Path) -> None:
+    """A record the bundle carries, the data dictionary, declared a restricted input of the
+    analysis: the bundle is refused, and nothing is written."""
+    (project / "design" / "plan.frozen.yaml").unlink()
+    argv = ["deposit", str(project), "--target", "zenodo", "--bundle", "preregistration"]
+    assert _run_cli([*argv, "--dry-run"]) == 0
+    dictionary = project / "design" / "data_dictionary.yaml"
+    digest = hashlib.sha256(dictionary.read_bytes()).hexdigest()
+
+    def plant(document: dict) -> None:
+        document["provenance"]["inputs"].append(
+            {"path": "design/data_dictionary.yaml", "sha256": digest, "restricted": True}
+        )
+
+    _resign(project, plant)
+    assert _run_cli(argv) == 1
+    assert not (project / "build" / "deposit").exists()
+
+
+def test_a_restricted_input_copied_into_a_latex_folder_under_another_name_stops_it(
+    project: Path,
+) -> None:
+    """`pack_latex` copies each file the LaTeX build read into the folder arXiv is sent,
+    under a name of its own: an input declared restricted among them is found by its bytes,
+    and an unrestricted one is not (round 1 of #460)."""
+    from manuscript_guard.deposit.plan import copied
+    from manuscript_guard.deposit.preflight import restricted_entries
+
+    folder = project / "build" / "latex" / "submission"
+    folder.mkdir(parents=True)
+    shutil.copyfile(project / "data" / "event_terms.txt", folder / "terms-table.txt")
+    entries = (copied(folder / "terms-table.txt", "terms-table.txt", "the LaTeX source"),)
+
+    def found() -> list[str]:
+        loaded = load_project(project)[0]
+        return [f.code for f in restricted_entries(loaded, load_namespace(loaded)[1], entries)]
+
+    assert found() == []
+    _resign(project, _restricted)
+    assert found() == ["deposit-restricted-input"]
+
+
+def test_the_release_manifest_is_not_what_the_custodian_signs(project: Path) -> None:
+    """MANIFEST.yaml names the commit and whether the tree is clean, which a sign-off written
+    into the tree changes: a release signed off stays signed when only it changes, and is
+    signed again when a file it lists does (round 1 of #460)."""
+    from manuscript_guard.deposit.plan import generated
+    from manuscript_guard.deposit.preflight import signable
+
+    paper = project / "paper.yaml"
+    document = yaml.safe_load(paper.read_text(encoding="utf-8"))
+    document["custodian"] = {"restricts_sending": True}
+    paper.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    loaded = load_project(project)[0]
+
+    def digest(manifest: str, readme: str) -> str:
+        entries = (generated("MANIFEST.yaml", manifest, "the manifest"),
+                   generated("README.md", readme, "the readme"))  # fmt: skip
+        return signable(loaded, "zenodo", "release", entries).digest
+
+    assert digest("tree: clean\n", "a") == digest("tree: 1 file(s) changed\n", "a")
+    assert digest("tree: clean\n", "a") != digest("tree: clean\n", "b")
+
+
+def test_a_verbatim_copy_of_a_crlf_restricted_input_stops_the_deposit(project: Path) -> None:
+    """A run records a restricted input's `sha256` blind to line endings and its bytes as
+    `raw_sha256`: a verbatim copy of a CRLF input whose original is gone is found by the
+    second (round 2 of #460)."""
+    from manuscript_guard.deposit.plan import copied
+    from manuscript_guard.deposit.preflight import restricted_entries
+
+    folder = project / "build" / "latex" / "submission"
+    folder.mkdir(parents=True)
+    held = b"term,count\r\nnausea,3\r\n"
+    (folder / "table-input.csv").write_bytes(held)
+    entries = (copied(folder / "table-input.csv", "table-input.csv", "the LaTeX source"),)
+
+    def found() -> list[str]:
+        loaded = load_project(project)[0]
+        return [f.code for f in restricted_entries(loaded, load_namespace(loaded)[1], entries)]
+
+    def plant(document: dict) -> None:
+        document["provenance"]["inputs"].append({
+            "path": "data/held.csv", "restricted": True,
+            "sha256": hashlib.sha256(held.replace(b"\r\n", b"\n")).hexdigest(),
+            "raw_sha256": hashlib.sha256(held).hexdigest(),
+        })  # fmt: skip
+
+    assert found() == []
+    _resign(project, plant)
+    assert found() == ["deposit-restricted-input"]
+
+
+def test_a_pdf_compiled_with_another_engine_is_signed_off_again(project: Path) -> None:
+    """A LaTeX manuscript's PDF is signed by what it is compiled from, which is the engine
+    as well as the folder: another engine is another PDF (round 2 of #460)."""
+    from manuscript_guard.build.latex_pack import LatexPack
+    from manuscript_guard.deposit.plan import generated
+    from manuscript_guard.deposit.preflight import signable
+    from manuscript_guard.deposit.preprint import built_from
+
+    paper = project / "paper.yaml"
+    document = yaml.safe_load(paper.read_text(encoding="utf-8"))
+    document["custodian"] = {"restricts_sending": True}
+    paper.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    folder = project / "build" / "latex" / "submission"
+    folder.mkdir(parents=True)
+    (folder / "manuscript.tex").write_text("\\documentclass{article}\n", encoding="utf-8")
+    packed = LatexPack(folder, (folder / "manuscript.tex",), (folder / "manuscript.pdf",), ())
+    loaded = load_project(project)[0]
+    entries = (generated("manuscript.pdf", "%PDF\n", "the document"),)
+
+    def digest(engine: str) -> str:
+        return signable(loaded, "medrxiv", "preprint", entries,
+                        (("manuscript.pdf", built_from(packed, engine)),)).digest  # fmt: skip
+
+    assert digest("pdflatex") == digest("pdflatex")
+    assert digest("pdflatex") != digest("lualatex")
+
+
+def test_a_stray_retrospective_leaves_the_small_counts_unsigned(project: Path) -> None:
+    """`sign --retrospective` with a finding that is not a deposit's is refused, and the
+    finding stands until it is signed off as it is (round 2 of #460)."""
+    _packable(project)
+    _custodian(project, 5)
+    authors = yaml.safe_load((project / "authors.yaml").read_text(encoding="utf-8"))
+    authors["roles"] = {**authors.get("roles", {}), "data_custodian": "Sample"}
+    (project / "authors.yaml").write_text(yaml.safe_dump(authors, allow_unicode=True),
+                                          encoding="utf-8")  # fmt: skip
+
+    def plant(document: dict) -> None:
+        document["tables"]["two_by_two"]["rows"][0][1] = "2"
+
+    _resign(project, plant)
+    codes = {f.code for f in _deposit_preflight(project, "release").failures}
+    assert codes == {"package-small-count"}
+    argv = ["sign", str(project), "--as", "Sample", "--finding", "PACKAGE/custodian/small-counts"]
+    assert _run_cli([*argv, "--retrospective", "why"]) == 2
+    assert {f.code for f in _deposit_preflight(project, "release").failures} == codes
+    assert _run_cli(argv) == 0
+    assert _deposit_preflight(project, "release").ok
+
+
+@pytest.mark.skipif(shutil.which("pandoc") is None, reason="pandoc is not installed")
+@pytest.mark.parametrize("kind", ["latex formula", "subheading", "listing"])
+def test_a_statement_plain_text_cannot_show_is_not_printed_in_the_medrxiv_sheet(
+    project: Path, kind: str
+) -> None:
+    """A LaTeX formula was printed as "x", a subheading run into the statement and a fenced
+    block dropped: each is now to be copied from the document (round 2 of #460)."""
+    from manuscript_guard.deposit.sheets import medrxiv_sheet
+
+    anchor = "this repository. No real patient data"
+    if kind == "latex formula":
+        shutil.rmtree(project / "manuscript")
+        shutil.copytree(Path(__file__).parent / "data" / "latex" / "manuscript",
+                        project / "manuscript")  # fmt: skip
+        path, planted = project / "manuscript" / "main.tex", "Counts below $5$ are withheld."
+    else:
+        path = project / "manuscript" / "main.md"
+        planted = {"subheading": "\n\n## Code availability\n\nOn the site.\n",
+                   "listing": "\n\n```\nheld listing\n```\n"}[kind]  # fmt: skip
+
+    def statement() -> str:
+        sheet = medrxiv_sheet(load_project(project)[0], files=[])
+        return sheet.split("## Data availability", 1)[1].split("## Licence", 1)[0]
+
+    assert "As the document prints it" in statement()
+    text = path.read_text(encoding="utf-8")
+    assert text.count(anchor) == 1
+    path.write_text(text.replace(anchor, f"this repository. {planted} No real patient data"),
+                    encoding="utf-8")  # fmt: skip
+    said = statement()
+    assert "Copy it from the document" in said
+    assert not any(word in said for word in ("Counts below", "Code availability", "held listing"))
+
+
 def test_a_statement_that_loses_the_deposits_doi_fails_at_submission(project: Path) -> None:
     from manuscript_guard.gates.data_statement import check_package_doi
 

@@ -14,6 +14,7 @@ import argparse
 import contextlib
 import io
 import json
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -1383,3 +1384,164 @@ def test_an_abbreviated_version_prints_no_version(capsys) -> None:
 def test_an_option_written_in_full_is_still_read(project: Path, capsys) -> None:
     assert run("check", str(project), "--submission", "--json") == 0
     assert json.loads(capsys.readouterr().out)["counts"]
+
+
+# ---------------------------------------------------------------- the commands, grouped
+
+#: Command lines and what they parsed to, recorded from the parser as it was before its help
+#: grouped the commands (40dcb675), by `sample_command_lines` below.
+COMMAND_LINES = Path(__file__).resolve().parent / "data" / "command_lines.json"
+
+
+def _sample_value(action: argparse.Action, choice: object = None) -> str:
+    if action.choices:
+        return str(next(iter(action.choices)) if choice is None else choice)
+    return "1" if action.type in (int, float) else "x"
+
+
+def _sample_values(action: argparse.Action, optional_too: bool, choice: object = None) -> list[str]:
+    if action.nargs == 0:
+        return []
+    if action.nargs in ("?", "*"):
+        return [_sample_value(action, choice)] if optional_too else []
+    if isinstance(action.nargs, int):
+        return [_sample_value(action, choice)] * action.nargs
+    return [_sample_value(action, choice)]
+
+
+def _choices(action: argparse.Action) -> list[object]:
+    """Each value an option or a positional takes from a fixed list, or one sample."""
+    return list(action.choices) if action.choices else [None]
+
+
+def sample_command_lines(parser: argparse.ArgumentParser) -> list[list[str]]:
+    """For each command, the shortest line it takes, then that line with each optional
+    positional or option added, one at a time: every spelling of the option, and every value
+    of a fixed list of them, a positional's included."""
+    lines = []
+    for name, command in sorted(_commands_of(parser).items()):
+        actions = [a for a in command._actions if not isinstance(a, argparse._HelpAction)]
+        positionals = [a for a in actions if not a.option_strings]
+        required = [
+            part
+            for a in actions
+            if a.option_strings and a.required
+            for part in (max(a.option_strings, key=len), *_sample_values(a, True))
+        ]
+
+        shortest = _sample_line(name, positionals, required)
+        lines.append(shortest)
+        for action in actions:
+            if not action.option_strings and action.choices:
+                for choice in _choices(action)[1:]:
+                    lines.append(_sample_line(name, positionals, required, action, choice))
+            if not action.option_strings and action.nargs in ("?", "*"):
+                lines.append(_sample_line(name, positionals, required, action))
+            elif action.option_strings and not action.required:
+                for option in sorted(action.option_strings):
+                    for choice in _choices(action):
+                        lines.append([*shortest, option, *_sample_values(action, True, choice)])
+    return lines
+
+
+def _sample_line(name, positionals, required, filled=None, choice=None) -> list[str]:
+    """The command, its positionals (an optional one only where it is `filled`; the `filled`
+    one with `choice` where its values are a fixed list), then the options it requires."""
+    given = [
+        value
+        for a in positionals
+        for value in _sample_values(a, a is filled, choice if a is filled else None)
+    ]
+    return [name, *given, *required]
+
+
+def plain(value: object) -> object:
+    """A parsed value as JSON can hold it, the same on every machine."""
+    if isinstance(value, Path):
+        return "<cwd>" if value == Path.cwd() else value.as_posix()
+    if isinstance(value, (list, tuple)):
+        return [plain(item) for item in value]
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if callable(value) and hasattr(value, "__name__"):
+        return f"<{value.__name__}>"
+    return repr(value)
+
+
+def _commands_of(parser: argparse.ArgumentParser) -> dict[str, argparse.ArgumentParser]:
+    (commands,) = (a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
+    return dict(commands.choices)
+
+
+def test_every_command_line_parses_as_it_did_before_the_commands_were_grouped() -> None:
+    """The grouping changes what the top-level help prints and nothing a command reads.
+    Only the names recorded are compared, so an option added since leaves this alone."""
+    recorded = json.loads(COMMAND_LINES.read_text(encoding="utf-8"))
+    assert len({entry["argv"][0] for entry in recorded}) == 38, "every command of 40dcb675"
+    parser = build_parser()
+    # What the sampler draws from 40dcb675's parser: none of it left out, and nothing in it
+    # the sampler would not draw from today's.
+    assert len(recorded) == 218, "every line recorded at 40dcb675"
+    sampled = {tuple(argv) for argv in sample_command_lines(parser)}
+    assert [entry["argv"] for entry in recorded if tuple(entry["argv"]) not in sampled] == []
+    changed = []
+    for entry in recorded:
+        namespace = vars(parser.parse_args(entry["argv"]))
+        parsed = {key: plain(value) for key, value in namespace.items()}
+        now = {key: parsed.get(key, "<missing>") for key in entry["namespace"]}
+        if now != entry["namespace"]:
+            changed.append((entry["argv"], now, entry["namespace"]))
+    assert changed == []
+
+
+def test_every_command_but_hook_is_in_exactly_one_group() -> None:
+    from manuscript_guard.cli import COMMAND_GROUPS, HIDDEN_COMMANDS
+
+    grouped = [name for _, names in COMMAND_GROUPS for name in names]
+    assert len(grouped) == len(set(grouped)), "a command is in two groups"
+    assert set(grouped) == set(_commands()) - HIDDEN_COMMANDS
+    assert {"hook"} == HIDDEN_COMMANDS
+    headings = [heading for heading, _ in COMMAND_GROUPS]
+    assert len(headings) == len(set(headings)) == 6
+
+
+def _top_help(capsys) -> str:
+    with pytest.raises(SystemExit) as exit_:
+        run("--help")
+    assert exit_.value.code == 0
+    return capsys.readouterr().out
+
+
+def test_the_help_lists_the_commands_under_their_headings_in_order(capsys) -> None:
+    from manuscript_guard.cli import COMMAND_GROUPS
+
+    out = _top_help(capsys)
+    assert "usage: manuscript-guard [-h] [--version] <command> ...\n" in out
+    blocks = out.split("\n\n")
+    starts = [
+        next(at for at, block in enumerate(blocks) if block.startswith(f"{heading}:\n"))
+        for heading, _ in COMMAND_GROUPS
+    ]
+    assert starts == sorted(set(starts))
+    (commands,) = build_parser()._subparsers._group_actions
+    helps = {choice.dest: choice.help for choice in commands._choices_actions}
+    for (heading, names), start in zip(COMMAND_GROUPS, starts, strict=True):
+        listed = re.findall(r"^  (\S+)", blocks[start], re.MULTILINE)
+        assert listed == list(names), heading
+        flat = " ".join(blocks[start].split())
+        for name in names:
+            assert f" {name} {' '.join(helps[name].split())}" in flat, name
+    # Not hidden by accident: argparse's own list of every choice is gone, and so is hook.
+    assert "{check," not in out and "hook" not in out
+
+
+@pytest.mark.parametrize("command", sorted(_commands()))
+def test_every_command_takes_help(command: str, capsys) -> None:
+    """Its help is its own, as before: the top parser's formatter is not handed down, and
+    its usage line names the command after the program."""
+    with pytest.raises(SystemExit) as exit_:
+        run(command, "--help")
+    assert exit_.value.code == 0
+    out = capsys.readouterr().out
+    assert out.startswith(f"usage: manuscript-guard {command} ")
+    assert "Each command takes --help." not in out

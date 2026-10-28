@@ -517,11 +517,19 @@ def test_a_heading_in_a_list_item_ends_a_section_and_opens_none() -> None:
         assert Classifier.load().classify(atom, chain).kind == UNCLASSIFIED
 
 
-def test_a_heading_under_a_table_placeholder_is_read_as_the_build_prints_it() -> None:
+@pytest.mark.parametrize(
+    ("caption", "label"),
+    [(None, None), ("Reports by arm.", None), ("Reports by arm.", "Table 1"), (None, "Table 1")],
+)
+def test_a_heading_under_a_table_placeholder_is_read_as_the_build_prints_it(
+    caption: str | None, label: str | None
+) -> None:
     """The gates read `{{table.t}}`; pandoc reads the pipe table the build puts in its place,
     and a table ends at its last row. Read as a line of prose, the placeholder hid the
     `## Results` under it: the heading the document prints was lost to G2, and a p-value
-    below it would have passed as Methods."""
+    below it would have passed as Methods. With a caption the table ended in a paragraph,
+    which a heading does not interrupt, and the heading was printed inside the caption
+    (Known gaps): the build writes a blank line after it."""
     from pathlib import Path
 
     from manuscript_guard.build.assemble import render_table
@@ -531,13 +539,13 @@ def test_a_heading_under_a_table_placeholder_is_read_as_the_build_prints_it() ->
         key="t",
         columns=("Arm", "Reports"),
         rows=(("Drug", "412"),),
-        caption=None,
+        caption=caption,
         align=("left", "right"),
         quoted=True,
         source=Path("t.json"),
     )
     source = "## Methods\n\n{{table.t}}\n## Results\n\nProse.\n"
-    built = source.replace("{{table.t}}", render_table(table))
+    built = source.replace("{{table.t}}", render_table(table, label))
     assert headings(source) == pandoc_headings(built) == ["Methods", "Results"]
 
 

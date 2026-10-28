@@ -37,7 +37,7 @@ from manuscript_guard.text.blocks import (
 from manuscript_guard.text.fences import blank_fences
 from manuscript_guard.text.masking import NUL, mask, without_front_matter
 from manuscript_guard.text.reference_lists import unmarked_reference_lists
-from manuscript_guard.text.section_names import REFERENCE_WORDS_ELSEWHERE, names_abstract
+from manuscript_guard.text.section_names import REFERENCE_WORDS_ELSEWHERE, names_abstract, plain
 
 # `scannable` moved to `text.blocks` with the heading walk, and `strip_attributes` to
 # `text.attributes` so the walk can title headings with it; both are re-exported for the
@@ -77,6 +77,16 @@ _REFERENCES = re.compile(
 _TABLE_ROW = re.compile(r"^\s*\|.*\|\s*$", re.MULTILINE)
 _TABLE_CAPTION = re.compile(r"^\s*:\s+.+$", re.MULTILINE)
 _IMAGE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
+#: A figure placed by hand, as pandoc numbers one (`implicit_figures`): an image with a
+#: caption, its alternative text, alone on its line, at most three spaces in, its attributes
+#: after it. `_figures_placed` holds the line to a paragraph of its own. The caption may hold
+#: a bracketed pair, the target a pair of parentheses and a title.
+_FIGURE_LINE = re.compile(
+    r"[ ]{0,3}!\[(?P<caption>(?:[^\[\]\n]|\[[^\[\]\n]*\])*)\]"
+    r"\((?:[^()\n]|\([^()\n]*\))*\)(?:\{[^{}\n]*\})?[ \t]*"
+)
+#: A line that ends the paragraph above it, as a blank line does: an ATX heading.
+_ATX_LINE = re.compile(r"[ ]{0,3}#{1,6}(?:[ \t].*)?")
 
 # Code, stripped here rather than borrowed from `mask()`. The two were sharing one answer to
 # two different questions — "where is a digit not a claim?" and "what would a journal count?"
@@ -109,7 +119,11 @@ class Section:
 
     @property
     def is_references(self) -> bool:
-        return bool(_REFERENCES.match(self.title))
+        """Whether the heading names the reference list, read as printed (`plain`): with
+        its number taken off, "VII. References" or "7. References", and its marks, as the
+        recycling check reads it. Read as typed, the list under either was main text to G4's
+        count and prose to G14."""
+        return bool(_REFERENCES.match(plain(self.title)))
 
 
 def heading_index(text: str) -> list[Heading]:
@@ -593,6 +607,25 @@ def count_words(text: str) -> int:
     return len([token for token in stripped.split() if any(c.isalnum() for c in token)])
 
 
+def _figures_placed(text: str) -> int:
+    """The figures placed by hand that pandoc numbers: each image with a caption alone in a
+    paragraph of its own, out of comments, fences and YAML blocks (`scannable`). Not an image
+    in a sentence, nor one with no caption, which pandoc prints as an image and numbers not.
+    One in a list, a block quotation or a div, or written by reference, `![caption][ref]`, is
+    a figure to pandoc and not counted here (Known gaps)."""
+    lines = scannable(text).split("\n")
+    found = 0
+    for at, line in enumerate(lines):
+        placed = _FIGURE_LINE.fullmatch(line.rstrip("\r"))
+        if placed is None or not placed["caption"].strip():
+            continue
+        above = lines[at - 1] if at else ""
+        below = lines[at + 1] if at + 1 < len(lines) else ""
+        if (not above.strip() or _ATX_LINE.fullmatch(above)) and not below.strip():
+            found += 1
+    return found
+
+
 @dataclass(frozen=True)
 class Counts:
     abstract_words: int
@@ -650,5 +683,7 @@ def measure(text: str, abstract_title: str | None = None) -> Counts:
         total_words=abstract + main,
         sections=tuple(s.title for s in sections if s.title),
         tables=len(re.findall(r"\{\{table\.[a-z0-9_.]+\}\}", printed)),
-        figures=len(re.findall(r"\{\{figure\.[a-z0-9_.]+\}\}", printed)),
+        # A figure placed by hand counts as one a binding places: pandoc numbers both.
+        figures=len(re.findall(r"\{\{figure\.[a-z0-9_.]+\}\}", printed))
+        + _figures_placed(printed),
     )

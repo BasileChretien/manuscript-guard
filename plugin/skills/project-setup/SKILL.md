@@ -165,7 +165,7 @@ with latexmk, which TeX Live and MiKTeX provide, and `--skip-checks` writes
 `manuscript.UNCHECKED.pdf`. Each table and figure goes in a float with a `\caption`, which
 LaTeX numbers it by. `build` refuses while anything fails at the current stage. For a Markdown manuscript,
 `--skip-checks` writes `manuscript.UNCHECKED.docx` instead, which is for reading, not for
-sending.
+sending. A stale `.docx` (`document-stale`) never stops the Word build that rewrites it.
 
 `build` needs Zotero running for live fields; the first live build also downloads Better
 BibTeX's Lua filter. `--offline` needs a `literature/references.bib`, which
@@ -208,7 +208,8 @@ that fails the submission check. Two things are then caught by nothing: a genera
 checklist profile edited by hand, and a file edited in `build/`, which stays as edited until
 the command that writes it runs again (`build` for the documents, `respond` for the letter).
 Do not edit either. And a shell command that copies, zips or pushes a `.docx` is held to no
-check, so run `manuscript-guard check --submission` yourself before a manuscript leaves.
+check, so run `manuscript-guard check --stage submission` yourself before a manuscript
+leaves.
 
 - At the start of a session, one line of status: the stage, and how many findings fail and
   warn. Where a file of the project cannot be used (`paper.yaml`, `authors.yaml`, a results
@@ -224,8 +225,8 @@ check, so run `manuscript-guard check --submission` yourself before a manuscript
   anything fails, or if a file of the project cannot be used and the check cannot run. That
   includes `manuscript-guard check --submission` itself, `submit`, and a build asked for
   with `--stage submission`. The refusal shows the first eight
-  failures; `check --stage submission` runs the same check without the hook and lists them
-  all.
+  failures; `manuscript-guard check --stage submission`, on a line of its own, runs the same
+  check without the hook and lists them all.
 - At the end of a turn that changed a file in `manuscript/`, `analysis/`, `results/`,
   `figures/` or `literature/`, or `paper.yaml` or `authors.yaml`, the line of the session's
   start again, with the counts as they now are. It is shown to the person and not to the

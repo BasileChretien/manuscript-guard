@@ -845,6 +845,99 @@ def test_an_edited_alternative_text_makes_the_built_document_stale(project: Path
     assert "document-stale" in {f.code for f in _findings(project)}
 
 
+@needs_pandoc
+def test_a_stale_document_does_not_block_the_build_that_clears_it(project: Path, capsys) -> None:
+    """At `internal-review` `document-stale` fails, and the build refused while anything
+    failed: the stale document stayed stale, and `--skip-checks` wrote an UNCHECKED copy
+    beside it, a second finding. The finding is the build's to clear, so the build does not
+    count it, and writes the document under its plain name."""
+    assert run("build", str(project), "--offline", "--stage", "internal-review") == 0
+    path = project / "manuscript" / "main.md"
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text.replace("remains among the commonest", "is among the commonest", 1),
+                    encoding="utf-8")  # fmt: skip
+    assert "document-stale" in {f.code for f in _findings(project)}
+    capsys.readouterr()
+
+    assert run("build", str(project), "--offline", "--stage", "internal-review") == 0
+    assert "UNCHECKED" not in capsys.readouterr().out
+    assert not (project / "build" / "manuscript.UNCHECKED.docx").exists()
+    assert "document-stale" not in {f.code for f in _findings(project)}
+    assert run("check", str(project), "--stage", "internal-review") == 0
+
+
+@needs_pandoc
+def test_a_checked_build_takes_away_the_unchecked_copy_it_supersedes(project: Path) -> None:
+    """An UNCHECKED copy of an older source went stale once the source was put right, and
+    no build rewrote it: `document-stale` for good. The checked build replaces it."""
+    path = project / "manuscript" / "main.md"
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text + "\n\n99999 loose.\n", encoding="utf-8")
+    assert run("build", str(project), "--offline", "--skip-checks") == 0
+    assert (project / "build" / "manuscript.UNCHECKED.docx").exists()
+    path.write_text(text, encoding="utf-8")
+
+    assert run("build", str(project), "--offline", "--stage", "internal-review") == 0
+    assert not (project / "build" / "manuscript.UNCHECKED.docx").exists()
+    assert run("check", str(project), "--stage", "internal-review") == 0
+
+
+@needs_pandoc
+def test_a_build_given_its_name_does_not_say_it_is_named_unchecked(
+    project: Path, tmp_path: Path, capsys
+) -> None:
+    path = project / "manuscript" / "main.md"
+    path.write_text(path.read_text(encoding="utf-8") + "\n\n99999 loose.\n", encoding="utf-8")
+    target = tmp_path / "mine.docx"
+    assert run("build", str(project), "--offline", "--skip-checks", "--output", str(target)) == 0
+    out = capsys.readouterr().out
+    assert target.exists() and "named UNCHECKED" not in out and "unchecked" in out
+
+
+@needs_pandoc
+def test_the_build_sets_aside_only_the_staleness_of_the_document_it_rewrites(
+    project: Path, tmp_path: Path, capsys
+) -> None:
+    """Every `document-stale` was set aside, so a stale `build/x.docx`, which no build
+    rewrites, and `manuscript.docx` under a build sent elsewhere by `--output`, were passed
+    without a word (round 1 of #452). Only the documents the build writes over are its to
+    clear."""
+    from manuscript_guard.build.document import SOURCE_STAMP
+
+    assert run("build", str(project), "--offline", "--stage", "internal-review") == 0
+    other = project / "build" / "x.docx"
+    other.write_bytes((project / "build" / "manuscript.docx").read_bytes())
+    other.with_name(other.name + SOURCE_STAMP).write_text("0" * 64 + "\n", encoding="utf-8")
+    capsys.readouterr()
+    assert run("build", str(project), "--offline", "--stage", "internal-review") == 1
+    out = capsys.readouterr().out
+    assert "x.docx was built from a different manuscript" in out
+    assert "manuscript.docx was built from" not in out
+    other.unlink()
+    other.with_name(other.name + SOURCE_STAMP).unlink()
+
+    path = project / "manuscript" / "main.md"
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text.replace("remains among the commonest", "is among the commonest", 1),
+                    encoding="utf-8")  # fmt: skip
+    target = tmp_path / "mine.docx"
+    capsys.readouterr()
+    assert run("build", str(project), "--offline", "--stage", "internal-review",
+               "--output", str(target)) == 1  # fmt: skip
+    assert "manuscript.docx was built from a different manuscript" in capsys.readouterr().out
+
+
+@needs_pandoc
+def test_a_stale_document_beside_another_failure_still_refuses(project: Path) -> None:
+    """Only `document-stale` is set aside: any other failure still stops the build."""
+    assert run("build", str(project), "--offline", "--stage", "internal-review") == 0
+    path = project / "manuscript" / "main.md"
+    path.write_text(path.read_text(encoding="utf-8") + "\n\n99999 loose.\n", encoding="utf-8")
+    codes = {f.code for f in _findings(project) if f.severity == "fail"}
+    assert "document-stale" in codes and len(codes) > 1
+    assert run("build", str(project), "--offline", "--stage", "internal-review") == 1
+
+
 def _findings(project: Path):
     from manuscript_guard.cli import _run_gates
 
@@ -901,6 +994,9 @@ def test_an_overridden_submission_pack_records_that_in_its_manifest(project: Pat
     assert run("submit", str(project), "--offline", "--skip-checks") == 0
     manifest = (project / "build" / "submission" / "MANIFEST.yaml").read_text(encoding="utf-8")
     assert "SKIPPED" in manifest
+    # Known gaps: it said to re-run `check --submission`, which the submission guard holds
+    # to the check it names; the spelling the guard lets through is `--stage submission`.
+    assert "check --stage submission" in manifest and "check --submission" not in manifest
 
 
 @needs_pandoc

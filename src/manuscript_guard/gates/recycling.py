@@ -130,6 +130,81 @@ _SINGLE_QUOTED = re.compile(
     r"|\n(?![ \t]*\n))+?\N{RIGHT SINGLE QUOTATION MARK}(?![^\W_])"
 )
 _PARAGRAPH_BREAK = re.compile(r"\n[ \t]*\n")
+#: A citation by author and year in parentheses, as the earlier paper prints one where the
+#: manuscript cites by key: "(Smith et al., 2019)", "(Smith and Roe 2019a)", "(van der Berg,
+#: Roe, & Doe, 2018, p. 4)", "(e.g., Smith, 2019; Roe, 2020)". Its names are read by
+#: `_is_author_year`, which holds each to a capital.
+_PARTICLE = r"(?:(?:van|von|de|der|den|del|della|di|da|du|dos|das|la|le|ten|ter)\s+)"
+_CITED_NAME = rf"{_PARTICLE}*[^\W\d_]+(?:[-{_APOSTROPHES}][^\W\d_]+)*"
+_CITED_YEAR = r"(?:1[5-9]|20)\d\d[a-z]?(?![^\W_])"
+_ONE_CITED = (
+    rf"{_CITED_NAME}(?:\s+et\s+al\.?|(?:\s*,\s*{_CITED_NAME})*\s*,?\s+(?:and|&)\s+{_CITED_NAME})?"
+    rf"\s*,?\s+{_CITED_YEAR}(?:\s*,\s*{_CITED_YEAR})*"
+    r"(?:\s*,\s*(?:pp?\.|ch\.|chap\.)\s*\d+(?:[-" "\N{EN DASH}" r"]\d+)?)?"
+)
+_CITED_BEFORE = r"(?:(?:e\.g\.|i\.e\.|see(?:\s+also)?|cf\.)\s*,?\s*)?"
+_AUTHOR_YEAR = re.compile(
+    rf"\(\s*{_CITED_BEFORE}{_ONE_CITED}(?:\s*;\s*{_CITED_BEFORE}{_ONE_CITED})*\s*\)"
+)
+#: The words of such a citation that are no name, and so may be in lower case.
+_CITED_LOWER = frozenset(
+    {"van", "von", "de", "der", "den", "del", "della", "di", "da", "du", "dos", "das", "la",
+     "le", "ten", "ter", "et", "al", "and", "e", "g", "i", "see", "also", "cf", "p", "pp", "ch",
+     "chap"}
+)  # fmt: skip
+#: A month, which a date in parentheses names where a citation names its author:
+#: "(January 2019)" is no citation.
+_MONTHS = frozenset(
+    {"january", "february", "march", "april", "may", "june", "july", "august", "september",
+     "october", "november", "december"}
+)  # fmt: skip
+_LETTERS = re.compile(r"(?<!\d)[^\W\d_]+")
+#: Words that open a date in parentheses where a citation names its one author: a
+#: preposition, "(Since 2019)", a season, "(Spring 2019)", and a word of a period, "(Early
+#: 2020)". Each was taken for a surname and its date blanked in the earlier paper (round 1
+#: of #452). A citation of an author of one of these names, "(Winter, 2019)", is not
+#: blanked; one with "et al." or a second author is.
+_NO_AUTHOR = frozenset(
+    {"about", "after", "around", "as", "at", "before", "between", "by", "circa", "ca",
+     "during", "for", "from", "in", "on", "since", "through", "throughout", "till", "to",
+     "until", "up", "within", "spring", "summer", "autumn", "fall", "winter", "early", "late",
+     "mid", "end", "year"}
+)  # fmt: skip
+#: More than one author, or "et al.": a citation, whatever its names.
+_AUTHORS = re.compile(r"\bet\s+al\b|\band\b|&")
+
+
+def _is_author_year(cited: str) -> bool:
+    """Whether a match of `_AUTHOR_YEAR` names its authors: each name with a capital, no
+    month among them, and no citation of one author whose name is a word that opens a date
+    (`_NO_AUTHOR`)."""
+    names = [word for word in _LETTERS.findall(cited) if word.casefold() not in _CITED_LOWER]
+    if not names or not all(name[0].isupper() and name.casefold() not in _MONTHS
+                            for name in names):  # fmt: skip
+        return False
+    for one in cited.strip("() \t\n").split(";"):
+        alone = [word for word in _LETTERS.findall(one) if word.casefold() not in _CITED_LOWER]
+        if len(alone) == 1 and alone[0].casefold() in _NO_AUTHOR and not _AUTHORS.search(one):
+            return False
+    return True
+
+
+def without_author_year(source: str) -> str:
+    """`source` with each citation by author and year blanked, its line breaks kept, so that
+    where a word stands is where it stood: the manuscript cites by key, and the citation's
+    names are words it does not have, which cut a passage the two share (Known gaps)."""
+    return _AUTHOR_YEAR.sub(
+        lambda found: re.sub(r"[^\n]", " ", found.group())
+        if _is_author_year(found.group())
+        else found.group(),
+        source,
+    )
+
+
+def source_words(source: str) -> list[Word]:
+    """The words of an earlier paper as they are compared: `words` of it, with its citations
+    by author and year left out."""
+    return words(without_author_year(source))
 
 _INTRODUCTION = re.compile(r"(?:introduction|background|rationale)\b", re.IGNORECASE)
 _DISCUSSION = re.compile(r"(?:discussion|interpretation|comment)\b", re.IGNORECASE)
@@ -452,7 +527,7 @@ def recycled_in(
     """The passages of a manuscript file, `text`, that an earlier paper, `source`, has too,
     each with its part of the paper and whether it is cited: those with `SHARED` words or
     more outside quotation marks, and those with as many inside them."""
-    return _recycled(_read(text, abstract_title), words(source), key)
+    return _recycled(_read(text, abstract_title), source_words(source), key)
 
 
 def _recycled(read: _Manuscript, source: Sequence[Word], key: str) -> list[Recycled]:
@@ -529,7 +604,7 @@ def check_recycling(project: Project, stage: str = DRAFTING) -> Report:
             continue
         compared += 1
         texts = dict(copies)
-        read = [(copy, words(source)) for copy, source in copies]
+        read = [(copy, source_words(source)) for copy, source in copies]
         found = [
             _placed(folder, where, copy, passage)
             for where, prepared in manuscript

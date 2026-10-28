@@ -34,11 +34,11 @@ import posixpath
 import re
 from bisect import bisect_left, bisect_right
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import cached_property
 from pathlib import Path
 
-from manuscript_guard.text.latex.commands import PACKAGE_COMMANDS
+from manuscript_guard.text.latex.commands import IMPORTS, PACKAGE_COMMANDS, PLACED
 from manuscript_guard.text.latex.mask import Heading, Input, Reading, Refusal, read
 
 ENTRY = "main.tex"
@@ -149,10 +149,73 @@ def _distributed(put: Input) -> bool:
     """An `\\input` from the preamble of a bare name the manuscript does not hold, such as
     `\\input{glyphtounicode}`: TeX finds it in its distribution, as it finds a package, and it
     is not the author's (round 1 of #385: it was refused). So is TeX's form without braces,
-    `\\input glyphtounicode`, whose path the reader does not take."""
+    `\\input glyphtounicode`, whose path is the name up to a space (`mask._BARE_PATH`); one
+    the manuscript holds, `\\input macros`, is followed (Known gaps, 2026-10-27)."""
     name = put.path.strip()
     bare = not set(name) & (_NOT_WRITTEN_OUT | {"/"}) and not name.startswith(("_", "."))
     return not put.body and bare and put.via == "input"
+
+
+class _Anything(dict):
+    """A folder that holds every file, for asking whether a path is one only its absence
+    keeps from being read."""
+
+    def __contains__(self, key: object) -> bool:
+        return True
+
+
+def _pictured(entry: str, put: Input) -> bool:
+    """An `\\includestandalone` of a picture whose `.tex` the manuscript does not hold, by a
+    path written out in full inside it: the standalone package places the image compiled from
+    it, which no gate reads, as `\\includegraphics` places one."""
+    return put.via == "includestandalone" and resolve(entry, put.path, _Anything())[0] is not None
+
+
+def part(text: str) -> bool:
+    """Whether a file is a part another document places: one in a class of `_PARTS` that
+    opens its own `\\begin{document}`."""
+    reading = read(text)
+    classes = {name for kind, name in reading.declared if kind == "class"}
+    return reading.body_start > 0 and bool(classes & _PARTS)
+
+
+def _placed(reading: Reading, text: str) -> Reading:
+    """A part's reading where the paper places it: what its preamble and the end of its
+    document hold, which the package that places it passes over, is TeX's to pass over
+    (`unprinted`), and what the preamble loads, inputs, declares, defines, encodes or
+    comments is not the paper's. So the submission folder writes its body in the place of
+    the command.
+
+    The commands a part defines, told to every file of the tree, are those its body defines,
+    read from the body alone: told of its preamble's as well, main's own `\\x` was refused
+    for the part's `\\def\\x#1.{...}`, and a part's `\\providecommand{\\keywords}` made main's
+    `\\keywords` the author's (round 1 of #452)."""
+    start, length = reading.body_start, len(reading.masked)
+    end = reading.body_end if reading.body_end >= 0 else length
+
+    def inside(at: int) -> bool:
+        return start <= at < end
+
+    if reading.delimited or reading.own or reading.literal:
+        # The body, in its places, with the preamble and what follows it as spaces.
+        body = read("".join(ch if ch == "\n" or inside(at) else " "
+                            for at, ch in enumerate(text)), body=True)  # fmt: skip
+        defined = {"delimited": body.delimited, "own": body.own, "literal": body.literal}
+    else:
+        defined = {}
+    return replace(
+        reading,
+        inputs=tuple(put for put in reading.inputs if inside(put.offset)),
+        packages=tuple(loaded for loaded in reading.packages if inside(loaded[0])),
+        declared=(),
+        comments=tuple(span for span in reading.comments if inside(span[0])),
+        bindings=tuple(found for found in reading.bindings if inside(found.start)),
+        graphics=tuple(found for found in reading.graphics if inside(found[0])),
+        encodings=tuple(at for at in reading.encodings if inside(at)),
+        unprinted=((0, start), *(span for span in reading.unprinted if inside(span[0])),
+                   *(((end, length),) if end < length else ())),
+        **defined,
+    )
 
 
 def _target(
@@ -162,7 +225,7 @@ def _target(
     imported from: `imported` is the one the file the input stands in was imported from, ""
     for the entry file's. An `\\input` keeps it, and is looked for there where the entry
     file's folder does not hold it; an `\\import` and a `\\subimport` name a new one."""
-    if put.via == "input":
+    if put.via not in IMPORTS:
         target, why = resolve(entry, put.path, files)
         if target is None and imported and put.path.strip():
             found, _why = resolve(entry, posixpath.join(imported, put.path), files)
@@ -445,11 +508,17 @@ def _read_tree(
         under: tuple[Heading, ...],
         chain: tuple[str, ...],
         imported: str = "",
+        placed: bool = False,
     ) -> tuple[Heading, ...]:
         """Read one file and the files it inputs, where they stand, and give the headings
-        in force at its end; `imported` the folder it was imported from (`_target`)."""
+        in force at its end; `imported` the folder it was imported from (`_target`), and
+        `placed` whether a command of `PLACED` places it, a part then read past its preamble
+        (`_placed`)."""
         text = files[path]
-        reading = told.read(text, body=body, environments=environments)
+        if placed and part(text):
+            reading = _placed(told.read(text, body=None, environments=environments), text)
+        else:
+            reading = told.read(text, body=body, environments=environments)
         place = len(sources)
         sources.append(Source(path, text, reading, under, environments=environments,
                               imported=imported))  # fmt: skip
@@ -474,6 +543,8 @@ def _read_tree(
             target, why, folder = _target(entry, put, imported, known)
             if target in unreadable or (target is None and _distributed(put)):
                 continue
+            if target is None and _pictured(entry, put):
+                continue
             if target is None:
                 refusals.append((path, Refusal("tex-refused", put.offset, why)))
                 continue
@@ -486,7 +557,7 @@ def _read_tree(
                 continue
             seen.add(target)
             after = visit(target, put.body, put.environments, _starts_under(current),
-                          (*chain, target), folder)  # fmt: skip
+                          (*chain, target), folder, put.via in PLACED)  # fmt: skip
             current = _resumed(current, after)
             resumes.append((put.end, current))
         sources[place] = Source(path, text, reading, under, resumes=tuple(resumes),

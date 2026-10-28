@@ -246,7 +246,7 @@ a person and for any agent tool.
    one that ships with the tool.
 2. **Run `manuscript-guard check` before `manuscript-guard build`**, and after any change to
    the analysis or the manuscript. Report what it prints as it is. Before the manuscript
-   goes to anyone, run `manuscript-guard check --submission`.
+   goes to anyone, run `manuscript-guard check --stage submission`.
 3. **Never decide for yourself that the manuscript is clean.** `check` decides, for the
    stage that `paper.yaml` declares. A failing check is not nearly clean, and nothing is
    changed only to make it pass: not a results file, not the stage, and not a convention in

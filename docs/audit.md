@@ -17,7 +17,14 @@ in your outputs.
 
 The bibliography is found by its title in English, Spanish, Portuguese, French, German,
 Italian, Turkish and Indonesian ("References", "Referencias", "Kaynakça", "Daftar pustaka"
-and the like), and otherwise by the shape of its entries. Numbers in names are classified as
+and the like), and otherwise by the shape of its entries: journal articles in the numbered
+and author-year styles, the BMJ's with no full stop before the year, books, chapters, web
+pages and articles online first. A shape can be wrong, so the numbers on a line it accepts
+are still compared, and those not found are listed apart. A title that is a plain paragraph
+of a .docx, with no heading style, ends its list where `check` ends one under no heading: at
+a figure's or a table's caption, a title such as "Funding" or "Figure legends" standing
+alone, or a table. A .docx and a figure print `<!--` as typed, so nothing between it and
+`-->` is hidden there. Numbers in names are classified as
 `check` classifies them: an e-mail address is no number, nor a name the shipped terms hold,
 such as "IL-4" or "interleukin-4". A Word 97-2003 document (.doc) is not read; save it as
 .docx first. A .doc in a folder you give is named in the report as passed over, and does not
@@ -45,8 +52,9 @@ One check needs no outputs. Each t, F, chi-squared or z statistic with a P after
 its sentence is held to that P: the P the statistic gives is worked out over every value
 their printed digits allow, and a P that does not follow is listed apart, with whether it
 falls on the other side of 0.05. A one-sided, adjusted or exact test the sentence names
-is not judged, and `--strict` does not count these. A number written with a middle dot or a
-comma for its point, "0·62", is not read, so such a paper has none of its tests judged. Each named estimate with a confidence
+is not judged, and `--strict` does not count these. A middle dot for the point, "0·62", is
+read as one; a number written with a comma for its point, "0,62", is not read, so such a
+paper has none of its tests judged. Each named estimate with a confidence
 interval after it is held to it the same way: an estimate outside its own interval, a
 ratio whose interval is lopsided on the log scale, and an interval that excludes its null beside a P above one less its level, or
 includes it beside one below, are listed with them.
@@ -111,13 +119,16 @@ stage; on fifteen real papers it did so for seven. `init --from` changes three t
 What Word's Title, Author, Date and Abstract styles hold is what pandoc reads as the
 document's metadata. The title goes to `paper.yaml` unless `--title` gives another, each
 name of an Author paragraph to `authors.yaml` as the paper writes it, for you to split into
-given and family name, and the abstract becomes the section `# Abstract`. An Author
+given and family name, and the abstract becomes the section `# Abstract`. pandoc reads the
+Abstract style only straight after the Title, Author and Date paragraphs, so a paragraph in
+that style elsewhere on the title page is found by reading the document again with its
+styles, and joins the section where that reading matches the first. An Author
 paragraph holding several names, a comma, a number or a superscript, and the date, go into
 the comment. So does the Title paragraph, as well as `paper.yaml`'s plain title, where it
 holds a note, a superscript, a link or a picture: a note on the title often names the funder
 or the corresponding author. Nothing is guessed from how a line looks, so names typed in capitals on the
-title page stay in the comment. Read it: an abstract there hides its numbers from every
-gate until you move it out.
+title page stay in the comment. Read it: an abstract there in no Abstract style hides its
+numbers from every gate until you move it out.
 
 A `.doc` is refused: open it in Word and save it as `.docx`. `--from` makes nothing where
 `manuscript/` already holds a manuscript or the folder already has a `paper.yaml` or an

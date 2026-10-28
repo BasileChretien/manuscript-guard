@@ -1395,7 +1395,27 @@ TURNS = {
     "review recorded": (lambda p: add(p / "review" / "round-9" / "x.yaml", "x: 1\n"), False),
     "editor's lock file": (lambda p: add(p / "manuscript" / ".~lock.main.md#", "x"), False),
     "Python's cache": (lambda p: add(p / "analysis" / "__pycache__" / "a.pyc", "x"), False),
+    # What an editor or the system leaves beside a file, and no gate reads: Word's owner
+    # file while the .docx is open, Emacs's auto-save and backup, and Windows' folder files.
+    "Word's owner file": (lambda p: add(p / "manuscript" / "~$main.docx", "x"), False),
+    "Emacs's auto-save": (lambda p: add(p / "manuscript" / "#main.md#", "x"), False),
+    "an editor's backup": (lambda p: add(p / "manuscript" / "main.md~", "x"), False),
+    "Windows' thumbnails": (lambda p: add(p / "figures" / "Thumbs.db", "x"), False),
+    "Windows' folder settings": (lambda p: add(p / "results" / "desktop.ini", "x"), False),
+    "a compiled file outside the cache": (lambda p: add(p / "analysis" / "a.pyc", "x"), False),
+    # And what only looks like one: a name with a `#` or a `~` inside it is the author's.
+    "a file named with a hash": (lambda p: add(p / "manuscript" / "#1 notes.md", "x"), True),
+    "a file named with a tilde": (lambda p: add(p / "results" / "a~b.json", "{}"), True),
 }
+
+
+def test_the_stop_passes_over_every_name_a_package_leaves_out() -> None:
+    """What the reproducibility package leaves out as no one's work, the stop passes over
+    too, so that the two lists cannot part."""
+    from manuscript_guard.deposit.plan import JUNK_DIRECTORIES, JUNK_FILES, JUNK_SUFFIXES
+
+    for name in (*JUNK_DIRECTORIES, *JUNK_FILES, *(f"a{suffix}" for suffix in JUNK_SUFFIXES)):
+        assert hooks._not_the_projects(name), name
 
 
 @pytest.mark.parametrize("turn", list(TURNS))

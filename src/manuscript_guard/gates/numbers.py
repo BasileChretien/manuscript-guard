@@ -452,8 +452,15 @@ _HINTED_BINDING = re.compile(r"\{\{([a-z]+\.[^{}\s]*)\}\}")
 def _latex_read(found: latex_views.File) -> _Read:
     source = found.source
     tables = latex_views.Tables(source.reading.tables)
+    # A reference list typed in `thebibliography` is not read, as a Markdown project's list,
+    # which the build makes, is not: its years and pages are no numbers of the paper's
+    # (Known gaps, 2026-10-27). A binding typed in it is still one.
+    listed = _outside(source.reading.references, found.placeholders)
+    masked, view, scanned = (_blanked(written, listed, fill) for written, fill in (
+        (source.reading.masked, latex_views.NUL), (found.view, " "),
+        (found.scanned, latex_views.NUL)))  # fmt: skip
     return _Read(
-        found.path, source.text, source.reading.masked, found.view, found.scanned,
+        found.path, source.text, masked, view, scanned,
         list(found.placeholders), list(found.malformed),
         # LaTeX prints a footnote where it is written, so a number is judged there alone.
         chains=lambda offset: (latex_views.chain(source, offset),),
@@ -463,6 +470,33 @@ def _latex_read(found: latex_views.File) -> _Read:
         spell=lambda hint: _HINTED_BINDING.sub(r"\\mg{\1}", hint),
         layout=source.reading.bodies,
     )  # fmt: skip
+
+
+def _outside(
+    spans: tuple[tuple[int, int], ...], placeholders
+) -> list[tuple[int, int]]:
+    """`spans` less each binding's: the pieces between the bindings that stand in them."""
+    pieces = []
+    for start, end in spans:
+        at = start
+        for placeholder in sorted(placeholders, key=lambda found: found.start):
+            if start <= placeholder.start < end:
+                pieces.append((at, placeholder.start))
+                at = placeholder.end
+        pieces.append((at, end))
+    return [(start, end) for start, end in pieces if start < end]
+
+
+def _blanked(written: str, spans: list[tuple[int, int]], fill: str) -> str:
+    """`written` with `fill` for each character of `spans`, line breaks kept."""
+    if not spans:
+        return written
+    out = list(written)
+    for start, end in spans:
+        for index in range(start, min(end, len(out))):
+            if out[index] not in "\r\n":
+                out[index] = fill
+    return "".join(out)
 
 
 def _listings(path: Path, source, classifier: Classifier) -> Report:

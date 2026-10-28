@@ -66,8 +66,7 @@ def check_figures(project: Project, results: Results) -> Report:
         return Report(counts={"figure_scripts": 0, "figures_checked": 0})
 
     classifier = Classifier.load(project.extra_conventions, project.extra_terms)
-    allowed = {v.display for v in results.values.values()}
-    allowed |= {v.display.replace(",", "") for v in results.values.values()}
+    allowed = _allowed(v.display for v in results.values.values())
 
     report = Report()
     scripts: list[Path] = []
@@ -175,13 +174,7 @@ def check_figures(project: Project, results: Results) -> Report:
                     f"{path.stem}.guard.yaml under `no_text` with a reason",
                 )
             )
-        for atom in atoms:
-            if atom.text in allowed or atom.text.replace(",", "") in allowed:
-                continue
-            if atom.text in declared:
-                continue
-            if classifier.classify(atom, None, scan).kind != UNCLASSIFIED:
-                continue
+        for atom in _unbound(atoms, allowed, declared, classifier, scan):
             report = report.with_findings(
                 Finding(
                     gate=GATE,
@@ -241,6 +234,20 @@ def check_figures(project: Project, results: Results) -> Report:
     )
 
 
+def _unbound(atoms, allowed: set[str], declared: frozenset[str], classifier, scan) -> list:
+    """The atoms of a figure's text that match no display of the results and no entry of its
+    sidecar, each sign written as `_signed` writes it, and that classify as nothing."""
+    out = []
+    for atom in atoms:
+        signed = _signed(atom.text)
+        if signed in allowed or signed.replace(",", "") in allowed or signed in declared:
+            continue
+        if classifier.classify(atom, None, scan).kind != UNCLASSIFIED:
+            continue
+        out.append(atom)
+    return out
+
+
 def _sidecar_allowlist(figure: Path) -> frozenset[str]:
     """Axis ticks and scale labels, declared once per figure and reviewable.
 
@@ -250,7 +257,26 @@ def _sidecar_allowlist(figure: Path) -> frozenset[str]:
     small, explicit and visible in review.
     """
     sidecar = figure.with_name(f"{figure.stem}.guard.yaml")
-    return frozenset(entry for entry, _why in _declared(sidecar, "allow"))
+    return _allowed_ticks(entry for entry, _why in _declared(sidecar, "allow"))
+
+
+def _allowed(displays) -> set[str]:
+    """The displays of the results a figure's number may be, with and without separators of
+    thousands, each sign written as `_signed` writes it."""
+    signed = [_signed(display) for display in displays]
+    return {*signed, *(display.replace(",", "") for display in signed)}
+
+
+def _allowed_ticks(entries) -> frozenset[str]:
+    """A sidecar's entries, each sign written as `_signed` writes it."""
+    return frozenset(_signed(entry) for entry in entries)
+
+
+def _signed(number: str) -> str:
+    """`number` with its minus sign written as a hyphen. A figure saved with its text kept
+    as text holds the U+2212 matplotlib draws before a negative tick, and an entry typed
+    "-1.0", or a display of the results, did not allow it."""
+    return number.replace("\N{MINUS SIGN}", "-")
 
 
 def _declared(sidecar: Path, section: str) -> list[tuple[str, str]]:

@@ -49,23 +49,26 @@ _SYMBOL = (
     _ALONE + _EMPH
     + r"(?:(?P<t>t)|(?P<F>F)|(?P<chi2>" + _CHI + r")|(?P<z>[zZ]))" + _EMPH
 )
-_DF = r"\d+(?:\.\d+)?"
+#: A decimal point: a full stop, or a middle dot between digits, as the Lancet sets it,
+#: "0·62". Read as no point, a paper set that way had none of its tests judged.
+_POINT = r"[.\N{MIDDLE DOT}]"
+_DF = rf"\d+(?:{_POINT}\d+)?"
+#: Degrees of freedom as written: a number, or several, a comma between them, a thousands'
+#: comma inside one, "F(1, 1,234)". Which commas are which is read by `_degrees`.
+_DFS = rf"{_DF}(?:{_GAP},{_GAP}{_DF}){{0,5}}"
 _MINUS = r"[-\N{MINUS SIGN}\N{EN DASH}]"
-# Not the whole part of a decimal written with a middle dot or a comma, "2·45" or "2,45":
-# such a number is not read at all (round 1 of #285). A number that has its point already
-# is not one, and a comma after it is the sentence's, "2.45,12" with a reference (round 1
-# of #336).
+# Not the whole part of a decimal written with a comma, "2,45": such a number is not read
+# at all (round 1 of #285). A number that has its point already is not one, and a comma
+# after it is the sentence's, "2.45,12" with a reference (round 1 of #336).
 _VALUE = (
-    rf"(?P<stat>{_MINUS}?\d*(?P<stat_point>\.)?\d+)(?![\d]|\.\d)"
-    r"(?(stat_point)|(?![\N{MIDDLE DOT},]\d))"
+    rf"(?P<stat>{_MINUS}?\d*(?P<stat_point>{_POINT})?\d+)(?![\d]|{_POINT}\d)"
+    r"(?(stat_point)|(?!,\d))"
 )
 _N = rf"[,;]{_GAP}{_EMPH}[nN]{_EMPH}{_GAP}={_GAP}\d[\d,]*"
-_IN_BRACKETS = (
-    rf"{_GAP}\({_GAP}(?P<d1>{_DF})(?:{_GAP},{_GAP}(?P<d2>{_DF}))?(?:{_N})?{_GAP}\)"
-)
+_IN_BRACKETS = rf"{_GAP}\({_GAP}(?P<dfs>{_DFS})(?:{_N})?{_GAP}\)"
 _AFTER = (
     rf"(?:{_GAP}[,;])?{_GAP}(?:with{_GAP})?{_EMPH}(?:d\.?f\.?|DF){_EMPH}{_GAP}={_GAP}"
-    rf"(?P<a1>{_DF})(?:{_GAP}(?:,|and){_GAP}(?P<a2>{_DF}))?(?![\d]|\.\d)"
+    rf"(?P<after>{_DF}(?:{_GAP}(?:,|and){_GAP}{_DF}){{0,5}})(?![\d]|{_POINT}\d)"
 )
 _STATISTIC = re.compile(
     _SYMBOL + rf"(?:{_IN_BRACKETS})?{_GAP}[=:]{_GAP}" + _VALUE + rf"(?:{_AFTER})?"
@@ -82,16 +85,18 @@ _RAISED = (
     "\N{SUPERSCRIPT THREE}\N{SUPERSCRIPT FOUR}-\N{SUPERSCRIPT NINE}]+"
 )
 _TIMES = rf"{_SPACE}?[x\N{{MULTIPLICATION SIGN}}\N{{MIDDLE DOT}}\N{{DOT OPERATOR}}*]{_SPACE}?10"
-# As a statistic's value: a whole part followed by a middle dot or a comma and a digit is
-# no P read, unless what follows is a power of ten, "4·10^-5^".
+# As a statistic's value: a whole part followed by a comma and a digit is no P read. A
+# middle dot is a point, "0·022", but not before a power of ten, "4·10^-5^", where it is a
+# multiplication sign.
 _P_NUMBER = (
-    r"(?P<mantissa>\d*(?P<p_point>\.)?\d+)(?P<power>"
+    rf"(?P<mantissa>\d*(?P<p_point>\.|\N{{MIDDLE DOT}}"
+    rf"(?!10(?:\^|<sup>|{_RAISED}|{_MINUS}\d)))?\d+)(?P<power>"
     rf"[eE](?P<e1>[-+\N{{MINUS SIGN}}]?\d+)"
     rf"|{_TIMES}(?:\^(?P<e2>{_MINUS}?\d+)\^?"
     rf"|<sup>(?P<e3>{_MINUS}?\d+)</sup>"
     rf"|(?P<e4>{_RAISED})"
     rf"|(?P<e5>{_MINUS}\d+))"
-    r")?(?!\d)(?(p_point)|(?(power)|(?![\N{MIDDLE DOT},]\d)))"
+    r")?(?!\d)(?(p_point)|(?(power)|(?!,\d)))"
 )
 # The escape `mask` blanks before `<` and `>` may stand before the sign.
 _P = re.compile(
@@ -164,12 +169,10 @@ def reported_tests(text: str) -> list[Reported]:
     found: list[Reported] = []
     for index, match in enumerate(statistics):
         kind = next(name for name in _KINDS if match.group(name))
-        df = tuple(d for d in (match.group("d1"), match.group("d2")) if d) or tuple(
-            d for d in (match.group("a1"), match.group("a2")) if d
-        )
-        if len(df) != {"t": 1, "F": 2, "chi2": 1, "z": 0}[kind]:
+        if match.group("dfs") and match.group("after"):
             continue
-        if match.group("d1") and match.group("a1"):
+        df = _degrees(match.group("dfs") or match.group("after") or "", _DEGREES[kind])
+        if df is None:
             continue
         following = statistics[index + 1] if index + 1 < len(statistics) else None
         p = _P.search(text, match.end(), _reach(match, following, ends, len(text)))
@@ -197,6 +200,38 @@ def reported_tests(text: str) -> list[Reported]:
     return found
 
 
+#: How many degrees of freedom each kind of test has.
+_DEGREES = {"t": 1, "F": 2, "chi2": 1, "z": 0}
+_ONE_DF = re.compile(_DF)
+_GROUPED = re.compile(r"\d{1,3}(?:,\d{3})+")
+
+
+def _degrees(written: str, needed: int) -> tuple[str, ...] | None:
+    """The degrees of freedom `written` holds, where it holds `needed` of them read one way
+    only; None otherwise. A comma with no space round it, between digits and before three
+    more, may be a thousands' comma or one between two: "F(1, 1,234)" is 1 and 1,234, and
+    "F(1,234)" 1 and 234, since an F has two; "t(1,234)" is 1,234, since a t has one. Where
+    two readings both give as many as are needed, "F(1,234,567)", nothing is read."""
+    found = list(_ONE_DF.finditer(written))
+    joints = [written[a.end() : b.start()] for a, b in zip(found, found[1:], strict=False)]
+    either = [
+        joint == "," and a.group().isdigit() and len(b.group()) == 3 and b.group().isdigit()
+        for joint, a, b in zip(joints, found, found[1:], strict=False)
+    ]
+    readings = set()
+    for choice in product((False, True), repeat=sum(either)):
+        chosen = iter(choice)
+        read = [m.group() for m in found[:1]]
+        for may, number in zip(either, found[1:], strict=True):
+            if may and next(chosen):
+                read[-1] += "," + number.group()
+            else:
+                read.append(number.group())
+        if len(read) == needed and all("," not in d or _GROUPED.fullmatch(d) for d in read):
+            readings.add(tuple(read))
+    return readings.pop() if len(readings) == 1 else None
+
+
 def _reach(match: re.Match, following: re.Match | None, ends: list[int], length: int) -> int:
     """How far after a statistic its P is looked for: to the end of its sentence, and not
     past the next statistic, whose P a P there is."""
@@ -217,8 +252,13 @@ def _range(printed: str) -> tuple[float, float]:
 
 def _number(printed: str) -> Decimal:
     return Decimal(
-        printed.replace("\N{MINUS SIGN}", "-").replace("\N{EN DASH}", "-")
+        _pointed(printed.replace("\N{MINUS SIGN}", "-").replace("\N{EN DASH}", "-"))
     )
+
+
+def _pointed(printed: str) -> str:
+    """A number as printed, with a full stop for its point and no thousands' comma."""
+    return printed.replace("\N{MIDDLE DOT}", ".").replace(",", "")
 
 
 def _p_range(test: Reported) -> tuple[float, float] | None:
@@ -235,7 +275,7 @@ def p_range(sign: str, printed: str) -> tuple[float, float] | None:
     try:
         power = int(exponent.translate(_SUPERSCRIPT).replace("\N{MINUS SIGN}", "-")
                     .replace("\N{EN DASH}", "-"))
-        mantissa = Decimal(match.group("mantissa"))
+        mantissa = Decimal(_pointed(match.group("mantissa")))
     except (ValueError, InvalidOperation):
         return None
     value = mantissa.scaleb(power)
@@ -268,7 +308,7 @@ def judge(test: Reported, alpha: float = ALPHA) -> Verdict | None:
     reported = _p_range(test)
     try:
         statistic = _number(test.statistic)
-        dfs = [_range(d) if "." in d else (float(d), float(d)) for d in test.df]
+        dfs = [_range(d) if "." in d else (float(d), float(d)) for d in map(_pointed, test.df)]
     except InvalidOperation:
         return None
     if reported is None or any(low <= 0 for low, _high in dfs):
@@ -322,7 +362,7 @@ def _places(test: Reported) -> int:
     match = re.fullmatch(_P_NUMBER, test.p)
     if match is None or any(match.group("e1", "e2", "e3", "e4", "e5")):
         return 3
-    return max(3, -Decimal(match.group("mantissa")).as_tuple().exponent + 1)
+    return max(3, -Decimal(_pointed(match.group("mantissa"))).as_tuple().exponent + 1)
 
 
 def _shown(p: float, places: int) -> str:

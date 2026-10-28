@@ -520,9 +520,18 @@ def _form_matrix(held: _Object, objects: dict[int, _Object]) -> Matrix:
     return (a, b, c, d, e, f)
 
 
-def _fonts(resources: dict, objects: dict[int, _Object], seen: dict[str, Font]) -> None:
+def _fonts(
+    resources: dict,
+    objects: dict[int, _Object],
+    seen: dict[str, Font],
+    read: set[int] | None = None,
+) -> None:
     """The fonts a page's or a form's resources name, and whether each is Type 3 or has
-    no font file in the PDF."""
+    no font file in the PDF. `read` holds the resources already read, by identity: forms
+    whose resources name each other in a ring, or the page's own, were followed until
+    Python's recursion limit raised."""
+    read = set() if read is None else read
+    read.add(id(resources))
     fonts = _resolved(resources.get("Font"), objects)
     for value in (fonts or {}).values() if isinstance(fonts, dict) else ():
         font = _resolved(value, objects)
@@ -547,8 +556,8 @@ def _fonts(resources: dict, objects: dict[int, _Object], seen: dict[str, Font]) 
     for value in (forms or {}).values() if isinstance(forms, dict) else ():
         form = _resolved(value, objects)
         inner = _resolved(form.get("Resources"), objects) if isinstance(form, dict) else None
-        if isinstance(inner, dict) and inner is not resources:
-            _fonts(inner, objects, seen)
+        if isinstance(inner, dict) and id(inner) not in read:
+            _fonts(inner, objects, seen, read)
 
 
 def _inherited(page: dict, key: str, objects: dict[int, _Object]) -> object:

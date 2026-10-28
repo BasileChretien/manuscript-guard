@@ -121,7 +121,7 @@ def test_init_writes_the_rules_any_agent_tool_reads(tmp_path: Path) -> None:
     # one, and the rule says what one is for.
     assert "a recipe in `profiles/reporting/recipes/`, which is used in place of the one" in text
     assert "Run `manuscript-guard check` before `manuscript-guard build`" in text
-    assert "`manuscript-guard check --submission`" in text
+    assert "`manuscript-guard check --stage submission`" in text
     assert "Never decide for yourself that the manuscript is clean" in text
     # The templates go through str.format, so a binding is written with four braces there
     # and has to come out with two.

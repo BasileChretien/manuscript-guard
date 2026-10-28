@@ -644,6 +644,45 @@ def test_a_whole_number_interval_after_its_value_is_audited(
     assert bounds in unmatched, unmatched
 
 
+@pytest.mark.parametrize(
+    ("text", "bounds"),
+    [
+        ("Le score était de 12,5 [10-15] points.\n", "10-15"),
+        ("Median stay was 1,204 [1,100-1,300] days.\n", "1,100-1,300"),
+        ("Rates were 45 % [40-50] overall.\n", "40-50"),
+        ("Rates were 45\N{NO-BREAK SPACE}% [40, 50] overall.\n", "40"),
+    ],
+)
+def test_an_interval_after_a_comma_or_a_spaced_percent_is_audited(
+    tmp_path: Path, text: str, bounds: str
+) -> None:
+    """The test that the bounds enclose the value read the value as digits with a point and
+    a percent sign against it, so after a decimal comma, a thousands comma or a spaced
+    percent sign the interval was filed as a citation and its bounds never compared."""
+    unmatched, _ = _audited(tmp_path, ["7"], text)
+    assert bounds in unmatched, unmatched
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Rates of 12,5 [4-6] were seen.\n",
+        "In n=1,204 [1-3] records.\n",
+        "In n=1,204 [0-3] records.\n",
+        "In n=1,204 [150-300] records.\n",
+        "Rates were 45 % [4-6] overall.\n",
+        "In n=1,204 [1,100,200] records.\n",
+    ],
+)
+def test_a_citation_after_a_comma_written_value_it_does_not_enclose_is_a_citation(
+    tmp_path: Path, text: str
+) -> None:
+    """A thousands comma is read as one, so `1,204 [1-3]` is no interval, and the bounds are
+    whole numbers of a citation's size: `[1,100,200]` is three citations."""
+    unmatched, _ = _audited(tmp_path, ["7", "1,204", "12,5", "45 %", "45"], text)
+    assert not any("[" in listed or "-" in listed for listed in unmatched), unmatched
+
+
 def test_a_citation_range_after_a_value_it_does_not_enclose_is_a_citation(
     tmp_path: Path,
 ) -> None:
@@ -1060,6 +1099,77 @@ def test_a_caption_is_not_mistaken_for_a_vancouver_entry(line: str) -> None:
     assert not looks_like_reference(line)
 
 
+#: Entries of the kinds the shapes did not know, one or more of each.
+OTHER_ENTRIES = {
+    "the BMJ's style": "Smith J, Jones K. Hepatic injury in reports. BMJ 2021;372:n71.",
+    "no stop after a journal's name": (
+        "3. Smith J, Jones K, et al. Hepatic injury. N Engl J Med 2019;380(3):100-10."
+    ),
+    "the BMJ's style with a DOI": (
+        "Smith J. Hepatic injury. J Clin Epidemiol 2019;112:1-9. doi:10.1016/j.x.2019.01.001"
+    ),
+    "a book": "Smith J, Jones K. Hepatic injury. 2nd ed. London: Example Press; 2019.",
+    "a chapter": (
+        "Smith J. Liver. In: Jones K, editor. Hepatic injury. London: Example Press; 2019. "
+        "p. 100-10."
+    ),
+    "a web page": (
+        "Smith J. Hepatic injury [Internet]. Geneva: Example Agency; 2020 [cited 2021 Mar 5]. "
+        "Available from: https://example.org/injury"
+    ),
+    "a web page in AMA style": (
+        "Smith J. Hepatic injury. Example Agency. Published 2020. Accessed March 5, 2021. "
+        "https://example.org/injury"
+    ),
+    "a web page in Harvard style": (
+        "Smith, J. (2020) Hepatic injury. Available at: https://example.org/injury "
+        "(Accessed: 5 March 2021)."
+    ),
+    "an organisation's web page": (
+        "Example Agency. Hepatic injury [Internet]. 2020 [cited 2021 Mar 5]. Available from: "
+        "https://example.org/injury"
+    ),
+    "online first": "Smith J, Jones K. Hepatic injury. Drug Saf. 2019. doi:10.1007/s40264-019-1",
+    "online first in AMA style": (
+        "Smith J. Hepatic injury. Drug Saf. Published online March 5, 2019. doi:10.1001/x.2019.1"
+    ),
+    "Harvard with no stop after the year": (
+        "Smith, J. and Jones, K. (2019) 'Hepatic injury', Drug Safety, 42(3), pp. 1-9."
+    ),
+    "Harvard with no stop, a title in capitals": (
+        "Smith, J. (2019) Hepatic injury. Drug Safety, 42, 1-9."
+    ),
+}
+
+
+@pytest.mark.parametrize("kind", list(OTHER_ENTRIES))
+def test_an_entry_of_another_style_is_recognised_without_a_heading(kind: str) -> None:
+    """A book, a web page, an article online first, the BMJ's house style with no full stop
+    before the year, and a Harvard entry with none after it: each was taken for prose, and
+    its volume, pages and years were reported as unexplained numbers."""
+    assert looks_like_reference(OTHER_ENTRIES[kind])
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "Figure A. Enrolment to Dec 2019;2:1 randomisation followed.",
+        "Figure A. Case-control design, 2010 to 2019;1:4 matching.",
+        "Figure A. Enrolment in 2019. Events were counted.",
+        "Table S1. Characteristics by site: Tokyo; 2019 and 412 reports.",
+        "Smith J reported 77 cases in 2019, available from the registry.",
+        "Data were taken from the registry (available from https://example.org) in 2019.",
+        "Smith, Jones and Brown (2019) found 77 cases.",
+        "The code is in the Internet archive, 2019 release, at https://example.org.",
+        "Figure A. Reports by year. Accessed on 412 sites in 2019, and more.",
+    ],
+)
+def test_a_caption_or_a_sentence_is_not_mistaken_for_an_entry_of_another_style(
+    line: str,
+) -> None:
+    assert not looks_like_reference(line)
+
+
 def test_the_report_says_where_the_reference_list_was_cut(tmp_path: Path) -> None:
     """Dropping text unannounced is how a cut in the wrong place stays invisible."""
     outputs = tmp_path / "out.json"
@@ -1071,6 +1181,104 @@ def test_the_report_says_where_the_reference_list_was_cut(tmp_path: Path) -> Non
     report = audit([paper], [outputs])
     assert any("reference list" in item for item in report.not_audited)
     assert "lines 3-5" in render(report, measure_discrimination(report.backing_values))
+
+
+# ------------------------------------------------- a .docx with no heading styles
+
+#: What ends a reference list under a paragraph that is no heading, in a .docx as `check`
+#: ends one in Markdown: a caption, a back-matter title alone, a table.
+ENDS_IN_A_DOCX = {
+    "a figure's caption": para("Figure 1. Reports by year; 9.99 of them were serious."),
+    "a table's caption": para("Table 2. Characteristics; 9.99 of them were serious."),
+    "a back-matter title": para("Figure legends") + para("Reports by year; 9.99 were serious."),
+    "a statement's title": para("Funding") + para("Grant 9.99 paid for it."),
+    "a table": f"<w:tbl>{row('Serious', '9.99')}</w:tbl>",
+    "an appendix": para("Appendix A. Search terms; 9.99 records were found."),
+}
+
+
+@pytest.mark.parametrize("kind", list(ENDS_IN_A_DOCX))
+def test_a_reference_list_in_a_docx_with_no_heading_styles_ends_where_check_ends_one(
+    tmp_path: Path, kind: str
+) -> None:
+    """With no heading styles the cut ran from "References" to the end of the body, and a
+    caption, a statement or a table after the list was never audited."""
+    outputs = tmp_path / "out.json"
+    outputs.write_text('{"n": 77}', encoding="utf-8")
+    body = (
+        para("We saw 77.") + para("References")
+        + para("Smith J, Jones K. Title. Lancet. 2019;393:100-10.")
+        + para("Doe A. Title. BMJ. 2020;370:m1.") + ENDS_IN_A_DOCX[kind]
+    )  # fmt: skip
+    paper = make_docx(tmp_path / "paper.docx", body)
+
+    report = audit([paper], [outputs])
+    assert "9.99" in [c.text for c in report.unmatched], report.not_audited
+    assert report.not_audited == ["paper.docx: lines 3-5, read as the reference list"]
+
+
+def test_a_styled_reference_heading_in_a_docx_still_runs_to_the_next_heading(
+    tmp_path: Path,
+) -> None:
+    """A heading names where the list ends, as `# References` does in Markdown: the list
+    under it runs on to the next heading, through a caption."""
+    outputs = tmp_path / "out.json"
+    outputs.write_text('{"n": 77}', encoding="utf-8")
+    body = (
+        para("We saw 77.") + heading("References")
+        + para("Smith J, Jones K. Title. Lancet. 2019;393:100-10.")
+        + para("Figure 1. Reports by year; 9.99 of them.") + heading("Appendix")
+        + para("It was 4.44.")
+    )  # fmt: skip
+    report = audit([make_docx(tmp_path / "paper.docx", body)], [outputs])
+    assert [c.text for c in report.unmatched] == ["4.44"]
+
+
+# ------------------------------------------------- HTML comments outside Markdown
+
+#: A paragraph that mentions both of HTML's comment markers, with numbers between them.
+MARKERS = "We strip &lt;!-- from the notes; 9.99 of them held, t(20) = 5.00, P = 0.80; and --&gt;."
+
+
+def test_a_docx_prints_the_markers_of_an_html_comment_as_typed(tmp_path: Path) -> None:
+    """Word prints `<!--` as typed, and its text went through the mask Markdown does, so a
+    paragraph that mentions both markers hid everything between them from the comparison
+    and from the test against its P."""
+    outputs = tmp_path / "out.json"
+    outputs.write_text('{"n": 77}', encoding="utf-8")
+    paper = make_docx(tmp_path / "paper.docx", para("We saw 77.") + para(MARKERS))
+
+    report = audit([paper], [outputs])
+    held = [c for c in report.unmatched if c.text == "9.99"]
+    assert held, report.unmatched
+    assert [d.line for d in report.disagreements] == [held[0].line]
+
+
+def test_a_figure_prints_the_markers_of_an_html_comment_as_typed(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import manuscript_guard.audit as audit_module
+
+    said = MARKERS.replace("&lt;", "<").replace("&gt;", ">")
+    monkeypatch.setattr(audit_module, "read_figure", lambda path: f"77\n{said}\n")
+    outputs = tmp_path / "out.json"
+    outputs.write_text('{"n": 77}', encoding="utf-8")
+    figure = tmp_path / "forest.svg"
+    figure.write_text("<svg/>", encoding="utf-8")
+
+    report = audit([], [outputs], figures=[figure])
+    assert "9.99" in [c.text for c in report.unmatched]
+    assert [d.line for d in report.disagreements] == [2]
+
+
+def test_markdown_still_hides_its_comments(tmp_path: Path) -> None:
+    outputs = tmp_path / "out.json"
+    outputs.write_text('{"n": 77}', encoding="utf-8")
+    paper = tmp_path / "paper.md"
+    paper.write_text("We saw 77.\n\n<!-- 9.99 was t(20) = 5.00, P = 0.80 -->\n", "utf-8")
+
+    report = audit([paper], [outputs])
+    assert report.unmatched == [] and report.disagreements == []
 
 
 # ------------------------------------------------- figures with nothing to read

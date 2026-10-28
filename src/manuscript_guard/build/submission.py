@@ -33,7 +33,6 @@ import yaml
 from manuscript_guard import __version__
 from manuscript_guard.contracts._schema import ContractError, read_structured
 from manuscript_guard.contracts.project import Project
-from manuscript_guard.text.sections import measure
 
 CREDIT_ORDER = (
     "Conceptualization",
@@ -231,9 +230,9 @@ def _counts(project: Project):
 
     The same text the journal gate measures, so the count declared is the count checked.
     """
-    from manuscript_guard.gates.journal import main_text
+    from manuscript_guard.gates.journal import measured
 
-    return measure(main_text(project))
+    return measured(project)
 
 
 def credit_statement(project: Project) -> str:
@@ -486,6 +485,9 @@ _DISPLAY = re.compile(r"\{\{\s*(?:table|figure|ref|num)\.")
 _KEYWORDS_HEADING = re.compile(r"\s*key[\s-]?words?\s*:?\s*", re.IGNORECASE)
 _KEYWORDS_LABEL = re.compile(r"\s*key[\s-]?words?\s*:", re.IGNORECASE)
 _KEYWORDS_ANYWHERE = re.compile(r"\bkey[\s-]?words?\s*:", re.IGNORECASE)
+#: The label in bold with no colon, "**Keywords**" or "**Keywords.**", as the abstract's
+#: own labels are written ("**Background.**"); emphasis alone opens a sentence as often.
+_KEYWORDS_BOLD = re.compile(r"\s*key[\s-]?words?\s*[.:]?\s*", re.IGNORECASE)
 _ABSTRACT_TITLE = re.compile(r"\s*(?:\d+[.)]?\s*)?(?:structured\s+)?abstract\b", re.IGNORECASE)
 
 
@@ -568,7 +570,8 @@ def _unscripted(node: object) -> object:
 
 def _abstract_blocks(blocks: list) -> list | None:
     """The blocks under the main text's heading "Abstract", up to the next heading of its
-    level or above, or None where no heading names it."""
+    level or above, or None where no heading names it. A heading inside a Div (`::: {}`) is
+    found there, and the abstract under it ends where the Div does."""
     for at, block in enumerate(blocks):
         if block.get("t") == "Header" and _ABSTRACT_TITLE.match(_text(block["c"][2])):
             level = block["c"][0]
@@ -578,17 +581,31 @@ def _abstract_blocks(blocks: list) -> list | None:
                     break
                 out.append(later)
             return out
+        if block.get("t") == "Div":
+            inside = _abstract_blocks(block["c"][1])
+            if inside is not None:
+                return inside
     return None
+
+
+def _bold_keywords(block: dict) -> bool:
+    """Whether a paragraph opens with the keywords' label in bold and no colon."""
+    content = block.get("c") or []
+    return bool(content) and content[0].get("t") == "Strong" and bool(
+        _KEYWORDS_BOLD.fullmatch(_text(content[0]["c"]))
+    )
 
 
 def _until_keywords(blocks: list) -> list:
     """The abstract up to its keywords: a heading that names them, or a block that opens
-    with their label ("Keywords:", "**Keywords:**")."""
+    with their label ("Keywords:", "**Keywords:**", "**Keywords**")."""
     for at, block in enumerate(blocks):
         said = _text(block["c"][2] if block.get("t") == "Header" else block.get("c"))
         if block.get("t") == "Header" and _KEYWORDS_HEADING.fullmatch(said):
             return blocks[:at]
-        if block.get("t") in ("Para", "Plain") and _KEYWORDS_LABEL.match(said):
+        if block.get("t") in ("Para", "Plain") and (
+            _KEYWORDS_LABEL.match(said) or _bold_keywords(block)
+        ):
             return blocks[:at]
     return blocks
 
@@ -656,6 +673,13 @@ def abstract_text(project: Project) -> tuple[str | None, str | None]:
     filled = substitute(text, displays(project))
     document = json.loads(_pandoc("-f", "markdown", "-t", "json", given=filled))
     blocks = _abstract_blocks(document["blocks"])
+    if blocks is None:
+        # The gates read an Abstract section that pandoc reads under no heading: said, where
+        # it was left out without a word.
+        return None, _LEFT_OUT + (
+            "the gates read a section headed Abstract, and pandoc reads no heading that names "
+            "it; copy the abstract from the document"
+        )
     if not blocks:
         return None, None
     blocks = _until_keywords(blocks)
@@ -912,7 +936,7 @@ def _write_manifest(
             if checked
             else "SKIPPED — assembled with --skip-checks while the submission check "
             "was failing. Do not send this without re-running `manuscript-guard "
-            "check --submission`."
+            "check --stage submission`."
         ),
         # What made it, so that a fix to the tool can say which packs to check again, and
         # a pack can be traced to the commit, the guidelines and the decisions behind it.

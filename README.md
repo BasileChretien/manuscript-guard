@@ -276,7 +276,7 @@ number in the file and the rule that classified it.
 
 | Command | What it does |
 |---|---|
-| `check` | run every gate; `--submission` holds the manuscript to submission standards |
+| `check` | run every gate; `--stage submission` holds the manuscript to submission standards |
 | `audit` | check the numbers of a paper that was not written this way against existing outputs |
 | `explain` | show how each number in a file was classified |
 | `bind` | show every unbound number and how to give it a source; `--pointers` offers the `{{ref.…}}` binding that prints each typed "Table 2" |

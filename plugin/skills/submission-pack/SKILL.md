@@ -1,6 +1,6 @@
 ---
 name: submission-pack
-description: Assemble everything a journal asks for and write the covering letter, and later check the publisher's proof against what was sent. Use when a manuscript is ready to submit, when check --submission is close to clean and you want to see what remains, or when the journal's proof comes back.
+description: Assemble everything a journal asks for and write the covering letter, and later check the publisher's proof against what was sent. Use when a manuscript is ready to submit, when check --stage submission is close to clean and you want to see what remains, or when the journal's proof comes back.
 ---
 
 # Assembling a submission
@@ -16,8 +16,8 @@ letter is already recorded in the project, so `manuscript-guard submit` generate
 than asking you to write it twice.
 
 ```bash
-manuscript-guard check --submission    # everything outstanding, in one list
-manuscript-guard submit --offline      # assembles build/submission/
+manuscript-guard check --stage submission    # everything outstanding, in one list
+manuscript-guard submit --offline            # assembles build/submission/
 ```
 
 The pack will not assemble while the submission check fails. That is the point of having

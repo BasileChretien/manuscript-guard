@@ -1149,6 +1149,40 @@ def _whole_number_means() -> Reading:
     return read
 
 
+@reading("latex tables")
+def _latex_tables() -> Reading:
+    """Each table a LaTeX file's author typed, as `audit` reads it: rows of cells, each with
+    its text, its line and its span."""
+    from manuscript_guard.text.latex.structure import read_tree
+    from manuscript_guard.text.latex.tables import latex_tables
+
+    def read(text: str) -> list[list[list[Any]]]:
+        source = read_tree({"main.tex": text}, "main.tex").sources[0]
+        return [[[c.text, c.line, c.span] for c in row]
+                for table in latex_tables(source) for row in table]  # fmt: skip
+
+    return read
+
+
+@reading("reference census")
+def _reference_census() -> Reading:
+    """What G7's census in `audit` says of a Markdown paper's reference list: how it is
+    numbered, its entries, and each problem with its line and what it says."""
+    from manuscript_guard.audit import census_of_markdown
+
+    def read(text: str) -> dict[str, Any]:
+        census = census_of_markdown(Path("paper.md"), text)
+        return {
+            "style": census.style,
+            "entries": [[e.label, e.line, e.number, list(e.dois), list(e.pmids)]
+                        for e in census.entries],
+            "problems": [[p.code, p.line, p.message] for p in census.problems],
+            "note": census.note,
+        }  # fmt: skip
+
+    return read
+
+
 @reading("printed value")
 def _printed_value() -> Reading:
     """Whether a value an earlier output printed is this paper's, as G8 compares one read

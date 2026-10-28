@@ -1773,8 +1773,6 @@ The result is compiled and packed by the code above, and checked three times:
   The submission refusal and the status line run the gates, so they see `not-read-in-latex`
   as `check` does; the note on a saved file reads only Markdown, and says nothing when a
   `.tex` is saved (round 2 of #370), until step 12 teaches the hooks.
-- `audit` is not tied to a project: given a folder of `.tex` it says it found nothing to
-  audit, and only a `.tex` named is refused.
 - On a LaTeX project, `sign` of an id that stands nowhere lists G15's ids among those that
   stand, though `sign` refuses them there; and `review --suggestions --design`, a misuse, is
   told LaTeX is not read rather than that `--suggestions` stands alone (round 2 of #404).
@@ -2254,7 +2252,7 @@ The result is compiled and packed by the code above, and checked three times:
   an abbreviation (step 7).
 - The author block is written in the class's own commands, and is not compared with
   authors.yaml. A number typed into the author block or `\date` is read by no gate.
-- The Word round trip, `annotate`, `reworded` and `audit` do not read `.tex`.
+- The Word round trip, `annotate` and `reworded` do not read `.tex`.
 - The profile's statement patterns are written for Markdown headings. For a LaTeX source they
   are matched against `printed_view`, which writes each heading as a `#` line.
 - Biblatex's `.bbl` depends on Biber's version, and a journal that compiles it with another
@@ -7727,6 +7725,69 @@ predecessor:
 Verified end to end: the example's built document audits clean against its own outputs, and
 one digit changed in the reporting odds ratio is reported with its line and context.
 
+### Reading anything, and what needs no outputs (2026-10-28)
+
+The audit read Markdown and Word, and refused a `.tex`. It now reads a LaTeX paper through
+the reader every gate uses (`auditing/latex.py`): a `.tex` named is an entry, and its
+folder's `.tex`, `.sty` and `.cls` files are what its `\input`s resolve to, as they are for a
+project's `main.tex`; in a folder given, every file with `\documentclass` starts a paper of
+its own, and a file no entry inputs, or that a class or a package inputs, is named under
+"Passed over" rather than read. Each file is read as G2 reads one, at its `.tex` lines, its
+`thebibliography` cut, and each refusal of the reader in a file the entry reads named where
+`--strict` counts it. Its
+tables are rows of cells (`text/latex/tables.py`), split where LaTeX splits them, so an n (%)
+and a mean of whole numbers are held in a LaTeX table as in a Word one.
+
+`--against` is optional. A paper often reaches an auditor without its outputs, and the
+checks that need none, the P worked out from its statistic among them, were out of reach
+behind a required flag. Without it nothing is compared, and the report's first line says so:
+"No outputs given: no number was compared with the analysis". The report is now in sections,
+Membership, Arithmetic, Writing (G6) and Language (G14), References (G7), and `--json` gives
+it in `check --json`'s shape, each finding with its section and whether `--strict` counts it.
+
+G6 and G14 read a project's manuscript, so the paper is put into one made for it in a
+temporary folder (`auditing/gates.py`), and each finding's path put back. A .docx goes through
+`init --from`'s conversion, so that its words are read as they will be once the paper is
+brought in, and without pandoc the two are passed over for it with a note (the author,
+2026-10-28). G7's census needs no `references.bib`: the list the audit cuts is counted, its
+DOIs and PMIDs, and its numbered citations held to it (`auditing/references.py`). The
+registries are asked only with `--lookup`, through `lookup`'s transport, and read as G7 reads
+a record; nothing is kept unless `--lookup-cache` names where.
+
+`--strict` counts exact findings only (the author, 2026-10-28). In this PR that is what it
+counted before; the P worked out from a statistic, G6, G14 and G7 are listed and not counted.
+
+Round 1 of the review of #463 found the reader's refusals counted where the entry reads no
+file: a supplement beside the paper, a document of its own, was refused as a second document
+inside it, and a file passed over had its refusals counted under `--strict`. Only a refusal in
+a file the entry reads is counted now. A `\bibitem` is reported in the file that holds it. A
+.docx's list is numbered by place only where one Word numbering counts every entry 1, 2, 3
+from the list (`text/word_numbering.py`, read from ECMA-376 part 1, 17.9): a bracketed number
+in an author-year paper's text, `range [0, 100]`, had made every entry "cited nowhere", and an
+empty list under a final heading had raised. A Markdown list is numbered as pandoc prints it,
+from its first number up, and a number pandoc escaped, `1\.`, as typed. A DOI ends before
+`](` and before a stop or a closing bracket it did not open; one no registry has, and a PMID
+PubMed does not, is reported, and "no registry said a work was retracted" says how many
+entries were asked and how many a registry knew. A table's rules and colours, `\midrule[1pt]`
+and `\rowcolor{gray!20}`, print nothing (`text/latex/commands.py`), where their arguments had
+been read as the cell's text and as the paper's numbers. Under `--json` an audit that did not
+happen, exit 2, prints `{"ok": false, "error": ...}`: `check --json` prints nothing to stdout
+for its errors, so this is the audit's own.
+
+Round 2 found the table's rules and colours the mask now knows refused where an author
+defines them, `\let\toprule\hline` among them, and the rest of the file read as typed by
+every gate: they are a package's commands now, an author's own where booktabs or colortbl
+is not loaded, and an author may define them again where it is. A SICI DOI keeps its
+`<...>`, and an emphasis or a code mark after a DOI is no part of it. A Word level is read
+as counting 1, 2, 3 only where it is resolved for sure, its own level's number alone in its
+text, and an empty paragraph of a numbered list takes its number, as Word 16 prints it
+(checked over COM). Word 16 also showed a numbering with a `startOverride` starting again at
+1 after another of the same abstract numbering, and a third with none counting on from the
+first, which is how `word_numbering.py` keys a count. What is compared above the list is the
+count alone: a paragraph with words outside a table, numbered in the list's count, makes
+the list not numbered by place; one in another count, an empty one, or one in a table's cell
+is not looked at.
+
 ## A paper written in Word is brought in through pandoc's tree
 
 The route the skills gave for moving a Word paper into a project was `pandoc paper.docx -t
@@ -11055,8 +11116,8 @@ another shell form that hid one from a reader of commands: an operator inside qu
 anywhere and inside quotes too, is asked, and refused in Codex. The one exception is a command
 read cleanly as a POSIX shell reads it and as Windows does (quotes first, then the `;`, `&`, `|`
 and line ends outside them; no command substitution, no unclosed quote), in which every word
-that says `import` stands in an invocation that is plainly `checker build` or `checker status`,
-the tool its first word, with `import` only as an option's value: `--title "Drug import and
+that says `import` stands in an invocation that is plainly `checker build`, `checker status` or
+`checker recap`, the tool its first word, with `import` only as an option's value: `--title "Drug import and
 safety"`, `--for import`. Main's pattern asked wherever `checker` and then `import` followed the
 tool's name, so this keeps what it asked and asks more.
 
@@ -11126,6 +11187,110 @@ the rest. `status` lists a `code` with the `wrong` and the `unsure`.
 changes the digests of exactly the items binding it, and that an edit to one item's words keeps
 every identifier and changes that item's digest alone; an identifier keyed on the text, and a
 digest without the bound values, each fail it.
+
+### The recap, and what its chain can show
+
+`checker recap` writes `checks/recap.md` (decision 8 (a) of Task 1) from the record, the
+register and the items as the project has them now (`checking/recap.py`, Task 1, PR 3). It is
+the page to read after a round, and the one a journal's question "did the co-authors check
+this" is answered from:
+
+- **the changes asked for in the manuscript**: each current `wrong`, with the item, the
+  co-author, when, their note, and each sentence the item stands in, by file and line;
+- **the changes asked for in the code**: each current `code`, with the steps, where the text
+  stands, the co-author, when and the note; and below, the steps of the analysis no Methods
+  text points at, as G9's `method-step-undescribed` finds them;
+- **what is still open**: each current `unsure`, and each item two people answered otherwise;
+- **what was said of a version of an item that is gone**: the answers recorded with the digest
+  their maker saw, about an item that has changed since or that the project no longer has, and
+  the flags given after an answer about this version. They count for nothing, and their notes
+  are here (decision 3 (a));
+- **what each co-author checked**: a row for each author, in the order `authors.yaml` gives,
+  then each other name the record holds, as it writes it (two spellings of one name are two
+  rows, as `checker status` counts them), with their current answers by status, their answers
+  about an earlier version, and how many current answers are **claimed**, from no page built
+  for them;
+- **the verification, item by item**: a row for each literature value, cited sentence and
+  Methods item, and for each item of a group a project contributes: its digest, who verified it
+  (a current `ok`, marked "claimed" where its page is not in the register), who flagged it,
+  who answered an earlier version only, and for a Methods item how its pairs stand in
+  `methods.lock` ("on 2026-10-22", "code changed since ...", "text changed since ...",
+  "never", or "no code is linked" for an open paragraph). The references and the authors are a
+  line each of counts (decision 6 (a)): verified, flagged, not answered.
+
+Its last section holds the document digest of the manuscript (`gates.review.document_digest`:
+the prose, the results, the ledger and the references, as `approve` and `build` take it), the
+number of rows of `checks/decisions.csv` and the head of a chain over them, the earlier recap's
+row count and head, with whether the record's first rows still give it, and a **root digest**:
+the SHA-256 of the canonical JSON of the two tables, the counts, the manuscript's digest and the
+chain head. Nothing in it says when it was written, so a recap made again of the same record and
+the same manuscript is the same bytes.
+
+**The chain.** h0 is the SHA-256 of `manuscript-guard/decisions-chain/1`. Each next head is the
+SHA-256 of the head before it, in hex, followed by the canonical JSON of one row: the row as the
+CSV reader gives it, every cell under its column, the columns as the header line writes them and
+a cell past the last column under `+`, the keys sorted, UTF-8, no spaces. Every row is in it,
+one with no id among them, which `read_decisions` passes over. The chain is computed whenever it
+is wanted and stored nowhere but in a recap: `decisions.csv` keeps its nine columns.
+
+**The earlier recap.** A recap names the one it replaces: the row count and head that
+`checks/recap.md` recorded, and whether the first that many rows of the record still give that
+head. Made again of a record that has not changed, it names the one that recap named, so that
+running it twice changes nothing. A record whose first rows no longer give the earlier head is
+said by `checker recap` and written into the recap, and not refused: the recap is the record of
+it, and `--check` against a copy kept elsewhere is what fails.
+
+**`checker recap --check [file]`** reads a recap (`checks/recap.md` unless a file is named: the
+pack's copy, or one kept in git; a relative file is read under the project, whatever folder
+the command runs in, where `--items` is read from the working folder as before; a folder is
+refused with a message, since the project is named before `--check`), makes it again from the record and the manuscript as they are,
+naming the earlier recap the file names, and compares the two byte for byte. The same: exit 0,
+with the row count, the head and the root digest. Otherwise exit 1, naming the first line that
+differs, as the file has it and as it is made now, and what the file's footer says of the
+difference: the manuscript has changed since; rows were added to the record since and its first
+are the ones the recap was made from, so the recap is to be made again; or the first rows of the
+record do not give the head the recap records, so a row among them was edited, deleted or moved.
+A file that is not there, or cannot be read, is exit 2. `--check` writes nothing. Either way it
+says that the line naming the earlier recap was read from the file and not verified: it is
+taken as the file gives it (round 1 of #465), since nothing outside the file holds it.
+
+**What this shows, and what it does not.** The recap is tamper-evident by a hash chain, unsigned,
+and it says so in those words. Held to a head recorded elsewhere, an earlier recap kept in git,
+the copy in a submission pack or a digest quoted in a message, it shows a hand edit of any
+line of the recap but the one naming the earlier recap, and a row of the record edited,
+deleted or moved. It does not show a rewrite: someone who
+can write to the record and to every copy of the head can make them agree, since nothing in the
+chain is secret. Nothing in it is signed, and it is never called certified. A name on a decision
+is the answers file's claim, as before: a page's token shows which page answers came from, not
+who answered. `checks/recap.md` is kept from an agent's editor by the hooks, as the record and
+the register are, so that an agent cannot write one by hand; `checker recap` is among the verbs
+the hook reads as plainly no import.
+
+**At submission** (decision 7 (a)): `submit` writes `coauthor-verification.md` into the pack
+where the project has a `checks/decisions.csv`: the publisher's copy of the recap, titled
+"Co-author verification", with the statement above, the two tables and the counts, and the same
+last section, and without the co-authors' notes, which are the authors' working and not the
+journal's. It names the earlier recap `checks/recap.md` names, so `checker recap --check
+build/submission/coauthor-verification.md` holds the pack's copy to the record. And it warns,
+`coauthor-flag-open`, of each current `wrong` or `code` that is still the latest answer of the
+person who gave it, with the note: any later answer of theirs about the item as it is now
+takes its place and closes it, an `ok`, or an `unsure`, which leaves the item under "Still
+open" in the recap; and so does an edit to the item, which makes the flag about an earlier
+version. It does not
+refuse: whether to send with a co-author's flag open is the corresponding author's call, as an
+approval missing is. The warnings need the record and the items only, so they are said where
+the copy cannot be made, a register a spreadsheet re-saved, say, beside the note saying why. No gate of `check` changes. A LaTeX manuscript, which `checker` refuses, is
+packed without the file, and `submit` says so.
+
+**Tests.** `tests/test_checking.py` holds that a recap made twice is the same bytes, that
+`--check` names the first line where a row of the record was edited or deleted or two were
+swapped, says rows were added where they were and that the earlier recap's line is
+unverified, refuses a folder and reads a relative file under the project, that the earlier recap is named and held, that
+stale answers' notes reach it, that a claimed answer is marked, and its wording.
+`tests/test_corruption.py` holds a recap edited by hand and `submit` with a flag open.
+`tests/test_properties.py` holds over generated records (`decision_records`) that each row reads
+back as it was written and that a row edited, deleted or swapped anywhere gives another head; a
+chain that passes over a row with no id fails it.
 
 ### Nothing in it belongs to a vendor
 
@@ -11295,9 +11460,9 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
 - **The hook is a guard against an agent's ordinary commands, not against a deliberate
   evasion.** It reads a command's words as a POSIX shell and as Windows give them, and asks
   where the tool's name, `checker` and `import` stand in the text or in those words (so
-  `imp''ort` is `import`), unless the command is plainly `checker build` or `status`; so
-  `checker status && git commit -m import` is asked too. A substitution, `<(`, `>(`, a word
-  opening with `(`, `@(` or `{`, or a typographic quote is not read, and asked. A command that
+  `imp''ort` is `import`), unless the command is plainly `checker build`, `status` or `recap`;
+  so `checker status && git commit -m import` is asked too. A substitution, `<(`, `>(`, a
+  word opening with `(`, `@(` or `{`, or a typographic quote is not read, and asked. A command that
   builds the tool's name or its verb at run time, `$v`, `eval "$(...)"` reading from a file, an
   alias defined elsewhere, a script file, is not recognised. `tests/test_hooks.py` holds the
   forms it does catch.
@@ -11432,6 +11597,48 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   which takes the name of its first column (`when`, `built_on`) with it. A note opening with `=`
   is read by a spreadsheet as a formula.
   Read them in a spreadsheet; write them only with `checker import` and `checker build`.
+- **The recap's chain shows a change only against a head kept elsewhere, and nothing is
+  signed.** `checker recap --check` holds a recap to the record; whoever can write both can make
+  them agree, and the chain carries no secret, so a rewrite of the record with every recap made
+  again leaves no trace. What shows a change is a head recorded where that person cannot reach:
+  an earlier recap kept in git, the pack's copy sent to a journal, a digest quoted in a message.
+  The earlier recap a recap names is that recap's own word: its row count and head are read from
+  the file being checked, so a recap edited to name another earlier head, or none, is held to
+  that one, and passes `--check` where the rest is as made; `--check` says the line is
+  unverified, and the next recap carries it forward. The root digest does not cover it.
+- **`--check` names a line of the recap, not a row of the record.** The recap stores one head,
+  so a row edited, deleted or moved is found to be among the first rows the recap counted, and
+  the line named is the first of the recap the change moved: a table's row, a note, or the
+  footer's head where nothing else moved. Which row of the record changed is found by holding it
+  to a copy kept elsewhere, in git.
+- **An item's digest in the recap is 64 bits.** The table gives each item's 16-hex digest, as
+  the record does, and two items whose words collide in it would read as one. The root digest
+  and the chain are SHA-256 in full.
+- **The pack's copy leaves the notes out, and lists the names.** `coauthor-verification.md` says
+  who verified and who flagged each item, and not what they said: a journal reading a flag
+  learns that someone asked for a change, not which. It names every co-author who answered,
+  claimed or not, and anyone who is not an author whose answer the record holds.
+- **The record keeps a name as it was written.** `checker status` takes each person's latest
+  answer by the name as recorded, and so does the recap: "Jane Doe" and "jane doe" are two
+  rows, each with its own answers, and the second's wrong does not close the first's ok, nor
+  her later ok her own flag given under the other spelling. An author's answer under another
+  spelling is a row of its own beside the author's. The page writes the name `authors.yaml`
+  gives; a file written by hand may not. Two names that differ only in inner spaces or in
+  their Unicode form ("Jane  Doe", or "José" composed and decomposed) are two rows that print
+  alike, since a cell's spaces are joined. `checker recap --check <project>` run from outside
+  any project fails with the project's own error, not the hint to name the project first.
+- **Two authors of one name share their row's counts.** The recap gives each author in
+  `authors.yaml` a row and counts in it every decision recorded under that name, so two
+  authors written alike each get a row counting both's decisions. `checker` refuses such
+  namesakes before a round, so this is a record made before the second was added.
+- **A header that repeats a column hides its first cell from the chain.** The chain reads each
+  row as the CSV reader maps it to the header, so a `decisions.csv` whose header names a column
+  twice keeps the last cell of the two, and an edit to the other leaves the head as it was.
+  `checker import` never writes such a header; one made by hand is not refused.
+- **`coauthor-flag-open` is held to the person, not to the item.** A flag stays open until the
+  person who gave it answers again about the item as it is now, ok or not sure, or the item
+  changes: a co-author's ok on someone else's flag does not close it, and an edit to the sentence closes it whether or
+  not it did what was asked, until the item is sent again.
 
 - **G1 fails only on the script that wrote a results file and on the inputs it declared.**
   The digests it compares are of the emitting script and of each path given to the emitter
@@ -17741,6 +17948,55 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - The graphical abstract's rules and the sharing policy are recorded and not read; the
     `communicate` commands are to read them.
 
+- **What `audit` reads of a LaTeX paper, its words and its references (Task 3, PR 1,
+  2026-10-28).** Each limit, as built:
+  - A number an author's macro prints where it is used is not read there, as in G2; nor is a
+    table `\csvautotabular` or pgfplotstable draws from a file. A `longtable`'s caption is read
+    as a row of it, and a head it repeats with `\endhead` is read once, where it is typed.
+  - A reference list BibTeX or biber makes from a `.bib` is not counted: only a typed
+    `thebibliography` is, and the report says so where the paper cites and has none.
+  - A folder's `.tex` with `\documentclass` is an entry however it is used: a standalone
+    figure's file is read as a paper of its own, and so is a file whose `\documentclass`
+    stands in a `\verb` or a `comment` environment.
+  - G6 and G14 run on a project made for each paper, so an abbreviation defined in the main
+    text and used in a supplement given beside it is undefined in the supplement. Nothing of
+    a `paper.yaml` is read but the English: no journal profile, no `language:` settings, no
+    accepted spellings. A .docx's lines are those of the text pandoc converts it to.
+  - The census holds citations to a list only where the entries carry their numbers, or in a
+    .docx whose list one Word numbering counts 1, 2, 3 from its first entry, by each entry's
+    place in its count. A count that a paragraph with words above the list is numbered in
+    too (the same abstract numbering and level, or the same numbering where it restarts the
+    level), a numbering linked to a numbering style, a level not resolved for sure, or one in
+    another format or from another start, is taken for none, and such a list is counted and
+    not held to the text's numbers. Only the count is compared: a lower level above the list
+    that restarts it is not looked at. A citation in superscript, `^3^`, or in parentheses,
+    `(3)`, is not read; a bracketed number that is no citation, an equation's `[2]`, is read
+    as one. Two lists each numbered from 1 are read as one. A Markdown entry wrapped over
+    lines with no blank line between entries is one entry only where each starts with its
+    number. A list found by its entries' shape alone, with no heading, is not counted.
+  - A paragraph in a table's cell is given no count, though Word numbers it: one numbered in
+    the list's count above the list does not stop the list being numbered by place, and the
+    entries after it are numbered as though it were not there (fix-only round of #463).
+  - `--lookup` asks about the first DOI and the first PMID of an entry, and nothing about one
+    with neither: `lookup`'s search by title is not run. A record kept with
+    `--lookup-cache` is used however old it is, until the identifiers it was asked for
+    change. `--strict` counts no finding of G7's, in the census or from a registry.
+  - `--strict` counts what it counted before, a number in no output, a stretch not read and
+    an audit that read no number, and nothing new: the sums and flows that will count come
+    in the PRs after this one.
+  - In a folder given, a `.tex` with `\documentclass` is audited as a paper beside the
+    Markdown or Word one: a pandoc template or a LaTeX export of the paper is read as a paper
+    of its own, its numbers are not found in the outputs, and the reader's refusals in it are
+    counted, so `--strict` can fail where the paper alone passes. A `.tex` that cannot be read
+    counts as an entry. Name the paper's own file, not its folder, to audit it alone (round 1
+    of #463).
+  - A table whose rows a tabular `\input`s from another file, as xtable and esttab write
+    them, is read nowhere as cells: its numbers are read where they stand, as text, and no
+    n (%) or mean in it is held to its denominator (round 1 of #463).
+  - A citation that encloses the number before it, `2 studies [1,3]`, is read as an
+    interval after its value and no citation, so the entries it cites can be reported as
+    cited nowhere (round 1 of #463).
+
 - **A masked cell recovered by subtraction is not looked for.** `deposit`'s preflight calls
   `gates.custodian.recoverable_cells`, the one entry point for Task 3's check that a count
   held back ("<5") cannot be worked out from a row's total and its other cells; it finds
@@ -17856,6 +18112,11 @@ What papers converted from Word showed (see "What papers converted from Word sho
   is already done, and not the status line's.
 
 Closed since, and why each mattered (an open gap goes above this line):
+
+- **`audit` refused a LaTeX paper (Task 3, PR 1, 2026-10-28).** A `.tex` named was refused,
+  and a folder of them had nothing to audit, so a LaTeX paper outside a project had its
+  numbers, its tables and its references checked by nothing. It is read through its include
+  tree now; see "Reading anything, and what needs no outputs".
 
 - **`document-stale` blocked the build that would clear it.** At `internal-review` the
   gate fails, `build` refused while anything failed, and `--skip-checks` wrote

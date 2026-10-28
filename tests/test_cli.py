@@ -1569,12 +1569,38 @@ def _commands_of(parser: argparse.ArgumentParser) -> dict[str, argparse.Argument
     return dict(commands.choices)
 
 
+#: The new shapes a change may give an option, each asserted below. LISTED: a value given once
+#: is a list of that one value, and the comparison skips the key. OPTIONAL: an option that was
+#: required may be left out. A line that gives it parses as it did, and the sampler, which
+#: draws only an option a command requires into each of its lines, draws the line without
+#: it, where the key is None and the rest is as recorded.
+LISTED, OPTIONAL = "a list", "optional"
 #: What a pull request changed on purpose in how a recorded command line parses, by (command,
-#: the name the option is kept under), each with its reason. The comparison below skips exactly
-#: these for that command, and nothing else.
+#: the name the option is kept under), each with its new shape and its reason. The comparison
+#: below takes exactly these as their shape says, for that command, and nothing else.
 CHANGED_ON_PURPOSE = {
-    ("checker", "answers"): "#455: --answers takes several answers files, so its value is a list",
+    ("checker", "answers"): (
+        LISTED, "#455: --answers takes several answers files, so its value is a list"),
+    ("audit", "against"): (
+        OPTIONAL, "#463: audit runs without outputs, so --against is no longer required"),
 }
+
+
+def _option(parser: argparse.ArgumentParser, command: str, key: str) -> argparse.Action:
+    (action,) = (a for a in _commands_of(parser)[command]._actions if a.dest == key)
+    return action
+
+
+def _gives(parser: argparse.ArgumentParser, argv: list[str], key: str) -> bool:
+    """Whether `argv` gives the option kept under `key`."""
+    return bool(set(argv) & set(_option(parser, argv[0], key).option_strings))
+
+
+def _without(parser: argparse.ArgumentParser, argv: list[str], key: str) -> list[str]:
+    """`argv` with the option kept under `key` and its sampled values left out."""
+    action = _option(parser, argv[0], key)
+    at = next(index for index, part in enumerate(argv) if part in action.option_strings)
+    return [*argv[:at], *argv[at + 1 + len(_sample_values(action, True)):]]
 
 
 def test_every_command_line_parses_as_it_did_before_the_commands_were_grouped() -> None:
@@ -1588,23 +1614,51 @@ def test_every_command_line_parses_as_it_did_before_the_commands_were_grouped() 
     # the sampler would not draw from today's.
     assert len(recorded) == 218, "every line recorded at 40dcb675"
     sampled = {tuple(argv) for argv in sample_command_lines(parser)}
-    assert [entry["argv"] for entry in recorded if tuple(entry["argv"]) not in sampled] == []
+    optional = {(command, key) for (command, key), (shape, _why) in CHANGED_ON_PURPOSE.items()
+                if shape == OPTIONAL}  # fmt: skip
+
+    def drawn(argv: list[str]) -> bool:
+        if tuple(argv) in sampled:
+            return True
+        return any(
+            command == argv[0] and _gives(parser, argv, key)
+            and tuple(_without(parser, argv, key)) in sampled
+            for command, key in optional
+        )
+
+    assert [entry["argv"] for entry in recorded if not drawn(entry["argv"])] == []
     changed = []
     for entry in recorded:
         namespace = vars(parser.parse_args(entry["argv"]))
         parsed = {key: plain(value) for key, value in namespace.items()}
         kept = {key: value for key, value in entry["namespace"].items()
-                if (entry["argv"][0], key) not in CHANGED_ON_PURPOSE}  # fmt: skip
+                if CHANGED_ON_PURPOSE.get((entry["argv"][0], key), ("",))[0] != LISTED}  # fmt: skip
         now = {key: parsed.get(key, "<missing>") for key in kept}
         if now != kept:
             changed.append((entry["argv"], now, kept))
-        for (command, key), _why in CHANGED_ON_PURPOSE.items():
-            if entry["argv"][0] == command and key in entry["namespace"]:
-                # The new shape: a value given once is a list of that one value.
-                was = entry["namespace"][key]
-                if parsed.get(key) != (None if was is None else [was]):
-                    changed.append((entry["argv"], parsed.get(key), was))
+        for (command, key), (shape, _why) in CHANGED_ON_PURPOSE.items():
+            if entry["argv"][0] != command or key not in entry["namespace"]:
+                continue
+            was = entry["namespace"][key]
+            if shape == LISTED and parsed.get(key) != (None if was is None else [was]):
+                changed.append((entry["argv"], parsed.get(key), was))
+            if shape == OPTIONAL and was is not None:
+                # Left out, the option is None, and nothing else the line gives changes.
+                bare = _without(parser, entry["argv"], key)
+                left = {k: plain(v) for k, v in vars(parser.parse_args(bare)).items()}
+                now = {k: left.get(k) for k in entry["namespace"]}
+                if {**entry["namespace"], key: None} != now:
+                    changed.append((bare, now, entry["namespace"]))
     assert changed == []
+    # The audit lines recorded all gave --against, which was required; each is drawn now
+    # without it, and the one that gave nothing else is drawn as recorded.
+    audits = [entry["argv"] for entry in recorded if entry["argv"][0] == "audit"]
+    assert [argv for argv in audits if tuple(argv) not in sampled] == [
+        ["audit", "x", "--against", "x", "--figures", "x"],
+        ["audit", "x", "--against", "x", "--whole-numbers", "x"],
+        ["audit", "x", "--against", "x", "--strict"],
+    ]
+    assert ("audit", "x") in sampled
     # Each exception still names a key some recorded line of its command parses.
     named = {(entry["argv"][0], key) for entry in recorded for key in entry["namespace"]}
     assert set(CHANGED_ON_PURPOSE) <= named

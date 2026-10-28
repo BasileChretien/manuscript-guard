@@ -39,6 +39,7 @@ from xml.etree import ElementTree as ET
 from manuscript_guard.docxtext import W16SE, extended_symbol, runs_on
 from manuscript_guard.safexml import UnsafeDocument, open_archive, read_part
 from manuscript_guard.text.tables import Table, TableCell
+from manuscript_guard.text.word_numbering import Numbering
 from manuscript_guard.wordfonts import Fonts, symbol
 
 W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
@@ -62,8 +63,11 @@ _ROW_MARK = "\x1d"
 _COLUMN_MARK = "\x1c"
 _RAISED = "\x1a"
 _NOTE_REFERENCE = "\x19"
+# After the heading mark, on the line of a body paragraph outside a table that Word numbers:
+# the numbering is the next of those `_part_text` lists, in the order of the marks.
+_NUMBERED_MARK = "\x18"
 _MARKS = (_HEADING_MARK, _CELL_MARK, _TABLE_MARK, _ROW_MARK, _COLUMN_MARK, _RAISED,
-          _NOTE_REFERENCE)  # fmt: skip
+          _NOTE_REFERENCE, _NUMBERED_MARK)  # fmt: skip
 _STRUCTURE = re.compile(f"{_CELL_MARK}({_TABLE_MARK}?)({_ROW_MARK}?)({_COLUMN_MARK}*)")
 _RAISED_TEXT = re.compile(f"{_RAISED}([^{_RAISED}]*){_RAISED}")
 _NOTE_REFERENCES = {W + "footnoteReference", W + "endnoteReference"}
@@ -89,6 +93,13 @@ class DocxText:
     #: Each table that is not inside another, as rows of cells: what `audit` reads an n (%)
     #: in. A superscript is written `^a^`, as Markdown writes one.
     tables: tuple[Table, ...] = ()
+    #: Each line of `body` outside a table whose paragraph Word numbers, 1-based, with the
+    #: count it is in, whether that count prints 1, 2, 3 from 1 (`word_numbering`), and its
+    #: place in the count, every paragraph of it outside a table counted, an empty one too,
+    #: which Word numbers (Word 16, over COM), and none in a table's cell (DESIGN.md, "Known
+    #: gaps"): what says a reference list is numbered by Word rather than typed, and what
+    #: number Word prints for each entry.
+    numbering: tuple[tuple[int, str, bool, int], ...] = ()
 
     @property
     def text(self) -> str:
@@ -284,20 +295,26 @@ def _joins(root: ET.Element, parents: dict, hidden: frozenset) -> dict[ET.Elemen
 
 
 def _line_start(
-    paragraph: ET.Element, joins: dict, parents: dict, headings: frozenset, opens: _Opens
-) -> str:
+    paragraph: ET.Element, joins: dict, parents: dict, headings: frozenset, opens: _Opens,
+    numbering: Numbering | None = None, counts: list | None = None,
+) -> str:  # fmt: skip
     """The break and the marks a paragraph's line starts with.
 
     A joined line has the last paragraph's style, because its mark is the one left: Word 16
     keeps it on accepting the change, and when Word deletes a mark itself it first copies
-    the first paragraph's style onto the second. A heading style ends a reference list.
+    the first paragraph's style onto the second. A heading style ends a reference list. Its
+    numbering is the last paragraph's too, which is in its properties, beside its style.
     """
     last = paragraph
     while last in joins:
         last = joins[last]
     heading = _HEADING_MARK if _is_heading(last, headings) else ""
     if not _inside(paragraph, parents, W + "tc"):
-        return "\n" + heading
+        numbered = numbering.of_paragraph(last) if numbering is not None else None
+        if numbered is None or counts is None:
+            return "\n" + heading
+        counts.append(numbered)
+        return "\n" + heading + _NUMBERED_MARK
     return "\n" + heading + _CELL_MARK + opens.take()
 
 
@@ -340,8 +357,12 @@ def _raised(node: ET.Element, parents: dict) -> bool:
 
 
 def _part_text(
-    root: ET.Element, headings: frozenset[str] = frozenset(), fonts: Fonts | None = None
-) -> str:
+    root: ET.Element, headings: frozenset[str] = frozenset(), fonts: Fonts | None = None,
+    numbering: Numbering | None = None, counts: list | None = None,
+) -> str:  # fmt: skip
+    """The part's text, a line to a paragraph, with the marks of what its lines are; with
+    `numbering`, each line Word numbers outside a table is marked and its count put in
+    `counts`, in order."""
     fonts = fonts or Fonts()
     parents = {child: parent for parent in root.iter() for child in parent}
     hidden = _hidden(root)
@@ -373,7 +394,8 @@ def _part_text(
                 opens.table, opens.row, opens.columns = True, False, 0
         elif node.tag == W + "p":
             if node not in lines:
-                lines[node] = [_line_start(node, joins, parents, headings, opens)]
+                lines[node] = [_line_start(node, joins, parents, headings, opens, numbering,
+                                           counts)]  # fmt: skip
                 pieces.append(lines[node])
             if node in joins:
                 lines[joins[node]] = lines[node]
@@ -422,15 +444,24 @@ def read_docx_text(path: Path) -> DocxText:
         # fonts a run names itself are known.
         fonts = Fonts()
 
-    def text_of(part: str, styles: frozenset[str] = frozenset()) -> str:
+    def text_of(part: str, styles: frozenset[str] = frozenset(), numbering=None, counts=None):
         try:
             root = read_part(archive, part, what=f"{path.name}:{part}")
         except UnsafeDocument as exc:
             raise NotADocx(str(exc)) from exc
-        return _part_text(root, styles, fonts)
+        return _part_text(root, styles, fonts, numbering, counts)
 
-    marked = _tidy(text_of(BODY, _heading_styles(archive, names, path.name)))
+    counts: list = []
+    raw = text_of(BODY, _heading_styles(archive, names, path.name),
+                  Numbering.of(archive, names, path.name), counts)  # fmt: skip
+    raw, counts = _numbered_lines(raw, counts)
+    marked = _tidy(raw)
     lines = marked.split("\n")
+    marked_lines = [i + 1 for i, line in enumerate(lines) if _NUMBERED_MARK in line[:2]]
+    # A mark for each count kept; were they ever to differ, no line is said to be numbered,
+    # rather than a count given to the wrong line.
+    same = len(marked_lines) == len(counts)
+    numbering = tuple(zip(marked_lines, counts, strict=True)) if same else ()
     headings = frozenset(i for i, line in enumerate(lines) if line.startswith(_HEADING_MARK))
     cells = frozenset(i for i, line in enumerate(lines) if _CELL_MARK in line[:2])
     # The notes keep what they always had, the cell mark of a table in a note among it; the
@@ -439,7 +470,33 @@ def read_docx_text(path: Path) -> DocxText:
                       _MARKS[2:])  # fmt: skip
     body = _unmarked(marked, _MARKS)
     return DocxText(body=body, notes=notes, headings=headings, cells=cells,
-                    tables=_tables(lines))  # fmt: skip
+                    tables=_tables(lines),
+                    numbering=tuple((line, *count) for line, count in numbering))  # fmt: skip
+
+
+def _numbered_lines(raw: str, counts: list) -> tuple[str, list]:
+    """`raw` without the numbering mark of a line that holds nothing else, and the counts of
+    the marks kept: an empty line is one `_tidy` may fold into the blank lines around it, as
+    it did before lines were marked, and a mark on it would keep it and move every line
+    after it down one. Each count kept carries its place in its count, which the empty
+    paragraph takes too: Word prints its number, and the next one's after it (round 2 of
+    #463)."""
+    parts: list[str] = []
+    kept = []
+    places: dict[str, int] = {}
+    at = 0
+    for index, found in enumerate(re.finditer(_NUMBERED_MARK, raw)):
+        end = raw.find("\n", found.end())
+        rest = raw[found.end() : end if end >= 0 else len(raw)]
+        parts.append(raw[at : found.start()])
+        count, from_one = counts[index]
+        places[count] = places.get(count, 0) + 1
+        if rest:
+            parts.append(_NUMBERED_MARK)
+            kept.append((count, from_one, places[count]))
+        at = found.end()
+    parts.append(raw[at:])
+    return "".join(parts), kept
 
 
 def _unmarked(text: str, marks: tuple[str, ...]) -> str:

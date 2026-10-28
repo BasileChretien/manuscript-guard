@@ -179,6 +179,7 @@ co-author reading one item against one quote is what found it.
 manuscript-guard checker build --all                    # one file per author, to send each
 manuscript-guard checker import --answers a.json b.json # what they said, into checks/decisions.csv
 manuscript-guard checker status                         # outstanding, stale, and who disagrees
+manuscript-guard checker recap                          # who checked what, into checks/recap.md
 ```
 
 `build` writes **one file**. It carries every item, the sentences each value appears in, and the
@@ -209,6 +210,18 @@ and a token whose digest `checks/bundles.csv` keeps, so a file that names a page
 match it is refused; one from no page this project built is recorded as claimed. `checks/decisions.csv` is append-only, because
 "was this checked, by whom, and when" is a question asked months later, by whoever is answering a
 reviewer.
+
+`recap` writes `checks/recap.md`: each change a co-author asked for, in the manuscript with its
+sentence or in the code with its steps, what is still open, the notes on versions of an item
+that are gone, and a table of who verified each item. It is tamper-evident by a hash chain,
+unsigned: its last section carries the head of a chain over `checks/decisions.csv`, and
+`checker recap --check` makes it again and names the first line that differs, so a hand edit
+of any line but the one naming the earlier recap (taken as the file gives it, and said to be
+unverified), or a row of the record edited, deleted or moved, shows against a copy kept
+elsewhere. Someone who can write the record and every copy can still rewrite both. `submit`
+packs the tables as `coauthor-verification.md` and warns of each `wrong` or `code` still
+open, until any later answer by the person who gave it, or an edit to the item, closes it;
+it does not refuse.
 
 What this gives you is a record of who looked, at what exactly, when, and what they said. It is
 not a proof that they read it correctly, and nothing here checks their reading.
@@ -278,7 +291,7 @@ number in the file and the rule that classified it.
 | Command | What it does |
 |---|---|
 | `check` | run every gate; `--stage submission` holds the manuscript to submission standards |
-| `audit` | check the numbers of a paper that was not written this way against existing outputs |
+| `audit` | check a paper that was not written this way, in Word, Markdown or LaTeX: its numbers against the outputs `--against` names, if any, and against each other, its words (G6, G14) and its reference list (G7); `--lookup` asks the registries about each DOI and PMID |
 | `explain` | show how each number in a file was classified |
 | `bind` | show every unbound number and how to give it a source; `--pointers` offers the `{{ref.…}}` binding that prints each typed "Table 2" |
 | `impact` | list what depends on a file, or on each file changed since a commit: results, the sentences that bind them, figures, Methods paragraphs, panel readings and co-author answers |
@@ -314,7 +327,7 @@ number in the file and the rule that classified it.
 | Command | What it does |
 |---|---|
 | `review` | show where the review panel stands; `--run` has it read by the models you list, `--seal` seals a reading written by hand, `--design` does the same for a design round, which reads the plan; `--suggestions` writes the edits a round's findings suggest into a Word document as tracked changes, for you to accept or refuse there and `import` |
-| `checker` | send a co-author one file of things to confirm, and record what they answered |
+| `checker` | send a co-author one file of things to confirm, record what they answered, and recap who checked what (`recap`, `recap --check`) |
 | `import` | bring a co-author's Word edits back into the manuscript source, and file each of their Word comments as a finding to answer |
 | `respond` | open a revision round, or write the point-by-point response |
 | `approve` | record an author's approval of the manuscript as it stands, which `submit` holds to the manuscript sent; the author's own act |

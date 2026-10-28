@@ -17,6 +17,7 @@ import shutil
 import sys
 import textwrap
 from collections.abc import Callable, Collection
+from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
@@ -44,7 +45,7 @@ from manuscript_guard.contracts import (
     load_project,
     read_text,
 )
-from manuscript_guard.findings import Report, merge_all
+from manuscript_guard.findings import WARN, Finding, Report, merge_all
 from manuscript_guard.gates import (
     check_bound_units,
     check_boxes,
@@ -2065,11 +2066,36 @@ def cmd_hook(args: argparse.Namespace) -> int:
     return dispatch(args.event)
 
 
+def _no_document(tex: Path) -> str:
+    """Why a `.tex` found in a folder starts no paper: it could not be read, or it has no
+    `\\documentclass` (fix-only round of #463)."""
+    from manuscript_guard.auditing.latex import unreadable_said
+
+    return unreadable_said(tex) or (f"{tex.as_posix()} has no \\documentclass, so it starts no "
+                               "document")  # fmt: skip
+
+
+def _audit_refused(args: argparse.Namespace, said: str, *details: str) -> int:
+    """An audit that did not happen, exit 2: why, on stderr, and under `--json` on stdout as
+    well, as an object whose `ok` is false, so that a script reading stdout is told rather
+    than handed nothing (round 1 of #463)."""
+    for line in (said, *details):
+        print(line, file=sys.stderr)
+    if args.json:
+        import json
+
+        print(json.dumps({"ok": False, "error": said,
+                          "details": [line.strip() for line in details]},
+                         indent=2, ensure_ascii=True))  # fmt: skip
+    return 2
+
+
 def cmd_audit(args: argparse.Namespace) -> int:
-    """Check an existing paper's numbers against existing outputs.
+    """Check an existing paper's numbers against existing outputs, and what needs none.
 
     For papers that were never written with this toolkit. Weaker than `check` by nature,
-    and the report says how much weaker, measured against the outputs supplied.
+    and the report says how much weaker, measured against the outputs supplied. Without
+    outputs no number is compared, and the rest is read all the same.
     """
     from manuscript_guard.audit import (
         FIGURE_SUFFIXES,
@@ -2078,19 +2104,31 @@ def cmd_audit(args: argparse.Namespace) -> int:
         doc_passed_over,
         is_lock_file,
         measure_discrimination,
-        render,
     )
+    from manuscript_guard.auditing import report as sections
+    from manuscript_guard.auditing.gates import run_gates
+    from manuscript_guard.auditing.latex import is_entry
+    from manuscript_guard.auditing.references import look_up
+
+    if (args.dry_run or args.lookup_cache) and not args.lookup:
+        return _audit_refused(args, "manuscript-guard audit: --dry-run and --lookup-cache go "
+                              "with --lookup")  # fmt: skip
+    # A `.tex` in a folder is a paper only where it starts a document; the others are read
+    # where one inputs them, and named where none does.
+    found_tex: list[Path] = []
 
     def expand(given: list[Path], suffixes: set[str]) -> list[Path]:
         found: list[Path] = []
         for path in given:
             if path.is_dir():
-                found += [
-                    p
-                    for p in sorted(path.rglob("*"))
+                for p in sorted(path.rglob("*")):
                     # Word's lock file beside an open document, "~$x.docx", is no paper.
-                    if p.is_file() and p.suffix.lower() in suffixes and not is_lock_file(p)
-                ]
+                    if not p.is_file() or p.suffix.lower() not in suffixes or is_lock_file(p):
+                        continue
+                    if p.suffix.lower() == ".tex" and not is_entry(p):
+                        found_tex.append(p)
+                    else:
+                        found.append(p)
             elif path.is_file():
                 found.append(path)
         return found
@@ -2110,36 +2148,45 @@ def cmd_audit(args: argparse.Namespace) -> int:
     given = [*args.paper, *(args.against or []), *(args.figures or [])]
     missing = [path for path in given if not path.exists()]
     if missing:
-        for path in missing:
-            print(f"manuscript-guard audit: {path} does not exist", file=sys.stderr)
-        return 2
+        return _audit_refused(args, *(f"manuscript-guard audit: {path} does not exist"
+                                      for path in missing))  # fmt: skip
 
     papers = expand(args.paper, PAPER_SUFFIXES)
     figures = expand(args.figures or [], FIGURE_SUFFIXES)
     if not papers and not figures:
-        print("nothing to audit: no .docx or .md found in what you gave me", file=sys.stderr)
-        for doc in docs:
-            print(f"  {doc_passed_over(doc)}", file=sys.stderr)
-        return 2
-    if not args.against:
-        print("--against is required: point it at the analysis outputs", file=sys.stderr)
-        return 2
+        return _audit_refused(
+            args, "nothing to audit: no .docx, .md or .tex that starts a document found in "
+            "what you gave me", *(f"  {doc_passed_over(doc)}" for doc in docs),
+            *(f"  {_no_document(tex)}" for tex in found_tex),
+        )  # fmt: skip
 
     report = audit(papers, args.against, figures=figures,
-                   whole_numbers=tuple(args.whole_numbers), passed_over=docs)  # fmt: skip
-    if not report.backing_files:
-        print("--against gave the audit nothing it can read:", file=sys.stderr)
-        for item in report.skipped:
-            print(f"  {item}", file=sys.stderr)
-        return 2
+                   whole_numbers=tuple(args.whole_numbers), passed_over=docs,
+                   found_tex=found_tex)  # fmt: skip
+    if args.against and not report.backing_files:
+        return _audit_refused(args, "--against gave the audit nothing it can read:",
+                              *(f"  {item}" for item in report.skipped))  # fmt: skip
     if not report.papers:
         # "Audited 0 file(s) … 0 not found" read as a clean report, and exited 0 under
         # --strict, when every paper given was unreadable.
-        print("nothing given could be audited:", file=sys.stderr)
-        for item in (*report.unreadable, *report.passed_over):
-            print(f"  {item}", file=sys.stderr)
-        return 2
-    print(render(report, measure_discrimination(report.backing_values), Path.cwd()))
+        return _audit_refused(args, "nothing given could be audited:",
+                              *(f"  {item}" for item in (*report.unreadable,
+                                                         *report.passed_over)))  # fmt: skip
+    read = set(report.papers)
+    report.gates = [
+        *(run_gates(path, english=args.english, residue=args.submission_residue)
+          for path in papers if path.suffix.lower() != ".tex" and path in read),
+        *(run_gates(tree.entry, tree, english=args.english, residue=args.submission_residue)
+          for tree in report.trees),
+    ]  # fmt: skip
+    if args.lookup:
+        report.lookups = look_up(report.references, dry_run=args.dry_run,
+                                 cache=args.lookup_cache)  # fmt: skip
+    discrimination = measure_discrimination(report.backing_values) if args.against else None
+    if args.json:
+        print(sections.as_json(report, discrimination))
+    else:
+        print(sections.render(report, discrimination, Path.cwd()))
     if not report.examined:
         # An empty paper, or one whose numbers are all in pictures, printed "0 numeric
         # tokens" and passed --strict: an audit that read nothing.
@@ -2148,9 +2195,8 @@ def cmd_audit(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
     # A paper or figure the audit could not read is a check that did not happen, which
-    # --strict must not pass; nor is a paper with no number in it.
-    failed = report.unmatched or report.unreadable or not report.examined
-    return 1 if failed and args.strict else 0
+    # --strict must not pass; nor is a paper with no number in it (`auditing.report`).
+    return 1 if args.strict and sections.failed(report) else 0
 
 
 def _reread(project, new: Path, page: str | None = None) -> int:
@@ -3471,11 +3517,13 @@ def cmd_submit(args: argparse.Namespace) -> int:
         return 1
 
     try:
-        pack = assemble_pack(project, document, checked=report.ok, extra=marked)
+        coauthors = _coauthor_verification(project)
+        pack = assemble_pack(project, document, checked=report.ok, extra=marked,
+                             coauthor_verification=coauthors.text)  # fmt: skip
     except SubmissionError as exc:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
-    return _packed(project, report, pack, marked_notes)
+    return _packed(project, report, pack, marked_notes, coauthors)
 
 
 def _submit_latex(project, report, args: argparse.Namespace) -> int:
@@ -3528,16 +3576,81 @@ def _submit_latex(project, report, args: argparse.Namespace) -> int:
         notes.append("no marked-up copy is packed: `build --marked-up` makes Word copies, "
                      "and the LaTeX source is packed without one")  # fmt: skip
     try:
+        coauthors = _coauthor_verification(project)
         pack = assemble_pack(project, packed.documents[0], checked=report.ok,
                              extra=[(path, f"latex/{path.name}") for path in packed.files],
-                             supplements=packed.documents[1:])  # fmt: skip
+                             supplements=packed.documents[1:],
+                             coauthor_verification=coauthors.text)  # fmt: skip
     except SubmissionError as exc:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
-    return _packed(project, report, pack, notes)
+    return _packed(project, report, pack, notes, coauthors)
 
 
-def _packed(project, report, pack, notes: list[str]) -> int:
+@dataclass(frozen=True)
+class _Coauthors:
+    """What `submit` packs and says of the co-authors' checking: the publisher's copy of the
+    recap, where the project has a record; a warning for each flag still open; and why no copy
+    is packed, where one is not."""
+
+    text: str | None = None
+    flags: Report = field(default_factory=Report)
+    notes: tuple[str, ...] = ()
+
+
+def _coauthor_verification(project) -> _Coauthors:
+    """The publisher's recap for the pack, and `coauthor-flag-open` for each current `wrong`
+    or `code` that is still the latest answer of the person who gave it. Said, and never
+    refused: whether to send with a co-author's flag open is the corresponding author's call
+    (decision 7 (a)). The warnings need the record and the items only, so they are said where
+    the copy cannot be made, the register unreadable, say (round 2 of #465)."""
+    import csv
+    import io
+
+    from manuscript_guard.checking.items import ItemsError
+    from manuscript_guard.checking.recap import RecapError, earlier_for, flags_of, make
+    from manuscript_guard.checking.store import decisions_path
+    from manuscript_guard.text.reader import LATEX, manuscript_format
+
+    if not decisions_path(project.root).is_file():
+        return _Coauthors()
+    if manuscript_format(project.path("manuscript")) == LATEX:
+        return _Coauthors(notes=("no coauthor-verification.md is packed: `checker` reads a "
+                                 "Markdown manuscript only",))  # fmt: skip
+    said = io.StringIO()
+    try:
+        # What it prints of the items it leaves out is for `checker`; what it could not read
+        # is said below, since the table is the poorer for it.
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(said):
+            items = _checking_items(project, None)
+    except ItemsError as exc:
+        return _Coauthors(notes=(f"no coauthor-verification.md is packed: {exc}",))
+    unread = tuple(f"coauthor-verification.md: {line}" for line in said.getvalue().splitlines())
+    try:
+        text = make(project, items, earlier=earlier_for(project), publisher=True).text
+    except RecapError as exc:
+        text, unread = None, (*unread, f"no coauthor-verification.md is packed: {exc}")
+    try:
+        open_ = flags_of(project.root, items)
+    except (OSError, UnicodeDecodeError, csv.Error):
+        # The record itself cannot be read: the note above says so.
+        open_ = ()
+    flags = tuple(
+        Finding(
+            gate="BUILD", code="coauthor-flag-open", severity=WARN,
+            message=f"{flag.by} answered {flag.status!r} on {flag.title or flag.id}, and has "
+            f"given no later answer on it, nor has it changed since: {flag.note or 'no note'}",
+            path=decisions_path(project.root),
+            hint="any later answer of theirs on it, or an edit to the item, closes it: change "
+            "what they asked for, or ask them again (`checker build`); `checker recap` lists "
+            "each with its sentence or its steps",
+        )
+        for flag in open_
+    )  # fmt: skip
+    return _Coauthors(text, Report(flags), unread)
+
+
+def _packed(project, report, pack, notes: list[str], coauthors: _Coauthors | None = None) -> int:
     """What `submit` says of the pack it assembled."""
     print(f"submission pack: {pack.directory}")
     if not report.ok:
@@ -3555,6 +3668,13 @@ def _packed(project, report, pack, notes: list[str]) -> int:
     if approvals.findings:
         print()
         print(approvals.render(project.root))
+    coauthors = coauthors or _Coauthors()
+    for note in coauthors.notes:
+        print(f"  {note}")
+    if coauthors.flags.findings:
+        # As the approvals are: said, not refused (decision 7 (a) of Task 1).
+        print()
+        print(coauthors.flags.render(project.root))
     print("\nStill to write by hand: the covering letter. No file in the project holds it.")
     _declare_in_letter(project)
     return 0
@@ -4237,13 +4357,18 @@ def _checking_items(project, named: Path | None, *, build: bool = False,
 def cmd_checker(args: argparse.Namespace) -> int:
     """Send a co-author the numbers to check, and take their answers back.
 
-    Three verbs, and they are the whole of a round: `build` writes one file per person, `import`
-    records what they sent back, `status` says where the round stands. Nothing here asks the
+    Four verbs, and they are the whole of a round: `build` writes one file per person, `import`
+    records what they sent back, `status` says where the round stands, and `recap` writes
+    `checks/recap.md`, who checked what, or with `--check` holds one to the record. Nothing
+    here asks the
     co-author to install, sign in or configure anything, and nothing here is particular to a
     model or a vendor: the file is a page, the answers are JSON, the record is a CSV.
     """
     from manuscript_guard.checking import ItemsError
 
+    if getattr(args, "check", None) is not None and args.verb != "recap":
+        print("manuscript-guard: --check belongs to `checker recap`", file=sys.stderr)
+        return 2
     project, _ = load_project(args.path)
     try:
         items = _checking_items(project, args.items, build=args.verb == "build")
@@ -4254,6 +4379,8 @@ def cmd_checker(args: argparse.Namespace) -> int:
         return _checker_build(project, items, args)
     if args.verb == "import":
         return _checker_import(project, items, args)
+    if args.verb == "recap":
+        return _checker_recap(project, items, args)
     return _checker_status(project, items)
 
 
@@ -4530,6 +4657,36 @@ def _checker_import(project, items, args) -> int:
             print(f"  not recorded: {called} — {why}")
     # As before: nothing that counts came in, and something was wrong with what did.
     return 1 if troubled and not counted else 0
+
+
+def _checker_recap(project, items, args) -> int:
+    """Write `checks/recap.md`, or with `--check` hold a recap to the record as it is now."""
+    from manuscript_guard.checking import recap
+
+    try:
+        if args.check is not None:
+            # A file named relative to the project, as every path in it is; an absolute
+            # one stands as given.
+            path = project.root / (recap.RECAP if args.check is True else args.check)
+            code, said = recap.check(project, items, path)
+            for line in said:
+                print(line)
+            return code
+        made = recap.write(project, items)
+    except recap.RecapError as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 2
+    print(f"{project.root / recap.RECAP}: {len(items.items)} item(s), {made.head.rows} row(s) "
+          f"of checks/decisions.csv, chain head {made.head.head}; root digest {made.root}")
+    if made.earlier is not None and not made.earlier_holds:
+        # Said and written into the recap, not refused: the recap is the record of it, and
+        # `--check` against an earlier copy is what fails.
+        print(f"  the earlier recap counted {made.earlier.rows} row(s) with chain head "
+              f"{made.earlier.head}, and the record's first rows no longer give it: a row was "
+              "edited, deleted or moved since")
+    for flag in made.flags:
+        print(f"  [{flag.status}] {flag.by} on {flag.title or flag.id}: {flag.note or '—'}")
+    return 0
 
 
 def _checker_status(project, items) -> int:
@@ -5063,18 +5220,60 @@ def build_parser() -> argparse.ArgumentParser:
         "audit",
         help="check an existing paper's numbers against existing outputs",
         description="For papers not written with this toolkit. Give it the manuscript, the "
-        "supplements and the figures, and the analysis outputs to check them against.",
+        "supplements and the figures, and the analysis outputs to check them against. "
+        "Without outputs no number is compared, and the rest is read: the numbers against "
+        "each other, the words (G6, G14) and the reference list (G7).",
     )
-    audit.add_argument("paper", nargs="+", type=Path, help=".docx/.md files, or directories")
+    audit.add_argument(
+        "paper", nargs="+", type=Path,
+        help=".docx, .md or .tex files, or directories; a .tex is read with the files it "
+        "inputs, and in a directory only a .tex with \\documentclass starts a paper",
+    )  # fmt: skip
     audit.add_argument(
         "--against",
         nargs="+",
         type=Path,
-        required=True,
         metavar="PATH",
         help="analysis outputs: .json, .csv, .tsv, .txt, .yaml, .yml, .md, or directories "
-        "of them; anything else is named in the report as not read",
+        "of them; anything else is named in the report as not read. Without it no number "
+        "is compared with the analysis",
     )
+    audit.add_argument(
+        "--english",
+        choices=("american", "british"),
+        help="the paper's English, which G14 holds its spelling to; without it, the English "
+        "most of its words are in",
+    )
+    audit.add_argument(
+        "--submission-residue",
+        action="store_true",
+        help="G6 fails the residue of a revision that answers a reviewer or points at this "
+        "manuscript, as check does at the submission stage, rather than warning of it",
+    )
+    audit.add_argument(
+        "--lookup",
+        action="store_true",
+        help="ask Crossref and OpenAlex about each DOI of the reference list, DataCite and "
+        "then doi.org about one Crossref has no record of, and PubMed about each PMID, "
+        "whether the work was retracted, withdrawn or put under concern, or is not "
+        "registered; nothing is sent without it",
+    )
+    audit.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="with --lookup, list what would be sent, and send nothing",
+    )
+    audit.add_argument(
+        "--lookup-cache",
+        type=Path,
+        metavar="DIR",
+        help="with --lookup, keep each answer in DIR and read it from there the next time; "
+        "without it nothing is kept",
+    )
+    audit.add_argument(
+        "--json", action="store_true", help="the report as JSON, in the shape check --json "
+        "gives, each finding with its section and whether --strict counts it",
+    )  # fmt: skip
     audit.add_argument(
         "--figures", nargs="+", type=Path, help="SVG or PDF figures to audit as well"
     )
@@ -5089,7 +5288,8 @@ def build_parser() -> argparse.ArgumentParser:
     audit.add_argument(
         "--strict",
         action="store_true",
-        help="exit 1 if anything is unmatched or a paper or figure could not be read",
+        help="exit 1 if a number is in no output given, a paper, a figure or a stretch of "
+        "one could not be read, or no number was read; nothing else is counted",
     )
     audit.set_defaults(func=cmd_audit)
 
@@ -5795,7 +5995,7 @@ def build_parser() -> argparse.ArgumentParser:
     checker = sub.add_parser(
         "checker", help="send a co-author the numbers to check, and take their answers back"
     )
-    checker.add_argument("verb", choices=["build", "import", "status"])
+    checker.add_argument("verb", choices=["build", "import", "status", "recap"])
     checker.add_argument("path", nargs="?", type=Path, default=Path.cwd())
     checker.add_argument("--for", dest="name", default="", help="build: who the file is for")
     checker.add_argument(
@@ -5819,8 +6019,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--answers", type=Path, nargs="+", help="import: the files the co-authors sent back"
     )
     checker.add_argument(
-        "--items", type=Path, help="the items file, if not checks/items.json"
+        "--items", type=Path,
+        help="the items file, if not checks/items.json; a relative path is read from the "
+        "working folder, where --check's is read under the project",
     )
+    checker.add_argument(
+        "--check", nargs="?", const=True, default=None, metavar="FILE",
+        help="recap: make the recap in FILE (checks/recap.md unless given; a relative FILE "
+        "is under the project) again from the record and the manuscript, and exit 1 at the "
+        "first line that differs; name the project before --check",
+    )  # fmt: skip
     checker.set_defaults(func=cmd_checker)
 
     methods = sub.add_parser("methods", help="check or record Methods-to-code reconciliation")
@@ -6033,9 +6241,6 @@ def _refused_for_latex(args: argparse.Namespace) -> str | None:
     LaTeX; None where it runs."""
     command = args.command
     named = _named_paths(args)
-    if command == "audit":
-        typed = [path for path in named if path.suffix.lower() == ".tex"]
-        return f"audit does not read LaTeX yet: {typed[0]} is not read" if typed else None
     reads = _MARKDOWN_COMMANDS.get(command)
     if reads is None or not reads(args):
         return None

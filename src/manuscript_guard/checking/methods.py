@@ -164,9 +164,7 @@ def method_items(
         count[(section, steps)] = n + 1
         return n
 
-    for claim in claims:
-        section = _section(claim.path, folder)
-        n = nth(section, claim.steps)
+    for identifier, section, claim in numbered(claims, folder):
         anchors = "".join(f"{{{{method.{step}}}}}" for step in claim.steps)
         unknown = [step for step in claim.steps if step not in ran.steps]
         if unknown:
@@ -182,7 +180,7 @@ def method_items(
             continue
         for step in claim.steps:
             used.setdefault(ran.steps[step].script, []).append(step)
-        item = _claim_item(claim, section, n, ran, shown)
+        item = _claim_item(claim, identifier, section, ran, shown)
         placed.setdefault(section, []).append((claim.line, item))
     for paragraph in open_:
         section = _section(paragraph.path, folder)
@@ -213,7 +211,22 @@ def method_items(
     return items, notes
 
 
-def _claim_item(claim, section: str, n: int, ran: Ran, shown: dict[str, str]) -> dict:
+def numbered(claims, folder: Path) -> list[tuple[str, str, object]]:
+    """Each claim with the identifier its item takes and its file under `manuscript/`: the
+    file, the steps, and the claim's place among the claims of those steps in that file,
+    counting every claim, those not sent among them. The recap finds a methods item's claim,
+    and how it stands in `methods.lock`, by it."""
+    count: dict[tuple[str, tuple[str, ...]], int] = {}
+    out: list[tuple[str, str, object]] = []
+    for claim in claims:
+        section = _section(claim.path, folder)
+        n = count.get((section, claim.steps), 0)
+        count[(section, claim.steps)] = n + 1
+        out.append((_identifier("method", section, "+".join(claim.steps), str(n)), section, claim))
+    return out
+
+
+def _claim_item(claim, identifier: str, section: str, ran: Ran, shown: dict[str, str]) -> dict:
     text, marks, values = bound(claim.text, shown)
     facts = [["Steps", ", ".join(claim.steps)]]
     evidence: list[dict] = []
@@ -222,7 +235,7 @@ def _claim_item(claim, section: str, n: int, ran: Ran, shown: dict[str, str]) ->
         facts.append([f"Step {name}", f"{step.script} (code digest {step.digest[:16]})"])
         evidence += code_blocks(step, ran)
     return {
-        "id": _identifier("method", section, "+".join(claim.steps), str(n)),
+        "id": identifier,
         "group": GROUP["id"],
         "title": _short(f"{'+'.join(claim.steps)}: {text}"),
         "facts": facts + values,

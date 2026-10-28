@@ -204,6 +204,16 @@ COMMANDS = _specs(
         "real": "{b}",
         "color": "[b]{b}",
         "cmidrule": "[b](b){b}",
+        # A table's rules and colours, booktabs' and xcolor's `table` option's: a rule's
+        # width, a colour's model and its name or values, which print nothing in the cell
+        # (round 1 of #463: `\\cellcolor[rgb]{0.9,0.9,0.9}4` was read "0.9,0.9,0.94").
+        # A row's and a column's colour take colortbl's overhangs after it, `[2pt][2pt]`
+        # (round 2 of #463). Each is a package's, an author's own where none gives it, and
+        # defined again where one does (`TABLE_COMMANDS`).
+        **dict.fromkeys(("toprule", "midrule", "bottomrule"), "[b]"),
+        **dict.fromkeys(("rowcolor", "columncolor"), "[b]{b}[b][b]"),
+        **dict.fromkeys(("cellcolor", "arrayrulecolor"), "[b]{b}"),
+        "rowcolors": "*[b]{b}{b}{b}",
         "rule": "[b]{b}{b}",
         "\\": "*[b]",
         # A binding: the value it prints is the results', not the author's.
@@ -378,7 +388,17 @@ PACKAGE_COMMANDS = {
     **dict.fromkeys(SIUNITX, ("siunitx",)),
     "unit": ("siunitx", "units"),
     "qty": ("siunitx", "physics"),
+    **dict.fromkeys(("toprule", "midrule", "bottomrule"), ("booktabs",)),
+    **dict.fromkeys(("rowcolor", "cellcolor", "columncolor", "arrayrulecolor"),
+                    ("colortbl", "xcolor")),
+    "rowcolors": ("xcolor",),
 }  # fmt: skip
+#: A table's rules and colours, which the reader blanks the arguments of but an author may
+#: define again where the package is loaded too, `\\renewcommand{\\toprule}{\\hline}`: read
+#: then as before, never refused as defined again (round 2 of #463: an author's own
+#: `\\let\\toprule\\hline` was refused, and the rest of the file read as typed).
+TABLE_COMMANDS = frozenset({"toprule", "midrule", "bottomrule", "rowcolor", "cellcolor",
+                            "columncolor", "arrayrulecolor", "rowcolors"})  # fmt: skip
 #: The definers that define nothing where the command is defined already.
 PROVIDERS = frozenset({"providecommand", "ProvideDocumentCommand"})
 #: pandoc's commands under citeproc, which its template defines.

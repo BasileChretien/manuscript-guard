@@ -11657,6 +11657,237 @@ def test_a_quote_that_holds_little_more_than_its_value_is_said(
     assert report.counts["literature_verified"] == 2
 
 
+# ------------------------------------------------- what the audit reads of a LaTeX paper
+# `audit` refused a `.tex` named: a LaTeX paper's numbers, its tables and its references were
+# checked by nothing outside a project. Each corruption below changes what it reports.
+
+_LATEX_PAPER = (
+    "!documentclass{article}\n!begin{document}\n!section{Results}\n"
+    "Of 412 reports, the odds ratio was 2.10 !cite{smith}.\n"
+    "!begin{tabular}{lr}\n& Cases (n = 40) !!\nMale & 12 (30.0!%) !!\n"
+    "Female & 28 (70.0!%) !!\n!end{tabular}\n"
+    "!begin{thebibliography}{9}\n!bibitem{smith} Smith J. Lancet. 2019;393:100-10.\n"
+    "!end{thebibliography}\n!end{document}\n"
+)
+
+
+@pytest.mark.parametrize(
+    ("typed", "unmatched", "off", "listed"),
+    [
+        ((), [], [], []),
+        ((("2.10", "2.01"),), ["2.01"], [], []),
+        ((("12 (30.0", "12 (35.0"),), ["35.0%"], [7], []),
+        ((("cite{smith}", "cite{smyth}"),), [], [],
+         ["citation-not-listed", "entry-never-cited"]),
+    ],
+    ids=["as written", "an estimate changed", "a share changed", "a citation's key changed"],
+)
+def test_an_audited_latex_paper_is_held_as_a_markdown_one_is(
+    tmp_path: Path, typed, unmatched, off, listed
+) -> None:
+    from manuscript_guard.audit import audit
+    from manuscript_guard.cli import main
+
+    text = _LATEX_PAPER
+    for old, new in typed:
+        text = text.replace(old, new)
+    paper = tmp_path / "paper.tex"
+    paper.write_text(text.replace("!", chr(92)), encoding="utf-8")
+    outputs = tmp_path / "outputs.csv"
+    outputs.write_text("n,or,male,female,pm,pf\n412,2.10,12,28,30.0,70.0\n40,0,0,0,0,0\n",
+                       encoding="utf-8")  # fmt: skip
+    report = audit([paper], [outputs])
+    assert [c.text for c in report.unmatched] == unmatched
+    assert [d.line for d in report.disagreements] == off
+    assert [p.code for c in report.references for p in c.problems] == listed
+    assert main(["audit", str(paper), "--against", str(outputs), "--strict"]) == (
+        1 if unmatched else 0
+    )
+
+
+@pytest.mark.parametrize(("marker", "listed"), [("[3]", []), ("[4]", ["citation-beyond-list"])])
+def test_an_audited_paper_s_numbered_citation_is_held_to_its_list(
+    tmp_path: Path, marker: str, listed: list[str]
+) -> None:
+    """A citation by number of an entry the list does not hold, which no gate read in a
+    paper outside a project: `audit` counted no reference list."""
+    from manuscript_guard.audit import audit
+
+    paper = tmp_path / "paper.md"
+    paper.write_text(f"# Results\n\nIt rose [1, 2] and fell {marker}.\n\n# References\n\n"
+                     "1. Smith J. A. J Ex. 2019;1:1-2.\n2. Jones K. B. J Ex. 2020;2:3-4.\n"
+                     "3. Brown L. C. J Ex. 2021;3:5-6.\n", encoding="utf-8")  # fmt: skip
+    [census] = audit([paper], None).references
+    never = [] if marker == "[3]" else ["entry-never-cited"]
+    assert [p.code for p in census.problems] == listed + never
+
+
+@pytest.mark.parametrize(("marker", "listed"), [("[3]", []), ("[4]", ["citation-beyond-list"])])
+@pytest.mark.parametrize("stop", ["1.", "1" + chr(92) + "."])
+def test_an_audited_list_numbered_1_on_every_entry_is_held_as_pandoc_prints_it(
+    tmp_path: Path, marker: str, listed: list[str], stop: str
+) -> None:
+    """Round 1 of #463: a list typed "1." on every entry was held as one entry, so a
+    citation of entry 3 was beyond it; pandoc prints it 1, 2, 3, and [4] is beyond that. A
+    number pandoc escaped, `1\\.`, prints as typed, and such a list was not held at all."""
+    from manuscript_guard.audit import audit
+
+    numbers = ("1", "1", "1") if stop == "1." else ("1", "2", "3")
+    escape = "" if stop == "1." else chr(92)
+    entries = "".join(f"{n}{escape}. Author {n}. J Ex. 2019;1:1-2.\n" for n in numbers)
+    paper = tmp_path / "paper.md"
+    paper.write_text(f"# Results\n\nIt rose [1, 2] and fell {marker}.\n\n# References\n\n"
+                     f"{entries}", encoding="utf-8")  # fmt: skip
+    [census] = audit([paper], None).references
+    never = [] if marker == "[3]" else ["entry-never-cited"]
+    assert [p.code for p in census.problems] == listed + never
+
+
+@pytest.mark.parametrize(("cited", "listed"), [("a,x", []), ("a", [("refs.tex", 3)])])
+def test_an_audited_bibitem_never_cited_is_reported_in_its_own_file(
+    tmp_path: Path, cited: str, listed: list
+) -> None:
+    """Round 1 of #463: an uncited `\\bibitem` in a file the paper inputs was reported at
+    the line of the paper's main file."""
+    from manuscript_guard.audit import audit
+
+    slash = chr(92)
+    (tmp_path / "main.tex").write_text(
+        f"{slash}documentclass{{article}}\n{slash}begin{{document}}\nSee {slash}cite{{{cited}}}"
+        f".\n{slash}input{{refs}}\n{slash}end{{document}}\n", encoding="utf-8")  # fmt: skip
+    (tmp_path / "refs.tex").write_text(
+        f"{slash}begin{{thebibliography}}{{9}}\n{slash}bibitem{{a}} A.\n{slash}bibitem{{x}} X."
+        f"\n{slash}end{{thebibliography}}\n", encoding="utf-8")  # fmt: skip
+    [census] = audit([tmp_path / "main.tex"], None).references
+    assert [(p.path.name, p.line) for p in census.problems
+            if p.code == "entry-never-cited"] == listed  # fmt: skip
+
+
+@pytest.mark.parametrize(("share", "off"), [("30.0", []), ("35.0", [6])])
+def test_an_audited_share_in_a_coloured_latex_cell_is_held_to_its_denominator(
+    tmp_path: Path, share: str, off: list[int]
+) -> None:
+    """Round 1 of #463: a `\\cellcolor[rgb]{0.9,0.9,0.9}` printed its values into the cell,
+    "0.9,0.9,0.912 (35.0%)", and the share in it was held to nothing."""
+    from manuscript_guard.audit import audit
+
+    text = (
+        "!documentclass{article}\n!begin{document}\n!begin{tabular}{lr}\n"
+        "& Cases (n = 40) !!\n!rowcolor{gray!20} Female & 28 (70.0!%) !!\n"
+        f"Male & !cellcolor[rgb]{{0.9,0.9,0.9}}12 ({share}!%) !!\n"
+        "!end{tabular}\n!end{document}\n"
+    ).replace("!", chr(92)).replace("gray" + chr(92), "gray!")
+    paper = tmp_path / "paper.tex"
+    paper.write_text(text, encoding="utf-8")
+    report = audit([paper], None)
+    assert [d.line for d in report.disagreements] == off
+
+
+@pytest.mark.parametrize(("second", "strict"), [(True, 0), (False, 1)])
+def test_a_second_latex_document_in_an_audited_folder_is_read_as_a_paper(
+    tmp_path: Path, second: bool, strict: int
+) -> None:
+    """Round 1 of #463: a folder's supplement, a document of its own, was refused as a
+    second document inside the main one, and `--strict` failed though both were read. A
+    file with no document of its own that the main one inputs, and that the reader refuses
+    in part, still fails `--strict`."""
+    from manuscript_guard.cli import main
+
+    slash = chr(92)
+    (tmp_path / "main.tex").write_text(
+        f"{slash}documentclass{{article}}\n{slash}begin{{document}}\nOf 412.\n"
+        + ("" if second else f"{slash}input{{supplement}}\n") + f"{slash}end{{document}}\n",
+        encoding="utf-8",
+    )  # fmt: skip
+    supplement = (f"{slash}documentclass{{article}}\n{slash}begin{{document}}\nOf 40.\n"
+                  f"{slash}end{{document}}\n") if second else f"{slash}catcode`@=11 Of 40.\n"
+    (tmp_path / "supplement.tex").write_text(supplement, encoding="utf-8")
+    assert main(["audit", str(tmp_path), "--strict"]) == strict
+
+
+@pytest.mark.parametrize(
+    "defined",
+    ["!let!toprule!hline", "!def!toprule{!hline}", "!newcommand{!midrule}{!hline}",
+     "!renewcommand{!bottomrule}{!hline}"],
+    ids=["let", "def", "newcommand", "renewcommand"],
+)
+@pytest.mark.parametrize(("printed", "unmatched"), [("412", []), ("413", ["413"])])
+def test_an_author_s_own_rule_command_leaves_the_paper_read(
+    tmp_path: Path, defined: str, printed: str, unmatched: list[str]
+) -> None:
+    """Round 2 of #463: the mask knew booktabs' rules, and refused an author's own
+    definition of one as defined again, so the rest of the file was read as typed and
+    `--strict` failed, in `audit` and in every gate of `check`. A number changed after it is
+    still found."""
+    from manuscript_guard.audit import audit
+
+    paper = tmp_path / "paper.tex"
+    paper.write_text(
+        (f"!documentclass{{article}}\n{defined}\n!begin{{document}}\nOf {printed} reports.\n"
+         "!end{document}\n").replace("!", chr(92)), encoding="utf-8",
+    )  # fmt: skip
+    outputs = tmp_path / "outputs.csv"
+    outputs.write_text("n\n412\n", encoding="utf-8")
+    report = audit([paper], [outputs])
+    assert (report.unreadable, [c.text for c in report.unmatched]) == ([], unmatched)
+
+
+_SICI = "10.1002/(SICI)1097-0258(19980430)17:8<857::AID-SIM777>3.0.CO;2-E"
+
+
+@pytest.mark.parametrize(("cited", "listed"), [("2", []), ("3", ["citation-beyond-list"])])
+def test_an_audited_escaped_interval_is_no_citation(
+    tmp_path: Path, cited: str, listed: list[str]
+) -> None:
+    """Fix-only round of #463: pandoc escapes an interval's brackets as it escapes a
+    citation's, `64 \\[55-72\\]`, and once escaped citations were read, the interval was one,
+    beyond a list of two. A citation beyond it is still reported."""
+    from manuscript_guard.audit import audit
+
+    slash = chr(92)
+    paper = tmp_path / "paper.md"
+    paper.write_text(f"# Results\n\nMedian 64 {slash}[55-72{slash}] days {slash}[1{slash}], "
+                     f"{slash}[{cited}{slash}].\n\n# References\n\n1. A. J Ex. 2019;1:1-2.\n"
+                     "2. B. J Ex. 2019;1:1-2.\n", encoding="utf-8")  # fmt: skip
+    [census] = audit([paper], None).references
+    never = ["entry-never-cited"] if cited == "3" else []
+    assert [p.code for p in census.problems] == listed + never
+
+
+@pytest.mark.parametrize(("written", "listed"), [(_SICI, []),
+                                                 ("10.1002/sim.857", ["doi-unregistered"])])
+def test_an_audited_sici_doi_is_looked_up_whole(
+    tmp_path: Path, written: str, listed: list[str]
+) -> None:
+    """Round 2 of #463: a SICI DOI was cut at its `<`, and the registries, asked of the
+    part before it, had no such DOI: the audit said no registry had a real work's DOI."""
+    import json
+
+    from manuscript_guard.audit import audit
+    from manuscript_guard.auditing.references import look_up
+    from manuscript_guard.lookup import run
+    from manuscript_guard.lookup.http import Response
+
+    def registry(request, timeout):
+        known = "aid-sim777" in request.base.lower()
+        if "crossref" in request.base and known:
+            body = {"status": "ok", "message-type": "work", "message": {
+                "DOI": _SICI.lower(), "type": "journal-article", "title": ["A trial"]}}
+            return Response(200, {"Content-Type": "application/json"}, json.dumps(body).encode())
+        if "openalex" in request.base and known:
+            body = {"id": "W1", "is_retracted": False, "title": "A trial"}
+            return Response(200, {"Content-Type": "application/json"}, json.dumps(body).encode())
+        return Response(404, {"Content-Type": "application/json"},
+                        json.dumps({"responseCode": 100}).encode())  # fmt: skip
+
+    paper = tmp_path / "paper.md"
+    paper.write_text(f"# Results\n\nIt rose [1].\n\n# References\n\n1. Smith J. A trial. "
+                     f"Stat Med. 1998;17:857-72. doi:{written}.\n", encoding="utf-8")  # fmt: skip
+    looked = look_up(audit([paper], None).references, transport=registry,
+                     pacer=run.Pacer(sleep=lambda seconds: None))  # fmt: skip
+    assert [p.code for one in looked for p in one.problems] == listed
+
+
 # --------------------------------------------------------------------- the journal gate
 # A journal's limits, sections and statements are about the document the editor receives,
 # and the build strips every file's front matter before printing it.
@@ -13879,6 +14110,40 @@ def _outputs(tmp_path: Path, text: str) -> Path:
     path = tmp_path / "out.json"
     path.write_text(text, encoding="utf-8")
     return path
+
+
+_COUNTED = (
+    f"<w:numbering {W}><w:abstractNum w:abstractNumId='0'><w:lvl w:ilvl='0'><w:start "
+    "w:val='1'/><w:numFmt w:val='decimal'/><w:lvlText w:val='[%1]'/></w:lvl></w:abstractNum>"
+    "<w:num w:numId='1'><w:abstractNumId w:val='0'/></w:num></w:numbering>"
+)
+
+
+@pytest.mark.parametrize(
+    ("entries", "numbered", "listed"),
+    [(2, True, ["citation-beyond-list"]), (2, False, []), (0, False, [])],
+    ids=["numbered by Word", "author-year", "an empty list"],
+)
+def test_an_audited_docx_list_is_numbered_by_place_only_where_word_numbers_it(
+    tmp_path: Path, entries: int, numbered: bool, listed: list[str]
+) -> None:
+    """Round 1 of #463: one bracketed number in the text, `range [0, 3]`, made an author-year
+    list numbered by place, every entry "cited nowhere"; and under a final heading with no
+    entry, `max()` of nothing raised. Now only a list Word numbers 1, 2, 3 is held to the
+    text's numbers: there [3] is beyond its two entries."""
+    from manuscript_guard.audit import audit
+
+    number = "<w:numPr><w:ilvl w:val='0'/><w:numId w:val='1'/></w:numPr>" if numbered else ""
+    listed_entries = "".join(
+        f"<w:p><w:pPr>{number}</w:pPr><w:r><w:t>Author {n}. J Ex. 2019;1:1-2.</w:t></w:r></w:p>"
+        for n in range(entries)
+    )
+    body = (_p("Scores range [0, 3] [1, 2] (Author 2019).") + _p("References", "Heading1")
+            + listed_entries)  # fmt: skip
+    paper = _docx(tmp_path / "paper.docx", body,
+                  {"word/numbering.xml": _COUNTED} if numbered else None)  # fmt: skip
+    [census] = audit([paper], None).references
+    assert [p.code for p in census.problems] == listed
 
 
 def test_audit_catches_a_sign_flipped_estimate(tmp_path: Path) -> None:

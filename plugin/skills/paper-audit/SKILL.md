@@ -1,6 +1,6 @@
 ---
 name: paper-audit
-description: Check the numbers in a paper that was not written with manuscript-guard against the analysis outputs, and report honestly what a match is worth. Use when handed an existing .docx or Markdown manuscript whose numbers were typed by hand, before resubmitting an old paper, or before moving one into a manuscript-guard project. Not for a manuscript-guard project, whose numbers are bound (use results-binding).
+description: Check the numbers in a paper that was not written with manuscript-guard against the analysis outputs, and report honestly what a match is worth. Use when handed an existing .docx, Markdown or LaTeX manuscript whose numbers were typed by hand, before resubmitting an old paper, or before moving one into a manuscript-guard project. Not for a manuscript-guard project, whose numbers are bound (use results-binding).
 ---
 
 # Auditing a paper that was written by hand
@@ -18,7 +18,10 @@ none while reporting success.
 
 ## 1. Choose what to check against
 
-`--against` is the backing set, and it decides whether the audit tells you anything.
+`--against` is the backing set, and it decides whether the audit tells you anything. It
+may be left out when there are no outputs to hand: then no number is compared, the report
+says so on its first line, and the checks that need no outputs still run (step 3). Say that
+to the author in those words; never call such a report a check of the numbers.
 
 **Use the analysis outputs as printed, not the raw data.** On the worked example, audited
 against its results, 24% of the integers from 1 to 100 match by chance. Audited against
@@ -74,18 +77,38 @@ audited. Markdown and text files are read as written,
 and `--` between digits is read as a separator and a minus in every format: `-0.72--0.30`
 runs to -0.30, as it does in R's output. A Markdown paper that writes a range as
 `2010--2019`, meaning pandoc's en dash, gets `-2019` reported as not found; check such
-ranges by hand. There is no reader for a PDF
+ranges by hand. A `.tex` is read with the files it inputs from its folder, at `.tex` lines;
+in a folder every `.tex` with `\documentclass` starts a paper, an old draft or a LaTeX
+template too, so name the paper's own file when the folder holds others; a file nothing
+inputs is named under `Passed over`. There is no reader for a PDF
 manuscript. `--figures` takes SVG and PDF files with a text layer; one with no text at all,
 such as a matplotlib SVG with its labels drawn as outlines, is listed as unreadable rather
-than audited. `--strict` exits 1 when anything is unmatched or a paper or figure could not
-be read, and the audit exits 2 when nothing given could be read at all.
+than audited. `--strict` exits 1 when a number is in no output, a paper, a figure or a
+stretch of one could not be read, or no number was read, and the audit exits 2 when nothing
+given could be read at all, or `--dry-run` or `--lookup-cache` is given without `--lookup`.
+`--json` gives the report for a script, and on exit 2 an object whose `ok` is false, with
+the reason.
+
+G6 and G14 read the words as `check` does, a .docx through the conversion `init --from`
+makes (skipped with a note without pandoc); ask the author which English the paper is in
+and pass `--english british` or `american`. Neither is counted by `--strict`. The reference
+list is counted and its numbered citations held to it; nothing is sent to a registry
+unless you pass `--lookup`, and then ask the author first: run `--lookup --dry-run`, show
+what would be sent (each DOI to Crossref and OpenAlex, and to DataCite and doi.org where
+Crossref has no record; each PMID to PubMed), and keep the answers with `--lookup-cache DIR`
+if they will audit again.
 
 ## 3. Read the report
 
-It lists the unmatched numbers by file, up to 40 per file and then only a count, followed
+What was read and what was not comes first, then a section for each check: `Membership`,
+`Arithmetic`, `Writing (G6) and Language (G14)`, `References (G7)`. Membership lists the
+unmatched numbers by file, up to 40 per file and then only a count, followed
 by `What a match is worth here`: the
 share of integers 1–100, of integers 1–1000, and of two-decimal values that would match by
-chance against this backing set, with a verdict.
+chance against this backing set, with a verdict. Arithmetic lists the numbers that do not
+fit the ones beside them, a P and its statistic or an n (%) and its denominator, which
+needs no outputs. Report each section apart; a finding of G6 or G14 is about the words, and
+no evidence about the numbers.
 
 Two things about the list. `line N` is a line of the extracted text, which in a `.docx` is
 a paragraph, not a page or a line in Word. The context shown is the first 140 characters of
@@ -93,62 +116,11 @@ that paragraph, so the number itself is often not in it. Find it before you repo
 
 ## 4. Triage what did not match
 
-Each unmatched number is one of these, and only the first is what you are looking for:
-
-| What it is | What to do |
-|---|---|
-| A stale or wrong value | Tell the author, with the value the outputs hold |
-| From a source not in `--against` | Add the source, or check the number by hand |
-| Rounded, a percentage written as a fraction, or `×10⁻ⁿ` | Check by hand against the output |
-| A magnitude quoted without its sign, "fell by 0.51" for -0.51 | Check by hand. The sign is compared, so this is reported |
-| A range written `2010--2019` in Markdown | Check by hand; `--` is read as a separator and a minus |
-| `412.` opening a line of a Markdown or text paper, directly under a line of prose | Check it: a list cannot start under a paragraph, so it is a count a hard wrap moved, not numbering. (Under a list item's text it does start the next item, and is not reported.) A text file saved a paragraph per line with no blank lines reads as one paragraph, so its typed numbering lands here too |
-| A label longer than three letters, `beta=0.4` | Check by hand |
-| Vocabulary: `3-core`, an ISSN, a dose schedule | Check by hand |
-| An axis tick | Nothing, if the axis is what it claims |
-| A reference entry | See below |
-| `41 200` read as `41` and `200` | A thousands separator written as a space; check by hand |
-
-A reference list starts at a line that is only a heading such as `References`,
-`Reference list`, `Bibliography`, `Works cited` or `Literature cited`, perhaps with a number
-(`5`, `5.`, `5)`), bold, or a trailing colon. A line the document marks as a heading (a
-Markdown `#` or underline where pandoc prints a heading, a heading style in a `.docx`) needs
-nothing more, and may end in a pandoc attribute block, as in `# References {-}`, `{.unnumbered}` or
-`{#refs .unnumbered}`, which is dropped, as pandoc drops it; so are the closing `#`s of a
-Markdown `#` heading. Most of what pandoc or Word prints is kept: braces pandoc does not
-read as attributes, as in `# References {and further reading}` or `{title=" Works cited"}`,
-a block with a no-break space after it, and every `#` of a setext heading or a Word
-heading, as in `References #`. None of these starts a list. Two do, although pandoc or Word
-prints their braces or `#`s: a `.docx` paragraph in a heading style typed as `References {-}`, and
-an unpaired `*` or `_` before the block or the closing `#`s, as in `# *References {-}`.
-The numbers under either go unread; DESIGN.md lists both under Known gaps.
-Directly under a line of prose, a `#` line or an underlined one is printed as part of that
-paragraph, so it marks nothing.
-Any other line also has to be capitalised, not end in a full stop or in braces, and not
-start with `#`: a wrapped "…duplicate / references." is not a heading, nor is
-`References {-}` on a line of prose,
-and neither is `# References` as a comment in a fenced R listing or typed into a Word
-paragraph with no heading style. In Markdown, nothing in a fenced block, an HTML comment or
-the front matter starts a list. A table cell
-reading `References` is a column header, not a heading. The
-list ends at the next heading: a Markdown heading (or a `#` or underlined line that pandoc
-prints as prose, so an appendix written that way is not read as more references), or in a
-`.docx` a paragraph styled as one.
-Every such list is cut, and the report names the lines under `Not audited`. Check each
-range. Code that is not fenced is not recognised as code, whether it is an unfenced or
-indented listing in Markdown or a listing pasted into Word. A `References` line in it does
-start a list, and in Markdown so does a `# References` comment that starts a block (after
-a blank line, say), which pandoc prints as a heading. In a `.docx` whose headings are only
-bold text, the list runs to the end of the body, and an appendix after it goes unread.
-
-Only when there is no such heading is a line taken for a reference entry by its shape, and
-only if it carries the year the way an entry does: "Smith, J. (2019).", "Fictional, Anne.
-2021.", or the numbered styles' "Smith J, Jones K. … 2019;393:100-10.". A Harvard entry with
-no full stop after "(2019)", or a book, web page or online-first article in a numbered
-style, is not recognised, and its numbers show up as unmatched. A line taken for an entry is
-still compared: numbers on it found nowhere are listed apart, under `NOT FOUND, ON LINES READ
-AS REFERENCE ENTRIES`, which `--strict` does not count. Most are volumes and pages. Read the
-list anyway, because a caption can have the same shape.
+Each unmatched number is a stale or wrong value, a value from a source not in `--against`,
+one written another way than the outputs write it, or vocabulary, an axis tick or a
+reference entry. Only the first is what you are looking for. Before you report on any,
+read [references/triage.md](references/triage.md): what to do with each kind, and where the
+audit cuts a reference list, so that you can check the ranges it names under `Not audited`.
 
 ## 5. Say what a clean report does not mean
 

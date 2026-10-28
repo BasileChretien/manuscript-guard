@@ -291,7 +291,7 @@ number in the file and the rule that classified it.
 | Command | What it does |
 |---|---|
 | `check` | run every gate; `--stage submission` holds the manuscript to submission standards |
-| `audit` | check the numbers of a paper that was not written this way against existing outputs |
+| `audit` | check a paper that was not written this way, in Word, Markdown or LaTeX: its numbers against the outputs `--against` names, if any, and against each other, its words (G6, G14) and its reference list (G7); `--lookup` asks the registries about each DOI and PMID |
 | `explain` | show how each number in a file was classified |
 | `bind` | show every unbound number and how to give it a source; `--pointers` offers the `{{ref.…}}` binding that prints each typed "Table 2" |
 | `impact` | list what depends on a file, or on each file changed since a commit: results, the sentences that bind them, figures, Methods paragraphs, panel readings and co-author answers |

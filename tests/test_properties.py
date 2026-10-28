@@ -109,6 +109,7 @@ from generated import (
     latex_reference_lists,
     latex_refusal_trees,
     latex_straight_quotes,
+    latex_table_rows,
     latex_texts,
     latex_trees,
     latex_words,
@@ -121,6 +122,7 @@ from generated import (
     method_claims,
     methods_titled,
     named_numbers,
+    numbered_citations,
     numbered_displays,
     painted_pdfs,
     painted_svgs,
@@ -144,6 +146,7 @@ from generated import (
     supplements,
     texts,
     typed,
+    typed_reference_lists,
     vector_figures,
     vocabularies,
 )
@@ -4203,6 +4206,162 @@ def _a_table_in_a_fenced_listing_is_read(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.text import tables
 
     patch.setattr(tables, "mask", lambda text: text)
+
+
+# ----------------------------------------------------------- a LaTeX table's rows and cells
+
+
+@holds(100, latex_table_rows())
+def test_a_latex_table_is_read_as_rows_of_cells_where_latex_splits_them(
+    drawn: tuple[str, list[list[tuple[str, int, int]]]],
+) -> None:
+    """Every row of a table typed in LaTeX is read where LaTeX ends it, at `\\\\` or
+    `\\tabularnewline`, and its cells where `&` parts them, whatever the order of the rows:
+    an escaped `\\&` and a `\\\\` inside braces part nothing, a comment's separators are no
+    separators, nor are a nested tabular's, which is read as a table of its own, a
+    `\\multicolumn` spans its columns after a rule, a comment or a `\\rowcolor`, a rule and
+    a colour print nothing in a cell, a rule is no row, and the star or the length after a
+    `\\\\` is not the next row's (`text/latex/tables.py`)."""
+    from manuscript_guard.text.latex.structure import read_tree
+    from manuscript_guard.text.latex.tables import latex_tables
+
+    text, expected = drawn
+    source = read_tree({"main.tex": text}, "main.tex").sources[0]
+    found = [[(c.text, c.line, c.span) for c in row]
+             for table in latex_tables(source) for row in table]  # fmt: skip
+    assert found == expected, text
+
+
+def _a_row_ends_inside_braces(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text.latex import tables
+
+    patch.setattr(tables, "_at_top", lambda depth, nested: True)
+
+
+def _a_multicolumn_spans_one_column(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text.latex import tables
+
+    patch.setattr(tables, "_SPAN", re.compile("(?!)"))
+
+
+def _a_comment_before_a_cell_is_its_text(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text.latex import tables
+
+    patch.setattr(tables, "_in_comment", lambda source, start, end: set())
+
+
+def _a_rule_before_a_cell_is_its_text(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text.latex import tables
+
+    patch.setattr(tables, "_RULE", re.compile("(?!)"))
+
+
+def _tabularnewline_ends_no_row(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.text.latex import tables
+
+    patch.setattr(tables, "_NEWLINE_COMMAND", "\\tabularnewline-never")
+
+
+def _an_escaped_ampersand_parts_cells(patch: pytest.MonkeyPatch) -> None:
+    """Round 1 of #463: the `\\&` escape read as LaTeX reads a separator."""
+    from manuscript_guard.text.latex import tables
+
+    patch.setattr(tables, "_ESCAPED", 1)
+    patch.setattr(tables, "_separates", lambda masked, at: True)
+
+
+def _every_ampersand_parts_cells(patch: pytest.MonkeyPatch) -> None:
+    """Round 2 of #463: an `&` the mask reads as no separator, in a `\\verb`, parts cells."""
+    from manuscript_guard.text.latex import tables
+
+    patch.setattr(tables, "_separates", lambda masked, at: True)
+
+
+def _what_follows_a_row_break_is_the_next_cell(patch: pytest.MonkeyPatch) -> None:
+    """Round 1 of #463: the star and the length after `\\\\` read as the next row's text."""
+    from manuscript_guard.text.latex import tables
+
+    patch.setattr(tables, "_AFTER_BREAK", re.compile(""))
+
+
+# ---------------------------------------------------- a reference list and its citations
+
+
+@holds(100, numbered_citations())
+def test_a_numbered_citation_is_held_to_the_reference_list_and_an_interval_is_none(
+    drawn: tuple[str, list[tuple[str, int]]],
+) -> None:
+    """G7's census in `audit`: a bracketed citation of one entry, of a list, of a range
+    with a hyphen or an en dash, cites each entry it names, a range every one between its
+    ends; a citation of an entry the list does not hold is reported where it stands, and an
+    entry nothing cites where it is listed. An interval after the value it encloses and a
+    link's text are no citations (`auditing/references.py`)."""
+    from manuscript_guard.audit import census_of_markdown
+
+    text, expected = drawn
+    census = census_of_markdown(Path("paper.md"), text)
+    assert census.style == "numbered", text
+    assert [(p.code, p.line) for p in census.problems] == expected, text
+
+
+def _an_interval_after_its_value_is_a_citation(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import audit
+
+    patch.setattr(audit, "_intervals", lambda text: [])
+
+
+def _a_range_of_citations_cites_its_ends(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import references
+
+    patch.setattr(references, "MAX_RANGE", -1)
+
+
+def _a_link_s_text_is_a_citation(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import references
+
+    pattern = references._MARKER.pattern.replace("(?!\\()", "")
+    assert pattern != references._MARKER.pattern
+    patch.setattr(references, "_MARKER", re.compile(pattern))
+
+
+@holds(100, typed_reference_lists())
+def test_a_markdown_reference_list_is_numbered_as_pandoc_prints_it(
+    drawn: tuple[list[str], list[tuple[int, int]], list[int]],
+) -> None:
+    """Each entry of a Markdown reference list has the number pandoc prints for it: a list
+    from its first number up, however its other entries are typed, until its stop changes;
+    and a number pandoc escaped, `3\\.`, as typed (round 1 of #463)."""
+    from manuscript_guard.auditing.references import _entries_of
+
+    lines, spans, expected = drawn
+    assert [entry.number for entry in _entries_of(lines, spans, False)] == expected, lines
+
+
+def _a_markdown_list_is_numbered_as_typed(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import references
+
+    patch.setattr(references, "_same_list", lambda run, stop, list_at: False)
+
+
+def _an_escaped_number_is_a_list_s(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import references
+
+    patch.setattr(references, "_is_list_item",
+                  lambda numbered: numbered is not None and numbered.group(2) is not None)
+
+
+def _an_escaped_number_is_no_number(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import references
+
+    pattern = references._NUMBERED_ENTRY.pattern.replace("(\\\\?)", "()")
+    assert pattern != references._NUMBERED_ENTRY.pattern
+    patch.setattr(references, "_NUMBERED_ENTRY", re.compile(pattern))
+
+
+def _a_new_stop_goes_on_the_list(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import references
+
+    patch.setattr(references, "_same_list", lambda run, stop, list_at: run[2] == list_at)
 
 
 # ------------------------------------------------------- a table's means of whole numbers
@@ -13755,6 +13914,66 @@ BROKEN = {
     "a characteristic's label row with its P value beside it is read as a header": (
         _a_label_row_with_its_p_value_is_a_header,
         test_an_n_percent_in_a_table_is_read_where_it_stands_and_held_to_its_denominator,
+    ),
+    "a LaTeX row ends at a \\\\ inside braces": (
+        _a_row_ends_inside_braces,
+        test_a_latex_table_is_read_as_rows_of_cells_where_latex_splits_them,
+    ),
+    "a LaTeX \\multicolumn spans one column": (
+        _a_multicolumn_spans_one_column,
+        test_a_latex_table_is_read_as_rows_of_cells_where_latex_splits_them,
+    ),
+    "a comment before a LaTeX cell is read as its start": (
+        _a_comment_before_a_cell_is_its_text,
+        test_a_latex_table_is_read_as_rows_of_cells_where_latex_splits_them,
+    ),
+    "a rule before a LaTeX cell is read as its start": (
+        _a_rule_before_a_cell_is_its_text,
+        test_a_latex_table_is_read_as_rows_of_cells_where_latex_splits_them,
+    ),
+    "\\tabularnewline ends no LaTeX row": (
+        _tabularnewline_ends_no_row,
+        test_a_latex_table_is_read_as_rows_of_cells_where_latex_splits_them,
+    ),
+    "a Markdown reference list is numbered as typed": (
+        _a_markdown_list_is_numbered_as_typed,
+        test_a_markdown_reference_list_is_numbered_as_pandoc_prints_it,
+    ),
+    "a number pandoc escaped is numbered as a list's": (
+        _an_escaped_number_is_a_list_s,
+        test_a_markdown_reference_list_is_numbered_as_pandoc_prints_it,
+    ),
+    "a number pandoc escaped is no number": (
+        _an_escaped_number_is_no_number,
+        test_a_markdown_reference_list_is_numbered_as_pandoc_prints_it,
+    ),
+    "a new stop goes on the Markdown list before it": (
+        _a_new_stop_goes_on_the_list,
+        test_a_markdown_reference_list_is_numbered_as_pandoc_prints_it,
+    ),
+    "an escaped \\& parts LaTeX cells": (
+        _an_escaped_ampersand_parts_cells,
+        test_a_latex_table_is_read_as_rows_of_cells_where_latex_splits_them,
+    ),
+    "an & the mask reads as no separator parts LaTeX cells": (
+        _every_ampersand_parts_cells,
+        test_a_latex_table_is_read_as_rows_of_cells_where_latex_splits_them,
+    ),
+    "what follows a LaTeX \\\\ is read as the next cell": (
+        _what_follows_a_row_break_is_the_next_cell,
+        test_a_latex_table_is_read_as_rows_of_cells_where_latex_splits_them,
+    ),
+    "an interval after its value is read as a numbered citation": (
+        _an_interval_after_its_value_is_a_citation,
+        test_a_numbered_citation_is_held_to_the_reference_list_and_an_interval_is_none,
+    ),
+    "a range of numbered citations cites only its ends": (
+        _a_range_of_citations_cites_its_ends,
+        test_a_numbered_citation_is_held_to_the_reference_list_and_an_interval_is_none,
+    ),
+    "a link's text is read as a numbered citation": (
+        _a_link_s_text_is_a_citation,
+        test_a_numbered_citation_is_held_to_the_reference_list_and_an_interval_is_none,
     ),
     "a run of categories takes in the characteristic after them": (
         _a_run_of_categories_takes_in_the_row_after_them,

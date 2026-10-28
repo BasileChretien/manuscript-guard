@@ -567,11 +567,8 @@ def plan_package(project: Project, results: Results, *, with_manuscript: bool = 
                                  in_git=tracked is not None, kind=kind)
     entries.sort(key=lambda entry: entry.path)
     signables: list[Signable] = []
-    produced = {_key(f.path.relative_to(project.root).as_posix()):
-                f.path.relative_to(project.root).as_posix() for f in results.fragments}  # fmt: skip
-    withheld_results = frozenset(produced[_key(i.path)] for i in inputs
-                                 if not i.included and _key(i.path) in produced)  # fmt: skip
-    small, settled = settled_small_counts(project, results, withheld_results)
+    small, settled = settled_small_counts(project, results,
+                                          _withheld_results(project, results, inputs))
     if small is not None:
         signables.append(small)
         findings += settled
@@ -586,6 +583,22 @@ def plan_package(project: Project, results: Results, *, with_manuscript: bool = 
     return Plan(name_of(project), tuple(entries), tuple(sorted(withheld, key=lambda w: w.path)),
                 tuple(inputs), report, tuple(signables), with_manuscript, kind,
                 pandoc)  # fmt: skip
+
+
+def _withheld_results(project: Project, results: Results, inputs: list[Input]) -> frozenset[str]:
+    """The results files the package withholds, named from the project's root: those a
+    script that read them declared restricted."""
+    produced = {_key(f.path.relative_to(project.root).as_posix()):
+                f.path.relative_to(project.root).as_posix() for f in results.fragments}  # fmt: skip
+    return frozenset(produced[_key(i.path)] for i in inputs
+                     if not i.included and _key(i.path) in produced)  # fmt: skip
+
+
+def withheld_results(project: Project, results: Results) -> frozenset[str]:
+    """The results files a package of the project withholds, worked out without planning the
+    rest of it: what `deposit`'s preflight leaves out of the counts it reads."""
+    inputs, _refused = _inputs(project, results, tracked_files(project.root))
+    return _withheld_results(project, results, inputs)
 
 
 def _collect(collect: _Collector, project: Project, results: Results, inputs: list[Input],
@@ -751,4 +764,4 @@ def package_signables(project: Project, results: Results,
 
 
 __all__ = ["DEPOSIT", "KINDS", "Entry", "Input", "PackageError", "Plan", "Withheld",
-           "deposit_id", "package_signables", "plan_package"]  # fmt: skip
+           "deposit_id", "package_signables", "plan_package", "withheld_results"]  # fmt: skip

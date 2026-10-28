@@ -1171,17 +1171,36 @@ _REVIEW = re.compile(_TOOL + r"review\b", re.IGNORECASE)
 _APPROVE = re.compile(_TOOL + r"approve\b", re.IGNORECASE)
 _SIGN = re.compile(_TOOL + r"sign\b", re.IGNORECASE)
 _CHECKER = re.compile(_TOOL + r"checker\b", re.IGNORECASE)
-_IMPORT_VERB = re.compile(r"(?<![\w./\\-])[\"']?import[\"']?(?![\w./\\-])")
+#: The options of `checker` that take a value: what follows one is its value, not the verb.
+_CHECKER_VALUED = ("--for", "--to", "-o", "--output", "--title", "--items", "--except",
+                   "--answers")  # fmt: skip
 
 
 def _imports_answers(joined: str) -> bool:
-    """Whether a `checker` in this command has the verb `import`, wherever it stands among the
-    options."""
+    """Whether a `checker` in this command has the verb `import`: its first argument that is
+    neither an option nor an option's value. `import` anywhere in the line was read as the verb,
+    in `--title "Drug import and safety"` too."""
+    import shlex
+
     for found in _CHECKER.finditer(joined):
         rest = joined[found.end() :]
         end = _INVOCATION_END.search(rest)
-        if _IMPORT_VERB.search(rest[: end.start() if end else len(rest)]):
-            return True
+        arguments = rest[: end.start() if end else len(rest)]
+        try:
+            words = shlex.split(arguments, posix=True)
+        except ValueError:  # an unclosed quote: read it as the shell would not
+            words = arguments.split()
+        valued = False
+        for word in words:
+            if valued:
+                valued = False
+                continue
+            if word.startswith("-"):
+                valued = word in _CHECKER_VALUED
+                continue
+            if word == "import":
+                return True
+            break
     return False
 
 

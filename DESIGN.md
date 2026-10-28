@@ -10338,18 +10338,30 @@ is itself a finding.
 Which decision counts is the latest about the item **as it is now**, where the person gave one,
 and otherwise the latest of all (`store._latest`). With stale answers written down, an earlier
 round's file imported after this round's would otherwise have taken the place of every current
-answer it named, and put those items back in the queue. An answer identical to the person's
-latest on the item, the same status, note and digest from the same page, is not written again,
-so importing a file twice adds nothing; when it was given is not compared, because an answer
-the page did not stamp takes the time of the import.
+answer it named, and put those items back in the queue. A "wrong", an "unsure" or a note about
+an earlier version, given after the person's answer about this one, counts for nothing and is
+listed by `status` as a flag on an earlier version, so that its note is not lost to sight.
+
+An answer the record already holds is not written again (`store._already`): one with the
+status, note and digest of the person's latest decision on the item, or, where the page stamped
+it with the time it was given, one with the status, note, digest and time of any earlier
+decision of theirs on it. The page it came from is not compared: a page rebuilt for the same
+person brings back from the browser the answers they gave on the last one, under its own
+identifier. So importing a file twice adds nothing, and nor does importing it again after a
+later one from the same person, which made its old answer the latest once more (round 1 of
+#455). A person who changes their mind back answers at another time, and that is recorded.
 
 ### A page for each author, and whose word an answer is
 
 `checker build --all` writes `checks/check-<name>.html` for every author `authors.yaml` lists,
 the corresponding author among them (`--except` leaves one out, `-o` names the folder);
 `--for` still writes one page, for an author or for anyone else, and says when the name is no
-author's. Answers go back to the corresponding author unless `--to` names someone. Each page
-carries `person` (name and ORCID iD), a random 128-bit token (`secrets.token_hex(16)`), and the
+author's; a family name two authors share names neither, and is refused. Two names that fold to
+one file name, "José García" and "Jose Garcia", get `check-jose-garcia.html` and
+`check-jose-garcia-2.html`. A page is written under a temporary name, recorded in the register,
+and only then given its own, so a register that cannot be written (open in a spreadsheet) leaves
+no page to be sent unrecorded. Answers go back to the corresponding author unless `--to` names
+someone. Each page carries `person` (name and ORCID iD), a random 128-bit token (`secrets.token_hex(16)`), and the
 digest of the items it asks; its header says "Made for NAME. Your answers will carry this
 name." The page's identifier digests its items, its person and its token, so no two builds
 share one; the browser keeps unsent answers under the first two only, so a page rebuilt with
@@ -10368,24 +10380,45 @@ each says whose it is, and is held to the register (Basile's decision 4 (a)):
   is refused with the reason, exit 2, and since every file is read before any is recorded,
   nothing from that import is recorded;
 - a `/1` file naming a registered page is refused: no registered page writes one;
-- a file naming no registered page, a `/1` file or one built on another clone, is recorded, and
-  its decisions are **claimed**: `import` and `status` say so, and a later reader can tell them
-  from the rest by their page's absence from the register.
+- a file naming no registered page, a `/1` file, one built on another clone or one with an
+  identifier made up, is recorded under whatever name it gives, and its decisions are
+  **claimed**: `import` says so of the file, `status` of each decision, and a later reader can
+  tell them from the rest by their page's absence from the register. Nothing holds the name in
+  such a file to anything.
 
-The name is looked up as `approve --as` looks one up (`find_author`), and recorded as the
-author's name, so "Example" and "Ada Example" are one person. A name that is no author's is
-recorded as given and marked as such; a family name two authors share is refused.
+Every file is checked whole before any is recorded: a field of the wrong type, an `answers` that
+is not a list or an answer that names no item refuses the import (round 1 of #455).
+
+The name is looked up in `authors.yaml` (`checking.people`): by the name the record keeps for an
+author, by ORCID iD, by full name or by family name, compared in Unicode's composed form and
+without case, so "Example" and "Ada Example" are one person and a name typed with a combining
+accent is the name spelt with a precomposed one. Decisions are kept by person and item, so no
+two people may share a name in the record: an author is recorded under their name, and where two
+authors share a full name, under the name and their ORCID iD, "Wei Zhang <0000-0002-1825-0097>",
+or for one of them with no iD under their place among the namesakes, "Wei Zhang (2)". Both were
+recorded as "Wei Zhang", and one's "wrong" was replaced by the other's "ok" (round 1 of #455).
+Two namesakes with no iD between them get no pages until one is added. The page greets each by
+their name; the answers file carries the name they are recorded under.
+
+A name that is no author's is recorded as given and marked as such. A name that is an author's
+given with an ORCID iD that is not theirs, or an author's iD given with another's name, is a
+mismatch: in a file from a registered page it is refused (authors.yaml has changed since the
+page was built), and in any other file it is recorded as "Name <iD>", apart from the author, and
+marked "ORCID differs".
 
 **What this proves.** The token shows which page a file came from, not who answered. Whoever
 holds a page holds its token: a page forwarded is answered by whoever it was forwarded to, and
-the corresponding author, who sent every page, holds every token. What it stops is an answers
-file edited to read as another co-author's, and one page's answers passed off as another
-page's or another round's. The name on a decision is a claim, and the register says whether
-the page it names was built for that name. Nothing is signed.
+the corresponding author, who sent every page, holds every token. What it stops is a file that
+names a registered page being edited to read as another co-author's, and one page's answers
+passed off as another page's or another round's. It does not stop a file that names no
+registered page from reading as anyone's: that file is recorded as claimed, under the name it
+gives. The name on a decision is a claim, and the register says whether the page it names was
+built for that name. Nothing is signed.
 
 An agent's `checker import` is put to the person by the hooks, as an `approve` is (decision
 5 (a)): it puts a co-author's name to the answers in a file, and which file is taken as whose
-word is the author's call.
+word is the author's call. The verb is the first argument of `checker` that is neither an option
+nor an option's value, so `--title "Drug import and safety"` is not an import.
 
 ### Nothing in it belongs to a vendor
 
@@ -10548,9 +10581,13 @@ Recorded because a gate whose limits are undocumented gets trusted beyond them.
   in the record but its page's absence from the register, so a register row removed by hand
   turns that page's decisions into claimed ones.
 - **A re-import is skipped by its answer, not by its file.** An answer is not written again where
-  it has the status, note, digest and page of the person's latest decision on the item. One
-  imported, changed, and the old file imported again, records the old answer again, as the
-  latest: the file is not remembered.
+  the record holds it already (`store._already`). An answer with no time of its own, from a file
+  written by hand, is compared with the person's latest decision only: imported, superseded, and
+  imported again, it is the latest once more. The page stamps every answer, so this needs a file
+  it did not write.
+- **The hook reads `checker`'s verb from the command's words.** It knows which options take a
+  value, and takes the first other word for the verb. An option it does not know that takes a
+  value, or a command built in a variable, is read wrongly, either way.
 - **A file rebuilt after the items changed loses a co-author's unsent progress.** The page keeps
   answers in the browser under a digest of the items' own digests and the person's name (not
   under its identifier, which digests the token too): a rebuild that changes nothing they were

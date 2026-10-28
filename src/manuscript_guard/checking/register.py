@@ -7,15 +7,17 @@ itself is not kept: the page holds it, and so does the answers file the page wri
 
 So an answers file that names a page in the register is held to it. Its token must hash to the
 one recorded, and the name and ORCID iD in it must be the ones the page was built for, or
-`checker import` refuses the file. That stops an answers file being edited to read as another
-co-author's, and one page's answers being passed off as another page's. It does **not** say who
-answered: whoever holds the page holds the token, the corresponding author who sent it among
-them. The name on an answer is a claim; the token says which page it came from.
+`checker import` refuses the file. That stops a file that names a registered page being edited
+to read as another co-author's, and one page's answers being passed off as another page's. It
+does **not** say who answered: whoever holds the page holds the token, the corresponding author
+who sent it among them. The token says which page a file came from.
 
-An answers file that names no page in the register, one written by a page built before the
-register existed (`checking-answers/1`) or on another clone, is recorded, and its decisions
-read as **claimed**: the name is the file's word and nothing more. A `/1` file that names a
-registered page is refused, because no registered page writes one.
+It does not stop a file being made to read as anyone's. An answers file that names no page in
+the register, one written by a page built before the register existed (`checking-answers/1`),
+on another clone, or by hand with an identifier made up, is recorded under whatever name it
+gives, and its decisions read as **claimed**: the name is the file's word and nothing more,
+and `checker status` marks each such decision. A `/1` file that names a registered page is
+refused, because no registered page writes one.
 
 Append-only, like `checks/decisions.csv`, and for the same reason; the hooks keep an agent's
 editor out of it.

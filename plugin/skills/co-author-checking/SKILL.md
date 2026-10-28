@@ -55,8 +55,11 @@ it. The file is append-only, because "was this checked, and by whom, and when" i
 later by whoever is answering a reviewer, and a file that gets rewritten cannot answer it.
 A file whose page is in the register must carry that page's token, name and ORCID iD, or the
 whole import is refused and nothing is recorded. A file from no registered page, or one written
-by a page from before the register, is recorded as **claimed**: the name is the file's word.
-Importing a file twice adds nothing.
+by a page from before the register, is recorded as **claimed**: the name is the file's word,
+whatever it says, and `status` marks each such decision. A file of the wrong shape refuses the
+whole import. Importing a file twice adds nothing. Two authors who share a full name are
+recorded apart, by their ORCID iDs: if neither has one, `checker build --all` refuses until one is
+added to `authors.yaml`.
 
 **Leave the import to the author.** It puts a co-author's name to the answers in a file, so the
 hooks put an agent's `checker import` to the person, as they do `approve`. Say which files came

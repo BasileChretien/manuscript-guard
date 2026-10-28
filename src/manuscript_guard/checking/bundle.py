@@ -114,9 +114,14 @@ def build_page(
     to: str = "",
     orcid: str = "",
     token: str | None = None,
+    shown: str = "",
 ) -> Built:
     """Write the page for one person, carrying their name, their ORCID iD where they have one
-    and a random token of its own (`register.new_token`, unless one is given)."""
+    and a random token of its own (`register.new_token`, unless one is given).
+
+    `person` is the name their answers are recorded under, which the answers file carries;
+    `shown`, where given, the name the page greets them by. The two differ only for authors who
+    share a full name, recorded as "Name <ORCID iD>" (`people.keyed`)."""
     person = person.strip()
     if not person:
         raise BundleError("say who the file is for: a decision is recorded under their name")
@@ -160,12 +165,12 @@ def build_page(
             "bundle": identity,
             "storage": storage[:12],
             "by": person,
-            "person": {"name": person, "orcid": orcid},
+            "person": {"name": shown.strip() or person, "orcid": orcid},
             "token": token,
             "state": state,
             "to": to,
             "built_on": built_on,
-            "filename": f"answers-{slug(person)}.json",
+            "filename": f"answers-{slug(shown.strip() or person)}.json",
         }
     )
 

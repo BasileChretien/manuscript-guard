@@ -109,12 +109,25 @@ def import_answers(project_root: Path, answers_file: Path, items: Items, *,
     return record(project_root, answers, items)
 
 
-def _same(one: Decision, other: Decision | None) -> bool:
-    """Whether a new decision says nothing the latest one did not: the same answer, note and
-    digest, from the same page. When it was given is not compared: an answer with no time of
-    its own takes the time of the import."""
-    return other is not None and (one.status, one.note, one.digest, one.bundle) == (
-        other.status, other.note, other.digest, other.bundle)  # fmt: skip
+def _said(one: Decision) -> tuple[str, str, str]:
+    return (one.status, one.note, one.digest)
+
+
+def _already(one: Decision, stamped: bool, earlier: list[Decision]) -> bool:
+    """Whether a new decision is one the record holds already, so that writing it again would
+    say something the person did not say again.
+
+    It is, where it gives the answer, note and digest of the person's latest decision on the
+    item; and, where the page stamped it with the time it was given, where it is any earlier
+    decision of theirs on the item given at that time. The page it came from is not compared:
+    a page rebuilt for the same person carries the answers they gave on the last one, under its
+    own identifier. Without the second rule a file imported again after a later one from the
+    same person was the latest once more, and its old answer took the place of the new one.
+    A person who changes their mind back gives the answer at a new time, which is recorded.
+    """
+    if earlier and _said(one) == _said(earlier[-1]):
+        return True
+    return stamped and any(_said(one) == _said(d) and one.when == d.when for d in earlier)
 
 
 def record(project_root: Path, answers: Answers, items: Items) -> Imported:
@@ -123,13 +136,15 @@ def record(project_root: Path, answers: Answers, items: Items) -> Imported:
     An answer about an item that has changed since it was answered is recorded with the digest
     its maker saw, and so is one about an item this project no longer has: both count for
     nothing (`status` holds every decision to the item as it is now), and the note in each is
-    kept. An answer identical to that person's latest decision on the item is not written again,
-    so importing one file twice adds nothing.
+    kept. An answer the record already holds (`_already`) is not written again, so importing
+    a file twice, or again after a later one, adds nothing.
     """
     by = answers.by
     known = {str(item["id"]): item for item in items.items}
     when = datetime.now().astimezone().isoformat(timespec="seconds")
-    latest = {(d.by, d.id): d for d in read_decisions(project_root)}
+    history: dict[tuple[str, str], list[Decision]] = {}
+    for held in read_decisions(project_root):
+        history.setdefault((held.by, held.id), []).append(held)
     written: list[Decision] = []
     recorded: list[Decision] = []
     kept: list[Decision] = []
@@ -165,10 +180,11 @@ def record(project_root: Path, answers: Answers, items: Items) -> Imported:
             digest=seen,
             bundle=answers.bundle,
         )
-        if _same(decision, latest.get((by, identifier))):
+        earlier = history.setdefault((by, identifier), [])
+        if _already(decision, bool(answer.get("at")), earlier):
             skipped += 1
             continue
-        latest[(by, identifier)] = decision
+        earlier.append(decision)
         written.append(decision)
         if item is None:
             unknown.append(called)
@@ -212,6 +228,9 @@ class Standing:
     orphaned: tuple[Decision, ...] = ()
     #: The decision that counts, for each person and item they answered as it is now.
     counting: tuple[Decision, ...] = ()
+    #: A "wrong", an "unsure" or a note about an earlier version of an item, recorded after the
+    #: person's decision about this version: it counts for nothing, and is said.
+    earlier: tuple[Decision, ...] = ()
 
     @property
     def unanswered(self) -> int:
@@ -251,7 +270,8 @@ def status(project_root: Path, items: Items) -> Standing:
     places and did not do.
     """
     now = {str(item["id"]): str(item.get("digest") or "") for item in items.items}
-    latest = _latest(read_decisions(project_root), now)
+    every = read_decisions(project_root)
+    latest = _latest(every, now)
 
     answered: dict[str, set[str]] = {}
     by_person: dict[str, dict[str, int]] = {}
@@ -294,4 +314,24 @@ def status(project_root: Path, items: Items) -> Standing:
         stale=tuple(stale),
         orphaned=tuple(orphaned),
         counting=tuple(counting),
+        earlier=_flagged_earlier(every, latest, now),
     )
+
+
+def _flagged_earlier(every: list[Decision], latest: dict[tuple[str, str], Decision],
+                     now: dict[str, str]) -> tuple[Decision, ...]:  # fmt: skip
+    """The last flag on an earlier version of an item that a person gave after the decision
+    of theirs that counts: `_latest` keeps it from counting, and this keeps its note from
+    being lost to sight."""
+    seen: dict[tuple[str, str], Decision] = {}
+    after: set[tuple[str, str]] = set()
+    for decision in every:
+        key = (decision.by, decision.id)
+        counted = latest.get(key)
+        if decision is counted:
+            after.add(key)
+            seen.pop(key, None)
+        elif (key in after and decision.digest != now.get(decision.id)
+              and (decision.status != "ok" or decision.note)):  # fmt: skip
+            seen[key] = decision
+    return tuple(seen[key] for key in sorted(seen))

@@ -4071,40 +4071,39 @@ def cmd_checker(args: argparse.Namespace) -> int:
     return _checker_status(project, items)
 
 
-def _checker_people(project, args) -> list[tuple[str, str]] | str:
-    """Whom `build` writes a page for, each as (name, ORCID iD), or why it cannot say."""
-    from manuscript_guard.approvals import (
-        AmbiguousAuthor,
-        NoSuchAuthor,
-        authors_of,
-        find_author,
-        name_of,
-    )
+def _checker_people(project, args) -> list[tuple[str, str, str]] | str:
+    """Whom `build` writes a page for, each as (the name their answers are recorded under, the
+    name the page shows, the ORCID iD), or why it cannot say."""
+    from manuscript_guard.approvals import AmbiguousAuthor, NoSuchAuthor, find_author, name_of
+    from manuscript_guard.checking.people import Namesakes, keyed, resolve
 
     if args.every and args.name:
         return "give --for or --all, not both"
+    if not args.every and args.leave_out:
+        return "--except is for --all"
+    if not args.every and not args.name.strip():
+        return ("say who the file is for, with --for \"<name>\", or write one for every "
+                "author with --all: a decision is recorded under their name")  # fmt: skip
+    try:
+        pairs = keyed(project)
+        if not args.every:
+            found = resolve(project, args.name, "")
+    except (AmbiguousAuthor, Namesakes) as exc:
+        return str(exc)
     if not args.every:
-        if args.leave_out:
-            return "--except is for --all"
-        if not args.name.strip():
-            return ("say who the file is for, with --for \"<name>\", or write one for every "
-                    "author with --all: a decision is recorded under their name")  # fmt: skip
-        try:
-            author = find_author(project, args.name)
-        except AmbiguousAuthor as exc:
-            return str(exc)
-        except NoSuchAuthor:
+        if found.author is None:
             print(f"{args.name.strip()} is not an author in authors.yaml: the page is built for "
                   "them all the same, and their answers will say so.")  # fmt: skip
-            return [(args.name.strip(), "")]
-        return [(name_of(author), str(author.get("orcid") or ""))]
+            return [(args.name.strip(), args.name.strip(), "")]
+        author = found.author
+        return [(found.by, name_of(author), str(author.get("orcid") or "").strip())]
     left_out = []
     for said in args.leave_out:
         try:
             left_out.append(find_author(project, said))
         except NoSuchAuthor as exc:
             return f"--except: {exc}"
-    people = [(name_of(a), str(a.get("orcid") or "")) for a in authors_of(project)
+    people = [(key, name_of(a), str(a.get("orcid") or "").strip()) for a, key in pairs
               if not any(a is other for other in left_out)]  # fmt: skip
     if not people:
         return ("--all writes a page for each author in authors.yaml, and that leaves nobody"
@@ -4113,11 +4112,30 @@ def _checker_people(project, args) -> list[tuple[str, str]] | str:
     return people
 
 
+def _page_names(people: list[tuple[str, str, str]]) -> list[str]:
+    """A file name for each page, none of them another's: two names that fold to one, "José
+    García" and "Jose Garcia", wrote one file and the second page took the first's place."""
+    from manuscript_guard.checking.bundle import slug
+
+    taken: set[str] = set()
+    names = []
+    for _key, name, _orcid in people:
+        named, n = slug(name), 1
+        while named.casefold() in taken:
+            n += 1
+            named = f"{slug(name)}-{n}"
+        taken.add(named.casefold())
+        names.append(named)
+    return names
+
+
 def _checker_build(project, items, args) -> int:
+    import os
+
     from manuscript_guard.approvals import authors_of, name_of
     from manuscript_guard.checking import BundleError, build_page, status
-    from manuscript_guard.checking.bundle import slug
-    from manuscript_guard.checking.register import REGISTER, Row, append_row, token_sha256
+    from manuscript_guard.checking import register as registered
+    from manuscript_guard.checking.register import REGISTER, Row, token_sha256
 
     people = _checker_people(project, args)
     if isinstance(people, str):
@@ -4127,31 +4145,49 @@ def _checker_build(project, items, args) -> int:
     # Back to the corresponding author unless told otherwise: the one who sent the page.
     to = args.to or " or ".join(name_of(a) for a in authors_of(project) if a.get("corresponding"))
     folder = (args.output or project.root / "checks") if args.every else None
-    names = [slug(name) for name, _ in people]
     standing = status(project.root, items)
     asked = items.outstanding
     answered = sum(1 for item in asked if standing.answered.get(str(item["id"])))
-    for (name, orcid), named in zip(people, names, strict=True):
-        # Two authors whose names fold to one file name are told apart by their ORCID iD.
-        named = named if names.count(named) == 1 else f"{named}-{slug(orcid or name)}"
+    for (key, name, orcid), named in zip(people, _page_names(people), strict=True):
         out = (folder / f"check-{named}.html" if folder is not None
                else args.output or project.root / "checks" / f"check-{named}.html")  # fmt: skip
+        # Written under another name first, recorded, and only then given its own: a page whose
+        # row could not be written (the register open in a spreadsheet) is not left to be sent.
+        part = out.with_name(out.name + ".part")
         try:
-            built = build_page(items, person=name, title=title, out=out, to=to, orcid=orcid)
+            built = build_page(items, person=key, title=title, out=part, to=to, orcid=orcid,
+                               shown=name)  # fmt: skip
         except BundleError as exc:
             print(f"manuscript-guard: {exc}", file=sys.stderr)
             return 2
+        except OSError as exc:
+            print(f"manuscript-guard: {out} could not be written ({exc})", file=sys.stderr)
+            return 2
         try:
-            shown = built.path.resolve().relative_to(project.root.resolve()).as_posix()
+            shown = out.resolve().relative_to(project.root.resolve()).as_posix()
         except ValueError:
             # Outside the project: the register keeps its name only, not the machine's path.
-            shown = built.path.name
-        append_row(project.root, Row(
-            built_on=built.built_on, person=built.person, orcid=built.orcid,
-            bundle=built.bundle, token_sha256=token_sha256(built.token), state=built.state,
-            items=str(built.items), file=shown,
-        ))  # fmt: skip
-        print(f"wrote {built.path} ({built.size // 1024} kB)")
+            shown = out.name
+        try:
+            registered.append_row(project.root, Row(
+                built_on=built.built_on, person=built.person, orcid=built.orcid,
+                bundle=built.bundle, token_sha256=token_sha256(built.token),
+                state=built.state, items=str(built.items), file=shown,
+            ))  # fmt: skip
+        except OSError as exc:
+            part.unlink(missing_ok=True)
+            print(f"manuscript-guard: {REGISTER} could not be written ({exc}), so the page for "
+                  f"{name} is not kept. Close it where it is open, and build again.",
+                  file=sys.stderr)  # fmt: skip
+            return 2
+        try:
+            os.replace(part, out)
+        except OSError as exc:
+            part.unlink(missing_ok=True)
+            # The row stays: no answers can match a page that was never sent.
+            print(f"manuscript-guard: {out} could not be written ({exc})", file=sys.stderr)
+            return 2
+        print(f"wrote {out} ({built.size // 1024} kB)")
         # From the record as well as from the items file. "0 already checked by someone" was
         # printed after a whole round had come back and been imported, because this counted
         # only the `already` field a project may write. Then "10 item(s) to check, 10 already
@@ -4186,8 +4222,8 @@ def _checker_import(project, items, args) -> int:
         )
         return 2
     register = read_register(project.root)
-    # Every file is read and held to the register before any is recorded: one refused file
-    # leaves the record as it was, and the import can be run again without it.
+    # Every file is read, checked and held to the register before any is recorded: one refused
+    # file leaves the record as it was, and the import can be run again without it.
     try:
         read = [read_answers(path, project_root=project.root, project=project,
                              register=register) for path in args.answers]  # fmt: skip
@@ -4201,7 +4237,9 @@ def _checker_import(project, items, args) -> int:
         troubled = troubled or bool(brought.stale or brought.unknown or brought.refused)
         said = [] if brought.claimed is False else [
             "claimed: the file names no page in checks/bundles.csv, so the name is its word"]
-        if brought.author is False:
+        if answers.orcid_differs:
+            said.append("ORCID differs from authors.yaml")
+        elif brought.author is False:
             said.append("not an author in authors.yaml")
         marks = f" ({'; '.join(said)})" if said else " (from the page built for them)"
         print(f"{answers.path.name}: {len(brought.recorded)} decision(s) recorded for "
@@ -4223,12 +4261,16 @@ def _checker_import(project, items, args) -> int:
 
 
 def _checker_status(project, items) -> int:
-    from manuscript_guard.approvals import NoSuchAuthor, find_author
     from manuscript_guard.checking import status
+    from manuscript_guard.checking.people import Namesakes, standing_of
     from manuscript_guard.checking.register import read_register
 
     standing = status(project.root, items)
     register = read_register(project.root)
+
+    def claimed(decision) -> str:
+        return "" if decision.bundle in register else " (claimed)"
+
     print(f"{len(items.items)} item(s); {standing.outstanding} nobody has answered")
     if standing.already:
         print(f"{standing.already} were already checked before this round")
@@ -4239,7 +4281,15 @@ def _checker_status(project, items) -> int:
         )
         for decision in standing.stale:
             note = f": {decision.note}" if decision.note else ""
-            print(f"  {decision.by} on {decision.title or decision.id}{note}")
+            print(f"  {decision.by}{claimed(decision)} on {decision.title or decision.id}{note}")
+    if standing.earlier:
+        print(
+            f"{len(standing.earlier)} flag(s) on an earlier version of an item, given after the "
+            f"same person's answer about this version; they count for nothing:"
+        )
+        for decision in standing.earlier:
+            print(f"  [{decision.status}] {decision.by}{claimed(decision)} on "
+                  f"{decision.title or decision.id}: {decision.note or '—'}")  # fmt: skip
     if standing.orphaned:
         print(
             f"{len(standing.orphaned)} answer(s) are about items this project no longer has; "
@@ -4248,21 +4298,23 @@ def _checker_status(project, items) -> int:
         # By the person and the sentence: a cited sentence edited since it was answered is a new
         # item, and the old answer, named by its id, could not be traced to anyone or anything.
         for decision in standing.orphaned:
-            print(f"  {decision.by} on {decision.title or decision.id}")
+            print(f"  {decision.by}{claimed(decision)} on {decision.title or decision.id}")
     for person in standing.people:
         counts = standing.by_person[person]
         said = ", ".join(f"{n} {name}" for name, n in sorted(counts.items()))
-        claimed = sum(1 for d in standing.counting if d.by == person and d.bundle not in register)
-        marks = [f"{claimed} claimed, from no page in checks/bundles.csv"] if claimed else []
+        number = sum(1 for d in standing.counting if d.by == person and d.bundle not in register)
+        marks = [f"{number} claimed, from no page in checks/bundles.csv"] if number else []
         try:
-            find_author(project, person)
-        except NoSuchAuthor:
-            marks.append("not an author in authors.yaml")
+            why = standing_of(project, person)
+        except Namesakes as exc:
+            why = str(exc)
+        marks += [why] if why else []
         print(f"  {person}: {said}" + (f" ({'; '.join(marks)})" if marks else ""))
     for decision in standing.wrong:
-        print(f"  [{decision.status}] {decision.by} on {decision.title}: {decision.note or '—'}")
+        print(f"  [{decision.status}] {decision.by}{claimed(decision)} on {decision.title}: "
+              f"{decision.note or '—'}")  # fmt: skip
     for identifier, decisions in standing.disagreements:
-        who = "; ".join(f"{d.by} says {d.status}" for d in decisions)
+        who = "; ".join(f"{d.by}{claimed(d)} says {d.status}" for d in decisions)
         print(f"  disagreement on {decisions[0].title or identifier}: {who}")
     return 0
 

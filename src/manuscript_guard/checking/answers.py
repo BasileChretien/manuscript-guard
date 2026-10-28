@@ -9,12 +9,19 @@ What the file says about who made it is then held to `checks/bundles.csv` (`regi
 * it names a page in the register: its token must hash to the one recorded, and its name and
   ORCID iD must be the page's, or the file is refused (`Refused`, exit 2 at the command), with
   the reason, and nothing from it is recorded;
-* it names no page in the register, or is a `/1` file: it is recorded, and read as **claimed**;
+* it names no page in the register, or is a `/1` file: it is recorded, and read as **claimed**:
+  the name in it is whatever the file says, and nothing holds it to anything;
 * a `/1` file that names a registered page is refused: no registered page writes one.
 
-The name is then looked up in `authors.yaml` as `approve --as` looks one up, by ORCID iD, e-mail
-address, full name or family name, and recorded as the author's name. A name that is not an
-author's is recorded as the file gives it, and the import says so.
+The name is then looked up in `authors.yaml` (`people.resolve`): by the name the record keeps
+for an author, their ORCID iD, their full name or their family name, compared in Unicode's
+composed form and without case, and recorded under the author's name in the record (two authors
+who share a full name are recorded apart, `people.keyed`). A name that is no author's is
+recorded as the file gives it, and the import says so. A name that is an author's with an ORCID
+iD that is not theirs is refused in a file from a registered page, and in any other file is
+recorded as "Name <iD>", apart from the author, and marked.
+
+The whole shape of the file is checked before anything from it is recorded.
 """
 
 from __future__ import annotations
@@ -54,6 +61,8 @@ class Answers:
     #: It names no page this project registered, so the name is the file's word.
     claimed: bool
     bundle: str
+    #: The name is an author's and the ORCID iD is not theirs, or the other way round.
+    orcid_differs: bool = False
 
 
 def read_answers(answers_file: Path, *, project_root: Path, project=None,
@@ -72,6 +81,7 @@ def read_answers(answers_file: Path, *, project_root: Path, project=None,
         raise AnswersError(
             f"{answers_file}: schema is {said!r}, and this reads {' or '.join(map(repr, READ))}"
         )
+    _shaped(answers_file, document)
     said = str(document.get("by") or "").strip()
     if not said:
         raise AnswersError(f"{answers_file} does not say who made it")
@@ -81,9 +91,51 @@ def read_answers(answers_file: Path, *, project_root: Path, project=None,
     row = register.get(bundle) if bundle else None
     if row is not None:
         _held_to(answers_file, document, said, row)
-    by, author = _resolved(project, said, str(document.get("orcid") or ""), answers_file)
-    return Answers(path=answers_file, document=document, by=by, author=author,
-                   claimed=row is None, bundle=bundle)  # fmt: skip
+    orcid = str(document.get("orcid") or "")
+    found = _resolved(project, said, orcid, answers_file)
+    if found is None:
+        return Answers(path=answers_file, document=document, by=said, author=None,
+                       claimed=row is None, bundle=bundle)  # fmt: skip
+    if found.orcid_differs and row is not None:
+        raise Refused(
+            f"{answers_file} names page {row.bundle} ({REGISTER}), built for {row.person} with "
+            f"the ORCID iD {row.orcid or 'none'}, and authors.yaml does not give that name that "
+            f"iD now. Nothing from it is recorded: put authors.yaml right, or build the page "
+            f"again."
+        )
+    return Answers(path=answers_file, document=document, by=found.by,
+                   author=found.author is not None, claimed=row is None, bundle=bundle,
+                   orcid_differs=found.orcid_differs)  # fmt: skip
+
+
+#: Each field of the file, and of an answer in it, with the type it must have where it is given.
+_FILE_FIELDS = {"schema": str, "bundle": str, "by": str, "built_on": str, "saved_on": str,
+                "orcid": str, "token": str, "state": str, "answers": list}  # fmt: skip
+_ANSWER_FIELDS = {"id": str, "digest": str, "status": str, "note": str, "at": str,
+                  "title": str, "group": str}  # fmt: skip
+
+
+def _shaped(answers_file: Path, document: dict) -> None:
+    """Refuse a file whose fields are not of the shape the page writes, before any of it is
+    recorded: an `answers` that is a number failed in the middle of an import of several files,
+    after the files before it had been written."""
+    def wrong(where: str, field: str, value, kind: type) -> AnswersError:
+        return AnswersError(
+            f"{answers_file}: {where}{field} is {type(value).__name__}, and the page writes "
+            f"{kind.__name__}. Nothing from any file of this import is recorded."
+        )
+
+    for field, kind in _FILE_FIELDS.items():
+        if document.get(field) is not None and not isinstance(document[field], kind):
+            raise wrong("", field, document[field], kind)
+    for n, answer in enumerate(document.get("answers") or (), 1):
+        if not isinstance(answer, dict):
+            raise wrong(f"answer {n} ", "itself", answer, dict)
+        for field, kind in _ANSWER_FIELDS.items():
+            if answer.get(field) is not None and not isinstance(answer[field], kind):
+                raise wrong(f"answer {n}'s ", field, answer[field], kind)
+        if not str(answer.get("id") or "").strip():
+            raise AnswersError(f"{answers_file}: answer {n} names no item")
 
 
 def _held_to(answers_file: Path, document: dict, said: str, row: Row) -> None:
@@ -114,30 +166,14 @@ def _held_to(answers_file: Path, document: dict, said: str, row: Row) -> None:
         )
 
 
-def _resolved(project, said: str, orcid: str, answers_file: Path) -> tuple[str, bool | None]:
-    """The name to record, and whether `authors.yaml` lists them."""
+def _resolved(project, said: str, orcid: str, answers_file: Path):
+    """Who the file is by, as `people.resolve` finds them; None where no project was given."""
     if project is None:
-        return said, None
-    from manuscript_guard.approvals import AmbiguousAuthor, NoSuchAuthor, find_author, name_of
+        return None
+    from manuscript_guard.approvals import AmbiguousAuthor
+    from manuscript_guard.checking.people import Namesakes, resolve
 
     try:
-        author = find_author(project, orcid or said)
-    except AmbiguousAuthor as exc:
+        return resolve(project, said, orcid)
+    except (AmbiguousAuthor, Namesakes) as exc:
         raise AnswersError(f"{answers_file}: {exc}") from exc
-    except NoSuchAuthor:
-        if not orcid:
-            return said, False
-        # An ORCID iD no author has: the name may still be one of theirs.
-        return _resolved(project, said, "", answers_file)
-    if orcid and name_of(author) != said:
-        # The iD and the name are two authors', or an iD and a stranger's name.
-        try:
-            named = find_author(project, said)
-        except NoSuchAuthor:
-            named = None
-        if named is not None and named is not author:
-            raise AnswersError(
-                f"{answers_file} says it is by {said} and gives the ORCID iD of "
-                f"{name_of(author)}; which of them made it is not for this to guess"
-            )
-    return name_of(author), True

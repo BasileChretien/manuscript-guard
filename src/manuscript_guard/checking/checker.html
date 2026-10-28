@@ -327,7 +327,7 @@ document.addEventListener("keydown", (e) => {
   else if (k === "arrowright") { S.pos = Math.min(S.list.length - 1, S.pos + 1); render(); }
 });
 
-$("who").textContent = BUNDLE.by;
+$("who").textContent = (BUNDLE.person || {}).name || BUNDLE.by;
 rebuild(true);
 render();
 </script>

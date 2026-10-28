@@ -1016,7 +1016,7 @@ def test_an_approval_written_by_a_codex_patch_is_put_to_the_author(
     "command",
     [
         "manuscript-guard checker import --answers answers-ada.json answers-blaise.json",
-        "cd paper && mguard checker . import --answers a.json",
+        "cd paper && mguard checker import . --answers a.json",
         "python -m manuscript_guard.cli checker --items checks/items.json import",
     ],
 )
@@ -1031,7 +1031,9 @@ def test_an_import_of_answers_run_by_an_agent_is_put_to_the_author(
     payload = _shell(in_claude_code, command, turn_id="turn-1", model="gpt-test")
     assert decision(run("guard-submission", payload, capsys)) == "deny"
     for other in ("manuscript-guard checker build --all", "mguard checker status",
-                  "manuscript-guard checker status && git commit -m import"):  # fmt: skip
+                  "manuscript-guard checker status && git commit -m import",
+                  'manuscript-guard checker build --title "Drug import and safety"',
+                  "mguard checker build --for import"):  # fmt: skip
         assert run("guard-submission", _shell(in_claude_code, other), capsys) is None, other
 
 

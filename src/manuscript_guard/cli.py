@@ -4089,7 +4089,7 @@ def cmd_checklist(args: argparse.Namespace) -> int:
     return 0
 
 
-def _checking_items(project, named: Path | None):
+def _checking_items(project, named: Path | None, *, build: bool = False):
     """What this project offers a co-author: what the toolkit finds, plus what the project adds.
 
     The toolkit finds the values quoted from the literature, the sentences that cite something,
@@ -4098,7 +4098,7 @@ def _checking_items(project, named: Path | None):
     that traces its own writes `checks/items.json`, and those go in front.
     """
     from manuscript_guard.checking.items import SCHEMA, ItemsError, items_file, items_from
-    from manuscript_guard.checking.produce import merge, produce
+    from manuscript_guard.checking.produce import RESERVED_GROUPS, merge, produce_with_notes
     from manuscript_guard.contracts._schema import read_structured
 
     # The project's file is read raw and checked once, with the toolkit's, after the merge.
@@ -4129,7 +4129,32 @@ def _checking_items(project, named: Path | None):
         # default being absent only means this project contributes nothing of its own.
         raise ItemsError(f"{named} does not exist")
 
-    produced, unread = produce(project)
+    reserved = sorted({str(group.get("id")) for group in (contributed or {}).get("groups") or ()
+                       if str(group.get("id")) in RESERVED_GROUPS})  # fmt: skip
+    if reserved and build:
+        # Taken whole, it would send the project's items under the toolkit's question, and
+        # the toolkit's would not be sent. Refused where a page is made; read as before by
+        # `import` and `status`, so that answers already given come in and are counted.
+        raise ItemsError(
+            f"{source} declares the group {reserved[0]!r}, whose id is now the toolkit's: its "
+            "items are each Methods text beside the code G9 holds it to. Rename the project's "
+            "group, and the `group` of each of its items, to another id (`methods-own`, say), "
+            "and build again. The items keep their ids, so the answers recorded on them are "
+            "still theirs; the digest holds the group, so they are asked again, notes kept."
+        )
+    produced, unread, notes, unavailable = produce_with_notes(project)
+    if reserved:
+        mine = [item for item in produced["items"] if item["group"] in reserved]
+        produced = {**produced, "items": [i for i in produced["items"] if i not in mine]}
+        unavailable = {}
+        if mine:
+            print(f"{', '.join(reserved)}: the toolkit's {len(mine)} item(s) are left out, "
+                  f"because {source.name} declares that group itself; rename it there to send "
+                  "them (`checker build` says how).")  # fmt: skip
+    for said in notes if build else ():
+        # A Methods claim left out of the round, or code shown from a script that changed
+        # since its run: said where the page is built, which is where it can still be fixed.
+        print(said)
     for said in unread:
         # A ledger the contract cannot read takes every value in it out of the round. Printed
         # rather than left to be noticed as a page that is suspiciously short.
@@ -4147,11 +4172,14 @@ def _checking_items(project, named: Path | None):
         raise ItemsError(
             "there is nothing to check yet. A co-author is sent the values quoted from the "
             "literature (literature/ledger.yaml and attested.yaml), the sentences that cite "
-            "something, the references (literature/references.bib) and the authors "
-            "(authors.yaml), and none of those holds anything. A project that traces numbers of "
+            "something, the Methods beside the code their {{method.<step>}} anchors name, the "
+            "references (literature/references.bib) and the authors (authors.yaml), and none "
+            "of those holds anything. A project that traces numbers of "
             f"its own adds them in {source}: see contracts/schemas/checking.schema.json."
         )
-    return items_from(document, source)
+    from dataclasses import replace
+
+    return replace(items_from(document, source), unavailable=unavailable)
 
 
 def cmd_checker(args: argparse.Namespace) -> int:
@@ -4166,7 +4194,7 @@ def cmd_checker(args: argparse.Namespace) -> int:
 
     project, _ = load_project(args.path)
     try:
-        items = _checking_items(project, args.items)
+        items = _checking_items(project, args.items, build=args.verb == "build")
     except ItemsError as exc:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2

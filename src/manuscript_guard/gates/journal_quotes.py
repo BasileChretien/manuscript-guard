@@ -555,10 +555,15 @@ _DECIMAL_MARKS = (".", ",")
 #: Between the two parts of a ratio: a colon, a multiplication sign, an x or a slash, with
 #: spaces or none, or "by" between spaces ("16:9", "16 : 9", "16 x 9", "16/9", "16 by 9").
 _RATIO_SIGN = r"(?:[ \t]*[:x/" + chr(0xD7) + r"][ \t]*|[ \t]+by[ \t]+)"
+#: Every sign of `_RATIO_SIGN` but the slash, which a date writes too.
+_RATIO_MARK = r"(?:[ \t]*[:x" + chr(0xD7) + r"][ \t]*|[ \t]+by[ \t]+)"
 #: An aspect ratio's two parts, in their order, neither inside a longer number nor a longer
-#: ratio or date: "1:16:9", "16:9:4" and "16/9/2026" do not state 16:9.
-_RATIO = (r"(?<![0-9.,:/]){}" + _RATIO_SIGN.replace("{", "{{")
-          + r"{}(?![0-9]|[.,:/][0-9])")  # fmt: skip
+#: ratio or date: "1:16:9", "16:9:4", "16/9/2026" and "2026/16/9" do not state 16:9. A
+#: label's colon ("ratio:16:9") and a slash between two ratios ("4:3/16:9") do not hide it:
+#: only a slash ratio is refused beside another slash (fix-only round of #464).
+_RATIO = (r"(?:(?<![0-9.,])(?<![0-9]:){0}" + _RATIO_MARK.replace("{", "{{")
+          + r"{1}(?![0-9]|[.,:][0-9])"
+          r"|(?<![0-9.,])(?<![0-9][:/]){0}[ \t]*/[ \t]*{1}(?![0-9]|[.,:/][0-9]))")  # fmt: skip
 
 
 def _decimal(value: float) -> str:

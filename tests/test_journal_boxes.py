@@ -465,7 +465,8 @@ def test_a_graphical_abstract_s_ratio_and_decimals_are_held_to_their_quotes(
     project: Path,
 ) -> None:
     times = chr(0xD7)
-    for written in ("16:9", "16 : 9", f"16{times}9", "16 x 9"):
+    for written in ("16:9", "16 : 9", f"16{times}9", "16 x 9", "16/9",
+                    "ratio:16:9", "16:9/4:3", "4:3/16:9"):  # the last three: fix-only round
         quote = f"an aspect ratio of {written}, no larger than 2.50 MB"
         said = _quoted(project, graphical_abstract={"aspect_ratio": "16:9", "max_file_mb": 2.5},
                        quotes={"graphical_abstract.aspect_ratio": quote,

@@ -352,6 +352,12 @@ def test_a_published_paper_may_be_linked_and_said_published(ready: Path) -> None
         handle.write("publication:\n  status: accepted\n  doi: 10.1234/demo.5678\n")
     text(ready, "post.md", "Read it at https://doi.org/10.1234/demo.5678. " + CLEAN)
     assert "comm-status-ahead" in codes(ready, "texts", FAIL)
+    # A link's query, fragment or closing slash is no part of the DOI (fix-only round).
+    for link in ("https://doi.org/10.1234/demo.5678?utm_source=bsky",
+                 "https://doi.org/10.1234/demo.5678#x", "https://doi.org/10.1234/demo.5678/"):
+        text(ready, "post.md", f"Read it at {link} " + CLEAN)
+        assert "comm-status-ahead" in codes(ready, "texts", FAIL), link
+    text(ready, "post.md", "Read it at https://doi.org/10.1234/demo.5678. " + CLEAN)
     paper = (ready / "paper.yaml").read_text(encoding="utf-8")
     (ready / "paper.yaml").write_text(paper.replace("status: accepted",
                                                     "status: published-online"),
@@ -647,9 +653,10 @@ def test_an_anchor_opening_its_line_before_a_sentence_is_that_sentences() -> Non
         ("With @alice.bsky.social and #covid19 in mind: ", "comm-fact-not-in-source"),
         ("With @alice.bsky.social and #covid19 in mind: ", "comm-number-unbound"),
         # Finding 3: "published" said of other work.
-        ("Previously published studies differ. ", "comm-status-ahead"),
-        ("Published reports differ. ", "comm-status-ahead"),
-        ("See https://example.org/published/1 too. ", "comm-status-ahead"),
+        # Words never fail now (Basile, 2026-10-29), so their warning is what is held.
+        ("Previously published studies differ. ", "comm-status-words"),
+        ("Published reports differ. ", "comm-status-words"),
+        ("See https://example.org/published/1 too. ", "comm-status-words"),
         # Finding 4: a thread's counter.
         ("1/3 " + chr(0x1F9F5) + " ", "comm-number-unbound"),
         ("1/3 ", "comm-claim-unanchored"),
@@ -877,7 +884,8 @@ def test_a_link_is_the_papers_url_whole_or_up_to_a_path(ready: Path) -> None:
     text(ready, "post.md", "See https://journal.example/a/10 too. " + CLEAN)
     assert "comm-status-ahead" not in codes(ready, "texts")
     for link in ("https://journal.example/a/1/", "https://journal.example/a/1?x=2",
-                 "https://journal.example/a/1#s"):  # fmt: skip
+                 "https://journal.example/a/1#s", "http://journal.example/a/1",
+                 "https://www.journal.example/a/1", "<https://journal.example/a/1>"):  # fmt: skip
         text(ready, "post.md", f"See {link} too. " + CLEAN)
         assert "comm-status-ahead" in codes(ready, "texts", FAIL), link
 

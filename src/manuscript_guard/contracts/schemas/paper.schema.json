@@ -162,7 +162,7 @@
     "publication": {
       "type": "object",
       "additionalProperties": false,
-      "description": "Where the paper stands with the journal, which `communicate check` holds a communication text to: a text that says the paper is published, or links its DOI, before it is online fails (`comm-status-ahead`).",
+      "description": "Where the paper stands with the journal, which `communicate check` holds a communication text to: a text that links the paper's own DOI or URL before it is online fails (`comm-status-ahead`), and one whose words say it is published only warns (`comm-status-words`).",
       "properties": {
         "status": {
           "enum": ["submitted", "accepted", "published-online", "in-issue"],

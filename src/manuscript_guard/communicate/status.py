@@ -100,6 +100,10 @@ def _dois(text: str) -> list[tuple[str, int]]:
     found = []
     for match in _GIVEN.finditer(text):
         doi = (match["after"] or match["bare"]).rstrip(_TRAILING)
+        if match["after"] and "doi.org/" in match.group().lower():
+            # A link's query, fragment or closing slash is no part of the DOI it resolves:
+            # `https://doi.org/10.1/x?utm_source=bsky` links 10.1/x (fix-only round of #470).
+            doi = re.split(r"[?#]", doi, maxsplit=1)[0].rstrip("/").rstrip(_TRAILING)
         found.append((doi, match.start()))
     return found
 
@@ -134,10 +138,15 @@ def said_published(text: str) -> list[tuple[int, str]]:
 def _same_url(link: str, url: str) -> bool:
     """Whether a link is the paper's URL: the same, or it and a path, a query or a fragment
     after it, so that `.../a/10` is not `.../a/1`."""
-    link = link.rstrip(_TRAILING).lower()
+    link, url = _bare_url(link.rstrip(_TRAILING + ">")), _bare_url(url)
     if link.rstrip("/") == url:
         return True
     return link.startswith(url) and link[len(url)] in "/?#"
+
+
+def _bare_url(url: str) -> str:
+    """A URL without its scheme or a `www.`, lower-cased: `http://www.x/a` is `https://x/a`."""
+    return re.sub(r"^(?:https?://)?(?:www\.)?", "", url.lower()).rstrip("/")
 
 
 def status_findings(project, path: Path, text: str) -> list[Finding]:

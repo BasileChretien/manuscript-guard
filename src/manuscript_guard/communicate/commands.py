@@ -63,6 +63,15 @@ def draw(project, template: str | None = None) -> Drawn:
                       for ref in svg.unbound_refs(one, namespace)})  # fmt: skip
     if unbound:
         raise Refused(f"the brief binds values nothing emits: {', '.join(unbound)}")
+    held = svg.panels(brief)
+    drawn = [*held.asked, *held.how, *held.primary, *held.secondary, *held.means]
+    refused = [(one.id, why) for one in drawn if (why := svg.not_drawn(one.text))]
+    if refused:
+        raise Refused(
+            "the graphical abstract does not draw what it cannot print as the build does: "
+            + "; ".join(f"{name}: {why}" for name, why in refused)
+            + "; shorten the statement's text in the brief"
+        )
     chosen, why = templates.chosen(template, project.study_type)
     rules, _profile = checking.journal_rules(project)
     size = svg.size_of(rules)

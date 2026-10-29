@@ -135,6 +135,7 @@ from generated import (
     planned_plans,
     printings,
     proofs,
+    published_texts,
     quotations,
     quoted_references,
     reference_titled,
@@ -7595,6 +7596,18 @@ def test_each_claiming_sentence_of_a_communication_is_read_with_the_statements_i
     assert READINGS["communicate anchors"]()({"text": text}) == expected, text
 
 
+@holds(40, published_texts())
+def test_this_paper_said_out_is_read_in_its_forms_and_nothing_else_is(
+    drawn: tuple[str, list[str]],
+) -> None:
+    """"Our", "this" or "the present" study, paper, article or work, at once or after "has
+    been", "is", "was", "is now" or "was just", then "published" or "out", and a headline,
+    are read as this paper out; the same words of other work, after a negation, in a year
+    or before a comma, or in a link, are not (`communicate/status.py`)."""
+    text, expected = drawn
+    assert READINGS["communicate published"]()({"text": text}) == expected, text
+
+
 @holds(40, claim_pairs())
 def test_a_restatement_is_held_to_how_strongly_its_source_claims_read_whole(
     drawn: tuple[list[list[str]], list[str | None]],
@@ -12603,6 +12616,46 @@ def _an_anchor_after_a_stop_is_always_the_sentence_s_before(patch: pytest.Monkey
     patch.setattr(texts_module, "_opens_next", lambda *_args: False)
 
 
+def _a_negation_is_not_read_before_this_paper_out(patch: pytest.MonkeyPatch) -> None:
+    # "It is not true that our study is published" read as this paper out.
+    from manuscript_guard.communicate import status as status_module
+
+    patch.setattr(status_module, "_NEGATED", re.compile(r"(?!)"))
+
+
+def _this_paper_out_with_any_words_between(patch: pytest.MonkeyPatch) -> None:
+    # "Our study agrees with published reports" read as this paper out.
+    from manuscript_guard.communicate import status as status_module
+
+    patch.setattr(status_module, "_THIS_PAPER_OUT", re.compile(
+        r"\b(?:our|this|the[ \t]+present)\b.*?\b(?:published|out)\b", re.IGNORECASE))  # fmt: skip
+
+
+def _a_headline_of_other_work_is_this_paper(patch: pytest.MonkeyPatch) -> None:
+    # "Published in 2021, the trial found it" read as this paper out.
+    from manuscript_guard.communicate import status as status_module
+
+    patch.setattr(status_module, "_OTHER_WORK", re.compile(r"(?!)"))
+
+
+def _a_mention_is_read_as_words(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.communicate import texts as texts_module
+
+    patch.setattr(texts_module, "_HANDLE", re.compile(r"(?!)"))
+
+
+def _a_hashtag_is_read_as_words(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.communicate import texts as texts_module
+
+    patch.setattr(texts_module, "_HASHTAG", re.compile(r"(?!)"))
+
+
+def _a_counter_is_a_number(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.communicate import texts as texts_module
+
+    patch.setattr(texts_module, "_counters", lambda text, low, high: [])
+
+
 def _a_restatement_is_read_by_its_first_sentence(patch: pytest.MonkeyPatch) -> None:
     # Two texts compared sentence by sentence, the first of each: a hedge dropped from the
     # second is not seen, and the words of a sentence split in two are lost.
@@ -12762,6 +12815,30 @@ BROKEN = {
     ),
     "an anchor opening a line is the sentence's before": (
         _an_anchor_after_a_stop_is_always_the_sentence_s_before,
+        test_each_claiming_sentence_of_a_communication_is_read_with_the_statements_it_names,
+    ),
+    "a negation before this paper said out is not read": (
+        _a_negation_is_not_read_before_this_paper_out,
+        test_this_paper_said_out_is_read_in_its_forms_and_nothing_else_is,
+    ),
+    "this paper said out with any words between": (
+        _this_paper_out_with_any_words_between,
+        test_this_paper_said_out_is_read_in_its_forms_and_nothing_else_is,
+    ),
+    "a headline of other work is this paper": (
+        _a_headline_of_other_work_is_this_paper,
+        test_this_paper_said_out_is_read_in_its_forms_and_nothing_else_is,
+    ),
+    "a mention is read as words": (
+        _a_mention_is_read_as_words,
+        test_each_claiming_sentence_of_a_communication_is_read_with_the_statements_it_names,
+    ),
+    "a hashtag is read as words": (
+        _a_hashtag_is_read_as_words,
+        test_each_claiming_sentence_of_a_communication_is_read_with_the_statements_it_names,
+    ),
+    "a thread's counter is a number": (
+        _a_counter_is_a_number,
         test_each_claiming_sentence_of_a_communication_is_read_with_the_statements_it_names,
     ),
     "a restatement is read by its first sentence": (

@@ -25339,7 +25339,7 @@ def test_a_graphical_abstract_drawn_from_old_results_is_caught(project: Path) ->
     assert {"comm-ga-stale", "comm-number-unbound"} <= _communication_failures(project)
 
 
-_CLAIM = "<!-- brief: findings.2 --> Example-drug was associated with the reports."
+_ANCHORED_CLAIM = "<!-- brief: findings.2 --> Example-drug was associated with the reports."
 
 
 @pytest.mark.parametrize(
@@ -25347,7 +25347,7 @@ _CLAIM = "<!-- brief: findings.2 --> Example-drug was associated with the report
     [
         # Round 1 of #470. An anchor opening the line of the sentence it names, and the
         # same sentence with none.
-        (f"Read on.\n{_CLAIM}", "Read on.\nExample-drug was associated with the reports.",
+        (f"Read on.\n{_ANCHORED_CLAIM}", "Read on.\nExample-drug was associated with the reports.",
          "comm-claim-unanchored"),
         # A mention is no citation; a citation the statement does not give is a fact.
         ("With @alice.bsky.social, " + _POST.split("---\n")[-1],
@@ -25415,6 +25415,47 @@ def test_a_heading_and_a_registration_are_no_statements_of_the_brief(project: Pa
     assert said == ["Reporting of hepatic injury is disproportionate for example-drug in these "
                     "synthetic data.",
                     "Disproportionality is not incidence and cannot establish risk."]  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("faithful", "ahead"),
+    [
+        # Round 2 of #470: other work said published, and this paper said out.
+        ("Our findings agree with published reports.", "Our paper is now out."),
+        ("We published the protocol in 2024.", "Our study is published."),
+        ("Our study is not yet published.", "Our study is now published."),
+        ("Published in 2021, the earlier trial found less.", "Published in JAMA."),
+    ],
+)  # fmt: skip
+def test_a_post_round_2_says_this_paper_is_out_only_in_its_own_words(
+    project: Path, faithful: str, ahead: str
+) -> None:
+    """While the paper is accepted, the post that says it is out fails, and the one that
+    says "published" of other work, or that it is not yet, does not."""
+    _communicating(project)
+    with (project / "paper.yaml").open("a", encoding="utf-8", newline="\n") as handle:
+        handle.write("publication:\n  status: accepted\n")
+    post = project / "communication" / "bluesky.md"
+    body = _POST.split("---\n")[-1]
+    post.write_text(f"---\nchannel: bluesky\n---\n{faithful} {body}", encoding="utf-8")
+    assert "comm-status-ahead" not in _communication_failures(project)
+    post.write_text(f"---\nchannel: bluesky\n---\n{ahead} {body}", encoding="utf-8")
+    assert "comm-status-ahead" in _communication_failures(project), ahead
+
+
+def test_the_limitations_are_a_limitations_sections_paragraph(project: Path) -> None:
+    """Round 2 of #470: the strengths paragraph under "Strengths and limitations" is no
+    limitation, and a numbered heading's title is no statement."""
+    _replace_once(main_md(project), "Several limitations follow",
+                  "## 4. Strengths and limitations\n\nThe data are complete.\n\nSeveral "
+                  "limitations follow")  # fmt: skip
+    _communicating(project)
+    document = yaml.safe_load((project / "communication" / "brief.yaml").read_text("utf-8"))
+    said = [one["text"] for one in document["limitations"]]
+    assert said and said[0] == "Several limitations follow from the design."
+    assert not any(one["text"] in ("Strengths and limitations", "4.")
+                   for part in document.values() if isinstance(part, list)
+                   for one in part)  # fmt: skip
 
 
 # -------------------------------------------------------------- the Methods, pair by pair

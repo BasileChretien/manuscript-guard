@@ -108,18 +108,31 @@ def unbound_refs(statement: Statement, namespace: dict) -> list[str]:
             if p.namespace in VALUE_NAMESPACES and p.ref not in namespace]  # fmt: skip
 
 
-#: What the text of a statement holds that a picture does not print: a citation, in
-#: brackets or bare, and what the LaTeX reader writes in place of a cross-reference or a
-#: display (the private use area's characters, a mark to its end).
-_CITATION = re.compile(
-    r"[ \t]*\[[^\[\]\n]*@[^\[\]\n]*\]|[ \t]*(?<![\w@])@[A-Za-z0-9_][\w:.#$%&+?<>~/-]*\w"
-)
-_STAND_IN = re.compile(
-    "[" + chr(0xE003) + chr(0xE004) + "][^" + chr(0xE005) + "]*" + chr(0xE005)
-    + "|[" + chr(0xE000) + "-" + chr(0xF8FF) + "]"
-)
+#: What the text of a statement holds that a picture does not print: a citation in
+#: brackets, taken off with the space before it.
+_CITATION = re.compile(r"[ \t]*\[[^\[\]\n]*@[^\[\]\n]*\]")
+#: A narrative citation, `@smith2020 showed`, whose author's name only the build prints:
+#: a statement that holds one is not drawn (round 2 of #470).
+_NARRATIVE = re.compile(r"(?<![\w@\[])@[A-Za-z0-9_][\w:.#$%&+?<>~/-]*\w")
+#: What the LaTeX reader writes in place of a cross-reference or a display, the private
+#: use area's characters: its number is the build's, and a statement that holds one is not
+#: drawn (round 2 of #470).
+_STAND_IN = re.compile("[" + chr(0xE000) + "-" + chr(0xF8FF) + "]")
 #: What opens a list's item or a quotation, at the start of a statement.
 _MARKER = re.compile(r"\A[ \t]*(?:(?:[-*+]|\d+[.)]|>)[ \t]+)+")
+#: Emphasis written with underscores, `_word_` and `__words__`, not one inside a word.
+_UNDERSCORED = re.compile(r"(?<![\w_])(_{1,2})(?=\S)(.+?)(?<=\S)\1(?![\w_])")
+
+
+def not_drawn(text: str) -> str:
+    """Why a statement's text cannot be drawn as the build would print it, or nothing."""
+    bare = _CITATION.sub("", text)
+    if _NARRATIVE.search(bare):
+        return ("it cites a work in the sentence, @key, and only the build prints its "
+                "author's name")  # fmt: skip
+    if _STAND_IN.search(text):
+        return "it points at a display by a LaTeX cross-reference, whose number is the build's"
+    return ""
 
 
 @dataclass(frozen=True)
@@ -138,9 +151,9 @@ def pointers(project) -> dict[str, Shown]:
 
 
 def _clean(piece: str, opens: bool) -> str:
-    piece = _STAND_IN.sub("", _CITATION.sub("", piece))
+    piece = _CITATION.sub("", piece)
     piece = _MARKER.sub("", piece) if opens else piece
-    return _EMPHASIS.sub("", piece)
+    return _EMPHASIS.sub("", _UNDERSCORED.sub(r"\2", piece))
 
 
 def _tokens(text: str, namespace: dict) -> list[_Token]:

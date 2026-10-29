@@ -10,12 +10,15 @@ paper.yaml's `publication:` block records it:
       url: https://journal.example/article/5678
       embargo_until: 2026-12-01T00:01
 
-A text that says this paper is published, or links its DOI or its URL, before the status
+A text that says this paper is out, or links its DOI or its URL, before the status
 says it is online is ahead of the paper (`comm-status-ahead`): a post that links a DOI the
 publisher has not yet registered leads nowhere, and an embargo is broken by "our study is
-published" as by a link. "Published" said of other work, "previously published studies",
-is not read: a sentence is about this paper where it says "our", "my" or "this" study,
-paper, article or findings, or "we published". A DOI is held to its syntax
+published" as by a link. One form is read and the rest refused (round 2 of #470): "our",
+"this" or "the present" study, paper, article or work, then "published" or "out", at once
+or after "has been", "is", "was", "is now" or "was just", with no negation before it; a
+headline opening a sentence, "Now published", "Just published", "Out now", "Out today" or
+"Published:", but not "Published in 2021, ..."; and the paper's own DOI or URL. A DOI is
+held to its syntax
 (`comm-doi-malformed`); whether it is registered, and for this paper, is asked of Crossref
 by a later step. A link to storage that is neither persistent nor archived, a shared drive
 or a bare repository, is a warning (`comm-link-temporary`).
@@ -43,28 +46,32 @@ _GIVEN = re.compile(
     re.IGNORECASE,
 )
 _TRAILING = ".,;:!?)]}'*_"
-#: "published" said as done: not "to be published", "will be published", nor "previously
-#: published", which is said of other work.
-_PUBLISHED = re.compile(r"(?<![Bb]e )(?<![Pp]reviously )\b[Pp]ublished\b")
-#: What makes a sentence one about this paper: it is "our", "my" or "this" study, paper,
-#: article, findings and the like, or what "we published". "The study" and "published
-#: reports" name another's work as readily, and are not read as this paper.
-_OURS = re.compile(
-    r"\b(?:[Oo]ur|[Mm]y|[Tt]his)\s+(?:(?:new|latest|recent|first|own)\s+)?"
-    r"(?:study|paper|article|findings|research|work|analysis|manuscript|trial|preprint"
-    r"|results?)\b"
-    r"|\b[Ww]e(?:'ve|\N{RIGHT SINGLE QUOTATION MARK}ve|\s+have)?\s+(?:just\s+)?published\b"
+#: This paper said to be out, in the one form read (round 2 of #470): "our", "this" or "the
+#: present" study, paper, article or work, then at once, or after "has been", "is", "was",
+#: "is now" or "was just", "published" or "out". Anything between, "our findings agree with
+#: published reports", "we published the protocol", is not read, nor one after a negation.
+_THIS_PAPER_OUT = re.compile(
+    r"\b(?:our|this|the[ \t]+present)[ \t]+(?:study|paper|article|work)[ \t]+"
+    r"(?:(?:has[ \t]+been|is[ \t]+now|was[ \t]+just|is|was)[ \t]+)?(?:published|out)\b",
+    re.IGNORECASE,
+)
+#: A negation before it in its sentence: "It is not true that our study is published."
+_NEGATED = re.compile(
+    r"\b(?:not|never|no|nor|neither)\b|n['\N{RIGHT SINGLE QUOTATION MARK}]t\b", re.IGNORECASE
 )
 _LINK = re.compile(r"(?:https?://|www\.)\S+", re.IGNORECASE)
 #: A headline that says the paper is out, opening a sentence or a post past its marks and
 #: emoji: "Now published", "Just published", "Out now", "Out today", and "Published" where
 #: a colon, a dash, a stop or "in", "today", "online" follows, not "Published reports".
 _HEADLINE = re.compile(
-    r"\A[^\w]*(?:(?:now|just)[ \t]+published\b|out[ \t]+(?:now|today)\b"
-    r"|published(?=[ \t]*(?:[:!.\N{EM DASH}\N{EN DASH}-]|\Z)"
+    r"\A[^\w]*(?:(?P<said>(?:now|just)[ \t]+published\b|out[ \t]+(?:now|today)\b)"
+    r"|(?P<published>published)(?=[ \t]*(?:[:!.\N{EM DASH}\N{EN DASH}-]|\Z)"
     r"|[ \t]+(?:in|today|online|now|this[ \t]+week)\b))",
     re.IGNORECASE,
 )
+#: After a headline's "Published", what makes it said of other work: "in" and a year, "in
+#: 2021", or a clause after a comma, "Published in JAMA, the ABC trial found".
+_OTHER_WORK = re.compile(r"[ \t]+in[ \t]+(?:\d{4}\b|[^,.]*\b\d{4}\b)|[^.!?]*,")
 
 
 def publication(project) -> dict:
@@ -89,21 +96,35 @@ def _line(text: str, at: int) -> int:
 
 
 def said_published(text: str) -> list[tuple[int, str]]:
-    """Where a text says this paper is published: each sentence that says "published",
-    links left out, and whose words make it about this paper (`_OURS`), and each that opens
-    with a headline saying it is out (`_HEADLINE`); with the words."""
+    """Where a text says this paper is out, with the sentence: links left out, a sentence
+    that says so in the one form read (`_THIS_PAPER_OUT`) with no negation before it, and
+    one that opens with a headline (`_HEADLINE`) not said of other work."""
     from manuscript_guard.claims import sentence_spans
 
     unlinked = _LINK.sub(lambda found: " " * len(found.group()), text)
     found = []
     for _piece, first, end in sentence_spans(unlinked):
         sentence = unlinked[first:end]
-        said = _PUBLISHED.search(sentence)
-        if said is not None and _OURS.search(sentence):
+        said = _THIS_PAPER_OUT.search(sentence)
+        if said is not None and not _NEGATED.search(sentence, 0, said.start()):
             found.append((first + said.start(), " ".join(sentence.split())))
-        elif _HEADLINE.match(sentence):
-            found.append((first, " ".join(sentence.split())))
+            continue
+        headline = _HEADLINE.match(sentence)
+        if headline is None:
+            continue
+        if headline["published"] and _OTHER_WORK.match(sentence, headline.end()):
+            continue
+        found.append((first, " ".join(sentence.split())))
     return found
+
+
+def _same_url(link: str, url: str) -> bool:
+    """Whether a link is the paper's URL: the same, or it and a path, a query or a fragment
+    after it, so that `.../a/10` is not `.../a/1`."""
+    link = link.rstrip(_TRAILING).lower()
+    if link.rstrip("/") == url:
+        return True
+    return link.startswith(url) and link[len(url)] in "/?#"
 
 
 def status_findings(project, path: Path, text: str) -> list[Finding]:
@@ -129,7 +150,7 @@ def status_findings(project, path: Path, text: str) -> list[Finding]:
     if status not in OUT:
         if url:
             for link in _LINK.finditer(text):
-                if link.group().rstrip(_TRAILING).rstrip("/").lower().startswith(url):
+                if _same_url(link.group(), url):
                     what = f"it links the paper's URL, {link.group()}"
                     found.append(_ahead(path, _line(text, link.start()), what, status))
         for at, sentence in said_published(text):

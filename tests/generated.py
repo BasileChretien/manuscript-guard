@@ -6104,7 +6104,13 @@ ANCHOR_KINDS = (
     "plain", "look-alike", "number, anchor in code", "number, anchor in another comment",
     "word, anchor opening its paragraph", "word, anchor alone after it", "word, wrapped",
     "word, list item", "plain, anchored", "word, anchor opening its line before it",
+    # What a post holds and the paper does not, each with a figure that would make the
+    # sentence claim were it read: a mention, a hashtag, a thread's counters.
+    "plain, a mention", "plain, a hashtag", "plain, counters about a rule",
 )  # fmt: skip
+_MENTIONS = ("@lab42.bsky.social", "@alice@example42.social", "@team2.example.org")
+_THREAD_EMOJI = chr(0x1F9F5)
+_HASHTAGS = ("#covid19", "#pv2026", "#h5n1")
 #: What looks like a word of the ladder and is not read as one.
 LADDER_LOOKALIKES = (
     "drug-induced", "all-cause", "cause-specific", "an increased", "the associated",
@@ -6185,6 +6191,16 @@ def communication_texts(draw: st.DrawFn) -> tuple[str, list[list[Any]]]:
             opener = draw(st.sampled_from((link(one), f"<!-- brief: {one} -->")))
             said = f"{sentence()}\n{opener} {sentence(word())}"
             paragraphs.append((said, (1, True, [one])))
+        elif kind == "plain, a mention":
+            paragraphs.append((sentence(draw(st.sampled_from(_MENTIONS))), None))
+        elif kind == "plain, a hashtag":
+            paragraphs.append((sentence(draw(st.sampled_from(_HASHTAGS))), None))
+        elif kind == "plain, counters about a rule":
+            # A post closed by its counter, a rule, and the next opened by its own.
+            closing = draw(st.sampled_from(("2/3", "(2/3)", "2/3 " + _THREAD_EMOJI)))
+            opening = draw(st.sampled_from(("3/3", "3/3 " + _THREAD_EMOJI)))
+            said = f"{sentence()} {closing}\n\n---\n\n{opening} {sentence()}"
+            paragraphs.append((said, None))
         else:  # plain, anchored
             paragraphs.append((sentence(link(one)), (0, False, [one])))
     front = "---\nchannel: bluesky\nnote: '[](#brief:zz.1)'\n---\n"
@@ -6269,6 +6285,65 @@ def claim_pairs(draw: st.DrawFn) -> tuple[list[list[str]], list[str | None]]:
         pairs.append([source, restated])
         expected.append(PAIR_KINDS[kind])
     return pairs, expected
+
+
+#: Each way a post may say the paper is out, or seem to, and whether `said_published`
+#: reads it as this paper said out (round 2 of #470). Every kind is in every example.
+PUBLISHED_KINDS = {
+    "this paper out": True, "headline": True, "headline published in": True,
+    "headline in a year": False, "headline before a comma": False,
+    "agrees with published reports": False, "we published the protocol": False,
+    "not yet published": False, "negated before it": False, "previously published": False,
+    "to be published": False, "published before a noun": False, "published in a link": False,
+}  # fmt: skip
+
+
+@st.composite
+def published_texts(draw: st.DrawFn) -> tuple[str, list[str]]:
+    """A text of one paragraph for each kind of `PUBLISHED_KINDS`, in an order drawn each
+    time, and the sentences read as saying this paper is out, folded, in order."""
+
+    def words() -> str:
+        return " ".join(draw(st.lists(st.sampled_from(_PLAIN), min_size=1, max_size=3)))
+
+    def paper() -> str:
+        return (f"{draw(st.sampled_from(('Our', 'This', 'The present')))} "
+                f"{draw(st.sampled_from(('study', 'paper', 'article', 'work')))}")  # fmt: skip
+
+    said: list[tuple[str, bool]] = []
+    for kind in draw(st.permutations(tuple(PUBLISHED_KINDS))):
+        if kind == "this paper out":
+            verb = draw(st.sampled_from(("", "has been ", "is ", "was ", "is now ", "was just ")))
+            sentence = f"{paper()} {verb}{draw(st.sampled_from(('published', 'out')))} {words()}."
+        elif kind == "headline":
+            opener = draw(st.sampled_from(("Now published", "Just published", "Out now",
+                                           "Out today", "Published:")))  # fmt: skip
+            sentence = f"{opener} {words()}."
+        elif kind == "headline published in":
+            sentence = f"Published in {words()}."
+        elif kind == "headline in a year":
+            sentence = f"Published in {draw(st.integers(1990, 2030))}, the {words()} found it."
+        elif kind == "headline before a comma":
+            sentence = f"Published in {words()}, the {words()} found it."
+        elif kind == "agrees with published reports":
+            sentence = f"{paper()} agrees with published {words()}."
+        elif kind == "we published the protocol":
+            sentence = f"We published the protocol {words()}."
+        elif kind == "not yet published":
+            sentence = f"{paper()} is not yet published {words()}."
+        elif kind == "negated before it":
+            sentence = f"It is not true that {paper().lower()} is published."
+        elif kind == "previously published":
+            sentence = f"Previously published {words()} found it."
+        elif kind == "to be published":
+            sentence = f"{paper()} will be published {words()}."
+        elif kind == "published before a noun":
+            sentence = f"Published {draw(st.sampled_from(('reports', 'studies', 'data')))} differ."
+        else:
+            sentence = f"See https://example.org/{paper().replace(' ', '-')}-is-published now."
+        said.append((sentence, PUBLISHED_KINDS[kind]))
+    text = "\n\n".join(sentence for sentence, _out in said) + "\n"
+    return text, [sentence for sentence, out in said if out]
 
 
 # ------------------------------------------------------------------- a project's settings
@@ -7235,6 +7310,10 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         texts().map(lambda text: {"text": text}),
     ),
     "communicate claims": claim_pairs().map(lambda drawn: {"pairs": drawn[0]}),
+    "communicate published": st.one_of(
+        published_texts().map(lambda drawn: {"text": drawn[0]}),
+        texts().map(lambda text: {"text": text}),
+    ),
     "numbers": st.fixed_dictionaries(
         {
             "text": texts(POINTED, SUPPLEMENT_HEADINGS + NAMED_BLOCKS),

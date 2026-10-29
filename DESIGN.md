@@ -18166,25 +18166,44 @@ What papers converted from Word showed (see "What papers converted from Word sho
     (`read_on` in `data/channels.yaml`). Bluesky's 300 graphemes was not: its page redirected to one that
     served nothing, so it is marked `verified: false` and stands as recorded from memory
     until it is read there.
-  - `comm-status-ahead` reads this paper said to be out in English, and in these forms only:
-    a sentence that says "published", not after "be" or "previously", and is about "our",
-    "my" or "this" study, paper, article, findings and the like, or says "we published"; a
-    sentence or a post that opens, past its marks and emoji, with a headline: "Now
-    published", "Just published", "Out now", "Out today", or "Published" before a colon, a
-    dash, a stop or "in", "today", "online", "now", "this week"; and the paper's own DOI or
-    URL linked. Not read: "out" or "live" anywhere else ("the paper is out"), "Published"
-    before a noun ("Published reports differ", which is read as other work), a headline in
-    another language, and "has been accepted" while it is only submitted. Reading the
-    subject of a sentence exactly needs a parser; these are the narrowest forms that stay
-    silent on "previously published studies", "published reports" and a link's path (round 1
-    of #470).
-  - A mention (`@name`) is no citation in a communication text, which writes one in
-    brackets; a bare `@key` there is read as a mention. A thread's counter is one that opens
-    a post before a capital or the thread's emoji, or closes one after a stop: "3/4" after
-    a word is a fraction, and a counter written otherwise is a number.
+  - `comm-status-ahead` reads this paper said to be out in English, in exact forms, and
+    refuses the rest (round 2 of #470): "our", "this" or "the present" study, paper,
+    article or work, then "published" or "out", at once or after "has been", "is", "was",
+    "is now" or "was just", with no negation before it in its sentence; a sentence or a
+    post that opens, past its marks and emoji, with "Now published", "Just published", "Out
+    now", "Out today", or "Published" before a colon, a dash, a stop or "in", "today",
+    "online", "now", "this week", but not before "in" and a year nor a clause after a comma;
+    and the paper's own DOI or URL, whole or up to a `/`, `?` or `#`. Not read, and so
+    passing: "our findings are now published", "my paper is published", "the study is out",
+    "we have published our trial", "the paper is live", a headline in another language, and
+    "has been accepted" while it is only submitted.
+  - A mention is an @ before a name and its domain (`@alice.bsky.social`,
+    `@alice@example.social`), and is no citation; an @ before a key with no domain is a
+    citation, as pandoc reads one, so a mention written `@alice` is held as a citation the
+    statement does not give. A thread's counter is one that opens a post before a capital or
+    the thread's emoji, or closes one after a stop: "3/4" after a word is a fraction, an
+    opening counter before a lower-case word ("1/5 we looked") is a number, and so is a
+    counter written otherwise. The docs say so.
   - The scaffold reads a part of a structured abstract as ended by any label: a known
     part's name, words in emphasis, or up to five words before a colon that open with a
-    capital and no article or pronoun. "Main point: ..." in the Results ends them.
+    capital and no article or pronoun; a registration, the funding and the like only as a
+    label, with its stop or colon. "Main point: ..." in the Results ends them, and so does a
+    finding opening "Example-drug: ..." where the abstract has no part of its own: its words
+    after the colon are its quote (finding 11 of round 2). A label written with no stop or
+    colon, JAMA's "**Conclusions and Relevance**" set apart in bold, and a label inside a
+    list's item, are not read, and the part before runs on (finding 12 of round 2).
+  - The brief's limitations are taken only from a section headed "Limitations" or
+    "Strengths and limitations", numbered or not, at any level, and only its first
+    paragraph whose own sentences say "limitation" (round 2 of #470). A paper whose
+    limitations stand in its Discussion under no such heading, the example's among them, a
+    BMJ Open "Strengths and limitations of this study" box, or one headed "Limitations of
+    the study", has none in its brief, and a press release, a plain-language summary or a
+    pitch then fails `comm-limitation-dropped` until the author writes the statement in.
+  - A sentence that starts on a heading's line is no statement, so a heading's text and a
+    paragraph run straight on under it with no blank line are both left out.
+  - The graphical abstract draws no statement that holds a narrative citation (`@key`
+    showed) or a LaTeX cross-reference: their words are the build's, and `communicate
+    graphical-abstract` refuses, naming the statement, until its text is shortened.
   - Only an SVG's text is held to the brief, line by line. A PNG's words are not read at all,
     and a PDF's only for unbound numbers. A line of an SVG drawn by hand, with no
     `data-statement`, is a label: its numbers are held to the results and a claim in it

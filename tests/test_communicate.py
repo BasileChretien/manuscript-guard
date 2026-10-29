@@ -142,7 +142,9 @@ def test_the_brief_is_scaffolded_from_the_plan_and_the_manuscript_the_same_every
         "question": ["question.1"], "design": ["design.1"], "population": ["population.1"],
         "methods": ["methods.1"], "primary_outcome": ["primary_outcome.1"],
         "findings": ["findings.1", "findings.2"],
-        "limitations": ["limitations.1", "limitations.2", "limitations.3", "limitations.4"],
+        # The example's limitations stand under its Discussion, and under no heading of
+        # their own: none is taken (round 2 of #470).
+        "limitations": [],
         "conclusion": ["conclusion.1", "conclusion.2"],
     }  # fmt: skip
     assert document["question"][0]["from"] == {
@@ -669,7 +671,8 @@ def test_a_counter_at_the_end_of_a_post_is_no_number_and_a_fraction_is_one(ready
 def test_this_paper_said_published_or_its_url_linked_is_ahead(ready: Path) -> None:
     with (ready / "paper.yaml").open("a", encoding="utf-8", newline="\n") as handle:
         handle.write("publication:\n  status: accepted\n  url: https://journal.example/a/1\n")
-    for said in ("Our study is published today. ", "We have just published it. ",
+    for said in ("Our study is published today. ", "This paper has been published. ",
+                 "The present article is now out. ",
                  "Read it at https://journal.example/a/1 now. ",
                  # A headline that says it is out.
                  "Published: hepatic injury and example-drug. ", "Now published in X. ",
@@ -678,7 +681,11 @@ def test_this_paper_said_published_or_its_url_linked_is_ahead(ready: Path) -> No
         text(ready, "post.md", said + CLEAN)
         assert "comm-status-ahead" in codes(ready, "texts", FAIL), said
     for said in ("Our study will be published soon. ", "Published reports differ. ",
-                 "Previously published studies differ. ", "Out of the sites, none. "):  # fmt: skip
+                 "Previously published studies differ. ", "Out of the sites, none. ",
+                 # Round 2 of #470: other work, and a negation.
+                 "Our findings agree with published reports. ",
+                 "We published the protocol in 2024. ", "Our study is not yet published. ",
+                 "Published in 2021, the ABC trial found more. "):  # fmt: skip
         text(ready, "post.md", said + CLEAN)
         assert "comm-status-ahead" not in codes(ready, "texts"), said
 
@@ -757,31 +764,104 @@ def test_a_quote_cut_from_inside_a_sentence_fails(ready: Path) -> None:
     assert "brief-quote-not-in-source" not in codes(ready, "brief")
 
 
-def test_the_limitations_are_the_discussions_not_the_introductions(project: Path) -> None:
-    """Finding 16."""
+def _scaffolded(project: Path, old: str, new: str) -> dict:
     paper = project / "manuscript" / "main.md"
     written = paper.read_text(encoding="utf-8")
-    paper.write_text(written.replace(
-        "Whether the signal extends", "Earlier studies had limitations of their own.\n\n"
-        "Whether the signal extends", 1), encoding="utf-8")  # fmt: skip
+    assert written.count(old) == 1, old
+    paper.write_text(written.replace(old, new), encoding="utf-8")
     enable(project)
-    assert main(["communicate", "brief", str(project)]) == 0
-    document = yaml.safe_load(brief_file(project).read_text(encoding="utf-8"))
-    assert document["limitations"][0]["text"] == "Several limitations follow from the design."
+    assert main(["communicate", "brief", str(project), "--force"]) == 0
+    return yaml.safe_load(brief_file(project).read_text(encoding="utf-8"))
+
+
+_LIMITS = "Several limitations follow from the design."
+
+
+def test_the_limitations_are_a_limitations_sections_and_nothing_else(project: Path) -> None:
+    """Round 2 of #470, finding 3: only a section headed "Limitations" or "Strengths and
+    limitations", and of it the first paragraph whose own sentences say so; with none the
+    brief has none, and the author writes it."""
+    document = _scaffolded(project, "Whether the signal extends", "Earlier studies had "
+                           "limitations of their own.\n\nWhether the signal extends")  # fmt: skip
+    assert document["limitations"] == []
+    strengths = ("### 4.2 Strengths and limitations\n\nThe data are complete for every "
+                 "report.\n\n- " + _LIMITS)  # fmt: skip
+    document = _scaffolded(project, _LIMITS, strengths)
+    said = [(one["text"], one["from"]["quote"]) for one in document["limitations"]]
+    assert said[0] == (_LIMITS, _LIMITS), said
+    assert "brief-quote-not-in-source" not in codes(project, "brief")
+
+
+def test_a_numbered_heading_is_no_statement(project: Path) -> None:
+    """Round 2 of #470, finding 2: "## 4. Limitations" is cut after "4.", and its
+    "Limitations" is no sentence."""
+    document = _scaffolded(project, _LIMITS, f"## 4. Limitations\n\n{_LIMITS}")
+    said = [one["text"] for part in brief_module.SECTIONS for one in document.get(part, [])]
+    assert "Limitations" not in said and "4." not in said
+    assert document["limitations"][0]["text"] == _LIMITS
+    assert brief_module.on_heading_line("x\n## 5. Conclusions\ny", 6)
 
 
 def test_a_statement_is_drawn_as_printed_without_its_markup() -> None:
-    """Finding 13: a citation, a list's marker and emphasis are not drawn, and a pointer is
-    the number the build gives it."""
+    """Finding 13 of round 1, and 13 and 14 of round 2: a bracketed citation, a list's
+    marker and emphasis are not drawn, and a pointer is the number the build gives it; a
+    narrative citation and a LaTeX cross-reference are not drawn at all."""
     shown = {"ref.table.t": svg.Shown("Table 2"), "results.r": _Shown("1.85")}
-    said = svg.printed("- Use was *linked* [@smith2020] to it ({{ref.table.t}}), "
+    said = svg.printed("- Use was *linked* [@smith2020] to _it_ ({{ref.table.t}}), "
                        "{{results.r}}.", shown)  # fmt: skip
     assert said == "Use was linked to it (Table 2), 1.85."
     brief = Brief(Path("b.yaml"), (
         Statement("question.1", "question", "> Is it? See {{num.table.t}}.", "f", "q"),
-        Statement("findings.1", "findings", "It was {{results.r}} @smith2020.", "f", "q",
+        Statement("findings.1", "findings", "It was {{results.r}} [@smith2020].", "f", "q",
                   ("results.r",), True),
     ))  # fmt: skip
     alt = svg.alt_text(brief, templates.TEMPLATES["rct"], {"num.table.t": svg.Shown("2")})
     assert alt == ("Graphical abstract. The trial: Is it? See 2. The result: It was "
                    "{{results.r}}.\n")  # fmt: skip
+    assert svg.not_drawn("As @smith2020 showed, it was so.")
+    assert svg.not_drawn("See Figure " + chr(0xE000) + ".")
+    assert not svg.not_drawn("It was so [@smith2020] at alice@example.org.")
+
+
+def test_a_statement_the_picture_cannot_print_is_not_drawn(ready: Path) -> None:
+    def narrative(document: dict) -> None:
+        document["conclusion"][0]["text"] = "As @fictionalClassSignal2019 found, it is so."
+
+    edit_brief(ready, narrative)
+    assert main(["communicate", "graphical-abstract", str(ready)]) == 2
+
+
+def test_an_allow_entry_copied_with_its_anchor_matches(ready: Path) -> None:
+    """Round 2 of #470, finding 8."""
+    body, _front, _severity = TEXT_CASES["comm-claim-stronger"]
+    text(ready, "post.md", body, _allowing(_STRONGER + " [](#brief:findings.2)."))
+    assert ("comm-claim-stronger", INFO) in found(ready, "texts")
+
+
+def test_a_mention_has_a_domain_and_a_bare_key_is_a_citation(ready: Path) -> None:
+    """Round 2 of #470, finding 6."""
+    tail = " the reporting odds ratio was {{results.ror.point}} [](#brief:findings.2)."
+    text(ready, "post.md", "With @alice@example.social and @alice.bsky.social," + tail)
+    assert "comm-fact-not-in-source" not in codes(ready, "texts")
+    text(ready, "post.md", "As @fictionalClassSignal2019 found," + tail)
+    assert "comm-fact-not-in-source" in codes(ready, "texts", FAIL)
+
+
+def test_a_link_is_the_papers_url_whole_or_up_to_a_path(ready: Path) -> None:
+    """Round 2 of #470, finding 5."""
+    with (ready / "paper.yaml").open("a", encoding="utf-8", newline="\n") as handle:
+        handle.write("publication:\n  status: accepted\n  url: https://journal.example/a/1\n")
+    text(ready, "post.md", "See https://journal.example/a/10 too. " + CLEAN)
+    assert "comm-status-ahead" not in codes(ready, "texts")
+    for link in ("https://journal.example/a/1/", "https://journal.example/a/1?x=2",
+                 "https://journal.example/a/1#s"):  # fmt: skip
+        text(ready, "post.md", f"See {link} too. " + CLEAN)
+        assert "comm-status-ahead" in codes(ready, "texts", FAIL), link
+
+
+def test_a_funding_or_registration_ends_a_part_only_as_a_label() -> None:
+    """Round 2 of #470, finding 10."""
+    assert brief_module.opening("Funding: none.")[1] == "other"
+    assert brief_module.opening("**Data sharing.** Open.")[1] == "other"
+    assert brief_module.opening("Registration of the trial was done late.")[1] is None
+    assert brief_module.opening("- Item one.")[0] == 2

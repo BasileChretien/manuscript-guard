@@ -551,6 +551,18 @@ def _communicate_anchors() -> Reading:
     return anchors
 
 
+@reading("communicate published")
+def _communicate_published() -> Reading:
+    """Each sentence of a communication text read as saying this paper is out
+    (`communicate/status.py`), folded."""
+    from manuscript_guard.communicate.status import said_published
+
+    def published(given: dict[str, Any]) -> list[str]:
+        return [sentence for _at, sentence in said_published(given["text"])]
+
+    return published
+
+
 @reading("communicate claims")
 def _communicate_claims() -> Reading:
     """How strongly each said text claims against its source, read whole

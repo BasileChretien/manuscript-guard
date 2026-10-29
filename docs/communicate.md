@@ -56,8 +56,9 @@ until you shorten it, and held to the quote as a post is held to the statement.
 The scaffold is made the same way every time from the same files. The question, the
 design, the population, the methods and the primary outcome are the first sentence under
 the analysis plan's heading for each. The findings are the sentences of the Abstract's
-results that bind a value, the limitations the paragraph that names one, and the conclusion
-the Abstract's. Every finding is written `primary: false`: which one is the paper's primary
+results that bind a value, the limitations the first paragraph that names one under a
+heading "Limitations" or "Strengths and limitations" (none where there is no such heading:
+write them in), and the conclusion the Abstract's. A heading is no statement. Every finding is written `primary: false`: which one is the paper's primary
 finding is yours to mark, and nothing infers it. `communicate brief` will not write over a
 brief that exists; `--force` writes it again.
 
@@ -93,11 +94,14 @@ The channels are those of `src/manuscript_guard/data/channels.yaml`: `bluesky`, 
 and `linkedin`, each with its length and where that was read; `press-release`,
 `plain-language-summary`, `pitch`, `newsletter` and `blog`, which tell the whole finding.
 `paper.yaml`'s `communication.limits` gives a limit of your own, an instance of Mastodon's.
-An entry of `allow:` names a whole sentence as the text writes it, and allows that sentence
-only; one with no reason allows nothing, and is said (`comm-allow-no-reason`). A thread is
+An entry of `allow:` names a whole sentence as the text writes it, its anchor in or left
+out, and allows that sentence only; one with no reason allows nothing, and is said (`comm-allow-no-reason`). A thread is
 its posts, each after a line `---` that follows a blank line, each held to the limit; a
-mention (`@alice.bsky.social`), a hashtag and a counter that opens or closes a post
-("1/5", "2/5" beside the thread's emoji) are no citation, no number and no claim.
+mention with its domain (`@alice.bsky.social`, `@alice@example.social`), a hashtag and a
+counter that opens a post before a capital or closes one after a stop ("1/5", "2/5" beside
+the thread's emoji) are no citation, no number and no claim. A bare `@key` is a citation.
+The graphical abstract draws no statement that cites a work in its sentence (`@key`
+showed) or points at a display by a LaTeX cross-reference: shorten its text.
 
 ## The graphical abstract
 
@@ -144,7 +148,7 @@ Failures are listed apart from warnings, and the command exits 1 on a failure.
 | `comm-allow-unused` | warns | the front matter allows a sentence the text no longer holds, or one that claims no more than its statement |
 | `comm-allow-no-reason` | warns | an entry of `allow:` gives no reason, and allows nothing |
 | `comm-limitation-dropped` | fails | a press release, a plain-language summary or a pitch states no limitation |
-| `comm-status-ahead` | fails | the text says this paper is published ("our study", "this paper", "we published"), or links its DOI or URL, before `publication.status` says it is online |
+| `comm-status-ahead` | fails | the text says this paper is out ("our study is published", "this paper is now out", or a headline, "Out now", "Published:"), or links its DOI or URL, before `publication.status` says it is online |
 | `comm-doi-malformed` | fails | a DOI that is no DOI |
 | `comm-link-temporary` | warns | a link to a shared drive or a bare repository |
 | `comm-over-limit` | fails | a post longer than its channel takes |

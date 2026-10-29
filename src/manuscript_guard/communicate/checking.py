@@ -361,9 +361,14 @@ class _Allow:
 
 
 def _compared(sentence: str) -> str:
-    """A sentence as an `allow:` entry is compared with it: its white space one space, no
-    space before a mark, and no closing stop."""
+    """A sentence as an `allow:` entry is compared with it: its anchors taken out, its white
+    space one space, no space before a mark, and no closing stop."""
+    sentence = _ANCHOR_WRITTEN.sub(" ", texts_module.LINK.sub(" ", sentence))
     return _SPACE_BEFORE.sub(r"\1", fold(sentence)).rstrip(".!?").rstrip()
+
+
+#: An anchor written as a comment, as an `allow:` entry may copy it.
+_ANCHOR_WRITTEN = re.compile(r"<!--[ \t\n]*brief:[^>]*-->")
 
 
 _SPACE_BEFORE = re.compile(r" ([.,;:!?)])")

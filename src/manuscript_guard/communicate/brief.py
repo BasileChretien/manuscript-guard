@@ -49,7 +49,12 @@ from manuscript_guard.contracts import ContractError
 from manuscript_guard.contracts._schema import read_structured, read_text, validate
 from manuscript_guard.findings import Finding, Report
 from manuscript_guard.text.placeholders import VALUE_NAMESPACES, parse
-from manuscript_guard.text.section_names import names_abstract, names_conclusion, names_results
+from manuscript_guard.text.section_names import (
+    names_abstract,
+    names_conclusion,
+    names_results,
+    plain,
+)
 from manuscript_guard.text.sections import chain_at, heading_index
 
 SCHEMA = "communication-brief/1"
@@ -102,17 +107,25 @@ _OTHER_OPENING = re.compile(
     r"|data[ \t]+sharing|translations?)\b",
     re.IGNORECASE,
 )
-#: A heading line at the start of a piece of text: `#` Markdown's, which the LaTeX printed
-#: view writes too, or a title over its underline.
-_ATX = re.compile(r"[ \t]*#")
+#: A heading's line: `#` Markdown's, which the LaTeX printed view writes too, or a title
+#: over its underline.
+_ATX = re.compile(r"[ \t]{0,3}#{1,6}(?:[ \t]|$)")
 _UNDERLINE = re.compile(r"[ \t]*(?:=+|-+)[ \t]*")
+#: What opens an item of a list or a quotation, and is no word of a quote.
+_LIST_MARKER = re.compile(r"[ \t]*(?:(?:[-*+]|\d+[.)]|>)[ \t]+)+")
 _LIMITATION = re.compile(r"(?i)\blimitations?\b")
+#: The headings the limitations are taken from, as printed, numbered or not.
+_LIMITS_HEADINGS = frozenset({"limitations", "strengths and limitations"})
 #: The words a sentence opens with that no label does: "The main finding: ..." is a
 #: sentence of its part, not a part of its own.
 _OPENS_A_SENTENCE = frozenset({"the", "a", "an", "this", "these", "our", "we", "it", "in",
                                "of", "for", "to", "as", "at", "among"})  # fmt: skip
-_DISCUSSION = re.compile(r"(?i)\b(?:discussion|strengths?)\b")
-_NOT_LIMITED = re.compile(r"(?i)\b(?:introduction|background|methods?)\b")
+
+
+def _limits_heading(title: str) -> bool:
+    return " ".join(plain(title).lower().rstrip(" .:").split()) in _LIMITS_HEADINGS
+
+
 _PARAGRAPH = re.compile(r"\n[ \t]*\n")
 _HEADER = """\
 # The paper's own sentences that every communication of it restates: written by
@@ -278,37 +291,37 @@ class _Read:
     keys: tuple[str, ...]
 
 
-def _past_headings(raw: str) -> int:
-    """Where the sentence of a piece of text starts, past each heading line that opens it."""
-    at = 0
-    while at < len(raw):
-        rest = raw[at:]
-        line, _, after = rest.partition("\n")
-        if _ATX.match(line):
-            at += len(line) + 1
-            continue
-        underline = after.split("\n", 1)[0]
-        if line.strip() and after and _UNDERLINE.fullmatch(underline):
-            at += len(line) + 1 + len(underline) + 1
-            continue
-        break
-    return min(at, len(raw))
+def on_heading_line(text: str, at: int) -> bool:
+    """Whether offset `at` of `text` stands on a heading's line: `#` Markdown's, numbered
+    or not, which the LaTeX printed view writes too, or a title over its underline. A
+    sentence that starts there is no statement (round 2 of #470): "## 4. Limitations" is
+    cut after "4." and "Limitations" read as a sentence of its own."""
+    start = text.rfind("\n", 0, at) + 1
+    end = text.find("\n", at)
+    end = len(text) if end < 0 else end
+    line = text[start:end]
+    if _ATX.match(line):
+        return True
+    below_end = text.find("\n", end + 1)
+    below = text[end + 1 : len(text) if below_end < 0 else below_end] if end < len(text) else ""
+    return bool(line.strip()) and bool(_UNDERLINE.fullmatch(below))
 
 
 def opening(raw: str) -> tuple[int, str | None]:
-    """Where the words of a sentence start, past the headings and the label that open it,
-    and the part of an abstract that label opens; None where no label opens it. A label is a
-    known part's name, any words in emphasis, or up to five words before a colon that start
-    with a capital, and one this does not know opens a part that is no results and no
-    conclusion."""
-    at = _past_headings(raw)
+    """Where the words of a sentence start, past the list's marker and the label that open
+    it, and the part of an abstract that label opens; None where no label opens it. A label
+    is a known part's name, any words in emphasis, or up to five words before a colon that
+    start with a capital, and one this does not know opens a part that is no results and no
+    conclusion. A registration, the funding and the like open one only as a label, marked by
+    a stop or a colon: "Registration of the trial was ..." opens none."""
+    marker = _LIST_MARKER.match(raw)
+    at = marker.end() if marker is not None else 0
     rest = raw[at:]
-    if _OTHER_OPENING.match(rest):
-        label = _LABEL.match(rest)
-        return at + (label.end() if label is not None else 0), "other"
     label = _LABEL.match(rest)
     if label is None:
         return at, None
+    if _OTHER_OPENING.match(rest):
+        return at + label.end(), "other"
     name = " ".join(label["label"].lower().split())
     emphasised = bool(label["open"]) and bool(label["shut"] or label["after"])
     words = name.split()
@@ -342,6 +355,8 @@ def _sentences(document: Document, named: str | None, number: int) -> list[_Read
             if deeper:
                 part = _part_of(deeper[-1])
         raw = text[first:end]
+        if on_heading_line(text, first):
+            continue
         at, labelled = opening(raw)
         if labelled is not None and in_abstract:
             part = labelled
@@ -415,20 +430,15 @@ def scaffold(project) -> dict:
         {**_statement("findings", number, one), "keys": list(one.keys), "primary": False}
         for number, one in enumerate(findings, 1)
     ]
-    # The limitations are the Discussion's, or a section's that names them: a paragraph of
-    # the Introduction that says what earlier studies could not show is no limitation of
-    # this one. Elsewhere, any paragraph but the Introduction's, the Background's or the
-    # Methods'.
-    limiting = [one for one in read if not one.abstract
-                and (_LIMITATION.search(one.quote)
-                     or any(_LIMITATION.search(title) for title in one.chain[-1:]))]  # fmt: skip
-    discussed = [one for one in limiting if any(_DISCUSSION.search(title) or
-                                                _LIMITATION.search(title)
-                                                for title in one.chain)]  # fmt: skip
-    elsewhere = [one for one in limiting
-                 if not any(_NOT_LIMITED.search(title) for title in one.chain)]  # fmt: skip
-    limited = next((one.paragraph for one in discussed or elsewhere), None)
-    limitations = [one for one in read if one.paragraph == limited and not one.abstract]
+    # The limitations, narrowed to an exact form (round 2 of #470): a section headed
+    # "Limitations" or "Strengths and limitations", and of it the first paragraph whose own
+    # sentences say "limitation". Where there is none, the brief has none, and the author
+    # writes it.
+    limited = next((one.paragraph for one in read if not one.abstract and one.chain
+                    and _limits_heading(one.chain[-1]) and _LIMITATION.search(one.quote)),
+                   None)  # fmt: skip
+    limitations = [one for one in read if limited is not None and one.paragraph == limited
+                   and not one.abstract and _limits_heading(one.chain[-1])]  # fmt: skip
     document["limitations"] = [_statement("limitations", number, one)
                                for number, one in enumerate(limitations, 1)]  # fmt: skip
     conclusion = [one for one in abstract if one.part == "conclusion"]
@@ -452,16 +462,19 @@ def dump(document: dict) -> str:
 # -------------------------------------------------------------------------- the quotes
 
 
-def _sentences_of(text: str) -> list[tuple[str, ...]]:
-    """Each sentence of a text, folded, as a quote may start it: whole, and past the
-    headings and the label that open it."""
+def _sentences_of(text: str, place=None) -> dict[str, list[tuple[str, ...]]]:
+    """Each sentence of a text, folded, as a quote may start it: whole, and past the list's
+    marker and the label that open it; by the file `place` names for its offset, under ""
+    where none is given. A sentence on a heading's line is none."""
     text = text.replace("\r\n", "\n")
-    found = []
+    found: dict[str, list[tuple[str, ...]]] = {}
     for _piece, first, end in sentence_spans(text):
+        if on_heading_line(text, first):
+            continue
         raw = text[first:end]
         at, _part = opening(raw)
-        found.append(tuple(dict.fromkeys((fold(raw), fold(raw[_past_headings(raw):]),
-                                          fold(raw[at:])))))  # fmt: skip
+        name = "" if place is None else place(first)
+        found.setdefault(name, []).append(tuple(dict.fromkeys((fold(raw), fold(raw[at:])))))
     return found
 
 
@@ -486,26 +499,33 @@ def _whole(quote: str, sentences: list[tuple[str, ...]]) -> bool:
 def _sources(project) -> dict[str, list[tuple[str, ...]]]:
     """Each file a quote may come from, relative to the project's root, with its sentences:
     the manuscript's files, the analysis plan, and for a LaTeX manuscript each `.tex` file
-    as its document prints it, main text and supplement."""
+    with the sentences its document prints from it, main text and supplement."""
     from manuscript_guard.text.reader import LATEX, manuscript_files, manuscript_format
 
     out: dict[str, list[tuple[str, ...]]] = {}
     folder = project.path("manuscript")
-    printed: list[tuple[str, ...]] = []
     if manuscript_format(folder) == LATEX:
-        from manuscript_guard.text.latex.printed import printed_document
+        from manuscript_guard.text.latex.printed import printed_of
 
+        base = folder.relative_to(project.root).as_posix()
         for supplementary in (False, True):
-            printed += _sentences_of(printed_document(folder, supplementary=supplementary,
-                                                      quoting=True))  # fmt: skip
-    for path in manuscript_files(project):
-        out[path.relative_to(project.root).as_posix()] = (
-            [*_sentences_of(read_text(path)), *printed] if printed
-            else _sentences_of(read_text(path))
-        )  # fmt: skip
+            view = printed_of(folder, supplementary=supplementary, quoting=True)
+
+            def place(at: int, view=view) -> str:
+                where = view.place(at)
+                return "" if where is None else f"{base}/{Path(where[0].path).as_posix()}"
+
+            for name, sentences in _sentences_of(view.text, place).items():
+                out.setdefault(name, []).extend(sentences)
+        out.pop("", None)
+    else:
+        for path in manuscript_files(project):
+            out[path.relative_to(project.root).as_posix()] = _sentences_of(
+                read_text(path)).get("", [])  # fmt: skip
     plan = plan_file(project)
     if plan.is_file():
-        out[plan.relative_to(project.root).as_posix()] = _sentences_of(read_text(plan))
+        out[plan.relative_to(project.root).as_posix()] = _sentences_of(read_text(plan)).get(
+            "", [])  # fmt: skip
     return out
 
 

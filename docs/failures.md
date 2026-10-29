@@ -4,7 +4,7 @@ A failure of the tool's own, not a finding about your manuscript, ends in one se
 
 ```text
 manuscript-guard: check stopped on an error in manuscript-guard itself, not in your files: KeyError: 'G7'
-It is recorded on this machine in C:\Users\you\AppData\Local\manuscript-guard\reports, as 3f2a9c01b4de.json; nothing was sent. MANUSCRIPT_GUARD_DEBUG=1 shows the traceback.
+It is recorded on this machine in ~\AppData\Local\manuscript-guard\reports, as 3f2a9c01b4de.json; nothing was sent. `manuscript-guard report-issue --last` shows the report to send.
 ```
 
 The command exits 2, as when it could not run at all, so a script reading the exit code does
@@ -39,11 +39,38 @@ Hooks record their failures too, without a word, since a hook must not stop the 
 call. The next session's start says once that the hooks failed since a date, because a check a
 hook holds may not have run.
 
+## Reporting it
+
+```bash
+manuscript-guard report-issue --last
+```
+
+writes a report of the failure met last, prints all of it, writes it beside the records, and
+gives two addresses: a search of the project's issues for its fingerprint, so that a fault
+already reported is found first, and the new-issue page with the report filled in. Read the
+report, then open the page and post it yourself; `--open` opens it in your browser. Nothing is
+posted until you click Submit.
+
+- `report-issue --list` lists the failures recorded, and `report-issue <fingerprint>` (its
+  first characters will do) writes a report of one of them.
+- The error's message is left out, since it can quote your files; `--with-message` adds it,
+  with the replacements above.
+- `--note "..."` adds what you ran and what you expected. Make up the smallest text that shows
+  the fault rather than pasting your manuscript's own sentences.
+- `report-issue --title "..." --note "..."` writes a report of something else: a result that
+  is wrong without any error, or a suggestion.
+- A report longer than an address can carry is to be pasted: from the file it was written
+  to, or, with recording off, from the report printed in the terminal. An address too long to
+  hand to a browser opens the page with the title only, and the body is pasted the same way.
+
+[CONTRIBUTING.md](../CONTRIBUTING.md) says what else helps, and how to report a gate that got
+something wrong.
+
 ## Nothing is sent
 
-Nothing in this goes over the network. To report a fault, open an issue at the project's
-GitHub page with the record's contents, after reading them; [CONTRIBUTING.md](../CONTRIBUTING.md)
-says what helps, and how to report a gate that got something wrong.
+Nothing in this goes over the network: `report-issue` prints, writes a file and, with
+`--open`, hands an address to your browser. An agent that runs `report-issue --open` is
+stopped by the plugin's hook until you say yes.
 
 | Variable | Effect |
 |---|---|

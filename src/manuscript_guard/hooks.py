@@ -1232,6 +1232,7 @@ def guard_submission(payload: dict) -> int:
     sends = sends or _or_nothing(lambda _path: _sends_without_asking(command, payload),
                                  Path("."))  # fmt: skip
     sends = sends or _or_nothing(lambda _path: _approves(command), Path("."))
+    sends = sends or _opens_report(command)
     sends = sends or _moves_stage_back(command, payload)
     sends = sends or _or_nothing(lambda _path: _reads_in_confidence(command), Path("."))
     if not SUBMISSION_MARKERS.search(command):
@@ -1549,6 +1550,47 @@ def _approves(command: str) -> str | None:
         "`manuscript-guard approve` records that an author read the manuscript and approves "
         "it. Only that author can say so: run it yourself, as yourself."
     )
+
+
+#: `--open` as a word of the command, which `report-issue` opens the page with.
+_OPEN_FLAG = re.compile(r"--open(?:=.*)?", re.IGNORECASE | re.DOTALL)
+_OPENS = (
+    "`manuscript-guard report-issue --open` opens the project's issue page in your browser "
+    "with a report filled in, to be posted under your GitHub account. Read the report it "
+    "prints first: nothing is posted until you click Submit there."
+)
+
+
+def _opens_report(command: str) -> str | None:
+    """Why an agent's `report-issue --open` is put to the person: it opens a page in their
+    browser with a report filled in, to be posted under their GitHub account. Nothing is posted
+    until they click, but what the page says is theirs to read first.
+
+    Read as `_posts` reads `--post`, in shell words, so that a quoted note holding a `;`, an `&`
+    or a line does not hide an `--open` after it, and an `--open` inside a quoted note is not
+    one. A command the words cannot be read of exactly is put to the person too."""
+    joined = [re.sub(r"\r(?!\n)", "\n", re.sub(r"[\\`]\r?\n", between, command))
+              for between in (" ", "")]  # fmt: skip
+    texts = [*joined, *(re.sub("[\\\\`'\"]", "", text) for text in joined)]
+    if not any(_NAMES_TOOL.search(text) and re.search(r"(?i)\breport-issue\b", text)
+               and re.search(r"(?i)--open(?![\w-])", text) for text in texts):  # fmt: skip
+        return None
+    readings = [_command_words(text, posix=posix) for text in joined for posix in (True, False)]
+    opening = named_elsewhere = False
+    for invocations, _clean in readings:
+        for words in invocations:
+            tool = _tool_words(words)
+            if tool and tool[0].casefold() == "report-issue":
+                opening = opening or any(_OPEN_FLAG.fullmatch(word) for word in tool[1:])
+            elif tool is None:
+                # The tool started another way (`uv run`, `bash -c "..."`, `py -m`): an
+                # invocation that names it, `report-issue` and `--open` is put to the person.
+                said = " ".join(words)
+                named_elsewhere = named_elsewhere or bool(
+                    _NAMES_TOOL.search(said) and re.search(r"(?i)\breport-issue\b", said)
+                    and re.search(r"(?i)--open(?![\w-])", said))  # fmt: skip
+    exact = all(clean for _invocations, clean in readings)
+    return _OPENS if opening or named_elsewhere or not exact else None
 
 
 _READS_IN_CONFIDENCE = (

@@ -18,7 +18,7 @@ import sys
 import textwrap
 import traceback
 from collections.abc import Callable, Collection
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
 from pathlib import Path
 
@@ -346,7 +346,9 @@ def _guarded(name: str, gate, unreadable: Collection[Path] = ()) -> Report | Non
     except Exception as exc:  # noqa: BLE001 - any gate failure must be visible, not fatal
         from manuscript_guard.diagnostics import crashes
 
-        crashes.record(exc, kind=crashes.GATE, name=name)
+        recorded = crashes.record(exc, kind=crashes.GATE, name=name)
+        report = (f"; `manuscript-guard report-issue {recorded.stem}` writes a report of it"
+                  if recorded is not None else "")  # fmt: skip
         return Report(
             (
                 Finding(
@@ -354,7 +356,7 @@ def _guarded(name: str, gate, unreadable: Collection[Path] = ()) -> Report | Non
                     code="gate-errored",
                     message=f"{name} could not run: {type(exc).__name__}: {exc}",
                     hint="this is a bug in manuscript-guard, or a file it could not read; "
-                    "the manuscript has not been checked by this gate",
+                    "the manuscript has not been checked by this gate" + report,
                 ),
             )
         )
@@ -2691,6 +2693,118 @@ def cmd_stages(args: argparse.Namespace) -> int:
     print("Anything not listed fails at every stage: a gate has to opt in to being")
     print("deferred, so adding one cannot accidentally make it optional.")
     return 0
+
+
+def cmd_report_issue(args: argparse.Namespace) -> int:
+    """A report of a failure of the tool's own, or of anything else, for the person to read,
+    edit and post (`diagnostics.issue`). It sends nothing: it prints the report, writes it
+    beside the records, and gives the address of the issue page with it filled in."""
+    from manuscript_guard.diagnostics import crashes, issue
+    from manuscript_guard.diagnostics.scrub import scrub
+
+    _refuse_report_flags(args)
+    if args.list:
+        kept = crashes.records()
+        print(issue.listing(kept) if kept else _nothing_recorded())
+        return 0
+    if args.title is not None:
+        report = issue.general(args.title, args.note, installed=__version__)
+    else:
+        record = _record_to_report(args.fingerprint)
+        if record is None:
+            return 1
+        report = issue.from_record(record, with_message=args.with_message,
+                                   installed=__version__, note=args.note)  # fmt: skip
+    root = crashes.project_root()
+    # Scrubbed whole, then cut: a cut could split an address the scrub would have caught.
+    report = replace(report, title=issue.cut_title(scrub(report.title, root=root)),
+                     body=issue.printable(scrub(report.body, root=root)))  # fmt: skip
+    _say_report(report, crashes.folder(), args.open)
+    return 0
+
+
+def _refuse_report_flags(args: argparse.Namespace) -> None:
+    """Refuse what `report-issue` would otherwise read one way and the person meant another."""
+    asked = [flag for flag, given in (("a fingerprint", args.fingerprint), ("--last", args.last),
+                                      ("--with-message", args.with_message),
+                                      ("--title", args.title is not None),
+                                      ("--note", args.note is not None),
+                                      ("--open", args.open)) if given]  # fmt: skip
+    if args.list and asked:
+        raise ContractError(f"--list lists the records and takes nothing else: {asked[0]} "
+                            "was given too")  # fmt: skip
+    if args.fingerprint and args.last:
+        raise ContractError("give a fingerprint or --last, not both")
+    if args.title is not None and not args.title.strip():
+        raise ContractError("--title is empty: say in a few words what the report is about")
+    if args.title is not None and (args.fingerprint or args.last or args.with_message):
+        raise ContractError("--title writes a report of something else: give it without a "
+                            "fingerprint, --last or --with-message")  # fmt: skip
+
+
+def _nothing_recorded() -> str:
+    from manuscript_guard.diagnostics import crashes
+
+    off = (f" (recording is off: {crashes.OFF} is set)" if crashes.folder() is None
+           else "")  # fmt: skip
+    return (f"No failure of the tool's own is recorded on this machine{off}. "
+            '`manuscript-guard report-issue --title "..."` writes a report of something else.')
+
+
+def _record_to_report(wanted: str | None) -> dict | None:
+    """The record asked for, or the one met last; None, said, where there is none."""
+    from manuscript_guard.diagnostics import crashes, issue
+
+    kept = crashes.records()
+    if not kept:
+        print(_nothing_recorded(), file=sys.stderr)
+        return None
+    if wanted is None:
+        record = kept[0]
+    else:
+        record, why = issue.find(kept, wanted)
+        if record is None:
+            raise ContractError(f"report-issue: {why}")
+    if record["version"] != __version__:
+        print(f"This was recorded under manuscript-guard {record['version']}, and "
+              f"{__version__} is installed: run what failed again before reporting it, since "
+              "it may be fixed.", file=sys.stderr)  # fmt: skip
+    return record
+
+
+def _say_report(report, folder: Path | None, open_page: bool) -> None:
+    """The report printed whole, written beside the records, and the two addresses."""
+    import webbrowser
+
+    from manuscript_guard.diagnostics import issue
+
+    print(f"Title: {report.title}\n")
+    print(report.body)
+    written = None
+    if folder is not None:
+        from manuscript_guard.diagnostics.crashes import shown
+
+        written = issue.write(report, folder)
+        print(f"Written to {shown(written)}.")
+    found = issue.links(report, issue.issues_page())
+    if found is None:
+        print("This installation does not name the project's issue page: open it from the "
+              "README and paste the report.")  # fmt: skip
+        return
+    if found.search:
+        print(f"Already reported? {found.search}")
+    paste = "from the file above" if written else "from the report printed above"
+    if found.shortened:
+        print(f"The report is too long for the address: paste it {paste}.")
+    print(f"Read the report above, then post it yourself: {found.new}")
+    print("Nothing was sent.")
+    if open_page:
+        # A browser may cut a long address it is handed, so a long one opens with the title
+        # only, and the body is pasted.
+        cut = len(found.new) > issue.LONGEST_OPENED
+        if cut and not found.shortened:
+            print(f"The page opens with the title only: paste the report {paste}.")
+        webbrowser.open(found.short if cut else found.new)
 
 
 def cmd_palettes(args: argparse.Namespace) -> int:
@@ -5504,7 +5618,9 @@ def cmd_init(args: argparse.Namespace) -> int:
 #: The commands, under the headings the top-level help lists them by, in that order. Every
 #: command is in one group, but `hook`: an agent tool calls it and an author never does.
 COMMAND_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("Setup & Guide", ("init", "next", "set", "stages", "journal", "style", "install-skills")),
+    ("Setup & Guide",
+     ("init", "next", "set", "stages", "journal", "style", "install-skills",
+      "report-issue")),  # fmt: skip
     (
         "Checking & Audit",
         (
@@ -5931,6 +6047,29 @@ def build_parser() -> argparse.ArgumentParser:
 
     stages = sub.add_parser("stages", help="what each stage means and what binds at it")
     stages.set_defaults(func=cmd_stages)
+
+    reporting = sub.add_parser(
+        "report-issue",
+        help="write a report of a failure of the tool's own, or of anything else, for you to "
+        "read and post; it sends nothing",
+    )
+    reporting.add_argument("fingerprint", nargs="?",
+                           help="the record to report, by its fingerprint or its first "
+                           "characters (`--list` shows them); the one met last by "
+                           "default")  # fmt: skip
+    reporting.add_argument("--last", action="store_true",
+                           help="the failure met last (the default)")  # fmt: skip
+    reporting.add_argument("--list", action="store_true",
+                           help="list the failures recorded on this machine")  # fmt: skip
+    reporting.add_argument("--title",
+                           help="a report of something else, with this summary")  # fmt: skip
+    reporting.add_argument("--note", help="what you ran and what you expected")
+    reporting.add_argument("--with-message", action="store_true",
+                           help="add the error's message, which can quote your files")  # fmt: skip
+    reporting.add_argument("--open", action="store_true",
+                           help="open the filled-in issue page in your browser; posting it is "
+                           "your click")  # fmt: skip
+    reporting.set_defaults(func=cmd_report_issue)
 
     palettes_ = sub.add_parser(
         "palettes",

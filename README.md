@@ -285,6 +285,7 @@ number in the file and the rule that classified it.
 | `journal` | list journal profiles, start one from the annotated template, or read a journal's page again against the stored one (`--reread`, and `--page` for a block's page of its own) |
 | `style` | fetch the journal's citation style from the CSL style repository once, and keep it in `profiles/journals/styles/` for the offline build |
 | `install-skills` | copy the skills to a folder an agent tool reads; `--verify` checks the copy, `--remove` takes it away |
+| `report-issue` | write a report of a failure of the tool's own (`--last`, a fingerprint, `--list`) or of anything else (`--title`), print it whole and give the issue page's address with it filled in, for you to read and post; the error's message only with `--with-message`; it sends nothing ([docs/failures.md](docs/failures.md)) |
 
 ### Checking & Audit
 

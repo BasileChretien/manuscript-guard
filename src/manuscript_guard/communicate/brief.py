@@ -1,0 +1,577 @@
+"""The brief: the paper's own sentences that every communication of it restates.
+
+`communicate brief` writes `communication/brief.yaml` (schema `communication-brief/1`):
+
+    schema: communication-brief/1
+    question: [statement]
+    design: [statement]
+    population: [statement]
+    methods: [statement]
+    primary_outcome: [statement]
+    findings: [statement, with keys: [results.key, ...] and primary: true or false]
+    limitations: [statement]
+    conclusion: [statement]
+
+Each statement is `{id, text, from: {file, quote}}`. `quote` is a sentence of the manuscript,
+or of the analysis plan, word for word; `text` is what a communication may restate, the
+quote itself until the author shortens it, and it is held to the quote as any text is.
+
+The scaffold is made the same way every time from the same files, and reads nothing it
+guesses at:
+
+- the question, the design, the population, the methods and the primary outcome: the first
+  sentence under the plan's heading for each, as G12 finds those headings;
+- the findings: each sentence of the Abstract's results that binds a value (under a
+  "Results" or "Findings" heading or label, or the whole Abstract where it has neither),
+  else of the Results; each with the values it binds as `keys`;
+- the limitations: each sentence of the first paragraph outside the Abstract that names a
+  limitation, or that stands under a heading that does;
+- the conclusion: the sentences of the Abstract's conclusion, else the first paragraph
+  under a heading that names one.
+
+Every finding is written `primary: false`. Which finding is the paper's primary one is the
+author's to mark, and nothing here infers it: a scaffold that picked the first finding would
+put its guess on every post.
+"""
+
+from __future__ import annotations
+
+import re
+from bisect import bisect_right
+from dataclasses import dataclass, field
+from pathlib import Path
+
+import yaml
+
+from manuscript_guard.claims import sentence_spans
+from manuscript_guard.communicate import GATE, brief_path
+from manuscript_guard.contracts import ContractError
+from manuscript_guard.contracts._schema import read_structured, read_text, validate
+from manuscript_guard.findings import Finding, Report
+from manuscript_guard.text.placeholders import VALUE_NAMESPACES, parse
+from manuscript_guard.text.section_names import (
+    names_abstract,
+    names_conclusion,
+    names_results,
+    plain,
+)
+from manuscript_guard.text.sections import chain_at, heading_index
+
+SCHEMA = "communication-brief/1"
+#: The parts of a brief, in the order it is written.
+SECTIONS = (
+    "question",
+    "design",
+    "population",
+    "methods",
+    "primary_outcome",
+    "findings",
+    "limitations",
+    "conclusion",
+)
+#: The parts read from the analysis plan, each with the key of G12's heading for it.
+_FROM_PLAN = (
+    ("question", "question"),
+    ("design", "design"),
+    ("population", "population"),
+    ("methods", "analysis"),
+    ("primary_outcome", "outcome"),
+)
+#: A label that opens a part of a structured abstract written without headings,
+#: "**Results.**", "**Results**.", "Conclusions:", "Trial registration:": up to five words,
+#: in emphasis or not, then a stop or a colon.
+_LABEL = re.compile(
+    r"\A(?P<open>\*\*|__|\*|_)?[ \t]*"
+    r"(?P<label>[A-Za-z][A-Za-z-]*(?:[ \t]+[A-Za-z][A-Za-z-]*){0,4})"
+    r"[ \t]*(?P<shut>\*\*|__|\*|_)?[ \t]*(?P<mark>[.:])[ \t]*(?P<after>\*\*|__|\*|_)?[ \t\n]*"
+)
+_PARTS = {
+    "background": "other", "introduction": "other", "aim": "other", "aims": "other",
+    "objective": "other", "objectives": "other", "purpose": "other", "context": "other",
+    "importance": "other", "methods": "other", "design": "other", "setting": "other",
+    "participants": "other", "exposure": "other", "exposures": "other",
+    "results": "results", "findings": "results", "main results": "results",
+    "conclusion": "conclusion", "conclusions": "conclusion", "interpretation": "conclusion",
+    "conclusions and relevance": "conclusion",
+    "limitations": "other", "discussion": "other",
+}  # fmt: skip
+#: What opens a part of an abstract that is neither its results nor its conclusion,
+#: however it is marked, and ends the part before it: a trial's registration, the funding,
+#: the keywords, the panels of a research-in-context box.
+_OTHER_OPENING = re.compile(
+    r"\A(?:\*\*|__|\*|_)?[ \t]*(?:funding|(?:clinical[ \t]+)?trial[ \t]+registration"
+    r"|registration|keywords|key[ \t]+words|competing[ \t]+interests?"
+    r"|conflicts?[ \t]+of[ \t]+interests?|declaration[ \t]+of[ \t]+interests?"
+    r"|role[ \t]+of[ \t]+the[ \t]+funding[ \t]+source|evidence[ \t]+before[ \t]+this[ \t]+study"
+    r"|added[ \t]+value[ \t]+of[ \t]+this[ \t]+study|implications[ \t]+of[ \t]+all"
+    r"|data[ \t]+sharing|translations?)\b",
+    re.IGNORECASE,
+)
+#: A heading's line: `#` Markdown's, which the LaTeX printed view writes too, or a title
+#: over its underline.
+_ATX = re.compile(r"[ \t]{0,3}#{1,6}(?:[ \t]|$)")
+_UNDERLINE = re.compile(r"[ \t]*(?:=+|-+)[ \t]*")
+#: What opens an item of a list or a quotation, and is no word of a quote.
+_LIST_MARKER = re.compile(r"[ \t]*(?:(?:[-*+]|\d+[.)]|>)[ \t]+)+")
+_LIMITATION = re.compile(r"(?i)\blimitations?\b")
+#: The headings the limitations are taken from, as printed, numbered or not.
+_LIMITS_HEADINGS = frozenset({"limitations", "strengths and limitations"})
+#: The words a sentence opens with that no label does: "The main finding: ..." is a
+#: sentence of its part, not a part of its own.
+_OPENS_A_SENTENCE = frozenset({"the", "a", "an", "this", "these", "our", "we", "it", "in",
+                               "of", "for", "to", "as", "at", "among"})  # fmt: skip
+
+
+def _limits_heading(title: str) -> bool:
+    return " ".join(plain(title).lower().rstrip(" .:").split()) in _LIMITS_HEADINGS
+
+
+_PARAGRAPH = re.compile(r"\n[ \t]*\n")
+_HEADER = """\
+# The paper's own sentences that every communication of it restates: written by
+# `manuscript-guard communicate brief`, and the author's from then on.
+#
+# Each statement's `quote` is a sentence of the manuscript, or of the analysis plan, word
+# for word; `communicate check` holds it to that file. Its `text` is what a post, a summary
+# or the graphical abstract may say for it: shorten it if you like, and it is held to the
+# quote as they are. Delete what no communication should say, and add what one should,
+# quoted the same way.
+#
+# Mark the paper's primary finding `primary: true`. Nothing infers it.
+#
+# A sentence of a communication names the statement it restates by an anchor, which
+# prints nothing: [](#brief:findings.1), or <!-- brief: findings.1 -->.
+"""
+
+
+@dataclass(frozen=True)
+class Statement:
+    id: str
+    section: str
+    text: str
+    file: str
+    quote: str
+    keys: tuple[str, ...] = ()
+    #: Of a finding, whether the author marked it primary; None for the other parts.
+    primary: bool | None = None
+
+
+@dataclass(frozen=True)
+class Brief:
+    path: Path
+    statements: tuple[Statement, ...] = field(default=())
+
+    @property
+    def by_id(self) -> dict[str, Statement]:
+        return {statement.id: statement for statement in self.statements}
+
+    def of(self, section: str) -> list[Statement]:
+        return [one for one in self.statements if one.section == section]
+
+    @property
+    def primary(self) -> list[Statement]:
+        return [one for one in self.of("findings") if one.primary]
+
+
+def fold(text: str) -> str:
+    """Every run of white space one space, as a quote is compared."""
+    return " ".join(text.split())
+
+
+# ---------------------------------------------------------------------------- reading
+
+
+def load(project) -> tuple[Brief | None, Report]:
+    """The brief as written, and what is wrong with its shape; None where there is none, or
+    none that can be read."""
+    path = brief_path(project)
+    if not path.is_file():
+        return None, Report()
+    try:
+        document = read_structured(path)
+    except ContractError as exc:
+        return None, Report((_invalid(path, str(exc)),))
+    report = validate(document, "communication-brief", path, gate=GATE, code="brief-invalid")
+    if not report.ok:
+        return None, report
+    statements = []
+    for section in SECTIONS:
+        for entry in document.get(section) or ():
+            keys = tuple(entry.get("keys") or ()) if section == "findings" else ()
+            primary = entry.get("primary") if section == "findings" else None
+            statements.append(
+                Statement(entry["id"], section, entry["text"], entry["from"]["file"],
+                          entry["from"]["quote"], keys, primary)  # fmt: skip
+            )
+    seen: set[str] = set()
+    for statement in statements:
+        if statement.id in seen:
+            report = report.with_findings(
+                _invalid(path, f"two statements are named {statement.id!r}: an anchor names one")
+            )
+        seen.add(statement.id)
+    return Brief(path, tuple(statements)), report
+
+
+def _invalid(path: Path, why: str) -> Finding:
+    return Finding(GATE, "brief-invalid", f"{path.name}: {why}", path=path,
+                   hint="put it right by hand, or write it again with `communicate brief "
+                   "--force`")  # fmt: skip
+
+
+# ------------------------------------------------------------------- the paper's sources
+
+
+@dataclass(frozen=True)
+class Document:
+    """One text the scaffold reads, and where each offset of it comes from: a Markdown file,
+    or a LaTeX manuscript's printed view."""
+
+    text: str
+    #: Each offset's file, relative to the project's root, and line.
+    place: object
+
+
+def _markdown_documents(project) -> list[Document]:
+    from manuscript_guard.gates.numbers import is_supplementary, printed_order, source_files
+
+    folder = project.path("manuscript")
+    paths = [p for p in source_files(folder) if not is_supplementary(folder, p)]
+    found = []
+    for path in printed_order(paths, supplementary=False):
+        name = path.relative_to(project.root).as_posix()
+        found.append(Document(read_text(path).replace("\r\n", "\n"), lambda _at, n=name: n))
+    return found
+
+
+def _latex_documents(project) -> list[Document]:
+    from manuscript_guard.text.latex.printed import printed_of
+    from manuscript_guard.text.latex.structure import ENTRY, read_document
+
+    folder = project.path("manuscript")
+    view = printed_of(folder, supplementary=False, quoting=True)
+    base = folder.relative_to(project.root).as_posix()
+    sources = read_document(folder, supplementary=False).sources
+    entry = f"{base}/{Path(sources[0].path).as_posix() if sources else ENTRY}"
+
+    def place(at: int) -> str:
+        where = view.place(at)
+        return entry if where is None else f"{base}/{Path(where[0].path).as_posix()}"
+
+    return [Document(view.text, place)]
+
+
+def manuscript_documents(project) -> list[Document]:
+    from manuscript_guard.text.reader import LATEX, manuscript_format
+
+    if manuscript_format(project.path("manuscript")) == LATEX:
+        return _latex_documents(project)
+    return _markdown_documents(project)
+
+
+def plan_file(project) -> Path:
+    from manuscript_guard.gates.design import PLAN
+
+    return project.root / PLAN
+
+
+# ------------------------------------------------------------------------ the scaffold
+
+
+@dataclass(frozen=True)
+class _Read:
+    """A sentence of the manuscript as the scaffold reads it."""
+
+    quote: str
+    file: str
+    abstract: bool
+    part: str
+    chain: tuple[str, ...]
+    paragraph: tuple[int, int]
+    keys: tuple[str, ...]
+
+
+def past_headings(text: str, first: int, end: int) -> int | None:
+    """Where a sentence that starts on a heading's line goes on past it, and its underline;
+    None where nothing with a letter does. "## Results\\nOf {{n}} reports, ..." keeps "Of
+    {{n}} reports, ..."; "## 4." and the "Limitations" after it keep nothing (round 2 and
+    the fix-only round of #470)."""
+    at = first
+    while at < end and on_heading_line(text, at):
+        line_end = text.find("\n", at)
+        if line_end < 0 or line_end + 1 >= end:
+            return None
+        at = line_end + 1
+        below_end = text.find("\n", at)
+        below = text[at : len(text) if below_end < 0 else below_end]
+        if _UNDERLINE.fullmatch(below):
+            if below_end < 0 or below_end + 1 >= end:
+                return None
+            at = below_end + 1
+        while at < end and text[at] in " \t\n":
+            at += 1
+    return at if re.search(r"[^\W\d_]", text[at:end]) else None
+
+
+def on_heading_line(text: str, at: int) -> bool:
+    """Whether offset `at` of `text` stands on a heading's line: `#` Markdown's, numbered
+    or not, which the LaTeX printed view writes too, or a title over its underline. A
+    heading's line is no statement (round 2 of #470): "## 4. Limitations" is cut after "4."
+    and "Limitations" read as a sentence of its own."""
+    start = text.rfind("\n", 0, at) + 1
+    end = text.find("\n", at)
+    end = len(text) if end < 0 else end
+    line = text[start:end]
+    if _ATX.match(line):
+        return True
+    below_end = text.find("\n", end + 1)
+    below = text[end + 1 : len(text) if below_end < 0 else below_end] if end < len(text) else ""
+    return bool(line.strip()) and bool(_UNDERLINE.fullmatch(below))
+
+
+def opening(raw: str) -> tuple[int, str | None]:
+    """Where the words of a sentence start, past the list's marker and the label that open
+    it, and the part of an abstract that label opens; None where no label opens it. A label
+    is a known part's name, any words in emphasis, or up to five words before a colon that
+    start with a capital, and one this does not know opens a part that is no results and no
+    conclusion. A registration, the funding and the like open one only as a label, marked by
+    a stop or a colon: "Registration of the trial was ..." opens none."""
+    marker = _LIST_MARKER.match(raw)
+    at = marker.end() if marker is not None else 0
+    rest = raw[at:]
+    label = _LABEL.match(rest)
+    if label is None:
+        return at, None
+    if _OTHER_OPENING.match(rest):
+        return at + label.end(), "other"
+    name = " ".join(label["label"].lower().split())
+    emphasised = bool(label["open"]) and bool(label["shut"] or label["after"])
+    words = name.split()
+    colon = (label["mark"] == ":" and label["label"][0].isupper()
+             and words[0] not in _OPENS_A_SENTENCE)  # fmt: skip
+    if name in _PARTS:
+        return at + label.end(), _PARTS[name]
+    if emphasised or colon:
+        return at + label.end(), "other"
+    return at, None
+
+
+def _sentences(document: Document, named: str | None, number: int) -> list[_Read]:
+    text = document.text
+    index = heading_index(text)
+    paragraphs = [found.end() for found in _PARAGRAPH.finditer(text)]
+    out = []
+    part = ""
+    in_abstract = False
+    for _piece, start, end in sentence_spans(text):
+        first = past_headings(text, start, end)
+        if first is None:
+            continue
+        chain = tuple(chain_at(index, first).printed)
+        abstract_at = next((i for i, title in enumerate(chain) if names_abstract(title, named)),
+                           None)  # fmt: skip
+        if abstract_at is None:
+            in_abstract, part = False, ""
+        else:
+            if not in_abstract:
+                part = ""
+            in_abstract = True
+            deeper = chain[abstract_at + 1 :]
+            if deeper:
+                part = _part_of(deeper[-1])
+        raw = text[first:end]
+        at, labelled = opening(raw)
+        if labelled is not None and in_abstract:
+            part = labelled
+        raw = raw[at:]
+        quote = fold(raw)
+        if not re.search(r"[^\W\d_]", quote):
+            continue
+        keys = tuple(dict.fromkeys(p.ref for p in parse(raw)[0]
+                                   if p.namespace in VALUE_NAMESPACES))  # fmt: skip
+        out.append(
+            _Read(quote, str(document.place(first + at)), in_abstract, part, chain,
+                  (number, bisect_right(paragraphs, first)), keys)  # fmt: skip
+        )
+    return out
+
+
+def _part_of(title: str) -> str:
+    if names_results(title):
+        return "results"
+    if names_conclusion(title):
+        return "conclusion"
+    return "other"
+
+
+def _statement(section: str, number: int, read: _Read) -> dict:
+    return {"id": f"{section}.{number}", "text": read.quote,
+            "from": {"file": read.file, "quote": read.quote}}  # fmt: skip
+
+
+def _from_plan(project) -> dict[str, list[dict]]:
+    from manuscript_guard.gates.design import REQUIRED, _plan_sections
+
+    path = plan_file(project)
+    if not path.is_file():
+        return {}
+    sections = _plan_sections(read_text(path).replace("\r\n", "\n"))
+    patterns = {key: pattern for key, pattern, _what in REQUIRED}
+    name = path.relative_to(project.root).as_posix()
+    out: dict[str, list[dict]] = {}
+    for part, key in _FROM_PLAN:
+        section = next((s for s in sections if s.title and re.search(patterns[key], s.title)),
+                       None)  # fmt: skip
+        if section is None:
+            continue
+        for _piece, first, end in sentence_spans(section.body):
+            quote = fold(section.body[first:end])
+            if re.search(r"[^\W\d_]", quote):
+                out[part] = [{"id": f"{part}.1", "text": quote,
+                              "from": {"file": name, "quote": quote}}]  # fmt: skip
+                break
+    return out
+
+
+def scaffold(project) -> dict:
+    """The brief `communicate brief` writes for `project`, the same every time from the same
+    files."""
+    from manuscript_guard.gates.journal import abstract_title
+
+    named = abstract_title(project)
+    read = [one for number, document in enumerate(manuscript_documents(project))
+            for one in _sentences(document, named, number)]  # fmt: skip
+    document: dict = {"schema": SCHEMA}
+    document.update(_from_plan(project))
+    abstract = [one for one in read if one.abstract]
+    parted = any(one.part for one in abstract)
+    findings = [one for one in abstract if one.keys and (one.part == "results" or not parted)]
+    if not findings:
+        findings = [one for one in read if not one.abstract and one.keys
+                    and any(names_results(title) for title in one.chain)]  # fmt: skip
+    document["findings"] = [
+        {**_statement("findings", number, one), "keys": list(one.keys), "primary": False}
+        for number, one in enumerate(findings, 1)
+    ]
+    # The limitations, narrowed to an exact form (round 2 of #470): a section headed
+    # "Limitations" or "Strengths and limitations", and of it the first paragraph whose own
+    # sentences say "limitation". Where there is none, the brief has none, and the author
+    # writes it.
+    limited = next((one.paragraph for one in read if not one.abstract and one.chain
+                    and _limits_heading(one.chain[-1]) and _LIMITATION.search(one.quote)),
+                   None)  # fmt: skip
+    limitations = [one for one in read if limited is not None and one.paragraph == limited
+                   and not one.abstract and _limits_heading(one.chain[-1])]  # fmt: skip
+    document["limitations"] = [_statement("limitations", number, one)
+                               for number, one in enumerate(limitations, 1)]  # fmt: skip
+    conclusion = [one for one in abstract if one.part == "conclusion"]
+    if not conclusion:
+        closing = next((one.paragraph for one in read if not one.abstract
+                        and any(names_conclusion(title) for title in one.chain)), None)  # fmt: skip
+        conclusion = [one for one in read if one.paragraph == closing and not one.abstract]
+    document["conclusion"] = [_statement("conclusion", number, one)
+                              for number, one in enumerate(conclusion, 1)]  # fmt: skip
+    return {key: document[key] for key in ("schema", *SECTIONS) if key in document}
+
+
+def dump(document: dict) -> str:
+    """The brief as `communicate brief` writes it: its header, then the YAML."""
+    body = yaml.safe_dump(
+        document, sort_keys=False, allow_unicode=True, width=10**6, default_flow_style=False
+    )
+    return _HEADER + "\n" + body
+
+
+# -------------------------------------------------------------------------- the quotes
+
+
+def _sentences_of(text: str, place=None) -> dict[str, list[tuple[str, ...]]]:
+    """Each sentence of a text, folded, as a quote may start it: whole, and past the list's
+    marker and the label that open it; by the file `place` names for its offset, under ""
+    where none is given. A sentence on a heading's line is none."""
+    text = text.replace("\r\n", "\n")
+    found: dict[str, list[tuple[str, ...]]] = {}
+    for _piece, start, end in sentence_spans(text):
+        first = past_headings(text, start, end)
+        if first is None:
+            continue
+        raw = text[first:end]
+        at, _part = opening(raw)
+        name = "" if place is None else place(first)
+        found.setdefault(name, []).append(tuple(dict.fromkeys((fold(raw), fold(raw[at:])))))
+    return found
+
+
+def _whole(quote: str, sentences: list[tuple[str, ...]]) -> bool:
+    """Whether `quote` is one sentence of a text, or several in a row, each whole: one cut
+    from inside a sentence, "the drug increases the risk" of "We found no evidence that the
+    drug increases the risk.", is none."""
+    for index, starts in enumerate(sentences):
+        for start in starts:
+            if not start:
+                continue
+            held, at = start, index
+            while len(held) < len(quote) and quote.startswith(held + " ") and \
+                    at + 1 < len(sentences):  # fmt: skip
+                at += 1
+                held = f"{held} {sentences[at][0]}"
+            if held == quote:
+                return True
+    return False
+
+
+def _sources(project) -> dict[str, list[tuple[str, ...]]]:
+    """Each file a quote may come from, relative to the project's root, with its sentences:
+    the manuscript's files, the analysis plan, and for a LaTeX manuscript each `.tex` file
+    with the sentences its document prints from it, main text and supplement."""
+    from manuscript_guard.text.reader import LATEX, manuscript_files, manuscript_format
+
+    out: dict[str, list[tuple[str, ...]]] = {}
+    folder = project.path("manuscript")
+    if manuscript_format(folder) == LATEX:
+        from manuscript_guard.text.latex.printed import printed_of
+
+        base = folder.relative_to(project.root).as_posix()
+        for supplementary in (False, True):
+            view = printed_of(folder, supplementary=supplementary, quoting=True)
+
+            def place(at: int, view=view) -> str:
+                where = view.place(at)
+                return "" if where is None else f"{base}/{Path(where[0].path).as_posix()}"
+
+            for name, sentences in _sentences_of(view.text, place).items():
+                out.setdefault(name, []).extend(sentences)
+        out.pop("", None)
+    else:
+        for path in manuscript_files(project):
+            out[path.relative_to(project.root).as_posix()] = _sentences_of(
+                read_text(path)).get("", [])  # fmt: skip
+    plan = plan_file(project)
+    if plan.is_file():
+        out[plan.relative_to(project.root).as_posix()] = _sentences_of(read_text(plan)).get(
+            "", [])  # fmt: skip
+    return out
+
+
+def quote_findings(project, brief: Brief) -> list[Finding]:
+    """`brief-quote-not-in-source` for each statement whose quote its file does not hold,
+    or that names a file that is neither the manuscript's nor the analysis plan."""
+    sources = _sources(project)
+    found = []
+    for statement in brief.statements:
+        held = sources.get(Path(statement.file).as_posix())
+        if held is None:
+            why = (f"names {statement.file}, which is no file of the manuscript and not the "
+                   "analysis plan")  # fmt: skip
+        elif not _whole(fold(statement.quote), held):
+            why = (f"quotes what {statement.file} does not hold as a whole sentence, or "
+                   "sentences")  # fmt: skip
+        else:
+            continue
+        found.append(
+            Finding(GATE, "brief-quote-not-in-source", f"statement {statement.id} {why}",
+                    path=brief.path, context=fold(statement.quote)[:160],
+                    hint="copy the sentence from the file as it stands now, or write the "
+                    "brief again (`communicate brief --force`) after the manuscript changed")
+        )  # fmt: skip
+    return found

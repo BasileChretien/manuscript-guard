@@ -6784,6 +6784,276 @@ def claim_edits(draw: st.DrawFn) -> tuple[str, str, list[tuple[str, int]]]:
     )
 
 
+# --------------------------------------------------------- a communication and its anchors
+
+#: Each kind of sentence a communication text holds: what makes it claim, a word of the
+#: ladder, a number, a binding or nothing, and how it names its statement, and whether that
+#: is an anchor. Every kind is planted in every example.
+ANCHOR_KINDS = (
+    "word, anchor inside", "number, anchor after the stop", "binding, comment after the stop",
+    "word, comment of two", "word, unanchored", "number, unanchored", "binding, unanchored",
+    "plain", "look-alike", "number, anchor in code", "number, anchor in another comment",
+    "word, anchor opening its paragraph", "word, anchor alone after it", "word, wrapped",
+    "word, list item", "plain, anchored", "word, anchor opening its line before it",
+    # What a post holds and the paper does not, each with a figure that would make the
+    # sentence claim were it read: a mention, a hashtag, a thread's counters.
+    "plain, a mention", "plain, a hashtag", "plain, counters about a rule",
+)  # fmt: skip
+#: Mentions as Bluesky and Mastodon write them, each with a figure in it, all planted in
+#: one sentence of every example.
+_MENTIONS = ("@lab42.bsky.social", "@nagoya-u2.bsky.social", "@did3.example.org",
+             "@alice@example42.social", "@team2.example.org")  # fmt: skip
+_THREAD_EMOJI = chr(0x1F9F5)
+_HASHTAGS = ("#covid19", "#pv2026", "#h5n1")
+#: What looks like a word of the ladder and is not read as one.
+LADDER_LOOKALIKES = (
+    "drug-induced", "all-cause", "cause-specific", "an increased", "the associated",
+    "a reduced", "the predicted",
+)  # fmt: skip
+_ANCHOR_NUMBERS = ("12", "3.5", "40%", "1,204", "0.82")
+
+
+@st.composite
+def communication_texts(draw: st.DrawFn) -> tuple[str, list[list[Any]]]:
+    """A communication text with each kind of `ANCHOR_KINDS` in a paragraph of its own, in an
+    order drawn each time, after front matter that holds what looks like an anchor; and each
+    sentence that claims or is anchored, as [line, claims, ids]."""
+    ids = iter(f"s{chr(97 + at // 26)}{chr(97 + at % 26)}.1" for at in range(26 * 26))
+    rungs = tuple(kind for kind in CLAIMED if isinstance(kind, int))
+
+    def sentence(claim: str = "", *, wrap: bool = False, stop: str = ".") -> str:
+        before = draw(st.lists(st.sampled_from(_PLAIN), min_size=1, max_size=3))
+        after = draw(st.lists(st.sampled_from(_PLAIN), min_size=1, max_size=2))
+        tokens = [*before, *([claim] if claim else []), *after]
+        gaps = [draw(st.sampled_from((" ", "\n") if wrap else (" ",))) for _ in tokens[1:]]
+        text = tokens[0] + "".join(gap + token for gap, token in zip(gaps, tokens[1:],
+                                                                         strict=True))  # fmt: skip
+        return text[0].upper() + text[1:] + stop
+
+    def word() -> str:
+        return draw(st.sampled_from(CLAIMED[draw(st.sampled_from(rungs))]))
+
+    def number() -> str:
+        return draw(st.sampled_from(_ANCHOR_NUMBERS))
+
+    def binding() -> str:
+        return "{{results." + draw(st.sampled_from(("ror.point", "n", "case.count"))) + "}}"
+
+    def link(name: str) -> str:
+        return f"[](#brief:{name})"
+
+    #: Each paragraph, with the line within it of the sentence told, whether it claims, and
+    #: the ids it is anchored to; None where nothing is told of it.
+    paragraphs: list[tuple[str, tuple[int, bool, list[str]] | None]] = []
+    for kind in draw(st.permutations(ANCHOR_KINDS)):
+        one, two = next(ids), next(ids)
+        if kind == "word, anchor inside":
+            said = sentence(f"{word()} {link(one)}")
+            paragraphs.append((said, (0, True, [one])))
+        elif kind == "number, anchor after the stop":
+            paragraphs.append((f"{sentence(number())} {link(one)}", (0, True, [one])))
+        elif kind == "binding, comment after the stop":
+            paragraphs.append((f"{sentence(binding())} <!-- brief: {one} -->", (0, True, [one])))
+        elif kind == "word, comment of two":
+            said = sentence(f"{word()} <!-- brief: {one}, {two} -->")
+            paragraphs.append((said, (0, True, [one, two])))
+        elif kind.endswith("unanchored"):
+            claim = {"word": word, "number": number, "binding": binding}[kind.split(",")[0]]()
+            paragraphs.append((sentence(claim), (0, True, [])))
+        elif kind == "plain":
+            paragraphs.append((sentence(), None))
+        elif kind == "look-alike":
+            paragraphs.append((sentence(draw(st.sampled_from(LADDER_LOOKALIKES))), None))
+        elif kind == "number, anchor in code":
+            paragraphs.append((sentence(f"{number()} `{link(one)}`"), (0, True, [])))
+        elif kind == "number, anchor in another comment":
+            paragraphs.append((sentence(f"{number()} <!-- see {link(one)} -->"), (0, True, [])))
+        elif kind == "word, anchor opening its paragraph":
+            paragraphs.append((f"{link(one)} {sentence(word())}", (0, True, [one])))
+        elif kind == "word, anchor alone after it":
+            paragraphs.append((f"{sentence(word())}\n\n{link(one)}", (0, True, [one])))
+        elif kind == "word, wrapped":
+            said = sentence(f"{word()} {link(one)}", wrap=True)
+            paragraphs.append((said, (0, True, [one])))
+        elif kind == "word, list item":
+            items = [sentence(stop=""), sentence(f"{word()} {link(one)}", stop=""),
+                     sentence(stop="")]  # fmt: skip
+            paragraphs.append(("\n".join(f"- {item}" for item in items), (1, True, [one])))
+        elif kind == "word, anchor opening its line before it":
+            # After a sentence that ends its line, an anchor opening the next is the next
+            # sentence's (round 1 of #470), a link or a comment.
+            opener = draw(st.sampled_from((link(one), f"<!-- brief: {one} -->")))
+            said = f"{sentence()}\n{opener} {sentence(word())}"
+            paragraphs.append((said, (1, True, [one])))
+        elif kind == "plain, a mention":
+            paragraphs.append((sentence(" ".join(draw(st.permutations(_MENTIONS)))), None))
+        elif kind == "plain, a hashtag":
+            paragraphs.append((sentence(" ".join(draw(st.permutations(_HASHTAGS)))), None))
+        elif kind == "plain, counters about a rule":
+            # A post closed by its counter, a rule, and the next opened by its own.
+            closing = draw(st.sampled_from(("2/3", "(2/3)", "2/3 " + _THREAD_EMOJI)))
+            opening = draw(st.sampled_from(("3/3", "3/3 " + _THREAD_EMOJI)))
+            said = f"{sentence()} {closing}\n\n---\n\n{opening} {sentence()}"
+            paragraphs.append((said, None))
+        else:  # plain, anchored
+            paragraphs.append((sentence(link(one)), (0, False, [one])))
+    front = "---\nchannel: bluesky\nnote: '[](#brief:zz.1)'\n---\n"
+    expected = []
+    line = front.count("\n") + 1
+    for paragraph, told in paragraphs:
+        if told is not None:
+            expected.append([line + told[0], told[1], told[2]])
+        line += paragraph.count("\n") + 2
+    return front + "\n\n".join(paragraph for paragraph, _ in paragraphs) + "\n", expected
+
+
+#: Each way a sentence restating another may claim against it, and what `compare_pair` is
+#: to tell: nothing, stronger, weaker, moved both ways, or turned round. Every kind is in
+#: every example.
+PAIR_KINDS = {
+    "synonyms": None, "split": None, "joined": None, "reordered": None, "look-alikes": None,
+    "hedge gone": "claim-stronger", "hedge new": "claim-weaker",
+    "limit gone": "claim-stronger", "limit new": "claim-weaker",
+    "negation gone": "claim-negation", "negation new": "claim-negation",
+    "up": "claim-stronger", "down": "claim-weaker", "both ways": "claim-moved",
+    "second sentence's hedge gone": "claim-stronger",
+}  # fmt: skip
+
+
+@st.composite
+def claim_pairs(draw: st.DrawFn) -> tuple[list[list[str]], list[str | None]]:
+    """A source and what restates it, for each kind of `PAIR_KINDS` in an order drawn each
+    time, the words around each claim drawn again for the restatement; and the code of
+    each."""
+    rungs = tuple(kind for kind in CLAIMED if isinstance(kind, int))
+
+    def word(kind: str | int) -> str:
+        return draw(st.sampled_from(CLAIMED[kind]))
+
+    def said(claims_: list[str]) -> str:
+        tokens = [draw(st.sampled_from(_PLAIN))]
+        for claim in claims_:
+            tokens += [claim, draw(st.sampled_from(_PLAIN))]
+        text = " ".join(tokens)
+        return text[0].upper() + text[1:] + "."
+
+    pairs, expected = [], []
+    for kind in draw(st.permutations(tuple(PAIR_KINDS))):
+        low, high = sorted(draw(st.lists(st.sampled_from(rungs), min_size=2, max_size=2,
+                                         unique=True)))  # fmt: skip
+        rung = draw(st.sampled_from(rungs))
+        if kind == "synonyms":
+            first = draw(st.sampled_from(CLAIMED[rung]))
+            other = draw(st.sampled_from(CLAIMED[rung]))
+            source, restated = said([first]), said([other])
+        elif kind == "split":
+            one, two = word(low), word(high)
+            source, restated = said([one, two]), f"{said([one])} {said([two])}"
+        elif kind == "joined":
+            one, two = word(low), word(high)
+            source, restated = f"{said([one])} {said([two])}", said([one, two])
+        elif kind == "reordered":
+            one, two = word(low), word("hedge")
+            source = f"{said([one])} {said([two])}"
+            restated = f"{said([two])} {said([one])}"
+        elif kind == "look-alikes":
+            one = word(rung)
+            source = said([one])
+            restated = said([one, *draw(st.permutations(LADDER_LOOKALIKES))])
+        elif kind == "up":
+            source, restated = said([word(low)]), said([word(high)])
+        elif kind == "down":
+            source, restated = said([word(high)]), said([word(low)])
+        elif kind == "both ways":
+            source, restated = said([word(low)]), said([word("hedge"), word(high)])
+        elif kind == "second sentence's hedge gone":
+            kept, claim = word(rung), word(rung)
+            source = f"{said([kept])} {said([word('hedge'), claim])}"
+            restated = f"{said([kept])} {said([claim])}"
+        else:
+            what, how = kind.split(" ")
+            plain = word(rung)
+            extra = word(what)
+            with_it, without = said([extra, plain]), said([plain])
+            source, restated = (with_it, without) if how == "gone" else (without, with_it)
+        pairs.append([source, restated])
+        expected.append(PAIR_KINDS[kind])
+    return pairs, expected
+
+
+#: Each way a post may say the paper is out, or seem to, and whether `said_published`
+#: reads it as this paper said out (round 2 of #470). Every kind is in every example.
+PUBLISHED_KINDS = {
+    "this paper out": True, "headline": True, "headline published in": True,
+    "headline today, ours": True,
+    "headline in a year": False, "headline before a comma": False,
+    "agrees with published reports": False, "we published the protocol": False,
+    "not yet published": False, "negated before it": False, "previously published": False,
+    "to be published": False, "published before a noun": False, "published in a link": False,
+    "out of": False,
+}  # fmt: skip
+
+
+@st.composite
+def published_texts(draw: st.DrawFn) -> tuple[str, list[str]]:
+    """A text of one paragraph for each kind of `PUBLISHED_KINDS`, in an order drawn each
+    time, and the sentences whose words read as saying this paper is out, folded, in order
+    (Basile, 2026-10-29: read broadly, since they warn)."""
+
+    def words() -> str:
+        return " ".join(draw(st.lists(st.sampled_from(_PLAIN), min_size=1, max_size=3)))
+
+    def paper() -> str:
+        opener = draw(st.sampled_from(("Our", "This", "These", "The present")))
+        new = draw(st.sampled_from(("", "new ", "latest ")))
+        noun = draw(st.sampled_from(("study", "paper", "article", "work", "trial", "findings",
+                                     "results")))  # fmt: skip
+        return f"{opener} {new}{noun}"
+
+    said: list[tuple[str, bool]] = []
+    for kind in draw(st.permutations(tuple(PUBLISHED_KINDS))):
+        if kind == "this paper out":
+            verb = draw(st.sampled_from(("", "has been ", "has now been ", "is ", "is now ",
+                                         "was just ", "are ", "were finally ")))  # fmt: skip
+            # What follows is no "of": "out of" is the kind of its own below.
+            tail = " ".join(draw(st.lists(st.sampled_from([w for w in _PLAIN if w != "of"]),
+                                          min_size=1, max_size=3)))  # fmt: skip
+            sentence = f"{paper()} {verb}{draw(st.sampled_from(('published', 'out')))} {tail}."
+        elif kind == "headline":
+            opener = draw(st.sampled_from(("Now published", "Just published", "Out now",
+                                           "Out today", "Published:")))  # fmt: skip
+            sentence = f"{opener} {words()}."
+        elif kind == "headline published in":
+            sentence = f"Published in {words()}."
+        elif kind == "headline today, ours":
+            sentence = f"Published today, {paper().lower()} shows {words()}."
+        elif kind == "headline in a year":
+            sentence = f"Published in {draw(st.integers(1990, 2030))}, the {words()} found it."
+        elif kind == "headline before a comma":
+            sentence = f"Published in {words()}, the {words()} found it."
+        elif kind == "agrees with published reports":
+            sentence = f"{paper()} agrees with published {words()}."
+        elif kind == "we published the protocol":
+            sentence = f"We published the protocol {words()}."
+        elif kind == "not yet published":
+            sentence = f"{paper()} is not yet published {words()}."
+        elif kind == "negated before it":
+            sentence = f"It is not true that {paper().lower()} is published."
+        elif kind == "previously published":
+            sentence = f"Previously published {words()} found it."
+        elif kind == "to be published":
+            sentence = f"{paper()} will be published {words()}."
+        elif kind == "published before a noun":
+            sentence = f"Published {draw(st.sampled_from(('reports', 'studies', 'data')))} differ."
+        elif kind == "out of":
+            sentence = f"{paper()} is out of {words()}."
+        else:
+            sentence = f"See https://example.org/{paper().replace(' ', '-')}-is-published now."
+        said.append((sentence, PUBLISHED_KINDS[kind]))
+    text = "\n\n".join(sentence for sentence, _out in said) + "\n"
+    return text, [sentence for sentence, out in said if out]
+
+
 # ------------------------------------------------------------------- a project's settings
 
 # Lines typed at the end of a new project's `paper.yaml`. Half are settings as the schema
@@ -7743,6 +8013,15 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         {"text": summaries(), "abstract title": st.sampled_from((None, "Summary"))}
     ),
     "boxes": box_papers().map(lambda drawn: drawn[0]),
+    "communicate anchors": st.one_of(
+        communication_texts().map(lambda drawn: {"text": drawn[0]}),
+        texts().map(lambda text: {"text": text}),
+    ),
+    "communicate claims": claim_pairs().map(lambda drawn: {"pairs": drawn[0]}),
+    "communicate published": st.one_of(
+        published_texts().map(lambda drawn: {"text": drawn[0]}),
+        texts().map(lambda text: {"text": text}),
+    ),
     "numbers": st.fixed_dictionaries(
         {
             "text": texts(POINTED, SUPPLEMENT_HEADINGS + NAMED_BLOCKS),

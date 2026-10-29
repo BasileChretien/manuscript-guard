@@ -5,7 +5,11 @@ What was read and what was not comes first, then a section for each kind of chec
 * Membership: each number against the outputs given, and what a match is worth there. With
   no outputs given, no number is compared, and the report says so at its top.
 * Arithmetic: numbers held to the ones beside them, which needs no outputs: a table's
-  totals to the counts they total, and a characteristic's categories to their column's n.
+  totals to the counts they total, a characteristic's categories to their column's n, and a
+  flow printed as a nested list to its own arithmetic (`stats.flows`).
+* Abstract against Results: each number of the Abstract looked for where the paper reports,
+  and each of its intervals and tests held to its one counterpart there
+  (`auditing.abstract`).
 * Small cells recoverable by subtraction: each count held back ("<5") that a total beside it
   gives away, with the count it can only be.
 * Writing (G6) and Language (G14): the gates `check` runs on the words, on a project made for
@@ -17,9 +21,13 @@ What was read and what was not comes first, then a section for each kind of chec
 could not be read, an audit that read no number, and what is exact arithmetic: a total that
 its counts do not add up to (`sum-off`), categories that add up to more than their column's
 n (`over-header-n`), and a count held back that a printed total gives away
-(`count-recoverable`). Nothing else is counted: the P worked out from a statistic, G6 and
-G14 (the author, 2026-10-28), G7's findings, and a count held back that only a column's n
-gives away, which holds only where none of the column lacks the characteristic.
+(`count-recoverable`), a flow whose arithmetic does not hold under a heading, a caption or a
+paragraph that names a flow (`flow-broken`; under none it is a note, Basile, 2026-10-29), and an
+interval or a test of the Abstract that differs from its counterpart where the paper reports
+(`abstract-conflict`). Nothing else is counted: the P worked out from a statistic, G6 and
+G14 (the author, 2026-10-28), G7's findings, a count held back that only a column's n
+gives away, which holds only where none of the column lacks the characteristic, and a
+number of the Abstract found nowhere the paper reports (the author, 2026-10-28).
 """
 
 from __future__ import annotations
@@ -34,6 +42,7 @@ INPUTS = "Inputs"
 MEMBERSHIP = "Membership"
 ARITHMETIC = "Arithmetic"
 SMALL_CELLS = "Small cells recoverable by subtraction"
+ABSTRACT = "Abstract against Results"
 WRITING = "Writing (G6)"
 LANGUAGE = "Language (G14)"
 REFERENCES = "References (G7)"
@@ -114,6 +123,8 @@ def items(report) -> list[Item]:
              "mean was read in a row whose label holds it", INFO, False)
         for label in report.whole_numbers_unfound
     ]  # fmt: skip
+    found += _flow_items(report)
+    found += _abstract_items(report.abstract)
     found += [
         Item(SMALL_CELLS, "G2", "count-recoverable", d.message, FAIL, True, d.source, d.line,
              d.context)
@@ -152,6 +163,36 @@ def items(report) -> list[Item]:
     return found
 
 
+def _flow_items(report) -> list[Item]:
+    """Each flow whose arithmetic does not hold, and each note on one."""
+    return [
+        *(Item(ARITHMETIC, "audit", "flow-broken", d.message, FAIL, True, d.source, d.line,
+               d.context) for d in report.flows_broken),
+        *(Item(ARITHMETIC, "audit", "flow-note", d.message, INFO, False, d.source,
+               d.line or None, d.context or None) for d in report.flow_notes),
+    ]  # fmt: skip
+
+
+def _abstract_items(read) -> list[Item]:
+    """What the Abstract against Results says, item by item: a conflict counted, the rest
+    not."""
+    if read is None:
+        return []
+    if not read.compared:
+        return [Item(ABSTRACT, "audit", "abstract-not-compared", f"not compared: "
+                     f"{read.why_not}", INFO, False)]  # fmt: skip
+    return [
+        *(Item(ABSTRACT, "audit", "abstract-conflict", d.message, FAIL, True, d.source,
+               d.line, d.context) for d in read.conflicts),
+        *(Item(ABSTRACT, "audit", "abstract-not-found", f"{c.text} in the Abstract is "
+               "found nowhere the paper reports", WARN, False, c.source, c.line, c.context)
+          for c in read.not_found),
+        *(Item(ABSTRACT, "audit", "abstract-rounded", f"{c.text} in the Abstract is found "
+               "only as a rounding of a number the paper reports", INFO, False, c.source,
+               c.line, c.context) for c in read.rounded),
+    ]  # fmt: skip
+
+
 def _from_finding(section: str, finding: Finding) -> Item:
     return Item(section, finding.gate, finding.code, finding.message, finding.severity, False,
                 finding.path, finding.line, finding.context, finding.hint)  # fmt: skip
@@ -179,6 +220,10 @@ def as_json(report, discrimination) -> str:
         # Apart, as the text says them: --strict counts the first and not the second.
         "recoverable": len(report.recovered),
         "recoverable_by_n": len(report.recovered_by_n),
+        "flows": report.flows_read,
+        "flows_named": report.flows_named,
+        "flows_broken": len(report.flows_broken),
+        **_abstract_counts(report.abstract),
         "reference_entries": sum(len(c.entries) for c in report.references),
     }
     worth = None
@@ -187,18 +232,34 @@ def as_json(report, discrimination) -> str:
                  "integers_1_1000": discrimination.medium_integers,
                  "two_decimals": discrimination.two_decimals,
                  "verdict": discrimination.verdict()}  # fmt: skip
+    abstract = getattr(report.abstract, "discrimination", None)
     return json.dumps(
         {
             "ok": not any(item.counted for item in listed),
             "compared": report.compared,
             "counts": counts,
             "what_a_match_is_worth": worth,
+            "abstract_compared": bool(report.abstract and report.abstract.compared),
+            "what_an_abstract_match_is_worth": None if abstract is None else {
+                "integers_1_100": abstract.small_integers,
+                "integers_1_1000": abstract.medium_integers,
+                "two_decimals": abstract.two_decimals,
+                "verdict": abstract.verdict()},
             "findings": [item.as_dict() for item in listed],
         },
         indent=2,
         # As `check --json`: a pipe on Windows is cp1252.
         ensure_ascii=True,
     )
+
+
+def _abstract_counts(read) -> dict[str, int]:
+    if read is None or not read.compared:
+        return {}
+    return {"abstract_numbers": read.numbers, "abstract_matched": read.matched,
+            "abstract_matched_as_rounding": len(read.rounded),
+            "abstract_not_found": len(read.not_found),
+            "abstract_conflicts": len(read.conflicts)}  # fmt: skip
 
 
 # ------------------------------------------------------------------------------- the text
@@ -241,6 +302,8 @@ def render(report, discrimination, root: Path | None = None) -> str:
             lines += ["", heading, *(f"  {item}" for item in said)]
     lines += ["", f"=== {MEMBERSHIP} ===", *_membership(report, discrimination, show)]
     lines += ["", f"=== {ARITHMETIC} ===", *_arithmetic(report, show)]
+    if report.abstract is not None:
+        lines += ["", f"=== {ABSTRACT} ===", *_abstract(report.abstract, show)]
     lines += ["", f"=== {SMALL_CELLS} ===", *_small_cells(report, show)]
     if report.gates:
         lines += ["", f"=== {WRITING} and {LANGUAGE} (not counted by --strict) ===",
@@ -404,7 +467,66 @@ def _arithmetic(report, show) -> list[str]:
             f"  --whole-numbers {label!r}: no mean was read in a row whose label holds it"
             for label in report.whole_numbers_unfound
         ]
+    flows = _flows(report, show)
+    lines += ([""] if lines and flows else []) + flows
     return lines or ["  Nothing read here disagrees with the numbers beside it."]
+
+
+def _flows(report, show) -> list[str]:
+    """The flows read from nested lists: a count of them, each whose arithmetic does not
+    hold, and the notes."""
+    if not report.flows_read and not report.flow_notes:
+        return []
+    lines = [f"Flows read from nested lists: {report.flows_read}, each held to its arithmetic "
+             "(a stage less its exclusions is the next, the arms add up to the last stage); "
+             f"{report.flows_named} under a heading, a caption or a paragraph that names a "
+             "flow, whose faults --strict counts."]
+    lines += _listed("FLOWS WHOSE ARITHMETIC DOES NOT HOLD, under a name for a flow (counted by "
+                     "--strict):", report.flows_broken, show)  # fmt: skip
+    if report.flow_notes:
+        lines.append("Notes on flows (not counted by --strict):")
+        by_paper: dict[Path, list] = {}
+        for item in report.flow_notes:
+            by_paper.setdefault(item.source, []).append(item)
+        for source, listed in by_paper.items():
+            lines.append(f"  {show(source)}")
+            lines += [f"    {f'line {item.line}: ' if item.line else ''}{item.message}"
+                      for item in listed[:LISTED]]  # fmt: skip
+            if len(listed) > LISTED:
+                lines.append(f"    (+{len(listed) - LISTED} more)")
+    return lines
+
+
+def _abstract(read, show) -> list[str]:
+    """The Abstract against Results, ending with what a match is worth there."""
+    if not read.compared:
+        return [f"  Not compared: {read.why_not}."]
+    lines = [f"{read.numbers} number(s) in the Abstract the conventions do not explain: "
+             f"{read.matched} found where the paper reports (the Methods, the Results, its "
+             f"tables, a file with no Abstract), {len(read.rounded)} matched as a rounding, "
+             f"{len(read.not_found)} not found."]
+    for heading, found in (
+        ("AN INTERVAL OR A TEST THAT DIFFERS FROM ITS COUNTERPART IN ONE NUMBER (counted by "
+         "--strict):", read.conflicts),
+        ("NOT FOUND WHERE THE PAPER REPORTS (not counted by --strict):", read.not_found),
+        ("MATCHED AS A ROUNDING (not counted by --strict):", read.rounded),
+    ):
+        listed = [_Said(c.source, c.line, c.message if hasattr(c, "message") else c.text, c.context)
+                  for c in found]  # fmt: skip
+        listing = _listed(heading, listed, show)
+        lines += ([""] if listing else []) + listing
+    worth = _worth(read.discrimination)
+    worth[0] = ("What a match is worth here, against the numbers the paper reports, "
+                "roundings counted in:")
+    return [*lines, "", *worth[:5]]
+
+
+@dataclass(frozen=True)
+class _Said:
+    source: Path
+    line: int
+    message: str
+    context: str
 
 
 def _small_cells(report, show) -> list[str]:

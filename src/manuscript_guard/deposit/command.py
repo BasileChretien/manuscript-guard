@@ -22,7 +22,7 @@ from manuscript_guard.findings import WARN
 from manuscript_guard.sign_offs import Signable
 
 from . import preflight
-from .archive import TAR, ZIP, stage, sums
+from .archive import TAR, ZIP, Staged, stage, sums
 from .bundles import (
     BUNDLES,
     TARGETS,
@@ -117,7 +117,7 @@ def listing(project: Project, made: Bundle, *, written: bool) -> str:
 
 def next_steps(made: Bundle, directory: Path, archive: Path) -> str:
     """What the author does next, which the tool does not do."""
-    head = "Nothing has been uploaded or pushed: the tool sends nothing in this version."
+    head = "Nothing has been uploaded or pushed."
     if made.target == "gh-pages":
         # One command a line, which PowerShell and a POSIX shell both run: `||` is no operator
         # in Windows PowerShell 5.1 (round 2 of #460).
@@ -148,7 +148,13 @@ def next_steps(made: Bundle, directory: Path, archive: Path) -> str:
         return (f"{head}\nUpload the files of {directory.name}/ at medRxiv, and fill its form "
                 "from medrxiv_submission_sheet.md.")  # fmt: skip
     where = {"zenodo": "Zenodo", "zenodo-sandbox": "Zenodo's sandbox", "osf": "OSF"}[made.target]
-    return f"{head}\nUpload {archive.name}, or the files of {directory.name}/, to {where}."
+    sent = ("`--stage` sends it as a private project, with OSF_TOKEN set"
+            if made.target == "osf" else
+            "`--reserve-doi` reserves its DOI and `--stage` sends it as a draft, with "
+            f"{'ZENODO_SANDBOX_TOKEN' if made.target == 'zenodo-sandbox' else 'ZENODO_TOKEN'}"
+            " set; `--publish` publishes the draft, at your terminal")  # fmt: skip
+    return (f"{head}\nUpload {archive.name}, or the files of {directory.name}/, to {where}; "
+            f"or {sent} (docs/deposit.md).")  # fmt: skip
 
 
 def _refused(exc: DepositError) -> int:
@@ -157,7 +163,10 @@ def _refused(exc: DepositError) -> int:
     return exc.status
 
 
-def run(args: argparse.Namespace) -> int:
+def planned(args: argparse.Namespace) -> tuple[Project, Bundle, tuple] | int:
+    """The bundle `args` names, planned with every check of it passed, and its files with
+    SHA256SUMS; the exit code where it is refused, said already. With `--dry-run` the list of
+    what would go is printed, even where it is refused: it is what the custodian signs."""
     from manuscript_guard.contracts import load_namespace, load_project
 
     refusal = pair_refusal(args.target, args.bundle) or retrospective_refusal(
@@ -185,11 +194,12 @@ def run(args: argparse.Namespace) -> int:
     # table's total read from its label gives away does not refuse (Basile, 2026-10-29).
     warned = tuple(finding for finding in first.findings if finding.severity == WARN)
     report = made.report.merge(stopped).with_findings(*warned, *name_taken(every))
-    if args.dry_run:
+    dry_run = getattr(args, "dry_run", False)
+    if dry_run:
         # What would go is listed even where it is refused: it is what the custodian signs.
         print(listing(project, made, written=False))
     if report.findings:
-        print(("\n" if args.dry_run else "") + report.render(project.root))
+        print(("\n" if dry_run else "") + report.render(project.root))
     if not report.ok:
         if args.bundle == "preregistration" and args.retrospective is not None \
                 and signable is not None:  # fmt: skip
@@ -198,8 +208,12 @@ def run(args: argparse.Namespace) -> int:
                   f"\"{args.retrospective}\"`.")  # fmt: skip
         print("\nThe bundle is not written.")
         return 1
-    if args.dry_run:
-        return 0
+    return project, made, every
+
+
+def written(project: Project, made: Bundle, every: tuple) -> Staged | int:
+    """Write the planned bundle and its archive, and list them; the exit code where the
+    writing is refused."""
     try:
         staged = stage(project, made.name, every, tarred=made.tarred)
     except (PackageError, OSError) as exc:  # a copy that changed, or a write refused
@@ -207,8 +221,25 @@ def run(args: argparse.Namespace) -> int:
         return 2
     print(listing(project, made, written=True))
     print(f"\nbundle:  {staged.directory}\narchive: {staged.archive}\n")
+    return staged
+
+
+def run(args: argparse.Namespace) -> int:
+    if args.stage or args.reserve_doi or args.publish:
+        from .remote.command import run as sent
+
+        return sent(args)
+    found = planned(args)
+    if isinstance(found, int):
+        return found
+    if args.dry_run:
+        return 0
+    project, made, every = found
+    staged = written(project, made, every)
+    if isinstance(staged, int):
+        return staged
     print(next_steps(made, staged.directory, staged.archive))
     return 0
 
 
-__all__ = ["deposit_signable", "listing", "plan", "run"]
+__all__ = ["deposit_signable", "listing", "plan", "planned", "run", "written"]

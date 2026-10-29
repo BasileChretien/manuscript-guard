@@ -316,6 +316,51 @@ def check_package_doi(project: Project, *, submission: bool = False) -> Report:
     ))  # fmt: skip
 
 
+def check_deposit_doi(project: Project, *, submission: bool = False) -> Report:
+    """`package.doi` held to what the repositories answered: a test DOI, the prefix the
+    sandbox mints, fails at every stage (`package-doi-test-prefix`), since no reader can
+    resolve it; and one that is not the DOI of a release the receipts record as published
+    warns, and fails at submission (`deposit-doi-differs`). A draft reserved or staged and not
+    published says nothing: the author may drop it and deposit by hand. Without a published
+    release's receipt, what `package.doi` names is the author's word alone."""
+    from manuscript_guard.deposit.remote.receipts import (
+        RECEIPTS,
+        TEST_PREFIX,
+        every,
+        is_test_doi,
+        plausible_doi,
+    )
+    from manuscript_guard.findings import FAIL
+
+    package = project.setting("package")
+    doi = package.get("doi") if isinstance(package, dict) else None
+    if not isinstance(doi, str) or not doi:
+        return Report()
+    where = project.root / "paper.yaml"
+    if is_test_doi(doi):
+        return Report().with_findings(Finding(
+            gate=GATE, code="package-doi-test-prefix", path=where,
+            message=f"package.doi is {doi}, a test DOI ({TEST_PREFIX}), which Zenodo's sandbox "
+            "mints and no reader can resolve",
+            hint="give package.doi the DOI the deposit has at Zenodo itself, or take it out "
+            "until it has one",
+        ))  # fmt: skip
+    recorded = sorted({str(receipt["doi"]) for receipt in every(project)
+                       if receipt.get("bundle") == "release" and receipt.get("published_on")
+                       and plausible_doi(receipt.get("doi"))
+                       and not is_test_doi(receipt.get("doi"))})  # fmt: skip
+    if not recorded or doi.lower() in {found.lower() for found in recorded}:
+        return Report()
+    return Report().with_findings(Finding(
+        gate=GATE, code="deposit-doi-differs", severity=FAIL if submission else WARN,
+        path=where,
+        message=f"package.doi is {doi}, and the release was published with the DOI "
+        f"{' and '.join(recorded)}, as {RECEIPTS}/ records the repository's answer",
+        hint="put package.doi right, as the receipt has it; the statement and the package "
+        "name the DOI paper.yaml gives",
+    ))  # fmt: skip
+
+
 def check_data_statement(document: dict, text: str, path: Path, project: Project) -> Report:
     """The statement held to the profile's data policy, where the profile declares one."""
     policy = document.get("data_availability")

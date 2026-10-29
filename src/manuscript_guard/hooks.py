@@ -93,6 +93,20 @@ FORBIDDEN = (
         "it is the plan as it stood when the first results were written, kept by the emitter; "
         "change the plan in design/plan.md and say why under its Deviations",
     ),
+    (
+        # What a repository answered when the author sent it a bundle, which G4 holds
+        # `package.doi` to, and the history of every deposit action, appended to only.
+        "deposit/receipts/",
+        ".yaml",
+        "a receipt is written by `manuscript-guard deposit` from what the repository answered; "
+        "a deposit nobody made cannot be recorded by hand",
+    ),
+    (
+        "deposit/history.yaml",
+        "",
+        "the history of deposits is appended to by `manuscript-guard deposit`, one action at a "
+        "time, and never rewritten",
+    ),
 )
 
 # The copy `related --take` keeps of an earlier output's project, under any output's id: its
@@ -651,9 +665,57 @@ def guard_write(payload: dict) -> int:
         said for path in paths if (said := _or_nothing(lambda file: _decides(file, payload), path))
     ]
     named += [said for path in paths if (said := _or_nothing(_an_approval, path))]
+    named += [
+        said for path in paths if (said := _or_nothing(lambda file: _reserves(file, payload), path))
+    ]
     if not named:
         return 0
     return _ask("PreToolUse", "\n".join(named), payload)
+
+
+#: `doi` as a key, on a line that is not a comment, in block or flow style.
+_DOI_KEY = re.compile(r"""(?m)^(?![ \t]*#).*?\bdoi["']?[ \t]*:""")
+
+
+def _package_doi(text: str) -> object:
+    """`package.doi` of a paper.yaml's text, None where it has none, and the text itself
+    where YAML cannot read it, so that two unreadable texts differ unless they are equal."""
+    import yaml
+
+    try:
+        document = yaml.safe_load(text)
+    except Exception:  # noqa: BLE001 - `2026-02-30` is a ValueError, not a YAML error
+        return ("unreadable", text) if _DOI_KEY.search(text) else None
+    package = document.get("package") if isinstance(document, dict) else None
+    return package.get("doi") if isinstance(package, dict) else None
+
+
+def _reserves(path: Path, payload: dict) -> str | None:
+    """Why an edit of paper.yaml that adds, changes or takes away `package.doi` is put to the
+    person: it is the DOI a repository reserved for the deposit, which `deposit
+    --reserve-doi` writes from the repository's answer, and the statement and the package
+    name it. G4 holds it to the receipt once there is one, and before that it is the
+    author's word that the deposit has it. None where the edit leaves it as it was."""
+    found = _relative_to_project(path)
+    if found is None or found[1] != "paper.yaml":
+        return None
+    before, after = _whole_texts(payload, path)
+    if after is None:
+        # A patch, or an edit whose text is not in the file: only the lines it changes.
+        if not any(_DOI_KEY.search(text) for text in before[1:]):
+            return None
+        was, now = "a line with `doi:` in it", "what it changes"
+    else:
+        held = _package_doi(before[0]), _package_doi(after)
+        if held[0] == held[1]:
+            return None
+        was, now = ("not set" if value is None else "a text YAML cannot read"
+                    if isinstance(value, tuple) else str(value) for value in held)  # fmt: skip
+    return (
+        f"paper.yaml: this edit changes package.doi ({was} to {now}). It is the DOI the "
+        "repository gave the deposit, which `manuscript-guard deposit --reserve-doi` writes from "
+        "the repository's answer; one typed by an agent is no repository's answer."
+    )
 
 
 def _an_approval(path: Path) -> str | None:
@@ -1147,7 +1209,12 @@ def guard_submission(payload: dict) -> int:
     # What a commit is told to say is no command and names no file: it is left out before
     # the markers are asked, and before the words are read for a project.
     command = _without_messages(str(payload.get("tool_input", {}).get("command", "")))
-    sends = _or_nothing(lambda _path: _sends_without_asking(command, payload), Path("."))
+    publishes, deposits = _deposits(command)
+    if publishes:
+        return _deny("PreToolUse", publishes)
+    sends = deposits
+    sends = sends or _or_nothing(lambda _path: _sends_without_asking(command, payload),
+                                 Path("."))  # fmt: skip
     sends = sends or _or_nothing(lambda _path: _approves(command), Path("."))
     sends = sends or _moves_stage_back(command, payload)
     if not SUBMISSION_MARKERS.search(command):
@@ -1331,6 +1398,95 @@ def _imports_answers(joined: str) -> bool:
             if any(_IMPORT_WORD.search(word) for word in words) and not _plain_checker(words):
                 return True
     return False
+
+
+
+#: The options of `deposit` that send, as a word of the command.
+_SENDING = re.compile(r"--(publish|stage|reserve-doi)(?:=.*)?", re.IGNORECASE | re.DOTALL)
+#: `NAME=value` before a command, which a POSIX shell sets for it alone.
+_ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=.*", re.DOTALL)
+_PUBLISHES = (
+    "`manuscript-guard deposit --publish` publishes the staged draft at Zenodo, where it "
+    "cannot be deleted. It asks the author to type the DOI at a terminal, and --yes does not "
+    "answer that: run it yourself."
+)
+_SENDS = (
+    "`manuscript-guard deposit --stage` or `--reserve-doi` sends the bundle to the repository, "
+    "or asks it for a DOI, with the author's token from the environment. What goes where is "
+    "the author's decision: `deposit --dry-run` lists what the bundle holds."
+)
+_NAMES_DEPOSIT = (
+    "this command names `manuscript-guard deposit` with an option that sends, in a form the "
+    "guard does not read exactly as an invocation of it. Sending a deposit, and publishing "
+    "one, is the author's decision."
+)
+
+
+def _tool_words(words: list[str]) -> list[str] | None:
+    """The words after the tool's name where an invocation is plainly the tool: named first,
+    by either name, a path or `python -m`, after any `NAME=value`; else None."""
+    while words and _ASSIGNMENT.fullmatch(words[0]):
+        words = words[1:]
+    if words and _TOOL_WORD.fullmatch(words[0]):
+        return words[1:]
+    if (len(words) > 2 and re.fullmatch(r"(?i)(?:.*[\\/])?python[\d.]*(?:\.exe)?", words[0])
+            and words[1] == "-m" and words[2] == "manuscript_guard.cli"):  # fmt: skip
+        return words[3:]
+    return None
+
+
+def _deposit_words(words: list[str]) -> list[str] | None:
+    """The words after `deposit` where an invocation is plainly the tool's `deposit`."""
+    rest = _tool_words(words)
+    return rest[1:] if rest and rest[0].casefold() == "deposit" else None
+
+
+def _deposits(command: str) -> tuple[str | None, str | None]:
+    """Why a `deposit` in this command is refused, and why one is put to the person.
+
+    Refused: `--publish` in an invocation of `deposit` read exactly, the same words in both
+    shells' reading (`_command_words`, as the guards of `set` and `checker import` read a
+    command). It makes a record public that cannot be deleted, and is the author's to run at
+    a terminal, typing its DOI. Put to the person: `--stage` and `--reserve-doi`, which send
+    the bundle or ask for a DOI with the author's token; and any command that names the
+    tool, `deposit` and one of the three options in a form not read exactly, or outside an
+    invocation of `deposit`: a grep of the documentation, an echo, a pull request's body."""
+    # A line continued in bash or PowerShell, read both ways: the break as a space, and as
+    # nothing, which is how a shell reads one inside a word (`--sta\` then `ge`).
+    # A lone carriage return ends a line, and so an invocation, as a line feed does.
+    joined = [re.sub(r"\r(?!\n)", "\n", re.sub(r"[\\`]\r?\n", between, command))
+              for between in (" ", "")]  # fmt: skip
+    texts = [*joined, *(re.sub("[\\\\`'\"]", "", text) for text in joined)]
+    if not any(_NAMES_TOOL.search(text) and re.search(r"(?i)\bdeposit\b", text)
+               and re.search(r"(?i)--(?:publish|stage|reserve-doi)\b", text)
+               for text in texts):  # fmt: skip
+        return None, None
+    readings = [_command_words(text, posix=posix) for text in joined for posix in (True, False)]
+    flags: set[str] = set()
+    named_elsewhere = False
+    for invocations, _clean in readings:
+        for words in invocations:
+            tool = _tool_words(words)
+            if tool is not None and (not tool or tool[0].casefold() != "deposit") \
+                    and not any(word.casefold() == "deposit" for word in tool):  # fmt: skip
+                # The tool running another subcommand, and naming no `deposit`: `check --stage
+                # submission`, which a release's refusal tells its reader to run first.
+                continue
+            rest = _deposit_words(words)
+            sending = {found[1].lower() for word in (rest or words)
+                       if (found := _SENDING.fullmatch(word))}  # fmt: skip
+            if rest is None:
+                named_elsewhere = named_elsewhere or bool(sending) or any(
+                    _SENDING.search(word) for word in words)  # fmt: skip
+            else:
+                flags |= sending
+    exact = all(clean for _invocations, clean in readings)
+    if exact and "publish" in flags:
+        return _PUBLISHES, None
+    if exact and not named_elsewhere:
+        return None, _SENDS if flags else None
+    # Named, and not read exactly as an invocation: asked, never refused.
+    return None, _NAMES_DEPOSIT
 
 
 def _approves(command: str) -> str | None:

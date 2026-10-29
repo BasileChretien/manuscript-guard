@@ -91,7 +91,7 @@ from manuscript_guard.gates.data_sources import (
     check_declared_datasets,
     check_statement_sources,
 )
-from manuscript_guard.gates.data_statement import check_package_doi
+from manuscript_guard.gates.data_statement import check_deposit_doi, check_package_doi
 from manuscript_guard.gates.design_review import check_design_rounds
 from manuscript_guard.gates.figure_alt import check_figure_alt
 from manuscript_guard.gates.figure_colours import check_figure_colours
@@ -194,6 +194,8 @@ def _gate_run(
         ("G4", lambda: check_boxes(project, namespace, chosen)),
         ("G4", lambda: check_shortlist(project)),
         ("G4", lambda: check_package_doi(project, submission=at_submission)),
+        # It reads paper.yaml and the receipts, and none of the manuscript.
+        ("G4", lambda: check_deposit_doi(project, submission=at_submission)),
         ("G4", lambda: check_statement_sources(project)),
         ("G8r", lambda: check_reporting(project)),
         ("G6", lambda: check_writing(project, results, submission=at_submission)),
@@ -5377,7 +5379,8 @@ def build_parser() -> argparse.ArgumentParser:
         "deposit",
         help="stage a bundle for Zenodo, OSF, arXiv, medRxiv or a GitHub Pages site in "
         "build/deposit/, with a deterministic archive, once the data custodian's checks pass; "
-        "it sends nothing",
+        "it sends nothing unless asked to reserve a Zenodo DOI, stage at Zenodo or OSF, or "
+        "publish at Zenodo",
         description="Writes build/deposit/<target>-<bundle>/ and a .zip of it, or for arXiv "
         "a .tar.gz of the LaTeX source, and lists what went in and what stayed out. The data "
         "custodian's checks come first and stop it: a count below the minimum in the results "
@@ -5386,7 +5389,9 @@ def build_parser() -> argparse.ArgumentParser:
         "bundle they have not signed off (DEPOSIT/custodian/<target>/<bundle>). A plan the "
         "first results were written from is no pre-registration, and goes only with "
         "--retrospective. A release and a preprint are refused while `check --stage submission` "
-        "fails. Nothing is uploaded and nothing is pushed (docs/deposit.md).",
+        "fails. Nothing is uploaded and nothing is pushed, unless --reserve-doi, --stage or "
+        "--publish asks, with the host's token in the environment; --publish asks you at a "
+        "terminal to type the DOI (docs/deposit.md).",
     )
     deposit.add_argument("path", nargs="?", type=Path, default=Path.cwd())
     deposit.add_argument("--target", required=True, choices=TARGETS,
@@ -5400,6 +5405,20 @@ def build_parser() -> argparse.ArgumentParser:
     deposit.add_argument("--retrospective", metavar="WHY",
                          help="deposit a plan the first results were already written from, "
                          "labelled as deposited after them, with why it is deposited now")
+    deposit.add_argument("--reserve-doi", action="store_true",
+                         help="Zenodo: make a draft with its DOI reserved, recorded in "
+                         "deposit/receipts/; for a release at Zenodo itself, write it into "
+                         "paper.yaml as package.doi once you say yes (ZENODO_TOKEN, or "
+                         "ZENODO_SANDBOX_TOKEN, in the environment)")  # fmt: skip
+    deposit.add_argument("--stage", action="store_true",
+                         help="stage the bundle and send it: to the Zenodo draft, or as a "
+                         "private OSF project (OSF_TOKEN); each file's md5 is checked")
+    deposit.add_argument("--publish", action="store_true",
+                         help="Zenodo: publish the staged draft, only when the bundle is "
+                         "unchanged since it was staged and you type its DOI at a terminal; "
+                         "--yes does not answer that")  # fmt: skip
+    deposit.add_argument("--yes", action="store_true",
+                         help="with --reserve-doi, write package.doi without asking")
     deposit.set_defaults(func=cmd_deposit)
 
     journal = sub.add_parser(

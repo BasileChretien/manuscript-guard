@@ -18166,12 +18166,16 @@ What papers converted from Word showed (see "What papers converted from Word sho
     (`read_on` in `data/channels.yaml`). Bluesky's 300 graphemes was not: its page redirected to one that
     served nothing, so it is marked `verified: false` and stands as recorded from memory
     until it is read there.
-  - `comm-status-ahead` reads this paper said published in English and narrowly: a sentence
-    that says "published", not after "be" or "previously", and is about "our", "my" or
-    "this" study, paper, article, findings and the like, or says "we published"; or the
-    paper's own DOI or URL linked. "Published today in JAMA: ..." with no such words passes,
-    and so do "out", "live", and "has been accepted" while it is only submitted. Reading the
-    subject of a sentence exactly needs a parser; this is the narrowest form that stays
+  - `comm-status-ahead` reads this paper said to be out in English, and in these forms only:
+    a sentence that says "published", not after "be" or "previously", and is about "our",
+    "my" or "this" study, paper, article, findings and the like, or says "we published"; a
+    sentence or a post that opens, past its marks and emoji, with a headline: "Now
+    published", "Just published", "Out now", "Out today", or "Published" before a colon, a
+    dash, a stop or "in", "today", "online", "now", "this week"; and the paper's own DOI or
+    URL linked. Not read: "out" or "live" anywhere else ("the paper is out"), "Published"
+    before a noun ("Published reports differ", which is read as other work), a headline in
+    another language, and "has been accepted" while it is only submitted. Reading the
+    subject of a sentence exactly needs a parser; these are the narrowest forms that stay
     silent on "previously published studies", "published reports" and a link's path (round 1
     of #470).
   - A mention (`@name`) is no citation in a communication text, which writes one in

@@ -670,11 +670,17 @@ def test_this_paper_said_published_or_its_url_linked_is_ahead(ready: Path) -> No
     with (ready / "paper.yaml").open("a", encoding="utf-8", newline="\n") as handle:
         handle.write("publication:\n  status: accepted\n  url: https://journal.example/a/1\n")
     for said in ("Our study is published today. ", "We have just published it. ",
-                 "Read it at https://journal.example/a/1 now. "):  # fmt: skip
+                 "Read it at https://journal.example/a/1 now. ",
+                 # A headline that says it is out.
+                 "Published: hepatic injury and example-drug. ", "Now published in X. ",
+                 "Just published! ", chr(0x1F389) + " Out now! ", "**Out today.** ",
+                 "Published in X this week. "):  # fmt: skip
         text(ready, "post.md", said + CLEAN)
         assert "comm-status-ahead" in codes(ready, "texts", FAIL), said
-    text(ready, "post.md", "Our study will be published soon. " + CLEAN)
-    assert "comm-status-ahead" not in codes(ready, "texts")
+    for said in ("Our study will be published soon. ", "Published reports differ. ",
+                 "Previously published studies differ. ", "Out of the sites, none. "):  # fmt: skip
+        text(ready, "post.md", said + CLEAN)
+        assert "comm-status-ahead" not in codes(ready, "texts"), said
 
 
 def test_a_thread_is_parted_at_a_rule_after_a_blank_line_and_not_at_an_underline() -> None:

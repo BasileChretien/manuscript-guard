@@ -56,6 +56,15 @@ _OURS = re.compile(
     r"|\b[Ww]e(?:'ve|\N{RIGHT SINGLE QUOTATION MARK}ve|\s+have)?\s+(?:just\s+)?published\b"
 )
 _LINK = re.compile(r"(?:https?://|www\.)\S+", re.IGNORECASE)
+#: A headline that says the paper is out, opening a sentence or a post past its marks and
+#: emoji: "Now published", "Just published", "Out now", "Out today", and "Published" where
+#: a colon, a dash, a stop or "in", "today", "online" follows, not "Published reports".
+_HEADLINE = re.compile(
+    r"\A[^\w]*(?:(?:now|just)[ \t]+published\b|out[ \t]+(?:now|today)\b"
+    r"|published(?=[ \t]*(?:[:!.\N{EM DASH}\N{EN DASH}-]|\Z)"
+    r"|[ \t]+(?:in|today|online|now|this[ \t]+week)\b))",
+    re.IGNORECASE,
+)
 
 
 def publication(project) -> dict:
@@ -81,7 +90,8 @@ def _line(text: str, at: int) -> int:
 
 def said_published(text: str) -> list[tuple[int, str]]:
     """Where a text says this paper is published: each sentence that says "published",
-    links left out, and whose words make it about this paper (`_OURS`); with the words."""
+    links left out, and whose words make it about this paper (`_OURS`), and each that opens
+    with a headline saying it is out (`_HEADLINE`); with the words."""
     from manuscript_guard.claims import sentence_spans
 
     unlinked = _LINK.sub(lambda found: " " * len(found.group()), text)
@@ -91,6 +101,8 @@ def said_published(text: str) -> list[tuple[int, str]]:
         said = _PUBLISHED.search(sentence)
         if said is not None and _OURS.search(sentence):
             found.append((first + said.start(), " ".join(sentence.split())))
+        elif _HEADLINE.match(sentence):
+            found.append((first, " ".join(sentence.split())))
     return found
 
 

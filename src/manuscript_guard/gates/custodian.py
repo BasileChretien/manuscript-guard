@@ -59,7 +59,9 @@ def minimum_cell_count(project: Project) -> int | None:
 
 def is_count(value) -> bool:
     """Whether a results value is a count of something, as far as the emitter recorded:
-    a whole number with no unit that is not a parameter, a software version or a label."""
+    a whole number with no unit that is not a parameter, a software version or a label, and
+    that is not said to be no count (`count: false`, a harvested cell outside its entry's
+    `counts`)."""
     number = value.value
     return (
         isinstance(number, int)
@@ -67,6 +69,7 @@ def is_count(value) -> bool:
         and not value.unit
         and not value.role
         and not value.label
+        and value.count is not False
     )
 
 

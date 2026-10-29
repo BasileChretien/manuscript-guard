@@ -8491,9 +8491,17 @@ its output deleted first, and `receipts/<site>.receipt.json` (`manuscript-guard/
 is written, with the site, `ran_at`, the tool's version, each run's runner and its version,
 the script's path and digest, its inputs by label (the path from the project's root) with
 their digests and sizes, the lockfiles' digests, each output's digest and size, and the exit
-code. Nothing is written where a run fails or writes no output, or where an output holds a
-count the custodian's minimum forbids (G2's rule, `custodian._small`) or one held back that
-its table gives away (`custodian.recoverable_cells`, as `deposit` asks it). At the centre,
+code. Nothing is written where a run fails or writes no output, where an output holds a
+count the custodian's minimum forbids (G2's rule, `custodian._small`, over the columns the
+entry lists as `counts`), or where `custodian.recoverable_cells`, as `deposit` asks it, fails
+on a count held back that a declared sum gives away; what it warns of, a count a table's
+total row or header gives away, is printed and the receipt written, as `deposit` warns
+(Basile, 2026-10-29, after #469). An entry's `counts` names the columns whose cells are
+counts: the whole numbers of every other column are written `count: false` and are no
+counts to G2 either, and without `counts` every whole number with no unit is one, as G2
+reads an emitted value. An entry's `quoted: false` (`--not-quoted`) makes the table working
+output, as the emitter's `quoted` does, and G2's `unplaced-table` says so in its hint
+(Basile, 2026-10-29). At the centre,
 `harvest` takes the output in only where it is the one the receipt covers, with the
 receipt's inputs and its digest. G1 then fails `receipt-changed` (the receipt edited or
 gone), `receipt-output-mismatch` (the output not the receipt's) and `script-newer` (the
@@ -18435,20 +18443,20 @@ What papers converted from Word showed (see "What papers converted from Word sho
 - **`package` carries no `harvest.yaml`, no output and no receipt.** A harvested results
   file goes in with the others and its script with the scripts; whoever runs the package
   again re-runs the script, and G1 there says the output is missing until it is run.
-- **A harvested output has no units but what its cells write.** A whole number in a cell
-  with no unit is a count to G2's custodian check and to a receipt's, as an emitted value
-  with no unit is: a degrees-of-freedom column of 3 under a minimum of 5 refuses a receipt,
-  and the way out is to leave the column out with `columns` or write it with its unit.
+- **Which cells are counts is the entry's word.** With `counts`, only its columns are held
+  to the custodian's minimum, and a count in a column it leaves out is printed unchecked;
+  without it, every whole number with no unit is a count, so a degrees-of-freedom column of
+  3 under a minimum of 5 refuses a receipt until `counts` leaves it out.
 - **Thousands are read only with commas.** "1,234" is 1234; "1 234" with any space is read
   as the emitter's displays read it, and `digits` writes the number again with commas only.
 - **A receipt is unsigned.** Anyone who can write `receipts/` can write a receipt; it proves
   that a file with these digests was written, not who wrote it, that the run took place, or
   when (`ran_at` is the site's clock). Signed, it would prove only that the key's holder
   wrote it. It cannot be re-run at the centre, which has no data.
-- **A receipt holds a table to the custodian's minimum as G2 holds a count.** Where
-  `recoverable_cells` finds nothing yet (Task 3, PR 2 not merged), only the minimum is
-  checked; once it is, every count it finds refuses the receipt, which `deposit` only warns
-  on.
+- **A receipt is refused only by a declared sum, and a harvested output declares none.**
+  `recoverable_cells` fails a count held back only where the analysis declares the sum that
+  gives it away; a harvested output declares no sum, so its total rows and header counts
+  only warn, the receipt is written, and the site decides.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

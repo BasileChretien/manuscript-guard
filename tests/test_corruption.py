@@ -383,6 +383,76 @@ def test_a_script_changed_after_its_receipt_is_caught(project: Path) -> None:
     assert len(said) == 1 and "site-a ran it" in said[0].message, said
 
 
+def test_a_harvested_table_nobody_placed_is_caught_unless_it_is_working_output(
+    project: Path,
+) -> None:
+    """A harvested table is placed, as an emitted one is; an entry that says the table is
+    working output (`quoted: false`) asks for no placing."""
+    _harvested_here(project)
+    assert "unplaced-table" in codes(gate_report(project))
+    held = yaml.safe_load((project / "harvest.yaml").read_text(encoding="utf-8"))
+    held["entries"][0]["quoted"] = False
+    (project / "harvest.yaml").write_text(yaml.safe_dump(held, sort_keys=False),
+                                          encoding="utf-8")  # fmt: skip
+    from manuscript_guard.harvest import harvest_entry, load_entries
+
+    harvest_entry(project, load_entries(project)[0])
+    assert "unplaced-table" not in codes(gate_report(project))
+
+
+def test_a_small_harvested_count_is_caught_only_in_a_column_its_entry_counts(
+    project: Path,
+) -> None:
+    """A whole number in a column the entry does not list as `counts` is no count; one in a
+    column it lists is, and below the custodian's minimum it fails."""
+    from manuscript_guard.gates.custodian import check_small_cells
+    from manuscript_guard.harvest import Entry, append_entry, harvest_entry
+
+    paper = project / "paper.yaml"
+    paper.write_text(paper.read_text(encoding="utf-8")
+                     + "\ncustodian:\n  minimum_cell_count: 5\n", encoding="utf-8")  # fmt: skip
+    (project / "analysis" / "02_est.py").write_text(_HARVESTED_SCRIPT, encoding="utf-8")
+    (project / "output").mkdir()
+    (project / "output" / "est.csv").write_bytes(b"group,n,df\nWomen,3,3\n")
+    text = main_md(project).read_text(encoding="utf-8")
+    main_md(project).write_text(text + "\n\nOn {{results.est.women.df}} degrees of freedom, "
+                                "{{results.est.women.n}} cases.\n", encoding="utf-8")  # fmt: skip
+
+    def small(counts: tuple[str, ...]) -> set[str]:
+        entry = Entry("est", "output/est.csv", "analysis/02_est.py", row_key="group",
+                      counts=counts)  # fmt: skip
+        (project / "harvest.yaml").unlink(missing_ok=True)
+        append_entry(project, entry)
+        harvest_entry(project, entry)
+        loaded, _ = load_project(project)
+        found = check_small_cells(loaded, load_namespace(loaded)[1])
+        return {f.message.split()[0] for f in found.findings if f.code == "count-below-minimum"}
+
+    assert small(("df",)) == {"results.est.women.df"}
+    assert small(("n",)) == {"results.est.women.n"}
+
+
+def test_a_receipt_is_refused_where_the_custodian_check_fails_on_its_output(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The receipt is what lets the outputs leave the site: a failure of the custodian's
+    subtraction check refuses it, and a warning does not. A harvested output declares no
+    sum, so the failure is stood in for."""
+    from manuscript_guard.findings import FAIL, Finding, Report
+    from manuscript_guard.gates import custodian
+    from manuscript_guard.harvest import HarvestError
+
+    monkeypatch.setattr(custodian, "recoverable_cells", lambda *_args: Report((Finding(
+        gate="G2", code="count-recoverable", severity=FAIL, message="a count given away"),)))
+    paper = project / "paper.yaml"
+    paper.write_text(paper.read_text(encoding="utf-8")
+                     + "\ncustodian:\n  minimum_cell_count: 5\n", encoding="utf-8")  # fmt: skip
+    with pytest.raises(HarvestError, match="a count given away"):
+        _harvested_here(project, site="site-a")
+    assert "receipt-changed" not in codes(gate_report(project))
+    assert not (project / "receipts").exists()
+
+
 def test_touching_a_script_without_changing_it_is_not_a_change(project: Path) -> None:
     """Re-running a formatter or checking the file out again is not an edit."""
     script = project / "analysis" / "01_disproportionality.py"

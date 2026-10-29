@@ -30,6 +30,7 @@ from pathlib import Path
 from manuscript_guard import __version__
 from manuscript_guard.contracts._schema import ContractError, read_structured, validate
 from manuscript_guard.emit import input_digest, lockfile_digest, sha256_of, source_digest
+from manuscript_guard.findings import FAIL
 from manuscript_guard.harvest.config import Entry, HarvestError, load_entries
 from manuscript_guard.harvest.read import read_output
 from manuscript_guard.paths import lockfiles
@@ -75,9 +76,11 @@ def _version(command: list[str]) -> str:
     return lines[0].strip() if lines else "unknown"
 
 
-def _counts_held(project, entry: Entry, output: Path) -> list[str]:
+def _counts_held(project, entry: Entry, output: Path) -> tuple[list[str], list[str]]:
     """What the custodian forbids in the output, as G2 reads a count and as `deposit` reads
-    a table: each printed below the minimum, and each held back that a total gives away."""
+    a table: each printed below the minimum, and each held back that a declared sum gives
+    away, which refuse the receipt; and what a total read from a table's label or its header
+    gives away, which may be no sum and is said as a warning, as `deposit` says it."""
     from manuscript_guard.contracts.results import Results, Table
     from manuscript_guard.contracts.values import RESULTS, Value
     from manuscript_guard.gates.custodian import (
@@ -89,11 +92,13 @@ def _counts_held(project, entry: Entry, output: Path) -> list[str]:
 
     minimum = minimum_cell_count(project)
     if minimum is None:
-        return []
+        return [], []
     table = read_output(output.read_bytes(), output.suffix.lower(), entry)
+    uncounted = table.uncounted(entry.key, entry.counts)
     said = []
     for key, cell in table.values(entry.key).items():
-        value = Value(key, cell.value, cell.display, RESULTS, unit=cell.unit, label=cell.label)
+        value = Value(key, cell.value, cell.display, RESULTS, unit=cell.unit, label=cell.label,
+                      count=False if key in uncounted else None)  # fmt: skip
         wrong = _small(value, minimum) if is_count(value) else None
         if wrong is not None:
             said.append(f"{key} is {cell.display}, {wrong} the data custodian's minimum of "
@@ -104,20 +109,21 @@ def _counts_held(project, entry: Entry, output: Path) -> list[str]:
                  source)  # fmt: skip
     results = Results({}, (), {entry.key: held})
     found = recoverable_cells(project, results, frozenset({f"results/{entry.key}.json"}))
-    return said + [finding.message for finding in found.findings]
+    refused = said + [f.message for f in found.findings if f.severity == FAIL]
+    return refused, [f.message for f in found.findings if f.severity != FAIL]
 
 
-def make_receipt(project, site: str) -> tuple[Path, list[str]]:
-    """Run each entry naming `site` in a scratch copy and write the receipt; return its path
-    and what was written. Refused, with nothing written, where a run fails, writes no output,
-    or writes one the custodian forbids."""
+def make_receipt(project, site: str) -> tuple[Path, list[str], list[str]]:
+    """Run each entry naming `site` in a scratch copy and write the receipt; return its path,
+    what was written and the custodian's warnings. Refused, with nothing written, where a run
+    fails, writes no output, or writes one the custodian forbids."""
     from manuscript_guard.verify import _run, _skip, runner_for
 
     root = Path(project.root)
     entries = [entry for entry in load_entries(root) if entry.receipt == site]
     if not entries:
         raise HarvestError(f"no entry of harvest.yaml names the site {site!r} as its receipt")
-    runs, outputs = [], []
+    runs, outputs, warned = [], [], []
     with tempfile.TemporaryDirectory() as scratch:
         work = Path(scratch) / root.name
         try:
@@ -125,7 +131,9 @@ def make_receipt(project, site: str) -> tuple[Path, list[str]]:
         except (OSError, shutil.Error) as exc:
             raise HarvestError(f"could not stage a copy of the project: {exc}") from exc
         for entry in entries:
-            runs.append(_run_entry(project, root, work, entry, _run, runner_for))
+            run, warnings = _run_entry(project, root, work, entry, _run, runner_for)
+            runs.append(run)
+            warned += [f"{entry.output}: {said}" for said in warnings]
             outputs.append((work / entry.output, root / entry.output))
         receipt = {
             "schema": RECEIPT_SCHEMA, "site": site,
@@ -143,11 +151,13 @@ def make_receipt(project, site: str) -> tuple[Path, list[str]]:
     path = receipt_path(root, site)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8", newline="\n")
-    return path, written
+    return path, written, warned
 
 
-def _run_entry(project, root: Path, work: Path, entry: Entry, run, runner_for) -> dict:
-    """One entry run in the scratch copy `work`, as its receipt records it."""
+def _run_entry(project, root: Path, work: Path, entry: Entry, run, runner_for
+               ) -> tuple[dict, list[str]]:  # fmt: skip
+    """One entry run in the scratch copy `work`, as its receipt records it, and the
+    custodian's warnings of its output."""
     script = work / entry.script
     if not script.is_file():
         raise HarvestError(f"{entry.script}, the script of {entry.key}, is not there")
@@ -173,7 +183,7 @@ def _run_entry(project, root: Path, work: Path, entry: Entry, run, runner_for) -
         raise HarvestError(f"{entry.script} exited {finished.returncode}\n{tail}")
     if not output.is_file():
         raise HarvestError(f"{entry.script} ran but wrote no {entry.output}")
-    forbidden = _counts_held(project, entry, output)
+    forbidden, warnings = _counts_held(project, entry, output)
     if forbidden:
         raise HarvestError(f"{entry.output} holds what the data custodian forbids leaving the "
                            "site:\n  " + "\n  ".join(forbidden))  # fmt: skip
@@ -185,4 +195,4 @@ def _run_entry(project, root: Path, work: Path, entry: Entry, run, runner_for) -
         "outputs": [{"path": entry.output, "sha256": input_digest(output),
                      "bytes": output.stat().st_size}],
         "exit_code": finished.returncode,
-    }  # fmt: skip
+    }, warnings  # fmt: skip

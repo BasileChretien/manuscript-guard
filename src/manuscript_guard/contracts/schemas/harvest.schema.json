@@ -74,6 +74,17 @@
             }
           ]
         },
+        "quoted": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether the table is placed in a deliverable, as the emitter's `quoted`: false declares it working output, and G2 then asks for no {{table.<key>}}."
+        },
+        "counts": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1},
+          "description": "The columns, by header, whose cells are counts of people or records, held to the custodian's `minimum_cell_count` by G2 and by a site's receipt. A whole number in any other column is no count. Without it, every whole number with no unit is one, as G2 reads an emitted value."
+        },
         "receipt": {
           "type": "string",
           "pattern": "^[a-z0-9][a-z0-9_-]*$",

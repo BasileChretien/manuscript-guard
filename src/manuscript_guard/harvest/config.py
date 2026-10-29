@@ -60,6 +60,11 @@ class Entry:
     columns: tuple[str, ...] | None = None
     digits: int | dict[str, int] | None = None
     receipt: str | None = None
+    #: Whether the table is to be placed, as `em.table(quoted=...)`: False for working output.
+    quoted: bool = True
+    #: The columns whose cells are counts, held to the custodian's minimum; None for every
+    #: whole number with no unit, as G2 reads an emitted value.
+    counts: tuple[str, ...] | None = None
 
     def spec(self) -> dict:
         """The entry as harvest.yaml writes it, and as the fragment records it."""
@@ -70,11 +75,15 @@ class Entry:
                 spec[name] = getattr(self, name)
         if self.columns is not None:
             spec["columns"] = list(self.columns)
+        if not self.quoted:
+            spec["quoted"] = False
+        if self.counts is not None:
+            spec["counts"] = list(self.counts)
         return spec
 
     @classmethod
     def from_spec(cls, spec: dict) -> Entry:
-        columns = spec.get("columns")
+        columns, counts = spec.get("columns"), spec.get("counts")
         return cls(
             key=spec["key"], output=spec["output"], script=spec["script"],
             inputs=tuple(Input(str(given["path"]), bool(given.get("restricted", False)),
@@ -83,6 +92,8 @@ class Entry:
             row_key=spec.get("row_key"),
             columns=tuple(columns) if columns is not None else None,
             digits=spec.get("digits"), receipt=spec.get("receipt"),
+            quoted=spec.get("quoted", True) is not False,
+            counts=tuple(counts) if counts is not None else None,
         )  # fmt: skip
 
     def digits_for(self, column: str) -> int | None:

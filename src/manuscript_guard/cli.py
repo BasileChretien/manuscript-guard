@@ -2349,11 +2349,13 @@ def _receipt(project, site: str, only: list[str] | None) -> int:
               "--only", file=sys.stderr)  # fmt: skip
         return 2
     try:
-        path, written = make_receipt(project, site)
+        path, written, warned = make_receipt(project, site)
     except HarvestError as exc:
         print(f"manuscript-guard: no receipt written: {exc}", file=sys.stderr)
         return 1
     print(f"manuscript-guard verify --receipt {site} — {project.root}")
+    for said in warned:
+        print(f"  [WARN] {said}")
     for name in written:
         print(f"  wrote {name}, from the run")
     print(f"  wrote {path.relative_to(project.root).as_posix()}")
@@ -2412,7 +2414,8 @@ def _added(root: Path, args: argparse.Namespace):
         inputs=tuple(Input(_from_project(root, given), args.restricted, args.synthetic)
                      for given in args.input or ()),
         row_key=args.row_key, columns=tuple(args.columns) if args.columns else None,
-        digits=args.digits, receipt=args.receipt,
+        digits=args.digits, receipt=args.receipt, quoted=not args.not_quoted,
+        counts=tuple(args.counts) if args.counts else None,
     )  # fmt: skip
     checked = validate({"entries": [entry.spec()]}, "harvest", root / HARVEST_FILE)
     if not checked.ok:
@@ -5468,6 +5471,11 @@ def build_parser() -> argparse.ArgumentParser:
                          "where absent")
     harvest.add_argument("--receipt", metavar="SITE",
                          help="the site that holds the data, whose receipt covers the output")
+    harvest.add_argument("--not-quoted", action="store_true",
+                         help="the table is working output, not placed in the manuscript")
+    harvest.add_argument("--counts", nargs="+", metavar="COLUMN",
+                         help="the columns whose cells are counts, held to the custodian's "
+                         "minimum; every whole number where absent")
     harvest.add_argument(
         "--path", type=Path, default=Path.cwd(), help="the project (default: the one you are in)"
     )

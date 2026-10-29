@@ -54,8 +54,10 @@ def document_of(root: Path, entry: Entry, output: Path, *, inputs: list[dict] | 
                           label=cell.label)  # fmt: skip
         emitter.table(entry.key, list(table.columns), [
             ["" if found is None else Emitter.cell("{}", (found.value, found.display))
-             for found in cells] for _name, cells in table.rows])  # fmt: skip
+             for found in cells] for _name, cells in table.rows], quoted=entry.quoted)  # fmt: skip
         document = emitter.document()
+        for key in table.uncounted(entry.key, entry.counts):
+            document["values"][key]["count"] = False
     except (DisplayError, ValueError) as exc:
         raise HarvestError(f"{entry.output}: {exc}") from exc
     provenance = document["provenance"]

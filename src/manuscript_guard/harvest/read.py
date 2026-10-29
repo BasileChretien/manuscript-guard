@@ -56,6 +56,18 @@ class Harvest:
     slugs: tuple[str, ...]
     rows: tuple[tuple[str, tuple[Cell | None, ...]], ...]
 
+    def uncounted(self, key: str, counts: tuple[str, ...] | None) -> set[str]:
+        """The keys of the whole numbers outside the columns `counts` names, which are no
+        counts; none where `counts` is not given, and every whole number may be one."""
+        if counts is None:
+            return set()
+        return {
+            f"{key}.{row}.{part}"
+            for row, cells in self.rows
+            for header, part, cell in zip(self.columns, self.slugs, cells, strict=True)
+            if cell is not None and header not in counts and isinstance(cell.value, int)
+        }
+
     def values(self, key: str) -> dict[str, Cell]:
         """Each cell that holds something, under `<key>.<row>.<column>`."""
         return {
@@ -189,7 +201,8 @@ def read_output(data: bytes, suffix: str, entry: Entry) -> Harvest:
         row_key: str | None = NAME
     else:
         row_key = entry.row_key
-    for name in [*([row_key] if row_key else []), *(entry.columns or ())]:
+    for name in [*([row_key] if row_key else []), *(entry.columns or ()),
+                 *(entry.counts or ())]:
         if name not in header:
             raise HarvestError(f"{entry.output} has no column {name!r}; its columns are "
                                f"{', '.join(repr(h) for h in header)}")  # fmt: skip
@@ -199,6 +212,9 @@ def read_output(data: bytes, suffix: str, entry: Entry) -> Harvest:
             raise HarvestError(f"digits names {unknown[0]!r}, which is no column of "
                                f"{entry.output}")  # fmt: skip
     wanted = list(entry.columns) if entry.columns is not None else list(header)
+    left = [name for name in entry.counts or () if name not in wanted]
+    if left:
+        raise HarvestError(f"counts names {left[0]!r}, which columns leaves out")
     if row_key is not None:
         wanted = [row_key, *(name for name in wanted if name != row_key)]
     slugs = _names([slug(name) for name in wanted], wanted, "column", entry)

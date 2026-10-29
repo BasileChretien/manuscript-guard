@@ -367,3 +367,135 @@ def test_a_harvested_value_and_its_table_bind_in_the_manuscript(project: Path) -
     assert namespace["results.est.women.or"].display == "1.50"
     report = check_numbers(project_, namespace, results, literature)
     assert report.ok, report.render(project)
+
+
+# ------------------------------------------- what a site's receipt refuses, and what it warns
+
+
+def _minimum(project: Path, minimum: int) -> None:
+    paper = project / "paper.yaml"
+    paper.write_text(paper.read_text("utf-8") + f"\ncustodian:\n  minimum_cell_count: {minimum}\n",
+                     encoding="utf-8")  # fmt: skip
+
+
+def _site_output(project: Path, rows: list[str], **fields) -> Entry:
+    """An entry run at site-a, its script writing `rows` as output/site.csv."""
+    text = "\n".join(rows) + "\n"
+    _write_script(project, "from pathlib import Path\nPath('output').mkdir(exist_ok=True)\n"
+                  f"Path('output/site.csv').write_text({text!r})\n", "analysis/03_site.py")
+    entry = Entry("site", "output/site.csv", "analysis/03_site.py", receipt="site-a",
+                  row_key="group", **fields)  # fmt: skip
+    append_entry(project, entry)
+    return entry
+
+
+def test_a_total_that_gives_a_held_back_count_away_is_a_warning_and_the_receipt_is_written(
+    project: Path, capsys
+) -> None:
+    """The real check: a "Total" row read from its label may be no sum, so a count it gives
+    away is said, as `deposit` says it, and the receipt is written."""
+    _minimum(project, 5)
+    _site_output(project, ["group,n", "Drug,40", "Placebo,<5", "Total,43"])
+    assert main(["verify", str(project), "--receipt", "site-a"]) == 0
+    said = capsys.readouterr().out
+    assert "[WARN] output/site.csv: table.site" in said and "3" in said, said
+    assert (project / "receipts" / "site-a.receipt.json").is_file()
+
+
+def test_a_declared_sum_that_gives_a_count_away_refuses_the_receipt(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failure of the custodian's subtraction check refuses the receipt. A harvested output
+    declares no sum, so the check never fails on one; the failure is stood in for."""
+    from manuscript_guard.findings import FAIL, WARN, Finding, Report
+    from manuscript_guard.gates import custodian
+
+    _minimum(project, 5)
+    _site_output(project, ["group,n", "Drug,40", "Placebo,25"])
+    said = {"severity": FAIL}
+    monkeypatch.setattr(custodian, "recoverable_cells", lambda *_args: Report((Finding(
+        gate="G2", code="count-recoverable", severity=said["severity"],
+        message="results.site.placebo.n is 3 by subtraction"),)))  # fmt: skip
+    with pytest.raises(HarvestError, match="is 3 by subtraction"):
+        make_receipt(load_project(project)[0], "site-a")
+    assert not (project / "receipts").exists()
+    said["severity"] = WARN
+    _path, _written, warned = make_receipt(load_project(project)[0], "site-a")
+    assert warned == ["output/site.csv: results.site.placebo.n is 3 by subtraction"]
+
+
+# ------------------------------------------------------------- working output, and counts
+
+
+def test_a_harvested_table_is_placed_unless_its_entry_says_it_is_working_output(
+    project: Path,
+) -> None:
+    from manuscript_guard.gates import check_numbers
+
+    def unplaced() -> list:
+        project_, _ = load_project(project)
+        namespace, results, literature, _report = load_namespace(project_)
+        report = check_numbers(project_, namespace, results, literature)
+        return [f for f in report.findings if f.code == "unplaced-table"]
+
+    entry = _harvested(project)
+    harvest_entry(project, entry)
+    (found,) = unplaced()
+    assert "harvest.yaml `quoted: false`" in found.hint
+    (project / "harvest.yaml").unlink()
+    entry = Entry(**{**entry.__dict__, "quoted": False})
+    append_entry(project, entry)
+    harvest_entry(project, entry)
+    assert load_entries(project)[0].quoted is False
+    assert unplaced() == []
+
+
+def test_only_the_columns_an_entry_counts_are_held_to_the_minimum(project: Path) -> None:
+    from manuscript_guard.gates.custodian import check_small_cells
+
+    _minimum(project, 5)
+    _write_script(project)
+    (project / "output").mkdir()
+    (project / "output" / "est.csv").write_bytes(b"group,n,df\nWomen,3,2\n")
+    main_md = project / "manuscript" / "main.md"
+    main_md.write_text(main_md.read_text("utf-8") + "\n\nWe saw {{results.est.women.n}} "
+                       "cases, on {{results.est.women.df}} degrees of freedom.\n",
+                       encoding="utf-8")  # fmt: skip
+
+    def small(counts) -> set[str]:
+        entry = Entry("est", "output/est.csv", "analysis/02_est.py", row_key="group",
+                      counts=counts)  # fmt: skip
+        harvest_entry(project, entry)
+        project_, _ = load_project(project)
+        results = load_namespace(project_)[1]
+        return {f.message.split()[0] for f in check_small_cells(project_, results).findings}
+
+    assert small(None) == {"results.est.women.n", "results.est.women.df"}
+    assert small(("n",)) == {"results.est.women.n"}
+    document = json.loads((project / "results" / "est.json").read_text("utf-8"))
+    assert document["values"]["est.women.df"]["count"] is False
+    assert "count" not in document["values"]["est.women.n"]
+    with pytest.raises(HarvestError, match="no column 'events'"):
+        small(("events",))
+
+
+def test_a_receipt_holds_only_the_counted_columns_to_the_minimum(project: Path) -> None:
+    _minimum(project, 5)
+    _site_output(project, ["group,n,df", "Drug,40,2"])
+    with pytest.raises(HarvestError, match=r"site\.drug\.df is 2"):
+        make_receipt(load_project(project)[0], "site-a")
+    (project / "harvest.yaml").unlink()
+    _site_output(project, ["group,n,df", "Drug,40,2"], counts=("n",))
+    make_receipt(load_project(project)[0], "site-a")
+
+
+def test_the_command_takes_working_output_and_the_count_columns(project: Path) -> None:
+    _write_script(project)
+    (project / "output").mkdir()
+    (project / "output" / "est.csv").write_bytes(("\n".join(ROWS) + "\n").encode("utf-8"))
+    assert main(["harvest", "output/est.csv", "--script", "analysis/02_est.py", "--key", "est",
+                 "--row-key", "group", "--not-quoted", "--counts", "n",
+                 "--path", str(project)]) == 0  # fmt: skip
+    (entry,) = load_entries(project)
+    assert (entry.quoted, entry.counts) == (False, ("n",))
+    assert entry.spec()["quoted"] is False and entry.spec()["counts"] == ["n"]

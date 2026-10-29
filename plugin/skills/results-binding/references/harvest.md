@@ -15,6 +15,8 @@ manuscript-guard harvest output/cohort.csv --script analysis/cohort.R \
 
 The values are `{{results.cohort.<row>.<column>}}` and the table `{{table.cohort}}`. A cell
 that is not one number or plain text is refused: write each number to a column of its own.
+List the columns that count people or records with `--counts`, so that the custodian's
+minimum is held to them and to nothing else, and give `--not-quoted` for working output.
 
 - **`harvest-declared`** (a warning at every stage): nothing has run the script. Run
   `manuscript-guard verify`, which runs it in a copy and reads the output it writes. Do not

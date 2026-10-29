@@ -153,8 +153,9 @@ def said(path: Path | None) -> str:
     if path is None:
         return (f"It was not recorded ({OFF} is set, or the folder could not be written); "
                 f"{DEBUG}=1 shows where it happened.")  # fmt: skip
-    return (f"It is recorded on this machine in {_shown(path.parent)}, as {path.name}; nothing "
-            f"was sent. {DEBUG}=1 shows the traceback.")  # fmt: skip
+    return (f"It is recorded on this machine in {shown(path.parent)}, as {path.name}; nothing "
+            "was sent. `manuscript-guard report-issue --last` shows the report to "
+            "send.")  # fmt: skip
 
 
 def hook_failures(environ: Mapping[str, str] | None = None) -> str | None:
@@ -175,12 +176,13 @@ def hook_failures(environ: Mapping[str, str] | None = None) -> str | None:
         kinds = "one kind" if len(failed) == 1 else f"{len(failed)} kinds"
         return (f"manuscript-guard's hooks failed on errors of {kinds} since {first}, and kept "
                 f"out of the way, so a check they hold may not have run. The records are in "
-                f"{_shown(where)}; nothing was sent.")  # fmt: skip
+                f"{shown(where)}, and `manuscript-guard report-issue --list` lists them; "
+                "nothing was sent.")  # fmt: skip
     except Exception:  # noqa: BLE001 - a hook must never break the session
         return None
 
 
-def _shown(where: Path) -> str:
+def shown(where: Path) -> str:
     """`where` with the home folder written `~`: the line goes into the agent's context, and
     the home folder's name is the user's."""
     try:

@@ -39,11 +39,36 @@ Hooks record their failures too, without a word, since a hook must not stop the 
 call. The next session's start says once that the hooks failed since a date, because a check a
 hook holds may not have run.
 
+## Reporting it
+
+```bash
+manuscript-guard report-issue --last
+```
+
+writes a report of the failure met last, prints all of it, writes it beside the records, and
+gives two addresses: a search of the project's issues for its fingerprint, so that a fault
+already reported is found first, and the new-issue page with the report filled in. Read the
+report, then open the page and post it yourself; `--open` opens it in your browser. Nothing is
+posted until you click Submit.
+
+- `report-issue --list` lists the failures recorded, and `report-issue <fingerprint>` (its
+  first characters will do) writes a report of one of them.
+- The error's message is left out, since it can quote your files; `--with-message` adds it,
+  with the replacements above.
+- `--note "..."` adds what you ran and what you expected. Make up the smallest text that shows
+  the fault rather than pasting your manuscript's own sentences.
+- `report-issue --title "..." --note "..."` writes a report of something else: a result that
+  is wrong without any error, or a suggestion.
+- A report longer than an address can carry is to be pasted from the file it was written to.
+
+[CONTRIBUTING.md](../CONTRIBUTING.md) says what else helps, and how to report a gate that got
+something wrong.
+
 ## Nothing is sent
 
-Nothing in this goes over the network. To report a fault, open an issue at the project's
-GitHub page with the record's contents, after reading them; [CONTRIBUTING.md](../CONTRIBUTING.md)
-says what helps, and how to report a gate that got something wrong.
+Nothing in this goes over the network: `report-issue` prints, writes a file and, with
+`--open`, hands an address to your browser. An agent that runs `report-issue --open` is
+stopped by the plugin's hook until you say yes.
 
 | Variable | Effect |
 |---|---|

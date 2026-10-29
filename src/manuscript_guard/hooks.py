@@ -1232,6 +1232,7 @@ def guard_submission(payload: dict) -> int:
     sends = sends or _or_nothing(lambda _path: _sends_without_asking(command, payload),
                                  Path("."))  # fmt: skip
     sends = sends or _or_nothing(lambda _path: _approves(command), Path("."))
+    sends = sends or _opens_report(command)
     sends = sends or _moves_stage_back(command, payload)
     if not SUBMISSION_MARKERS.search(command):
         return _ask("PreToolUse", sends, payload) if sends else 0
@@ -1547,6 +1548,26 @@ def _approves(command: str) -> str | None:
     return (
         "`manuscript-guard approve` records that an author read the manuscript and approves "
         "it. Only that author can say so: run it yourself, as yourself."
+    )
+
+
+#: `report-issue … --open`, in one invocation of the command.
+_REPORT_OPENED = re.compile(
+    _TOOL + r"report-issue\b" + _SAME_COMMAND + r"(?<![\w-])--open\b", re.IGNORECASE
+)
+
+
+def _opens_report(command: str) -> str | None:
+    """Why an agent's `report-issue --open` is put to the person: it opens a page in their
+    browser with a report filled in, to be posted under their GitHub account. Nothing is posted
+    until they click, but what the page says is theirs to read first."""
+    joined = re.sub(r"[\\`]\r?\n", " ", command)
+    if not _REPORT_OPENED.search(joined):
+        return None
+    return (
+        "`manuscript-guard report-issue --open` opens the project's issue page in your browser "
+        "with a report filled in, to be posted under your GitHub account. Read the report it "
+        "prints first: nothing is posted until you click Submit there."
     )
 
 

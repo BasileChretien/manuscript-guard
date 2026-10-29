@@ -465,8 +465,10 @@ def test_the_hook_line_dates_from_the_last_notice(kept) -> None:
 
 
 def test_the_diagnostics_import_nothing_that_could_send() -> None:
-    sending = {"urllib", "http", "socket", "ssl", "subprocess", "requests", "smtplib",
-               "webbrowser"}  # fmt: skip
+    """`urllib.parse` writes an address and sends nothing; every other way out is refused,
+    `webbrowser` among them, which `report-issue --open` uses from the command line instead."""
+    sending = ("urllib.request", "urllib.robotparser", "http", "socket", "ssl", "subprocess",
+               "requests", "smtplib", "ftplib", "webbrowser", "asyncio")  # fmt: skip
     for path in DIAGNOSTICS.glob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
@@ -476,7 +478,10 @@ def test_the_diagnostics_import_nothing_that_could_send() -> None:
                 names = [node.module or ""]
             else:
                 continue
-            assert not {name.split(".")[0] for name in names} & sending, (path.name, names)
+            for name in names:
+                assert name != "urllib", (path.name, name)
+                assert not any(name == out or name.startswith(out + ".") for out in sending), (
+                    path.name, name)
 
 
 def test_the_folder_is_the_users_own_by_system(monkeypatch, tmp_path) -> None:

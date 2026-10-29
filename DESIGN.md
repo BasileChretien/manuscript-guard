@@ -11931,6 +11931,20 @@ read; `MANUSCRIPT_GUARD_DEBUG=1` lets the error through as a traceback. The test
 nothing unless a test turns it on in a folder of its own. The scrub is a convenience, not a
 guarantee (Known gaps).
 
+`report-issue` turns a record into a report the person reads, edits and posts
+(`diagnostics/issue.py`). It prints the whole body, writes it beside the records, and gives
+the new-issue page's address with the title and body filled in, and a search of the issues
+for the fingerprint, which the title carries as `mg-<fingerprint>`, so that a fault already
+reported is found first. The tool posts nothing, by `gh` or otherwise: a second outward path
+would be a second thing to guard, and the person's click on GitHub is the consent. `--open`
+hands the address to the browser, and the hook asks the person when an agent runs it, since
+the page carries text the agent chose. The error's message is left out of the report unless
+`--with-message` asks for it, because a message can quote the manuscript and the scrub does
+not take that out; `--title` writes a report of something with no record. An address longer
+than 7,500 characters, which GitHub may refuse, carries the title and a line saying to paste
+the body from the file. A `gate-errored` finding the tool recorded names the fingerprint in its
+hint, and the crash sentence and the session start point at `report-issue`.
+
 ## Known gaps
 
 Recorded because a gate whose limits are undocumented gets trusted beyond them.

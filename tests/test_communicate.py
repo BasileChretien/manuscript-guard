@@ -261,14 +261,15 @@ TEXT_CASES = {
         "Example-drug may have caused hepatic injury, with a reporting odds ratio of "
         "{{results.ror.point}} [](#brief:findings.2).", "channel: bluesky", FAIL),
     "comm-limitation-dropped": (CLEAN, "channel: press-release", FAIL),
+    # A newsletter tells the whole finding and asks for no limitation: its one fault is the
+    # primary finding left out, the conclusion anchored to a statement the brief has.
     "comm-primary-missing": (
-        "Of {{results.cohort.n_reports}} reports, {{results.case.n_cases}} described hepatic "
-        "injury with example-drug [](#brief:findings.1). Several limitations follow from the "
-        "design [](#brief:limitations.1).", "channel: press-release", FAIL),
+        "Reporting of hepatic injury is disproportionate for example-drug in these synthetic "
+        "data [](#brief:conclusion.1).", "channel: newsletter", FAIL),
     "comm-secondary-as-primary": (
         "Of {{results.cohort.n_reports}} reports, {{results.case.n_cases}} described hepatic "
         "injury with example-drug [](#brief:findings.1). " + CLEAN, "channel: bluesky", WARN),
-    "comm-status-ahead": ("Our paper is published. " + CLEAN, "channel: bluesky", FAIL),
+    "comm-status-words": ("Our paper is published. " + CLEAN, "channel: bluesky", WARN),
     "comm-doi-malformed": ("Read it at doi:10.12/abc. " + CLEAN, "channel: bluesky", FAIL),
     "comm-link-temporary": ("The code is at https://drive.google.com/abc. " + CLEAN,
                             "channel: bluesky", WARN),
@@ -668,26 +669,34 @@ def test_a_counter_at_the_end_of_a_post_is_no_number_and_a_fraction_is_one(ready
     assert "comm-number-unbound" in codes(ready, "texts", FAIL)
 
 
-def test_this_paper_said_published_or_its_url_linked_is_ahead(ready: Path) -> None:
+def test_this_paper_said_published_warns_and_its_url_linked_fails(ready: Path) -> None:
+    """Basile, 2026-10-29: the paper's own DOI or URL linked is the exact signal, and fails;
+    words that read as this paper being out only warn, read broadly."""
     with (ready / "paper.yaml").open("a", encoding="utf-8", newline="\n") as handle:
         handle.write("publication:\n  status: accepted\n  url: https://journal.example/a/1\n")
+    text(ready, "post.md", "Read it at https://journal.example/a/1 now. " + CLEAN)
+    assert "comm-status-ahead" in codes(ready, "texts", FAIL)
     for said in ("Our study is published today. ", "This paper has been published. ",
                  "The present article is now out. ",
-                 "Read it at https://journal.example/a/1 now. ",
-                 # A headline that says it is out.
+                 # The fix-only round's: an adverb in the verb, a trial, "out!", a headline.
+                 "Our study has now been published in JAMA. ", "This trial is now published. ",
+                 "Our new paper is out! ", "Published today, our study shows more. ",
                  "Published: hepatic injury and example-drug. ", "Now published in X. ",
                  "Just published! ", chr(0x1F389) + " Out now! ", "**Out today.** ",
                  "Published in X this week. "):  # fmt: skip
         text(ready, "post.md", said + CLEAN)
-        assert "comm-status-ahead" in codes(ready, "texts", FAIL), said
+        told = found(ready, "texts")
+        assert ("comm-status-words", WARN) in told, said
+        assert "comm-status-ahead" not in {code for code, _ in told}, said
     for said in ("Our study will be published soon. ", "Published reports differ. ",
                  "Previously published studies differ. ", "Out of the sites, none. ",
                  # Round 2 of #470: other work, and a negation.
                  "Our findings agree with published reports. ",
                  "We published the protocol in 2024. ", "Our study is not yet published. ",
-                 "Published in 2021, the ABC trial found more. "):  # fmt: skip
+                 "Published in 2021, the ABC trial found more. ",
+                 "This work is out of scope. "):  # fmt: skip
         text(ready, "post.md", said + CLEAN)
-        assert "comm-status-ahead" not in codes(ready, "texts"), said
+        assert not {"comm-status-ahead", "comm-status-words"} & codes(ready, "texts"), said
 
 
 def test_a_thread_is_parted_at_a_rule_after_a_blank_line_and_not_at_an_underline() -> None:
@@ -800,6 +809,20 @@ def test_a_numbered_heading_is_no_statement(project: Path) -> None:
     assert "Limitations" not in said and "4." not in said
     assert document["limitations"][0]["text"] == _LIMITS
     assert brief_module.on_heading_line("x\n## 5. Conclusions\ny", 6)
+
+
+def test_a_sentence_run_on_under_its_heading_keeps_what_follows_the_heading() -> None:
+    """The fix-only round of #470: "## Limitations" with the paragraph on the next line, no
+    blank line between, keeps the paragraph."""
+    text_ = "## Limitations\n" + _LIMITS
+    assert brief_module.past_headings(text_, 0, len(text_)) == len("## Limitations\n")
+
+
+def test_a_paragraph_run_on_under_a_limitations_heading_is_the_limitation(
+    project: Path,
+) -> None:
+    document = _scaffolded(project, _LIMITS, "## Limitations\n" + _LIMITS)
+    assert [one["text"] for one in document["limitations"]][:1] == [_LIMITS]
 
 
 def test_a_statement_is_drawn_as_printed_without_its_markup() -> None:

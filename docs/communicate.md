@@ -148,7 +148,8 @@ Failures are listed apart from warnings, and the command exits 1 on a failure.
 | `comm-allow-unused` | warns | the front matter allows a sentence the text no longer holds, or one that claims no more than its statement |
 | `comm-allow-no-reason` | warns | an entry of `allow:` gives no reason, and allows nothing |
 | `comm-limitation-dropped` | fails | a press release, a plain-language summary or a pitch states no limitation |
-| `comm-status-ahead` | fails | the text says this paper is out ("our study is published", "this paper is now out", or a headline, "Out now", "Published:"), or links its DOI or URL, before `publication.status` says it is online |
+| `comm-status-ahead` | fails | the text links the paper's own DOI or URL before `publication.status` says it is online |
+| `comm-status-words` | warns | its words read as this paper being out ("our study has now been published", "our new paper is out!", or a headline, "Out now", "Published today, our study ..."), before `publication.status` says it is online |
 | `comm-doi-malformed` | fails | a DOI that is no DOI |
 | `comm-link-temporary` | warns | a link to a shared drive or a bare repository |
 | `comm-over-limit` | fails | a post longer than its channel takes |

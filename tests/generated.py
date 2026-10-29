@@ -6108,7 +6108,10 @@ ANCHOR_KINDS = (
     # sentence claim were it read: a mention, a hashtag, a thread's counters.
     "plain, a mention", "plain, a hashtag", "plain, counters about a rule",
 )  # fmt: skip
-_MENTIONS = ("@lab42.bsky.social", "@alice@example42.social", "@team2.example.org")
+#: Mentions as Bluesky and Mastodon write them, each with a figure in it, all planted in
+#: one sentence of every example.
+_MENTIONS = ("@lab42.bsky.social", "@nagoya-u2.bsky.social", "@did3.example.org",
+             "@alice@example42.social", "@team2.example.org")  # fmt: skip
 _THREAD_EMOJI = chr(0x1F9F5)
 _HASHTAGS = ("#covid19", "#pv2026", "#h5n1")
 #: What looks like a word of the ladder and is not read as one.
@@ -6192,9 +6195,9 @@ def communication_texts(draw: st.DrawFn) -> tuple[str, list[list[Any]]]:
             said = f"{sentence()}\n{opener} {sentence(word())}"
             paragraphs.append((said, (1, True, [one])))
         elif kind == "plain, a mention":
-            paragraphs.append((sentence(draw(st.sampled_from(_MENTIONS))), None))
+            paragraphs.append((sentence(" ".join(draw(st.permutations(_MENTIONS)))), None))
         elif kind == "plain, a hashtag":
-            paragraphs.append((sentence(draw(st.sampled_from(_HASHTAGS))), None))
+            paragraphs.append((sentence(" ".join(draw(st.permutations(_HASHTAGS)))), None))
         elif kind == "plain, counters about a rule":
             # A post closed by its counter, a rule, and the next opened by its own.
             closing = draw(st.sampled_from(("2/3", "(2/3)", "2/3 " + _THREAD_EMOJI)))
@@ -6291,36 +6294,48 @@ def claim_pairs(draw: st.DrawFn) -> tuple[list[list[str]], list[str | None]]:
 #: reads it as this paper said out (round 2 of #470). Every kind is in every example.
 PUBLISHED_KINDS = {
     "this paper out": True, "headline": True, "headline published in": True,
+    "headline today, ours": True,
     "headline in a year": False, "headline before a comma": False,
     "agrees with published reports": False, "we published the protocol": False,
     "not yet published": False, "negated before it": False, "previously published": False,
     "to be published": False, "published before a noun": False, "published in a link": False,
+    "out of": False,
 }  # fmt: skip
 
 
 @st.composite
 def published_texts(draw: st.DrawFn) -> tuple[str, list[str]]:
     """A text of one paragraph for each kind of `PUBLISHED_KINDS`, in an order drawn each
-    time, and the sentences read as saying this paper is out, folded, in order."""
+    time, and the sentences whose words read as saying this paper is out, folded, in order
+    (Basile, 2026-10-29: read broadly, since they warn)."""
 
     def words() -> str:
         return " ".join(draw(st.lists(st.sampled_from(_PLAIN), min_size=1, max_size=3)))
 
     def paper() -> str:
-        return (f"{draw(st.sampled_from(('Our', 'This', 'The present')))} "
-                f"{draw(st.sampled_from(('study', 'paper', 'article', 'work')))}")  # fmt: skip
+        opener = draw(st.sampled_from(("Our", "This", "These", "The present")))
+        new = draw(st.sampled_from(("", "new ", "latest ")))
+        noun = draw(st.sampled_from(("study", "paper", "article", "work", "trial", "findings",
+                                     "results")))  # fmt: skip
+        return f"{opener} {new}{noun}"
 
     said: list[tuple[str, bool]] = []
     for kind in draw(st.permutations(tuple(PUBLISHED_KINDS))):
         if kind == "this paper out":
-            verb = draw(st.sampled_from(("", "has been ", "is ", "was ", "is now ", "was just ")))
-            sentence = f"{paper()} {verb}{draw(st.sampled_from(('published', 'out')))} {words()}."
+            verb = draw(st.sampled_from(("", "has been ", "has now been ", "is ", "is now ",
+                                         "was just ", "are ", "were finally ")))  # fmt: skip
+            # What follows is no "of": "out of" is the kind of its own below.
+            tail = " ".join(draw(st.lists(st.sampled_from([w for w in _PLAIN if w != "of"]),
+                                          min_size=1, max_size=3)))  # fmt: skip
+            sentence = f"{paper()} {verb}{draw(st.sampled_from(('published', 'out')))} {tail}."
         elif kind == "headline":
             opener = draw(st.sampled_from(("Now published", "Just published", "Out now",
                                            "Out today", "Published:")))  # fmt: skip
             sentence = f"{opener} {words()}."
         elif kind == "headline published in":
             sentence = f"Published in {words()}."
+        elif kind == "headline today, ours":
+            sentence = f"Published today, {paper().lower()} shows {words()}."
         elif kind == "headline in a year":
             sentence = f"Published in {draw(st.integers(1990, 2030))}, the {words()} found it."
         elif kind == "headline before a comma":
@@ -6339,6 +6354,8 @@ def published_texts(draw: st.DrawFn) -> tuple[str, list[str]]:
             sentence = f"{paper()} will be published {words()}."
         elif kind == "published before a noun":
             sentence = f"Published {draw(st.sampled_from(('reports', 'studies', 'data')))} differ."
+        elif kind == "out of":
+            sentence = f"{paper()} is out of {words()}."
         else:
             sentence = f"See https://example.org/{paper().replace(' ', '-')}-is-published now."
         said.append((sentence, PUBLISHED_KINDS[kind]))

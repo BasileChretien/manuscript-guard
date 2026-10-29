@@ -50,7 +50,8 @@ BINDS_AT = {
     # `communicate check` reads no stage: a post, a summary or a graphical abstract is held to
     # the paper whenever it is written, since it is read outside the team the day it is
     # shared. Each code is listed where an unlisted one binds, so that the decision is
-    # written down (`communicate/checking.py`); its warnings stay warnings.
+    # written down (`communicate/checking.py`); its warnings stay warnings, the words that
+    # read as the paper being out among them (`comm-status-words`, Basile, 2026-10-29).
     **dict.fromkeys(
         (
             "brief-invalid", "brief-missing", "brief-quote-not-in-source",

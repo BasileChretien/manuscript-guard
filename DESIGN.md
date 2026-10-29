@@ -6170,7 +6170,9 @@ since a paraphrase shares no sentence with its source to be lined up by). The au
 on 2026-10-28 that a stronger claim fails, with a per-sentence `allow:` and its reason in the
 text's front matter (decision 1), that only a claiming sentence needs an anchor (decision 2),
 that a graphical abstract with no journal rule is drawn at a default size with a note
-(decision 4), and that it is one `communicate` group (decision 5). The scaffold infers nothing
+(decision 4), and that it is one `communicate` group (decision 5). On 2026-10-29 he decided
+that the paper said to be out before it is fails only on the exact signal, its own DOI or
+URL linked (`comm-status-ahead`), and that words saying so only warn (`comm-status-words`). The scaffold infers nothing
 a person should decide: every finding is written secondary, and the author marks the primary
 one.
 
@@ -18316,17 +18318,22 @@ What papers converted from Word showed (see "What papers converted from Word sho
     (`read_on` in `data/channels.yaml`). Bluesky's 300 graphemes was not: its page redirected to one that
     served nothing, so it is marked `verified: false` and stands as recorded from memory
     until it is read there.
-  - `comm-status-ahead` reads this paper said to be out in English, in exact forms, and
-    refuses the rest (round 2 of #470): "our", "this" or "the present" study, paper,
-    article or work, then "published" or "out", at once or after "has been", "is", "was",
-    "is now" or "was just", with no negation before it in its sentence; a sentence or a
-    post that opens, past its marks and emoji, with "Now published", "Just published", "Out
-    now", "Out today", or "Published" before a colon, a dash, a stop or "in", "today",
-    "online", "now", "this week", but not before "in" and a year nor a clause after a comma;
-    and the paper's own DOI or URL, whole or up to a `/`, `?` or `#`. Not read, and so
-    passing: "our findings are now published", "my paper is published", "the study is out",
-    "we have published our trial", "the paper is live", a headline in another language, and
-    "has been accepted" while it is only submitted.
+  - `comm-status-ahead` fails only on the paper's own DOI or URL linked (whole, or up to a
+    `/`, `?` or `#`) while `publication.status` says it is not out: the one exact signal.
+    Basile decided on 2026-10-29, after two rounds of review found words read wrong both
+    ways, that words which read as this paper being out only warn (`comm-status-words`),
+    and are read broadly, since a miss or a false alarm costs a warning: "our", "this",
+    "these" or "the present", perhaps "new" or "latest", then study, paper, article, work,
+    trial, findings or results, a verb with any adverb in it ("has now been", "was just"),
+    then "published" or "out" (not "out of"), with no negation before it in its sentence;
+    and a sentence or a post that opens, past its marks and emoji, with "Now published",
+    "Just published", "Out now", "Out today", or "Published" before a colon, a dash, a stop,
+    a comma or "in", "today", "online", "now", "this week", but not before "in" and a year
+    nor a clause after a comma that names no work of ours ("Published in JAMA, the ABC trial
+    found"). Not warned: "my paper is published", "the study is out", "we have published
+    our trial", "the paper is live", a headline in another language, and "has been accepted"
+    while it is only submitted. "Previously published studies" stays silent; "These results
+    were published by Smith" is warned, though it is other work.
   - A mention is an @ before a name and its domain (`@alice.bsky.social`,
     `@alice@example.social`), and is no citation; an @ before a key with no domain is a
     citation, as pandoc reads one, so a mention written `@alice` is held as a citation the
@@ -18349,8 +18356,13 @@ What papers converted from Word showed (see "What papers converted from Word sho
     BMJ Open "Strengths and limitations of this study" box, or one headed "Limitations of
     the study", has none in its brief, and a press release, a plain-language summary or a
     pitch then fails `comm-limitation-dropped` until the author writes the statement in.
-  - A sentence that starts on a heading's line is no statement, so a heading's text and a
-    paragraph run straight on under it with no blank line are both left out.
+  - A heading's line is no statement. A sentence that runs on under it with no blank line,
+    "## Results\nOf {{n}} reports ...", keeps what follows the line (the fix-only round of
+    #470).
+  - A mention with no domain ("@alice", "@NagoyaU") is held as a citation, as pandoc reads
+    one (the docs say so); and the graphical abstract refuses a statement holding a
+    narrative citation or a cross-reference, which the plan's methods sentence is likelier
+    to hold than a finding (findings 5 and 6 of the fix-only round).
   - The graphical abstract draws no statement that holds a narrative citation (`@key`
     showed) or a LaTeX cross-reference: their words are the build's, and `communicate
     graphical-abstract` refuses, naming the statement, until its text is shortened.

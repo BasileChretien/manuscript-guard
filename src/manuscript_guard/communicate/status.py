@@ -10,18 +10,18 @@ paper.yaml's `publication:` block records it:
       url: https://journal.example/article/5678
       embargo_until: 2026-12-01T00:01
 
-A text that says this paper is out, or links its DOI or its URL, before the status
-says it is online is ahead of the paper (`comm-status-ahead`): a post that links a DOI the
-publisher has not yet registered leads nowhere, and an embargo is broken by "our study is
-published" as by a link. One form is read and the rest refused (round 2 of #470): "our",
-"this" or "the present" study, paper, article or work, then "published" or "out", at once
-or after "has been", "is", "was", "is now" or "was just", with no negation before it; a
-headline opening a sentence, "Now published", "Just published", "Out now", "Out today" or
-"Published:", but not "Published in 2021, ..."; and the paper's own DOI or URL. A DOI is
-held to its syntax
-(`comm-doi-malformed`); whether it is registered, and for this paper, is asked of Crossref
-by a later step. A link to storage that is neither persistent nor archived, a shared drive
-or a bare repository, is a warning (`comm-link-temporary`).
+A text that links the paper's own DOI or URL before the status says it is online fails
+(`comm-status-ahead`): a post that links a DOI the publisher has not yet registered leads
+nowhere, and the link is the one exact signal. Words that read as this paper being out only
+warn (`comm-status-words`), since no reading of words is exact (Basile, 2026-10-29), and are
+read broadly: "our", "this", "these" or "the present" study, paper, trial, findings and the
+like, then a verb with any adverb, then "published" or "out" (not "out of"), with no
+negation before it; and a headline, "Now published", "Just published", "Out now", "Out
+today", "Published:", "Published today, our study ...", but not "Published in 2021, the
+...". A DOI is held to its syntax (`comm-doi-malformed`); whether it is registered, and for
+this paper, is asked of Crossref by a later step. A link to storage that is neither
+persistent nor archived, a shared drive or a bare repository, is a warning
+(`comm-link-temporary`).
 """
 
 from __future__ import annotations
@@ -46,13 +46,16 @@ _GIVEN = re.compile(
     re.IGNORECASE,
 )
 _TRAILING = ".,;:!?)]}'*_"
-#: This paper said to be out, in the one form read (round 2 of #470): "our", "this" or "the
-#: present" study, paper, article or work, then at once, or after "has been", "is", "was",
-#: "is now" or "was just", "published" or "out". Anything between, "our findings agree with
-#: published reports", "we published the protocol", is not read, nor one after a negation.
+#: This paper's words said to be out, read broadly since they only warn (Basile,
+#: 2026-10-29): "our", "this", "these" or "the present", perhaps "new", "latest" and the
+#: like, then study, paper, article, work, trial, findings or results, then a verb with any
+#: adverb in it, "has now been", "was just", "is", and "published" or "out", not "out of".
 _THIS_PAPER_OUT = re.compile(
-    r"\b(?:our|this|the[ \t]+present)[ \t]+(?:study|paper|article|work)[ \t]+"
-    r"(?:(?:has[ \t]+been|is[ \t]+now|was[ \t]+just|is|was)[ \t]+)?(?:published|out)\b",
+    r"\b(?:our|this|these|the[ \t]+present)[ \t]+"
+    r"(?:(?:new|latest|recent|first|own|full|final)[ \t]+)*"
+    r"(?:study|studies|paper|papers|article|articles|work|trial|findings|results)[ \t]+"
+    r"(?:(?:has|have|is|are|was|were|been|now|just|finally|officially|today|already)[ \t]+)*"
+    r"(?:published\b|out\b(?![ \t]+of\b))",
     re.IGNORECASE,
 )
 #: A negation before it in its sentence: "It is not true that our study is published."
@@ -62,16 +65,26 @@ _NEGATED = re.compile(
 _LINK = re.compile(r"(?:https?://|www\.)\S+", re.IGNORECASE)
 #: A headline that says the paper is out, opening a sentence or a post past its marks and
 #: emoji: "Now published", "Just published", "Out now", "Out today", and "Published" where
-#: a colon, a dash, a stop or "in", "today", "online" follows, not "Published reports".
+#: a colon, a dash, a stop, a comma or "in", "today", "online" follows, not "Published
+#: reports".
 _HEADLINE = re.compile(
     r"\A[^\w]*(?:(?P<said>(?:now|just)[ \t]+published\b|out[ \t]+(?:now|today)\b)"
-    r"|(?P<published>published)(?=[ \t]*(?:[:!.\N{EM DASH}\N{EN DASH}-]|\Z)"
+    r"|(?P<published>published)(?=[ \t]*(?:[:!.,\N{EM DASH}\N{EN DASH}-]|\Z)"
     r"|[ \t]+(?:in|today|online|now|this[ \t]+week)\b))",
     re.IGNORECASE,
 )
 #: After a headline's "Published", what makes it said of other work: "in" and a year, "in
-#: 2021", or a clause after a comma, "Published in JAMA, the ABC trial found".
-_OTHER_WORK = re.compile(r"[ \t]+in[ \t]+(?:\d{4}\b|[^,.]*\b\d{4}\b)|[^.!?]*,")
+#: 2021", or a clause after a comma that names no work of ours: "Published in JAMA, the
+#: ABC trial found", and not "Published today, our study shows".
+_IN_A_YEAR = re.compile(r"[ \t]+in[ \t]+(?:\d{4}\b|[^,.]*\b\d{4}\b)")
+_OURS = re.compile(r"\b(?:our|this|these|we|my|the[ \t]+present)\b", re.IGNORECASE)
+
+
+def _other_work(sentence: str, at: int) -> bool:
+    if _IN_A_YEAR.match(sentence, at):
+        return True
+    comma = sentence.find(",", at)
+    return comma >= 0 and not _OURS.search(sentence, comma)
 
 
 def publication(project) -> dict:
@@ -96,9 +109,9 @@ def _line(text: str, at: int) -> int:
 
 
 def said_published(text: str) -> list[tuple[int, str]]:
-    """Where a text says this paper is out, with the sentence: links left out, a sentence
-    that says so in the one form read (`_THIS_PAPER_OUT`) with no negation before it, and
-    one that opens with a headline (`_HEADLINE`) not said of other work."""
+    """Where a text's words say this paper is out, with the sentence: links left out, a
+    sentence that says so (`_THIS_PAPER_OUT`) with no negation before it, and one that opens
+    with a headline (`_HEADLINE`) not said of other work."""
     from manuscript_guard.claims import sentence_spans
 
     unlinked = _LINK.sub(lambda found: " " * len(found.group()), text)
@@ -112,7 +125,7 @@ def said_published(text: str) -> list[tuple[int, str]]:
         headline = _HEADLINE.match(sentence)
         if headline is None:
             continue
-        if headline["published"] and _OTHER_WORK.match(sentence, headline.end()):
+        if headline["published"] and _other_work(sentence, headline.end()):
             continue
         found.append((first, " ".join(sentence.split())))
     return found
@@ -154,8 +167,15 @@ def status_findings(project, path: Path, text: str) -> list[Finding]:
                     what = f"it links the paper's URL, {link.group()}"
                     found.append(_ahead(path, _line(text, link.start()), what, status))
         for at, sentence in said_published(text):
-            what = f"it says this paper is published, '{sentence[:120]}'"
-            found.append(_ahead(path, _line(text, at), what, status))
+            found.append(Finding(
+                GATE, "comm-status-words",
+                f"its words read as this paper being out, '{sentence[:120]}', and paper.yaml's "
+                f"publication status is {status}",
+                severity=WARN, path=path, line=_line(text, at),
+                hint="if it says this paper is out, hold it until the paper is online and set "
+                "`publication: {status: published-online}`; words are read broadly, and a "
+                "sentence about other work is warned too",
+            ))  # fmt: skip
     for link in TEMPORARY.finditer(text):
         found.append(Finding(
             GATE, "comm-link-temporary",

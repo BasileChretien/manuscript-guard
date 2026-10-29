@@ -25320,6 +25320,14 @@ def _communicating(project: Path) -> None:
     path.write_bytes(dump(document).encode("utf-8"))
 
 
+def _communication_told(project: Path) -> set[str]:
+    """Each code `communicate check` fails or warns with."""
+    from manuscript_guard.communicate.checking import check
+
+    report = check(load_project(project)[0])
+    return {f.code for f in (*report.failures, *report.warnings)}
+
+
 def _communication_failures(project: Path) -> set[str]:
     from manuscript_guard.communicate.checking import check
 
@@ -25408,7 +25416,7 @@ _ANCHORED_CLAIM = "<!-- brief: findings.2 --> Example-drug was associated with t
          "comm-fact-not-in-source"),
         # "Published" said of other work, and of this paper.
         ("Previously published studies differ. " + _POST.split("---\n")[-1],
-         "Our study is published. " + _POST.split("---\n")[-1], "comm-status-ahead"),
+         "Our study is published. " + _POST.split("---\n")[-1], "comm-status-words"),
         # A thread's counter, and a typed number where the counter stood.
         ("1/3 " + _POST.split("---\n")[-1], "13 " + _POST.split("---\n")[-1],
          "comm-number-unbound"),
@@ -25420,9 +25428,9 @@ def test_a_post_round_1_reads_what_a_post_holds_and_catches_what_it_should(
     _communicating(project)
     post = project / "communication" / "bluesky.md"
     post.write_text("---\nchannel: bluesky\n---\n" + faithful, encoding="utf-8")
-    assert code not in _communication_failures(project)
+    assert code not in _communication_told(project)
     post.write_text("---\nchannel: bluesky\n---\n" + faulty, encoding="utf-8")
-    assert code in _communication_failures(project)
+    assert code in _communication_told(project)
 
 
 def test_a_graphical_abstract_line_cut_from_its_negation_is_caught(project: Path) -> None:
@@ -25478,22 +25486,27 @@ def test_a_heading_and_a_registration_are_no_statements_of_the_brief(project: Pa
         ("We published the protocol in 2024.", "Our study is published."),
         ("Our study is not yet published.", "Our study is now published."),
         ("Published in 2021, the earlier trial found less.", "Published in JAMA."),
+        # The fix-only round: an adverb in the verb, "out!", a headline about ours.
+        ("This work is out of scope.", "Our study has now been published in JAMA."),
+        ("Previously published studies differ.", "Published today, our study shows more."),
     ],
 )  # fmt: skip
 def test_a_post_round_2_says_this_paper_is_out_only_in_its_own_words(
     project: Path, faithful: str, ahead: str
 ) -> None:
-    """While the paper is accepted, the post that says it is out fails, and the one that
-    says "published" of other work, or that it is not yet, does not."""
+    """While the paper is accepted, the post whose words say it is out is warned (Basile,
+    2026-10-29: only its DOI or URL linked fails), and the one that says "published" of
+    other work, or that it is not yet, is not."""
     _communicating(project)
     with (project / "paper.yaml").open("a", encoding="utf-8", newline="\n") as handle:
         handle.write("publication:\n  status: accepted\n")
     post = project / "communication" / "bluesky.md"
     body = _POST.split("---\n")[-1]
     post.write_text(f"---\nchannel: bluesky\n---\n{faithful} {body}", encoding="utf-8")
-    assert "comm-status-ahead" not in _communication_failures(project)
+    assert "comm-status-words" not in _communication_told(project)
     post.write_text(f"---\nchannel: bluesky\n---\n{ahead} {body}", encoding="utf-8")
-    assert "comm-status-ahead" in _communication_failures(project), ahead
+    told = _communication_told(project)
+    assert "comm-status-words" in told and "comm-status-ahead" not in told, ahead
 
 
 def test_the_limitations_are_a_limitations_sections_paragraph(project: Path) -> None:

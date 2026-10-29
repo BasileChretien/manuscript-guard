@@ -291,11 +291,33 @@ class _Read:
     keys: tuple[str, ...]
 
 
+def past_headings(text: str, first: int, end: int) -> int | None:
+    """Where a sentence that starts on a heading's line goes on past it, and its underline;
+    None where nothing with a letter does. "## Results\\nOf {{n}} reports, ..." keeps "Of
+    {{n}} reports, ..."; "## 4." and the "Limitations" after it keep nothing (round 2 and
+    the fix-only round of #470)."""
+    at = first
+    while at < end and on_heading_line(text, at):
+        line_end = text.find("\n", at)
+        if line_end < 0 or line_end + 1 >= end:
+            return None
+        at = line_end + 1
+        below_end = text.find("\n", at)
+        below = text[at : len(text) if below_end < 0 else below_end]
+        if _UNDERLINE.fullmatch(below):
+            if below_end < 0 or below_end + 1 >= end:
+                return None
+            at = below_end + 1
+        while at < end and text[at] in " \t\n":
+            at += 1
+    return at if re.search(r"[^\W\d_]", text[at:end]) else None
+
+
 def on_heading_line(text: str, at: int) -> bool:
     """Whether offset `at` of `text` stands on a heading's line: `#` Markdown's, numbered
     or not, which the LaTeX printed view writes too, or a title over its underline. A
-    sentence that starts there is no statement (round 2 of #470): "## 4. Limitations" is
-    cut after "4." and "Limitations" read as a sentence of its own."""
+    heading's line is no statement (round 2 of #470): "## 4. Limitations" is cut after "4."
+    and "Limitations" read as a sentence of its own."""
     start = text.rfind("\n", 0, at) + 1
     end = text.find("\n", at)
     end = len(text) if end < 0 else end
@@ -341,7 +363,10 @@ def _sentences(document: Document, named: str | None, number: int) -> list[_Read
     out = []
     part = ""
     in_abstract = False
-    for _piece, first, end in sentence_spans(text):
+    for _piece, start, end in sentence_spans(text):
+        first = past_headings(text, start, end)
+        if first is None:
+            continue
         chain = tuple(chain_at(index, first).printed)
         abstract_at = next((i for i, title in enumerate(chain) if names_abstract(title, named)),
                            None)  # fmt: skip
@@ -355,8 +380,6 @@ def _sentences(document: Document, named: str | None, number: int) -> list[_Read
             if deeper:
                 part = _part_of(deeper[-1])
         raw = text[first:end]
-        if on_heading_line(text, first):
-            continue
         at, labelled = opening(raw)
         if labelled is not None and in_abstract:
             part = labelled
@@ -468,8 +491,9 @@ def _sentences_of(text: str, place=None) -> dict[str, list[tuple[str, ...]]]:
     where none is given. A sentence on a heading's line is none."""
     text = text.replace("\r\n", "\n")
     found: dict[str, list[tuple[str, ...]]] = {}
-    for _piece, first, end in sentence_spans(text):
-        if on_heading_line(text, first):
+    for _piece, start, end in sentence_spans(text):
+        first = past_headings(text, start, end)
+        if first is None:
             continue
         raw = text[first:end]
         at, _part = opening(raw)

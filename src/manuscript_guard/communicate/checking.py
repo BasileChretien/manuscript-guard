@@ -24,8 +24,9 @@ fails too (`comm-claim-moved`), unless the text's front matter allows the senten
 reason (decision 1); a claim made weaker is a warning (`comm-claim-weaker`). A press
 release, a plain-language summary and a pitch state a limitation (`comm-limitation-dropped`).
 
-**The paper's status** (`status.py`): `comm-status-ahead`, `comm-doi-malformed`,
-`comm-link-temporary`.
+**The paper's status** (`status.py`): `comm-status-ahead` for its own DOI or URL linked
+before it is out, a warning for words that say so (`comm-status-words`),
+`comm-doi-malformed`, `comm-link-temporary`.
 
 **The graphical abstract.** Each image is held to the journal's `graphical_abstract` rules
 as G4 holds a figure (format, file size, smallest text), and to its size, aspect ratio,

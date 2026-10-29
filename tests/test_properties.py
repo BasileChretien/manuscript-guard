@@ -7600,10 +7600,11 @@ def test_each_claiming_sentence_of_a_communication_is_read_with_the_statements_i
 def test_this_paper_said_out_is_read_in_its_forms_and_nothing_else_is(
     drawn: tuple[str, list[str]],
 ) -> None:
-    """"Our", "this" or "the present" study, paper, article or work, at once or after "has
-    been", "is", "was", "is now" or "was just", then "published" or "out", and a headline,
-    are read as this paper out; the same words of other work, after a negation, in a year
-    or before a comma, or in a link, are not (`communicate/status.py`)."""
+    """"Our", "this", "these" or "the present", a "new" or "latest", a study, paper, trial,
+    findings and the like, a verb with any adverb, then "published" or "out", and a
+    headline, "Published today, our study ..." among them, are read as this paper out; the
+    same words of other work, after a negation, "out of", in a year or before a comma, or in
+    a link, are not (`communicate/status.py`, warned since Basile's decision of 2026-10-29)."""
     text, expected = drawn
     assert READINGS["communicate published"]()({"text": text}) == expected, text
 
@@ -12635,7 +12636,17 @@ def _a_headline_of_other_work_is_this_paper(patch: pytest.MonkeyPatch) -> None:
     # "Published in 2021, the trial found it" read as this paper out.
     from manuscript_guard.communicate import status as status_module
 
-    patch.setattr(status_module, "_OTHER_WORK", re.compile(r"(?!)"))
+    patch.setattr(status_module, "_other_work", lambda sentence, at: False)
+
+
+def _out_of_is_out(patch: pytest.MonkeyPatch) -> None:
+    # "This work is out of scope" read as this paper out.
+    from manuscript_guard.communicate import status as status_module
+
+    whole = status_module._THIS_PAPER_OUT.pattern
+    held = whole.replace(r"(?![ \t]+of\b)", "")
+    assert held != whole
+    patch.setattr(status_module, "_THIS_PAPER_OUT", re.compile(held, re.IGNORECASE))
 
 
 def _a_mention_is_read_as_words(patch: pytest.MonkeyPatch) -> None:
@@ -12827,6 +12838,10 @@ BROKEN = {
     ),
     "a headline of other work is this paper": (
         _a_headline_of_other_work_is_this_paper,
+        test_this_paper_said_out_is_read_in_its_forms_and_nothing_else_is,
+    ),
+    "out of is out": (
+        _out_of_is_out,
         test_this_paper_said_out_is_read_in_its_forms_and_nothing_else_is,
     ),
     "a mention is read as words": (

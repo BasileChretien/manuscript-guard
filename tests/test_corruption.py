@@ -1594,6 +1594,25 @@ def test_an_audit_reads_no_mean_as_a_count_and_keeps_a_total_under_an_n_marker(
     assert main(["audit", str(paper), "--strict"]) == 1
 
 
+def test_an_audit_reads_a_count_only_where_it_is_certain(tmp_path: Path) -> None:
+    """The fix-only round of #469: a column headed "%" holds no counts, and an n (%) with no
+    n known, a mean and its SD under "n (%)", is none; a count changed beside them still
+    fails --strict."""
+    from manuscript_guard.cli import main
+
+    paper = tmp_path / "paper.md"
+    table = ("| Characteristic | n | % | Total |\n|---|---|---|---|\n"
+             "| North | 40 | 33 | 40 |\n| South | 40 | 33 | 40 |\n| East | 40 | 33 | 40 |\n"
+             "| Total | 120 | 100 | 120 |\n\n"
+             "| | Cases | Controls | Total |\n|---|---|---|---|\n| | n (%) | n (%) | n (%) |\n"
+             "| Age, years | 54 (12) | 56 (11) | 55 (12) |\n| Men | 60 | 100 | 160 |\n")
+    paper.write_text(f"# Results\n\n{table}", encoding="utf-8")
+    assert main(["audit", str(paper), "--strict"]) == 0
+    paper.write_text(f"# Results\n\n{table.replace('| 100 | 160 |', '| 100 | 161 |')}",
+                     encoding="utf-8")  # fmt: skip
+    assert main(["audit", str(paper), "--strict"]) == 1
+
+
 def test_a_total_its_counts_do_not_add_up_to_fails_an_audit_under_strict(
     tmp_path: Path,
 ) -> None:

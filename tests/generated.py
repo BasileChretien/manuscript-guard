@@ -5204,10 +5204,10 @@ ARMS = (("Cases", "Controls"), ("Exposed", "Unexposed"), ("Drug", "Placebo"))
 #: The kinds of table each paper of `margin_tables` holds one of.
 MARGIN_KINDS = (
     "row totals", "column totals", "held", "held across", "held above", "over n", "by n",
-    "partial", "not totals", "years", "shares short",
+    "partial", "not totals", "years", "shares short", "percent column",
 )  # fmt: skip
 #: A share behind a bound, beside a count that is read all the same (round 1 of #469).
-BOUND_SHARES = ("(<0.1)", "(<1%)", "[<0.5]")
+BOUND_SHARES = ("(<{}.0)", "(<{}%)", "[<{}]")
 #: The data custodian's minimum the reading of `margin_tables` is asked at, beside none.
 MARGIN_MINIMUM = 5
 
@@ -5286,11 +5286,13 @@ def margin_tables(draw: st.DrawFn) -> tuple[str, dict[str, list]]:
             off = sum(b) + draw(st.integers(1, 50))
             expected["off"].append(row(total(sum(a)), count(sum(a)), count(off)))
         elif kind == "column totals":
-            # Two total columns, each of the two before it; a row of words after the first
-            # row, which changes no column, and a row of means and SDs; one row off in the
-            # first, after them.
+            # Two total columns, each of the two before it, under a second header row of
+            # "n (%)" that names no n; a row of words after the first row, which changes no
+            # column, and a row of means and SDs, no n (%) with no n known; one row off in
+            # the first, after them.
             table("Characteristic", first, second, total(draw(st.integers(10, 900))),
                   "Treated", "Untreated", total(draw(st.integers(10, 900))))  # fmt: skip
+            row("", *["n (%)"] * 6)
             many = draw(st.integers(2, 4))
             wrong = draw(st.integers(1, many - 1))
             for at, name in enumerate(CHARACTERISTICS[:many]):
@@ -5327,9 +5329,12 @@ def margin_tables(draw: st.DrawFn) -> tuple[str, dict[str, list]]:
                 b[j] = draw(st.integers(max(0, both - 4), min(4, both)))
                 b[k] = both - b[j]
                 hidden = {(i, 0): held(), (j, 1): held(), (k, 1): held()}
-                # And a count in the first column with its share behind a bound.
+                # And a count in the first column with its share behind a bound, above the
+                # share it is of the column's total row.
                 r = draw(st.sampled_from([at for at in range(many) if at != i]))
-                hidden[(r, 0)] = f"{count(a[r])} {draw(st.sampled_from(BOUND_SHARES))}"
+                bound = 100 * a[r] // sum(a) + draw(st.integers(1, 3))
+                hidden[(r, 0)] = f"{count(a[r])} {draw(st.sampled_from(BOUND_SHARES))}".format(
+                    bound)
             else:
                 # One of up to nine, at least the minimum; and one that is nought.
                 a[i] = draw(st.integers(MARGIN_MINIMUM, 9))
@@ -5404,6 +5409,17 @@ def margin_tables(draw: st.DrawFn) -> tuple[str, dict[str, list]]:
             off = sum(b) + draw(st.integers(1, 50))
             line = row("Totals", count(sum(a)), count(off), count(sum(a) + sum(b)))
             expected["off"] += [line, line]
+        elif kind == "percent column":
+            # A count and its share in columns of their own, "%" never counts.
+            table("Characteristic", first, "%", second, "%", total(draw(st.integers(10, 900))))
+            many = draw(st.integers(3, 4))
+            a = [draw(st.integers(1, 900)) for _each in range(many)]
+            b = [draw(st.integers(1, 900)) for _each in range(many)]
+            for name, x, y in zip(CATEGORIES, a, b, strict=False):
+                row(name, count(x), str(round(100 * x / sum(a))), count(y),
+                    str(round(100 * y / sum(b))), count(x + y))
+            row(total(sum(a)), count(sum(a)), "100", count(sum(b)), "100",
+                count(sum(a) + sum(b)))
         elif kind == "shares short":
             # Categories under their n (%), one held back in each column, whose shares fall
             # short of 100, and a total row that gives the one held back away.

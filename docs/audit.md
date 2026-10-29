@@ -146,11 +146,15 @@ own label, or the last total row; a column so headed totals the counts of the co
 it, back to the last total column or the column of labels. "Total cholesterol", "Overall
 survival" and "All other drugs" are no totals. The header is the table's first row and
 each row before the first row of counts that is words or has no label, so a second header
-row of years is not read as counts. A count is a whole number, "1,200", or the count of an
-n (%), its share printed or behind a bound, "12 (<0.1)"; a cell held back, "<5" or "≤4", is every count from 0 to the
-largest its bound allows. A line with a cell in it that is no count (a dash, an empty cell,
-a mean and its SD) is not read, nor a column headed by a P, a ratio by its name ("HR", not
-the subgroup "HR+"), a mean or a "%" with no n. A total its counts do not add up to is listed, `sum-off`, with what they add up to.
+row of years is not read as counts. A cell is a count only where its count is certain: a
+whole number, "1,200"; a cell held back, "<5" or "≤4", every count from 0 to the largest its
+bound allows; or an n (%), its share printed or behind a bound, "12 (<0.1)", where its share
+is its count over a known n, its own, its column's header n ("N = 120") or the count of its
+column's total row. An n (%) with no n known is no count, since a mean and its SD has the
+same shape, so where no n is printed its line is not read. A line with a cell in it that is
+no count (a dash, an empty cell, a mean and its SD) is not read, nor a column headed by a
+P, a ratio ("HR" or "Hazard ratio", not the subgroup "HR+"), a mean, or a "%" with no n,
+"%" or "% (n)". A total its counts do not add up to is listed, `sum-off`, with what they add up to.
 Where a characteristic's categories have shares that add up to 100 and counts that add up to
 more than the n of their column's header, that is listed too, `over-header-n`; fewer is what
 missing data look like, and is not said.

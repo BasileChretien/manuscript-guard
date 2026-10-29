@@ -223,7 +223,7 @@ def test_totals_a_bounded_share_a_row_of_words_and_a_subgroup_are_read() -> None
     assert is_total("Totals")
     assert count_in("12 (<0.1)").low == 12 and count_in("12 (<1%)").high == 12
     text = """
-| | HR+ (n = 30) | HR- (n = 40) | Total |
+| | HR+ (n = 30,000) | HR- (n = 40) | Total |
 |---|---|---|---|
 | Men | 12 (<0.1) | 20 | 33 |
 | Not recorded | NR | NR | NR |
@@ -232,7 +232,7 @@ def test_totals_a_bounded_share_a_row_of_words_and_a_subgroup_are_read() -> None
     assert off(text) == ["the 'Total' column, row 'Men', prints 33, and the 2 cells before "
                          "it add up to 32"]  # fmt: skip
     assert given_away(text) == [(5, 3, True)]
-    assert off(text.replace("HR+ (n = 30)", "HR (95% CI)")) == []
+    assert off(text.replace("HR+ (n = 30,000)", "HR (95% CI)")) == []
 
 
 # ------------------------------------------------------------------ round 2 of #469
@@ -270,6 +270,76 @@ def test_a_ratio_in_brackets_inside_a_longer_label_bars_nothing() -> None:
 """
     assert off(text) == ["the 'Total' column, row 'Men', prints 111, and the 2 cells before "
                          "it add up to 110"]  # fmt: skip
+
+
+# ------------------------------------------------------------ the fix-only round of #469
+
+
+def test_a_percent_column_is_no_column_of_counts() -> None:
+    text = """
+| Characteristic | n | % |
+|---|---|---|
+| North | 40 | 33 |
+| South | 40 | 33 |
+| East | 40 | 33 |
+| Total | 120 | 100 |
+"""
+    assert off(text) == []
+    # The arms' names over a second header row of n and %.
+    split = ("| | Cases | | Controls | |\n|---|---|---|---|---|\n| | n | % | n | % |\n"
+             "| North | 40 | 33 | 30 | 33 |\n| South | 40 | 33 | 30 | 33 |\n"
+             "| East | 40 | 33 | 30 | 33 |\n| Total | 120 | 100 | 90 | 100 |\n")  # fmt: skip
+    assert off(split) == []
+
+
+def test_an_n_percent_with_no_known_n_is_no_count() -> None:
+    text = """
+| Characteristic | Cases | Controls | Total |
+|---|---|---|---|
+| | n (%) | n (%) | n (%) |
+| Age, years | 54 (12) | 56 (11) | 55 (12) |
+"""
+    assert off(text) == []
+
+
+def test_a_total_rows_count_is_the_n_its_columns_shares_are_of() -> None:
+    """With no n in the header, the total row's count is the n the shares are held to: the
+    shares fall short of 100 where a category is held back, and are read all the same."""
+    text = """
+| Characteristic | Cases | Controls |
+|---|---|---|
+| Sex | | |
+| Men | 60 (50.0) | 100 (50.0) |
+| Women | 57 (47.5) | 97 (48.5) |
+| Other | <5 | <5 |
+| Total | 120 | 200 |
+"""
+    assert given_away(text) == [(6, 3, True), (6, 3, True)]
+    # A share that is not its n over that count is no count, and the line is not read.
+    assert given_away(text.replace("57 (47.5)", "57 (12.0)")) == [(6, 3, True)]
+
+
+def test_a_header_marker_is_read_clean_and_a_ratio_by_its_name_bars_its_column() -> None:
+    from manuscript_guard.stats import margins
+
+    assert margins._marker("N = 120") and margins._marker("n (%)")
+    assert not margins._marker("2019") and not margins._marker("%")
+    text = """
+| | Cases | Controls | Total |
+|---|---|---|---|
+| | N = 120^a^ | n (%)\N{DAGGER} | N = 320 |
+| Men | 60 | 100 | 160 |
+| Women | 55 | 97 | 152 |
+| Other | <5 | 4 | 7 |
+"""
+    assert given_away(text) == [(6, 3, True)]
+    for named in ("Odds ratio (OR)", "Hazard ratio (HR)"):
+        ratio = f"""
+| | Cases | {named} | Total |
+|---|---|---|---|
+| Men | 60 | 2 | 60 |
+"""
+        assert off(ratio) == []
 
 
 # --------------------------------------------------------------------------- G2 in check

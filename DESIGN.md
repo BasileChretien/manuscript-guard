@@ -7798,13 +7798,20 @@ and punctuation, totals the rows above it back to the last row with no count in 
 last total row; a column so headed totals the columns before it back to the last total
 column or the labels. The header is the first row and each row before the first row of
 counts that is words or has no label, so a Word table's second header row of years is no
-row of counts; a row of words further down changes no column. A count is a whole number or
-the n of an n (%), its share printed or behind a bound ("12 (<0.1)"), whether or not
-`stats/shares.py` marks the share: a category held back leaves the shares short of 100,
-and unmarked (round 1 of #469). A count held back, "<5" or "≤4", is the interval from 0 to the largest its
-bound allows (`gates.custodian.held_largest`, which `_small` uses too). A line with a cell
-that is no count is not read, nor a row or a column that names another statistic, a P or a
-ratio by its name ("HR", and not the subgroup "HR+"). One routine, `feasible`, serves both checks: each member's range given the total is
+row of counts; a row of words further down changes no column. A cell is a count only where
+its count is certain, the project's rule for a text-matching path that review keeps finding
+wrong reads in (the fix-only round of #469, after three rounds of them): a whole number; a
+count held back, "<5" or "≤4", the interval from 0 to the largest its bound allows
+(`gates.custodian.held_largest`, which `_small` uses too); and an n (%), its share printed
+or behind a bound ("12 (<0.1)"), only where its share is its n over a known n within the
+rounding it is printed to: its own, its column's header n, or the count of its column's
+next total row. An n (%) with no known n is no count, whatever `stats/shares.py` reads it
+as, since a mean and its SD has its shape. A line with a cell that is no count is not read,
+nor a row or a column that names another statistic, a P, a ratio by its abbreviation ("HR",
+not the subgroup "HR+" nor "(HR)" in a longer label) or by its name ("Hazard ratio"), or a
+"%" that says no n: "%" and "% (n)" are never counts, and a header cell of only an n or
+"n (%)", read clean of its footnote marks, sets its column's n and changes nothing else.
+One routine, `feasible`, serves both checks: each member's range given the total is
 the total less the others' highs up to the total less their lows, within its own, and no
 range at all is a total the printed counts cannot make, `sum-off`. A range of one value is
 a count held back that the line gives away. Categories whose shares add up to 100
@@ -18052,10 +18059,11 @@ What papers converted from Word showed (see "What papers converted from Word sho
     failure, so a table whose total is a sum gives a small count away with nothing failing.
     Declaring the sum does not change that: a sum relation sums results values, never a
     table's cells (rounds 1 and 2 of #469, Basile's choice of 2026-10-29).
-  - An n (%) whose share `stats/shares.py` does not read as one is a count only where its
-    share is its n over its own denominator or its column's n. Under a header that names no
-    n, a category of a characteristic held back leaves the others' shares unmarked and no
-    count, and a count its total gives away there is not said.
+  - An n (%) is a count only where its share fits a known n: its own denominator, its
+    column's header n, or the count of its column's next total row. What that costs: where
+    no n is printed, neither in the header nor in a total row below, its cells are no
+    counts, and a count held back beside them that a total would give away is missed, as is
+    a total they do not add up to (the fix-only round of #469).
   - A header row repeated further down the table is not read: the columns keep the first
     header's names, totals and n, so the categories of a second panel are held to the first
     panel's n. A first row of counts with no label is read as a header, and its counts are

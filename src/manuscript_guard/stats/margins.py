@@ -8,17 +8,19 @@ can name the three patients in it, is three all the same where the row's total a
 cells are printed: the total less the others is the count. So a table is read here as lines,
 each a total and the counts it totals.
 
-* **A count** is a cell that is a whole number, "1,200", or the count of an n (%), its
-  share printed or behind a bound, "12 (<0.1)", whether `stats/shares.py` marks the share
-  or not, so long as its share is its n over its column's n: a category held back leaves
-  the others' shares short of 100, and unmarked (round 1 of #469), and a mean and its SD,
-  "54 (12)", is no count (round 2). A count held back, "<5" or "≤4", with its share after
-  it in brackets or not, is each whole number from nought to the largest its bound allows
-  (`gates.custodian.held_largest`). Nothing else is: a mean, a dash, an empty cell. A row
-  whose label, or the label of the rows it falls under, names a mean, a median, an SD or
-  another statistic holds no count, nor a row whose label ends on a unit in percent; nor a
-  column whose header names one, a P or a ratio by its name ("HR", not "HR+"), or a "%"
-  that says no n.
+* **A count** is a cell whose count is certain (the fix-only round of #469, after three
+  rounds of reads that were not). A whole number, "1,200", is one, and so is a count held
+  back, "<5" or "≤4", with its share after it in brackets or not: each whole number from
+  nought to the largest its bound allows (`gates.custodian.held_largest`). An n (%), its
+  share printed or behind a bound, "12 (<0.1)", is one only where its share is its n over a
+  known n, within the rounding it is printed to: its own, "12/40 (30.0)", its column's
+  header n, "N = 120", or the count of its column's next total row. With no known n, an
+  n (%) is no count, whatever `stats/shares.py` reads it as: a mean and its SD, "54 (12)",
+  has the same shape. Nothing else is a count: a dash, an empty cell. A row whose label, or
+  the label of the rows it falls under, names a mean, a median, an SD or another statistic
+  holds no count, nor a row whose label ends on a unit in percent; nor a column whose header
+  names one, a P, a ratio by its abbreviation ("HR", not "HR+" nor "(HR)" in a longer
+  label) or its name ("Hazard ratio"), or a "%" that says no n, "%" or "% (n)".
 * **The header** is the table's first row, and each row before the first row with a count
   that is words or has no label: a second header row of years, " | 2019 | 2020", is no row
   of counts (round 1 of #469). A row of words further down, "NR | NR", changes no column.
@@ -56,6 +58,7 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 from decimal import Decimal
+from fractions import Fraction
 
 from manuscript_guard.gates.custodian import _HELD_BACK, held_largest
 from manuscript_guard.stats import shares
@@ -73,7 +76,13 @@ _BRACKETED = re.compile(r"\s*[(\[][^()\[\]]*[)\]]\s*$")
 #: An n (%) whose share is behind a bound, "12 (<0.1)", "12 (<1%)".
 _BOUND_SHARE = re.compile(
     rf"(?P<count>{shares._COUNT})\s*[(\[]\s*"
-    r"[<>\N{LESS-THAN OR EQUAL TO}\N{GREATER-THAN OR EQUAL TO}]=?\s*\d*\.?\d+\s*%?\s*[)\]]"
+    r"(?P<sign>[<\N{LESS-THAN OR EQUAL TO}])?[>\N{GREATER-THAN OR EQUAL TO}]?=?\s*"
+    r"(?P<limit>\d*\.?\d+)\s*%?\s*[)\]]"
+)
+#: A ratio or a difference by its name.
+_RATIO_NAMED = re.compile(
+    r"(?i)\b(?:(?:odds|hazards?|risk|rate|incidence[- ]rate)\s+ratios?|relative\s+risks?"
+    r"|standardi[sz]ed\s+mean\s+differences?)\b"
 )
 #: A header that names a P or a ratio by its name: its column holds no count. "HR+" and
 #: "ER-" name a subgroup (round 1 of #469).
@@ -180,7 +189,8 @@ def is_total(text: str) -> bool:
 
 def _not_counts(text: str) -> bool:
     """Whether a header says its column holds something other than counts."""
-    return bool(shares._NOT_A_SHARE.search(text) or _RATIO.search(text) or _P.search(text)) \
+    return bool(shares._NOT_A_SHARE.search(text) or _RATIO.search(text) or _P.search(text)
+                or _RATIO_NAMED.search(text)) \
         or ("%" in text and not shares._SAYS_SHARES.search(text))  # fmt: skip
 
 
@@ -226,7 +236,7 @@ class _Head:
             return
         span = range(column, column + max(cell.span, 1))
         named = {shares._whole(m["n"]) for m in shares._N.finditer(text)}
-        if _marker(text):
+        if _marker(shares._clean(text)[0]):
             # "n (%)" or "N = 120" under the column's name: its n, and nothing else (round 2
             # of #469: it undid the Total column).
             for each in span if len(named) == 1 else ():
@@ -245,22 +255,55 @@ class _Head:
 
 
 def _marker(text: str) -> bool:
-    """Whether a header cell holds only an n or an n (%) marker: "n (%)", "N = 120"."""
+    """Whether a header cell, cleaned of its footnote marks, holds only an n or an n (%)
+    marker: "n (%)", "N = 120", "n". A "%" alone, "% (n)" and a year are none (the
+    fix-only round of #469: "| n | % |" was read as two columns of counts)."""
+    said = shares._N.search(text) or shares._SAYS_SHARES.search(text) or \
+        _BARE_N.search(text)  # fmt: skip
     rest = _BARE_N.sub(" ", shares._SAYS_SHARES.sub(" ", shares._N.sub(" ", text)))
-    return bool(_LEFT.fullmatch(rest))
+    return bool(said) and "%" not in rest and bool(_LEFT.fullmatch(rest))
 
 
-def _says_a_count(cell: TableCell, column: int, over: dict[int, int],
-                  marked: frozenset[int]) -> bool:  # fmt: skip
-    """Whether a cell shaped like an n (%) is one: `stats/shares.py` reads its share as one,
-    or its share is its n over its own denominator or its column's n, within the rounding it
-    is printed to. A mean and its SD, "54 (12)", is neither (round 2 of #469)."""
-    found = shares._SHARE.fullmatch(shares._clean(cell.text)[0])
-    if found is None or id(cell) in marked:
+def _says_a_count(cell: TableCell, known: frozenset[int]) -> bool:
+    """Whether a cell's count is certain: one that is no n (%) is; an n (%) is where its
+    share is its n over its own denominator or a `known` n, within the rounding it is
+    printed to, or below the bound it is printed behind. A mean and its SD, "54 (12)", has
+    the shape and no known n."""
+    cleaned = shares._clean(cell.text)[0]
+    found = shares._SHARE.fullmatch(cleaned)
+    if found is not None:
+        count, percent = shares._whole(found["count"]), found["percent"]
+        overs = {shares._whole(found["over"])} if found["over"] else known
+        return any(shares._fits(count, over, percent) for over in overs)
+    bound = _BOUND_SHARE.fullmatch(cleaned)
+    if bound is None:
         return True
-    denominator = shares._whole(found["over"]) if found["over"] else over.get(column)
-    return denominator is not None and shares._fits(shares._whole(found["count"]),
-                                                    denominator, found["percent"])
+    count, limit = shares._whole(bound["count"]), bound["limit"]
+    below = bound["sign"] is not None
+    ceiling = Fraction(Decimal(limit)) + shares._half(limit)
+    return below and any(n > 0 and Fraction(100 * count, n) < ceiling for n in known)
+
+
+def _totals_below(table: Table) -> list[dict[int, int]]:
+    """For each row, the count each column's next total row prints, where it prints one
+    for certain: a whole number, or an n (%) of 100."""
+    found: list[dict[int, int]] = [{} for _row in table]
+    current: dict[int, int] = {}
+    for index in range(len(table) - 1, 0, -1):
+        found[index] = dict(current)
+        placed = list(shares._columns(table[index]))
+        if not placed or not is_total(placed[0][1].text):
+            continue
+        for column, cell in placed[1:]:
+            cleaned = shares._clean(cell.text)[0]
+            share = shares._SHARE.fullmatch(cleaned)
+            if _WHOLE.fullmatch(cleaned):
+                current[column] = shares._whole(cleaned)
+            elif share is not None and not share["over"] and Decimal(share["percent"]) == 100:
+                current[column] = shares._whole(share["count"])
+            else:
+                current.pop(column, None)
+    return found
 
 
 def _a_header(texts: list[str]) -> bool:
@@ -279,8 +322,7 @@ def _heading(index: int, rows: list[_Row], label: str, texts: list[str]) -> bool
 
 
 def _rows(table: Table) -> list[_Row]:
-    marked = frozenset(id(cell) for _row, read in shares._read(table)
-                       for _column, cell, _match, _total in read)  # fmt: skip
+    below = _totals_below(table)
     head = _Head({}, set(), set(), {})
     rows: list[_Row] = []
     run, group, categories = 0, "", False
@@ -299,7 +341,9 @@ def _rows(table: Table) -> list[_Row]:
                 if cell.span > 1 or column in head.barred:
                     continue
                 count = count_in(cell.text, cell.line)
-                if count is not None and _says_a_count(cell, column, head.over, marked):
+                known = frozenset(n for n in (head.over.get(column), below[index].get(column))
+                                  if n is not None)  # fmt: skip
+                if count is not None and _says_a_count(cell, known):
                     counts[column] = count
         if not counts:
             run += 1

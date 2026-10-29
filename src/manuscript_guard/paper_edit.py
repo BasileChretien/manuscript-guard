@@ -471,15 +471,107 @@ def set_key(path: Path, key: str, words: list[str]) -> Edited:
     return done
 
 
+# --------------------------------------------------------------------------- package.doi
+
+#: The prefix DataCite gives test DOIs, which Zenodo's sandbox mints.
+TEST_PREFIX = "10.5072/"
+
+
+def _doi_inserted(text: str, root: yaml.Node | None, doi: str) -> str:
+    """The text with `doi` written under `package`: its value replaced where it is a line of
+    its own, a line added under `package:` at its keys' indent where it is not, and the two
+    lines added at the end where there is no `package`."""
+    found = [(name, value) for name, value in (root.value if root is not None else ())
+             if isinstance(name, yaml.ScalarNode) and name.value == "package"]  # fmt: skip
+    end = _line_break(text)
+    if not found:
+        body = text if not text or text.endswith(("\n", "\r")) else text + end
+        return f"{body}package:{end}  doi: {written(doi)}{end}"
+    key, value = found[0]
+    if isinstance(value, yaml.MappingNode) and not value.flow_style:
+        inner = [(name, held) for name, held in value.value
+                 if isinstance(name, yaml.ScalarNode) and name.value == "doi"]  # fmt: skip
+        if inner:
+            return _replaced(text, *inner[0], doi)
+        indent = " " * value.value[0][0].start_mark.column
+    elif isinstance(value, yaml.ScalarNode) and value.value == "" and value.style is None:
+        indent = "  "  # `package:` with nothing under it
+    else:
+        raise Refused("`package` is not written one key to a line, which `deposit` does not "
+                      "rewrite; add `doi:` under it by hand")  # fmt: skip
+    after_key = _line_end(text, key.end_mark.index)
+    line = f"{indent}doi: {written(doi)}"
+    if after_key == len(text):
+        return f"{text}{end}{line}{end}"
+    breaks = "\r\n" if text[after_key : after_key + 2] == "\r\n" else text[after_key]
+    return text[: after_key + len(breaks)] + line + breaks + text[after_key + len(breaks) :]
+
+
+def edit_package_doi(text: str, doi: str) -> Edited:
+    """`text`, a `paper.yaml`, with `package.doi` set to `doi` and nothing else changed;
+    `Refused` where that cannot be done, or `doi` is a test DOI or no DOI."""
+    if doi.lower().startswith(TEST_PREFIX):
+        raise Refused(f"{doi} is a test DOI, which Zenodo's sandbox mints and no reader can "
+                      "resolve; it is never written as the package's")  # fmt: skip
+    held = Draft202012Validator(load_schema("paper")["properties"]["package"])
+    wrong = next(iter(held.iter_errors({"doi": doi})), None)
+    if wrong is not None:
+        raise Refused(f"`package.doi` cannot be {doi!r}: {wrong.message}")
+    if any(character in text for character in _OTHER_BREAKS):
+        raise Refused("it holds a character YAML reads as the end of a line where an editor "
+                      "may show none; take it out first")  # fmt: skip
+    root, _scalars = _structure(text)
+    before = _loaded(text)
+    package = before.get("package")
+    if package is not None and not isinstance(package, dict):
+        raise Refused("`package` is not a mapping of settings")
+    was = (package or {}).get("doi")
+    if was == doi:
+        return Edited(text, "unchanged", was)
+    candidate = _doi_inserted(text, root, doi)
+    try:
+        after = _loaded(candidate)
+        _structure(candidate)
+    except Refused:
+        after = None
+    if after != {**before, "package": {**(package or {}), "doi": doi}}:
+        raise Refused("the file, written, would not read back as its settings with only "
+                      "`package.doi` changed; add it by hand")  # fmt: skip
+    added = _errors(after) - _errors(before)
+    if added:
+        where, said = sorted(added)[0]
+        raise Refused(f"the schema would refuse the file: {where or '(root)'}: {said}")
+    return Edited(candidate, "replaced" if was is not None else "appended", was)
+
+
+def set_package_doi(path: Path, doi: str) -> Edited:
+    """Set `package.doi` of the `paper.yaml` at `path`, every comment and other line kept;
+    `Refused`, with the file as it was, where that cannot be done."""
+    mark, text = read(path)
+    done = edit_package_doi(text, doi)
+    if done.how == "unchanged":
+        return done
+    _writable(path)
+    _one_file(path)
+    try:
+        write(path, mark + done.text)
+    except OSError as exc:
+        raise Refused(f"it could not be written: {exc.strerror or exc}") from exc
+    return done
+
+
 __all__ = [
     "KEYS",
     "LIST_KEYS",
+    "TEST_PREFIX",
     "Edited",
     "Refused",
     "edit",
+    "edit_package_doi",
     "journals",
     "read",
     "set_key",
+    "set_package_doi",
     "value_of",
     "write",
 ]

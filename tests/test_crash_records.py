@@ -22,8 +22,12 @@ DIAGNOSTICS = Path(crashes.__file__).resolve().parent
 
 @pytest.fixture
 def kept(tmp_path, monkeypatch) -> Path:
-    """Recording on, into a folder of this test's, with no CI and no debugging."""
+    """Recording on, into a folder of this test's, with no CI and no debugging; and no
+    command's folder left by an earlier test's `main`, which a record would take for the
+    project's (a `check` of a project run before in the same process failed two tests)."""
     folder = tmp_path / "reports"
+    monkeypatch.setattr(crashes, "_invocation",
+                        {"command": None, "flags": [], "words": 0, "start": None})
     monkeypatch.delenv(crashes.OFF, raising=False)
     monkeypatch.delenv(crashes.DEBUG, raising=False)
     monkeypatch.delenv("CI", raising=False)

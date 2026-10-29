@@ -63,7 +63,8 @@ def test_a_count_is_a_whole_number_an_n_or_a_count_held_back(text, low, high, he
 
 @pytest.mark.parametrize("text", ["<0.001", "12.5", "-", "\N{EM DASH}", "", "NA", "54 (12)"])
 def test_a_p_a_decimal_a_dash_and_a_mean_are_no_count(text: str) -> None:
-    # "54 (12)" is shaped like an n (%), and a count only where shares reads it as one.
+    # "54 (12)" is shaped like an n (%): read with `share=False`, as a display is, it is no
+    # count; in a table it is one only where its share is its n over its column's n.
     assert count_in(text, share=False) is None
 
 
@@ -232,6 +233,43 @@ def test_totals_a_bounded_share_a_row_of_words_and_a_subgroup_are_read() -> None
                          "it add up to 32"]  # fmt: skip
     assert given_away(text) == [(5, 3, True)]
     assert off(text.replace("HR+ (n = 30)", "HR (95% CI)")) == []
+
+
+# ------------------------------------------------------------------ round 2 of #469
+
+
+def test_a_mean_and_its_sd_beside_a_total_column_is_no_count() -> None:
+    text = """
+| Characteristic | Cases | Controls | Total |
+|---|---|---|---|
+| Age, years | 54 (12) | 56 (11) | 55 (12) |
+| Men | 60 | 50 | 110 |
+"""
+    assert off(text) == []
+
+
+@pytest.mark.parametrize("marker", ["n (%)", "N = 120 | N = 200 | N = 320"])
+def test_a_header_row_of_n_markers_leaves_the_total_column(marker: str) -> None:
+    cells = marker if "|" in marker else " | ".join([marker] * 3)
+    text = f"""
+| | Cases | Controls | Total |
+|---|---|---|---|
+| | {cells} |
+| Men | 60 | 100 | 160 |
+| Women | 55 | 97 | 152 |
+| Other | <5 | 4 | 7 |
+"""
+    assert given_away(text) == [(6, 3, True)]
+
+
+def test_a_ratio_in_brackets_inside_a_longer_label_bars_nothing() -> None:
+    text = """
+| | Hormone receptor (HR) positive | Negative | Total |
+|---|---|---|---|
+| Men | 60 | 50 | 111 |
+"""
+    assert off(text) == ["the 'Total' column, row 'Men', prints 111, and the 2 cells before "
+                         "it add up to 110"]  # fmt: skip
 
 
 # --------------------------------------------------------------------------- G2 in check

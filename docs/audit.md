@@ -166,7 +166,8 @@ it holds. A count only a column's header n gives away is listed apart and not co
 the n is the categories' total only where none of the column lacks the characteristic.
 `--json` counts the two apart, `recoverable` and `recoverable_by_n`. In a project, `check`
 only warns of a count a table's total gives away, since a total read from its label need
-not be the sum of the counts beside it, and fails where the analysis declares the sum.
+not be the sum of the counts beside it, and fails only on a sum or a flow the analysis
+declares of its results values.
 Each line is read on its own: a count that only a row and a column together give away is not
 found.
 

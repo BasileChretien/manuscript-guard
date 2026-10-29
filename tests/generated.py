@@ -5287,7 +5287,8 @@ def margin_tables(draw: st.DrawFn) -> tuple[str, dict[str, list]]:
             expected["off"].append(row(total(sum(a)), count(sum(a)), count(off)))
         elif kind == "column totals":
             # Two total columns, each of the two before it; a row of words after the first
-            # row, which changes no column; one row off in the first, after that row.
+            # row, which changes no column, and a row of means and SDs; one row off in the
+            # first, after them.
             table("Characteristic", first, second, total(draw(st.integers(10, 900))),
                   "Treated", "Untreated", total(draw(st.integers(10, 900))))  # fmt: skip
             many = draw(st.integers(2, 4))
@@ -5295,6 +5296,16 @@ def margin_tables(draw: st.DrawFn) -> tuple[str, dict[str, list]]:
             for at, name in enumerate(CHARACTERISTICS[:many]):
                 if at == 1:
                     row("Not recorded", *["NR"] * 6)
+                    # A mean and its SD of whole numbers in each column, no counts: their
+                    # total column holds the mean of all, which their sum is not (round 2 of
+                    # #469).
+                    means = []
+                    for _block in range(2):
+                        one, two = draw(st.integers(20, 80)), draw(st.integers(20, 80))
+                        means += [f"{one} ({draw(st.integers(1, 30))})",
+                                  f"{two} ({draw(st.integers(1, 30))})",
+                                  f"{(one + two) // 2} ({draw(st.integers(1, 30))})"]
+                    row("Age, years", *means)
                 x, y, u, v = draw(st.integers(1, 900)), *counts(3)
                 off = draw(st.integers(1, 50)) if at == wrong else 0
                 line = row(name, count(x), count(y), count(x + y + off), count(u), count(v),

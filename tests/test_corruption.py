@@ -1575,6 +1575,25 @@ def test_an_audit_reads_a_header_of_years_and_an_n_percent_short_of_100(
     assert main(["audit", str(paper), "--strict", "--minimum-cell-count", "5"]) == 1
 
 
+def test_an_audit_reads_no_mean_as_a_count_and_keeps_a_total_under_an_n_marker(
+    tmp_path: Path,
+) -> None:
+    """Round 2 of #469: a mean and its SD beside a Total column is no count, and a second
+    header row of "N = 120" leaves the Total column a total, so a total off under it fails
+    --strict."""
+    from manuscript_guard.cli import main
+
+    paper = tmp_path / "paper.md"
+    table = ("| | Cases | Controls | Total |\n|---|---|---|---|\n"
+             "| | N = 120 | N = 200 | N = 320 |\n"
+             "| Age, years | 54 (12) | 56 (11) | 55 (12) |\n| Men | 60 | 100 | 160 |\n"
+             "| Women | 55 | 97 | 152 |\n")  # fmt: skip
+    paper.write_text(f"# Results\n\n{table}", encoding="utf-8")
+    assert main(["audit", str(paper), "--strict"]) == 0
+    paper.write_text(f"# Results\n\n{table.replace('| 152 |', '| 150 |')}", encoding="utf-8")
+    assert main(["audit", str(paper), "--strict"]) == 1
+
+
 def test_a_total_its_counts_do_not_add_up_to_fails_an_audit_under_strict(
     tmp_path: Path,
 ) -> None:

@@ -4363,6 +4363,12 @@ def _a_total_column_totals_every_column_before_it(patch: pytest.MonkeyPatch) -> 
         c for c in range(row.start, column) if c not in row.barred])  # fmt: skip
 
 
+def _a_mean_and_its_sd_is_read_as_a_count(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import margins
+
+    patch.setattr(margins, "_says_a_count", lambda cell, column, over, marked: True)
+
+
 def _a_count_given_away_is_said_whatever_the_minimum(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import custodian
 
@@ -14529,6 +14535,10 @@ BROKEN = {
     ),
     "a total column totals every column before it": (
         _a_total_column_totals_every_column_before_it,
+        test_a_tables_totals_are_held_to_their_counts_and_a_count_held_back_to_them,
+    ),
+    "a mean and its SD is read as a count": (
+        _a_mean_and_its_sd_is_read_as_a_count,
         test_a_tables_totals_are_held_to_their_counts_and_a_count_held_back_to_them,
     ),
     "a count a total gives away is said whatever the minimum": (

@@ -18048,14 +18048,18 @@ What papers converted from Word showed (see "What papers converted from Word sho
     of the row above them, is said to be off when it is right (`sum-off`, a false alarm),
     and a count held back beside it is said to be a value it is not. What that costs: in
     `audit` both are counted by `--strict`, so a paper with such a total fails it; in
-    `check` and `deposit` the count is a warning only, so a table whose total is a sum gives
-    a small count away with nothing failing, unless the analysis declares the sum (round 1
-    of #469, Basile's choice of 2026-10-29).
-  - An n (%) is a count whether or not its share is read as one, so a mean and its SD,
-    "54 (12)", in a row whose label names no statistic, beside a Total column, is read as
-    counts and said to be off.
+    `check` and `deposit` a count a table's total gives away is a warning only, and never a
+    failure, so a table whose total is a sum gives a small count away with nothing failing.
+    Declaring the sum does not change that: a sum relation sums results values, never a
+    table's cells (rounds 1 and 2 of #469, Basile's choice of 2026-10-29).
+  - An n (%) whose share `stats/shares.py` does not read as one is a count only where its
+    share is its n over its own denominator or its column's n. Under a header that names no
+    n, a category of a characteristic held back leaves the others' shares unmarked and no
+    count, and a count its total gives away there is not said.
   - A header row repeated further down the table is not read: the columns keep the first
-    header's names and totals. A first row of counts with no label is read as a header.
+    header's names, totals and n, so the categories of a second panel are held to the first
+    panel's n. A first row of counts with no label is read as a header, and its counts are
+    in no line.
   - A row of whole-number measures, a median of 24 months printed bare, under a Total
     column is read as counts unless its label names the statistic.
   - A total header spanning several columns, the "n | %" pairs under one, totals none of

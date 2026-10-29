@@ -10,9 +10,10 @@ each a total and the counts it totals.
 
 * **A count** is a cell that is a whole number, "1,200", or the count of an n (%), its
   share printed or behind a bound, "12 (<0.1)", whether `stats/shares.py` marks the share
-  or not: a category held back leaves the others' shares short of 100, and unmarked (round
-  1 of #469). A count held back, "<5" or "≤4", with its share after it in brackets or not,
-  is each whole number from nought to the largest its bound allows
+  or not, so long as its share is its n over its column's n: a category held back leaves
+  the others' shares short of 100, and unmarked (round 1 of #469), and a mean and its SD,
+  "54 (12)", is no count (round 2). A count held back, "<5" or "≤4", with its share after
+  it in brackets or not, is each whole number from nought to the largest its bound allows
   (`gates.custodian.held_largest`). Nothing else is: a mean, a dash, an empty cell. A row
   whose label, or the label of the rows it falls under, names a mean, a median, an SD or
   another statistic holds no count, nor a row whose label ends on a unit in percent; nor a
@@ -77,7 +78,7 @@ _BOUND_SHARE = re.compile(
 #: A header that names a P or a ratio by its name: its column holds no count. "HR+" and
 #: "ER-" name a subgroup (round 1 of #469).
 _RATIO = re.compile(
-    r"(?<![\w+\-\N{MINUS SIGN}])(?:a?OR|a?RR|a?HR|IRR|SMD)(?![\w+\-\N{MINUS SIGN}])"
+    r"(?<![\w+\-\N{MINUS SIGN}(\[])(?:a?OR|a?RR|a?HR|IRR|SMD)(?![\w+\-\N{MINUS SIGN}])"
 )
 _P = re.compile(r"(?i)(?<![A-Za-z])p(?:[- ]?values?)?(?![A-Za-z])")
 #: How much of a row the context shows.
@@ -225,6 +226,12 @@ class _Head:
             return
         span = range(column, column + max(cell.span, 1))
         named = {shares._whole(m["n"]) for m in shares._N.finditer(text)}
+        if _marker(text):
+            # "n (%)" or "N = 120" under the column's name: its n, and nothing else (round 2
+            # of #469: it undid the Total column).
+            for each in span if len(named) == 1 else ():
+                self.over[each] = next(iter(named))
+            return
         for each in span:
             self.names[each] = text
             self.totals.discard(each)
@@ -235,6 +242,25 @@ class _Head:
                 self.over[each] = next(iter(named))
         if cell.span <= 1 and is_total(text):
             self.totals.add(column)
+
+
+def _marker(text: str) -> bool:
+    """Whether a header cell holds only an n or an n (%) marker: "n (%)", "N = 120"."""
+    rest = _BARE_N.sub(" ", shares._SAYS_SHARES.sub(" ", shares._N.sub(" ", text)))
+    return bool(_LEFT.fullmatch(rest))
+
+
+def _says_a_count(cell: TableCell, column: int, over: dict[int, int],
+                  marked: frozenset[int]) -> bool:  # fmt: skip
+    """Whether a cell shaped like an n (%) is one: `stats/shares.py` reads its share as one,
+    or its share is its n over its own denominator or its column's n, within the rounding it
+    is printed to. A mean and its SD, "54 (12)", is neither (round 2 of #469)."""
+    found = shares._SHARE.fullmatch(shares._clean(cell.text)[0])
+    if found is None or id(cell) in marked:
+        return True
+    denominator = shares._whole(found["over"]) if found["over"] else over.get(column)
+    return denominator is not None and shares._fits(shares._whole(found["count"]),
+                                                    denominator, found["percent"])
 
 
 def _a_header(texts: list[str]) -> bool:
@@ -253,6 +279,8 @@ def _heading(index: int, rows: list[_Row], label: str, texts: list[str]) -> bool
 
 
 def _rows(table: Table) -> list[_Row]:
+    marked = frozenset(id(cell) for _row, read in shares._read(table)
+                       for _column, cell, _match, _total in read)  # fmt: skip
     head = _Head({}, set(), set(), {})
     rows: list[_Row] = []
     run, group, categories = 0, "", False
@@ -271,7 +299,7 @@ def _rows(table: Table) -> list[_Row]:
                 if cell.span > 1 or column in head.barred:
                     continue
                 count = count_in(cell.text, cell.line)
-                if count is not None:
+                if count is not None and _says_a_count(cell, column, head.over, marked):
                     counts[column] = count
         if not counts:
             run += 1

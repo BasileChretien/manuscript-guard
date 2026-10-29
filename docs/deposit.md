@@ -155,7 +155,8 @@ a preprint carry none), and for a preprint a count the manuscript binds below it
 is planned, a file of it that is an input declared restricted. A count held back ("<5")
 that a total of a table the bundle carries gives away by subtraction is warned of, as
 `check` warns of one in a table the manuscript binds (G2's `count-recoverable`), and does
-not stop the deposit: a total read from a table's label need not be a sum. Where the custodian restricts
+not stop the deposit: a total read from a table's label need not be a sum. Every warning
+of these first checks is printed with the bundle's own findings, once the deposit goes on. Where the custodian restricts
 sending, they sign the bundle off as its list of files and their digests stands:
 `manuscript-guard sign --as <them> --finding DEPOSIT/custodian/<target>/<bundle>`, with the
 same `--retrospective` reason for a plan deposited that way. Each target is its own sign-off:

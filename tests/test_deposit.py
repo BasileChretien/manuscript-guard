@@ -238,6 +238,26 @@ def test_a_count_a_carried_tables_total_gives_away_is_warned_of_and_stops_nothin
     assert "What the data custodian forbids comes first" not in said
 
 
+def test_a_release_that_goes_through_prints_the_first_checks_warnings(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    """What the custodian's checks warn of is printed with the bundle's findings, and stops
+    nothing (round 2 of #469)."""
+    from manuscript_guard.deposit import preflight
+    from manuscript_guard.findings import WARN, Finding
+
+    real = preflight.first
+
+    def first(*args, **kwargs):
+        report, small = real(*args, **kwargs)
+        return report.with_findings(Finding("G2", "count-recoverable", "a planted warning",
+                                            severity=WARN)), small  # fmt: skip
+
+    monkeypatch.setattr(preflight, "first", first)
+    assert deposit(ready(project), "zenodo", "release") == 0
+    assert "a planted warning" in capsys.readouterr().out
+
+
 def test_a_plan_carries_no_results_and_their_counts_do_not_stop_it(project: Path) -> None:
     unfrozen(project)
     minimum(project, minimum_cell_count=5)

@@ -72,7 +72,8 @@ def test_an_output_becomes_a_results_file_with_a_value_for_each_cell(project: Pa
     document = json.loads(path.read_text(encoding="utf-8"))
     values = document["values"]
     assert values["est.women.n"] == {"value": 120, "display": "120", "quoted": False}
-    assert values["est.men.n"] == {"value": None, "display": "<5", "quoted": False}
+    assert values["est.men.n"] == {"value": None, "display": "<5", "quoted": False,
+                                   "count": True}
     assert values["est.women.rate"]["unit"] == "%"
     assert values["est.women.or"]["display"] == "1.50"
     assert values["est.women.group"]["label"] is True
@@ -382,7 +383,8 @@ def _site_output(project: Path, rows: list[str], **fields) -> Entry:
     """An entry run at site-a, its script writing `rows` as output/site.csv."""
     text = "\n".join(rows) + "\n"
     _write_script(project, "from pathlib import Path\nPath('output').mkdir(exist_ok=True)\n"
-                  f"Path('output/site.csv').write_text({text!r})\n", "analysis/03_site.py")
+                  f"Path('output/site.csv').write_text({text!r}, encoding='utf-8')\n",
+                  "analysis/03_site.py")
     entry = Entry("site", "output/site.csv", "analysis/03_site.py", receipt="site-a",
                   row_key="group", **fields)  # fmt: skip
     append_entry(project, entry)
@@ -499,3 +501,137 @@ def test_the_command_takes_working_output_and_the_count_columns(project: Path) -
     (entry,) = load_entries(project)
     assert (entry.quoted, entry.counts) == (False, ("n",))
     assert entry.spec()["quoted"] is False and entry.spec()["counts"] == ["n"]
+
+
+# ------------------------------------------------------------------- review round 1 of #471
+
+
+def test_a_column_the_entry_does_not_take_in_is_held_to_the_minimum_at_the_site(
+    project: Path,
+) -> None:
+    """The whole output file leaves the site, so a column the entry leaves out is read too,
+    as a count column: nothing shows it is none."""
+    _minimum(project, 5)
+    _site_output(project, ["group,n,rate,deaths", "Drug,40,0.5,2"], columns=("n", "rate"))
+    with pytest.raises(HarvestError, match=r"site\.drug\.deaths is 2"):
+        make_receipt(load_project(project)[0], "site-a")
+    (project / "harvest.yaml").unlink()
+    _site_output(project, ["group,n,rate,deaths", "Drug,40,0.5,2"], columns=("n", "rate"),
+                 counts=("n",))  # fmt: skip
+    with pytest.raises(HarvestError, match=r"site\.drug\.deaths is 2"):
+        make_receipt(load_project(project)[0], "site-a")
+
+
+@pytest.mark.parametrize(("cell", "said"), [("<2", "a bound tighter than"),
+                                            ("\N{LESS-THAN OR EQUAL TO}3", "a bound tighter than"),
+                                            ("3.0", "a count below")])  # fmt: skip
+def test_a_count_held_back_or_written_with_a_point_is_a_count(
+    project: Path, cell: str, said: str
+) -> None:
+    """In G2 and in the receipt: "<2" is held by its bound as the emitter's `display="<2"`
+    is, and "3.0" in a count column, as pandas writes one with a missing value, is 3."""
+    from manuscript_guard.gates.custodian import check_small_cells
+
+    _minimum(project, 5)
+    _site_output(project, ["group,n", f"Drug,{cell}"], counts=("n",))
+    with pytest.raises(HarvestError, match=said):
+        make_receipt(load_project(project)[0], "site-a")
+    _write_script(project)
+    (project / "output").mkdir(exist_ok=True)
+    (project / "output" / "est.csv").write_bytes(f"group,n\nWomen,{cell}\n".encode())
+    harvest_entry(project, Entry("est", "output/est.csv", "analysis/02_est.py",
+                                 row_key="group", counts=("n",)))  # fmt: skip
+    main_md = project / "manuscript" / "main.md"
+    main_md.write_text(main_md.read_text("utf-8") + "\n\nWe saw {{results.est.women.n}}.\n",
+                       encoding="utf-8")  # fmt: skip
+    project_, _ = load_project(project)
+    found = check_small_cells(project_, load_namespace(project_)[1]).findings
+    assert [f.code for f in found] == ["count-below-minimum"] and said in found[0].message
+
+
+def test_a_held_back_count_whose_bound_hides_it_and_a_held_back_p_pass(project: Path) -> None:
+    _minimum(project, 5)
+    _site_output(project, ["group,n,p", "Drug,<5,<0.001"])
+    make_receipt(load_project(project)[0], "site-a")
+
+
+def test_a_receipt_checked_out_with_other_line_endings_is_the_same_receipt(
+    project: Path,
+) -> None:
+    _receipted(project)
+    receipt = project / "receipts" / "site-a.receipt.json"
+    receipt.write_bytes(receipt.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
+    assert "receipt-changed" not in _codes(project)
+
+
+def test_what_only_the_site_can_answer_goes_to_no_command() -> None:
+    from manuscript_guard.findings import Finding
+    from manuscript_guard.gates.harvested import RECEIPT_CONTEXT
+    from manuscript_guard.guide.routes import route_for
+
+    site = route_for(Finding(gate="G1", code="script-newer", message="m",
+                             context=f"{RECEIPT_CONTEXT} site-a"))  # fmt: skip
+    assert (site.argv, site.who) == (None, "author")
+    assert route_for(Finding(gate="G1", code="script-newer", message="m")).argv == ("verify",)
+    noted = route_for(Finding(gate="G1", code="input-at-site", message="m"))
+    assert (noted.argv, noted.who) == (None, "author")
+
+
+def test_a_receipted_script_changed_is_routed_to_the_site(project: Path) -> None:
+    from manuscript_guard.guide.routes import route_for
+
+    _receipted(project)
+    _write_script(project, SCRIPT.replace("1.50", "1.70"))
+    (found,) = [f for f in _g1(project) if f.code == "script-newer"]
+    assert route_for(found).argv is None
+
+
+def test_deposit_counts_no_harvested_whole_number_outside_counts() -> None:
+    from manuscript_guard.deposit.counts import _values
+
+    document = {"values": {"t.a.df": {"value": 3, "display": "3", "count": False},
+                           "t.a.n": {"value": 3.0, "display": "3.0", "count": True},
+                           "t.a.held": {"value": None, "display": "<2", "count": True}}}
+    assert _values(document) == [("t.a.n", 3)]
+
+
+def test_digits_keep_a_space_that_groups_thousands() -> None:
+    entry = Entry("t", "o.csv", "s.py", digits=2)
+    table = read_output(b"n\n1 234.5\n", ".csv", entry)
+    assert table.values("t")["t.1.n"].display == "1 234.50"
+
+
+def test_a_number_too_large_to_be_finite_is_refused(tmp_path: Path) -> None:
+    with pytest.raises(HarvestError, match="no finite number"):
+        read_output(b"n\n1e400\n", ".csv", Entry("t", "o.csv", "s.py"))
+
+
+def test_records_named_name_and_value_are_read_by_their_row_key() -> None:
+    entry = Entry("t", "o.json", "s.py", row_key="value")
+    table = read_output(b'[{"name": "a", "value": "x"}]', ".json", entry)
+    assert set(table.values("t")) == {"t.x.name", "t.x.value"}
+
+
+def test_entries_yaml_wrote_without_indent_take_another(tmp_path: Path) -> None:
+    (tmp_path / "harvest.yaml").write_text(yaml.safe_dump({"entries": [
+        {"key": "a", "output": "a.csv", "script": "a.py", "inputs": []}]}), encoding="utf-8")
+    append_entry(tmp_path, Entry("b", "b.csv", "b.py"))
+    assert [entry.key for entry in load_entries(tmp_path)] == ["a", "b"]
+
+
+def test_an_output_that_cannot_be_read_leaves_no_entry_behind(project: Path, capsys) -> None:
+    _write_script(project)
+    (project / "output").mkdir()
+    (project / "output" / "est.csv").write_bytes(b"group,n\nA,1,2\n")
+    assert main(["harvest", "output/est.csv", "--script", "analysis/02_est.py", "--key", "est",
+                 "--path", str(project)]) == 2  # fmt: skip
+    assert "cells under a header" in capsys.readouterr().err
+    assert not (project / "harvest.yaml").exists()
+
+
+def test_an_output_swallowed_by_a_flag_of_several_values_is_said(project: Path, capsys) -> None:
+    _write_script(project)
+    assert main(["harvest", "--input", "data/reports.csv", "output/est.csv", "--script",
+                 "analysis/02_est.py", "--key", "est", "--path", str(project)]) == 2  # fmt: skip
+    assert "name it first" in capsys.readouterr().err
+    assert not (project / "harvest.yaml").exists()

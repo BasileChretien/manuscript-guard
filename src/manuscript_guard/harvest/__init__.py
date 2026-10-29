@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from manuscript_guard.emit import input_digest_matches, sha256_of
+from manuscript_guard.emit import input_digest, input_digest_matches, sha256_of
 from manuscript_guard.harvest.config import (
     HARVEST_FILE,
     Entry,
@@ -39,6 +39,7 @@ __all__ = [
     "Input",
     "append_entry",
     "harvest_entry",
+    "harvested_document",
     "load_entries",
     "make_receipt",
     "read_receipt",
@@ -51,15 +52,20 @@ __all__ = [
 
 def harvest_entry(root: Path, entry: Entry) -> Path:
     """Read `entry`'s output and write its fragment; return the fragment's path."""
+    return write_fragment(root, entry, harvested_document(root, entry))
+
+
+def harvested_document(root: Path, entry: Entry) -> dict:
+    """The fragment `entry` reads from its output, written nowhere: refused as
+    `harvest_entry` refuses it."""
     output = root / entry.output
     if not output.is_file():
         raise HarvestError(f"{entry.output} is not there: run {entry.script}, which writes it, "
                            "and harvest it then")  # fmt: skip
     if entry.receipt is None:
-        return write_fragment(root, entry, document_of(root, entry, output))
+        return document_of(root, entry, output)
     inputs, receipt = _from_receipt(root, entry, output)
-    return write_fragment(root, entry, document_of(root, entry, output, inputs=inputs,
-                                                   receipt=receipt))  # fmt: skip
+    return document_of(root, entry, output, inputs=inputs, receipt=receipt)
 
 
 def _from_receipt(root: Path, entry: Entry, output: Path) -> tuple[list[dict], dict]:
@@ -86,7 +92,7 @@ def _from_receipt(root: Path, entry: Entry, output: Path) -> tuple[list[dict], d
                        **({"restricted": True} if given.restricted else {}),
                        **({"synthetic": True} if given.synthetic else {})})  # fmt: skip
     recorded = {"site": receipt["site"], "path": path.relative_to(root).as_posix(),
-                "sha256": sha256_of(path), "ran_at": receipt["ran_at"]}  # fmt: skip
+                "sha256": input_digest(path), "ran_at": receipt["ran_at"]}  # fmt: skip
     return inputs, recorded
 
 

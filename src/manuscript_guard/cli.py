@@ -2389,6 +2389,9 @@ def cmd_harvest(args: argparse.Namespace) -> int:
         return 2
     root = project.root
     try:
+        if args.output is None and (args.script or args.key or args.input):
+            raise HarvestError("no OUTPUT was given: name it first, before --input, --columns "
+                               "or --counts, which take every word after them")  # fmt: skip
         entries = [_added(root, args)] if args.output is not None else load_entries(root)
         if not entries:
             raise HarvestError("harvest.yaml names no output to harvest: add one with "
@@ -2402,7 +2405,13 @@ def cmd_harvest(args: argparse.Namespace) -> int:
 def _added(root: Path, args: argparse.Namespace):
     """The entry the command's flags describe, checked and added to harvest.yaml."""
     from manuscript_guard.contracts._schema import validate
-    from manuscript_guard.harvest import Entry, HarvestError, Input, append_entry
+    from manuscript_guard.harvest import (
+        Entry,
+        HarvestError,
+        Input,
+        append_entry,
+        harvested_document,
+    )
     from manuscript_guard.harvest.config import HARVEST_FILE
 
     if not (args.script and args.key):
@@ -2420,6 +2429,8 @@ def _added(root: Path, args: argparse.Namespace):
     checked = validate({"entries": [entry.spec()]}, "harvest", root / HARVEST_FILE)
     if not checked.ok:
         raise HarvestError(checked.render(root))
+    # Read first, so that an output that cannot be harvested leaves no entry behind.
+    harvested_document(root, entry)
     append_entry(root, entry)
     return entry
 

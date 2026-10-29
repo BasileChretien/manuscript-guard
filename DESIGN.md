@@ -8492,14 +8492,18 @@ is written, with the site, `ran_at`, the tool's version, each run's runner and i
 the script's path and digest, its inputs by label (the path from the project's root) with
 their digests and sizes, the lockfiles' digests, each output's digest and size, and the exit
 code. Nothing is written where a run fails or writes no output, where an output holds a
-count the custodian's minimum forbids (G2's rule, `custodian._small`, over the columns the
-entry lists as `counts`), or where `custodian.recoverable_cells`, as `deposit` asks it, fails
-on a count held back that a declared sum gives away; what it warns of, a count a table's
-total row or header gives away, is printed and the receipt written, as `deposit` warns
-(Basile, 2026-10-29, after #469). An entry's `counts` names the columns whose cells are
-counts: the whole numbers of every other column are written `count: false` and are no
-counts to G2 either, and without `counts` every whole number with no unit is one, as G2
-reads an emitted value. An entry's `quoted: false` (`--not-quoted`) makes the table working
+count the custodian's minimum forbids (G2's rule, `custodian._small`), or where
+`custodian.recoverable_cells` fails; what it warns of, a count a table's total row or header
+gives away, is printed and the receipt written, as `deposit` warns (Basile, 2026-10-29,
+after #469). A harvested output declares no sum, so in practice it only warns. The whole
+output file is read for this, every column of it, each cell as written, since the whole file
+leaves the site (round 1 of #471): a column the entry does not take in is held as a count
+column, since nothing shows it is none. An entry's `counts` names the columns whose cells are
+counts: the whole numbers of every other column are written `count: false` and are no counts
+to G2 either. In a counted column, or anywhere without `counts`, a whole number written with
+a point ("3.0", as pandas writes a column with a missing value) and a number held back
+("<2") are written `count: true`, and G2 holds the display to the minimum, the bound of one
+held back as the emitter's `display="<2"` is (round 1 of #471). An entry's `quoted: false` (`--not-quoted`) makes the table working
 output, as the emitter's `quoted` does, and G2's `unplaced-table` says so in its hint
 (Basile, 2026-10-29). At the centre,
 `harvest` takes the output in only where it is the one the receipt covers, with the
@@ -18443,17 +18447,24 @@ What papers converted from Word showed (see "What papers converted from Word sho
 - **`package` carries no `harvest.yaml`, no output and no receipt.** A harvested results
   file goes in with the others and its script with the scripts; whoever runs the package
   again re-runs the script, and G1 there says the output is missing until it is run.
-- **Which cells are counts is the entry's word.** With `counts`, only its columns are held
-  to the custodian's minimum, and a count in a column it leaves out is printed unchecked;
-  without it, every whole number with no unit is a count, so a degrees-of-freedom column of
-  3 under a minimum of 5 refuses a receipt until `counts` leaves it out.
-- **Thousands are read only with commas.** "1,234" is 1234; "1 234" with any space is read
-  as the emitter's displays read it, and `digits` writes the number again with commas only.
+- **Which cells are counts is the entry's word.** With `counts`, only its columns (and, at
+  a site, the columns it does not take in) are held to the custodian's minimum, and a count
+  in a column it names otherwise is printed unchecked; without it, every whole number with no
+  unit is a count, "1.0" among them, so a degrees-of-freedom column of 3 or an odds ratio of
+  1.0 under a minimum of 5 refuses a receipt until `counts` leaves it out.
+- **A centre's copy at an input's path is compared with the site's data.** Where the centre
+  keeps a synthetic copy where the site's input is, G1 compares it with the receipt's digest
+  and fails `input-changed`, which nothing at the centre can put right; only an input that is
+  not there is `input-at-site`.
+- **A year as a header is refused.** A column named "2020" makes no key part a binding can
+  start with, so a wide table by year cannot be harvested; write it long, a row a year.
+- **An output's digest leaves its line endings out.** As an input's does: a carriage return
+  inside a quoted cell that becomes a line feed is not seen as a change.
 - **A receipt is unsigned.** Anyone who can write `receipts/` can write a receipt; it proves
   that a file with these digests was written, not who wrote it, that the run took place, or
   when (`ran_at` is the site's clock). Signed, it would prove only that the key's holder
   wrote it. It cannot be re-run at the centre, which has no data.
-- **A receipt is refused only by a declared sum, and a harvested output declares none.**
+- **A receipt is never refused for a count given away by subtraction.**
   `recoverable_cells` fails a count held back only where the analysis declares the sum that
   gives it away; a harvested output declares no sum, so its total rows and header counts
   only warn, the receipt is written, and the site decides.

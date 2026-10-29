@@ -142,23 +142,29 @@ def append_entry(root: Path, entry: Entry) -> Path:
             raise HarvestError(
                 f"{path} already has an entry for {held.key!r} ({held.output}); edit it there, "
                 "or give another key")  # fmt: skip
-    block = yaml.safe_dump([entry.spec()], sort_keys=False, allow_unicode=True)
-    block = "".join(f"  {line}\n" for line in block.splitlines())
-    if path.exists():
-        text = path.read_bytes().decode("utf-8")
-        text = text + ("" if text.endswith("\n") else "\n") + block
-    else:
-        text = _HEAD + block
+    dumped = yaml.safe_dump([entry.spec()], sort_keys=False, allow_unicode=True)
+    held = path.read_bytes().decode("utf-8") if path.exists() else None
+    # The list indented, as `init` and this command write it, or not, as `yaml.safe_dump`
+    # writes it: whichever reads back as the entries before and this one.
+    for indent in ("  ", ""):
+        block = "".join(f"{indent}{line}\n" for line in dumped.splitlines())
+        if held is None:
+            text = _HEAD + block
+        else:
+            text = held + ("" if held.endswith("\n") else "\n") + block
+        if _reads_as(text, [*before, entry]):
+            path.write_bytes(text.encode("utf-8"))
+            return path
+    raise HarvestError(
+        f"{path} does not end in its list of entries, so one added at its end would not read "
+        "as one of them; add it there by hand")  # fmt: skip
+
+
+def _reads_as(text: str, entries: list[Entry]) -> bool:
     try:
         reread = yaml.safe_load(text)
     except yaml.YAMLError:
-        reread = None
-    entries = reread.get("entries") if isinstance(reread, dict) else None
-    if not isinstance(entries, list) or [Entry.from_spec(spec) for spec in entries] != [
-        *before, entry
-    ]:
-        raise HarvestError(
-            f"{path} does not end in its list of entries, so one added at its end would not "
-            "read as one of them; add it there by hand")  # fmt: skip
-    path.write_bytes(text.encode("utf-8"))
-    return path
+        return False
+    listed = reread.get("entries") if isinstance(reread, dict) else None
+    return isinstance(listed, list) and all(isinstance(spec, dict) for spec in listed) and [
+        Entry.from_spec(spec) for spec in listed] == entries

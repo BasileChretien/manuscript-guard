@@ -35,8 +35,11 @@ harvest` harvests every entry again, after the scripts have been run again.
 
 A `.csv` or `.tsv` with one header row, every row as wide as it; a JSON object of scalars,
 read as the two columns `name` and `value`; or a JSON array of records, which needs
-`row_key`. Anything else (a nested object, `true`, `NaN`, a ragged row, two rows or two
-columns whose names make one key) is refused, not flattened by a guess.
+`row_key`. Anything else (a nested object, `true`, `NaN` or a number too large to be
+finite, a ragged row, two rows or two columns whose names make one key) is refused, not
+flattened by a guess. R's `write.csv` and pandas' `to_csv` write the row names under an empty
+first header, which names no key: write without them (`row.names = FALSE`,
+`index=False`), or leave that column out with `columns`.
 
 Each cell is a value, `<key>.<row>.<column>`, its row named by the row key's cell or by its
 number from 1, and its column by its header, both in lower-case letters, digits and
@@ -58,9 +61,11 @@ fails `unplaced-table` until it is, unless the entry says `quoted: false`, for w
 output.
 
 `counts` names the columns whose cells count people or records. Only those are held to the
-custodian's `minimum_cell_count`, by G2 and by a site's receipt, and a whole number in any
-other column (degrees of freedom, a year) is no count. Without `counts`, every whole number
-with no unit is one, as G2 reads an emitted value.
+custodian's `minimum_cell_count` by G2, and a whole number in any other column (degrees of
+freedom, a year) is no count. Without `counts`, every number with no unit that is whole is
+one, "3" and "3.0" alike, as G2 reads an emitted value, so an odds ratio printed "1.0" is a
+count of one: name the count columns. A count held back ("<2", "≤4") is held by its bound,
+as the emitter's `display="<2"` is: below a minimum of 5, "<2" still says the count is one.
 
 ## What `check` says
 
@@ -92,11 +97,13 @@ version, the script by its path and digest, each input by its label (its path fr
 project's root, never where it is on the site's disks) and digests, the lockfiles, each
 output by its digest and size, and the exit code. The output the run wrote is put where the
 entry declares it. Nothing is written where a run fails, writes no output, or writes one
-holding a count below the custodian's `minimum_cell_count` in a column of `counts`, or one
-held back that a declared sum gives away by subtraction: the outputs are what leaves the
-site. One held back that a table's total row or header gives away is printed as a warning,
-as `deposit` prints it, and the receipt is written: a total read from a label may be no
-sum.
+holding a count below the custodian's `minimum_cell_count`, or held back behind a bound
+tighter than it. The whole output file is read, since the whole file leaves the site: a
+column the entry does not take in is held as a count column, and with no `counts` every
+column is. A count held back that a table's total row or header gives away by subtraction
+is printed as a warning, as `deposit` prints it, and the receipt is written: a total read
+from a label may be no sum, and a harvested output declares no sum that would make it
+certain.
 
 The site sends the outputs and the receipt; the data stay. At the centre, `harvest` takes the
 output in only where it is the one the receipt covers, with the receipt's inputs and the

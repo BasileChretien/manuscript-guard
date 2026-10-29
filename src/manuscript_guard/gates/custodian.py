@@ -61,8 +61,11 @@ def is_count(value) -> bool:
     """Whether a results value is a count of something, as far as the emitter recorded:
     a whole number with no unit that is not a parameter, a software version or a label, and
     that is not said to be no count (`count: false`, a harvested cell outside its entry's
-    `counts`)."""
+    `counts`). A harvested cell said to be one (`count: true`), a number held back or one
+    written "3.0", is one whatever its value, and its display is read (`_small`)."""
     number = value.value
+    if value.count is True:
+        return not value.unit and not value.role and not value.label
     return (
         isinstance(number, int)
         and not isinstance(number, bool)

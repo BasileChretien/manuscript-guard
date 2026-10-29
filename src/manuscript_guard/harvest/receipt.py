@@ -24,6 +24,7 @@ import json
 import shutil
 import subprocess
 import tempfile
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -77,10 +78,15 @@ def _version(command: list[str]) -> str:
 
 
 def _counts_held(project, entry: Entry, output: Path) -> tuple[list[str], list[str]]:
-    """What the custodian forbids in the output, as G2 reads a count and as `deposit` reads
-    a table: each printed below the minimum, and each held back that a declared sum gives
-    away, which refuse the receipt; and what a total read from a table's label or its header
-    gives away, which may be no sum and is said as a warning, as `deposit` says it."""
+    """What the custodian forbids in the output, which refuses the receipt, and what it may
+    give away, which is a warning. The whole file is read, every column of it, since the
+    whole file leaves the site, each cell as the output wrote it. A count printed below the
+    minimum, or held back behind a bound tighter than it ("<2"), refuses, as G2 reads one
+    (`is_count`, `_small`): a cell in a column `counts` names, or in a column the entry does
+    not take in, which nothing shows is no count; every one where `counts` names none. A
+    count held back that a total row or a header's n gives away (`recoverable_cells`) is a
+    warning, as `deposit` says it: a total read from a label may be no sum, and a harvested
+    output declares none."""
     from manuscript_guard.contracts.results import Results, Table
     from manuscript_guard.contracts.values import RESULTS, Value
     from manuscript_guard.gates.custodian import (
@@ -93,12 +99,16 @@ def _counts_held(project, entry: Entry, output: Path) -> tuple[list[str], list[s
     minimum = minimum_cell_count(project)
     if minimum is None:
         return [], []
-    table = read_output(output.read_bytes(), output.suffix.lower(), entry)
-    uncounted = table.uncounted(entry.key, entry.counts)
+    table = read_output(output.read_bytes(), output.suffix.lower(),
+                        replace(entry, columns=None, digits=None))  # fmt: skip
+    counts = entry.counts
+    if counts is not None and entry.columns is not None:
+        counts = (*counts, *(name for name in table.columns if name not in entry.columns))
+    marks = table.counted(entry.key, counts)
     said = []
     for key, cell in table.values(entry.key).items():
         value = Value(key, cell.value, cell.display, RESULTS, unit=cell.unit, label=cell.label,
-                      count=False if key in uncounted else None)  # fmt: skip
+                      count=marks.get(key))  # fmt: skip
         wrong = _small(value, minimum) if is_count(value) else None
         if wrong is not None:
             said.append(f"{key} is {cell.display}, {wrong} the data custodian's minimum of "

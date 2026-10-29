@@ -412,8 +412,8 @@
         },
         "note": { "type": "string" },
         "count": {
-          "const": false,
-          "description": "This whole number is no count of people or records, whatever it has no unit: written by `harvest` for a cell outside the columns its entry lists as `counts`. G2's custodian check passes it over."
+          "type": "boolean",
+          "description": "Written by `harvest`. False: this whole number is no count of people or records, whatever it has no unit, being outside the columns its entry lists as `counts`; G2's custodian check passes it over. True: it is a count whose value G2 would not read as one, held back (\"<2\") or written with a point (\"3.0\"), and G2 holds its display to the minimum."
         },
         "label": {
           "type": "boolean",

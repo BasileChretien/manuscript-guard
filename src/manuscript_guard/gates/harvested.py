@@ -18,10 +18,13 @@ A harvested fragment is held as an emitted one is, its inputs, its script and it
 from __future__ import annotations
 
 from manuscript_guard.contracts.project import Project
-from manuscript_guard.emit import input_digest_matches, sha256_of, source_digest_matches
+from manuscript_guard.emit import input_digest_matches, source_digest_matches
 from manuscript_guard.findings import FAIL, INFO, WARN, Finding, Report
 
 GATE = "G1"
+#: The start of the context of a finding only the site that holds the data can answer, by a
+#: new run and receipt: `next` routes it to no command (`guide/routes.py`).
+RECEIPT_CONTEXT = "answered by the receipt of"
 
 
 def receipted(fragment) -> bool:
@@ -84,7 +87,9 @@ def _receipt(project: Project, fragment, output) -> list[Finding]:
     recorded = fragment.harvested["receipt"]
     path = project.root / str(recorded.get("path", ""))
     site = recorded.get("site", "the site")
-    if not path.is_file() or sha256_of(path) != recorded.get("sha256"):
+    # By its digest with its line endings left out, as an input's: git may check a receipt
+    # out with CRLF, and that is the same receipt.
+    if not path.is_file() or not input_digest_matches(path, str(recorded.get("sha256", ""))):
         said = "is gone" if not path.is_file() else "changed"
         return [_finding(
             "receipt-changed", fragment,
@@ -117,6 +122,7 @@ def _receipt(project: Project, fragment, output) -> list[Finding]:
             message=f"{run['script']['path']} has changed since {site} ran it for its receipt "
             f"of {recorded.get('ran_at')}",
             path=script,
+            context=f"{RECEIPT_CONTEXT} {site}",
             hint=f"send the script to {site} and have them run `manuscript-guard verify "
             f"--receipt {site}` again",
         ))  # fmt: skip

@@ -7308,6 +7308,12 @@ def _harvest_cell(draw: st.DrawFn, kind: str, digits: int | None) -> tuple[str, 
         text = f"{whole % 999 + 1},{draw(st.integers(0, 999)):03d}"
         number = int(text.replace(",", ""))
         return text, ["int", number, f"{number:,.{digits}f}" if places else text, None]
+    if kind == "spaced":
+        space = draw(st.sampled_from((" ", "\N{NO-BREAK SPACE}", "\N{NARROW NO-BREAK SPACE}")))
+        text = f"{whole % 999 + 1}{space}{draw(st.integers(0, 999)):03d}"
+        number = int(text.replace(space, ""))
+        shown = f"{number:,.{digits}f}".replace(",", space) if places else text
+        return text, ["int", number, shown, None]
     if kind == "negative":
         sign = draw(st.sampled_from(("-", "\N{MINUS SIGN}")))
         shown = sign + places(float(point)) if places else sign + point
@@ -7330,8 +7336,8 @@ def _harvest_cell(draw: st.DrawFn, kind: str, digits: int | None) -> tuple[str, 
 
 
 #: Every kind of cell `harvest` reads, each drawn in every example with and without digits.
-HARVEST_KINDS = ("whole", "decimal", "percent", "thousands", "negative", "exponent", "unit",
-                 "held", "text", "empty")  # fmt: skip
+HARVEST_KINDS = ("whole", "decimal", "percent", "thousands", "spaced", "negative", "exponent",
+                 "unit", "held", "text", "empty")  # fmt: skip
 
 
 @st.composite

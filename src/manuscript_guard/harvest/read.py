@@ -26,6 +26,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import math
 import re
 import unicodedata
 from dataclasses import dataclass
@@ -56,17 +57,26 @@ class Harvest:
     slugs: tuple[str, ...]
     rows: tuple[tuple[str, tuple[Cell | None, ...]], ...]
 
-    def uncounted(self, key: str, counts: tuple[str, ...] | None) -> set[str]:
-        """The keys of the whole numbers outside the columns `counts` names, which are no
-        counts; none where `counts` is not given, and every whole number may be one."""
-        if counts is None:
-            return set()
-        return {
-            f"{key}.{row}.{part}"
-            for row, cells in self.rows
-            for header, part, cell in zip(self.columns, self.slugs, cells, strict=True)
-            if cell is not None and header not in counts and isinstance(cell.value, int)
-        }
+    def counted(self, key: str, counts: tuple[str, ...] | None) -> dict[str, bool]:
+        """What each cell that could be a count is, by key: False outside the columns
+        `counts` names, which are no counts; True for a count G2 would not read as one from
+        its value, a number held back ("<2", its bound read as the emitter's `display="<2"`
+        is) or a whole number written with a point ("3.0", as pandas writes a column with a
+        missing value), in a column `counts` names or anywhere where it names none. A cell
+        with a unit, a label or text is never a count, and an integer is one as G2 reads it."""
+        marks: dict[str, bool] = {}
+        for row, cells in self.rows:
+            for header, part, found in zip(self.columns, self.slugs, cells, strict=True):
+                if found is None or found.label or found.unit or isinstance(found.value, str):
+                    continue
+                whole = found.value is None or (
+                    isinstance(found.value, float) and found.value.is_integer())
+                if counts is not None and header not in counts:
+                    if whole or isinstance(found.value, int):
+                        marks[f"{key}.{row}.{part}"] = False
+                elif whole:
+                    marks[f"{key}.{row}.{part}"] = True
+        return marks
 
     def values(self, key: str) -> dict[str, Cell]:
         """Each cell that holds something, under `<key>.<row>.<column>`."""
@@ -109,8 +119,10 @@ def _refuse_constant(name: str) -> object:
     raise HarvestError(f"{name} is no number a paper prints")
 
 
-def records(data: bytes, suffix: str, entry: Entry) -> tuple[list[str], list[list[str | None]]]:
-    """The output's headers and rows of cell texts, by its suffix."""
+def records(data: bytes, suffix: str, entry: Entry
+            ) -> tuple[list[str], list[list[str | None]], bool]:  # fmt: skip
+    """The output's headers and rows of cell texts, by its suffix, and whether it is one JSON
+    object, read as the columns `name` and `value`."""
     try:
         text = data.decode("utf-8-sig")
     except UnicodeDecodeError as exc:
@@ -129,10 +141,11 @@ def records(data: bytes, suffix: str, entry: Entry) -> tuple[list[str], list[lis
         if len(row) != len(header):
             raise HarvestError(f"{entry.output}, line {number}: {len(row)} cells under a header "
                                f"of {len(header)}")  # fmt: skip
-    return header, [list(row) for row in rows]
+    return header, [list(row) for row in rows], False
 
 
-def _json_records(text: str, entry: Entry) -> tuple[list[str], list[list[str | None]]]:
+def _json_records(text: str, entry: Entry
+                  ) -> tuple[list[str], list[list[str | None]], bool]:  # fmt: skip
     try:
         document = json.loads(
             text, parse_float=_Number, parse_int=_Number, parse_constant=_refuse_constant,
@@ -146,7 +159,7 @@ def _json_records(text: str, entry: Entry) -> tuple[list[str], list[list[str | N
                                f"{VALUE!r}: it takes no row_key and no columns")  # fmt: skip
         rows = [[name, _scalar(value, f"{entry.output}: {name!r}")] for name, value in
                 document.items()]  # fmt: skip
-        return [NAME, VALUE], rows
+        return [NAME, VALUE], rows, True
     if not isinstance(document, list) or not all(isinstance(r, dict) for r in document):
         raise HarvestError(f"{entry.output} is neither an object of scalars nor an array of "
                            "records")  # fmt: skip
@@ -158,7 +171,7 @@ def _json_records(text: str, entry: Entry) -> tuple[list[str], list[list[str | N
         header += [name for name in record if name not in header]
     rows = [[_scalar(record.get(name), f"{entry.output}, record {number}: {name!r}")
              for name in header] for number, record in enumerate(document, 1)]  # fmt: skip
-    return header, rows
+    return header, rows, False
 
 
 def cell(text: str | None, digits: int | None, *, label: bool = False) -> Cell | None:
@@ -177,6 +190,8 @@ def cell(text: str | None, digits: int | None, *, label: bool = False) -> Cell |
         return Cell(None, shown, unit)
     number, exponent = _number_of(match)
     value: int | float = int(number) if "." not in number and not exponent else float(number)
+    if not math.isfinite(value):
+        raise HarvestError(f"{shown!r} is no finite number")
     if digits is None:
         return Cell(value, shown, unit)
     return Cell(value, _rounded(match, shown, value, digits), unit)
@@ -186,21 +201,21 @@ def _rounded(match: re.Match, shown: str, value: float, digits: int) -> str:
     """`value` to `digits` places, with the sign, the thousands commas and the unit the output
     wrote it with; refused where a number that is not nought would show as nought."""
     ends = [match.end(name) for name in ("number", "exp", "sup") if match.end(name) != -1]
-    grouped = "," in match.group("number")
-    magnitude = f"{abs(float(value)):{',' if grouped else ''}.{digits}f}"
+    # The separator the output grouped its thousands with, a comma or a space of one kind.
+    grouping = re.search(r"\d([^\d.])\d{3}", match.group("number"))
+    magnitude = f"{abs(float(value)):{',' if grouping else ''}.{digits}f}"
     if float(value) != 0.0 and float(magnitude.replace(",", "")) == 0.0:
         raise HarvestError(f"{shown!r} to {digits} decimal place(s) shows as {magnitude}, "
                            "which is not this number")  # fmt: skip
+    if grouping:
+        magnitude = magnitude.replace(",", grouping.group(1))
     return (match.group("sign") or "") + magnitude + shown[max(ends):]
 
 
 def read_output(data: bytes, suffix: str, entry: Entry) -> Harvest:
     """The output's bytes, read by `entry`, as the table and the values it records."""
-    header, rows = records(data, suffix, entry)
-    if suffix == ".json" and header == [NAME, VALUE]:
-        row_key: str | None = NAME
-    else:
-        row_key = entry.row_key
+    header, rows, one_object = records(data, suffix, entry)
+    row_key = NAME if one_object else entry.row_key
     for name in [*([row_key] if row_key else []), *(entry.columns or ()),
                  *(entry.counts or ())]:
         if name not in header:

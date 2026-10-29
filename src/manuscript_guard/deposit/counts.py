@@ -106,9 +106,11 @@ def _values(document: dict) -> list[tuple[str, int]]:
             continue
         value = Value(key=key, value=spec.get("value"), display=str(spec.get("display")),
                       origin=RESULTS, unit=spec.get("unit"), role=spec.get("role"),
-                      label=bool(spec.get("label")))  # fmt: skip
-        if is_count(value):
-            out.append((key, value.value))
+                      label=bool(spec.get("label")), count=spec.get("count"))  # fmt: skip
+        number = value.value
+        if is_count(value) and isinstance(number, (int, float)) and float(number).is_integer():
+            # A count held back has no value: its display is the table's to read.
+            out.append((key, int(number)))
     return out
 
 

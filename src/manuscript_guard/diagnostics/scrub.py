@@ -117,14 +117,13 @@ def _spellings(folder: Path) -> set[str]:
     return {spelling for spelling in found if len(spelling) > 3}
 
 
-#: A name is a whole word as `authors.yaml` writes it ("Lovelace", not "Lovelaces" nor the
-#: "line" of an error when the family is Line), with either apostrophe.
+#: A name is matched as `authors.yaml` writes it, with either apostrophe, and with no letter
+#: on either side ("Lovelace", not "Lovelaces"). Only so: a name read in another case, folded
+#: as a citation key writes it, or inside an identifier, took the error's own words with it
+#: ("page_size" for the family Page), and each widening missed another form. What a record
+#: keeps of a name in any other form is said under Known gaps.
 _NOT_A_LETTER_BEFORE = r"(?<![^\W\d_])"
 _NOT_A_LETTER_AFTER = r"(?![^\W\d_])"
-#: And a family name in a citation key: in any case, its accents, apostrophes, hyphens and
-#: spaces dropped (Chrétien as "chretien2020", van der Berg as "vanderberg_2020"), run into
-#: the digits or the underscore that make it a key.
-_RUNS_INTO_A_KEY = r"(?=[\d_])"
 _APOSTROPHES = ("'", "\N{RIGHT SINGLE QUOTATION MARK}")
 
 
@@ -147,11 +146,6 @@ def _authors(root: Path | None) -> list[tuple[re.Pattern[str], str]]:
         label = f"<AUTHOR-{number}>"
         for text in _named(person):
             found.append((len(text), _as_written(text), label))
-        keyed = _folded(str(person.get("family") or ""))
-        if len(keyed) >= 2:
-            found.append((len(keyed), re.compile(
-                _NOT_A_LETTER_BEFORE + re.escape(keyed) + _RUNS_INTO_A_KEY, re.IGNORECASE),
-                label))  # fmt: skip
     return [(pattern, label) for _length, pattern, label in sorted(found, key=lambda f: -f[0])]
 
 
@@ -161,14 +155,6 @@ def _as_written(text: str) -> re.Pattern[str]:
         spellings.add(text.replace(one, other))
     either = "|".join(re.escape(s) for s in sorted(spellings, key=len, reverse=True))
     return re.compile(_NOT_A_LETTER_BEFORE + f"(?:{either})" + _NOT_A_LETTER_AFTER)
-
-
-def _folded(name: str) -> str:
-    """`name` as a citation key writes it: its letters only, unaccented, in lower case."""
-    import unicodedata
-
-    plain = unicodedata.normalize("NFKD", name)
-    return "".join(c for c in plain if c.isalpha() and not unicodedata.combining(c)).lower()
 
 
 def _named(person: dict) -> list[str]:

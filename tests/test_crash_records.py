@@ -397,9 +397,10 @@ def test_scrub_replaces_the_authors_names_and_orcids(tmp_path) -> None:
     said = scrub("Ada Lovelace (0000-0002-1825-0097) wrote; Lovelace agreed; Lovelaces no; "
                  "KeyError: 'lovelace2020'.", root=tmp_path, environ={})  # fmt: skip
     assert "Lovelace " not in said and "0000-0002-1825-0097" not in said
-    assert "lovelace2020" not in said
-    assert said.count("<AUTHOR-1>") == 4
+    assert said.count("<AUTHOR-1>") == 3
     assert "Lovelaces" in said  # a name inside a longer word is left
+    # A name in another case, as in a citation key, is left: Known gaps says so.
+    assert "'lovelace2020'" in said
 
 
 def _authors_file(folder: Path, given: str, family: str) -> Path:
@@ -417,21 +418,15 @@ def test_scrub_takes_an_address_out_whole_though_it_holds_a_name(tmp_path) -> No
 
 
 def test_scrub_leaves_the_errors_own_words_and_its_labels(tmp_path) -> None:
-    text = "line 3, column 5 in <HOME>/x and <TEMP>; may not; KeyError: 'page'"
-    for family in ("Line", "Home", "Temp", "May", "Page"):
+    text = ("line 3, column 5 in <HOME>/x and <TEMP>; may not; KeyError: 'page'; "
+            "KeyError: 'page_size'; no attribute 'line_no'; '_page_count'; li_x; ma2")
+    for family in ("Line", "Home", "Temp", "May", "Page", "Li", "Ma"):
         folder = tmp_path / family
         folder.mkdir()
         assert scrub(text, root=_authors_file(folder, "Ada", family), environ={}) == text
 
 
-def test_scrub_finds_a_family_name_in_a_citation_key_as_keys_write_it(tmp_path) -> None:
-    cases = {"Chrétien": "chretien2020", "O'Brien": "obrien2020", "Smith-Jones": "smithjones_a",
-             "van der Berg": "vanderberg2020"}  # fmt: skip
-    for number, (family, key) in enumerate(cases.items()):
-        folder = tmp_path / str(number)
-        folder.mkdir()
-        said = scrub(f"KeyError: '{key}'", root=_authors_file(folder, "Ada", family), environ={})
-        assert said.startswith("KeyError: '<AUTHOR-1>"), (family, said)
+def test_scrub_matches_a_name_with_either_apostrophe(tmp_path) -> None:
     folder = tmp_path / "typographic"
     folder.mkdir()
     said = scrub("by O\N{RIGHT SINGLE QUOTATION MARK}Brien", environ={},

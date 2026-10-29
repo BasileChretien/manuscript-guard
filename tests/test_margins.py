@@ -248,7 +248,8 @@ def test_a_mean_and_its_sd_beside_a_total_column_is_no_count() -> None:
     assert off(text) == []
 
 
-@pytest.mark.parametrize("marker", ["n (%)", "N = 120 | N = 200 | N = 320"])
+@pytest.mark.parametrize("marker", ["n (%)", "N = 120 | N = 200 | N = 320",
+                                    "n = 120 (%) | n = 200 (%) | N = 320 (%)"])
 def test_a_header_row_of_n_markers_leaves_the_total_column(marker: str) -> None:
     cells = marker if "|" in marker else " | ".join([marker] * 3)
     text = f"""
@@ -300,6 +301,19 @@ def test_an_n_percent_with_no_known_n_is_no_count() -> None:
 | Age, years | 54 (12) | 56 (11) | 55 (12) |
 """
     assert off(text) == []
+
+
+def test_categories_whose_shares_add_up_to_100_are_shares_of_their_sum() -> None:
+    text = """
+| | Cases | Controls |
+|---|---|---|
+| Sex | | |
+| Men | 60 (50.0) | 100 (50.0) |
+| Women | 60 (50.0) | 100 (50.0) |
+| Total | 121 | 200 |
+"""
+    assert off(text) == ["the 'Total' row, column 'Cases', prints 121, and the 2 rows above "
+                         "it add up to 120"]  # fmt: skip
 
 
 def test_a_total_rows_count_is_the_n_its_columns_shares_are_of() -> None:

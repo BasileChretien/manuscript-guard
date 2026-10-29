@@ -261,7 +261,12 @@ def _marker(text: str) -> bool:
     said = shares._N.search(text) or shares._SAYS_SHARES.search(text) or \
         _BARE_N.search(text)  # fmt: skip
     rest = _BARE_N.sub(" ", shares._SAYS_SHARES.sub(" ", shares._N.sub(" ", text)))
+    # "n = 120 (%)": the bracketed "%" after an n is its marker's.
+    rest = _PERCENT_BRACKETED.sub(" ", rest) if said else rest
     return bool(said) and "%" not in rest and bool(_LEFT.fullmatch(rest))
+
+
+_PERCENT_BRACKETED = re.compile(r"[(\[]\s*%\s*[)\]]")
 
 
 def _says_a_count(cell: TableCell, known: frozenset[int]) -> bool:
@@ -323,6 +328,13 @@ def _heading(index: int, rows: list[_Row], label: str, texts: list[str]) -> bool
 
 def _rows(table: Table) -> list[_Row]:
     below = _totals_below(table)
+    # A characteristic's categories whose shares add up to 100 are shares of their counts'
+    # sum, a known n (`shares._summed`; the fix-only round of #469).
+    sheet = shares._rows(table)
+    runs = shares._summed(sheet)
+    summed = {id(cell): runs[(each.run, column)][0] for each in sheet
+              for column, cell, match in each.cells
+              if id(match) in runs.get((each.run, column), (0, frozenset()))[1]}  # fmt: skip
     head = _Head({}, set(), set(), {})
     rows: list[_Row] = []
     run, group, categories = 0, "", False
@@ -341,8 +353,8 @@ def _rows(table: Table) -> list[_Row]:
                 if cell.span > 1 or column in head.barred:
                     continue
                 count = count_in(cell.text, cell.line)
-                known = frozenset(n for n in (head.over.get(column), below[index].get(column))
-                                  if n is not None)  # fmt: skip
+                known = frozenset(n for n in (head.over.get(column), below[index].get(column),
+                                              summed.get(id(cell))) if n is not None)  # fmt: skip
                 if count is not None and _says_a_count(cell, known):
                     counts[column] = count
         if not counts:

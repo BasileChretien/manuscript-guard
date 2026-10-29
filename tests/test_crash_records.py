@@ -22,8 +22,12 @@ DIAGNOSTICS = Path(crashes.__file__).resolve().parent
 
 @pytest.fixture
 def kept(tmp_path, monkeypatch) -> Path:
-    """Recording on, into a folder of this test's, with no CI and no debugging."""
+    """Recording on, into a folder of this test's, with no CI and no debugging; and no
+    command's folder left by an earlier test's `main`, which a record would take for the
+    project's (a `check` of a project run before in the same process failed two tests)."""
     folder = tmp_path / "reports"
+    monkeypatch.setattr(crashes, "_invocation",
+                        {"command": None, "flags": [], "words": 0, "start": None})
     monkeypatch.delenv(crashes.OFF, raising=False)
     monkeypatch.delenv(crashes.DEBUG, raising=False)
     monkeypatch.delenv("CI", raising=False)
@@ -180,7 +184,7 @@ def test_next_that_cannot_run_the_gates_still_decides_and_records(kept, tmp_path
     state = inspect(tmp_path)
     assert "the gates could not be run" in state.error
     (found,) = _records(kept)
-    assert found["kind"] == "command" and found["name"] == "the gates' run"
+    assert found["kind"] == "command" and found["name"] == "the gates' findings"
 
 
 def test_a_hook_that_fails_lets_the_call_go_ahead_and_is_recorded(kept, monkeypatch,
@@ -465,8 +469,10 @@ def test_the_hook_line_dates_from_the_last_notice(kept) -> None:
 
 
 def test_the_diagnostics_import_nothing_that_could_send() -> None:
-    sending = {"urllib", "http", "socket", "ssl", "subprocess", "requests", "smtplib",
-               "webbrowser"}  # fmt: skip
+    """`urllib.parse` writes an address and sends nothing; every other way out is refused,
+    `webbrowser` among them, which `report-issue --open` uses from the command line instead."""
+    sending = ("urllib.request", "urllib.robotparser", "http", "socket", "ssl", "subprocess",
+               "requests", "smtplib", "ftplib", "webbrowser", "asyncio")  # fmt: skip
     for path in DIAGNOSTICS.glob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
@@ -476,7 +482,10 @@ def test_the_diagnostics_import_nothing_that_could_send() -> None:
                 names = [node.module or ""]
             else:
                 continue
-            assert not {name.split(".")[0] for name in names} & sending, (path.name, names)
+            for name in names:
+                assert name != "urllib", (path.name, name)
+                assert not any(name == out or name.startswith(out + ".") for out in sending), (
+                    path.name, name)
 
 
 def test_the_folder_is_the_users_own_by_system(monkeypatch, tmp_path) -> None:

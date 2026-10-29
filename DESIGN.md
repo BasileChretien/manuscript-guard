@@ -11931,6 +11931,26 @@ read; `MANUSCRIPT_GUARD_DEBUG=1` lets the error through as a traceback. The test
 nothing unless a test turns it on in a folder of its own. The scrub is a convenience, not a
 guarantee (Known gaps).
 
+`report-issue` turns a record into a report the person reads, edits and posts
+(`diagnostics/issue.py`). It prints the whole body, writes it beside the records, and gives
+the new-issue page's address with the title and body filled in, and a search of the issues
+for the fingerprint, which the title carries as `mg-<fingerprint>`, so that a fault already
+reported is found first. The tool posts nothing, by `gh` or otherwise: a second outward path
+would be a second thing to guard, and the person's click on GitHub is the consent. `--open`
+hands the address to the browser, and the hook asks the person when an agent runs it, since
+the page carries text the agent chose. The error's message is left out of the report unless
+`--with-message` asks for it, because a message can quote the manuscript and the scrub does
+not take that out; `--title` writes a report of something with no record. An address longer
+than 7,500 characters, which GitHub may refuse, carries the title and a line saying to paste
+the body, from the file where one was written and from the terminal where recording is off;
+and `--open` hands the browser the title alone past 2,000 characters, since Windows'
+ShellExecute may cut a longer address. The title is scrubbed whole and then cut to 200
+characters and to 600 once encoded. The hook reads `--open` in shell words, as it reads
+`--post`, and asks where an invocation names the tool, `report-issue` and `--open` in a form
+it does not read as the tool (`uv run`, `bash -c`, `py -m`). A `gate-errored` finding the tool
+recorded names the fingerprint in its hint, and the crash sentence and the session start
+point at `report-issue`.
+
 ## Known gaps
 
 Recorded because a gate whose limits are undocumented gets trusted beyond them.
@@ -19058,6 +19078,13 @@ What papers converted from Word showed (see "What papers converted from Word sho
     command lets one through), is recorded as a fault. It is one: such a sentence should reach
     the author without the words "an error in manuscript-guard itself", and the record is how
     it is found.
+  - The hook's question before an agent's `report-issue --open` reads each invocation's
+    words, as the other shell guards do: an `--open` that reaches the tool from another
+    invocation, a variable or a splat (`echo --open | xargs manuscript-guard report-issue`,
+    `F=--open; ... $F`, PowerShell's `@a`) is not seen, and the page opens unasked. A command
+    that only names the three words (`rg "manuscript-guard report-issue --open" docs`) is
+    asked about though nothing would open. Nothing is posted either way until the person
+    clicks Submit on the page.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

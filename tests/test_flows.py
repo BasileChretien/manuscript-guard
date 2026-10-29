@@ -502,13 +502,18 @@ def test_items_under_a_breakdowns_part_are_noted() -> None:
     assert "the items under a part of stage 2's breakdown are not read" in flow.notes
 
 
-def test_a_papers_title_names_no_list() -> None:
-    """Round 2 of #472: "# ... in participants" over the Abstract and the Methods is the
-    paper's title, over every list of it."""
+def test_a_heading_of_the_first_level_names_a_list_title_or_section(tmp_path: Path) -> None:
+    """The fix-only round of #472 took back round 2's title rule: `!section{Participants and
+    methods}` over a broken flow is a section, and --strict fails it; a Markdown title "# ...
+    in participants" names every list below it too (Known gaps)."""
+    (tmp_path / "p.tex").write_text(tex(
+        "!documentclass{article}\n!begin{document}\n!section{Participants and methods}\n"
+        "!subsection{Statistical methods}\nNone.\n!subsection{Enrolment}\n!begin{itemize}\n"
+        "!item A (n = 9)\n!begin{itemize}\n!item B (n = 1)\n!end{itemize}\n!item C (n = 7)\n"
+        "!end{itemize}\n!end{document}\n"), encoding="utf-8")
+    assert main(["audit", str(tmp_path / "p.tex"), "--strict"]) == 1
     title = "# A trial in participants with diabetes\n\n## Abstract\n\nIt was.\n\n"
     [flow] = _flows(title + "## Results\n\n- A (n = 9)\n  - B (n = 1)\n- C (n = 7)\n")
-    assert not flow.named
-    [flow] = _flows(title + "## Patient flow\n\n- A (n = 9)\n  - B (n = 1)\n- C (n = 7)\n")
     assert flow.named
 
 

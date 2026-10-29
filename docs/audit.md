@@ -199,7 +199,7 @@ heading over it, the nearest or one it stands under, or the caption or paragraph
 before it, says patient flow, participant flow, study flow, a flow of patients, flow chart,
 flow diagram, trial profile, participants, selection, CONSORT, PRISMA, STROBE, study
 population, enrolment or recruitment, in any case (the author, 2026-10-29); "flow" alone, as
-in "Blood flow", does not, and nor does the paper's title. Two items or more under a stage
+in "Blood flow", does not. Two items or more under a stage
 mid-flow that add up to it exactly, arms randomised or a review's sources, are a breakdown
 and no exclusions, and a step that lists no exclusion is held only to not growing: both are
 notes. A single item under a stage is always an exclusion. A count may part its thousands with a space, "n = 12 345". Under anything else, "Results" or "Subgroups", a list

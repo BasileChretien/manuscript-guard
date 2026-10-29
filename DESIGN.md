@@ -7914,9 +7914,8 @@ holds one of `stats.flows.FLOW_NAMES`: a patient, participant, study, trial or s
 a flow of anything ("flow of patients through the trial"), a flow chart, a flow diagram, a
 trial profile, participants, selection, CONSORT, PRISMA, STROBE, study population, enrolment,
 recruitment, in any case. "Flow" alone names nothing, since "Blood flow" and "Flow
-cytometry" hold it. A paper's title written as a heading of the first level, over its
-Abstract, Introduction or Methods, names nothing, though it is over every list (round 2 of
-#472). Any other list of that shape is read the same way, and
+cytometry" hold it. Every heading of the chain names, a paper's title written as a heading
+too (see Known gaps). Any other list of that shape is read the same way, and
 what is wrong with it is a note, never counted. The heading is the one pandoc prints in
 Markdown, the heading command of the `.tex` file in LaTeX, and the heading style in Word;
 the paragraph before is the one ending directly before the list, past blank lines, and in
@@ -18321,7 +18320,19 @@ What papers converted from Word showed (see "What papers converted from Word sho
     "" (round 1 of #472, finding 11).
   - Two items or more under a stage that happen to add up to it are read as a breakdown,
     whether they are or are exclusions that add up to the stage by chance; a single item is
-    always an exclusion (round 2 of #472).
+    always an exclusion (round 2 of #472). What that costs: a single-arm trial, "Enrolled
+    (n = 60)" / "Allocated (n = 60)" / "Analysed (n = 58)" under "Participant flow", or a
+    PRISMA stage with one source equal to it, reads the one item as an exclusion of all and
+    fails `--strict`.
+  - A paper's title written as a heading names the lists under it like any heading: "# A
+    trial in participants with diabetes" names every list of the paper a flow, and a broken
+    list of subgroups under it fails `--strict` (finding 5 of round 2 of #472). Round 2 left
+    out a first-level heading over the Abstract, the Introduction or the Methods; that was a
+    guess, since `\section` in LaTeX, Heading 1 in Word and the first level of Markdown
+    converted from Word are sections, so "Participants and methods" stopped naming a flow,
+    and the fix-only round took it back.
+  - The names are read as words in a title, not as its subject: "Patient flow cytometry",
+    "Blood flow of the forearm" and "Study population characteristics" name a list a flow.
   - Sources and a removal under one stage, a review's databases, registers and duplicates
     removed under "Identified", are read as that stage's exclusions, overlapping, and fail
     under a PRISMA heading (round 2 of #472, finding 4).

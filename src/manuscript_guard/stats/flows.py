@@ -35,7 +35,7 @@ Nothing but its shape is read, so a nested list of counts that is no flow, subgr
 their groups, reads as one. What `audit --strict` counts is a broken flow under a heading, or
 after a caption or a paragraph, that names a flow (`FLOW_NAMES`): any other is said as a
 note (Basile, 2026-10-29). The headings are those the list stands under in its file, the
-nearest and those above it, a paper's title left out; the caption or paragraph is the one
+nearest and those above it; the caption or paragraph is the one
 directly before it.
 
 Prose, a text box, a drawing and a figure are not read (DESIGN.md, "Known gaps").
@@ -128,39 +128,22 @@ class Listed:
         return names_a_flow(self.heading) or names_a_flow(self.before)
 
 
-#: A heading that opens a paper, under which the heading over it is the paper's title.
-_OPENS = re.compile(r"\W*(?:abstract|summary|introduction|background|(?:\w+\s+)*methods)\b",
-                    re.IGNORECASE)
-
-
 def heading_chain(headings: list[tuple[int, int, str]], before: int) -> str:
     """The titles of the headings over a place, each as (where, level, title) in document
     order, `before` the place: the nearest, and each above it of a lesser level, joined. A
-    flow under "Participant flow" and then "Trial A" stands under both (round 1 of #472). A
-    paper's title written as a heading, one with the Abstract, the Introduction or the
-    Methods under it, names nothing: "# A trial in participants with diabetes" is over every
-    list of the paper (round 2)."""
+    flow under "Participant flow" and then "Trial A" stands under both (round 1 of #472).
+    Every heading of the chain names, a paper's title written as a heading too: a heading
+    of the first level is a section in LaTeX, in Word and in Markdown converted from Word,
+    and telling a title from it was a guess (the fix-only round of #472, DESIGN.md, "Known
+    gaps")."""
     chain: list[tuple[int, str]] = []
-    for at, (where, level, title) in enumerate(headings):
+    for where, level, title in headings:
         if where >= before:
             break
         while chain and chain[-1][0] >= level:
             chain.pop()
-        chain.append((level, "" if _a_title(headings, at) else title))
-    return " / ".join(title for _level, title in chain if title)
-
-
-def _a_title(headings: list[tuple[int, int, str]], at: int) -> bool:
-    """Whether the heading at `at`, of the first level, is over one that opens a paper."""
-    level = headings[at][1]
-    if level > 1:
-        return False
-    for _where, other, title in headings[at + 1 :]:
-        if other <= level:
-            return False
-        if _OPENS.match(title):
-            return True
-    return False
+        chain.append((level, title))
+    return " / ".join(title for _level, title in chain)
 
 
 def paragraph_before(lines: list[str], first: int) -> str:

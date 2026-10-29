@@ -5463,12 +5463,15 @@ BACKSLASH = chr(92)
 #: reasons under an exclusion included; one off at a step, at its arms, or at the reasons
 #: under an exclusion; reasons, or a step's exclusions, over what they total, as overlapping;
 #: a single exclusion over its step, which no overlap allows; an item with no count and one
-#: with two; an item under an arm; subgroups under their groups, which read as a broken flow
+#: with two; an item under an arm; arms under a stage mid-flow that add up to it, a breakdown,
+#: before a stage fewer with no exclusion listed; a funnel of stages that list no exclusion
+#: (round 1 of #472); subgroups under their groups, which read as a broken flow
 #: and stand under no name for a flow; and three lists that are no flow, of one level, of one
 #: stage, and prose.
 FLOW_KINDS = (
     "adds up", "step off", "arms off", "reasons off", "reasons overlapping", "overlapping",
-    "too many", "no count", "two counts", "per arm", "subgroups", "one level", "one stage",
+    "too many", "no count", "two counts", "per arm", "breakdown", "funnel", "subgroups",
+    "one level", "one stage",
     "prose",
 )  # fmt: skip
 #: What stands over a list of `flow_lists`: a heading that names a flow over a paragraph that
@@ -5479,6 +5482,11 @@ FLOW_HEADINGS = ("Participant flow", "Flow of participants", "CONSORT diagram",
 FLOW_SENTENCES = ("Figure 1: flow of participants.", "Participants were selected as follows.",
                   "The CONSORT diagram is given as a list.", "Enrolment went as follows.")
 OTHER_HEADINGS = ("Subgroups", "Results by sex", "Baseline characteristics", "Outcomes")
+#: How a Markdown list of `flow_lists` indents a nested item: to its parent's text, by a tab,
+#: or by four spaces.
+FLOW_INDENTS = ("text", "tab", "four")
+#: An optional argument a LaTeX `\\item` may take, which prints a label of its own.
+ITEM_LABELS = ("", "[--]", "[a)]", "[(i)]")
 #: How an item prints its count: `{label}` its words, `{n}` the count.
 FLOW_COUNTED = ("{label} (n = {n})", "{label}, n = {n}", "{label} (N={n})", "(n = {n}) {label}")
 STAGE_WORDS = ("Assessed for eligibility", "Screened", "Randomised", "Allocated", "Analysed")
@@ -5555,6 +5563,32 @@ def _flow_of(draw: st.DrawFn, kind: str) -> tuple[list, list[str], list[str]]:
     return items, sorted(problems), sorted(notes)
 
 
+def _shaped_flow(draw: st.DrawFn, kind: str) -> tuple[list, list[str], list[str]]:
+    """A breakdown mid-flow, or a funnel, as `_flow_of` gives a flow: neither has a problem,
+    and each fall from a stage that lists no exclusion is a note, `fall`, as is the breakdown,
+    `breakdown`."""
+    first = draw(st.integers(400, 3000))
+    if kind == "funnel":
+        second = first - draw(st.integers(1, 99))
+        third = second - draw(st.integers(1, 99))
+        arms = _split(draw, third, 2)
+        return ([[STAGE_WORDS[1], [first], []], [STAGE_WORDS[0], [second], []],
+                 [STAGE_WORDS[4], [third], [[ARM_WORDS[0], [arms[0]], []],
+                                             [ARM_WORDS[1], [arms[1]], []]]]],
+                [], ["fall", "fall"])  # fmt: skip
+    removed = draw(st.integers(2, 60))
+    second = first - removed
+    mid = _split(draw, second, 2)
+    third = second - draw(st.integers(1, 30))
+    arms = _split(draw, third, 2)
+    return ([[STAGE_WORDS[0], [first], [[EXCLUSION_WORDS[0], [removed], []]]],
+             [STAGE_WORDS[2], [second], [[ARM_WORDS[0], [mid[0]], []],
+                                         [ARM_WORDS[1], [mid[1]], []]]],
+             [STAGE_WORDS[4], [third], [[ARM_WORDS[0], [arms[0]], []],
+                                        [ARM_WORDS[1], [arms[1]], []]]]],
+            [], ["breakdown", "fall"])  # fmt: skip
+
+
 def _flow_item(draw: st.DrawFn, label: str, counts: list[int], grouped: bool) -> str:
     def shown(n: int) -> str:
         return f"{n:,}" if grouped else str(n)
@@ -5585,18 +5619,25 @@ def flow_lists(draw: st.DrawFn) -> tuple[str, str, list[dict[str, Any]]]:
         markdown.extend(["", text, ""])
         latex.extend(["", text, ""])
 
-    def put(items: list, depth: int, marker: str, environment: str, commented: bool) -> None:
+    def put(items: list, depth: int, marker: str, environment: str, commented: bool,
+            indent: str) -> None:  # fmt: skip
         latex.append("  " * depth + f"{BACKSLASH}begin{{{environment}}}")
         width = len(marker) + 1
+        unit = {"text": " " * width, "tab": "\t", "four": "    "}[indent]
         for number, (label, counts, children) in enumerate(items, 1):
             shown = _flow_item(draw, label, counts, grouped)
+            if commented and depth == 0 and number == 1 and len(counts) == 1:
+                # Its count on a lazy line, at the margin, which goes on with the item.
+                shown = f"{label}\n(n = {counts[0]})"
             sign = f"{number}." if marker == "1." else marker
-            markdown.append(" " * (width * depth) + f"{sign} {shown}")
-            latex.append("  " * depth + f"  {BACKSLASH}item {shown}")
+            first, *lazy = shown.split("\n")
+            markdown.extend([unit * depth + f"{sign} {first}", *lazy])
+            option = draw(st.sampled_from(ITEM_LABELS))
+            latex.extend(["  " * depth + f"  {BACKSLASH}item{option} {first}", *lazy])
             if commented and depth == 1 and number == 1:
                 latex.append("  " * depth + f"  % {BACKSLASH}item Skipped (n = 5)")
             if children:
-                put(children, depth + 1, marker, environment, commented)
+                put(children, depth + 1, marker, environment, commented, indent)
         latex.append("  " * depth + f"{BACKSLASH}end{{{environment}}}")
 
     paragraph(draw(sentence).capitalize() + ".")
@@ -5629,6 +5670,9 @@ def flow_lists(draw: st.DrawFn) -> tuple[str, str, list[dict[str, Any]]]:
                       [[draw(st.sampled_from(EXCLUSION_WORDS)), [n - draw(st.integers(1, 99))],
                         []]]]]  # fmt: skip
             found = None
+        elif kind in ("breakdown", "funnel"):
+            items, problems, notes = _shaped_flow(draw, kind)
+            found = {"read": True, "problems": problems, "notes": notes}
         elif kind == "subgroups":
             men, women = draw(st.integers(200, 900)), draw(st.integers(100, 190))
             smokers = draw(st.integers(1, men - women - 1))
@@ -5644,7 +5688,8 @@ def flow_lists(draw: st.DrawFn) -> tuple[str, str, list[dict[str, Any]]]:
         markdown.append("")
         latex.append("")
         md_line, tex_line = len(markdown) + 1, len(latex) + 2
-        put(items, 0, marker, environment, kind == "adds up")
+        put(items, 0, marker, environment, kind == "adds up",
+            draw(st.sampled_from(FLOW_INDENTS)))
         markdown.append("")
         paragraph(draw(sentence).capitalize() + ".")
         if found is not None:
@@ -5764,6 +5809,12 @@ def abstract_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list]]:
                     where[kind].append(f"It was {shown} then.")
                 looked.append((kind, shown, "not found" if kind == "not found" else "exact"))
             abstract.append((kind, f"The value was {shown} here."))
+    # The Abstract ends with a number in the Methods, which in LaTeX shares the line of
+    # `\\end{abstract}` (round 1 of #472).
+    closing = str((Decimal(draw(st.integers(9000, 9999))) / 10).quantize(Decimal("0.1")))
+    methods.append(f"It was {closing} then.")
+    looked.append(("closing", closing, "exact"))
+    abstract.append(("closing", f"The value was {closing} here."))
     lines = ["# A study", "", "## Abstract", ""]
     expected: dict[str, list] = {"conflicts": [], "looked": []}
     for kind, said in abstract:
@@ -5779,7 +5830,45 @@ def abstract_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list]]:
         lines += [f"## {heading}", "", *(one for said in part for one in (said, "")), ""]
     expected["conflicts"].sort()
     expected["looked"].sort()
-    return "\n".join(lines) + "\n", "\n".join(supplement or ["Nothing."]) + "\n", expected
+    latex, in_latex = _abstract_latex(abstract, looked, methods, results, discussion)
+    supplement_tex = "\n".join([BACKSLASH + "documentclass{article}", BACKSLASH +
+                                "begin{document}", *supplement, BACKSLASH + "end{document}"])
+    return ("\n".join(lines) + "\n", "\n".join(supplement or ["Nothing."]) + "\n", expected,
+            latex, supplement_tex + "\n", in_latex)  # fmt: skip
+
+
+def _abstract_latex(abstract: list, looked: list, methods: list, results: list,
+                    discussion: list) -> tuple[str, dict[str, list]]:  # fmt: skip
+    """The paper of `abstract_papers` in LaTeX, its last Abstract sentence on the line of
+    `\\end{abstract}`, its table a `tabular`, and what is found in it, by its lines."""
+    lines = [BACKSLASH + "documentclass{article}", BACKSLASH + "begin{document}",
+             BACKSLASH + "begin{abstract}"]  # fmt: skip
+    expected: dict[str, list] = {"conflicts": [], "looked": []}
+    for index, (kind, said) in enumerate(abstract):
+        last = index == len(abstract) - 1
+        lines.append(said.replace("%", BACKSLASH + "%") + (BACKSLASH + "end{abstract}"
+                                                          if last else ""))  # fmt: skip
+        line = len(lines)
+        if not last:
+            lines.append("")
+        if kind in ("interval conflict", "test conflict"):
+            expected["conflicts"].append([line, kind.split()[0]])
+        expected["looked"] += [[line, shown, state] for planted, shown, state in looked
+                               if planted == kind]  # fmt: skip
+    for heading, part in (("Methods", methods), ("Results", results),
+                          ("Discussion", discussion)):  # fmt: skip
+        lines += ["", f"{BACKSLASH}section{{{heading}}}", ""]
+        for said in part:
+            if said.startswith("|"):
+                value = said.split("\n")[-1].strip(" |").split("|")[-1].strip()
+                lines += [BACKSLASH + "begin{tabular}{ll}", "Group & Value " + BACKSLASH * 2,
+                          f"A & {value} " + BACKSLASH * 2, BACKSLASH + "end{tabular}", ""]
+            else:
+                lines += [said.replace("%", BACKSLASH + "%"), ""]
+    lines.append(BACKSLASH + "end{document}")
+    expected["conflicts"].sort()
+    expected["looked"].sort()
+    return "\n".join(lines) + "\n", expected
 
 
 def _hundredths_of(p: Decimal) -> str:

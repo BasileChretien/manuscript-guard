@@ -7859,13 +7859,24 @@ said. A list where an item gives no count or two is noted and not read; items un
 or under an arm are noted and not read. In a Word document, text boxes that give two counts
 or more are noted: a flow drawn in boxes is not read.
 
+Where the shape is not sure, the reading is a note, never a failure (round 1 of #472). Items
+under a stage that is not the last and that add up to it exactly are a breakdown of it, arms
+randomised mid-flow or a review's sources, noted and never read as its exclusions. A step
+that lists no exclusion, a funnel of stages alone or the step after a breakdown, is held
+only to not growing, and what it removes is noted. A count is read with its thousands parted
+by a comma or by a space, a no-break space or a narrow one ("n = 12 345", as the Lancet
+prints it), and a count a space and a digit follow is no count. In Markdown, another kind of
+marker after a blank line starts another list, as pandoc reads it.
+
 A list of subgroups under their groups, men over smokers and women over smokers, has a
 flow's shape, and its counts break a flow's arithmetic. So a broken flow is `flow-broken` in
 the Arithmetic section, counted by `--strict`, only where it stands under a name for a flow
-(Basile, 2026-10-29): the title of the nearest heading above the list in its file, or the
-caption or paragraph directly before it, holds one of `stats.flows.FLOW_NAMES`, flow, flow
-chart or diagram, participants, selection, CONSORT, PRISMA, STROBE, study population,
-enrolment, recruitment, in any case. Any other list of that shape is read the same way, and
+(Basile, 2026-10-29): the title of the nearest heading above the list in its file or of a
+heading it stands under (round 1 of #472), or the caption or paragraph directly before it,
+holds one of `stats.flows.FLOW_NAMES`: flow chart, flow diagram, participant or participants
+(so "participant flow"), selection, CONSORT, PRISMA, STROBE, study population, enrolment,
+recruitment, in any case. "Flow" alone names nothing, since "Blood flow" and "Flow
+cytometry" hold it. Any other list of that shape is read the same way, and
 what is wrong with it is a note, never counted. The heading is the one pandoc prints in
 Markdown, the heading command of the `.tex` file in LaTeX, and the heading style in Word;
 the paragraph before is the one ending directly before the list, past blank lines, and in
@@ -7875,7 +7886,14 @@ The Abstract against Results section (`auditing/abstract.py`) places each line a
 through `gates.reported.Walk.placing`, which G8's `read` now goes through too: a Markdown
 paper's headings (`split_sections`), a Word document's heading styles with their levels
 (`DocxText.heading_levels`), and a LaTeX document's printed view, each of its lines read back
-to the `.tex` line it was printed from (`printed`, `place_line`). Where the paper reports is
+to the `.tex` line it was printed from (`printed`, `place_line`, through
+`auditing.abstract.place_lines`, which keeps a line's place in the Abstract or where the
+paper reports over a place that is neither where several printed lines share one `.tex`
+line: the untitled heading that closes an abstract stands on `\end{abstract}`'s line, and
+Results text can share a line with the `\section` after it, round 1 of #472). A Markdown
+paper split into files is placed as G8 places one: a file with no Abstract of its own goes
+on under the headings of the file before it, unless its name says it is a supplement
+("supplement", "appendix", "annex", "S1"). Where the paper reports is
 the Methods, the Results, every table of every file, and the whole of a file whose document
 has no Abstract, a supplement. Each number of the Abstract the classifier leaves unexplained
 is looked for in what the paper reports: found as printed, found as a rounding of a number
@@ -18252,6 +18270,15 @@ What papers converted from Word showed (see "What papers converted from Word sho
     or "Teilnehmerfluss" is only a note, and so is a flow under a heading that names nothing,
     "Results", with no caption or paragraph naming it either. A broken flow there passes
     `--strict`.
+  - A LaTeX list in an environment of another name, `compactitem` or one the paper defines,
+    is not read as a level (round 1 of #472, finding 10).
+  - A Word list whose levels are styles with their own numbering, "List Number 2" or "List
+    Bullet 2", reads flat: Word 16 gives "List Number 2" a numbering of its own whose one
+    level, 0, its `pStyle` links to the style (verified over COM, 2026-10-29), so every item
+    is at level 0 and the list is one level, no flow. Only the paragraph's indentation says
+    otherwise, and it is not read.
+  - A paragraph style written `<w:pStyle/>` with no value is looked up as the style named
+    "" (round 1 of #472, finding 11).
 
 - **The Abstract is held to the Results by weak membership** (Task 3, PR 3,
   `auditing/abstract.py`).
@@ -18264,7 +18291,15 @@ What papers converted from Word showed (see "What papers converted from Word sho
     level, or two tests of the same kind, degrees of freedom and statistic, could be it,
     none is said.
   - An estimate is paired by its name, its abbreviation and its words taken as one; one
-    named another way, "adjusted OR" against "OR", has no counterpart.
+    named another way, "aOR" or "adj. OR" against "OR", has no counterpart. "Adjusted OR" is
+    an OR, adjusted being no part of its name.
+  - Where the true counterpart of an Abstract's interval cannot be read as an interval
+    where the paper reports, another of the same name and level that agrees in two of its
+    numbers is the one near match, and its third number is said to conflict (round 1 of
+    #472, finding 16).
+  - A Markdown file that is a supplement and whose name does not say so is placed under the
+    headings of the file before it, so its numbers are where the paper reports only where
+    those headings are the Results or the Methods.
   - A table's lines are where the paper reports wherever the table stands, a table in the
     Abstract included. A Word document's footnotes are placed under the body's last heading.
 

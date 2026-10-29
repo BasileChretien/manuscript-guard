@@ -4400,6 +4400,7 @@ def _problem_kind(said: str) -> str:
 
 def _note_kind(said: str) -> str:
     for start, kind in (("the exclusions after stage", "overlapping"),
+                        ("the items under stage", "breakdown"), ("stage ", "fall"),
                         ("the reasons under", "reasons overlapping"),
                         ("the items under an arm", "per arm"), ("a nested list", "partial")):
         if said.startswith(start):
@@ -4513,8 +4514,9 @@ def _a_nested_item_is_read_at_the_top(patch: pytest.MonkeyPatch) -> None:
 _AUDIT_RULES: list = []
 
 
-def _abstract_read(paper: str, supplement: str):
-    """What the audit's Abstract against Results makes of a paper and its supplement."""
+def _abstract_read(paper: str, supplement: str, suffix: str = ".md"):
+    """What the audit's Abstract against Results makes of a paper and its supplement, written
+    in Markdown or, with `suffix` ".tex", in LaTeX."""
     import tempfile
 
     from manuscript_guard.audit import audit
@@ -4523,15 +4525,25 @@ def _abstract_read(paper: str, supplement: str):
     if not _AUDIT_RULES:
         _AUDIT_RULES.append(Classifier.load(rendered=True))
     with tempfile.TemporaryDirectory() as folder:
-        main, extra = Path(folder) / "paper.md", Path(folder) / "supplement.md"
+        main, extra = Path(folder) / f"paper{suffix}", Path(folder) / f"supplement{suffix}"
         main.write_text(paper, encoding="utf-8")
         extra.write_text(supplement, encoding="utf-8")
         return audit([main, extra], None, classifier=_AUDIT_RULES[0]).abstract
 
 
+def _abstract_found(read) -> dict[str, list]:
+    """What a reading of the Abstract finds, as `abstract_papers` says what it should."""
+    conflicts = sorted([d.line, "interval" if " CI " in d.message else "test"]
+                       for d in read.conflicts)  # fmt: skip
+    states = {(c.line, c.text): state for state, listed in (
+        ("exact", read.found), ("rounded", read.rounded), ("not found", read.not_found))
+        for c in listed}  # fmt: skip
+    return {"conflicts": conflicts, "looked": states}
+
+
 @holds(40, abstract_papers())
 def test_the_abstract_is_held_to_what_the_paper_reports(
-    drawn: tuple[str, str, dict[str, list]],
+    drawn: tuple[str, str, dict[str, list], str, str, dict[str, list]],
 ) -> None:
     """Task 3: an Abstract's interval that differs in one number from its one counterpart
     where the paper reports, named there in words, and its test whose P cannot be its
@@ -4539,18 +4551,18 @@ def test_the_abstract_is_held_to_what_the_paper_reports(
     at another level and a test whose P could be the same are not. A number of the Abstract
     in the Methods, a table or the supplement is found, one reported to a place more is
     found as a rounding, and one only in the Discussion is not found. Without an Abstract
-    heading, or a Results heading, nothing is compared."""
-    paper, supplement, expected = drawn
-    read = _abstract_read(paper, supplement)
-    assert read.compared, paper
-    conflicts = sorted([d.line, "interval" if " CI " in d.message else "test"]
-                       for d in read.conflicts)  # fmt: skip
-    rounded = {(c.line, c.text) for c in read.rounded}
-    missing = {(c.line, c.text) for c in read.not_found}
-    looked = sorted([line, shown, "rounded" if (line, shown) in rounded else
-                     "not found" if (line, shown) in missing else "exact"]
-                    for line, shown, _state in expected["looked"])  # fmt: skip
-    assert {"conflicts": conflicts, "looked": looked} == expected, paper
+    heading, or a Results heading, nothing is compared. The same paper in LaTeX reads
+    alike, its last sentence of the Abstract on the line of `!end{abstract}` (round 1 of
+    #472)."""
+    paper, supplement, expected, latex, supplement_tex, in_latex = drawn
+    for text, extra, suffix, wanted in ((paper, supplement, ".md", expected),
+                                        (latex, supplement_tex, ".tex", in_latex)):
+        read = _abstract_read(text, extra, suffix)
+        assert read.compared, text
+        found = _abstract_found(read)
+        looked = sorted([line, shown, found["looked"].get((line, shown), "absent")]
+                        for line, shown, _state in wanted["looked"])  # fmt: skip
+        assert {"conflicts": found["conflicts"], "looked": looked} == wanted, text
     for heading, other in (("## Abstract", "## Summary of it"), ("## Results", "## Data")):
         assert not _abstract_read(paper.replace(heading, other), supplement).compared
 
@@ -4619,6 +4631,22 @@ def _two_p_values_printed_apart_cannot_be_the_same(patch: pytest.MonkeyPatch) ->
     from manuscript_guard.auditing import abstract
 
     patch.setattr(abstract, "p_apart", lambda mine, theirs: mine != theirs)
+
+
+def _a_tex_line_keeps_the_place_of_the_last_line_printed_from_it(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    from manuscript_guard.auditing import abstract
+
+    def last(view, place):
+        found: dict = {}
+        for number in range(1, view.text.count("\n") + 2):
+            where = view.place_line(number)
+            if where is not None:
+                found.setdefault(where[0].path, {})[where[1]] = place(number)
+        return found
+
+    patch.setattr(abstract, "place_lines", last)
 
 
 def _an_estimates_words_are_not_its_abbreviation(patch: pytest.MonkeyPatch) -> None:
@@ -14836,6 +14864,10 @@ BROKEN = {
     "the paragraph before a list is not read for a flow's name": (
         _the_paragraph_before_a_list_is_not_read,
         test_a_flow_printed_as_a_list_is_held_to_its_arithmetic,
+    ),
+    "a .tex line keeps the place of the last view line printed from it": (
+        _a_tex_line_keeps_the_place_of_the_last_line_printed_from_it,
+        test_the_abstract_is_held_to_what_the_paper_reports,
     ),
     "a nested item is read at the top of its list": (
         _a_nested_item_is_read_at_the_top,

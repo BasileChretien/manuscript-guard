@@ -73,6 +73,8 @@ class AbstractRead:
     #: the audit's `Candidate`; each conflict as its `Disagreement`.
     rounded: list = field(default_factory=list)
     not_found: list = field(default_factory=list)
+    #: Each number found as printed, as its `Candidate`: `matched` of them.
+    found: list = field(default_factory=list)
     conflicts: list = field(default_factory=list)
     #: What a match is worth against what the paper reports, roundings counted in.
     discrimination: object = None
@@ -82,15 +84,41 @@ def in_abstract(place: object) -> bool:
     return isinstance(place, str) and names_abstract(place)
 
 
-def placed(sections: list[Section]) -> tuple[Callable[[int], object], bool, bool]:
+def placed(sections: list[Section], walk=None) -> tuple[Callable[[int], object], bool, bool]:
     """Where each line of one document stands, given its headings, and whether it has an
-    Abstract and a Results heading outside it."""
+    Abstract and a Results heading outside it. `walk` is the `Walk` of the files before it,
+    whose headings a file of a paper split into files goes on under, as G8 reads them."""
     from manuscript_guard.gates.reported import REPORTED, Walk
 
-    place = Walk().placing(sections)
+    place = (walk if walk is not None else Walk()).placing(sections)
     abstract = any(in_abstract(place(s.line)) for s in sections if names_abstract(s.title))
     results = any(place(s.line) is REPORTED for s in sections if names_results(s.title))
     return place, abstract, results
+
+
+def place_lines(view, place: Callable[[int], object]) -> dict[str, dict[int, object]]:
+    """Each line of a LaTeX document's files, by the file's path, placed as the printed view's
+    line it was printed from is (`Printed.place_line`). Where several lines of the view that
+    print something share one `.tex` line, a place in the Abstract or where the paper reports
+    is kept over one that is neither: the untitled heading that closes an abstract stands on
+    `\\end{abstract}`'s line, and the Abstract's last sentence before it was placed nowhere,
+    as was Results text before a `\\section` on its line (round 1 of #472)."""
+    from manuscript_guard.gates.reported import REPORTED
+
+    lines = view.text.split("\n")
+    found: dict[str, dict[int, object]] = {}
+    for number, printed in enumerate(lines, 1):
+        if not printed.replace(NUL, " ").strip():
+            continue
+        where = view.place_line(number)
+        if where is None:
+            continue
+        mine = found.setdefault(where[0].path, {})
+        kept = mine.get(where[1])
+        if where[1] in mine and (kept is REPORTED or in_abstract(kept)):
+            continue
+        mine[where[1]] = place(number)
+    return found
 
 
 # ----------------------------------------------------------------------- printed numbers
@@ -234,6 +262,7 @@ def against_results(pieces: list[Piece]) -> AbstractRead:
                 read.rounded.append(candidate)
             else:
                 read.matched += 1
+                read.found.append(candidate)
     return read
 
 

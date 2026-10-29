@@ -1671,6 +1671,48 @@ def test_a_list_of_subgroups_is_a_note_and_counts_only_under_a_name_for_a_flow(
     assert main(["audit", str(paper), "--strict"]) == 1
 
 
+def test_a_breakdown_or_a_funnel_passes_an_audit_and_a_broken_one_fails(tmp_path: Path) -> None:
+    """Round 1 of #472: arms under a stage mid-flow that add up to it are a breakdown, not
+    exclusions, and a step that lists no exclusion is held only to not growing; a stage
+    that grows, or a breakdown's arms off at the last stage, still fails --strict. A count
+    whose thousands a space parts is one count."""
+    from manuscript_guard.cli import main
+
+    paper = tmp_path / "paper.md"
+    consort = ("# CONSORT diagram\n\n- Assessed (n = 12 400)\n  - Excluded (n = 12 100)\n"
+               "- Randomised (n = 300)\n  - Drug (n = 151)\n  - Placebo (n = 149)\n"
+               "- Analysed (n = 290)\n  - Drug (n = 145)\n  - Placebo (n = 145)\n")
+    paper.write_text(consort, encoding="utf-8")
+    assert main(["audit", str(paper), "--strict"]) == 0
+    paper.write_text(consort.replace("(n = 145)\n  - Placebo", "(n = 144)\n  - Placebo"),
+                     encoding="utf-8")  # fmt: skip
+    assert main(["audit", str(paper), "--strict"]) == 1
+    funnel = ("# Study population\n\n- Screened (n = 1,000)\n- Eligible (n = 800)\n"
+              "- Enrolled (n = 600)\n  - A (n = 300)\n  - B (n = 300)\n")
+    paper.write_text(funnel, encoding="utf-8")
+    assert main(["audit", str(paper), "--strict"]) == 0
+    paper.write_text(funnel.replace("(n = 800)", "(n = 1,100)"), encoding="utf-8")
+    assert main(["audit", str(paper), "--strict"]) == 1
+
+
+def test_a_latex_abstract_ending_on_its_last_line_fails_an_audit_where_it_differs(
+    tmp_path: Path,
+) -> None:
+    """Round 1 of #472: an Abstract sentence on `!end{abstract}`'s line is compared, so its
+    interval that differs from the Results' fails --strict."""
+    from manuscript_guard.cli import main
+
+    latex = ("!documentclass{article}\n!begin{document}\n!begin{abstract}\n"
+             "The OR was 1.52 (95!% CI 1.21--1.89).!end{abstract}\n!section{Methods}\nWe did.\n"
+             "!section{Results}\nThe OR was 1.52 (95!% CI 1.21--1.89).\n!end{document}\n")
+    paper = tmp_path / "paper.tex"
+    paper.write_text(latex.replace("!", chr(92)), encoding="utf-8")
+    assert main(["audit", str(paper), "--strict"]) == 0
+    paper.write_text(latex.replace("1.89).!end", "1.90).!end").replace("!", chr(92)),
+                     encoding="utf-8")  # fmt: skip
+    assert main(["audit", str(paper), "--strict"]) == 1
+
+
 def test_an_abstract_interval_that_differs_from_the_results_fails_an_audit(
     tmp_path: Path,
 ) -> None:

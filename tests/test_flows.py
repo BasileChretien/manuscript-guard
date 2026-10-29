@@ -266,8 +266,8 @@ def test_a_supplement_and_a_table_are_where_the_paper_reports(tmp_path: Path) ->
     paper = PAPER.replace("As 99 died", "| Died | 99 |\n|---|---|\n| x | 1 |\n\nAs 9 died")
     (tmp_path / "p.md").write_text(paper.replace("99 died.", "99 died, 77 lived."),
                                    encoding="utf-8")  # fmt: skip
-    (tmp_path / "s.md").write_text("Of the cohort, 77 lived.\n", encoding="utf-8")
-    read = audit([tmp_path / "p.md", tmp_path / "s.md"], None).abstract
+    (tmp_path / "supplement.md").write_text("Of the cohort, 77 lived.\n", encoding="utf-8")
+    read = audit([tmp_path / "p.md", tmp_path / "supplement.md"], None).abstract
     assert read.not_found == []
 
 
@@ -382,3 +382,104 @@ def test_a_latex_and_a_word_list_are_named_by_their_heading_or_caption(tmp_path:
                   ("Results by sex", "H1"), *WORD_FLOW]
     report = audit([word(tmp_path / "p.docx", paragraphs)], None)
     assert (report.flows_read, report.flows_named, len(report.flows_broken)) == (2, 1, 1)
+
+
+# ------------------------------------------------------------------ review round 1 of #472
+
+CONSORT = """## CONSORT diagram
+
+- Assessed for eligibility (n = 400)
+  - Excluded (n = 100)
+- Randomised (n = 300)
+  - Drug (n = 151)
+  - Placebo (n = 149)
+- Analysed (n = 290)
+  - Drug (n = 145)
+  - Placebo (n = 145)
+"""
+
+
+def test_items_that_add_up_to_their_stage_are_a_breakdown_and_no_exclusions() -> None:
+    """Arms randomised mid-flow, a review's sources: items under a stage that is not the
+    last and add up to it exactly are noted as a breakdown; the step after it lists no
+    exclusion, so a fall is noted and nothing fails."""
+    [flow] = _flows(CONSORT)
+    assert flow.problems == () and flow.named
+    assert flow.exclusions == ((100,), ())
+    assert flow.notes == (
+        "the items under stage 2 (300) add up to it: read as a breakdown of it, not as its "
+        "exclusions",
+        "stage 3 (290) is 10 fewer than stage 2 (300), and no exclusion is listed")
+    prisma = ("## PRISMA flow chart\n\n- Identified (n = 520)\n  - Databases (n = 500)\n"
+              "  - Registers (n = 20)\n- Screened (n = 400)\n  - Excluded (n = 300)\n"
+              "- Included (n = 100)\n")
+    [flow] = _flows(prisma)
+    assert flow.problems == () and "breakdown" in flow.notes[0]
+
+
+def test_a_step_that_lists_no_exclusion_is_held_only_to_not_growing() -> None:
+    funnel = ("## Study population\n\n- Screened (n = 1,000)\n- Eligible (n = 800)\n"
+              "- Enrolled (n = 600)\n  - A (n = 300)\n  - B (n = 300)\n")
+    [flow] = _flows(funnel)
+    assert flow.problems == ()
+    assert [note.split(",")[0] for note in flow.notes] == [
+        "stage 2 (800) is 200 fewer than stage 1 (1000)",
+        "stage 3 (600) is 200 fewer than stage 2 (800)"]
+    [flow] = _flows(funnel.replace("Eligible (n = 800)", "Eligible (n = 1,200)"))
+    assert flow.problems == ("stage 2 (1200) is larger than stage 1 (1000)",)
+
+
+@pytest.mark.parametrize("space", [" ", chr(0xA0), chr(0x202F)])
+def test_thousands_parted_by_a_space_are_one_count(space: str) -> None:
+    assert counts_in(f"Assessed (n = 12{space}345)") == [12345]
+    assert counts_in("n = 412 30 days later") == []
+
+
+def test_a_latex_abstract_on_the_line_of_its_end_is_compared(tmp_path: Path) -> None:
+    """The heading that closes an abstract stands on `!end{abstract}`'s line, and the last
+    sentence before it on that line was placed nowhere; so was Results text before a
+    `!section` on its line."""
+    (tmp_path / "p.tex").write_text(tex(
+        "!documentclass{article}\n!begin{document}\n!begin{abstract}\n"
+        "The OR was 1.52 (95!% CI 1.21--1.90).!end{abstract}\n!section{Methods}\nWe did.\n"
+        "!section{Results}\nThe OR was 1.52 (95!% CI 1.21--1.89).!section{Discussion}\n"
+        "Nothing.\n!end{document}\n"), encoding="utf-8")
+    [conflict] = audit([tmp_path / "p.tex"], None).abstract.conflicts
+    assert conflict.line == 4 and "line 8 gives" in conflict.message
+
+
+def test_any_heading_over_a_list_may_name_it_a_flow() -> None:
+    [flow] = _flows("## Participant flow\n\n### Trial A\n\n- A (n = 9)\n  - B (n = 1)\n"
+                    "- C (n = 7)\n")
+    assert flow.named
+    [flow] = _flows("## Participant flow\n\n## Trial A\n\n- A (n = 9)\n  - B (n = 1)\n"
+                    "- C (n = 7)\n")
+    assert not flow.named
+
+
+def test_another_kind_of_marker_after_a_blank_line_starts_another_list() -> None:
+    text = "- A (n = 9)\n  - B (n = 1)\n- C (n = 8)\n\n1. D (n = 9)\n   - E (n = 1)\n2. F (n = 7)\n"
+    first, second = _flows(text)
+    assert first.stages == (9, 8) and second.stages == (9, 7)
+
+
+def test_flow_alone_names_no_flow() -> None:
+    for heading in ("Blood flow", "Flow cytometry"):
+        [flow] = _flows(f"## {heading}\n\n- A (n = 9)\n  - B (n = 1)\n- C (n = 7)\n")
+        assert not flow.named, heading
+    for heading in ("Flow chart", "Flow diagram", "Participant flow", "PRISMA flowchart"):
+        [flow] = _flows(f"## {heading}\n\n- A (n = 9)\n  - B (n = 1)\n- C (n = 7)\n")
+        assert flow.named, heading
+
+
+def test_a_paper_split_into_files_goes_on_under_the_headings_before(tmp_path: Path) -> None:
+    """As G8 reads one: a Discussion in a file of its own is no place the paper reports,
+    and a file named as a supplement is."""
+    (tmp_path / "1.md").write_text("# P\n\n## Abstract\n\nIt was 812.5 and 733.1.\n\n"
+                                   "## Methods\n\nNone.\n", encoding="utf-8")
+    (tmp_path / "2.md").write_text("## Discussion\n\nIt was 812.5.\n", encoding="utf-8")
+    (tmp_path / "supplement.md").write_text("It was 733.1.\n", encoding="utf-8")
+    (tmp_path / "3.md").write_text("## Results\n\nNone.\n", encoding="utf-8")
+    papers = [tmp_path / name for name in ("1.md", "2.md", "3.md", "supplement.md")]
+    read = audit(papers, None).abstract
+    assert [c.text for c in read.not_found] == ["812.5"]

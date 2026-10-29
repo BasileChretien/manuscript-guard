@@ -194,10 +194,14 @@ The items at the top are the stages, the items under a stage the exclusions of t
 the next, the items under an exclusion the reasons it totals, and the items under the last
 stage the arms. Each stage less its exclusions is the next stage, the reasons add up to
 their exclusion, and the arms to the last stage; a flow that does not is listed,
-`flow-broken`. `--strict` counts it only where the list stands under a name for a flow: the
-nearest heading above it, or the caption or paragraph directly before it, says flow,
-participants, selection, CONSORT, PRISMA, STROBE, study population, enrolment or recruitment,
-in any case (the author, 2026-10-29). Under anything else, "Results" or "Subgroups", a list
+`flow-broken`. `--strict` counts it only where the list stands under a name for a flow: a
+heading over it, the nearest or one it stands under, or the caption or paragraph directly
+before it, says flow chart, flow diagram, participants (so "participant flow"), selection,
+CONSORT, PRISMA, STROBE, study population, enrolment or recruitment, in any case (the author,
+2026-10-29); "flow" alone, as in "Blood flow", does not. Items under a stage mid-flow that
+add up to it exactly, arms randomised or a review's sources, are a breakdown and no
+exclusions, and a step that lists no exclusion is held only to not growing: both are
+notes. A count may part its thousands with a space, "n = 12 345". Under anything else, "Results" or "Subgroups", a list
 of the same shape is read the same way and its faults are notes, since a list of subgroups
 under their groups has a flow's shape. The names are English only, so give a flow under
 another heading a caption that names it. Exclusions or reasons that add up to more than they

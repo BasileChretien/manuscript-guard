@@ -45,12 +45,17 @@ from dataclasses import dataclass, field, replace
 
 from manuscript_guard.emit import flow_problem
 
-#: A count as a flow prints it: `n = 412`, `(n = 412)`, `N = 1,204`. Not a share after it,
-#: `n = 45%`, nor a number that runs on into a decimal or a longer grouping.
+#: A count as a flow prints it: `n = 412`, `(n = 412)`, `N = 1,204`, and `n = 12 345` with
+#: its thousands parted by a space, a no-break space or a narrow one, as the Lancet prints
+#: them. Not a share after it, `n = 45%`, nor a number that runs on into a decimal or a longer
+#: grouping, nor one a space and a digit follow, which may be the first of a grouping
+#: misprinted (round 1 of #472: "n = 12 345" was read as 12).
 _SPACE = r"[ \t\N{NO-BREAK SPACE}\N{NARROW NO-BREAK SPACE}]"
+_GROUPED = r"[ \N{NO-BREAK SPACE}\N{NARROW NO-BREAK SPACE}\N{THIN SPACE}]"
 COUNT = re.compile(
-    rf"(?<![\w.])[nN]{_SPACE}*={_SPACE}*(?P<n>\d{{1,3}}(?:,\d{{3}})+|\d+)"
-    rf"(?!\d|[.,]\d)(?!{_SPACE}*%)"
+    rf"(?<![\w.])[nN]{_SPACE}*={_SPACE}*"
+    rf"(?P<n>\d{{1,3}}(?:,\d{{3}})+|\d{{1,3}}(?:{_GROUPED}\d{{3}})+|\d+)"
+    rf"(?!\d|[.,]\d|{_GROUPED}\d)(?!{_SPACE}*%)"
 )
 #: A Markdown list marker at the start of an item's text, taken off its label.
 _MARKER = re.compile(r"^[ \t]*(?:[-*+]|\d{1,9}[.)])[ \t]+")
@@ -59,9 +64,11 @@ _LABEL = 50
 #: The fewest stages a flow has, as `Emitter.flow` asks.
 LEAST_STAGES = 2
 #: What names a flow in a heading, a caption or a paragraph, in English: a broken flow under
-#: one is counted by `audit --strict`, and under none is a note (Basile, 2026-10-29).
+#: one is counted by `audit --strict`, and under none is a note (Basile, 2026-10-29). Not
+#: "flow" alone, which "Blood flow" and "Flow cytometry" hold (round 1 of #472): "participant
+#: flow" holds "participant", and a flow chart or a flow diagram is named.
 FLOW_NAMES = re.compile(
-    r"\b(?:flow(?:s|charts?|[ -](?:charts?|diagrams?))?|participants?|selection|CONSORT"
+    r"\b(?:flow[ -]?charts?|flow[ -]diagrams?|participants?|selection|CONSORT"
     r"|PRISMA|STROBE|study\s+population|enrol(?:l)?ments?|recruitment)\b",
     re.IGNORECASE,
 )
@@ -103,8 +110,8 @@ class FlowRead:
 
 @dataclass(frozen=True)
 class Listed:
-    """A list's items, with the title of the nearest heading above it in its file and the
-    caption or paragraph directly before it."""
+    """A list's items, with the titles of the headings over it in its file, the nearest and
+    those it stands under, and the caption or paragraph directly before it."""
 
     items: tuple[Item, ...]
     heading: str = ""
@@ -113,6 +120,20 @@ class Listed:
     @property
     def named(self) -> bool:
         return names_a_flow(self.heading) or names_a_flow(self.before)
+
+
+def heading_chain(headings: list[tuple[int, int, str]], before: int) -> str:
+    """The titles of the headings over a place, each as (where, level, title) in document
+    order, `before` the place: the nearest, and each above it of a lesser level, joined. A
+    flow under "Participant flow" and then "Trial A" stands under both (round 1 of #472)."""
+    chain: list[tuple[int, str]] = []
+    for where, level, title in headings:
+        if where >= before:
+            break
+        while chain and chain[-1][0] >= level:
+            chain.pop()
+        chain.append((level, title))
+    return " / ".join(title for _level, title in chain)
 
 
 def paragraph_before(lines: list[str], first: int) -> str:
@@ -129,7 +150,7 @@ def paragraph_before(lines: list[str], first: int) -> str:
 
 def counts_in(text: str) -> list[int]:
     """Each count `text` gives, in order."""
-    return [int(found.group("n").replace(",", "")) for found in COUNT.finditer(text)]
+    return [int(re.sub(r"\D", "", found.group("n"))) for found in COUNT.finditer(text)]
 
 
 def label(item: Item) -> str:
@@ -166,34 +187,56 @@ def markdown_lists(text: str, hidden: str) -> list[Listed]:
     above it, and the paragraph before it, its code and comments blanked."""
     from manuscript_guard.text.blocks import find_headings, nested_items, scannable
 
-    headings = find_headings(text)
+    headings = [(text.count("\n", 0, one.start) + 1, one.level, one.title)
+                for one in find_headings(text)]  # fmt: skip
     shown = scannable(text).split("\n")
     found = nested_items(text)
     starts = [start for start, _depth, _which in found]
     breaks = [match.start() for match in re.finditer(r"\n[ \t]*\n", text)]
-    lists: dict[int, list[tuple[int, str, int]]] = {}
+    lists: dict[tuple[int, int], list[tuple[int, str, int]]] = {}
+    kinds: dict[int, tuple[str, int]] = {}
     for index, (start, depth, which) in enumerate(found):
         end = starts[index + 1] if index + 1 < len(starts) else len(text)
         after = bisect_right(breaks, start)
         if after < len(breaks):
             end = min(end, breaks[after])
         own = hidden[start:end].replace("\x00", " ")
-        lists.setdefault(which, []).append((depth, own, text.count("\n", 0, start) + 1))
+        line = text.count("\n", 0, start) + 1
+        if depth == 1:
+            # Another kind of marker after a blank line starts another list, as pandoc reads
+            # it: "1." under the "-" items of a list before it (round 1 of #472).
+            kind = _marker_kind(text[start:end])
+            part = kinds.get(which, (kind, 0))[1]
+            if kinds.get(which, (kind,))[0] != kind and line > 1 and not shown[line - 2].strip():
+                part += 1
+            kinds[which] = (kind, part)
+        lists.setdefault((which, kinds.get(which, ("", 0))[1]), []).append((depth, own, line))
     read = []
-    for _which, entries in sorted(lists.items()):
+    for _key, entries in sorted(lists.items()):
         first = entries[0][2]
-        above = [one.title for one in headings if text.count("\n", 0, one.start) + 1 < first]
-        read.append(Listed(_tree(entries), above[-1] if above else "",
+        read.append(Listed(_tree(entries), heading_chain(headings, first),
                            paragraph_before(shown, first)))  # fmt: skip
     return read
 
 
+#: A list marker's kind: its bullet, or an ordered marker's delimiter.
+_KIND = re.compile(r"[ \t]*(?:(?P<bullet>[-*+])|\d{1,9}(?P<delimiter>[.)]))")
+
+
+def _marker_kind(text: str) -> str:
+    found = _KIND.match(text)
+    return "" if found is None else found.group("bullet") or "1" + found.group("delimiter")
+
+
 def docx_lists(lines: list[str], levels: dict[int, int],
-               ends: frozenset[int] = frozenset()) -> list[Listed]:  # fmt: skip
+               ends: dict[int, int] | frozenset[int] = frozenset()) -> list[Listed]:  # fmt: skip
     """Each list of a Word document: a run of lines that are items of a list Word numbers or
     bullets, by their 1-based line and level (`DocxText.levels`). An empty line goes on with
-    the run; any other line ends it, and so does each line of `ends`, a heading's, the nearest
-    above the run being its heading, and the paragraph before it its caption or paragraph."""
+    the run; any other line ends it, and so does each line of `ends`, a heading's, by its line
+    and its level (1 where only lines are given), the headings over the run being its own,
+    and the paragraph before it its caption or paragraph."""
+    if not isinstance(ends, dict):
+        ends = dict.fromkeys(ends, 1)
     lists: list[list[tuple[int, str, int]]] = []
     run: list[tuple[int, str, int]] = []
     for number, line in enumerate(lines, 1):
@@ -208,8 +251,8 @@ def docx_lists(lines: list[str], levels: dict[int, int],
 
     def listed(entries: list[tuple[int, str, int]]) -> Listed:
         first = entries[0][2]
-        above = [line for line in ends if line < first]
-        heading = lines[max(above) - 1] if above else ""
+        heading = heading_chain([(line, ends[line], lines[line - 1]) for line in sorted(ends)],
+                                first)  # fmt: skip
         # A paragraph is a line of a Word document's text, and none is blank between two.
         before = next((line for line in reversed(lines[: first - 1]) if line.strip()), "")
         return Listed(_tree(entries), heading, before.strip())
@@ -259,9 +302,9 @@ def latex_lists(source, hidden: str) -> list[Listed]:
 
     def close() -> None:
         first = text.count("\n", 0, opened) + 1
-        above = [one.title for one in source.reading.headings if one.start < opened]
+        above = [(one.start, one.level, one.title) for one in source.reading.headings]
         lists.append(Listed(_tree([(d, t, line) for d, t, line in entries]),
-                            above[-1] if above else "", paragraph_before(shown, first)))
+                            heading_chain(above, opened), paragraph_before(shown, first)))
 
     for index, event in enumerate(events):
         if event.group("edge") == "begin":
@@ -321,23 +364,41 @@ def read_flow(items: tuple[Item, ...]) -> FlowRead | None:
         return counted[id(item)][0]
 
     stages = [n(stage) for stage in items]
-    exclusions = [[n(child) for child in stage.children] for stage in items[:-1]]
     arms = [n(child) for child in items[-1].children]
     notes: list[str] = []
+    # Items under a stage that is not the last and that add up to it exactly are a breakdown
+    # of it, arms randomised mid-flow or a review's sources, and never its exclusions (round
+    # 1 of #472).
+    broken_down = {at for at, stage in enumerate(items[:-1])
+                   if stage.children and sum(n(c) for c in stage.children) == stages[at]}
+    for at in sorted(broken_down):
+        notes.append(f"the items under stage {at + 1} ({stages[at]}) add up to it: read as a "
+                     "breakdown of it, not as its exclusions")  # fmt: skip
+    exclusions = [[] if at in broken_down else [n(child) for child in stage.children]
+                  for at, stage in enumerate(items[:-1])]  # fmt: skip
+    held = [list(step) for step in exclusions]
     overlapping = []
     steps = zip(stages, stages[1:], exclusions, strict=False)
     for step, (here, there, reasons) in enumerate(steps, 1):
+        if not reasons:
+            # A step that lists no exclusion is held only to not growing; what it removes is
+            # said (round 1 of #472, the funnel of a cohort that prints its stages alone).
+            if there < here:
+                held[step - 1] = [here - there]
+                notes.append(f"stage {step + 1} ({there}) is {here - there} fewer than stage "
+                             f"{step} ({here}), and no exclusion is listed")  # fmt: skip
+            continue
         if there <= here < there + sum(reasons):
             overlapping.append(step)
             notes.append(f"the exclusions after stage {step} add up to {sum(reasons)}, more "
                          f"than the {here - there} it removes: read as overlapping, a record "
                          "excluded for more than one reason")  # fmt: skip
     problems = []
-    problem = flow_problem(stages, exclusions, arms, overlapping or False)
+    problem = flow_problem(stages, held, arms, overlapping or False)
     if problem is not None:
         problems.append(problem)
-    for stage in items[:-1]:
-        for exclusion in stage.children:
+    for at, stage in enumerate(items[:-1]):
+        for exclusion in () if at in broken_down else stage.children:
             problems += _subtotal(exclusion, n, notes)
     if any(arm.children for arm in items[-1].children):
         notes.append("the items under an arm are not read: a step for each arm is not read")

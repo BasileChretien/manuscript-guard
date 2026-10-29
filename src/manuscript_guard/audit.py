@@ -704,6 +704,9 @@ def _read_sources(
 
     sources: list[_Source] = []
     entries = [path for path in papers if path.suffix.lower() == ".tex"]
+    # The headings of a Markdown paper split into files, carried into the next file as G8
+    # carries them (round 1 of #472).
+    carried = None
     for path in papers:
         if path in entries:
             continue
@@ -716,7 +719,9 @@ def _read_sources(
         docx = is_docx(path)
         hidden = _masked(text, printed_as_typed=docx)
         source = _Source(path, text, hidden, text, text, tuple(tables), not spans, docx)
-        sources.append(replace(source, **_structure(text, hidden, tables, document)))
+        structure = _structure(path, text, hidden, tables, document, carried)
+        carried = structure.pop("walk")
+        sources.append(replace(source, **structure))
         report.not_audited += [
             f"{path.name}: lines {start + 1}-{end}, read as the reference list"
             for start, end in spans
@@ -745,30 +750,52 @@ def _read_sources(
     return sources
 
 
-def _structure(text: str, hidden: str, tables: list[Table], document) -> dict:
+#: A file's name that says it is a supplement, which starts afresh rather than going on
+#: under the headings of the paper's file before it.
+_SUPPLEMENT_NAME = re.compile(r"suppl|append|annex|(?:^|[^a-z])s\d", re.IGNORECASE)
+
+
+def _structure(path: Path, text: str, hidden: str, tables: list[Table], document,
+               carried=None) -> dict:  # fmt: skip
     """What a Markdown or a .docx paper's Abstract against Results and its flows are read
     from: where each line stands under its headings, a Word document's by their styles; the
     lines in a table; its lists, a Word document's by their levels; and the counts in its
-    text boxes."""
+    text boxes. A Markdown file with no Abstract of its own, after one whose document has
+    one, goes on under its headings (`carried`), unless its name says it is a supplement;
+    the walk to carry into the next file is given back under "walk"."""
     from manuscript_guard.auditing.abstract import placed
+    from manuscript_guard.gates.reported import Walk
     from manuscript_guard.stats.flows import boxed_counts, docx_lists, markdown_lists
+    from manuscript_guard.text.section_names import names_abstract
     from manuscript_guard.text.sections import Section, scannable, split_sections
 
+    walk = None
     if document is None:
         sections = [s for s in split_sections(scannable(text)) if s.level]
         lines = frozenset(cell.line for table in tables for row in table for cell in row)
         lists = markdown_lists(text, hidden)
         boxed = 0
+        own = any(names_abstract(s.title) for s in sections)
+        if carried is not None and not own and not _SUPPLEMENT_NAME.search(path.stem):
+            walk = carried
     else:
         body = document.body.split("\n")
         sections = [Section(body[at], level, "", at + 1) for at, level in document.heading_levels]
         lines = frozenset(at + 1 for at in document.cells)
         lists = docx_lists(body, dict(document.levels),
-                           frozenset(at + 1 for at in document.headings))  # fmt: skip
+                           {at + 1: level for at, level in document.heading_levels})
         boxed = boxed_counts(document.boxed)
-    place, abstract, results = placed(sections) if sections else (None, False, False)
+    if walk is not None:
+        place, _abstract, results = placed(sections, walk)
+        abstract = True
+    elif sections:
+        walk = Walk()
+        place, abstract, results = placed(sections, walk)
+    else:
+        place, abstract, results = None, False, False
     return {"place": place, "abstract": abstract, "results": results, "table_lines": lines,
-            "lists": tuple(lists), "boxed": boxed}  # fmt: skip
+            "lists": tuple(lists), "boxed": boxed,
+            "walk": walk if document is None and abstract else None}  # fmt: skip
 
 
 def _latex_structure(latex) -> dict[Path, dict]:
@@ -777,7 +804,7 @@ def _latex_structure(latex) -> dict[Path, dict]:
     back to the `.tex` line by `place_line`), the lines of its tables, and its lists."""
     from bisect import bisect_right
 
-    from manuscript_guard.auditing.abstract import placed
+    from manuscript_guard.auditing import abstract as placing
     from manuscript_guard.stats.flows import latex_lists
     from manuscript_guard.text.latex.printed import printed
     from manuscript_guard.text.sections import scannable, split_sections
@@ -789,13 +816,9 @@ def _latex_structure(latex) -> dict[Path, dict]:
                    if not source.path.lower().endswith(".sty")]  # fmt: skip
         view = printed(sources)
         sections = [s for s in split_sections(scannable(view.text)) if s.level]
-        place, abstract, results = placed(sections) if sections else (None, False, False)
-        by_line: dict[str, dict[int, object]] = {}
-        if place is not None:
-            for line in range(1, view.text.count("\n") + 2):
-                where = view.place_line(line)
-                if where is not None:
-                    by_line.setdefault(where[0].path, {})[where[1]] = place(line)
+        place, abstract, results = (placing.placed(sections) if sections
+                                    else (None, False, False))  # fmt: skip
+        by_line = placing.place_lines(view, place) if place is not None else {}
         for path, source in tree.files:
             if path in found or path not in hidden:
                 continue

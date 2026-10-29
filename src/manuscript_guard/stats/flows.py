@@ -28,15 +28,20 @@ reasons, none of them more than the step removed. A list where some items give a
 others none, or two, is said as a note and not read: which numbers are the flow's is not
 known. Items under a reason, and items under an arm, a step per arm, are said and not read.
 
-Prose, a text box, a drawing and a figure are not read (DESIGN.md, "Known gaps"), and a
-nested list of counts that is no flow is read as one, since nothing but its shape is read.
+Nothing but its shape is read, so a nested list of counts that is no flow, subgroups under
+their groups, reads as one. What `audit --strict` counts is a broken flow under a heading, or
+after a caption or a paragraph, that names a flow (`FLOW_NAMES`): any other is said as a
+note (Basile, 2026-10-29). The heading is the nearest above the list in its file; the
+caption or paragraph is the one directly before it.
+
+Prose, a text box, a drawing and a figure are not read (DESIGN.md, "Known gaps").
 """
 
 from __future__ import annotations
 
 import re
 from bisect import bisect_right
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from manuscript_guard.emit import flow_problem
 
@@ -53,6 +58,18 @@ _MARKER = re.compile(r"^[ \t]*(?:[-*+]|\d{1,9}[.)])[ \t]+")
 _LABEL = 50
 #: The fewest stages a flow has, as `Emitter.flow` asks.
 LEAST_STAGES = 2
+#: What names a flow in a heading, a caption or a paragraph, in English: a broken flow under
+#: one is counted by `audit --strict`, and under none is a note (Basile, 2026-10-29).
+FLOW_NAMES = re.compile(
+    r"\b(?:flow(?:s|charts?|[ -](?:charts?|diagrams?))?|participants?|selection|CONSORT"
+    r"|PRISMA|STROBE|study\s+population|enrol(?:l)?ments?|recruitment)\b",
+    re.IGNORECASE,
+)
+
+
+def names_a_flow(text: str) -> bool:
+    """Whether a heading, a caption or a paragraph names a flow (`FLOW_NAMES`)."""
+    return bool(FLOW_NAMES.search(text))
 
 
 @dataclass(frozen=True)
@@ -79,6 +96,35 @@ class FlowRead:
     arms: tuple[int, ...] = ()
     problems: tuple[str, ...] = ()
     notes: tuple[str, ...] = field(default_factory=tuple)
+    #: Whether the heading over it, or the caption or paragraph before it, names a flow:
+    #: where neither does, its problems are notes to `audit --strict`.
+    named: bool = False
+
+
+@dataclass(frozen=True)
+class Listed:
+    """A list's items, with the title of the nearest heading above it in its file and the
+    caption or paragraph directly before it."""
+
+    items: tuple[Item, ...]
+    heading: str = ""
+    before: str = ""
+
+    @property
+    def named(self) -> bool:
+        return names_a_flow(self.heading) or names_a_flow(self.before)
+
+
+def paragraph_before(lines: list[str], first: int) -> str:
+    """The paragraph that ends directly before 1-based line `first`, past blank lines."""
+    at = first - 2
+    while at >= 0 and not lines[at].strip():
+        at -= 1
+    taken: list[str] = []
+    while at >= 0 and lines[at].strip():
+        taken.insert(0, lines[at].strip())
+        at -= 1
+    return " ".join(taken)
 
 
 def counts_in(text: str) -> list[int]:
@@ -113,12 +159,15 @@ def _tree(entries: list[tuple[int, str, int]]) -> tuple[Item, ...]:
 # ------------------------------------------------------------------------- reading lists
 
 
-def markdown_lists(text: str, hidden: str) -> list[tuple[Item, ...]]:
+def markdown_lists(text: str, hidden: str) -> list[Listed]:
     """Each list of a Markdown paper, its items as pandoc makes them (`blocks.nested_items`),
     each item's text read in `hidden`, the text masked at the same offsets: from its marker
-    to the next item or the end of its paragraph."""
-    from manuscript_guard.text.blocks import nested_items
+    to the next item or the end of its paragraph; with the heading pandoc prints nearest
+    above it, and the paragraph before it, its code and comments blanked."""
+    from manuscript_guard.text.blocks import find_headings, nested_items, scannable
 
+    headings = find_headings(text)
+    shown = scannable(text).split("\n")
     found = nested_items(text)
     starts = [start for start, _depth, _which in found]
     breaks = [match.start() for match in re.finditer(r"\n[ \t]*\n", text)]
@@ -130,14 +179,21 @@ def markdown_lists(text: str, hidden: str) -> list[tuple[Item, ...]]:
             end = min(end, breaks[after])
         own = hidden[start:end].replace("\x00", " ")
         lists.setdefault(which, []).append((depth, own, text.count("\n", 0, start) + 1))
-    return [_tree(entries) for _which, entries in sorted(lists.items())]
+    read = []
+    for _which, entries in sorted(lists.items()):
+        first = entries[0][2]
+        above = [one.title for one in headings if text.count("\n", 0, one.start) + 1 < first]
+        read.append(Listed(_tree(entries), above[-1] if above else "",
+                           paragraph_before(shown, first)))  # fmt: skip
+    return read
 
 
 def docx_lists(lines: list[str], levels: dict[int, int],
-               ends: frozenset[int] = frozenset()) -> list[tuple[Item, ...]]:  # fmt: skip
+               ends: frozenset[int] = frozenset()) -> list[Listed]:  # fmt: skip
     """Each list of a Word document: a run of lines that are items of a list Word numbers or
     bullets, by their 1-based line and level (`DocxText.levels`). An empty line goes on with
-    the run; any other line ends it, and so does each line of `ends`, a heading's."""
+    the run; any other line ends it, and so does each line of `ends`, a heading's, the nearest
+    above the run being its heading, and the paragraph before it its caption or paragraph."""
     lists: list[list[tuple[int, str, int]]] = []
     run: list[tuple[int, str, int]] = []
     for number, line in enumerate(lines, 1):
@@ -149,7 +205,16 @@ def docx_lists(lines: list[str], levels: dict[int, int],
             run = []
     if run:
         lists.append(run)
-    return [_tree(entries) for entries in lists]
+
+    def listed(entries: list[tuple[int, str, int]]) -> Listed:
+        first = entries[0][2]
+        above = [line for line in ends if line < first]
+        heading = lines[max(above) - 1] if above else ""
+        # A paragraph is a line of a Word document's text, and none is blank between two.
+        before = next((line for line in reversed(lines[: first - 1]) if line.strip()), "")
+        return Listed(_tree(entries), heading, before.strip())
+
+    return [listed(entries) for entries in lists]
 
 
 _LIST_EVENT = re.compile(
@@ -175,21 +240,33 @@ def command_read(source):
     return read
 
 
-def latex_lists(source, hidden: str) -> list[tuple[Item, ...]]:
+def latex_lists(source, hidden: str) -> list[Listed]:
     """Each list of a LaTeX file, from its `itemize`, `enumerate` and `description`
     environments and their `\\item`s where the reader reads them as commands, outside a
     comment, a passage TeX skips, a definition's body, a code span and a listing; each item's
     text read in `hidden`, the file's printed view at the source's offsets, from its `\\item`
-    to the next command of a list."""
+    to the next command of a list; with the title of the heading of the file nearest above
+    it, and the paragraph of the printed view before it, a caption's included."""
     read = command_read(source)
     events = [found for found in _LIST_EVENT.finditer(source.text) if read(found.start())]
-    lists: list[tuple[Item, ...]] = []
+    lists: list[Listed] = []
     entries: list[list] = []
     open_items: list[int | None] = []
     current: int | None = None
+    opened = 0
     text = source.text
+    shown = hidden.replace("\x00", " ").split("\n")
+
+    def close() -> None:
+        first = text.count("\n", 0, opened) + 1
+        above = [one.title for one in source.reading.headings if one.start < opened]
+        lists.append(Listed(_tree([(d, t, line) for d, t, line in entries]),
+                            above[-1] if above else "", paragraph_before(shown, first)))
+
     for index, event in enumerate(events):
         if event.group("edge") == "begin":
+            if not open_items:
+                opened = event.start()
             open_items.append(None)
             current = None
         elif event.group("edge") == "end":
@@ -198,7 +275,7 @@ def latex_lists(source, hidden: str) -> list[tuple[Item, ...]]:
             open_items.pop()
             current = next((at for at in reversed(open_items) if at is not None), None)
             if not open_items:
-                lists.append(_tree([(d, t, line) for d, t, line in entries]))
+                close()
                 entries = []
         elif open_items:
             entries.append([len(open_items), "", text.count("\n", 0, event.start()) + 1])
@@ -207,7 +284,7 @@ def latex_lists(source, hidden: str) -> list[tuple[Item, ...]]:
             end = events[index + 1].start() if index + 1 < len(events) else len(hidden)
             entries[current][1] += hidden[event.end() : end].replace("\x00", " ")
     if entries:
-        lists.append(_tree([(d, t, line) for d, t, line in entries]))
+        close()
     return lists
 
 
@@ -291,9 +368,17 @@ def _subtotal(exclusion: Item, n, notes: list[str]) -> list[str]:
             f"{sum(reasons)}"]  # fmt: skip
 
 
-def flows_in(lists: list[tuple[Item, ...]]) -> list[FlowRead]:
-    """Each list of `lists` read as a flow, or found and not read; the rest left out."""
-    return [found for items in lists if (found := read_flow(items)) is not None]
+def flows_in(lists: list) -> list[FlowRead]:
+    """Each list of `lists` read as a flow, or found and not read, with whether what stands
+    over it names a flow; the rest left out. A list given as its items alone is named by
+    nothing."""
+    found = []
+    for entry in lists:
+        listed = entry if isinstance(entry, Listed) else Listed(tuple(entry))
+        flow = read_flow(listed.items)
+        if flow is not None:
+            found.append(replace(flow, named=listed.named))
+    return found
 
 
 def boxed_counts(boxes: tuple[str, ...]) -> int:

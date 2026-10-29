@@ -1170,7 +1170,7 @@ def _flows() -> Reading:
     from manuscript_guard.text.masking import mask
 
     def told(flows) -> list[list[Any]]:
-        return [[f.line, f.read, list(f.stages), [list(step) for step in f.exclusions],
+        return [[f.line, f.read, f.named, list(f.stages), [list(step) for step in f.exclusions],
                  list(f.arms), list(f.problems), list(f.notes)] for f in flows]  # fmt: skip
 
     def read(given: dict[str, str]) -> dict[str, Any]:

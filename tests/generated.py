@@ -5463,12 +5463,22 @@ BACKSLASH = chr(92)
 #: reasons under an exclusion included; one off at a step, at its arms, or at the reasons
 #: under an exclusion; reasons, or a step's exclusions, over what they total, as overlapping;
 #: a single exclusion over its step, which no overlap allows; an item with no count and one
-#: with two; an item under an arm; and three lists that are no flow, of one level, of one
+#: with two; an item under an arm; subgroups under their groups, which read as a broken flow
+#: and stand under no name for a flow; and three lists that are no flow, of one level, of one
 #: stage, and prose.
 FLOW_KINDS = (
     "adds up", "step off", "arms off", "reasons off", "reasons overlapping", "overlapping",
-    "too many", "no count", "two counts", "per arm", "one level", "one stage", "prose",
+    "too many", "no count", "two counts", "per arm", "subgroups", "one level", "one stage",
+    "prose",
 )  # fmt: skip
+#: What stands over a list of `flow_lists`: a heading that names a flow over a paragraph that
+#: does not, a heading that does not over a paragraph that does, or neither.
+FLOW_ROUTES = ("heading", "paragraph", "none")
+FLOW_HEADINGS = ("Participant flow", "Flow of participants", "CONSORT diagram",
+                 "Selection of the study population", "Recruitment", "PRISMA flow chart")
+FLOW_SENTENCES = ("Figure 1: flow of participants.", "Participants were selected as follows.",
+                  "The CONSORT diagram is given as a list.", "Enrolment went as follows.")
+OTHER_HEADINGS = ("Subgroups", "Results by sex", "Baseline characteristics", "Outcomes")
 #: How an item prints its count: `{label}` its words, `{n}` the count.
 FLOW_COUNTED = ("{label} (n = {n})", "{label}, n = {n}", "{label} (N={n})", "(n = {n}) {label}")
 STAGE_WORDS = ("Assessed for eligibility", "Screened", "Randomised", "Allocated", "Analysed")
@@ -5561,8 +5571,10 @@ def flow_lists(draw: st.DrawFn) -> tuple[str, str, list[dict[str, Any]]]:
     """A Markdown paper and a LaTeX one, each with a list of every kind of `FLOW_KINDS`, in
     an order drawn, the same lists in both, and what the reading of flows finds in them, list
     by list: the line of its first stage in each, whether it is read, and the kinds of its
-    problems and its notes (`_flow_of`). In the LaTeX paper, a commented `\\item` stands in
-    the first nested list of the flow that adds up, which TeX does not read."""
+    problems and its notes (`_flow_of`), and whether what stands over it names a flow. Each
+    list has a heading over it and a paragraph before it, by a route of `FLOW_ROUTES` that
+    cycles through all three in an order drawn. In the LaTeX paper, a commented `\\item`
+    stands in the first nested list of the flow that adds up, which TeX does not read."""
     grouped = draw(st.booleans())
     sentence = st.lists(st.sampled_from(FILLER), min_size=2, max_size=6).map(" ".join)
     markdown: list[str] = []
@@ -5588,9 +5600,21 @@ def flow_lists(draw: st.DrawFn) -> tuple[str, str, list[dict[str, Any]]]:
         latex.append("  " * depth + f"{BACKSLASH}end{{{environment}}}")
 
     paragraph(draw(sentence).capitalize() + ".")
+    # The routes cycle over the flows that are read, so that each example has each route.
+    routes = draw(st.permutations(FLOW_ROUTES))
+    cycled = 0
     for kind in draw(st.permutations(FLOW_KINDS)):
         marker = draw(st.sampled_from(("-", "*", "+", "1.")))
         environment = draw(st.sampled_from(("itemize", "enumerate")))
+        if kind in ("subgroups", "prose", "one level", "one stage"):
+            route = "none" if kind == "subgroups" else draw(st.sampled_from(FLOW_ROUTES))
+        else:
+            route, cycled = routes[cycled % len(routes)], cycled + 1
+        title = draw(st.sampled_from(FLOW_HEADINGS if route == "heading" else OTHER_HEADINGS))
+        markdown.extend(["", f"## {title}"])
+        latex.extend(["", f"{BACKSLASH}section{{{title}}}"])
+        paragraph(draw(st.sampled_from(FLOW_SENTENCES)) if route == "paragraph"
+                  else draw(sentence).capitalize() + ".")  # fmt: skip
         if kind == "prose":
             n = draw(st.integers(100, 900))
             paragraph(f"Of the {n} assessed (n = {n}), {n // 3} were excluded (n = {n // 3}).")
@@ -5605,10 +5629,18 @@ def flow_lists(draw: st.DrawFn) -> tuple[str, str, list[dict[str, Any]]]:
                       [[draw(st.sampled_from(EXCLUSION_WORDS)), [n - draw(st.integers(1, 99))],
                         []]]]]  # fmt: skip
             found = None
+        elif kind == "subgroups":
+            men, women = draw(st.integers(200, 900)), draw(st.integers(100, 190))
+            smokers = draw(st.integers(1, men - women - 1))
+            items = [["Men", [men], [["Smokers", [smokers], []]]],
+                     ["Women", [women], [["Smokers", [draw(st.integers(1, women - 1))], []]]]]
+            found = {"read": True, "problems": ["step"], "notes": []}
         else:
             items, problems, notes = _flow_of(draw, kind)
             found = {"read": kind not in ("no count", "two counts"), "problems": problems,
                      "notes": notes}  # fmt: skip
+        if found is not None:
+            found["named"] = route != "none"
         markdown.append("")
         latex.append("")
         md_line, tex_line = len(markdown) + 1, len(latex) + 2

@@ -21,7 +21,8 @@ What was read and what was not comes first, then a section for each kind of chec
 could not be read, an audit that read no number, and what is exact arithmetic: a total that
 its counts do not add up to (`sum-off`), categories that add up to more than their column's
 n (`over-header-n`), and a count held back that a printed total gives away
-(`count-recoverable`), a flow whose arithmetic does not hold (`flow-broken`), and an
+(`count-recoverable`), a flow whose arithmetic does not hold under a heading, a caption or a
+paragraph that names a flow (`flow-broken`; under none it is a note, Basile, 2026-10-29), and an
 interval or a test of the Abstract that differs from its counterpart where the paper reports
 (`abstract-conflict`). Nothing else is counted: the P worked out from a statistic, G6 and
 G14 (the author, 2026-10-28), G7's findings, a count held back that only a column's n
@@ -220,6 +221,7 @@ def as_json(report, discrimination) -> str:
         "recoverable": len(report.recovered),
         "recoverable_by_n": len(report.recovered_by_n),
         "flows": report.flows_read,
+        "flows_named": report.flows_named,
         "flows_broken": len(report.flows_broken),
         **_abstract_counts(report.abstract),
         "reference_entries": sum(len(c.entries) for c in report.references),
@@ -476,9 +478,11 @@ def _flows(report, show) -> list[str]:
     if not report.flows_read and not report.flow_notes:
         return []
     lines = [f"Flows read from nested lists: {report.flows_read}, each held to its arithmetic "
-             "(a stage less its exclusions is the next, the arms add up to the last stage)."]
-    lines += _listed("FLOWS WHOSE ARITHMETIC DOES NOT HOLD (counted by --strict):",
-                     report.flows_broken, show)  # fmt: skip
+             "(a stage less its exclusions is the next, the arms add up to the last stage); "
+             f"{report.flows_named} under a heading, a caption or a paragraph that names a "
+             "flow, whose faults --strict counts."]
+    lines += _listed("FLOWS WHOSE ARITHMETIC DOES NOT HOLD, under a name for a flow (counted by "
+                     "--strict):", report.flows_broken, show)  # fmt: skip
     if report.flow_notes:
         lines.append("Notes on flows (not counted by --strict):")
         by_paper: dict[Path, list] = {}

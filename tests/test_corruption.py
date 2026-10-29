@@ -1637,12 +1637,13 @@ def test_a_flow_printed_as_a_list_that_does_not_add_up_fails_an_audit(tmp_path: 
     flow = ("- Assessed for eligibility (n = 412)\n  - Excluded (n = 112)\n"
             "- Randomised (n = 300)\n  - Drug (n = 151)\n  - Placebo (n = 149)\n")
     paper = tmp_path / "paper.md"
-    paper.write_text(f"# Results\n\n{flow}", encoding="utf-8")
+    paper.write_text(f"# Participant flow\n\n{flow}", encoding="utf-8")
     assert main(["audit", str(paper), "--strict"]) == 0
-    paper.write_text(f"# Results\n\n{flow.replace('149', '148')}", encoding="utf-8")
+    paper.write_text(f"# Participant flow\n\n{flow.replace('149', '148')}", encoding="utf-8")
     assert main(["audit", str(paper), "--strict"]) == 1
     backslash = chr(92)
-    latex = ("!documentclass{article}\n!begin{document}\n!begin{itemize}\n"
+    latex = ("!documentclass{article}\n!begin{document}\n!section{Flow of participants}\n"
+             "!begin{itemize}\n"
              "!item Screened (n = 90)\n!begin{itemize}\n!item Excluded (n = 10)\n"
              "!end{itemize}\n!item Enrolled (n = 80)\n!end{itemize}\n!end{document}\n")
     tex = tmp_path / "paper.tex"
@@ -1651,6 +1652,23 @@ def test_a_flow_printed_as_a_list_that_does_not_add_up_fails_an_audit(tmp_path: 
     tex.write_text(latex.replace("!", backslash).replace("(n = 80)", "(n = 81)"),
                    encoding="utf-8")  # fmt: skip
     assert main(["audit", str(tex), "--strict"]) == 1
+
+
+def test_a_list_of_subgroups_is_a_note_and_counts_only_under_a_name_for_a_flow(
+    tmp_path: Path,
+) -> None:
+    """Basile, 2026-10-29: a nested list of subgroups has a flow's shape, so it is read as
+    one; its faults are notes unless a heading over it, or the caption or paragraph before
+    it, names a flow, and then --strict counts them."""
+    from manuscript_guard.cli import main
+
+    subgroups = ("- Men (n = 200)\n  - Smokers (n = 50)\n"
+                 "- Women (n = 180)\n  - Smokers (n = 40)\n")
+    paper = tmp_path / "paper.md"
+    paper.write_text(f"# Results by sex\n\n{subgroups}", encoding="utf-8")
+    assert main(["audit", str(paper), "--strict"]) == 0
+    paper.write_text(f"# Participant flow\n\n{subgroups}", encoding="utf-8")
+    assert main(["audit", str(paper), "--strict"]) == 1
 
 
 def test_an_abstract_interval_that_differs_from_the_results_fails_an_audit(

@@ -188,7 +188,7 @@ WORD_FLOW = [("Assessed (n = 412)", "L0"), ("Excluded (n = 112)", "S"),
 def test_a_word_flow_is_read_from_its_list_levels(tmp_path: Path) -> None:
     """A level from the paragraph's own numbering or its style's; a heading's line is no
     item, and ends the list; each heading keeps its level."""
-    path = word(tmp_path / "p.docx", [("Results", "H1"), *WORD_FLOW, ("Arms", "H2"),
+    path = word(tmp_path / "p.docx", [("Participant flow", "H1"), *WORD_FLOW, ("Arms", "H2"),
                                       ("Other (n = 3)", "L0")])  # fmt: skip
     document = read_docx_text(path)
     # The body opens with a line of its own, before the first paragraph's.
@@ -321,8 +321,64 @@ def test_strict_counts_a_broken_flow_and_a_conflict_and_not_a_number_not_found(
     assert said["counts"]["abstract_not_found"] == 1
     assert said["counts"]["abstract_matched_as_rounding"] == 1
     assert said["abstract_compared"] and said["what_an_abstract_match_is_worth"]
-    (tmp_path / "f.md").write_text(clean + "\n" + FLOW.replace("149", "148"), encoding="utf-8")
+    flow = "\n## Participant flow\n\n" + FLOW.replace("149", "148")
+    (tmp_path / "f.md").write_text(clean + flow, encoding="utf-8")
     assert main(["audit", str(tmp_path / "f.md"), "--strict"]) == 1
     out = capsys.readouterr().out
-    assert "FLOWS WHOSE ARITHMETIC DOES NOT HOLD (counted by --strict)" in out
+    assert "FLOWS WHOSE ARITHMETIC DOES NOT HOLD, under a name for a flow" in out
     assert "=== Abstract against Results ===" in out
+
+
+# ----------------------------------------------------------------- what names a flow
+
+SUBGROUPS = "- Men (n = 200)\n  - Smokers (n = 50)\n- Women (n = 180)\n  - Smokers (n = 40)\n"
+
+
+@pytest.mark.parametrize(
+    ("before", "named"),
+    [
+        ("## Participant flow\n\nAs follows.\n\n", True),
+        ("## Results\n\nFigure 1: flow of participants.\n\n", True),
+        ("## Results\n\nThe selection of the study population.\n\n", True),
+        ("## Subgroups\n\nAs follows.\n\n", False),
+        ("## CONSORT\n\n## Subgroups\n\n", False),
+    ],
+)
+def test_a_flow_counts_where_its_heading_or_the_paragraph_before_it_names_one(
+    before: str, named: bool
+) -> None:
+    """Basile, 2026-10-29: a broken flow counts under a heading, or after a caption or a
+    paragraph, that names a flow; the nearest heading above is the one read."""
+    [flow] = _flows(before + SUBGROUPS)
+    assert flow.problems and flow.named is named
+
+
+def test_a_subgroup_list_is_a_note_and_the_same_list_named_a_flow_fails(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    paper = tmp_path / "p.md"
+    paper.write_text("# Results\n\n" + SUBGROUPS, encoding="utf-8")
+    report = audit([paper], None)
+    assert report.flows_broken == [] and report.flows_named == 0
+    assert report.flow_notes[0].message.endswith("names a flow, so it is not counted")
+    assert main(["audit", str(paper), "--strict"]) == 0
+    paper.write_text("# Participant flow\n\n" + SUBGROUPS, encoding="utf-8")
+    assert main(["audit", str(paper), "--strict"]) == 1
+    capsys.readouterr()
+
+
+def test_a_latex_and_a_word_list_are_named_by_their_heading_or_caption(tmp_path: Path) -> None:
+    source = read_tree({"paper.tex": tex(
+        "!documentclass{article}\n!begin{document}\n!section{Participant flow}\n\nText.\n\n"
+        "!begin{itemize}\n!item A (n = 9)\n!begin{itemize}\n!item B (n = 1)\n!end{itemize}\n"
+        "!item C (n = 7)\n!end{itemize}\n!section{Subgroups}\n!begin{itemize}\n!item A (n = 9)"
+        "\n!begin{itemize}\n!item B (n = 1)\n!end{itemize}\n!item C (n = 7)\n!end{itemize}\n"
+        "!end{document}\n")}, "paper.tex").sources[0]
+    from manuscript_guard.text.latex.views import bindings, markdown_view
+
+    hidden = markdown_view(source, bindings(source)[0], blank="\x00")
+    assert [f.named for f in flows_in(latex_lists(source, hidden))] == [True, False]
+    paragraphs = [("Results", "H1"), ("Figure 2. CONSORT diagram", ""), *WORD_FLOW,
+                  ("Results by sex", "H1"), *WORD_FLOW]
+    report = audit([word(tmp_path / "p.docx", paragraphs)], None)
+    assert (report.flows_read, report.flows_named, len(report.flows_broken)) == (2, 1, 1)

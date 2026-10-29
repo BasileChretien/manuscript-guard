@@ -4408,7 +4408,7 @@ def _note_kind(said: str) -> str:
 
 
 def _flows_found(flows: list, where: str) -> list[dict[str, Any]]:
-    return [{where: flow.line, "read": flow.read,
+    return [{where: flow.line, "read": flow.read, "named": flow.named,
              "problems": sorted(_problem_kind(said) for said in flow.problems),
              "notes": sorted(_note_kind(said) for said in flow.notes)} for flow in flows]
 
@@ -4422,7 +4422,8 @@ def test_a_flow_printed_as_a_list_is_held_to_its_arithmetic(
     over what they total are read as overlapping and noted, and a single one over its step is
     said; a list with an item of no count or two is noted and not read; an item under an arm
     is noted; a list of one level or one stage, and prose, are no flow. A commented `\\item`
-    is not read."""
+    is not read. A flow is named where the nearest heading over it, or the paragraph before
+    it, names a flow (Basile, 2026-10-29), and a list of subgroups under neither is not."""
     from manuscript_guard.stats.flows import flows_in, latex_lists, markdown_lists
     from manuscript_guard.text.latex.structure import read_tree
     from manuscript_guard.text.latex.views import bindings, markdown_view
@@ -4430,12 +4431,12 @@ def test_a_flow_printed_as_a_list_is_held_to_its_arithmetic(
 
     markdown, latex, expected = drawn
     found = _flows_found(flows_in(markdown_lists(markdown, mask(markdown))), "markdown")
-    assert found == [{key: one[key] for key in ("markdown", "read", "problems", "notes")}
+    assert found == [{key: one[key] for key in ("markdown", "read", "named", "problems", "notes")}
                      for one in expected], markdown  # fmt: skip
     source = read_tree({"main.tex": latex}, "main.tex").sources[0]
     hidden = markdown_view(source, bindings(source)[0], blank="\x00")
     found = _flows_found(flows_in(latex_lists(source, hidden)), "latex")
-    assert found == [{key: one[key] for key in ("latex", "read", "problems", "notes")}
+    assert found == [{key: one[key] for key in ("latex", "read", "named", "problems", "notes")}
                      for one in expected], latex  # fmt: skip
 
 
@@ -4478,6 +4479,24 @@ def _a_commented_item_is_read(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.stats import flows
 
     patch.setattr(flows, "command_read", lambda source: lambda at: True)
+
+
+def _every_list_is_named_a_flow(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import flows
+
+    patch.setattr(flows, "names_a_flow", lambda text: True)
+
+
+def _the_heading_over_a_list_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import flows
+
+    patch.setattr(flows.Listed, "named", property(lambda self: flows.names_a_flow(self.before)))
+
+
+def _the_paragraph_before_a_list_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import flows
+
+    patch.setattr(flows.Listed, "named", property(lambda self: flows.names_a_flow(self.heading)))
 
 
 def _a_nested_item_is_read_at_the_top(patch: pytest.MonkeyPatch) -> None:
@@ -14804,6 +14823,18 @@ BROKEN = {
     ),
     "a commented item of a LaTeX list is read": (
         _a_commented_item_is_read,
+        test_a_flow_printed_as_a_list_is_held_to_its_arithmetic,
+    ),
+    "every list of a flow's shape is named a flow": (
+        _every_list_is_named_a_flow,
+        test_a_flow_printed_as_a_list_is_held_to_its_arithmetic,
+    ),
+    "the heading over a list is not read for a flow's name": (
+        _the_heading_over_a_list_is_not_read,
+        test_a_flow_printed_as_a_list_is_held_to_its_arithmetic,
+    ),
+    "the paragraph before a list is not read for a flow's name": (
+        _the_paragraph_before_a_list_is_not_read,
         test_a_flow_printed_as_a_list_is_held_to_its_arithmetic,
     ),
     "a nested item is read at the top of its list": (

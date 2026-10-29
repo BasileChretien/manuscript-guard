@@ -184,6 +184,8 @@ class AuditReport:
     #: not hold, which --strict counts; and what was allowed for or passed over in one, or
     #: found and not read, which it does not.
     flows_read: int = 0
+    #: Of them, those under a heading, or after a caption or a paragraph, that names a flow.
+    flows_named: int = 0
     flows_broken: list[Disagreement] = field(default_factory=list)
     flow_notes: list[Disagreement] = field(default_factory=list)
     #: The Abstract against what the paper reports (`auditing.abstract.AbstractRead`).
@@ -1052,13 +1054,25 @@ def _piece(source: _Source, atoms: list[Atom]):
 
 def _flows(report: AuditReport, source: _Source) -> None:
     """Each list of one source read as a flow and held to its arithmetic (`stats/flows.py`),
-    and a note where its text boxes give the counts a flow drawn in boxes would."""
+    and a note where its text boxes give the counts a flow drawn in boxes would. A broken
+    flow is counted where a heading over it, or the caption or paragraph before it, names a
+    flow; under none it is a note, since a list of subgroups has the same shape (Basile,
+    2026-10-29)."""
     from manuscript_guard.stats.flows import flows_in
 
     for flow in flows_in(list(source.lists)):
         report.flows_read += flow.read
-        report.flows_broken += [Disagreement(source.path, flow.line, problem, flow.context)
-                                for problem in flow.problems]  # fmt: skip
+        report.flows_named += flow.read and flow.named
+        if flow.named:
+            report.flows_broken += [Disagreement(source.path, flow.line, problem, flow.context)
+                                    for problem in flow.problems]  # fmt: skip
+        else:
+            report.flow_notes += [
+                Disagreement(source.path, flow.line, f"{problem}; no heading over the list, "
+                             "nor the caption or paragraph before it, names a flow, so it is "
+                             "not counted", flow.context)
+                for problem in flow.problems
+            ]  # fmt: skip
         report.flow_notes += [Disagreement(source.path, flow.line, note, flow.context)
                               for note in flow.notes]  # fmt: skip
     if source.boxed >= 2:

@@ -86,7 +86,8 @@ such as a matplotlib SVG with its labels drawn as outlines, is listed as unreada
 than audited. `--strict` exits 1 when a number is in no output, a paper, a figure or a
 stretch of one could not be read, no number was read, the arithmetic of a table or a flow is
 exactly wrong (a total off, categories over their column's n, a count held back that a
-printed total gives away, a flow printed as a nested list that does not add up), or an
+printed total gives away, a flow printed as a nested list that does not add up under a
+heading, caption or paragraph naming a flow, in English), or an
 interval or a test of the Abstract differs from its one counterpart where the paper reports
 in a single number, and the audit exits 2 when nothing given could be read at all,
 `--minimum-cell-count` is below 1, or `--dry-run` or `--lookup-cache` is given without
@@ -117,7 +118,8 @@ chance against this backing set, with a verdict. Arithmetic lists the numbers th
 fit the ones beside them, a P and its statistic or an n (%) and its denominator, which
 needs no outputs, and apart a table's total its counts do not add up to and a flow printed
 as a nested list that does not add up, with notes on what it read as overlapping or did not
-read. Abstract against Results lists each conflict, each number of the Abstract found
+read. A broken list under no name for a flow, a list of subgroups say, is a note only; when
+the author's flow sits under such a heading, say so, since `--strict` passed it. Abstract against Results lists each conflict, each number of the Abstract found
 nowhere the paper reports, which may be a stale value or one the Results never give, and
 those matched only as a rounding, and ends with its own chance-match rate; where it says
 "not compared" the paper has no Abstract or no Results heading it could find. Small cells lists

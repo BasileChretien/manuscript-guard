@@ -7856,9 +7856,20 @@ least, and it is held to the same arithmetic, `emit.flow_problem`. Where a step'
 or an exclusion's reasons, add up to more than they total, they are read as overlapping
 (`overlapping` for that step) and a note says so; one of them larger than the step is still
 said. A list where an item gives no count or two is noted and not read; items under a reason
-or under an arm are noted and not read. A broken flow is `flow-broken` in the Arithmetic
-section, and `--strict` counts it. In a Word document, text boxes that give two counts or
-more are noted: a flow drawn in boxes is not read.
+or under an arm are noted and not read. In a Word document, text boxes that give two counts
+or more are noted: a flow drawn in boxes is not read.
+
+A list of subgroups under their groups, men over smokers and women over smokers, has a
+flow's shape, and its counts break a flow's arithmetic. So a broken flow is `flow-broken` in
+the Arithmetic section, counted by `--strict`, only where it stands under a name for a flow
+(Basile, 2026-10-29): the title of the nearest heading above the list in its file, or the
+caption or paragraph directly before it, holds one of `stats.flows.FLOW_NAMES`, flow, flow
+chart or diagram, participants, selection, CONSORT, PRISMA, STROBE, study population,
+enrolment, recruitment, in any case. Any other list of that shape is read the same way, and
+what is wrong with it is a note, never counted. The heading is the one pandoc prints in
+Markdown, the heading command of the `.tex` file in LaTeX, and the heading style in Word;
+the paragraph before is the one ending directly before the list, past blank lines, and in
+Word the paragraph before it.
 
 The Abstract against Results section (`auditing/abstract.py`) places each line as G8 does,
 through `gates.reported.Walk.placing`, which G8's `read` now goes through too: a Markdown
@@ -18233,8 +18244,14 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - A list in which some items give a count and others none, or two, is noted and not
     read.
   - Any nested list of counts in that shape is read as a flow, a list of subgroups too: men
-    over smokers and women over smokers reads as two stages and an exclusion, and is said to
-    be broken.
+    over smokers and women over smokers reads as two stages and an exclusion. Its faults are
+    counted only under a name for a flow (Basile, 2026-10-29), so a list of subgroups under
+    a heading that names a flow, "Participants" say, is said to be broken and fails
+    `--strict`.
+  - The names for a flow are English only (`FLOW_NAMES`): a flow under "Diagrama de flujo"
+    or "Teilnehmerfluss" is only a note, and so is a flow under a heading that names nothing,
+    "Results", with no caption or paragraph naming it either. A broken flow there passes
+    `--strict`.
 
 - **The Abstract is held to the Results by weak membership** (Task 3, PR 3,
   `auditing/abstract.py`).

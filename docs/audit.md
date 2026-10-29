@@ -34,7 +34,7 @@ The report comes in sections, after what was read and what was not:
 | Section | What it holds | Counted by `--strict` |
 |---|---|---|
 | Membership | each number against the outputs, and what a match is worth there | a number in no output |
-| Arithmetic | a table's totals and the counts they total, a characteristic's categories and their column's n, a flow printed as a nested list; a P and its statistic, an estimate and its interval, an n (%) and its denominator, a mean of whole numbers and its n | a total off, categories over their n, a flow that does not add up |
+| Arithmetic | a table's totals and the counts they total, a characteristic's categories and their column's n, a flow printed as a nested list; a P and its statistic, an estimate and its interval, an n (%) and its denominator, a mean of whole numbers and its n | a total off, categories over their n, a flow that does not add up under a heading or caption naming a flow |
 | Abstract against Results | each number of the Abstract looked for where the paper reports, and each of its intervals and tests held to its one counterpart there, ending with what a match is worth | an interval or a test that differs from its counterpart |
 | Small cells recoverable by subtraction | each count held back ("<5") that a total beside it gives away, with the count it can only be | one a printed total gives away |
 | Writing (G6) and Language (G14) | what `check` says of the words, on a project made for the paper | no |
@@ -194,7 +194,13 @@ The items at the top are the stages, the items under a stage the exclusions of t
 the next, the items under an exclusion the reasons it totals, and the items under the last
 stage the arms. Each stage less its exclusions is the next stage, the reasons add up to
 their exclusion, and the arms to the last stage; a flow that does not is listed,
-`flow-broken`, and `--strict` counts it. Exclusions or reasons that add up to more than they
+`flow-broken`. `--strict` counts it only where the list stands under a name for a flow: the
+nearest heading above it, or the caption or paragraph directly before it, says flow,
+participants, selection, CONSORT, PRISMA, STROBE, study population, enrolment or recruitment,
+in any case (the author, 2026-10-29). Under anything else, "Results" or "Subgroups", a list
+of the same shape is read the same way and its faults are notes, since a list of subgroups
+under their groups has a flow's shape. The names are English only, so give a flow under
+another heading a caption that names it. Exclusions or reasons that add up to more than they
 total are read as overlapping, one record excluded for several reasons, with a note; one of
 them larger than the step is still listed. A list in which an item gives no count or two
 is noted and not read, and so are items under a reason or an arm. Markdown lists, LaTeX

@@ -201,11 +201,10 @@ def _words(read: str, start: int, end: int) -> tuple[Word, ...]:
     return tuple(found)
 
 
-def sentences(text: str) -> list[Sentence]:
-    """The sentences of a manuscript file that hold a word, in order."""
-    text = text.replace("\r\n", "\n").replace("\r", "\n")
-    read = _readable(text)
-    breaks = [found.start() for found in re.finditer("\n", text)]
+def _pieces(text: str, read: str) -> list[tuple[int, int, int]]:
+    """Where each sentence of `text` stands, as `read` cuts it: its start, the offset of its
+    first character that is no space, and its end; a piece with no letter in `read` is none.
+    `text` has its line ends made line feeds."""
     cuts = {0, len(read)}
     cuts.update(found.end() for found in _STOP.finditer(read))
     cuts.update(found.start() + 1 for found in _BLOCK.finditer(read))
@@ -219,15 +218,31 @@ def sentences(text: str) -> list[Sentence]:
         piece = read[start:end]
         if _LETTER.search(piece) is None:
             continue
-        first = start + len(piece) - len(piece.lstrip(" \t\n\x00"))
-        found.append(
-            Sentence(
-                _SPACES.sub(" ", piece).strip(),
-                bisect_left(breaks, first) + 1,
-                _words(read, start, end),
-            )
-        )
+        found.append((start, start + len(piece) - len(piece.lstrip(" \t\n\x00")), end))
     return found
+
+
+def sentence_spans(text: str) -> list[tuple[int, int, int]]:
+    """Where each sentence of `text` stands, as `sentences` cuts them: where its piece of the
+    text starts, where its first character that is no space stands, and where it ends, the
+    space after its stop included. `text` has its line ends made line feeds already, so that
+    an offset is one of the caller's."""
+    return _pieces(text, _readable(text))
+
+
+def sentences(text: str) -> list[Sentence]:
+    """The sentences of a manuscript file that hold a word, in order."""
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    read = _readable(text)
+    breaks = [found.start() for found in re.finditer("\n", text)]
+    return [
+        Sentence(
+            _SPACES.sub(" ", read[start:end]).strip(),
+            bisect_left(breaks, first) + 1,
+            _words(read, start, end),
+        )
+        for start, first, end in _pieces(text, read)
+    ]
 
 
 # ------------------------------------------------------------------- lining the texts up
@@ -417,6 +432,20 @@ def _finding(unit: Unit, path: Path | None) -> Finding | None:
         unit[1][0].line,
     )
     return Finding(GATE, code, message, WARN, path, line, hint=_HINT)
+
+
+def compare_pair(source: str, said: str) -> Finding | None:
+    """How strongly `said` claims against `source`, each read whole as one stretch: the
+    finding `moved` would give had an edit made the one the other, or None where its claim
+    is the same. For two texts that are not one edited into the other, a sentence of a
+    communication and the sentence of the paper it restates (`communicate check`): nothing
+    is lined up, since a paraphrase shares no sentence with its source. A source with no
+    word is read as a sentence that states."""
+    was = tuple(sentences(source)) or (Sentence("", 1, ()),)
+    now = tuple(sentences(said))
+    if not now:
+        return None
+    return _finding((was, now), None)
 
 
 def moved(before: str, after: str, path: Path | None = None) -> list[Finding]:

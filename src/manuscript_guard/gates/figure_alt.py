@@ -175,6 +175,15 @@ def check_figure_alt(project: Project, namespace: dict[str, Value], stage: str) 
     )
 
 
+def alt_text_findings(
+    name: str, raw: str, path: Path, classifier: Classifier, namespace: dict[str, Value]
+) -> list[Finding]:
+    """What G3 says of an alternative text written outside a figure's sidecar, in `path`:
+    the graphical abstract's `alt-text.md`, which `communicate check` reads. Each binding
+    that prints no value, and each number G2 would not pass in prose."""
+    return _bindings(name, raw, path, namespace) + _numbers(name, raw, path, classifier, namespace)
+
+
 def _missing(name: str, sidecar: Path, severity: str, required: bool) -> Finding:
     asks = "the journal requires one" if required else "a screen reader reads nothing else"
     return Finding(

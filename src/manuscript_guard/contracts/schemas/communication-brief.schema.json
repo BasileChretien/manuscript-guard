@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "communication brief",
+  "description": "communication/brief.yaml: the paper's own sentences that every communication of it restates, each quoted verbatim from the manuscript or the analysis plan. `manuscript-guard communicate brief` writes it; the author marks which finding is primary.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema"],
+  "properties": {
+    "schema": {"const": "communication-brief/1"},
+    "question": {"$ref": "#/$defs/statements"},
+    "design": {"$ref": "#/$defs/statements"},
+    "population": {"$ref": "#/$defs/statements"},
+    "methods": {"$ref": "#/$defs/statements"},
+    "primary_outcome": {"$ref": "#/$defs/statements"},
+    "findings": {
+      "type": "array",
+      "description": "The findings, each with the results it binds and whether it is the paper's primary finding. The author marks it; nothing infers it.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "text", "from", "primary"],
+        "properties": {
+          "id": {"$ref": "#/$defs/id"},
+          "text": {"$ref": "#/$defs/text"},
+          "from": {"$ref": "#/$defs/from"},
+          "keys": {
+            "type": "array",
+            "uniqueItems": true,
+            "description": "The values the finding binds, as `results.key` or `lit.key`.",
+            "items": {"type": "string", "pattern": "^(results|lit)\\.[a-z][a-z0-9_]*(\\.[a-z0-9_]+)*$"}
+          },
+          "primary": {
+            "type": "boolean",
+            "description": "true for the paper's primary finding, as the author marks it."
+          }
+        }
+      }
+    },
+    "limitations": {"$ref": "#/$defs/statements"},
+    "conclusion": {"$ref": "#/$defs/statements"}
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_-]*(\\.[A-Za-z0-9_-]+)*$",
+      "description": "What an anchor names: `[](#brief:findings.1)`."
+    },
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The statement as a communication may restate it: its source sentence, or shorter. Held to its source as any communication is."
+    },
+    "from": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "quote"],
+      "properties": {
+        "file": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The manuscript file, or design/plan.md, relative to the project's root."
+        },
+        "quote": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The sentence as the file has it, word for word; runs of white space are one space."
+        }
+      }
+    },
+    "statements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "text", "from"],
+        "properties": {
+          "id": {"$ref": "#/$defs/id"},
+          "text": {"$ref": "#/$defs/text"},
+          "from": {"$ref": "#/$defs/from"}
+        }
+      }
+    }
+  }
+}

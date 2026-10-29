@@ -95,6 +95,10 @@ COMMANDS = {
                     argv=("checker", "build", "{project}")),
     "checklist": Zero("the reporting guidelines the paper declares", exits=2,
                       argv=("checklist", "{project}")),
+    # Off unless paper.yaml turns it on, and a project with nothing in it does not: each verb
+    # refuses, saying how to turn it on.
+    "communicate": Zero("the brief, the texts and the graphical abstract under communication/",
+                        exits=2, argv=("communicate", "check", "{project}")),
     "dictionary": Zero("the data dictionary", exits=2,
                        argv=("dictionary", "{project}", "--csv", "{project}/out.csv")),
     "explain": Zero("the numbers of the file it is given",
@@ -254,6 +258,8 @@ LATEX = {
     "check": ("reads", ("check", "{project}")),
     "checker": ("refuses", ("checker", "build", "{project}")),
     "checklist": ("no manuscript", ("checklist", "{project}")),
+    # The brief quotes a LaTeX manuscript's printed view, and its quotes are held to that.
+    "communicate": ("reads", ("communicate", "check", "{project}")),
     "dictionary": ("no manuscript", ("dictionary", "{project}")),
     "explain": ("reads", ("explain", "{tex}")),
     "fetch": ("no manuscript", ("fetch", "STROBE")),

@@ -96,27 +96,50 @@ def check_figure_colours(project: Project) -> Report:
                 findings.append(_unread(name, files[0], vector))
             continue
         checked += 1
-        if len(colours) > MANY:
-            findings.append(_many(name, vector, len(colours)))
-            continue
-        shades = scales([parse(code)[0] for code in colours])
-        if shades:
-            findings.append(_scale(name, vector, len(shades)))
-            continue
         guard = _sidecar(sidecar)
         own = rules.get("supplementary") if supplementary else None
         held = {**rules, **own} if isinstance(own, dict) else rules
         grey = held.get("print") == "greyscale" or guard.get("greyscale") is True
         allowed = _allowed(_declared(sidecar, "allow_colours"))
-        found = confusions([parse(code)[0] for code in colours])
-        for way in (*DEFICIENCIES, GREYSCALE):
-            pairs = [c for c in found if c.seen == way]
-            if not pairs:
-                continue
-            open_ = [c for c in pairs if _reason(c, allowed) is None]
-            severity = WARN if open_ and (way != GREYSCALE or grey) else INFO
-            findings.append(_confused(vector, way, open_ or pairs, allowed, severity, sidecar))
+        findings += _judged(name, vector, colours, grey, allowed, sidecar)
     return Report(tuple(findings)).with_counts(figures_colour_checked=checked)
+
+
+def colour_findings(path: Path, name: str, *, greyscale: bool = False) -> list[Finding] | None:
+    """What G3 says of the colours one vector file paints, outside the manuscript: the
+    graphical abstract `communicate check` reads, which has no sidecar to allow a pair.
+    None where the file is no SVG or PDF that can be read."""
+    colours = painted(path)
+    if colours is None:
+        return None
+    return _judged(name, path, colours, greyscale, {}, None)
+
+
+def _judged(
+    name: str,
+    vector: Path,
+    colours: list[str],
+    grey: bool,
+    allowed: dict[frozenset[str], str],
+    sidecar: Path | None,
+) -> list[Finding]:
+    """The findings of one figure's colours: a scale or too many are not compared, and each
+    way of seeing that confuses two of the rest is one finding."""
+    if len(colours) > MANY:
+        return [_many(name, vector, len(colours))]
+    shades = scales([parse(code)[0] for code in colours])
+    if shades:
+        return [_scale(name, vector, len(shades))]
+    findings = []
+    found = confusions([parse(code)[0] for code in colours])
+    for way in (*DEFICIENCIES, GREYSCALE):
+        pairs = [c for c in found if c.seen == way]
+        if not pairs:
+            continue
+        open_ = [c for c in pairs if _reason(c, allowed) is None]
+        severity = WARN if open_ and (way != GREYSCALE or grey) else INFO
+        findings.append(_confused(vector, way, open_ or pairs, allowed, severity, sidecar))
+    return findings
 
 
 def _allowed(declared: list[tuple[str, str]]) -> dict[frozenset[str], str]:
@@ -149,7 +172,7 @@ def _confused(
     pairs: list[Confusion],
     allowed: dict[frozenset[str], str],
     severity: str,
-    sidecar: Path,
+    sidecar: Path | None,
 ) -> Finding:
     worst = sorted(pairs, key=lambda c: c.after)
     named = "; ".join(
@@ -165,9 +188,10 @@ def _confused(
         hint = (
             "tell the series apart by something besides colour as well (a marker, a line "
             "style, a label on the line), or take colours that stay apart, Okabe and Ito's "
-            f"for one; or give the reason in {sidecar.name} under allow_colours, the pair "
-            "and why"
+            "for one"
         )
+        if sidecar is not None:
+            hint += f"; or give the reason in {sidecar.name} under allow_colours, the pair and why"
     return Finding(
         gate=GATE,
         code="figure-greyscale-confused" if way == GREYSCALE else "figure-colours-confused",

@@ -8503,7 +8503,9 @@ counts: the whole numbers of every other column are written `count: false` and a
 to G2 either. In a counted column, or anywhere without `counts`, a whole number written with
 a point ("3.0", as pandas writes a column with a missing value) and a number held back
 ("<2") are written `count: true`, and G2 holds the display to the minimum, the bound of one
-held back as the emitter's `display="<2"` is (round 1 of #471). An entry's `quoted: false` (`--not-quoted`) makes the table working
+held back as the emitter's `display="<2"` is (round 1 of #471). So is text with a digit,
+read as `deposit` reads a table cell (`count_in_cell`) and refused where no count can be
+read from it, and in a column `counts` names a number with a unit, "2 patients" (round 2). An entry's `quoted: false` (`--not-quoted`) makes the table working
 output, as the emitter's `quoted` does, and G2's `unplaced-table` says so in its hint
 (Basile, 2026-10-29). At the centre,
 `harvest` takes the output in only where it is the one the receipt covers, with the
@@ -18464,6 +18466,15 @@ What papers converted from Word showed (see "What papers converted from Word sho
   that a file with these digests was written, not who wrote it, that the run took place, or
   when (`ran_at` is the site's clock). Signed, it would prove only that the key's holder
   wrote it. It cannot be re-run at the centre, which has no data.
+- **Deposit reads a harvested "<2" as nothing.** It is held to the minimum only where the
+  manuscript binds it (G2) and at the site (the receipt); `deposit` skips it as a value,
+  which has none, and as a table cell, which `count_in_cell` reads as no count.
+- **A header that states a count is only ever a warning.** "Deaths (n=2)" as a column's
+  header gives a count to `recoverable_cells`, which warns; nothing refuses a receipt for
+  the count a header states.
+- **Text with a digit is refused at a site where `counts` names none.** Every column is then
+  a count column, so a confidence interval written in one cell or a date refuses the
+  receipt: name the count columns.
 - **A receipt is never refused for a count given away by subtraction.**
   `recoverable_cells` fails a count held back only where the analysis declares the sum that
   gives it away; a harvested output declares no sum, so its total rows and header counts

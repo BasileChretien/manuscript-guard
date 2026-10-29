@@ -10,9 +10,11 @@ label (its path from the project's root, never where it is on the site's disks) 
 the lockfiles, each output by its digest and size, and the exit code. The output the run
 wrote is put where the entry declares it, to be sent with the receipt.
 
-Before anything is written, the outputs are held to the custodian's rules: a count printed
-below `custodian.minimum_cell_count`, or one held back that its table gives away by
-subtraction, refuses the receipt, since the outputs are what leaves the site.
+Before anything is written, the outputs are held to the custodian's rules, every column of
+them, since the outputs are what leaves the site: a count printed below
+`custodian.minimum_cell_count`, held back behind a bound tighter than it, or in text no count
+can be read from, refuses the receipt. A count held back that a total row or a header gives
+away by subtraction is a warning, printed, as `deposit` says it.
 
 A receipt is unsigned: a declaration by whoever ran it, as an attestation is. It proves that
 a file with these digests was written, not who wrote it or that the run took place.

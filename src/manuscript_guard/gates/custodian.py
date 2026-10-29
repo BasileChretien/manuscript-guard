@@ -65,7 +65,7 @@ def is_count(value) -> bool:
     written "3.0", is one whatever its value, and its display is read (`_small`)."""
     number = value.value
     if value.count is True:
-        return not value.unit and not value.role and not value.label
+        return not value.role and not value.label
     return (
         isinstance(number, int)
         and not isinstance(number, bool)
@@ -132,7 +132,18 @@ def _small(value, minimum: int) -> str | None:
     """What is wrong with how a count's display prints it, or None. A comparator hides the
     count only where every count it allows is one the custodian forbids or nought: "<2" and
     "≤3" under a minimum of 5 still say the count is one, or at most three (round 3 of
-    #275)."""
+    #275).
+
+    A harvested cell said to be a count that is text ("2 (1.5%)", "2/40") is read as
+    `deposit` reads a table cell (`count_in_cell`), and one that names no count it can read
+    ("n=2") is refused: what holds digits in a count column may be one (round 2 of #471)."""
+    if value.count is True and isinstance(value.value, str):
+        from manuscript_guard.deposit.counts import count_in_cell
+
+        stated = count_in_cell(value.display)
+        if stated is None:
+            return "a cell no count can be read from, held to"
+        return "a count below" if 0 < stated < minimum else None
     largest = held_largest(value.display)
     if largest is None:
         return "a count below" if 0 < _printed(value.display) < minimum else None

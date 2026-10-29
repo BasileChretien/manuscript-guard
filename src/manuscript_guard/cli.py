@@ -2389,9 +2389,14 @@ def cmd_harvest(args: argparse.Namespace) -> int:
         return 2
     root = project.root
     try:
-        if args.output is None and (args.script or args.key or args.input):
-            raise HarvestError("no OUTPUT was given: name it first, before --input, --columns "
-                               "or --counts, which take every word after them")  # fmt: skip
+        flags = ("script", "key", "input", "row_key", "columns", "digits", "receipt",
+                 "counts", "restricted", "synthetic", "not_quoted")  # fmt: skip
+        given = [name for name in flags if getattr(args, name) not in (None, False)]
+        if args.output is None and given:
+            raise HarvestError(
+                f"--{given[0].replace('_', '-')} describes an entry to add, and no OUTPUT was "
+                "given: name it first, before --input, --columns or --counts, which take "
+                "every word after them")  # fmt: skip
         entries = [_added(root, args)] if args.output is not None else load_entries(root)
         if not entries:
             raise HarvestError("harvest.yaml names no output to harvest: add one with "

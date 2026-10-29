@@ -78,6 +78,7 @@ from generated import (
     collection_plans,
     commented,
     count_cells,
+    counted_tables,
     credited_plans,
     decision_records,
     deposit_statements,
@@ -3055,6 +3056,24 @@ def test_an_output_is_read_alike_in_each_form_and_refused_in_a_form_it_cannot_be
             continue
         found = {key: [one.value, one.display] for key, one in table.values("t").items()}
         assert found == form["read"], form["text"]
+
+
+@holds(60, counted_tables())
+def test_a_cell_is_marked_a_count_or_none_by_its_kind_and_its_column(
+    drawn: list[dict[str, Any]],
+) -> None:
+    """Every kind of cell in a column `counts` names, in one it leaves out, and where it
+    names none: outside, a number with no unit is no count; inside or with none named, one
+    held back, one written "3.0" and text with a digit are counts, and inside, a number with
+    a unit; an integer is left to G2, which reads it as one, and the rest are unmarked."""
+    from manuscript_guard.harvest.config import Entry
+    from manuscript_guard.harvest.read import read_output
+
+    for made in drawn:
+        counts = tuple(made["counts"]) if made["counts"] is not None else None
+        entry = Entry("t", "output.csv", "s.py", row_key="group", counts=counts)
+        table = read_output(made["text"].encode("utf-8"), ".csv", entry)
+        assert table.counted("t", counts) == made["marked"], made["text"]
 
 
 # ------------------------------------------------- the data sources a statement names and says
@@ -12875,6 +12894,22 @@ def _a_json_number_is_shown_as_python_writes_it(patch: pytest.MonkeyPatch) -> No
     patch.setattr(harvest_read, "_Number", lambda text: str(float(text)))
 
 
+def _a_cell_outside_counts_is_left_unmarked(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.harvest import read as harvest_read
+
+    real = harvest_read._counted
+    patch.setattr(harvest_read, "_counted",
+                  lambda found, named: None if named is False else real(found, named))
+
+
+def _text_with_a_digit_is_no_count(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.harvest import read as harvest_read
+
+    real = harvest_read._counted
+    patch.setattr(harvest_read, "_counted", lambda found, named: (
+        None if isinstance(found.value, str) else real(found, named)))  # fmt: skip
+
+
 def _rows_that_make_one_key_are_both_read(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.harvest import read as harvest_read
 
@@ -12895,6 +12930,14 @@ BROKEN = {
     "a JSON number in an output is shown as Python writes it": (
         _a_json_number_is_shown_as_python_writes_it,
         test_an_output_is_read_alike_in_each_form_and_refused_in_a_form_it_cannot_be,
+    ),
+    "a harvested cell outside counts is left unmarked": (
+        _a_cell_outside_counts_is_left_unmarked,
+        test_a_cell_is_marked_a_count_or_none_by_its_kind_and_its_column,
+    ),
+    "harvested text with a digit is no count": (
+        _text_with_a_digit_is_no_count,
+        test_a_cell_is_marked_a_count_or_none_by_its_kind_and_its_column,
     ),
     "two rows of an output that make one key are both read": (
         _rows_that_make_one_key_are_both_read,

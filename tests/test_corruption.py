@@ -504,6 +504,25 @@ def test_a_small_count_held_back_or_written_with_a_point_is_caught(
     assert small_counts(small) == {"count-below-minimum"}
 
 
+def test_a_small_count_written_as_text_refuses_the_receipt(project: Path) -> None:
+    """A count column the site writes as "n (%)" leaves the site with the count in it: "40
+    (12.5%)" passes, and "2 (1.5%)" under a minimum of 5 refuses the receipt."""
+    from manuscript_guard.harvest import Entry, HarvestError, append_entry, make_receipt
+
+    paper = project / "paper.yaml"
+    paper.write_text(paper.read_text(encoding="utf-8")
+                     + "\ncustodian:\n  minimum_cell_count: 5\n", encoding="utf-8")  # fmt: skip
+    script = ("from pathlib import Path\nPath('output').mkdir(exist_ok=True)\n"
+              "Path('output/s.csv').write_text('group,n\\nDrug,\"{} (1.5%)\"\\n')\n")
+    (project / "analysis" / "03_site.py").write_text(script.format(40), encoding="utf-8")
+    append_entry(project, Entry("s", "output/s.csv", "analysis/03_site.py", row_key="group",
+                                counts=("n",), receipt="site-a"))  # fmt: skip
+    make_receipt(load_project(project)[0], "site-a")
+    (project / "analysis" / "03_site.py").write_text(script.format(2), encoding="utf-8")
+    with pytest.raises(HarvestError, match=r"s\.drug\.n is 2 \(1\.5%\), a count below"):
+        make_receipt(load_project(project)[0], "site-a")
+
+
 def test_touching_a_script_without_changing_it_is_not_a_change(project: Path) -> None:
     """Re-running a formatter or checking the file out again is not an edit."""
     script = project / "analysis" / "01_disproportionality.py"

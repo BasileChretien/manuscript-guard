@@ -58,24 +58,26 @@ class Harvest:
     rows: tuple[tuple[str, tuple[Cell | None, ...]], ...]
 
     def counted(self, key: str, counts: tuple[str, ...] | None) -> dict[str, bool]:
-        """What each cell that could be a count is, by key: False outside the columns
-        `counts` names, which are no counts; True for a count G2 would not read as one from
-        its value, a number held back ("<2", its bound read as the emitter's `display="<2"`
-        is) or a whole number written with a point ("3.0", as pandas writes a column with a
-        missing value), in a column `counts` names or anywhere where it names none. A cell
-        with a unit, a label or text is never a count, and an integer is one as G2 reads it."""
+        """What each cell that could be a count is, by key (`count` in the results file).
+
+        False outside the columns `counts` names, for a number with no unit: no count. True,
+        in a column `counts` names or anywhere where it names none, for a count G2 would not
+        read as one from its value: a number held back ("<2", its bound read as the
+        emitter's `display="<2"` is), a whole number written with a point ("3.0", as pandas
+        writes a column with a missing value), and text with a digit ("2 (1.5%)", "n=2"),
+        held to `deposit`'s `count_in_cell` or refused where that reads none (round 2 of
+        #471); and in a column `counts` names, a number with a unit ("2 patients"). Nothing
+        for a label, a cell with no digit, an integer with no unit, which G2 reads as a count
+        already, a number that is not whole, or, where `counts` names none, a number with a
+        unit, as G2 reads an emitted one."""
         marks: dict[str, bool] = {}
         for row, cells in self.rows:
             for header, part, found in zip(self.columns, self.slugs, cells, strict=True):
-                if found is None or found.label or found.unit or isinstance(found.value, str):
+                if found is None or found.label:
                     continue
-                whole = found.value is None or (
-                    isinstance(found.value, float) and found.value.is_integer())
-                if counts is not None and header not in counts:
-                    if whole or isinstance(found.value, int):
-                        marks[f"{key}.{row}.{part}"] = False
-                elif whole:
-                    marks[f"{key}.{row}.{part}"] = True
+                mark = _counted(found, None if counts is None else header in counts)
+                if mark is not None:
+                    marks[f"{key}.{row}.{part}"] = mark
         return marks
 
     def values(self, key: str) -> dict[str, Cell]:
@@ -86,6 +88,22 @@ class Harvest:
             for column, cell in zip(self.slugs, cells, strict=True)
             if cell is not None
         }
+
+
+def _counted(found: Cell, named: bool | None) -> bool | None:
+    """What `Harvest.counted` marks one cell: `named` is whether `counts` names its column,
+    None where it names none."""
+    value = found.value
+    if isinstance(value, str):
+        digits = any(character.isdigit() for character in found.display)
+        return True if digits and named is not False else None
+    whole = value is None or isinstance(value, int) or (
+        isinstance(value, float) and value.is_integer())  # fmt: skip
+    if named is False:
+        return False if whole and not found.unit else None
+    if found.unit:
+        return True if whole and named else None
+    return True if whole and not isinstance(value, int) else None
 
 
 def slug(text: str) -> str:
@@ -189,7 +207,10 @@ def cell(text: str | None, digits: int | None, *, label: bool = False) -> Cell |
     if match.group("compare"):
         return Cell(None, shown, unit)
     number, exponent = _number_of(match)
-    value: int | float = int(number) if "." not in number and not exponent else float(number)
+    try:
+        value: int | float = int(number) if "." not in number and not exponent else float(number)
+    except ValueError as exc:  # an integer longer than Python converts
+        raise HarvestError(f"{shown[:20]!r}... is too long a number to read") from exc
     if not math.isfinite(value):
         raise HarvestError(f"{shown!r} is no finite number")
     if digits is None:

@@ -635,3 +635,76 @@ def test_an_output_swallowed_by_a_flag_of_several_values_is_said(project: Path, 
                  "analysis/02_est.py", "--key", "est", "--path", str(project)]) == 2  # fmt: skip
     assert "name it first" in capsys.readouterr().err
     assert not (project / "harvest.yaml").exists()
+
+
+# ------------------------------------------------------------------- review round 2 of #471
+
+
+@pytest.mark.parametrize(("cell", "counts", "said"), [
+    ("2 (1.5%)", None, "a count below"), ("2/40", ("n",), "a count below"),
+    ("n=2", ("n",), "a cell no count can be read from"),
+    ("2 patients", ("n",), "a count below"),
+])  # fmt: skip
+def test_a_count_written_as_text_refuses_the_receipt(
+    project: Path, cell: str, counts, said: str
+) -> None:
+    """The review's case: under a minimum of 5, a count column holding "2 (1.5%)" is held
+    to `deposit`'s `count_in_cell`, and one it cannot read is refused."""
+    _minimum(project, 5)
+    _site_output(project, ["group,n", f'A,"{cell}"'], counts=counts)
+    with pytest.raises(HarvestError, match=said):
+        make_receipt(load_project(project)[0], "site-a")
+
+
+def test_a_count_written_as_text_that_is_large_enough_passes(project: Path) -> None:
+    _minimum(project, 5)
+    _site_output(project, ["group,n", 'A,"40 (12.5%)"'], counts=("n",))
+    make_receipt(load_project(project)[0], "site-a")
+
+
+def test_a_bound_count_with_a_unit_in_a_count_column_is_held_by_g2(project: Path) -> None:
+    from manuscript_guard.gates.custodian import check_small_cells
+
+    _minimum(project, 5)
+    _write_script(project)
+    (project / "output").mkdir()
+    (project / "output" / "est.csv").write_bytes(b"group,n\nWomen,2 patients\n")
+    harvest_entry(project, Entry("est", "output/est.csv", "analysis/02_est.py",
+                                 row_key="group", counts=("n",)))  # fmt: skip
+    main_md = project / "manuscript" / "main.md"
+    main_md.write_text(main_md.read_text("utf-8") + "\n\nWe saw {{results.est.women.n}}.\n",
+                       encoding="utf-8")  # fmt: skip
+    project_, _ = load_project(project)
+    found = check_small_cells(project_, load_namespace(project_)[1]).findings
+    assert [f.code for f in found] == ["count-below-minimum"]
+
+
+def test_an_emitted_results_file_of_the_key_leaves_no_entry_behind(project: Path) -> None:
+    _write_script(project)
+    (project / "output").mkdir()
+    (project / "output" / "est.csv").write_bytes(("\n".join(ROWS) + "\n").encode("utf-8"))
+    assert main(["harvest", "output/est.csv", "--script", "analysis/02_est.py", "--key",
+                 "01_disproportionality", "--row-key", "group",
+                 "--path", str(project)]) == 2  # fmt: skip
+    assert not (project / "harvest.yaml").exists()
+
+
+def test_a_flag_that_describes_an_entry_with_no_output_is_refused(project: Path, capsys) -> None:
+    harvest_entry(project, _harvested(project))
+    assert main(["harvest", "--counts", "n", "output/est.csv", "--path", str(project)]) == 2
+    assert "--counts describes an entry to add" in capsys.readouterr().err
+
+
+def test_an_integer_too_long_to_read_is_refused() -> None:
+    with pytest.raises(HarvestError, match="too long a number"):
+        read_output(b"n\n" + b"9" * 5000 + b"\n", ".csv", Entry("t", "o.csv", "s.py"))
+
+
+def test_deposit_counts_only_the_cells_of_count_columns_of_a_harvested_table() -> None:
+    from manuscript_guard.deposit.counts import _cells
+
+    document = {"provenance": {"harvested": {"spec": {"counts": ["n"]}}},
+                "tables": {"t": {"columns": ["group", "n", "df"], "rows": [["A", "3", "2"]]}}}
+    assert _cells(document) == [("table t, row 1, column 2", 3)]
+    del document["provenance"]
+    assert len(_cells(document)) == 2

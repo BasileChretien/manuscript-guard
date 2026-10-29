@@ -7353,6 +7353,41 @@ def harvest_cells(draw: st.DrawFn) -> list[tuple[str, int | None, Any]]:
     return out
 
 
+#: Each kind of cell `Harvest.counted` tells apart: its text, then what it is marked in a
+#: column `counts` names, in one it leaves out, and where it names none (None: unmarked).
+COUNTED_KINDS = (
+    ("integer", "{n}", None, False, None), ("point", "{n}.0", True, False, True),
+    ("held", "<{n}", True, False, True), ("decimal", "{n}.5", None, None, None),
+    ("unit", "{n} patients", True, None, None), ("share", "{n} ({n}.5%)", True, None, True),
+    ("named", "n={n}", True, None, True), ("word", "Women", None, None, None),
+)  # fmt: skip
+
+
+@st.composite
+def counted_tables(draw: st.DrawFn) -> list[dict[str, Any]]:
+    """A one-row output with a column of every kind of cell twice, once named by `counts`
+    and once not, and one with every kind where `counts` names none, the columns in an order
+    drawn, each cell with its own number; with the mark each cell is given, under `t`."""
+    made = []
+    for named in (True, None):
+        columns = [(kind, where) for kind, *_ in COUNTED_KINDS
+                   for where in (("in", "out") if named else ("all",))]  # fmt: skip
+        columns = draw(st.permutations(columns))
+        marks = {kind: row for kind, _text, *row in COUNTED_KINDS}
+        cells, expected = [], {}
+        for kind, where in columns:
+            text = dict((k, t) for k, t, *_ in COUNTED_KINDS)[kind]
+            cells.append(text.format(n=draw(st.integers(1, 99))))
+            mark = marks[kind][{"in": 0, "out": 1, "all": 2}[where]]
+            if mark is not None:
+                expected[f"t.a.{kind}_{where}"] = mark
+        header = ["group", *(f"{kind}_{where}" for kind, where in columns)]
+        text = ",".join(header) + "\n" + ",".join(["A", *(f'"{c}"' for c in cells)]) + "\n"
+        counts = [f"{kind}_in" for kind, *_ in COUNTED_KINDS] if named else None
+        made.append({"text": text, "counts": counts, "marked": expected})
+    return made
+
+
 #: The headers of an output's columns, as written and as the part of a key each makes.
 HARVEST_HEADERS = (("n", "n"), ("Rate (%)", "rate"), ("OR", "or"),
                    ("Lower 95% CI", "lower_95_ci"), ("\N{LATIN CAPITAL LETTER E WITH ACUTE}"
@@ -7517,6 +7552,9 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "count cells": count_cells().map(lambda drawn: [cell for cell, _count in drawn]),
     "harvest cells": harvest_cells().map(
         lambda drawn: [[text, digits] for text, digits, _read in drawn]
+    ),
+    "harvest counted": counted_tables().map(
+        lambda drawn: [{"text": made["text"], "counts": made["counts"]} for made in drawn]
     ),
     "harvest outputs": harvest_tables().map(
         lambda drawn: [{name: form[name] for name in ("suffix", "text", "row_key")}

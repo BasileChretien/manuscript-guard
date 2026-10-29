@@ -22,7 +22,12 @@ from manuscript_guard.harvest.config import (
     append_entry,
     load_entries,
 )
-from manuscript_guard.harvest.fragment import document_of, results_path, write_fragment
+from manuscript_guard.harvest.fragment import (
+    document_of,
+    not_emitted,
+    results_path,
+    write_fragment,
+)
 from manuscript_guard.harvest.receipt import (
     RECEIPTS,
     make_receipt,
@@ -62,6 +67,7 @@ def harvested_document(root: Path, entry: Entry) -> dict:
     if not output.is_file():
         raise HarvestError(f"{entry.output} is not there: run {entry.script}, which writes it, "
                            "and harvest it then")  # fmt: skip
+    not_emitted(root, entry)
     if entry.receipt is None:
         return document_of(root, entry, output)
     inputs, receipt = _from_receipt(root, entry, output)

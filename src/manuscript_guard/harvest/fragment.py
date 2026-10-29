@@ -76,6 +76,18 @@ def document_of(root: Path, entry: Entry, output: Path, *, inputs: list[dict] | 
 def write_fragment(root: Path, entry: Entry, document: dict) -> Path:
     """Write the fragment and its digest; refused over a results file `harvest` did not
     write, which an analysis did."""
+    path = not_emitted(root, entry)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = json.dumps(document, indent=2, ensure_ascii=False)
+    path.write_text(payload + "\n", encoding="utf-8", newline="\n")
+    write_digest(path)
+    synthetic = bool(entry.inputs) and all(given.synthetic for given in entry.inputs)
+    freeze_plan(root, root / entry.script, synthetic=synthetic)
+    return path
+
+
+def not_emitted(root: Path, entry: Entry) -> Path:
+    """The results file of `entry`, refused where it is one an analysis wrote."""
     path = results_path(root, entry)
     if path.exists():
         try:
@@ -85,10 +97,4 @@ def write_fragment(root: Path, entry: Entry, document: dict) -> Path:
         if not (isinstance(held, dict) and (held.get("provenance") or {}).get("harvested")):
             raise HarvestError(f"{path.name} is there already and harvest did not write it; "
                                "give the entry another key")  # fmt: skip
-    path.parent.mkdir(parents=True, exist_ok=True)
-    payload = json.dumps(document, indent=2, ensure_ascii=False)
-    path.write_text(payload + "\n", encoding="utf-8", newline="\n")
-    write_digest(path)
-    synthetic = bool(entry.inputs) and all(given.synthetic for given in entry.inputs)
-    freeze_plan(root, root / entry.script, synthetic=synthetic)
     return path

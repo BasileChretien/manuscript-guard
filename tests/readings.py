@@ -704,6 +704,25 @@ def _harvest_cells() -> Reading:
     return read
 
 
+@reading("harvest counted")
+def _harvest_counted() -> Reading:
+    from manuscript_guard.harvest.config import Entry
+    from manuscript_guard.harvest.read import read_output
+
+    def read(outputs: list[dict[str, Any]]) -> list[Any]:
+        """Which cells of each output are counts, and which are said to be none, by the
+        columns its entry names as `counts`."""
+        said = []
+        for output in outputs:
+            counts = tuple(output["counts"]) if output["counts"] is not None else None
+            entry = Entry("t", "output.csv", "s.py", row_key="group", counts=counts)
+            table = read_output(output["text"].encode("utf-8"), ".csv", entry)
+            said.append(table.counted("t", counts))
+        return said
+
+    return read
+
+
 @reading("harvest outputs")
 def _harvest_outputs() -> Reading:
     from manuscript_guard.harvest.config import Entry, HarvestError

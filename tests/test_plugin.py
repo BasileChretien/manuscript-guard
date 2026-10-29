@@ -898,6 +898,8 @@ NAMED_NOWHERE = {
     "communication/brief.yaml": "written by `communicate brief`",
     "communication/preview.html": "written by `communicate build`",
     "communication/guides/researchgate-steps.md": "written by `communicate build`",
+    "communication/approvals/": "written by `communicate approve`",
+    "communication/published/": "written by `communicate publish --post`",
 }
 
 

@@ -2892,19 +2892,30 @@ def cmd_reworded(args: argparse.Namespace) -> int:
 
 
 def cmd_communicate(args: argparse.Namespace) -> int:
-    """The `communicate` group: `brief`, `graphical-abstract`, `check`, `build` and `status`.
+    """The `communicate` group: `brief`, `graphical-abstract`, `check`, `build`, `status`,
+    `approve`, `publish` and `orcid`.
     Each refuses, and exits 2, while paper.yaml leaves it off (`communication.enabled`)."""
     from manuscript_guard.communicate import Refused, checking, commands
 
     for flag, verbs in (("force", ("brief", "build")), ("template", ("graphical-abstract",)),
                         ("json", ("check",)), ("only", ("check",)), ("channels", ("build",)),
-                        ("prepare", ("status",))):  # fmt: skip
+                        ("prepare", ("status",)), ("as_author", ("approve", "publish")),
+                        ("post", ("publish",)), ("resume", ("publish",)),
+                        ("done", ("publish",)), ("was_posted", ("publish",)),
+                        ("not_posted", ("publish",)), ("abandon", ("publish",))):  # fmt: skip
         if getattr(args, flag) and args.verb not in verbs:
-            print(f"manuscript-guard: --{flag} belongs to `communicate "
-                  f"{' or '.join(verbs)}`", file=sys.stderr)  # fmt: skip
+            named = flag.replace("as_author", "as").replace("_", "-")
+            print(f"manuscript-guard: --{named} belongs to "
+                  f"`communicate {' or '.join(verbs)}`", file=sys.stderr)  # fmt: skip
             return 2
+    channel, args.path, wrong = _communicate_words(args)
+    if wrong:
+        print(f"manuscript-guard: {wrong}", file=sys.stderr)
+        return 2
     project, _ = load_project(args.path)
     try:
+        if args.verb in ("approve", "publish", "orcid"):
+            return _communicate_publish(project, args, channel)
         if args.verb in ("build", "status"):
             return _communicate_build(project, args)
         if args.verb == "brief":
@@ -2930,6 +2941,38 @@ def cmd_communicate(args: argparse.Namespace) -> int:
     else:
         print(checking.render(report, project.root), end="")
     return 0 if report.ok else 1
+
+
+def _communicate_words(args: argparse.Namespace) -> tuple[str | None, Path, str | None]:
+    """The channel and the project's folder the words after the verb name, and what is wrong
+    with them: `approve` and `publish` take the channel, then the folder; the rest the folder."""
+    words = list(args.words)
+    takes_channel = args.verb in ("approve", "publish")
+    channel = words.pop(0) if takes_channel and words else None
+    if takes_channel and channel is None:
+        return None, Path.cwd(), f"`communicate {args.verb}` takes the channel: bluesky-thread"
+    if len(words) > 1:
+        return channel, Path.cwd(), f"`communicate {args.verb}` takes one folder, not {words}"
+    if args.verb == "approve" and not args.as_author:
+        return channel, Path.cwd(), ("`communicate approve` takes --as: the author whose "
+                                     "account posts the text")  # fmt: skip
+    return channel, Path(words[0]) if words else Path.cwd(), None
+
+
+def _communicate_publish(project, args: argparse.Namespace, channel: str | None) -> int:
+    """`communicate approve`, `publish` and `orcid`."""
+    from manuscript_guard.communicate import approval, publish
+
+    if args.verb == "approve":
+        path = approval.approve(project, channel, args.as_author)
+        print(f"wrote {path}: the text as it stands is approved; an edit of it, of a value it "
+              "binds or of a file it attaches makes the approval stale")  # fmt: skip
+        return 0
+    if args.verb == "orcid":
+        return publish.orcid(project)
+    return publish.publish(project, channel, post=args.post, resume=args.resume, done=args.done,
+                           by=args.as_author, was_posted=args.was_posted,
+                           not_posted=args.not_posted, abandon=args.abandon)  # fmt: skip
 
 
 def _communicate_build(project, args: argparse.Namespace) -> int:
@@ -6043,13 +6086,53 @@ def build_parser() -> argparse.ArgumentParser:
         "for what only a person or an agent can write, and preview.html; `status` says what "
         "is due, given the publication's status and its dates; `check` holds the brief to the "
         "manuscript, and each text under communication/ and the graphical abstract to the "
-        "brief, the results, the embargo and the journal's sharing policy. Nothing is sent, "
-        "and `check` never reads communication/.",
+        "brief, the results, the embargo and the journal's sharing policy; `approve` records an "
+        "author's approval of a channel's text; `publish` writes what it would send to "
+        "communication/outbox/, and with --post posts it to Bluesky or Mastodon, once checked, "
+        "approved and past the embargo; `orcid` asks ORCID's public records whether the paper's "
+        "DOI is on them. Nothing else is sent, and `check` never reads communication/.",
     )
     communicate.add_argument(
-        "verb", choices=["brief", "graphical-abstract", "check", "build", "status"]
-    )
-    communicate.add_argument("path", nargs="?", type=Path, default=Path.cwd())
+        "verb", choices=["brief", "graphical-abstract", "check", "build", "status", "approve",
+                         "publish", "orcid"],
+    )  # fmt: skip
+    communicate.add_argument(
+        "words", nargs="*", metavar="[CHANNEL] [PATH]",
+        help="approve, publish: the channel, then the project's folder; the rest: the folder",
+    )  # fmt: skip
+    communicate.add_argument(
+        "--as", dest="as_author", metavar="AUTHOR",
+        help="approve: the author, as authors.yaml names them, whose account posts the text; "
+        "publish researchgate --done: who took the steps",
+    )  # fmt: skip
+    communicate.add_argument(
+        "--post", action="store_true",
+        help="publish: post it, once checked, approved and past the embargo, with the "
+        "credentials in the environment; the author's to run, never an agent's",
+    )  # fmt: skip
+    communicate.add_argument(
+        "--resume", action="store_true",
+        help="publish --post: post the rest of a thread that stopped part-way",
+    )  # fmt: skip
+    communicate.add_argument(
+        "--done", action="store_true",
+        help="publish researchgate: record that you took the steps",
+    )  # fmt: skip
+    communicate.add_argument(
+        "--was-posted", metavar="LINK_OR_ID",
+        help="publish --post --resume, Mastodon: the post whose answer was lost is on the "
+        "account's page, at this link or id; it is recorded, and the rest is posted",
+    )  # fmt: skip
+    communicate.add_argument(
+        "--not-posted", action="store_true",
+        help="publish --post --resume, Mastodon: the post whose answer was lost is not on the "
+        "account's page; it is sent again, under a new key",
+    )  # fmt: skip
+    communicate.add_argument(
+        "--abandon", action="store_true",
+        help="publish: record that a thread stopped part-way is left as it is, so that a new "
+        "one may begin; the author's to run",
+    )  # fmt: skip
     communicate.add_argument(
         "--force", action="store_true",
         help="brief, build: write it again over the one there is, and what was written "

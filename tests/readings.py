@@ -637,6 +637,21 @@ def _communicate_embargo() -> Reading:
     return lifts
 
 
+@reading("communicate facets")
+def _communicate_facets() -> Reading:
+    """Each link of a post Bluesky would mark, as the bytes its facet names read and the
+    link it names (`communicate/adapters/bluesky.py`)."""
+    from manuscript_guard.communicate.adapters.bluesky import facets
+
+    def marked(given: dict[str, Any]) -> list[list[str]]:
+        data = given["text"].encode("utf-8")
+        return [[data[one["index"]["byteStart"] : one["index"]["byteEnd"]].decode(
+                    "utf-8", errors="replace"), one["features"][0]["uri"]]
+                for one in facets(given["text"])]  # fmt: skip
+
+    return marked
+
+
 @reading("communicate claims")
 def _communicate_claims() -> Reading:
     """How strongly each said text claims against its source, read whole

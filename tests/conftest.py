@@ -59,6 +59,15 @@ _FOR_THIS_RUN = Path(tempfile.mkdtemp(prefix="manuscript-guard-tests-"))
 atexit.register(shutil.rmtree, _FOR_THIS_RUN, ignore_errors=True)
 os.environ["MANUSCRIPT_GUARD_USER_SKILLS"] = str(_FOR_THIS_RUN / "no-user-skills")
 
+#: `communicate publish --post` and `communicate orcid` send nothing while this is set: a test
+#: that forgot to give its own transport fails rather than posting under somebody's name. A
+#: loopback test gives the transport that sends. And no credential of whoever runs the suite
+#: reaches a test.
+os.environ["MANUSCRIPT_GUARD_NO_NETWORK"] = "1"
+for _credential in ("BLUESKY_HANDLE", "BLUESKY_APP_PASSWORD", "BLUESKY_SERVICE",
+                    "MASTODON_BASE_URL", "MASTODON_TOKEN"):  # fmt: skip
+    os.environ.pop(_credential, None)
+
 
 #: How long one generated test may take before the run is stopped, in seconds. Such a test
 #: takes seconds, and half a minute on a machine busy with other suites. See

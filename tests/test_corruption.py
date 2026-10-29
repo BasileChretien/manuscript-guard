@@ -26057,6 +26057,88 @@ def test_the_papers_doi_typed_one_digit_wrong_is_warned(project: Path) -> None:
     assert _communication_failures(project) == set()
 
 
+def _posting(project: Path, monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """The example communicating, its Bluesky post written, and Bluesky answered from a
+    table in this process: the key of each post it made."""
+    from manuscript_guard.communicate.adapters import bluesky
+    from manuscript_guard.deposit.remote.http import Response
+
+    _communicating(project)
+    (project / "communication" / "bluesky.md").write_text(_POST, encoding="utf-8")
+    made: list[str] = []
+
+    def answer(request, _timeout: float) -> Response:
+        route = request.url.split("/xrpc/")[-1].split("?")[0]
+        if route == "com.atproto.server.createSession":
+            said = {"accessJwt": "access-for-the-table", "did": "did:plc:table"}
+        elif route == "com.atproto.repo.createRecord":
+            made.append(json.loads(request.body)["rkey"])
+            said = {"uri": f"at://did:plc:table/app.bsky.feed.post/{made[-1]}", "cid": "c"}
+        else:
+            return Response(404, {}, b"{}")
+        return Response(200, {}, json.dumps(said).encode())
+
+    monkeypatch.setattr(bluesky, "TRANSPORT", answer)
+    for name, value in (("BLUESKY_HANDLE", "ada.example.invalid"),
+                        ("BLUESKY_APP_PASSWORD", "app-password-for-the-table"),
+                        ("BLUESKY_SERVICE", "https://pds.example.invalid")):  # fmt: skip
+        monkeypatch.setenv(name, value)
+    return made
+
+
+@pytest.mark.parametrize(
+    "corruption", ["none", "the text edited after its approval", "the embargo not lifted",
+                   "a failing check", "the same text posted again",
+                   "the same posts posted again, a comment added"],
+)  # fmt: skip
+def test_a_post_goes_out_only_checked_approved_past_the_embargo_and_once(
+    project: Path, monkeypatch: pytest.MonkeyPatch, corruption: str,
+    capsys: pytest.CaptureFixture[str],
+) -> None:  # fmt: skip
+    """`communicate publish --post` refuses an approval the text no longer matches, an
+    embargo that holds, a check that fails (here the brief's quote, the text unchanged, so
+    that the approval still matches), a text posted already, and the same posts posted
+    already from a file that changed only by a comment, approved again; the clean one goes
+    out."""
+    from manuscript_guard.cli import main
+
+    made = _posting(project, monkeypatch)
+    root = str(project)
+    assert main(["communicate", "approve", "bluesky", root, "--as", "Ada Example"]) == 0
+    post = ["communicate", "publish", "bluesky", root, "--post"]
+    said = {
+        "the text edited after its approval": "the approval is stale",
+        "the embargo not lifted": "embargo holds",
+        "a failing check": "brief-quote-not-in-source",
+        "the same text posted again": "not posted twice",
+        "the same posts posted again, a comment added": "as printed, with the same files",
+    }.get(corruption)  # fmt: skip
+    if corruption == "the text edited after its approval":
+        path = project / "communication" / "bluesky.md"
+        path.write_text(_POST + "Read on.\n", encoding="utf-8")
+    elif corruption == "the embargo not lifted":
+        with (project / "paper.yaml").open("a", encoding="utf-8", newline="\n") as handle:
+            handle.write("publication:\n  embargo_until: 2999-01-01T00:01Z\n")
+    elif corruption == "a failing check":
+        _replace_once(main_md(project), "cannot establish risk", "does not establish risk")
+    elif corruption == "the same text posted again":
+        assert main(post) == 0
+        made.clear()
+    elif corruption == "the same posts posted again, a comment added":
+        assert main(post) == 0
+        made.clear()
+        path = project / "communication" / "bluesky.md"
+        path.write_text(_POST + "<!-- posted the day it came out -->\n", encoding="utf-8")
+        assert main(["communicate", "approve", "bluesky", root, "--as", "Ada Example"]) == 0
+    capsys.readouterr()
+    if said is None:
+        assert main(post) == 0 and len(made) == 1
+        return
+    assert main(post) == 2
+    assert said in capsys.readouterr().err
+    assert made == []
+
+
 def test_an_upload_written_alone_is_held_to_the_sharing_policy(project: Path) -> None:
     """Fix round 1 of Task 5, part 3: `attachments: paper.pdf`, a name and not a list, was
     read as nothing uploaded, and passed a policy that allows the version nowhere."""

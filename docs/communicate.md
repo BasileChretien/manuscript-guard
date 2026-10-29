@@ -16,8 +16,10 @@ communication:
 
 Without that line every `communicate` command refuses and exits 2. `check` never reads
 `communication/`, on or off, so a draft post can never fail the paper. Nothing here sends
-anything or opens a connection, but `lookup --paper`, which asks Crossref about the paper's
-own DOI when it is run, and only then.
+anything or opens a connection but three commands, each only when it is run: `lookup
+--paper`, which asks Crossref about the paper's own DOI; `communicate publish --post`, which
+posts an approved text to Bluesky or Mastodon; and `communicate orcid`, which reads the
+authors' public ORCID records.
 
 ## The brief
 
@@ -310,6 +312,124 @@ publication:
   embargo_until: 2026-12-01T00:01
 ```
 
+## Approving a text
+
+```bash
+manuscript-guard communicate approve <channel> --as <author>
+```
+
+records that an author read the channel's text and approves it as it stands, in
+`communication/approvals/<channel>.yaml`: who (`by`), when (`on`), the digest of the text
+(`text_sha256`), of the files it attaches (`attachments_sha256`), and that `communicate check`
+passed it (`check_clean`). The author is one `authors.yaml` names, by full name, family name,
+ORCID iD or e-mail address: the one whose account posts the text. It refuses while the check
+fails the text, the embargo apart, since a text is approved before the embargo lifts and
+posted after; while a slot is still to write; and, for a Bluesky or Mastodon text, while an
+image it attaches is not a PNG, JPEG, WebP or GIF, or has no alternative text.
+
+The digest of the text is of the file and of each post as printed, each binding its display,
+and of each image's alternative text. So an edit of the text, of a value it binds, of an
+alternative text or of a file it attaches makes the approval stale, and `publish --post`
+refuses it until the author approves the text again. An approval is the author's statement:
+the hooks put an agent's `approve` to the person and refuse an agent's edit of
+`communication/approvals/`.
+
+An image a post carries is named under `attachments`, with its alternative text under `alt`:
+
+```yaml
+---
+channel: bluesky-thread
+attachments: [figure-1.png]
+alt:
+  figure-1.png: A forest plot of the reporting odds ratio of hepatic injury.
+---
+```
+
+## Publishing a text
+
+```bash
+manuscript-guard communicate publish <channel> [--post [--resume [--was-posted <link> | --not-posted]]]
+manuscript-guard communicate publish <channel> --abandon
+```
+
+Without `--post` nothing is sent. It writes the exact bodies of the requests `--post` would
+send to `communication/outbox/<channel>.json`, with what the service answers, and the moment
+each post is sent, in angle brackets, and no credential; writes `preview.html` again; and says
+whether `--post` would go ahead, and if not why.
+
+With `--post`, a Bluesky or Mastodon text is posted when, in this order, the journal's embargo
+has lifted; `communicate check` fails nothing of it (its own findings, the brief's, paper.yaml's,
+and the graphical abstract's where the text attaches it); an author's approval matches the
+text as it stands; and the text was not posted on that channel before. The credentials are
+read from the environment, never from a file:
+
+| Service | Variables |
+|---|---|
+| Bluesky | `BLUESKY_HANDLE` and `BLUESKY_APP_PASSWORD` (an app password, made in the account's settings), and `BLUESKY_SERVICE` for an account on another server than bsky.social |
+| Mastodon | `MASTODON_BASE_URL` (the instance, `https://example.social`) and `MASTODON_TOKEN` |
+
+Where they are not set, it prints each post, what to paste where and each image's alternative
+text, posts nothing and exits 0. A thread is posted post by post, each a reply to the one
+before (on Bluesky, to the thread's first post too), and links are marked as links; the
+images go on the first post. What the service answered, each post's URI or id, its link and
+when, is recorded in `communication/published/<channel>.yaml` as each post goes out. The same
+text is never posted twice on a channel, nor the same posts as printed with the same files
+attached: a comment added to the file and approved again does not post them again. A thread
+that stops part-way, a request refused or unanswered, is recorded as far as it went, and
+posting it again whole is refused: `--post --resume` posts the rest, the first of them
+replying to the last post recorded. While it stands part-way no other text is posted on that
+channel, since an edited thread posted whole would stand beside the first one's posts: put
+the text back as it was approved and resume, or run `publish <channel> --abandon`, which
+records that the stopped thread is left as it is, its posts up, and lets a new one begin.
+The new one must be another text: the same posts as the abandoned thread's, with the same
+files, are refused as posted already, and the text is changed and approved again. The posts
+as printed include the language they are sent with, so the same words under another
+`language` are other posts.
+
+A post sent whose answer was lost is asked for by its key before it is sent again (Bluesky),
+or sent again with the same `Idempotency-Key` (Mastodon), so that it is not posted twice.
+Mastodon keeps a key for an hour. Within fifty minutes of the post's sending, `--resume`
+sends it again with its key; after that it refuses, sends nothing, and says which post may
+have gone out and when. Look at your account's page, then:
+
+- `--post --resume --was-posted <its link or id>`, where it is there: the instance is asked
+  for that post, which must be the account's, not a boost, made between five minutes before
+  the post was sent and an hour after, and reply to the post before it; it is recorded, and
+  the rest is posted. Its words are not compared, since Mastodon answers them as HTML;
+- `--post --resume --not-posted`, where it is not: it is sent again, under a new key.
+
+`--post` is the author's to run, at a terminal: it posts in public under their name. The
+hooks refuse an agent's `communicate publish --post`, as they refuse `deposit --publish`; an
+agent may run `publish` without it, and show the author the outbox and the preview. Only a
+command the hooks read exactly is refused. One they do not is put to the person instead: run
+through a launcher (`uv run`, `pipx run`, `py -m manuscript_guard.cli`), in a subshell
+(`( … --post)`), with a `$(…)` anywhere in it, or with a typographic quote anywhere in it. A
+flag built from a variable is not seen at all.
+
+The other channels:
+
+- **LinkedIn**: the adapter is deferred, since posting takes an app of the author's that
+  LinkedIn reviews. `publish linkedin` prints the text and where to paste it, and posts
+  nothing, with `--post` or without.
+- **ResearchGate**: there is no interface a tool may post through. `publish researchgate`
+  prints the steps, and `publish researchgate --done [--as <author>]` records in
+  `communication/published/researchgate.yaml` that they were taken, with the digest of
+  `researchgate.md`; with no `researchgate.md` it is refused.
+- **A press release, a pitch, a newsletter**: drafts of an e-mail. Nothing sends an e-mail;
+  `publish` refuses them.
+
+## Whether the DOI is on the authors' ORCID records
+
+```bash
+manuscript-guard communicate orcid
+```
+
+asks ORCID's public API, for each author `authors.yaml` gives an ORCID iD, whether
+`publication.doi` is among the works on their record, and says so. It sends the iD and
+nothing else, reads without a key, and writes nothing, here or at ORCID: a work is added on
+the author's own ORCID page. A DOI not found may be on the record and kept private, or shared
+with trusted parties only, so its absence may be the author's setting.
+
 ## What it does not do
 
 A word list cannot read meaning. "Increased" made "decreased" moves no rung of the ladder; a
@@ -319,5 +439,11 @@ change, and are recorded with the page and the day. Only an SVG's text is read; 
 or a PDF's words are not held to their statements. A translation is held to its numbers and
 anchors, not to what its words claim. A link to a copy of the paper elsewhere than its DOI is
 not read as sharing it, and the sharing policy is only as good as the page it was quoted
-from. Nothing posts, sends or reminds: `communicate status` answers when it is asked.
-[DESIGN.md](../DESIGN.md) lists these under Known gaps.
+from. Nothing reminds: `communicate status` answers when it is asked, and nothing posts but
+`publish --post`, run by the author. A post's Markdown is posted as typed, and a mention or a
+hashtag as plain text; Mastodon's limit and its image limits are the instance's; a Mastodon
+post whose answer was lost an hour ago is the author's to look for; LinkedIn's adapter is
+deferred; the hooks read the commands' text, and a shell write or a direct call of the
+library gets past them; and an ORCID
+record without the DOI may hold it privately. [DESIGN.md](../DESIGN.md) lists these under
+Known gaps.

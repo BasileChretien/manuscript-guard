@@ -7274,6 +7274,52 @@ def embargo_times(draw: st.DrawFn) -> tuple[list[str], list[str | None]]:
     return written, expected
 
 
+#: Each way a link stands in a post that Bluesky marks as a facet, at its UTF-8 bytes
+#: (`communicate/adapters/bluesky.py`): first, after letters of more than one byte, before a
+#: stop or a mark, in brackets, and with brackets of its own. Every kind is in every example,
+#: the first first, so that a link after a letter of several bytes is in each.
+POST_LINK_KINDS = (
+    "at the start", "after an accent", "after Japanese", "after an emoji", "before a stop",
+    "before a mark", "in brackets", "with brackets of its own",
+)  # fmt: skip
+_BEFORE_LINK = {
+    "after an accent": ("Résumé:", "café", "naïve", "Zürich"),
+    "after Japanese": ("要旨", "結果は", "論文"),
+    "after an emoji": (chr(0x2615), chr(0x1F9F5), chr(0x1F4C4)),
+}
+_LINK_HOSTS = ("example.org", "doi.org", "osf.io", "zenodo.org")
+
+
+@st.composite
+def post_links(draw: st.DrawFn) -> tuple[str, list[str]]:
+    """A post holding a link of each kind of `POST_LINK_KINDS`, the rest in an order drawn
+    each time, and each link as it is to be marked: without the stop or the mark after it,
+    and with a closing bracket only where it opens one."""
+    kinds = [kind for kind in draw(st.permutations(POST_LINK_KINDS)) if kind != "at the start"]
+    pieces, expected = [], []
+    for kind in ["at the start", *kinds]:
+        steps = draw(st.lists(st.text("abcdefghij0123456789_-", min_size=1, max_size=6),
+                              min_size=1, max_size=3))  # fmt: skip
+        url = f"https://{draw(st.sampled_from(_LINK_HOSTS))}/{'/'.join(steps)}"
+        words = " ".join(draw(st.lists(st.sampled_from(FILLER), max_size=3)))
+        if kind == "at the start":
+            piece = f"{url} {words}"
+        elif kind in _BEFORE_LINK:
+            piece = f"{words} {draw(st.sampled_from(_BEFORE_LINK[kind]))} {url}"
+        elif kind == "before a stop":
+            piece = f"{words} {url}{draw(st.sampled_from(('.', '!', '?')))}"
+        elif kind == "before a mark":
+            piece = f"{words} {url}{draw(st.sampled_from((',', ';', ':', chr(34))))}"
+        elif kind == "in brackets":
+            piece = f"{words} (see {url})"
+        else:
+            url = f"{url}_({draw(st.sampled_from(FILLER))})"
+            piece = f"{words} {url}"
+        pieces.append(piece)
+        expected.append(url)
+    return draw(st.sampled_from((" ", "\n", "\n\n"))).join(pieces), expected
+
+
 #: Each way a text's front matter may write its `language`, and whether the text is held as
 #: English, to the claim ladder and G6: only another language's tag lets it off. Every kind
 #: is in every example (fix round 1 of Task 5, part 3).
@@ -8451,6 +8497,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "communicate built": built_briefs().map(lambda drawn: {"statements": drawn}),
     "communicate titles": title_pairs().map(lambda drawn: {"pairs": drawn[0]}),
     "communicate embargo": embargo_times().map(lambda drawn: {"written": drawn[0]}),
+    "communicate facets": post_links().map(lambda drawn: {"text": drawn[0]}),
     "communicate language": text_languages().map(lambda drawn: {"languages": drawn[0]}),
     "communicate published": st.one_of(
         published_texts().map(lambda drawn: {"text": drawn[0]}),

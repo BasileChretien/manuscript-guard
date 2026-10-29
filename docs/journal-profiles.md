@@ -92,7 +92,9 @@ Each line is a rule of its own, quoted under `quotes.graphical_abstract.<name>`:
 the size (`width_px`, `height_px`, `min_width_px`, `min_height_px`), `aspect_ratio`,
 `min_dpi`, `formats`, `max_file_mb`, `max_words`, `max_labels`, `alt_text_max_chars` and
 `min_text_pt`. Where it is required, G4 notes `graphical-abstract-missing` until
-`communication/graphical-abstract/` exists. Nothing checks the graphical abstract itself yet.
+`communication/graphical-abstract/` exists. `communicate graphical-abstract` draws one at
+this size, and `communicate check` holds it to these rules ([communicating the
+paper](communicate.md)).
 
 ## What may be shared
 

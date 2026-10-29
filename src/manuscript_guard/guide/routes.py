@@ -173,6 +173,10 @@ ROUTES: dict[str, Route] = {
     **_all("submission-pack", None, "package-doi-test-prefix", "deposit-doi-differs"),
     **_all("submission-pack", ("build",), "blind-document-names-author"),
     **_all("submission-pack", None, "approval-", who="author"),
+    # -- what is said of the paper outside it ---------------------------------------------
+    # `communicate check` says these, never `check`: the text, the brief or the graphical
+    # abstract is put right and the check run again.
+    **_all(None, ("communicate", "check"), "comm-", "brief-"),
     # -- what only a named person may do ----------------------------------------------------
     # Last, so that each overrides its prefix: an agent may draft, and only the person the
     # hint names signs, judges, attests, approves or reads. An agent that wrote the name

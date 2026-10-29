@@ -1,0 +1,54 @@
+# What `communicate check` holds a communication text to by the channel its front matter
+# names (`channel: bluesky`).
+#
+# - limit, unit: the most a post may hold, and what is counted. A thread is its posts, each
+#   after a line that is a rule (`---`), each held to the limit.
+# - url_counts_as: where the platform counts every link as so many characters, whatever
+#   its length.
+# - long_form: a text that tells the whole finding, which has to state the primary one
+#   (`comm-primary-missing`).
+# - limitations: a text that has to state a limitation of the study
+#   (`comm-limitation-dropped`): a press release, a plain-language summary, a pitch.
+#
+# A platform's limit is its own to change, and an instance of Mastodon sets its own. Each
+# limit names the page that states it and the day it was read there (`read_on`); one that
+# could not be read there is `verified: false`, with why. paper.yaml's
+# `communication.limits` gives another for one paper (`communication: {limits: {mastodon:
+# 1000}}`). A limit that is wrong is put right here, with the page and the day.
+schema: manuscript-guard/channels/1
+channels:
+  bluesky:
+    limit: 300
+    unit: graphemes
+    source: https://docs.bsky.app/docs/advanced-guides/post-richtext
+    verified: false
+    note: >-
+      not read on its page: on 2026-10-29 docs.bsky.app redirected to bsky.network, which
+      served an empty page; 300 graphemes is the limit as recorded from memory
+  mastodon:
+    limit: 500
+    unit: characters
+    url_counts_as: 23
+    source: https://docs.joinmastodon.org/user/posting/
+    read_on: 2026-10-29
+    verified: true
+    note: the default of Mastodon's own software; an instance may set another
+  linkedin:
+    limit: 3000
+    unit: characters
+    source: https://www.linkedin.com/help/linkedin/answer/a528176
+    read_on: 2026-10-29
+    verified: true
+  press-release:
+    long_form: true
+    limitations: true
+  plain-language-summary:
+    long_form: true
+    limitations: true
+  pitch:
+    long_form: true
+    limitations: true
+  newsletter:
+    long_form: true
+  blog:
+    long_form: true

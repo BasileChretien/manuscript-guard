@@ -192,6 +192,16 @@ def check_figure_files(project: Project, profile: dict, profile_path: Path) -> R
     return Report(tuple(_with(finding, severity) for finding in findings))
 
 
+def check_file(path: Path, rules: dict, profile_path: Path) -> list[Finding]:
+    """One file held to artwork rules in the shape of `figures:`, outside the manuscript:
+    the graphical abstract `communicate check` reads. It has no sidecar, and an SVG or a PDF
+    is read at its own width, where the rules give no width it prints at. Each finding is a
+    warning, as G4's are."""
+    return _format(path.stem, [path], rules, profile_path) + _file(
+        path, rules, {}, False, profile_path
+    )
+
+
 def _latex(manuscript: Path) -> bool:
     from manuscript_guard.text.reader import LATEX, manuscript_format
 

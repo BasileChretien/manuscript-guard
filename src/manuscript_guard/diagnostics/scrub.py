@@ -118,10 +118,11 @@ def _spellings(folder: Path) -> set[str]:
 
 
 #: A name is matched as `authors.yaml` writes it, with either apostrophe, and with no letter
-#: on either side ("Lovelace", not "Lovelaces"). Only so: a name read in another case, folded
-#: as a citation key writes it, or inside an identifier, took the error's own words with it
-#: ("page_size" for the family Page), and each widening missed another form. What a record
-#: keeps of a name in any other form is said under Known gaps.
+#: on either side ("Lovelace", not "Lovelaces"; digits or an underscore may follow, so
+#: "Lovelace2020" is matched). Only so: a name read in another case, or folded as a citation
+#: key writes it, took the error's own words with it ("page_size" for the family Page), and
+#: each widening missed another form. What a record keeps of a name in any other form is
+#: said under Known gaps.
 _NOT_A_LETTER_BEFORE = r"(?<![^\W\d_])"
 _NOT_A_LETTER_AFTER = r"(?![^\W\d_])"
 _APOSTROPHES = ("'", "\N{RIGHT SINGLE QUOTATION MARK}")

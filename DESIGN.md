@@ -19034,9 +19034,10 @@ What papers converted from Word showed (see "What papers converted from Word sho
     spellings Windows, POSIX, Git Bash and `repr()` give them, e-mail addresses, a user and
     password in a link, the value of a variable that holds a credential, and the names and
     ORCIDs `authors.yaml` lists. A name is matched only as the file writes it, with either
-    apostrophe and no letter on either side. A name in any other form stays: in another case
-    (`lovelace`), in a citation key (`lovelace2020`, Better BibTeX's
-    `chretienDisproportionality2020`), transliterated or as initials. Reading names in those
+    apostrophe and no letter on either side; digits or an underscore may follow it, so
+    `Lovelace2020` and `Page_size` are replaced. A name in any other form stays: in another
+    case (`lovelace`, a lowercase citation key such as `lovelace2020`), followed by a letter
+    (Better BibTeX's `chretienDisproportionality2020`), transliterated or as initials. Reading names in those
     forms was tried and given up after three rounds of review: each widening took the error's
     own words with it (`page_size` for the family Page) or missed another form. So do a path
     written another way (an 8.3 short name, a relative path, one broken across lines), a name

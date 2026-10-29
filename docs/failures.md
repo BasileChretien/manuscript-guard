@@ -30,8 +30,9 @@ the names and ORCIDs in `authors.yaml` replaced by labels. Never the contents of
 never the environment. The newest twenty faults are kept.
 
 The replacement is a convenience. A path written another way, a name `authors.yaml` does not
-list, or a line of your manuscript quoted in the error's message stays as it was; read a
-record before you send it to anyone. Its limits are listed under "Known gaps" in
+list, a listed name written in another case (as in a lowercase citation key, `lovelace2020`),
+or a line of your manuscript quoted in the error's message stays as it was; read a record
+before you send it to anyone. Its limits are listed under "Known gaps" in
 [DESIGN.md](../DESIGN.md).
 
 Hooks record their failures too, without a word, since a hook must not stop the agent's tool

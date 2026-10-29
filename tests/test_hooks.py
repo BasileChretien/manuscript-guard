@@ -340,6 +340,9 @@ def test_no_standard_input_at_all_is_an_empty_event(monkeypatch) -> None:
         ("checks/recap.md", "a recap nobody made"),
         # Item 26: the plan as it stood when the first results were written.
         ("design/plan.frozen.yaml", "first results were written"),
+        # What a repository answered, which G4 holds package.doi to, and every action.
+        ("deposit/receipts/zenodo-release.yaml", "a deposit nobody made"),
+        ("deposit/history.yaml", "never rewritten"),
         # The copy of an earlier output's project, which G8 holds to its digests.
         ("literature/related/abstract/results/01_disproportionality.json", "related --take"),
         ("literature/related/abstract/design/plan.md", "related --take"),
@@ -1104,6 +1107,137 @@ def _attested(project: Path) -> Path:
 
 def _writes(cwd: Path, tool: str = "Write", **tool_input: str) -> dict:
     return {"cwd": str(cwd), "tool_name": tool, "tool_input": tool_input}
+
+
+# ---------------------------------------------------------------- what is deposited
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "manuscript-guard deposit --target zenodo --bundle release --publish",
+        "cd paper && mguard deposit --publish --target zenodo --bundle release --yes",
+        "python -m manuscript_guard.cli deposit --target zenodo-sandbox --bundle release \\\n"
+        "  --publish",
+        'manuscript-guard deposit --target zenodo --bundle release "--publish"',
+        # A quoted `&` ends nothing (round 1 of #467): the words are read as the shells read
+        # them.
+        'manuscript-guard deposit --target zenodo --bundle preregistration --retrospective '
+        '"R&D" --publish',
+        "ZENODO_TOKEN=x manuscript-guard deposit --publish --target zenodo --bundle release",
+        r'& "C:\Tools\mguard.exe" deposit --target zenodo --bundle release --publish',
+    ],
+)
+def test_publishing_a_deposit_is_refused_to_an_agent(
+    in_claude_code: Path, command: str, capsys
+) -> None:
+    """A record once published cannot be deleted: the author runs it, at a terminal."""
+    result = run("guard-submission", _shell(in_claude_code, command), capsys)
+    assert decision(result) == "deny"
+    assert "run it yourself" in reason(result)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "manuscript-guard deposit --target zenodo --bundle release --stage",
+        "manuscript-guard deposit --target zenodo --bundle release --reserve-doi --yes",
+        "mguard deposit --target osf --bundle preregistration --stage",
+        # A continuation inside a word, which a shell joins (round 2 of #467).
+        "manuscript-guard deposit --target zenodo --bundle release --sta\\\nge",
+    ],
+)
+def test_staging_or_reserving_a_deposit_is_put_to_the_author(
+    in_claude_code: Path, command: str, capsys
+) -> None:
+    result = run("guard-submission", _shell(in_claude_code, command), capsys)
+    assert decision(result) == "ask"
+    assert "author's decision" in reason(result)
+    payload = _shell(in_claude_code, command, turn_id="turn-1", model="gpt-test")
+    assert decision(run("guard-submission", payload, capsys)) == "deny"
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "manuscript-guard deposit --target zenodo --bundle release",
+        "manuscript-guard deposit --target zenodo --bundle release --dry-run",
+        'git commit -m "manuscript-guard deposit --publish"',
+        'grep -n "deposit --publish" docs/deposit.md',
+    ],
+)
+def test_a_deposit_that_sends_nothing_is_let_through(
+    in_claude_code: Path, command: str, capsys
+) -> None:
+    assert run("guard-submission", _shell(in_claude_code, command), capsys) is None
+
+
+@pytest.mark.parametrize(("turn_id", "decided"), [(None, "ask"), ("t", "deny")])
+def test_a_line_ended_by_a_lone_carriage_return_is_read_as_two(
+    in_claude_code: Path, turn_id: str | None, decided: str, capsys
+) -> None:
+    """Fix-only round of #467 (blocking): a lone carriage return ends a PowerShell line, so
+    the `--stage` of the `deposit` after it is asked, and refused where the tool cannot ask;
+    and an invocation of another subcommand that names `deposit` is not passed over."""
+    command = ("manuscript-guard check --stage submission\rmanuscript-guard deposit --target "
+               "zenodo --bundle release --stage")  # fmt: skip
+    more = {"turn_id": turn_id} if turn_id else {}
+    result = run("guard-submission", _shell(in_claude_code, command, **more), capsys)
+    assert decision(result) == decided, result
+
+
+@pytest.mark.parametrize("turn_id", [None, "t"])
+def test_the_check_a_refusal_names_then_a_dry_run_is_let_through(
+    in_claude_code: Path, turn_id: str | None, capsys
+) -> None:
+    """Round 2 of #467 (blocking): `--stage` belongs to `check` there, the tool running
+    another subcommand, as on main; in Claude Code, and in Codex, which cannot ask."""
+    command = ("manuscript-guard check --stage submission && manuscript-guard deposit "
+               "--target zenodo --bundle release --dry-run")  # fmt: skip
+    more = {"turn_id": turn_id} if turn_id else {}
+    assert run("guard-submission", _shell(in_claude_code, command, **more), capsys) is None
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        'grep -n "manuscript-guard deposit --publish" docs/deposit.md',
+        'echo "manuscript-guard deposit --target zenodo --bundle release --publish" >> notes.md',
+        'gh pr create --body "the author runs manuscript-guard deposit --publish themselves"',
+        "manuscript-guard deposit --target zenodo --bundle release; echo --publish",
+        "manuscript-guard deposit --target zenodo --bundle release --publish $(cat extra)",
+    ],
+)
+def test_a_command_that_only_names_publishing_is_asked_not_refused(
+    in_claude_code: Path, command: str, capsys
+) -> None:
+    """Round 1 of #467: a search of the documentation, an echo or a pull request's body that
+    names the option is put to the person, as the guards of `set` and `checker import` put
+    what they cannot read exactly; only an invocation read exactly is refused."""
+    result = run("guard-submission", _shell(in_claude_code, command), capsys)
+    assert decision(result) == "ask", result
+    assert "does not read exactly" in reason(result)
+
+
+def test_an_edit_of_the_package_doi_is_put_to_the_author(in_claude_code: Path, capsys) -> None:
+    path = in_claude_code / "paper.yaml"
+    text = path.read_text(encoding="utf-8")
+    added = text.replace("package:\n", "package:\n  doi: 10.5281/zenodo.42\n", 1)
+    assert added != text
+    result = run("guard-write", _writes(in_claude_code, file_path=str(path), content=added), capsys)
+    assert decision(result) == "ask"
+    assert "package.doi (not set to 10.5281/zenodo.42)" in reason(result)
+    path.write_text(added, encoding="utf-8")
+    changed = _writes(in_claude_code, "Edit", file_path=str(path), old_string="zenodo.42",
+                      new_string="zenodo.43")  # fmt: skip
+    assert decision(run("guard-write", changed, capsys)) == "ask"
+    # An edit that leaves the DOI as it was asks nothing.
+    other = _writes(in_claude_code, "Edit", file_path=str(path), old_string="package:",
+                    new_string="# the deposit\npackage:")  # fmt: skip
+    assert run("guard-write", other, capsys) is None
+    # Codex cannot ask: refused, with the same reason.
+    payload = {**changed, "turn_id": "turn-1"}
+    assert decision(run("guard-write", payload, capsys)) == "deny"
 
 
 def test_naming_an_attester_is_put_to_the_author(in_claude_code: Path, capsys) -> None:

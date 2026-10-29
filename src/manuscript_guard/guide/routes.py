@@ -161,6 +161,9 @@ ROUTES: dict[str, Route] = {
     # Said by `deposit` itself, which takes a target and a bundle; a custodian signs off.
     **_all("submission-pack", None, "deposit-"),
     **_all("submission-pack", None, "deposit-not-authorised", who="author"),
+    # The DOI is put right in paper.yaml, as the receipt has it: not by writing the package
+    # again, which `package-` would offer.
+    **_all("submission-pack", None, "package-doi-test-prefix", "deposit-doi-differs"),
     **_all("submission-pack", ("build",), "blind-document-names-author"),
     **_all("submission-pack", None, "approval-", who="author"),
     # -- what is said of the paper outside it ---------------------------------------------

@@ -4075,6 +4075,57 @@ def test_a_statement_that_loses_the_deposits_doi_fails_at_submission(project: Pa
     assert [f.code for f in report.failures] == ["package-doi-not-named"]
 
 
+def test_a_sandbox_doi_given_as_the_packages_fails_at_every_stage(project: Path) -> None:
+    """A test DOI resolves for no reader: written into paper.yaml by hand, it fails G4 from
+    the first stage, as `check` runs it."""
+    from manuscript_guard.cli import _run_gates
+
+    _packable(project, doi="10.5281/zenodo.7654321")
+    report, _project, _stage, _deferred = _run_gates(project, stage="design")
+    assert "package-doi-test-prefix" not in codes(report)
+    _packable(project, doi="10.5072/zenodo.7654321")
+    report, _project, _stage, _deferred = _run_gates(project, stage="design")
+    assert "package-doi-test-prefix" in codes(report)
+
+
+def _receipt(root: Path, target: str, bundle: str, doi: str, *, published: bool = True) -> None:
+    from manuscript_guard.deposit.remote import receipts
+
+    made = {"target": target, "bundle": bundle, "host": "https://zenodo.org", "id": 7, "doi": doi,
+            "reserved_on": "2026-10-28T00:00:00Z"}  # fmt: skip
+    if published:
+        made["published_on"] = "2026-10-29T00:00:00Z"
+    receipts.write(load_project(root)[0], made)
+
+
+def test_a_package_doi_that_is_not_the_receipts_warns_then_fails_at_submission(
+    project: Path,
+) -> None:
+    """The repository's answer is the receipt; a DOI typed into paper.yaml that is not it is
+    named. Without a receipt of the release, nothing is said."""
+    from manuscript_guard.gates.data_statement import check_deposit_doi
+
+    def said(submission: bool) -> dict[str, str]:
+        loaded = load_project(project)[0]
+        return {f.code: f.severity for f in check_deposit_doi(loaded, submission=submission)
+                .findings}  # fmt: skip
+
+    _packable(project, doi="10.5281/zenodo.7654320")
+    # The plan's DOI, and a sandbox release's, are no DOI of the package.
+    _receipt(project, "zenodo", "preregistration", "10.5281/zenodo.1111111")
+    _receipt(project, "zenodo-sandbox", "release", "10.5072/zenodo.2222222")
+    assert said(submission=True) == {}
+    _receipt(project, "zenodo", "release", "10.5281/ZENODO.7654320")
+    assert said(submission=True) == {}
+    # A draft reserved and never published holds the paper to nothing (round 1 of #467): the
+    # author may drop it and deposit by hand.
+    _receipt(project, "zenodo", "release", "10.5281/zenodo.7654321", published=False)
+    assert said(submission=True) == {}
+    _receipt(project, "zenodo", "release", "10.5281/zenodo.7654321")
+    assert said(submission=False) == {"deposit-doi-differs": "warn"}
+    assert said(submission=True) == {"deposit-doi-differs": "fail"}
+
+
 # ------------------------------------------------- what the data statement says
 
 
@@ -8163,6 +8214,8 @@ _NOT_THE_MANUSCRIPT = (
     "check_literature_chain", "check_shortlist", "check_design", "check_design_rounds",
     "check_consistency", "check_restricted_inputs", "check_relations", "check_data_sources",
     "check_data_quality",
+    # G4's DOI held to the receipts: it reads paper.yaml and deposit/receipts/.
+    "check_deposit_doi",
     "check_datasets", "check_declared_datasets",
     "check_method_passages", "check_methods_review",
     # It finds the figures placed in the Markdown sources, so it reads nothing of a LaTeX

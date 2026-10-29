@@ -76,11 +76,24 @@ exception off, and where the custodian restricts sending, only they can sign off
 itself (`manuscript-guard sign --as <them> --finding PACKAGE/custodian/...`). Never run
 `sign` for them.
 
-The tool uploads nothing, and neither should you: depositing is the author's act. Tell them
-to reserve the DOI at their repository where it allows that, write it in `paper.yaml` as
-`package.doi`, run `package` again so that the README and CITATION.cff carry it, and upload
-the .zip. `check` then says where neither the Data availability statement nor a Code
-availability statement names that DOI (`package-doi-not-named`), and it fails at submission.
+`package` uploads nothing. Depositing is the author's act, and `manuscript-guard deposit`
+sends only when they ask it to, with their token in the environment (docs/deposit.md):
+`--reserve-doi` makes a Zenodo draft with its DOI reserved and, for a release, writes it
+into `paper.yaml` as `package.doi` once they say yes; `--stage` sends the bundle to that
+draft, or as a private OSF project; `--publish` publishes the draft. The hooks put the
+first two to the author, and refuse `--publish` to you: it asks the author to type the DOI
+at a terminal, and a published record cannot be deleted. Never pass `--yes` for them, and
+never write `package.doi` or a file under `deposit/` yourself: the DOI is the repository's
+answer, recorded in the receipt `deposit` writes. Where they deposit by hand instead, they reserve
+the DOI at their repository, write it as `package.doi`, run `package` again so that the
+README and CITATION.cff carry it, and upload the .zip.
+
+`check` then says where neither the Data availability statement nor a Code availability
+statement names that DOI (`package-doi-not-named`), and it fails at submission; where
+`package.doi` is a test DOI of Zenodo's sandbox, 10.5072, which fails at every stage
+(`package-doi-test-prefix`); and where it is not the DOI the release's receipt records
+(`deposit-doi-differs`), a warning that fails at submission. Put `package.doi` right as the
+receipt has it, with the author.
 
 ## The covering letter
 

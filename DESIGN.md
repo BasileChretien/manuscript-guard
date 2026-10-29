@@ -8072,6 +8072,63 @@ not, and P = 0.03 and P = 0.032 do. Where no file has an Abstract heading, or no
 heading outside it, the section says nothing was compared. `--strict` counts a conflict,
 `abstract-conflict`, and not a number not found (the author, 2026-10-28).
 
+## A paper read by its editor or a referee
+
+A journal sends its editors and referees manuscripts in confidence, and the publishers'
+policies forbid putting one into an AI tool that does not keep it confidential. So the layer
+for them is `audit` with reader options, which runs on the reader's machine with no model and
+sends nothing unless asked (`--lookup` sends the reference list's DOIs and PMIDs), and no
+skill reads the paper: the paper-audit skill tells an agent to stop on a paper the person
+was sent to review or to handle, and to give them the commands (Basile, 2026-10-29, the
+decisions of the editor and referee layer). The audit's report quotes the manuscript, so with
+`--journal` or `--authors` (`auditing.READER_FLAGS`) the audit says on stderr that the report
+is not to reach a model, and the shell guard asks the person before an agent runs it
+(`hooks._reads_in_confidence`, read as the other asks are, in one invocation of the tool; a
+tool that cannot ask refuses it).
+
+**`--journal PROFILE`** is the editor's: the journal's profile, which the editor keeps, held to
+the first paper named, the main document; every other paper is the rest of the submission,
+named and not held to the limits. The paper is staged in a project made for it, as G6 and G14
+are (`auditing.gates._stage`), with the profile copied in as its target journal, and G4 runs
+there with `check_journal(records=False)`: the profile's age, the limits, the abstract found
+and structured, the required sections and statements, and the data statement held to the
+profile's data policy, its DOIs to the paper's own reference list as the audit's census reads
+it (`check_data_statement(cited=...)`), not to a references.bib the paper does not have; and
+the boxes (`check_boxes`, at the submission stage). What reads a project's records is not
+run, and each is named under "Not checked here" (`gates.journal.FROM_RECORDS`, and the
+graphical abstract): the quotes against the stored page, the corresponding author's sign-off
+of the rules no gate checks, the CSL style, the figure files, the LaTeX class, and the
+English paper.yaml declares. The profile's English is passed to G14 as `--english` would be,
+unless `--english` is given, so the paper's spelling is held to the journal's. The rules no
+gate checks are printed as a checklist with their quotes. An invalid profile refuses the
+audit, exit 2, with the schema's errors. On a real project, `check_journal` runs as before:
+`records` and `cited` change nothing where they are not given.
+
+**The Document section** (`auditing.document`) reads each .docx given, when a reader option
+is, from its XML exactly: each `w:ins`, `w:del` and `w:moveTo` that holds text, each comment,
+each run whose own properties hide it, and each name in `dc:creator`, `cp:lastModifiedBy`, a
+`w:author` and `word/people.xml`, with its field. A warning where there is any, and never
+counted: some journals ask for a revision with its changes tracked (decision 8).
+
+**`--authors FILE`** goes with `--journal`, whose profile says whether the review is blind.
+Where it is double or triple, the build's blinding check is run on each document given, the
+supplement as well as the main document, as it was sent (`auditing.journal.look_for_authors`
+through `build.blinding`'s `docx_places`, `latex_places` and `found_in`), on a Markdown
+paper's text, and on a LaTeX paper's tree and the pictures of its folder; each author named is
+counted by
+`--strict`, the one new finding that is (decision 8: an exact fact, where the G4 limits are
+not, since journals count words otherwise). The file is authors.yaml's shape, each author with
+a given and a family name; the full schema of a project's authors.yaml is not asked of it.
+
+Not offered, and why: a reporting checklist on a bare manuscript (G5 reads the authors'
+completion file, and reading a manuscript for an item's presence is a heuristic), the model
+checks (G15 reads model cards), reviewer suggestions (they would send the unpublished paper's
+authors and topic to a registry, and a registry's author disambiguation would make "no
+co-authorship found" a false assurance), and flags of predatory journals (no exact
+authority). Later pull requests of the layer add causal words against a declared design,
+the cited sentences beside their works, `compare` for a revision, a package checked against
+its own manifest, a report draft, and PDF manuscripts.
+
 ## A paper written in Word is brought in through pandoc's tree
 
 The route the skills gave for moving a Word paper into a project was `pandoc paper.docx -t
@@ -18984,6 +19041,29 @@ What papers converted from Word showed (see "What papers converted from Word sho
     of the same text would then go out again.
   - A text is approved by one author. An approval says nothing of the co-authors, whose word
     on a post under one author's name is not asked.
+- **A paper read by its editor or a referee (`audit --journal`, `--authors`) has these
+  limits.**
+  - G4 on a bare paper finds a statement by the profile's pattern; with the template's
+    patterns, anchored on a heading, a declaration set as a bold paragraph reads as missing.
+  - Its word counts are this tool's counting, after pandoc's conversion of a .docx, and not
+    the journal's own; neither is counted by `--strict`.
+  - The figure files' artwork, the CSL style, a LaTeX class's rules and the profile's quotes
+    against its stored page are not checked, and the report says so.
+  - The main document is the first paper named. A main document named second is read as the
+    rest of the submission, and a supplement named first is held to the limits.
+  - `journal --template` needs a project, so an editor makes one to keep the profile in.
+  - The Document section reads a .docx only: a PDF's or a LaTeX file's metadata is not read.
+    Text a style hides is not counted as hidden, only a run whose own properties hide it, and
+    a change of formatting alone is not counted as a tracked change.
+  - The blinding check finds a name as the build does: the given and family name, or an
+    initial with its stop; a family name alone is not looked for, nor is the reference list,
+    nor a part of an affiliation under three words.
+  - The confidentiality guard reads an agent's ordinary commands, as the other shell guards
+    do: an `audit` started from a script, or with its options built at run time, is not
+    asked. The notice and the paper-audit skill's stop paragraph are the rest of the control,
+    and the person's own judgement the last of it.
+  - `--lookup` sends the reference list's identifiers; the set of DOIs a paper cites is a
+    weak fingerprint of it, and a contact address set for the registries names the reader.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

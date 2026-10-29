@@ -2097,6 +2097,80 @@ def _audit_refused(args: argparse.Namespace, said: str, *details: str) -> int:
     return 2
 
 
+@dataclass(frozen=True)
+class _Reader:
+    """What `audit --journal` and `--authors` were given, read: the journal's profile, the
+    authors to look for, and the English the profile asks for."""
+
+    profile_path: Path
+    profile: dict
+    authors: dict | None
+    english: str | None
+
+
+def _reader(args: argparse.Namespace) -> _Reader | int | None:
+    """The profile and the authors `--journal` and `--authors` name, read; None where neither
+    was given; the exit code where the audit is refused for them. With either, the notice
+    that the manuscript is not to reach a model goes to stderr (`auditing.NOTICE`)."""
+    from manuscript_guard.auditing import NOTICE
+    from manuscript_guard.auditing.journal import english_of, read_authors, read_profile
+
+    if args.journal is None and args.authors is None:
+        return None
+    if args.journal is None:
+        return _audit_refused(args, "manuscript-guard audit: --authors goes with --journal, "
+                              "whose profile says whether the journal's review is blind")
+    if args.paper[0].is_dir():
+        return _audit_refused(args, "manuscript-guard audit: --journal holds the main "
+                              "document to the journal's profile: name it first, as a file, "
+                              "and the rest of the submission after it")  # fmt: skip
+    profile, errors = read_profile(args.journal)
+    if profile is None:
+        return _audit_refused(args, f"manuscript-guard audit: {args.journal} is not a journal "
+                              "profile the audit can read:", *(f"  {e}" for e in errors))
+    authors = None
+    if args.authors is not None:
+        authors, why = read_authors(args.authors)
+        if authors is None:
+            return _audit_refused(args, f"manuscript-guard audit: {why}")
+    print(NOTICE, file=sys.stderr)
+    return _Reader(args.journal, profile, authors, english_of(profile))
+
+
+def _read_as_reader(report, reader: _Reader, main: Path, papers: list[Path],
+                    english: str | None) -> None:  # fmt: skip
+    """G4 held to the journal's profile on the main document, the first paper named; the
+    authors looked for in each document read, where the review is blind; and what each
+    .docx holds besides its text."""
+    from manuscript_guard.auditing.document import document_facts
+    from manuscript_guard.auditing.journal import (
+        GRAPHICAL,
+        JournalRun,
+        look_for_authors,
+        run_journal,
+    )
+    from manuscript_guard.gates.journal import FROM_RECORDS
+
+    read = {path.resolve() for path in report.papers}
+    trees = {tree.entry.resolve(): tree for tree in report.trees}
+    report.documents = [document_facts(path) for path in papers
+                        if path.suffix.lower() == ".docx" and path.resolve() in read]
+    tree = trees.get(main.resolve())
+    if main.resolve() not in read and tree is None:
+        run = JournalRun(main, reader.profile_path, skipped=[*FROM_RECORDS, GRAPHICAL],
+                         note=f"G4 was not run: {main.name} could not be read")  # fmt: skip
+    else:
+        cited = {doi for census in report.references for entry in census.entries
+                 for doi in entry.dois}  # fmt: skip
+        run = run_journal(main, reader.profile_path, reader.profile, tree, english=english,
+                          cited=cited)  # fmt: skip
+    run.others = [path for path in papers if path.resolve() != main.resolve()]
+    documents = [(path, trees.get(path.resolve())) for path in papers
+                 if path.resolve() in read or path.resolve() in trees]  # fmt: skip
+    look_for_authors(run, documents, reader.profile, reader.authors)
+    report.journal = run
+
+
 def cmd_audit(args: argparse.Namespace) -> int:
     """Check an existing paper's numbers against existing outputs, and what needs none.
 
@@ -2155,11 +2229,16 @@ def cmd_audit(args: argparse.Namespace) -> int:
 
     # A path that is not there is a typo, and auditing without it answers a different
     # question: a missing output reports every number it held as absent from the paper.
-    given = [*args.paper, *(args.against or []), *(args.figures or [])]
+    given = [*args.paper, *(args.against or []), *(args.figures or []),
+             *(path for path in (args.journal, args.authors) if path is not None)]  # fmt: skip
     missing = [path for path in given if not path.exists()]
     if missing:
         return _audit_refused(args, *(f"manuscript-guard audit: {path} does not exist"
                                       for path in missing))  # fmt: skip
+    reader = _reader(args)
+    if isinstance(reader, int):
+        return reader
+    english = args.english or (reader.english if reader else None)
 
     papers = expand(args.paper, PAPER_SUFFIXES)
     figures = expand(args.figures or [], FIGURE_SUFFIXES)
@@ -2184,14 +2263,16 @@ def cmd_audit(args: argparse.Namespace) -> int:
                                                          *report.passed_over)))  # fmt: skip
     read = set(report.papers)
     report.gates = [
-        *(run_gates(path, english=args.english, residue=args.submission_residue)
+        *(run_gates(path, english=english, residue=args.submission_residue)
           for path in papers if path.suffix.lower() != ".tex" and path in read),
-        *(run_gates(tree.entry, tree, english=args.english, residue=args.submission_residue)
+        *(run_gates(tree.entry, tree, english=english, residue=args.submission_residue)
           for tree in report.trees),
     ]  # fmt: skip
     if args.lookup:
         report.lookups = look_up(report.references, dry_run=args.dry_run,
                                  cache=args.lookup_cache)  # fmt: skip
+    if reader is not None:
+        _read_as_reader(report, reader, args.paper[0], papers, english)
     discrimination = measure_discrimination(report.backing_values) if args.against else None
     if args.json:
         print(sections.as_json(report, discrimination))
@@ -5588,12 +5669,31 @@ def build_parser() -> argparse.ArgumentParser:
         "said where it is from 1 to below N; without it, any from 1",
     )
     audit.add_argument(
+        "--journal",
+        type=Path,
+        metavar="PROFILE",
+        help="for an editor: hold the first paper named, the main document, to the journal's "
+        "profile (a profiles/journals/*.yaml, as `journal` starts one): its limits, its "
+        "abstract, its required sections and statements, its data statement and its boxes; "
+        "the profile's rules no gate checks are printed as a checklist "
+        "(docs/refereeing.md)",
+    )
+    audit.add_argument(
+        "--authors",
+        type=Path,
+        metavar="FILE",
+        help="with --journal, where its profile says the review is blind: the authors, in "
+        "authors.yaml's shape, whose names, ORCID iDs, e-mail addresses and institutions are "
+        "looked for in each document given",
+    )
+    audit.add_argument(
         "--strict",
         action="store_true",
         help="exit 1 if a number is in no output given, a paper, a figure or a stretch of "
         "one could not be read, no number was read, a table's total is not what its counts "
-        "add up to, a characteristic's categories add up to more than their column's n, or "
-        "a printed total gives away a count held back; nothing else is counted",
+        "add up to, a characteristic's categories add up to more than their column's n, a "
+        "printed total gives away a count held back, or --authors finds an author named in a "
+        "document the journal reviews blind; nothing else is counted",
     )
     audit.set_defaults(func=cmd_audit)
 

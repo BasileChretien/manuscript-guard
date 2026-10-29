@@ -944,6 +944,50 @@ def test_a_panel_that_asks_or_sends_nothing_is_let_through(
     assert run("guard-submission", _shell(in_claude_code, command), capsys) is None
 
 
+@pytest.mark.parametrize(
+    "command",
+    [
+        "manuscript-guard audit paper.docx --journal journal.yaml",
+        "mguard audit paper.pdf.docx --journal=journal.yaml --json",
+        "manuscript-guard audit paper.docx --journal journal.yaml --authors authors.yaml",
+        "cd submission && manuscript-guard audit main.tex \\\n  --journal j.yaml",
+        "python -m manuscript_guard.cli audit paper.md --authors a.yaml",
+    ],
+)
+def test_an_audit_of_a_manuscript_sent_in_confidence_is_put_to_the_person(
+    in_claude_code: Path, command: str, capsys
+) -> None:
+    """Decision 4 of the editor and referee layer: its output quotes a manuscript a journal
+    sent in confidence, which an agent's model provider is not to read."""
+    result = run("guard-submission", _shell(in_claude_code, command), capsys)
+    assert decision(result) == "ask"
+    assert "sent in confidence" in reason(result) and "say yes if the paper is your own" in (
+        reason(result))  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "manuscript-guard audit paper.docx --against results/",
+        "manuscript-guard audit paper.docx --json; grep -n journal notes.txt",
+        "manuscript-guard check --journal-notes",
+        "manuscript-guard journal --reread page.html",
+    ],
+)
+def test_an_audit_without_a_reader_option_is_let_through(
+    in_claude_code: Path, command: str, capsys
+) -> None:
+    assert run("guard-submission", _shell(in_claude_code, command), capsys) is None
+
+
+def test_where_the_tool_cannot_ask_a_reader_s_audit_is_refused(
+    in_claude_code: Path, capsys
+) -> None:
+    payload = _shell(in_claude_code, "manuscript-guard audit p.docx --journal j.yaml",
+                     turn_id="turn-1", model="gpt-test")  # fmt: skip
+    assert decision(run("guard-submission", payload, capsys)) == "deny"
+
+
 def test_where_the_tool_cannot_ask_the_panel_is_refused(in_claude_code: Path, capsys) -> None:
     """Codex sends `turn_id`, reads "ask" and lets the call through: it is refused there."""
     command = "manuscript-guard review --run --yes"

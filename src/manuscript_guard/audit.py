@@ -190,6 +190,12 @@ class AuditReport:
     flow_notes: list[Disagreement] = field(default_factory=list)
     #: The Abstract against what the paper reports (`auditing.abstract.AbstractRead`).
     abstract: object = None
+    #: G4 held to the journal's profile, `--journal` (`auditing.journal.JournalRun`); None
+    #: where no profile was given.
+    journal: object = None
+    #: What each .docx holds besides its text (`auditing.document.DocumentFacts`), where a
+    #: reader option was given.
+    documents: list = field(default_factory=list)
 
     @property
     def examined(self) -> int:

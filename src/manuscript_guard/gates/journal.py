@@ -151,7 +151,26 @@ def latex_displays(folder: Path) -> tuple[int, int]:
     return tables, figures
 
 
-def check_journal(project: Project) -> Report:
+#: What G4 reads from the project's records rather than from the manuscript's text, each as a
+#: sentence: on a paper that is in no project (`audit --journal`, `records=False`) none of
+#: them runs, and the audit says so of each (`auditing.journal`).
+FROM_RECORDS = (
+    "the profile's quotes, held to the journal's stored page",
+    "the profile's rules no gate checks, signed off by the corresponding author (listed "
+    "instead as the editor's checklist)",
+    "the citation style kept for the offline build",
+    "the figure files' artwork",
+    "the LaTeX class rules",
+    "the English paper.yaml declares (the profile's English is the one G14 holds the paper to)",
+)
+
+
+def check_journal(project: Project, *, records: bool = True,
+                  cited: set[str] | None = None) -> Report:  # fmt: skip
+    """G4 on the project's manuscript. With `records` False, only what reads the manuscript's
+    text and the profile: its limits, its abstract, its sections and statements, its data
+    statement and the profile's age, for a paper in no project, whose DOIs cited are `cited`
+    (the reference list as the audit read it): `FROM_RECORDS` is what is left out."""
     slug = project.target_journal
     if not slug:
         return Report(
@@ -187,10 +206,11 @@ def check_journal(project: Project) -> Report:
         return report
 
     report = report.merge(_check_freshness(document, path))
-    report = report.merge(check_quotes(project, slug, document, path))
-    signable = manual_signable(slug, document, path)
-    if signable is not None:
-        report = report.with_findings(*settle(project, signable))
+    if records:
+        report = report.merge(check_quotes(project, slug, document, path))
+        signable = manual_signable(slug, document, path)
+        if signable is not None:
+            report = report.with_findings(*settle(project, signable))
 
     # The main text only. A journal's word count, display-item count and required sections
     # are about the paper; a supplement counted against them turned a compliant submission
@@ -203,11 +223,12 @@ def check_journal(project: Project) -> Report:
     report = report.merge(_check_abstract_found(document, text, path))
     report = report.merge(_check_structure(document, text, path))
     report = report.merge(_check_statements(document, text, path))
-    report = report.merge(check_data_statement(document, text, path, project))
-    report = report.merge(_check_variant(document, project))
-    report = report.merge(check_style(project, document, path))
-    report = report.merge(check_figure_files(project, document, path))
-    report = report.merge(check_latex_profile(project, document, path))
+    report = report.merge(check_data_statement(document, text, path, project, cited=cited))
+    if records:
+        report = report.merge(_check_variant(document, project))
+        report = report.merge(check_style(project, document, path))
+        report = report.merge(check_figure_files(project, document, path))
+        report = report.merge(check_latex_profile(project, document, path))
 
     return report.with_counts(
         abstract_words=counts.abstract_words,

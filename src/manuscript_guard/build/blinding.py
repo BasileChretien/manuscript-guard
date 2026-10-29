@@ -253,11 +253,19 @@ def check_blinded_latex(project: Project, files: list[Path]) -> Report:
     wanted = sought(project.authors, latex=True)
     if kind not in BLIND or not wanted:
         return Report()
+    document = files[0] if files else project.path("build")
+    return _named(latex_places(files), wanted, kind, document)
+
+
+def latex_places(files: list[Path]) -> list[tuple[str, str]]:
+    """Where in a LaTeX submission's files a name can be, each with the text it holds there:
+    each `.tex` and `.sty` read whole, its `thebibliography` left out, and the text of each
+    PDF or SVG picture."""
     from manuscript_guard.contracts._schema import read_text
     from manuscript_guard.gates.figures import _extract_text
     from manuscript_guard.text.latex.mask import read
 
-    places, document = [], files[0] if files else project.path("build")
+    places = []
     for path in files:
         if path.suffix in (".tex", ".sty"):
             # A reference list typed in `thebibliography` names the authors cited, as the Word
@@ -271,6 +279,19 @@ def check_blinded_latex(project: Project, files: list[Path]) -> Report:
             text = _extract_text(path)
             if text:
                 places.append((f"a figure ({path.name})", text))
+    return places
+
+
+def docx_places(document: Path) -> list[tuple[str, str]]:
+    """Where in a .docx a name can be, each with the text it holds there (`_places`). Raises
+    `UnsafeDocument` where the document cannot be read."""
+    return _places(document)
+
+
+def found_in(places: list[tuple[str, str]], wanted: list[Sought], kind: str,
+             document: Path) -> Report:  # fmt: skip
+    """A finding for each name of `wanted` in each place of `document`, whose review is
+    `kind`-blind: for a document read elsewhere than the build (`audit --authors`)."""
     return _named(places, wanted, kind, document)
 
 

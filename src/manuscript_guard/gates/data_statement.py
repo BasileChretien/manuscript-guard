@@ -361,13 +361,19 @@ def check_deposit_doi(project: Project, *, submission: bool = False) -> Report:
     ))  # fmt: skip
 
 
-def check_data_statement(document: dict, text: str, path: Path, project: Project) -> Report:
-    """The statement held to the profile's data policy, where the profile declares one."""
+def check_data_statement(document: dict, text: str, path: Path, project: Project, *,
+                         cited: set[str] | None = None) -> Report:  # fmt: skip
+    """The statement held to the profile's data policy, where the profile declares one.
+    `cited` is the DOIs of a paper in no project, as its reference list prints them
+    (`audit --journal`): the project's references.bib, where a dataset is cited by key, is
+    read only where it is None."""
     policy = document.get("data_availability")
     if not isinstance(policy, dict):
         return Report()
     statement = statement_text(text, policy.get("heading"))
     if statement is None:
         return Report()  # the required statement's own check says it is missing
+    if cited is not None:
+        return judge_statement(statement, policy, cited, path)
     printed = f"{statement}\n{cited_in(statement, project)}"
     return judge_statement(printed, policy, cited_dois(project), path)

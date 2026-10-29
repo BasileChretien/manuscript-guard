@@ -39,6 +39,11 @@ The report comes in sections, after what was read and what was not:
 | Small cells recoverable by subtraction | each count held back ("<5") that a total beside it gives away, with the count it can only be | one a printed total gives away |
 | Writing (G6) and Language (G14) | what `check` says of the words, on a project made for the paper | no |
 | References (G7) | the reference list counted, its numbered citations held to it, and with `--lookup` what the registries say | no |
+| Journal (G4), with `--journal` | the main document held to the journal's profile: its limits, abstract, sections, statements, data statement and boxes; what was not checked; the profile's rules no gate checks, as a checklist | no |
+| Document, with `--journal` | each .docx's tracked changes, comments and hidden text, and the names Word keeps; with `--authors`, an author named where the review is blind | an author named where the review is blind |
+
+`--journal` and `--authors` are for an editor or a referee, reading a paper someone else wrote:
+[For editors and reviewers](refereeing.md).
 
 `--strict` also counts a paper, a figure or a stretch of one that could not be read, and an
 audit that read no number. Of the arithmetic it counts what is exact, and nothing that rests

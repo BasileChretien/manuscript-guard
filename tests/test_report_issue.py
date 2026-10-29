@@ -229,6 +229,9 @@ def test_a_title_with_bytes_that_were_not_utf8_is_printed(kept, capsys) -> None:
 def test_a_cut_does_not_part_a_letter_from_its_accent() -> None:
     title = "x" * 198 + "e" + "\N{COMBINING ACUTE ACCENT}" + "y"
     assert issue.cut_title(title) == "x" * 198 + "…"
+    # A Devanagari consonant and its vowel sign, a mark of combining class 0.
+    ka, aa = chr(0x0915), chr(0x093E)
+    assert issue.cut_title("x" * 198 + ka + aa + "y" * 5) == "x" * 198 + "…"
 
 
 def test_the_title_is_scrubbed_whole_before_it_is_cut(kept, capsys) -> None:

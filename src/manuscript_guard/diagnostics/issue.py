@@ -143,16 +143,24 @@ def cut_title(title: str) -> str:
     """`title` within GitHub's limit, and short enough encoded that the address `--open`
     hands the browser stays within `LONGEST_OPENED`: a title in another script grows up to
     nine times when encoded. Cut after the scrub, so that the scrub reads it whole."""
-    import unicodedata
-
     title = printable(title)
     if len(title) <= LONGEST_TITLE and len(quote(title, safe="")) <= LONGEST_ENCODED_TITLE:
         return title
     kept = title[: LONGEST_TITLE - 1]
     while kept and (len(quote(kept + "…", safe="")) > LONGEST_ENCODED_TITLE
-                    or unicodedata.combining(title[len(kept)])):  # a letter keeps its accent
+                    or _joins(title[len(kept)])):  # a letter keeps its mark
         kept = kept[:-1]
     return kept.rstrip() + "…"
+
+
+def _joins(character: str) -> bool:
+    """Whether `character` belongs to the one before it: a mark (an accent, a vowel sign), a
+    zero-width joiner or a variation selector."""
+    import unicodedata
+
+    return (unicodedata.category(character).startswith("M")
+            or character == "\N{ZERO WIDTH JOINER}"
+            or "\N{VARIATION SELECTOR-1}" <= character <= "\N{VARIATION SELECTOR-16}")
 
 
 def printable(text: str) -> str:

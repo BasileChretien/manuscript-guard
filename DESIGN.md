@@ -11887,6 +11887,50 @@ reports each once, in its part, on its page and its line. Eleven rules broken in
 fail one of the two, under a dozen seeds. The two rules above that choose between
 readings were found by them.
 
+## The tool keeps a record of its own failures, and sends nothing
+
+An error the toolkit did not raise on purpose ended in a Python traceback and exit 1. A
+script reading the exit code took it for `check` finding something, the author could not read
+it, and nobody could say what to send. Now `main` catches it after the three errors it already
+words (`ContractError`, `BuildError`, `RoundTripError`), prints one sentence that names the
+command, the error's type and its message and says the fault is the tool's and not in the
+author's files, and exits 2, the code for "could not run". An error from the system
+(`OSError`: a file Word holds open, a folder that cannot be written, a full disk) is not said
+to be the tool's alone: the sentence says where to look, and it is still recorded, since the
+command should have put it in words. A reader that stopped reading (`BrokenPipeError`, from
+`| head`) is not a fault, and keeps Python's behaviour.
+
+The failure is recorded on this machine (`diagnostics/crashes.py`), in a folder of the user's
+rather than of the project's: `%LOCALAPPDATA%\manuscript-guard\reports` on Windows,
+`~/Library/Application Support/manuscript-guard/reports` on macOS,
+`$XDG_STATE_HOME/manuscript-guard/reports` elsewhere. A folder inside the project would have
+had to be skipped by `init`'s `.gitignore`, `package`, `deposit` and `submit`, each, and the
+one that missed it would have shipped it. One file per fault, named by its fingerprint (the
+kind, the command or gate, the error's type and the innermost frame inside the toolkit by file
+and function, hashed), counts how often and when it was met; the newest twenty are kept, and
+only files of the record's own shape are ever deleted, since the folder may be one the user
+named. A record holds the tool's version, Python's, the system's name, the command, the names
+of the flags given and how many other words, the error's type, the frames inside the toolkit
+by file, line and function and any other by its module's name, and the message with the paths,
+addresses, secrets and authors' names taken out (`diagnostics/scrub.py`). Never a flag's
+value, a frame's variables, a file's contents or the environment.
+
+Four places record. `main`, as above. A gate that raised in `check`, still reported as
+`gate-errored` as before; a `ContractError` there is the author's file and is not recorded. G6
+and G14 in `audit`. `next`, where the gates' run or a part of the state could not be read,
+and it still decides on the rest. And the hooks: a hook that fails keeps out of the agent's
+way, as before, and is recorded without a word; the next session's start says once that the
+hooks failed since a date, because a guard that failed guarded nothing and nobody would hear
+of it otherwise.
+
+Nothing is sent: `diagnostics/` imports no module that could send, and
+`tests/test_crash_records.py` reads its imports to hold that. `MANUSCRIPT_GUARD_NO_REPORTS=1`
+records nothing; `MANUSCRIPT_GUARD_REPORTS` names another folder; on a CI runner (`CI` set)
+the traceback is printed and nothing is recorded, since the runner's log is where that run is
+read; `MANUSCRIPT_GUARD_DEBUG=1` lets the error through as a traceback. The test suite records
+nothing unless a test turns it on in a folder of its own. The scrub is a convenience, not a
+guarantee (Known gaps).
+
 ## Known gaps
 
 Recorded because a gate whose limits are undocumented gets trusted beyond them.
@@ -18984,6 +19028,36 @@ What papers converted from Word showed (see "What papers converted from Word sho
     of the same text would then go out again.
   - A text is approved by one author. An approval says nothing of the co-authors, whose word
     on a post under one author's name is not asked.
+- **A record of the tool's own failure holds what the scrub caught out of it, and no more.**
+  - The scrub replaces exact strings and a few patterns: the project's folder (the one the
+    command names, else the working folder's), the home, temp and Python folders in the
+    spellings Windows, POSIX, Git Bash and `repr()` give them, e-mail addresses, a user and
+    password in a link, the value of a variable that holds a credential, and the names and
+    ORCIDs `authors.yaml` lists. A name is matched only as the file writes it, with either
+    apostrophe and no letter on either side; digits or an underscore may follow it, so
+    `Lovelace2020` and `Page_size` are replaced. A name in any other form stays: in another
+    case (`lovelace`, a lowercase citation key such as `lovelace2020`), followed by a letter
+    (Better BibTeX's `chretienDisproportionality2020`), transliterated or as initials. Reading names in those
+    forms was tried and given up after three rounds of review: each widening took the error's
+    own words with it (`page_size` for the family Page) or missed another form. So do a path
+    written another way (an 8.3 short name, a relative path, one broken across lines), a name
+    the file does not list, a credential held outside the environment, and a line of the
+    manuscript that the error's message quotes. A family name that is also a word, written as
+    the file writes it ("Page 3"), is replaced in the error's own words. The record is on the
+    user's own machine; whoever sends it reads it first.
+  - Not recorded: a failure inside the emitters, Python's used as a library by the author's
+    analysis and R's; a failure to import the command line tool at all (a broken install); a
+    failure under `MANUSCRIPT_GUARD_DEBUG`, or on a CI runner, which prints the traceback.
+  - The names of the flags are kept and their values are not, so a failure that turns on a
+    value (`--stage`, a path) needs the person to say it.
+  - A fingerprint leaves out line numbers, so that one fault keeps it across small edits; it
+    changes when the failing function is renamed or the fault moves to another, and one fault
+    can then have two.
+  - An error raised on purpose by a command, as a sentence about the author's files, of a
+    class `main` does not catch (`HarvestError`, `PackageError` and their like, where a
+    command lets one through), is recorded as a fault. It is one: such a sentence should reach
+    the author without the words "an error in manuscript-guard itself", and the record is how
+    it is found.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

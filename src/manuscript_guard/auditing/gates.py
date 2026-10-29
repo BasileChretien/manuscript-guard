@@ -124,6 +124,9 @@ def run_gates(
             writing = check_writing(project, submission=residue)
             language = check_language(project)
         except Exception as exc:  # noqa: BLE001 - a gate that raised is said, not hidden
+            from manuscript_guard.diagnostics import crashes
+
+            crashes.record(exc, kind=crashes.GATE, name="G6 and G14")
             return GateRun(paper, note=f"G6 and G14 could not run on {paper.name}: "
                            f"{type(exc).__name__}: {exc}")  # fmt: skip
         return GateRun(

@@ -16,6 +16,7 @@ import re
 import shutil
 import sys
 import textwrap
+import traceback
 from collections.abc import Callable, Collection
 from dataclasses import dataclass, field
 from datetime import date
@@ -343,6 +344,9 @@ def _guarded(name: str, gate, unreadable: Collection[Path] = ()) -> Report | Non
             )
         )
     except Exception as exc:  # noqa: BLE001 - any gate failure must be visible, not fatal
+        from manuscript_guard.diagnostics import crashes
+
+        crashes.record(exc, kind=crashes.GATE, name=name)
         return Report(
             (
                 Finding(
@@ -6733,10 +6737,14 @@ def _manuscript_folder(start: Path, command: str) -> Path | None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from manuscript_guard.diagnostics import crashes
     from manuscript_guard.roundtrip import RoundTripError
 
     args = build_parser().parse_args(argv)
     _survive_the_console()
+    named = getattr(args, "path", None)
+    crashes.invoked(args.command, sys.argv[1:] if argv is None else argv,
+                    start=named if isinstance(named, (str, Path)) else None)  # fmt: skip
     refused = _refused_for_latex(args)
     if refused is not None:
         print(f"manuscript-guard: {refused}", file=sys.stderr)
@@ -6749,9 +6757,47 @@ def main(argv: list[str] | None = None) -> int:
     except (ContractError, BuildError, RoundTripError) as exc:
         print(f"manuscript-guard: {exc}", file=sys.stderr)
         return 2
+    except BrokenPipeError:
+        raise  # the reader stopped reading (`| head`): not a fault of the tool's
+    except Exception as exc:
+        if crashes.debugging():
+            raise
+        return _unexpected(args.command, exc)
     finally:
         if args.command in ("check", "build"):
             _note_stale_skills(getattr(args, "path", None) or Path.cwd())
+
+
+def _unexpected(command: str | None, exc: Exception) -> int:
+    """An error the toolkit did not raise on purpose: its type and message in one sentence,
+    recorded on this machine (`diagnostics.crashes`), exit 2 for "could not run".
+
+    It used to end in a Python traceback and exit 1, which a script reading the exit code took
+    for `check` finding something, and which the author could neither read nor send. On a CI
+    runner the traceback is printed instead, and nothing is recorded: the runner's log is where
+    that run is read.
+    """
+    from manuscript_guard.diagnostics import crashes
+
+    what = command or "manuscript-guard"
+    if isinstance(exc, OSError):
+        # A file another program holds open, a folder that cannot be written, a disk that is
+        # full: the system's answer, which the command should have put in words and did not.
+        sentence = (f"manuscript-guard: {what} stopped on an error from the system it did not "
+                    f"expect: {type(exc).__name__}: {exc}. Where it names a file of yours that "
+                    "another program holds open, or a folder that cannot be written, put that "
+                    "right and run it again.")  # fmt: skip
+    else:
+        sentence = (f"manuscript-guard: {what} stopped on an error in manuscript-guard itself, "
+                    f"not in your files: {type(exc).__name__}: {exc}")  # fmt: skip
+    if crashes.under_ci():
+        traceback.print_exception(exc)
+        print(sentence, file=sys.stderr)
+        return 2
+    path = crashes.record(exc, kind=crashes.COMMAND)
+    print(sentence, file=sys.stderr)
+    print(crashes.said(path), file=sys.stderr)
+    return 2
 
 
 if __name__ == "__main__":

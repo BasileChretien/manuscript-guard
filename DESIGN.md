@@ -7788,6 +7788,55 @@ count alone: a paragraph with words outside a table, numbered in the list's coun
 the list not numbered by place; one in another count, an empty one, or one in a table's cell
 is not looked at.
 
+### A table's totals, and a count held back that they give away (2026-10-28)
+
+A total printed beside its counts is arithmetic a reader can do, and nothing did it.
+`stats/margins.py` reads a table, a paper's in `audit` or an emitted one in `check`, as
+lines: a total and the two or more counts it totals. A row labelled Total, Totals, All or
+Overall, anchored at both ends, any case, nothing after the word but an n, an "n (%)", footnote marks
+and punctuation, totals the rows above it back to the last row with no count in it or the
+last total row; a column so headed totals the columns before it back to the last total
+column or the labels. The header is the first row and each row before the first row of
+counts that is words or has no label, so a Word table's second header row of years is no
+row of counts; a row of words further down changes no column. A cell is a count only where
+its count is certain, the project's rule for a text-matching path that review keeps finding
+wrong reads in (the fix-only round of #469, after three rounds of them): a whole number; a
+count held back, "<5" or "≤4", the interval from 0 to the largest its bound allows
+(`gates.custodian.held_largest`, which `_small` uses too); and an n (%), its share printed
+or behind a bound ("12 (<0.1)"), only where its share is its n over a known n within the
+rounding it is printed to: its own, its column's header n, or the count of its column's
+next total row. An n (%) with no known n is no count, whatever `stats/shares.py` reads it
+as, since a mean and its SD has its shape. A line with a cell that is no count is not read,
+nor a row or a column that names another statistic, a P, a ratio by its abbreviation ("HR",
+not the subgroup "HR+" nor "(HR)" in a longer label) or by its name ("Hazard ratio"), or a
+"%" that says no n: "%" and "% (n)" are never counts, and a header cell of only an n or
+"n (%)", read clean of its footnote marks, sets its column's n and changes nothing else.
+One routine, `feasible`, serves both checks: each member's range given the total is
+the total less the others' highs up to the total less their lows, within its own, and no
+range at all is a total the printed counts cannot make, `sum-off`. A range of one value is
+a count held back that the line gives away. Categories whose shares add up to 100
+(`shares._summed`) and whose counts add up to more than their column's header n are the one
+contradiction read of a header n (`over-header-n`); fewer is missing data.
+
+In `check`, G2's `count-recoverable` (from internal review, as `count-below-minimum`) reads
+each emitted table the manuscript or the supplement binds, each declared sum, and each step
+and the arms of each flow whose keys are all bound; a step whose reasons overlap is no
+partition and is not read. A sum member whose value is not whole is no count, whatever its
+display rounds it to. It fails only where the analysis declares the total a sum: a sum
+relation or a flow. In a table it warns, both where a total row or column gives the count
+away, since a total read from a table's label need not be the sum of the counts beside it
+(the patients with any of several events), and where only a column's header n does, since
+the n is the categories' total only where none of the column lacks the characteristic
+(Basile, 2026-10-28 and 2026-10-29). Nought is no small cell, so a count given away as 0 is
+not said. `deposit`'s preflight asks the same of every table of the results files it
+carries, through `recoverable_cells`, and warns as `check` does: it does not refuse. In `audit` the Arithmetic section
+lists the totals off and the categories over their n, and "Small cells recoverable by
+subtraction" each count given away with its value, at `--minimum-cell-count` or, without
+one, from 1; `--strict` counts `sum-off`, `over-header-n` and a count a printed total gives
+away, and not one only the header n gives (the author's rule of 2026-10-28: exact findings
+only), and `--json` counts the two apart. Two lines are never put together: see Known
+gaps.
+
 ## A paper written in Word is brought in through pandoc's tree
 
 The route the skills gave for moving a Word paper into a project was `pandoc paper.docx -t
@@ -8630,8 +8679,8 @@ the point. First the data custodian's checks (`deposit/preflight.py`): the small
 the results files the bundle carries, through `package`'s own reading of them and its
 sign-off (`PACKAGE/custodian/small-counts`); for a preprint G2's `count-below-minimum` over
 the manuscript, since a preprint prints it; `check_restricted_inputs`; and Task 3's check of
-a masked cell recovered by subtraction, through the one entry point it will fill,
-`gates.custodian.recoverable_cells`, which finds nothing yet (see Known gaps). A release is
+a masked cell recovered by subtraction from a table the bundle carries,
+`gates.custodian.recoverable_cells` (`count-recoverable`). A release is
 taken to carry the results files the package holds, and so is the site, whose page shows
 them; a plan and a preprint carry none. Anything these find stops the deposit before
 anything is built. Then a release, the site that is its page, and a preprint are held to
@@ -18090,11 +18139,46 @@ What papers converted from Word showed (see "What papers converted from Word sho
     interval after its value and no citation, so the entries it cites can be reported as
     cited nowhere (round 1 of #463).
 
-- **A masked cell recovered by subtraction is not looked for.** `deposit`'s preflight calls
-  `gates.custodian.recoverable_cells`, the one entry point for Task 3's check that a count
-  held back ("<5") cannot be worked out from a row's total and its other cells; it finds
-  nothing yet, so a bundle whose results let a reader subtract their way to a small count is
-  deposited. The deposit depends on Task 3 for it.
+- **A table's totals are read in English, as partitions, a line at a time** (Task 3, PR 2,
+  `stats/margins.py`).
+  - Only Total, Totals, All and Overall, alone in their cell, make a total: "Gesamt",
+    "Totale", "All patients" and "Subtotal" total nothing, and their lines are not read.
+  - A total is taken to be the sum of the counts above it or before it. One that is not, a
+    "Total" of patients with any of several events that overlap, or rows that are subtypes
+    of the row above them, is said to be off when it is right (`sum-off`, a false alarm),
+    and a count held back beside it is said to be a value it is not. What that costs: in
+    `audit` both are counted by `--strict`, so a paper with such a total fails it; in
+    `check` and `deposit` a count a table's total gives away is a warning only, and never a
+    failure, so a table whose total is a sum gives a small count away with nothing failing.
+    Declaring the sum does not change that: a sum relation sums results values, never a
+    table's cells (rounds 1 and 2 of #469, Basile's choice of 2026-10-29).
+  - An n (%) is a count only where its share fits a known n: its own denominator, its
+    column's header n, or the count of its column's next total row. What that costs: where
+    no n is printed, neither in the header nor in a total row below, its cells are no
+    counts, and a count held back beside them that a total would give away is missed, as is
+    a total they do not add up to (the fix-only round of #469).
+  - A header row repeated further down the table is not read: the columns keep the first
+    header's names, totals and n, so the categories of a second panel are held to the first
+    panel's n. A first row of counts with no label is read as a header, and its counts are
+    in no line.
+  - A row of whole-number measures, a median of 24 months printed bare, under a Total
+    column is read as counts unless its label names the statistic.
+  - A total header spanning several columns, the "n | %" pairs under one, totals none of
+    them.
+  - A characteristic's categories are a line under their column's header n only where they
+    stand under a label of their own; a table that is one characteristic with no such label
+    has no header line.
+
+- **A count held back is worked out a line at a time** (Task 3, PR 2). Each line, a total
+  and its counts, is read alone: a cell that only its row and its column together pin down,
+  a count worked out from two tables, from a table and a sentence, or from another
+  publication of the same data, is not found. A count held back is taken to be anything from
+  0 to its bound, so a cell that must be at least 1 (a category no row can lack) has a wider
+  range than it does, and a count that this would disclose is not said: the 0 errs to
+  silence. A sum or a flow is read only where every key of it is bound; one printed as a
+  typed number beside the bound ones is not seen. `deposit` reads the tables of the results
+  files it carries, and the values in them through `deposit.counts`, not their sums.
+
 - **What is sent to Zenodo and OSF was sent to servers that stand in for them.** The clients
   were run against servers on a loopback port that answer as each API's documentation says,
   and against neither host: the sandbox by hand is still to be done. Where a host answers in
@@ -18105,15 +18189,18 @@ What papers converted from Word showed (see "What papers converted from Word sho
   which the tool avoids by sending the archive and only the top-level files; and where
   WaterButler puts a file's md5, which is read from `data.attributes.extra.hashes.md5` and,
   where it is not there, stops the staging. A file is read whole into memory to be sent.
+
 - **OSF gives a private project no DOI, and is staged once.** `--reserve-doi` and
   `--publish` are refused at OSF; a project the author makes public on OSF's page is minted a
   DOI there, which the tool does not learn of, so no receipt holds it and `deposit-doi-differs`
   says nothing of it. A second `--stage` to OSF is refused: OSF keeps a file sent again as a
   new version, which the tool does not do. A staging stopped part way leaves the project, with
   what was sent before the stop, and a receipt with no `staged_on`.
+
 - **A Zenodo draft staged again keeps a file the new bundle no longer has.** The draft's list
   is held to the files sent, and a file left from an earlier staging stops it by name; the
   tool deletes nothing at the host, so the author deletes the file on the draft's page.
+
 - **The hooks read commands and edits, not every way of running them.** `deposit --publish`
   is refused to an agent where its command is read exactly as an invocation of `deposit`,
   and only asked where it is named in any other form, which takes in real invocations: a
@@ -18127,34 +18214,42 @@ What papers converted from Word showed (see "What papers converted from Word sho
   edit of `package.doi` is put to the person for an Edit, a Write and a Codex patch; a `sed` or
   a script that rewrites `paper.yaml` is not read (the same as every other edit the write
   guard reads), and `deposit-doi-differs` then names a DOI that is not the receipt's.
+
 - **A terminal can be stood in for.** `--publish` takes the typed DOI only from standard input
   that is a terminal, and a pseudo-terminal a wrapper makes (`script -qc ...` with its input
   piped) is one: an agent that runs the command that way, past the hook, can type the DOI.
   Only the hook stands between an agent and that (round 1 of #467, finding 3), and where the
   command is one of the forms above the hook only asks.
+
 - **A release published with an answer not taken is not held to its DOI.** Where Zenodo
   answers a publication with no DOI or another one, or with a page link that is refused, the
   receipt records the publication as sent (`publish_sent_on`, `publish_answer`) and not as
   published, so `deposit-doi-differs`, which reads `published_on`, says nothing of that
   release; the author looks at its page (round 2 of #467, finding 3).
+
 - **A patch that renames a key above an unchanged `doi:` line is not put to the person.** The
   write guard reads a patch's removed and added lines, and asks where one names `doi:`; a patch
   that renames the key the `doi:` line stands under, into `package`, changes no such line, and
   moves a DOI under `package` unasked (round 1 of #467, finding 11). Contrived, and G4 then
   holds the DOI to a published release's receipt where there is one.
+
 - **A later version's DOI is not a receipt's.** A Zenodo record's new version, made on its
   page, has a DOI of its own, which no receipt records; `package.doi` set to it fails
   `deposit-doi-differs` at submission against the first version's receipt, and the remedy is
   the author's: a receipt is not edited by an agent, and the tool makes no new version.
+
 - **A receipt that cannot be read is not a receipt to G4.** `deposit-doi-differs` reads the
   receipts that parse and name their own target and bundle; one damaged by hand, which the
   write guard refuses to an agent, is passed over, and `deposit` itself refuses to act on it.
+
 - **"Preprint-related" is read as every release.** Decision 2(a) asks every author's current
   approval before a release related to a preprint is published. The tool asks it of every
   release, since a release's companion page prints the manuscript's abstract and key
   sentences; a release with no page of the manuscript would not need it, and none is made.
+
 - **arXiv and medRxiv take nothing from the tool.** arXiv and medRxiv have no interface to
   send through, so what they accept, their
+
   TeX Live, their moderation and their scope, is theirs; the sheets name their rules as
   written down, and the tool checked none of them. A plan deposited by the tool is a file with
   a date, not an entry in a registry of studies, and "deposited before any results were
@@ -18262,6 +18357,12 @@ What papers converted from Word showed (see "What papers converted from Word sho
   is already done, and not the status line's.
 
 Closed since, and why each mattered (an open gap goes above this line):
+
+- **A masked cell recovered by subtraction was not looked for (Task 3, PR 2, 2026-10-28).**
+  `deposit`'s preflight called `gates.custodian.recoverable_cells`, which found nothing, so a
+  bundle whose results let a reader subtract their way to a small count was deposited. It
+  reads each table carried now, and G2 the tables, sums and flows the manuscript binds; see
+  "A table's totals, and a count held back that they give away".
 
 - **`audit` refused a LaTeX paper (Task 3, PR 1, 2026-10-28).** A `.tex` named was refused,
   and a folder of them had nothing to audit, so a LaTeX paper outside a project had its

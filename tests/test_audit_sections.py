@@ -285,6 +285,86 @@ def test_the_json_report_counts_what_strict_counts(tmp_path: Path, capsys) -> No
     assert main(["audit", str(paper), "--against", str(outputs), "--strict", "--json"]) == 1
 
 
+# ------------------------------------------------------------- totals and small cells
+
+
+TOTALS = """# Results
+
+| Characteristic | Cases (n = 120) | Controls (n = 100) |
+|---|---|---|
+| Sex | | |
+| Men | 60 | 50 |
+| Women | <5 | 47 |
+| Other | 56 | 3 |
+| Total | 120 | 99 |
+| Region | | |
+| North | 70 (50.0) | 40 (50.0) |
+| South | 70 (50.0) | 40 (50.0) |
+"""
+
+
+def test_a_total_off_categories_over_n_and_a_count_given_away_count_for_strict(
+    tmp_path: Path, capsys
+) -> None:
+    """Exact arithmetic, which --strict counts (the author, 2026-10-28): the controls add up
+    to 100 and their total prints 99; the regions add up to 140 of 120 cases; and the women
+    held back are 4, which the total row gives away, where the minimum is 5."""
+    paper = tmp_path / "paper.md"
+    paper.write_text(TOTALS, encoding="utf-8")
+    assert main(["audit", str(paper), "--minimum-cell-count", "5", "--json"]) == 0
+    said = json.loads(capsys.readouterr().out)
+    counted = [(f["section"], f["code"], f["line"]) for f in said["findings"] if f["counted"]]
+    assert counted == [
+        ("Arithmetic", "sum-off", 9), ("Arithmetic", "over-header-n", 11),
+        ("Small cells recoverable by subtraction", "count-recoverable", 7)]  # fmt: skip
+    assert (said["counts"]["totals_off"], said["counts"]["over_header_n"],
+            said["counts"]["recoverable"], said["counts"]["recoverable_by_n"]) == (1, 1, 1, 0)
+    assert main(["audit", str(paper), "--strict"]) == 1
+    out = capsys.readouterr().out
+    assert "=== Small cells recoverable by subtraction ===" in out
+    assert "<5 in row 'Women', column 'Cases (n = 120)' can only be 4" in out
+    assert "No minimum given (--minimum-cell-count)" in out
+    # Under a minimum of four, a count of four is no small cell.
+    assert main(["audit", str(paper), "--minimum-cell-count", "4", "--json"]) == 0
+    said = json.loads(capsys.readouterr().out)
+    assert "count-recoverable" not in {f["code"] for f in said["findings"]}
+
+
+def test_a_count_only_the_header_n_gives_away_is_listed_and_not_counted(
+    tmp_path: Path, capsys
+) -> None:
+    paper = tmp_path / "paper.md"
+    paper.write_text(TOTALS.replace("| Total | 120 | 99 |\n", "").replace("70 (50.0) | 40",
+                                                                         "60 (50.0) | 40"),
+                     encoding="utf-8")  # fmt: skip
+    assert main(["audit", str(paper), "--strict"]) == 0
+    out = capsys.readouterr().out
+    assert "GIVEN AWAY BY ITS COLUMN'S N" in out and "can only be 4" in out
+    # The JSON counts them apart, as the text does (round 1 of #469).
+    assert main(["audit", str(paper), "--json"]) == 0
+    counts = json.loads(capsys.readouterr().out)["counts"]
+    assert (counts["recoverable"], counts["recoverable_by_n"]) == (0, 1)
+
+
+def test_a_latex_tables_total_is_held_to_its_counts(tmp_path: Path, capsys) -> None:
+    paper = tmp_path / "paper.tex"
+    paper.write_text(tex(
+        "!documentclass{article}\n!begin{document}\n!begin{tabular}{lrr}\n"
+        " & Cases & Controls !!\n!midrule\nMen & 60 & 50 !!\nWomen & 40 & 47 !!\n"
+        "!midrule\nTotal & 100 & 99 !!\n!end{tabular}\n!end{document}\n"), encoding="utf-8")
+    assert main(["audit", str(paper), "--json"]) == 0
+    said = json.loads(capsys.readouterr().out)
+    assert [(f["code"], f["line"]) for f in said["findings"] if f["code"] == "sum-off"] == [
+        ("sum-off", 9)]
+
+
+def test_a_minimum_below_one_is_refused(tmp_path: Path, capsys) -> None:
+    paper = tmp_path / "paper.md"
+    paper.write_text(TOTALS, encoding="utf-8")
+    assert main(["audit", str(paper), "--minimum-cell-count", "0"]) == 2
+    assert "--minimum-cell-count is a whole number from 1" in capsys.readouterr().err
+
+
 # ---------------------------------------------------------------------------- G6 and G14
 
 

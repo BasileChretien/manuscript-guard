@@ -18,6 +18,7 @@ from pathlib import Path
 
 from manuscript_guard.contracts.project import Project
 from manuscript_guard.contracts.results import Results
+from manuscript_guard.findings import WARN
 from manuscript_guard.sign_offs import Signable
 
 from . import preflight
@@ -189,7 +190,10 @@ def planned(args: argparse.Namespace) -> tuple[Project, Bundle, tuple] | int:
     every = (*made.entries, sums(made.entries))
     stopped, signable = preflight.last(project, results, args.target, args.bundle, made.entries,
                                        made.signed_as)  # fmt: skip
-    report = made.report.merge(stopped).with_findings(*name_taken(every))
+    # What the custodian's checks warned of is said with the rest: a count held back that a
+    # table's total read from its label gives away does not refuse (Basile, 2026-10-29).
+    warned = tuple(finding for finding in first.findings if finding.severity == WARN)
+    report = made.report.merge(stopped).with_findings(*warned, *name_taken(every))
     dry_run = getattr(args, "dry_run", False)
     if dry_run:
         # What would go is listed even where it is refused: it is what the custodian signs.

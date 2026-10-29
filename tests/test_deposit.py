@@ -202,6 +202,62 @@ def test_a_small_count_in_the_results_stops_a_release_before_anything_is_built(
     assert not (project / "build" / "package").exists()
 
 
+def _given_away(document: dict) -> None:
+    """The two-by-two table with a total row, which gives the "<5" held back away: 197
+    less 194 is 3. The manuscript binds the table; a deposit carries it whether or not."""
+    document["tables"]["two_by_two"]["rows"] = [
+        ["example-drug", "<5", "349"], ["All other drugs", "194", "3380"],
+        ["Total", "197", "3729"]]  # fmt: skip
+
+
+def test_a_count_a_carried_tables_total_gives_away_is_warned_of_and_stops_nothing(
+    project: Path, capsys
+) -> None:
+    """A total read from a table's label alone may be no sum: the preflight warns, as
+    `check` does, and does not refuse (Basile, 2026-10-29). The table edited here is held
+    to the submission's bar by what comes after, so the preflight is asked alone."""
+    from manuscript_guard.contracts import load_namespace, load_project
+    from manuscript_guard.deposit import preflight
+
+    ready(project)
+    minimum(project, minimum_cell_count=5)
+    edit_fragment(project, _given_away)
+    loaded, _ = load_project(project)
+    _, results, _, _ = load_namespace(loaded)
+    found, _small = preflight.first(loaded, results,
+                                    frozenset({"results/01_disproportionality.json"}),
+                                    preprint=False)  # fmt: skip
+    assert found.ok
+    [warned] = [f for f in found.findings if f.code == "count-recoverable"]
+    assert warned.severity == "warn" and "can only be 3" in warned.message
+    assert warned.message.startswith("table.two_by_two in results/01_disproportionality.json: "
+                                     "<5 in row 'example-drug'")  # fmt: skip
+    # And deposit is not stopped by what the custodian forbids, but by the submission's bar.
+    assert deposit(project, "zenodo", "release") == 1
+    said = " ".join(capsys.readouterr().out.split())
+    assert "What the data custodian forbids comes first" not in said
+
+
+def test_a_release_that_goes_through_prints_the_first_checks_warnings(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    """What the custodian's checks warn of is printed with the bundle's findings, and stops
+    nothing (round 2 of #469)."""
+    from manuscript_guard.deposit import preflight
+    from manuscript_guard.findings import WARN, Finding
+
+    real = preflight.first
+
+    def first(*args, **kwargs):
+        report, small = real(*args, **kwargs)
+        return report.with_findings(Finding("G2", "count-recoverable", "a planted warning",
+                                            severity=WARN)), small  # fmt: skip
+
+    monkeypatch.setattr(preflight, "first", first)
+    assert deposit(ready(project), "zenodo", "release") == 0
+    assert "a planted warning" in capsys.readouterr().out
+
+
 def test_a_plan_carries_no_results_and_their_counts_do_not_stop_it(project: Path) -> None:
     unfrozen(project)
     minimum(project, minimum_cell_count=5)

@@ -1512,6 +1512,122 @@ def test_a_count_below_the_custodians_minimum_is_not_printed(project: Path) -> N
     assert "count-below-minimum" in codes(report)
 
 
+def _two_by_two(root: Path, first: str, total: str = "197") -> None:
+    """The example's two-by-two table with a total row, its first cell printed `first`."""
+    fragment = next((root / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["tables"]["two_by_two"]["rows"] = [
+        ["example-drug", first, "349"], ["All other drugs", "194", "3380"],
+        ["Total", total, "3729"]]  # fmt: skip
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+
+
+def test_a_count_held_back_that_a_total_gives_away_warns_or_fails(project: Path) -> None:
+    """Task 3: "<5" beside a total row is 197 less 194, which is 3. A total read from the
+    table's label alone may be no sum, so G2's count-recoverable warns of it; it fails, from
+    internal review as count-below-minimum does, where the analysis declares the total a
+    sum (Basile, 2026-10-29). A count printed as it is gives nothing away."""
+    from manuscript_guard.cli import _run_gates
+
+    def found(stage: str) -> list[str]:
+        report, _project, _chosen, _deferred = _run_gates(project, stage=stage)
+        return [f.severity for f in report.findings if f.code == "count-recoverable"]
+
+    _custodian(project, 5)
+    _two_by_two(project, "<5")
+    assert found("internal-review") == ["warn"]
+    _two_by_two(project, "3")
+    assert found("internal-review") == []
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"]["cohort.n_men"] = {"value": 3, "display": "<5"}
+    document["values"]["cohort.n_women"] = {"value": 423, "display": "423"}
+    document["relations"].append({"kind": "sum", "key": "cohort.n_drug_reports",
+                                  "of": ["cohort.n_men", "cohort.n_women"]})
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    main = main_md(project)
+    main.write_text(main.read_text(encoding="utf-8") + "\nMen {{results.cohort.n_men}}, "
+                    "women {{results.cohort.n_women}}.\n", encoding="utf-8")  # fmt: skip
+    assert found("drafting") == ["info"]
+    assert found("internal-review") == ["fail"]
+
+
+def test_an_audit_reads_a_header_of_years_and_an_n_percent_short_of_100(
+    tmp_path: Path,
+) -> None:
+    """Round 1 of #469: a second header row of years is no row of counts, and an n (%)
+    whose shares a category held back leaves short of 100 is a count, so the 3 a total
+    gives away is said and --strict fails."""
+    from manuscript_guard.cli import main
+
+    paper = tmp_path / "paper.md"
+    years = ("| Drug | Year | | Total |\n|---|---|---|---|\n| | 2019 | 2020 | |\n"
+             "| A | 4 | 5 | 9 |\n| B | 5 | 6 | 11 |\n| Total | 9 | 11 | 20 |\n")
+    short = ("| Characteristic | Cases (n = 120) | Controls (n = 200) |\n|---|---|---|\n"
+             "| Sex | | |\n| Men | 60 (50.0) | 100 (50.0) |\n| Women | 57 (47.5) | 97 (48.5) |\n"
+             "| Other | 3 | 3 |\n| Total | 120 | 200 |\n")  # fmt: skip
+    paper.write_text(f"# Results\n\n{years}\n{short}", encoding="utf-8")
+    assert main(["audit", str(paper), "--strict"]) == 0
+    paper.write_text(f"# Results\n\n{years}\n{short.replace('| 3 | 3 |', '| <5 | <5 |')}",
+                     encoding="utf-8")  # fmt: skip
+    assert main(["audit", str(paper), "--strict", "--minimum-cell-count", "5"]) == 1
+
+
+def test_an_audit_reads_no_mean_as_a_count_and_keeps_a_total_under_an_n_marker(
+    tmp_path: Path,
+) -> None:
+    """Round 2 of #469: a mean and its SD beside a Total column is no count, and a second
+    header row of "N = 120" leaves the Total column a total, so a total off under it fails
+    --strict."""
+    from manuscript_guard.cli import main
+
+    paper = tmp_path / "paper.md"
+    table = ("| | Cases | Controls | Total |\n|---|---|---|---|\n"
+             "| | N = 120 | N = 200 | N = 320 |\n"
+             "| Age, years | 54 (12) | 56 (11) | 55 (12) |\n| Men | 60 | 100 | 160 |\n"
+             "| Women | 55 | 97 | 152 |\n")  # fmt: skip
+    paper.write_text(f"# Results\n\n{table}", encoding="utf-8")
+    assert main(["audit", str(paper), "--strict"]) == 0
+    paper.write_text(f"# Results\n\n{table.replace('| 152 |', '| 150 |')}", encoding="utf-8")
+    assert main(["audit", str(paper), "--strict"]) == 1
+
+
+def test_an_audit_reads_a_count_only_where_it_is_certain(tmp_path: Path) -> None:
+    """The fix-only round of #469: a column headed "%" holds no counts, and an n (%) with no
+    n known, a mean and its SD under "n (%)", is none; a count changed beside them still
+    fails --strict."""
+    from manuscript_guard.cli import main
+
+    paper = tmp_path / "paper.md"
+    table = ("| Characteristic | n | % | Total |\n|---|---|---|---|\n"
+             "| North | 40 | 33 | 40 |\n| South | 40 | 33 | 40 |\n| East | 40 | 33 | 40 |\n"
+             "| Total | 120 | 100 | 120 |\n\n"
+             "| | Cases | Controls | Total |\n|---|---|---|---|\n| | n (%) | n (%) | n (%) |\n"
+             "| Age, years | 54 (12) | 56 (11) | 55 (12) |\n| Men | 60 | 100 | 160 |\n")
+    paper.write_text(f"# Results\n\n{table}", encoding="utf-8")
+    assert main(["audit", str(paper), "--strict"]) == 0
+    paper.write_text(f"# Results\n\n{table.replace('| 100 | 160 |', '| 100 | 161 |')}",
+                     encoding="utf-8")  # fmt: skip
+    assert main(["audit", str(paper), "--strict"]) == 1
+
+
+def test_a_total_its_counts_do_not_add_up_to_fails_an_audit_under_strict(
+    tmp_path: Path,
+) -> None:
+    """Task 3: a total row is held to the rows above it, exactly, and --strict counts it."""
+    from manuscript_guard.cli import main
+
+    paper = tmp_path / "paper.md"
+    table = ("| | Cases | Controls |\n|---|---|---|\n| Men | 60 | 50 |\n| Women | 40 | 47 |\n"
+             "| Total | 100 | 97 |\n")  # fmt: skip
+    paper.write_text(f"# Results\n\n{table}", encoding="utf-8")
+    assert main(["audit", str(paper), "--strict"]) == 0
+    paper.write_text(f"# Results\n\n{table.replace('| 47 |', '| 41 |')}", encoding="utf-8")
+    assert main(["audit", str(paper), "--strict"]) == 1
+
+
 def test_set_moves_the_stage_and_not_the_lines_that_look_like_it(project: Path) -> None:
     """`set stage` writes the setting at the top level of paper.yaml, and the check then
     holds the paper to it: a small count fails from internal review. A regular expression
@@ -8228,7 +8344,7 @@ _NOT_THE_MANUSCRIPT = (
 #: registration looks for an identifier and a sentence, which a `.tex` file holds
 #: as plainly as a Markdown one.
 _READS_LATEX = (
-    "check_latex", "check_numbers", "check_bound_units", "check_small_cells",
+    "check_latex", "check_numbers", "check_bound_units", "check_small_cells", "check_recoverable",
     "check_synthetic_inputs", "check_citations", "check_journal", "check_language",
     "check_writing", "check_values", "check_registration", "check_reported",
     "check_recomputed", "check_methods", "check_models", "check_related", "check_revision",

@@ -80,7 +80,11 @@ from manuscript_guard.gates import (
     source_files,
     sync_bib,
 )
-from manuscript_guard.gates.custodian import check_restricted_inputs, check_small_cells
+from manuscript_guard.gates.custodian import (
+    check_recoverable,
+    check_restricted_inputs,
+    check_small_cells,
+)
 from manuscript_guard.gates.data_quality import check_data_quality, check_quality_reported
 from manuscript_guard.gates.data_sources import (
     check_data_sources,
@@ -207,6 +211,7 @@ def _gate_run(
         ("G12", lambda: check_methods_review(project)),
         ("G8", lambda: check_consistency(results)),
         ("G2", lambda: check_small_cells(project, results)),
+        ("G2", lambda: check_recoverable(project, results)),
         ("G1", lambda: check_restricted_inputs(project, results)),
         ("G1", lambda: check_synthetic_inputs(project, results, submission=at_submission)),
         ("G1", lambda: check_datasets(project, results)),
@@ -2115,6 +2120,9 @@ def cmd_audit(args: argparse.Namespace) -> int:
     if (args.dry_run or args.lookup_cache) and not args.lookup:
         return _audit_refused(args, "manuscript-guard audit: --dry-run and --lookup-cache go "
                               "with --lookup")  # fmt: skip
+    if args.minimum_cell_count is not None and args.minimum_cell_count < 1:
+        return _audit_refused(args, "manuscript-guard audit: --minimum-cell-count is a whole "
+                              "number from 1")  # fmt: skip
     # A `.tex` in a folder is a paper only where it starts a document; the others are read
     # where one inputs them, and named where none does.
     found_tex: list[Path] = []
@@ -2164,7 +2172,7 @@ def cmd_audit(args: argparse.Namespace) -> int:
 
     report = audit(papers, args.against, figures=figures,
                    whole_numbers=tuple(args.whole_numbers), passed_over=docs,
-                   found_tex=found_tex)  # fmt: skip
+                   found_tex=found_tex, minimum=args.minimum_cell_count)  # fmt: skip
     if args.against and not report.backing_files:
         return _audit_refused(args, "--against gave the audit nothing it can read:",
                               *(f"  {item}" for item in report.skipped))  # fmt: skip
@@ -5288,10 +5296,19 @@ def build_parser() -> argparse.ArgumentParser:
         "whole numbers (a Likert-type scale, a count): each is held to its column's n",
     )
     audit.add_argument(
+        "--minimum-cell-count",
+        type=int,
+        metavar="N",
+        help="the data custodian's minimum: a count held back that a total gives away is "
+        "said where it is from 1 to below N; without it, any from 1",
+    )
+    audit.add_argument(
         "--strict",
         action="store_true",
         help="exit 1 if a number is in no output given, a paper, a figure or a stretch of "
-        "one could not be read, or no number was read; nothing else is counted",
+        "one could not be read, no number was read, a table's total is not what its counts "
+        "add up to, a characteristic's categories add up to more than their column's n, or "
+        "a printed total gives away a count held back; nothing else is counted",
     )
     audit.set_defaults(func=cmd_audit)
 

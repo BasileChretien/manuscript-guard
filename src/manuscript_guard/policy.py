@@ -94,6 +94,10 @@ BINDS_AT = {
     # A count the custodian forbids may be read inside the team; not outside it, which a
     # panel sent to a model provider already is.
     "count-below-minimum": INTERNAL_REVIEW,
+    # A count held back that a total beside it gives away is printed all the same. It fails
+    # only where the analysis declares the total a sum; a table's total read from its label
+    # is a warning, and warnings bind at no stage (Basile, 2026-10-29).
+    "count-recoverable": INTERNAL_REVIEW,
     # A minimum or a ban on sending that the record of data sources holds and paper.yaml
     # does not declare: the check above never runs. Said as a warning before (gates/
     # data_sources.py), and failing where the count would.

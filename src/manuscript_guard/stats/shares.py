@@ -145,18 +145,8 @@ class _Row:
 
 def table_shares(table: Table) -> list[Share]:
     """Every cell of `table` read as a count and its share, in reading order."""
-    rows = _rows(table)
-    summed = _summed(rows)
     found: list[Share] = []
-    for row in rows:
-        read = []
-        for column, cell, match in row.cells:
-            # Its categories' total, where it is one of a characteristic's categories, and
-            # whether they all add up to 100, which says they are shares.
-            total, members, whole = summed.get((row.run, column), (None, frozenset(), False))
-            among = id(match) in members
-            if _a_share(row, column, cell, match, among and whole):
-                read.append((column, cell, match, total if among else None))
+    for row, read in _read(table):
         across = _row_total([match for _column, _cell, match, _total in read])
         for column, cell, match, down in read:
             own = match.group("over")
@@ -169,6 +159,23 @@ def table_shares(table: Table) -> list[Share]:
                 uncertain=_uncertain(row, cell), context=row.context,
             ))  # fmt: skip
     return found
+
+
+def _read(table: Table) -> Iterator[tuple[_Row, list]]:
+    """Each row with a cell shaped like a count and its share, and the cells of it read as
+    one: the column, the cell, its match and its categories' total."""
+    rows = _rows(table)
+    summed = _summed(rows)
+    for row in rows:
+        read = []
+        for column, cell, match in row.cells:
+            # Its categories' total, where it is one of a characteristic's categories, and
+            # whether they all add up to 100, which says they are shares.
+            total, members, whole = summed.get((row.run, column), (None, frozenset(), False))
+            among = id(match) in members
+            if _a_share(row, column, cell, match, among and whole):
+                read.append((column, cell, match, total if among else None))
+        yield row, read
 
 
 def off(share: Share) -> bool:

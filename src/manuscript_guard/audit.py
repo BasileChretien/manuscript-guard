@@ -47,6 +47,8 @@ from manuscript_guard.stats.intervals import (
     p_against,
     reported_intervals,
 )
+from manuscript_guard.stats.margins import over_n, sums_off
+from manuscript_guard.stats.margins import said as said_recovered
 from manuscript_guard.stats.reported import described, judge, reported_tests
 from manuscript_guard.stats.shares import described as described_share
 from manuscript_guard.stats.shares import off, table_shares
@@ -164,6 +166,19 @@ class AuditReport:
     gates: list = field(default_factory=list)
     #: Each LaTeX entry's tree as it was read (`auditing.latex.Tree`).
     trees: list = field(default_factory=list)
+    #: Each total of a table whose printed counts do not add up to it (`stats.margins`),
+    #: and each characteristic whose categories add up to more than their column's n. Exact
+    #: arithmetic: --strict counts them.
+    sums_off: list[Disagreement] = field(default_factory=list)
+    over_n: list[Disagreement] = field(default_factory=list)
+    #: Each count held back that a total beside it gives away, by a printed total
+    #: (`recovered`, which --strict counts) or only by its column's n (`recovered_by_n`,
+    #: which it does not: the n is their total only where none of the column lacks them).
+    recovered: list[Disagreement] = field(default_factory=list)
+    recovered_by_n: list[Disagreement] = field(default_factory=list)
+    #: The data custodian's minimum, `--minimum-cell-count`; None where none was given, and
+    #: a count held back is then taken to hide every count from one up to its bound.
+    minimum: int | None = None
 
     @property
     def examined(self) -> int:
@@ -874,13 +889,15 @@ def audit(
     whole_numbers: tuple[str, ...] = (),
     passed_over: list[Path] | None = None,
     found_tex: list[Path] | None = None,
+    minimum: int | None = None,
 ) -> AuditReport:
     """`whole_numbers` names the rows of the papers' tables whose cells are means of whole
     numbers, which are held to their column's n (`stats/granularity.py`). `passed_over` is
     each .doc a folder given as a paper held, which is named in the report and not read.
     `backing` None is no outputs given: every number is read and classified, and none is
     compared. A `.tex` among `papers` is an entry (`auditing.latex`); `found_tex` are the
-    other `.tex` files of a folder given, read where an entry inputs them."""
+    other `.tex` files of a folder given, read where an entry inputs them. `minimum` is the
+    data custodian's, below which a count held back that a total gives away is said."""
     # `rendered=True`: an existing paper has been through citeproc, so its citations are
     # "(Smith 2019)" rather than [@key]. That is the one place the audit-only rules apply.
     classifier = classifier or Classifier.load(rendered=True)
@@ -889,7 +906,7 @@ def audit(
         backing_values=values, backing_files=tuple(used), skipped=skipped,
         whole_numbers=whole_numbers, whole_numbers_unfound=list(whole_numbers),
         passed_over=[doc_passed_over(path) for path in passed_over or []],
-        compared=backing is not None,
+        compared=backing is not None, minimum=minimum,
     )  # fmt: skip
 
     # Each source, whether a line may be taken for a reference entry by its shape, and
@@ -945,6 +962,7 @@ def _read_numbers(
         found = sorted(found + _whole_number_means(report, path, list(source.tables)),
                        key=lambda d: d.line)  # fmt: skip
     report.disagreements += found
+    _margins(report, path, list(source.tables))
     scan = source.scan(classifier)
     source_scan = None
     intervals = _intervals(source.plain)
@@ -1015,6 +1033,22 @@ def _whole_number_means(report: AuditReport, path: Path, tables: list[Table]) ->
             said = f"{described_mean(mean.mean, mean.n)}{uncertain}"
             found.append(Disagreement(path, mean.line, said, mean.context))
     return found
+
+
+def _margins(report: AuditReport, path: Path, tables: list[Table]) -> None:
+    """Each table's totals held to their counts, its characteristics to their column's n,
+    and each count it holds back that a total gives away (`stats/margins.py`)."""
+    from manuscript_guard.gates.custodian import recoverable
+
+    for table in tables:
+        report.sums_off += [Disagreement(path, line.total.count.line, wrong, line.context)
+                            for line, wrong in sums_off(table)]  # fmt: skip
+        report.over_n += [Disagreement(path, found.line, found.message, found.context)
+                          for found in over_n(table)]  # fmt: skip
+        for found in recoverable(table, report.minimum):
+            listed = report.recovered if found.line.explicit else report.recovered_by_n
+            listed.append(Disagreement(path, found.member.count.line, said_recovered(found),
+                                       found.member.context or found.line.context))  # fmt: skip
 
 
 def _disagreements(path: Path, hidden: str, tables: list[Table]) -> list[Disagreement]:

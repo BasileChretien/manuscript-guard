@@ -674,12 +674,16 @@ def _journal(run, root: Path | None, show) -> list[str]:
         lines.append(f"  {run.note}")
     elif run.findings:
         lines.append(Report(tuple(run.findings)).render(root))
+    elif run.limits_unchecked:
+        # Not "within every limit" where a limit was not checked (round 2 of #478).
+        lines.append("  Nothing found in what was checked; a limit not checked is listed "
+                     "below.")  # fmt: skip
     else:
         lines.append("  Within every limit, and every section and statement the profile "
                      "requires is there.")  # fmt: skip
     lines += [f"  {other.name}: read as the rest of the submission, not held to the journal's "
               "limits" for other in run.others]  # fmt: skip
-    lines.append("  Not checked here (they read a project's records):")
+    lines.append("  Not checked here:")
     lines += [f"    {what}" for what in run.skipped]
     if run.manual:
         lines.append("  The journal's rules no gate checks, for the editor to check by hand:")

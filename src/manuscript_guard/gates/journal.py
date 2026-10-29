@@ -251,7 +251,7 @@ def _typed_tables(project: Project, counts, text: str):
 
     if manuscript_format(project.path("manuscript")) == LATEX:
         return counts
-    return replace(counts, tables=counts.tables + count_tables(text))
+    return replace(counts, tables=counts.tables + count_tables(text)[0])
 
 
 def abstract_title_of(document: dict) -> str | None:

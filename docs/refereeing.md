@@ -60,9 +60,11 @@ journal counts the main document's words and display items. The report gains a s
   no list was read (a LaTeX paper's list is in its `.bib`) that is said instead;
 - the boxes the journal prints beside the abstract (highlights, key points).
 
-The tables are those the paper types: in Markdown and in a .docx each table pandoc reads, and
-in LaTeX each captioned table float. A table written in HTML is not counted, and the report
-then says the table limits were not checked.
+The tables are those the paper types: in Markdown and in a .docx each table pandoc reads, in
+a block quotation as well, and in LaTeX each captioned table float. A table written in HTML,
+or indented in a list item, is not counted, and the report then says the table limits were
+not checked rather than that the paper is within them. The data statement's DOIs are held
+to the main document's own reference list, not a supplement's.
 
 And it says what it did not check, since those read an author's project rather than the
 manuscript: the profile's quotes against the journal's stored page, the citation style, the

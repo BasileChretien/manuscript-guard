@@ -32,6 +32,7 @@ from manuscript_guard.safexml import UnsafeDocument, open_archive, read_part
 
 _W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 _W15 = "{http://schemas.microsoft.com/office/word/2012/wordml}"
+_FALLBACK = "{http://schemas.openxmlformats.org/markup-compatibility/2006}Fallback"
 _CORE = {
     "{http://purl.org/dc/elements/1.1/}creator": "the document's author (dc:creator)",
     "{http://schemas.openxmlformats.org/package/2006/metadata/core-properties}lastModifiedBy": (
@@ -82,6 +83,19 @@ def _hidden(run) -> bool:
     return any((node.text or "").strip() for node in run.iter(f"{_W}t"))
 
 
+def _elements(root):
+    """Each element of a part, in document order, but those of an AlternateContent's
+    fallback: Word writes a text box twice, the fallback for readers that predate it, and
+    `text.docx` reads only the choice (round 2 of #478: a change in a box counted twice)."""
+    stack = [root]
+    while stack:
+        element = stack.pop()
+        if element.tag == _FALLBACK:
+            continue
+        yield element
+        stack.extend(reversed(list(element)))
+
+
 def _moves(root) -> int:
     """The moves of one part, each once: the named ranges a move went to, and each `w:moveTo`
     holding text outside any of them. Word wraps each paragraph of a move in a `w:moveTo` of
@@ -89,7 +103,7 @@ def _moves(root) -> int:
     named: set[str] = set()
     open_ranges: set[str] = set()
     alone = 0
-    for element in root.iter():
+    for element in _elements(root):
         if element.tag == f"{_W}moveToRangeStart":
             open_ranges.add(element.get(f"{_W}id", ""))
             named.add(element.get(f"{_W}name") or f"#{element.get(f'{_W}id', '')}")
@@ -110,7 +124,7 @@ def document_facts(path: Path) -> DocumentFacts:
             for name in _parts(names):
                 root = read_part(archive, name)
                 facts.moves += _moves(root)
-                for element in root.iter():
+                for element in _elements(root):
                     if element.tag in (f"{_W}ins", f"{_W}del") and _holds_text(element):
                         if element.tag == f"{_W}ins":
                             facts.insertions += 1

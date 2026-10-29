@@ -84,11 +84,35 @@ def table_lines(text: str) -> frozenset[int]:
     return _Tables(text.split("\n")).lines()
 
 
-def count_tables(text: str) -> int:
-    """How many tables a Markdown text prints, of the four kinds `table_lines` reads: one in
-    a fenced block, an HTML comment or the front matter is not one (`mask`). A table written
-    in HTML is not counted (`audit --journal` says so)."""
-    return len(_Tables(kept_breaks(text, mask(text)).split("\n")).spans())
+#: A block quotation's marks at the start of a line, nested ones among them.
+_QUOTED = re.compile(r"^(?: {0,3}>[ \t]?)+")
+#: A list item's marker before the rest of its line.
+_LIST_MARK = re.compile(r"^[ \t]*(?:[-*+]|\d+[.)])[ \t]+")
+#: A simple or multiline table's columns: two runs of dashes or more, three dashes each.
+_COLUMNS = re.compile(r"-{3,}(?:[ \t]+-{3,})+")
+
+
+def count_tables(text: str) -> tuple[int, bool]:
+    """How many tables a Markdown text prints, of the four kinds `table_lines` reads, and
+    whether every line shaped as a table's rule or border was read as part of one. One in a
+    fenced block, an HTML comment or the front matter is not one (`mask`); one in a block
+    quotation is read as its quotation holds it. A table indented in a list item is not read,
+    and its rule says so: the count is then not exact, and `audit --journal` says the table
+    limits were not checked, rather than counting it as none. A table written in HTML is not
+    counted either (`audit --journal` says that too)."""
+    lines = [_QUOTED.sub("", line) for line in kept_breaks(text, mask(text)).split("\n")]
+    spans = _Tables(lines).spans()
+    inside = {at for start, end in spans for at in range(start, end)}
+    unread = any(at not in inside and _table_shaped(line) for at, line in enumerate(lines))
+    return len(spans), not unread
+
+
+def _table_shaped(line: str) -> bool:
+    """Whether a line, its indentation and any list marker set aside, is a table's rule or
+    border: a pipe table's rule, a grid table's border, or a simple table's columns."""
+    bare = _LIST_MARK.sub("", line).strip()
+    return (("|" in bare and _TABLE_RULE.match(bare) is not None) or bool(_GRID_TOP.match(bare))
+            or bool(_COLUMNS.fullmatch(bare)))  # fmt: skip
 
 
 class _Tables:

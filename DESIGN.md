@@ -8092,14 +8092,18 @@ named and not held to the limits. The paper is staged in a project made for it, 
 are (`auditing.gates._stage`), with the profile copied in as its target journal, and G4 runs
 there with `check_journal(records=False)`: the profile's age, the limits, the abstract found
 and structured, the required sections and statements, and the data statement held to the
-profile's data policy, its DOIs to the paper's own reference list as the audit's census reads
-it (`check_data_statement(cited=..., from_project=False)`), not to a references.bib the paper
-does not have, and not said cited or not where no list was read (a LaTeX paper's `.bib`; round
-1 of #478); and the boxes (`check_boxes`, at the submission stage). The limits count the
-tables the paper types itself, which `measure` does not, since it counts a table binding and
-an audited paper has none: in Markdown and a converted .docx the four kinds of table pandoc
-reads (`text.tables.count_tables`), and in LaTeX the captioned floats, as before (round 1 of
-#478: six tables passed a limit of three). What reads a project's records is not
+profile's data policy, its DOIs to the main document's own reference list as the audit's
+census reads it, not a supplement's (round 2 of #478) (`check_data_statement(cited=...,
+from_project=False)`), not to a references.bib the paper does not have, and not said cited or
+not where no list was read (a LaTeX paper's `.bib`; round 1 of #478); and the boxes
+(`check_boxes`, at the submission stage). The limits count the tables the paper types
+itself, which `measure` does not, since it counts a table binding and an audited paper has
+none: in Markdown and a converted .docx the four kinds of table pandoc reads, at the margin
+or in a block quotation (`text.tables.count_tables`), and in LaTeX the captioned floats, as
+before (round 1 of #478: six tables passed a limit of three). A table written in HTML, or a
+table's rule seen and not read, one indented in a list item, puts the table limits under
+"Not checked here", and the section then never says the paper is within every limit (round
+2). What reads a project's records is not
 run, and each is named under "Not checked here" (`gates.journal.FROM_RECORDS`, and the
 graphical abstract): the quotes against the stored page, the corresponding author's sign-off
 of the rules no gate checks, the CSL style, the figure files, the LaTeX class, and the
@@ -19059,14 +19063,18 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - Its word counts are this tool's counting, after pandoc's conversion of a .docx, and not
     the journal's own; neither is counted by `--strict`.
   - A Markdown paper's tables, and a .docx's as pandoc writes them, are counted as the four
-    kinds of table pandoc's manual shapes (`text.tables.count_tables`), a Word table used
-    for layout among them; a table written in HTML is not, and the report puts the table
-    limits under what was not checked where one is there. A LaTeX paper's are its captioned
-    floats (`latex_displays`): a `tabular` in no captioned float is not counted. Figures are
+    kinds of table pandoc's manual shapes (`text.tables.count_tables`), at the margin or in a
+    block quotation, a Word table used for layout among them. A table written in HTML is not
+    counted, nor one indented in a list item, whose rule or border is seen and not read: the
+    report then puts the table limits under what was not checked, and never says the paper
+    is within every limit (round 2 of #478). A simple table in a list item whose columns'
+    dashes run under three is not seen. A LaTeX paper's are its captioned floats
+    (`latex_displays`): a `tabular` in no captioned float is not counted. Figures are
     counted as `measure` counts them: a Word picture with no caption pandoc reads, and a
     figure sent as a file of its own, are not.
-  - Where no reference list was read, a LaTeX paper's `.bib` among them, a DOI the data
-    availability statement names is not said to be cited or not, and the report says so.
+  - Where the main document's own reference list was not read, a LaTeX paper's `.bib` among
+    them, a DOI its data availability statement names is not said to be cited or not, and
+    the report says so; a supplement's list is not read for it.
   - The figure files' artwork, the CSL style, a LaTeX class's rules and the profile's quotes
     against its stored page are not checked, and the report says so.
   - The main document is the first paper named. A main document named second is read as the
@@ -19074,16 +19082,23 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - `journal --template` needs a project, so an editor makes one to keep the profile in.
   - The Document section reads a .docx only: a PDF's or a LaTeX file's metadata is not read.
     Text a style hides is not counted as hidden, only a run whose own properties hide it, and
-    a change of formatting alone is not counted as a tracked change.
+    a change of formatting alone is not counted as a tracked change. A text box's fallback
+    copy is not read, as `text.docx` reads none: a document whose box Word wrote only as a
+    fallback has its changes there uncounted.
   - The blinding check finds a name as the build does: the given and family name, or an
     initial with its stop; a family name alone is not looked for, nor a part of an
     affiliation under three words. The reference list is left out where the audit finds it
     (`read_paper`, `thebibliography`), so a self-citation in a list the audit does not find
     is read as text; and in a .docx what a tracked change deleted is read wherever it is but
-    in a list styled "Bibliography", a deleted entry of an unstyled list among it.
-  - A LaTeX paper's pictures are those its files place with `\includegraphics`, found from
-    the entry's folder or the file's own, a name with no extension as `.pdf` or `.svg`;
-    `\graphicspath` is not followed, and a raster picture holds no text to read.
+    in a list styled "Bibliography", a deleted entry of an unstyled list among it. A .docx's
+    list is cut to where a list under no heading ends (`_end_under_no_heading`), at a title
+    of back matter, a caption, a table or a bold paragraph, also under a styled heading: an
+    entry shaped as one of those ends the cut early, and the entries after it are read, a
+    self-citation among them (a false alarm, where running on hid the acknowledgements).
+  - A LaTeX paper's pictures are those its files place with `\includegraphics` or
+    `\includesvg`, found from the entry's folder or the file's own, by the name as written
+    and with `.pdf` and `.svg` after it; `\graphicspath` is not followed, and a raster
+    picture holds no text to read.
   - The confidentiality guard reads an agent's ordinary commands, as the other shell guards
     do: an `audit` started from a script, or with its options built at run time, is not
     asked. The notice and the paper-audit skill's stop paragraph are the rest of the control,

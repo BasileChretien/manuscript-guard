@@ -128,7 +128,7 @@ def test_what_g4_does_not_check_here_is_said_and_the_manual_rules_are_listed(
     text = capsys.readouterr().out
     assert "=== Journal (G4) (not counted by --strict) ===" in text
     assert "[ ] The cover letter suggests a handling editor." in text
-    assert "Not checked here (they read a project's records):" in text
+    assert "  Not checked here:\n" in text
 
 
 def test_the_profiles_english_is_the_one_g14_holds_the_paper_to(tmp_path: Path, capsys) -> None:
@@ -635,3 +635,133 @@ def test_a_move_word_writes_over_two_paragraphs_counts_once(tmp_path: Path, caps
     _code, report, _err = audited(capsys, str(paper), "--journal", str(profile(tmp_path)))
     assert report["counts"]["tracked_moves"] == 1
     assert report["counts"]["tracked_insertions"] == report["counts"]["tracked_deletions"] == 0
+
+
+# ------------------------------------------------- review round 2 of #478, each its note
+
+HEADING_STYLES = (f"<w:styles xmlns:w='{W}'><w:style w:type='paragraph' w:styleId='Heading1'>"
+                  "<w:name w:val='heading 1'/></w:style></w:styles>")  # fmt: skip
+
+
+def test_back_matter_after_a_docx_list_under_a_styled_heading_is_read(
+    tmp_path: Path, capsys
+) -> None:
+    """Round 2, note 1: the list's cut ran from a styled "References" to the next styled
+    heading, so the acknowledgements under a Normal title after it were never read."""
+    paper = docx_of(tmp_path / "paper.docx", [
+        ("", "Of 40 patients, 12 had dark urine."), ("Heading1", "References"),
+        ("", f"1. {SELF_CITED}"), ("", "2. Other, B. (2019). X. J Ex 2:3."),
+        ("", "Acknowledgements"), ("", "We thank the University of Nowhere Hospital."),
+    ])  # fmt: skip
+    with zipfile.ZipFile(paper, "a") as archive:
+        archive.writestr(zipfile.ZipInfo("word/styles.xml", FIXED_TIME), HEADING_STYLES)
+    code, report, _err = audited(capsys, str(paper), "--journal",
+                                 str(profile(tmp_path, blinding="double")), "--authors",
+                                 str(authors_file(tmp_path)), "--strict")  # fmt: skip
+    named = [f["message"].split(" is in ")[0] for f in report["findings"]
+             if f["code"] == "blind-document-names-author"]  # fmt: skip
+    assert named == ["'University of Nowhere Hospital'"], named
+    assert code == 1
+
+
+def test_a_limit_not_checked_is_never_said_to_be_kept(tmp_path: Path, capsys) -> None:
+    """Round 2, note 2: with the table limits under "not checked", the section still said
+    "Within every limit", under a heading that called every entry a project's record."""
+    text = PAPER + "\n# Funding\n\nNone.\n\n<table><tr><td>A</td></tr></table>\n"
+    roomy = profile(tmp_path, limits="main_text_words: 4000\n  tables: 3")
+    main(["audit", str(paper_md(tmp_path, text)), "--journal", str(roomy)])
+    out = capsys.readouterr().out
+    assert "Within every limit" not in out and "they read a project's records" not in out, out
+    assert "written in HTML" in out
+
+
+def test_the_main_document_s_own_list_holds_the_data_statement(tmp_path: Path, capsys) -> None:
+    """Round 2, note 3: a supplement's list made a dataset the main document cites (by its own
+    list, or one not read) cited or not."""
+    more = ("data_availability:\n  source: https://example.org/data\n"
+            f"  retrieved_on: {date.today().isoformat()}\n  identifier_required: true\n")
+    statement = ("\n# Data availability\n\nThe data are at https://doi.org/10.5281/zenodo.1234567"
+                 ".\n")  # fmt: skip
+    journal = profile(tmp_path, more=more)
+    for listed in ("1. Doe J. The data. Zenodo. 2024. doi:10.5281/zenodo.1234567",
+                   "1. Roe K. A trial. BMJ 2020;370:m1. doi:10.5555/fictional.1"):
+        supplement = tmp_path / "supplement.md"
+        supplement.write_text(f"# Supplementary methods\n\nMore.\n\n# References\n\n{listed}\n",
+                              encoding="utf-8")  # fmt: skip
+        _code, report, _err = audited(capsys, str(paper_md(tmp_path, PAPER + statement)),
+                                      str(supplement), "--journal", str(journal))  # fmt: skip
+        assert "data-doi-uncited" not in {f["code"] for f in report["findings"]}, listed
+        skipped = [f["message"] for f in report["findings"] if f["code"] == "journal-not-checked"]
+        assert any("no reference list was read" in said for said in skipped), skipped
+
+
+MC = "http://schemas.openxmlformats.org/markup-compatibility/2006"
+
+
+def test_a_tracked_change_in_a_text_box_counts_once(tmp_path: Path, capsys) -> None:
+    """Round 2, note 4: Word writes a text box twice, its choice and a fallback for readers
+    that predate it; the fallback is not read, as `text.docx` does not read it."""
+    inserted = ("<w:p><w:ins w:id='{n}' w:author='Ben'><w:r><w:t>Boxed 7.</w:t></w:r></w:ins>"
+                "<w:r><w:rPr><w:vanish/></w:rPr><w:t>Hidden.</w:t></w:r></w:p>")
+    body = (
+        "<w:p><w:r><w:t>Of 40 patients, 12 had dark urine.</w:t></w:r>"
+        f"<w:r><mc:AlternateContent xmlns:mc='{MC}'><mc:Choice Requires='wps'>"
+        + inserted.format(n=1) + "</mc:Choice><mc:Fallback>" + inserted.format(n=2)
+        + "</mc:Fallback></mc:AlternateContent></w:r></w:p>"
+    )
+    document = (f"<?xml version='1.0'?><w:document xmlns:w='{W}' xmlns:mc='{MC}'><w:body>"
+                f"{body}</w:body></w:document>")  # fmt: skip
+    paper = tmp_path / "paper.docx"
+    with zipfile.ZipFile(paper, "w") as archive:
+        archive.writestr(zipfile.ZipInfo("word/document.xml", FIXED_TIME), document)
+    _code, report, _err = audited(capsys, str(paper), "--journal", str(profile(tmp_path)))
+    assert (report["counts"]["tracked_insertions"], report["counts"]["hidden_runs"]) == (1, 1)
+
+
+def test_a_table_in_a_block_quotation_is_counted(tmp_path: Path, capsys) -> None:
+    """Round 2, note 5: a pipe table in a block quotation was not counted."""
+    quoted = "".join(f"\n> | Group | n |\n> |---|---|\n> | A | {i} |\n" for i in range(4))
+    _code, report, _err = audited(capsys, str(paper_md(tmp_path, PAPER + quoted)), "--journal",
+                                  str(profile(tmp_path, limits="tables: 3")))  # fmt: skip
+    over = {f["message"] for f in report["findings"] if f["code"] == "over-journal-limit"}
+    assert over == {"tables: 4, limit 3"}, over
+
+
+def test_a_table_indented_in_a_list_item_puts_the_table_limits_under_not_checked(
+    tmp_path: Path, capsys
+) -> None:
+    """Round 2, note 5: a table in a list item, indented as pandoc writes one, was counted
+    as none; where it cannot be read exactly, the limit is said not to be checked."""
+    listed = ("\n1.  The groups:\n\n    | Group | n |\n    |---|---|\n    | A | 1 |\n\n"
+              "    +-------+---+\n    | Group | n |\n    +=======+===+\n    | B     | 2 |\n"
+              "    +-------+---+\n")  # fmt: skip
+    _code, report, _err = audited(capsys, str(paper_md(tmp_path, PAPER + listed)), "--journal",
+                                  str(profile(tmp_path, limits="tables: 3")))  # fmt: skip
+    skipped = [f["message"] for f in report["findings"] if f["code"] == "journal-not-checked"]
+    assert any("indented" in said for said in skipped), skipped
+    # A table at the margin beside it is counted all the same.
+    _code, report, _err = audited(capsys, str(paper_md(tmp_path, PAPER + tables(1))),
+                                  "--journal", str(profile(tmp_path, limits="tables: 3")))
+    skipped = [f["message"] for f in report["findings"] if f["code"] == "journal-not-checked"]
+    assert not any("indented" in said for said in skipped), skipped
+
+
+@pytest.mark.parametrize("placed", [f"{BS}includesvg{{flow}}", f"{BS}includegraphics{{flow.v2}}",
+                                    f"{BS}includegraphics*[width=3cm]{{flow.v2}}"])
+def test_a_picture_placed_by_includesvg_or_with_a_dot_in_its_name_is_searched(
+    tmp_path: Path, capsys, placed: str
+) -> None:
+    """Round 2, note 6: `\\includesvg` was not read, and a name with a dot in it was tried
+    only as written."""
+    name = "flow.svg" if "includesvg" in placed else "flow.v2.svg"
+    (tmp_path / name).write_text(svg("Drawn by Ada Example"), encoding="utf-8")
+    (tmp_path / "main.tex").write_text(
+        f"{BS}documentclass{{article}}{BS}begin{{document}}{BS}section{{Results}}Of 40, 12."
+        f"{placed}\n{BS}end{{document}}\n", encoding="utf-8")  # fmt: skip
+    code, report, _err = audited(capsys, str(tmp_path / "main.tex"), "--journal",
+                                 str(profile(tmp_path, blinding="double")), "--authors",
+                                 str(authors_file(tmp_path)), "--strict")  # fmt: skip
+    named = [f for f in report["findings"] if f["code"] == "blind-document-names-author"]
+    assert [f["message"].split(" is in ")[1].split(" of ")[0] for f in named] == [
+        f"a figure ({name})"], named
+    assert code == 1

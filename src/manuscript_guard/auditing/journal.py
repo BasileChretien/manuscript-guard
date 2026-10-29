@@ -64,6 +64,9 @@ class JournalRun:
     looked: str | None = None
     #: Whether the lines are lines of the text pandoc converted a .docx to.
     converted: bool = False
+    #: Whether a limit the profile sets went under what was not checked: the report then
+    #: never says the paper is within every limit (round 2 of #478).
+    limits_unchecked: bool = False
 
 
 def read_profile(path: Path) -> tuple[dict | None, list[str]]:
@@ -141,8 +144,9 @@ def run_journal(
         run.note = f"G4 was not run on {paper.name}: {exc}"
         return run
     run.converted = staged.converted
-    if _html_tables(staged, profile):
-        run.skipped.append(HTML_TABLES)
+    unread = _tables_unread(staged, profile)
+    run.skipped += unread
+    run.limits_unchecked = bool(unread)
     slug = _slug(profile_path)
     with tempfile.TemporaryDirectory(prefix="mg-audit-") as folder:
         root = Path(folder).resolve()
@@ -173,19 +177,26 @@ def run_journal(
 UNCITED = ("whether each DOI the data availability statement names is cited: no reference "
            "list was read, as in a LaTeX paper whose list is in its .bib")
 #: Said where the main document holds a table written in HTML, which is not counted.
-HTML_TABLES = ("the tables written in HTML, which are not counted toward the journal's limits "
-               "on tables and display items")
+HTML_TABLES = ("the journal's limits on tables and display items: a table written in HTML is "
+               "not counted")
+#: Said where a line of the main document is shaped as a table's rule and is no table the
+#: audit read: one indented in a list item, as pandoc writes it there.
+INDENTED_TABLES = ("the journal's limits on tables and display items: a table indented in a "
+                   "list item is not read, so not counted")
 
 
-def _html_tables(staged, profile: dict) -> bool:
-    """Whether a Markdown main document, as staged, prints a table written in HTML, and the
-    profile limits its tables."""
+def _tables_unread(staged, profile: dict) -> list[str]:
+    """Why the tables of a Markdown main document, as staged, could not all be counted, where
+    the profile limits them: a table written in HTML, or one `count_tables` cannot read."""
     from manuscript_guard.text.sections import scannable
+    from manuscript_guard.text.tables import count_tables
 
     limits = profile.get("limits") or {}
     if not ({"tables", "display_items"} & set(limits)) or "main.md" not in staged.files:
-        return False
-    return re.search(r"(?i)<table\b", scannable(staged.files["main.md"])) is not None
+        return []
+    text = staged.files["main.md"]
+    unread = [HTML_TABLES] if re.search(r"(?i)<table\b", scannable(text)) else []
+    return unread + ([] if count_tables(text)[1] else [INDENTED_TABLES])
 
 
 def look_for_authors(run: JournalRun, papers: list[tuple[Path, object]], profile: dict,
@@ -229,11 +240,12 @@ def _places(paper: Path, tree) -> list[tuple[str, str]] | str:
     it (`audit.read_paper`), where a blind journal's authors cite their own work in the third
     person; or why the document could not be read.
 
-    A .docx: its text as the audit reads it, its list cut; what a tracked change deleted
-    outside a list styled "Bibliography"; and the rest the build reads, its notes, comments,
-    headers, author fields, links and pictures (`build.blinding.docx_places`). A LaTeX
-    paper: each file its tree reads, its `thebibliography` left out, and the pictures it
-    places (`_placed_pictures`). Markdown: its text, its list cut."""
+    A .docx: its text as the audit reads it, its list cut, and the cut ended at back matter
+    (`_docx_text`); what a tracked change deleted outside a list styled "Bibliography"; and
+    the rest the build reads, its notes, comments, headers, author fields, links and pictures
+    (`build.blinding.docx_places`). A LaTeX paper: each file its tree reads, its
+    `thebibliography` left out, and the pictures it places (`_placed_pictures`). Markdown:
+    its text, its list cut."""
     from manuscript_guard.audit import read_paper
     from manuscript_guard.build.blinding import deleted_text, docx_places, latex_places
     from manuscript_guard.safexml import UnsafeDocument
@@ -243,24 +255,41 @@ def _places(paper: Path, tree) -> list[tuple[str, str]] | str:
         if tree is not None:
             files = [path for path, _source in tree.files]
             return latex_places(list(dict.fromkeys([*files, *_placed_pictures(tree)])))
-        text = read_paper(paper)[0]
         if paper.suffix.lower() != ".docx":
-            return [("the text", text)]
-        return [*docx_places(paper, body=False), ("the text", text),
+            return [("the text", read_paper(paper)[0])]
+        return [*docx_places(paper, body=False), ("the text", _docx_text(paper)),
                 (DELETED, deleted_text(paper))]
     except (UnsafeDocument, NotADocx, OSError, ValueError) as exc:
         return f"{paper.name} could not be read for the authors' names: {exc}"
 
 
+def _docx_text(paper: Path) -> str:
+    """A .docx's text, as `audit.read_paper` reads it, each reference list cut; and each cut
+    ended where a list under no heading ends (`_end_under_no_heading`), a list under a styled
+    heading among them. The audit's own cut runs on to the next styled heading, and back
+    matter after the list under a title in Normal style, the acknowledgements, was not read
+    for the authors (round 2 of #478)."""
+    from manuscript_guard.audit import _blank, _end_under_no_heading, bibliography_spans
+    from manuscript_guard.text.docx import read_docx_text
+
+    document = read_docx_text(paper)
+    lines = document.body.split("\n")
+    spans = [(start, _end_under_no_heading(lines, start, end)) for start, end
+             in bibliography_spans(document.body, document.headings, document.cells)]
+    body = _blank(document.body, spans)
+    return f"{body}\n{document.notes}" if document.notes else body
+
+
 #: `\includegraphics[options]{name}`, and the comment that ends a LaTeX line.
-_GRAPHIC = re.compile(r"\\includegraphics\s*(?:\[[^\]]*\])?\s*\{([^{}]+)\}")
+_GRAPHIC = re.compile(r"\\include(?:graphics|svg)\s*\*?\s*(?:\[[^\]]*\])?\s*\{([^{}]+)\}")
 _COMMENT = re.compile(r"(?<!\\)%.*")
 
 
 def _placed_pictures(tree) -> list[Path]:
-    """The PDF and SVG pictures the files of `tree` place with `\\includegraphics`, found
-    from the entry's folder as LaTeX finds them, a name with no extension as `.pdf` or `.svg`
-    there; not every picture in the folder, where a compiled copy of the paper may be."""
+    """The PDF and SVG pictures the files of `tree` place with `\\includegraphics` or
+    `\\includesvg`, found from the entry's folder as LaTeX finds them: a name as written, and
+    with `.pdf` and `.svg` after it, a name with a dot in it among them (round 2 of #478);
+    not every picture in the folder, where a compiled copy of the paper may be."""
     from manuscript_guard.contracts._schema import ContractError, read_text
 
     found: list[Path] = []
@@ -274,8 +303,8 @@ def _placed_pictures(tree) -> list[Path]:
             name = match[1].strip().strip('"')
             for folder in dict.fromkeys((tree.folder, path.parent)):
                 given = folder / name
-                tried = [given] if given.suffix else [given.with_name(given.name + suffix)
-                                                      for suffix in (".pdf", ".svg")]
+                tried = [given, *(given.with_name(given.name + suffix)
+                                  for suffix in (".pdf", ".svg"))]  # fmt: skip
                 hit = next((p for p in tried if p.is_file()), None)
                 if hit is not None:
                     if hit.suffix.lower() in (".pdf", ".svg"):

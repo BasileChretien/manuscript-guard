@@ -2632,7 +2632,7 @@ def cmd_report_issue(args: argparse.Namespace) -> int:
     root = crashes.project_root()
     # Scrubbed whole, then cut: a cut could split an address the scrub would have caught.
     report = replace(report, title=issue.cut_title(scrub(report.title, root=root)),
-                     body=scrub(report.body, root=root))  # fmt: skip
+                     body=issue.printable(scrub(report.body, root=root)))  # fmt: skip
     _say_report(report, crashes.folder(), args.open)
     return 0
 

@@ -19078,6 +19078,13 @@ What papers converted from Word showed (see "What papers converted from Word sho
     command lets one through), is recorded as a fault. It is one: such a sentence should reach
     the author without the words "an error in manuscript-guard itself", and the record is how
     it is found.
+  - The hook's question before an agent's `report-issue --open` reads each invocation's
+    words, as the other shell guards do: an `--open` that reaches the tool from another
+    invocation, a variable or a splat (`echo --open | xargs manuscript-guard report-issue`,
+    `F=--open; ... $F`, PowerShell's `@a`) is not seen, and the page opens unasked. A command
+    that only names the three words (`rg "manuscript-guard report-issue --open" docs`) is
+    asked about though nothing would open. Nothing is posted either way until the person
+    clicks Submit on the page.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

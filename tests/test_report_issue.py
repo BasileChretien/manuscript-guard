@@ -221,6 +221,16 @@ def test_a_title_in_another_script_still_opens_whole(kept) -> None:
     assert len(issue.links(report, PAGE).short) <= issue.LONGEST_OPENED
 
 
+def test_a_title_with_bytes_that_were_not_utf8_is_printed(kept, capsys) -> None:
+    assert cli.main(["report-issue", "--title", "a" + chr(0xDCFF) * 300]) == 0
+    assert capsys.readouterr().out.startswith("Title: a?")
+
+
+def test_a_cut_does_not_part_a_letter_from_its_accent() -> None:
+    title = "x" * 198 + "e" + "\N{COMBINING ACUTE ACCENT}" + "y"
+    assert issue.cut_title(title) == "x" * 198 + "…"
+
+
 def test_the_title_is_scrubbed_whole_before_it_is_cut(kept, capsys) -> None:
     cli.main(["report-issue", "--title", "x" * 190 + " ada@example.org"])
     out = capsys.readouterr().out

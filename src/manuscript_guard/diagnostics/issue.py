@@ -143,12 +143,22 @@ def cut_title(title: str) -> str:
     """`title` within GitHub's limit, and short enough encoded that the address `--open`
     hands the browser stays within `LONGEST_OPENED`: a title in another script grows up to
     nine times when encoded. Cut after the scrub, so that the scrub reads it whole."""
+    import unicodedata
+
+    title = printable(title)
     if len(title) <= LONGEST_TITLE and len(quote(title, safe="")) <= LONGEST_ENCODED_TITLE:
         return title
     kept = title[: LONGEST_TITLE - 1]
-    while kept and len(quote(kept + "…", safe="")) > LONGEST_ENCODED_TITLE:
+    while kept and (len(quote(kept + "…", safe="")) > LONGEST_ENCODED_TITLE
+                    or unicodedata.combining(title[len(kept)])):  # a letter keeps its accent
         kept = kept[:-1]
     return kept.rstrip() + "…"
+
+
+def printable(text: str) -> str:
+    """`text` with what UTF-8 cannot write (a lone surrogate, from bytes that were not UTF-8
+    in a command's arguments) written as `?`, so that it can be printed and encoded."""
+    return text.encode("utf-8", "replace").decode("utf-8")
 
 
 def find(records: list[dict], wanted: str) -> tuple[dict | None, str | None]:

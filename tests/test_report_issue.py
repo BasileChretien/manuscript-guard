@@ -216,6 +216,28 @@ def test_a_long_title_is_cut_and_the_address_stays_short(kept) -> None:
     assert len(found.new) <= issue.LONGEST_LINK
 
 
+def test_a_title_in_another_script_still_opens_whole(kept) -> None:
+    report = issue.Report(title="\N{HIRAGANA LETTER A}" * 300, body="b\n", name="n")
+    assert len(issue.links(report, PAGE).short) <= issue.LONGEST_OPENED
+
+
+def test_the_title_is_scrubbed_whole_before_it_is_cut(kept, capsys) -> None:
+    cli.main(["report-issue", "--title", "x" * 190 + " ada@example.org"])
+    out = capsys.readouterr().out
+    title_line = out.splitlines()[0]
+    assert "ada@" not in title_line and "ada@" not in out
+
+
+@pytest.mark.parametrize("command", [
+    "uv run manuscript-guard report-issue --open",
+    'bash -c "manuscript-guard report-issue --open"',
+    'powershell -Command "manuscript-guard report-issue --open"',
+    "py -m manuscript_guard.cli report-issue --open",
+])  # fmt: skip
+def test_the_hook_asks_when_the_tool_is_started_another_way(command) -> None:
+    assert hooks._opens_report(command) is not None
+
+
 def test_a_long_report_opens_with_the_title_only(kept, monkeypatch, capsys, opened) -> None:
     _crash(monkeypatch)
     capsys.readouterr()

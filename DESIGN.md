@@ -11942,8 +11942,14 @@ the page carries text the agent chose. The error's message is left out of the re
 `--with-message` asks for it, because a message can quote the manuscript and the scrub does
 not take that out; `--title` writes a report of something with no record. An address longer
 than 7,500 characters, which GitHub may refuse, carries the title and a line saying to paste
-the body from the file. A `gate-errored` finding the tool recorded names the fingerprint in its
-hint, and the crash sentence and the session start point at `report-issue`.
+the body, from the file where one was written and from the terminal where recording is off;
+and `--open` hands the browser the title alone past 2,000 characters, since Windows'
+ShellExecute may cut a longer address. The title is scrubbed whole and then cut to 200
+characters and to 600 once encoded. The hook reads `--open` in shell words, as it reads
+`--post`, and asks where an invocation names the tool, `report-issue` and `--open` in a form
+it does not read as the tool (`uv run`, `bash -c`, `py -m`). A `gate-errored` finding the tool
+recorded names the fingerprint in its hint, and the crash sentence and the session start
+point at `report-issue`.
 
 ## Known gaps
 

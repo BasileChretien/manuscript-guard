@@ -2630,7 +2630,8 @@ def cmd_report_issue(args: argparse.Namespace) -> int:
         report = issue.from_record(record, with_message=args.with_message,
                                    installed=__version__, note=args.note)  # fmt: skip
     root = crashes.project_root()
-    report = replace(report, title=scrub(report.title, root=root),
+    # Scrubbed whole, then cut: a cut could split an address the scrub would have caught.
+    report = replace(report, title=issue.cut_title(scrub(report.title, root=root)),
                      body=scrub(report.body, root=root))  # fmt: skip
     _say_report(report, crashes.folder(), args.open)
     return 0

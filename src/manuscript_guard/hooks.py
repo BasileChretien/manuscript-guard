@@ -1575,14 +1575,21 @@ def _opens_report(command: str) -> str | None:
                and re.search(r"(?i)--open(?![\w-])", text) for text in texts):  # fmt: skip
         return None
     readings = [_command_words(text, posix=posix) for text in joined for posix in (True, False)]
-    opening = False
+    opening = named_elsewhere = False
     for invocations, _clean in readings:
         for words in invocations:
             tool = _tool_words(words)
             if tool and tool[0].casefold() == "report-issue":
                 opening = opening or any(_OPEN_FLAG.fullmatch(word) for word in tool[1:])
+            elif tool is None:
+                # The tool started another way (`uv run`, `bash -c "..."`, `py -m`): an
+                # invocation that names it, `report-issue` and `--open` is put to the person.
+                said = " ".join(words)
+                named_elsewhere = named_elsewhere or bool(
+                    _NAMES_TOOL.search(said) and re.search(r"(?i)\breport-issue\b", said)
+                    and re.search(r"(?i)--open(?![\w-])", said))  # fmt: skip
     exact = all(clean for _invocations, clean in readings)
-    return _OPENS if opening or not exact else None
+    return _OPENS if opening or named_elsewhere or not exact else None
 
 
 #: `communicate approve`, and `communicate … --done`, in one invocation of the command.

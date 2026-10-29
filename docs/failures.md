@@ -4,7 +4,7 @@ A failure of the tool's own, not a finding about your manuscript, ends in one se
 
 ```text
 manuscript-guard: check stopped on an error in manuscript-guard itself, not in your files: KeyError: 'G7'
-It is recorded on this machine in C:\Users\you\AppData\Local\manuscript-guard\reports, as 3f2a9c01b4de.json; nothing was sent. MANUSCRIPT_GUARD_DEBUG=1 shows the traceback.
+It is recorded on this machine in ~\AppData\Local\manuscript-guard\reports, as 3f2a9c01b4de.json; nothing was sent. `manuscript-guard report-issue --last` shows the report to send.
 ```
 
 The command exits 2, as when it could not run at all, so a script reading the exit code does
@@ -59,7 +59,9 @@ posted until you click Submit.
   the fault rather than pasting your manuscript's own sentences.
 - `report-issue --title "..." --note "..."` writes a report of something else: a result that
   is wrong without any error, or a suggestion.
-- A report longer than an address can carry is to be pasted from the file it was written to.
+- A report longer than an address can carry is to be pasted: from the file it was written
+  to, or, with recording off, from the report printed in the terminal. An address too long to
+  hand to a browser opens the page with the title only, and the body is pasted the same way.
 
 [CONTRIBUTING.md](../CONTRIBUTING.md) says what else helps, and how to report a gate that got
 something wrong.

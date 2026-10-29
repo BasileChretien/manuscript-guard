@@ -32,6 +32,8 @@ SHORTENED = ("The report was too long for a link. Paste it here: `manuscript-gua
 LONGEST_OPENED = 2000
 #: GitHub refuses a title past 256 characters.
 LONGEST_TITLE = 200
+#: And a title of 200 characters in another script is 1,800 encoded.
+LONGEST_ENCODED_TITLE = 600
 _SHORTEST_PREFIX = 4
 _FINGERPRINT_REPORT = re.compile(r"^[0-9a-f]{12}\.md$")
 _GENERAL_REPORT = re.compile(r"^report-\d{8}-\d{6}-[0-9a-f]{6}\.md$")
@@ -99,7 +101,7 @@ def general(title: str, note: str | None, *, installed: str) -> Report:
                         f"**Version:** manuscript-guard {installed}, Python {python}, {system}."])
     # The clock alone can give two reports the same name: a random tail keeps both.
     stamp = f"{datetime.now():%Y%m%d-%H%M%S}-{secrets.token_hex(3)}"
-    return Report(title=_cut(title.strip()), body=body + "\n", name=f"report-{stamp}.md")
+    return Report(title=title.strip(), body=body + "\n", name=f"report-{stamp}.md")
 
 
 def issues_page() -> str | None:
@@ -124,7 +126,7 @@ def links(report: Report, page: str | None) -> Links | None:
         return None
 
     def asking(body: str) -> str:
-        asked = {"title": _cut(report.title), "body": body, "labels": LABEL}
+        asked = {"title": cut_title(report.title), "body": body, "labels": LABEL}
         return f"{page}/new?{urlencode(asked, quote_via=quote)}"
 
     whole, short = asking(report.body), asking(SHORTENED)
@@ -137,8 +139,16 @@ def links(report: Report, page: str | None) -> Links | None:
                  shortened=shortened)  # fmt: skip
 
 
-def _cut(title: str) -> str:
-    return title if len(title) <= LONGEST_TITLE else title[: LONGEST_TITLE - 1].rstrip() + "…"
+def cut_title(title: str) -> str:
+    """`title` within GitHub's limit, and short enough encoded that the address `--open`
+    hands the browser stays within `LONGEST_OPENED`: a title in another script grows up to
+    nine times when encoded. Cut after the scrub, so that the scrub reads it whole."""
+    if len(title) <= LONGEST_TITLE and len(quote(title, safe="")) <= LONGEST_ENCODED_TITLE:
+        return title
+    kept = title[: LONGEST_TITLE - 1]
+    while kept and len(quote(kept + "…", safe="")) > LONGEST_ENCODED_TITLE:
+        kept = kept[:-1]
+    return kept.rstrip() + "…"
 
 
 def find(records: list[dict], wanted: str) -> tuple[dict | None, str | None]:
@@ -200,7 +210,7 @@ def _title(record: dict) -> str:
              if inner else "")  # fmt: skip
     what = record.get("name") or record.get("command") or record["kind"]
     short = record["exception"].rsplit(".", 1)[-1]
-    return _cut(f"[{MARK}{record['fingerprint']}] {what}: {short}{where}")
+    return f"[{MARK}{record['fingerprint']}] {what}: {short}{where}"
 
 
 def _times(count: int) -> str:

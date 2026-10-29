@@ -106,17 +106,27 @@ def _values(document: dict) -> list[tuple[str, int]]:
             continue
         value = Value(key=key, value=spec.get("value"), display=str(spec.get("display")),
                       origin=RESULTS, unit=spec.get("unit"), role=spec.get("role"),
-                      label=bool(spec.get("label")))  # fmt: skip
-        if is_count(value):
-            out.append((key, value.value))
+                      label=bool(spec.get("label")), count=spec.get("count"))  # fmt: skip
+        number = value.value
+        if is_count(value) and isinstance(number, (int, float)) and float(number).is_integer():
+            # A count held back has no value: its display is the table's to read.
+            out.append((key, int(number)))
     return out
 
 
 def _cells(document: dict) -> list[tuple[str, int]]:
     out = []
+    # A harvested table's columns outside the `counts` its entry names are no counts.
+    harvested = (document.get("provenance") or {}).get("harvested")
+    spec = harvested.get("spec") if isinstance(harvested, dict) else None
+    counts = spec.get("counts") if isinstance(spec, dict) else None
     for key, table in sorted((document.get("tables") or {}).items()):
+        columns = table.get("columns") or []
         for row_at, row in enumerate(table.get("rows") or [], 1):
             for column_at, cell in enumerate(row[1:], 2):
+                if isinstance(counts, list) and (column_at > len(columns)
+                                                 or columns[column_at - 1] not in counts):
+                    continue
                 count = count_in_cell(str(cell)) if isinstance(cell, (str, int)) else None
                 if count is not None:
                     out.append((f"table {key}, row {row_at}, column {column_at}", count))

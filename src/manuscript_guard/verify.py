@@ -342,6 +342,15 @@ def verify(project, *, only: list[str] | None = None) -> VerifyReport:
             if not named:
                 report.skipped.append((fragment.name, "no generated_by in its provenance"))
                 continue
+            harvested = on_disk.get("provenance", {}).get("harvested")
+            harvested = harvested if isinstance(harvested, dict) else None
+            if harvested is not None and isinstance(harvested.get("receipt"), dict):
+                # Run where the data are, and not here: the receipt is the site's word for it,
+                # and it is not a reproduction (DESIGN.md, "Outputs a script writes").
+                held = harvested["receipt"]
+                report.skipped.append((fragment.name, f"data held at {held.get('site')}; "
+                                       f"receipt of {str(held.get('ran_at', ''))[:10]}"))
+                continue
 
             script = work / named
             if not script.exists():
@@ -355,6 +364,10 @@ def verify(project, *, only: list[str] | None = None) -> VerifyReport:
                 )
                 continue
 
+            if harvested is not None:
+                # Deleted first, so that the output compared is the one this run wrote and
+                # not the copy of the one harvested.
+                (work / str(harvested.get("output", ""))).unlink(missing_ok=True)
             try:
                 finished = _run(script, work, env)
             except (OSError, subprocess.SubprocessError) as exc:
@@ -373,6 +386,10 @@ def verify(project, *, only: list[str] | None = None) -> VerifyReport:
                 )
                 continue
 
+            if harvested is not None:
+                report.comparisons.append(_reharvested(fragment.name, named, on_disk, work,
+                                                       harvested))  # fmt: skip
+                continue
             produced = work / fragment.relative_to(root)
             if not produced.exists():
                 report.comparisons.append(
@@ -389,6 +406,26 @@ def verify(project, *, only: list[str] | None = None) -> VerifyReport:
             )
 
     return report
+
+
+def _reharvested(name: str, script: str, on_disk: dict, work: Path, harvested: dict
+                 ) -> Comparison:  # fmt: skip
+    """The output the re-run wrote, harvested by the entry the fragment records, against the
+    fragment on disk. A run that wrote no output, or one the entry cannot read, is a re-run
+    that failed."""
+    from manuscript_guard.harvest import Entry, HarvestError
+    from manuscript_guard.harvest.fragment import document_of
+
+    output = work / str(harvested.get("output", ""))
+    if not output.is_file():
+        return Comparison(name, ran=False, error=f"{script} ran but wrote no "
+                          f"{harvested.get('output')}")  # fmt: skip
+    try:
+        rerun = document_of(work, Entry.from_spec(harvested["spec"]), output, inputs=[])
+    except (HarvestError, KeyError, TypeError) as exc:
+        return Comparison(name, ran=False, error=f"{harvested.get('output')} as {script} wrote "
+                          f"it again cannot be harvested: {exc}")  # fmt: skip
+    return _compare(name, on_disk, rerun)
 
 
 def _compare(name: str, on_disk: dict, rerun: dict) -> Comparison:

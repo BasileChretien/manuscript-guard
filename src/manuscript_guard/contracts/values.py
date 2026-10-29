@@ -71,6 +71,11 @@ class Value:
     # A dispersion's kind, "sd" or "se", where the analysis says: G2 warns where the text
     # labels it the other.
     spread: str | None = None
+    # False where the analysis says this whole number is no count of people or records:
+    # `harvest` writes it for a cell outside its entry's `counts`, and G2's custodian check
+    # passes it over. True where it says a value G2 would not read as a count is one: a
+    # harvested count held back ("<2") or written "3.0", whose display G2 then holds.
+    count: bool | None = None
 
     @property
     def namespace(self) -> str:

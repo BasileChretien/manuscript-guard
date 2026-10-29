@@ -1463,6 +1463,11 @@ def _emitted_tables(results: Results, classifier: Classifier) -> Report:
     return report
 
 
+def _harvested(results: Results, source) -> bool:
+    """Whether `harvest` wrote the results file at `source`, whose table no script emits."""
+    return any(f.path == source and f.harvested for f in results.fragments)
+
+
 def _coverage(results: Results, literature: Literature, referenced: set[str]) -> Report:
     """Direction two: declared values that nothing quotes."""
     report = Report()
@@ -1491,8 +1496,10 @@ def _coverage(results: Results, literature: Literature, referenced: set[str]) ->
                 code="unplaced-table",
                 message=f"table {key!r} is emitted but no source file places it",
                 path=table.source,
-                hint="write {{table." + key + "}} where it belongs, or emit it with "
-                "quoted=False if it is working output",
+                hint="write {{table." + key + "}} where it belongs, or "
+                + ("give its entry of harvest.yaml `quoted: false`"
+                   if _harvested(results, table.source) else "emit it with quoted=False")
+                + " if it is working output",
             )
         )
 

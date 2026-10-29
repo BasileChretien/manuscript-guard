@@ -107,6 +107,21 @@ FORBIDDEN = (
         "the history of deposits is appended to by `manuscript-guard deposit`, one action at a "
         "time, and never rewritten",
     ),
+    (
+        # An author's approval of a channel's text, which `communicate publish --post` holds
+        # the text to, and the record of what a service answered when it was posted.
+        "communication/approvals/",
+        "",
+        "an approval is written by `manuscript-guard communicate approve`, which the author "
+        "runs as themselves; an approval nobody gave cannot be written by hand",
+    ),
+    (
+        "communication/published/",
+        "",
+        "the record of what was posted is written by `manuscript-guard communicate publish` "
+        "from what the service answered; a post nobody made cannot be recorded by hand, and "
+        "one made cannot be unrecorded",
+    ),
 )
 
 # The copy `related --take` keeps of an earlier output's project, under any output's id: its
@@ -1210,9 +1225,10 @@ def guard_submission(payload: dict) -> int:
     # the markers are asked, and before the words are read for a project.
     command = _without_messages(str(payload.get("tool_input", {}).get("command", "")))
     publishes, deposits = _deposits(command)
-    if publishes:
-        return _deny("PreToolUse", publishes)
-    sends = deposits
+    posts, names_posting = _posts(command)
+    if publishes or posts:
+        return _deny("PreToolUse", "\n\n".join(one for one in (publishes, posts) if one))
+    sends = deposits or names_posting
     sends = sends or _or_nothing(lambda _path: _sends_without_asking(command, payload),
                                  Path("."))  # fmt: skip
     sends = sends or _or_nothing(lambda _path: _approves(command), Path("."))
@@ -1507,12 +1523,92 @@ def _approves(command: str) -> str | None:
             "in checks/decisions.csv. Which file is taken as a person's word is the author's "
             "decision: run it yourself, with the files they sent you."
         )
+    if _COMMUNICATE_APPROVE.search(joined):
+        return (
+            "`manuscript-guard communicate approve` records that an author read a channel's "
+            "text and approves it to be posted under their name. Only that author can say so: "
+            "run it yourself, as yourself."
+        )
+    if _COMMUNICATE_DONE.search(joined):
+        return (
+            "`manuscript-guard communicate publish researchgate --done` records that the author "
+            "added the paper to ResearchGate by hand. Only the author can say so: run it "
+            "yourself, once you have."
+        )
+    if _COMMUNICATE_ABANDON.search(joined):
+        return (
+            "`manuscript-guard communicate publish --abandon` records that a thread which "
+            "stopped part-way is left as it is, its posts up under the author's name, and lets "
+            "a new one begin. Only the author can say so: run it yourself, once you have looked "
+            "at the account's page."
+        )
     if not _APPROVE.search(joined):
         return None
     return (
         "`manuscript-guard approve` records that an author read the manuscript and approves "
         "it. Only that author can say so: run it yourself, as yourself."
     )
+
+
+#: `communicate approve`, and `communicate … --done`, in one invocation of the command.
+_COMMUNICATE_APPROVE = re.compile(
+    _TOOL + r"communicate\b" + _SAME_COMMAND + r"(?<![\w-])approve\b", re.IGNORECASE
+)
+_COMMUNICATE_DONE = re.compile(
+    _TOOL + r"communicate\b" + _SAME_COMMAND + r"(?<![\w-])--done\b", re.IGNORECASE
+)
+_COMMUNICATE_ABANDON = re.compile(
+    _TOOL + r"communicate\b" + _SAME_COMMAND + r"(?<![\w-])--abandon\b", re.IGNORECASE
+)
+#: `--post` as a word of the command, which `communicate publish` posts with.
+_POST_FLAG = re.compile(r"--post(?:=.*)?", re.IGNORECASE | re.DOTALL)
+_POSTS = (
+    "`manuscript-guard communicate publish --post` posts the text in public, under the "
+    "author's name, from their account, and a post once seen cannot be unseen. It is the "
+    "author's to run, at a terminal, once they have read it and approved it: run it yourself. "
+    "Without --post it sends nothing, and writes what it would send to communication/outbox/."
+)
+_NAMES_POST = (
+    "this command names `manuscript-guard communicate` with --post, in a form the guard does "
+    "not read exactly as an invocation of it. Posting in public under the author's name is "
+    "the author's decision."
+)
+
+
+def _posts(command: str) -> tuple[str | None, str | None]:
+    """Why a `communicate publish --post` in this command is refused, and why one is put to
+    the person, read as `_deposits` reads `deposit --publish`.
+
+    Refused: `--post` in an invocation of `communicate` read exactly, the same words in both
+    shells' reading: it posts in public under the author's name. Put to the person: a command
+    that names the tool, `communicate` and `--post` in a form not read exactly, or outside an
+    invocation of `communicate`: a grep of the documentation, an echo."""
+    joined = [re.sub(r"\r(?!\n)", "\n", re.sub(r"[\\`]\r?\n", between, command))
+              for between in (" ", "")]  # fmt: skip
+    texts = [*joined, *(re.sub("[\\\\`'\"]", "", text) for text in joined)]
+    if not any(_NAMES_TOOL.search(text) and re.search(r"(?i)\bcommunicate\b", text)
+               and re.search(r"(?i)--post(?![\w-])", text) for text in texts):  # fmt: skip
+        return None, None
+    readings = [_command_words(text, posix=posix) for text in joined for posix in (True, False)]
+    posting = named_elsewhere = False
+    for invocations, _clean in readings:
+        for words in invocations:
+            tool = _tool_words(words)
+            if tool is not None and (not tool or tool[0].casefold() != "communicate") \
+                    and not any(word.casefold() == "communicate" for word in tool):  # fmt: skip
+                continue  # the tool running another subcommand, naming no `communicate`
+            rest = tool[1:] if tool and tool[0].casefold() == "communicate" else None
+            if rest is None:
+                named_elsewhere = named_elsewhere or any(
+                    re.search(r"(?i)--post(?![\w-])", word) for word in words)  # fmt: skip
+            else:
+                posting = posting or any(_POST_FLAG.fullmatch(word) for word in rest)
+    exact = all(clean for _invocations, clean in readings)
+    if exact and posting:
+        return _POSTS, None
+    if exact and not named_elsewhere:
+        return None, None
+    return None, _NAMES_POST
 
 
 def _moves_stage_back(command: str, payload: dict) -> str | None:
@@ -1535,6 +1631,9 @@ def _sends_without_asking(command: str, payload: dict) -> str | None:
     `--run` sends the round's panel to the models in `review.models`, and asks the person at
     the terminal first; `--yes` is the answer given in advance. It is for a script the author
     wrote. An agent that types it answers for the author. `--dry-run` sends nothing.
+
+    The other command that sends under the author's name, `communicate publish --post`, is
+    read by `_posts`, as `deposit --publish` is by `_deposits`: it is refused, not asked.
     """
     joined = re.sub(r"[\\`]\r?\n", " ", command)  # a line continued in bash or PowerShell
     for found in _REVIEW.finditer(joined):

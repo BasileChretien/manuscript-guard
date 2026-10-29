@@ -6181,8 +6181,8 @@ inputs, each line naming its statement and its values, so that the check can hol
 to its statement and each value to the results now (`comm-ga-stale`), which a picture drawn
 by hand cannot be held to. It is held to the journal's `graphical_abstract` rules by the
 checks G3 and G4 hold a figure to, called on its path (`figure_files.check_file`,
-`figure_colours.colour_findings`, `figure_alt.alt_text_findings`), not copied. Nothing here
-sends anything: posting and the platforms' interfaces are a later step.
+`figure_colours.colour_findings`, `figure_alt.alt_text_findings`), not copied. Nothing but
+`communicate publish --post` and `communicate orcid` sends anything (below).
 
 **The texts are written from the brief** (`communicate build`, `communicate/build.py` and
 `drafts.py`), and held to the check before they are written: a text the check would fail is
@@ -6231,6 +6231,82 @@ through the lookups' injected transport, and the answer kept in
 `communication/lookups/crossref.yaml` with the digest of what it says; `communicate check`
 reads it offline (`own_doi.py`): a DOI Crossref did not know, or whose title there is not
 paper.yaml's, warns. Only the DOI is sent, and only by the command that asks.
+
+**An approval, then a post** (`communicate approve`, `communicate publish`; `approval.py`,
+`publish.py`, `adapters/`). A post is public under one person's name, and once read cannot be
+unread, so the tool posts only what that person approved as it stands, and only when they ask.
+`communicate approve --as <author> <channel>` writes `communication/approvals/<channel>.yaml`
+(`by`, `on`, `text_sha256`, `attachments_sha256`, `check_clean`), and refuses while the check
+fails the text, the embargo apart: a text is approved before the embargo lifts and posted
+after. The text's digest is of the file and of each post as printed, each binding its
+display, and of each image's alternative text, so that an edit of the text, of a value it
+binds or of an alternative text stales the approval; the attachments' digest is of each file
+it attaches. Who approves is one author `authors.yaml` names, the one whose account posts the
+text (decision of 2026-10-29, as recommended; Basile to be asked, the alternative being the
+corresponding author only): a post is one person's, from their own account.
+
+`communicate publish <channel>` without `--post` sends nothing: it writes the exact bodies of
+the requests `--post` would send to `communication/outbox/<channel>.json`, what the service
+answers and the moment of posting in angle brackets and no credential, and writes the preview
+again. `--post` posts a Bluesky or Mastodon text only past the embargo, with the check passing
+the text (its own findings, the brief's, paper.yaml's, and the graphical abstract's where the
+text attaches it; another text's failures do not stop it), no slot left to write, each image
+a PNG, JPEG, WebP or GIF with its alternative text in the front matter (`alt:`), an approval
+whose digests are the text's now, the text not posted on that channel before, nor the same
+posts as printed with the same files (`printed_sha256`, the digest of the language they are
+sent with and of each post and each alternative text as printed, so that a comment added and
+approved again does not post them twice), whether that thread was posted whole or abandoned
+part-way, and no other thread of the channel left part-way. The
+credentials are read from the environment only (`BLUESKY_HANDLE` and `BLUESKY_APP_PASSWORD`,
+`MASTODON_BASE_URL` and `MASTODON_TOKEN`); where they are not set it prints what to paste
+where, and exits 0. What the service answered, each post's URI or id, its link and when, is
+recorded in `communication/published/<channel>.yaml`, each post as it is posted. A thread that
+stops part-way (decision of 2026-10-29, as recommended; Basile to be asked, the alternative
+being to refuse and leave it to the author) is recorded as far as it went; posting it again
+whole is refused, and `--post --resume` posts the rest, its first post replying to the last
+recorded. While it stands part-way another text is not posted on the channel, since an edited
+thread posted whole would stand beside it; `publish <channel> --abandon`, the author's (the
+hooks put it to the person), records it as left as it is, and a new one may begin: another
+text, since its own posts are up, and on Mastodon within the hour the same keys would be
+answered with the abandoned thread's statuses. A post's
+key is written down before it is sent, a Bluesky record key (a TID of the moment, each above
+the last made in the run, since Windows' clock can answer one moment twice) or a Mastodon
+`Idempotency-Key` (the digest of the text, of the attached files and of the post's number, so
+that a corrected image under the same name is another status), with the moment
+(`pending_at`): a post whose answer was lost is asked for by its key before it is sent again
+(Bluesky; only `RecordNotFound` is read as no post), or sent again with the same key
+(Mastodon). Mastodon keeps a key for an hour: past `mastodon.KEY_LIFETIME`, fifty minutes,
+`--resume` refuses and sends nothing, and the author, who has looked at the account's page,
+says `--was-posted <link or id>` (that status is asked for, held to be the account's, no
+boost, made from `SENT_BEFORE` before the post was sent to `KEY_LIFETIME` and `SENT_AFTER`
+after it, and to reply to the post before, and recorded; a link's default port is read as the
+scheme's) or `--not-posted` (sent under a new key). Nothing
+here matches a post by its content. A request refused before it was acted on (a 4xx,
+refused credentials, a 429 asked twice) clears a key set in that run: nothing was made. A key
+an earlier run left is cleared only once its post is recorded, since that post may be up.
+`publish researchgate --done` is refused with no `researchgate.md`, whose digest it records.
+
+The adapters send through a transport given as an argument; the default refuses while
+`MANUSCRIPT_GUARD_NO_NETWORK` is set, which the test suite sets, so that a test that forgot its
+own transport fails rather than posting under somebody's name; the loopback tests give the
+one that sends. Bluesky's links are facets at their UTF-8 byte offsets, since atproto counts a
+facet in bytes and a text with an accent before a link marks the wrong letters in characters.
+Every secret, the app password, an e-mail address given in the handle's place, the
+session's tokens, Mastodon's token, is kept out of every URL, file and message (a handle is
+public, and a `did:web` account's DID holds it), each message scrubbed of
+it whole or in part (`deposit/remote/http.scrubbed`), and a refusal of the credentials is said
+in our words, since a service's can quote them. LinkedIn's adapter is deferred: posting needs
+an app of the author's, reviewed by LinkedIn, and a token of sixty days, so `publish linkedin`
+prints the text to paste. ResearchGate has no interface a tool may post through: `publish
+researchgate` prints the steps, and `--done` records that the author took them. A press
+release, a pitch and a newsletter are e-mail drafts, and nothing sends an e-mail.
+`communicate orcid` reads each author's public ORCID record for the paper's DOI, by the iD in
+`authors.yaml`, writes nothing, and says that a DOI not found may be kept private.
+
+The hooks refuse an agent's `communicate publish --post`, read as `deposit --publish` is read
+(`hooks._posts`), and put to the person an agent's `communicate approve` and `publish
+researchgate --done`; an agent's edit of `communication/approvals/` or
+`communication/published/` is refused. An agent may run `publish` without `--post`.
 
 ## An earlier output of the same data is held to this paper
 
@@ -18861,6 +18937,53 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - In a post, a statement opening with a list or quote marker and a space, `> 12` or `- 3`,
     loses the marker with its meaning; and a DOI holding `<` is not found among a text's
     links, so it says `version_shared: none`.
+
+- **What `communicate approve` and `publish` rest on (Task 5, PR 4, 2026-10-29).** Each
+  limit, as built:
+  - The platforms' interfaces change. Bluesky's requests (`createSession`, `uploadBlob`,
+    `createRecord`, `getRecord`, a 400 for a record not found, the 1,000,000 bytes of an
+    image, four images a post) are as recorded from atproto's lexicons and docs.bsky.app on
+    2026-10-29, which did not load that day; Mastodon's (`/api/v2/media`, `/api/v1/media/:id`,
+    `/api/v1/statuses`, `Idempotency-Key`) as read on docs.joinmastodon.org that day. A
+    change at either is found when a post fails, and the tests answer as the services did then.
+  - Mastodon's limit on a post's length is the instance's: `communicate check` holds a post to
+    500, Mastodon's default, unless paper.yaml's `communication.limits` says otherwise, and an
+    instance that takes fewer refuses the post (HTTP 422), which posts nothing. Its image
+    limits are the instance's too, and not checked before sending.
+  - Mastodon keeps an `Idempotency-Key` for an hour, as its documentation said on 2026-10-29,
+    and the fifty minutes `--resume` trusts it for rest on that and on the two clocks. Past
+    them, whether the post went out is the author's to look for on the account's page and
+    say, `--was-posted` or `--not-posted`: a wrong `--not-posted` posts it twice.
+  - The hooks read `communicate approve`, `publish … --done` and `publish … --abandon` with a
+    regex over the raw text, as base reads `approve`. Quoting tricks get past it: a quoted
+    subcommand, `appr''ove`, or a `;` inside a quoted `--as`.
+  - Only Edit and Write are guarded on `communication/approvals/` and `published/`. A shell
+    write of an approval passes every hook, and so does a direct call of the library, such as
+    `python -c "…publish(…, post=True)"`.
+  - An agent's `--post` is refused only in a command the hooks read exactly. Any other that
+    names the tool, `communicate` and `--post` is asked, not refused, as `deposit --publish`
+    is at base: one run through a launcher (`uv run`, `pipx run`, `py -m
+    manuscript_guard.cli`), one in a subshell (`( … --post)`), one with a `$(…)` anywhere in
+    it (`tests/test_hooks.py` pins `--post $(cat extra)` as asked), one with a typographic
+    quote anywhere in it. A flag built from a variable gets through.
+  - LinkedIn's adapter is deferred, until an author asks for one: `publish linkedin` prints
+    the text to paste, with `--post` or without.
+  - An ORCID record without the paper's DOI may hold it privately, or for trusted parties
+    only: `communicate orcid` says so, and only reports. ORCID's public API is read without a
+    key, and may limit how often it answers.
+  - A post is the text as printed: Markdown in it, `**bold**` or `[words](link)`, is posted as
+    typed, and only a link written whole, `https://...`, is marked as one. A mention and a
+    hashtag are posted as plain text, not marked as facets: a mention needs the account's DID
+    looked up, which is not done.
+  - A link ends at a space; a stop, a comma, a quote or a closing bracket it does not open
+    after it is not in it. A link that does end in a stop is marked without it.
+  - The alternative text in a text's front matter is held to its numbers and bindings at
+    approval and at posting, not to the brief: what it says of the image is the author's.
+  - What was posted is recorded by the command that posted it, and the hooks refuse an
+    agent's edit of the record; a person, or a shell command, can still delete it, and a post
+    of the same text would then go out again.
+  - A text is approved by one author. An approval says nothing of the co-authors, whose word
+    on a post under one author's name is not asked.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

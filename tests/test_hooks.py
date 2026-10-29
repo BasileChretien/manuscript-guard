@@ -343,6 +343,9 @@ def test_no_standard_input_at_all_is_an_empty_event(monkeypatch) -> None:
         # What a repository answered, which G4 holds package.doi to, and every action.
         ("deposit/receipts/zenodo-release.yaml", "a deposit nobody made"),
         ("deposit/history.yaml", "never rewritten"),
+        # An author's approval of a channel's text, and what a service answered a post with.
+        ("communication/approvals/bluesky-thread.yaml", "an approval nobody gave"),
+        ("communication/published/bluesky-thread.yaml", "a post nobody made"),
         # The copy of an earlier output's project, which G8 holds to its digests.
         ("literature/related/abstract/results/01_disproportionality.json", "related --take"),
         ("literature/related/abstract/design/plan.md", "related --take"),
@@ -983,6 +986,95 @@ def test_an_approval_given_by_an_agent_is_put_to_the_author(
     assert "Only that author can say so" in reason(result)
     payload = _shell(in_claude_code, command, turn_id="turn-1", model="gpt-test")
     assert decision(run("guard-submission", payload, capsys)) == "deny"
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        'manuscript-guard communicate approve bluesky-thread --as "Ada Example"',
+        "cd paper && mguard communicate --as Example approve mastodon",
+        "python -m manuscript_guard.cli communicate approve bluesky . --as 0000-0002-1825-0097",
+    ],
+)
+def test_an_agents_approval_of_a_post_is_put_to_the_author(
+    in_claude_code: Path, command: str, capsys
+) -> None:
+    """A post goes out under its author's name: only they can approve its text."""
+    result = run("guard-submission", _shell(in_claude_code, command), capsys)
+    assert decision(result) == "ask"
+    assert "communicate approve" in reason(result) and "Only that author" in reason(result)
+    payload = _shell(in_claude_code, command, turn_id="turn-1", model="gpt-test")
+    assert decision(run("guard-submission", payload, capsys)) == "deny"
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "manuscript-guard communicate publish bluesky-thread --post",
+        "cd paper && mguard communicate publish mastodon . --post --resume",
+        "python -m manuscript_guard.cli communicate --post publish bluesky",
+        'manuscript-guard communicate publish bluesky "--post"',
+        "BLUESKY_HANDLE=x manuscript-guard communicate publish bluesky --post",
+        r'& "C:\Tools\mguard.exe" communicate publish bluesky --post',
+    ],
+)
+def test_posting_is_refused_to_an_agent(in_claude_code: Path, command: str, capsys) -> None:
+    """A post is public under the author's name: the author runs it, at a terminal."""
+    result = run("guard-submission", _shell(in_claude_code, command), capsys)
+    assert decision(result) == "deny"
+    assert "run it yourself" in reason(result) and "--post" in reason(result)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "manuscript-guard communicate publish bluesky-thread",
+        "manuscript-guard communicate check",
+        'git commit -m "manuscript-guard communicate publish bluesky --post"',
+        "manuscript-guard communicate publish linkedin",
+    ],
+)
+def test_a_publish_that_posts_nothing_is_let_through(
+    in_claude_code: Path, command: str, capsys
+) -> None:
+    assert run("guard-submission", _shell(in_claude_code, command), capsys) is None
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        'grep -n "manuscript-guard communicate publish bluesky --post" docs/communicate.md',
+        'echo "mguard communicate publish bluesky --post" >> notes.md',
+        "manuscript-guard communicate publish bluesky; echo --post",
+        "manuscript-guard communicate publish bluesky --post $(cat extra)",
+    ],
+)
+def test_a_command_that_only_names_posting_is_asked_not_refused(
+    in_claude_code: Path, command: str, capsys
+) -> None:
+    result = run("guard-submission", _shell(in_claude_code, command), capsys)
+    assert decision(result) == "ask", result
+    assert "does not read exactly" in reason(result)
+
+
+def test_recording_researchgate_as_done_is_put_to_the_author(in_claude_code: Path,
+                                                              capsys) -> None:  # fmt: skip
+    command = "manuscript-guard communicate publish researchgate --done"
+    result = run("guard-submission", _shell(in_claude_code, command), capsys)
+    assert decision(result) == "ask"
+    assert "Only the author can say so" in reason(result)
+
+
+@pytest.mark.parametrize("command", [
+    "manuscript-guard communicate publish bluesky-thread --abandon",
+    "cd paper && mguard communicate --abandon publish mastodon-thread .",
+])  # fmt: skip
+def test_abandoning_a_stopped_thread_is_put_to_the_author(in_claude_code: Path, command: str,
+                                                          capsys) -> None:  # fmt: skip
+    """A thread left part-way stays up under the author's name: only they say it is left so."""
+    result = run("guard-submission", _shell(in_claude_code, command), capsys)
+    assert decision(result) == "ask"
+    assert "--abandon" in reason(result) and "Only the author can say so" in reason(result)
 
 
 def test_an_approval_written_by_an_agent_is_put_to_the_author(

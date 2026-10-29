@@ -141,6 +141,7 @@ from generated import (
     pdf_figures,
     plan_pairs,
     planned_plans,
+    post_links,
     printings,
     proofs,
     published_texts,
@@ -8222,6 +8223,18 @@ def test_an_embargo_lifts_at_its_zones_moment_or_where_the_day_comes_last(
     assert READINGS["communicate embargo"]()({"written": written}) == expected, written
 
 
+@holds(40, post_links())
+def test_each_link_of_a_post_is_marked_at_its_bytes_and_without_the_stop_after_it(
+    drawn: tuple[str, list[str]],
+) -> None:
+    """Each link of a post is a facet whose UTF-8 bytes are the link, after an accent, a
+    Japanese word or an emoji too; the stop or the mark after it is not in it, and a closing
+    bracket is only where the link opens one (`communicate/adapters/bluesky.py`)."""
+    text, expected = drawn
+    marked = READINGS["communicate facets"]()({"text": text})
+    assert marked == [[one, one] for one in expected], text
+
+
 @holds(40, text_languages())
 def test_a_text_is_held_as_english_unless_its_language_is_another_tag(
     drawn: tuple[list[object], list[bool]],
@@ -13514,9 +13527,29 @@ def _rows_that_make_one_key_are_both_read(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(harvest_read, "_names", lambda slugs, written, what, entry: slugs)
 
 
+def _a_facet_is_placed_in_characters(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.communicate.adapters import bluesky
+
+    patch.setattr(bluesky, "in_bytes", lambda _text, at: at)
+
+
+def _a_link_keeps_the_stop_after_it(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.communicate.adapters import bluesky
+
+    patch.setattr(bluesky, "_AFTER_LINK", "")
+
+
 #: A rule broken in one place, and the property that has to fail for it. Each is a way one
 #: of these rules has been wrong, or a mutant a review found alive.
 BROKEN = {
+    "a facet of a post is placed in characters, not bytes": (
+        _a_facet_is_placed_in_characters,
+        test_each_link_of_a_post_is_marked_at_its_bytes_and_without_the_stop_after_it,
+    ),
+    "a link of a post keeps the stop after it": (
+        _a_link_keeps_the_stop_after_it,
+        test_each_link_of_a_post_is_marked_at_its_bytes_and_without_the_stop_after_it,
+    ),
     "a held-back cell of an output is read as its bound": (
         _a_held_back_cell_is_read_as_its_bound,
         test_a_cell_of_an_output_reads_as_the_value_its_text_shows,

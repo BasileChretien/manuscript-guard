@@ -1,6 +1,6 @@
 ---
 name: research-communication
-description: Fill the slots that communicate build leaves in a post, a press release, a pitch, a newsletter item, a plain-language summary, a video script or a translation, with sentences drawn from the paper's brief alone, never a number or a claim the paper does not make, and run communicate check after. Use when a text under communication holds a write slot, when the author asks for a press release, a thread, a lay summary or a translation of the findings, or when communicate check reports comm-claim-unanchored, comm-fact-not-in-source, comm-claim-stronger, comm-claim-moved, comm-limitation-dropped, comm-primary-missing or comm-number-unbound.
+description: Fill the slots that communicate build leaves in a post, a press release, a pitch, a newsletter item, a plain-language summary, a video script or a translation, with sentences drawn from the paper's brief alone, never a number or a claim the paper does not make, and run communicate check after. Use when a text under communication holds a write slot, when the author asks for a press release, a thread, a lay summary or a translation of the findings, or to show what a post would send before the author approves and posts it, or when communicate check reports comm-claim-unanchored, comm-fact-not-in-source, comm-claim-stronger, comm-claim-moved, comm-limitation-dropped, comm-primary-missing or comm-number-unbound.
 ---
 
 # Communicating the paper
@@ -105,8 +105,44 @@ Put right each failure in the text, never by editing the brief to agree with the
 `communication/preview.html` shows every text as it would be read, with what the check
 says of each. Show it to the author. Each text is theirs to approve and to share.
 
-## 5. What is never yours to do
+## 5. Show what would be posted, and leave the posting to the author
 
+```bash
+manuscript-guard communicate publish bluesky-thread
+```
+
+Without `--post` it sends nothing: it writes the exact requests `--post` would send to
+`communication/outbox/<channel>.json`, with no credential, writes the preview again, and says
+whether `--post` would go ahead and, if not, why. Run it, and show the author the outbox and
+the preview. An image a post carries needs its alternative text under `alt:` in the front
+matter: write it from what the image shows, with no number the brief does not give, and let
+the author read it.
+
+Then tell the author the two commands that are theirs, at their own terminal:
+
+- `manuscript-guard communicate approve <channel> --as "<their name>"`, once they have read
+  the text: an approval is their statement, bound to the text as it stands, and any edit
+  after it makes it stale.
+- `manuscript-guard communicate publish <channel> --post`, which posts in public under their
+  name, with their credentials from the environment. It refuses before the embargo lifts,
+  while the check fails the text, without a current approval, and for a text, or the same
+  posts as printed, posted already. If a thread stops part-way, it says so, and `--post
+  --resume` posts the rest; an edited text is not posted beside it, unless the author records
+  with `publish <channel> --abandon` that the stopped thread is left as it is. On Mastodon, a
+  resume an hour after a post whose answer was lost asks the author to look at the account's
+  page and say `--was-posted <link>` or `--not-posted`.
+
+LinkedIn is printed to paste (`publish linkedin`), ResearchGate is the author's steps
+(`publish researchgate`, then `--done` once they took them), and e-mails are drafts.
+`manuscript-guard communicate orcid` reports whether the DOI is on the authors' public ORCID
+records, and writes nothing; say that absence may be their privacy setting.
+
+## 6. What is never yours to do
+
+- Run `communicate publish --post` or `communicate approve`, `publish researchgate --done`
+  or `publish <channel> --abandon`: each is the author's word or the author's post. The hooks
+  refuse the first and put the others to the person.
+- Edit anything under `communication/approvals/` or `communication/published/`.
 - Share, post or send anything. E-mails are drafts only; ResearchGate is added by hand, by
   the author, following `communication/guides/researchgate-steps.md`.
 - Mark the primary finding, allow a stronger sentence, or decide that a warning is wrong.

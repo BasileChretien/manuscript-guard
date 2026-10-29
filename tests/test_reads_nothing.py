@@ -156,6 +156,9 @@ COMMANDS = {
     "transcribe": Zero("the reporting guidelines' sources",
                        why="a recipe whose source is missing is counted as failed (exit 1)"),
     "verify": Zero("the results fragments, re-run", exits=2, argv=("verify", "{project}")),
+    # Nothing in harvest.yaml, or no file, is said, and nothing is written.
+    "harvest": Zero("the outputs harvest.yaml names", exits=2,
+                    argv=("harvest", "--path", "{project}")),
     "package": Zero("the results fragments, and the files that made them", exits=2,
                     argv=("package", "{project}")),
     # A plan's deposit with no plan is refused; a release with no results fails its check.
@@ -304,6 +307,7 @@ LATEX = {
     "transcribe": ("no manuscript", ("transcribe",)),
     "values": ("reads", ("values", "{project}")),
     "verify": ("no manuscript", ("verify", "{project}")),
+    "harvest": ("no manuscript", ("harvest", "--path", "{project}")),
 }
 
 

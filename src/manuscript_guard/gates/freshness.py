@@ -30,6 +30,7 @@ from manuscript_guard.emit import (
 )
 from manuscript_guard.findings import INFO, WARN, Finding, Report
 from manuscript_guard.gates.datasets import dataset_of
+from manuscript_guard.gates.harvested import check_harvested, input_at_site, receipted
 from manuscript_guard.paths import SOURCE_SUFFIXES, lockfiles
 from manuscript_guard.pointers import Pointer, pointer_at
 
@@ -55,6 +56,10 @@ def check_freshness(project: Project, results: Results) -> Report:
             pointer = pointer_at(input_path)
             if pointer is not None:
                 report = report.merge(_pointed(declared, pointer, fragment))
+                continue
+            if not input_path.exists() and receipted(fragment):
+                # The data of a run at a site stay there: its receipt has their digests.
+                report = report.with_findings(input_at_site(fragment, declared))
                 continue
             if not input_path.exists():
                 report = report.with_findings(
@@ -87,8 +92,13 @@ def check_freshness(project: Project, results: Results) -> Report:
                 )
 
         report = report.merge(_check_environment(project, fragment))
+        report = report.merge(check_harvested(project, fragment))
 
         script_path = project.root / fragment.generated_by
+        if receipted(fragment) and script_path.exists():
+            # The numbers are the site's run, and the script is held to the one it ran
+            # (`gates/harvested.py`), not to the one the centre had when it harvested.
+            continue
         if not script_path.exists():
             report = report.with_findings(
                 Finding(

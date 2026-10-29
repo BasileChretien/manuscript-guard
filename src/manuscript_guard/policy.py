@@ -73,6 +73,12 @@ BINDS_AT = {
     "script-missing": ANALYSIS,
     "script-newer": ANALYSIS,
     "results-edited": ANALYSIS,
+    # An output harvested is held as an input is, and a site's receipt as a results file is:
+    # changed or gone since the harvest, the results are not the output's or the site's run.
+    "harvested-output-changed": ANALYSIS,
+    "harvested-output-missing": ANALYSIS,
+    "receipt-changed": ANALYSIS,
+    "receipt-output-mismatch": ANALYSIS,
     # A dataset dated as extracted on one day, and the results computed from other data.
     "dataset-pin-mismatch": ANALYSIS,
     "dataset-read-differs": ANALYSIS,

@@ -8469,6 +8469,87 @@ before `raw_sha256`, is a warning that the input is not fetched (`input-not-fetc
 `input-missing` had failed. A file over 1024 bytes, or one that reads as neither, is the
 data, hashed as before.
 
+## Outputs a script writes are harvested, and a site's run is a receipt (Task 3, PR 4)
+
+Not every analysis will call the emitter. A script written before the project, a colleague's
+SAS program, a pipeline that writes `estimates.csv`: their numbers were typed into the
+manuscript or not used. `manuscript-guard harvest` takes such an output in as a results
+fragment, so that the manuscript binds them as it binds emitted ones (docs/harvest.md). It is
+configured in `harvest.yaml` at the project's root (`harvest.schema.json`), an entry to an
+output: `key`, `output` (`.csv`, `.tsv` or `.json`), `script`, `inputs` (each `restricted` or
+`synthetic` as the emitter takes them), and optionally `row_key`, `columns`, `digits` and
+`receipt` (Basile, 2026-10-28: `harvest.yaml`, not a section of paper.yaml or flags alone).
+`harvest OUTPUT --script S --input I… --key K` adds an entry at the end of the file, read
+back to be the entries before and the new one, as `set` writes paper.yaml; a plain `harvest`
+harvests every entry again. It never runs anything.
+
+**The reading** (`harvest/read.py`) takes three shapes and refuses the rest: a CSV or TSV with
+one header row, every row as wide; a JSON object of scalars, read as the two columns `name`
+and `value`, which is the table a two-column CSV with `row_key: name` gives; and a JSON array
+of records, with `row_key`. A nested value, `true`, `NaN`, a member written twice, a ragged
+row, and two rows or columns whose names make one key part are refused, not flattened by a
+guess. A cell is read as the emitter reads a display (`contracts.values._NUMERIC_DISPLAY`):
+one number with at most a unit is a number, an integer where it has no point and no
+exponent, its unit kept; a comparator before one ("<5") holds it back, and its value is
+recorded as none; anything else is text. Its display is its own text, stripped, unless
+`digits` is given: then the number to that many places, with the sign, the commas and the
+unit it was written with, and refused where it would show as nought. A JSON number's display
+is its text in the file, so "1.50" stays "1.50".
+
+**The fragment** (`harvest/fragment.py`) goes through the Python emitter: each cell a value
+`<key>.<row>.<column>`, each table cell composed from it, so that a harvested fragment is
+held to the emitter's rules (a text cell carrying a number no gate can trace is refused, as
+`em.value` refuses it) and G2 holds it on disk as it holds an emitted one. The cells are
+intermediates (`quoted: false`) and the table, `table.<key>`, is quoted, as `em.table` is.
+The provenance is the emitter's, the declared script with its digest now and the inputs as
+the emitter writes them, so G1 applies to them unchanged, with the emitter's `session`
+dropped (it is the Python that harvested, which ran nothing), and `harvested`: the output's
+path, digests and size, the entry as `spec`, and `attribution: declared`.
+
+**G1** (`gates/harvested.py`) adds `harvested-output-changed` and `harvested-output-missing`,
+failing from `analysis` as `input-changed` and `input-missing` do; and `harvest-declared`, a
+warning at every stage until `verify` reproduces the fragment or a receipt covers it, as the
+author decided (2026-10-28: a warning, not a failure at submission). The reproducibility
+block of `check` says how many harvested files are "declared", reproduced or receipted.
+`verify` deletes the declared output in its scratch copy, runs the script, harvests what it
+wrote by the recorded `spec`, and compares value by value; a script that writes no output is
+`rerun-failed`. `build/verify.json` records each fragment it reproduced by its digest
+(`fragments_reproduced`), which is what `harvest.standing` reads, so a fragment harvested
+again after the run is declared again.
+
+**A site's receipt** (`harvest/receipt.py`). Where the custodian keeps the data at their
+site, the site runs `manuscript-guard verify --receipt SITE` (Basile, 2026-10-28: an option
+of `verify`, not a command of its own): each entry naming the site is run in a scratch copy,
+its output deleted first, and `receipts/<site>.receipt.json` (`manuscript-guard/receipt/1`)
+is written, with the site, `ran_at`, the tool's version, each run's runner and its version,
+the script's path and digest, its inputs by label (the path from the project's root) with
+their digests and sizes, the lockfiles' digests, each output's digest and size, and the exit
+code. Nothing is written where a run fails or writes no output, where an output holds a
+count the custodian's minimum forbids (G2's rule, `custodian._small`), or where
+`custodian.recoverable_cells` fails; what it warns of, a count a table's total row or header
+gives away, is printed and the receipt written, as `deposit` warns (Basile, 2026-10-29,
+after #469). A harvested output declares no sum, so in practice it only warns. The whole
+output file is read for this, every column of it, each cell as written, since the whole file
+leaves the site (round 1 of #471): a column the entry does not take in is held as a count
+column, since nothing shows it is none. An entry's `counts` names the columns whose cells are
+counts: the whole numbers of every other column are written `count: false` and are no counts
+to G2 either. In a counted column, or anywhere without `counts`, a whole number written with
+a point ("3.0", as pandas writes a column with a missing value) and a number held back
+("<2") are written `count: true`, and G2 holds the display to the minimum, the bound of one
+held back as the emitter's `display="<2"` is (round 1 of #471). So is text with a digit,
+read as `deposit` reads a table cell (`count_in_cell`) and refused where no count can be
+read from it, and in a column `counts` names a number with a unit, "2 patients" (round 2). An entry's `quoted: false` (`--not-quoted`) makes the table working
+output, as the emitter's `quoted` does, and G2's `unplaced-table` says so in its hint
+(Basile, 2026-10-29). At the centre,
+`harvest` takes the output in only where it is the one the receipt covers, with the
+receipt's inputs and its digest. G1 then fails `receipt-changed` (the receipt edited or
+gone), `receipt-output-mismatch` (the output not the receipt's) and `script-newer` (the
+script's digest not the one the site ran, in place of the centre's own check), and an input
+not at the centre is a note, `input-at-site`. `verify` passes such a fragment over, "data
+held at SITE; receipt of DATE": not re-run, never reproduced. Receipts are unsigned in this
+pull request, a declaration like an attestation (Basile, 2026-10-28); signatures, through
+`ssh-keygen -Y verify` against each site's allowed signers, come later.
+
 ## A package to deposit, with what the custodian keeps left out
 
 A journal asks for the code and the results to be deposited where a DOI names them, and the
@@ -18388,6 +18469,49 @@ What papers converted from Word showed (see "What papers converted from Word sho
   at submission the status line names it at every session start, after the last round as
   before the first. It is `next`'s rule, which offers the optional steps without asking what
   is already done, and not the status line's.
+
+- **That a script writes the output it is declared to is declared, until `verify` runs
+  it.** `harvest` runs nothing; `harvest-declared` says so at every stage, and only a run of
+  `verify` or a site's receipt quiets it. An input the script reads and `harvest.yaml` does
+  not list is invisible to G1, and an output edited before it was harvested passes: the
+  digest is taken of what was read.
+- **A script `verify` has no runner for is declared for good.** `verify` runs `.py`, `.R`,
+  `.Rmd` and `.qmd`; a SAS or Stata script that writes the output is passed over ("no runner
+  for .sas"), so its harvested file warns `harvest-declared` at every stage unless a site's
+  receipt covers it, and a receipt needs a runner too.
+- **`package` carries no `harvest.yaml`, no output and no receipt.** A harvested results
+  file goes in with the others and its script with the scripts; whoever runs the package
+  again re-runs the script, and G1 there says the output is missing until it is run.
+- **Which cells are counts is the entry's word.** With `counts`, only its columns (and, at
+  a site, the columns it does not take in) are held to the custodian's minimum, and a count
+  in a column it names otherwise is printed unchecked; without it, every whole number with no
+  unit is a count, "1.0" among them, so a degrees-of-freedom column of 3 or an odds ratio of
+  1.0 under a minimum of 5 refuses a receipt until `counts` leaves it out.
+- **A centre's copy at an input's path is compared with the site's data.** Where the centre
+  keeps a synthetic copy where the site's input is, G1 compares it with the receipt's digest
+  and fails `input-changed`, which nothing at the centre can put right; only an input that is
+  not there is `input-at-site`.
+- **A year as a header is refused.** A column named "2020" makes no key part a binding can
+  start with, so a wide table by year cannot be harvested; write it long, a row a year.
+- **An output's digest leaves its line endings out.** As an input's does: a carriage return
+  inside a quoted cell that becomes a line feed is not seen as a change.
+- **A receipt is unsigned.** Anyone who can write `receipts/` can write a receipt; it proves
+  that a file with these digests was written, not who wrote it, that the run took place, or
+  when (`ran_at` is the site's clock). Signed, it would prove only that the key's holder
+  wrote it. It cannot be re-run at the centre, which has no data.
+- **Deposit reads a harvested "<2" as nothing.** It is held to the minimum only where the
+  manuscript binds it (G2) and at the site (the receipt); `deposit` skips it as a value,
+  which has none, and as a table cell, which `count_in_cell` reads as no count.
+- **A header that states a count is only ever a warning.** "Deaths (n=2)" as a column's
+  header gives a count to `recoverable_cells`, which warns; nothing refuses a receipt for
+  the count a header states.
+- **Text with a digit is refused at a site where `counts` names none.** Every column is then
+  a count column, so a confidence interval written in one cell or a date refuses the
+  receipt: name the count columns.
+- **A receipt is never refused for a count given away by subtraction.**
+  `recoverable_cells` fails a count held back only where the analysis declares the sum that
+  gives it away; a harvested output declares no sum, so its total rows and header counts
+  only warn, the receipt is written, and the site decides.
 
 - **What `communicate check` reads of a text, the brief and the graphical abstract (Task 5,
   PR 2, 2026-10-29).** Each limit, as built:

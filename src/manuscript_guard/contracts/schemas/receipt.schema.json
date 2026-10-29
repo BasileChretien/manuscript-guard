@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://manuscript-guard.org/schemas/receipt/1",
+  "title": "manuscript-guard receipt of a run at the site that holds the data",
+  "description": "Written by `manuscript-guard verify --receipt <site>` where the data are, after each harvest entry naming the site ran in a scratch copy. It says what ran, on what, and what came out, by digest: the data never leave the site, and the centre harvests the outputs this covers. It is unsigned: a declaration by whoever ran it, as an attestation is, and anyone who can write the file can write another (DESIGN.md, Known gaps).",
+  "type": "object",
+  "required": ["schema", "site", "ran_at", "tool", "environment", "runs"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "manuscript-guard/receipt/1"},
+    "site": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$"},
+    "ran_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the runs ended, by the site's clock: said by the site, not proved."
+    },
+    "tool": {
+      "type": "object",
+      "required": ["name", "version"],
+      "additionalProperties": false,
+      "properties": {"name": {"type": "string"}, "version": {"type": "string"}}
+    },
+    "environment": {
+      "type": "array",
+      "description": "The lockfiles at the project's root at the site, each with its digest, line endings left out.",
+      "items": {"$ref": "#/$defs/digested"}
+    },
+    "runs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["key", "runner", "script", "inputs", "outputs", "exit_code"],
+        "additionalProperties": false,
+        "properties": {
+          "key": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+          "runner": {
+            "type": "object",
+            "required": ["command", "version"],
+            "additionalProperties": false,
+            "properties": {"command": {"type": "string"}, "version": {"type": "string"}}
+          },
+          "script": {"$ref": "#/$defs/digested"},
+          "inputs": {
+            "type": "array",
+            "description": "Each input by its label, the path harvest.yaml gives it from the project's root, never where it is on the site's disks.",
+            "items": {
+              "type": "object",
+              "required": ["label", "sha256", "raw_sha256", "bytes"],
+              "additionalProperties": false,
+              "properties": {
+                "label": {"type": "string"},
+                "sha256": {"$ref": "#/$defs/sha256"},
+                "raw_sha256": {"$ref": "#/$defs/sha256"},
+                "bytes": {"type": "integer", "minimum": 0}
+              }
+            }
+          },
+          "outputs": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["path", "sha256", "bytes"],
+              "additionalProperties": false,
+              "properties": {
+                "path": {"type": "string"},
+                "sha256": {"$ref": "#/$defs/sha256"},
+                "bytes": {"type": "integer", "minimum": 0}
+              }
+            }
+          },
+          "exit_code": {"type": "integer"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "digested": {
+      "type": "object",
+      "required": ["path", "sha256"],
+      "additionalProperties": false,
+      "properties": {"path": {"type": "string"}, "sha256": {"$ref": "#/$defs/sha256"}}
+    }
+  }
+}

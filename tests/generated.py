@@ -35,6 +35,7 @@ wants to look harder at a change.
 
 from __future__ import annotations
 
+import json
 import math
 import os
 import re
@@ -7283,6 +7284,136 @@ CONVERTED_BLOCKS = (
 )
 
 #: What each reading of `tests/readings.py` is given, by the reading's name.
+# ------------------------------------------------------------ an output harvest reads
+
+#: A word that is text in a cell of an output: no number, no unit.
+_CELL_WORDS = ("Women", "Men", "Exposed", "Unexposed", "NA", "Older")
+
+
+def _harvest_cell(draw: st.DrawFn, kind: str, digits: int | None) -> tuple[str, Any]:
+    """One cell of `kind`, its own numbers drawn, and what `harvest` reads it as: [type,
+    value, display, unit] with the type's name, or None where it holds nothing. Never a
+    number `digits` would show as nought, which `harvest` refuses, as the emitter does."""
+    whole = draw(st.integers(1, 9999))
+    point = f"{draw(st.integers(1, 999))}.{draw(st.integers(0, 999)):0{draw(st.integers(1, 3))}d}"
+    places = (lambda number: f"{number:.{digits}f}") if digits is not None else None
+    if kind == "whole":
+        return str(whole), ["int", whole, places(whole) if places else str(whole), None]
+    if kind == "decimal":
+        return point, ["float", float(point), places(float(point)) if places else point, None]
+    if kind == "percent":
+        shown = f"{places(float(point))}%" if places else f"{point}%"
+        return f"{point}%", ["float", float(point), shown, "%"]
+    if kind == "thousands":
+        text = f"{whole % 999 + 1},{draw(st.integers(0, 999)):03d}"
+        number = int(text.replace(",", ""))
+        return text, ["int", number, f"{number:,.{digits}f}" if places else text, None]
+    if kind == "negative":
+        sign = draw(st.sampled_from(("-", "\N{MINUS SIGN}")))
+        shown = sign + places(float(point)) if places else sign + point
+        return sign + point, ["float", -float(point), shown, None]
+    if kind == "exponent":
+        text = f"{draw(st.integers(1, 9))}.{draw(st.integers(0, 9))}e+0{draw(st.integers(1, 4))}"
+        return text, ["float", float(text), places(float(text)) if places else text, None]
+    if kind == "unit":
+        unit = draw(st.sampled_from(("mg", "years", "mmHg")))
+        shown = f"{places(whole)} {unit}" if places else f"{whole} {unit}"
+        return f"{whole} {unit}", ["int", whole, shown, unit]
+    if kind == "held":
+        text = draw(st.sampled_from(("<", "\N{LESS-THAN OR EQUAL TO}", "<=", ">"))) + (
+            draw(st.sampled_from(("", " "))) + draw(st.sampled_from(("5", "0.001", "10"))))
+        return text, ["NoneType", None, text, None]
+    if kind == "text":
+        word = draw(st.sampled_from(_CELL_WORDS))
+        return word, ["str", word, word, None]
+    return draw(st.sampled_from(("", " ", "\t"))), None
+
+
+#: Every kind of cell `harvest` reads, each drawn in every example with and without digits.
+HARVEST_KINDS = ("whole", "decimal", "percent", "thousands", "negative", "exponent", "unit",
+                 "held", "text", "empty")  # fmt: skip
+
+
+@st.composite
+def harvest_cells(draw: st.DrawFn) -> list[tuple[str, int | None, Any]]:
+    """A cell of every kind, once shown as the output wrote it and once to digits drawn, in
+    an order drawn, each padded with spaces drawn, with what `harvest` reads it as."""
+    out = []
+    for kind, rounded in draw(st.permutations([(k, r) for k in HARVEST_KINDS for r in (0, 1)])):
+        digits = draw(st.integers(0, 3)) if rounded else None
+        text, read = _harvest_cell(draw, kind, digits)
+        pad = draw(st.sampled_from(("", " ", "  "))), draw(st.sampled_from(("", " ", "\t")))
+        out.append((pad[0] + text + pad[1], digits, read))
+    return out
+
+
+#: The headers of an output's columns, as written and as the part of a key each makes.
+HARVEST_HEADERS = (("n", "n"), ("Rate (%)", "rate"), ("OR", "or"),
+                   ("Lower 95% CI", "lower_95_ci"), ("\N{LATIN CAPITAL LETTER E WITH ACUTE}"
+                                                    "v\N{LATIN SMALL LETTER E WITH GRAVE}nements",
+                                                    "evenements"))  # fmt: skip
+
+
+@st.composite
+def harvest_tables(draw: st.DrawFn) -> tuple[list[dict], dict[str, list]]:
+    """A table an analysis writes, in every form `harvest` reads and every form it refuses,
+    and the values it reads from the first: {key: [value, display]} under `t`.
+
+    Read: the table as CSV, as TSV and as an array of JSON records with `row_key`, its
+    numbers written as the output wrote them, one with a nought at its end ("1.50"), and the
+    first two columns as an object of scalars. Refused: a row a cell short, a record holding
+    an object, and two rows whose names make one key part ("Women" and "WOMEN")."""
+    headers = draw(st.lists(st.sampled_from(HARVEST_HEADERS), min_size=2, max_size=4,
+                            unique_by=lambda header: header[1]))  # fmt: skip
+    names = draw(st.lists(st.sampled_from(FILLER), min_size=2, max_size=4, unique=True))
+    rows = []
+    for at, name in enumerate(names):
+        cells = []
+        for column in range(len(headers)):
+            cell = f"{draw(st.integers(0, 99))}.{draw(st.integers(1, 9))}"
+            cells.append(cell + "0" if at == column == 0 else cell)
+        rows.append([name.capitalize(), *cells])
+    written = ["Group", *(header for header, _slug in headers)]
+    expected: dict[str, list] = {}
+    for row in rows:
+        expected[f"t.{row[0].lower()}.group"] = [row[0], row[0]]
+        for (_header, part), cell in zip(headers, row[1:], strict=True):
+            expected[f"t.{row[0].lower()}.{part}"] = [float(cell), cell]
+
+    def separated(sign: str, lines: list[list[str]]) -> str:
+        return "".join(sign.join(line) + "\n" for line in lines)
+
+    def records(lines: list[list[str]], inner: str | None = None) -> str:
+        made = [", ".join([json.dumps(written[0]) + ": " + json.dumps(line[0]),
+                           *(json.dumps(head) + ": " + cell
+                             for head, cell in zip(written[1:], line[1:], strict=True))])
+                for line in lines]  # fmt: skip
+        if inner is not None:
+            made[-1] += f", {json.dumps(inner)}: {{\"nested\": 1}}"
+        return "[" + ", ".join("{" + record + "}" for record in made) + "]"
+
+    pairs = ", ".join(f"{json.dumps(row[0])}: {row[1]}" for row in rows)
+    single = {f"t.{row[0].lower()}.{part}": value for row in rows
+              for part, value in (("name", [row[0], row[0]]),
+                                  ("value", [float(row[1]), row[1]]))}  # fmt: skip
+    short = [row[:-1] if at == len(rows) - 1 else row for at, row in enumerate(rows)]
+    twice = [*rows, [rows[0][0].upper(), *rows[0][1:]]]
+    forms = [
+        {"suffix": ".csv", "text": separated(",", [written, *rows]), "row_key": "Group",
+         "read": expected},
+        {"suffix": ".tsv", "text": separated("\t", [written, *rows]), "row_key": "Group",
+         "read": expected},
+        {"suffix": ".json", "text": records(rows), "row_key": "Group", "read": expected},
+        {"suffix": ".json", "text": "{" + pairs + "}", "row_key": None, "read": single},
+        {"suffix": ".csv", "text": separated(",", [written, *short]), "row_key": "Group",
+         "read": None},
+        {"suffix": ".json", "text": records(rows, "Extra"), "row_key": "Group", "read": None},
+        {"suffix": ".csv", "text": separated(",", [written, *twice]), "row_key": "Group",
+         "read": None},
+    ]
+    return draw(st.permutations(forms)), expected
+
+
 INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "checker sentences": texts(),
     "checker methods": method_claims().flatmap(lambda drawn: st.sampled_from(drawn[:3])),
@@ -7378,6 +7509,13 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "data statement": texts(DATA_IDENTIFIERS + TEMPORARY_LINKS + FIXED_LINKS),
     "deposit named": texts(DOI_NAMED + DOI_NOT_NAMED),
     "count cells": count_cells().map(lambda drawn: [cell for cell, _count in drawn]),
+    "harvest cells": harvest_cells().map(
+        lambda drawn: [[text, digits] for text, digits, _read in drawn]
+    ),
+    "harvest outputs": harvest_tables().map(
+        lambda drawn: [{name: form[name] for name in ("suffix", "text", "row_key")}
+                       for form in drawn[0]]
+    ),  # fmt: skip
     "data sources statement": texts(
         ASKED_FOR + OPENLY_HAD + tuple(f"{d} {o}" for d in DENIALS[:2] for o in OPENLY_HAD[:2])
         + SOURCE_NAMES

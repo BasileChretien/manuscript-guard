@@ -781,6 +781,39 @@
             "platform": { "type": "string" },
             "packages": { "type": "object" }
           }
+        },
+        "harvested": {
+          "type": "object",
+          "description": "This fragment was not emitted: `manuscript-guard harvest` read it from an output file the script is declared to write, by the entry of harvest.yaml recorded as `spec`. G1 fails `harvested-output-changed` once the output is not the one read, and warns `harvest-declared` until `verify` reproduces it or a site's receipt covers it.",
+          "required": ["output", "sha256", "raw_sha256", "bytes", "spec", "attribution"],
+          "additionalProperties": false,
+          "properties": {
+            "output": { "type": "string" },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$",
+              "description": "The output's digest, its line endings left out, as an input's is."
+            },
+            "raw_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            "bytes": { "type": "integer", "minimum": 0 },
+            "spec": { "type": "object" },
+            "attribution": {
+              "const": "declared",
+              "description": "That the script writes this output is declared by harvest.yaml; nothing here ran it."
+            },
+            "receipt": {
+              "type": "object",
+              "description": "The receipt of the site that ran the script where the data are, by its digest when the output was harvested.",
+              "required": ["site", "path", "sha256", "ran_at"],
+              "additionalProperties": false,
+              "properties": {
+                "site": { "type": "string" },
+                "path": { "type": "string" },
+                "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+                "ran_at": { "type": "string" }
+              }
+            }
+          }
         }
       }
     }

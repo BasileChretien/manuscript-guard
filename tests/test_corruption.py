@@ -322,6 +322,67 @@ def test_modified_analysis_script_is_caught(project: Path) -> None:
     assert "script-newer" in codes(gate_report(project))
 
 
+#: A script that writes its estimates as a CSV, without the emitter, as `harvest` takes in.
+_HARVESTED_SCRIPT = (
+    "from pathlib import Path\n"
+    "Path('output').mkdir(exist_ok=True)\n"
+    "Path('output/est.csv').write_text('group,n,or\\nWomen,120,1.50\\nMen,80,0.95\\n')\n"
+)
+
+
+def _harvested_here(project: Path, *, site: str | None = None) -> None:
+    """The example with an output harvested from that script: run here, or at `site`, whose
+    receipt then covers it."""
+    from manuscript_guard.harvest import Entry, Input, append_entry, harvest_entry, make_receipt
+
+    (project / "analysis" / "02_est.py").write_text(_HARVESTED_SCRIPT, encoding="utf-8")
+    (project / "output").mkdir()
+    (project / "output" / "est.csv").write_text(
+        "group,n,or\nWomen,120,1.50\nMen,80,0.95\n", encoding="utf-8")  # fmt: skip
+    entry = Entry("est", "output/est.csv", "analysis/02_est.py",
+                  (Input("data/reports.csv", synthetic=True),), row_key="group",
+                  receipt=site)  # fmt: skip
+    append_entry(project, entry)
+    if site is not None:
+        make_receipt(load_project(project)[0], site)
+    harvest_entry(project, entry)
+
+
+def test_an_edited_harvested_output_is_caught(project: Path) -> None:
+    """The results `harvest` wrote are the output's: a number edited in the output after it
+    was harvested is caught, as an edited input is."""
+    _harvested_here(project)
+    assert "harvested-output-changed" not in codes(gate_report(project))
+    output = project / "output" / "est.csv"
+    output.write_text(output.read_text(encoding="utf-8").replace("1.50", "1.05"),
+                      encoding="utf-8")  # fmt: skip
+    assert "harvested-output-changed" in codes(gate_report(project))
+
+
+def test_an_edited_receipt_is_caught(project: Path) -> None:
+    """A site's receipt is recorded by its digest when its output is harvested: a receipt
+    edited afterwards, its date moved or a digest put right by hand, is caught."""
+    _harvested_here(project, site="site-a")
+    assert "receipt-changed" not in codes(gate_report(project))
+    receipt = project / "receipts" / "site-a.receipt.json"
+    record = json.loads(receipt.read_text(encoding="utf-8"))
+    record["ran_at"] = "2020-01-01T00:00:00+00:00"
+    receipt.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    assert "receipt-changed" in codes(gate_report(project))
+
+
+def test_a_script_changed_after_its_receipt_is_caught(project: Path) -> None:
+    """The numbers are the site's run of the script as it was: a script changed after the
+    site ran it is caught, once, and against the receipt's digest of it."""
+    _harvested_here(project, site="site-a")
+    assert "script-newer" not in codes(gate_report(project))
+    script = project / "analysis" / "02_est.py"
+    script.write_text(_HARVESTED_SCRIPT.replace("1.50", "1.70"), encoding="utf-8")
+    report = gate_report(project)
+    said = [f for f in report.failures if f.code == "script-newer"]
+    assert len(said) == 1 and "site-a ran it" in said[0].message, said
+
+
 def test_touching_a_script_without_changing_it_is_not_a_change(project: Path) -> None:
     """Re-running a formatter or checking the file out again is not an edit."""
     script = project / "analysis" / "01_disproportionality.py"

@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://manuscript-guard.org/schemas/harvest/1",
+  "title": "manuscript-guard harvest.yaml: outputs a script writes, taken in as results",
+  "description": "Each entry names an output file an analysis script writes without the emitter (a .csv, .tsv or .json), the script, and the data it read. `manuscript-guard harvest` reads the output and writes results/<key>.json from it; it never runs anything, so the link from the script to the output is declared, and G1 says so (`harvest-declared`) until `verify` reproduces it or a site's receipt covers it.",
+  "type": "object",
+  "required": ["entries"],
+  "additionalProperties": false,
+  "properties": {
+    "entries": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/entry"}
+    }
+  },
+  "$defs": {
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "description": "A path from the project's root, with forward slashes; never absolute and never leaving the project.",
+      "not": {"pattern": "^(/|\\\\|[A-Za-z]:)|(^|[/\\\\])\\.\\.([/\\\\]|$)"}
+    },
+    "entry": {
+      "type": "object",
+      "required": ["key", "output", "script", "inputs"],
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "The results file is results/<key>.json, its table table.<key>, and each value <key>.<row>.<column>."
+        },
+        "output": {
+          "allOf": [{"$ref": "#/$defs/path"}, {"pattern": "\\.(csv|tsv|json)$"}],
+          "description": "The file the script writes: comma- or tab-separated with a header row, or JSON (an object of scalars, or an array of records with `row_key`)."
+        },
+        "script": {
+          "$ref": "#/$defs/path",
+          "description": "The script declared to write the output. Its digest now is recorded; G1 fails `script-newer` once it changes."
+        },
+        "inputs": {
+          "type": "array",
+          "description": "The data the script read, as the emitter records them, so that G1 holds them as it holds an emitted fragment's.",
+          "items": {
+            "type": "object",
+            "required": ["path"],
+            "additionalProperties": false,
+            "properties": {
+              "path": {"$ref": "#/$defs/path"},
+              "restricted": {"type": "boolean"},
+              "synthetic": {"type": "boolean"}
+            }
+          }
+        },
+        "row_key": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The column whose cells name the rows. Without it a table's rows are numbered from 1; an array of JSON records needs it."
+        },
+        "columns": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1},
+          "description": "The columns taken in, by their headers, in this order; all of them where absent. The row key's column is always taken, first."
+        },
+        "digits": {
+          "description": "Decimal places a number is shown to: one for every column, or by column header. Without it each display is the output's own text.",
+          "oneOf": [
+            {"type": "integer", "minimum": 0, "maximum": 12},
+            {
+              "type": "object",
+              "minProperties": 1,
+              "additionalProperties": {"type": "integer", "minimum": 0, "maximum": 12}
+            }
+          ]
+        },
+        "receipt": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9_-]*$",
+          "description": "The site that holds the data: its `verify --receipt <site>` ran the script there and wrote receipts/<site>.receipt.json, which covers this output."
+        }
+      }
+    }
+  }
+}

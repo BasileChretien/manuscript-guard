@@ -54,6 +54,9 @@ class Fragment:
     # The data the run read, by what identifies them, as `dataset()` declared them: by
     # name, the files, the pin and the dates. G1 holds the pin to the inputs above.
     datasets: dict[str, dict] = field(default_factory=dict)
+    # Where `harvest` read this fragment from an output the script is declared to write, the
+    # output's path and digest, the entry it was read by and the site's receipt, if any.
+    harvested: dict | None = None
 
 
 @dataclass(frozen=True)
@@ -193,6 +196,7 @@ def load_results(results_dir: Path) -> tuple[Results, Report]:
                     tuple(prov["environment"]) if "environment" in prov else None
                 ),
                 datasets=dict(document.get("datasets") or {}),
+                harvested=prov.get("harvested"),
             )
         )
         corrections.update(document.get("corrections") or {})

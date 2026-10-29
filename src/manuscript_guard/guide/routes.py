@@ -79,6 +79,11 @@ ROUTES: dict[str, Route] = {
            "analysis-newer", "environment-changed", "no-digest", "no-results",
            "no-results-dir", "rerun-", "dataset-", "data-date-not-declared",
            "synthetic-input-quoted"),
+    # An output harvested is taken in again from the file; what the script writes is shown by
+    # `verify`, and a site's receipt is the site's to write again (`verify --receipt SITE`).
+    **_all("results-binding", ("harvest",), "harvested-output-"),
+    **_all("results-binding", _VERIFY, "harvest-declared"),
+    **_all("results-binding", None, "receipt-"),
     **_all("results-binding", _BIND, "unclassified-number", "unresolved-binding",
            "unquoted-result", "typed-", "parameter-unread", "hand-authored-table",
            "value-splits-paragraph", "duplicate-quantity", "malformed-placeholder",

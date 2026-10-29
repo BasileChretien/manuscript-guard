@@ -95,7 +95,7 @@ def assurance(report: Report, project: Project) -> list[str]:
     """The lines `check` prints after its findings: one block a dimension."""
     lines = ["What was checked, by what (no score: none of this says the paper is right):"]
     recorded = {
-        "computational reproducibility": _verified(project),
+        "computational reproducibility": [*_verified(project), *_harvested(project)],
         "literature": [*_attested(project), *_passages(report, project)],
         "methodological validity": ["no review of the design", *_similar(report)],
         "review": [*_rounds(project), *_comments(project), *_figures(project)],
@@ -154,6 +154,28 @@ def _verified(project: Project) -> list[str]:
     return [said]
 
 
+def _harvested(project: Project) -> list[str]:
+    """The fragments `harvest` read from outputs, and what covers each: a site's receipt, a
+    run of `verify` that reproduced it, or the declaration in harvest.yaml alone."""
+    from manuscript_guard.harvest import standing
+
+    said: dict[str, int] = {}
+    results = project.path("results")
+    for path in sorted(results.glob("*.json")) if results.is_dir() else []:
+        harvested = _read(path).get("provenance", {})
+        harvested = harvested.get("harvested") if isinstance(harvested, dict) else None
+        if isinstance(harvested, dict):
+            covered = standing(project.path("build"), path, harvested)
+            said[covered] = said.get(covered, 0) + 1
+    if not said:
+        return []
+    words = {"declared": "declared, by harvest.yaml alone", "reproduced": "reproduced by `verify`",
+             "receipt": "run at the site its receipt names"}  # fmt: skip
+    total = sum(said.values())
+    return [f"{total} results file{'s' if total > 1 else ''} harvested from outputs: "
+            + "; ".join(f"{said[k]} {words[k]}" for k in words if k in said)]
+
+
 def fragments_digest(project: Project) -> str:
     """One digest of the results fragments as they are on disk, by name and bytes."""
     digest = hashlib.sha256()
@@ -191,11 +213,23 @@ def record_verified(project: Project, result) -> Path:
         ),
         "reproduced": sum(len(c.agreed) for c in comparisons),
         "not_rerun": left,
+        # Each fragment whose every value the re-run reproduced, by the digest it had: G1
+        # says a harvested one is covered while it is that file (`harvest.standing`).
+        "fragments_reproduced": {
+            c.fragment: _digest(project.path("results") / c.fragment) for c in comparisons if c.ok
+        },
         "ok": bool(result.ok),
         "results_sha256": fragments_digest(project),
     }
     path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8", newline="\n")
     return path
+
+
+def _digest(path: Path) -> str | None:
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        return None
 
 
 def _rounds(project: Project) -> list[str]:

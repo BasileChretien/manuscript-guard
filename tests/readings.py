@@ -691,6 +691,42 @@ def _count_cells() -> Reading:
     return read
 
 
+@reading("harvest cells")
+def _harvest_cells() -> Reading:
+    from manuscript_guard.harvest.read import cell
+
+    def read(cells: list[list[Any]]) -> list[Any]:
+        """What each cell of an output reads as, by the digits it is shown to: its value, its
+        display and its unit, or nothing."""
+        found = [cell(text, digits) for text, digits in cells]
+        return [None if one is None else [one.value, one.display, one.unit] for one in found]
+
+    return read
+
+
+@reading("harvest outputs")
+def _harvest_outputs() -> Reading:
+    from manuscript_guard.harvest.config import Entry, HarvestError
+    from manuscript_guard.harvest.read import read_output
+
+    def read(outputs: list[dict[str, Any]]) -> list[Any]:
+        """The values `harvest` reads from each output under the key `t`, by its row key, or
+        why it refuses it."""
+        said: list[Any] = []
+        for output in outputs:
+            entry = Entry("t", "output" + output["suffix"], "s.py", row_key=output["row_key"])
+            try:
+                table = read_output(output["text"].encode("utf-8"), output["suffix"], entry)
+            except HarvestError as refused:
+                said.append({"refused": str(refused)})
+                continue
+            said.append({key: [one.value, one.display, one.unit]
+                         for key, one in table.values("t").items()})  # fmt: skip
+        return said
+
+    return read
+
+
 #: Two chosen sources, one anyone may download and one a committee decides on, as the record
 #: of data sources gives them.
 DATA_SOURCES = (

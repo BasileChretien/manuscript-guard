@@ -305,7 +305,8 @@ number in the file and the rule that classified it.
 
 | Command | What it does |
 |---|---|
-| `verify` | re-run the analysis and check it still produces the recorded results |
+| `verify` | re-run the analysis and check it still produces the recorded results, a harvested output among them; `--receipt SITE`, run where the data are held, runs each harvest entry naming the site and writes `receipts/SITE.receipt.json` of what ran and what came out, by digest, refused where an output holds a count the custodian forbids |
+| `harvest` | take in an output a script writes without the emitter (`.csv`, `.tsv`, `.json`) as `results/<key>.json`, its cells as values and its table as `table.<key>`, by `harvest.yaml`; it runs nothing, so `check` warns until `verify` or a site's receipt covers it ([docs/harvest.md](docs/harvest.md)) |
 | `values` | write a LaTeX manuscript's values file, `mgvalues.sty`, so that the `.tex` compiles with the results' numbers in it |
 | `models` | print each fitted model as its card, with what G15 says of it |
 | `dictionary` | write the data dictionary out for whoever builds the form: REDCap's data dictionary (`--redcap`), one row per variable (`--csv`), or the form's outline in Markdown (`--outline`) |

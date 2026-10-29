@@ -48,7 +48,7 @@ def inspect(start: Path, *, stage: str | None = None, cwd: Path | None = None) -
     except Exception as exc:  # noqa: BLE001 - next always decides; check says what broke
         from manuscript_guard.diagnostics import crashes
 
-        crashes.record(exc, kind=crashes.COMMAND, name="the gates' run")
+        crashes.record(exc, kind=crashes.COMMAND, name="the gates' findings")
         return State(kind=UNREADABLE, root=root, cwd=here, format=None, stage=None,
                      error=f"the gates could not be run: {type(exc).__name__}: {exc}; "
                      "`manuscript-guard check` says more")  # fmt: skip

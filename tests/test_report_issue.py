@@ -182,12 +182,86 @@ def test_old_reports_are_tidied_and_nothing_else(kept) -> None:
     orphan = kept / "0123456789ab.md"
     orphan.write_text("record gone", encoding="utf-8")
     for second in range(25):
-        old = kept / f"report-20260101-0000{second:02d}.md"
+        old = kept / f"report-20260101-0000{second:02d}-{second:06x}.md"
         old.write_text("x", encoding="utf-8")
-    issue.write(issue.Report(title="t", body="b\n", name="report-20261029-120000.md"), kept)
+    latest = "report-20261029-120000-abcdef.md"
+    issue.write(issue.Report(title="t", body="b\n", name=latest), kept)
     assert mine.exists() and not orphan.exists()
     assert len(list(kept.glob("report-*.md"))) == 20
-    assert (kept / "report-20261029-120000.md").exists()
+    assert (kept / latest).exists()
+
+
+def test_two_reports_in_one_second_keep_two_files(kept) -> None:
+    first = issue.general("a", None, installed=__version__)
+    second = issue.general("b", None, installed=__version__)
+    assert first.name != second.name
+    assert issue._GENERAL_REPORT.match(first.name)
+
+
+def test_too_long_with_recording_off_points_at_the_printed_report(kept, monkeypatch,
+                                                                  capsys) -> None:
+    monkeypatch.setenv(crashes.OFF, "1")
+    cli.main(["report-issue", "--title", "x", "--note", "y " * 5000])
+    out = capsys.readouterr().out
+    assert "Written to" not in out
+    assert "paste it from the report printed above" in out
+    assert "from the file" not in out
+
+
+def test_a_long_title_is_cut_and_the_address_stays_short(kept) -> None:
+    report = issue.Report(title="x" * 8000, body="b\n", name="n")
+    found = issue.links(report, PAGE)
+    title = parse_qs(urlsplit(found.new).query)["title"][0]
+    assert len(title) <= issue.LONGEST_TITLE and title.endswith("…")
+    assert len(found.new) <= issue.LONGEST_LINK
+
+
+def test_a_long_report_opens_with_the_title_only(kept, monkeypatch, capsys, opened) -> None:
+    _crash(monkeypatch)
+    capsys.readouterr()
+    cli.main(["report-issue", "--open", "--note", "z " * 1500])
+    out = capsys.readouterr().out
+    assert "opens with the title only" in out
+    (page,) = opened
+    assert parse_qs(urlsplit(page).query)["body"] == [issue.SHORTENED]
+
+
+def test_the_title_is_shown_in_words_before_the_body(kept, monkeypatch, capsys) -> None:
+    _crash(monkeypatch)
+    capsys.readouterr()
+    cli.main(["report-issue"])
+    assert capsys.readouterr().out.startswith("Title: [mg-")
+
+
+def test_the_advice_on_the_message_names_this_record(kept, monkeypatch, capsys) -> None:
+    _crash(monkeypatch)
+    (record,) = crashes.records()
+    capsys.readouterr()
+    cli.main(["report-issue", record["fingerprint"][:6]])
+    assert f"report-issue {record['fingerprint']} --with-message" in capsys.readouterr().out
+
+
+def test_an_error_from_the_system_is_reported_as_one(kept, monkeypatch, capsys) -> None:
+    def held(_args) -> int:
+        raise PermissionError(13, "Permission denied", "x.docx")
+
+    monkeypatch.setattr(cli, "cmd_stages", held)
+    cli.main(["stages"])
+    capsys.readouterr()
+    cli.main(["report-issue"])
+    out = capsys.readouterr().out
+    assert "stopped on an error from the system it did not expect" in out
+    assert "error in manuscript-guard itself" not in out
+
+
+@pytest.mark.parametrize("argv", [
+    ["report-issue", "abcd", "--last"],
+    ["report-issue", "--title", "  "],
+    ["report-issue", "--list", "--title", "x"],
+    ["report-issue", "--list", "abcd"],
+])  # fmt: skip
+def test_flags_read_two_ways_are_refused(kept, argv, capsys) -> None:
+    assert cli.main(argv) == 2
 
 
 def test_a_gate_errored_finding_names_its_record(kept) -> None:
@@ -208,6 +282,11 @@ def test_the_hook_asks_before_an_agent_opens_the_page() -> None:
     assert asked("manuscript-guard report-issue --last") is None
     assert asked("manuscript-guard check --open") is None
     assert asked("manuscript-guard report-issue --last; echo --open") is None
+    # A quoted note holding a separator does not hide an --open after it.
+    for note in ('"ran check; expected a pass"', '"R&D data"', '"a | b"', '"line one\nline two"'):
+        assert asked(f"manuscript-guard report-issue --last --note {note} --open") is not None
+    # An --open inside a quoted note opens nothing.
+    assert asked('manuscript-guard report-issue --title x --note "tried --open"') is None
 
 
 def test_the_hook_puts_the_question_to_the_person(monkeypatch, capsys) -> None:

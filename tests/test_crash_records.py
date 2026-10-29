@@ -180,7 +180,7 @@ def test_next_that_cannot_run_the_gates_still_decides_and_records(kept, tmp_path
     state = inspect(tmp_path)
     assert "the gates could not be run" in state.error
     (found,) = _records(kept)
-    assert found["kind"] == "command" and found["name"] == "the gates' run"
+    assert found["kind"] == "command" and found["name"] == "the gates' findings"
 
 
 def test_a_hook_that_fails_lets_the_call_go_ahead_and_is_recorded(kept, monkeypatch,

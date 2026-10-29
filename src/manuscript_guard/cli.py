@@ -2616,14 +2616,12 @@ def cmd_report_issue(args: argparse.Namespace) -> int:
     from manuscript_guard.diagnostics import crashes, issue
     from manuscript_guard.diagnostics.scrub import scrub
 
+    _refuse_report_flags(args)
     if args.list:
         kept = crashes.records()
         print(issue.listing(kept) if kept else _nothing_recorded())
         return 0
-    if args.title and (args.fingerprint or args.last or args.with_message):
-        raise ContractError("--title writes a report of something else: give it without a "
-                            "fingerprint, --last or --with-message")  # fmt: skip
-    if args.title:
+    if args.title is not None:
         report = issue.general(args.title, args.note, installed=__version__)
     else:
         record = _record_to_report(args.fingerprint)
@@ -2636,6 +2634,25 @@ def cmd_report_issue(args: argparse.Namespace) -> int:
                      body=scrub(report.body, root=root))  # fmt: skip
     _say_report(report, crashes.folder(), args.open)
     return 0
+
+
+def _refuse_report_flags(args: argparse.Namespace) -> None:
+    """Refuse what `report-issue` would otherwise read one way and the person meant another."""
+    asked = [flag for flag, given in (("a fingerprint", args.fingerprint), ("--last", args.last),
+                                      ("--with-message", args.with_message),
+                                      ("--title", args.title is not None),
+                                      ("--note", args.note is not None),
+                                      ("--open", args.open)) if given]  # fmt: skip
+    if args.list and asked:
+        raise ContractError(f"--list lists the records and takes nothing else: {asked[0]} "
+                            "was given too")  # fmt: skip
+    if args.fingerprint and args.last:
+        raise ContractError("give a fingerprint or --last, not both")
+    if args.title is not None and not args.title.strip():
+        raise ContractError("--title is empty: say in a few words what the report is about")
+    if args.title is not None and (args.fingerprint or args.last or args.with_message):
+        raise ContractError("--title writes a report of something else: give it without a "
+                            "fingerprint, --last or --with-message")  # fmt: skip
 
 
 def _nothing_recorded() -> str:
@@ -2674,24 +2691,33 @@ def _say_report(report, folder: Path | None, open_page: bool) -> None:
 
     from manuscript_guard.diagnostics import issue
 
+    print(f"Title: {report.title}\n")
     print(report.body)
+    written = None
     if folder is not None:
         from manuscript_guard.diagnostics.crashes import shown
 
-        print(f"Written to {shown(issue.write(report, folder))}.")
-    new, search, shortened = issue.links(report, issue.issues_page())
-    if new is None:
+        written = issue.write(report, folder)
+        print(f"Written to {shown(written)}.")
+    found = issue.links(report, issue.issues_page())
+    if found is None:
         print("This installation does not name the project's issue page: open it from the "
               "README and paste the report.")  # fmt: skip
         return
-    if search:
-        print(f"Already reported? {search}")
-    if shortened:
-        print("The report is too long for the address: paste it from the file above.")
-    print(f"Read the report above, then post it yourself: {new}")
+    if found.search:
+        print(f"Already reported? {found.search}")
+    paste = "from the file above" if written else "from the report printed above"
+    if found.shortened:
+        print(f"The report is too long for the address: paste it {paste}.")
+    print(f"Read the report above, then post it yourself: {found.new}")
     print("Nothing was sent.")
     if open_page:
-        webbrowser.open(new)
+        # A browser may cut a long address it is handed, so a long one opens with the title
+        # only, and the body is pasted.
+        cut = len(found.new) > issue.LONGEST_OPENED
+        if cut and not found.shortened:
+            print(f"The page opens with the title only: paste the report {paste}.")
+        webbrowser.open(found.short if cut else found.new)
 
 
 def cmd_palettes(args: argparse.Namespace) -> int:

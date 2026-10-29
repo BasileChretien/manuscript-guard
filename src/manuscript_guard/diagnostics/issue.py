@@ -10,6 +10,7 @@ their click on Submit there is what posts it.
 from __future__ import annotations
 
 import re
+import secrets
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -24,12 +25,30 @@ LABEL = "bug"
 MARK = "mg-"
 HEAD = ("<!-- Written by `manuscript-guard report-issue`. Everything below is what would be "
         "posted: read it, edit it, and only then submit. -->")  # fmt: skip
-SHORTENED = ("The report was too long for a link. Paste it here from the file "
-             "`manuscript-guard report-issue` named in the terminal.")  # fmt: skip
+SHORTENED = ("The report was too long for a link. Paste it here: `manuscript-guard "
+             "report-issue` printed it whole in the terminal.")  # fmt: skip
+#: A browser may cut an address it is handed past about this length (Windows' ShellExecute),
+#: so `--open` opens the page with the title only past it, and the body is pasted.
+LONGEST_OPENED = 2000
+#: GitHub refuses a title past 256 characters.
+LONGEST_TITLE = 200
 _SHORTEST_PREFIX = 4
 _FINGERPRINT_REPORT = re.compile(r"^[0-9a-f]{12}\.md$")
-_GENERAL_REPORT = re.compile(r"^report-\d{8}-\d{6}\.md$")
+_GENERAL_REPORT = re.compile(r"^report-\d{8}-\d{6}-[0-9a-f]{6}\.md$")
 _KEPT_GENERAL = 20
+
+
+@dataclass(frozen=True)
+class Links:
+    #: The new-issue page with the title and the body filled in, or with the title only and
+    #: `SHORTENED` where the whole would be past `LONGEST_LINK`.
+    new: str
+    #: The new-issue page with the title and `SHORTENED`, for a browser that cuts long addresses.
+    short: str
+    #: The search of the issues for the report's fingerprint, where it has one.
+    search: str | None
+    #: Whether `new` carries `SHORTENED` rather than the body.
+    shortened: bool
 
 
 @dataclass(frozen=True)
@@ -78,8 +97,9 @@ def general(title: str, note: str | None, *, installed: str) -> Report:
     )
     body = "\n\n".join([HEAD, f"**Summary:** {title.strip()}", text,
                         f"**Version:** manuscript-guard {installed}, Python {python}, {system}."])
-    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    return Report(title=title.strip(), body=body + "\n", name=f"report-{stamp}.md")
+    # The clock alone can give two reports the same name: a random tail keeps both.
+    stamp = f"{datetime.now():%Y%m%d-%H%M%S}-{secrets.token_hex(3)}"
+    return Report(title=_cut(title.strip()), body=body + "\n", name=f"report-{stamp}.md")
 
 
 def issues_page() -> str | None:
@@ -97,22 +117,28 @@ def issues_page() -> str | None:
     return None
 
 
-def links(report: Report, page: str | None) -> tuple[str | None, str | None, bool]:
-    """The new-issue address with the report filled in, the search for its fingerprint, and
-    whether the body had to be left out of the address for its length."""
+def links(report: Report, page: str | None) -> Links | None:
+    """The addresses of the report's issue page, or None where the project's page is not
+    known (a source run with no package metadata)."""
     if page is None:
-        return None, None, False
-    asked = {"title": report.title, "body": report.body, "labels": LABEL}
-    new = f"{page}/new?{urlencode(asked, quote_via=quote)}"
-    shortened = len(new) > LONGEST_LINK
-    if shortened:
-        asked["body"] = SHORTENED
-        new = f"{page}/new?{urlencode(asked, quote_via=quote)}"
+        return None
+
+    def asking(body: str) -> str:
+        asked = {"title": _cut(report.title), "body": body, "labels": LABEL}
+        return f"{page}/new?{urlencode(asked, quote_via=quote)}"
+
+    whole, short = asking(report.body), asking(SHORTENED)
+    shortened = len(whole) > LONGEST_LINK
     search = None
     if report.fingerprint:
         asked_for = {"q": f"is:issue {MARK}{report.fingerprint}"}
         search = f"{page}?{urlencode(asked_for, quote_via=quote)}"
-    return new, search, shortened
+    return Links(new=short if shortened else whole, short=short, search=search,
+                 shortened=shortened)  # fmt: skip
+
+
+def _cut(title: str) -> str:
+    return title if len(title) <= LONGEST_TITLE else title[: LONGEST_TITLE - 1].rstrip() + "…"
 
 
 def find(records: list[dict], wanted: str) -> tuple[dict | None, str | None]:
@@ -163,6 +189,8 @@ def _what(record: dict) -> str:
         return f"the hook `{name}` failed, and kept out of the agent's way"
     if name:
         return f"{command} could not read {name}"
+    if record.get("from_system"):
+        return f"{command} stopped on an error from the system it did not expect"
     return f"{command} stopped on an error in manuscript-guard itself"
 
 
@@ -172,7 +200,7 @@ def _title(record: dict) -> str:
              if inner else "")  # fmt: skip
     what = record.get("name") or record.get("command") or record["kind"]
     short = record["exception"].rsplit(".", 1)[-1]
-    return f"[{MARK}{record['fingerprint']}] {what}: {short}{where}"
+    return _cut(f"[{MARK}{record['fingerprint']}] {what}: {short}{where}")
 
 
 def _times(count: int) -> str:
@@ -194,8 +222,9 @@ def _frame(frame: dict) -> str:
 def _message(record: dict, with_message: bool) -> str:
     if not with_message:
         return ("**The error's message:** left out, since it can quote your files. "
-                "`manuscript-guard report-issue --with-message` adds it, with your folders, "
-                "e-mail addresses and authors' names replaced.")  # fmt: skip
+                f"`manuscript-guard report-issue {record['fingerprint']} --with-message` adds "
+                "it, with your folders, e-mail addresses and authors' names as written in "
+                "authors.yaml replaced.")  # fmt: skip
     return ("**The error's message** (read it: it can quote your files, and only folders, "
             "e-mail addresses, credentials and authors' names were replaced):\n\n"
             + _fenced(record["message"]))  # fmt: skip

@@ -1551,24 +1551,38 @@ def _approves(command: str) -> str | None:
     )
 
 
-#: `report-issue … --open`, in one invocation of the command.
-_REPORT_OPENED = re.compile(
-    _TOOL + r"report-issue\b" + _SAME_COMMAND + r"(?<![\w-])--open\b", re.IGNORECASE
+#: `--open` as a word of the command, which `report-issue` opens the page with.
+_OPEN_FLAG = re.compile(r"--open(?:=.*)?", re.IGNORECASE | re.DOTALL)
+_OPENS = (
+    "`manuscript-guard report-issue --open` opens the project's issue page in your browser "
+    "with a report filled in, to be posted under your GitHub account. Read the report it "
+    "prints first: nothing is posted until you click Submit there."
 )
 
 
 def _opens_report(command: str) -> str | None:
     """Why an agent's `report-issue --open` is put to the person: it opens a page in their
     browser with a report filled in, to be posted under their GitHub account. Nothing is posted
-    until they click, but what the page says is theirs to read first."""
-    joined = re.sub(r"[\\`]\r?\n", " ", command)
-    if not _REPORT_OPENED.search(joined):
+    until they click, but what the page says is theirs to read first.
+
+    Read as `_posts` reads `--post`, in shell words, so that a quoted note holding a `;`, an `&`
+    or a line does not hide an `--open` after it, and an `--open` inside a quoted note is not
+    one. A command the words cannot be read of exactly is put to the person too."""
+    joined = [re.sub(r"\r(?!\n)", "\n", re.sub(r"[\\`]\r?\n", between, command))
+              for between in (" ", "")]  # fmt: skip
+    texts = [*joined, *(re.sub("[\\\\`'\"]", "", text) for text in joined)]
+    if not any(_NAMES_TOOL.search(text) and re.search(r"(?i)\breport-issue\b", text)
+               and re.search(r"(?i)--open(?![\w-])", text) for text in texts):  # fmt: skip
         return None
-    return (
-        "`manuscript-guard report-issue --open` opens the project's issue page in your browser "
-        "with a report filled in, to be posted under your GitHub account. Read the report it "
-        "prints first: nothing is posted until you click Submit there."
-    )
+    readings = [_command_words(text, posix=posix) for text in joined for posix in (True, False)]
+    opening = False
+    for invocations, _clean in readings:
+        for words in invocations:
+            tool = _tool_words(words)
+            if tool and tool[0].casefold() == "report-issue":
+                opening = opening or any(_OPEN_FLAG.fullmatch(word) for word in tool[1:])
+    exact = all(clean for _invocations, clean in readings)
+    return _OPENS if opening or not exact else None
 
 
 #: `communicate approve`, and `communicate … --done`, in one invocation of the command.

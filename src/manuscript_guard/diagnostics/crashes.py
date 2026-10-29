@@ -226,6 +226,9 @@ def _entry(exc, kind: str, name: str | None, root: Path | None, environ) -> dict
         "flags": list(_invocation["flags"]),
         "other_words": _invocation["words"],
         "exception": exception,
+        #: An error from the system (`OSError`: a file another program holds, a folder that
+        #: cannot be written), which the report does not call the tool's alone.
+        "from_system": isinstance(exc, OSError),
         "frames": frames,
         "message": message,
         "first_seen": now,

@@ -19,9 +19,9 @@ like, then a verb with any adverb, then "published" or "out" (not "out of"), wit
 negation before it; and a headline, "Now published", "Just published", "Out now", "Out
 today", "Published:", "Published today, our study ...", but not "Published in 2021, the
 ...". A DOI is held to its syntax (`comm-doi-malformed`); whether it is registered, and for
-this paper, is asked of Crossref by a later step. A link to storage that is neither
-persistent nor archived, a shared drive or a bare repository, is a warning
-(`comm-link-temporary`).
+this paper, is asked of Crossref by `lookup --paper` and read offline (`own_doi.py`). A link
+to storage that is neither persistent nor archived, a shared drive or a bare repository, is
+a warning (`comm-link-temporary`).
 """
 
 from __future__ import annotations

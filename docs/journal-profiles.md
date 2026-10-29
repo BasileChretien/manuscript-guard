@@ -117,8 +117,9 @@ For each version of the paper (`preprint`, `accepted`, `published`), where it ma
 `social-media-link`), after how long, under which licence and with which statement. Each
 version is quoted under `quotes.sharing.<version>`; where the policy was read, and when, are
 no rules. It is read from the journal's own policy page, not from a summary of it such as
-Sherpa Romeo, which needs a key besides. No gate reads the block yet, and without it nothing
-is refused yet.
+Sherpa Romeo, which needs a key besides. `communicate check` holds what a text uploads to it
+([communicating the paper](communicate.md)); without the block, a link to the DOI is allowed
+and an upload refused.
 
 ## Quotes and their numbers
 

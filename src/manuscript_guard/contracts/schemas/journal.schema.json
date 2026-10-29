@@ -419,7 +419,7 @@
       "type": "object",
       "additionalProperties": false,
       "minProperties": 1,
-      "description": "What the journal lets its authors share of each version of the paper, and where, each version quoted under `quotes:` as sharing.<version>. Recorded now; the communicate commands read it. Without the block, nothing is refused yet.",
+      "description": "What the journal lets its authors share of each version of the paper, and where, each version quoted under `quotes:` as sharing.<version>. `communicate check` holds what a communication text uploads to it (`comm-sharing-not-allowed`, `comm-sharing-unknown`). Without the block, a link to the DOI is allowed and an upload refused.",
       "properties": {
         "source_url": { "type": "string", "description": "The page the sharing policy was read from." },
         "retrieved_on": { "type": "string", "format": "date" },

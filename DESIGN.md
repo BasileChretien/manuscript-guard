@@ -6147,9 +6147,9 @@ each line a rule quoted under `graphical_abstract.<name>`) and `sharing` (for ea
 the paper, where it may be shared, after how long, under which licence and with which
 statement, quoted under `sharing.<version>`). A required graphical abstract is only noted
 (`graphical-abstract-missing`) while `communication/graphical-abstract/` does not exist: the
-`communicate` commands make it there and hold it to these rules. Without a `sharing:` block
-nothing is refused here; the author decided (2026-10-28) that those commands will then share
-a link to the DOI and upload nothing. The policy is the journal's own page, never Sherpa
+`communicate` commands make it there and hold it to these rules. `communicate check` holds
+what a text uploads to the `sharing:` block (below); without one, as the author decided
+(2026-10-28), a link to the DOI is allowed and an upload refused. The policy is the journal's own page, never Sherpa
 Romeo, which needs a key, and nothing in the toolkit is paid or keyed.
 
 ## What is said of the paper outside it
@@ -6182,8 +6182,45 @@ to its statement and each value to the results now (`comm-ga-stale`), which a pi
 by hand cannot be held to. It is held to the journal's `graphical_abstract` rules by the
 checks G3 and G4 hold a figure to, called on its path (`figure_files.check_file`,
 `figure_colours.colour_findings`, `figure_alt.alt_text_findings`), not copied. Nothing here
-sends anything: posting and the platforms' interfaces are a later step, and so are the
-sharing policy and the DOI's registration.
+sends anything: posting and the platforms' interfaces are a later step.
+
+**The texts are written from the brief** (`communicate build`, `communicate/build.py` and
+`drafts.py`), and held to the check before they are written: a text the check would fail is
+not written, and the build says why, so that what it writes passes as written, its slots
+apart. That is the guarantee, rather than templates trusted to be right: a statement of
+several sentences, one too long for a post, a brief with no limitation, a binding nothing
+emits each stop the text that would carry it, by the check's own reading. Each sentence taken
+from the brief is anchored to its statement sentence by sentence (`drafts.anchored`), since an
+anchor belongs to one sentence and a statement may hold several. What the tool cannot write,
+a headline, a quote, plain words, is a slot, `<!-- write: … -->`, which prints nothing, and
+the research-communication skill says how an agent fills one from the brief alone. The
+embargo alone is not held against a text the build writes: a text is drafted before it lifts
+and shared after. The paper is linked only once `publication.status` says it is online. A
+text that exists is never written over without `--force`, since it may hold what an author
+wrote into its slots. The overview slide is drawn as the graphical abstract is, and an SVG a
+text attaches is held line by line as the graphical abstract's are. A translation, a text
+whose `language` is not English, is held to its numbers, bindings, anchors and facts, not to
+the claim ladder or G6, which read English only.
+
+**What is due** is read from paper.yaml's `communication.triggers` against `publication:`
+(`lifecycle.py`): from acceptance, once online, and a number of days after
+`publication.published_on`. `communicate status` answers for the day it is run, and
+`--prepare` writes what is due and not written. Nothing runs in the background: a scheduler
+would act when nobody is looking, and the author decides when a text goes out.
+
+**What may be shared** (`sharing.py`): a document a text attaches is an upload of the version
+its front matter names, to the place its channel puts it, held to the profile's `sharing`
+block (`comm-sharing-not-allowed`, `comm-sharing-unknown`), and its `embargo_months` read from
+`publication.published_on`. A link to the DOI is no upload, with a policy or without one. The
+embargo (`publication.embargo_until`, `comm-embargo`) holds every text; a time with no zone is
+read twelve hours behind UTC, where it comes last, so that a text is never read as free to go
+while the embargo still holds somewhere, and one that cannot be read holds.
+
+**The paper's own DOI** is asked of Crossref by `lookup --paper` (`lookup/paper_doi.py`),
+through the lookups' injected transport, and the answer kept in
+`communication/lookups/crossref.yaml` with the digest of what it says; `communicate check`
+reads it offline (`own_doi.py`): a DOI Crossref did not know, or whose title there is not
+paper.yaml's, warns. Only the DOI is sent, and only by the command that asks.
 
 ## An earlier output of the same data is held to this paper
 
@@ -18120,8 +18157,7 @@ What papers converted from Word showed (see "What papers converted from Word sho
     in an item is counted as an item of the box.
   - `file: separate` is recorded and not acted on: the build still prints the box in the
     manuscript, and the submission pack writes no file of it.
-  - The sharing policy is recorded and not read; a later step of the `communicate` commands
-    is to read it. The graphical abstract's rules are read by `communicate check` (below).
+  - The graphical abstract's rules are read by `communicate check` (below).
 
 - **What `audit` reads of a LaTeX paper, its words and its references (Task 3, PR 1,
   2026-10-28).** Each limit, as built:
@@ -18477,7 +18513,42 @@ What papers converted from Word showed (see "What papers converted from Word sho
     display a table or a figure it places prints: a display that happens to be printed there
     for another quantity passes, as in G8.
 
+- **What `communicate build`, `status` and the sharing checks read (Task 5, PR 3,
+  2026-10-29).** Each limit, as built:
+  - A link to a copy of the paper elsewhere than its DOI, a PDF on a personal site linked
+    from a post, is not read as sharing that version: only a document the front matter
+    attaches is an upload. A DOI link is allowed whatever the policy says; the policy's
+    `social-media-link` is recorded and not read.
+  - An upload is a document by its name's suffix (`.pdf`, `.docx`, `.doc`, `.odt`, `.rtf`,
+    `.epub`, `.tex`); an image is no version of the paper, whatever it shows. A channel puts
+    an upload where `data/channels.yaml` says (`researchgate` an academic network, `blog` a
+    personal site); every other channel puts it at no place a policy names, and an upload
+    there is `comm-sharing-unknown`.
+  - A policy's `embargo_months` runs from `publication.published_on` for every version,
+    though a journal may count the accepted version's from acceptance.
+  - An embargo with no zone is read twelve hours behind UTC, so a text may wait up to a day
+    longer than the journal's own zone needs. A press release sent to journalists under
+    embargo fails `comm-embargo` like a post until the embargo lifts.
+  - A translation is held to its numbers, bindings, anchors and facts only: what its words
+    claim is read by nobody but its reader, and "95% CI" written in its own script's marks
+    may be read as a typed number.
+  - A post that does not fit drops the conclusion, and a thread whose statement does not fit
+    one post is not written: the build does not cut a statement, since a cut statement says
+    less than its quote, or other than it.
+  - The overview slide is checked as an attachment only while a text names it.
+  - Crossref is the one registry asked about the paper's DOI: a DOI registered with DataCite
+    or another agency reads as unknown, and warns. A title is compared folded: a title the
+    journal reworded at proof, or one Crossref keeps in another language, warns.
+  - `communicate status` reads the clock of the machine it runs on, and says what is due on
+    that day; nothing reminds anyone.
+
 Closed since, and why each mattered (an open gap goes above this line):
+
+- **The journal's sharing policy was recorded and not read (Task 5, PR 3, 2026-10-29).** A
+  profile held where each version of the paper may be shared, and a communication text could
+  upload the accepted manuscript to ResearchGate unchecked. `communicate check` holds each
+  upload to it now (`comm-sharing-not-allowed`, `comm-sharing-unknown`), and with no policy
+  allows a link to the DOI and refuses an upload; see "What is said of the paper outside it".
 
 - **A masked cell recovered by subtraction was not looked for (Task 3, PR 2, 2026-10-28).**
   `deposit`'s preflight called `gates.custodian.recoverable_cells`, which found nothing, so a

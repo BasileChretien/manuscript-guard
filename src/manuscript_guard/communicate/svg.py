@@ -399,6 +399,38 @@ def concept_2(brief: Brief, template: Template, size: Size, colours: list[str],
     return canvas.written()
 
 
+#: The overview slide's size: a slide of 16:9, as presentation software opens one.
+SLIDE = Size(1920, 1080, "a slide of 16:9", False)
+
+
+def overview(brief: Brief, colours: list[str], namespace: dict) -> bytes:
+    """One slide for a talk: the question, the primary finding large, what it means. Each
+    line names its statement and its values, as the graphical abstract's do."""
+    canvas = _Canvas(SLIDE, colours, namespace)
+    canvas.root.find("desc").text = (
+        "Overview slide drawn by manuscript-guard communicate build from "
+        "communication/brief.yaml"
+    )
+    fonts = _fonts(SLIDE.height, None)
+    margin = round(SLIDE.height * 0.06)
+    inner = SLIDE.width - 2 * margin
+    held = panels(brief)
+    canvas.rect(0, 0, SLIDE.width, margin / 3, fill=colours[0])
+    y = float(margin)
+    for heading, statements, font, bold in (
+        ("The question", held.asked, fonts.body, False),
+        ("The finding", held.primary, fonts.primary, True),
+        ("What it means", held.means, fonts.body, False),
+    ):
+        if not statements:
+            continue
+        y += fonts.heading * 1.2
+        canvas.text(margin, y, heading, fonts.heading, bold=True)
+        for one in statements:
+            y = canvas.statement(one, margin, y, inner, font, bold=bold)
+    return canvas.written()
+
+
 # --------------------------------------------------------------------- what is written beside
 
 

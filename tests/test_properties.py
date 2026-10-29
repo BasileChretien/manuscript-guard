@@ -74,6 +74,7 @@ from generated import (
     alt_texts,
     bindings,
     bold_planted,
+    built_briefs,
     claim_edits,
     claim_pairs,
     collection_plans,
@@ -85,6 +86,7 @@ from generated import (
     deposit_statements,
     deviation_titled,
     dictionary_pairs,
+    embargo_times,
     escaped_backticks,
     figure_captions,
     generated,
@@ -149,6 +151,7 @@ from generated import (
     suggestion_paragraphs,
     supplements,
     texts,
+    title_pairs,
     typed,
     typed_reference_lists,
     vector_figures,
@@ -7795,6 +7798,47 @@ def test_a_restatement_is_held_to_how_strongly_its_source_claims_read_whole(
     assert READINGS["communicate claims"]()({"pairs": pairs}) == expected, pairs
 
 
+@holds(40, built_briefs())
+def test_each_sentence_a_built_text_takes_from_the_brief_names_its_statement(
+    drawn: list[dict[str, Any]],
+) -> None:
+    """Every sentence that claims, of every text `communicate build` writes, is anchored to
+    the one statement it is taken from, and is a sentence of that statement's text: a
+    statement of several sentences, one that asks, one with a decimal, one wrapped, one with
+    no closing stop and one that opens with a binding among them (`communicate/drafts.py`)."""
+    texts_of = {one["id"]: " ".join(one["text"].split()) for one in drawn}
+    built = READINGS["communicate built"]()({"statements": drawn})
+    # The thread holds every statement, and so every kind.
+    assert len(built["thread"]) >= len(drawn), built["thread"]
+    for name, sentences in built.items():
+        for words, anchors in sentences:
+            assert len(anchors) == 1, (name, words, anchors)
+            assert words.rstrip() in texts_of[anchors[0]], (name, words, anchors)
+
+
+@holds(40, title_pairs())
+def test_a_title_is_crossrefs_whatever_its_case_markup_and_marks(
+    drawn: tuple[list[list[str | None]], list[bool]],
+) -> None:
+    """Paper.yaml's title is Crossref's for its DOI in another case, with its markup, an
+    entity, its accents, other marks or spacing, or its subtitle kept apart; and not with a
+    word changed or missing, or another title (`communicate/own_doi.py`)."""
+    pairs, expected = drawn
+    assert READINGS["communicate titles"]()({"pairs": pairs}) == expected, pairs
+
+
+@holds(40, embargo_times())
+def test_an_embargo_lifts_at_its_zones_moment_or_where_the_day_comes_last(
+    drawn: tuple[list[str], list[str | None]],
+) -> None:
+    """An embargo with a zone, `Z`, `UTC`, `GMT` or an offset, lifts at that moment; one
+    with none, a date or a time, twelve hours behind UTC, where it comes last; words, an
+    impossible day and an hour past the day are read as no moment (`communicate/
+    lifecycle.py`)."""
+    written, expected = drawn
+    assert READINGS["communicate embargo"]()({"written": written}) == expected, written
+
+
 # ------------------------------------------------------------------- the marked-up copy
 
 #: What shows a change in a line of `readings.shown`.
@@ -12813,6 +12857,54 @@ def _a_headline_of_other_work_is_this_paper(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(status_module, "_other_work", lambda sentence, at: False)
 
 
+def _a_statement_is_anchored_once_at_its_end(patch: pytest.MonkeyPatch) -> None:
+    # A statement of several sentences anchored once: its first sentences name nothing.
+    from manuscript_guard.communicate import drafts
+
+    patch.setattr(drafts, "anchored",
+                  lambda one: f"{' '.join(one.text.split())} [](#brief:{one.id})")  # fmt: skip
+
+
+def _a_titles_markup_is_read_as_words(patch: pytest.MonkeyPatch) -> None:
+    # "<i>hepatic</i> injury" is "i hepatic i injury".
+    from manuscript_guard.communicate import own_doi
+
+    patch.setattr(own_doi, "_TAG", re.compile(r"(?!)"))
+
+
+def _a_titles_case_tells_it_apart(patch: pytest.MonkeyPatch) -> None:
+    # "HEPATIC INJURY" is not "Hepatic injury".
+    import html
+    import unicodedata
+
+    from manuscript_guard.communicate import own_doi
+
+    def kept_case(title: str) -> str:
+        plain = unicodedata.normalize("NFKD", html.unescape(own_doi._TAG.sub("", title)))
+        plain = "".join(char for char in plain if not unicodedata.combining(char))
+        return " ".join(re.sub(r"[\W_]+", " ", plain).split())
+
+    patch.setattr(own_doi, "fold_title", kept_case)
+
+
+def _an_embargo_with_no_zone_is_read_in_utc(patch: pytest.MonkeyPatch) -> None:
+    # "2026-12-01T00:01" lifts at midnight in London, twelve hours before it has everywhere.
+    from datetime import timezone
+
+    from manuscript_guard.communicate import lifecycle
+
+    patch.setattr(lifecycle, "LATEST_ZONE", timezone.utc)
+
+
+def _an_embargos_offset_is_read_without_its_sign(patch: pytest.MonkeyPatch) -> None:
+    # "-05:00" read as "+05:00".
+    from manuscript_guard.communicate import lifecycle
+
+    real = lifecycle._zone
+    patch.setattr(lifecycle, "_zone", lambda written: real(written.replace("-", "+"))
+                  if written else real(written))  # fmt: skip
+
+
 def _out_of_is_out(patch: pytest.MonkeyPatch) -> None:
     # "This work is out of scope" read as this paper out.
     from manuscript_guard.communicate import status as status_module
@@ -13017,6 +13109,26 @@ BROKEN = {
     "out of is out": (
         _out_of_is_out,
         test_this_paper_said_out_is_read_in_its_forms_and_nothing_else_is,
+    ),
+    "a statement is anchored once, at its end": (
+        _a_statement_is_anchored_once_at_its_end,
+        test_each_sentence_a_built_text_takes_from_the_brief_names_its_statement,
+    ),
+    "a title's markup is read as words": (
+        _a_titles_markup_is_read_as_words,
+        test_a_title_is_crossrefs_whatever_its_case_markup_and_marks,
+    ),
+    "a title's case tells it apart": (
+        _a_titles_case_tells_it_apart,
+        test_a_title_is_crossrefs_whatever_its_case_markup_and_marks,
+    ),
+    "an embargo with no zone is read in UTC": (
+        _an_embargo_with_no_zone_is_read_in_utc,
+        test_an_embargo_lifts_at_its_zones_moment_or_where_the_day_comes_last,
+    ),
+    "an embargo's offset is read without its sign": (
+        _an_embargos_offset_is_read_without_its_sign,
+        test_an_embargo_lifts_at_its_zones_moment_or_where_the_day_comes_last,
     ),
     "a mention is read as words": (
         _a_mention_is_read_as_words,

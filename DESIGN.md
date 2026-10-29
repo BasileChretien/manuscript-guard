@@ -19092,9 +19092,11 @@ What papers converted from Word showed (see "What papers converted from Word sho
     is read as text; and in a .docx what a tracked change deleted is read wherever it is but
     in a list styled "Bibliography", a deleted entry of an unstyled list among it. A .docx's
     list is cut to where a list under no heading ends (`_end_under_no_heading`), at a title
-    of back matter, a caption, a table or a bold paragraph, also under a styled heading: an
+    of back matter, a caption or a table, also under a styled heading: an
     entry shaped as one of those ends the cut early, and the entries after it are read, a
     self-citation among them (a false alarm, where running on hid the acknowledgements).
+    A reference list laid out as a Word table under a styled "References" heading is cut at
+    its first row, so a self-citation in it is reported: a false alarm the check may raise.
   - A LaTeX paper's pictures are those its files place with `\includegraphics` or
     `\includesvg`, found from the entry's folder or the file's own, by the name as written
     and with `.pdf` and `.svg` after it; `\graphicspath` is not followed, and a raster

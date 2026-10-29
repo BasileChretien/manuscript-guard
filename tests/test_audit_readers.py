@@ -579,7 +579,7 @@ def test_a_dataset_is_not_said_uncited_where_no_reference_list_was_read(
     codes = {f["code"] for f in report["findings"]}
     assert "data-doi-uncited" not in codes, report["findings"]
     skipped = [f["message"] for f in report["findings"] if f["code"] == "journal-not-checked"]
-    assert any("no reference list was read" in said for said in skipped), skipped
+    assert any("main document's reference list was not read" in s for s in skipped), skipped
 
 
 def svg(text: str) -> str:
@@ -692,7 +692,7 @@ def test_the_main_document_s_own_list_holds_the_data_statement(tmp_path: Path, c
                                       str(supplement), "--journal", str(journal))  # fmt: skip
         assert "data-doi-uncited" not in {f["code"] for f in report["findings"]}, listed
         skipped = [f["message"] for f in report["findings"] if f["code"] == "journal-not-checked"]
-        assert any("no reference list was read" in said for said in skipped), skipped
+        assert any("main document's reference list was not read" in s for s in skipped), skipped
 
 
 MC = "http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -747,14 +747,16 @@ def test_a_table_indented_in_a_list_item_puts_the_table_limits_under_not_checked
 
 
 @pytest.mark.parametrize("placed", [f"{BS}includesvg{{flow}}", f"{BS}includegraphics{{flow.v2}}",
-                                    f"{BS}includegraphics*[width=3cm]{{flow.v2}}"])
+                                    f"{BS}includegraphics*[width=3cm]{{flow.v2}}",
+                                    f"{BS}includegraphics{{flow}}"])
 def test_a_picture_placed_by_includesvg_or_with_a_dot_in_its_name_is_searched(
     tmp_path: Path, capsys, placed: str
 ) -> None:
     """Round 2, note 6: `\\includesvg` was not read, and a name with a dot in it was tried
     only as written."""
-    name = "flow.svg" if "includesvg" in placed else "flow.v2.svg"
+    name = "flow.svg" if "{flow}" in placed else "flow.v2.svg"
     (tmp_path / name).write_text(svg("Drawn by Ada Example"), encoding="utf-8")
+    (tmp_path / "flow").write_text("no picture", encoding="utf-8")
     (tmp_path / "main.tex").write_text(
         f"{BS}documentclass{{article}}{BS}begin{{document}}{BS}section{{Results}}Of 40, 12."
         f"{placed}\n{BS}end{{document}}\n", encoding="utf-8")  # fmt: skip

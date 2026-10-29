@@ -174,15 +174,15 @@ def run_journal(
 
 #: Said under what was not checked where no reference list was read, so that no DOI of the
 #: data availability statement can be said to be cited or not.
-UNCITED = ("whether each DOI the data availability statement names is cited: no reference "
-           "list was read, as in a LaTeX paper whose list is in its .bib")
+UNCITED = ("whether each DOI the data availability statement names is cited: the main "
+           "document's reference list was not read (a supplement's may have been)")
 #: Said where the main document holds a table written in HTML, which is not counted.
 HTML_TABLES = ("the journal's limits on tables and display items: a table written in HTML is "
                "not counted")
 #: Said where a line of the main document is shaped as a table's rule and is no table the
 #: audit read: one indented in a list item, as pandoc writes it there.
-INDENTED_TABLES = ("the journal's limits on tables and display items: a table indented in a "
-                   "list item is not read, so not counted")
+INDENTED_TABLES = ("the journal's limits on tables and display items: a table's rule was not "
+                   "read (indented in a list item or in a code block), so not all are counted")
 
 
 def _tables_unread(staged, profile: dict) -> list[str]:
@@ -305,10 +305,10 @@ def _placed_pictures(tree) -> list[Path]:
                 given = folder / name
                 tried = [given, *(given.with_name(given.name + suffix)
                                   for suffix in (".pdf", ".svg"))]  # fmt: skip
-                hit = next((p for p in tried if p.is_file()), None)
+                hit = next((p for p in tried if p.suffix.lower() in (".pdf", ".svg")
+                            and p.is_file()), None)  # fmt: skip
                 if hit is not None:
-                    if hit.suffix.lower() in (".pdf", ".svg"):
-                        found.append(hit)
+                    found.append(hit)
                     break
     return found
 

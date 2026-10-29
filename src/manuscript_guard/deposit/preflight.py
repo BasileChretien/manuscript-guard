@@ -12,7 +12,8 @@ whatever the bundle and wherever it goes (`first`):
   data outside the custodian's hands already;
 - every count held back that a table of the results files carried gives away by one of
   its totals (`gates.custodian.recoverable_cells`, `count-recoverable`): a "<5" whose row's
-  total and other cells are printed.
+  total and other cells are printed. A warning, which stops nothing: a total read from a
+  table's label need not be a sum.
 
 Then, once the bundle is planned (`last`): no file of it is an input declared restricted, by
 its name or by the file it is, and, where the custodian restricts sending, they have signed

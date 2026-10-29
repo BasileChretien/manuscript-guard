@@ -16,12 +16,13 @@ cell, and a count whose display hides it ("<5") prints no small number.
 A count held back is printed all the same where what stands beside it gives it away: a row
 whose total and other cells are printed leaves the "<5" one number. So G2 also fails each
 count held back that what the manuscript or the supplement prints lets a reader work out by
-subtraction (`count-recoverable`), from one to below the minimum: in a table it binds, by a
-total row or a total column (`stats/margins.py`); in a sum the analysis declares
-(`em.relation("sum", …)`), or a step or the arms of a flow, where every key of it is bound.
-Where only a column's header n gives it, it is a warning: the n is their total only where
-every one of the column has one of the categories. `deposit` asks the same of every table of
-the results files it carries (`recoverable_cells`).
+subtraction (`count-recoverable`), from one to below the minimum. It fails in a sum the
+analysis declares (`em.relation("sum", …)`), or a step or the arms of a flow, where every
+key of it is bound. In a table it binds, by a total row or column (`stats/margins.py`) or a
+column's header n, it warns: a total read from a label need not be the sum of the counts
+beside it, and a header's n is their total only where every one of the column has one of
+the categories (Basile, 2026-10-29). `deposit` asks the same of every table of the results
+files it carries (`recoverable_cells`), and warns.
 
 And an input the analysis declares restricted (`em.add_input(path, restricted=True)`, or
 `em$add_input(path, restricted = TRUE)` in R) is data that may not leave the custodian's
@@ -157,6 +158,12 @@ _RECOVERED_HINT = (
     "category with another, in the analysis: a count held back beside its total and the "
     "other counts that make it up is printed all the same"
 )
+_LABEL_HINT = (
+    "a total a table names by its label may not be the sum of the counts beside it (the "
+    "patients with any of several events, rows that overlap); where it is, hold back a "
+    "second count of the same row or column as well, or the total, or merge the category "
+    "with another, in the analysis"
+)
 _BY_N_HINT = (
     "the header's n gives it where every one of the column has one of the categories; where "
     "some have none, say how many beside it, or hold back a second category as well"
@@ -188,11 +195,11 @@ def as_cells(table) -> tuple:
 
 
 def check_recoverable(project: Project, results: Results) -> Report:
-    """A failure for each count held back that what the manuscript or the supplement prints
-    gives away (`count-recoverable`): in an emitted table it binds, by a total of the table;
-    in a sum the analysis declares, or a step or the arms of a flow, by the rest of it, all
-    bound. Only a warning where the header's n of a column gives it, which holds only where
-    every one of the column has one of the categories."""
+    """Each count held back that what the manuscript or the supplement prints gives away
+    (`count-recoverable`). A failure where the analysis declares the total a sum: a sum
+    relation, or a step or the arms of a flow, all its keys bound. A warning in an emitted
+    table it binds, where the total is read from the table's label alone or from a column's
+    header n: neither need be the sum of the counts beside it (Basile, 2026-10-29)."""
     minimum = minimum_cell_count(project)
     if minimum is None:
         return Report()
@@ -206,7 +213,7 @@ def check_recoverable(project: Project, results: Results) -> Report:
             if book is not None:
                 book.setdefault(placeholder.key, (path, placeholder.line if lined else None))
     findings = [
-        _recovered(f"table.{key}: ", found, *tables[key])
+        _recovered(f"table.{key}: ", found, *tables[key], declared=False)
         for key, table in sorted(results.tables.items()) if key in tables
         for found in recoverable(as_cells(table), minimum)
     ]  # fmt: skip
@@ -216,19 +223,26 @@ def check_recoverable(project: Project, results: Results) -> Report:
         key = found.member.name.removeprefix("results.")
         if _forbidden(found.value, minimum) and key not in said:
             said.add(key)
-            findings.append(_recovered("", found, *values[key]))
+            findings.append(_recovered("", found, *values[key], declared=True))
     return Report(tuple(findings))
 
 
-def _recovered(prefix: str, found, path: Path, line: int | None) -> Finding:
+def _recovered(prefix: str, found, path: Path, line: int | None, *,
+               declared: bool) -> Finding:  # fmt: skip
+    """A failure where the analysis `declared` the total a sum; otherwise a warning, with
+    what the total has to be for the count to be the one worked out."""
     from manuscript_guard.stats.margins import said
 
-    explicit = found.line.explicit
+    if declared:
+        suffix, hint = "", _RECOVERED_HINT
+    elif found.line.explicit:
+        suffix = ", if the total is the sum of the counts beside it, which nothing declares"
+        hint = _LABEL_HINT
+    else:
+        suffix, hint = ", if every one of the column has one of the categories", _BY_N_HINT
     return Finding(
-        gate="G2", code="count-recoverable", severity=FAIL if explicit else WARN,
-        message=f"{prefix}{said(found)}" + ("" if explicit else ", if every one of the "
-                                            "column has one of the categories"),
-        path=path, line=line, hint=_RECOVERED_HINT if explicit else _BY_N_HINT,
+        gate="G2", code="count-recoverable", severity=FAIL if declared else WARN,
+        message=f"{prefix}{said(found)}{suffix}", path=path, line=line, hint=hint,
     )  # fmt: skip
 
 
@@ -239,7 +253,10 @@ def _value_lines(results: Results, shown: frozenset[str]) -> list:
 
     def member(key: object) -> Member | None:
         value = results.values.get(key) if isinstance(key, str) and key in shown else None
-        count = None if value is None else count_in(value.display, share=False)
+        # A value that is not whole is no count, whatever its display rounds it to: 1,234.6
+        # printed "1,235" (round 1 of #469).
+        whole = value is not None and _whole_value(value.value)
+        count = count_in(value.display, share=False) if whole else None
         return None if count is None else Member(count, f"results.{key}")
 
     def line(total: object, parts: list, of: str, part: str, several: str) -> None:
@@ -271,14 +288,20 @@ def _value_lines(results: Results, shown: frozenset[str]) -> list:
     return lines
 
 
+def _whole_value(number: object) -> bool:
+    return (isinstance(number, int) and not isinstance(number, bool)) or (
+        isinstance(number, float) and number.is_integer())
+
+
 def recoverable_cells(
     project: Project, results: Results, carried: frozenset[str] = frozenset()
 ) -> Report:
-    """A failure for each count held back that a table of the results files `carried`
+    """A warning for each count held back that a table of the results files `carried`
     (named from the project's root) gives away by one of its totals, as `check_recoverable`
     reads a table the manuscript binds: a deposit publishes every table of them, bound or
-    not. A sum or a flow is not read here: a results file carries each value beside its
-    display, and `deposit.counts` reads the value."""
+    not, and a total read from a table's label need not be a sum, so it does not refuse
+    (Basile, 2026-10-29). A sum or a flow is not read here: a results file carries each
+    value beside its display, and `deposit.counts` reads the value."""
     minimum = minimum_cell_count(project)
     if minimum is None:
         return Report()
@@ -289,7 +312,8 @@ def recoverable_cells(
         except ValueError:
             continue
         if relative in carried:
-            findings += [_recovered(f"table.{key} in {relative}: ", found, table.source, None)
+            findings += [_recovered(f"table.{key} in {relative}: ", found, table.source, None,
+                                    declared=False)
                          for found in recoverable(as_cells(table), minimum)]  # fmt: skip
     return Report(tuple(findings))
 

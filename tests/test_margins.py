@@ -46,7 +46,7 @@ def test_a_total_is_its_word_with_nothing_but_an_n_after_it(label: str) -> None:
 
 
 @pytest.mark.parametrize("label", ["Total cholesterol, mmol/L", "Overall survival",
-                                   "All-cause death", "All other drugs", "Totals",
+                                   "All-cause death", "All other drugs",
                                    "Subtotal", "All patients"])
 def test_a_label_that_starts_as_a_total_does_is_none(label: str) -> None:
     assert not is_total(label)
@@ -185,6 +185,55 @@ def test_only_the_header_n_giving_it_away_is_not_explicit() -> None:
     assert given_away(printed) == [(5, 3, True)]
 
 
+# ------------------------------------------------------------------ round 1 of #469
+
+
+def test_a_second_header_row_of_years_is_no_row_of_counts() -> None:
+    """A Word table with a two-row header: "Year" spans three columns, and the years are
+    under it in a row with no label. They are the header's, and no part of the total's."""
+    from manuscript_guard.text.tables import TableCell
+
+    def row(at: int, *cells: str | tuple[str, int]) -> tuple:
+        return tuple(TableCell(c, at) if isinstance(c, str) else TableCell(c[0], at, c[1])
+                     for c in cells)  # fmt: skip
+
+    drawn = (row(1, "Drug", ("Year", 3), "Total"), row(2, "", "2019", "2020", "2021", ""),
+             row(3, "A", "4", "5", "6", "15"), row(4, "B", "5", "6", "7", "18"),
+             row(5, "Total", "9", "11", "13", "33"))  # fmt: skip
+    assert sums_off(drawn) == []
+
+
+def test_an_n_percent_is_a_count_though_its_shares_fall_short_of_100() -> None:
+    text = """
+| Characteristic | Cases (n = 120) | Controls (n = 200) |
+|---|---|---|
+| Sex | | |
+| Men | 60 (50.0) | 100 (50.0) |
+| Women | 57 (47.5) | 97 (48.5) |
+| Other | <5 | <5 |
+| Total | 120 | 200 |
+"""
+    assert given_away(text) == [(6, 3, True), (6, 3, True)]
+
+
+def test_totals_a_bounded_share_a_row_of_words_and_a_subgroup_are_read() -> None:
+    """"Totals" is a total; "12 (<0.1)" is the count 12; "NR | NR" changes no column; and a
+    column headed "HR+" is a subgroup, where "HR" alone is a ratio."""
+    assert is_total("Totals")
+    assert count_in("12 (<0.1)").low == 12 and count_in("12 (<1%)").high == 12
+    text = """
+| | HR+ (n = 30) | HR- (n = 40) | Total |
+|---|---|---|---|
+| Men | 12 (<0.1) | 20 | 33 |
+| Not recorded | NR | NR | NR |
+| Women | <5 | 17 | 20 |
+"""
+    assert off(text) == ["the 'Total' column, row 'Men', prints 33, and the 2 cells before "
+                         "it add up to 32"]  # fmt: skip
+    assert given_away(text) == [(5, 3, True)]
+    assert off(text.replace("HR+ (n = 30)", "HR (95% CI)")) == []
+
+
 # --------------------------------------------------------------------------- G2 in check
 
 
@@ -215,14 +264,17 @@ def _total_row(document: dict) -> None:
         ["Total", "197", "3729"]]  # fmt: skip
 
 
-def test_g2_says_a_count_a_bound_tables_total_gives_away(project: Path) -> None:
+def test_g2_warns_of_a_count_a_bound_tables_total_gives_away(project: Path) -> None:
+    """A total read from a table's label alone may be no sum, the patients with any of
+    several events: a warning (Basile, 2026-10-29)."""
     _edit(project, _total_row)
     assert _given_away(project) == []  # no minimum declared
     _custodian(project, 5)
     assert _given_away(project) == [(
-        "count-recoverable", FAIL, "table.two_by_two: <5 in row 'example-drug', column "
+        "count-recoverable", WARN, "table.two_by_two: <5 in row 'example-drug', column "
         "'Hepatic injury' can only be 3: the 'Total' row, column 'Hepatic injury', prints "
-        "197, and the other row above it leaves 3 of it")]  # fmt: skip
+        "197, and the other row above it leaves 3 of it, if the total is the sum of the "
+        "counts beside it, which nothing declares")]  # fmt: skip
     # A table the manuscript does not bind prints nothing.
     text = (project / "manuscript" / "main.md").read_text(encoding="utf-8")
     (project / "manuscript" / "main.md").write_text(text.replace("{{table.two_by_two}}", ""),
@@ -261,6 +313,9 @@ def test_g2_says_a_count_a_declared_sum_gives_away(project: Path) -> None:
     _bind(project, "Men {{results.cohort.n_men}}, women {{results.cohort.n_women}}.")
     assert [(c, s) for c, s, _m in _given_away(project)] == [("count-recoverable", FAIL)]
     assert "<5 in results.cohort.n_men can only be 3" in _given_away(project)[0][2]
+    # A value that is not whole is no count, whatever its display rounds it to.
+    _edit(project, lambda document: document["values"]["cohort.n_women"].update(value=423.4))
+    assert _given_away(project) == []
 
 
 def test_g2_says_a_count_a_flows_step_gives_away_unless_its_reasons_overlap(

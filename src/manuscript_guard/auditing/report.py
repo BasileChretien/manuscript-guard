@@ -176,7 +176,9 @@ def as_json(report, discrimination) -> str:
         "not_compared": report.uncompared,
         "totals_off": len(report.sums_off),
         "over_header_n": len(report.over_n),
-        "recoverable": len(report.recovered) + len(report.recovered_by_n),
+        # Apart, as the text says them: --strict counts the first and not the second.
+        "recoverable": len(report.recovered),
+        "recoverable_by_n": len(report.recovered_by_n),
         "reference_entries": sum(len(c.entries) for c in report.references),
     }
     worth = None

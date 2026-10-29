@@ -4292,6 +4292,77 @@ def _categories_fewer_than_their_n_are_said(patch: pytest.MonkeyPatch) -> None:
     patch.setattr(margins, "_exceeds", lambda total, n: total != n)
 
 
+def _a_row_of_years_with_no_label_is_counts(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import margins
+
+    patch.setattr(margins, "_heading", lambda index, rows, label, texts: not index or (
+        not rows and margins._a_header(texts)))  # fmt: skip
+
+
+def _a_row_of_words_is_read_as_a_header_anywhere(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import margins
+
+    patch.setattr(margins, "_heading", lambda index, rows, label, texts: not index or (
+        not rows and not label.strip()) or margins._a_header(texts))  # fmt: skip
+
+
+def _an_n_percent_is_no_count(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import margins, shares
+
+    real = margins.count_in
+
+    def read(text: str, line: int = 0, *, share: bool = True):
+        if shares._SHARE.fullmatch(shares._clean(text)[0]):
+            return None
+        return real(text, line, share=share)
+
+    patch.setattr(margins, "count_in", read)
+
+
+def _a_share_behind_a_bound_is_no_count(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import margins
+
+    patch.setattr(margins, "_BOUND_SHARE", re.compile(r"(?!)"))
+
+
+def _totals_is_no_total(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import margins
+
+    pattern = margins._TOTAL.pattern.replace("totals?", "total")
+    assert pattern != margins._TOTAL.pattern
+    patch.setattr(margins, "_TOTAL", re.compile(pattern, re.DOTALL))
+
+
+def _a_subgroup_is_read_as_a_ratio(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import margins
+
+    patch.setattr(margins, "_RATIO", re.compile(r"(?<![A-Za-z])(?:a?OR|a?RR|a?HR|IRR|SMD)"
+                                                r"(?![A-Za-z])"))  # fmt: skip
+
+
+def _a_count_held_back_is_worked_out_as_if_the_others_were_their_lowest(
+    patch: pytest.MonkeyPatch,
+) -> None:
+    from manuscript_guard.stats import margins
+
+    def feasible(line):
+        total = line.total.count.low
+        lows = sum(member.count.low for member in line.members)
+        highs = sum(member.count.high for member in line.members)
+        if not lows <= total <= highs:
+            return None
+        return tuple((total - (lows - m.count.low),) * 2 for m in line.members)
+
+    patch.setattr(margins, "feasible", feasible)
+
+
+def _a_total_column_totals_every_column_before_it(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import margins
+
+    patch.setattr(margins, "_closed_by", lambda row, before, column: [
+        c for c in range(row.start, column) if c not in row.barred])  # fmt: skip
+
+
 def _a_count_given_away_is_said_whatever_the_minimum(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.gates import custodian
 
@@ -14426,6 +14497,38 @@ BROKEN = {
     ),
     "categories fewer than their column's n are said": (
         _categories_fewer_than_their_n_are_said,
+        test_a_tables_totals_are_held_to_their_counts_and_a_count_held_back_to_them,
+    ),
+    "a row of years with no label under the header is counts": (
+        _a_row_of_years_with_no_label_is_counts,
+        test_a_tables_totals_are_held_to_their_counts_and_a_count_held_back_to_them,
+    ),
+    "a row of words below the first counts is read as a header": (
+        _a_row_of_words_is_read_as_a_header_anywhere,
+        test_a_tables_totals_are_held_to_their_counts_and_a_count_held_back_to_them,
+    ),
+    "an n (%) is no count": (
+        _an_n_percent_is_no_count,
+        test_a_tables_totals_are_held_to_their_counts_and_a_count_held_back_to_them,
+    ),
+    "a count with its share behind a bound is no count": (
+        _a_share_behind_a_bound_is_no_count,
+        test_a_tables_totals_are_held_to_their_counts_and_a_count_held_back_to_them,
+    ),
+    "Totals is no total": (
+        _totals_is_no_total,
+        test_a_tables_totals_are_held_to_their_counts_and_a_count_held_back_to_them,
+    ),
+    "a subgroup column, HR+, is read as a ratio": (
+        _a_subgroup_is_read_as_a_ratio,
+        test_a_tables_totals_are_held_to_their_counts_and_a_count_held_back_to_them,
+    ),
+    "a count held back is worked out as if the others were their lowest": (
+        _a_count_held_back_is_worked_out_as_if_the_others_were_their_lowest,
+        test_a_tables_totals_are_held_to_their_counts_and_a_count_held_back_to_them,
+    ),
+    "a total column totals every column before it": (
+        _a_total_column_totals_every_column_before_it,
         test_a_tables_totals_are_held_to_their_counts_and_a_count_held_back_to_them,
     ),
     "a count a total gives away is said whatever the minimum": (

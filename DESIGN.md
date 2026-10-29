@@ -7792,15 +7792,19 @@ is not looked at.
 
 A total printed beside its counts is arithmetic a reader can do, and nothing did it.
 `stats/margins.py` reads a table, a paper's in `audit` or an emitted one in `check`, as
-lines: a total and the two or more counts it totals. A row labelled Total, All or Overall,
-anchored at both ends, any case, nothing after the word but an n, an "n (%)", footnote marks
+lines: a total and the two or more counts it totals. A row labelled Total, Totals, All or
+Overall, anchored at both ends, any case, nothing after the word but an n, an "n (%)", footnote marks
 and punctuation, totals the rows above it back to the last row with no count in it or the
 last total row; a column so headed totals the columns before it back to the last total
-column or the labels. A count is a whole number or the n of an n (%) that `stats/shares.py`
-reads as one; a count held back, "<5" or "≤4", is the interval from 0 to the largest its
+column or the labels. The header is the first row and each row before the first row of
+counts that is words or has no label, so a Word table's second header row of years is no
+row of counts; a row of words further down changes no column. A count is a whole number or
+the n of an n (%), its share printed or behind a bound ("12 (<0.1)"), whether or not
+`stats/shares.py` marks the share: a category held back leaves the shares short of 100,
+and unmarked (round 1 of #469). A count held back, "<5" or "≤4", is the interval from 0 to the largest its
 bound allows (`gates.custodian.held_largest`, which `_small` uses too). A line with a cell
 that is no count is not read, nor a row or a column that names another statistic, a P or a
-ratio. One routine, `feasible`, serves both checks: each member's range given the total is
+ratio by its name ("HR", and not the subgroup "HR+"). One routine, `feasible`, serves both checks: each member's range given the total is
 the total less the others' highs up to the total less their lows, within its own, and no
 range at all is a total the printed counts cannot make, `sum-off`. A range of one value is
 a count held back that the line gives away. Categories whose shares add up to 100
@@ -7810,16 +7814,21 @@ contradiction read of a header n (`over-header-n`); fewer is missing data.
 In `check`, G2's `count-recoverable` (from internal review, as `count-below-minimum`) reads
 each emitted table the manuscript or the supplement binds, each declared sum, and each step
 and the arms of each flow whose keys are all bound; a step whose reasons overlap is no
-partition and is not read. It fails where a printed total gives the count away, and warns
-where only a column's header n does, since the n is the categories' total only where none of
-the column lacks the characteristic (the author, 2026-10-28). Nought is no small cell, so a
-count given away as 0 is not said. `deposit`'s preflight asks the same of every table of the
-results files it carries, through `recoverable_cells`. In `audit` the Arithmetic section
+partition and is not read. A sum member whose value is not whole is no count, whatever its
+display rounds it to. It fails only where the analysis declares the total a sum: a sum
+relation or a flow. In a table it warns, both where a total row or column gives the count
+away, since a total read from a table's label need not be the sum of the counts beside it
+(the patients with any of several events), and where only a column's header n does, since
+the n is the categories' total only where none of the column lacks the characteristic
+(Basile, 2026-10-28 and 2026-10-29). Nought is no small cell, so a count given away as 0 is
+not said. `deposit`'s preflight asks the same of every table of the results files it
+carries, through `recoverable_cells`, and warns as `check` does: it does not refuse. In `audit` the Arithmetic section
 lists the totals off and the categories over their n, and "Small cells recoverable by
 subtraction" each count given away with its value, at `--minimum-cell-count` or, without
 one, from 1; `--strict` counts `sum-off`, `over-header-n` and a count a printed total gives
 away, and not one only the header n gives (the author's rule of 2026-10-28: exact findings
-only). Two lines are never put together: see Known gaps.
+only), and `--json` counts the two apart. Two lines are never put together: see Known
+gaps.
 
 ## A paper written in Word is brought in through pandoc's tree
 
@@ -18032,11 +18041,21 @@ What papers converted from Word showed (see "What papers converted from Word sho
 
 - **A table's totals are read in English, as partitions, a line at a time** (Task 3, PR 2,
   `stats/margins.py`).
-  - Only Total, All and Overall, alone in their cell, make a total: "Gesamt", "Totale",
-    "All patients" and "Subtotal" total nothing, and their lines are not read.
+  - Only Total, Totals, All and Overall, alone in their cell, make a total: "Gesamt",
+    "Totale", "All patients" and "Subtotal" total nothing, and their lines are not read.
   - A total is taken to be the sum of the counts above it or before it. One that is not, a
     "Total" of patients with any of several events that overlap, or rows that are subtypes
-    of the row above them, is said to be off when it is right (`sum-off`, a false alarm).
+    of the row above them, is said to be off when it is right (`sum-off`, a false alarm),
+    and a count held back beside it is said to be a value it is not. What that costs: in
+    `audit` both are counted by `--strict`, so a paper with such a total fails it; in
+    `check` and `deposit` the count is a warning only, so a table whose total is a sum gives
+    a small count away with nothing failing, unless the analysis declares the sum (round 1
+    of #469, Basile's choice of 2026-10-29).
+  - An n (%) is a count whether or not its share is read as one, so a mean and its SD,
+    "54 (12)", in a row whose label names no statistic, beside a Total column, is read as
+    counts and said to be off.
+  - A header row repeated further down the table is not read: the columns keep the first
+    header's names and totals. A first row of counts with no label is read as a header.
   - A row of whole-number measures, a median of 24 months printed bare, under a Total
     column is read as counts unless its label names the statistic.
   - A total header spanning several columns, the "n | %" pairs under one, totals none of

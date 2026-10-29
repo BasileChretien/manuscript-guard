@@ -139,16 +139,18 @@ subtype of another row, or a share of those with data. A row whose label carries
 marker is listed as uncertain, since a note may give it another denominator. Pipe tables are
 read in Markdown, and every table in a .docx.
 
-**Totals.** A row labelled Total, All or Overall, in any case and with nothing after the
+**Totals.** A row labelled Total, Totals, All or Overall, in any case and with nothing after the
 word but an n ("Total (n = 1,200)"), an "n (%)", footnote marks and punctuation, totals the
 counts of the rows above it, back to the last row with no count in it, a characteristic's
 own label, or the last total row; a column so headed totals the counts of the columns before
 it, back to the last total column or the column of labels. "Total cholesterol", "Overall
-survival" and "All other drugs" are no totals. A count is a whole number, "1,200", or the
-count of an n (%) read as one; a cell held back, "<5" or "≤4", is every count from 0 to the
+survival" and "All other drugs" are no totals. The header is the table's first row and
+each row before the first row of counts that is words or has no label, so a second header
+row of years is not read as counts. A count is a whole number, "1,200", or the count of an
+n (%), its share printed or behind a bound, "12 (<0.1)"; a cell held back, "<5" or "≤4", is every count from 0 to the
 largest its bound allows. A line with a cell in it that is no count (a dash, an empty cell,
-a mean and its SD) is not read, nor a column headed by a P, a ratio, a mean or a "%" with no
-n. A total its counts do not add up to is listed, `sum-off`, with what they add up to.
+a mean and its SD) is not read, nor a column headed by a P, a ratio by its name ("HR", not
+the subgroup "HR+"), a mean or a "%" with no n. A total its counts do not add up to is listed, `sum-off`, with what they add up to.
 Where a characteristic's categories have shares that add up to 100 and counts that add up to
 more than the n of their column's header, that is listed too, `over-header-n`; fewer is what
 missing data look like, and is not said.
@@ -162,6 +164,9 @@ count. `--minimum-cell-count N` gives the custodian's minimum: a count of N or m
 away is not listed. Without it, any count from 1 is: the cell held back says it hides what
 it holds. A count only a column's header n gives away is listed apart and not counted, since
 the n is the categories' total only where none of the column lacks the characteristic.
+`--json` counts the two apart, `recoverable` and `recoverable_by_n`. In a project, `check`
+only warns of a count a table's total gives away, since a total read from its label need
+not be the sum of the counts beside it, and fails where the analysis declares the sum.
 Each line is read on its own: a count that only a row and a column together give away is not
 found.
 

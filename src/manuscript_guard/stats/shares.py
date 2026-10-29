@@ -161,13 +161,6 @@ def table_shares(table: Table) -> list[Share]:
     return found
 
 
-def shares_read(table: Table) -> frozenset[int]:
-    """Which cells of `table` are read as a count and its share, by `id` of the cell: those
-    `table_shares` reads, which `stats/margins.py` takes for counts and the rest of their
-    shape for a mean and its spread."""
-    return frozenset(id(cell) for _row, read in _read(table) for _c, cell, _m, _t in read)
-
-
 def _read(table: Table) -> Iterator[tuple[_Row, list]]:
     """Each row with a cell shaped like a count and its share, and the cells of it read as
     one: the column, the cell, its match and its categories' total."""

@@ -8,15 +8,21 @@ can name the three patients in it, is three all the same where the row's total a
 cells are printed: the total less the others is the count. So a table is read here as lines,
 each a total and the counts it totals.
 
-* **A count** is a cell that is a whole number, "1,200", or the count of an n (%) that
-  `stats/shares.py` reads as one. A count held back, "<5" or "≤4", with its share after it
-  in brackets or not, is each whole number from nought to the largest its bound allows
-  (`gates.custodian.held_largest`). Nothing else is: a mean and its SD, a dash, an empty
-  cell. A row whose label, or the label of the rows it falls under, names a mean, a median,
-  an SD or another statistic holds no count, nor a row whose label ends on a unit in
-  percent; nor a column whose header names one, a P or a ratio, or a "%" that says no n.
-* **A row total** is a row labelled Total, All or Overall, in any case, and nothing else
-  but an "n = 300", an "n (%)", footnote marks and punctuation: "Total cholesterol" and
+* **A count** is a cell that is a whole number, "1,200", or the count of an n (%), its
+  share printed or behind a bound, "12 (<0.1)", whether `stats/shares.py` marks the share
+  or not: a category held back leaves the others' shares short of 100, and unmarked (round
+  1 of #469). A count held back, "<5" or "≤4", with its share after it in brackets or not,
+  is each whole number from nought to the largest its bound allows
+  (`gates.custodian.held_largest`). Nothing else is: a mean, a dash, an empty cell. A row
+  whose label, or the label of the rows it falls under, names a mean, a median, an SD or
+  another statistic holds no count, nor a row whose label ends on a unit in percent; nor a
+  column whose header names one, a P or a ratio by its name ("HR", not "HR+"), or a "%"
+  that says no n.
+* **The header** is the table's first row, and each row before the first row with a count
+  that is words or has no label: a second header row of years, " | 2019 | 2020", is no row
+  of counts (round 1 of #469). A row of words further down, "NR | NR", changes no column.
+* **A row total** is a row labelled Total, Totals, All or Overall, in any case, and
+  nothing else but an "n = 300", an "n (%)", footnote marks and punctuation: "Total cholesterol" and
   "All other drugs" are no totals. In each column it totals the counts of the rows above it,
   back to the last row with no count in it or the last total row.
 * **A column total** is a column whose header is such a label. In each row it totals the
@@ -55,7 +61,7 @@ from manuscript_guard.stats import shares
 from manuscript_guard.text.tables import Table, TableCell
 
 #: A label that says its row or column is a total, and what may follow it.
-_TOTAL = re.compile(r"(?i)\s*(?:total|all|overall)\b(?P<rest>.*)", re.DOTALL)
+_TOTAL = re.compile(r"(?i)\s*(?:totals?|all|overall)\b(?P<rest>.*)", re.DOTALL)
 #: What a total's label may hold after the word once its n is taken out.
 _LEFT = re.compile(r"[\s\d,.:;()\[\]=%/*\-\N{EN DASH}\N{EM DASH}]*")
 #: An "n" standing alone, "Total, n".
@@ -63,8 +69,16 @@ _BARE_N = re.compile(r"(?<![A-Za-z])[nN](?![A-Za-z])")
 _WHOLE = re.compile(shares._COUNT)
 #: A share in brackets after a count held back, "<5 (<1.2)".
 _BRACKETED = re.compile(r"\s*[(\[][^()\[\]]*[)\]]\s*$")
-#: A header that names a P or a ratio: its column holds no count.
-_RATIO = re.compile(r"(?<![A-Za-z])(?:a?OR|a?RR|a?HR|IRR|SMD)(?![A-Za-z])")
+#: An n (%) whose share is behind a bound, "12 (<0.1)", "12 (<1%)".
+_BOUND_SHARE = re.compile(
+    rf"(?P<count>{shares._COUNT})\s*[(\[]\s*"
+    r"[<>\N{LESS-THAN OR EQUAL TO}\N{GREATER-THAN OR EQUAL TO}]=?\s*\d*\.?\d+\s*%?\s*[)\]]"
+)
+#: A header that names a P or a ratio by its name: its column holds no count. "HR+" and
+#: "ER-" name a subgroup (round 1 of #469).
+_RATIO = re.compile(
+    r"(?<![\w+\-\N{MINUS SIGN}])(?:a?OR|a?RR|a?HR|IRR|SMD)(?![\w+\-\N{MINUS SIGN}])"
+)
 _P = re.compile(r"(?i)(?<![A-Za-z])p(?:[- ]?values?)?(?![A-Za-z])")
 #: How much of a row the context shows.
 _CONTEXT = 160
@@ -132,13 +146,13 @@ class OverN:
 
 def count_in(text: str, line: int = 0, *, share: bool = True) -> Count | None:
     """The count a cell or a display prints, or None: a whole number, the n of an n (%)
-    where `share` says it is read as one, or a count held back."""
+    unless `share` is False, as it is for a display, or a count held back."""
     cleaned = shares._clean(text)[0]
     printed = " ".join(text.split())
     if _WHOLE.fullmatch(cleaned):
         number = shares._whole(cleaned)
         return Count(number, number, printed, line)
-    found = shares._SHARE.fullmatch(cleaned)
+    found = shares._SHARE.fullmatch(cleaned) or _BOUND_SHARE.fullmatch(cleaned)
     if found is not None:
         if not share:
             return None
@@ -230,8 +244,15 @@ def _a_header(texts: list[str]) -> bool:
     return bool(said) and not any(re.search(r"\d", text) for text in said)
 
 
+def _heading(index: int, rows: list[_Row], label: str, texts: list[str]) -> bool:
+    """Whether a row is the header's: the first, or one before the first row with a count
+    that is words or has no label (a row of years under a spanning "Year"). Further down,
+    a row of words changes no column (round 1 of #469: "NR | NR" undid the Total column
+    for every row below it)."""
+    return not index or (not rows and (not label.strip() or _a_header(texts)))
+
+
 def _rows(table: Table) -> list[_Row]:
-    read_as_shares = shares.shares_read(table)
     head = _Head({}, set(), set(), {})
     rows: list[_Row] = []
     run, group, categories = 0, "", False
@@ -243,23 +264,25 @@ def _rows(table: Table) -> list[_Row]:
         start = max(label.span, 1)
         others = placed[1:]
         counts: dict[int, Count] = {}
-        if index and not _no_counts(label.text, group):
+        texts = [cell.text for _column, cell in others]
+        heading = _heading(index, rows, label.text, texts)
+        if not heading and not _no_counts(label.text, group):
             for column, cell in others:
                 if cell.span > 1 or column in head.barred:
                     continue
-                count = count_in(cell.text, cell.line, share=id(cell) in read_as_shares)
+                count = count_in(cell.text, cell.line)
                 if count is not None:
                     counts[column] = count
         if not counts:
             run += 1
-            texts = [cell.text for _column, cell in others]
-            if index and label.text.strip() and all(shares._P_ONLY.fullmatch(t) for t in texts):
+            if heading:
+                group, categories = "", False
+                for column, cell in others:
+                    head.read(cell, column)
+            elif label.text.strip() and all(shares._P_ONLY.fullmatch(t) for t in texts):
                 group, categories = label.text, True
             else:
                 group, categories = "", False
-                if not index or _a_header(texts):
-                    for column, cell in others:
-                        head.read(cell, column)
             continue
         context = " | ".join(" ".join(cell.text.split()) for cell in row)
         if len(context) > _CONTEXT:
@@ -319,7 +342,7 @@ def _column_totals(rows: list[_Row]) -> Iterable[Line]:
         for column in sorted(row.totals):
             if column < row.start:
                 continue
-            between = [c for c in range(before + 1, column) if c not in row.barred]
+            between = _closed_by(row, before, column)
             before = column
             total = row.counts.get(column)
             counts = [row.counts.get(c) for c in between]
@@ -332,6 +355,12 @@ def _column_totals(rows: list[_Row]) -> Iterable[Line]:
                 f"the {_column(row, column)} column, row {row.label!r},", "cell before it",
                 "cells before it", True, row.context,
             )
+
+
+def _closed_by(row: _Row, before: int, column: int) -> list[int]:
+    """The columns a total column totals: those after the last total column or the labels,
+    `before`, up to it, bar those whose header names no count."""
+    return [c for c in range(before + 1, column) if c not in row.barred]
 
 
 def _header_lines(rows: list[_Row]) -> Iterable[Line]:

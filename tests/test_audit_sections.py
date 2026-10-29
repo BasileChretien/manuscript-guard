@@ -318,7 +318,7 @@ def test_a_total_off_categories_over_n_and_a_count_given_away_count_for_strict(
         ("Arithmetic", "sum-off", 9), ("Arithmetic", "over-header-n", 11),
         ("Small cells recoverable by subtraction", "count-recoverable", 7)]  # fmt: skip
     assert (said["counts"]["totals_off"], said["counts"]["over_header_n"],
-            said["counts"]["recoverable"]) == (1, 1, 1)  # fmt: skip
+            said["counts"]["recoverable"], said["counts"]["recoverable_by_n"]) == (1, 1, 1, 0)
     assert main(["audit", str(paper), "--strict"]) == 1
     out = capsys.readouterr().out
     assert "=== Small cells recoverable by subtraction ===" in out
@@ -340,6 +340,10 @@ def test_a_count_only_the_header_n_gives_away_is_listed_and_not_counted(
     assert main(["audit", str(paper), "--strict"]) == 0
     out = capsys.readouterr().out
     assert "GIVEN AWAY BY ITS COLUMN'S N" in out and "can only be 4" in out
+    # The JSON counts them apart, as the text does (round 1 of #469).
+    assert main(["audit", str(paper), "--json"]) == 0
+    counts = json.loads(capsys.readouterr().out)["counts"]
+    assert (counts["recoverable"], counts["recoverable_by_n"]) == (0, 1)
 
 
 def test_a_latex_tables_total_is_held_to_its_counts(tmp_path: Path, capsys) -> None:

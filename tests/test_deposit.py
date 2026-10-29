@@ -210,21 +210,32 @@ def _given_away(document: dict) -> None:
         ["Total", "197", "3729"]]  # fmt: skip
 
 
-def test_a_count_a_carried_tables_total_gives_away_stops_a_release(
+def test_a_count_a_carried_tables_total_gives_away_is_warned_of_and_stops_nothing(
     project: Path, capsys
 ) -> None:
+    """A total read from a table's label alone may be no sum: the preflight warns, as
+    `check` does, and does not refuse (Basile, 2026-10-29). The table edited here is held
+    to the submission's bar by what comes after, so the preflight is asked alone."""
+    from manuscript_guard.contracts import load_namespace, load_project
+    from manuscript_guard.deposit import preflight
+
     ready(project)
     minimum(project, minimum_cell_count=5)
     edit_fragment(project, _given_away)
+    loaded, _ = load_project(project)
+    _, results, _, _ = load_namespace(loaded)
+    found, _small = preflight.first(loaded, results,
+                                    frozenset({"results/01_disproportionality.json"}),
+                                    preprint=False)  # fmt: skip
+    assert found.ok
+    [warned] = [f for f in found.findings if f.code == "count-recoverable"]
+    assert warned.severity == "warn" and "can only be 3" in warned.message
+    assert warned.message.startswith("table.two_by_two in results/01_disproportionality.json: "
+                                     "<5 in row 'example-drug'")  # fmt: skip
+    # And deposit is not stopped by what the custodian forbids, but by the submission's bar.
     assert deposit(project, "zenodo", "release") == 1
     said = " ".join(capsys.readouterr().out.split())
-    shown = "table.two_by_two in results/01_disproportionality.json: <5 in row 'example-drug'"
-    assert shown in said
-    assert "can only be 3" in said and "Nothing is built" in said
-    assert nothing_written(project)
-    # A plan carries no results, and their tables do not stop it.
-    unfrozen(project)
-    assert deposit(project, "zenodo", "preregistration") == 0
+    assert "What the data custodian forbids comes first" not in said
 
 
 def test_a_plan_carries_no_results_and_their_counts_do_not_stop_it(project: Path) -> None:

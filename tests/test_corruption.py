@@ -1523,24 +1523,56 @@ def _two_by_two(root: Path, first: str, total: str = "197") -> None:
     write_digest(fragment)
 
 
-def test_a_count_held_back_that_a_bound_tables_total_gives_away_fails(project: Path) -> None:
-    """Task 3: "<5" beside a total row is 197 less 194, which is 3. G2's count-recoverable
-    fails from internal review, as count-below-minimum does; with no total that gives it,
-    two counts held back where it could be several, or a count printed as it is, it says
-    nothing."""
+def test_a_count_held_back_that_a_total_gives_away_warns_or_fails(project: Path) -> None:
+    """Task 3: "<5" beside a total row is 197 less 194, which is 3. A total read from the
+    table's label alone may be no sum, so G2's count-recoverable warns of it; it fails, from
+    internal review as count-below-minimum does, where the analysis declares the total a
+    sum (Basile, 2026-10-29). A count printed as it is gives nothing away."""
     from manuscript_guard.cli import _run_gates
+
+    def found(stage: str) -> list[str]:
+        report, _project, _chosen, _deferred = _run_gates(project, stage=stage)
+        return [f.severity for f in report.findings if f.code == "count-recoverable"]
 
     _custodian(project, 5)
     _two_by_two(project, "<5")
-    report, _project, _chosen, _deferred = _run_gates(project, stage="drafting")
-    assert "count-recoverable" not in {f.code for f in report.failures}
-    report, _project, _chosen, _deferred = _run_gates(project, stage="internal-review")
-    found = [f for f in report.findings if f.code == "count-recoverable"]
-    assert [(f.severity, f.gate) for f in found] == [("fail", "G2")]
-    assert "can only be 3" in found[0].message
+    assert found("internal-review") == ["warn"]
     _two_by_two(project, "3")
-    report, _project, _chosen, _deferred = _run_gates(project, stage="internal-review")
-    assert "count-recoverable" not in codes(report)
+    assert found("internal-review") == []
+    fragment = next((project / "results").glob("*.json"))
+    document = json.loads(fragment.read_text(encoding="utf-8"))
+    document["values"]["cohort.n_men"] = {"value": 3, "display": "<5"}
+    document["values"]["cohort.n_women"] = {"value": 423, "display": "423"}
+    document["relations"].append({"kind": "sum", "key": "cohort.n_drug_reports",
+                                  "of": ["cohort.n_men", "cohort.n_women"]})
+    fragment.write_text(json.dumps(document, indent=2), encoding="utf-8")
+    write_digest(fragment)
+    main = main_md(project)
+    main.write_text(main.read_text(encoding="utf-8") + "\nMen {{results.cohort.n_men}}, "
+                    "women {{results.cohort.n_women}}.\n", encoding="utf-8")  # fmt: skip
+    assert found("drafting") == ["info"]
+    assert found("internal-review") == ["fail"]
+
+
+def test_an_audit_reads_a_header_of_years_and_an_n_percent_short_of_100(
+    tmp_path: Path,
+) -> None:
+    """Round 1 of #469: a second header row of years is no row of counts, and an n (%)
+    whose shares a category held back leaves short of 100 is a count, so the 3 a total
+    gives away is said and --strict fails."""
+    from manuscript_guard.cli import main
+
+    paper = tmp_path / "paper.md"
+    years = ("| Drug | Year | | Total |\n|---|---|---|---|\n| | 2019 | 2020 | |\n"
+             "| A | 4 | 5 | 9 |\n| B | 5 | 6 | 11 |\n| Total | 9 | 11 | 20 |\n")
+    short = ("| Characteristic | Cases (n = 120) | Controls (n = 200) |\n|---|---|---|\n"
+             "| Sex | | |\n| Men | 60 (50.0) | 100 (50.0) |\n| Women | 57 (47.5) | 97 (48.5) |\n"
+             "| Other | 3 | 3 |\n| Total | 120 | 200 |\n")  # fmt: skip
+    paper.write_text(f"# Results\n\n{years}\n{short}", encoding="utf-8")
+    assert main(["audit", str(paper), "--strict"]) == 0
+    paper.write_text(f"# Results\n\n{years}\n{short.replace('| 3 | 3 |', '| <5 | <5 |')}",
+                     encoding="utf-8")  # fmt: skip
+    assert main(["audit", str(paper), "--strict", "--minimum-cell-count", "5"]) == 1
 
 
 def test_a_total_its_counts_do_not_add_up_to_fails_an_audit_under_strict(

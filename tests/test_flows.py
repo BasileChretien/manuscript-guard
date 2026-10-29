@@ -503,12 +503,12 @@ def test_items_under_a_breakdowns_part_are_noted() -> None:
 
 
 def test_a_heading_of_the_first_level_names_a_list_title_or_section(tmp_path: Path) -> None:
-    """The fix-only round of #472 took back round 2's title rule: `!section{Participants and
-    methods}` over a broken flow is a section, and --strict fails it; a Markdown title "# ...
-    in participants" names every list below it too (Known gaps)."""
+    """The fix-only round of #472 took back round 2's title rule: a LaTeX section "Participants
+    and methods" over a broken flow under "Outcomes" names it, and --strict fails it; a
+    Markdown title "# ... in participants" names every list below it too (Known gaps)."""
     (tmp_path / "p.tex").write_text(tex(
-        "!documentclass{article}\n!begin{document}\n!section{Participants and methods}\n"
-        "!subsection{Statistical methods}\nNone.\n!subsection{Enrolment}\n!begin{itemize}\n"
+        "!documentclass{article}\n!begin{document}\n!section{Participants and methods}\n\n"
+        "!subsection{Statistical methods}\n\nNone.\n\n!subsection{Outcomes}\n\n!begin{itemize}\n"
         "!item A (n = 9)\n!begin{itemize}\n!item B (n = 1)\n!end{itemize}\n!item C (n = 7)\n"
         "!end{itemize}\n!end{document}\n"), encoding="utf-8")
     assert main(["audit", str(tmp_path / "p.tex"), "--strict"]) == 1

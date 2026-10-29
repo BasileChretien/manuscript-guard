@@ -18408,10 +18408,12 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - A paper's title written as a heading names the lists under it like any heading: "# A
     trial in participants with diabetes" names every list of the paper a flow, and a broken
     list of subgroups under it fails `--strict` (finding 5 of round 2 of #472). Round 2 left
-    out a first-level heading over the Abstract, the Introduction or the Methods; that was a
-    guess, since `\section` in LaTeX, Heading 1 in Word and the first level of Markdown
-    converted from Word are sections, so "Participants and methods" stopped naming a flow,
-    and the fix-only round took it back.
+    out a first-level heading over an Abstract, Summary, Introduction or Background, or
+    over any heading ending in "methods" ("Statistical methods" too); that was a guess,
+    since `\section` in LaTeX, Heading 1 in Word and the first level of Markdown converted
+    from Word are sections, so "Participants and methods" stopped naming a flow, and the
+    fix-only round took it back. Two example tests hold this, in Markdown and LaTeX; no
+    property or BROKEN rule does, and nothing tests it for Word's levels.
   - The names are read as words in a title, not as its subject: "Patient flow cytometry",
     "Blood flow of the forearm" and "Study population characteristics" name a list a flow.
   - Sources and a removal under one stage, a review's databases, registers and duplicates

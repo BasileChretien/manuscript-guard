@@ -40,7 +40,8 @@ manuscript-guard communicate status
 ```
 
 `build` writes each channel's text to `communication/<channel>.md`, and writes only what
-`communicate check` passes as written. Most texts are the tool's alone: the posts and
+`communicate check` passes as written, but for the embargo: while it holds, the text is
+written and the check fails it until the embargo lifts. Most texts are the tool's alone: the posts and
 threads for Bluesky and Mastodon, the overview slide, the poster outline, the storyboard and
 the data announcement. The rest carry slots, `<!-- write: … -->`, each saying what goes there
 and from which statements. It will not write over a text that exists, which may hold what

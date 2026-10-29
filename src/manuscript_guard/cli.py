@@ -2950,7 +2950,8 @@ def _communicate_build(project, args: argparse.Namespace) -> int:
     else:
         named = [one.strip() for given in args.channels or [] for one in given.split(",")
                  if one.strip()]  # fmt: skip
-    built = build.build(project, named or None, force=args.force)
+    built = build.build(project, named or None, force=args.force,
+                        asked=args.verb == "build" and bool(named))  # fmt: skip
     for path in built.written:
         print(f"wrote {path}")
     for channel in built.kept:

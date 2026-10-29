@@ -18847,7 +18847,20 @@ What papers converted from Word showed (see "What papers converted from Word sho
     full.
   - The data announcement names each licence by its page on the SPDX list
     (`https://spdx.org/licenses/<id>.html`), since an identifier written out, `CC-BY-4.0`,
-    is read as a number typed; a `LicenseRef-` of the project's own has no page there.
+    is read as a number typed; a `LicenseRef-` of the project's own has no page there. The
+    page is made from the id as written, so `mit` for `MIT` may lead nowhere.
+  - A `language` YAML reads as a boolean, `no` for Norwegian, is no tag, so the text is held
+    in full; write `"no"` or `nb`. A tag is taken at its word: `language: fr` on an English
+    post lets it off the claim ladder and G6.
+  - Two findings of one SVG that are the same in every part, code, line and context, are
+    listed once, where base listed each; the exit code is the same.
+  - A DOI in a text's `links:` is not held to `comm-status-ahead`; only the body is read.
+  - The overview is held to the texts' part of the check, so a primary finding that binds a
+    value the paper reports nowhere is drawn and passes `check --only texts`; the brief's
+    part of the check fails it.
+  - In a post, a statement opening with a list or quote marker and a space, `> 12` or `- 3`,
+    loses the marker with its meaning; and a DOI holding `<` is not found among a text's
+    links, so it says `version_shared: none`.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

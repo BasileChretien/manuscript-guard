@@ -221,8 +221,15 @@ def _brief(project):
     return brief
 
 
-def build(project, channels: list[str] | None = None, *, force: bool = False) -> Built:
-    """Write each channel's text that passes the check, the guides and the preview."""
+def build(project, channels: list[str] | None = None, *, force: bool = False,
+          asked: bool | None = None) -> Built:  # fmt: skip
+    """Write each channel's text that passes the check, the guides and the preview.
+
+    `asked` says the person named the channels, so that one not yet due (the data
+    announcement with no deposit) is refused; by default, whenever `channels` is given.
+    `status --prepare` names the channels its triggers make due, which nobody asked for
+    one by one, and passes over one that is not due as a plain build does."""
+    asked = bool(channels) if asked is None else asked
     from manuscript_guard.communicate import checking
 
     require_enabled(project)
@@ -240,7 +247,7 @@ def build(project, channels: list[str] | None = None, *, force: bool = False) ->
             built.kept.append(channel)
             continue
         ways = _compose(project, channel, parts, link)
-        if isinstance(ways, NotDue) and not channels:
+        if isinstance(ways, NotDue) and not asked:
             built.not_due.append((channel, str(ways)))
             continue
         if isinstance(ways, str):

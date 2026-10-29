@@ -393,6 +393,19 @@ def test_an_embargo_that_cannot_be_read_holds(ready: Path) -> None:
 # ------------------------------------------------------------------------------- status
 
 
+def test_status_prepare_passes_over_a_data_announcement_not_due(
+    ready: Path, at, capsys: pytest.CaptureFixture[str]
+) -> None:
+    append(ready, "  triggers:\n    accepted: [data-announcement, press-release]\n"
+                  "publication:\n  status: accepted\n")  # fmt: skip
+    at(datetime(2026, 10, 29, tzinfo=timezone.utc))
+    assert main(["communicate", "status", str(ready), "--prepare"]) == 0
+    said = capsys.readouterr().out
+    assert "data-announcement: not due, so not written" in said
+    assert (ready / "communication" / "press-release.md").exists()
+    assert main(["communicate", "build", str(ready), "--channels", "data-announcement"]) == 1
+
+
 def test_status_says_what_is_due_given_the_publication_and_its_dates(
     ready: Path, at, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -665,6 +678,7 @@ _CAUSES = ("Example-drug causes hepatic injury: the reporting odds ratio was "
     (None, True), ("en", True), ("EN", True), ("en-GB", True), ("en_US", True),
     ("en_GB", True), ("eng", True), ("English", True), ("english", True), ("Klingonese", True),
     ("ja", False), ("ja-JP", False), ("ja_JP", False), ("FR", False), ("zh_Hant_TW", False),
+    ('" ja "', False),
 ])  # fmt: skip
 def test_only_another_languages_tag_lets_a_text_off_the_claim_ladder(
     ready: Path, language: str | None, held: bool
@@ -675,6 +689,21 @@ def test_only_another_languages_tag_lets_a_text_off_the_claim_ladder(
     assert stronger is held
     if not held:
         assert failures(ready) == []
+
+
+def test_a_month_after_a_months_last_day_is_the_next_months_last_day() -> None:
+    from manuscript_guard.communicate import sharing
+
+    assert sharing._plus_months(date(2026, 1, 31), 1) == date(2026, 2, 28)
+    assert sharing._plus_months(date(2024, 1, 31), 1) == date(2024, 2, 29)
+    assert sharing._plus_months(date(2026, 11, 30), 3) == date(2027, 2, 28)
+
+
+def test_an_upload_is_known_by_its_suffix_in_any_case() -> None:
+    from manuscript_guard.communicate import sharing
+
+    attached = {"attachments": ["Paper.PDF", "fig.PNG", "a.Docx", "notes.TeX"]}
+    assert sharing.uploads(attached) == ["Paper.PDF", "a.Docx", "notes.TeX"]
 
 
 def test_the_preview_counts_a_post_as_the_check_does(ready: Path) -> None:

@@ -395,11 +395,78 @@ def test_scrub_replaces_the_authors_names_and_orcids(tmp_path) -> None:
         encoding="utf-8",
     )
     said = scrub("Ada Lovelace (0000-0002-1825-0097) wrote; Lovelace agreed; Lovelaces no; "
-                 "KeyError: 'lovelace2020'; LOVELACE.", root=tmp_path, environ={})  # fmt: skip
+                 "KeyError: 'lovelace2020'.", root=tmp_path, environ={})  # fmt: skip
     assert "Lovelace " not in said and "0000-0002-1825-0097" not in said
-    assert "lovelace2020" not in said and "LOVELACE" not in said
-    assert said.count("<AUTHOR-1>") == 5
+    assert "lovelace2020" not in said
+    assert said.count("<AUTHOR-1>") == 4
     assert "Lovelaces" in said  # a name inside a longer word is left
+
+
+def _authors_file(folder: Path, given: str, family: str) -> Path:
+    (folder / "authors.yaml").write_text(
+        f'schema: manuscript-guard/authors/1\nauthors:\n  - given: "{given}"\n'
+        f'    family: "{family}"\n', encoding="utf-8")  # fmt: skip
+    return folder
+
+
+def test_scrub_takes_an_address_out_whole_though_it_holds_a_name(tmp_path) -> None:
+    root = _authors_file(tmp_path, "Ada", "Lovelace")
+    said = scrub("from ada.lovelace@uni.edu and Lovelace", root=root, environ={})
+    assert "uni.edu" not in said and "ada." not in said
+    assert said == "from <EMAIL> and <AUTHOR-1>"
+
+
+def test_scrub_leaves_the_errors_own_words_and_its_labels(tmp_path) -> None:
+    text = "line 3, column 5 in <HOME>/x and <TEMP>; may not; KeyError: 'page'"
+    for family in ("Line", "Home", "Temp", "May", "Page"):
+        folder = tmp_path / family
+        folder.mkdir()
+        assert scrub(text, root=_authors_file(folder, "Ada", family), environ={}) == text
+
+
+def test_scrub_finds_a_family_name_in_a_citation_key_as_keys_write_it(tmp_path) -> None:
+    cases = {"Chrétien": "chretien2020", "O'Brien": "obrien2020", "Smith-Jones": "smithjones_a",
+             "van der Berg": "vanderberg2020"}  # fmt: skip
+    for number, (family, key) in enumerate(cases.items()):
+        folder = tmp_path / str(number)
+        folder.mkdir()
+        said = scrub(f"KeyError: '{key}'", root=_authors_file(folder, "Ada", family), environ={})
+        assert said.startswith("KeyError: '<AUTHOR-1>"), (family, said)
+    folder = tmp_path / "typographic"
+    folder.mkdir()
+    said = scrub("by O\N{RIGHT SINGLE QUOTATION MARK}Brien", environ={},
+                 root=_authors_file(folder, "Ada", "O'Brien"))  # fmt: skip
+    assert said == "by <AUTHOR-1>"
+
+
+def test_the_crash_sentence_does_not_give_the_agent_the_home_folder(kept, monkeypatch,
+                                                                    capsys) -> None:
+    folder = Path.home() / ".mg-test-reports-said"
+    monkeypatch.setenv(crashes.FOLDER, str(folder))
+    monkeypatch.setattr(cli, "cmd_stages", _broken())
+    try:
+        cli.main(["stages"])
+    finally:
+        import shutil
+
+        shutil.rmtree(folder, ignore_errors=True)
+    said = capsys.readouterr().err
+    assert str(Path.home()) not in said and "~" in said
+
+
+def test_the_hook_line_dates_from_the_last_notice(kept) -> None:
+    try:
+        raise TypeError("x")
+    except TypeError as exc:
+        path = crashes.record(exc, kind=crashes.HOOK, name="stop")
+    record = json.loads(path.read_text(encoding="utf-8"))
+    path.write_text(json.dumps({**record, "first_seen": "2026-09-01T00:00:00.000000+00:00"}),
+                    encoding="utf-8")  # fmt: skip
+    (kept / "hooks-said.json").write_text(
+        json.dumps({"schema": crashes.SCHEMA, "said": "2026-10-20T00:00:00.000000+00:00"}),
+        encoding="utf-8")  # fmt: skip
+    line = crashes.hook_failures()
+    assert line is not None and "since 2026-10-20" in line
 
 
 def test_the_diagnostics_import_nothing_that_could_send() -> None:

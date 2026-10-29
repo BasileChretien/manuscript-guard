@@ -47,9 +47,11 @@ def scrub(text: str, *, root: Path | None = None, environ: Mapping[str, str] | N
     for pattern, label in _paths(root, environ):
         text = pattern.sub(label, text)
     text = _USER_IN_LINK.sub(r"\g<scheme>", text)
+    # Addresses before names: a name replaced inside an address would leave the rest of it.
+    text = _EMAIL.sub("<EMAIL>", text)
     for pattern, label in _authors(root):
         text = pattern.sub(label, text)
-    return _EMAIL.sub("<EMAIL>", text)
+    return text
 
 
 def _secrets(environ: Mapping[str, str]) -> list[tuple[str, str]]:
@@ -115,15 +117,20 @@ def _spellings(folder: Path) -> set[str]:
     return {spelling for spelling in found if len(spelling) > 3}
 
 
-#: A name is not inside a longer word ("Lovelaces"), but may run into digits or an
-#: underscore, as it does in a citation key ("lovelace2020").
+#: A name is a whole word as `authors.yaml` writes it ("Lovelace", not "Lovelaces" nor the
+#: "line" of an error when the family is Line), with either apostrophe.
 _NOT_A_LETTER_BEFORE = r"(?<![^\W\d_])"
 _NOT_A_LETTER_AFTER = r"(?![^\W\d_])"
+#: And a family name in a citation key: in any case, its accents, apostrophes, hyphens and
+#: spaces dropped (Chrétien as "chretien2020", van der Berg as "vanderberg_2020"), run into
+#: the digits or the underscore that make it a key.
+_RUNS_INTO_A_KEY = r"(?=[\d_])"
+_APOSTROPHES = ("'", "\N{RIGHT SINGLE QUOTATION MARK}")
 
 
 def _authors(root: Path | None) -> list[tuple[re.Pattern[str], str]]:
-    """Each author's full name, family name and ORCID from `authors.yaml`, in any case and
-    with no letter on either side, where the file reads; nothing where it does not."""
+    """A pattern for each author's names and ORCID, longest first, where `authors.yaml` reads;
+    nothing where it does not."""
     if root is None:
         return []
     try:
@@ -133,16 +140,35 @@ def _authors(root: Path | None) -> list[tuple[re.Pattern[str], str]]:
         people = listed.get("authors") or []
     except Exception:  # noqa: BLE001 - a file that does not read names nobody to take out
         return []
-    found: list[tuple[str, str]] = []
+    found: list[tuple[int, re.Pattern[str], str]] = []
     for number, person in enumerate(people, start=1):
-        if isinstance(person, dict):
-            found += [(text, f"<AUTHOR-{number}>") for text in _named(person)]
-    ordered = sorted(found, key=lambda pair: -len(pair[0]))
-    return [
-        (re.compile(_NOT_A_LETTER_BEFORE + re.escape(text) + _NOT_A_LETTER_AFTER, re.IGNORECASE),
-         label)
-        for text, label in ordered
-    ]  # fmt: skip
+        if not isinstance(person, dict):
+            continue
+        label = f"<AUTHOR-{number}>"
+        for text in _named(person):
+            found.append((len(text), _as_written(text), label))
+        keyed = _folded(str(person.get("family") or ""))
+        if len(keyed) >= 2:
+            found.append((len(keyed), re.compile(
+                _NOT_A_LETTER_BEFORE + re.escape(keyed) + _RUNS_INTO_A_KEY, re.IGNORECASE),
+                label))  # fmt: skip
+    return [(pattern, label) for _length, pattern, label in sorted(found, key=lambda f: -f[0])]
+
+
+def _as_written(text: str) -> re.Pattern[str]:
+    spellings = {text}
+    for one, other in (_APOSTROPHES, _APOSTROPHES[::-1]):
+        spellings.add(text.replace(one, other))
+    either = "|".join(re.escape(s) for s in sorted(spellings, key=len, reverse=True))
+    return re.compile(_NOT_A_LETTER_BEFORE + f"(?:{either})" + _NOT_A_LETTER_AFTER)
+
+
+def _folded(name: str) -> str:
+    """`name` as a citation key writes it: its letters only, unaccented, in lower case."""
+    import unicodedata
+
+    plain = unicodedata.normalize("NFKD", name)
+    return "".join(c for c in plain if c.isalpha() and not unicodedata.combining(c)).lower()
 
 
 def _named(person: dict) -> list[str]:

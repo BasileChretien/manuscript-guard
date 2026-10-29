@@ -19033,11 +19033,15 @@ What papers converted from Word showed (see "What papers converted from Word sho
     command names, else the working folder's), the home, temp and Python folders in the
     spellings Windows, POSIX, Git Bash and `repr()` give them, e-mail addresses, a user and
     password in a link, the value of a variable that holds a credential, and the names and
-    ORCIDs `authors.yaml` lists, in any case and inside a citation key. A path written another way (an
-    8.3 short name, a relative path, one broken across lines), a name the file does not list,
-    a credential held outside the environment, and a line of the manuscript that the error's
-    message quotes stay as they were. The record is on the user's own machine; whoever sends
-    it reads it first.
+    ORCIDs `authors.yaml` lists. A name is matched as the file writes it, as a whole word, with
+    either apostrophe, and a family name also inside a citation key, in any case and with its
+    accents, apostrophes, hyphens and spaces dropped (`chretien2020`). A name written
+    otherwise (in capitals, in another transliteration, as initials), a path written another
+    way (an 8.3 short name, a relative path, one broken across lines), a name the file does
+    not list, a credential held outside the environment, and a line of the manuscript that the
+    error's message quotes stay as they were. A family name that is also a word, written with
+    a capital as the file writes it, is replaced in the error's own words too. The record is
+    on the user's own machine; whoever sends it reads it first.
   - Not recorded: a failure inside the emitters, Python's used as a library by the author's
     analysis and R's; a failure to import the command line tool at all (a broken install); a
     failure under `MANUSCRIPT_GUARD_DEBUG`, or on a CI runner, which prints the traceback.

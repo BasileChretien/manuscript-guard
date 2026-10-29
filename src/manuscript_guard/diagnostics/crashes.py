@@ -153,8 +153,8 @@ def said(path: Path | None) -> str:
     if path is None:
         return (f"It was not recorded ({OFF} is set, or the folder could not be written); "
                 f"{DEBUG}=1 shows where it happened.")  # fmt: skip
-    return (f"It is recorded on this machine in {path.parent}, as {path.name}; nothing was "
-            f"sent. {DEBUG}=1 shows the traceback.")  # fmt: skip
+    return (f"It is recorded on this machine in {_shown(path.parent)}, as {path.name}; nothing "
+            f"was sent. {DEBUG}=1 shows the traceback.")  # fmt: skip
 
 
 def hook_failures(environ: Mapping[str, str] | None = None) -> str | None:
@@ -170,7 +170,8 @@ def hook_failures(environ: Mapping[str, str] | None = None) -> str | None:
         if not failed:
             return None
         _write(where / _SAID, {"schema": SCHEMA, "said": _now()})
-        first = min(r["first_seen"] for r in failed)[:10]
+        # Since the last notice where there was one: a fault met before it was said then.
+        first = max(min(r["first_seen"] for r in failed), since)[:10]
         kinds = "one kind" if len(failed) == 1 else f"{len(failed)} kinds"
         return (f"manuscript-guard's hooks failed on errors of {kinds} since {first}, and kept "
                 f"out of the way, so a check they hold may not have run. The records are in "

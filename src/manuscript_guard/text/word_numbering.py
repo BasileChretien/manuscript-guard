@@ -155,6 +155,26 @@ class Numbering:
         count = f"num {num}:{level}" if level in starts else f"abstract {abstract}:{level}"
         return (count, _from_one(chosen, level, starts.get(level)))
 
+    def level_of(self, paragraph: ET.Element) -> int | None:
+        """The level of the list a paragraph is an item of, 0 for the outermost, or None
+        where Word numbers it not at all: its own `w:ilvl`, or its style's, as `of_paragraph`
+        reads them; a level left out is 0, ECMA-376's default. What a flow is read from in a
+        .docx (`stats/flows.py`)."""
+        props = paragraph.find(W + "pPr")
+        own = props.find(W + "numPr") if props is not None else None
+        style = _val(props, "pStyle") if props is not None else None
+        own_num, level = _val(own, "numId"), _val(own, "ilvl")
+        if own_num == "0":
+            return None
+        if own_num is None:
+            found = self._style_numbering(style) if style else (None, None, "")
+            num, style_level, source = found
+            if num is None or num == "0":
+                return None
+            if level is None:
+                level = self._style_level(num, style_level, source)[0]
+        return int(level) if level and level.isascii() and level.isdigit() else 0
+
     def _style_level(self, num: str, level: str | None, source: str) -> tuple[str, bool]:
         """The level a style's numbering numbers its paragraphs at, and whether that is
         sure: the one level of the abstract numbering linked to the style by `w:pStyle`, or

@@ -5454,6 +5454,443 @@ def margin_tables(draw: st.DrawFn) -> tuple[str, dict[str, list]]:
     return "\n".join(lines), expected
 
 
+#: A backslash, which LaTeX's commands start with.
+BACKSLASH = chr(92)
+
+
+# ---------------------------------------------------------------- a flow printed as a list
+
+#: The kinds of list each paper of `flow_lists` holds one of: a flow that adds up, its
+#: reasons under an exclusion included; one off at a step, at its arms, or at the reasons
+#: under an exclusion; reasons, or a step's exclusions, over what they total, as overlapping;
+#: a single exclusion over its step, which no overlap allows; an item with no count and one
+#: with two; an item under an arm; arms under a stage mid-flow that add up to it, a breakdown,
+#: before a stage fewer with no exclusion listed; a funnel of stages that list no exclusion
+#: (round 1 of #472); subgroups under their groups, which read as a broken flow
+#: and stand under no name for a flow; and three lists that are no flow, of one level, of one
+#: stage, and prose.
+FLOW_KINDS = (
+    "adds up", "step off", "arms off", "reasons off", "reasons overlapping", "overlapping",
+    "too many", "no count", "two counts", "per arm", "breakdown", "funnel", "subgroups",
+    "one level", "one stage",
+    "prose",
+)  # fmt: skip
+#: What stands over a list of `flow_lists`: a heading that names a flow over a paragraph that
+#: does not, a heading that does not over a paragraph that does, or neither.
+FLOW_ROUTES = ("heading", "paragraph", "none")
+FLOW_HEADINGS = ("Participant flow", "Flow of participants", "CONSORT diagram",
+                 "Selection of the study population", "Recruitment", "PRISMA flow chart",
+                 "Patient flow", "Study flow", "Trial profile",
+                 "Flow of patients through the trial")  # fmt: skip
+#: How a count may part its thousands with a space: a space, a no-break space, a narrow one.
+THOUSANDS_SPACES = (" ", "\N{NO-BREAK SPACE}", "\N{NARROW NO-BREAK SPACE}")
+FLOW_SENTENCES = ("Figure 1: flow of participants.", "Participants were selected as follows.",
+                  "The CONSORT diagram is given as a list.", "Enrolment went as follows.")
+OTHER_HEADINGS = ("Subgroups", "Results by sex", "Baseline characteristics", "Outcomes")
+#: How a Markdown list of `flow_lists` indents a nested item: to its parent's text, by a tab,
+#: or by four spaces.
+FLOW_INDENTS = ("text", "tab", "four")
+#: An optional argument a LaTeX `\\item` may take, which prints a label of its own.
+ITEM_LABELS = ("", "[--]", "[a)]", "[(i)]")
+#: How an item prints its count: `{label}` its words, `{n}` the count.
+FLOW_COUNTED = ("{label} (n = {n})", "{label}, n = {n}", "{label} (N={n})", "(n = {n}) {label}")
+STAGE_WORDS = ("Assessed for eligibility", "Screened", "Randomised", "Allocated", "Analysed")
+EXCLUSION_WORDS = ("Excluded", "Declined", "Lost to follow-up", "Withdrew", "Ineligible")
+REASON_WORDS = ("Not meeting criteria", "Other reasons", "Refused", "Moved away")
+ARM_WORDS = ("Drug", "Placebo", "Usual care", "Surgery")
+
+
+def _flow_of(draw: st.DrawFn, kind: str) -> tuple[list, list[str], list[str]]:
+    """A flow of `kind`, as items `[label, counts, children]`, and the kinds of problem and of
+    note its reading finds: `step`, `arms`, `reasons`, `too many`; `overlapping`, `reasons
+    overlapping`, `per arm`, `partial`."""
+    first = draw(st.integers(400, 3000))
+    stages, steps = [first], []
+    for _step in range(draw(st.integers(1, 2))):
+        counts = [draw(st.integers(2, 60)) for _each in range(draw(st.integers(1, 2)))]
+        steps.append(counts)
+        stages.append(stages[-1] - sum(counts))
+    reasons: list[int] = []
+    problems: list[str] = []
+    notes: list[str] = []
+    if kind in ("adds up", "reasons off", "reasons overlapping"):
+        removed = steps[0][0]
+        if kind == "adds up":
+            reasons = _split(draw, removed, 2)
+        elif kind == "reasons off":
+            reasons = _split(draw, removed - draw(st.integers(1, removed - 1)), 2)
+            problems.append("reasons")
+        else:
+            one = draw(st.integers(1, removed))
+            reasons = [one, draw(st.integers(removed - one + 1, removed))]
+            notes.append("reasons overlapping")
+    elif kind in ("overlapping", "too many"):
+        removed = draw(st.integers(10, 60))
+        if kind == "overlapping":
+            one = draw(st.integers(1, removed))
+            steps[0] = [one, draw(st.integers(removed - one + 1, removed))]
+        else:
+            steps[0] = [removed + draw(st.integers(1, 30))]
+            problems.append("too many")
+        notes.append("overlapping")
+        stages[1] = stages[0] - removed
+    elif kind == "step off":
+        stages[1] -= draw(st.integers(1, 20))
+        problems.append("step")
+    for at in range(2, len(stages)):
+        stages[at] = stages[at - 1] - sum(steps[at - 1])
+    arms = _split(draw, stages[-1], draw(st.integers(2, 3)))
+    if kind == "arms off":
+        arms[0] += draw(st.integers(1, 20))
+        problems.append("arms")
+    names = draw(st.permutations(STAGE_WORDS))
+    items: list = []
+    for at, count in enumerate(stages):
+        children: list = []
+        if at < len(steps):
+            for which, removed in enumerate(steps[at]):
+                under = [[draw(st.sampled_from(REASON_WORDS)), [r], []] for r in reasons
+                         ] if at == 0 and which == 0 else []  # fmt: skip
+                children.append([draw(st.sampled_from(EXCLUSION_WORDS)), [removed], under])
+        else:
+            words = draw(st.permutations(ARM_WORDS))
+            children = [[words[i], [n], []] for i, n in enumerate(arms)]
+        items.append([names[at], [count], children])
+    if kind == "per arm":
+        arm = items[-1][2][0]
+        arm[2].append(["Lost", [draw(st.integers(0, arm[1][0]))], []])
+        notes.append("per arm")
+    elif kind in ("no count", "two counts"):
+        every = [items[0], *items[0][2], items[-1], *items[-1][2]]
+        item = draw(st.sampled_from(every))
+        item[1] = [] if kind == "no count" else [item[1][0], draw(st.integers(1, 9))]
+        problems, notes = [], ["partial"]
+    return items, sorted(problems), sorted(notes)
+
+
+def _shaped_flow(draw: st.DrawFn, kind: str) -> tuple[list, list[str], list[str]]:
+    """A breakdown mid-flow, or a funnel, as `_flow_of` gives a flow: neither has a problem,
+    and each fall from a stage that lists no exclusion is a note, `fall`, as is the breakdown,
+    `breakdown`, and the item under one of its parts, `under breakdown`. The funnel's first
+    count is in the thousands, parted by a space (round 2 of #472)."""
+    first = draw(st.integers(400, 3000))
+    if kind == "funnel":
+        first = draw(st.integers(1000, 30000))
+        second = first - draw(st.integers(1, 99))
+        third = second - draw(st.integers(1, 99))
+        arms = _split(draw, third, 2)
+        spaced = f"{first:,}".replace(",", draw(st.sampled_from(THOUSANDS_SPACES)))
+        return ([[STAGE_WORDS[1], [spaced], []], [STAGE_WORDS[0], [second], []],
+                 [STAGE_WORDS[4], [third], [[ARM_WORDS[0], [arms[0]], []],
+                                             [ARM_WORDS[1], [arms[1]], []]]]],
+                [], ["fall", "fall"])  # fmt: skip
+    removed = draw(st.integers(2, 60))
+    second = first - removed
+    mid = _split(draw, second, 2)
+    third = second - draw(st.integers(1, 30))
+    arms = _split(draw, third, 2)
+    lost = [["Lost to follow-up", [draw(st.integers(0, mid[0]))], []]]
+    return ([[STAGE_WORDS[0], [first], [[EXCLUSION_WORDS[0], [removed], []]]],
+             [STAGE_WORDS[2], [second], [[ARM_WORDS[0], [mid[0]], lost],
+                                         [ARM_WORDS[1], [mid[1]], []]]],
+             [STAGE_WORDS[4], [third], [[ARM_WORDS[0], [arms[0]], []],
+                                        [ARM_WORDS[1], [arms[1]], []]]]],
+            [], ["breakdown", "fall", "under breakdown"])  # fmt: skip
+
+
+def _flow_item(draw: st.DrawFn, label: str, counts: list[int], grouped: bool) -> str:
+    def shown(n: int | str) -> str:
+        if isinstance(n, str):
+            return n
+        return f"{n:,}" if grouped else str(n)
+
+    if not counts:
+        return label
+    if len(counts) == 2:
+        return f"{label} (n = {shown(counts[0])}, n = {shown(counts[1])})"
+    return draw(st.sampled_from(FLOW_COUNTED)).format(label=label, n=shown(counts[0]))
+
+
+@st.composite
+def flow_lists(draw: st.DrawFn) -> tuple[str, str, list[dict[str, Any]]]:
+    """A Markdown paper and a LaTeX one, each with a list of every kind of `FLOW_KINDS`, in
+    an order drawn, the same lists in both, and what the reading of flows finds in them, list
+    by list: the line of its first stage in each, whether it is read, and the kinds of its
+    problems and its notes (`_flow_of`), and whether what stands over it names a flow. Each
+    list has a heading over it and a paragraph before it, by a route of `FLOW_ROUTES` that
+    cycles through all three in an order drawn. In the LaTeX paper, a commented `\\item`
+    stands in the first nested list of the flow that adds up, which TeX does not read."""
+    grouped = draw(st.booleans())
+    sentence = st.lists(st.sampled_from(FILLER), min_size=2, max_size=6).map(" ".join)
+    markdown: list[str] = []
+    latex: list[str] = [BACKSLASH + "documentclass{article}", BACKSLASH + "begin{document}"]
+    expected: list[dict[str, Any]] = []
+
+    def paragraph(text: str) -> None:
+        markdown.extend(["", text, ""])
+        latex.extend(["", text, ""])
+
+    def put(items: list, depth: int, marker: str, environment: str, commented: bool,
+            indent: str) -> None:  # fmt: skip
+        latex.append("  " * depth + f"{BACKSLASH}begin{{{environment}}}")
+        width = len(marker) + 1
+        unit = {"text": " " * width, "tab": "\t", "four": "    "}[indent]
+        for number, (label, counts, children) in enumerate(items, 1):
+            shown = _flow_item(draw, label, counts, grouped)
+            if commented and depth == 0 and number == 1 and len(counts) == 1:
+                # Its count on a lazy line, at the margin, which goes on with the item.
+                shown = f"{label}\n(n = {counts[0]})"
+            sign = f"{number}." if marker == "1." else marker
+            first, *lazy = shown.split("\n")
+            markdown.extend([unit * depth + f"{sign} {first}", *lazy])
+            option = draw(st.sampled_from(ITEM_LABELS))
+            latex.extend(["  " * depth + f"  {BACKSLASH}item{option} {first}", *lazy])
+            if commented and depth == 1 and number == 1:
+                latex.append("  " * depth + f"  % {BACKSLASH}item Skipped (n = 5)")
+            if children:
+                put(children, depth + 1, marker, environment, commented, indent)
+        latex.append("  " * depth + f"{BACKSLASH}end{{{environment}}}")
+
+    paragraph(draw(sentence).capitalize() + ".")
+    # The routes cycle over the flows that are read, so that each example has each route.
+    routes = draw(st.permutations(FLOW_ROUTES))
+    cycled = 0
+    for kind in draw(st.permutations(FLOW_KINDS)):
+        marker = draw(st.sampled_from(("-", "*", "+", "1.")))
+        environment = draw(st.sampled_from(("itemize", "enumerate")))
+        if kind in ("subgroups", "prose", "one level", "one stage"):
+            route = "none" if kind == "subgroups" else draw(st.sampled_from(FLOW_ROUTES))
+        else:
+            route, cycled = routes[cycled % len(routes)], cycled + 1
+        title = draw(st.sampled_from(FLOW_HEADINGS if route == "heading" else OTHER_HEADINGS))
+        markdown.extend(["", f"## {title}"])
+        latex.extend(["", f"{BACKSLASH}section{{{title}}}"])
+        if route == "heading":
+            # The name is a heading over the list's own, which names nothing (round 2).
+            below = draw(st.sampled_from(OTHER_HEADINGS))
+            markdown.extend(["", f"### {below}"])
+            latex.extend(["", f"{BACKSLASH}subsection{{{below}}}"])
+        paragraph(draw(st.sampled_from(FLOW_SENTENCES)) if route == "paragraph"
+                  else draw(sentence).capitalize() + ".")  # fmt: skip
+        if kind == "prose":
+            n = draw(st.integers(100, 900))
+            paragraph(f"Of the {n} assessed (n = {n}), {n // 3} were excluded (n = {n // 3}).")
+            continue
+        if kind == "one level":
+            items = [[draw(st.sampled_from(STAGE_WORDS)), [draw(st.integers(1, 99))], []]
+                     for _each in range(draw(st.integers(2, 3)))]  # fmt: skip
+            found = None
+        elif kind == "one stage":
+            n = draw(st.integers(100, 900))
+            items = [[draw(st.sampled_from(STAGE_WORDS)), [n],
+                      [[draw(st.sampled_from(EXCLUSION_WORDS)), [n - draw(st.integers(1, 99))],
+                        []]]]]  # fmt: skip
+            found = None
+        elif kind in ("breakdown", "funnel"):
+            items, problems, notes = _shaped_flow(draw, kind)
+            found = {"read": True, "problems": problems, "notes": notes}
+        elif kind == "subgroups":
+            men, women = draw(st.integers(200, 900)), draw(st.integers(100, 190))
+            smokers = draw(st.integers(1, men - women - 1))
+            items = [["Men", [men], [["Smokers", [smokers], []]]],
+                     ["Women", [women], [["Smokers", [draw(st.integers(1, women - 1))], []]]]]
+            found = {"read": True, "problems": ["step"], "notes": []}
+        else:
+            items, problems, notes = _flow_of(draw, kind)
+            found = {"read": kind not in ("no count", "two counts"), "problems": problems,
+                     "notes": notes}  # fmt: skip
+        if found is not None:
+            found["named"] = route != "none"
+        markdown.append("")
+        latex.append("")
+        md_line, tex_line = len(markdown) + 1, len(latex) + 2
+        put(items, 0, marker, environment, kind == "adds up",
+            draw(st.sampled_from(FLOW_INDENTS)))
+        markdown.append("")
+        paragraph(draw(sentence).capitalize() + ".")
+        if found is not None:
+            expected.append({"markdown": md_line, "latex": tex_line, **found})
+    latex.append(BACKSLASH + "end{document}")
+    return "\n".join(markdown) + "\n", "\n".join(latex) + "\n", expected
+
+
+# --------------------------------------------------------------- the Abstract and the Results
+
+#: The kinds of number each paper of `abstract_papers` gives in its Abstract, one of each:
+#: an interval that differs from its counterpart in one number, its estimate named in words
+#: there; one that agrees as rounded; one with two counterparts, each differing in one
+#: number; one whose counterpart is at another level; a test whose P differs, and one whose
+#: P could be the same; a number reported to one place more; one in the Methods; one only
+#: in the Discussion; one in a table under the Discussion; and one in the supplement.
+ABSTRACT_KINDS = (
+    "interval conflict", "interval rounded", "interval twice", "interval level",
+    "test conflict", "test agrees", "rounding", "exact", "not found", "table", "supplement",
+)  # fmt: skip
+#: An estimate's abbreviation and its words.
+ESTIMATE_NAMES = (("OR", "odds ratio"), ("HR", "hazard ratio"), ("RR", "risk ratio"),
+                  ("MD", "mean difference"))  # fmt: skip
+
+
+def _hundredths(draw: st.DrawFn, low: int, high: int) -> Decimal:
+    """A number of hundredths from `low` to `high`, printed to two places."""
+    return (Decimal(draw(st.integers(low, high))) / 100).quantize(Decimal("0.01"))
+
+
+def _tenths(value: Decimal) -> str:
+    return str(value.quantize(Decimal("0.1"), rounding=ROUND_HALF_UP))
+
+
+def _test_printed(kind: str, df: int, statistic: Decimal, sign: str, p: str) -> str:
+    written = {"t": f"t({df})", "F": f"F(2, {df})", "chi2": f"chi2({df % 9 + 1})"}[kind]
+    return f"{written} = {statistic}, P {sign} {p}"
+
+
+@st.composite
+def abstract_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list]]:
+    """A Markdown paper with an Abstract, Methods, Results and a Discussion, and a supplement
+    with no Abstract, the Abstract giving a number of every kind of `ABSTRACT_KINDS` in an
+    order drawn, each on a line of its own; and what the Abstract against Results finds: the
+    line and kind of each conflict, `interval` or `test`, and for each number planted to be
+    looked for, its line, its text and whether it is found as printed, as a rounding or not
+    at all."""
+    abstract: list[tuple[str, str]] = []
+    methods: list[str] = []
+    results: list[str] = []
+    discussion: list[str] = []
+    supplement: list[str] = []
+    looked: list[tuple[str, str, str]] = []
+    for kind in draw(st.permutations(ABSTRACT_KINDS)):
+        short, words = draw(st.sampled_from(ESTIMATE_NAMES))
+        if kind.startswith("interval"):
+            base = {"interval conflict": 140, "interval rounded": 240, "interval twice": 340,
+                    "interval level": 440}[kind]  # fmt: skip
+            e = _hundredths(draw, base, base + 20)
+            low, high = e - _hundredths(draw, 20, 29), e + _hundredths(draw, 20, 29)
+            if kind == "interval conflict":
+                which = draw(st.sampled_from(("estimate", "low", "high")))
+                shifted = _hundredths(draw, 6, 9)
+                given = [_tenths(e), _tenths(low), _tenths(high)]
+                at = ("estimate", "low", "high").index(which)
+                given[at] = str((e, low - shifted, high + shifted)[at] + (
+                    shifted if which == "estimate" else 0))  # fmt: skip
+                abstract.append((kind, f"The {short} was {given[0]} (95% CI {given[1]}-"
+                                       f"{given[2]})."))  # fmt: skip
+                results.append(f"The {words} was {e} (95% CI {low}-{high}).")
+            elif kind == "interval rounded":
+                abstract.append((kind, f"The {short} was {_tenths(e)} (95% CI {_tenths(low)}-"
+                                       f"{_tenths(high)})."))  # fmt: skip
+                results.append(f"The {short} was {e} (95% CI {low}-{high}).")
+            elif kind == "interval twice":
+                abstract.append((kind, f"The {short} was {e} (95% CI {low}-{high})."))
+                results.append(f"The {short} was {e} (95% CI {low}-"
+                               f"{high + _hundredths(draw, 1, 5)}).")  # fmt: skip
+                results.append(f"Adjusted, the {short} was {e} (95% CI "
+                               f"{low - _hundredths(draw, 1, 5)}-{high}).")  # fmt: skip
+            else:
+                abstract.append((kind, f"The {short} was {e} (90% CI {low}-{high})."))
+                results.append(f"The {short} was {e} (95% CI {low}-"
+                               f"{high + _hundredths(draw, 5, 9)}).")  # fmt: skip
+        elif kind.startswith("test"):
+            test = draw(st.sampled_from(("t", "F", "chi2")))
+            if kind == "test conflict":
+                statistic = _hundredths(draw, 200, 499)
+                df = draw(st.integers(20, 59))
+                p = _hundredths(draw, 1, 4)
+                other = p + _hundredths(draw, 1, 3)
+                abstract.append((kind, f"We found {_test_printed(test, df, statistic, '=', p)}."))
+                results.append(f"We found {_test_printed(test, df, statistic, '=', other)}.")
+            else:
+                statistic = _hundredths(draw, 500, 900)
+                df = draw(st.integers(60, 99))
+                p = (Decimal(draw(st.integers(10, 49))) / 1000).quantize(Decimal("0.001"))
+                sign, given = draw(st.sampled_from((("<", "0.05"), ("=", _hundredths_of(p)))))
+                printed = _test_printed(test, df, statistic, sign, given)
+                abstract.append((kind, f"We found {printed}."))
+                results.append(f"We found {_test_printed(test, df, statistic, '=', p)}.")
+        else:
+            # Never a whole number of tenths, which would print as the number rounded.
+            value = Decimal(draw(st.integers(0, 99)) * 10 + draw(st.integers(1, 9))) / 10
+            if kind == "rounding":
+                printed = value + 300
+                shown = str(printed.quantize(Decimal(1), rounding=ROUND_HALF_UP))
+                results.append(f"The score was {printed}.")
+                looked.append((kind, shown, "rounded"))
+            else:
+                shown = str(value + {"exact": 500, "not found": 800, "table": 600,
+                                     "supplement": 700}[kind])  # fmt: skip
+                where = {"exact": methods, "not found": discussion, "supplement": supplement}
+                if kind == "table":
+                    discussion.append(f"| Group | Value |\n|---|---|\n| A | {shown} |")
+                else:
+                    where[kind].append(f"It was {shown} then.")
+                looked.append((kind, shown, "not found" if kind == "not found" else "exact"))
+            abstract.append((kind, f"The value was {shown} here."))
+    # The Abstract ends with a number in the Methods, which in LaTeX shares the line of
+    # `\\end{abstract}` (round 1 of #472).
+    closing = str((Decimal(draw(st.integers(9000, 9999))) / 10).quantize(Decimal("0.1")))
+    methods.append(f"It was {closing} then.")
+    looked.append(("closing", closing, "exact"))
+    abstract.append(("closing", f"The value was {closing} here."))
+    lines = ["# A study", "", "## Abstract", ""]
+    expected: dict[str, list] = {"conflicts": [], "looked": []}
+    for kind, said in abstract:
+        lines += [said, ""]
+        line = len(lines) - 1
+        if kind in ("interval conflict", "test conflict"):
+            expected["conflicts"].append([line, kind.split()[0]])
+        for planted, shown, state in looked:
+            if planted == kind:
+                expected["looked"].append([line, shown, state])
+    for heading, part in (("Methods", methods), ("Results", results),
+                          ("Discussion", discussion)):  # fmt: skip
+        lines += [f"## {heading}", "", *(one for said in part for one in (said, "")), ""]
+    expected["conflicts"].sort()
+    expected["looked"].sort()
+    latex, in_latex = _abstract_latex(abstract, looked, methods, results, discussion)
+    supplement_tex = "\n".join([BACKSLASH + "documentclass{article}", BACKSLASH +
+                                "begin{document}", *supplement, BACKSLASH + "end{document}"])
+    return ("\n".join(lines) + "\n", "\n".join(supplement or ["Nothing."]) + "\n", expected,
+            latex, supplement_tex + "\n", in_latex)  # fmt: skip
+
+
+def _abstract_latex(abstract: list, looked: list, methods: list, results: list,
+                    discussion: list) -> tuple[str, dict[str, list]]:  # fmt: skip
+    """The paper of `abstract_papers` in LaTeX, its last Abstract sentence on the line of
+    `\\end{abstract}`, its table a `tabular`, and what is found in it, by its lines."""
+    lines = [BACKSLASH + "documentclass{article}", BACKSLASH + "begin{document}",
+             BACKSLASH + "begin{abstract}"]  # fmt: skip
+    expected: dict[str, list] = {"conflicts": [], "looked": []}
+    for index, (kind, said) in enumerate(abstract):
+        last = index == len(abstract) - 1
+        lines.append(said.replace("%", BACKSLASH + "%") + (BACKSLASH + "end{abstract}"
+                                                          if last else ""))  # fmt: skip
+        line = len(lines)
+        if not last:
+            lines.append("")
+        if kind in ("interval conflict", "test conflict"):
+            expected["conflicts"].append([line, kind.split()[0]])
+        expected["looked"] += [[line, shown, state] for planted, shown, state in looked
+                               if planted == kind]  # fmt: skip
+    for heading, part in (("Methods", methods), ("Results", results),
+                          ("Discussion", discussion)):  # fmt: skip
+        lines += ["", f"{BACKSLASH}section{{{heading}}}", ""]
+        for said in part:
+            if said.startswith("|"):
+                value = said.split("\n")[-1].strip(" |").split("|")[-1].strip()
+                lines += [BACKSLASH + "begin{tabular}{ll}", "Group & Value " + BACKSLASH * 2,
+                          f"A & {value} " + BACKSLASH * 2, BACKSLASH + "end{tabular}", ""]
+            else:
+                lines += [said.replace("%", BACKSLASH + "%"), ""]
+    lines.append(BACKSLASH + "end{document}")
+    expected["conflicts"].sort()
+    expected["looked"].sort()
+    return "\n".join(lines) + "\n", expected
+
+
+def _hundredths_of(p: Decimal) -> str:
+    return str(p.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+
 # ------------------------------------------------------- a table's means of whole numbers
 
 #: Rows of means of whole numbers, as an auditor names them: a scale's score, a count.
@@ -8099,6 +8536,10 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "reported intervals": texts(ESTIMATES),
     "table shares": share_tables().map(lambda drawn: drawn[0]),
     "table margins": margin_tables().map(lambda drawn: drawn[0]),
+    "flows": flow_lists().map(lambda drawn: {"markdown": drawn[0], "latex": drawn[1]}),
+    "abstract against results": abstract_papers().map(
+        lambda drawn: {"paper": drawn[0], "supplement": drawn[1]}
+    ),
     "latex tables": latex_table_rows().map(lambda drawn: drawn[0]),
     "reference census": numbered_citations().map(lambda drawn: drawn[0]),
     "whole-number means": mean_tables().map(

@@ -1829,6 +1829,127 @@ def test_a_total_its_counts_do_not_add_up_to_fails_an_audit_under_strict(
     assert main(["audit", str(paper), "--strict"]) == 1
 
 
+def test_a_flow_printed_as_a_list_that_does_not_add_up_fails_an_audit(tmp_path: Path) -> None:
+    """Task 3: a nested list whose items each give one count is a flow, its stages less
+    their exclusions held to the next and its arms to the last stage, in Markdown and in
+    LaTeX; --strict counts a flow that does not add up."""
+    from manuscript_guard.cli import main
+
+    flow = ("- Assessed for eligibility (n = 412)\n  - Excluded (n = 112)\n"
+            "- Randomised (n = 300)\n  - Drug (n = 151)\n  - Placebo (n = 149)\n")
+    paper = tmp_path / "paper.md"
+    paper.write_text(f"# Participant flow\n\n{flow}", encoding="utf-8")
+    assert main(["audit", str(paper), "--strict"]) == 0
+    paper.write_text(f"# Participant flow\n\n{flow.replace('149', '148')}", encoding="utf-8")
+    assert main(["audit", str(paper), "--strict"]) == 1
+    backslash = chr(92)
+    latex = ("!documentclass{article}\n!begin{document}\n!section{Flow of participants}\n"
+             "!begin{itemize}\n"
+             "!item Screened (n = 90)\n!begin{itemize}\n!item Excluded (n = 10)\n"
+             "!end{itemize}\n!item Enrolled (n = 80)\n!end{itemize}\n!end{document}\n")
+    tex = tmp_path / "paper.tex"
+    tex.write_text(latex.replace("!", backslash), encoding="utf-8")
+    assert main(["audit", str(tex), "--strict"]) == 0
+    tex.write_text(latex.replace("!", backslash).replace("(n = 80)", "(n = 81)"),
+                   encoding="utf-8")  # fmt: skip
+    assert main(["audit", str(tex), "--strict"]) == 1
+
+
+def test_a_list_of_subgroups_is_a_note_and_counts_only_under_a_name_for_a_flow(
+    tmp_path: Path,
+) -> None:
+    """Basile, 2026-10-29: a nested list of subgroups has a flow's shape, so it is read as
+    one; its faults are notes unless a heading over it, or the caption or paragraph before
+    it, names a flow, and then --strict counts them."""
+    from manuscript_guard.cli import main
+
+    subgroups = ("- Men (n = 200)\n  - Smokers (n = 50)\n"
+                 "- Women (n = 180)\n  - Smokers (n = 40)\n")
+    paper = tmp_path / "paper.md"
+    paper.write_text(f"# Results by sex\n\n{subgroups}", encoding="utf-8")
+    assert main(["audit", str(paper), "--strict"]) == 0
+    paper.write_text(f"# Participant flow\n\n{subgroups}", encoding="utf-8")
+    assert main(["audit", str(paper), "--strict"]) == 1
+
+
+def test_a_breakdown_or_a_funnel_passes_an_audit_and_a_broken_one_fails(tmp_path: Path) -> None:
+    """Round 1 of #472: arms under a stage mid-flow that add up to it are a breakdown, not
+    exclusions, and a step that lists no exclusion is held only to not growing; a stage
+    that grows, or a breakdown's arms off at the last stage, still fails --strict. A count
+    whose thousands a space parts is one count."""
+    from manuscript_guard.cli import main
+
+    paper = tmp_path / "paper.md"
+    consort = ("# CONSORT diagram\n\n- Assessed (n = 12 400)\n  - Excluded (n = 12 100)\n"
+               "- Randomised (n = 300)\n  - Drug (n = 151)\n  - Placebo (n = 149)\n"
+               "- Analysed (n = 290)\n  - Drug (n = 145)\n  - Placebo (n = 145)\n")
+    paper.write_text(consort, encoding="utf-8")
+    assert main(["audit", str(paper), "--strict"]) == 0
+    paper.write_text(consort.replace("(n = 145)\n  - Placebo", "(n = 144)\n  - Placebo"),
+                     encoding="utf-8")  # fmt: skip
+    assert main(["audit", str(paper), "--strict"]) == 1
+    funnel = ("# Study population\n\n- Screened (n = 1,000)\n- Eligible (n = 800)\n"
+              "- Enrolled (n = 600)\n  - A (n = 300)\n  - B (n = 300)\n")
+    paper.write_text(funnel, encoding="utf-8")
+    assert main(["audit", str(paper), "--strict"]) == 0
+    paper.write_text(funnel.replace("(n = 800)", "(n = 1,100)"), encoding="utf-8")
+    assert main(["audit", str(paper), "--strict"]) == 1
+
+
+def test_a_copied_count_or_a_patient_flow_fails_an_audit(tmp_path: Path) -> None:
+    """Round 2 of #472: a stage's count copied into its one exclusion is no breakdown, and a
+    "Patient flow" or a "Trial profile" names a flow, so --strict fails either broken."""
+    from manuscript_guard.cli import main
+
+    paper = tmp_path / "paper.md"
+    copied = ("# CONSORT diagram\n\n- Assessed (n = 412)\n  - Excluded (n = 112)\n"
+              "- Randomised (n = 300)\n")
+    paper.write_text(copied, encoding="utf-8")
+    assert main(["audit", str(paper), "--strict"]) == 0
+    paper.write_text(copied.replace("(n = 112)", "(n = 412)"), encoding="utf-8")
+    assert main(["audit", str(paper), "--strict"]) == 1
+    for heading in ("Patient flow", "Trial profile"):
+        broken = copied.replace("CONSORT diagram", heading).replace("(n = 300)", "(n = 290)")
+        paper.write_text(broken, encoding="utf-8")
+        assert main(["audit", str(paper), "--strict"]) == 1, heading
+
+
+def test_a_latex_abstract_ending_on_its_last_line_fails_an_audit_where_it_differs(
+    tmp_path: Path,
+) -> None:
+    """Round 1 of #472: an Abstract sentence on `!end{abstract}`'s line is compared, so its
+    interval that differs from the Results' fails --strict."""
+    from manuscript_guard.cli import main
+
+    latex = ("!documentclass{article}\n!begin{document}\n!begin{abstract}\n"
+             "The OR was 1.52 (95!% CI 1.21--1.89).!end{abstract}\n!section{Methods}\nWe did.\n"
+             "!section{Results}\nThe OR was 1.52 (95!% CI 1.21--1.89).\n!end{document}\n")
+    paper = tmp_path / "paper.tex"
+    paper.write_text(latex.replace("!", chr(92)), encoding="utf-8")
+    assert main(["audit", str(paper), "--strict"]) == 0
+    paper.write_text(latex.replace("1.89).!end", "1.90).!end").replace("!", chr(92)),
+                     encoding="utf-8")  # fmt: skip
+    assert main(["audit", str(paper), "--strict"]) == 1
+
+
+def test_an_abstract_interval_that_differs_from_the_results_fails_an_audit(
+    tmp_path: Path,
+) -> None:
+    """Task 3: the Abstract's interval held to its one counterpart in the Results, two of its
+    numbers agreeing and the third not, is a conflict --strict counts; an Abstract number
+    found nowhere the paper reports is said and not counted (the author, 2026-10-28)."""
+    from manuscript_guard.cli import main
+
+    paper = tmp_path / "paper.md"
+    text = ("# Paper\n\n## Abstract\n\nThe OR was 1.5 (95% CI 1.2-1.9); 812.5 were seen.\n\n"
+            "## Methods\n\nWe did it.\n\n## Results\n\n"
+            "The odds ratio was 1.52 (95% CI 1.21-1.89).\n")
+    paper.write_text(text, encoding="utf-8")
+    assert main(["audit", str(paper), "--strict"]) == 0
+    paper.write_text(text.replace("1.2-1.9)", "1.2-1.97)"), encoding="utf-8")
+    assert main(["audit", str(paper), "--strict"]) == 1
+
+
 def test_set_moves_the_stage_and_not_the_lines_that_look_like_it(project: Path) -> None:
     """`set stage` writes the setting at the top level of paper.yaml, and the check then
     holds the paper to it: a small count fails from internal review. A regular expression

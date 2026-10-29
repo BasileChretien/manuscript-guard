@@ -30,6 +30,7 @@ import io
 import json
 import math
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
@@ -179,6 +180,14 @@ class AuditReport:
     #: The data custodian's minimum, `--minimum-cell-count`; None where none was given, and
     #: a count held back is then taken to hide every count from one up to its bound.
     minimum: int | None = None
+    #: How many lists were read as flows (`stats.flows`); each flow whose arithmetic does
+    #: not hold, which --strict counts; and what was allowed for or passed over in one, or
+    #: found and not read, which it does not.
+    flows_read: int = 0
+    flows_broken: list[Disagreement] = field(default_factory=list)
+    flow_notes: list[Disagreement] = field(default_factory=list)
+    #: The Abstract against what the paper reports (`auditing.abstract.AbstractRead`).
+    abstract: object = None
 
     @property
     def examined(self) -> int:
@@ -609,7 +618,7 @@ def _blank(text: str, spans: list[tuple[int, int]]) -> str:
 
 
 def read_paper(
-    path: Path,
+    path: Path, document=None,
 ) -> tuple[str, list[tuple[int, int]], list[Table], str, dict[int, tuple[str, bool, int]]]:
     """The paper's text with its reference lists blanked, which lines those were, its
     tables outside them as rows of cells (`text.tables`), the text before the cut, whose
@@ -617,14 +626,15 @@ def read_paper(
     (`text.docx.DocxText.numbering`).
 
     A .docx's footnotes and endnotes follow its body, and are read after the cut rather than
-    through it: they were being dropped along with the bibliography.
+    through it: they were being dropped along with the bibliography. `document` is a .docx
+    already read (`read_docx_text`), which is not read again.
     """
     if not is_docx(path):
         text = read_text(path)
         spans = bibliography_spans(text)
         blanked = _blank(text, spans)
         return blanked, spans, markdown_tables(blanked), text, {}
-    document = read_docx_text(path)
+    document = document or read_docx_text(path)
     spans = bibliography_spans(document.body, document.headings, document.cells)
     body = _blank(document.body, spans)
     tables = [
@@ -667,6 +677,16 @@ class _Source:
     lines_are_blocks: bool
     blocks: bool = True
     layout: tuple[tuple[int, int], ...] = ()
+    #: Where each line stands for the Abstract against Results, None in a file with no
+    #: headings, and whether the file's document has an Abstract and a Results heading
+    #: (`auditing.abstract`); the lines in a table; the lists a flow is read from
+    #: (`stats.flows`); and how many counts its text boxes give.
+    place: Callable[[int], object] | None = None
+    abstract: bool = False
+    results: bool = False
+    table_lines: frozenset[int] = frozenset()
+    lists: tuple = ()
+    boxed: int = 0
 
     def scan(self, classifier: Classifier):
         return classifier.scan(self.scanned, lines_are_blocks=self.lines_are_blocks,
@@ -686,13 +706,15 @@ def _read_sources(
         if path in entries:
             continue
         try:
-            text, spans, tables, original, numbering = read_paper(path)
+            document = read_docx_text(path) if is_docx(path) else None
+            text, spans, tables, original, numbering = read_paper(path, document)
         except (NotADocx, OSError, UnreadableText) as exc:
             report.unreadable.append(str(exc))
             continue
         docx = is_docx(path)
         hidden = _masked(text, printed_as_typed=docx)
-        sources.append(_Source(path, text, hidden, text, text, tuple(tables), not spans, docx))
+        source = _Source(path, text, hidden, text, text, tuple(tables), not spans, docx)
+        sources.append(replace(source, **_structure(text, hidden, tables, document)))
         report.not_audited += [
             f"{path.name}: lines {start + 1}-{end}, read as the reference list"
             for start, end in spans
@@ -708,15 +730,88 @@ def _read_sources(
         report.unreadable += latex.unreadable
         report.passed_over += latex.passed_over
         report.not_audited += latex.not_audited
+        structures = _latex_structure(latex)
         for file in latex.files:
             plain = file.hidden.replace(NUL, " ")
             sources.append(_Source(file.path, file.source.text, file.hidden, file.hidden,
                                    plain, file.tables, False, False, blocks=False,
-                                   layout=file.layout))  # fmt: skip
+                                   layout=file.layout,
+                                   **structures.get(file.path, {})))  # fmt: skip
         report.trees += latex.trees
         report.references += [census_of_latex(tree.entry, list(tree.files))
                               for tree in latex.trees]  # fmt: skip
     return sources
+
+
+def _structure(text: str, hidden: str, tables: list[Table], document) -> dict:
+    """What a Markdown or a .docx paper's Abstract against Results and its flows are read
+    from: where each line stands under its headings, a Word document's by their styles; the
+    lines in a table; its lists, a Word document's by their levels; and the counts in its
+    text boxes."""
+    from manuscript_guard.auditing.abstract import placed
+    from manuscript_guard.stats.flows import boxed_counts, docx_lists, markdown_lists
+    from manuscript_guard.text.sections import Section, scannable, split_sections
+
+    if document is None:
+        sections = [s for s in split_sections(scannable(text)) if s.level]
+        lines = frozenset(cell.line for table in tables for row in table for cell in row)
+        lists = markdown_lists(text, hidden)
+        boxed = 0
+    else:
+        body = document.body.split("\n")
+        sections = [Section(body[at], level, "", at + 1) for at, level in document.heading_levels]
+        lines = frozenset(at + 1 for at in document.cells)
+        lists = docx_lists(body, dict(document.levels),
+                           frozenset(at + 1 for at in document.headings))  # fmt: skip
+        boxed = boxed_counts(document.boxed)
+    place, abstract, results = placed(sections) if sections else (None, False, False)
+    return {"place": place, "abstract": abstract, "results": results, "table_lines": lines,
+            "lists": tuple(lists), "boxed": boxed}  # fmt: skip
+
+
+def _latex_structure(latex) -> dict[Path, dict]:
+    """What each LaTeX file's Abstract against Results and flows are read from: where each
+    of its lines stands under the headings its document prints over it (`printed`, read
+    back to the `.tex` line by `place_line`), the lines of its tables, and its lists."""
+    from bisect import bisect_right
+
+    from manuscript_guard.auditing.abstract import placed
+    from manuscript_guard.stats.flows import latex_lists
+    from manuscript_guard.text.latex.printed import printed
+    from manuscript_guard.text.sections import scannable, split_sections
+
+    hidden = {file.path: file.hidden for file in latex.files}
+    found: dict[Path, dict] = {}
+    for tree in latex.trees:
+        sources = [source for _path, source in tree.files
+                   if not source.path.lower().endswith(".sty")]  # fmt: skip
+        view = printed(sources)
+        sections = [s for s in split_sections(scannable(view.text)) if s.level]
+        place, abstract, results = placed(sections) if sections else (None, False, False)
+        by_line: dict[str, dict[int, object]] = {}
+        if place is not None:
+            for line in range(1, view.text.count("\n") + 2):
+                where = view.place_line(line)
+                if where is not None:
+                    by_line.setdefault(where[0].path, {})[where[1]] = place(line)
+        for path, source in tree.files:
+            if path in found or path not in hidden:
+                continue
+            mapped = by_line.get(source.path, {})
+            ordered = sorted(mapped)
+
+            def at(line: int, mapped=mapped, ordered=ordered) -> object:
+                index = bisect_right(ordered, line) - 1
+                return mapped[ordered[index]] if index >= 0 else None
+
+            text = source.text
+            lines = frozenset(line for start, end in source.reading.tables
+                              for line in range(text.count("\n", 0, start) + 1,
+                                                text.count("\n", 0, end) + 2))  # fmt: skip
+            found[path] = {"place": at if place is not None else None, "abstract": abstract,
+                           "results": results, "table_lines": lines,
+                           "lists": tuple(latex_lists(source, hidden[path]))}  # fmt: skip
+    return found
 
 
 def unread_shapes(path: Path, text: str) -> list[str]:
@@ -936,15 +1031,47 @@ def audit(
         sources.append(_Source(path, text, hidden, text, text, (), False, True))
 
     report.papers = tuple(source.path for source in sources)
+    pieces = []
     for source in sources:
-        _read_numbers(report, source, classifier, values)
+        atoms = _read_numbers(report, source, classifier, values)
+        _flows(report, source)
+        pieces.append(_piece(source, atoms))
+    from manuscript_guard.auditing.abstract import against_results
+
+    report.abstract = against_results(pieces)
     return report
+
+
+def _piece(source: _Source, atoms: list[Atom]):
+    """One source as the Abstract against Results reads it (`auditing.abstract`)."""
+    from manuscript_guard.auditing.abstract import Piece
+
+    return Piece(source.path, source.hidden, source.place, source.table_lines, source.abstract,
+                 source.results, tuple(atoms))  # fmt: skip
+
+
+def _flows(report: AuditReport, source: _Source) -> None:
+    """Each list of one source read as a flow and held to its arithmetic (`stats/flows.py`),
+    and a note where its text boxes give the counts a flow drawn in boxes would."""
+    from manuscript_guard.stats.flows import flows_in
+
+    for flow in flows_in(list(source.lists)):
+        report.flows_read += flow.read
+        report.flows_broken += [Disagreement(source.path, flow.line, problem, flow.context)
+                                for problem in flow.problems]  # fmt: skip
+        report.flow_notes += [Disagreement(source.path, flow.line, note, flow.context)
+                              for note in flow.notes]  # fmt: skip
+    if source.boxed >= 2:
+        report.flow_notes.append(Disagreement(
+            source.path, 0, f"its text boxes give {source.boxed} counts (n = N), as a flow "
+            "drawn in boxes does: a drawing is not read as a flow, a list is", ""))  # fmt: skip
 
 
 def _read_numbers(
     report: AuditReport, source: _Source, classifier: Classifier, values: set[str]
-) -> None:
-    """Every number of one source, classified and, where outputs were given, compared."""
+) -> list[Atom]:
+    """Every number of one source, classified and, where outputs were given, compared; the
+    numbers the classifier left unexplained are returned, for the Abstract against Results."""
     rendered_only = {
         rule.id for rule in (*classifier.structural, *classifier.conventions) if rule.audit_only
     }
@@ -968,6 +1095,7 @@ def _read_numbers(
     intervals = _intervals(source.plain)
     starts = [start for start, _end in intervals]
     pieces = [piece for atom in find_atoms(text, hidden) for piece in _apart(atom)]
+    unexplained: list[Atom] = []
     for atom, read_apart in pieces:
         if not _within(intervals, starts, atom):
             verdict = classifier.classify(atom, None, scan)
@@ -981,6 +1109,7 @@ def _read_numbers(
             if verdict.kind != UNCLASSIFIED:
                 report.classified += 1
                 continue
+        unexplained.append(atom)
         if not report.compared:
             report.uncompared += 1
             continue
@@ -1008,6 +1137,7 @@ def _read_numbers(
             report.matched.append(candidate)
         else:
             report.unmatched.append(candidate)
+    return unexplained
 
 
 def _whole_number_means(report: AuditReport, path: Path, tables: list[Table]) -> list[Disagreement]:

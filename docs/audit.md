@@ -34,7 +34,8 @@ The report comes in sections, after what was read and what was not:
 | Section | What it holds | Counted by `--strict` |
 |---|---|---|
 | Membership | each number against the outputs, and what a match is worth there | a number in no output |
-| Arithmetic | a table's totals and the counts they total, a characteristic's categories and their column's n; a P and its statistic, an estimate and its interval, an n (%) and its denominator, a mean of whole numbers and its n | a total off, categories over their n |
+| Arithmetic | a table's totals and the counts they total, a characteristic's categories and their column's n, a flow printed as a nested list; a P and its statistic, an estimate and its interval, an n (%) and its denominator, a mean of whole numbers and its n | a total off, categories over their n, a flow that does not add up |
+| Abstract against Results | each number of the Abstract looked for where the paper reports, and each of its intervals and tests held to its one counterpart there, ending with what a match is worth | an interval or a test that differs from its counterpart |
 | Small cells recoverable by subtraction | each count held back ("<5") that a total beside it gives away, with the count it can only be | one a printed total gives away |
 | Writing (G6) and Language (G14) | what `check` says of the words, on a project made for the paper | no |
 | References (G7) | the reference list counted, its numbered citations held to it, and with `--lookup` what the registries say | no |
@@ -174,6 +175,50 @@ not be the sum of the counts beside it, and fails only on a sum or a flow the an
 declares of its results values.
 Each line is read on its own: a count that only a row and a column together give away is not
 found.
+
+**Flows.** A CONSORT or STROBE flow printed as a nested list is held to its arithmetic. A
+list is read as a flow where it has two levels or more and two items or more at the top,
+and every item at every level gives exactly one count, `n = 412` or `(n = 412)`:
+
+```
+- Assessed for eligibility (n = 412)
+  - Excluded (n = 112)
+    - Not meeting inclusion criteria (n = 87)
+    - Declined to participate (n = 25)
+- Randomised (n = 300)
+  - Drug (n = 151)
+  - Placebo (n = 149)
+```
+
+The items at the top are the stages, the items under a stage the exclusions of the step to
+the next, the items under an exclusion the reasons it totals, and the items under the last
+stage the arms. Each stage less its exclusions is the next stage, the reasons add up to
+their exclusion, and the arms to the last stage; a flow that does not is listed,
+`flow-broken`, and `--strict` counts it. Exclusions or reasons that add up to more than they
+total are read as overlapping, one record excluded for several reasons, with a note; one of
+them larger than the step is still listed. A list in which an item gives no count or two
+is noted and not read, and so are items under a reason or an arm. Markdown lists, LaTeX
+`itemize`, `enumerate` and `description` lists, and Word lists by their levels are read;
+a flow in prose, a text box, a drawing or a figure is not, and text boxes in a .docx that
+give two counts or more are noted. The shape is all that is read, so a nested list of
+subgroups in that shape is read as a flow too.
+
+**Abstract against Results.** Each number of the Abstract that the conventions do not
+explain is looked for where the paper reports: the Methods, the Results, every table of
+every file, and the whole of a file with no Abstract, a supplement, as G8 reads them. A line
+stands under the headings over it: Markdown's, a .docx's heading styles, a LaTeX
+document's as it prints them. A number reported to more places counts as matched as a
+rounding, "53%" in the Abstract for "53.3%" in the Results, and is listed apart; a number
+found nowhere is listed, and not counted by `--strict`. The section ends with what a match
+is worth against the numbers the paper reports, the roundings counted in. A conflict is an
+exact pairing: an interval of the Abstract with one interval in what the paper reports of
+the same estimate ("OR" and "odds ratio" are one) and level, two of whose three numbers
+agree and the third does not; or a test with one test of the same kind, degrees of freedom
+and statistic whose P cannot be the same. Two numbers agree where one value could be
+printed as both: 1.5 and 1.52 agree, 1.90 and 1.89 do not. A conflict is counted by
+`--strict`. Where two intervals or tests could be the counterpart, none is said. Where no
+file has an Abstract heading, or none a Results heading, the section says nothing was
+compared.
 
 A mean of whole numbers, answers on a Likert-type scale or a count, is a whole total over
 its n, so not every mean can be printed for it: 28 answers average 3.46 or 3.50, never 3.47

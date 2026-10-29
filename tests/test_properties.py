@@ -70,6 +70,7 @@ from generated import (
     TYPOGRAPHY,
     UNCLAIMED,
     WRITTEN_WORDS,
+    abstract_papers,
     abstract_trees,
     alt_texts,
     bindings,
@@ -85,6 +86,7 @@ from generated import (
     dictionary_pairs,
     escaped_backticks,
     figure_captions,
+    flow_lists,
     generated,
     holds,
     keyword_paragraphs,
@@ -4380,6 +4382,230 @@ def _a_count_given_away_is_said_whatever_the_minimum(patch: pytest.MonkeyPatch) 
     from manuscript_guard.gates import custodian
 
     patch.setattr(custodian, "_forbidden", lambda value, minimum: value >= 1)
+
+
+# ------------------------------------------------------------- a flow printed as a list
+
+
+def _problem_kind(said: str) -> str:
+    """The kind of a flow's problem, as `generated._flow_of` names it."""
+    if said.startswith("stage "):
+        return "step"
+    if said.startswith("the arms "):
+        return "arms"
+    if said.startswith("the reasons after stage"):
+        return "too many"
+    return "reasons" if said.startswith("the reasons under") and "add up" in said else said
+
+
+def _note_kind(said: str) -> str:
+    for start, kind in (("the exclusions after stage", "overlapping"),
+                        ("the reasons under", "reasons overlapping"),
+                        ("the items under an arm", "per arm"), ("a nested list", "partial")):
+        if said.startswith(start):
+            return kind
+    return said
+
+
+def _flows_found(flows: list, where: str) -> list[dict[str, Any]]:
+    return [{where: flow.line, "read": flow.read,
+             "problems": sorted(_problem_kind(said) for said in flow.problems),
+             "notes": sorted(_note_kind(said) for said in flow.notes)} for flow in flows]
+
+
+@holds(100, flow_lists())
+def test_a_flow_printed_as_a_list_is_held_to_its_arithmetic(
+    drawn: tuple[str, str, list[dict[str, Any]]],
+) -> None:
+    """Task 3: a nested list whose every item gives one count is read as a flow, in Markdown
+    and in LaTeX alike: a step off, arms off, and reasons off are said; exclusions or reasons
+    over what they total are read as overlapping and noted, and a single one over its step is
+    said; a list with an item of no count or two is noted and not read; an item under an arm
+    is noted; a list of one level or one stage, and prose, are no flow. A commented `\\item`
+    is not read."""
+    from manuscript_guard.stats.flows import flows_in, latex_lists, markdown_lists
+    from manuscript_guard.text.latex.structure import read_tree
+    from manuscript_guard.text.latex.views import bindings, markdown_view
+    from manuscript_guard.text.masking import mask
+
+    markdown, latex, expected = drawn
+    found = _flows_found(flows_in(markdown_lists(markdown, mask(markdown))), "markdown")
+    assert found == [{key: one[key] for key in ("markdown", "read", "problems", "notes")}
+                     for one in expected], markdown  # fmt: skip
+    source = read_tree({"main.tex": latex}, "main.tex").sources[0]
+    hidden = markdown_view(source, bindings(source)[0], blank="\x00")
+    found = _flows_found(flows_in(latex_lists(source, hidden)), "latex")
+    assert found == [{key: one[key] for key in ("latex", "read", "problems", "notes")}
+                     for one in expected], latex  # fmt: skip
+
+
+def _the_reasons_under_an_exclusion_are_not_held_to_it(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import flows
+
+    patch.setattr(flows, "_subtotal", lambda exclusion, n, notes: [])
+
+
+def _exclusions_over_their_step_are_a_broken_step(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import emit
+    from manuscript_guard.stats import flows
+
+    patch.setattr(flows, "flow_problem", lambda stages, exclusions, arms, overlapping:
+                  emit.flow_problem(stages, exclusions, arms, False))  # fmt: skip
+
+
+def _an_item_with_two_counts_is_read_by_its_first(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import flows
+
+    real = flows.counts_in
+    patch.setattr(flows, "counts_in", lambda text: real(text)[:1])
+
+
+def _the_arms_are_not_held_to_the_last_stage(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard import emit
+    from manuscript_guard.stats import flows
+
+    patch.setattr(flows, "flow_problem", lambda stages, exclusions, arms, overlapping:
+                  emit.flow_problem(stages, exclusions, [], overlapping))  # fmt: skip
+
+
+def _a_list_of_one_stage_is_a_flow(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import flows
+
+    patch.setattr(flows, "LEAST_STAGES", 1)
+
+
+def _a_commented_item_is_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import flows
+
+    patch.setattr(flows, "command_read", lambda source: lambda at: True)
+
+
+def _a_nested_item_is_read_at_the_top(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import flows
+
+    real = flows._tree
+    patch.setattr(flows, "_tree", lambda entries: real([(1, text, line)
+                                                         for _depth, text, line in entries]))
+
+
+# ------------------------------------------------------------ the Abstract and the Results
+
+#: The classifier the audit reads an existing paper with, loaded once.
+_AUDIT_RULES: list = []
+
+
+def _abstract_read(paper: str, supplement: str):
+    """What the audit's Abstract against Results makes of a paper and its supplement."""
+    import tempfile
+
+    from manuscript_guard.audit import audit
+    from manuscript_guard.classify import Classifier
+
+    if not _AUDIT_RULES:
+        _AUDIT_RULES.append(Classifier.load(rendered=True))
+    with tempfile.TemporaryDirectory() as folder:
+        main, extra = Path(folder) / "paper.md", Path(folder) / "supplement.md"
+        main.write_text(paper, encoding="utf-8")
+        extra.write_text(supplement, encoding="utf-8")
+        return audit([main, extra], None, classifier=_AUDIT_RULES[0]).abstract
+
+
+@holds(40, abstract_papers())
+def test_the_abstract_is_held_to_what_the_paper_reports(
+    drawn: tuple[str, str, dict[str, list]],
+) -> None:
+    """Task 3: an Abstract's interval that differs in one number from its one counterpart
+    where the paper reports, named there in words, and its test whose P cannot be its
+    counterpart's, are conflicts; one that agrees as rounded, one with two counterparts, one
+    at another level and a test whose P could be the same are not. A number of the Abstract
+    in the Methods, a table or the supplement is found, one reported to a place more is
+    found as a rounding, and one only in the Discussion is not found. Without an Abstract
+    heading, or a Results heading, nothing is compared."""
+    paper, supplement, expected = drawn
+    read = _abstract_read(paper, supplement)
+    assert read.compared, paper
+    conflicts = sorted([d.line, "interval" if " CI " in d.message else "test"]
+                       for d in read.conflicts)  # fmt: skip
+    rounded = {(c.line, c.text) for c in read.rounded}
+    missing = {(c.line, c.text) for c in read.not_found}
+    looked = sorted([line, shown, "rounded" if (line, shown) in rounded else
+                     "not found" if (line, shown) in missing else "exact"]
+                    for line, shown, _state in expected["looked"])  # fmt: skip
+    assert {"conflicts": conflicts, "looked": looked} == expected, paper
+    for heading, other in (("## Abstract", "## Summary of it"), ("## Results", "## Data")):
+        assert not _abstract_read(paper.replace(heading, other), supplement).compared
+
+
+def _a_counterpart_need_not_be_the_only_one(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import abstract
+
+    def first(given, intervals):
+        for found_in, text, other in intervals:
+            if abstract.estimate_of(other) != abstract.estimate_of(given):
+                continue
+            pairs = zip((given.estimate, given.low, given.high),
+                        (other.estimate, other.low, other.high), strict=True)
+            if sum(abstract.agree(a, b) for a, b in pairs) == 2:
+                return found_in, text, other
+        return None
+
+    patch.setattr(abstract, "_counterpart_interval", first)
+
+
+def _numbers_agree_only_as_printed(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import abstract
+
+    patch.setattr(abstract, "agree", lambda one, other: one == other)
+
+
+def _a_rounding_is_no_match(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import abstract
+
+    patch.setattr(abstract, "coarser", lambda printed: set())
+
+
+def _every_line_outside_the_abstract_reports(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import abstract
+
+    real = abstract.where
+    patch.setattr(abstract, "where", lambda piece, line: real(piece, line) or "reported")
+
+
+def _a_table_reports_only_under_the_results(patch: pytest.MonkeyPatch) -> None:
+    from dataclasses import replace
+
+    from manuscript_guard.auditing import abstract
+
+    real = abstract.where
+    patch.setattr(abstract, "where", lambda piece, line: real(
+        replace(piece, tables=frozenset()), line))  # fmt: skip
+
+
+def _a_file_with_no_abstract_reports_nothing(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import abstract
+
+    real = abstract.where
+    patch.setattr(abstract, "where", lambda piece, line: real(piece, line) if (
+        piece.abstract or line in piece.tables) else "")  # fmt: skip
+
+
+def _an_intervals_level_is_not_read(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import abstract
+
+    real = abstract.estimate_of
+    patch.setattr(abstract, "estimate_of", lambda interval: real(interval)[:2])
+
+
+def _two_p_values_printed_apart_cannot_be_the_same(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import abstract
+
+    patch.setattr(abstract, "p_apart", lambda mine, theirs: mine != theirs)
+
+
+def _an_estimates_words_are_not_its_abbreviation(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.auditing import abstract
+
+    patch.setattr(abstract, "_NAMED", {})
 
 
 # ----------------------------------------------------------- a LaTeX table's rows and cells
@@ -14555,6 +14781,70 @@ BROKEN = {
     "a count a total gives away is said whatever the minimum": (
         _a_count_given_away_is_said_whatever_the_minimum,
         test_a_tables_totals_are_held_to_their_counts_and_a_count_held_back_to_them,
+    ),
+    "the reasons under an exclusion are not held to it": (
+        _the_reasons_under_an_exclusion_are_not_held_to_it,
+        test_a_flow_printed_as_a_list_is_held_to_its_arithmetic,
+    ),
+    "exclusions over what their step removes are a broken step": (
+        _exclusions_over_their_step_are_a_broken_step,
+        test_a_flow_printed_as_a_list_is_held_to_its_arithmetic,
+    ),
+    "an item with two counts is read by its first": (
+        _an_item_with_two_counts_is_read_by_its_first,
+        test_a_flow_printed_as_a_list_is_held_to_its_arithmetic,
+    ),
+    "the arms are not held to the last stage": (
+        _the_arms_are_not_held_to_the_last_stage,
+        test_a_flow_printed_as_a_list_is_held_to_its_arithmetic,
+    ),
+    "a list of one stage is a flow": (
+        _a_list_of_one_stage_is_a_flow,
+        test_a_flow_printed_as_a_list_is_held_to_its_arithmetic,
+    ),
+    "a commented item of a LaTeX list is read": (
+        _a_commented_item_is_read,
+        test_a_flow_printed_as_a_list_is_held_to_its_arithmetic,
+    ),
+    "a nested item is read at the top of its list": (
+        _a_nested_item_is_read_at_the_top,
+        test_a_flow_printed_as_a_list_is_held_to_its_arithmetic,
+    ),
+    "an Abstract's interval has a counterpart where it has two": (
+        _a_counterpart_need_not_be_the_only_one,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "numbers agree only as printed": (
+        _numbers_agree_only_as_printed,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "a rounding of a reported number is no match": (
+        _a_rounding_is_no_match,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "every line outside the Abstract is where the paper reports": (
+        _every_line_outside_the_abstract_reports,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "a table under the Discussion is not where the paper reports": (
+        _a_table_reports_only_under_the_results,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "a file with no Abstract is not where the paper reports": (
+        _a_file_with_no_abstract_reports_nothing,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "an interval's level is not read": (
+        _an_intervals_level_is_not_read,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "two P printed apart cannot be the same": (
+        _two_p_values_printed_apart_cannot_be_the_same,
+        test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "an estimate's words are not its abbreviation": (
+        _an_estimates_words_are_not_its_abbreviation,
+        test_the_abstract_is_held_to_what_the_paper_reports,
     ),
     "a claim runs back to the start of its paragraph, past the anchor before it": (
         _a_claim_runs_back_to_its_paragraph,

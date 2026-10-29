@@ -1159,6 +1159,58 @@ def _table_margins() -> Reading:
     return read
 
 
+@reading("flows")
+def _flows() -> Reading:
+    """Each nested list of a Markdown paper and of a LaTeX one read as a flow, or found and
+    not read, as `audit` reads them: its line, whether it was read, its stages, exclusions
+    and arms, and what is said of it."""
+    from manuscript_guard.stats.flows import flows_in, latex_lists, markdown_lists
+    from manuscript_guard.text.latex.structure import read_tree
+    from manuscript_guard.text.latex.views import bindings, markdown_view
+    from manuscript_guard.text.masking import mask
+
+    def told(flows) -> list[list[Any]]:
+        return [[f.line, f.read, list(f.stages), [list(step) for step in f.exclusions],
+                 list(f.arms), list(f.problems), list(f.notes)] for f in flows]  # fmt: skip
+
+    def read(given: dict[str, str]) -> dict[str, Any]:
+        text = given["markdown"]
+        source = read_tree({"main.tex": given["latex"]}, "main.tex").sources[0]
+        hidden = markdown_view(source, bindings(source)[0], blank="\x00")
+        return {"markdown": told(flows_in(markdown_lists(text, mask(text)))),
+                "latex": told(flows_in(latex_lists(source, hidden)))}  # fmt: skip
+
+    return read
+
+
+@reading("abstract against results")
+def _abstract_against_results() -> Reading:
+    """What `audit` says of a Markdown paper's Abstract against what it and its supplement
+    report: whether they were compared, each conflict, each number not found and each found
+    only as a rounding, by line, and what a match is worth there."""
+    from manuscript_guard.audit import audit
+    from manuscript_guard.auditing.abstract import against_results  # noqa: F401 - newer than it
+
+    def read(given: dict[str, str]) -> dict[str, Any]:
+        with tempfile.TemporaryDirectory() as folder:
+            paper, supplement = Path(folder) / "paper.md", Path(folder) / "supplement.md"
+            paper.write_text(given["paper"], encoding="utf-8")
+            supplement.write_text(given["supplement"], encoding="utf-8")
+            found = audit([paper, supplement], None).abstract
+            worth = found.discrimination
+            return {
+                "compared": found.compared, "why not": found.why_not,
+                "numbers": found.numbers, "matched": found.matched,
+                "conflicts": [[d.source.name, d.line, d.message] for d in found.conflicts],
+                "not found": [[c.source.name, c.line, c.text] for c in found.not_found],
+                "rounded": [[c.source.name, c.line, c.text] for c in found.rounded],
+                "worth": None if worth is None else [worth.small_integers,
+                                                     worth.medium_integers, worth.two_decimals],
+            }  # fmt: skip
+
+    return read
+
+
 @reading("whole-number means")
 def _whole_number_means() -> Reading:
     """Each mean in a pipe table's rows the auditor names, as it is printed, with its

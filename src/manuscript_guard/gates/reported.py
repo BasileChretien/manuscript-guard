@@ -92,16 +92,8 @@ class Walk:
     def read(self, text: str) -> tuple[list[Given], set[str]]:
         """The results keys `text` binds in a summary, and those it binds where the paper
         reports them."""
-        sections = [section for section in split_sections(scannable(text)) if section.level]
-        self.kept += sections
-        self._name(sections)
-        starts, places = [0], [self._place()]
-        for section in sections:
-            while self.chain and self.chain[-1].level >= section.level:
-                self.chain.pop()
-            self.chain.append(section)
-            starts.append(section.line)
-            places.append(self._place())
+        place_of = self.placing(
+            [section for section in split_sections(scannable(text)) if section.level])
         given: list[Given] = []
         reported: set[str] = set()
         for placeholder in parse(text)[0]:
@@ -111,12 +103,29 @@ class Walk:
             if boxed is not None:
                 given.append(Given(placeholder.key, boxed, placeholder.line, placeholder.start))
                 continue
-            place = places[bisect_right(starts, placeholder.line) - 1]
+            place = place_of(placeholder.line)
             if place is REPORTED:
                 reported.add(placeholder.key)
             elif place is not None:
                 given.append(Given(placeholder.key, place, placeholder.line, placeholder.start))
         return given, reported
+
+    def placing(self, sections: list[Section]) -> Callable[[int], object]:
+        """Where each line of one file stands, given its headings in order, each with its
+        level and its line: the title of the summary it is in, REPORTED, or None for
+        neither. What `read` places a binding by, and the audit's Abstract against Results
+        a number by, its sections read from a Word document's heading styles or a LaTeX
+        document's printed view as well as from Markdown (`auditing.abstract`)."""
+        self.kept += sections
+        self._name(sections)
+        starts, places = [0], [self._place()]
+        for section in sections:
+            while self.chain and self.chain[-1].level >= section.level:
+                self.chain.pop()
+            self.chain.append(section)
+            starts.append(section.line)
+            places.append(self._place())
+        return lambda line: places[bisect_right(starts, line) - 1]
 
     def _name(self, sections: list[Section]) -> None:
         """Which sections of one file report and which summarise. A Results or a conclusion

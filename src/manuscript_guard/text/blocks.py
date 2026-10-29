@@ -435,6 +435,10 @@ class _Walk:
         self.found: list[Heading] = []
         #: Where each list item's first line starts.
         self.items: list[int] = []
+        #: For each of `items`, how many items it is nested in and itself, 1 at the outermost,
+        #: and which list it is of, counted from 0: a list opens where no item is open.
+        self.nesting: list[tuple[int, int]] = []
+        self._lists = -1
         self.open: str | None = None
         #: The column an open list item's content starts at; None outside a list.
         self.list_indent: int | None = None
@@ -581,9 +585,12 @@ class _Walk:
         marker = item.group("marker")
         gap = len((marker + item.group("gap")).expandtabs(4)) - len(marker)
         self.list_indent = base + len(marker) + (gap if 0 < gap <= 4 else 1)
+        if not self.columns:
+            self._lists += 1
         self.columns = [*(column for column in self.columns if column <= base), self.list_indent]
         if not self.items_off:
             self.items.append(self.lines[index].start)
+            self.nesting.append((len(self.columns), self._lists))
         return True
 
     def _marker(self, index: int) -> tuple[int, re.Match[str]] | None:
@@ -925,11 +932,22 @@ class Blocks:
     headings: tuple[Heading, ...]
     #: Where the first line of each list item starts, in document order.
     items: tuple[int, ...]
+    #: For each item, its depth, 1 at the outermost, and the list it is of, from 0.
+    nesting: tuple[tuple[int, int], ...] = ()
 
 
 def read_blocks(text: str) -> Blocks:
     walk = _Walk(text).run()
-    return Blocks(tuple(walk.found), tuple(walk.items))
+    return Blocks(tuple(walk.found), tuple(walk.items), tuple(walk.nesting))
+
+
+def nested_items(text: str) -> list[tuple[int, int, int]]:
+    """Each list item pandoc makes, as `list_items` gives it, with its depth, 1 at the
+    outermost, and which list it is of, counted from 0: what a flow is read from
+    (`stats/flows.py`)."""
+    blocks = read_blocks(text)
+    pairs = zip(blocks.items, blocks.nesting, strict=True)
+    return [(start, depth, which) for start, (depth, which) in pairs]
 
 
 def find_headings(text: str) -> list[Heading]:
@@ -1069,6 +1087,7 @@ __all__ = [
     "find_headings",
     "heading_shaped",
     "list_items",
+    "nested_items",
     "read_blocks",
     "scannable",
     "section_breaks",

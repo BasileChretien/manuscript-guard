@@ -84,9 +84,11 @@ inputs is named under `Passed over`. There is no reader for a PDF
 manuscript. `--figures` takes SVG and PDF files with a text layer; one with no text at all,
 such as a matplotlib SVG with its labels drawn as outlines, is listed as unreadable rather
 than audited. `--strict` exits 1 when a number is in no output, a paper, a figure or a
-stretch of one could not be read, no number was read, or the arithmetic of a table is
+stretch of one could not be read, no number was read, the arithmetic of a table or a flow is
 exactly wrong (a total off, categories over their column's n, a count held back that a
-printed total gives away), and the audit exits 2 when nothing given could be read at all,
+printed total gives away, a flow printed as a nested list that does not add up), or an
+interval or a test of the Abstract differs from its one counterpart where the paper reports
+in a single number, and the audit exits 2 when nothing given could be read at all,
 `--minimum-cell-count` is below 1, or `--dry-run` or `--lookup-cache` is given without
 `--lookup`. Ask the author for the data custodian's minimum and pass it as
 `--minimum-cell-count N`; without it a count held back is taken to hide every count from 1
@@ -106,14 +108,19 @@ if they will audit again.
 ## 3. Read the report
 
 What was read and what was not comes first, then a section for each check: `Membership`,
-`Arithmetic`, `Small cells recoverable by subtraction`, `Writing (G6) and Language (G14)`,
-`References (G7)`. Membership lists the
+`Arithmetic`, `Abstract against Results`, `Small cells recoverable by subtraction`,
+`Writing (G6) and Language (G14)`, `References (G7)`. Membership lists the
 unmatched numbers by file, up to 40 per file and then only a count, followed
 by `What a match is worth here`: the
 share of integers 1–100, of integers 1–1000, and of two-decimal values that would match by
 chance against this backing set, with a verdict. Arithmetic lists the numbers that do not
 fit the ones beside them, a P and its statistic or an n (%) and its denominator, which
-needs no outputs, and apart a table's total its counts do not add up to. Small cells lists
+needs no outputs, and apart a table's total its counts do not add up to and a flow printed
+as a nested list that does not add up, with notes on what it read as overlapping or did not
+read. Abstract against Results lists each conflict, each number of the Abstract found
+nowhere the paper reports, which may be a stale value or one the Results never give, and
+those matched only as a rounding, and ends with its own chance-match rate; where it says
+"not compared" the paper has no Abstract or no Results heading it could find. Small cells lists
 each count held back ("<5") that a total gives away, with the count it can only be: a
 disclosure to report to the author before the paper goes anywhere, never to work round. Report each section apart; a finding of G6 or G14 is about the words, and
 no evidence about the numbers.
@@ -133,7 +140,10 @@ audit cuts a reference list, so that you can check the ranges it names under `No
 ## 5. Say what a clean report does not mean
 
 A match means the number appears somewhere in the outputs. It does not mean it appears in
-the right place: a value correct in the abstract and wrong in the Results passes. An
+the right place: a value correct in the abstract and wrong in the Results passes the
+membership check, and the Abstract against Results finds it only where the two are an
+interval or a test paired exactly; a number of the Abstract found in the Results may be
+another quantity that happens to be printed the same. An
 interval matches when both bounds appear anywhere, not necessarily together. Numbers the
 classifier accepts as conventions or references are never compared at all, and that
 includes `p < 0.05` anywhere in the text and the lines the report lists under

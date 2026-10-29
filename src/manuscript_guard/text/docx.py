@@ -100,6 +100,16 @@ class DocxText:
     #: gaps"): what says a reference list is numbered by Word rather than typed, and what
     #: number Word prints for each entry.
     numbering: tuple[tuple[int, str, bool, int], ...] = ()
+    #: The level of each line in `headings`, 1 for "heading 1": by 0-based line, what the
+    #: audit's Abstract against Results places a line under (`gates.reported.Walk`).
+    heading_levels: tuple[tuple[int, int], ...] = ()
+    #: Each line of `body` outside a table and a text box that is an item of a list Word
+    #: numbers or bullets, and not a heading, 1-based, with its level, 0 the outermost
+    #: (`word_numbering.Numbering.level_of`): what a flow is read from (`stats/flows.py`).
+    levels: tuple[tuple[int, int], ...] = ()
+    #: The text of each text box of the body, a shape's included, which a flow drawn in
+    #: boxes is: read for the note that it is not read as one.
+    boxed: tuple[str, ...] = ()
 
     @property
     def text(self) -> str:
@@ -181,34 +191,48 @@ def _seen(node: ET.Element, parents: dict, hidden: frozenset) -> bool:
     return node not in hidden and _placed(node, parents, hidden)[1]
 
 
-def _heading_styles(archive: zipfile.ZipFile, names: set[str], what: str) -> frozenset[str]:
-    """The paragraph style ids that are headings.
+def _heading_styles(archive: zipfile.ZipFile, names: set[str], what: str) -> dict[str, int]:
+    """The paragraph style ids that are headings, each with its level.
 
     Read from the style's name rather than its id: the id is localised — a French Word
-    writes `Titre1` — while a built-in style is named "heading 1" in every language.
+    writes `Titre1` — while a built-in style is named "heading 1" in every language. A
+    style with an outline level and no such name is at that level, counted from 1.
     """
-    found = {f"Heading{n}" for n in range(1, 10)}
+    found = {f"Heading{n}": n for n in range(1, 10)}
     if "word/styles.xml" not in names:
-        return frozenset(found)
+        return found
     try:
         styles = read_part(archive, "word/styles.xml", what=f"{what}:word/styles.xml")
     except UnsafeDocument:
-        return frozenset(found)
+        return found
     for style in styles.iter(W + "style"):
         name = style.find(W + "name")
         named = name is not None and _HEADING_NAME.fullmatch(name.get(W + "val", ""))
-        if named or style.find(f"{W}pPr/{W}outlineLvl") is not None:
-            found.add(style.get(W + "styleId", ""))
-    return frozenset(found)
+        outline = style.find(f"{W}pPr/{W}outlineLvl")
+        if named:
+            found[style.get(W + "styleId", "")] = int(named.group(0)[-1])
+        elif outline is not None:
+            found[style.get(W + "styleId", "")] = _outline_level(outline)
+    return found
 
 
-def _is_heading(paragraph: ET.Element, styles: frozenset[str]) -> bool:
+def _outline_level(outline: ET.Element) -> int:
+    """A heading's level from its `w:outlineLvl`, which counts from 0: 1 to 9."""
+    value = outline.get(W + "val", "0")
+    return min(int(value), 8) + 1 if value.isascii() and value.isdigit() else 1
+
+
+def _heading_level(paragraph: ET.Element, styles: dict[str, int]) -> int | None:
+    """The level of a paragraph that is a heading, by its outline level or its style's,
+    or None for one that is no heading."""
     props = paragraph.find(W + "pPr")
     if props is None:
-        return False
+        return None
+    outline = props.find(W + "outlineLvl")
+    if outline is not None:
+        return _outline_level(outline)
     style = props.find(W + "pStyle")
-    styled = style is not None and style.get(W + "val") in styles
-    return styled or props.find(W + "outlineLvl") is not None
+    return styles.get(style.get(W + "val", "")) if style is not None else None
 
 
 #: Layout elements that read as a space. A manual line break read as nothing ran the
@@ -295,8 +319,9 @@ def _joins(root: ET.Element, parents: dict, hidden: frozenset) -> dict[ET.Elemen
 
 
 def _line_start(
-    paragraph: ET.Element, joins: dict, parents: dict, headings: frozenset, opens: _Opens,
+    paragraph: ET.Element, joins: dict, parents: dict, headings: dict, opens: _Opens,
     numbering: Numbering | None = None, counts: list | None = None,
+    levels: list | None = None,
 ) -> str:  # fmt: skip
     """The break and the marks a paragraph's line starts with.
 
@@ -304,16 +329,24 @@ def _line_start(
     keeps it on accepting the change, and when Word deletes a mark itself it first copies
     the first paragraph's style onto the second. A heading style ends a reference list. Its
     numbering is the last paragraph's too, which is in its properties, beside its style.
+    A heading's level goes in `levels`, in the order of the headings' lines; and with each
+    count, the level of the list the line is an item of, None for a heading or a line in a
+    text box.
     """
     last = paragraph
     while last in joins:
         last = joins[last]
-    heading = _HEADING_MARK if _is_heading(last, headings) else ""
+    level = _heading_level(last, headings)
+    heading = _HEADING_MARK if level is not None else ""
+    if heading and levels is not None:
+        levels.append(level)
     if not _inside(paragraph, parents, W + "tc"):
         numbered = numbering.of_paragraph(last) if numbering is not None else None
         if numbered is None or counts is None:
             return "\n" + heading
-        counts.append(numbered)
+        listed = None if heading or _inside(paragraph, parents, W + "txbxContent") else (
+            numbering.level_of(last))  # fmt: skip
+        counts.append((*numbered, listed))
         return "\n" + heading + _NUMBERED_MARK
     return "\n" + heading + _CELL_MARK + opens.take()
 
@@ -357,12 +390,14 @@ def _raised(node: ET.Element, parents: dict) -> bool:
 
 
 def _part_text(
-    root: ET.Element, headings: frozenset[str] = frozenset(), fonts: Fonts | None = None,
+    root: ET.Element, headings: dict[str, int] | None = None, fonts: Fonts | None = None,
     numbering: Numbering | None = None, counts: list | None = None,
+    levels: list | None = None,
 ) -> str:  # fmt: skip
     """The part's text, a line to a paragraph, with the marks of what its lines are; with
     `numbering`, each line Word numbers outside a table is marked and its count put in
-    `counts`, in order."""
+    `counts`, in order, and each heading's level in `levels`."""
+    headings = headings or {}
     fonts = fonts or Fonts()
     parents = {child: parent for parent in root.iter() for child in parent}
     hidden = _hidden(root)
@@ -395,7 +430,7 @@ def _part_text(
         elif node.tag == W + "p":
             if node not in lines:
                 lines[node] = [_line_start(node, joins, parents, headings, opens, numbering,
-                                           counts)]  # fmt: skip
+                                           counts, levels)]  # fmt: skip
                 pieces.append(lines[node])
             if node in joins:
                 lines[joins[node]] = lines[node]
@@ -444,16 +479,20 @@ def read_docx_text(path: Path) -> DocxText:
         # fonts a run names itself are known.
         fonts = Fonts()
 
-    def text_of(part: str, styles: frozenset[str] = frozenset(), numbering=None, counts=None):
+    def root_of(part: str) -> ET.Element:
         try:
-            root = read_part(archive, part, what=f"{path.name}:{part}")
+            return read_part(archive, part, what=f"{path.name}:{part}")
         except UnsafeDocument as exc:
             raise NotADocx(str(exc)) from exc
-        return _part_text(root, styles, fonts, numbering, counts)
+
+    def text_of(part: str) -> str:
+        return _part_text(root_of(part), None, fonts)
 
     counts: list = []
-    raw = text_of(BODY, _heading_styles(archive, names, path.name),
-                  Numbering.of(archive, names, path.name), counts)  # fmt: skip
+    heads: list[int] = []
+    body_root = root_of(BODY)
+    raw = _part_text(body_root, _heading_styles(archive, names, path.name),
+                     fonts, Numbering.of(archive, names, path.name), counts, heads)  # fmt: skip
     raw, counts = _numbered_lines(raw, counts)
     marked = _tidy(raw)
     lines = marked.split("\n")
@@ -462,7 +501,12 @@ def read_docx_text(path: Path) -> DocxText:
     # rather than a count given to the wrong line.
     same = len(marked_lines) == len(counts)
     numbering = tuple(zip(marked_lines, counts, strict=True)) if same else ()
-    headings = frozenset(i for i, line in enumerate(lines) if line.startswith(_HEADING_MARK))
+    heading_lines = [i for i, line in enumerate(lines) if line.startswith(_HEADING_MARK)]
+    headings = frozenset(heading_lines)
+    # A level for each heading's line, in order; were they ever to differ, every heading is
+    # said to be at level 1 rather than a level given to the wrong line.
+    heading_levels = tuple(zip(heading_lines, heads if len(heads) == len(heading_lines)
+                               else [1] * len(heading_lines), strict=True))  # fmt: skip
     cells = frozenset(i for i, line in enumerate(lines) if _CELL_MARK in line[:2])
     # The notes keep what they always had, the cell mark of a table in a note among it; the
     # marks the tables are read by go from both.
@@ -471,7 +515,24 @@ def read_docx_text(path: Path) -> DocxText:
     body = _unmarked(marked, _MARKS)
     return DocxText(body=body, notes=notes, headings=headings, cells=cells,
                     tables=_tables(lines),
-                    numbering=tuple((line, *count) for line, count in numbering))  # fmt: skip
+                    numbering=tuple((line, *count[:3]) for line, count in numbering),
+                    heading_levels=heading_levels,
+                    levels=tuple((line, count[3]) for line, count in numbering
+                                 if count[3] is not None),
+                    boxed=_boxes(body_root, fonts))  # fmt: skip
+
+
+def _boxes(root: ET.Element, fonts: Fonts) -> tuple[str, ...]:
+    """The text of each text box in `root` that is on the page, once: not the fallback copy
+    Word writes of each, nor one in text deleted or moved away, nor a box inside another,
+    which is read with it."""
+    parents = {child: parent for parent in root.iter() for child in parent}
+    hidden = _hidden(root)
+    return tuple(
+        _unmarked(_tidy(_part_text(box, None, fonts)), _MARKS).strip()
+        for box in root.iter(W + "txbxContent")
+        if _seen(box, parents, hidden) and not _inside(box, parents, W + "txbxContent")
+    )
 
 
 def _numbered_lines(raw: str, counts: list) -> tuple[str, list]:
@@ -489,11 +550,11 @@ def _numbered_lines(raw: str, counts: list) -> tuple[str, list]:
         end = raw.find("\n", found.end())
         rest = raw[found.end() : end if end >= 0 else len(raw)]
         parts.append(raw[at : found.start()])
-        count, from_one = counts[index]
+        count, from_one, listed = counts[index]
         places[count] = places.get(count, 0) + 1
         if rest:
             parts.append(_NUMBERED_MARK)
-            kept.append((count, from_one, places[count]))
+            kept.append((count, from_one, places[count], listed))
         at = found.end()
     parts.append(raw[at:])
     return "".join(parts), kept

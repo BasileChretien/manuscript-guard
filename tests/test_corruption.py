@@ -1628,6 +1628,49 @@ def test_a_total_its_counts_do_not_add_up_to_fails_an_audit_under_strict(
     assert main(["audit", str(paper), "--strict"]) == 1
 
 
+def test_a_flow_printed_as_a_list_that_does_not_add_up_fails_an_audit(tmp_path: Path) -> None:
+    """Task 3: a nested list whose items each give one count is a flow, its stages less
+    their exclusions held to the next and its arms to the last stage, in Markdown and in
+    LaTeX; --strict counts a flow that does not add up."""
+    from manuscript_guard.cli import main
+
+    flow = ("- Assessed for eligibility (n = 412)\n  - Excluded (n = 112)\n"
+            "- Randomised (n = 300)\n  - Drug (n = 151)\n  - Placebo (n = 149)\n")
+    paper = tmp_path / "paper.md"
+    paper.write_text(f"# Results\n\n{flow}", encoding="utf-8")
+    assert main(["audit", str(paper), "--strict"]) == 0
+    paper.write_text(f"# Results\n\n{flow.replace('149', '148')}", encoding="utf-8")
+    assert main(["audit", str(paper), "--strict"]) == 1
+    backslash = chr(92)
+    latex = ("!documentclass{article}\n!begin{document}\n!begin{itemize}\n"
+             "!item Screened (n = 90)\n!begin{itemize}\n!item Excluded (n = 10)\n"
+             "!end{itemize}\n!item Enrolled (n = 80)\n!end{itemize}\n!end{document}\n")
+    tex = tmp_path / "paper.tex"
+    tex.write_text(latex.replace("!", backslash), encoding="utf-8")
+    assert main(["audit", str(tex), "--strict"]) == 0
+    tex.write_text(latex.replace("!", backslash).replace("(n = 80)", "(n = 81)"),
+                   encoding="utf-8")  # fmt: skip
+    assert main(["audit", str(tex), "--strict"]) == 1
+
+
+def test_an_abstract_interval_that_differs_from_the_results_fails_an_audit(
+    tmp_path: Path,
+) -> None:
+    """Task 3: the Abstract's interval held to its one counterpart in the Results, two of its
+    numbers agreeing and the third not, is a conflict --strict counts; an Abstract number
+    found nowhere the paper reports is said and not counted (the author, 2026-10-28)."""
+    from manuscript_guard.cli import main
+
+    paper = tmp_path / "paper.md"
+    text = ("# Paper\n\n## Abstract\n\nThe OR was 1.5 (95% CI 1.2-1.9); 812.5 were seen.\n\n"
+            "## Methods\n\nWe did it.\n\n## Results\n\n"
+            "The odds ratio was 1.52 (95% CI 1.21-1.89).\n")
+    paper.write_text(text, encoding="utf-8")
+    assert main(["audit", str(paper), "--strict"]) == 0
+    paper.write_text(text.replace("1.2-1.9)", "1.2-1.97)"), encoding="utf-8")
+    assert main(["audit", str(paper), "--strict"]) == 1
+
+
 def test_set_moves_the_stage_and_not_the_lines_that_look_like_it(project: Path) -> None:
     """`set stage` writes the setting at the top level of paper.yaml, and the check then
     holds the paper to it: a small count fails from internal review. A regular expression

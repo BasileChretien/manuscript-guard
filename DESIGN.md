@@ -7837,6 +7837,50 @@ away, and not one only the header n gives (the author's rule of 2026-10-28: exac
 only), and `--json` counts the two apart. Two lines are never put together: see Known
 gaps.
 
+### A flow printed as a list, and the Abstract against the Results (2026-10-28)
+
+A flow of participants a paper prints is arithmetic too, and so is an Abstract that restates
+the Results. `audit` reads both, with no outputs needed (Task 3, PR 3).
+
+`stats/flows.py` reads a flow from lists only: a Markdown nested list, as pandoc makes its
+items (`blocks.nested_items`, which gives each item's depth and its list); a LaTeX
+`itemize`, `enumerate` or `description` nested in another, its `\item`s read where the
+reader reads them as commands, so a commented one is not; and a Word list, by each
+paragraph's level (`Numbering.level_of`, its own `w:ilvl` or its style's), a heading's line
+ending it. Only the list's shape is read. A list with two levels or more and two items or
+more at the top, every item at every level giving exactly one count, `n = 412` or
+`(n = 412)`, is a flow: its items at the top are the stages, the items under a stage the
+exclusions of the step to the next stage, the items under an exclusion the reasons it totals,
+and the items under the last stage the arms. That is `Emitter.flow`'s flow, two stages at the
+least, and it is held to the same arithmetic, `emit.flow_problem`. Where a step's exclusions,
+or an exclusion's reasons, add up to more than they total, they are read as overlapping
+(`overlapping` for that step) and a note says so; one of them larger than the step is still
+said. A list where an item gives no count or two is noted and not read; items under a reason
+or under an arm are noted and not read. A broken flow is `flow-broken` in the Arithmetic
+section, and `--strict` counts it. In a Word document, text boxes that give two counts or
+more are noted: a flow drawn in boxes is not read.
+
+The Abstract against Results section (`auditing/abstract.py`) places each line as G8 does,
+through `gates.reported.Walk.placing`, which G8's `read` now goes through too: a Markdown
+paper's headings (`split_sections`), a Word document's heading styles with their levels
+(`DocxText.heading_levels`), and a LaTeX document's printed view, each of its lines read back
+to the `.tex` line it was printed from (`printed`, `place_line`). Where the paper reports is
+the Methods, the Results, every table of every file, and the whole of a file whose document
+has no Abstract, a supplement. Each number of the Abstract the classifier leaves unexplained
+is looked for in what the paper reports: found as printed, found as a rounding of a number
+printed to more places ("53%" for "53.3%", the author, 2026-10-28), or not found. The section
+says how many of each, lists the roundings and the numbers not found, and ends with what a
+match is worth against what the paper reports, the roundings counted in
+(`measure_discrimination`). A conflict is an exact pairing only: an interval of the Abstract
+(`reported_intervals`) of the same estimate, its abbreviation and its words read as one, and
+the same level, as one interval where the paper reports, two of their three numbers agreeing
+and the third not; or a test (`reported_tests`) of the same kind, degrees of freedom and
+statistic as one test there, whose P cannot be the same. Two printed numbers agree where one
+value could be printed as both, each to its own places: 1.5 and 1.52 do, 1.90 and 1.89 do
+not, and P = 0.03 and P = 0.032 do. Where no file has an Abstract heading, or none a Results
+heading outside it, the section says nothing was compared. `--strict` counts a conflict,
+`abstract-conflict`, and not a number not found (the author, 2026-10-28).
+
 ## A paper written in Word is brought in through pandoc's tree
 
 The route the skills gave for moving a Word paper into a project was `pandoc paper.docx -t
@@ -18178,6 +18222,38 @@ What papers converted from Word showed (see "What papers converted from Word sho
   silence. A sum or a flow is read only where every key of it is bound; one printed as a
   typed number beside the bound ones is not seen. `deposit` reads the tables of the results
   files it carries, and the values in them through `deposit.counts`, not their sums.
+
+- **A flow is read from a list's shape only** (Task 3, PR 3, `stats/flows.py`).
+  - A flow in prose, in a text box, drawn in shapes, or in a figure is not read; a Word
+    document's text boxes that give two counts or more are noted.
+  - A step for each arm, the items under an arm, is noted and not read, and so are items
+    under a reason.
+  - Overlapping exclusions are allowed for, never checked: where a step's exclusions add up
+    to more than it removes, only that none is larger than the step is held.
+  - A list in which some items give a count and others none, or two, is noted and not
+    read.
+  - Any nested list of counts in that shape is read as a flow, a list of subgroups too: men
+    over smokers and women over smokers reads as two stages and an exclusion, and is said to
+    be broken.
+
+- **The Abstract is held to the Results by weak membership** (Task 3, PR 3,
+  `auditing/abstract.py`).
+  - A number of the Abstract is found where the same number is printed anywhere the paper
+    reports, in any sense; the section prints what a match is worth there, and the
+    roundings count in it.
+  - An Abstract under no heading that names it, or under one a journal names otherwise
+    ("Summary"), is not found, and nothing is compared.
+  - A conflict needs a unique counterpart: where two intervals of the same estimate and
+    level, or two tests of the same kind, degrees of freedom and statistic, could be it,
+    none is said.
+  - An estimate is paired by its name, its abbreviation and its words taken as one; one
+    named another way, "adjusted OR" against "OR", has no counterpart.
+  - A table's lines are where the paper reports wherever the table stands, a table in the
+    Abstract included. A Word document's footnotes are placed under the body's last heading.
+
+- **A LaTeX paper's numbers in user macros, and its `csvautotabular` and `pgfplotstable`
+  tables, are not read** by the flows or by the Abstract against Results, as by the rest of
+  `audit`.
 
 - **What is sent to Zenodo and OSF was sent to servers that stand in for them.** The clients
   were run against servers on a loopback port that answer as each API's documentation says,

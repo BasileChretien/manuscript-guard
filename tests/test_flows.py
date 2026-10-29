@@ -1,0 +1,328 @@
+"""`audit` reads a flow printed as a nested list and holds it to its arithmetic, and holds the
+Abstract to what the paper reports (Task 3, part 3).
+
+A flow is read from a list's shape alone: its stages at the top, the exclusions of each step
+under a stage, the reasons an exclusion totals under it, and the arms under the last stage,
+each item giving one count. Markdown, LaTeX and Word lists are read alike. The Abstract's
+numbers are looked for in the Methods, the Results, the tables and a supplement, and an
+interval or a test that differs from its one counterpart there in a single number fails.
+"""
+
+from __future__ import annotations
+
+import json
+import zipfile
+from pathlib import Path
+
+import pytest
+
+from manuscript_guard.audit import audit
+from manuscript_guard.auditing.abstract import agree, coarser
+from manuscript_guard.cli import main
+from manuscript_guard.stats.flows import counts_in, flows_in, latex_lists, markdown_lists
+from manuscript_guard.text.docx import read_docx_text
+from manuscript_guard.text.latex.structure import read_tree
+from manuscript_guard.text.masking import mask
+
+BS = chr(92)
+NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+
+FLOW = """\
+- Assessed for eligibility (n = 412)
+  - Excluded (n = 112)
+    - Not meeting inclusion criteria (n = 87)
+    - Declined to participate (n = 25)
+- Randomised (n = 300)
+  - Drug (n = 151)
+  - Placebo (n = 149)
+"""
+
+
+def _flows(text: str):
+    return flows_in(markdown_lists(text, mask(text)))
+
+
+# --------------------------------------------------------------------------------- flows
+
+
+def test_a_flow_that_adds_up_is_read_and_says_nothing() -> None:
+    [flow] = _flows("Text.\n\n" + FLOW)
+    assert flow.read and flow.problems == () and flow.notes == ()
+    assert (flow.stages, flow.exclusions, flow.arms) == ((412, 300), ((112,),), (151, 149))
+    assert flow.line == 3
+
+
+@pytest.mark.parametrize(
+    ("changed", "said"),
+    [
+        ("Randomised (n = 300)",
+         "stage 1 (412) less its exclusions (112) is 300, and stage 2 is 290"),
+        ("Placebo (n = 149)", "the arms sum to 299, and the last stage is 300"),
+        ("Declined to participate (n = 25)",
+         "the reasons under 'Excluded' (n = 112) add up to 107"),
+    ],
+)
+def test_a_flow_whose_arithmetic_does_not_hold_is_said(changed: str, said: str) -> None:
+    wrong = {"Randomised (n = 300)": "Randomised (n = 290)",
+             "Placebo (n = 149)": "Placebo (n = 148)",
+             "Declined to participate (n = 25)": "Declined to participate (n = 20)"}[changed]
+    [flow] = _flows(FLOW.replace(changed, wrong))
+    assert flow.problems == (said,)
+
+
+def test_exclusions_over_what_a_step_removes_are_read_as_overlapping() -> None:
+    """More reasons than records removed is one record excluded for several: a note, and
+    the step holds; a single reason over the step cannot be, even overlapping."""
+    [flow] = _flows(FLOW.replace("(n = 112)", "(n = 80)"))
+    assert flow.problems == ("stage 1 (412) less its exclusions (80) is 332, and stage 2 is 300",
+                             "the reasons under 'Excluded' (n = 80) cannot account for it, "
+                             "even overlapping: one of them is 87")  # fmt: skip
+    overlapping = FLOW.replace("Declined to participate (n = 25)", "Declined (n = 40)")
+    [flow] = _flows(overlapping)
+    assert flow.problems == ()
+    assert flow.notes == ("the reasons under 'Excluded' (n = 112) add up to 127: read as "
+                          "overlapping",)  # fmt: skip
+    many = "- A (n = 100)\n  - X (n = 30)\n  - Y (n = 30)\n- B (n = 50)\n"
+    [flow] = _flows(many)
+    assert flow.problems == () and "read as overlapping" in flow.notes[0]
+    [flow] = _flows(many.replace("Y (n = 30)", "Y (n = 60)"))
+    assert flow.problems == ("the reasons after stage 1 (30, 60) cannot account for the 50 "
+                             "excluded, even overlapping",)  # fmt: skip
+
+
+def test_a_list_whose_items_do_not_each_give_one_count_is_noted_and_not_read() -> None:
+    for partial in (FLOW.replace(" (n = 25)", ""), FLOW.replace("(n = 25)", "(n = 25, n = 3)")):
+        [flow] = _flows(partial)
+        assert not flow.read and flow.problems == ()
+        assert "line 4 gives" in flow.notes[0]
+
+
+def test_what_is_no_flow_is_not_read() -> None:
+    """One level, one stage, no counts, a list in a fenced listing, and prose."""
+    for text in ("- A (n = 3)\n- B (n = 2)\n", "- A (n = 3)\n  - B (n = 1)\n",
+                 "- Stage\n  - Reason\n- Next\n", "```\n" + FLOW + "```\n",
+                 "Of 412 assessed (n = 412), 112 were excluded (n = 112).\n"):
+        assert _flows(text) == [], text
+
+
+def test_two_lists_apart_are_two_flows() -> None:
+    text = FLOW + "\nA paragraph between them.\n\n" + FLOW.replace("149", "148")
+    first, second = _flows(text)
+    assert first.problems == () and second.problems != ()
+
+
+def test_counts_are_read_as_a_flow_prints_them() -> None:
+    assert counts_in("Randomised (n = 1,204)") == [1204]
+    assert counts_in("N=12; n = 3") == [12, 3]
+    assert counts_in("n = 45%, n = 4.5, sn = 3, n = 1,2345") == []
+
+
+def test_items_under_an_arm_are_said_and_not_read() -> None:
+    text = FLOW.replace("  - Drug (n = 151)\n", "  - Drug (n = 151)\n    - Lost (n = 4)\n")
+    [flow] = _flows(text)
+    assert flow.problems == ()
+    assert flow.notes == ("the items under an arm are not read: a step for each arm is not "
+                          "read",)  # fmt: skip
+
+
+def test_a_latex_flow_is_read_from_its_nested_itemize() -> None:
+    source = read_tree({"paper.tex": tex(
+        "!documentclass{article}\n!begin{document}\n"
+        "!begin{itemize}\n  !item Assessed (n = 412) % !item Skipped (n = 9)\n"
+        "  !begin{enumerate}\n    !item Excluded (n = 112)\n  !end{enumerate}\n"
+        "  !item Randomised (n = 290)\n!end{itemize}\n!end{document}\n")}, "paper.tex").sources[0]
+    from manuscript_guard.text.latex.views import bindings, markdown_view
+
+    hidden = markdown_view(source, bindings(source)[0], blank="\x00")
+    [flow] = flows_in(latex_lists(source, hidden))
+    assert flow.stages == (412, 290) and flow.line == 4
+    assert flow.problems == ("stage 1 (412) less its exclusions (112) is 300, and stage 2 is "
+                             "290",)  # fmt: skip
+
+
+def tex(text: str) -> str:
+    return text.replace("!", BS)
+
+
+# --------------------------------------------------------------------------------- Word
+
+NUMBERING = (
+    f"<w:numbering {NS}><w:abstractNum w:abstractNumId='0'>"
+    + "".join(f"<w:lvl w:ilvl='{n}'><w:numFmt w:val='bullet'/><w:lvlText w:val='-'/></w:lvl>"
+              for n in range(3))
+    + "</w:abstractNum><w:num w:numId='1'><w:abstractNumId w:val='0'/></w:num></w:numbering>"
+)
+STYLES = (
+    f"<w:styles {NS}>"
+    + "".join(f"<w:style w:type='paragraph' w:styleId='Heading{n}'><w:name w:val='heading {n}'/>"
+              "</w:style>" for n in (1, 2))
+    + "<w:style w:type='paragraph' w:styleId='ListSub'><w:pPr><w:numPr><w:ilvl w:val='1'/>"
+    "<w:numId w:val='1'/></w:numPr></w:pPr></w:style></w:styles>"
+)
+
+
+def word(path: Path, paragraphs: list[tuple[str, str]], extra: str = "") -> Path:
+    """A .docx of paragraphs, each with its properties: `H1` and `H2` a heading's style, `L0`
+    to `L2` a list's level, `S` the style that puts a paragraph at level 1."""
+    body = ""
+    for text, kind in paragraphs:
+        props = {"H1": "<w:pStyle w:val='Heading1'/>", "H2": "<w:pStyle w:val='Heading2'/>",
+                 "S": "<w:pStyle w:val='ListSub'/>", "": ""}.get(kind)
+        if props is None:
+            props = f"<w:numPr><w:ilvl w:val='{kind[1]}'/><w:numId w:val='1'/></w:numPr>"
+        run = f"<w:r><w:t xml:space='preserve'>{text}</w:t></w:r>"
+        body += f"<w:p><w:pPr>{props}</w:pPr>{run}</w:p>"
+    document = f"<?xml version='1.0'?><w:document {NS}><w:body>{body}{extra}</w:body></w:document>"
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("word/document.xml", document)
+        archive.writestr("word/styles.xml", STYLES)
+        archive.writestr("word/numbering.xml", NUMBERING)
+    return path
+
+
+WORD_FLOW = [("Assessed (n = 412)", "L0"), ("Excluded (n = 112)", "S"),
+             ("Randomised (n = 300)", "L0"), ("Drug (n = 151)", "L1"),
+             ("Placebo (n = 148)", "L1")]  # fmt: skip
+
+
+def test_a_word_flow_is_read_from_its_list_levels(tmp_path: Path) -> None:
+    """A level from the paragraph's own numbering or its style's; a heading's line is no
+    item, and ends the list; each heading keeps its level."""
+    path = word(tmp_path / "p.docx", [("Results", "H1"), *WORD_FLOW, ("Arms", "H2"),
+                                      ("Other (n = 3)", "L0")])  # fmt: skip
+    document = read_docx_text(path)
+    # The body opens with a line of its own, before the first paragraph's.
+    assert document.levels == ((3, 0), (4, 1), (5, 0), (6, 1), (7, 1), (9, 0))
+    assert document.heading_levels == ((1, 1), (7, 2))
+    report = audit([path], None)
+    assert report.flows_read == 1
+    assert [d.message for d in report.flows_broken] == [
+        "the arms sum to 299, and the last stage is 300"]
+
+
+def test_counts_in_text_boxes_are_noted_as_a_flow_not_read(tmp_path: Path) -> None:
+    box = ("<w:p><w:r><w:drawing><w:txbxContent><w:p><w:r><w:t>Assessed (n = 412)</w:t></w:r>"
+           "</w:p><w:p><w:r><w:t>Randomised (n = 300)</w:t></w:r></w:p></w:txbxContent>"
+           "</w:drawing></w:r></w:p>")
+    report = audit([word(tmp_path / "p.docx", [("Text.", "")], box)], None)
+    assert report.flows_read == 0
+    assert [(d.line, d.message.split(":")[0]) for d in report.flow_notes] == [
+        (0, "its text boxes give 2 counts (n = N), as a flow drawn in boxes does")]
+
+
+# ------------------------------------------------------------------ Abstract against Results
+
+PAPER = """\
+# A trial
+
+## Abstract
+
+Mortality was 53% (OR 1.52, 95% CI 1.21-1.90), t(48) = 2.10, P = 0.03. Of 412, 99 died.
+
+## Methods
+
+We randomised 412 patients.
+
+## Results
+
+Mortality was 53.3% (OR 1.52, 95% CI 1.21-1.89). We found t(48) = 2.10, P = 0.04.
+
+## Discussion
+
+As 99 died in the other trial.
+"""
+
+
+def test_the_abstract_is_held_to_what_the_paper_reports(tmp_path: Path) -> None:
+    (tmp_path / "p.md").write_text(PAPER, encoding="utf-8")
+    read = audit([tmp_path / "p.md"], None).abstract
+    assert read.compared
+    assert [c.message.split(", and")[0] for c in read.conflicts] == [
+        "the Abstract gives OR 1.52 (95% CI 1.21 to 1.90)",
+        "the Abstract gives t(48) = 2.10, P = 0.03"]
+    # 99 is printed in the Discussion only, which is no place the paper reports.
+    assert [c.text for c in read.not_found] == ["99"]
+    assert [c.text for c in read.rounded] == ["53%"]
+    assert read.matched == 1  # 412, in the Methods
+    assert read.discrimination is not None
+
+
+def test_numbers_that_agree_as_printed_are_no_conflict(tmp_path: Path) -> None:
+    """1.5 against 1.52 and P = 0.03 against P = 0.032 could each be one value printed twice,
+    and P < 0.05 holds of 0.04; two counterparts that each differ in one number are none."""
+    agreeing = PAPER.replace("1.21-1.90", "1.2-1.9").replace("P = 0.04", "P = 0.032")
+    (tmp_path / "a.md").write_text(agreeing, encoding="utf-8")
+    assert audit([tmp_path / "a.md"], None).abstract.conflicts == []
+    bounded = PAPER.replace("P = 0.03.", "P < 0.05.").replace("1.21-1.90", "1.21-1.89")
+    (tmp_path / "b.md").write_text(bounded, encoding="utf-8")
+    assert audit([tmp_path / "b.md"], None).abstract.conflicts == []
+    twice = PAPER.replace("P = 0.04.", "P = 0.04. Adjusted, OR 1.52 (95% CI 1.21-1.91).")
+    twice = twice.replace("t(48) = 2.10, P = 0.03", "")
+    (tmp_path / "c.md").write_text(twice, encoding="utf-8")
+    assert audit([tmp_path / "c.md"], None).abstract.conflicts == []
+
+
+def test_a_supplement_and_a_table_are_where_the_paper_reports(tmp_path: Path) -> None:
+    paper = PAPER.replace("As 99 died", "| Died | 99 |\n|---|---|\n| x | 1 |\n\nAs 9 died")
+    (tmp_path / "p.md").write_text(paper.replace("99 died.", "99 died, 77 lived."),
+                                   encoding="utf-8")  # fmt: skip
+    (tmp_path / "s.md").write_text("Of the cohort, 77 lived.\n", encoding="utf-8")
+    read = audit([tmp_path / "p.md", tmp_path / "s.md"], None).abstract
+    assert read.not_found == []
+
+
+@pytest.mark.parametrize(
+    ("paper", "why"),
+    [
+        (PAPER.replace("## Abstract", "## Summary of the trial"), "names the Abstract"),
+        (PAPER.replace("## Results", "## Findings that matter").replace("Findings", "Data"),
+         "Results heading"),
+    ],
+)
+def test_without_an_abstract_or_results_nothing_is_compared(
+    tmp_path: Path, paper: str, why: str
+) -> None:
+    (tmp_path / "p.md").write_text(paper, encoding="utf-8")
+    read = audit([tmp_path / "p.md"], None).abstract
+    assert not read.compared and why in read.why_not
+    assert read.conflicts == read.not_found == []
+
+
+def test_a_word_abstract_is_placed_by_its_heading_levels(tmp_path: Path) -> None:
+    """The structured abstract's own Results, a level below it, are the Abstract's."""
+    path = word(tmp_path / "p.docx", [
+        ("Abstract", "H1"), ("Results", "H2"), ("The OR was 1.52 (95% CI 1.21-1.90).", ""),
+        ("Methods", "H1"), ("We did it.", ""), ("Results", "H1"),
+        ("The OR was 1.52 (95% CI 1.21-1.89).", "")])  # fmt: skip
+    [conflict] = audit([path], None).abstract.conflicts
+    assert conflict.line == 4 and "line 8 gives" in conflict.message
+
+
+def test_numbers_agree_where_one_value_prints_as_both() -> None:
+    assert agree("1.5", "1.52") and agree("53", "53.3") and agree("0.03", "0.035")
+    assert not agree("1.90", "1.89") and not agree("0.03", "0.04") and not agree("53", "53.6")
+    assert coarser("53.3") == {("53", 0)}
+    assert coarser("0.725") == {("0.72", 2), ("0.73", 2), ("0.7", 1), ("1", 0)}
+    assert coarser("12") == set()
+
+
+def test_strict_counts_a_broken_flow_and_a_conflict_and_not_a_number_not_found(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    clean = PAPER.replace("1.21-1.90", "1.21-1.89").replace("P = 0.03", "P = 0.04")
+    (tmp_path / "clean.md").write_text(clean, encoding="utf-8")
+    assert main(["audit", str(tmp_path / "clean.md"), "--strict"]) == 0
+    capsys.readouterr()
+    (tmp_path / "p.md").write_text(PAPER, encoding="utf-8")
+    assert main(["audit", str(tmp_path / "p.md"), "--strict", "--json"]) == 1
+    said = json.loads(capsys.readouterr().out)
+    counted = sorted({f["code"] for f in said["findings"] if f["counted"]})
+    assert counted == ["abstract-conflict"]
+    assert said["counts"]["abstract_not_found"] == 1
+    assert said["counts"]["abstract_matched_as_rounding"] == 1
+    assert said["abstract_compared"] and said["what_an_abstract_match_is_worth"]
+    (tmp_path / "f.md").write_text(clean + "\n" + FLOW.replace("149", "148"), encoding="utf-8")
+    assert main(["audit", str(tmp_path / "f.md"), "--strict"]) == 1
+    out = capsys.readouterr().out
+    assert "FLOWS WHOSE ARITHMETIC DOES NOT HOLD (counted by --strict)" in out
+    assert "=== Abstract against Results ===" in out

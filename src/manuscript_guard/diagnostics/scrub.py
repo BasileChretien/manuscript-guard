@@ -106,7 +106,8 @@ def _spellings(folder: Path) -> set[str]:
     for path in given:
         forward = path.replace("\\", "/").rstrip("/")
         back = forward.replace("/", "\\")
-        found.update({forward, back})
+        # Doubled as repr() shows a Windows path in an error's message: 'C:\\Users\\...'.
+        found.update({forward, back, back.replace("\\", "\\\\")})
         if _DRIVE.match(forward + "/"):
             found.add("\\\\?\\" + back)
             found.add(f"/{forward[0].lower()}{forward[2:]}")
@@ -114,9 +115,15 @@ def _spellings(folder: Path) -> set[str]:
     return {spelling for spelling in found if len(spelling) > 3}
 
 
+#: A name is not inside a longer word ("Lovelaces"), but may run into digits or an
+#: underscore, as it does in a citation key ("lovelace2020").
+_NOT_A_LETTER_BEFORE = r"(?<![^\W\d_])"
+_NOT_A_LETTER_AFTER = r"(?![^\W\d_])"
+
+
 def _authors(root: Path | None) -> list[tuple[re.Pattern[str], str]]:
-    """Each author's full name, family name and ORCID from `authors.yaml`, as whole words,
-    where the file reads; nothing where it does not."""
+    """Each author's full name, family name and ORCID from `authors.yaml`, in any case and
+    with no letter on either side, where the file reads; nothing where it does not."""
     if root is None:
         return []
     try:
@@ -131,7 +138,11 @@ def _authors(root: Path | None) -> list[tuple[re.Pattern[str], str]]:
         if isinstance(person, dict):
             found += [(text, f"<AUTHOR-{number}>") for text in _named(person)]
     ordered = sorted(found, key=lambda pair: -len(pair[0]))
-    return [(re.compile(r"\b" + re.escape(text) + r"\b"), label) for text, label in ordered]
+    return [
+        (re.compile(_NOT_A_LETTER_BEFORE + re.escape(text) + _NOT_A_LETTER_AFTER, re.IGNORECASE),
+         label)
+        for text, label in ordered
+    ]  # fmt: skip
 
 
 def _named(person: dict) -> list[str]:

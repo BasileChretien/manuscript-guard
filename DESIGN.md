@@ -11894,8 +11894,11 @@ script reading the exit code took it for `check` finding something, the author c
 it, and nobody could say what to send. Now `main` catches it after the three errors it already
 words (`ContractError`, `BuildError`, `RoundTripError`), prints one sentence that names the
 command, the error's type and its message and says the fault is the tool's and not in the
-author's files, and exits 2, the code for "could not run". A reader that stopped reading
-(`BrokenPipeError`, from `| head`) is not a fault, and keeps Python's behaviour.
+author's files, and exits 2, the code for "could not run". An error from the system
+(`OSError`: a file Word holds open, a folder that cannot be written, a full disk) is not said
+to be the tool's alone: the sentence says where to look, and it is still recorded, since the
+command should have put it in words. A reader that stopped reading (`BrokenPipeError`, from
+`| head`) is not a fault, and keeps Python's behaviour.
 
 The failure is recorded on this machine (`diagnostics/crashes.py`), in a folder of the user's
 rather than of the project's: `%LOCALAPPDATA%\manuscript-guard\reports` on Windows,
@@ -19026,10 +19029,11 @@ What papers converted from Word showed (see "What papers converted from Word sho
   - A text is approved by one author. An approval says nothing of the co-authors, whose word
     on a post under one author's name is not asked.
 - **A record of the tool's own failure holds what the scrub caught out of it, and no more.**
-  - The scrub replaces exact strings and a few patterns: the project's folder, the home, temp
-    and Python folders in the spellings Windows, POSIX and Git Bash give them, e-mail
-    addresses, a user and password in a link, the value of a variable that holds a
-    credential, and the names and ORCIDs `authors.yaml` lists. A path written another way (an
+  - The scrub replaces exact strings and a few patterns: the project's folder (the one the
+    command names, else the working folder's), the home, temp and Python folders in the
+    spellings Windows, POSIX, Git Bash and `repr()` give them, e-mail addresses, a user and
+    password in a link, the value of a variable that holds a credential, and the names and
+    ORCIDs `authors.yaml` lists, in any case and inside a citation key. A path written another way (an
     8.3 short name, a relative path, one broken across lines), a name the file does not list,
     a credential held outside the environment, and a line of the manuscript that the error's
     message quotes stay as they were. The record is on the user's own machine; whoever sends

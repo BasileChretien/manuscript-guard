@@ -6742,7 +6742,9 @@ def main(argv: list[str] | None = None) -> int:
 
     args = build_parser().parse_args(argv)
     _survive_the_console()
-    crashes.invoked(args.command, sys.argv[1:] if argv is None else argv)
+    named = getattr(args, "path", None)
+    crashes.invoked(args.command, sys.argv[1:] if argv is None else argv,
+                    start=named if isinstance(named, (str, Path)) else None)  # fmt: skip
     refused = _refused_for_latex(args)
     if refused is not None:
         print(f"manuscript-guard: {refused}", file=sys.stderr)
@@ -6778,8 +6780,16 @@ def _unexpected(command: str | None, exc: Exception) -> int:
     from manuscript_guard.diagnostics import crashes
 
     what = command or "manuscript-guard"
-    sentence = (f"manuscript-guard: {what} stopped on an error in manuscript-guard itself, "
-                f"not in your files: {type(exc).__name__}: {exc}")  # fmt: skip
+    if isinstance(exc, OSError):
+        # A file another program holds open, a folder that cannot be written, a disk that is
+        # full: the system's answer, which the command should have put in words and did not.
+        sentence = (f"manuscript-guard: {what} stopped on an error from the system it did not "
+                    f"expect: {type(exc).__name__}: {exc}. Where it names a file of yours that "
+                    "another program holds open, or a folder that cannot be written, put that "
+                    "right and run it again.")  # fmt: skip
+    else:
+        sentence = (f"manuscript-guard: {what} stopped on an error in manuscript-guard itself, "
+                    f"not in your files: {type(exc).__name__}: {exc}")  # fmt: skip
     if crashes.under_ci():
         traceback.print_exception(exc)
         print(sentence, file=sys.stderr)

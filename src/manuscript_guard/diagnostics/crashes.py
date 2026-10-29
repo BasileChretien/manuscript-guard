@@ -18,6 +18,7 @@ traceback, for whoever is fixing it.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
@@ -47,22 +48,32 @@ _FLAG = re.compile(r"^--?[A-Za-z][A-Za-z0-9-]*$")
 _SAID = "hooks-said.json"
 _TRUE = frozenset({"1", "true", "yes", "on"})
 
-#: What `main` was asked: the command and the flags' names. Set once per invocation.
-_invocation: dict = {"command": None, "flags": [], "words": 0}
+#: What `main` was asked: the command, the flags' names, and the folder or file it names,
+#: which says which project's folder and authors to take out of a record. Set once per
+#: invocation.
+_invocation: dict = {"command": None, "flags": [], "words": 0, "start": None}
 
 
-def invoked(command: str | None, argv: Sequence[str]) -> None:
-    """Keep the command and the names of the flags given; their values are counted, not kept."""
+def invoked(command: str | None, argv: Sequence[str], start: Path | str | None = None) -> None:
+    """Keep the command and the names of the flags given; their values are counted, not kept.
+
+    A short option is kept as its two characters, since its value may follow with no space
+    (`-omydraft`), and every word after `--` is an argument, however it begins."""
     flags: list[str] = []
     words = 0
-    for token in argv:
+    tokens = list(argv)
+    ends = tokens.index("--") if "--" in tokens else len(tokens)
+    for token in tokens[:ends]:
         name = token.split("=", 1)[0]
         if _FLAG.match(name):
+            name = name if name.startswith("--") else name[:2]
             if name not in flags:
                 flags.append(name)
         else:
             words += 1
-    _invocation.update(command=command, flags=flags, words=max(words - 1, 0))
+    words += len(tokens[ends + 1:])
+    _invocation.update(command=command, flags=flags, words=max(words - 1, 0),
+                       start=Path(start) if start else None)  # fmt: skip
 
 
 def _set(environ: Mapping[str, str], name: str) -> bool:
@@ -117,15 +128,16 @@ def record(
         where = folder(environ)
         if where is None or on_purpose(exc):
             return None
-        root = root if root is not None else _root()
+        root = root if root is not None else project_root()
         found = _entry(exc, kind, name, root, environ)
         where.mkdir(parents=True, exist_ok=True, mode=0o700)
         path = where / f"{found['fingerprint']}.json"
         _write(path, _merged(path, found))
-        _rotate(where, path)
-        return path
     except Exception:  # noqa: BLE001 - a record must never cost the command its message
         return None
+    with contextlib.suppress(Exception):  # the record is written; tidying is not its part
+        _rotate(where, path)
+    return path
 
 
 def records(environ: Mapping[str, str] | None = None) -> list[dict]:
@@ -162,19 +174,33 @@ def hook_failures(environ: Mapping[str, str] | None = None) -> str | None:
         kinds = "one kind" if len(failed) == 1 else f"{len(failed)} kinds"
         return (f"manuscript-guard's hooks failed on errors of {kinds} since {first}, and kept "
                 f"out of the way, so a check they hold may not have run. The records are in "
-                f"{where}; nothing was sent.")  # fmt: skip
+                f"{_shown(where)}; nothing was sent.")  # fmt: skip
     except Exception:  # noqa: BLE001 - a hook must never break the session
         return None
 
 
-def _root() -> Path | None:
-    """The project the command runs in, where there is one."""
+def _shown(where: Path) -> str:
+    """`where` with the home folder written `~`: the line goes into the agent's context, and
+    the home folder's name is the user's."""
+    try:
+        return str(Path("~") / where.resolve().relative_to(Path.home().resolve()))
+    except (ValueError, OSError, RuntimeError):
+        return str(where)
+
+
+def project_root() -> Path | None:
+    """The project of the folder or file the command names, or of the working folder."""
     try:
         from manuscript_guard.contracts.project import find_root
 
-        return find_root(Path.cwd())
+        return find_root(_invocation.get("start") or Path.cwd())
     except Exception:  # noqa: BLE001 - no project is an answer
-        return None
+        try:
+            from manuscript_guard.contracts.project import find_root
+
+            return find_root(Path.cwd())
+        except Exception:  # noqa: BLE001 - no project is an answer
+            return None
 
 
 def _entry(exc, kind: str, name: str | None, root: Path | None, environ) -> dict:
@@ -192,8 +218,8 @@ def _entry(exc, kind: str, name: str | None, root: Path | None, environ) -> dict
         "command": _invocation["command"],
         "name": name,
         "version": __version__,
-        "python": ".".join(str(part) for part in sys.version_info[:3]),
-        "system": _system(),
+        "python": python_version(),
+        "system": system_name(),
         "flags": list(_invocation["flags"]),
         "other_words": _invocation["words"],
         "exception": exception,
@@ -232,7 +258,11 @@ def _frames(exc: BaseException) -> list[dict]:
     return frames
 
 
-def _system() -> str:
+def python_version() -> str:
+    return ".".join(str(part) for part in sys.version_info[:3])
+
+
+def system_name() -> str:
     """The system's name and release, read without starting a program: `platform.release`
     may run `ver` on Windows, with no limit on how long it takes."""
     if os.name == "nt":
@@ -251,7 +281,7 @@ def _qualified(cls: type) -> str:
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return datetime.now(timezone.utc).isoformat(timespec="microseconds")
 
 
 def _merged(path: Path, found: dict) -> dict:

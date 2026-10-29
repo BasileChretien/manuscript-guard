@@ -1954,7 +1954,8 @@ def session_start(payload: dict) -> int:
     except Exception as exc:  # noqa: BLE001 - a fault of the tool's own costs the line, and no more
         _recorded(exc, "session-start: the status line")
         status = None
-    failed = None if source in QUIET_SOURCES else _hooks_failed()
+    # Said once, so not where nobody reads it (`claude -p`): the next attended session says it.
+    failed = None if source in QUIET_SOURCES or _unattended() else _hooks_failed()
     notice = " ".join(part for part in (notice, failed) if part) or None
     if status is None and notice is None:
         return 0

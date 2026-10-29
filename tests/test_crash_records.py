@@ -244,6 +244,112 @@ def test_the_message_is_kept_with_the_project_and_home_taken_out(kept, tmp_path,
     assert found["message"].startswith("<PROJECT>")
 
 
+def test_a_path_in_an_error_as_python_shows_it_is_taken_out(kept, tmp_path,
+                                                            monkeypatch) -> None:
+    """Python shows a path in an OSError's message through repr(), with each backslash
+    doubled on Windows."""
+    project = tmp_path / "study"
+    project.mkdir()
+    (project / "paper.yaml").write_text("schema: manuscript-guard/paper/1\n", encoding="utf-8")
+    monkeypatch.chdir(project)
+    try:
+        open(project / "data" / "cohort.csv", encoding="utf-8")  # noqa: SIM115 - it raises
+    except FileNotFoundError as exc:
+        path = crashes.record(exc, kind=crashes.COMMAND)
+    message = json.loads(path.read_text(encoding="utf-8"))["message"]
+    assert "<PROJECT>" in message
+    assert tmp_path.name not in message
+
+
+def test_the_project_is_the_one_the_command_names(kept, tmp_path, monkeypatch) -> None:
+    project = tmp_path / "study"
+    project.mkdir()
+    (project / "paper.yaml").write_text("schema: manuscript-guard/paper/1\n", encoding="utf-8")
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    crashes.invoked("check", ["check", str(project)], start=project)
+    try:
+        raise ValueError(f"{project / 'manuscript' / 'main.md'} line 3")
+    except ValueError as exc:
+        path = crashes.record(exc, kind=crashes.COMMAND)
+    finally:
+        crashes.invoked(None, [])
+    assert json.loads(path.read_text(encoding="utf-8"))["message"].startswith("<PROJECT>")
+
+
+def test_an_error_of_the_system_is_not_said_to_be_the_tools_alone(kept, monkeypatch,
+                                                                  capsys) -> None:
+    def held(_args) -> int:
+        raise PermissionError(13, "Permission denied", "manuscript.docx")
+
+    monkeypatch.setattr(cli, "cmd_stages", held)
+    assert cli.main(["stages"]) == 2
+    said = capsys.readouterr().err
+    assert "not in your files" not in said
+    assert "another program holds open" in said and "PermissionError" in said
+
+
+def test_a_short_option_keeps_no_value_and_words_after_two_dashes_are_no_flags() -> None:
+    crashes.invoked("build", ["build", "-omydraft", "--", "-secret-word"])
+    try:
+        assert crashes._invocation["flags"] == ["-o"]
+        assert "mydraft" not in json.dumps(crashes._invocation)
+        assert "secret" not in json.dumps(crashes._invocation)
+    finally:
+        crashes.invoked(None, [])
+
+
+def test_times_are_kept_finer_than_a_second() -> None:
+    assert "." in crashes._now()
+
+
+def test_an_unattended_session_leaves_the_line_for_the_next_one(kept, tmp_path, monkeypatch,
+                                                                capsys) -> None:
+    def broken(_payload) -> int:
+        raise TypeError("expected str, got NoneType")
+
+    monkeypatch.setitem(hooks.HANDLERS, "guard-write", broken)
+    hooks.dispatch("guard-write", {})
+    monkeypatch.chdir(tmp_path)
+    started = {"source": "startup", "cwd": str(tmp_path), "session_id": "s"}
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ATTENDED", "0")
+    hooks.session_start(started)
+    assert "hooks failed" not in capsys.readouterr().out
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ATTENDED", "1")
+    monkeypatch.delenv("CLAUDE_CODE_ENTRYPOINT", raising=False)
+    hooks.session_start(started)
+    assert "hooks failed" in capsys.readouterr().out
+
+
+def test_the_hook_line_does_not_give_the_agent_the_home_folder(kept, tmp_path, monkeypatch,
+                                                               capsys) -> None:
+    monkeypatch.setenv(crashes.FOLDER, str(Path.home() / ".mg-test-reports-not-made"))
+    try:
+        raise TypeError("x")
+    except TypeError as exc:
+        crashes.record(exc, kind=crashes.HOOK, name="stop")
+    try:
+        line = crashes.hook_failures()
+    finally:
+        import shutil
+
+        shutil.rmtree(Path.home() / ".mg-test-reports-not-made", ignore_errors=True)
+    assert line is not None and str(Path.home()) not in line
+    assert "~" in line
+
+
+def test_a_record_written_is_said_written_even_if_tidying_fails(kept, monkeypatch) -> None:
+    def broken(*_args) -> None:
+        raise OSError("cannot list the folder")
+
+    monkeypatch.setattr(crashes, "_rotate", broken)
+    try:
+        raise RuntimeError("x")
+    except RuntimeError as exc:
+        assert crashes.record(exc, kind=crashes.COMMAND) is not None
+
+
 def test_scrub_takes_out_each_spelling_of_the_project_folder(tmp_path) -> None:
     root = tmp_path / "Clinical Study"
     root.mkdir()
@@ -288,11 +394,12 @@ def test_scrub_replaces_the_authors_names_and_orcids(tmp_path) -> None:
         "  - given: Ada\n    family: Lovelace\n    orcid: 0000-0002-1825-0097\n",
         encoding="utf-8",
     )
-    said = scrub("Ada Lovelace (0000-0002-1825-0097) wrote; Lovelace agreed; Lovelaces no.",
-                 root=tmp_path, environ={})  # fmt: skip
+    said = scrub("Ada Lovelace (0000-0002-1825-0097) wrote; Lovelace agreed; Lovelaces no; "
+                 "KeyError: 'lovelace2020'; LOVELACE.", root=tmp_path, environ={})  # fmt: skip
     assert "Lovelace " not in said and "0000-0002-1825-0097" not in said
-    assert said.count("<AUTHOR-1>") == 3
-    assert "Lovelaces" in said  # a whole word only
+    assert "lovelace2020" not in said and "LOVELACE" not in said
+    assert said.count("<AUTHOR-1>") == 5
+    assert "Lovelaces" in said  # a name inside a longer word is left
 
 
 def test_the_diagnostics_import_nothing_that_could_send() -> None:

@@ -2160,8 +2160,10 @@ def _read_as_reader(report, reader: _Reader, main: Path, papers: list[Path],
         run = JournalRun(main, reader.profile_path, skipped=[*FROM_RECORDS, GRAPHICAL],
                          note=f"G4 was not run: {main.name} could not be read")  # fmt: skip
     else:
-        cited = {doi for census in report.references for entry in census.entries
-                 for doi in entry.dois}  # fmt: skip
+        # None where no reference list was read, a LaTeX paper's .bib among them: then no
+        # DOI of the data statement can be said to be cited or not (round 1 of #478).
+        listed = [entry for census in report.references for entry in census.entries]
+        cited = {doi for entry in listed for doi in entry.dois} if listed else None
         run = run_journal(main, reader.profile_path, reader.profile, tree, english=english,
                           cited=cited)  # fmt: skip
     run.others = [path for path in papers if path.resolve() != main.resolve()]

@@ -168,9 +168,10 @@ FROM_RECORDS = (
 def check_journal(project: Project, *, records: bool = True,
                   cited: set[str] | None = None) -> Report:  # fmt: skip
     """G4 on the project's manuscript. With `records` False, only what reads the manuscript's
-    text and the profile: its limits, its abstract, its sections and statements, its data
-    statement and the profile's age, for a paper in no project, whose DOIs cited are `cited`
-    (the reference list as the audit read it): `FROM_RECORDS` is what is left out."""
+    text and the profile: its limits, its tables as it types them among them, its abstract,
+    its sections and statements, its data statement and the profile's age, for a paper in no
+    project, whose DOIs cited are `cited` (the reference list as the audit read it, None
+    where none was read): `FROM_RECORDS` is what is left out."""
     slug = project.target_journal
     if not slug:
         return Report(
@@ -219,11 +220,14 @@ def check_journal(project: Project, *, records: bool = True,
     text = main_text(project)
     named = abstract_title_of(document)
     counts = measured(project, named, text)
+    if not records:
+        counts = _typed_tables(project, counts, text)
     report = report.merge(_check_limits(document, counts, path))
     report = report.merge(_check_abstract_found(document, text, path))
     report = report.merge(_check_structure(document, text, path))
     report = report.merge(_check_statements(document, text, path))
-    report = report.merge(check_data_statement(document, text, path, project, cited=cited))
+    report = report.merge(check_data_statement(document, text, path, project, cited=cited,
+                                               from_project=records))  # fmt: skip
     if records:
         report = report.merge(_check_variant(document, project))
         report = report.merge(check_style(project, document, path))
@@ -235,6 +239,19 @@ def check_journal(project: Project, *, records: bool = True,
         main_text_words=counts.main_text_words,
         display_items=counts.tables + counts.figures,
     )
+
+
+def _typed_tables(project: Project, counts, text: str):
+    """`counts` with the tables a paper in no project types itself: in Markdown each table
+    of the four kinds pandoc reads (`count_tables`), which is how pandoc writes a .docx's;
+    a table binding is all `measure` counts, and an audited paper has none. A LaTeX paper's
+    are its captioned floats already (`latex_displays`)."""
+    from manuscript_guard.text.reader import LATEX, manuscript_format
+    from manuscript_guard.text.tables import count_tables
+
+    if manuscript_format(project.path("manuscript")) == LATEX:
+        return counts
+    return replace(counts, tables=counts.tables + count_tables(text))
 
 
 def abstract_title_of(document: dict) -> str | None:

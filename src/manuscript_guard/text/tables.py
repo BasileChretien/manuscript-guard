@@ -84,6 +84,13 @@ def table_lines(text: str) -> frozenset[int]:
     return _Tables(text.split("\n")).lines()
 
 
+def count_tables(text: str) -> int:
+    """How many tables a Markdown text prints, of the four kinds `table_lines` reads: one in
+    a fenced block, an HTML comment or the front matter is not one (`mask`). A table written
+    in HTML is not counted (`audit --journal` says so)."""
+    return len(_Tables(kept_breaks(text, mask(text)).split("\n")).spans())
+
+
 class _Tables:
     def __init__(self, lines: list[str]) -> None:
         self.text = lines
@@ -102,16 +109,20 @@ class _Tables:
             self.gap[at] = at if two else self.gap[at + 1]
 
     def lines(self) -> frozenset[int]:
-        found: set[int] = set()
+        return frozenset(at for start, end in self.spans() for at in range(start, end))
+
+    def spans(self) -> list[tuple[int, int]]:
+        """Each table, as its lines `[start, end)`, in order."""
+        found: list[tuple[int, int]] = []
         index = 0
         while index < len(self.text):
             end = self._from(index)
             if end is None:
                 index += 1
                 continue
-            found.update(range(index, end))
+            found.append((index, end))
             index = end
-        return frozenset(found)
+        return found
 
     def _from(self, index: int) -> int | None:
         """The line after the last of a table that opens on line `index`, or None."""

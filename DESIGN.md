@@ -8093,8 +8093,13 @@ are (`auditing.gates._stage`), with the profile copied in as its target journal,
 there with `check_journal(records=False)`: the profile's age, the limits, the abstract found
 and structured, the required sections and statements, and the data statement held to the
 profile's data policy, its DOIs to the paper's own reference list as the audit's census reads
-it (`check_data_statement(cited=...)`), not to a references.bib the paper does not have; and
-the boxes (`check_boxes`, at the submission stage). What reads a project's records is not
+it (`check_data_statement(cited=..., from_project=False)`), not to a references.bib the paper
+does not have, and not said cited or not where no list was read (a LaTeX paper's `.bib`; round
+1 of #478); and the boxes (`check_boxes`, at the submission stage). The limits count the
+tables the paper types itself, which `measure` does not, since it counts a table binding and
+an audited paper has none: in Markdown and a converted .docx the four kinds of table pandoc
+reads (`text.tables.count_tables`), and in LaTeX the captioned floats, as before (round 1 of
+#478: six tables passed a limit of three). What reads a project's records is not
 run, and each is named under "Not checked here" (`gates.journal.FROM_RECORDS`, and the
 graphical abstract): the quotes against the stored page, the corresponding author's sign-off
 of the rules no gate checks, the CSL style, the figure files, the LaTeX class, and the
@@ -8105,7 +8110,9 @@ audit, exit 2, with the schema's errors. On a real project, `check_journal` runs
 `records` and `cited` change nothing where they are not given.
 
 **The Document section** (`auditing.document`) reads each .docx given, when a reader option
-is, from its XML exactly: each `w:ins`, `w:del` and `w:moveTo` that holds text, each comment,
+is, from its XML exactly: each `w:ins` and `w:del` that holds text, each move once by the
+named range it went to (Word 365 wraps each paragraph of a move in a `w:moveTo` of its own,
+seen 2026-10-29), each comment,
 each run whose own properties hide it, and each name in `dc:creator`, `cp:lastModifiedBy`, a
 `w:author` and `word/people.xml`, with its field. A warning where there is any, and never
 counted: some journals ask for a revision with its changes tracked (decision 8).
@@ -8113,10 +8120,14 @@ counted: some journals ask for a revision with its changes tracked (decision 8).
 **`--authors FILE`** goes with `--journal`, whose profile says whether the review is blind.
 Where it is double or triple, the build's blinding check is run on each document given, the
 supplement as well as the main document, as it was sent (`auditing.journal.look_for_authors`
-through `build.blinding`'s `docx_places`, `latex_places` and `found_in`), on a Markdown
-paper's text, and on a LaTeX paper's tree and the pictures of its folder; each author named is
-counted by
-`--strict`, the one new finding that is (decision 8: an exact fact, where the G4 limits are
+through `build.blinding`'s `docx_places`, `latex_places`, `deleted_text` and `found_in`), on a
+Markdown paper's text, and on a LaTeX paper's tree and the pictures it places with
+`\includegraphics`, not every picture in its folder (round 1 of #478). The reference list is
+left out where the audit finds it (`audit.read_paper`, a LaTeX `thebibliography`): a blind
+journal asks its authors to cite their own work in the third person, and the build's rule, a
+paragraph styled "Bibliography", missed a list typed in Normal or EndNote's style and a
+Markdown list (round 1 of #478). Each author named is counted by `--strict`, the one new
+finding that is (decision 8: an exact fact, where the G4 limits are
 not, since journals count words otherwise). The file is authors.yaml's shape, each author with
 a given and a family name; the full schema of a project's authors.yaml is not asked of it.
 
@@ -19047,6 +19058,15 @@ What papers converted from Word showed (see "What papers converted from Word sho
     patterns, anchored on a heading, a declaration set as a bold paragraph reads as missing.
   - Its word counts are this tool's counting, after pandoc's conversion of a .docx, and not
     the journal's own; neither is counted by `--strict`.
+  - A Markdown paper's tables, and a .docx's as pandoc writes them, are counted as the four
+    kinds of table pandoc's manual shapes (`text.tables.count_tables`), a Word table used
+    for layout among them; a table written in HTML is not, and the report puts the table
+    limits under what was not checked where one is there. A LaTeX paper's are its captioned
+    floats (`latex_displays`): a `tabular` in no captioned float is not counted. Figures are
+    counted as `measure` counts them: a Word picture with no caption pandoc reads, and a
+    figure sent as a file of its own, are not.
+  - Where no reference list was read, a LaTeX paper's `.bib` among them, a DOI the data
+    availability statement names is not said to be cited or not, and the report says so.
   - The figure files' artwork, the CSL style, a LaTeX class's rules and the profile's quotes
     against its stored page are not checked, and the report says so.
   - The main document is the first paper named. A main document named second is read as the
@@ -19056,8 +19076,14 @@ What papers converted from Word showed (see "What papers converted from Word sho
     Text a style hides is not counted as hidden, only a run whose own properties hide it, and
     a change of formatting alone is not counted as a tracked change.
   - The blinding check finds a name as the build does: the given and family name, or an
-    initial with its stop; a family name alone is not looked for, nor is the reference list,
-    nor a part of an affiliation under three words.
+    initial with its stop; a family name alone is not looked for, nor a part of an
+    affiliation under three words. The reference list is left out where the audit finds it
+    (`read_paper`, `thebibliography`), so a self-citation in a list the audit does not find
+    is read as text; and in a .docx what a tracked change deleted is read wherever it is but
+    in a list styled "Bibliography", a deleted entry of an unstyled list among it.
+  - A LaTeX paper's pictures are those its files place with `\includegraphics`, found from
+    the entry's folder or the file's own, a name with no extension as `.pdf` or `.svg`;
+    `\graphicspath` is not followed, and a raster picture holds no text to read.
   - The confidentiality guard reads an agent's ordinary commands, as the other shell guards
     do: an `audit` started from a script, or with its options built at run time, is not
     asked. The notice and the paper-audit skill's stop paragraph are the rest of the control,

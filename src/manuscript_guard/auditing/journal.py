@@ -56,8 +56,12 @@ class JournalRun:
     others: list[Path] = field(default_factory=list)
     #: Why G4 did not run, where it did not.
     note: str = ""
-    #: What the blinding check said where it did not look: no --authors, or no blind review.
+    #: What the blinding check said where it did not look: --authors given and a review not
+    #: blind, a blind review and no --authors, or a document it could not read.
     blind_note: str = ""
+    #: How the journal's review is blinded, where the authors were looked for; None where
+    #: they were not, a review that is not blind among them.
+    looked: str | None = None
     #: Whether the lines are lines of the text pandoc converted a .docx to.
     converted: bool = False
 
@@ -129,12 +133,16 @@ def run_journal(
     run.manual = [(str(rule.get("rule", "")), str(rule.get("quote", "")))
                   for rule in profile.get("manual") or [] if isinstance(rule, dict)]  # fmt: skip
     run.skipped = [*FROM_RECORDS, GRAPHICAL]
+    if cited is None and isinstance(profile.get("data_availability"), dict):
+        run.skipped.append(UNCITED)
     try:
         staged = _stage(paper, tree)
     except ValueError as exc:
         run.note = f"G4 was not run on {paper.name}: {exc}"
         return run
     run.converted = staged.converted
+    if _html_tables(staged, profile):
+        run.skipped.append(HTML_TABLES)
     slug = _slug(profile_path)
     with tempfile.TemporaryDirectory(prefix="mg-audit-") as folder:
         root = Path(folder).resolve()
@@ -160,11 +168,32 @@ def run_journal(
     return run
 
 
+#: Said under what was not checked where no reference list was read, so that no DOI of the
+#: data availability statement can be said to be cited or not.
+UNCITED = ("whether each DOI the data availability statement names is cited: no reference "
+           "list was read, as in a LaTeX paper whose list is in its .bib")
+#: Said where the main document holds a table written in HTML, which is not counted.
+HTML_TABLES = ("the tables written in HTML, which are not counted toward the journal's limits "
+               "on tables and display items")
+
+
+def _html_tables(staged, profile: dict) -> bool:
+    """Whether a Markdown main document, as staged, prints a table written in HTML, and the
+    profile limits its tables."""
+    from manuscript_guard.text.sections import scannable
+
+    limits = profile.get("limits") or {}
+    if not ({"tables", "display_items"} & set(limits)) or "main.md" not in staged.files:
+        return False
+    return re.search(r"(?i)<table\b", scannable(staged.files["main.md"])) is not None
+
+
 def look_for_authors(run: JournalRun, papers: list[tuple[Path, object]], profile: dict,
                      authors: dict | None) -> None:  # fmt: skip
     """Each place an author is named in each document of the submission, `papers` each with
     its LaTeX tree where it is one, where the profile says the review is blind and the
-    authors are given; else why nobody was looked for."""
+    authors are given; else why nobody was looked for. A review that is not blind, with no
+    authors given, is said nothing of."""
     from manuscript_guard.build.blinding import BLIND, found_in, sought
 
     kind = profile.get("blinding")
@@ -178,6 +207,7 @@ def look_for_authors(run: JournalRun, papers: list[tuple[Path, object]], profile
                           "looked for: --authors names them; the names Word keeps are listed "
                           "in the Document section")  # fmt: skip
         return
+    run.looked = kind
     unread = []
     for paper, tree in papers:
         places = _places(paper, tree)
@@ -190,25 +220,68 @@ def look_for_authors(run: JournalRun, papers: list[tuple[Path, object]], profile
     run.blind_note = "; ".join(unread)
 
 
+#: What a tracked change deleted is called among the places a name is looked for.
+DELETED = "the text a tracked change deleted"
+
+
 def _places(paper: Path, tree) -> list[tuple[str, str]] | str:
-    """Where in one document a name can be, as the build reads its own; or why it could not
-    be read."""
-    from manuscript_guard.build.blinding import docx_places, latex_places
+    """Where in one document a name can be, the reference list left out as the audit finds
+    it (`audit.read_paper`), where a blind journal's authors cite their own work in the third
+    person; or why the document could not be read.
+
+    A .docx: its text as the audit reads it, its list cut; what a tracked change deleted
+    outside a list styled "Bibliography"; and the rest the build reads, its notes, comments,
+    headers, author fields, links and pictures (`build.blinding.docx_places`). A LaTeX
+    paper: each file its tree reads, its `thebibliography` left out, and the pictures it
+    places (`_placed_pictures`). Markdown: its text, its list cut."""
+    from manuscript_guard.audit import read_paper
+    from manuscript_guard.build.blinding import deleted_text, docx_places, latex_places
     from manuscript_guard.safexml import UnsafeDocument
+    from manuscript_guard.text.docx import NotADocx
 
     try:
-        if paper.suffix.lower() == ".docx":
-            return docx_places(paper)
         if tree is not None:
             files = [path for path, _source in tree.files]
-            files += sorted(p for p in tree.folder.rglob("*")
-                            if p.is_file() and p.suffix.lower() in (".sty", ".pdf", ".svg"))
-            return latex_places(list(dict.fromkeys(files)))
-        from manuscript_guard.audit import read_text
-
-        return [("the text", read_text(paper))]
-    except (UnsafeDocument, OSError, ValueError) as exc:
+            return latex_places(list(dict.fromkeys([*files, *_placed_pictures(tree)])))
+        text = read_paper(paper)[0]
+        if paper.suffix.lower() != ".docx":
+            return [("the text", text)]
+        return [*docx_places(paper, body=False), ("the text", text),
+                (DELETED, deleted_text(paper))]
+    except (UnsafeDocument, NotADocx, OSError, ValueError) as exc:
         return f"{paper.name} could not be read for the authors' names: {exc}"
+
+
+#: `\includegraphics[options]{name}`, and the comment that ends a LaTeX line.
+_GRAPHIC = re.compile(r"\\includegraphics\s*(?:\[[^\]]*\])?\s*\{([^{}]+)\}")
+_COMMENT = re.compile(r"(?<!\\)%.*")
+
+
+def _placed_pictures(tree) -> list[Path]:
+    """The PDF and SVG pictures the files of `tree` place with `\\includegraphics`, found
+    from the entry's folder as LaTeX finds them, a name with no extension as `.pdf` or `.svg`
+    there; not every picture in the folder, where a compiled copy of the paper may be."""
+    from manuscript_guard.contracts._schema import ContractError, read_text
+
+    found: list[Path] = []
+    for path, _source in tree.files:
+        try:
+            text = read_text(path)
+        except (ContractError, OSError):
+            continue  # a file the tree read once and cannot now: its own reading says so
+        written = "\n".join(_COMMENT.sub("", line) for line in text.split("\n"))
+        for match in _GRAPHIC.finditer(written):
+            name = match[1].strip().strip('"')
+            for folder in dict.fromkeys((tree.folder, path.parent)):
+                given = folder / name
+                tried = [given] if given.suffix else [given.with_name(given.name + suffix)
+                                                      for suffix in (".pdf", ".svg")]
+                hit = next((p for p in tried if p.is_file()), None)
+                if hit is not None:
+                    if hit.suffix.lower() in (".pdf", ".svg"):
+                        found.append(hit)
+                    break
+    return found
 
 
 #: What an editor does about an author named in a document the journal reviews blind: the

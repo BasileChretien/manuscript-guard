@@ -713,9 +713,11 @@ def _document(report, show) -> list[str]:
         lines += [f"  {show(f.path)}: {f.message}" for f in run.named]
     if run.blind_note:
         lines.append(f"  {run.blind_note}")
-    elif not run.named:
-        lines.append("  The journal's review is blind, and no author was found named in what "
-                     "was read.")  # fmt: skip
+    elif run.looked and not run.named:
+        # Only where the authors were looked for: a review that is not blind, with no
+        # --authors, is said nothing of (round 1 of #478).
+        lines.append(f"  The journal's review is {run.looked}-blind, and no author was found "
+                     "named in what was read.")  # fmt: skip
     return lines
 
 

@@ -5,9 +5,12 @@ hidden, or the names of the people who edited it in its properties, says things 
 did not mean to send. Each is read from the document's XML as Word writes it, exactly, and
 counted (`document_facts`):
 
-- tracked insertions, deletions and moves: each `w:ins`, `w:del`, `w:moveFrom` and `w:moveTo`
-  that holds text, in the body, the notes, the headers and the footers. A change Word marks
-  on a paragraph mark alone, or on formatting, holds no text and is not counted;
+- tracked insertions and deletions: each `w:ins` and `w:del` that holds text, in the body,
+  the notes, the headers and the footers. A change Word marks on a paragraph mark alone, or
+  on formatting, holds no text and is not counted;
+- tracked moves: each move once, by the name Word gives the range it was moved to
+  (`w:moveToRangeStart`), however many paragraphs it wraps in a `w:moveTo` of their own
+  (Word 365, 2026-10-29); a `w:moveTo` that holds text in no named range counts once;
 - comments: each `w:comment` of `word/comments.xml`;
 - hidden text: each run with text whose own properties hide it (`w:vanish`). Text a style
   hides is not read (Known gaps);
@@ -79,6 +82,24 @@ def _hidden(run) -> bool:
     return any((node.text or "").strip() for node in run.iter(f"{_W}t"))
 
 
+def _moves(root) -> int:
+    """The moves of one part, each once: the named ranges a move went to, and each `w:moveTo`
+    holding text outside any of them. Word wraps each paragraph of a move in a `w:moveTo` of
+    its own, between one `w:moveToRangeStart` and its `w:moveToRangeEnd`."""
+    named: set[str] = set()
+    open_ranges: set[str] = set()
+    alone = 0
+    for element in root.iter():
+        if element.tag == f"{_W}moveToRangeStart":
+            open_ranges.add(element.get(f"{_W}id", ""))
+            named.add(element.get(f"{_W}name") or f"#{element.get(f'{_W}id', '')}")
+        elif element.tag == f"{_W}moveToRangeEnd":
+            open_ranges.discard(element.get(f"{_W}id", ""))
+        elif element.tag == f"{_W}moveTo" and not open_ranges and _holds_text(element):
+            alone += 1
+    return len(named) + alone
+
+
 def document_facts(path: Path) -> DocumentFacts:
     """What `path`, a .docx, holds besides its text (see the module's docstring)."""
     facts = DocumentFacts(path)
@@ -88,15 +109,13 @@ def document_facts(path: Path) -> DocumentFacts:
             authors: list[str] = []
             for name in _parts(names):
                 root = read_part(archive, name)
+                facts.moves += _moves(root)
                 for element in root.iter():
                     if element.tag in (f"{_W}ins", f"{_W}del") and _holds_text(element):
                         if element.tag == f"{_W}ins":
                             facts.insertions += 1
                         else:
                             facts.deletions += 1
-                    elif element.tag in (f"{_W}moveFrom", f"{_W}moveTo") and \
-                            _holds_text(element):  # fmt: skip
-                        facts.moves += element.tag == f"{_W}moveTo"
                     elif element.tag == f"{_W}comment" and name == "word/comments.xml":
                         facts.comments += 1
                     elif element.tag == f"{_W}r" and _hidden(element):

@@ -84,8 +84,10 @@ def statement_text(text: str, heading: str | None = None) -> str | None:
     return min(found, key=lambda section: section.level).enclosed
 
 
-def judge_statement(statement: str, policy: dict, cited: set[str], path: Path) -> Report:
-    """What the journal's data policy says of one statement."""
+def judge_statement(statement: str, policy: dict, cited: set[str] | None,
+                    path: Path) -> Report:  # fmt: skip
+    """What the journal's data policy says of one statement. `cited` None is no reference
+    list read, and whether a dataset is cited is then not said (`audit --journal`)."""
     report = Report()
     for rule in policy.get("forbidden") or []:
         found = re.search(rule["pattern"], statement, re.IGNORECASE)
@@ -129,7 +131,7 @@ def judge_statement(statement: str, policy: dict, cited: set[str], path: Path) -
             )
         )
     for doi in sorted({_plain_doi(found.group(0)) for found in _DOI.finditer(statement)}):
-        if doi not in cited:
+        if cited is not None and doi not in cited:
             report = report.with_findings(
                 Finding(
                     gate=GATE,
@@ -362,18 +364,20 @@ def check_deposit_doi(project: Project, *, submission: bool = False) -> Report:
 
 
 def check_data_statement(document: dict, text: str, path: Path, project: Project, *,
-                         cited: set[str] | None = None) -> Report:  # fmt: skip
-    """The statement held to the profile's data policy, where the profile declares one.
-    `cited` is the DOIs of a paper in no project, as its reference list prints them
-    (`audit --journal`): the project's references.bib, where a dataset is cited by key, is
-    read only where it is None."""
+                         cited: set[str] | None = None,
+                         from_project: bool = True) -> Report:  # fmt: skip
+    """The statement held to the profile's data policy, where the profile declares one: the
+    datasets it cites read from the project's references.bib, where one is cited by key. For
+    a paper in no project (`audit --journal`, `from_project` False), `cited` is the DOIs its
+    own reference list prints, or None where no list was read, and then whether a dataset is
+    cited is not said: a LaTeX paper's .bib is not read."""
     policy = document.get("data_availability")
     if not isinstance(policy, dict):
         return Report()
     statement = statement_text(text, policy.get("heading"))
     if statement is None:
         return Report()  # the required statement's own check says it is missing
-    if cited is not None:
+    if not from_project:
         return judge_statement(statement, policy, cited, path)
     printed = f"{statement}\n{cited_in(statement, project)}"
     return judge_statement(printed, policy, cited_dois(project), path)

@@ -56,8 +56,13 @@ journal counts the main document's words and display items. The report gains a s
 - the sections and the statements the profile requires (funding, competing interests,
   ethics, data availability, a trial's registration: whatever the profile lists);
 - the data availability statement's phrasing and identifier, where the profile records the
-  journal's data policy; a dataset's DOI is held to the paper's own reference list;
+  journal's data policy; a dataset's DOI is held to the paper's own reference list, and where
+  no list was read (a LaTeX paper's list is in its `.bib`) that is said instead;
 - the boxes the journal prints beside the abstract (highlights, key points).
+
+The tables are those the paper types: in Markdown and in a .docx each table pandoc reads, and
+in LaTeX each captioned table float. A table written in HTML is not counted, and the report
+then says the table limits were not checked.
 
 And it says what it did not check, since those read an author's project rather than the
 manuscript: the profile's quotes against the journal's stored page, the citation style, the
@@ -91,9 +96,11 @@ Each author's name, ORCID iD and e-mail address, and each part of an affiliation
 words or more, is looked for in each document given, the supplement as well as the main
 document, where the build looks for them in a blind submission: in a .docx its text, notes,
 comments, tracked deletions, author fields, links' addresses and pictures' text; in Markdown
-its text; in LaTeX each file of its tree and the PDF and SVG pictures in its folder. Each one found is listed with its place and counted by `--strict`.
-Where the review is not blind, nobody is looked for, and the report says so. A referee never
-passes `--authors`.
+its text; in LaTeX each file of its tree and the PDF and SVG pictures it places. The reference
+list is left out where the audit finds it, since a blind journal asks its authors to cite
+their own work in the third person. Each one found is listed with its place and counted by
+`--strict`. Where the review is not blind, nobody is looked for, and the report says so. A
+referee never passes `--authors`.
 
 ## What `--strict` counts
 

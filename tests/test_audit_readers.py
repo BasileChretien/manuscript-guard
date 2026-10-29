@@ -28,7 +28,8 @@ W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 FIXED_TIME = (2020, 1, 1, 0, 0, 0)
 
 
-def profile(tmp_path: Path, *, blinding: str = "single", more: str = "") -> Path:
+def profile(tmp_path: Path, *, blinding: str | None = "single", more: str = "",
+            limits: str = "main_text_words: 40") -> Path:  # fmt: skip
     """A journal profile an editor keeps: a 40-word main text, the four sections, a Funding
     statement under its own heading, British English, one rule no gate checks."""
     path = tmp_path / "journal.yaml"
@@ -38,8 +39,8 @@ def profile(tmp_path: Path, *, blinding: str = "single", more: str = "") -> Path
         "source_url: https://example.org/authors\n"
         f"retrieved_on: {date.today().isoformat()}\n"
         "english_variant: en-GB\n"
-        f"blinding: {blinding}\n"
-        "limits:\n  main_text_words: 40\n"
+        + (f"blinding: {blinding}\n" if blinding else "")
+        + f"limits:\n  {limits}\n"
         "structure:\n  required_sections: [Introduction, Methods, Results, Discussion]\n"
         "required_statements:\n"
         "  - id: funding\n"
@@ -155,8 +156,9 @@ def test_a_dataset_the_reference_list_cites_is_not_said_to_be_uncited(
                  ".\n")  # fmt: skip
     listed = ("\n# References\n\n1. Doe J. The data. Zenodo. 2024. "
               "doi:10.5281/zenodo.1234567\n")  # fmt: skip
+    other = "\n# References\n\n1. Roe K. A trial. BMJ 2020;370:m1. doi:10.5555/fictional.1\n"
     journal = profile(tmp_path, more=more)
-    _code, report, _err = audited(capsys, str(paper_md(tmp_path, PAPER + statement)),
+    _code, report, _err = audited(capsys, str(paper_md(tmp_path, PAPER + statement + other)),
                                   "--journal", str(journal))  # fmt: skip
     assert "data-doi-uncited" in {f["code"] for f in report["findings"]}
     _code, report, _err = audited(capsys, str(paper_md(tmp_path, PAPER + statement + listed)),
@@ -400,3 +402,236 @@ def test_an_authors_file_without_names_is_refused(tmp_path: Path, capsys) -> Non
     code, report, _err = audited(capsys, str(paper_md(tmp_path)), "--journal",
                                  str(profile(tmp_path)), "--authors", str(bad))  # fmt: skip
     assert code == 2 and "has no `given` and `family` name" in report["error"]
+
+
+# ------------------------------------------------- review round 1 of #478, each its finding
+
+
+@pytest.mark.parametrize("blinding", ["single", None])
+def test_a_review_that_is_not_blind_is_never_said_to_be_blind(
+    tmp_path: Path, capsys, blinding: str | None
+) -> None:
+    """Round 1, finding 1: with `blinding: single`, or no key, and no --authors, the Document
+    section said "The journal's review is blind"."""
+    main(["audit", str(make_docx(tmp_path / "paper.docx")), "--journal",
+          str(profile(tmp_path, blinding=blinding))])  # fmt: skip
+    out = capsys.readouterr().out
+    assert "review is blind" not in out and "-blind" not in out, out
+    _code, report, _err = audited(capsys, str(make_docx(tmp_path / "paper.docx")), "--journal",
+                                  str(profile(tmp_path, blinding=blinding)))  # fmt: skip
+    assert not [f for f in report["findings"] if f["code"] == "authors-not-looked-for"]
+
+
+def tables(count: int) -> str:
+    return "".join(f"\n| Group | n |\n|---|---|\n| A | {i} |\n| B | {i + 1} |\n"
+                   for i in range(count))  # fmt: skip
+
+
+def test_six_tables_against_a_limit_of_three_are_over_it(tmp_path: Path, capsys) -> None:
+    """Round 1, finding 2: `measure` counts a table only as a binding, so a paper's own six
+    tables passed a limit of three, and the report said "Within every limit"."""
+    journal = profile(tmp_path, limits="tables: 3\n  display_items: 4")
+    _code, report, _err = audited(capsys, str(paper_md(tmp_path, PAPER + tables(6))),
+                                  "--journal", str(journal))  # fmt: skip
+    over = {f["message"] for f in report["findings"] if f["code"] == "over-journal-limit"}
+    assert over == {"tables: 6, limit 3", "figures and tables: 6, limit 4"}, over
+    _code, report, _err = audited(capsys, str(paper_md(tmp_path, PAPER + tables(3))),
+                                  "--journal", str(journal))  # fmt: skip
+    assert not [f for f in report["findings"] if f["code"] == "over-journal-limit"]
+
+
+def test_a_table_in_a_comment_or_a_listing_is_not_counted(tmp_path: Path, capsys) -> None:
+    hidden = f"\n<!--\n{tables(1)}\n-->\n\n```\n{tables(1)}\n```\n"
+    journal = profile(tmp_path, limits="tables: 1")
+    _code, report, _err = audited(capsys, str(paper_md(tmp_path, PAPER + tables(1) + hidden)),
+                                  "--journal", str(journal))  # fmt: skip
+    assert not [f for f in report["findings"] if f["code"] == "over-journal-limit"]
+
+
+def test_a_table_written_in_html_puts_the_table_limit_under_not_checked(
+    tmp_path: Path, capsys
+) -> None:
+    html = "\n<table><tr><td>A</td><td>1</td></tr></table>\n"
+    _code, report, _err = audited(capsys, str(paper_md(tmp_path, PAPER + html)), "--journal",
+                                  str(profile(tmp_path, limits="tables: 3")))  # fmt: skip
+    skipped = [f["message"] for f in report["findings"] if f["code"] == "journal-not-checked"]
+    assert any("written in HTML" in said for said in skipped), skipped
+
+
+@needs_pandoc
+def test_a_docx_with_six_tables_is_over_a_limit_of_three(tmp_path: Path, capsys) -> None:
+    paper_md(tmp_path, PAPER + tables(6))
+    subprocess.run(["pandoc", "paper.md", "-o", "paper.docx"], cwd=tmp_path, check=True,
+                   timeout=120)  # fmt: skip
+    _code, report, _err = audited(capsys, str(tmp_path / "paper.docx"), "--journal",
+                                  str(profile(tmp_path, limits="tables: 3")))  # fmt: skip
+    over = {f["message"] for f in report["findings"] if f["code"] == "over-journal-limit"}
+    assert over == {"tables: 6, limit 3"}, over
+
+
+def test_a_latex_paper_s_table_floats_are_held_to_the_limit(tmp_path: Path, capsys) -> None:
+    floats = "".join(f"{BS}begin{{table}}{BS}caption{{T{i}}}{BS}begin{{tabular}}{{ll}}A & {i}"
+                     f"{BS}end{{tabular}}{BS}end{{table}}\n" for i in range(4))  # fmt: skip
+    (tmp_path / "main.tex").write_text(
+        f"{BS}documentclass{{article}}{BS}begin{{document}}{BS}section{{Results}}\n{floats}"
+        f"{BS}end{{document}}\n", encoding="utf-8")  # fmt: skip
+    _code, report, _err = audited(capsys, str(tmp_path / "main.tex"), "--journal",
+                                  str(profile(tmp_path, limits="tables: 3")))  # fmt: skip
+    over = {f["message"] for f in report["findings"] if f["code"] == "over-journal-limit"}
+    assert over == {"tables: 4, limit 3"}, over
+
+
+SELF_CITED = "Example, A. (2020). An earlier study of dark urine. J Ex 1:1-2."
+
+
+def test_a_self_citation_in_a_markdown_reference_list_is_not_a_leak(
+    tmp_path: Path, capsys
+) -> None:
+    """Round 1, finding 3: the authors' own work cited in the third person, in the reference
+    list, is what a blind journal asks for, and was counted as the author named."""
+    text = PAPER + f"\n# References\n\n1. {SELF_CITED}\n"
+    code, report, _err = audited(capsys, str(paper_md(tmp_path, text)), "--journal",
+                                 str(profile(tmp_path, blinding="double")), "--authors",
+                                 str(authors_file(tmp_path)), "--strict")  # fmt: skip
+    assert not [f for f in report["findings"] if f["code"] == "blind-document-names-author"]
+    assert code == 0
+    # Outside the list it is a leak still.
+    text = PAPER + f"\nAs {SELF_CITED}\n\n# References\n\n1. Other, B. (2019). X. J Ex 2:3.\n"
+    code, report, _err = audited(capsys, str(paper_md(tmp_path, text)), "--journal",
+                                 str(profile(tmp_path, blinding="double")), "--authors",
+                                 str(authors_file(tmp_path)), "--strict")  # fmt: skip
+    assert len([f for f in report["findings"] if f["code"] == "blind-document-names-author"]) == 1
+    assert code == 1
+
+
+def docx_of(path: Path, paragraphs: list[tuple[str, str]]) -> Path:
+    """A .docx of `(style, text)` paragraphs, with no styles part: the style is only an id,
+    as EndNote's "EndNoteBibliography" or Word's "Normal" is in a document not built here."""
+    body = "".join(
+        (f"<w:p><w:pPr><w:pStyle w:val='{style}'/></w:pPr>" if style else "<w:p>")
+        + f"<w:r><w:t xml:space='preserve'>{text}</w:t></w:r></w:p>"
+        for style, text in paragraphs
+    )
+    document = (f"<?xml version='1.0'?><w:document xmlns:w='{W}'><w:body>{body}</w:body>"
+                "</w:document>")  # fmt: skip
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr(zipfile.ZipInfo("word/document.xml", FIXED_TIME), document)
+    return path
+
+
+@pytest.mark.parametrize("style", ["EndNoteBibliography", "Normal", ""])
+def test_a_self_citation_in_a_docx_reference_list_is_not_a_leak(
+    tmp_path: Path, capsys, style: str
+) -> None:
+    paper = docx_of(tmp_path / "paper.docx", [
+        ("", "Of 40 patients, 12 had dark urine."), ("", "References"),
+        (style, f"1. {SELF_CITED}"), (style, "2. Other, B. (2019). X. J Ex 2:3."),
+    ])  # fmt: skip
+    code, report, _err = audited(capsys, str(paper), "--journal",
+                                 str(profile(tmp_path, blinding="double")), "--authors",
+                                 str(authors_file(tmp_path)), "--strict")  # fmt: skip
+    assert not [f for f in report["findings"] if f["code"] == "blind-document-names-author"]
+    assert code == 0
+
+
+def test_a_name_a_tracked_change_deleted_in_the_text_is_still_a_leak(
+    tmp_path: Path, capsys
+) -> None:
+    """The text is read as the audit reads it, its reference list cut; what a tracked change
+    deleted outside the list is read too, since a reviewer who shows the changes sees it."""
+    paper = make_docx(tmp_path / "paper.docx", creator="Office", commenter="Ed",
+                      text="Of 40 patients, 12 had dark urine.")  # fmt: skip
+    with zipfile.ZipFile(paper) as archive:
+        parts = {name: archive.read(name) for name in archive.namelist()}
+    parts["word/document.xml"] = parts["word/document.xml"].replace(
+        b"Gone 4.", b"As A. Example found.")
+    with zipfile.ZipFile(paper, "w") as archive:
+        for name, data in parts.items():
+            archive.writestr(zipfile.ZipInfo(name, FIXED_TIME), data)
+    code, report, _err = audited(capsys, str(paper), "--journal",
+                                 str(profile(tmp_path, blinding="double")), "--authors",
+                                 str(authors_file(tmp_path)), "--strict")  # fmt: skip
+    named = [f for f in report["findings"] if f["code"] == "blind-document-names-author"]
+    assert len(named) == 1 and "tracked change deleted" in named[0]["message"], named
+    assert code == 1
+
+
+def latex_with_bibtex(tmp_path: Path) -> Path:
+    path = tmp_path / "main.tex"
+    path.write_text(
+        f"{BS}documentclass{{article}}{BS}begin{{document}}{BS}section{{Results}}Of 40, 12."
+        f"{BS}section{{Data availability}}The data are at https://doi.org/10.5281/zenodo.1234567."
+        f"{BS}bibliographystyle{{plain}}{BS}bibliography{{refs}}{BS}end{{document}}\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_a_dataset_is_not_said_uncited_where_no_reference_list_was_read(
+    tmp_path: Path, capsys
+) -> None:
+    """Round 1, finding 4: a LaTeX paper's list is in its .bib, which is not read, so every
+    DOI of its data statement was "not cited"."""
+    more = ("data_availability:\n  source: https://example.org/data\n"
+            f"  retrieved_on: {date.today().isoformat()}\n  identifier_required: true\n")
+    _code, report, _err = audited(capsys, str(latex_with_bibtex(tmp_path)), "--journal",
+                                  str(profile(tmp_path, more=more)))  # fmt: skip
+    codes = {f["code"] for f in report["findings"]}
+    assert "data-doi-uncited" not in codes, report["findings"]
+    skipped = [f["message"] for f in report["findings"] if f["code"] == "journal-not-checked"]
+    assert any("no reference list was read" in said for said in skipped), skipped
+
+
+def svg(text: str) -> str:
+    return (f"<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10'><text x='1' y='5'>"
+            f"{text}</text></svg>")  # fmt: skip
+
+
+def test_only_the_pictures_a_latex_paper_places_are_searched(tmp_path: Path, capsys) -> None:
+    """Round 1, non-blocking 1: every PDF and SVG under the folder was read as a figure, so a
+    compiled paper or an earlier one beside main.tex was searched and counted."""
+    (tmp_path / "old-draft.svg").write_text(svg("Ada Example"), encoding="utf-8")
+    (tmp_path / "flow.svg").write_text(svg("Patients screened"), encoding="utf-8")
+    (tmp_path / "main.tex").write_text(
+        f"{BS}documentclass{{article}}{BS}begin{{document}}{BS}section{{Results}}Of 40, 12."
+        f"{BS}includegraphics{{flow.svg}}\n% {BS}includegraphics{{old-draft.svg}}\n"
+        f"{BS}end{{document}}\n", encoding="utf-8")  # fmt: skip
+    argv = (str(tmp_path / "main.tex"), "--journal", str(profile(tmp_path, blinding="double")),
+            "--authors", str(authors_file(tmp_path)), "--strict")  # fmt: skip
+    code, report, _err = audited(capsys, *argv)
+    assert not [f for f in report["findings"] if f["code"] == "blind-document-names-author"]
+    assert code == 0
+    (tmp_path / "flow.svg").write_text(svg("Drawn by Ada Example"), encoding="utf-8")
+    code, report, _err = audited(capsys, *argv)
+    named = [f for f in report["findings"] if f["code"] == "blind-document-names-author"]
+    assert [f["message"].split(" is in ")[1].split(" of ")[0] for f in named] == [
+        "a figure (flow.svg)"], named
+    assert code == 1
+
+
+def test_a_move_word_writes_over_two_paragraphs_counts_once(tmp_path: Path, capsys) -> None:
+    """Word marks a moved passage with a named range where it went from and where it went
+    to, and wraps each paragraph's runs of it in its own w:moveFrom or w:moveTo: two
+    paragraphs moved together are one move."""
+    moved = "".join(
+        f"<w:p><w:moveTo w:id='{n}' w:author='Ben'><w:r><w:t>Moved {n}.</w:t></w:r></w:moveTo>"
+        "</w:p>" for n in (11, 12))  # fmt: skip
+    gone = "".join(
+        f"<w:p><w:moveFrom w:id='{n}' w:author='Ben'><w:r><w:t>Moved {n}.</w:t></w:r>"
+        "</w:moveFrom></w:p>" for n in (21, 22))  # fmt: skip
+    body = (
+        "<w:p><w:r><w:t>Of 40 patients, 12 had dark urine.</w:t></w:r></w:p>"
+        "<w:moveFromRangeStart w:id='1' w:name='move1' w:author='Ben'/>" + gone +
+        "<w:moveFromRangeEnd w:id='1'/>"
+        "<w:p><w:r><w:t>Between.</w:t></w:r></w:p>"
+        "<w:moveToRangeStart w:id='2' w:name='move1' w:author='Ben'/>" + moved +
+        "<w:moveToRangeEnd w:id='2'/>"
+    )
+    document = (f"<?xml version='1.0'?><w:document xmlns:w='{W}'><w:body>{body}</w:body>"
+                "</w:document>")  # fmt: skip
+    paper = tmp_path / "paper.docx"
+    with zipfile.ZipFile(paper, "w") as archive:
+        archive.writestr(zipfile.ZipInfo("word/document.xml", FIXED_TIME), document)
+    _code, report, _err = audited(capsys, str(paper), "--journal", str(profile(tmp_path)))
+    assert report["counts"]["tracked_moves"] == 1
+    assert report["counts"]["tracked_insertions"] == report["counts"]["tracked_deletions"] == 0

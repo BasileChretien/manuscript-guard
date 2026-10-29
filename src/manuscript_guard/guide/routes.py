@@ -70,7 +70,7 @@ ROUTES: dict[str, Route] = {
     **_all("data-sources", None, "data-source-", "data-sources-schema",
            "custodian-rule-undeclared", "plan-source-unnamed", "data-statement-source-unnamed",
            "data-statement-route-differs", "dataset-not-chosen", "count-below-minimum",
-           "restricted-input-tracked"),
+           "count-recoverable", "restricted-input-tracked"),
     **_all("data-dictionary", None, "dictionary-", "plan-variable-undefined"),
     **_all("methods-review", None, "similar-", "appraisal-", "adopted-",
            "standard-redescribed"),

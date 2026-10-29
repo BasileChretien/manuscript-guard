@@ -4,16 +4,22 @@ What was read and what was not comes first, then a section for each kind of chec
 
 * Membership: each number against the outputs given, and what a match is worth there. With
   no outputs given, no number is compared, and the report says so at its top.
-* Arithmetic: numbers held to the ones beside them, which needs no outputs.
+* Arithmetic: numbers held to the ones beside them, which needs no outputs: a table's
+  totals to the counts they total, and a characteristic's categories to their column's n.
+* Small cells recoverable by subtraction: each count held back ("<5") that a total beside it
+  gives away, with the count it can only be.
 * Writing (G6) and Language (G14): the gates `check` runs on the words, on a project made for
   the paper (`auditing.gates`).
 * References (G7): the reference list counted, and the numbered citations held to it; what
   the registries said, with `--lookup`.
 
 `--strict` counts the numbers not found in the outputs, a paper or a stretch of one that
-could not be read, and an audit that read no number. Nothing else is counted: the P worked
-out from a statistic, G6 and G14 (the author, 2026-10-28), and G7's findings, which are
-listed apart.
+could not be read, an audit that read no number, and what is exact arithmetic: a total that
+its counts do not add up to (`sum-off`), categories that add up to more than their column's
+n (`over-header-n`), and a count held back that a printed total gives away
+(`count-recoverable`). Nothing else is counted: the P worked out from a statistic, G6 and
+G14 (the author, 2026-10-28), G7's findings, and a count held back that only a column's n
+gives away, which holds only where none of the column lacks the characteristic.
 """
 
 from __future__ import annotations
@@ -27,6 +33,7 @@ from manuscript_guard.findings import FAIL, INFO, WARN, Finding, Report
 INPUTS = "Inputs"
 MEMBERSHIP = "Membership"
 ARITHMETIC = "Arithmetic"
+SMALL_CELLS = "Small cells recoverable by subtraction"
 WRITING = "Writing (G6)"
 LANGUAGE = "Language (G14)"
 REFERENCES = "References (G7)"
@@ -89,6 +96,15 @@ def items(report) -> list[Item]:
         for d in report.disagreements
     ]  # fmt: skip
     found += [
+        Item(ARITHMETIC, "audit", "sum-off", d.message, FAIL, True, d.source, d.line, d.context)
+        for d in report.sums_off
+    ]  # fmt: skip
+    found += [
+        Item(ARITHMETIC, "audit", "over-header-n", d.message, FAIL, True, d.source, d.line,
+             d.context)
+        for d in report.over_n
+    ]  # fmt: skip
+    found += [
         Item(ARITHMETIC, "audit", "mean-not-assessable", d.message, INFO, False, d.source,
              d.line, d.context)
         for d in report.means_not_assessable
@@ -97,6 +113,16 @@ def items(report) -> list[Item]:
         Item(ARITHMETIC, "audit", "whole-numbers-unfound", f"--whole-numbers {label!r}: no "
              "mean was read in a row whose label holds it", INFO, False)
         for label in report.whole_numbers_unfound
+    ]  # fmt: skip
+    found += [
+        Item(SMALL_CELLS, "G2", "count-recoverable", d.message, FAIL, True, d.source, d.line,
+             d.context)
+        for d in report.recovered
+    ]  # fmt: skip
+    found += [
+        Item(SMALL_CELLS, "G2", "count-recoverable", f"{d.message}, if none of the column "
+             "lacks the characteristic", WARN, False, d.source, d.line, d.context)
+        for d in report.recovered_by_n
     ]  # fmt: skip
     for run in report.gates:
         if run.note:
@@ -148,6 +174,11 @@ def as_json(report, discrimination) -> str:
         "not_found": len(report.unmatched),
         "not_found_on_reference_lines": len(report.reference_like),
         "not_compared": report.uncompared,
+        "totals_off": len(report.sums_off),
+        "over_header_n": len(report.over_n),
+        # Apart, as the text says them: --strict counts the first and not the second.
+        "recoverable": len(report.recovered),
+        "recoverable_by_n": len(report.recovered_by_n),
         "reference_entries": sum(len(c.entries) for c in report.references),
     }
     worth = None
@@ -210,6 +241,7 @@ def render(report, discrimination, root: Path | None = None) -> str:
             lines += ["", heading, *(f"  {item}" for item in said)]
     lines += ["", f"=== {MEMBERSHIP} ===", *_membership(report, discrimination, show)]
     lines += ["", f"=== {ARITHMETIC} ===", *_arithmetic(report, show)]
+    lines += ["", f"=== {SMALL_CELLS} ===", *_small_cells(report, show)]
     if report.gates:
         lines += ["", f"=== {WRITING} and {LANGUAGE} (not counted by --strict) ===",
                   *_gates(report, root)]  # fmt: skip
@@ -311,8 +343,32 @@ def _worth(discrimination) -> list[str]:
     return lines
 
 
+def _listed(heading: str, found: list, show) -> list[str]:
+    """A heading, then each item under the file it is in, with its line and its row."""
+    if not found:
+        return []
+    lines = [heading]
+    by_paper: dict[Path, list] = {}
+    for item in found:
+        by_paper.setdefault(item.source, []).append(item)
+    for source, listed in by_paper.items():
+        lines.append(f"  {show(source)}")
+        for item in listed[:LISTED]:
+            lines.append(f"    line {item.line}: {item.message}")
+            lines.append(f"      {item.context}")
+        if len(listed) > LISTED:
+            lines.append(f"    (+{len(listed) - LISTED} more)")
+    return lines
+
+
 def _arithmetic(report, show) -> list[str]:
-    lines: list[str] = []
+    lines = _listed("TOTALS THAT THEIR COUNTS DO NOT ADD UP TO (counted by --strict):",
+                    report.sums_off, show)  # fmt: skip
+    over = _listed("CATEGORIES THAT ADD UP TO MORE THAN THEIR COLUMN'S N, their shares to 100 "
+                   "(counted by --strict):", report.over_n, show)  # fmt: skip
+    lines += ([""] if lines and over else []) + over
+    if lines and report.disagreements:
+        lines.append("")
     if report.disagreements:
         lines.append(
             "NUMBERS THAT DO NOT FIT THE ONES BESIDE THEM: a P and its statistic, t and z "
@@ -349,6 +405,22 @@ def _arithmetic(report, show) -> list[str]:
             for label in report.whole_numbers_unfound
         ]
     return lines or ["  Nothing read here disagrees with the numbers beside it."]
+
+
+def _small_cells(report, show) -> list[str]:
+    if report.minimum is None:
+        lines = ["No minimum given (--minimum-cell-count): a count held back is taken to hide "
+                 "every count from 1 to its bound."]  # fmt: skip
+    else:
+        lines = [f"The data custodian's minimum: {report.minimum} (--minimum-cell-count)."]
+    found = _listed("GIVEN AWAY BY A TOTAL PRINTED BESIDE IT (counted by --strict):",
+                    report.recovered, show)  # fmt: skip
+    by_n = _listed("GIVEN AWAY BY ITS COLUMN'S N, if none of the column lacks the "
+                   "characteristic (not counted by --strict):", report.recovered_by_n, show)
+    lines += found + ([""] if found and by_n else []) + by_n
+    if not found and not by_n:
+        lines.append("  No count held back (\"<5\") can be worked out from a total beside it.")
+    return lines
 
 
 def _gates(report, root: Path | None) -> list[str]:

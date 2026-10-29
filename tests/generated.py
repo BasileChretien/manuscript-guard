@@ -5184,6 +5184,275 @@ def share_tables(draw: st.DrawFn) -> tuple[str, list[Shared]]:
     return "\n".join(lines), expected
 
 
+# ------------------------------------------------------------------------ a table's totals
+
+#: How a row or a column says it is the total of the counts before it.
+TOTAL_LABELS = (
+    "Total", "TOTAL", "total", "Overall", "All", "Total, n", "**Total**", "Total^a^",
+    "Overall (n = {n})",
+)  # fmt: skip
+#: Labels that start as a total's does and are none: a measure, an outcome, a category.
+NOT_TOTALS = ("Total cholesterol, mmol/L", "Overall survival", "All-cause death",
+              "All other drugs")  # fmt: skip
+#: How a paper prints a count held back that is at most four, and one at most nine.
+HELD_FOUR = ("<5", "< 5", "\N{LESS-THAN OR EQUAL TO}4", "<=4", "<5 (<2.0)")
+HELD_NINE = ("<10", "\N{LESS-THAN OR EQUAL TO}9")
+#: What stands for a count a table does not give.
+NO_COUNT = ("\N{EM DASH}", "\N{EN DASH}", "-", "")
+#: The arms a table's two columns of counts are.
+ARMS = (("Cases", "Controls"), ("Exposed", "Unexposed"), ("Drug", "Placebo"))
+#: The kinds of table each paper of `margin_tables` holds one of.
+MARGIN_KINDS = (
+    "row totals", "column totals", "held", "held across", "held above", "over n", "by n",
+    "partial", "not totals", "years", "shares short", "percent column",
+)  # fmt: skip
+#: A share behind a bound, beside a count that is read all the same (round 1 of #469).
+BOUND_SHARES = ("(<{}.0)", "(<{}%)", "[<{}]")
+#: The data custodian's minimum the reading of `margin_tables` is asked at, beside none.
+MARGIN_MINIMUM = 5
+
+
+def _split(draw: st.DrawFn, total: int, parts: int) -> list[int]:
+    """`total` cut into `parts` whole numbers of nought or more."""
+    edges = sorted(draw(st.lists(st.integers(0, total), min_size=parts - 1,
+                                 max_size=parts - 1)))  # fmt: skip
+    return [high - low for low, high in zip([0, *edges], [*edges, total], strict=True)]
+
+
+@st.composite
+def margin_tables(draw: st.DrawFn) -> tuple[str, dict[str, list]]:
+    """A paper with a table of each kind of `MARGIN_KINDS`, in an order drawn, and what the
+    reading of a table's totals finds in it: the line of each total its counts do not add
+    up to (`off`), of the first category of each characteristic whose categories add up to
+    more than their column's n (`over`), and each count held back that a total gives away,
+    by its line, its count and whether a printed total gives it, at a minimum of five
+    (`five`) and with none (`none`).
+
+    The kinds: a total row, one column of it off, under a characteristic's label and a row
+    of counts above that; a total column, one row of it off; a count held back that a total
+    row gives away, beside two in another column that it does not; one a total column gives
+    away; one of up to nine that a total gives away, which a minimum of five allows, and one
+    it gives away as nought; categories adding up to more than their column's n, their
+    shares to 100, beside categories adding up to fewer; a count held back that only the
+    column's n gives away; lines with a dash or an empty cell in them, which are read
+    nowhere; and rows whose label starts as a total's does and that are none."""
+    places = draw(st.integers(0, 2))
+    grouped = draw(st.booleans())
+    first, second = draw(st.sampled_from(ARMS))
+    sentence = st.lists(st.sampled_from(FILLER), min_size=2, max_size=6).map(" ".join)
+    lines: list[str] = [draw(sentence).capitalize() + "."]
+    expected: dict[str, list] = {"off": [], "over": [], "five": [], "none": []}
+
+    def count(number: int) -> str:
+        return f"{number:,}" if grouped else str(number)
+
+    def row(label: str, *cells: str) -> int:
+        lines.append("| " + " | ".join([label, *cells]) + " |")
+        return len(lines)
+
+    def table(*header: str) -> None:
+        lines.extend(["", draw(sentence).capitalize() + ".", ""])
+        row(*header)
+        lines.append("|" + "---|" * len(header))
+
+    def total(number: int) -> str:
+        return draw(st.sampled_from(TOTAL_LABELS)).format(n=count(number))
+
+    def group(width: int) -> None:
+        row(draw(st.sampled_from(SPLIT_BY)), *[""] * width)
+
+    def held(shapes: tuple[str, ...] = HELD_FOUR) -> str:
+        return draw(st.sampled_from(shapes))
+
+    def counts(many: int, high: int = 900) -> list[int]:
+        return [draw(st.integers(0, high)) for _each in range(many)]
+
+    def recovered(line: int, value: int, explicit: bool, *, five: bool = True) -> None:
+        if five:
+            expected["five"].append((line, value, explicit))
+        expected["none"].append((line, value, explicit))
+
+    for kind in draw(st.permutations(MARGIN_KINDS)):
+        if kind == "row totals":
+            # A row of counts above the characteristic, which its total row does not total.
+            table("Characteristic", first, second)
+            row("All reports", count(draw(st.integers(1000, 5000))),
+                count(draw(st.integers(1000, 5000))))  # fmt: skip
+            group(2)
+            many = draw(st.integers(2, 4))
+            a, b = counts(many), counts(many)
+            for name, x, y in zip(CATEGORIES, a, b, strict=False):
+                row(name, count(x), count(y))
+            off = sum(b) + draw(st.integers(1, 50))
+            expected["off"].append(row(total(sum(a)), count(sum(a)), count(off)))
+        elif kind == "column totals":
+            # Two total columns, each of the two before it, under a second header row of
+            # "n (%)" that names no n; a row of words after the first row, which changes no
+            # column, and a row of means and SDs, no n (%) with no n known; one row off in
+            # the first, after them.
+            table("Characteristic", first, second, total(draw(st.integers(10, 900))),
+                  "Treated", "Untreated", total(draw(st.integers(10, 900))))  # fmt: skip
+            row("", *["n (%)"] * 6)
+            many = draw(st.integers(2, 4))
+            wrong = draw(st.integers(1, many - 1))
+            for at, name in enumerate(CHARACTERISTICS[:many]):
+                if at == 1:
+                    row("Not recorded", *["NR"] * 6)
+                    # A mean and its SD of whole numbers in each column, no counts: their
+                    # total column holds the mean of all, which their sum is not (round 2 of
+                    # #469).
+                    means = []
+                    for _block in range(2):
+                        one, two = draw(st.integers(20, 80)), draw(st.integers(20, 80))
+                        means += [f"{one} ({draw(st.integers(1, 30))})",
+                                  f"{two} ({draw(st.integers(1, 30))})",
+                                  f"{(one + two) // 2} ({draw(st.integers(1, 30))})"]
+                    row("Age, years", *means)
+                x, y, u, v = draw(st.integers(1, 900)), *counts(3)
+                off = draw(st.integers(1, 50)) if at == wrong else 0
+                line = row(name, count(x), count(y), count(x + y + off), count(u), count(v),
+                           count(u + v))  # fmt: skip
+                if at == wrong:
+                    expected["off"].append(line)
+        elif kind in ("held", "held above"):
+            table("Characteristic", first, second)
+            group(2)
+            many = draw(st.integers(3, 4))
+            a, b = counts(many), counts(many)
+            i = draw(st.integers(0, many - 1))
+            if kind == "held":
+                # One held back in the first column; two in the second, which could be
+                # several pairs of counts.
+                a[i] = draw(st.integers(1, 4))
+                j, k = draw(st.permutations(range(many)))[:2]
+                both = draw(st.integers(1, 7))
+                b[j] = draw(st.integers(max(0, both - 4), min(4, both)))
+                b[k] = both - b[j]
+                hidden = {(i, 0): held(), (j, 1): held(), (k, 1): held()}
+                # And a count in the first column with its share behind a bound, above the
+                # share it is of the column's total row.
+                r = draw(st.sampled_from([at for at in range(many) if at != i]))
+                bound = 100 * a[r] // sum(a) + draw(st.integers(1, 3))
+                hidden[(r, 0)] = f"{count(a[r])} {draw(st.sampled_from(BOUND_SHARES))}".format(
+                    bound)
+            else:
+                # One of up to nine, at least the minimum; and one that is nought.
+                a[i] = draw(st.integers(MARGIN_MINIMUM, 9))
+                j = draw(st.integers(0, many - 1))
+                b[j] = 0
+                hidden = {(i, 0): held(HELD_NINE), (j, 1): held()}
+            where = {}
+            for at, (name, x, y) in enumerate(zip(CATEGORIES, a, b, strict=False)):
+                where[at] = row(name, hidden.get((at, 0), count(x)), hidden.get((at, 1), count(y)))
+            row(total(sum(a)), count(sum(a)), count(sum(b)))
+            recovered(where[i], a[i], True, five=kind == "held")
+        elif kind == "held across":
+            # Columns of a subgroup, "HR+", which names no ratio.
+            table("Characteristic", f"HR+ (n = {count(draw(st.integers(40, 900)))})",
+                  "HR\N{MINUS SIGN}", total(draw(st.integers(10, 900))))  # fmt: skip
+            many = draw(st.integers(2, 4))
+            r = draw(st.integers(0, many - 1))
+            for at, name in enumerate(CHARACTERISTICS[:many]):
+                x, y = counts(2)
+                if at == r:
+                    x = draw(st.integers(1, 4))
+                    recovered(row(name, held(), count(y), count(x + y)), x, True)
+                else:
+                    row(name, count(x), count(y), count(x + y))
+        elif kind == "over n":
+            n, m = draw(st.integers(40, 2000)), draw(st.integers(40, 2000))
+            table("Characteristic", f"{first} (n = {count(n)})", f"{second} (n = {count(m)})")
+            group(2)
+            many = draw(st.integers(2, 4))
+            more, fewer = n + draw(st.integers(1, n // 2)), draw(st.integers(1, m - 1))
+            a, b = _split(draw, more, many), _split(draw, fewer, many)
+            at = [row(name, f"{count(x)} ({_printed(x, more, places)})",
+                      f"{count(y)} ({_printed(y, fewer, places)})")
+                  for name, x, y in zip(CATEGORIES, a, b, strict=False)]  # fmt: skip
+            expected["over"].append(at[0])
+        elif kind == "by n":
+            n = draw(st.integers(40, 2000))
+            table("Characteristic", f"{first} (n = {count(n)})", second)
+            group(2)
+            many = draw(st.integers(3, 4))
+            i, value = draw(st.integers(0, many - 1)), draw(st.integers(1, 4))
+            rest = _split(draw, n - value, many - 1)
+            a, b = [*rest[:i], value, *rest[i:]], counts(many)
+            for at, (name, x, y) in enumerate(zip(CATEGORIES, a, b, strict=False)):
+                line = row(name, held() if at == i else count(x), count(y))
+                if at == i:
+                    recovered(line, value, False)
+        elif kind == "partial":
+            # A dash in one column, an empty cell in the other: neither line is read, nor
+            # the count held back in one of them, whatever the totals print.
+            table("Characteristic", first, second, total(draw(st.integers(10, 900))))
+            group(3)
+            x1, y1, x3 = counts(3)
+            t2, t3 = draw(st.integers(10, 900)), draw(st.integers(0, 900))
+            row(CATEGORIES[0], count(x1), count(y1), count(x1 + y1))
+            row(CATEGORIES[1], draw(st.sampled_from(NO_COUNT[:3])), held(), count(t2))
+            row(CATEGORIES[2], count(x3), "", count(t3))
+            grand = x1 + y1 + t2 + t3
+            a_total = draw(st.integers(0, grand))
+            row(total(grand), count(a_total), count(grand - a_total), count(grand))
+        elif kind == "years":
+            # A second header row of years with no label, and a total row labelled
+            # "Totals", off in its second column.
+            table("Drug", "Year", "", total(draw(st.integers(10, 900))))
+            first_year = draw(st.integers(1990, 2020))
+            row("", str(first_year), str(first_year + 1), "")
+            many = draw(st.integers(2, 4))
+            a, b = counts(many), counts(many)
+            for name, x, y in zip(CATEGORIES, a, b, strict=False):
+                row(name, count(x), count(y), count(x + y))
+            # Off in its second column, and so its own row, whose grand total is right.
+            off = sum(b) + draw(st.integers(1, 50))
+            line = row("Totals", count(sum(a)), count(off), count(sum(a) + sum(b)))
+            expected["off"] += [line, line]
+        elif kind == "percent column":
+            # A count and its share in columns of their own, "%" never counts.
+            table("Characteristic", first, "%", second, "%", total(draw(st.integers(10, 900))))
+            many = draw(st.integers(3, 4))
+            a = [draw(st.integers(1, 900)) for _each in range(many)]
+            b = [draw(st.integers(1, 900)) for _each in range(many)]
+            for name, x, y in zip(CATEGORIES, a, b, strict=False):
+                row(name, count(x), str(round(100 * x / sum(a))), count(y),
+                    str(round(100 * y / sum(b))), count(x + y))
+            row(total(sum(a)), count(sum(a)), "100", count(sum(b)), "100",
+                count(sum(a) + sum(b)))
+        elif kind == "shares short":
+            # Categories under their n (%), one held back in each column, whose shares fall
+            # short of 100, and a total row that gives the one held back away.
+            n, m = draw(st.integers(40, 2000)), draw(st.integers(40, 2000))
+            table("Characteristic", f"{first} (n = {count(n)})", f"{second} (n = {count(m)})")
+            group(2)
+            many = draw(st.integers(3, 4))
+            i, j = draw(st.integers(0, many - 1)), draw(st.integers(0, many - 1))
+            v, w = draw(st.integers(1, 4)), draw(st.integers(1, 4))
+            rest_a, rest_b = _split(draw, n - v, many - 1), _split(draw, m - w, many - 1)
+            a, b = [*rest_a[:i], v, *rest_a[i:]], [*rest_b[:j], w, *rest_b[j:]]
+            for at, (name, x, y) in enumerate(zip(CATEGORIES, a, b, strict=False)):
+                line = row(name, held() if at == i else f"{count(x)} ({_printed(x, n, places)})",
+                           held() if at == j else f"{count(y)} ({_printed(y, m, places)})")
+                for column, value in ((0, v), (1, w)):
+                    if at == (i, j)[column]:
+                        recovered(line, value, True)
+            row(total(n), count(n), count(m))
+        else:
+            table("Characteristic", first, second)
+            many = draw(st.integers(2, 3))
+            a, b = counts(many, 400), counts(many, 400)
+            for name, x, y in zip(CHARACTERISTICS, a, b, strict=False):
+                row(name, count(x), count(y))
+            for label in draw(st.lists(st.sampled_from(NOT_TOTALS), min_size=1, max_size=3,
+                                       unique=True)):  # fmt: skip
+                x, y = sum(a) + draw(st.integers(1, 50)), sum(b) + draw(st.integers(1, 50))
+                row(label, count(x), count(y))
+                a, b = [*a, x], [*b, y]
+    lines += ["", draw(sentence).capitalize() + ".", ""]
+    return "\n".join(lines), expected
+
+
 # ------------------------------------------------------- a table's means of whole numbers
 
 #: Rows of means of whole numbers, as an auditor names them: a scale's score, a count.
@@ -7400,6 +7669,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "reported tests": texts(REPORTED),
     "reported intervals": texts(ESTIMATES),
     "table shares": share_tables().map(lambda drawn: drawn[0]),
+    "table margins": margin_tables().map(lambda drawn: drawn[0]),
     "latex tables": latex_table_rows().map(lambda drawn: drawn[0]),
     "reference census": numbered_citations().map(lambda drawn: drawn[0]),
     "whole-number means": mean_tables().map(

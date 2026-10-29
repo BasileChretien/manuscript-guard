@@ -2317,6 +2317,8 @@ def cmd_verify(args: argparse.Namespace) -> int:
     if not contract_report.ok:
         print(contract_report.render(project.root))
         return 2
+    if args.receipt is not None:
+        return _receipt(project, args.receipt, args.only)
     try:
         result = verify(project, only=args.only)
     except VerifyError as exc:
@@ -2335,6 +2337,128 @@ def cmd_verify(args: argparse.Namespace) -> int:
         # What `check` says of reproducibility: a run of every script, and only that.
         record_verified(project, result)
     return 0 if result.ok else 1
+
+
+def _receipt(project, site: str, only: list[str] | None) -> int:
+    """`verify --receipt SITE`, run where the data are: each harvest entry naming the site
+    run in a copy, and the receipt written."""
+    from manuscript_guard.harvest import HarvestError, make_receipt
+
+    if only:
+        print("manuscript-guard: --receipt runs every entry naming the site; it takes no "
+              "--only", file=sys.stderr)  # fmt: skip
+        return 2
+    try:
+        path, written, warned = make_receipt(project, site)
+    except HarvestError as exc:
+        print(f"manuscript-guard: no receipt written: {exc}", file=sys.stderr)
+        return 1
+    print(f"manuscript-guard verify --receipt {site} — {project.root}")
+    for said in warned:
+        print(f"  [WARN] {said}")
+    for name in written:
+        print(f"  wrote {name}, from the run")
+    print(f"  wrote {path.relative_to(project.root).as_posix()}")
+    print("\nSend the outputs and the receipt, never the data. The receipt is not signed: it "
+          "is this site's declaration of what ran and what came out.")
+    return 0
+
+
+def _from_project(root: Path, given: str | Path) -> str:
+    """A path the command was given, as harvest.yaml writes it: from the project's root,
+    where a relative one is read from too."""
+    from manuscript_guard.harvest import HarvestError
+
+    path = Path(given)
+    if path.is_absolute():
+        try:
+            path = path.resolve().relative_to(root.resolve())
+        except ValueError:
+            raise HarvestError(f"{given} is outside the project {root}") from None
+    return path.as_posix()
+
+
+def cmd_harvest(args: argparse.Namespace) -> int:
+    """Add an entry to harvest.yaml and harvest it, or harvest every entry again. It reads
+    output files and writes results fragments; it runs nothing."""
+    from manuscript_guard.harvest import HarvestError, load_entries
+
+    project, contract_report = load_project(args.path)
+    if not contract_report.ok:
+        print(contract_report.render(project.root))
+        return 2
+    root = project.root
+    try:
+        flags = ("script", "key", "input", "row_key", "columns", "digits", "receipt",
+                 "counts", "restricted", "synthetic", "not_quoted")  # fmt: skip
+        given = [name for name in flags
+                 if getattr(args, name) is not None and getattr(args, name) is not False]
+        if args.output is None and given:
+            raise HarvestError(
+                f"--{given[0].replace('_', '-')} describes an entry to add, and no OUTPUT was "
+                "given: name it first, before --input, --columns or --counts, which take "
+                "every word after them")  # fmt: skip
+        entries = [_added(root, args)] if args.output is not None else load_entries(root)
+        if not entries:
+            raise HarvestError("harvest.yaml names no output to harvest: add one with "
+                               "`harvest OUTPUT --script S --key K`")  # fmt: skip
+    except HarvestError as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 2
+    return _harvest_each(root, entries)
+
+
+def _added(root: Path, args: argparse.Namespace):
+    """The entry the command's flags describe, checked and added to harvest.yaml."""
+    from manuscript_guard.contracts._schema import validate
+    from manuscript_guard.harvest import (
+        Entry,
+        HarvestError,
+        Input,
+        append_entry,
+        harvested_document,
+    )
+    from manuscript_guard.harvest.config import HARVEST_FILE
+
+    if not (args.script and args.key):
+        raise HarvestError("an output is added with --script, the script that writes it, and "
+                           "--key, the name its results go by")  # fmt: skip
+    entry = Entry(
+        key=args.key, output=_from_project(root, args.output),
+        script=_from_project(root, args.script),
+        inputs=tuple(Input(_from_project(root, given), args.restricted, args.synthetic)
+                     for given in args.input or ()),
+        row_key=args.row_key, columns=tuple(args.columns) if args.columns else None,
+        digits=args.digits, receipt=args.receipt, quoted=not args.not_quoted,
+        counts=tuple(args.counts) if args.counts else None,
+    )  # fmt: skip
+    checked = validate({"entries": [entry.spec()]}, "harvest", root / HARVEST_FILE)
+    if not checked.ok:
+        raise HarvestError(checked.render(root))
+    # Read first, so that an output that cannot be harvested leaves no entry behind.
+    harvested_document(root, entry)
+    append_entry(root, entry)
+    return entry
+
+
+def _harvest_each(root: Path, entries: list) -> int:
+    """Harvest each entry, saying what each wrote or why it could not."""
+    from manuscript_guard.harvest import HarvestError, harvest_entry
+
+    failed = 0
+    for entry in entries:
+        try:
+            written = harvest_entry(root, entry)
+        except HarvestError as exc:
+            failed += 1
+            print(f"  [FAIL] {entry.key}: {exc}")
+            continue
+        print(f"  {entry.output} -> {written.relative_to(root).as_posix()}, table.{entry.key}")
+    receipted = any(entry.receipt for entry in entries)
+    print("\nNothing was run: that each script writes its output is declared, and `check` "
+          "says so until `verify` re-runs it"
+          + (", or the site's receipt covers it." if receipted else "."))
+    return 1 if failed else 0
 
 
 def cmd_package(args: argparse.Namespace) -> int:
@@ -5255,7 +5379,8 @@ COMMAND_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
             "transcribe",
         ),
     ),
-    ("Analysis & Data", ("verify", "values", "models", "dictionary", "palettes", "related")),
+    ("Analysis & Data",
+     ("verify", "harvest", "values", "models", "dictionary", "palettes", "related")),  # fmt: skip
     ("Literature", ("lookup", "search", "sync-bib", "sync-sources", "passages")),
     ("Co-Authors & Review", ("review", "checker", "import", "respond", "approve", "sign")),
     ("Build, Release & Communicate",
@@ -5436,7 +5561,51 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="FRAGMENT",
         help="verify only these fragments, by stem (e.g. 01_disproportionality)",
     )
+    verify.add_argument(
+        "--receipt",
+        metavar="SITE",
+        help="at the site that holds the data: run each harvest entry naming SITE in a copy, "
+        "and write receipts/SITE.receipt.json of what ran and what came out, by digest; "
+        "refused where an output holds a count the custodian forbids",
+    )
     verify.set_defaults(func=cmd_verify)
+
+    harvest = sub.add_parser(
+        "harvest",
+        help="take in an output a script writes without the emitter (.csv, .tsv, .json) as "
+        "results, by harvest.yaml; it runs nothing",
+        description="With OUTPUT, adds an entry to harvest.yaml and harvests it; without, "
+        "harvests every entry again. Each output is read as a table and written as "
+        "results/<key>.json, its cells <key>.<row>.<column> and its table table.<key>, with "
+        "the declared script and inputs as the emitter records them. Nothing is run, so "
+        "`check` warns (harvest-declared) until `verify` re-runs the script and reads the "
+        "same values, or a site's receipt covers it (docs/harvest.md).",
+    )
+    harvest.add_argument("output", nargs="?", help="the output file, from the project's root")
+    harvest.add_argument("--script", help="the script that writes it")
+    harvest.add_argument("--input", nargs="+", metavar="INPUT", help="the data it read")
+    harvest.add_argument("--restricted", action="store_true",
+                         help="the inputs given are restricted by the data custodian")
+    harvest.add_argument("--synthetic", action="store_true",
+                         help="the inputs given are synthetic, not the real data")
+    harvest.add_argument("--key", help="the name its results go by: results/<key>.json")
+    harvest.add_argument("--row-key", help="the column whose cells name the rows")
+    harvest.add_argument("--columns", nargs="+", metavar="COLUMN",
+                         help="the columns to take in, by header; all where absent")
+    harvest.add_argument("--digits", type=int,
+                         help="decimal places to show each number to; the output's own text "
+                         "where absent")
+    harvest.add_argument("--receipt", metavar="SITE",
+                         help="the site that holds the data, whose receipt covers the output")
+    harvest.add_argument("--not-quoted", action="store_true",
+                         help="the table is working output, not placed in the manuscript")
+    harvest.add_argument("--counts", nargs="+", metavar="COLUMN",
+                         help="the columns whose cells are counts, held to the custodian's "
+                         "minimum; every whole number where absent")
+    harvest.add_argument(
+        "--path", type=Path, default=Path.cwd(), help="the project (default: the one you are in)"
+    )
+    harvest.set_defaults(func=cmd_harvest)
 
     package = sub.add_parser(
         "package",

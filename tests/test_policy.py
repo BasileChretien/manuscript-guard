@@ -97,6 +97,16 @@ def test_a_finding_binds_from_its_stage_onwards() -> None:
         assert report.ok, stage
 
 
+def test_a_harvested_output_and_a_receipt_bind_as_an_input_and_a_results_file_do() -> None:
+    """Changed or gone since the harvest, the results are not the output's, or not the site's
+    run: from the analysis stage, as `input-changed` and `results-edited` are."""
+    for code in ("harvested-output-changed", "harvested-output-missing", "receipt-changed",
+                 "receipt-output-mismatch"):  # fmt: skip
+        assert binds_at(code) == binds_at("input-changed") == ANALYSIS
+    report, deferred = apply_stage(report_with("receipt-changed"), DESIGN)
+    assert report.ok and deferred == {ANALYSIS: 1}
+
+
 def test_warnings_are_left_alone() -> None:
     """Deferral is about failures. A warning is already not fatal."""
     warning = Report((Finding(gate="G", code="no-review", message="m", severity=WARN),))

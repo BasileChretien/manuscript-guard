@@ -104,6 +104,7 @@ counts and their findings.
 **Never edit `results/`.** The fragments are machine-written and digested. An edited one is
 `results-edited`, the write guard refuses the edit where the hooks run, and
 `manuscript-guard verify` re-runs the analysis in a scratch copy and compares value by value.
+An output written without the emitter: [references/harvest.md](references/harvest.md).
 
 ## 2. Bind in the manuscript
 

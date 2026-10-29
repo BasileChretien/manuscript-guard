@@ -322,6 +322,207 @@ def test_modified_analysis_script_is_caught(project: Path) -> None:
     assert "script-newer" in codes(gate_report(project))
 
 
+#: A script that writes its estimates as a CSV, without the emitter, as `harvest` takes in.
+_HARVESTED_SCRIPT = (
+    "from pathlib import Path\n"
+    "Path('output').mkdir(exist_ok=True)\n"
+    "Path('output/est.csv').write_text('group,n,or\\nWomen,120,1.50\\nMen,80,0.95\\n')\n"
+)
+
+
+def _harvested_here(project: Path, *, site: str | None = None) -> None:
+    """The example with an output harvested from that script: run here, or at `site`, whose
+    receipt then covers it."""
+    from manuscript_guard.harvest import Entry, Input, append_entry, harvest_entry, make_receipt
+
+    (project / "analysis" / "02_est.py").write_text(_HARVESTED_SCRIPT, encoding="utf-8")
+    (project / "output").mkdir()
+    (project / "output" / "est.csv").write_text(
+        "group,n,or\nWomen,120,1.50\nMen,80,0.95\n", encoding="utf-8")  # fmt: skip
+    entry = Entry("est", "output/est.csv", "analysis/02_est.py",
+                  (Input("data/reports.csv", synthetic=True),), row_key="group",
+                  receipt=site)  # fmt: skip
+    append_entry(project, entry)
+    if site is not None:
+        make_receipt(load_project(project)[0], site)
+    harvest_entry(project, entry)
+
+
+def test_an_edited_harvested_output_is_caught(project: Path) -> None:
+    """The results `harvest` wrote are the output's: a number edited in the output after it
+    was harvested is caught, as an edited input is."""
+    _harvested_here(project)
+    assert "harvested-output-changed" not in codes(gate_report(project))
+    output = project / "output" / "est.csv"
+    output.write_text(output.read_text(encoding="utf-8").replace("1.50", "1.05"),
+                      encoding="utf-8")  # fmt: skip
+    assert "harvested-output-changed" in codes(gate_report(project))
+
+
+def test_an_edited_receipt_is_caught(project: Path) -> None:
+    """A site's receipt is recorded by its digest when its output is harvested: a receipt
+    edited afterwards, its date moved or a digest put right by hand, is caught."""
+    _harvested_here(project, site="site-a")
+    assert "receipt-changed" not in codes(gate_report(project))
+    receipt = project / "receipts" / "site-a.receipt.json"
+    record = json.loads(receipt.read_text(encoding="utf-8"))
+    record["ran_at"] = "2020-01-01T00:00:00+00:00"
+    receipt.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    assert "receipt-changed" in codes(gate_report(project))
+
+
+def test_a_script_changed_after_its_receipt_is_caught(project: Path) -> None:
+    """The numbers are the site's run of the script as it was: a script changed after the
+    site ran it is caught, once, and against the receipt's digest of it."""
+    _harvested_here(project, site="site-a")
+    assert "script-newer" not in codes(gate_report(project))
+    script = project / "analysis" / "02_est.py"
+    script.write_text(_HARVESTED_SCRIPT.replace("1.50", "1.70"), encoding="utf-8")
+    report = gate_report(project)
+    said = [f for f in report.failures if f.code == "script-newer"]
+    assert len(said) == 1 and "site-a ran it" in said[0].message, said
+
+
+def test_a_harvested_table_nobody_placed_is_caught_unless_it_is_working_output(
+    project: Path,
+) -> None:
+    """A harvested table is placed, as an emitted one is; an entry that says the table is
+    working output (`quoted: false`) asks for no placing."""
+    _harvested_here(project)
+    assert "unplaced-table" in codes(gate_report(project))
+    held = yaml.safe_load((project / "harvest.yaml").read_text(encoding="utf-8"))
+    held["entries"][0]["quoted"] = False
+    (project / "harvest.yaml").write_text(yaml.safe_dump(held, sort_keys=False),
+                                          encoding="utf-8")  # fmt: skip
+    from manuscript_guard.harvest import harvest_entry, load_entries
+
+    harvest_entry(project, load_entries(project)[0])
+    assert "unplaced-table" not in codes(gate_report(project))
+
+
+def test_a_small_harvested_count_is_caught_only_in_a_column_its_entry_counts(
+    project: Path,
+) -> None:
+    """A whole number in a column the entry does not list as `counts` is no count; one in a
+    column it lists is, and below the custodian's minimum it fails."""
+    from manuscript_guard.gates.custodian import check_small_cells
+    from manuscript_guard.harvest import Entry, append_entry, harvest_entry
+
+    paper = project / "paper.yaml"
+    paper.write_text(paper.read_text(encoding="utf-8")
+                     + "\ncustodian:\n  minimum_cell_count: 5\n", encoding="utf-8")  # fmt: skip
+    (project / "analysis" / "02_est.py").write_text(_HARVESTED_SCRIPT, encoding="utf-8")
+    (project / "output").mkdir()
+    (project / "output" / "est.csv").write_bytes(b"group,n,df\nWomen,3,3\n")
+    text = main_md(project).read_text(encoding="utf-8")
+    main_md(project).write_text(text + "\n\nOn {{results.est.women.df}} degrees of freedom, "
+                                "{{results.est.women.n}} cases.\n", encoding="utf-8")  # fmt: skip
+
+    def small(counts: tuple[str, ...]) -> set[str]:
+        entry = Entry("est", "output/est.csv", "analysis/02_est.py", row_key="group",
+                      counts=counts)  # fmt: skip
+        (project / "harvest.yaml").unlink(missing_ok=True)
+        append_entry(project, entry)
+        harvest_entry(project, entry)
+        loaded, _ = load_project(project)
+        found = check_small_cells(loaded, load_namespace(loaded)[1])
+        return {f.message.split()[0] for f in found.findings if f.code == "count-below-minimum"}
+
+    assert small(("df",)) == {"results.est.women.df"}
+    assert small(("n",)) == {"results.est.women.n"}
+
+
+def test_a_receipt_is_refused_where_the_custodian_check_fails_on_its_output(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The receipt is what lets the outputs leave the site: a failure of the custodian's
+    subtraction check refuses it, and a warning does not. A harvested output declares no
+    sum, so the failure is stood in for."""
+    from manuscript_guard.findings import FAIL, Finding, Report
+    from manuscript_guard.gates import custodian
+    from manuscript_guard.harvest import HarvestError
+
+    monkeypatch.setattr(custodian, "recoverable_cells", lambda *_args: Report((Finding(
+        gate="G2", code="count-recoverable", severity=FAIL, message="a count given away"),)))
+    paper = project / "paper.yaml"
+    paper.write_text(paper.read_text(encoding="utf-8")
+                     + "\ncustodian:\n  minimum_cell_count: 5\n", encoding="utf-8")  # fmt: skip
+    with pytest.raises(HarvestError, match="a count given away"):
+        _harvested_here(project, site="site-a")
+    assert "receipt-changed" not in codes(gate_report(project))
+    assert not (project / "receipts").exists()
+
+
+def test_a_small_count_in_a_column_the_entry_leaves_out_refuses_the_receipt(
+    project: Path,
+) -> None:
+    """The whole output leaves the site: a 2 in a column `columns` does not take in is a count
+    below the minimum, and no receipt is written."""
+    from manuscript_guard.harvest import Entry, HarvestError, append_entry, make_receipt
+
+    paper = project / "paper.yaml"
+    paper.write_text(paper.read_text(encoding="utf-8")
+                     + "\ncustodian:\n  minimum_cell_count: 5\n", encoding="utf-8")  # fmt: skip
+    script = ("from pathlib import Path\nPath('output').mkdir(exist_ok=True)\n"
+              "Path('output/s.csv').write_text('group,n,deaths\\nDrug,40,{}\\n')\n")
+    (project / "analysis" / "03_site.py").write_text(script.format(7), encoding="utf-8")
+    entry = Entry("s", "output/s.csv", "analysis/03_site.py", row_key="group", columns=("n",),
+                  receipt="site-a")  # fmt: skip
+    append_entry(project, entry)
+    make_receipt(load_project(project)[0], "site-a")
+    (project / "analysis" / "03_site.py").write_text(script.format(2), encoding="utf-8")
+    with pytest.raises(HarvestError, match="deaths is 2"):
+        make_receipt(load_project(project)[0], "site-a")
+
+
+@pytest.mark.parametrize("small", ["<2", "3.0"])
+def test_a_small_count_held_back_or_written_with_a_point_is_caught(
+    project: Path, small: str
+) -> None:
+    """A harvested count printed "<2", whose bound says it is one, or "3.0", is a count below
+    the minimum, as the emitter's `display="<2"` and its 3 are."""
+    from manuscript_guard.gates.custodian import check_small_cells
+    from manuscript_guard.harvest import Entry, harvest_entry
+
+    paper = project / "paper.yaml"
+    paper.write_text(paper.read_text(encoding="utf-8")
+                     + "\ncustodian:\n  minimum_cell_count: 5\n", encoding="utf-8")  # fmt: skip
+    (project / "analysis" / "02_est.py").write_text(_HARVESTED_SCRIPT, encoding="utf-8")
+    (project / "output").mkdir()
+    text = main_md(project).read_text(encoding="utf-8")
+    main_md(project).write_text(text + "\n\nWe saw {{results.est.women.n}} cases.\n",
+                                encoding="utf-8")  # fmt: skip
+
+    def small_counts(cell: str) -> set[str]:
+        (project / "output" / "est.csv").write_bytes(f"group,n\nWomen,{cell}\n".encode())
+        harvest_entry(project, Entry("est", "output/est.csv", "analysis/02_est.py",
+                                     row_key="group", counts=("n",)))  # fmt: skip
+        loaded, _ = load_project(project)
+        return {f.code for f in check_small_cells(loaded, load_namespace(loaded)[1]).findings}
+
+    assert small_counts("<5" if small == "<2" else "5.0") == set()
+    assert small_counts(small) == {"count-below-minimum"}
+
+
+def test_a_small_count_written_as_text_refuses_the_receipt(project: Path) -> None:
+    """A count column the site writes as "n (%)" leaves the site with the count in it: "40
+    (12.5%)" passes, and "2 (1.5%)" under a minimum of 5 refuses the receipt."""
+    from manuscript_guard.harvest import Entry, HarvestError, append_entry, make_receipt
+
+    paper = project / "paper.yaml"
+    paper.write_text(paper.read_text(encoding="utf-8")
+                     + "\ncustodian:\n  minimum_cell_count: 5\n", encoding="utf-8")  # fmt: skip
+    script = ("from pathlib import Path\nPath('output').mkdir(exist_ok=True)\n"
+              "Path('output/s.csv').write_text('group,n\\nDrug,\"{} (1.5%)\"\\n')\n")
+    (project / "analysis" / "03_site.py").write_text(script.format(40), encoding="utf-8")
+    append_entry(project, Entry("s", "output/s.csv", "analysis/03_site.py", row_key="group",
+                                counts=("n",), receipt="site-a"))  # fmt: skip
+    make_receipt(load_project(project)[0], "site-a")
+    (project / "analysis" / "03_site.py").write_text(script.format(2), encoding="utf-8")
+    with pytest.raises(HarvestError, match=r"s\.drug\.n is 2 \(1\.5%\), a count below"):
+        make_receipt(load_project(project)[0], "site-a")
+
+
 def test_touching_a_script_without_changing_it_is_not_a_change(project: Path) -> None:
     """Re-running a formatter or checking the file out again is not an edit."""
     script = project / "analysis" / "01_disproportionality.py"

@@ -59,14 +59,20 @@ def minimum_cell_count(project: Project) -> int | None:
 
 def is_count(value) -> bool:
     """Whether a results value is a count of something, as far as the emitter recorded:
-    a whole number with no unit that is not a parameter, a software version or a label."""
+    a whole number with no unit that is not a parameter, a software version or a label, and
+    that is not said to be no count (`count: false`, a harvested cell outside its entry's
+    `counts`). A harvested cell said to be one (`count: true`), a number held back or one
+    written "3.0", is one whatever its value, and its display is read (`_small`)."""
     number = value.value
+    if value.count is True:
+        return not value.role and not value.label
     return (
         isinstance(number, int)
         and not isinstance(number, bool)
         and not value.unit
         and not value.role
         and not value.label
+        and value.count is not False
     )
 
 
@@ -94,7 +100,8 @@ def check_small_cells(project: Project, results: Results) -> Report:
                     f"custodian's minimum of {minimum}",
                     path=path,
                     line=placeholder.line if lined else None,
-                    hint=f"report it as fewer than the minimum, \"<{minimum}\", or merge the "
+                    hint=UNREAD_HINT if wrong == UNREAD else
+                    f"report it as fewer than the minimum, \"<{minimum}\", or merge the "
                     "category with another, in the analysis; a number that is no count of "
                     "people is emitted with its unit",
                 )
@@ -126,11 +133,28 @@ def _small(value, minimum: int) -> str | None:
     """What is wrong with how a count's display prints it, or None. A comparator hides the
     count only where every count it allows is one the custodian forbids or nought: "<2" and
     "≤3" under a minimum of 5 still say the count is one, or at most three (round 3 of
-    #275)."""
+    #275).
+
+    A harvested cell said to be a count that is text ("2 (1.5%)", "2/40") is read as
+    `deposit` reads a table cell (`count_in_cell`), and one that names no count it can read
+    ("n=2") is refused: what holds digits in a count column may be one (round 2 of #471)."""
+    if value.count is True and isinstance(value.value, str):
+        from manuscript_guard.deposit.counts import count_in_cell
+
+        stated = count_in_cell(value.display)
+        if stated is None:
+            return UNREAD
+        return "a count below" if 0 < stated < minimum else None
     largest = held_largest(value.display)
     if largest is None:
         return "a count below" if 0 < _printed(value.display) < minimum else None
     return "a bound tighter than" if 1 <= largest < minimum - 1 else None
+
+
+#: A harvested count cell `count_in_cell` reads no count from, and what to do about it.
+UNREAD = "a cell this tool reads as a count, failing closed, and cannot hold to"
+UNREAD_HINT = ("write the count plainly in the output (\"2\" or \"2 (1.5%)\"); if the column "
+               "holds no count, name the entry's count columns in `counts` and leave it out")
 
 
 def held_largest(display: str) -> int | None:

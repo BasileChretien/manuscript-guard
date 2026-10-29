@@ -19,6 +19,7 @@ from pathlib import Path
 
 from manuscript_guard.contracts.literature import ATTESTED_FILE, LEDGER_FILE
 from manuscript_guard.findings import Finding
+from manuscript_guard.gates.harvested import RECEIPT_CONTEXT
 
 
 @dataclass(frozen=True)
@@ -79,6 +80,12 @@ ROUTES: dict[str, Route] = {
            "analysis-newer", "environment-changed", "no-digest", "no-results",
            "no-results-dir", "rerun-", "dataset-", "data-date-not-declared",
            "synthetic-input-quoted"),
+    # An output harvested is taken in again from the file; what the script writes is shown by
+    # `verify`, and a site's receipt is the site's to write again (`verify --receipt SITE`).
+    **_all("results-binding", ("harvest",), "harvested-output-"),
+    **_all("results-binding", _VERIFY, "harvest-declared"),
+    **_all("results-binding", None, "receipt-"),
+    **_all("results-binding", None, "input-at-site", who="author"),
     **_all("results-binding", _BIND, "unclassified-number", "unresolved-binding",
            "unquoted-result", "typed-", "parameter-unread", "hand-authored-table",
            "value-splits-paragraph", "duplicate-quantity", "malformed-placeholder",
@@ -218,6 +225,12 @@ NO_ACTION = frozenset({"plan-complete", "reference-found", "pointers-unchecked",
                        "tex-not-judged", "tex-words-not-read"})  # fmt: skip
 
 
+#: A finding of a run at the site that holds the data: answered there, by a new run and its
+#: receipt, which nothing at the centre runs (`gates/harvested.py`).
+_AT_SITE = RECEIPT_CONTEXT
+SITE_ROUTE = Route("results-binding", None, who="author")
+
+
 def route_of(code: str) -> Route | None:
     """The route for `code`: its own, else the longest prefix it begins with."""
     if code in ROUTES:
@@ -229,6 +242,8 @@ def route_of(code: str) -> Route | None:
 def route_for(finding: Finding) -> Route | None:
     """The route for a finding: the literature's where its code is one the literature and
     the results both raise and it names a literature file, else its code's."""
+    if (finding.context or "").startswith(_AT_SITE):
+        return SITE_ROUTE
     named = Path(finding.path).name if finding.path is not None else None
     if finding.code in LITERATURE_ROUTES and named in _LITERATURE_FILES:
         return LITERATURE_ROUTES[finding.code]

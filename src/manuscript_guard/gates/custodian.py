@@ -153,8 +153,8 @@ def _small(value, minimum: int) -> str | None:
 
 #: A harvested count cell `count_in_cell` reads no count from, and what to do about it.
 UNREAD = "a cell this tool reads as a count, failing closed, and cannot hold to"
-UNREAD_HINT = ("write the count plainly in the output (\"2\" or \"2 (1.5%)\"), or leave the "
-               "column out of the entry's `counts` if it holds no count")
+UNREAD_HINT = ("write the count plainly in the output (\"2\" or \"2 (1.5%)\"); if the column "
+               "holds no count, name the entry's count columns in `counts` and leave it out")
 
 
 def held_largest(display: str) -> int | None:

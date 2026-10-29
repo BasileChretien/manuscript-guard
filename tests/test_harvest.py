@@ -645,6 +645,7 @@ def test_an_output_swallowed_by_a_flag_of_several_values_is_said(project: Path, 
     ("n=2", ("n",), "failing closed, and cannot hold"),
     ("2 patients", ("n",), "a count below"), ("2 patients", None, "a count below"),
     ("<2 patients", None, "a bound tighter than"),
+    ("2%", ("n",), "a count below"),  # a share in a column named a count column (last round)
 ])  # fmt: skip
 def test_a_count_written_as_text_refuses_the_receipt(
     project: Path, cell: str, counts, said: str

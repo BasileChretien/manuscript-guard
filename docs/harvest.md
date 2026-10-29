@@ -63,8 +63,8 @@ output.
 
 `counts` names the columns whose cells count people or records. Only those are held to the
 custodian's `minimum_cell_count` by G2, and a whole number in any other column (degrees of
-freedom, a year) is no count. Without `counts`, every number with no unit that is whole is
-one, "3" and "3.0" alike (an emitted value is a count only where it is an integer), so an
+freedom, a year) is no count. Without `counts`, every whole number is
+one, "3", "3.0" and one with a unit other than "%" ("2 patients", "3 years") alike (an emitted value is a count only where it is an integer), so an
 odds ratio printed "1.0" is a count of one: name the count columns. A count held back ("<2",
 "≤4") is held by its bound, as the emitter's `display="<2"` is: below a minimum of 5, "<2"
 still says the count is one. Text with a digit in a count column, or anywhere without

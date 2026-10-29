@@ -101,8 +101,9 @@ def _counted(found: Cell, named: bool | None) -> bool | None:
     if named is False:
         return False if whole and not found.unit else None
     if found.unit:
-        # A share is no count; any other unit may name what is counted ("2 patients").
-        return True if whole and found.unit != "%" else None
+        # A share is no count, unless its column is named a count column, where "2%" is held
+        # as it was; any other unit may name what is counted ("2 patients").
+        return True if whole and (named or found.unit != "%") else None
     return True if whole and not isinstance(value, int) else None
 
 
@@ -209,9 +210,10 @@ def cell(text: str | None, digits: int | None, *, label: bool = False) -> Cell |
     number, exponent = _number_of(match)
     try:
         value: int | float = int(number) if "." not in number and not exponent else float(number)
+        finite = math.isfinite(value)  # an int past a float's range raises here, not above
     except (ValueError, OverflowError) as exc:  # longer than Python converts
         raise HarvestError(f"{shown[:20]!r}... is too long a number to read") from exc
-    if not math.isfinite(value):
+    if not finite:
         raise HarvestError(f"{shown!r} is no finite number")
     if digits is None:
         return Cell(value, shown, unit)

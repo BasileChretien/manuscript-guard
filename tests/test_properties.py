@@ -4404,6 +4404,7 @@ def _problem_kind(said: str) -> str:
 def _note_kind(said: str) -> str:
     for start, kind in (("the exclusions after stage", "overlapping"),
                         ("the items under stage", "breakdown"), ("stage ", "fall"),
+                        ("the items under a part of stage", "under breakdown"),
                         ("the reasons under", "reasons overlapping"),
                         ("the items under an arm", "per arm"), ("a nested list", "partial")):
         if said.startswith(start):
@@ -4501,6 +4502,33 @@ def _the_paragraph_before_a_list_is_not_read(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.stats import flows
 
     patch.setattr(flows.Listed, "named", property(lambda self: flows.names_a_flow(self.heading)))
+
+
+def _items_that_add_up_to_their_stage_are_its_exclusions(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import flows
+
+    patch.setattr(flows, "breakdowns", lambda items, n: set())
+
+
+def _a_step_that_lists_no_exclusion_removes_nothing(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import flows
+
+    patch.setattr(flows, "unlisted", lambda here, there: [])
+
+
+def _thousands_parted_by_a_space_are_two_numbers(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import flows
+
+    patch.setattr(flows, "COUNT", re.compile(
+        r"(?<![\w.])[nN]\s*=\s*(?P<n>\d{1,3}(?:,\d{3})+|\d+)(?!\d|[.,]\d)(?!\s*%)"))
+
+
+def _only_the_nearest_heading_names_a_list(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.stats import flows
+
+    real = flows.heading_chain
+    patch.setattr(flows, "heading_chain", lambda headings, before: real(
+        headings, before).split(" / ")[-1])  # fmt: skip
 
 
 def _a_nested_item_is_read_at_the_top(patch: pytest.MonkeyPatch) -> None:
@@ -15079,6 +15107,22 @@ BROKEN = {
     "a .tex line keeps the place of the last view line printed from it": (
         _a_tex_line_keeps_the_place_of_the_last_line_printed_from_it,
         test_the_abstract_is_held_to_what_the_paper_reports,
+    ),
+    "items that add up to their stage are its exclusions": (
+        _items_that_add_up_to_their_stage_are_its_exclusions,
+        test_a_flow_printed_as_a_list_is_held_to_its_arithmetic,
+    ),
+    "a step that lists no exclusion removes nothing": (
+        _a_step_that_lists_no_exclusion_removes_nothing,
+        test_a_flow_printed_as_a_list_is_held_to_its_arithmetic,
+    ),
+    "thousands parted by a space are two numbers": (
+        _thousands_parted_by_a_space_are_two_numbers,
+        test_a_flow_printed_as_a_list_is_held_to_its_arithmetic,
+    ),
+    "only the nearest heading names a list": (
+        _only_the_nearest_heading_names_a_list,
+        test_a_flow_printed_as_a_list_is_held_to_its_arithmetic,
     ),
     "a nested item is read at the top of its list": (
         _a_nested_item_is_read_at_the_top,

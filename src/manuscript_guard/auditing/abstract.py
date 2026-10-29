@@ -6,7 +6,10 @@ paper reports is read as G8 reads it (`gates.reported.Walk`): the Methods, the R
 table of every file, and the whole of a file with no Abstract, which is a supplement. A line
 is placed under the headings over it, a Markdown paper's (`split_sections`), a Word
 document's heading styles (`DocxText.headings`), a LaTeX document's printed view, its places
-read back to the `.tex` lines (`printed`, `place_line`). Where no file has an Abstract
+read back to the `.tex` lines (`printed`, `place_line`, `place_lines`). Each file is placed
+by its own headings, unlike G8, which carries a project's headings from file to file: a
+paper split into files has a Discussion in a file of its own reported whole, as a
+supplement (round 2 of #472, DESIGN.md, "Known gaps"). Where no file has an Abstract
 heading, or none a Results heading, nothing is compared, and the report says so.
 
 * **Not found.** A number of the Abstract the classifier leaves unexplained, found nowhere
@@ -84,13 +87,15 @@ def in_abstract(place: object) -> bool:
     return isinstance(place, str) and names_abstract(place)
 
 
-def placed(sections: list[Section], walk=None) -> tuple[Callable[[int], object], bool, bool]:
+def placed(sections: list[Section]) -> tuple[Callable[[int], object], bool, bool]:
     """Where each line of one document stands, given its headings, and whether it has an
-    Abstract and a Results heading outside it. `walk` is the `Walk` of the files before it,
-    whose headings a file of a paper split into files goes on under, as G8 reads them."""
+    Abstract and a Results heading outside it. Each file is placed alone, unlike G8, which
+    carries the headings of a paper's files from one into the next: a file with no Abstract
+    is a supplement, reported whole, and so is a Discussion written in a file of its own
+    (round 2 of #472, DESIGN.md, "Known gaps")."""
     from manuscript_guard.gates.reported import REPORTED, Walk
 
-    place = (walk if walk is not None else Walk()).placing(sections)
+    place = Walk().placing(sections)
     abstract = any(in_abstract(place(s.line)) for s in sections if names_abstract(s.title))
     results = any(place(s.line) is REPORTED for s in sections if names_results(s.title))
     return place, abstract, results

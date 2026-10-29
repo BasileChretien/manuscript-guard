@@ -1695,6 +1695,24 @@ def test_a_breakdown_or_a_funnel_passes_an_audit_and_a_broken_one_fails(tmp_path
     assert main(["audit", str(paper), "--strict"]) == 1
 
 
+def test_a_copied_count_or_a_patient_flow_fails_an_audit(tmp_path: Path) -> None:
+    """Round 2 of #472: a stage's count copied into its one exclusion is no breakdown, and a
+    "Patient flow" or a "Trial profile" names a flow, so --strict fails either broken."""
+    from manuscript_guard.cli import main
+
+    paper = tmp_path / "paper.md"
+    copied = ("# CONSORT diagram\n\n- Assessed (n = 412)\n  - Excluded (n = 112)\n"
+              "- Randomised (n = 300)\n")
+    paper.write_text(copied, encoding="utf-8")
+    assert main(["audit", str(paper), "--strict"]) == 0
+    paper.write_text(copied.replace("(n = 112)", "(n = 412)"), encoding="utf-8")
+    assert main(["audit", str(paper), "--strict"]) == 1
+    for heading in ("Patient flow", "Trial profile"):
+        broken = copied.replace("CONSORT diagram", heading).replace("(n = 300)", "(n = 290)")
+        paper.write_text(broken, encoding="utf-8")
+        assert main(["audit", str(paper), "--strict"]) == 1, heading
+
+
 def test_a_latex_abstract_ending_on_its_last_line_fails_an_audit_where_it_differs(
     tmp_path: Path,
 ) -> None:

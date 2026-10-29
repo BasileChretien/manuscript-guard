@@ -7892,24 +7892,31 @@ said. A list where an item gives no count or two is noted and not read; items un
 or under an arm are noted and not read. In a Word document, text boxes that give two counts
 or more are noted: a flow drawn in boxes is not read.
 
-Where the shape is not sure, the reading is a note, never a failure (round 1 of #472). Items
-under a stage that is not the last and that add up to it exactly are a breakdown of it, arms
-randomised mid-flow or a review's sources, noted and never read as its exclusions. A step
+Where the shape is not sure, the reading is a note, never a failure (round 1 of #472). Two
+items or more under a stage that is not the last and that add up to it exactly are a
+breakdown of it, arms randomised mid-flow or a review's sources, noted and never read as its
+exclusions, and the items under one of its parts are noted and not read; a single item is
+always an exclusion, a stage's count copied into it by mistake included (round 2). A step
 that lists no exclusion, a funnel of stages alone or the step after a breakdown, is held
 only to not growing, and what it removes is noted. A count is read with its thousands parted
 by a comma or by a space, a no-break space or a narrow one ("n = 12 345", as the Lancet
-prints it), and a count a space and a digit follow is no count. In Markdown, another kind of
-marker after a blank line starts another list, as pandoc reads it.
+prints it), and a count a space and a digit follow is no count. In Markdown, an ordered
+marker under bullets, or another delimiter, "1)" under "1.", starts another list, with a
+blank line between them or none, and another bullet, "*" under "-", does not: pandoc 3.9
+reads them so (round 2).
 
 A list of subgroups under their groups, men over smokers and women over smokers, has a
 flow's shape, and its counts break a flow's arithmetic. So a broken flow is `flow-broken` in
 the Arithmetic section, counted by `--strict`, only where it stands under a name for a flow
 (Basile, 2026-10-29): the title of the nearest heading above the list in its file or of a
 heading it stands under (round 1 of #472), or the caption or paragraph directly before it,
-holds one of `stats.flows.FLOW_NAMES`: flow chart, flow diagram, participant or participants
-(so "participant flow"), selection, CONSORT, PRISMA, STROBE, study population, enrolment,
+holds one of `stats.flows.FLOW_NAMES`: a patient, participant, study, trial or subject flow,
+a flow of anything ("flow of patients through the trial"), a flow chart, a flow diagram, a
+trial profile, participants, selection, CONSORT, PRISMA, STROBE, study population, enrolment,
 recruitment, in any case. "Flow" alone names nothing, since "Blood flow" and "Flow
-cytometry" hold it. Any other list of that shape is read the same way, and
+cytometry" hold it. A paper's title written as a heading of the first level, over its
+Abstract, Introduction or Methods, names nothing, though it is over every list (round 2 of
+#472). Any other list of that shape is read the same way, and
 what is wrong with it is a note, never counted. The heading is the one pandoc prints in
 Markdown, the heading command of the `.tex` file in LaTeX, and the heading style in Word;
 the paragraph before is the one ending directly before the list, past blank lines, and in
@@ -7923,10 +7930,10 @@ to the `.tex` line it was printed from (`printed`, `place_line`, through
 `auditing.abstract.place_lines`, which keeps a line's place in the Abstract or where the
 paper reports over a place that is neither where several printed lines share one `.tex`
 line: the untitled heading that closes an abstract stands on `\end{abstract}`'s line, and
-Results text can share a line with the `\section` after it, round 1 of #472). A Markdown
-paper split into files is placed as G8 places one: a file with no Abstract of its own goes
-on under the headings of the file before it, unless its name says it is a supplement
-("supplement", "appendix", "annex", "S1"). Where the paper reports is
+Results text can share a line with the `\section` after it, round 1 of #472). Each file
+is placed by its own headings: round 1 carried a split paper's headings from one file into
+the next, as G8 does, and took a file for a supplement by its name, which guessed, so round
+2 put it back (see Known gaps). Where the paper reports is
 the Methods, the Results, every table of every file, and the whole of a file whose document
 has no Abstract, a supplement. Each number of the Abstract the classifier leaves unexplained
 is looked for in what the paper reports: found as printed, found as a rounding of a number
@@ -18312,6 +18319,14 @@ What papers converted from Word showed (see "What papers converted from Word sho
     otherwise, and it is not read.
   - A paragraph style written `<w:pStyle/>` with no value is looked up as the style named
     "" (round 1 of #472, finding 11).
+  - Two items or more under a stage that happen to add up to it are read as a breakdown,
+    whether they are or are exclusions that add up to the stage by chance; a single item is
+    always an exclusion (round 2 of #472).
+  - Sources and a removal under one stage, a review's databases, registers and duplicates
+    removed under "Identified", are read as that stage's exclusions, overlapping, and fail
+    under a PRISMA heading (round 2 of #472, finding 4).
+  - No property draws a Word list's levels; the Word reader is held by examples only (round
+    2 of #472, finding 6).
 
 - **The Abstract is held to the Results by weak membership** (Task 3, PR 3,
   `auditing/abstract.py`).
@@ -18330,9 +18345,14 @@ What papers converted from Word showed (see "What papers converted from Word sho
     where the paper reports, another of the same name and level that agrees in two of its
     numbers is the one near match, and its third number is said to conflict (round 1 of
     #472, finding 16).
-  - A Markdown file that is a supplement and whose name does not say so is placed under the
-    headings of the file before it, so its numbers are where the paper reports only where
-    those headings are the Results or the Methods.
+  - Each file is placed by its own headings, and a file with no Abstract is reported
+    whole, as a supplement is. A paper split into files, its Discussion or its Introduction
+    in a file of its own, has that file counted as where the paper reports, so a number of
+    the Abstract printed only there is found. G8 carries a project's headings from file to
+    file and knows its supplement by its folder; an audit has neither (round 2 of #472).
+  - A `.tex` line keeps its first place in the Abstract or where the paper reports, so an
+    Introduction's interval on the line of the `\section{Results}` after it is read as
+    reported (round 2 of #472, finding 11).
   - A table's lines are where the paper reports wherever the table stands, a table in the
     Abstract included. A Word document's footnotes are placed under the body's last heading.
 

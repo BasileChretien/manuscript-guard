@@ -5478,7 +5478,11 @@ FLOW_KINDS = (
 #: does not, a heading that does not over a paragraph that does, or neither.
 FLOW_ROUTES = ("heading", "paragraph", "none")
 FLOW_HEADINGS = ("Participant flow", "Flow of participants", "CONSORT diagram",
-                 "Selection of the study population", "Recruitment", "PRISMA flow chart")
+                 "Selection of the study population", "Recruitment", "PRISMA flow chart",
+                 "Patient flow", "Study flow", "Trial profile",
+                 "Flow of patients through the trial")  # fmt: skip
+#: How a count may part its thousands with a space: a space, a no-break space, a narrow one.
+THOUSANDS_SPACES = (" ", "\N{NO-BREAK SPACE}", "\N{NARROW NO-BREAK SPACE}")
 FLOW_SENTENCES = ("Figure 1: flow of participants.", "Participants were selected as follows.",
                   "The CONSORT diagram is given as a list.", "Enrolment went as follows.")
 OTHER_HEADINGS = ("Subgroups", "Results by sex", "Baseline characteristics", "Outcomes")
@@ -5566,13 +5570,16 @@ def _flow_of(draw: st.DrawFn, kind: str) -> tuple[list, list[str], list[str]]:
 def _shaped_flow(draw: st.DrawFn, kind: str) -> tuple[list, list[str], list[str]]:
     """A breakdown mid-flow, or a funnel, as `_flow_of` gives a flow: neither has a problem,
     and each fall from a stage that lists no exclusion is a note, `fall`, as is the breakdown,
-    `breakdown`."""
+    `breakdown`, and the item under one of its parts, `under breakdown`. The funnel's first
+    count is in the thousands, parted by a space (round 2 of #472)."""
     first = draw(st.integers(400, 3000))
     if kind == "funnel":
+        first = draw(st.integers(1000, 30000))
         second = first - draw(st.integers(1, 99))
         third = second - draw(st.integers(1, 99))
         arms = _split(draw, third, 2)
-        return ([[STAGE_WORDS[1], [first], []], [STAGE_WORDS[0], [second], []],
+        spaced = f"{first:,}".replace(",", draw(st.sampled_from(THOUSANDS_SPACES)))
+        return ([[STAGE_WORDS[1], [spaced], []], [STAGE_WORDS[0], [second], []],
                  [STAGE_WORDS[4], [third], [[ARM_WORDS[0], [arms[0]], []],
                                              [ARM_WORDS[1], [arms[1]], []]]]],
                 [], ["fall", "fall"])  # fmt: skip
@@ -5581,16 +5588,19 @@ def _shaped_flow(draw: st.DrawFn, kind: str) -> tuple[list, list[str], list[str]
     mid = _split(draw, second, 2)
     third = second - draw(st.integers(1, 30))
     arms = _split(draw, third, 2)
+    lost = [["Lost to follow-up", [draw(st.integers(0, mid[0]))], []]]
     return ([[STAGE_WORDS[0], [first], [[EXCLUSION_WORDS[0], [removed], []]]],
-             [STAGE_WORDS[2], [second], [[ARM_WORDS[0], [mid[0]], []],
+             [STAGE_WORDS[2], [second], [[ARM_WORDS[0], [mid[0]], lost],
                                          [ARM_WORDS[1], [mid[1]], []]]],
              [STAGE_WORDS[4], [third], [[ARM_WORDS[0], [arms[0]], []],
                                         [ARM_WORDS[1], [arms[1]], []]]]],
-            [], ["breakdown", "fall"])  # fmt: skip
+            [], ["breakdown", "fall", "under breakdown"])  # fmt: skip
 
 
 def _flow_item(draw: st.DrawFn, label: str, counts: list[int], grouped: bool) -> str:
-    def shown(n: int) -> str:
+    def shown(n: int | str) -> str:
+        if isinstance(n, str):
+            return n
         return f"{n:,}" if grouped else str(n)
 
     if not counts:
@@ -5654,6 +5664,11 @@ def flow_lists(draw: st.DrawFn) -> tuple[str, str, list[dict[str, Any]]]:
         title = draw(st.sampled_from(FLOW_HEADINGS if route == "heading" else OTHER_HEADINGS))
         markdown.extend(["", f"## {title}"])
         latex.extend(["", f"{BACKSLASH}section{{{title}}}"])
+        if route == "heading":
+            # The name is a heading over the list's own, which names nothing (round 2).
+            below = draw(st.sampled_from(OTHER_HEADINGS))
+            markdown.extend(["", f"### {below}"])
+            latex.extend(["", f"{BACKSLASH}subsection{{{below}}}"])
         paragraph(draw(st.sampled_from(FLOW_SENTENCES)) if route == "paragraph"
                   else draw(sentence).capitalize() + ".")  # fmt: skip
         if kind == "prose":

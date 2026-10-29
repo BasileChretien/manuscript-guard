@@ -196,12 +196,13 @@ stage the arms. Each stage less its exclusions is the next stage, the reasons ad
 their exclusion, and the arms to the last stage; a flow that does not is listed,
 `flow-broken`. `--strict` counts it only where the list stands under a name for a flow: a
 heading over it, the nearest or one it stands under, or the caption or paragraph directly
-before it, says flow chart, flow diagram, participants (so "participant flow"), selection,
-CONSORT, PRISMA, STROBE, study population, enrolment or recruitment, in any case (the author,
-2026-10-29); "flow" alone, as in "Blood flow", does not. Items under a stage mid-flow that
-add up to it exactly, arms randomised or a review's sources, are a breakdown and no
-exclusions, and a step that lists no exclusion is held only to not growing: both are
-notes. A count may part its thousands with a space, "n = 12 345". Under anything else, "Results" or "Subgroups", a list
+before it, says patient flow, participant flow, study flow, a flow of patients, flow chart,
+flow diagram, trial profile, participants, selection, CONSORT, PRISMA, STROBE, study
+population, enrolment or recruitment, in any case (the author, 2026-10-29); "flow" alone, as
+in "Blood flow", does not, and nor does the paper's title. Two items or more under a stage
+mid-flow that add up to it exactly, arms randomised or a review's sources, are a breakdown
+and no exclusions, and a step that lists no exclusion is held only to not growing: both are
+notes. A single item under a stage is always an exclusion. A count may part its thousands with a space, "n = 12 345". Under anything else, "Results" or "Subgroups", a list
 of the same shape is read the same way and its faults are notes, since a list of subgroups
 under their groups has a flow's shape. The names are English only, so give a flow under
 another heading a caption that names it. Exclusions or reasons that add up to more than they
@@ -228,7 +229,9 @@ and statistic whose P cannot be the same. Two numbers agree where one value coul
 printed as both: 1.5 and 1.52 agree, 1.90 and 1.89 do not. A conflict is counted by
 `--strict`. Where two intervals or tests could be the counterpart, none is said. Where no
 file has an Abstract heading, or none a Results heading, the section says nothing was
-compared.
+compared. Each file is placed by its own headings, so a paper split into files has a
+Discussion in a file of its own read as reported whole, as a supplement is; give the audit
+the paper in one file where it can be.
 
 A mean of whole numbers, answers on a Likert-type scale or a count, is a whole total over
 its n, so not every mean can be printed for it: 28 answers average 3.46 or 3.50, never 3.47

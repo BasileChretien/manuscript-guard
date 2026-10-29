@@ -19,7 +19,10 @@ gives exactly one count, `n = 412` or `(n = 412)`. Its items at the top are the 
 items under a stage are the exclusions of the step to the next stage, and the items under an
 exclusion the reasons it totals; the items under the last stage are the arms. That is the
 flow `Emitter.flow` records, and it is held to the same arithmetic, `emit.flow_problem`:
-each stage less its exclusions is the next, and the arms add up to the last stage.
+each stage less its exclusions is the next, and the arms add up to the last stage. Two items
+or more under a stage that is not the last and that add up to it exactly are a breakdown of
+it, arms randomised mid-flow or a review's sources, noted and no exclusions; a step that
+lists no exclusion is held only to not growing, and what it removes is noted.
 
 Where the exclusions of a step, or the reasons under an exclusion, add up to more than it
 removes, they are read as overlapping, one record excluded for several reasons, which the
@@ -31,8 +34,9 @@ known. Items under a reason, and items under an arm, a step per arm, are said an
 Nothing but its shape is read, so a nested list of counts that is no flow, subgroups under
 their groups, reads as one. What `audit --strict` counts is a broken flow under a heading, or
 after a caption or a paragraph, that names a flow (`FLOW_NAMES`): any other is said as a
-note (Basile, 2026-10-29). The heading is the nearest above the list in its file; the
-caption or paragraph is the one directly before it.
+note (Basile, 2026-10-29). The headings are those the list stands under in its file, the
+nearest and those above it, a paper's title left out; the caption or paragraph is the one
+directly before it.
 
 Prose, a text box, a drawing and a figure are not read (DESIGN.md, "Known gaps").
 """
@@ -65,10 +69,12 @@ _LABEL = 50
 LEAST_STAGES = 2
 #: What names a flow in a heading, a caption or a paragraph, in English: a broken flow under
 #: one is counted by `audit --strict`, and under none is a note (Basile, 2026-10-29). Not
-#: "flow" alone, which "Blood flow" and "Flow cytometry" hold (round 1 of #472): "participant
-#: flow" holds "participant", and a flow chart or a flow diagram is named.
+#: "flow" alone, which "Blood flow" and "Flow cytometry" hold (round 1 of #472); a patient,
+#: participant, study, trial or subject flow, a flow of anything, a flow chart, a flow
+#: diagram and a trial profile, as the Lancet calls one, are (round 2).
 FLOW_NAMES = re.compile(
-    r"\b(?:flow[ -]?charts?|flow[ -]diagrams?|participants?|selection|CONSORT"
+    r"\b(?:flow[ -]?charts?|flow[ -]diagrams?|flow\s+of\s+\w+|trial\s+profile"
+    r"|(?:patient|participant|study|trial|subject)s?[ -]flow|participants?|selection|CONSORT"
     r"|PRISMA|STROBE|study\s+population|enrol(?:l)?ments?|recruitment)\b",
     re.IGNORECASE,
 )
@@ -122,18 +128,39 @@ class Listed:
         return names_a_flow(self.heading) or names_a_flow(self.before)
 
 
+#: A heading that opens a paper, under which the heading over it is the paper's title.
+_OPENS = re.compile(r"\W*(?:abstract|summary|introduction|background|(?:\w+\s+)*methods)\b",
+                    re.IGNORECASE)
+
+
 def heading_chain(headings: list[tuple[int, int, str]], before: int) -> str:
     """The titles of the headings over a place, each as (where, level, title) in document
     order, `before` the place: the nearest, and each above it of a lesser level, joined. A
-    flow under "Participant flow" and then "Trial A" stands under both (round 1 of #472)."""
+    flow under "Participant flow" and then "Trial A" stands under both (round 1 of #472). A
+    paper's title written as a heading, one with the Abstract, the Introduction or the
+    Methods under it, names nothing: "# A trial in participants with diabetes" is over every
+    list of the paper (round 2)."""
     chain: list[tuple[int, str]] = []
-    for where, level, title in headings:
+    for at, (where, level, title) in enumerate(headings):
         if where >= before:
             break
         while chain and chain[-1][0] >= level:
             chain.pop()
-        chain.append((level, title))
-    return " / ".join(title for _level, title in chain)
+        chain.append((level, "" if _a_title(headings, at) else title))
+    return " / ".join(title for _level, title in chain if title)
+
+
+def _a_title(headings: list[tuple[int, int, str]], at: int) -> bool:
+    """Whether the heading at `at`, of the first level, is over one that opens a paper."""
+    level = headings[at][1]
+    if level > 1:
+        return False
+    for _where, other, title in headings[at + 1 :]:
+        if other <= level:
+            return False
+        if _OPENS.match(title):
+            return True
+    return False
 
 
 def paragraph_before(lines: list[str], first: int) -> str:
@@ -183,8 +210,8 @@ def _tree(entries: list[tuple[int, str, int]]) -> tuple[Item, ...]:
 def markdown_lists(text: str, hidden: str) -> list[Listed]:
     """Each list of a Markdown paper, its items as pandoc makes them (`blocks.nested_items`),
     each item's text read in `hidden`, the text masked at the same offsets: from its marker
-    to the next item or the end of its paragraph; with the heading pandoc prints nearest
-    above it, and the paragraph before it, its code and comments blanked."""
+    to the next item or the end of its paragraph; with the headings pandoc prints that it
+    stands under, and the paragraph before it, its code and comments blanked."""
     from manuscript_guard.text.blocks import find_headings, nested_items, scannable
 
     headings = [(text.count("\n", 0, one.start) + 1, one.level, one.title)
@@ -203,11 +230,12 @@ def markdown_lists(text: str, hidden: str) -> list[Listed]:
         own = hidden[start:end].replace("\x00", " ")
         line = text.count("\n", 0, start) + 1
         if depth == 1:
-            # Another kind of marker after a blank line starts another list, as pandoc reads
-            # it: "1." under the "-" items of a list before it (round 1 of #472).
+            # An ordered marker under bullets, or a delimiter changed, "1)" under "1.", starts
+            # another list, as pandoc 3.9 reads it with a blank line between them or none; a
+            # bullet changed, "*" under "-", does not (rounds 1 and 2 of #472).
             kind = _marker_kind(text[start:end])
             part = kinds.get(which, (kind, 0))[1]
-            if kinds.get(which, (kind,))[0] != kind and line > 1 and not shown[line - 2].strip():
+            if kinds.get(which, (kind,))[0] != kind:
                 part += 1
             kinds[which] = (kind, part)
         lists.setdefault((which, kinds.get(which, ("", 0))[1]), []).append((depth, own, line))
@@ -219,13 +247,15 @@ def markdown_lists(text: str, hidden: str) -> list[Listed]:
     return read
 
 
-#: A list marker's kind: its bullet, or an ordered marker's delimiter.
+#: A list marker's kind: a bullet, any of the three, or an ordered marker's delimiter.
 _KIND = re.compile(r"[ \t]*(?:(?P<bullet>[-*+])|\d{1,9}(?P<delimiter>[.)]))")
 
 
 def _marker_kind(text: str) -> str:
     found = _KIND.match(text)
-    return "" if found is None else found.group("bullet") or "1" + found.group("delimiter")
+    if found is None:
+        return ""
+    return "-" if found.group("bullet") else "1" + found.group("delimiter")
 
 
 def docx_lists(lines: list[str], levels: dict[int, int],
@@ -288,8 +318,8 @@ def latex_lists(source, hidden: str) -> list[Listed]:
     environments and their `\\item`s where the reader reads them as commands, outside a
     comment, a passage TeX skips, a definition's body, a code span and a listing; each item's
     text read in `hidden`, the file's printed view at the source's offsets, from its `\\item`
-    to the next command of a list; with the title of the heading of the file nearest above
-    it, and the paragraph of the printed view before it, a caption's included."""
+    to the next command of a list; with the titles of the file's headings it stands under,
+    and the paragraph of the printed view before it, a caption's included."""
     read = command_read(source)
     events = [found for found in _LIST_EVENT.finditer(source.text) if read(found.start())]
     lists: list[Listed] = []
@@ -366,14 +396,12 @@ def read_flow(items: tuple[Item, ...]) -> FlowRead | None:
     stages = [n(stage) for stage in items]
     arms = [n(child) for child in items[-1].children]
     notes: list[str] = []
-    # Items under a stage that is not the last and that add up to it exactly are a breakdown
-    # of it, arms randomised mid-flow or a review's sources, and never its exclusions (round
-    # 1 of #472).
-    broken_down = {at for at, stage in enumerate(items[:-1])
-                   if stage.children and sum(n(c) for c in stage.children) == stages[at]}
+    broken_down = breakdowns(items, n)
     for at in sorted(broken_down):
         notes.append(f"the items under stage {at + 1} ({stages[at]}) add up to it: read as a "
                      "breakdown of it, not as its exclusions")  # fmt: skip
+        if any(child.children for child in items[at].children):
+            notes.append(f"the items under a part of stage {at + 1}'s breakdown are not read")
     exclusions = [[] if at in broken_down else [n(child) for child in stage.children]
                   for at, stage in enumerate(items[:-1])]  # fmt: skip
     held = [list(step) for step in exclusions]
@@ -381,10 +409,8 @@ def read_flow(items: tuple[Item, ...]) -> FlowRead | None:
     steps = zip(stages, stages[1:], exclusions, strict=False)
     for step, (here, there, reasons) in enumerate(steps, 1):
         if not reasons:
-            # A step that lists no exclusion is held only to not growing; what it removes is
-            # said (round 1 of #472, the funnel of a cohort that prints its stages alone).
-            if there < here:
-                held[step - 1] = [here - there]
+            held[step - 1] = unlisted(here, there)
+            if held[step - 1]:
                 notes.append(f"stage {step + 1} ({there}) is {here - there} fewer than stage "
                              f"{step} ({here}), and no exclusion is listed")  # fmt: skip
             continue
@@ -405,6 +431,22 @@ def read_flow(items: tuple[Item, ...]) -> FlowRead | None:
     return FlowRead(first.line, context, True, tuple(stages),
                     tuple(tuple(step) for step in exclusions), tuple(arms), tuple(problems),
                     tuple(notes))  # fmt: skip
+
+
+def breakdowns(items: tuple[Item, ...], n) -> set[int]:
+    """The stages, but the last, whose two items or more add up to them exactly: a breakdown,
+    arms randomised mid-flow or a review's sources, and never exclusions (round 1 of #472).
+    A single item is always an exclusion, a stage's count copied by mistake included (round
+    2)."""
+    return {at for at, stage in enumerate(items[:-1])
+            if len(stage.children) >= 2 and sum(n(c) for c in stage.children) == n(stage)}
+
+
+def unlisted(here: int, there: int) -> list[int]:
+    """What a step that lists no exclusion is held to: what it removes, so that only its not
+    growing is checked (round 1 of #472, the funnel of a cohort that prints its stages
+    alone); nothing where it grows, which `flow_problem` then says."""
+    return [here - there] if there < here else []
 
 
 def _subtotal(exclusion: Item, n, notes: list[str]) -> list[str]:

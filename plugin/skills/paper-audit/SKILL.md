@@ -87,7 +87,8 @@ than audited. `--strict` exits 1 when a number is in no output, a paper, a figur
 stretch of one could not be read, no number was read, the arithmetic of a table or a flow is
 exactly wrong (a total off, categories over their column's n, a count held back that a
 printed total gives away, a flow printed as a nested list that does not add up under a
-heading, caption or paragraph naming a flow, in English), or an
+heading, caption or paragraph naming a flow, in English: "Patient flow", "Trial profile",
+"CONSORT diagram"), or an
 interval or a test of the Abstract differs from its one counterpart where the paper reports
 in a single number, and the audit exits 2 when nothing given could be read at all,
 `--minimum-cell-count` is below 1, or `--dry-run` or `--lookup-cache` is given without

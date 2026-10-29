@@ -467,19 +467,60 @@ def test_flow_alone_names_no_flow() -> None:
     for heading in ("Blood flow", "Flow cytometry"):
         [flow] = _flows(f"## {heading}\n\n- A (n = 9)\n  - B (n = 1)\n- C (n = 7)\n")
         assert not flow.named, heading
-    for heading in ("Flow chart", "Flow diagram", "Participant flow", "PRISMA flowchart"):
+    for heading in ("Flow chart", "Flow diagram", "Participant flow", "PRISMA flowchart",
+                    "Patient flow", "Study flow", "Subjects flow", "Trial profile",
+                    "Flow of patients through the trial"):
         [flow] = _flows(f"## {heading}\n\n- A (n = 9)\n  - B (n = 1)\n- C (n = 7)\n")
         assert flow.named, heading
 
 
-def test_a_paper_split_into_files_goes_on_under_the_headings_before(tmp_path: Path) -> None:
-    """As G8 reads one: a Discussion in a file of its own is no place the paper reports,
-    and a file named as a supplement is."""
+def test_each_file_is_placed_by_its_own_headings(tmp_path: Path) -> None:
+    """Round 2 of #472 took back round 1's carry, which guessed a supplement by its name: a
+    file with no Abstract is reported whole, a split paper's Discussion too (Known gaps)."""
     (tmp_path / "1.md").write_text("# P\n\n## Abstract\n\nIt was 812.5 and 733.1.\n\n"
-                                   "## Methods\n\nNone.\n", encoding="utf-8")
+                                   "## Methods\n\nNone.\n\n## Discussion\n\nIt was 733.1.\n",
+                                   encoding="utf-8")  # fmt: skip
     (tmp_path / "2.md").write_text("## Discussion\n\nIt was 812.5.\n", encoding="utf-8")
-    (tmp_path / "supplement.md").write_text("It was 733.1.\n", encoding="utf-8")
     (tmp_path / "3.md").write_text("## Results\n\nNone.\n", encoding="utf-8")
-    papers = [tmp_path / name for name in ("1.md", "2.md", "3.md", "supplement.md")]
-    read = audit(papers, None).abstract
-    assert [c.text for c in read.not_found] == ["812.5"]
+    read = audit([tmp_path / name for name in ("1.md", "2.md", "3.md")], None).abstract
+    assert [c.text for c in read.not_found] == ["733.1"]
+
+
+def test_a_single_item_under_a_stage_is_an_exclusion_whatever_it_counts() -> None:
+    """Round 2 of #472: the stage's count copied into its one exclusion is no breakdown."""
+    [flow] = _flows("## CONSORT diagram\n\n- Assessed (n = 412)\n  - Excluded (n = 412)\n"
+                    "- Randomised (n = 300)\n")
+    assert flow.problems == ("the reasons after stage 1 (412) cannot account for the 112 "
+                             "excluded, even overlapping",)  # fmt: skip
+    assert not any("breakdown" in note for note in flow.notes)
+
+
+def test_items_under_a_breakdowns_part_are_noted() -> None:
+    text = CONSORT.replace("  - Drug (n = 151)\n", "  - Drug (n = 151)\n    - Lost (n = 3)\n", 1)
+    [flow] = _flows(text)
+    assert flow.problems == ()
+    assert "the items under a part of stage 2's breakdown are not read" in flow.notes
+
+
+def test_a_papers_title_names_no_list() -> None:
+    """Round 2 of #472: "# ... in participants" over the Abstract and the Methods is the
+    paper's title, over every list of it."""
+    title = "# A trial in participants with diabetes\n\n## Abstract\n\nIt was.\n\n"
+    [flow] = _flows(title + "## Results\n\n- A (n = 9)\n  - B (n = 1)\n- C (n = 7)\n")
+    assert not flow.named
+    [flow] = _flows(title + "## Patient flow\n\n- A (n = 9)\n  - B (n = 1)\n- C (n = 7)\n")
+    assert flow.named
+
+
+def test_an_ordered_marker_or_another_delimiter_starts_another_list_and_a_bullet_does_not(
+) -> None:
+    """As pandoc 3.9 reads them, with no blank line between: "1." under "-" items, and "1)"
+    under "1." items, start new lists; "*" under "-" goes on with the list."""
+    text = "- A (n = 9)\n  - B (n = 1)\n- C (n = 8)\n1. D (n = 9)\n   - E (n = 1)\n2. F (n = 7)\n"
+    first, second = _flows(text)
+    assert first.stages == (9, 8) and second.stages == (9, 7)
+    first, second = _flows("1. A (n = 9)\n   - B (n = 1)\n2. C (n = 8)\n"
+                           "1) D (n = 9)\n   - E (n = 1)\n2) F (n = 7)\n")
+    assert first.stages == (9, 8) and second.stages == (9, 7)
+    [flow] = _flows("- A (n = 9)\n  - B (n = 1)\n* C (n = 8)\n")
+    assert flow.stages == (9, 8)

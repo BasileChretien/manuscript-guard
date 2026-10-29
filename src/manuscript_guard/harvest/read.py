@@ -66,10 +66,9 @@ class Harvest:
         emitter's `display="<2"` is), a whole number written with a point ("3.0", as pandas
         writes a column with a missing value), and text with a digit ("2 (1.5%)", "n=2"),
         held to `deposit`'s `count_in_cell` or refused where that reads none (round 2 of
-        #471); and in a column `counts` names, a number with a unit ("2 patients"). Nothing
-        for a label, a cell with no digit, an integer with no unit, which G2 reads as a count
-        already, a number that is not whole, or, where `counts` names none, a number with a
-        unit, as G2 reads an emitted one."""
+        #471); and a whole number with a unit other than "%" ("2 patients", the fix round).
+        Nothing for a label, a cell with no digit, an integer with no unit, which G2 reads as
+        a count already, or a number that is not whole."""
         marks: dict[str, bool] = {}
         for row, cells in self.rows:
             for header, part, found in zip(self.columns, self.slugs, cells, strict=True):
@@ -102,7 +101,8 @@ def _counted(found: Cell, named: bool | None) -> bool | None:
     if named is False:
         return False if whole and not found.unit else None
     if found.unit:
-        return True if whole and named else None
+        # A share is no count; any other unit may name what is counted ("2 patients").
+        return True if whole and found.unit != "%" else None
     return True if whole and not isinstance(value, int) else None
 
 
@@ -209,7 +209,7 @@ def cell(text: str | None, digits: int | None, *, label: bool = False) -> Cell |
     number, exponent = _number_of(match)
     try:
         value: int | float = int(number) if "." not in number and not exponent else float(number)
-    except ValueError as exc:  # an integer longer than Python converts
+    except (ValueError, OverflowError) as exc:  # longer than Python converts
         raise HarvestError(f"{shown[:20]!r}... is too long a number to read") from exc
     if not math.isfinite(value):
         raise HarvestError(f"{shown!r} is no finite number")

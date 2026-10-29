@@ -69,8 +69,8 @@ odds ratio printed "1.0" is a count of one: name the count columns. A count held
 "≤4") is held by its bound, as the emitter's `display="<2"` is: below a minimum of 5, "<2"
 still says the count is one. Text with a digit in a count column, or anywhere without
 `counts`, is read as `deposit` reads a table cell: "2 (1.5%)" and "2/40" are 2, and a cell
-from which no count can be read ("n=2", "12.3 (10.1 to 14.5)") is refused there; in a column
-`counts` names, so is a number with a unit ("2 patients").
+from which no count can be read ("n=2", "12.3 (10.1 to 14.5)") is refused there; so is a
+whole number with a unit other than "%" ("2 patients").
 
 ## What `check` says
 

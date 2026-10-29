@@ -100,7 +100,8 @@ def check_small_cells(project: Project, results: Results) -> Report:
                     f"custodian's minimum of {minimum}",
                     path=path,
                     line=placeholder.line if lined else None,
-                    hint=f"report it as fewer than the minimum, \"<{minimum}\", or merge the "
+                    hint=UNREAD_HINT if wrong == UNREAD else
+                    f"report it as fewer than the minimum, \"<{minimum}\", or merge the "
                     "category with another, in the analysis; a number that is no count of "
                     "people is emitted with its unit",
                 )
@@ -142,12 +143,18 @@ def _small(value, minimum: int) -> str | None:
 
         stated = count_in_cell(value.display)
         if stated is None:
-            return "a cell no count can be read from, held to"
+            return UNREAD
         return "a count below" if 0 < stated < minimum else None
     largest = held_largest(value.display)
     if largest is None:
         return "a count below" if 0 < _printed(value.display) < minimum else None
     return "a bound tighter than" if 1 <= largest < minimum - 1 else None
+
+
+#: A harvested count cell `count_in_cell` reads no count from, and what to do about it.
+UNREAD = "a cell this tool reads as a count, failing closed, and cannot hold to"
+UNREAD_HINT = ("write the count plainly in the output (\"2\" or \"2 (1.5%)\"), or leave the "
+               "column out of the entry's `counts` if it holds no count")
 
 
 def held_largest(display: str) -> int | None:

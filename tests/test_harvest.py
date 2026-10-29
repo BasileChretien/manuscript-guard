@@ -642,8 +642,9 @@ def test_an_output_swallowed_by_a_flag_of_several_values_is_said(project: Path, 
 
 @pytest.mark.parametrize(("cell", "counts", "said"), [
     ("2 (1.5%)", None, "a count below"), ("2/40", ("n",), "a count below"),
-    ("n=2", ("n",), "a cell no count can be read from"),
-    ("2 patients", ("n",), "a count below"),
+    ("n=2", ("n",), "failing closed, and cannot hold"),
+    ("2 patients", ("n",), "a count below"), ("2 patients", None, "a count below"),
+    ("<2 patients", None, "a bound tighter than"),
 ])  # fmt: skip
 def test_a_count_written_as_text_refuses_the_receipt(
     project: Path, cell: str, counts, said: str
@@ -693,6 +694,12 @@ def test_a_flag_that_describes_an_entry_with_no_output_is_refused(project: Path,
     harvest_entry(project, _harvested(project))
     assert main(["harvest", "--counts", "n", "output/est.csv", "--path", str(project)]) == 2
     assert "--counts describes an entry to add" in capsys.readouterr().err
+
+
+def test_digits_nought_with_no_output_is_refused(project: Path, capsys) -> None:
+    harvest_entry(project, _harvested(project))
+    assert main(["harvest", "--digits", "0", "--path", str(project)]) == 2
+    assert "--digits describes an entry to add" in capsys.readouterr().err
 
 
 def test_an_integer_too_long_to_read_is_refused() -> None:

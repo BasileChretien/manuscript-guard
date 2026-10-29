@@ -7358,7 +7358,7 @@ def harvest_cells(draw: st.DrawFn) -> list[tuple[str, int | None, Any]]:
 COUNTED_KINDS = (
     ("integer", "{n}", None, False, None), ("point", "{n}.0", True, False, True),
     ("held", "<{n}", True, False, True), ("decimal", "{n}.5", None, None, None),
-    ("unit", "{n} patients", True, None, None), ("share", "{n} ({n}.5%)", True, None, True),
+    ("unit", "{n} patients", True, None, True), ("share", "{n} ({n}.5%)", True, None, True),
     ("named", "n={n}", True, None, True), ("word", "Women", None, None, None),
 )  # fmt: skip
 

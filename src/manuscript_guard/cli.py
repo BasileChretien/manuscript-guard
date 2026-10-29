@@ -2391,7 +2391,8 @@ def cmd_harvest(args: argparse.Namespace) -> int:
     try:
         flags = ("script", "key", "input", "row_key", "columns", "digits", "receipt",
                  "counts", "restricted", "synthetic", "not_quoted")  # fmt: skip
-        given = [name for name in flags if getattr(args, name) not in (None, False)]
+        given = [name for name in flags
+                 if getattr(args, name) is not None and getattr(args, name) is not False]
         if args.output is None and given:
             raise HarvestError(
                 f"--{given[0].replace('_', '-')} describes an entry to add, and no OUTPUT was "

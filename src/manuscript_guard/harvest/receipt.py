@@ -92,6 +92,8 @@ def _counts_held(project, entry: Entry, output: Path) -> tuple[list[str], list[s
     from manuscript_guard.contracts.results import Results, Table
     from manuscript_guard.contracts.values import RESULTS, Value
     from manuscript_guard.gates.custodian import (
+        UNREAD,
+        UNREAD_HINT,
         _small,
         is_count,
         minimum_cell_count,
@@ -114,7 +116,7 @@ def _counts_held(project, entry: Entry, output: Path) -> tuple[list[str], list[s
         wrong = _small(value, minimum) if is_count(value) else None
         if wrong is not None:
             said.append(f"{key} is {cell.display}, {wrong} the data custodian's minimum of "
-                        f"{minimum}")  # fmt: skip
+                        f"{minimum}" + (f": {UNREAD_HINT}" if wrong == UNREAD else ""))  # fmt: skip
     source = project.root / "results" / f"{entry.key}.json"
     rows = tuple(tuple("" if c is None else c.display for c in cells) for _n, cells in table.rows)
     held = Table(entry.key, table.columns, rows, None, ("left",) * len(table.columns), True,

@@ -119,8 +119,13 @@ def test_the_build_needs_a_brief_with_a_primary_finding(project: Path,
     assert "primary: true" in capsys.readouterr().err
 
 
-def test_every_text_the_build_writes_passes_the_check_as_written(ready: Path) -> None:
-    assert main(["communicate", "build", str(ready)]) == 1  # the deposit has no DOI
+def test_every_text_the_build_writes_passes_the_check_as_written(
+    ready: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # With no deposit, the data announcement is not due: said, and no failure.
+    assert main(["communicate", "build", str(ready)]) == 0
+    assert ("data-announcement: not due, so not written: paper.yaml's package gives no DOI"
+            in capsys.readouterr().out)  # fmt: skip
     written = sorted(path.name for path in (ready / "communication").glob("*.md"))
     expected = sorted(f"{name}.md" for name in [*build_module.DETERMINISTIC,
                                                 *build_module.SCAFFOLDED]
@@ -129,7 +134,7 @@ def test_every_text_the_build_writes_passes_the_check_as_written(ready: Path) ->
     assert failures(ready) == []
     # The same brief and results give the same bytes.
     before = {p.name: p.read_bytes() for p in (ready / "communication").rglob("*") if p.is_file()}
-    assert main(["communicate", "build", str(ready), "--force"]) == 1
+    assert main(["communicate", "build", str(ready), "--force"]) == 0
     after = {p.name: p.read_bytes() for p in (ready / "communication").rglob("*") if p.is_file()}
     assert after == before
 
@@ -230,7 +235,8 @@ def test_the_deposit_is_announced_only_with_its_doi_licence_and_manifest(
     manifest.write_text("schema: manuscript-guard/package/1\n", encoding="utf-8")
     assert main(["communicate", "build", str(ready), *channels]) == 0
     text = (ready / "communication" / "data-announcement.md").read_text(encoding="utf-8")
-    assert "https://doi.org/10.5281/zenodo.1234567" in text and "`MIT`" in text
+    assert "https://doi.org/10.5281/zenodo.1234567" in text
+    assert "https://spdx.org/licenses/MIT.html" in text
     assert failures(ready) == []
 
 
@@ -591,3 +597,259 @@ def test_the_triggers_go_in_paper_yaml_and_a_wrong_one_is_a_schema_finding(
 def test_now_is_this_moment_in_utc() -> None:
     moment = lifecycle.now()
     assert moment.tzinfo is not None and abs(moment - datetime.now(timezone.utc)) < timedelta(1)
+
+
+# ------------------------------------------------------------------------- fix round 1
+
+
+def _deposit(root: Path, licence: str) -> None:
+    paper = (root / "paper.yaml").read_text(encoding="utf-8")
+    (root / "paper.yaml").write_text(paper.replace(
+        "  licence: MIT\n", f"  licence: {licence}\n  doi: 10.5281/zenodo.1234567\n"),
+        encoding="utf-8")  # fmt: skip
+    manifest = root / "build" / "package" / "demo" / "MANIFEST.yaml"
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    manifest.write_text("schema: manuscript-guard/package/1\n", encoding="utf-8")
+
+
+@pytest.mark.parametrize("licence", ["CC-BY-4.0", "CC0-1.0", "Apache-2.0",
+                                     "GPL-3.0-or-later", "[MIT, CC-BY-4.0]"])  # fmt: skip
+def test_a_data_announcement_names_an_spdx_licence_and_passes(ready: Path, licence: str) -> None:
+    _deposit(ready, licence)
+    assert main(["communicate", "build", str(ready), "--channels", "data-announcement"]) == 0
+    text = (ready / "communication" / "data-announcement.md").read_text(encoding="utf-8")
+    for one in yaml.safe_load(licence) if licence.startswith("[") else [licence]:
+        assert f"https://spdx.org/licenses/{one}.html" in text
+    assert failures(ready) == []
+
+
+def test_a_data_announcement_named_with_no_deposit_is_refused(
+    ready: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["communicate", "build", str(ready), "--channels",
+                 "data-announcement,bluesky"]) == 1  # fmt: skip
+    said = capsys.readouterr().out
+    assert "data-announcement: not written: paper.yaml's package gives no DOI" in said
+    assert "not due" not in said
+
+
+@pytest.mark.parametrize(("attachments", "codes"), [
+    ("paper.pdf", {"comm-sharing-not-allowed"}),
+    ("[paper.pdf]", {"comm-sharing-not-allowed"}),
+    ("{file: paper.pdf}", {"comm-front-matter"}),
+    ("[paper.pdf, 3]", {"comm-front-matter"}),
+    ("7", {"comm-front-matter"}),
+])  # fmt: skip
+def test_attachments_written_alone_are_a_list_of_one_and_any_other_shape_fails(
+    out: Path, attachments: str, codes: set[str]
+) -> None:
+    _sharing(out, "sharing:\n  published:\n    where: []\n")
+    write(out, "researchgate.md", CLEAN, "channel: researchgate\nversion_shared: published\n"
+          f"attachments: {attachments}")  # fmt: skip
+    assert {code for code, _s, _p in failures(out)} == codes
+
+
+def test_links_of_another_shape_fail_too(out: Path) -> None:
+    write(out, "bluesky.md", CLEAN, "channel: bluesky\nlinks: {a: b}")
+    assert ("comm-front-matter", FAIL, "bluesky.md") in found(out)
+    write(out, "bluesky.md", CLEAN, f"channel: bluesky\nlinks: https://doi.org/{DOI}")
+    assert failures(out) == []
+
+
+_CAUSES = ("Example-drug causes hepatic injury: the reporting odds ratio was "
+           "{{results.ror.point}} (95% CI {{results.ror.ci_low}} to {{results.ror.ci_high}}) "
+           "[](#brief:findings.2).")  # fmt: skip
+
+
+@pytest.mark.parametrize(("language", "held"), [
+    (None, True), ("en", True), ("EN", True), ("en-GB", True), ("en_US", True),
+    ("en_GB", True), ("eng", True), ("English", True), ("english", True), ("Klingonese", True),
+    ("ja", False), ("ja-JP", False), ("ja_JP", False), ("FR", False), ("zh_Hant_TW", False),
+])  # fmt: skip
+def test_only_another_languages_tag_lets_a_text_off_the_claim_ladder(
+    ready: Path, language: str | None, held: bool
+) -> None:
+    front = "channel: bluesky" + (f"\nlanguage: {language}" if language else "")
+    write(ready, "bluesky.md", _CAUSES, front)
+    stronger = ("comm-claim-stronger", FAIL, "bluesky.md") in found(ready)
+    assert stronger is held
+    if not held:
+        assert failures(ready) == []
+
+
+def test_the_preview_counts_a_post_as_the_check_does(ready: Path) -> None:
+    from manuscript_guard.communicate import texts
+
+    link = "https://example.org/" + "a" * 480
+    write(ready, "mastodon.md", CLEAN + " " + link, "channel: mastodon")
+    assert not any(code == "comm-over-limit" for code, _s, _p in found(ready))
+    main(["communicate", "build", str(ready), "--channels", "mastodon"])
+    page = (ready / "communication" / "preview.html").read_text(encoding="utf-8")
+    project, _ = load_project(ready)
+    context, _report = checking.context_of(project)
+    read = texts.read((ready / "communication" / "mastodon.md").read_text(encoding="utf-8"))
+    [(low, high)] = read.posts
+    size = checking.post_length(context, read, low, high, checking.channel_rules("mastodon"))
+    assert size is not None and size < 500
+    assert f"{size} of 500 characters" in page
+
+
+_CITED = ("The reporting odds ratio observed here exceeds the class-level estimate of "
+          "{{lit.background.class_ror}} reported previously [@fictionalClassSignal2019], "
+          "although the two are not directly comparable: that analysis pooled the class and "
+          "drew on a different reporting period.")  # fmt: skip
+
+
+def _cited_finding(document: dict) -> None:
+    document["findings"].append({"id": "findings.9", "text": "*The*" + _CITED[3:],
+                                 "from": {"file": "manuscript/main.md", "quote": _CITED},
+                                 "primary": False})  # fmt: skip
+
+
+def test_a_post_carries_no_citation_and_no_emphasis_and_a_long_text_keeps_them(
+    ready: Path,
+) -> None:
+    edit_brief(ready, _cited_finding)
+    assert main(["communicate", "build", str(ready), "--channels",
+                 "bluesky-thread,mastodon-thread,poster"]) == 0  # fmt: skip
+    for name in ("bluesky-thread.md", "mastodon-thread.md"):
+        body = (ready / "communication" / name).read_text(encoding="utf-8")
+        assert "reported previously, although" in body and "[](#brief:findings.9)" in body
+        assert "@" not in body and "*" not in body, name
+    poster = (ready / "communication" / "poster.md").read_text(encoding="utf-8")
+    assert "[@fictionalClassSignal2019]" in poster and "*The*" in poster
+    assert failures(ready) == []
+
+
+def test_an_overview_slide_that_exists_is_kept_without_force(ready: Path) -> None:
+    slide = ready / "communication" / "overview.svg"
+    assert main(["communicate", "build", str(ready), "--channels", "overview"]) == 0
+    drawn = slide.read_bytes()
+    edited = drawn.replace(b"The question", b"What was asked")
+    assert edited != drawn
+    slide.write_bytes(edited)
+    (ready / "communication" / "overview.md").unlink()
+    assert main(["communicate", "build", str(ready), "--channels", "overview"]) == 0
+    assert slide.read_bytes() == edited
+    assert (ready / "communication" / "overview.md").is_file()
+    assert main(["communicate", "build", str(ready), "--channels", "overview", "--force"]) == 0
+    assert slide.read_bytes() == drawn
+
+
+def test_an_svg_attached_and_in_the_graphical_abstract_is_reported_once(ready: Path) -> None:
+    from manuscript_guard.contracts import load_namespace
+
+    assert main(["communicate", "build", str(ready), "--channels", "overview"]) == 0
+    project, _ = load_project(ready)
+    shown = load_namespace(project)[0]["results.ror.point"].display
+    folder = ready / "communication" / "graphical-abstract"
+    folder.mkdir(exist_ok=True)
+    stale = (ready / "communication" / "overview.svg").read_text(encoding="utf-8")
+    (folder / "abstract.svg").write_text(stale.replace(shown, "9.99"), encoding="utf-8")
+    write(ready, "bluesky.md", CLEAN, "channel: bluesky\n"
+          "attachments: [graphical-abstract/abstract.svg]")  # fmt: skip
+    codes = [code for code, _s, name in found(ready, only=None) if name == "abstract.svg"]
+    assert codes.count("comm-ga-stale") == 1, codes
+
+
+def test_the_preview_escapes_what_a_text_holds(ready: Path) -> None:
+    write(ready, "bluesky.md", CLEAN + " <script>x</script>", "channel: bluesky")
+    main(["communicate", "build", str(ready), "--channels", "bluesky"])
+    page = (ready / "communication" / "preview.html").read_text(encoding="utf-8")
+    assert "&lt;script&gt;x&lt;/script&gt;" in page and "<script>" not in page
+
+
+def _unbound_secondary(document: dict) -> None:
+    said = "Nothing emits {{results.nothing.here}}."
+    document["findings"].append({"id": "findings.9", "text": said, "primary": False,
+                                 "from": {"file": "manuscript/main.md", "quote": said}})
+
+
+def test_a_binding_nothing_emits_stops_only_the_texts_that_carry_it(
+    ready: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    edit_brief(ready, _unbound_secondary)
+    assert main(["communicate", "build", str(ready), "--channels",
+                 "bluesky,bluesky-thread"]) == 1  # fmt: skip
+    said = capsys.readouterr().out
+    assert "bluesky-thread: not written: comm-binding-unknown" in said
+    assert (ready / "communication" / "bluesky.md").is_file()
+    assert not (ready / "communication" / "bluesky-thread.md").exists()
+
+
+def test_a_slide_that_would_print_a_binding_nothing_emits_is_not_drawn(ready: Path) -> None:
+    def unbound_conclusion(document: dict) -> None:
+        said = "Nothing emits {{results.nothing.here}}."
+        document["conclusion"] = [{"id": "conclusion.1", "text": said,
+                                   "from": {"file": "manuscript/main.md", "quote": said}}]
+
+    edit_brief(ready, unbound_conclusion)
+    assert main(["communicate", "build", str(ready), "--channels", "overview"]) == 1
+    assert not (ready / "communication" / "overview.svg").exists()
+    assert not (ready / "communication" / "overview.md").exists()
+
+
+def test_an_earlier_slide_is_put_back_where_the_overview_is_refused(
+    ready: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from manuscript_guard.findings import Finding
+
+    slide = ready / "communication" / "overview.svg"
+    slide.parent.mkdir(parents=True, exist_ok=True)
+    earlier = b"<svg>an earlier slide</svg>"
+    slide.write_bytes(earlier)
+    real = checking.text_findings
+    read_drawn: list[bool] = []
+
+    def refusing(context, path, raw):
+        read_drawn.append(slide.read_bytes() != earlier)
+        return [*real(context, path, raw), Finding("communicate", "comm-test", "refused")]
+
+    monkeypatch.setattr(checking, "text_findings", refusing)
+    assert main(["communicate", "build", str(ready), "--channels", "overview", "--force"]) == 1
+    assert read_drawn == [True]
+    assert slide.read_bytes() == earlier
+    assert not (ready / "communication" / "overview.md").exists()
+
+
+@pytest.mark.parametrize(("answer", "why"), [
+    (Response(404, {}, b"Resource not found."), "Crossref did not know it last time"),
+    (Response(503, {}, b"busy"), "an answer did not come last time"),
+])  # fmt: skip
+def test_a_doi_crossref_did_not_know_or_did_not_answer_for_is_asked_again(
+    out: Path, answer: Response, why: str
+) -> None:
+    _looked_up(out, answer)
+    assert paper_doi.why_asked(load_project(out)[0]) == why
+    _looked_up(out, _crossref())
+    assert paper_doi.why_asked(load_project(out)[0]) == ""
+
+
+def _no_answer(request: Request, timeout: float) -> Response:
+    raise NoAnswer("connection refused")
+
+
+_EMPTY_DOI = Response(200, {}, json.dumps({"status": "ok", "message-type": "work",
+                                           "message": {"DOI": "", "title": [TITLE]}}).encode())
+
+
+@pytest.mark.parametrize("transport", [_ask(Response(503, {}, b"busy"), []), _no_answer,
+                                       _ask(_EMPTY_DOI, [])])  # fmt: skip
+def test_lookup_paper_with_no_answer_exits_1_and_the_check_says_so(
+    out: Path, monkeypatch: pytest.MonkeyPatch, transport
+) -> None:
+    monkeypatch.setattr(paper_doi, "default_transport", transport)
+    assert main(["lookup", str(out), "--paper"]) == 1
+    assert ("comm-doi-not-looked-up", INFO, "crossref.yaml") in found(out)
+
+
+@pytest.mark.parametrize("doi", ["https://doi.org/10.1/x", "doi:10.1234/x", "10.1/x",
+                                 "10.1234/"])  # fmt: skip
+def test_lookup_paper_sends_no_doi_that_is_not_one(
+    ready: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], doi: str
+) -> None:
+    append(ready, f"publication:\n  doi: '{doi}'\n")
+    sent: list = []
+    monkeypatch.setattr(paper_doi, "default_transport", _ask(_crossref(), sent))
+    assert main(["lookup", str(ready), "--paper"]) == 2
+    assert sent == [] and "is not a DOI" in capsys.readouterr().err

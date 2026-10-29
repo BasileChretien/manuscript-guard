@@ -2958,6 +2958,8 @@ def _communicate_build(project, args: argparse.Namespace) -> int:
               "--force writes it again")  # fmt: skip
     for channel, why in built.refused:
         print(f"{channel}: not written: {why}")
+    for channel, why in built.not_due:
+        print(f"{channel}: not due, so not written: {why}; `--channels {channel}` asks for it")
     for channel in built.passed:
         print(f"{channel}: the build writes no text for it; write it by hand, and "
               "`communicate check` holds it")  # fmt: skip
@@ -4386,6 +4388,11 @@ def _lookup_paper(project, args: argparse.Namespace) -> int:
     if doi is None:
         print("manuscript-guard: nothing to look up: paper.yaml gives no publication.doi",
               file=sys.stderr)  # fmt: skip
+        return 2
+    wrong = paper_doi.malformed(doi)
+    if wrong:
+        print(f"manuscript-guard: nothing was sent: paper.yaml's publication.doi, {doi}, is not "
+              f"a DOI: {wrong}", file=sys.stderr)  # fmt: skip
         return 2
     why = paper_doi.why_asked(project, again=args.again)
     if not why:

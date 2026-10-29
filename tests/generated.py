@@ -6639,8 +6639,11 @@ def published_texts(draw: st.DrawFn) -> tuple[str, list[str]]:
 BUILT_KINDS = (
     "one sentence, a word", "two sentences, both claim", "three, the middle plain",
     "a question", "a decimal inside", "wrapped over lines", "no closing stop",
-    "a binding first", "plain only",
+    "a binding first", "plain only", "a citation and emphasis",
 )  # fmt: skip
+#: The citations a statement may hold in brackets, which a post leaves out and a long text
+#: keeps (fix round 1 of Task 5, part 3).
+BUILT_CITATIONS = ("[@smith2020]", "[@smith2020; @jones2019]", "[see @lee2018]")
 #: The parts a statement is drawn into: each text holds a different few of them.
 BUILT_SECTIONS = ("question", "findings", "findings", "limitations", "conclusion")
 
@@ -6678,6 +6681,9 @@ def built_briefs(draw: st.DrawFn) -> list[dict[str, Any]]:
         "no closing stop": lambda: sentence(word(), stop=""),
         "a binding first": lambda: f"{binding()} {sentence(word()).lower()}",
         "plain only": lambda: sentence(),
+        "a citation and emphasis": lambda: sentence(
+            draw(st.sampled_from(("*", "**", "`"))).join(("", plain(), "")), word(),
+            draw(st.sampled_from(BUILT_CITATIONS))),
     }
     counts: dict[str, int] = {}
     out = []
@@ -6775,12 +6781,18 @@ def embargo_times(draw: st.DrawFn) -> tuple[list[str], list[str | None]]:
     from datetime import datetime, timedelta, timezone
 
     written, expected = [], []
+    # The sign of each kind of offset, one at least behind UTC in every example: with all
+    # three drawn ahead, an offset read without its sign passed (fix round 1 of Task 5, part 3).
+    offset_kinds = ("an offset with a colon", "an offset without", "an offset of hours")
+    behind = draw(st.sampled_from(offset_kinds))
+    signs = {kind: -1 if kind == behind else draw(st.sampled_from((1, -1)))
+             for kind in offset_kinds}  # fmt: skip
     for kind in draw(st.permutations(EMBARGO_KINDS)):
         year, month = draw(st.integers(2020, 2035)), draw(st.integers(1, 12))
         day = draw(st.integers(1, 28))
         hour, minute, second = draw(st.integers(0, 23)), draw(st.integers(0, 59)), draw(
             st.integers(0, 59))  # fmt: skip
-        sign = draw(st.sampled_from((1, -1)))
+        sign = signs.get(kind, 1)
         offset_h, offset_m = draw(st.integers(1, 12)), draw(st.sampled_from((0, 30, 45)))
         stamp = f"{year:04d}-{month:02d}-{day:02d}"
         clock = f"{hour:02d}:{minute:02d}"
@@ -6822,6 +6834,45 @@ def embargo_times(draw: st.DrawFn) -> tuple[list[str], list[str | None]]:
         zone = timezone(timedelta(minutes=-720 if zone_minutes is None else zone_minutes))
         moment = datetime(year, month, day, *at, tzinfo=zone)
         expected.append(moment.astimezone(timezone.utc).isoformat())
+    return written, expected
+
+
+#: Each way a text's front matter may write its `language`, and whether the text is held as
+#: English, to the claim ladder and G6: only another language's tag lets it off. Every kind
+#: is in every example (fix round 1 of Task 5, part 3).
+LANGUAGE_KINDS = {
+    "en": True, "en and a region by a hyphen": True, "en and a region by an underscore": True,
+    "eng": True, "a word for English": True, "a word nobody knows": True, "no string": True,
+    "another tag": False, "another tag and a region": False,
+}  # fmt: skip
+
+
+@st.composite
+def text_languages(draw: st.DrawFn) -> tuple[list[object], list[bool]]:
+    """A `language` written each way of `LANGUAGE_KINDS`, in an order drawn each time, each
+    in a case drawn, and whether the text it names is held as English."""
+
+    def cased(text: str) -> str:
+        return draw(st.sampled_from((text, text.upper(), text.capitalize())))
+
+    region = st.sampled_from(("GB", "US", "AU", "gb", "Latn"))
+    made = {
+        "en": lambda: cased("en"),
+        "en and a region by a hyphen": lambda: f"{cased('en')}-{draw(region)}",
+        "en and a region by an underscore": lambda: f"{cased('en')}_{draw(region)}",
+        "eng": lambda: cased("eng"),
+        "a word for English": lambda: cased(draw(st.sampled_from(("English", "english")))),
+        "a word nobody knows": lambda: draw(st.sampled_from(
+            ("Japanese", "Klingonese", "", "  ", "ja jp", "e"))),
+        "no string": lambda: draw(st.sampled_from((None, 1, ["ja"], {"tag": "ja"}))),
+        "another tag": lambda: cased(draw(st.sampled_from(("ja", "fr", "de", "zh", "jpn")))),
+        "another tag and a region": lambda: draw(st.sampled_from(
+            ("ja-JP", "ja_JP", "zh_Hant_TW", "pt-BR", "FR-ca", "de_DE"))),
+    }  # fmt: skip
+    written, expected = [], []
+    for kind in draw(st.permutations(list(LANGUAGE_KINDS))):
+        written.append(made[kind]())
+        expected.append(LANGUAGE_KINDS[kind])
     return written, expected
 
 
@@ -7963,6 +8014,7 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
     "communicate built": built_briefs().map(lambda drawn: {"statements": drawn}),
     "communicate titles": title_pairs().map(lambda drawn: {"pairs": drawn[0]}),
     "communicate embargo": embargo_times().map(lambda drawn: {"written": drawn[0]}),
+    "communicate language": text_languages().map(lambda drawn: {"languages": drawn[0]}),
     "communicate published": st.one_of(
         published_texts().map(lambda drawn: {"text": drawn[0]}),
         texts().map(lambda text: {"text": text}),

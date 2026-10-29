@@ -35,13 +35,38 @@ VERSIONS = ("preprint", "accepted", "published")
 DOCUMENTS = frozenset({".pdf", ".docx", ".doc", ".odt", ".rtf", ".epub", ".tex"})
 
 
+#: The keys of a text's front matter that list files or links: one written alone is a list
+#: of one, and any other shape than a list of them is refused (`comm-front-matter`).
+LISTED = ("attachments", "links")
+
+
+def listed(front: dict, key: str) -> list[str] | None:
+    """What a text's front matter lists under `key`: a string read as a list of one, nothing
+    as none, and None where it is neither nor a list of strings, which is refused."""
+    said = front.get(key)
+    if said is None:
+        return []
+    if isinstance(said, str):
+        return [said]
+    if isinstance(said, list) and all(isinstance(one, str) for one in said):
+        return list(said)
+    return None
+
+
+def shape_findings(path: Path, front: dict) -> list[Finding]:
+    """`comm-front-matter` for each of `LISTED` that is neither a string nor a list of them:
+    what it uploads could not be held to the sharing policy."""
+    return [Finding(GATE, "comm-front-matter",
+                    f"{path.name}: its front matter's `{key}` is neither a name nor a list of "
+                    "them, so what it shares cannot be read", FAIL, path, 1,
+                    hint=f"write `{key}: [paper.pdf]`, a list of names")
+            for key in LISTED if listed(front, key) is None]  # fmt: skip
+
+
 def uploads(front: dict) -> list[str]:
     """The attachments of a text that are a document, a version of the paper."""
-    attached = front.get("attachments")
-    if not isinstance(attached, list):
-        return []
-    return [one for one in attached
-            if isinstance(one, str) and PurePosixPath(one).suffix.lower() in DOCUMENTS]  # fmt: skip
+    return [one for one in listed(front, "attachments") or ()
+            if PurePosixPath(one).suffix.lower() in DOCUMENTS]  # fmt: skip
 
 
 def _policy(project) -> dict | None:

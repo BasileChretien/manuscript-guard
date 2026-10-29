@@ -6197,10 +6197,20 @@ the research-communication skill says how an agent fills one from the brief alon
 embargo alone is not held against a text the build writes: a text is drafted before it lifts
 and shared after. The paper is linked only once `publication.status` says it is online. A
 text that exists is never written over without `--force`, since it may hold what an author
-wrote into its slots. The overview slide is drawn as the graphical abstract is, and an SVG a
-text attaches is held line by line as the graphical abstract's are. A translation, a text
-whose `language` is not English, is held to its numbers, bindings, anchors and facts, not to
-the claim ladder or G6, which read English only.
+wrote into its slots, and an `overview.svg` that exists is kept the same way, since it may
+have been edited by hand. The overview slide is drawn as the graphical abstract is, and an
+SVG a text attaches is held line by line as the graphical abstract's are, each finding of it
+reported once where the graphical abstract's folder holds it too. A post and a thread carry a
+statement without its bracketed citations and its marks of emphasis, which would read there
+as a mention and count against the limit, and the preview counts a post by the check's own
+`post_length`. With no deposit the data announcement is not due: a build of every channel
+passes over it and says why, and only a build that names it refuses it. A translation, a
+text whose `language` is another language's tag (`ja`, `ja-JP`), is held to its numbers,
+bindings, anchors and facts, not to the claim ladder or G6, which read English only; a
+`language` that is English's tag or no tag at all, `English`, is held in full, since nothing
+then says the text is not English. `lookup --paper` sends nothing for a DOI that is not one,
+`https://doi.org/10.1/x`, and reads a work whose `DOI` is empty as an answer that did not
+come.
 
 **What is due** is read from paper.yaml's `communication.triggers` against `publication:`
 (`lifecycle.py`): from acceptance, once online, and a number of days after
@@ -18665,6 +18675,18 @@ What papers converted from Word showed (see "What papers converted from Word sho
     journal reworded at proof, or one Crossref keeps in another language, warns.
   - `communicate status` reads the clock of the machine it runs on, and says what is due on
     that day; nothing reminds anyone.
+  - `version_shared` means both the version linked and the version uploaded. A text set to
+    `accepted` for an upload is listed by `status` as written before the paper was online.
+  - A post and a thread take a statement's bracketed citations and its marks of emphasis
+    out (fix round 1); a citation in the sentence, `@smith2020 showed`, stays, and reads in a
+    post as a mention of an account. Shorten the statement's text in the brief.
+  - Only a language's tag lets a text off the claim ladder and G6 (fix round 1): `ja`,
+    `ja-JP`, `zh_Hant`. A tag that is well formed and names no language, `xx`, lets it off
+    too; `en`, `eng`, `en_US`, a word such as `English` and anything not a tag are held in
+    full.
+  - The data announcement names each licence by its page on the SPDX list
+    (`https://spdx.org/licenses/<id>.html`), since an identifier written out, `CC-BY-4.0`,
+    is read as a number typed; a `LicenseRef-` of the project's own has no page there.
 
 Closed since, and why each mattered (an open gap goes above this line):
 

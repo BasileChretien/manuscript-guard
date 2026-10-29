@@ -107,9 +107,11 @@ the thread's emoji) are no citation, no number and no claim. A bare `@key` is a 
 The graphical abstract draws no statement that cites a work in its sentence (`@key`
 showed) or points at a display by a LaTeX cross-reference: shorten its text.
 
-A text whose front matter names another `language` than English (`language: ja`) is held to
-its numbers, its bindings, its anchors and its facts, and not to the words of the claim
-ladder or to G6, which read English only.
+A text whose front matter names another language than English by its tag (`language: ja`,
+`ja-JP`, `zh_Hant`) is held to its numbers, its bindings, its anchors and its facts, and not
+to the words of the claim ladder or to G6, which read English only. Only a tag counts: a
+`language` that is `en`, `EN`, `en_US`, `eng`, a word such as `English`, or anything that is
+not a tag is held in full.
 
 ## Writing the texts
 
@@ -139,8 +141,10 @@ no version of it.
   conclusion where it does not fit, and a thread is a post for each statement), the overview
   slide (`overview.md`, with `overview.svg` beside it, one 16:9 slide drawn as the graphical
   abstract is, each line naming its statement), a poster outline, a storyboard's skeleton,
-  the announcement of the deposit (only where `package.doi`, a licence and the deposit's
-  `MANIFEST.yaml` exist), and a translation's scaffold: a slot for each statement, with its
+  the announcement of the deposit, each licence named by its page on the SPDX list (only
+  where `package.doi`, a licence and the deposit's `MANIFEST.yaml` exist: with no deposit,
+  a build of every channel passes over it and says why, and one that names it with
+  `--channels` refuses it), and a translation's scaffold: a slot for each statement, with its
   English and the bindings to keep beside it.
 - **Written with slots,** `<!-- write: … -->`, for what only a person or an agent can write:
   LinkedIn (posted by hand: no tool posts there), the ResearchGate summary, a press release, a
@@ -149,16 +153,22 @@ no version of it.
   sixty-second script. The statements a slot is about are written below it; the
   research-communication skill says how a slot is filled.
 
+A post and a thread carry no citation and no emphasis: `[@smith2020]` would read there as
+a mention of an account, and the marks would be counted against the limit. The long-form
+texts keep both, as the brief writes them.
+
 The paper is linked, by its DOI or its URL, only once `publication.status` says it is online;
 before that, no text the build writes links it or says it is out. Every text is held to
 `communicate check` before it is written, and one the check would fail is not written: the
 build says why, and exits 1. A press release, a pitch and the plain-language summaries are
-not written from a brief with no limitation in it. Only the embargo is not held against a
-text the build writes: a text is drafted before the embargo lifts, and the check fails it
-until then.
+not written from a brief with no limitation in it, and a statement that binds a value
+nothing emits stops each text that would carry it, not the others. Only the embargo is not
+held against a text the build writes: a text is drafted before the embargo lifts, and the
+check fails it until then.
 
-A text that exists is not written over, since it may hold what was written into its slots;
-`--force` writes it again. Each run also writes `communication/preview.html`, every text as
+A text that exists is not written over, since it may hold what was written into its slots,
+and nor is an `overview.svg` that exists, which may have been edited by hand; `--force`
+writes them again. Each run also writes `communication/preview.html`, every text as
 it would be read, each binding its display, each slot marked, each post's length against its
 channel's, and what the check says of each; and two guides the check does not read,
 `communication/guides/lifecycle.md`, what is shared when, and

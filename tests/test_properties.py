@@ -153,6 +153,7 @@ from generated import (
     sources,
     suggestion_paragraphs,
     supplements,
+    text_languages,
     texts,
     title_pairs,
     typed,
@@ -7871,15 +7872,30 @@ def test_each_sentence_a_built_text_takes_from_the_brief_names_its_statement(
     """Every sentence that claims, of every text `communicate build` writes, is anchored to
     the one statement it is taken from, and is a sentence of that statement's text: a
     statement of several sentences, one that asks, one with a decimal, one wrapped, one with
-    no closing stop and one that opens with a binding among them (`communicate/drafts.py`)."""
+    no closing stop, one that opens with a binding and one with a citation and emphasis among
+    them (`communicate/drafts.py`). A post and a thread carry the statement without its
+    citations and its marks, which would read there as a mention and be counted; a long
+    text keeps them."""
     texts_of = {one["id"]: " ".join(one["text"].split()) for one in drawn}
+    # The statement as a post carries it, by a reading of its own: each bracketed citation
+    # off with the space before it, each mark of emphasis and code off.
+    bare_of = {key: re.sub(r"[*`]+", "", re.sub(r" ?\[[^\]]*@[^\]]*\]", "", text))
+               for key, text in texts_of.items()}  # fmt: skip
     built = READINGS["communicate built"]()({"statements": drawn})
     # The thread holds every statement, and so every kind.
     assert len(built["thread"]) >= len(drawn), built["thread"]
     for name, sentences in built.items():
+        posted = name in ("post", "thread")
         for words, anchors in sentences:
             assert len(anchors) == 1, (name, words, anchors)
-            assert words.rstrip() in texts_of[anchors[0]], (name, words, anchors)
+            source = (bare_of if posted else texts_of)[anchors[0]]
+            assert words.rstrip() in source, (name, words, anchors)
+            if posted:
+                assert not re.search(r"@|[*`]", words), (name, words)
+    # The poster carries every part of the brief, and keeps each citation as written.
+    [cited] = [text for text in texts_of.values() if "@" in text]
+    citation = re.search(r"\[[^\]]*@[^\]]*\]", cited).group()
+    assert any(citation in words for words, _anchors in built["poster"]), built["poster"]
 
 
 @holds(40, title_pairs())
@@ -7903,6 +7919,17 @@ def test_an_embargo_lifts_at_its_zones_moment_or_where_the_day_comes_last(
     lifecycle.py`)."""
     written, expected = drawn
     assert READINGS["communicate embargo"]()({"written": written}) == expected, written
+
+
+@holds(40, text_languages())
+def test_a_text_is_held_as_english_unless_its_language_is_another_tag(
+    drawn: tuple[list[object], list[bool]],
+) -> None:
+    """A text is held to the claim ladder and G6 unless its front matter names another
+    language by its tag, `ja` or `ja-JP`: `en`, `EN`, `en_US`, `eng`, `English`, a word
+    nobody knows and a value that is no string are held in full (`communicate/checking.py`)."""
+    written, expected = drawn
+    assert READINGS["communicate language"]()({"languages": written}) == expected, written
 
 
 # ------------------------------------------------------------------- the marked-up copy
@@ -12928,7 +12955,7 @@ def _a_statement_is_anchored_once_at_its_end(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.communicate import drafts
 
     patch.setattr(drafts, "anchored",
-                  lambda one: f"{' '.join(one.text.split())} [](#brief:{one.id})")  # fmt: skip
+                  lambda one, **_: f"{' '.join(one.text.split())} [](#brief:{one.id})")  # fmt: skip
 
 
 def _a_titles_markup_is_read_as_words(patch: pytest.MonkeyPatch) -> None:
@@ -12969,6 +12996,29 @@ def _an_embargos_offset_is_read_without_its_sign(patch: pytest.MonkeyPatch) -> N
     real = lifecycle._zone
     patch.setattr(lifecycle, "_zone", lambda written: real(written.replace("-", "+"))
                   if written else real(written))  # fmt: skip
+
+
+def _a_language_that_is_no_tag_lets_a_text_off(patch: pytest.MonkeyPatch) -> None:
+    # The rule before fix round 1 of Task 5, part 3: "English" and "en_US" read as another
+    # language, so that the claim ladder and G6 passed over their texts.
+    from manuscript_guard.communicate import checking
+
+    patch.setattr(checking, "in_english", lambda front: not isinstance(
+        front.get("language"), str) or front["language"].lower().split("-")[0] in ("", "en"))
+
+
+def _eng_is_another_language(patch: pytest.MonkeyPatch) -> None:
+    # ISO 639-2's tag for English, `eng`, read as another language's.
+    from manuscript_guard.communicate import checking
+
+    patch.setattr(checking, "_ENGLISH", frozenset({"en"}))
+
+
+def _a_post_carries_its_citations(patch: pytest.MonkeyPatch) -> None:
+    # "[@smith2020]" kept in a post, where it reads as a mention of an account.
+    from manuscript_guard.communicate import svg
+
+    patch.setattr(svg, "bare", lambda text: text)
 
 
 def _out_of_is_out(patch: pytest.MonkeyPatch) -> None:
@@ -13269,6 +13319,18 @@ BROKEN = {
     "an embargo's offset is read without its sign": (
         _an_embargos_offset_is_read_without_its_sign,
         test_an_embargo_lifts_at_its_zones_moment_or_where_the_day_comes_last,
+    ),
+    "a language that is no tag lets a text off the claim ladder": (
+        _a_language_that_is_no_tag_lets_a_text_off,
+        test_a_text_is_held_as_english_unless_its_language_is_another_tag,
+    ),
+    "eng is read as another language": (
+        _eng_is_another_language,
+        test_a_text_is_held_as_english_unless_its_language_is_another_tag,
+    ),
+    "a post carries its citations": (
+        _a_post_carries_its_citations,
+        test_each_sentence_a_built_text_takes_from_the_brief_names_its_statement,
     ),
     "a mention is read as words": (
         _a_mention_is_read_as_words,

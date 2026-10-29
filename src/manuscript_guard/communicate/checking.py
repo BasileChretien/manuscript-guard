@@ -122,12 +122,26 @@ def channel_rules(channel: str) -> dict:
     return {**(known.get(platform) or {}), **own} if isinstance(platform, str) else own
 
 
+#: A language's tag: two or three letters, then subtags joined by `-` or `_`, as `ja-JP`
+#: and `zh_Hant`.
+_LANGUAGE_TAG = re.compile(r"[a-z]{2,3}(?:[-_][a-z0-9]{1,8})*")
+#: The tags whose first subtag is English's: ISO 639-1's and ISO 639-2's.
+_ENGLISH = frozenset({"en", "eng"})
+
+
 def in_english(front: dict) -> bool:
-    """Whether a text is in English: its front matter names no other `language`. The words
-    of the claim ladder and G6 read English only, so a translation is held to its numbers,
-    its bindings and its anchors, and not to them."""
+    """Whether a text is held as English: unless its front matter names another language by
+    its tag (`ja`, `ja-JP`), it is. The words of the claim ladder and G6 read English only,
+    so a translation is held to its numbers, its bindings and its anchors, and not to them;
+    a `language` that is no tag, `English` or a word nobody knows, is read in full, since
+    nothing says the text is not English."""
     language = front.get("language")
-    return not isinstance(language, str) or language.lower().split("-")[0] in ("", "en")
+    if not isinstance(language, str):
+        return True
+    tag = language.strip().casefold()
+    if not _LANGUAGE_TAG.fullmatch(tag):
+        return True
+    return re.split(r"[-_]", tag, maxsplit=1)[0] in _ENGLISH
 
 
 @dataclass(frozen=True)
@@ -164,7 +178,26 @@ def check(project, only: str | None = None) -> Report:
         report = report.merge(_texts_report(context))
     if only in (None, "graphical-abstract"):
         report = report.merge(_graphical_abstract_report(context))
-    return report
+    return _once(report)
+
+
+def _once(report: Report) -> Report:
+    """Each finding of an SVG once: one a text attaches that is also in the graphical
+    abstract's folder, or that two texts attach, is read each time, and says the same of
+    itself. A text's own findings are its own, two alike on a line among them."""
+    seen: set[tuple] = set()
+    kept = []
+    for one in report.findings:
+        if one.path is None or Path(one.path).suffix.lower() != ".svg":
+            kept.append(one)
+            continue
+        key = (one.gate, one.code, one.message, one.severity,
+               str(Path(one.path).resolve()) if one.path else None, one.line, one.col,
+               one.context)  # fmt: skip
+        if key not in seen:
+            seen.add(key)
+            kept.append(one)
+    return replace(report, findings=tuple(kept))
 
 
 def context_of(project) -> tuple[Context, Report]:
@@ -527,15 +560,15 @@ def _shared(context: Context, path: Path, front: dict, channel: str, rules: dict
     """The embargo, what the text uploads against the journal's sharing policy, and each
     SVG it attaches read as the graphical abstract's lines are."""
     from manuscript_guard.communicate import lifecycle
-    from manuscript_guard.communicate.sharing import sharing_findings
+    from manuscript_guard.communicate.sharing import listed, shape_findings, sharing_findings
 
     found = lifecycle.embargo_findings(context.project, path)
+    found += shape_findings(path, front)
     found += sharing_findings(context.project, path, front, channel, rules,
                               lifecycle.now().date())  # fmt: skip
-    attached = front.get("attachments")
-    for name in attached if isinstance(attached, list) else ():
-        image = path.parent / name if isinstance(name, str) else None
-        if image is not None and image.suffix.lower() == ".svg" and image.is_file():
+    for name in dict.fromkeys(listed(front, "attachments") or ()):
+        image = path.parent / name
+        if image.suffix.lower() == ".svg" and image.is_file():
             found += _svg_text(context, image, {})
     return found
 
@@ -611,30 +644,47 @@ def graphemes(text: str) -> int:
     return count
 
 
-def _limits(context: Context, path: Path, channel: str, rules: dict, read) -> list[Finding]:
-    """Each post of a text against its channel's length, as printed: each binding its
-    display, each anchor and each comment nothing."""
+def limit_of(context: Context, channel: str, rules: dict) -> tuple[int | None, bool]:
+    """How long a post of `channel` may be, and whether paper.yaml's `communication.limits`
+    says so; None where nothing limits it."""
     setting = context.project.setting("communication") or {}
     limits = (setting.get("limits") or {}) if isinstance(setting, dict) else {}
+    limits = limits if isinstance(limits, dict) else {}
     own = limits.get(channel, limits.get(rules.get("platform") or ""))
-    limit = own if isinstance(own, int) and not isinstance(own, bool) else rules.get("limit")
-    if not isinstance(limit, int):
-        return []
+    if isinstance(own, int) and not isinstance(own, bool):
+        return own, True
+    limit = rules.get("limit")
+    return (limit if isinstance(limit, int) and not isinstance(limit, bool) else None), False
+
+
+def post_length(context: Context, read, low: int, high: int, rules: dict) -> int | None:
+    """How long the post of `read` from `low` to `high` is, as its channel counts it: as
+    printed, each binding its display, each anchor and each comment nothing, a link the
+    length the platform counts it at; None where it prints nothing. `communicate check`
+    holds a post to its limit by this, and the preview shows it."""
     from manuscript_guard.text.masking import blank_comments
 
+    post = _printed(context, read.blanked[low:high])
+    post = blank_comments(post) if "<!--" in post else post
+    post = post.replace("\x00", "").strip()
+    if not post:
+        return None
+    if rules.get("url_counts_as"):
+        post = _URL.sub("x" * int(rules["url_counts_as"]), post)
+    return graphemes(post) if rules.get("unit") == "graphemes" else len(post)
+
+
+def _limits(context: Context, path: Path, channel: str, rules: dict, read) -> list[Finding]:
+    """Each post of a text against its channel's length (`post_length`)."""
+    limit, own = limit_of(context, channel, rules)
+    if limit is None:
+        return []
     found = []
     for number, (low, high) in enumerate(read.posts, 1):
-        post = _printed(context, read.blanked[low:high])
-        post = blank_comments(post) if "<!--" in post else post
-        post = post.replace("\x00", "").strip()
-        if not post:
-            continue
-        if rules.get("url_counts_as"):
-            post = _URL.sub("x" * int(rules["url_counts_as"]), post)
-        length = graphemes(post) if rules.get("unit") == "graphemes" else len(post)
-        if length > limit:
+        length = post_length(context, read, low, high, rules)
+        if length is not None and length > limit:
             unit = rules.get("unit") or "characters"
-            whence = "paper.yaml's communication.limits" if own == limit else (
+            whence = "paper.yaml's communication.limits" if own else (
                 f"{rules.get('source', 'data/channels.yaml')}, "
                 + (f"read {rules['read_on']}" if rules.get("verified") and rules.get("read_on")
                    else "not read on that page")

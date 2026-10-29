@@ -23,9 +23,12 @@ from manuscript_guard.claims import sentence_spans
 from manuscript_guard.communicate.brief import Brief, Statement
 
 
-def anchored(statement: Statement) -> str:
-    """A statement's text with each of its sentences anchored to it, right after its stop."""
-    text = " ".join(statement.text.split())
+def anchored(statement: Statement, *, bare: bool = False) -> str:
+    """A statement's text with each of its sentences anchored to it, right after its stop;
+    `bare`, for a post, without its bracketed citations and its marks of emphasis."""
+    from manuscript_guard.communicate.svg import bare as without_marks
+
+    text = " ".join((without_marks(statement.text) if bare else statement.text).split())
     pieces = [text[first:end].strip() for _piece, first, end in sentence_spans(text)]
     pieces = [piece for piece in pieces if piece] or [text]
     return " ".join(f"{piece} [](#brief:{statement.id})" for piece in pieces)
@@ -86,8 +89,8 @@ class Parts:
         )  # fmt: skip
 
 
-def said(statements: list[Statement]) -> list[str]:
-    return [anchored(one) for one in statements]
+def said(statements: list[Statement], *, bare: bool = False) -> list[str]:
+    return [anchored(one, bare=bare) for one in statements]
 
 
 def paragraphs(*blocks: str | list[str] | None) -> str:
@@ -104,9 +107,11 @@ def paragraphs(*blocks: str | list[str] | None) -> str:
 
 def post(parts: Parts, link: str | None, with_conclusion: bool) -> str:
     """One post: the primary findings, the conclusion's first statement where it fits, and
-    the link to the paper once it is online."""
-    return paragraphs(said(parts.primary),
-                      said(parts.conclusion[:1]) if with_conclusion else None, link)  # fmt: skip
+    the link to the paper once it is online. A post and a thread carry no citation and no
+    emphasis (`svg.bare`)."""
+    return paragraphs(said(parts.primary, bare=True),
+                      said(parts.conclusion[:1], bare=True) if with_conclusion else None,
+                      link)  # fmt: skip
 
 
 def thread(parts: Parts, link: str | None) -> str:
@@ -114,7 +119,7 @@ def thread(parts: Parts, link: str | None) -> str:
     limitations and the conclusion, and the link to the paper last once it is online."""
     statements = [*parts.question, *parts.primary, *parts.secondary, *parts.limitations,
                   *parts.conclusion]  # fmt: skip
-    posts = said(statements) + ([f"Read the paper: {link}"] if link else [])
+    posts = said(statements, bare=True) + ([f"Read the paper: {link}"] if link else [])
     return "\n\n---\n\n".join(posts) + "\n"
 
 
@@ -157,11 +162,18 @@ def storyboard(parts: Parts) -> str:
     return paragraphs(*blocks)
 
 
+#: Where a licence's SPDX identifier is read: its page on the SPDX list.
+SPDX_PAGE = "https://spdx.org/licenses/{}.html"
+
+
 def announcement(package_doi: str, licences: list[str], link: str | None) -> str:
-    named = " and ".join(f"`{one}`" for one in licences)
+    """The deposit announced, each licence named by its page on the SPDX list: a link, which
+    the check does not read as a number, where `CC-BY-4.0` written out would be one."""
+    named = " and ".join(SPDX_PAGE.format(one) for one in licences)
+    kind = "licence" if len(licences) == 1 else "licences"
     return paragraphs(
         f"The code and results behind the paper are deposited at "
-        f"https://doi.org/{package_doi}, under {named}.",
+        f"https://doi.org/{package_doi}, under the {kind} {named}.",
         f"The paper is at {link}." if link else None,
     )
 

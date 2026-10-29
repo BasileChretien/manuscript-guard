@@ -607,6 +607,18 @@ def _communicate_titles() -> Reading:
     return titles
 
 
+@reading("communicate language")
+def _communicate_language() -> Reading:
+    """Whether a text whose front matter writes each `language` is held as English, to the
+    claim ladder and G6 (`communicate/checking.py`)."""
+    from manuscript_guard.communicate import checking
+
+    def held(given: dict[str, Any]) -> list[bool]:
+        return [checking.in_english({"language": one}) for one in given["languages"]]
+
+    return held
+
+
 @reading("communicate embargo")
 def _communicate_embargo() -> Reading:
     """When an embargo written each way lifts, in UTC, or None where it cannot be read

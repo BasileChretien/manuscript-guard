@@ -57,7 +57,12 @@ def _printed(text: str, namespace: dict) -> str:
 
 def page(project, context, found: dict[Path, list]) -> str:
     """The preview of every text under communication/, with the findings `found` of each."""
-    from manuscript_guard.communicate.checking import channel_rules, graphemes, text_files
+    from manuscript_guard.communicate.checking import (
+        channel_rules,
+        limit_of,
+        post_length,
+        text_files,
+    )
     from manuscript_guard.contracts._schema import read_text
 
     title = str(project.paper.get("title") or project.root.name)
@@ -82,12 +87,10 @@ def page(project, context, found: dict[Path, list]) -> str:
             shown = _printed(raw[low:high], context.namespace)
             if not shown:
                 continue
-            limit = rules.get("limit")
+            limit, _own = limit_of(context, channel, rules)
+            size = post_length(context, read, low, high, rules)
             length = ""
-            if isinstance(limit, int):
-                bare = re.sub(r'<span class="slot">.*?</span>', "", shown)
-                counted = html.unescape(bare)
-                size = graphemes(counted) if rules.get("unit") == "graphemes" else len(counted)
+            if limit is not None and size is not None:
                 length = (f'<span class="length">{size} of {limit} '
                           f'{rules.get("unit") or "characters"}</span>')  # fmt: skip
             lines.append(f'<div class="post">{shown}{length}</div>')

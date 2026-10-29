@@ -156,6 +156,20 @@ def _clean(piece: str, opens: bool) -> str:
     return _EMPHASIS.sub("", _UNDERSCORED.sub(r"\2", piece))
 
 
+def bare(text: str) -> str:
+    """A statement's text without its bracketed citations and its marks of emphasis and code,
+    as a post carries it: `[@smith2020]` would read there as a mention of an account, and
+    each mark would be counted. Its bindings are kept as written."""
+    out: list[str] = []
+    at = 0
+    for placeholder in parse(text)[0]:
+        out += [_clean(text[at : placeholder.start], at == 0),
+                text[placeholder.start : placeholder.end]]  # fmt: skip
+        at = placeholder.end
+    out.append(_clean(text[at:], at == 0))
+    return "".join(out)
+
+
 def _tokens(text: str, namespace: dict) -> list[_Token]:
     """The words of a statement as printed: each binding its display, kept whole on a line, a
     pointer the number the build gives it where `namespace` has it, and the marks of

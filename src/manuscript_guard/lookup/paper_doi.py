@@ -8,6 +8,7 @@ argument, as for every lookup, and the tests answer from a loopback server.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from datetime import date
 from pathlib import Path
@@ -31,6 +32,20 @@ KEPT = ("doi", "title", "subtitle", "container", "type")
 def doi_of(project) -> str | None:
     doi = publication(project).get("doi")
     return doi if isinstance(doi, str) and doi else None
+
+
+#: A DOI as the record's schema takes one, and so as one is sent: `10.`, four to nine
+#: digits, a slash and the rest. A link to it, `https://doi.org/10.1/x`, is not one.
+DOI = re.compile(r"10\.\d{4,9}/\S+")
+
+
+def malformed(doi: str) -> str:
+    """Why `doi` is not one that can be asked about and kept, or "" where it is."""
+    if DOI.fullmatch(doi):
+        return ""
+    if re.match(r"(?i)\A(?:https?://)?(?:dx\.)?doi\.org/|\Adoi:", doi):
+        return "it is written as a link or with `doi:`; write the DOI alone, 10.xxxx/…"
+    return "a DOI is 10., four to nine digits, a slash and the rest, 10.1234/abc"
 
 
 def why_asked(project, *, again: bool = False) -> str:
@@ -57,6 +72,9 @@ def why_asked(project, *, again: bool = False) -> str:
 def look_up(doi: str, ask: sources.Ask, base: str, contact: str | None,
             today: date) -> dict[str, Any]:  # fmt: skip
     answer = sources.crossref(doi, ask, base, contact)
+    if answer["status"] == sources.FOUND and not answer.get("doi"):
+        # A work whose `DOI` is "" tells no work: an answer that did not come.
+        answer = sources.unresolvable(sources.SHAPE)
     if answer["status"] == sources.FOUND:
         answer = {"status": sources.FOUND, **{key: answer[key] for key in KEPT if key in answer}}
     record = {"schema": SCHEMA, "doi": doi, "looked_up_on": today.isoformat(),
@@ -78,6 +96,9 @@ def run(
     doi = doi_of(project)
     if doi is None:
         raise ValueError("paper.yaml gives no publication.doi")
+    why = malformed(doi)
+    if why:
+        raise ValueError(f"paper.yaml's publication.doi, {doi}, is not a DOI: {why}")
     services = services or Services()
     credentials = credentials or Credentials()
     ask = _asker(transport or default_transport, pacer or Pacer(), credentials)
@@ -97,4 +118,4 @@ def summary(record: dict[str, Any]) -> str:
     return f"Crossref's answer did not come ({answer['why']})"
 
 
-__all__ = ["KEPT", "doi_of", "look_up", "run", "summary", "why_asked"]
+__all__ = ["DOI", "KEPT", "doi_of", "look_up", "malformed", "run", "summary", "why_asked"]

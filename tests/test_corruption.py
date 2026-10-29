@@ -25936,6 +25936,36 @@ def test_the_papers_doi_typed_one_digit_wrong_is_warned(project: Path) -> None:
     assert _communication_failures(project) == set()
 
 
+def test_an_upload_written_alone_is_held_to_the_sharing_policy(project: Path) -> None:
+    """Fix round 1 of Task 5, part 3: `attachments: paper.pdf`, a name and not a list, was
+    read as nothing uploaded, and passed a policy that allows the version nowhere."""
+    _built(project, "researchgate", _ONLINE)
+    profile = project / "profiles" / "journals" / "demo-journal.yaml"
+    profile.write_text(profile.read_text(encoding="utf-8")
+                       + "sharing:\n  published:\n    where: []\n", encoding="utf-8")  # fmt: skip
+    text = project / "communication" / "researchgate.md"
+    assert _communication_failures(project) == set()
+    text.write_text(text.read_text(encoding="utf-8").replace(
+        "version_shared: none", "version_shared: published").replace(
+        "attachments: []", "attachments: paper.pdf"), encoding="utf-8")  # fmt: skip
+    assert _communication_failures(project) == {"comm-sharing-not-allowed"}
+    _replace_once(text, "attachments: paper.pdf", "attachments: {file: paper.pdf}")
+    assert _communication_failures(project) == {"comm-front-matter"}
+
+
+def test_a_text_said_to_be_in_english_is_held_to_the_claim_ladder(project: Path) -> None:
+    """Fix round 1 of Task 5, part 3: `language: English` and `en_US` were read as another
+    language, and a post that said the drug causes the injury passed."""
+    _communicating(project)
+    post = project / "communication" / "bluesky.md"
+    caused = _POST.replace("The reporting odds ratio was",
+                           "Example-drug causes hepatic injury: the reporting odds ratio was")
+    for language, failed in (("English", True), ("en_US", True), ("ja", False)):
+        post.write_text(caused.replace("channel: bluesky", f"channel: bluesky\nlanguage: "
+                                       f"{language}"), encoding="utf-8")  # fmt: skip
+        assert ("comm-claim-stronger" in _communication_failures(project)) is failed, language
+
+
 # -------------------------------------------------------------- the Methods, pair by pair
 
 

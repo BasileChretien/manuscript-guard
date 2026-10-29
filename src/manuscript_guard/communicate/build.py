@@ -76,6 +76,8 @@ class Built:
     kept: list[str] = field(default_factory=list)
     #: Each channel paper.yaml lists that the build does not write, a blog: the author's.
     passed: list[str] = field(default_factory=list)
+    #: Each channel built with the rest and not due, and why: no deposit to announce.
+    not_due: list[tuple[str, str]] = field(default_factory=list)
 
 
 def chosen(project, named: list[str] | None) -> list[str]:
@@ -113,19 +115,34 @@ def paper_link(project) -> str | None:
     return str(said["url"]) if said.get("url") else None
 
 
+class NotDue(str):
+    """Why a channel's text is not due, rather than refused: the data announcement with no
+    deposit to announce. Built with the rest, it is passed over; named, it is refused."""
+
+
 def _package(project) -> tuple[str, list[str]] | str:
     """The deposit's DOI and its licences, or why there is no deposit to announce."""
     from manuscript_guard.deposit.write import MANIFEST
 
     package = project.setting("package") or {}
+    package = package if isinstance(package, dict) else {}
     doi, licence = package.get("doi"), package.get("licence")
     if not doi:
-        return "paper.yaml's package gives no DOI"
+        return NotDue("paper.yaml's package gives no DOI")
     if not licence:
-        return "paper.yaml's package gives no licence"
+        return NotDue("paper.yaml's package gives no licence")
     if not list((project.path("build") / "package").glob(f"*/{MANIFEST}")):
-        return "there is no deposit's manifest: `manuscript-guard package` writes it"
-    return str(doi), [licence] if isinstance(licence, str) else list(licence)
+        return NotDue("there is no deposit's manifest: `manuscript-guard package` writes it")
+    licences = [licence] if isinstance(licence, str) else licence
+    if not isinstance(licences, list) or not all(
+        isinstance(one, str) and _SPDX.fullmatch(one) for one in licences
+    ):
+        return "paper.yaml's package.licence is not an SPDX identifier, or a list of them"
+    return str(doi), list(licences)
+
+
+#: An SPDX identifier, as paper.yaml's schema takes one.
+_SPDX = re.compile(r"[A-Za-z0-9][A-Za-z0-9.+-]*")
 
 
 def _compose(project, channel: str, parts, link: str | None) -> list[tuple[str, dict]] | str:
@@ -189,8 +206,6 @@ def _attachment(kind: str, brief, context) -> bytes:
 
 def _brief(project):
     from manuscript_guard.communicate import brief as brief_module
-    from manuscript_guard.communicate.svg import unbound_refs
-    from manuscript_guard.contracts import load_namespace
 
     brief, report = brief_module.load(project)
     if brief is None:
@@ -201,10 +216,8 @@ def _brief(project):
     if not brief.primary:
         raise Refused(f"no finding of {brief.path} is marked `primary: true`: every text "
                       "states the primary finding, and which one it is is yours to say")
-    namespace, _results, _literature, _load = load_namespace(project)
-    unbound = sorted({ref for one in brief.statements for ref in unbound_refs(one, namespace)})
-    if unbound:
-        raise Refused(f"the brief binds values nothing emits: {', '.join(unbound)}")
+    # A statement that binds a value nothing emits stops only the texts that carry it: the
+    # check fails each of them (`comm-binding-unknown`), and the rest are written.
     return brief
 
 
@@ -227,10 +240,13 @@ def build(project, channels: list[str] | None = None, *, force: bool = False) ->
             built.kept.append(channel)
             continue
         ways = _compose(project, channel, parts, link)
-        if isinstance(ways, str):
-            built.refused.append((channel, ways))
+        if isinstance(ways, NotDue) and not channels:
+            built.not_due.append((channel, str(ways)))
             continue
-        why = _write_first(channel, ways, path, brief, context, built)
+        if isinstance(ways, str):
+            built.refused.append((channel, str(ways)))
+            continue
+        why = _write_first(channel, ways, path, brief, context, built, force)
         if why:
             built.refused.append((channel, why))
     built.written += write_guides(project)
@@ -239,34 +255,42 @@ def build(project, channels: list[str] | None = None, *, force: bool = False) ->
 
 
 def _write_first(channel: str, ways: list[tuple[str, dict]], path: Path, brief, context,
-                 built: Built) -> str:  # fmt: skip
+                 built: Built, force: bool = False) -> str:  # fmt: skip
     """Write the first way of the text the check passes, with what it attaches; or say why
     none passes."""
     from manuscript_guard.communicate import checking
 
     why = ""
     for body, attached in ways:
-        before = _place(path.parent, attached, brief, context)
+        before, kept = _place(path.parent, attached, brief, context, force)
         failed = [one for one in checking.text_findings(context, path, body)
                   if one.severity == FAIL and one.code not in NOT_HELD]  # fmt: skip
         if not failed:
             path.write_bytes(body.encode("utf-8"))
             built.written += [path, *before]
+            built.kept += kept
             return ""
         _unplace(before)
         why = "; ".join(f"{one.code}: {one.message}" for one in failed[:3])
     return why
 
 
-def _place(root: Path, attached: dict, brief, context) -> dict[Path, bytes | None]:
+def _place(root: Path, attached: dict, brief, context, force: bool = False
+           ) -> tuple[dict[Path, bytes | None], list[str]]:  # fmt: skip
     """Write what a text attaches, so that the check reads it beside the text; and what
-    each file held before, to put back where the text is not written."""
+    each file held before, to put back where the text is not written. A file that exists
+    is kept without `force`, as a text is: it may have been edited by hand, and the check
+    reads it as it stands."""
     placed: dict[Path, bytes | None] = {}
+    kept: list[str] = []
     for name, kind in attached.items():
         target = root / name
+        if target.exists() and not force:
+            kept.append(name)
+            continue
         placed[target] = target.read_bytes() if target.is_file() else None
         target.write_bytes(_attachment(kind, brief, context))
-    return placed
+    return placed, kept
 
 
 def _unplace(placed: dict[Path, bytes | None]) -> None:

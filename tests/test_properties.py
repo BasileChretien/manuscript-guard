@@ -12596,6 +12596,13 @@ def _an_anchor_belongs_to_the_sentence_it_follows(patch: pytest.MonkeyPatch) -> 
     patch.setattr(texts_module, "_owner", owner)
 
 
+def _an_anchor_after_a_stop_is_always_the_sentence_s_before(patch: pytest.MonkeyPatch) -> None:
+    # An anchor opening the line after a stop is read as the sentence's before it.
+    from manuscript_guard.communicate import texts as texts_module
+
+    patch.setattr(texts_module, "_opens_next", lambda *_args: False)
+
+
 def _a_restatement_is_read_by_its_first_sentence(patch: pytest.MonkeyPatch) -> None:
     # Two texts compared sentence by sentence, the first of each: a hedge dropped from the
     # second is not seen, and the words of a sentence split in two are lost.
@@ -12751,6 +12758,10 @@ BROKEN = {
     ),
     "an anchor opening a paragraph is the sentence's before": (
         _an_anchor_belongs_to_the_sentence_it_follows,
+        test_each_claiming_sentence_of_a_communication_is_read_with_the_statements_it_names,
+    ),
+    "an anchor opening a line is the sentence's before": (
+        _an_anchor_after_a_stop_is_always_the_sentence_s_before,
         test_each_claiming_sentence_of_a_communication_is_read_with_the_statements_it_names,
     ),
     "a restatement is read by its first sentence": (

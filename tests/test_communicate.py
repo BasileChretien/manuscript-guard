@@ -306,15 +306,42 @@ def test_a_value_the_paper_reports_nowhere_fails(ready: Path) -> None:
     assert "comm-not-reported" not in codes(ready, "texts")
 
 
+def _allowing(sentence: str, reason: str = "so it is") -> str:
+    return f"channel: bluesky\nallow:\n  - sentence: '{sentence}'\n    reason: '{reason}'"
+
+
+_STRONGER = (
+    "Example-drug caused hepatic injury, with a reporting odds ratio of "
+    "{{results.ror.point}}"
+)
+
+
 def test_a_sentence_the_front_matter_allows_with_a_reason_is_a_note(ready: Path) -> None:
     body, _front, _severity = TEXT_CASES["comm-claim-stronger"]
-    front = "channel: bluesky\nallow:\n  - sentence: caused hepatic injury\n    reason: so it is"
-    text(ready, "post.md", body, front)
+    text(ready, "post.md", body, _allowing(_STRONGER + "."))
     told = found(ready, "texts")
     assert ("comm-claim-stronger", INFO) in told and ("comm-claim-stronger", FAIL) not in told
-    # With no reason, nothing is allowed.
-    text(ready, "post.md", body, front.replace("reason: so it is", "reason: ''"))
-    assert ("comm-claim-stronger", FAIL) in found(ready, "texts")
+    assert "comm-allow-unused" not in {code for code, _ in told}
+    # With no reason, nothing is allowed, and that is said.
+    text(ready, "post.md", body, _allowing(_STRONGER, ""))
+    told = found(ready, "texts")
+    assert ("comm-claim-stronger", FAIL) in told and ("comm-allow-no-reason", WARN) in told
+
+
+def test_an_allowed_sentence_is_the_whole_sentence_and_only_that_one(ready: Path) -> None:
+    """Round 1 of #470: an entry of a few words allowed every sentence that held them."""
+    body, _front, _severity = TEXT_CASES["comm-claim-stronger"]
+    second = body.replace("Example-drug", "Example-drug alone")
+    text(ready, "post.md", f"{body}\n\n{second}", _allowing(_STRONGER))
+    told = found(ready, "texts")
+    assert ("comm-claim-stronger", INFO) in told and ("comm-claim-stronger", FAIL) in told
+    text(ready, "post.md", body, _allowing("caused hepatic injury"))
+    told = found(ready, "texts")
+    assert ("comm-claim-stronger", FAIL) in told and ("comm-allow-unused", WARN) in told
+    # An entry for a sentence that claims no more than its statement allowed nothing.
+    clean_sentence = CLEAN.split(" Nobody")[0].replace(" [](#brief:findings.2)", "")
+    text(ready, "post.md", CLEAN, _allowing(clean_sentence))
+    assert ("comm-allow-unused", WARN) in found(ready, "texts")
 
 
 def test_a_published_paper_may_be_linked_and_said_published(ready: Path) -> None:
@@ -595,3 +622,160 @@ def test_the_json_lists_failures_apart_from_warnings(
     assert main(["communicate", "check", str(ready)]) == 1
     assert main(["communicate", "check", str(ready), "--only", "brief"]) == 0
     assert main(["communicate", "brief", str(ready), "--json"]) == 2
+
+
+# ------------------------------------------------------------------- round 1 of #470
+
+
+def test_an_anchor_opening_its_line_before_a_sentence_is_that_sentences() -> None:
+    """Finding 1: as docs/communicate.md writes it, a comment opening a line is the anchor
+    of the sentence after it on that line; one after a stop on the stop's line is the
+    sentence's before."""
+    read = texts.read("A was associated [](#brief:f.1).\n<!-- brief: l.1 --> B caused it.")
+    assert [s.anchors for s in read.sentences] == [("f.1",), ("l.1",)]
+    read = texts.read("A was associated. [](#brief:f.1)\nB caused it.")
+    assert [s.anchors for s in read.sentences] == [("f.1",), ()]
+
+
+@pytest.mark.parametrize(
+    ("before", "code"),
+    [
+        # Finding 2: a mention and a hashtag are no citation and no number.
+        ("With @alice.bsky.social and #covid19 in mind: ", "comm-fact-not-in-source"),
+        ("With @alice.bsky.social and #covid19 in mind: ", "comm-number-unbound"),
+        # Finding 3: "published" said of other work.
+        ("Previously published studies differ. ", "comm-status-ahead"),
+        ("Published reports differ. ", "comm-status-ahead"),
+        ("See https://example.org/published/1 too. ", "comm-status-ahead"),
+        # Finding 4: a thread's counter.
+        ("1/3 " + chr(0x1F9F5) + " ", "comm-number-unbound"),
+        ("1/3 ", "comm-claim-unanchored"),
+    ],
+)
+def test_what_a_post_holds_and_the_paper_does_not_is_no_fault(
+    ready: Path, before: str, code: str
+) -> None:
+    text(ready, "post.md", before + CLEAN)
+    assert code not in codes(ready, "texts")
+
+
+def test_a_counter_at_the_end_of_a_post_is_no_number_and_a_fraction_is_one(ready: Path) -> None:
+    text(ready, "post.md", CLEAN + " 2/3")
+    assert codes(ready, "texts", FAIL) == set()
+    text(ready, "post.md", CLEAN + " It was 3/4")
+    assert "comm-number-unbound" in codes(ready, "texts", FAIL)
+
+
+def test_this_paper_said_published_or_its_url_linked_is_ahead(ready: Path) -> None:
+    with (ready / "paper.yaml").open("a", encoding="utf-8", newline="\n") as handle:
+        handle.write("publication:\n  status: accepted\n  url: https://journal.example/a/1\n")
+    for said in ("Our study is published today. ", "We have just published it. ",
+                 "Read it at https://journal.example/a/1 now. "):  # fmt: skip
+        text(ready, "post.md", said + CLEAN)
+        assert "comm-status-ahead" in codes(ready, "texts", FAIL), said
+    text(ready, "post.md", "Our study will be published soon. " + CLEAN)
+    assert "comm-status-ahead" not in codes(ready, "texts")
+
+
+def test_a_thread_is_parted_at_a_rule_after_a_blank_line_and_not_at_an_underline() -> None:
+    """Finding 11."""
+    assert len(texts.read("Title\n---\nA post.\n").posts) == 1
+    assert len(texts.read("A post.\n\n---\n\nAnother.\n").posts) == 2
+    assert len(texts.read("A post.\n\n***\n\nStill it.\n").posts) == 1
+
+
+def test_a_drawn_line_left_without_its_negation_claims_more_than_its_statement(
+    ready: Path,
+) -> None:
+    """Finding 5: each line is in its statement, and the lines left draw a claim the paper
+    does not make."""
+    concept = _drawn(ready)
+    drawn = concept.read_text(encoding="utf-8")
+    lines = re.findall(r'\s*<text[^>]*data-statement="conclusion\.2"[^>]*>[^<]*</text>', drawn)
+    holding = [line for line in lines if "cannot" in line]
+    assert holding and not any("cannot" in line and " not " in line for line in lines)
+    concept.write_text(drawn.replace(holding[0], ""), encoding="utf-8")
+    told = found(ready, "graphical-abstract")
+    assert ("comm-claim-stronger", FAIL) in told
+    assert "comm-ga-text-not-in-statement" not in {code for code, _ in told}
+
+
+def test_a_heading_line_is_no_statement(project: Path) -> None:
+    """Finding 6: a heading over the limitations, and one over the abstract's conclusion."""
+    paper = project / "manuscript" / "main.md"
+    written = paper.read_text(encoding="utf-8")
+    written = written.replace("**Conclusions.** ", "### Conclusions\n\n").replace(
+        "Several limitations follow", "## Limitations\n\nSeveral limitations follow")
+    paper.write_text(written, encoding="utf-8")
+    enable(project)
+    assert main(["communicate", "brief", str(project)]) == 0
+    document = yaml.safe_load(brief_file(project).read_text(encoding="utf-8"))
+    said = [one["text"] for part in brief_module.SECTIONS for one in document.get(part, [])]
+    assert not [one for one in said if one.lstrip().startswith("#")], said
+    assert document["limitations"][0]["text"] == "Several limitations follow from the design."
+    assert document["conclusion"][0]["text"].startswith("Reporting of hepatic injury")
+
+
+def test_a_label_this_does_not_know_ends_the_conclusion(project: Path) -> None:
+    """Finding 7: a trial's registration and the funding after the conclusion are neither
+    conclusion nor result."""
+    paper = project / "manuscript" / "main.md"
+    written = paper.read_text(encoding="utf-8")
+    added = ("cannot establish risk.\n**Funding.** None was received.\n"
+             "Trial Registration ClinicalTrials.gov Identifier: NCT01234567.\n")  # fmt: skip
+    paper.write_text(written.replace("cannot establish risk.\n", added, 1), encoding="utf-8")
+    enable(project)
+    assert main(["communicate", "brief", str(project)]) == 0
+    document = yaml.safe_load(brief_file(project).read_text(encoding="utf-8"))
+    assert [one["id"] for one in document["conclusion"]] == ["conclusion.1", "conclusion.2"]
+    assert brief_module.opening("**Results**. Of 4000 reports")[1] == "results"
+
+
+def test_a_quote_cut_from_inside_a_sentence_fails(ready: Path) -> None:
+    """Finding 8: "cannot establish risk" of "Disproportionality is not incidence and cannot
+    establish risk." is no sentence of the paper."""
+    def cut(document: dict) -> None:
+        document["conclusion"][1]["from"]["quote"] = "cannot establish risk."
+        document["conclusion"][1]["text"] = "cannot establish risk."
+
+    edit_brief(ready, cut)
+    assert "brief-quote-not-in-source" in codes(ready, "brief", FAIL)
+
+    def two(document: dict) -> None:
+        both = ("Reporting of hepatic injury is disproportionate for example-drug in these "
+                "synthetic data. Disproportionality is not incidence and cannot establish risk.")
+        source = {"file": "manuscript/main.md", "quote": both}
+        document["conclusion"] = [{"id": "conclusion.1", "text": both, "from": source}]
+
+    edit_brief(ready, two)
+    assert "brief-quote-not-in-source" not in codes(ready, "brief")
+
+
+def test_the_limitations_are_the_discussions_not_the_introductions(project: Path) -> None:
+    """Finding 16."""
+    paper = project / "manuscript" / "main.md"
+    written = paper.read_text(encoding="utf-8")
+    paper.write_text(written.replace(
+        "Whether the signal extends", "Earlier studies had limitations of their own.\n\n"
+        "Whether the signal extends", 1), encoding="utf-8")  # fmt: skip
+    enable(project)
+    assert main(["communicate", "brief", str(project)]) == 0
+    document = yaml.safe_load(brief_file(project).read_text(encoding="utf-8"))
+    assert document["limitations"][0]["text"] == "Several limitations follow from the design."
+
+
+def test_a_statement_is_drawn_as_printed_without_its_markup() -> None:
+    """Finding 13: a citation, a list's marker and emphasis are not drawn, and a pointer is
+    the number the build gives it."""
+    shown = {"ref.table.t": svg.Shown("Table 2"), "results.r": _Shown("1.85")}
+    said = svg.printed("- Use was *linked* [@smith2020] to it ({{ref.table.t}}), "
+                       "{{results.r}}.", shown)  # fmt: skip
+    assert said == "Use was linked to it (Table 2), 1.85."
+    brief = Brief(Path("b.yaml"), (
+        Statement("question.1", "question", "> Is it? See {{num.table.t}}.", "f", "q"),
+        Statement("findings.1", "findings", "It was {{results.r}} @smith2020.", "f", "q",
+                  ("results.r",), True),
+    ))  # fmt: skip
+    alt = svg.alt_text(brief, templates.TEMPLATES["rct"], {"num.table.t": svg.Shown("2")})
+    assert alt == ("Graphical abstract. The trial: Is it? See 2. The result: It was "
+                   "{{results.r}}.\n")  # fmt: skip

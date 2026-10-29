@@ -18166,8 +18166,21 @@ What papers converted from Word showed (see "What papers converted from Word sho
     (`read_on` in `data/channels.yaml`). Bluesky's 300 graphemes was not: its page redirected to one that
     served nothing, so it is marked `verified: false` and stands as recorded from memory
     until it is read there.
-  - `comm-status-ahead` reads "published" in English, not after "be"; a text that says the
-    paper is "out" or "live", or "has been accepted" while it is only submitted, passes.
+  - `comm-status-ahead` reads this paper said published in English and narrowly: a sentence
+    that says "published", not after "be" or "previously", and is about "our", "my" or
+    "this" study, paper, article, findings and the like, or says "we published"; or the
+    paper's own DOI or URL linked. "Published today in JAMA: ..." with no such words passes,
+    and so do "out", "live", and "has been accepted" while it is only submitted. Reading the
+    subject of a sentence exactly needs a parser; this is the narrowest form that stays
+    silent on "previously published studies", "published reports" and a link's path (round 1
+    of #470).
+  - A mention (`@name`) is no citation in a communication text, which writes one in
+    brackets; a bare `@key` there is read as a mention. A thread's counter is one that opens
+    a post before a capital or the thread's emoji, or closes one after a stop: "3/4" after
+    a word is a fraction, and a counter written otherwise is a number.
+  - The scaffold reads a part of a structured abstract as ended by any label: a known
+    part's name, words in emphasis, or up to five words before a colon that open with a
+    capital and no article or pronoun. "Main point: ..." in the Results ends them.
   - Only an SVG's text is held to the brief, line by line. A PNG's words are not read at all,
     and a PDF's only for unbound numbers. A line of an SVG drawn by hand, with no
     `data-statement`, is a label: its numbers are held to the results and a claim in it

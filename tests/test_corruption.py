@@ -25339,6 +25339,84 @@ def test_a_graphical_abstract_drawn_from_old_results_is_caught(project: Path) ->
     assert {"comm-ga-stale", "comm-number-unbound"} <= _communication_failures(project)
 
 
+_CLAIM = "<!-- brief: findings.2 --> Example-drug was associated with the reports."
+
+
+@pytest.mark.parametrize(
+    ("faithful", "faulty", "code"),
+    [
+        # Round 1 of #470. An anchor opening the line of the sentence it names, and the
+        # same sentence with none.
+        (f"Read on.\n{_CLAIM}", "Read on.\nExample-drug was associated with the reports.",
+         "comm-claim-unanchored"),
+        # A mention is no citation; a citation the statement does not give is a fact.
+        ("With @alice.bsky.social, " + _POST.split("---\n")[-1],
+         "With [@fictionalClassSignal2019], " + _POST.split("---\n")[-1],
+         "comm-fact-not-in-source"),
+        # "Published" said of other work, and of this paper.
+        ("Previously published studies differ. " + _POST.split("---\n")[-1],
+         "Our study is published. " + _POST.split("---\n")[-1], "comm-status-ahead"),
+        # A thread's counter, and a typed number where the counter stood.
+        ("1/3 " + _POST.split("---\n")[-1], "13 " + _POST.split("---\n")[-1],
+         "comm-number-unbound"),
+    ],
+)  # fmt: skip
+def test_a_post_round_1_reads_what_a_post_holds_and_catches_what_it_should(
+    project: Path, faithful: str, faulty: str, code: str
+) -> None:
+    _communicating(project)
+    post = project / "communication" / "bluesky.md"
+    post.write_text("---\nchannel: bluesky\n---\n" + faithful, encoding="utf-8")
+    assert code not in _communication_failures(project)
+    post.write_text("---\nchannel: bluesky\n---\n" + faulty, encoding="utf-8")
+    assert code in _communication_failures(project)
+
+
+def test_a_graphical_abstract_line_cut_from_its_negation_is_caught(project: Path) -> None:
+    """Round 1 of #470: every line drawn is in its statement, and together they no longer
+    say "cannot"."""
+    import re as regex
+
+    from manuscript_guard.cli import main
+
+    _communicating(project)
+    assert main(["communicate", "graphical-abstract", str(project)]) == 0
+    concept = project / "communication" / "graphical-abstract" / "concept-1.svg"
+    drawn = concept.read_text(encoding="utf-8")
+    line = next(found for found in regex.findall(r"<text[^>]*>[^<]*</text>", drawn)
+                if "conclusion.2" in found and "cannot" in found)  # fmt: skip
+    concept.write_text(drawn.replace(line, ""), encoding="utf-8")
+    assert _communication_failures(project) == {"comm-claim-stronger"}
+
+
+def test_a_brief_quote_cut_from_inside_its_sentence_is_caught(project: Path) -> None:
+    """Round 1 of #470: a quote that drops the words before it, "no evidence that", is in
+    the file and is not one of its sentences."""
+    from manuscript_guard.communicate.brief import dump
+
+    _communicating(project)
+    path = project / "communication" / "brief.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    document["conclusion"][1]["from"]["quote"] = "cannot establish risk."
+    document["conclusion"][1]["text"] = "cannot establish risk."
+    path.write_bytes(dump(document).encode("utf-8"))
+    assert _communication_failures(project) == {"brief-quote-not-in-source"}
+
+
+def test_a_heading_and_a_registration_are_no_statements_of_the_brief(project: Path) -> None:
+    """Round 1 of #470: the scaffold took a heading line, and a trial's registration after
+    the conclusion, for statements, and the graphical abstract drew them."""
+    _replace_once(main_md(project), "**Conclusions.** ", "### Conclusions\n\n")
+    _replace_once(main_md(project), "cannot establish risk.\n",
+                  "cannot establish risk.\nTrial registration: NCT01234567.\n")
+    _communicating(project)
+    document = yaml.safe_load((project / "communication" / "brief.yaml").read_text("utf-8"))
+    said = [one["text"] for one in document["conclusion"]]
+    assert said == ["Reporting of hepatic injury is disproportionate for example-drug in these "
+                    "synthetic data.",
+                    "Disproportionality is not incidence and cannot establish risk."]  # fmt: skip
+
+
 # -------------------------------------------------------------- the Methods, pair by pair
 
 

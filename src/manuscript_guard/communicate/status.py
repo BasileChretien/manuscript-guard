@@ -10,12 +10,15 @@ paper.yaml's `publication:` block records it:
       url: https://journal.example/article/5678
       embargo_until: 2026-12-01T00:01
 
-A text that says the paper is published, or links its DOI, before the status says it is
-online is ahead of the paper (`comm-status-ahead`): a post that links a DOI the publisher has
-not yet registered leads nowhere, and an embargo is broken by "published" as by a link. A
-DOI is held to its syntax (`comm-doi-malformed`); whether it is registered, and for this
-paper, is asked of Crossref by a later step. A link to storage that is neither persistent
-nor archived, a shared drive or a bare repository, is a warning (`comm-link-temporary`).
+A text that says this paper is published, or links its DOI or its URL, before the status
+says it is online is ahead of the paper (`comm-status-ahead`): a post that links a DOI the
+publisher has not yet registered leads nowhere, and an embargo is broken by "our study is
+published" as by a link. "Published" said of other work, "previously published studies",
+is not read: a sentence is about this paper where it says "our", "my" or "this" study,
+paper, article or findings, or "we published". A DOI is held to its syntax
+(`comm-doi-malformed`); whether it is registered, and for this paper, is asked of Crossref
+by a later step. A link to storage that is neither persistent nor archived, a shared drive
+or a bare repository, is a warning (`comm-link-temporary`).
 """
 
 from __future__ import annotations
@@ -40,8 +43,19 @@ _GIVEN = re.compile(
     re.IGNORECASE,
 )
 _TRAILING = ".,;:!?)]}'*_"
-#: "published" said of the paper: not "to be published" nor "will be published".
-_PUBLISHED = re.compile(r"(?<![Bb]e )\b[Pp]ublished\b")
+#: "published" said as done: not "to be published", "will be published", nor "previously
+#: published", which is said of other work.
+_PUBLISHED = re.compile(r"(?<![Bb]e )(?<![Pp]reviously )\b[Pp]ublished\b")
+#: What makes a sentence one about this paper: it is "our", "my" or "this" study, paper,
+#: article, findings and the like, or what "we published". "The study" and "published
+#: reports" name another's work as readily, and are not read as this paper.
+_OURS = re.compile(
+    r"\b(?:[Oo]ur|[Mm]y|[Tt]his)\s+(?:(?:new|latest|recent|first|own)\s+)?"
+    r"(?:study|paper|article|findings|research|work|analysis|manuscript|trial|preprint"
+    r"|results?)\b"
+    r"|\b[Ww]e(?:'ve|\N{RIGHT SINGLE QUOTATION MARK}ve|\s+have)?\s+(?:just\s+)?published\b"
+)
+_LINK = re.compile(r"(?:https?://|www\.)\S+", re.IGNORECASE)
 
 
 def publication(project) -> dict:
@@ -65,6 +79,21 @@ def _line(text: str, at: int) -> int:
     return text.count("\n", 0, at) + 1
 
 
+def said_published(text: str) -> list[tuple[int, str]]:
+    """Where a text says this paper is published: each sentence that says "published",
+    links left out, and whose words make it about this paper (`_OURS`); with the words."""
+    from manuscript_guard.claims import sentence_spans
+
+    unlinked = _LINK.sub(lambda found: " " * len(found.group()), text)
+    found = []
+    for _piece, first, end in sentence_spans(unlinked):
+        sentence = unlinked[first:end]
+        said = _PUBLISHED.search(sentence)
+        if said is not None and _OURS.search(sentence):
+            found.append((first + said.start(), " ".join(sentence.split())))
+    return found
+
+
 def status_findings(project, path: Path, text: str) -> list[Finding]:
     """What a text's words and links say of the paper's status, against paper.yaml's
     `publication:`; `text` is as printed, its bindings each their display."""
@@ -73,6 +102,7 @@ def status_findings(project, path: Path, text: str) -> list[Finding]:
     said = publication(project)
     status = said.get("status") or "not given"
     own = str(said.get("doi") or "").lower()
+    url = str(said.get("url") or "").rstrip("/").lower()
     found = []
     for doi, at in _dois(text):
         if not DOI.match(doi):
@@ -85,9 +115,14 @@ def status_findings(project, path: Path, text: str) -> list[Finding]:
         elif own and doi.lower() == own and status not in OUT:
             found.append(_ahead(path, _line(text, at), f"it links the paper's DOI, {doi}", status))
     if status not in OUT:
-        for match in _PUBLISHED.finditer(text):
-            found.append(_ahead(path, _line(text, match.start()),
-                                f"it says '{match.group()}'", status))  # fmt: skip
+        if url:
+            for link in _LINK.finditer(text):
+                if link.group().rstrip(_TRAILING).rstrip("/").lower().startswith(url):
+                    what = f"it links the paper's URL, {link.group()}"
+                    found.append(_ahead(path, _line(text, link.start()), what, status))
+        for at, sentence in said_published(text):
+            what = f"it says this paper is published, '{sentence[:120]}'"
+            found.append(_ahead(path, _line(text, at), what, status))
     for link in TEMPORARY.finditer(text):
         found.append(Finding(
             GATE, "comm-link-temporary",

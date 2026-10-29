@@ -84,8 +84,6 @@ CONCEPT = "concept.md"
 #: images.
 _WRITTEN = frozenset({ALT_TEXT, VALIDATION_REPORT, CONCEPT})
 _IMAGES = (".svg", ".png", ".jpg", ".jpeg", ".tif", ".tiff", ".pdf", ".eps")
-#: A line that parts one post of a thread from the next.
-_RULE = re.compile(r"^[ \t]*(?:-{3,}|\*{3,}|_{3,})[ \t]*$", re.MULTILINE)
 _URL = re.compile(r"https?://\S+")
 #: How far a drawn aspect ratio may stand from the journal's and still be it: a pixel of
 #: rounding.
@@ -258,6 +256,13 @@ def _fidelity(context: Context, said: str, source: str, ids: str, path: Path, li
             hint="say only what the statement says, or anchor the sentence to the statement "
             "that gives it",
         ))  # fmt: skip
+    return found + _claimed(said, source, ids, path, line, allowed)
+
+
+def _claimed(said: str, source: str, ids: str, path: Path, line: int | None,
+             allowed: str | None) -> list[Finding]:  # fmt: skip
+    """How strongly `said` claims against `source` (`claims.compare_pair`), as a finding."""
+    found = []
     moved = claims.compare_pair(source, said)
     if moved is not None:
         parts = moved.message.split(": ", 1)[-1]
@@ -346,19 +351,47 @@ def _texts_report(context: Context) -> Report:
     return report.with_counts(communication_texts=len(text_files(context.project)))
 
 
-def _allows(front: dict) -> list[tuple[str, str]]:
+@dataclass(frozen=True)
+class _Allow:
+    """An entry of a text's `allow:`: the sentence it names, as compared, and its reason."""
+
+    sentence: str
+    reason: str
+    shown: str
+
+
+def _compared(sentence: str) -> str:
+    """A sentence as an `allow:` entry is compared with it: its white space one space, no
+    space before a mark, and no closing stop."""
+    return _SPACE_BEFORE.sub(r"\1", fold(sentence)).rstrip(".!?").rstrip()
+
+
+_SPACE_BEFORE = re.compile(r" ([.,;:!?)])")
+
+
+def _allows(front: dict, path: Path) -> tuple[list[_Allow], list[Finding]]:
+    """The entries of `allow:` that name a sentence and give a reason, and a warning for
+    each that names one and gives none, which allows nothing."""
     allowed = front.get("allow")
     if not isinstance(allowed, list):
-        return []
-    out = []
+        return [], []
+    out, unreasoned = [], []
     for entry in allowed:
         if not isinstance(entry, dict):
             continue
         sentence, reason = entry.get("sentence"), entry.get("reason")
-        if isinstance(sentence, str) and sentence.strip() and isinstance(reason, str) \
-                and reason.strip():  # fmt: skip
-            out.append((fold(sentence), reason.strip()))
-    return out
+        if not isinstance(sentence, str) or not sentence.strip():
+            continue
+        if isinstance(reason, str) and reason.strip():
+            out.append(_Allow(_compared(sentence), reason.strip(), fold(sentence)))
+        else:
+            unreasoned.append(_finding(
+                "comm-allow-no-reason",
+                f"the front matter allows '{fold(sentence)}' and gives no reason, so it allows "
+                "nothing", path, line=1, severity=WARN,
+                hint="give the reason under `reason:`, why the stronger words are right",
+            ))  # fmt: skip
+    return out, unreasoned
 
 
 def _text_findings(context: Context, path: Path) -> list[Finding]:
@@ -377,14 +410,18 @@ def _text_findings(context: Context, path: Path) -> list[Finding]:
     def line_of(at: int) -> int:
         return sum(1 for start in starts if start <= at)
 
-    # The body, the front matter blanked in place so that every offset and line holds.
-    in_body = "".join(char if char == "\n" else " " for char in text[: read.body_start])
-    in_body += text[read.body_start :]
+    def in_place(whole: str) -> str:
+        # The body, the front matter blanked in place so that every offset and line holds.
+        head = "".join(char if char == "\n" else " " for char in whole[: read.body_start])
+        return head + whole[read.body_start :]
+
+    in_body = in_place(text)
     found += _bindings(context, in_body, path, line_of)
-    found += _numbers(context, in_body, path)
+    found += _numbers(context, in_place(read.readable), path)
     brief = context.brief
     statements = brief.by_id if brief is not None else {}
-    allows = _allows(read.front)
+    allows, unreasoned = _allows(read.front, path)
+    found += unreasoned
     used: set[str] = set()
     anchored: list[str] = []
     for anchor in read.anchors:
@@ -410,25 +447,26 @@ def _text_findings(context: Context, path: Path) -> list[Finding]:
         if not ids:
             continue
         source = " ".join(statements[one].quote for one in ids)
-        said = text[sentence.start : sentence.end]
-        allowed = next((reason for words, reason in allows if words in fold(said)), None)
-        if allowed is not None:
-            used.add(next(words for words, reason in allows if words in fold(said)))
-        named = ", ".join(ids)
-        found += _fidelity(context, said, source, f"the brief's {named}", path,
-                           sentence.line, allowed)  # fmt: skip
-    for words, _reason in allows:
-        if words not in used:
+        said = read.readable[sentence.start : sentence.end]
+        entry = next((one for one in allows if one.sentence == _compared(sentence.text)), None)
+        told = _fidelity(context, said, source, f"the brief's {', '.join(ids)}", path,
+                         sentence.line, None if entry is None else entry.reason)  # fmt: skip
+        if entry is not None and any(one.severity == INFO for one in told):
+            used.add(entry.sentence)
+        found += told
+    for entry in allows:
+        if entry.sentence not in used:
             found.append(_finding(
-                "comm-allow-unused", f"the front matter allows '{words}', which no anchored "
-                "sentence holds", path, line=1, severity=WARN,
-                hint="take the entry out, or copy the sentence's words into it as they stand",
+                "comm-allow-unused", f"the front matter allows '{entry.shown}', and no "
+                "anchored sentence that is those words claims more than its statement",
+                path, line=1, severity=WARN,
+                hint="take the entry out, or copy the whole sentence into it as it stands",
             ))  # fmt: skip
     found += _story(context, path, rules, anchored, channel)
     printed = _printed(context, in_body)
     found += status_findings(context.project, path, printed)
     found += _words(path, printed)
-    found += _limits(context, path, channel, rules, printed)
+    found += _limits(context, path, channel, rules, read)
     return found
 
 
@@ -503,8 +541,9 @@ def graphemes(text: str) -> int:
     return count
 
 
-def _limits(context: Context, path: Path, channel: str, rules: dict, printed_body: str
-            ) -> list[Finding]:  # fmt: skip
+def _limits(context: Context, path: Path, channel: str, rules: dict, read) -> list[Finding]:
+    """Each post of a text against its channel's length, as printed: each binding its
+    display, each anchor and each comment nothing."""
     setting = context.project.setting("communication") or {}
     own = (setting.get("limits") or {}).get(channel) if isinstance(setting, dict) else None
     limit = own if isinstance(own, int) and not isinstance(own, bool) else rules.get("limit")
@@ -513,8 +552,9 @@ def _limits(context: Context, path: Path, channel: str, rules: dict, printed_bod
     from manuscript_guard.text.masking import blank_comments
 
     found = []
-    text = blank_comments(printed_body) if "<!--" in printed_body else printed_body
-    for number, post in enumerate(_RULE.split(text), 1):
+    for number, (low, high) in enumerate(read.posts, 1):
+        post = _printed(context, read.blanked[low:high])
+        post = blank_comments(post) if "<!--" in post else post
         post = post.replace("\x00", "").strip()
         if not post:
             continue
@@ -532,7 +572,8 @@ def _limits(context: Context, path: Path, channel: str, rules: dict, printed_bod
                 "comm-over-limit",
                 f"post {number} is {length} {unit} printed, and {channel} takes {limit} "
                 f"({whence})",
-                path, hint="shorten it, or part it into a thread at a line of ---",
+                path, hint="shorten it, or part it into a thread at a line of --- after a "
+                "blank line",
             ))  # fmt: skip
     return found
 
@@ -694,13 +735,14 @@ def drawn_texts(path: Path) -> list[_Drawn] | None:
 
 
 def _svg_text(context: Context, path: Path, rules: dict) -> list[Finding]:
-    from manuscript_guard.communicate.svg import printed
+    from manuscript_guard.communicate.svg import pointers, printed
 
     drawn = drawn_texts(path)
     if drawn is None:
         return [_finding("comm-ga-unreadable", f"{path.name} is no SVG that can be read",
                          path, hint="draw it again")]  # fmt: skip
     statements = context.brief.by_id if context.brief is not None else {}
+    shown = {**context.namespace, **pointers(context.project)}
     found: list[Finding] = []
     for one in drawn:
         for ref in one.refs:
@@ -724,7 +766,7 @@ def _svg_text(context: Context, path: Path, rules: dict) -> list[Finding]:
                 found.append(_finding("comm-anchor-unknown", f"a line of {path.name} names "
                                       f"{one.statement}, which is no statement of the brief",
                                       path, context=one.text[:160]))  # fmt: skip
-            elif fold(one.text) not in fold(printed(statement.text, context.namespace)):
+            elif fold(one.text) not in fold(printed(statement.text, shown)):
                 found.append(_finding(
                     "comm-ga-text-not-in-statement",
                     f"a line of {path.name} names {one.statement}, which does not say it",
@@ -743,6 +785,12 @@ def _svg_text(context: Context, path: Path, rules: dict) -> list[Finding]:
                     hint="draw it from a statement of the brief (data-statement), or say it "
                     "without the claim",
                 ))  # fmt: skip
+    # Each statement's lines read together against its quote, as a post's sentence is: a
+    # negation left off a line, or a hedge, draws a claim the paper does not make.
+    for name in dict.fromkeys(one.statement for one in drawn if one.statement in statements):
+        said = " ".join(one.text for one in drawn if one.statement == name)
+        found += _claimed(said, statements[name].quote, f"the brief's {name}", path, None,
+                          None)  # fmt: skip
     found += _drawn_numbers(context, path, "\n".join(one.text for one in drawn))
     found += _drawn_story(context, path, drawn)
     words = sum(len(one.text.split()) for one in drawn)

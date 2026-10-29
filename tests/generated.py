@@ -6103,7 +6103,7 @@ ANCHOR_KINDS = (
     "word, comment of two", "word, unanchored", "number, unanchored", "binding, unanchored",
     "plain", "look-alike", "number, anchor in code", "number, anchor in another comment",
     "word, anchor opening its paragraph", "word, anchor alone after it", "word, wrapped",
-    "word, list item", "plain, anchored",
+    "word, list item", "plain, anchored", "word, anchor opening its line before it",
 )  # fmt: skip
 #: What looks like a word of the ladder and is not read as one.
 LADDER_LOOKALIKES = (
@@ -6179,6 +6179,12 @@ def communication_texts(draw: st.DrawFn) -> tuple[str, list[list[Any]]]:
             items = [sentence(stop=""), sentence(f"{word()} {link(one)}", stop=""),
                      sentence(stop="")]  # fmt: skip
             paragraphs.append(("\n".join(f"- {item}" for item in items), (1, True, [one])))
+        elif kind == "word, anchor opening its line before it":
+            # After a sentence that ends its line, an anchor opening the next is the next
+            # sentence's (round 1 of #470), a link or a comment.
+            opener = draw(st.sampled_from((link(one), f"<!-- brief: {one} -->")))
+            said = f"{sentence()}\n{opener} {sentence(word())}"
+            paragraphs.append((said, (1, True, [one])))
         else:  # plain, anchored
             paragraphs.append((sentence(link(one)), (0, False, [one])))
     front = "---\nchannel: bluesky\nnote: '[](#brief:zz.1)'\n---\n"

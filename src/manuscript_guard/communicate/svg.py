@@ -26,9 +26,11 @@ from dataclasses import dataclass
 
 from manuscript_guard.communicate.brief import Brief, Statement
 from manuscript_guard.communicate.templates import Template
-from manuscript_guard.text.placeholders import VALUE_NAMESPACES, parse
+from manuscript_guard.text.placeholders import REF_NAMESPACES, VALUE_NAMESPACES, parse
 
 SVG_NS = "http://www.w3.org/2000/svg"
+#: The bindings a statement prints words for: a value, and a pointer to a display.
+PRINTED_NAMESPACES = VALUE_NAMESPACES + REF_NAMESPACES
 #: The size drawn where the journal's profile gives none (decision 4 of 2026-10-28: the
 #: default, with a note): 1328 by 531 pixels, the least size Elsevier's journals ask of one,
 #: which is also a 5:2 band that most journals' pages and a social card hold.
@@ -106,17 +108,53 @@ def unbound_refs(statement: Statement, namespace: dict) -> list[str]:
             if p.namespace in VALUE_NAMESPACES and p.ref not in namespace]  # fmt: skip
 
 
+#: What the text of a statement holds that a picture does not print: a citation, in
+#: brackets or bare, and what the LaTeX reader writes in place of a cross-reference or a
+#: display (the private use area's characters, a mark to its end).
+_CITATION = re.compile(
+    r"[ \t]*\[[^\[\]\n]*@[^\[\]\n]*\]|[ \t]*(?<![\w@])@[A-Za-z0-9_][\w:.#$%&+?<>~/-]*\w"
+)
+_STAND_IN = re.compile(
+    "[" + chr(0xE003) + chr(0xE004) + "][^" + chr(0xE005) + "]*" + chr(0xE005)
+    + "|[" + chr(0xE000) + "-" + chr(0xF8FF) + "]"
+)
+#: What opens a list's item or a quotation, at the start of a statement.
+_MARKER = re.compile(r"\A[ \t]*(?:(?:[-*+]|\d+[.)]|>)[ \t]+)+")
+
+
+@dataclass(frozen=True)
+class Shown:
+    """A pointer's words as the build prints them, in the shape of a value: its display."""
+
+    display: str
+
+
+def pointers(project) -> dict[str, Shown]:
+    """What each `{{ref.…}}` and `{{num.…}}` binding prints, "Table 2" and "2", as the build
+    numbers the displays."""
+    from manuscript_guard.gates.pointers import display_numbers
+
+    return {ref: Shown(text) for ref, text in display_numbers(project).bindings().items()}
+
+
+def _clean(piece: str, opens: bool) -> str:
+    piece = _STAND_IN.sub("", _CITATION.sub("", piece))
+    piece = _MARKER.sub("", piece) if opens else piece
+    return _EMPHASIS.sub("", piece)
+
+
 def _tokens(text: str, namespace: dict) -> list[_Token]:
-    """The words of a statement as printed: each binding its display, kept whole on a line,
-    and the marks of emphasis and code taken off."""
+    """The words of a statement as printed: each binding its display, kept whole on a line, a
+    pointer the number the build gives it where `namespace` has it, and the marks of
+    emphasis and code, a citation, a list's or a quotation's marker taken off."""
     placeholders, _ = parse(text)
     tokens: list[_Token] = []
     at = 0
     spaced = False
 
-    def words(piece: str) -> None:
+    def words(piece: str, opens: bool) -> None:
         nonlocal spaced
-        for found in re.finditer(r"\S+|\s+", _EMPHASIS.sub("", piece)):
+        for found in re.finditer(r"\S+|\s+", _clean(piece, opens)):
             if found.group().isspace():
                 spaced = True
             else:
@@ -124,15 +162,18 @@ def _tokens(text: str, namespace: dict) -> list[_Token]:
                 spaced = False
 
     for placeholder in placeholders:
-        words(text[at : placeholder.start])
+        words(text[at : placeholder.start], at == 0)
         at = placeholder.end
-        if placeholder.is_anchor or placeholder.namespace not in VALUE_NAMESPACES:
+        if placeholder.is_anchor or placeholder.namespace not in PRINTED_NAMESPACES:
             continue
         value = namespace.get(placeholder.ref)
+        if value is None and placeholder.namespace not in VALUE_NAMESPACES:
+            continue
         shown = value.display if value is not None else placeholder.raw
-        tokens.append(_Token(shown, placeholder.ref, spaced))
+        ref = placeholder.ref if placeholder.namespace in VALUE_NAMESPACES else ""
+        tokens.append(_Token(shown, ref, spaced))
         spaced = False
-    words(text[at:])
+    words(text[at:], at == 0)
     return tokens
 
 
@@ -348,16 +389,34 @@ def concept_2(brief: Brief, template: Template, size: Size, colours: list[str],
 # --------------------------------------------------------------------- what is written beside
 
 
-def alt_text(brief: Brief, template: Template) -> str:
+def _alt_words(text: str, pointers: dict) -> str:
+    """A statement as its alternative text gives it: its values by their bindings, which
+    `communicate check` reads with each display as the build reads a figure's; each pointer
+    the number the build gives it, or nothing; and what the picture leaves out taken off."""
+    placeholders, _ = parse(text)
+    out, at = [], 0
+    for placeholder in placeholders:
+        out.append(_clean(text[at : placeholder.start], at == 0))
+        at = placeholder.end
+        if placeholder.namespace in VALUE_NAMESPACES:
+            out.append(placeholder.raw)
+        elif placeholder.namespace in REF_NAMESPACES and placeholder.ref in pointers:
+            out.append(pointers[placeholder.ref].display)
+    out.append(_clean(text[at:], at == 0))
+    return " ".join("".join(out).split())
+
+
+def alt_text(brief: Brief, template: Template, pointers: dict | None = None) -> str:
     """The graphical abstract's alternative text, the same for both concepts: each panel's
-    heading and what it prints, the values by their bindings, so that `communicate check`
-    reads it with each value's display, as the build reads a figure's."""
+    heading and its main statements, the question, the primary findings and the conclusion;
+    what the panels give besides, the design, the population and the secondary findings, is
+    left to the picture, as a figure's alternative text leaves its detail to the legend."""
     held = panels(brief)
     parts = []
     for heading, statements in zip(
         template.headings, (held.asked, held.primary, held.means), strict=True
     ):
-        said = " ".join(_EMPHASIS.sub("", " ".join(one.text.split())) for one in statements)
+        said = " ".join(_alt_words(one.text, pointers or {}) for one in statements)
         if said:
             parts.append(f"{heading}: {said}")
     return "Graphical abstract. " + " ".join(parts) + "\n"

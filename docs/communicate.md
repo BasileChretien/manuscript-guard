@@ -47,8 +47,10 @@ findings:
 
 Its parts are the question, the design, the population, the methods, the primary outcome,
 the findings, the limitations and the conclusion. Each statement's `quote` is a sentence of
-the file it names, word for word, and `check` fails one the file does not hold
-(`brief-quote-not-in-source`). Its `text` is what a communication may say for it: the quote
+the file it names, or several in a row, each whole and word for word; `check` fails one the
+file does not hold so, a quote cut from inside a sentence among them
+(`brief-quote-not-in-source`). Of a LaTeX manuscript, the words are those of its printed
+view, as `check` reads it (a binding written `{{results.key}}`), not the `.tex` as typed. Its `text` is what a communication may say for it: the quote
 until you shorten it, and held to the quote as a post is held to the statement.
 
 The scaffold is made the same way every time from the same files. The question, the
@@ -82,7 +84,7 @@ channel:
 ---
 channel: bluesky
 allow:
-  - sentence: "cut hospital admissions"
+  - sentence: "Example-drug cut hospital admissions by {{results.rr.point}}."
     reason: the trial's primary outcome, as its abstract says it
 ---
 ```
@@ -91,7 +93,11 @@ The channels are those of `src/manuscript_guard/data/channels.yaml`: `bluesky`, 
 and `linkedin`, each with its length and where that was read; `press-release`,
 `plain-language-summary`, `pitch`, `newsletter` and `blog`, which tell the whole finding.
 `paper.yaml`'s `communication.limits` gives a limit of your own, an instance of Mastodon's.
-A thread is its posts, each after a line `---`, each held to the limit.
+An entry of `allow:` names a whole sentence as the text writes it, and allows that sentence
+only; one with no reason allows nothing, and is said (`comm-allow-no-reason`). A thread is
+its posts, each after a line `---` that follows a blank line, each held to the limit; a
+mention (`@alice.bsky.social`), a hashtag and a counter that opens or closes a post
+("1/5", "2/5" beside the thread's emoji) are no citation, no number and no claim.
 
 ## The graphical abstract
 
@@ -135,9 +141,10 @@ Failures are listed apart from warnings, and the command exits 1 on a failure.
 | `comm-fact-not-in-source` | fails | a sentence gives a value, citation or number its statement does not |
 | `comm-claim-stronger`, `comm-claim-moved` | fails, unless allowed | a hedge or a limit dropped, a word moved up the ladder from association to cause, a negation gone or new, or both ways at once |
 | `comm-claim-weaker` | warns | the sentence claims less than its statement |
-| `comm-allow-unused` | warns | the front matter allows a sentence the text no longer holds |
+| `comm-allow-unused` | warns | the front matter allows a sentence the text no longer holds, or one that claims no more than its statement |
+| `comm-allow-no-reason` | warns | an entry of `allow:` gives no reason, and allows nothing |
 | `comm-limitation-dropped` | fails | a press release, a plain-language summary or a pitch states no limitation |
-| `comm-status-ahead` | fails | the text says "published", or links the paper's DOI, before `publication.status` says it is online |
+| `comm-status-ahead` | fails | the text says this paper is published ("our study", "this paper", "we published"), or links its DOI or URL, before `publication.status` says it is online |
 | `comm-doi-malformed` | fails | a DOI that is no DOI |
 | `comm-link-temporary` | warns | a link to a shared drive or a bare repository |
 | `comm-over-limit` | fails | a post longer than its channel takes |

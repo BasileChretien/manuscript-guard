@@ -73,11 +73,13 @@ def draw(project, template: str | None = None) -> Drawn:
     least = rules.get("min_text_pt")
     folder = graphical_abstract_folder(project)
     folder.mkdir(parents=True, exist_ok=True)
+    pointers = svg.pointers(project)
+    shown = {**namespace, **pointers}
     files = {
-        "concept-1.svg": svg.concept_1(brief, chosen, size, panel_colours, namespace, least),
-        "concept-2.svg": svg.concept_2(brief, chosen, size, panel_colours, namespace, least),
+        "concept-1.svg": svg.concept_1(brief, chosen, size, panel_colours, shown, least),
+        "concept-2.svg": svg.concept_2(brief, chosen, size, panel_colours, shown, least),
         checking.CONCEPT: svg.concept_md(brief, chosen, why, size).encode("utf-8"),
-        checking.ALT_TEXT: svg.alt_text(brief, chosen).encode("utf-8"),
+        checking.ALT_TEXT: svg.alt_text(brief, chosen, pointers).encode("utf-8"),
     }
     written = []
     for name, data in files.items():

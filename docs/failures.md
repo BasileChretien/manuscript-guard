@@ -1,0 +1,52 @@
+# When manuscript-guard itself fails
+
+A failure of the tool's own, not a finding about your manuscript, ends in one sentence:
+
+```text
+manuscript-guard: check stopped on an error in manuscript-guard itself, not in your files: KeyError: 'G7'
+It is recorded on this machine in C:\Users\you\AppData\Local\manuscript-guard\reports, as 3f2a9c01b4de.json; nothing was sent. MANUSCRIPT_GUARD_DEBUG=1 shows the traceback.
+```
+
+The command exits 2, as when it could not run at all, so a script reading the exit code does
+not take it for a failing check. A gate that fails inside `check` is still reported as
+`gate-errored`, and fails at every stage: a gate that could not check has not passed.
+
+## What is recorded, and where
+
+One file per fault, in a folder of yours rather than of the project's, so that no repository,
+package or submission picks it up:
+
+| System | Folder |
+|---|---|
+| Windows | `%LOCALAPPDATA%\manuscript-guard\reports` |
+| macOS | `~/Library/Application Support/manuscript-guard/reports` |
+| Linux and others | `$XDG_STATE_HOME/manuscript-guard/reports` (`~/.local/state/...`) |
+
+A record holds the tool's version, Python's, the system's name, the command, the names of the
+flags you gave (never their values), the error's type, where in the tool it happened (file,
+line and function), how often and when it was met, and the error's message with your
+project's folder, your home folder, e-mail addresses, credentials held in the environment and
+the names and ORCIDs in `authors.yaml` replaced by labels. Never the contents of a file, and
+never the environment. The newest twenty faults are kept.
+
+The replacement is a convenience. A path written another way, a name `authors.yaml` does not
+list, or a line of your manuscript quoted in the error's message stays as it was; read a
+record before you send it to anyone. Its limits are listed under "Known gaps" in
+[DESIGN.md](../DESIGN.md).
+
+Hooks record their failures too, without a word, since a hook must not stop the agent's tool
+call. The next session's start says once that the hooks failed since a date, because a check a
+hook holds may not have run.
+
+## Nothing is sent
+
+Nothing in this goes over the network. To report a fault, open an issue at the project's
+GitHub page with the record's contents, after reading them; [CONTRIBUTING.md](../CONTRIBUTING.md)
+says what helps, and how to report a gate that got something wrong.
+
+| Variable | Effect |
+|---|---|
+| `MANUSCRIPT_GUARD_NO_REPORTS=1` | record nothing |
+| `MANUSCRIPT_GUARD_REPORTS=<folder>` | keep the records there instead |
+| `MANUSCRIPT_GUARD_DEBUG=1` | let the error through as a Python traceback |
+| `CI` set (as CI services do) | print the traceback and record nothing |

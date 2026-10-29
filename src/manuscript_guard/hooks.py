@@ -1921,6 +1921,16 @@ def stale_cli_notice() -> str | None:
     )
 
 
+def _hooks_failed() -> str | None:
+    """Once, the hooks' failures recorded since this was last said (`diagnostics.crashes`)."""
+    try:
+        from manuscript_guard.diagnostics import crashes
+
+        return crashes.hook_failures()
+    except Exception:  # noqa: BLE001 - a hook must never break the session
+        return None
+
+
 def session_start(payload: dict) -> int:
     """One line on where the manuscript stands, so nobody has to remember.
 
@@ -1941,8 +1951,11 @@ def session_start(payload: dict) -> int:
         _note_the_files(payload)
     try:
         status = _status_line(payload)
-    except Exception:  # noqa: BLE001 - a fault of the tool's own costs the line, and no more
+    except Exception as exc:  # noqa: BLE001 - a fault of the tool's own costs the line, and no more
+        _recorded(exc, "session-start: the status line")
         status = None
+    failed = None if source in QUIET_SOURCES else _hooks_failed()
+    notice = " ".join(part for part in (notice, failed) if part) or None
     if status is None and notice is None:
         return 0
 
@@ -2221,8 +2234,18 @@ def dispatch(event: str, payload: dict | None = None) -> int:
         return 0
     try:
         return handler(payload if payload is not None else _read_event())
-    except Exception:  # noqa: BLE001 - a hook must never break the session
+    except Exception as exc:  # noqa: BLE001 - a hook must never break the session
+        _recorded(exc, event)
         return 0
+
+
+def _recorded(exc: Exception, name: str) -> None:
+    """Keep a record of a hook's failure on this machine, and say nothing: the agent's tool
+    call goes ahead as before, and the next session's start says that a hook failed."""
+    with contextlib.suppress(Exception):
+        from manuscript_guard.diagnostics import crashes
+
+        crashes.record(exc, kind=crashes.HOOK, name=name)
 
 
 def main(argv: list[str] | None = None) -> int:

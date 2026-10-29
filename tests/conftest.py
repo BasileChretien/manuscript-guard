@@ -59,6 +59,14 @@ _FOR_THIS_RUN = Path(tempfile.mkdtemp(prefix="manuscript-guard-tests-"))
 atexit.register(shutil.rmtree, _FOR_THIS_RUN, ignore_errors=True)
 os.environ["MANUSCRIPT_GUARD_USER_SKILLS"] = str(_FOR_THIS_RUN / "no-user-skills")
 
+#: A failure the tool did not expect is recorded in a folder of the user's
+#: (`diagnostics.crashes`). The suite records nothing, so that a test that makes a gate or a
+#: hook fail on purpose neither writes into the folder of whoever runs it nor puts a line into
+#: another test's session start; and where a test lifts that, the folder is this run's. The
+#: tests of the record turn it on, in a folder of their own.
+os.environ["MANUSCRIPT_GUARD_NO_REPORTS"] = "1"
+os.environ["MANUSCRIPT_GUARD_REPORTS"] = str(_FOR_THIS_RUN / "reports")
+
 #: `communicate publish --post` and `communicate orcid` send nothing while this is set: a test
 #: that forgot to give its own transport fails rather than posting under somebody's name. A
 #: loopback test gives the transport that sends. And no credential of whoever runs the suite

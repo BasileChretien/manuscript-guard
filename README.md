@@ -445,6 +445,7 @@ everywhere.
 | [Communicating the paper](docs/communicate.md) | the brief of the paper's own sentences, the graphical abstract drawn from it, and every post or summary held to both |
 | [Auditing a paper you already wrote](docs/audit.md) | one command for a manuscript with no bindings, how little a match means, and bringing a Word paper into a project |
 | [For editors and reviewers](docs/refereeing.md) | a manuscript sent in confidence, read on your own computer with nothing sent: a referee's audit, and an editor's against the journal's profile, its tracked changes and the names Word keeps, and the authors named where the review is blind |
+| [When manuscript-guard itself fails](docs/failures.md) | the one sentence a fault of the tool's own ends in, the record kept on your machine, and the variables that turn it off |
 | [DESIGN.md](DESIGN.md) | the architecture, the reasons for its decisions, and the known gaps |
 | [ATTRIBUTION.md](ATTRIBUTION.md) | the reporting guidelines' licences, and the one data file derived from another work |
 | [SECURITY.md](SECURITY.md) | reporting a vulnerability, and what is in scope |

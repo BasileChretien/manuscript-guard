@@ -46,6 +46,9 @@ def inspect(start: Path, *, stage: str | None = None, cwd: Path | None = None) -
         return State(kind=UNREADABLE, root=root, cwd=here, format=None, error=str(exc),
                      stage=None)  # fmt: skip
     except Exception as exc:  # noqa: BLE001 - next always decides; check says what broke
+        from manuscript_guard.diagnostics import crashes
+
+        crashes.record(exc, kind=crashes.COMMAND, name="the gates' run")
         return State(kind=UNREADABLE, root=root, cwd=here, format=None, stage=None,
                      error=f"the gates could not be run: {type(exc).__name__}: {exc}; "
                      "`manuscript-guard check` says more")  # fmt: skip
@@ -72,6 +75,9 @@ def _kept(notes: list[str], what: str, work, default):
     try:
         return work()
     except Exception as exc:  # noqa: BLE001 - one unreadable part never costs the decision
+        from manuscript_guard.diagnostics import crashes
+
+        crashes.record(exc, kind=crashes.COMMAND, name=what)
         notes.append(f"{what} could not be read, so it is left out: {type(exc).__name__}: {exc}")
         return default
 

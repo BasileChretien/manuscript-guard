@@ -144,6 +144,9 @@ COMMANDS = {
     "set": Zero("paper.yaml, and for target_journal the journal profiles and the shortlist",
                 exits=2, argv=("set", "target_journal", "any-journal", "--path", "{project}")),
     "stages": Zero("nothing: it prints the stages", why="it reads the policy table only"),
+    # With nothing recorded it says so and exits 1; the suite records nothing (conftest).
+    "report-issue": Zero("the failures recorded on this machine, or the title it is given",
+                         exits=1, argv=("report-issue",)),
     "style": Zero("the citation style the journal's profile names", exits=2,
                   argv=("style", "{project}")),
     "proof": Zero("the proof given, against the document in the submission pack", exits=2,
@@ -299,6 +302,7 @@ LATEX = {
     "sign": ("reads", ("sign", "{project}", "--as", "Nobody Listed", "--finding", "G15/x/y")),
     "set": ("no manuscript", ("set", "stage", "design", "--path", "{project}")),
     "stages": ("no manuscript", ("stages",)),
+    "report-issue": ("no manuscript", ("report-issue", "--list")),
     "style": ("no manuscript", ("style", "{project}")),
     # It packs the source as one folder that compiles alone (step 10).
     "submit": ("reads", ("submit", "{project}")),

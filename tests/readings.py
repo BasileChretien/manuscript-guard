@@ -563,6 +563,80 @@ def _communicate_published() -> Reading:
     return published
 
 
+@reading("communicate built")
+def _communicate_built() -> Reading:
+    """Each sentence that claims of each text `communicate build` writes from a brief
+    (`communicate/drafts.py`): its words, and the statements its anchors name."""
+    from pathlib import Path
+
+    from manuscript_guard.communicate import drafts, texts
+    from manuscript_guard.communicate.brief import Brief, Statement
+
+    def built(given: dict[str, Any]) -> dict[str, list[list[Any]]]:
+        statements = tuple(
+            Statement(one["id"], one["section"], one["text"], "manuscript/main.md", one["text"],
+                      primary=one["primary"] if one["section"] == "findings" else None)
+            for one in given["statements"]
+        )  # fmt: skip
+        parts = drafts.Parts.of(Brief(Path("brief.yaml"), statements))
+        link = "https://doi.org/10.1234/demo.5678"
+        made = {
+            "post": drafts.post(parts, link, True),
+            "thread": drafts.thread(parts, link),
+            "poster": drafts.poster(parts, "A title"),
+            "storyboard": drafts.storyboard(parts),
+            "press-release": drafts.scaffold("press-release", parts, link),
+            "plain-language-summary": drafts.scaffold("plain-language-summary", parts, None),
+        }
+        return {name: [[one.text, list(one.anchors)] for one in texts.read(text).sentences
+                       if one.claims] for name, text in made.items()}  # fmt: skip
+
+    return built
+
+
+@reading("communicate titles")
+def _communicate_titles() -> Reading:
+    """Whether paper.yaml's title is the one Crossref gives for its DOI
+    (`communicate/own_doi.py`)."""
+    from manuscript_guard.communicate.own_doi import same_title
+
+    def titles(given: dict[str, Any]) -> list[bool]:
+        return [same_title(ours, {"title": theirs, **({"subtitle": sub} if sub else {})})
+                for ours, theirs, sub in given["pairs"]]  # fmt: skip
+
+    return titles
+
+
+@reading("communicate language")
+def _communicate_language() -> Reading:
+    """Whether a text whose front matter writes each `language` is held as English, to the
+    claim ladder and G6 (`communicate/checking.py`)."""
+    from manuscript_guard.communicate import checking
+
+    def held(given: dict[str, Any]) -> list[bool]:
+        return [checking.in_english({"language": one}) for one in given["languages"]]
+
+    return held
+
+
+@reading("communicate embargo")
+def _communicate_embargo() -> Reading:
+    """When an embargo written each way lifts, in UTC, or None where it cannot be read
+    (`communicate/lifecycle.py`)."""
+    from datetime import timezone
+
+    from manuscript_guard.communicate.lifecycle import lifted_at
+
+    def lifts(given: dict[str, Any]) -> list[str | None]:
+        out = []
+        for written in given["written"]:
+            moment = lifted_at(written)
+            out.append(None if moment is None else moment.astimezone(timezone.utc).isoformat())
+        return out
+
+    return lifts
+
+
 @reading("communicate claims")
 def _communicate_claims() -> Reading:
     """How strongly each said text claims against its source, read whole

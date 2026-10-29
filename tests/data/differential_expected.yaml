@@ -175,3 +175,8 @@ expected:
       2019)", is blanked before its words are compared, so it no longer cuts a passage the
       manuscript repeats where the manuscript cites by key; the earlier papers drawn now
       set such citations between words, as they set a reference's number
+  - reading: communicate language
+    why: >-
+      new with this pull request: `checking.in_english` decides whether a communication
+      text is held to the claim ladder and G6 by its front matter's `language`, and the
+      base has no such function, so it cannot be asked

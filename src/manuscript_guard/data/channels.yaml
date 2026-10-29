@@ -9,6 +9,12 @@
 #   (`comm-primary-missing`).
 # - limitations: a text that has to state a limitation of the study
 #   (`comm-limitation-dropped`): a press release, a plain-language summary, a pitch.
+# - platform: the entry a channel takes the rest from, a thread its platform's.
+# - where: the place a document the text uploads is put, as a journal's sharing policy names
+#   places (`comm-sharing-not-allowed`): ResearchGate is an academic network, a blog a
+#   personal site. A channel with none uploads to no place a policy names.
+#
+# A translation, `translation-<language>` (`translation-ja`), is held to `translation`.
 #
 # A platform's limit is its own to change, and an instance of Mastodon sets its own. Each
 # limit names the page that states it and the day it was read there (`read_on`); one that
@@ -48,7 +54,32 @@ channels:
   pitch:
     long_form: true
     limitations: true
+  bluesky-thread:
+    platform: bluesky
+  mastodon-thread:
+    platform: mastodon
+  researchgate:
+    where: academic-network
+  plain-language-patients:
+    long_form: true
+    limitations: true
+  plain-language-clinicians:
+    long_form: true
+    limitations: true
+  plain-language-policymakers:
+    long_form: true
+    limitations: true
   newsletter:
     long_form: true
   blog:
     long_form: true
+    where: personal-site
+  poster:
+    long_form: true
+  storyboard:
+    long_form: true
+  video-script:
+    long_form: true
+  overview: {}
+  data-announcement: {}
+  translation: {}

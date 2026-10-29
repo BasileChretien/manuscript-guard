@@ -25962,6 +25962,131 @@ def test_the_limitations_are_a_limitations_sections_paragraph(project: Path) -> 
                    for one in part)  # fmt: skip
 
 
+def _built(project: Path, channels: str, publication: str = "") -> None:
+    """The example communicating, a limitation in its brief, and `channels` built."""
+    from manuscript_guard.cli import main
+    from manuscript_guard.communicate.brief import dump
+
+    _communicating(project)
+    if publication:
+        with (project / "paper.yaml").open("a", encoding="utf-8", newline="\n") as handle:
+            handle.write(publication)
+    path = project / "communication" / "brief.yaml"
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    quote = "Several limitations follow from the design."
+    where = {"file": "manuscript/main.md", "quote": quote}
+    document["limitations"] = [{"id": "limitations.1", "text": quote, "from": where}]
+    path.write_bytes(dump(document).encode("utf-8"))
+    main(["communicate", "build", str(project), "--channels", channels])
+
+
+def test_a_built_text_edited_by_hand_is_held_as_any_text_is(project: Path) -> None:
+    """Part 3 of Task 5: what the build writes passes as written; the ratio typed in by hand,
+    the limitation taken out of a press release, or the overview slide's value edited, each
+    fails."""
+    _built(project, "bluesky,press-release,overview")
+    assert _communication_failures(project) == set()
+    namespace = load_namespace(load_project(project)[0])[0]
+    shown = namespace["results.ror.point"].display
+    post = project / "communication" / "bluesky.md"
+    post.write_text(post.read_text(encoding="utf-8").replace("{{results.ror.point}}", shown),
+                    encoding="utf-8")  # fmt: skip
+    assert "comm-number-unbound" in _communication_failures(project)
+    release = project / "communication" / "press-release.md"
+    release.write_text(release.read_text(encoding="utf-8").replace(
+        "Several limitations follow from the design. [](#brief:limitations.1)", ""),
+        encoding="utf-8")  # fmt: skip
+    assert "comm-limitation-dropped" in _communication_failures(project)
+    slide = project / "communication" / "overview.svg"
+    slide.write_text(slide.read_text(encoding="utf-8").replace(shown, "2.71"), encoding="utf-8")
+    assert "comm-ga-stale" in _communication_failures(project)
+
+
+_ONLINE = ("publication:\n  status: published-online\n  published_on: 2026-10-01\n"
+           "  doi: 10.1234/demo.5678\n")  # fmt: skip
+
+
+def test_an_upload_the_journal_does_not_allow_is_caught(project: Path) -> None:
+    """With no sharing policy the DOI is linked and nothing uploaded (Basile, 2026-10-28); a
+    policy that allows the published version and not the accepted one refuses that."""
+    _built(project, "researchgate", _ONLINE)
+    text = project / "communication" / "researchgate.md"
+    assert _communication_failures(project) == set()
+    uploaded = text.read_text(encoding="utf-8").replace(
+        "version_shared: none", "version_shared: published").replace(
+        "attachments: []", "attachments: [paper.pdf]")  # fmt: skip
+    text.write_text(uploaded, encoding="utf-8")
+    assert _communication_failures(project) == {"comm-sharing-unknown"}
+    profile = project / "profiles" / "journals" / "demo-journal.yaml"
+    profile.write_text(profile.read_text(encoding="utf-8")
+                       + "sharing:\n  published:\n    where: [academic-network]\n",
+                       encoding="utf-8")  # fmt: skip
+    assert _communication_failures(project) == set()
+    text.write_text(uploaded.replace("version_shared: published", "version_shared: accepted"),
+                    encoding="utf-8")  # fmt: skip
+    assert _communication_failures(project) == {"comm-sharing-unknown"}
+    profile.write_text(profile.read_text(encoding="utf-8")
+                       + "  accepted:\n    where: [institutional-repository]\n",
+                       encoding="utf-8")  # fmt: skip
+    assert _communication_failures(project) == {"comm-sharing-not-allowed"}
+
+
+def test_an_embargo_moved_later_holds_every_text(project: Path) -> None:
+    _built(project, "bluesky", _ONLINE + "  embargo_until: 2026-10-01T00:01Z\n")
+    assert _communication_failures(project) == set()
+    _replace_once(project / "paper.yaml", "2026-10-01T00:01Z", "2999-01-01T00:01Z")
+    assert _communication_failures(project) == {"comm-embargo"}
+
+
+def test_the_papers_doi_typed_one_digit_wrong_is_warned(project: Path) -> None:
+    """Crossref's answer for the DOI paper.yaml gives is kept; a DOI one digit off is another
+    paper's, whose title is not this one's."""
+    from manuscript_guard.communicate.own_doi import answers_digest, write_record
+
+    _built(project, "bluesky", _ONLINE)
+    loaded = load_project(project)[0]
+    record = {"schema": "manuscript-guard/communication-lookup/1", "doi": "10.1234/demo.5678",
+              "looked_up_on": "2026-10-29",
+              "crossref": {"status": "found", "doi": "10.1234/demo.5678",
+                           "title": loaded.paper["title"]}}  # fmt: skip
+    write_record(loaded, {**record, "answers_sha256": answers_digest(record)})
+    assert not {"comm-doi-title-differs", "comm-doi-unknown"} & _communication_told(project)
+    record["crossref"]["title"] = "Grapefruit juice and the statins"
+    write_record(loaded, {**record, "answers_sha256": answers_digest(record)})
+    assert "comm-doi-title-differs" in _communication_told(project)
+    assert _communication_failures(project) == set()
+
+
+def test_an_upload_written_alone_is_held_to_the_sharing_policy(project: Path) -> None:
+    """Fix round 1 of Task 5, part 3: `attachments: paper.pdf`, a name and not a list, was
+    read as nothing uploaded, and passed a policy that allows the version nowhere."""
+    _built(project, "researchgate", _ONLINE)
+    profile = project / "profiles" / "journals" / "demo-journal.yaml"
+    profile.write_text(profile.read_text(encoding="utf-8")
+                       + "sharing:\n  published:\n    where: []\n", encoding="utf-8")  # fmt: skip
+    text = project / "communication" / "researchgate.md"
+    assert _communication_failures(project) == set()
+    text.write_text(text.read_text(encoding="utf-8").replace(
+        "version_shared: none", "version_shared: published").replace(
+        "attachments: []", "attachments: paper.pdf"), encoding="utf-8")  # fmt: skip
+    assert _communication_failures(project) == {"comm-sharing-not-allowed"}
+    _replace_once(text, "attachments: paper.pdf", "attachments: {file: paper.pdf}")
+    assert _communication_failures(project) == {"comm-front-matter"}
+
+
+def test_a_text_said_to_be_in_english_is_held_to_the_claim_ladder(project: Path) -> None:
+    """Fix round 1 of Task 5, part 3: `language: English` and `en_US` were read as another
+    language, and a post that said the drug causes the injury passed."""
+    _communicating(project)
+    post = project / "communication" / "bluesky.md"
+    caused = _POST.replace("The reporting odds ratio was",
+                           "Example-drug causes hepatic injury: the reporting odds ratio was")
+    for language, failed in (("English", True), ("en_US", True), ("ja", False)):
+        post.write_text(caused.replace("channel: bluesky", f"channel: bluesky\nlanguage: "
+                                       f"{language}"), encoding="utf-8")  # fmt: skip
+        assert ("comm-claim-stronger" in _communication_failures(project)) is failed, language
+
+
 # -------------------------------------------------------------- the Methods, pair by pair
 
 

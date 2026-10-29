@@ -43,13 +43,19 @@ fails, the rest warns.
 
 **The platform.** A post longer than its channel takes fails (`comm-over-limit`), by the
 limits of `data/channels.yaml` or paper.yaml's `communication.limits`.
+
+**What may be shared, and when** (`sharing.py`, `lifecycle.py`): a document a text uploads
+is held to the journal's sharing policy (`comm-sharing-not-allowed`, `comm-sharing-unknown`),
+and every text to the embargo (`comm-embargo`). **The paper's DOI** (`own_doi.py`): the answer
+`lookup --paper` kept from Crossref, read offline (`comm-doi-unknown`,
+`comm-doi-title-differs`, `comm-doi-not-looked-up`). The graphical abstract's part, and an SVG
+a text attaches, are read in `graphical.py`.
 """
 
 from __future__ import annotations
 
 import re
 import unicodedata
-import xml.etree.ElementTree as ET
 from dataclasses import dataclass, replace
 from functools import lru_cache
 from pathlib import Path
@@ -61,7 +67,6 @@ from manuscript_guard.classify import UNCLASSIFIED, Classifier
 from manuscript_guard.communicate import (
     GATE,
     folder,
-    graphical_abstract_folder,
     require_enabled,
 )
 from manuscript_guard.communicate import texts as texts_module
@@ -84,11 +89,7 @@ CONCEPT = "concept.md"
 #: The files under the graphical abstract's folder that are text the group writes, not
 #: images.
 _WRITTEN = frozenset({ALT_TEXT, VALIDATION_REPORT, CONCEPT})
-_IMAGES = (".svg", ".png", ".jpg", ".jpeg", ".tif", ".tiff", ".pdf", ".eps")
 _URL = re.compile(r"https?://\S+")
-#: How far a drawn aspect ratio may stand from the journal's and still be it: a pixel of
-#: rounding.
-_ASPECT_TOLERANCE = 0.01
 #: The code each way `claims.compare_pair` tells a claim moved is given: a negation gone or
 #: new turns the claim round, which says more than the paper did (decision 1 of 2026-10-28).
 CLAIM_CODES = {
@@ -103,6 +104,44 @@ CLAIM_CODES = {
 def channels() -> dict:
     document = yaml.safe_load(CHANNELS.read_text(encoding="utf-8"))
     return document["channels"]
+
+
+#: A translation's channel: `translation-` and the language's tag, `translation-ja`.
+TRANSLATION = "translation-"
+
+
+def channel_rules(channel: str) -> dict:
+    """What `data/channels.yaml` holds a channel's text to: its own entry over its
+    platform's (`platform: bluesky` for a thread), and a translation's the `translation`
+    entry's."""
+    known = channels()
+    if channel.startswith(TRANSLATION) and channel not in known:
+        return dict(known.get("translation") or {})
+    own = dict(known.get(channel) or {})
+    platform = own.get("platform")
+    return {**(known.get(platform) or {}), **own} if isinstance(platform, str) else own
+
+
+#: A language's tag: two or three letters, then subtags joined by `-` or `_`, as `ja-JP`
+#: and `zh_Hant`.
+_LANGUAGE_TAG = re.compile(r"[a-z]{2,3}(?:[-_][a-z0-9]{1,8})*")
+#: The tags whose first subtag is English's: ISO 639-1's and ISO 639-2's.
+_ENGLISH = frozenset({"en", "eng"})
+
+
+def in_english(front: dict) -> bool:
+    """Whether a text is held as English: unless its front matter names another language by
+    its tag (`ja`, `ja-JP`), it is. The words of the claim ladder and G6 read English only,
+    so a translation is held to its numbers, its bindings and its anchors, and not to them;
+    a `language` that is no tag, `English` or a word nobody knows, is read in full, since
+    nothing says the text is not English."""
+    language = front.get("language")
+    if not isinstance(language, str):
+        return True
+    tag = language.strip().casefold()
+    if not _LANGUAGE_TAG.fullmatch(tag):
+        return True
+    return re.split(r"[-_]", tag, maxsplit=1)[0] in _ENGLISH
 
 
 @dataclass(frozen=True)
@@ -127,6 +166,43 @@ def _finding(code: str, message: str, path: Path, *, line: int | None = None,
 def check(project, only: str | None = None) -> Report:
     """Every finding of `communicate check`, or of one part of it (`only`)."""
     require_enabled(project)
+    context, report = context_of(project)
+    if only in (None, "brief"):
+        report = report.merge(_brief_report(context))
+    if only in (None, "texts"):
+        paper = project.root / "paper.yaml"
+        from manuscript_guard.communicate.own_doi import findings as own_doi_findings
+
+        report = report.merge(Report(tuple(paper_doi_findings(project, paper))))
+        report = report.merge(Report(tuple(own_doi_findings(project))))
+        report = report.merge(_texts_report(context))
+    if only in (None, "graphical-abstract"):
+        report = report.merge(_graphical_abstract_report(context))
+    return _once(report)
+
+
+def _once(report: Report) -> Report:
+    """Each finding of an SVG once: one a text attaches that is also in the graphical
+    abstract's folder, or that two texts attach, is read each time, and says the same of
+    itself. A text's own findings are its own, two alike on a line among them."""
+    seen: set[tuple] = set()
+    kept = []
+    for one in report.findings:
+        if one.path is None or Path(one.path).suffix.lower() != ".svg":
+            kept.append(one)
+            continue
+        key = (one.gate, one.code, one.message, one.severity,
+               str(Path(one.path).resolve()) if one.path else None, one.line, one.col,
+               one.context)  # fmt: skip
+        if key not in seen:
+            seen.add(key)
+            kept.append(one)
+    return replace(report, findings=tuple(kept))
+
+
+def context_of(project) -> tuple[Context, Report]:
+    """What every part of the check reads, once: the values, the brief and what the paper
+    reports; and what is wrong with the brief's shape."""
     namespace, results, _literature, _load = load_namespace(project)
     brief, report = load(project)
     context = Context(
@@ -137,15 +213,12 @@ def check(project, only: str | None = None) -> Report:
         _reported_keys(project, results),
         _printed_elsewhere(project, results),
     )
-    if only in (None, "brief"):
-        report = report.merge(_brief_report(context))
-    if only in (None, "texts"):
-        paper = project.root / "paper.yaml"
-        report = report.merge(Report(tuple(paper_doi_findings(project, paper))))
-        report = report.merge(_texts_report(context))
-    if only in (None, "graphical-abstract"):
-        report = report.merge(_graphical_abstract_report(context))
-    return report
+    return context, report
+
+
+def text_findings(context: Context, path: Path, raw: str) -> list[Finding]:
+    """Every finding `communicate check` gives a text that would be written at `path`."""
+    return _text_findings(context, path, raw)
 
 
 def _reported_keys(project, results) -> frozenset[str]:
@@ -400,8 +473,10 @@ def _allows(front: dict, path: Path) -> tuple[list[_Allow], list[Finding]]:
     return out, unreasoned
 
 
-def _text_findings(context: Context, path: Path) -> list[Finding]:
-    raw = read_text(path)
+def _text_findings(context: Context, path: Path, raw: str | None = None) -> list[Finding]:
+    """Every finding of one text, read from `path` or given as `raw` (what `communicate
+    build` holds a text to before it writes it)."""
+    raw = read_text(path) if raw is None else raw
     read = texts_module.read(raw)
     text = read.blanked
     found: list[Finding] = []
@@ -410,7 +485,8 @@ def _text_findings(context: Context, path: Path) -> list[Finding]:
                               line=1, hint="write it as YAML between two lines of ---"))
     channel = read.front.get("channel")
     channel = channel if isinstance(channel, str) else ""
-    rules = channels().get(channel, {})
+    rules = channel_rules(channel)
+    english = in_english(read.front)
     starts = [0, *(at.end() for at in re.finditer("\n", text))]
 
     def line_of(at: int) -> int:
@@ -457,6 +533,8 @@ def _text_findings(context: Context, path: Path) -> list[Finding]:
         entry = next((one for one in allows if one.sentence == _compared(sentence.text)), None)
         told = _fidelity(context, said, source, f"the brief's {', '.join(ids)}", path,
                          sentence.line, None if entry is None else entry.reason)  # fmt: skip
+        if not english:
+            told = [one for one in told if one.code == "comm-fact-not-in-source"]
         if entry is not None and any(one.severity == INFO for one in told):
             used.add(entry.sentence)
         found += told
@@ -471,8 +549,27 @@ def _text_findings(context: Context, path: Path) -> list[Finding]:
     found += _story(context, path, rules, anchored, channel)
     printed = _printed(context, in_body)
     found += status_findings(context.project, path, printed)
-    found += _words(path, printed)
+    found += _words(path, printed) if english else []
     found += _limits(context, path, channel, rules, read)
+    found += _shared(context, path, read.front, channel, rules)
+    return found
+
+
+def _shared(context: Context, path: Path, front: dict, channel: str, rules: dict
+            ) -> list[Finding]:  # fmt: skip
+    """The embargo, what the text uploads against the journal's sharing policy, and each
+    SVG it attaches read as the graphical abstract's lines are."""
+    from manuscript_guard.communicate import lifecycle
+    from manuscript_guard.communicate.sharing import listed, shape_findings, sharing_findings
+
+    found = lifecycle.embargo_findings(context.project, path)
+    found += shape_findings(path, front)
+    found += sharing_findings(context.project, path, front, channel, rules,
+                              lifecycle.now().date())  # fmt: skip
+    for name in dict.fromkeys(listed(front, "attachments") or ()):
+        image = path.parent / name
+        if image.suffix.lower() == ".svg" and image.is_file():
+            found += _svg_text(context, image, {})
     return found
 
 
@@ -547,29 +644,47 @@ def graphemes(text: str) -> int:
     return count
 
 
-def _limits(context: Context, path: Path, channel: str, rules: dict, read) -> list[Finding]:
-    """Each post of a text against its channel's length, as printed: each binding its
-    display, each anchor and each comment nothing."""
+def limit_of(context: Context, channel: str, rules: dict) -> tuple[int | None, bool]:
+    """How long a post of `channel` may be, and whether paper.yaml's `communication.limits`
+    says so; None where nothing limits it."""
     setting = context.project.setting("communication") or {}
-    own = (setting.get("limits") or {}).get(channel) if isinstance(setting, dict) else None
-    limit = own if isinstance(own, int) and not isinstance(own, bool) else rules.get("limit")
-    if not isinstance(limit, int):
-        return []
+    limits = (setting.get("limits") or {}) if isinstance(setting, dict) else {}
+    limits = limits if isinstance(limits, dict) else {}
+    own = limits.get(channel, limits.get(rules.get("platform") or ""))
+    if isinstance(own, int) and not isinstance(own, bool):
+        return own, True
+    limit = rules.get("limit")
+    return (limit if isinstance(limit, int) and not isinstance(limit, bool) else None), False
+
+
+def post_length(context: Context, read, low: int, high: int, rules: dict) -> int | None:
+    """How long the post of `read` from `low` to `high` is, as its channel counts it: as
+    printed, each binding its display, each anchor and each comment nothing, a link the
+    length the platform counts it at; None where it prints nothing. `communicate check`
+    holds a post to its limit by this, and the preview shows it."""
     from manuscript_guard.text.masking import blank_comments
 
+    post = _printed(context, read.blanked[low:high])
+    post = blank_comments(post) if "<!--" in post else post
+    post = post.replace("\x00", "").strip()
+    if not post:
+        return None
+    if rules.get("url_counts_as"):
+        post = _URL.sub("x" * int(rules["url_counts_as"]), post)
+    return graphemes(post) if rules.get("unit") == "graphemes" else len(post)
+
+
+def _limits(context: Context, path: Path, channel: str, rules: dict, read) -> list[Finding]:
+    """Each post of a text against its channel's length (`post_length`)."""
+    limit, own = limit_of(context, channel, rules)
+    if limit is None:
+        return []
     found = []
     for number, (low, high) in enumerate(read.posts, 1):
-        post = _printed(context, read.blanked[low:high])
-        post = blank_comments(post) if "<!--" in post else post
-        post = post.replace("\x00", "").strip()
-        if not post:
-            continue
-        if rules.get("url_counts_as"):
-            post = _URL.sub("x" * int(rules["url_counts_as"]), post)
-        length = graphemes(post) if rules.get("unit") == "graphemes" else len(post)
-        if length > limit:
+        length = post_length(context, read, low, high, rules)
+        if length is not None and length > limit:
             unit = rules.get("unit") or "characters"
-            whence = "paper.yaml's communication.limits" if own == limit else (
+            whence = "paper.yaml's communication.limits" if own else (
                 f"{rules.get('source', 'data/channels.yaml')}, "
                 + (f"read {rules['read_on']}" if rules.get("verified") and rules.get("read_on")
                    else "not read on that page")
@@ -587,14 +702,6 @@ def _limits(context: Context, path: Path, channel: str, rules: dict, read) -> li
 # ------------------------------------------------------------------- the graphical abstract
 
 
-def images(project) -> list[Path]:
-    root = graphical_abstract_folder(project)
-    if not root.is_dir():
-        return []
-    return sorted(path for path in root.iterdir()
-                  if path.is_file() and path.suffix.lower() in _IMAGES)  # fmt: skip
-
-
 def journal_rules(project) -> tuple[dict, Path | None]:
     """The target journal's `graphical_abstract` rules, and its profile's path."""
     from manuscript_guard.gates.journal import _profile, profile_path
@@ -606,291 +713,22 @@ def journal_rules(project) -> tuple[dict, Path | None]:
     return (rules if isinstance(rules, dict) else {}), path
 
 
-def _as_figure_rules(rules: dict) -> dict:
-    """The graphical abstract's rules in the shape G4 holds a figure to."""
-    out = {key: rules[key] for key in ("formats", "max_file_mb", "min_text_pt") if key in rules}
-    if "min_dpi" in rules:
-        out["min_dpi"] = dict.fromkeys(("halftone", "combination", "line_art"), rules["min_dpi"])
-    return out
+def images(project) -> list[Path]:
+    from manuscript_guard.communicate.graphical import images as found
+
+    return found(project)
 
 
 def _graphical_abstract_report(context: Context) -> Report:
-    project = context.project
-    drawn = images(project)
-    if not drawn:
-        return Report()
-    rules, profile = journal_rules(project)
-    from manuscript_guard.gates.figure_files import check_file
-    from manuscript_guard.gates.journal import figure_rules
+    from manuscript_guard.communicate.graphical import report_of
 
-    grey = figure_rules(project).get("print") == "greyscale"
-    found: list[Finding] = []
-    if not any(key in rules for key in ("width_px", "height_px", "min_width_px",
-                                        "min_height_px", "aspect_ratio")):  # fmt: skip
-        from manuscript_guard.communicate.svg import DEFAULT_HEIGHT, DEFAULT_WIDTH
-
-        found.append(_finding(
-            "comm-ga-size-default",
-            "the journal's profile gives no size for a graphical abstract, so its size is "
-            f"not checked; the concepts are drawn at the default, {DEFAULT_WIDTH} by "
-            f"{DEFAULT_HEIGHT} pixels",
-            graphical_abstract_folder(project), severity=INFO,
-            hint="where the journal states a size, record it under graphical_abstract in its "
-            "profile, quoted (the journal-profile skill)",
-        ))  # fmt: skip
-    figure = _as_figure_rules(rules)
-    for path in drawn:
-        found += [replace(one, gate=GATE)
-                  for one in check_file(path, figure, profile or path)]  # fmt: skip
-        found += _dimensions(path, rules)
-        from manuscript_guard.gates.figure_colours import colour_findings
-
-        coloured = colour_findings(path, "graphical abstract", greyscale=grey)
-        found += [replace(one, gate=GATE) for one in coloured or ()]
-        if path.suffix.lower() == ".svg":
-            found += _svg_text(context, path, rules)
-        elif path.suffix.lower() == ".pdf":
-            found += _pdf_text(context, path)
-    found += _alt(context, rules)
-    return Report(tuple(found)).with_counts(graphical_abstract_images=len(drawn))
-
-
-def _pixels(path: Path) -> tuple[float, float] | None:
-    from manuscript_guard.gates.figure_files import raster_of
-    from manuscript_guard.gates.figure_svg import _length
-
-    if path.suffix.lower() == ".svg":
-        try:
-            root = ET.fromstring(read_text(path))
-        except (ET.ParseError, ValueError):
-            return None
-        width, height = root.get("width"), root.get("height")
-        sized = (_length(width, 0) if width else None, _length(height, 0) if height else None)
-        if None not in sized:
-            return sized  # type: ignore[return-value]
-        view = (root.get("viewBox") or "").replace(",", " ").split()
-        if len(view) == 4:
-            try:
-                return float(view[2]), float(view[3])
-            except ValueError:
-                return None
-        return None
-    raster = raster_of(path)
-    return (float(raster.width), float(raster.height)) if raster is not None else None
-
-
-def _dimensions(path: Path, rules: dict) -> list[Finding]:
-    from manuscript_guard.communicate.svg import _ratio
-
-    size = _pixels(path)
-    if size is None:
-        return []
-    width, height = size
-    hint = "draw it again at the journal's size (`communicate graphical-abstract`)"
-    found = []
-    for key, value, what in (("width_px", width, "wide"), ("height_px", height, "high")):
-        wanted = rules.get(key)
-        if isinstance(wanted, int) and round(value) != wanted:
-            found.append(_finding("comm-ga-size", f"{path.name} is {value:g} pixels {what}, and "
-                                  f"the journal asks for {wanted}", path, severity=WARN,
-                                  hint=hint))  # fmt: skip
-    for key, value, what in (("min_width_px", width, "wide"), ("min_height_px", height, "high")):
-        least = rules.get(key)
-        if isinstance(least, int) and value < least:
-            found.append(_finding("comm-ga-size", f"{path.name} is {value:g} pixels {what}, and "
-                                  f"the journal asks for at least {least}", path,
-                                  severity=WARN, hint=hint))  # fmt: skip
-    ratio = _ratio(rules.get("aspect_ratio"))
-    if ratio and height and abs(width / height - ratio) / ratio > _ASPECT_TOLERANCE:
-        found.append(_finding("comm-ga-aspect", f"{path.name} is {width:g} by {height:g} "
-                              f"pixels, and the journal asks for {rules['aspect_ratio']}",
-                              path, severity=WARN, hint=hint))  # fmt: skip
-    return found
-
-
-@dataclass(frozen=True)
-class _Drawn:
-    text: str
-    statement: str
-    refs: tuple[str, ...]
-    size: float
-
-
-def drawn_texts(path: Path) -> list[_Drawn] | None:
-    """Each `<text>` of an SVG, with what it names; None where the file cannot be read."""
-    from manuscript_guard.gates.figures import _svg_content_nodes
-
-    try:
-        root = ET.fromstring(read_text(path))
-    except (ET.ParseError, ValueError):
-        return None
-    found = []
-    for node in _svg_content_nodes(root):
-        if node.tag.rsplit("}", 1)[-1] != "text":
-            continue
-        words = " ".join("".join(node.itertext()).split())
-        if not words:
-            continue
-        try:
-            size = float(str(node.get("font-size", "16")).rstrip("px") or 16)
-        except ValueError:
-            size = 16.0
-        found.append(_Drawn(words, node.get("data-statement", "").strip(),
-                            tuple((node.get("data-binding") or "").split()), size))  # fmt: skip
-    return found
+    return report_of(context)
 
 
 def _svg_text(context: Context, path: Path, rules: dict) -> list[Finding]:
-    from manuscript_guard.communicate.svg import pointers, printed
+    from manuscript_guard.communicate.graphical import svg_text
 
-    drawn = drawn_texts(path)
-    if drawn is None:
-        return [_finding("comm-ga-unreadable", f"{path.name} is no SVG that can be read",
-                         path, hint="draw it again")]  # fmt: skip
-    statements = context.brief.by_id if context.brief is not None else {}
-    shown = {**context.namespace, **pointers(context.project)}
-    found: list[Finding] = []
-    for one in drawn:
-        for ref in one.refs:
-            value = context.namespace.get(ref)
-            if value is None:
-                found.append(_finding("comm-binding-unknown", f"a line of {path.name} prints "
-                                      f"{ref}, a value nothing emits", path,
-                                      context=one.text[:160]))  # fmt: skip
-            elif value.display not in one.text:
-                found.append(_finding(
-                    "comm-ga-stale",
-                    f"a line of {path.name} prints {ref}, whose value is {value.display} now, "
-                    "and the line does not hold it",
-                    path, context=one.text[:160],
-                    hint="draw it again from the results as they stand "
-                    "(`communicate graphical-abstract`)",
-                ))  # fmt: skip
-        if one.statement:
-            statement = statements.get(one.statement)
-            if statement is None:
-                found.append(_finding("comm-anchor-unknown", f"a line of {path.name} names "
-                                      f"{one.statement}, which is no statement of the brief",
-                                      path, context=one.text[:160]))  # fmt: skip
-            elif fold(one.text) not in fold(printed(statement.text, shown)):
-                found.append(_finding(
-                    "comm-ga-text-not-in-statement",
-                    f"a line of {path.name} names {one.statement}, which does not say it",
-                    path, context=one.text[:160],
-                    hint="change the statement's text in the brief and draw it again, rather "
-                    "than the words in the SVG",
-                ))  # fmt: skip
-        else:
-            label = texts_module.read(one.text)
-            if any(sentence.claims for sentence in label.sentences):
-                why = next(s.why for s in label.sentences if s.claims)
-                found.append(_finding(
-                    "comm-claim-unanchored",
-                    f"a label of {path.name} claims ({why}) and names no statement of the "
-                    "brief", path, context=one.text[:160],
-                    hint="draw it from a statement of the brief (data-statement), or say it "
-                    "without the claim",
-                ))  # fmt: skip
-    # Each statement's lines read together against its quote, as a post's sentence is: a
-    # negation left off a line, or a hedge, draws a claim the paper does not make.
-    for name in dict.fromkeys(one.statement for one in drawn if one.statement in statements):
-        said = " ".join(one.text for one in drawn if one.statement == name)
-        found += _claimed(said, statements[name].quote, f"the brief's {name}", path, None,
-                          None)  # fmt: skip
-    found += _drawn_numbers(context, path, "\n".join(one.text for one in drawn))
-    found += _drawn_story(context, path, drawn)
-    words = sum(len(one.text.split()) for one in drawn)
-    most = rules.get("max_words")
-    if isinstance(most, int) and words > most:
-        found.append(_finding("comm-ga-words", f"{path.name} holds {words} words, and the "
-                              f"journal takes {most}", path, severity=WARN,
-                              hint="shorten the statements' text in the brief"))  # fmt: skip
-    labels = len({one.statement for one in drawn if one.statement}) + sum(
-        1 for one in drawn if not one.statement)
-    most = rules.get("max_labels")
-    if isinstance(most, int) and labels > most:
-        found.append(_finding("comm-ga-labels", f"{path.name} holds {labels} labels (a "
-                              "statement drawn, or a text of its own), and the journal takes "
-                              f"{most}", path, severity=WARN,
-                              hint="leave statements out of the brief's panels"))  # fmt: skip
-    return found
-
-
-def _drawn_numbers(context: Context, path: Path, text: str) -> list[Finding]:
-    """`comm-number-unbound` for a number of the image's text that is no value's display
-    and no convention, as G3 reads a figure's."""
-    from manuscript_guard.gates.figures import _allowed, _signed
-
-    allowed = _allowed(value.display for value in context.namespace.values())
-    scan = context.classifier.scan(text, lines_are_blocks=True)
-    found = []
-    for atom in find_atoms(text, text):
-        signed = _signed(atom.text)
-        if signed in allowed or signed.replace(",", "") in allowed:
-            continue
-        if context.classifier.classify(atom, None, scan).kind != UNCLASSIFIED:
-            continue
-        found.append(_finding("comm-number-unbound", f"{atom.text!r} is drawn in {path.name} "
-                              "and is no value of the results", path,
-                              context=atom.line_text.strip()[:160],
-                              hint="draw it from a statement that binds the value"))  # fmt: skip
-    return found
-
-
-def _drawn_story(context: Context, path: Path, drawn: list[_Drawn]) -> list[Finding]:
-    brief = context.brief
-    if brief is None or not any(one.statement for one in drawn):
-        return []
-    primary = {one.id for one in brief.primary}
-    if not primary:
-        return []
-    found = []
-    named = {one.statement for one in drawn}
-    if not primary & named:
-        found.append(_finding("comm-primary-missing", f"{path.name} draws no primary finding "
-                              f"of the brief ({', '.join(sorted(primary))})", path,
-                              hint="draw it again (`communicate graphical-abstract`)"))  # fmt: skip
-    findings = {one.id for one in brief.of("findings")}
-    largest = max((one for one in drawn if one.statement in findings),
-                  key=lambda one: one.size, default=None)  # fmt: skip
-    if largest is not None and largest.statement not in primary and not any(
-            one.size >= largest.size for one in drawn if one.statement in primary):  # fmt: skip
-        found.append(_finding("comm-secondary-as-primary", f"{path.name} draws "
-                              f"{largest.statement}, a secondary finding, larger than the "
-                              "primary one", path, severity=WARN,
-                              hint="the primary finding is the one a reader sees first"))
-    return found
-
-
-def _pdf_text(context: Context, path: Path) -> list[Finding]:
-    from manuscript_guard.gates.figures import _extract_text
-
-    text = _extract_text(path)
-    if not text:
-        return []
-    return _drawn_numbers(context, path, text)
-
-
-def _alt(context: Context, rules: dict) -> list[Finding]:
-    from manuscript_guard.gates.figure_alt import alt_text_findings, printed_alt
-
-    path = graphical_abstract_folder(context.project) / ALT_TEXT
-    if not path.is_file() or not read_text(path).strip():
-        return [_finding("comm-alt-missing", "the graphical abstract has no alternative text, "
-                         "and a screen reader reads nothing else of it", path, severity=WARN,
-                         hint="write it in alt-text.md: what it shows and its main message, "
-                         "the values by binding; `communicate graphical-abstract` writes one")]
-    raw = read_text(path)
-    found = [replace(one, gate=GATE) for one in alt_text_findings(
-        "graphical abstract", raw, path, context.classifier, context.namespace)]  # fmt: skip
-    longest = rules.get("alt_text_max_chars")
-    shown = printed_alt(raw, context.namespace)
-    if isinstance(longest, int) and len(shown) > longest:
-        found.append(_finding("comm-alt-long", f"the graphical abstract's alternative text is "
-                              f"{len(shown)} characters printed, and the journal takes "
-                              f"{longest}", path, severity=WARN, context=shown[:120],
-                              hint="say what it shows and its main message, no more"))  # fmt: skip
-    return found
+    return svg_text(context, path, rules)
 
 
 # ---------------------------------------------------------------------------- the report

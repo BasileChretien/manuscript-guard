@@ -16,7 +16,8 @@ communication:
 
 Without that line every `communicate` command refuses and exits 2. `check` never reads
 `communication/`, on or off, so a draft post can never fail the paper. Nothing here sends
-anything or opens a connection.
+anything or opens a connection, but `lookup --paper`, which asks Crossref about the paper's
+own DOI when it is run, and only then.
 
 ## The brief
 
@@ -91,8 +92,11 @@ allow:
 ```
 
 The channels are those of `src/manuscript_guard/data/channels.yaml`: `bluesky`, `mastodon`
-and `linkedin`, each with its length and where that was read; `press-release`,
-`plain-language-summary`, `pitch`, `newsletter` and `blog`, which tell the whole finding.
+and `linkedin`, each with its length and where that was read, and a thread of each of the
+first two, `bluesky-thread` and `mastodon-thread`, held to its platform's; `press-release`,
+the four plain-language summaries, `pitch`, `newsletter`, `blog`, `poster`, `storyboard` and
+`video-script`, which tell the whole finding; and `overview`, `data-announcement`,
+`researchgate` and `translation-<language>` (`translation-ja`).
 `paper.yaml`'s `communication.limits` gives a limit of your own, an instance of Mastodon's.
 An entry of `allow:` names a whole sentence as the text writes it, its anchor in or left
 out, and allows that sentence only; one with no reason allows nothing, and is said (`comm-allow-no-reason`). A thread is
@@ -102,6 +106,132 @@ counter that opens a post before a capital or closes one after a stop ("1/5", "2
 the thread's emoji) are no citation, no number and no claim. A bare `@key` is a citation.
 The graphical abstract draws no statement that cites a work in its sentence (`@key`
 showed) or points at a display by a LaTeX cross-reference: shorten its text.
+
+A text whose front matter names another language than English by its tag (`language: ja`,
+`ja-JP`, `zh_Hant`) is held to its numbers, its bindings, its anchors and its facts, and not
+to the words of the claim ladder or to G6, which read English only. Only a tag counts: a
+`language` that is `en`, `EN`, `en_US`, `eng`, a word such as `English`, or anything that is
+not a tag is held in full.
+
+## Writing the texts
+
+```bash
+manuscript-guard communicate build [--channels bluesky,press-release] [--force]
+```
+
+writes each channel's text to `communication/<channel>.md`, from the brief alone: the
+channels named, else `communication.channels`, else every one it writes. Each sentence it
+takes from the brief is the statement's `text`, each of its sentences anchored to the
+statement. Each opens with front matter that says what it is:
+
+```markdown
+---
+channel: bluesky
+audience: researchers and the public who follow the authors on Bluesky
+version_shared: published
+links: ['https://doi.org/10.1234/demo.5678']
+attachments: []
+---
+```
+
+`version_shared` is `published` where the text links the paper, and `none` where it shares
+no version of it.
+
+- **Written whole:** the posts and threads of Bluesky and Mastodon (a post drops the
+  conclusion where it does not fit, and a thread is a post for each statement), the overview
+  slide (`overview.md`, with `overview.svg` beside it, one 16:9 slide drawn as the graphical
+  abstract is, each line naming its statement), a poster outline, a storyboard's skeleton,
+  the announcement of the deposit, each licence named by its page on the SPDX list (only
+  where `package.doi`, a licence and the deposit's `MANIFEST.yaml` exist: with no deposit,
+  a build of every channel passes over it and says why, and one that names it with
+  `--channels` refuses it), and a translation's scaffold: a slot for each statement, with its
+  English and the bindings to keep beside it.
+- **Written with slots,** `<!-- write: … -->`, for what only a person or an agent can write:
+  LinkedIn (posted by hand: no tool posts there), the ResearchGate summary, a press release, a
+  pitch e-mail (a draft: nothing sends e-mail), a newsletter item, four plain-language
+  summaries (for the public, patients, clinicians and those who decide policy) and a
+  sixty-second script. The statements a slot is about are written below it; the
+  research-communication skill says how a slot is filled.
+
+A post and a thread carry no citation and no emphasis: `[@smith2020]` would read there as
+a mention of an account, and the marks would be counted against the limit. The long-form
+texts keep both, as the brief writes them.
+
+The paper is linked, by its DOI or its URL, only once `publication.status` says it is online;
+before that, no text the build writes links it or says it is out. Every text is held to
+`communicate check` before it is written, and one the check would fail is not written: the
+build says why, and exits 1. A press release, a pitch and the plain-language summaries are
+not written from a brief with no limitation in it, and a statement that binds a value
+nothing emits stops each text that would carry it, not the others. Only the embargo is not
+held against a text the build writes: a text is drafted before the embargo lifts, and the
+check fails it until then.
+
+A text that exists is not written over, since it may hold what was written into its slots,
+and nor is an `overview.svg` that exists, which may have been edited by hand; `--force`
+writes them again. Each run also writes `communication/preview.html`, every text as
+it would be read, each binding its display, each slot marked, each post's length against its
+channel's, and what the check says of each; and two guides the check does not read,
+`communication/guides/lifecycle.md`, what is shared when, and
+`communication/guides/researchgate-steps.md`, the steps of adding the paper to ResearchGate by
+hand, with what the journal's sharing policy allows there.
+
+## What is due
+
+```yaml
+communication:
+  enabled: true
+  channels: [bluesky-thread, press-release]
+  triggers:
+    accepted: [press-release, pitch]
+    published: [bluesky-thread, mastodon-thread]
+    followups:
+      - {after_days: 30, channels: [bluesky]}
+```
+
+```bash
+manuscript-guard communicate status [--prepare]
+```
+
+says, for the day it is run, which channels are due, which are written and which wait:
+`accepted` from the paper's acceptance, `published` once it is online, and a follow-up from
+the day that many days after `publication.published_on`. A text written before the paper was
+online, which does not link it, is said to be. Without `triggers`, every channel of
+`channels` is due once the paper is online. `--prepare` writes what is due and not yet
+written. Nothing runs in the background, and nothing is shared by the tool.
+
+## What may be shared
+
+A text says which version of the paper it shares (`version_shared`: `preprint`, `accepted`,
+`published` or `none`) and what it uploads (`attachments`). A document among the attachments,
+a PDF or a Word file, is an upload of that version, to the place its channel puts it (`where`
+in `channels.yaml`: ResearchGate is an `academic-network`, a blog a `personal-site`); an image
+is no version of the paper. Each upload is held to the journal profile's `sharing` block
+([journal profiles](journal-profiles.md)): the version recorded there, the channel's place
+among its `where`, and its `embargo_months` past since `publication.published_on`, else
+`comm-sharing-not-allowed`. Where the profile records no sharing policy, nothing of that
+version, or the version or the place cannot be told, `comm-sharing-unknown`. A link to the
+DOI is no upload, and is allowed with a policy or without one.
+
+Before `publication.embargo_until`, every text fails (`comm-embargo`). A time given with its
+zone (`2026-12-01T00:01Z`, `2026-12-01T09:01+09:00`) lifts at that moment; one without, or a
+date alone, is read twelve hours behind UTC, where the day comes last, so that it has lifted
+everywhere when it is read as lifted. One that cannot be read as a date and a time is held as
+not lifted.
+
+## The paper's DOI
+
+```bash
+manuscript-guard lookup --paper [--dry-run] [--again]
+```
+
+asks Crossref about `publication.doi`, once, and keeps the answer in
+`communication/lookups/crossref.yaml`, with the digest of what it says. Only the DOI is sent.
+`communicate check` reads the kept answer and asks nothing: a DOI Crossref did not know warns
+(`comm-doi-unknown`), and so does one whose title at Crossref is not paper.yaml's `title`
+(`comm-doi-title-differs`), compared with the case, markup, entities, accents, marks and a
+subtitle kept apart folded. With no answer kept for the DOI, or one edited by hand, the check
+notes it (`comm-doi-not-looked-up`). `lookup --paper` asks again where Crossref did not know
+the DOI or did not answer, and with `--again`.
 
 ## The graphical abstract
 
@@ -151,6 +281,11 @@ Failures are listed apart from warnings, and the command exits 1 on a failure.
 | `comm-status-ahead` | fails | the text links the paper's own DOI or URL before `publication.status` says it is online |
 | `comm-status-words` | warns | its words read as this paper being out ("our study has now been published", "our new paper is out!", or a headline, "Out now", "Published today, our study ..."), before `publication.status` says it is online |
 | `comm-doi-malformed` | fails | a DOI that is no DOI |
+| `comm-doi-unknown`, `comm-doi-title-differs` | warn | Crossref did not know the paper's DOI, or gives it another title |
+| `comm-doi-not-looked-up` | note | no answer from Crossref is kept for the paper's DOI |
+| `comm-embargo` | fails | the journal's embargo has not lifted, or cannot be read |
+| `comm-sharing-not-allowed` | fails | an upload of a version of the paper the journal's sharing policy does not allow there, or not yet |
+| `comm-sharing-unknown` | fails | an upload where no sharing policy is recorded, nothing of that version is, or the version or the place cannot be told |
 | `comm-link-temporary` | warns | a link to a shared drive or a bare repository |
 | `comm-over-limit` | fails | a post longer than its channel takes |
 | `comm-front-matter` | fails | front matter that is not YAML |
@@ -181,5 +316,8 @@ A word list cannot read meaning. "Increased" made "decreased" moves no rung of t
 sentence with no word of the ladder, no number and no binding needs no anchor; an anchor
 proves where a sentence came from, not that it is faithful. The limits of each platform
 change, and are recorded with the page and the day. Only an SVG's text is read; a raster's
-or a PDF's words are not held to their statements. [DESIGN.md](../DESIGN.md) lists these
-under Known gaps.
+or a PDF's words are not held to their statements. A translation is held to its numbers and
+anchors, not to what its words claim. A link to a copy of the paper elsewhere than its DOI is
+not read as sharing it, and the sharing policy is only as good as the page it was quoted
+from. Nothing posts, sends or reminds: `communicate status` answers when it is asked.
+[DESIGN.md](../DESIGN.md) lists these under Known gaps.

@@ -156,6 +156,20 @@ def _clean(piece: str, opens: bool) -> str:
     return _EMPHASIS.sub("", _UNDERSCORED.sub(r"\2", piece))
 
 
+def bare(text: str) -> str:
+    """A statement's text without its bracketed citations and its marks of emphasis and code,
+    as a post carries it: `[@smith2020]` would read there as a mention of an account, and
+    each mark would be counted. Its bindings are kept as written."""
+    out: list[str] = []
+    at = 0
+    for placeholder in parse(text)[0]:
+        out += [_clean(text[at : placeholder.start], at == 0),
+                text[placeholder.start : placeholder.end]]  # fmt: skip
+        at = placeholder.end
+    out.append(_clean(text[at:], at == 0))
+    return "".join(out)
+
+
 def _tokens(text: str, namespace: dict) -> list[_Token]:
     """The words of a statement as printed: each binding its display, kept whole on a line, a
     pointer the number the build gives it where `namespace` has it, and the marks of
@@ -396,6 +410,38 @@ def concept_2(brief: Brief, template: Template, size: Size, colours: list[str],
         y += fonts.heading * 1.6
         for one in held.means:
             y = canvas.statement(one, margin, y, inner, fonts.body)
+    return canvas.written()
+
+
+#: The overview slide's size: a slide of 16:9, as presentation software opens one.
+SLIDE = Size(1920, 1080, "a slide of 16:9", False)
+
+
+def overview(brief: Brief, colours: list[str], namespace: dict) -> bytes:
+    """One slide for a talk: the question, the primary finding large, what it means. Each
+    line names its statement and its values, as the graphical abstract's do."""
+    canvas = _Canvas(SLIDE, colours, namespace)
+    canvas.root.find("desc").text = (
+        "Overview slide drawn by manuscript-guard communicate build from "
+        "communication/brief.yaml"
+    )
+    fonts = _fonts(SLIDE.height, None)
+    margin = round(SLIDE.height * 0.06)
+    inner = SLIDE.width - 2 * margin
+    held = panels(brief)
+    canvas.rect(0, 0, SLIDE.width, margin / 3, fill=colours[0])
+    y = float(margin)
+    for heading, statements, font, bold in (
+        ("The question", held.asked, fonts.body, False),
+        ("The finding", held.primary, fonts.primary, True),
+        ("What it means", held.means, fonts.body, False),
+    ):
+        if not statements:
+            continue
+        y += fonts.heading * 1.2
+        canvas.text(margin, y, heading, fonts.heading, bold=True)
+        for one in statements:
+            y = canvas.statement(one, margin, y, inner, font, bold=bold)
     return canvas.written()
 
 

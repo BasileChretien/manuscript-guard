@@ -7070,6 +7070,249 @@ def published_texts(draw: st.DrawFn) -> tuple[str, list[str]]:
     return text, [sentence for sentence, out in said if out]
 
 
+#: Each kind of statement a brief may hold, as `communicate build` anchors it sentence by
+#: sentence (Task 5, part 3). Every kind is in every example, each in a part of the brief
+#: drawn for it, so that every text the build writes holds several.
+BUILT_KINDS = (
+    "one sentence, a word", "two sentences, both claim", "three, the middle plain",
+    "a question", "a decimal inside", "wrapped over lines", "no closing stop",
+    "a binding first", "plain only", "a citation and emphasis",
+)  # fmt: skip
+#: The citations a statement may hold in brackets, which a post leaves out and a long text
+#: keeps (fix round 1 of Task 5, part 3).
+BUILT_CITATIONS = ("[@smith2020]", "[@smith2020; @jones2019]", "[see @lee2018]")
+#: The parts a statement is drawn into: each text holds a different few of them.
+BUILT_SECTIONS = ("question", "findings", "findings", "limitations", "conclusion")
+
+
+@st.composite
+def built_briefs(draw: st.DrawFn) -> list[dict[str, Any]]:
+    """The statements of a brief, each `{id, section, text, primary}`, one of every kind of
+    `BUILT_KINDS` in an order drawn each time, and one finding primary."""
+    rungs = tuple(kind for kind in CLAIMED if isinstance(kind, int))
+
+    def plain(least: int = 1) -> str:
+        return " ".join(draw(st.lists(st.sampled_from(_PLAIN), min_size=least, max_size=3)))
+
+    def word() -> str:
+        return draw(st.sampled_from(CLAIMED[draw(st.sampled_from(rungs))]))
+
+    def binding() -> str:
+        return "{{results." + draw(st.sampled_from(("ror.point", "n", "case.count"))) + "}}"
+
+    def number() -> str:
+        return draw(st.sampled_from(_ANCHOR_NUMBERS))
+
+    def sentence(*claims_: str, stop: str = ".") -> str:
+        text = " ".join([plain(), *claims_, plain()])
+        return text[0].upper() + text[1:] + stop
+
+    made = {
+        "one sentence, a word": lambda: sentence(word()),
+        "two sentences, both claim": lambda: f"{sentence(number())} {sentence(binding())}",
+        "three, the middle plain": lambda: (f"{sentence(word())} {sentence()} "
+                                            f"{sentence(binding())}"),
+        "a question": lambda: sentence(word(), stop="?"),
+        "a decimal inside": lambda: f"{sentence('3.5', word())} {sentence(number())}",
+        "wrapped over lines": lambda: sentence(word()).replace(" ", "\n", 2),
+        "no closing stop": lambda: sentence(word(), stop=""),
+        "a binding first": lambda: f"{binding()} {sentence(word()).lower()}",
+        "plain only": lambda: sentence(),
+        "a citation and emphasis": lambda: sentence(
+            draw(st.sampled_from(("*", "**", "`"))).join(("", plain(), "")), word(),
+            draw(st.sampled_from(BUILT_CITATIONS))),
+    }
+    counts: dict[str, int] = {}
+    out = []
+    for kind in draw(st.permutations(BUILT_KINDS)):
+        section = draw(st.sampled_from(BUILT_SECTIONS))
+        counts[section] = counts.get(section, 0) + 1
+        out.append({"id": f"{section}.{counts[section]}", "section": section,
+                    "text": made[kind](), "primary": False})  # fmt: skip
+    findings = [one for one in out if one["section"] == "findings"]
+    if not findings:
+        out[0] = {**out[0], "id": "findings.99", "section": "findings"}
+        findings = [out[0]]
+    findings[draw(st.integers(0, len(findings) - 1))]["primary"] = True
+    return out
+
+
+#: Each way Crossref may write a title against the paper's, and whether the two are one
+#: (`communicate/own_doi.py`). Every kind is in every example.
+TITLE_KINDS = {
+    "same": True, "case": True, "markup around a word": True, "markup inside a word": True,
+    "an entity": True, "accents": True, "marks": True, "spacing": True,
+    "subtitle apart": True, "a word changed": False, "a word missing": False,
+    "another title": False,
+}  # fmt: skip
+_TITLE_WORDS = ("hepatic", "injury", "reports", "cohort", "women", "older", "statins",
+                "exposure", "signal", "database", "adverse", "events", "outcomes")  # fmt: skip
+_ACCENTED = (("Café", "Cafe"), ("Sjögren", "Sjogren"), ("naïve", "naive"),
+             ("Ménière", "Meniere"))  # fmt: skip
+
+
+@st.composite
+def title_pairs(draw: st.DrawFn) -> tuple[list[list[str | None]], list[bool]]:
+    """Paper.yaml's title and Crossref's, with its subtitle where Crossref keeps one apart,
+    for each kind of `TITLE_KINDS` in an order drawn each time; and whether they are one."""
+
+    def words(least: int = 3) -> list[str]:
+        return draw(st.lists(st.sampled_from(_TITLE_WORDS), min_size=least, max_size=6,
+                             unique=True))  # fmt: skip
+
+    pairs: list[list[str | None]] = []
+    expected: list[bool] = []
+    for kind in draw(st.permutations(tuple(TITLE_KINDS))):
+        title = words()
+        ours = " ".join(title).capitalize()
+        theirs, subtitle = ours, None
+        if kind == "case":
+            theirs = draw(st.sampled_from((ours.upper(), ours.title(), ours.lower())))
+        elif kind == "markup around a word":
+            at = draw(st.integers(0, len(title) - 1))
+            tag = draw(st.sampled_from(("i", "b", "scp")))
+            theirs = " ".join(f"<{tag}>{one}</{tag}>" if n == at else one
+                              for n, one in enumerate(title)).capitalize()  # fmt: skip
+        elif kind == "markup inside a word":
+            ours, theirs = f"{ours} and CO2", f"{ours} and CO<sub>2</sub>"
+        elif kind == "an entity":
+            ours, theirs = f"{ours} & {title[0]}", f"{ours} &amp; {title[0]}"
+        elif kind == "accents":
+            accented, bare = draw(st.sampled_from(_ACCENTED))
+            ours, theirs = f"{ours} in {accented}", f"{ours} in {bare}"
+        elif kind == "marks":
+            ours = f"{' '.join(title[:2]).capitalize()}: {' '.join(title[2:])}"
+            theirs = f"{' '.join(title[:2]).capitalize()} - {' '.join(title[2:])}."
+        elif kind == "spacing":
+            theirs = "  ".join(title).capitalize() + " "
+        elif kind == "subtitle apart":
+            more = words(2)
+            ours = f"{ours}: {' '.join(more)}"
+            theirs, subtitle = " ".join(title).capitalize(), " ".join(more).capitalize()
+        elif kind == "a word changed":
+            other = draw(st.sampled_from([one for one in _TITLE_WORDS if one not in title]))
+            theirs = " ".join([*title[:-1], other]).capitalize()
+        elif kind == "a word missing":
+            theirs = " ".join(title[:-1]).capitalize()
+        elif kind == "another title":
+            theirs = " ".join(draw(st.permutations(title))[::-1] + ["revisited"]).capitalize()
+        pairs.append([ours, theirs, subtitle])
+        expected.append(TITLE_KINDS[kind])
+    return pairs, expected
+
+
+#: Each way paper.yaml's `publication.embargo_until` may be written, and whether a moment is
+#: read from it: a zone given is that zone's, none is read twelve hours behind UTC, where the
+#: time comes last (`communicate/lifecycle.py`). Every kind is in every example.
+EMBARGO_KINDS = (
+    "a date", "a minute, no zone", "seconds, no zone", "a fraction, no zone", "Z", "UTC",
+    "GMT", "an offset with a colon", "an offset without", "an offset of hours",
+    "a space for the T", "words", "an impossible day", "an hour past the day",
+)  # fmt: skip
+
+
+@st.composite
+def embargo_times(draw: st.DrawFn) -> tuple[list[str], list[str | None]]:
+    """An embargo written each way of `EMBARGO_KINDS`, in an order drawn each time, and the
+    moment each lifts, in UTC as ISO 8601, or None where none can be read."""
+    from datetime import datetime, timedelta, timezone
+
+    written, expected = [], []
+    # The sign of each kind of offset, one at least behind UTC in every example: with all
+    # three drawn ahead, an offset read without its sign passed (fix round 1 of Task 5, part 3).
+    offset_kinds = ("an offset with a colon", "an offset without", "an offset of hours")
+    behind = draw(st.sampled_from(offset_kinds))
+    signs = {kind: -1 if kind == behind else draw(st.sampled_from((1, -1)))
+             for kind in offset_kinds}  # fmt: skip
+    for kind in draw(st.permutations(EMBARGO_KINDS)):
+        year, month = draw(st.integers(2020, 2035)), draw(st.integers(1, 12))
+        day = draw(st.integers(1, 28))
+        hour, minute, second = draw(st.integers(0, 23)), draw(st.integers(0, 59)), draw(
+            st.integers(0, 59))  # fmt: skip
+        sign = signs.get(kind, 1)
+        offset_h, offset_m = draw(st.integers(1, 12)), draw(st.sampled_from((0, 30, 45)))
+        stamp = f"{year:04d}-{month:02d}-{day:02d}"
+        clock = f"{hour:02d}:{minute:02d}"
+        zone_minutes: int | None = None
+        at = (hour, minute, 0)
+        if kind == "a date":
+            text, at = stamp, (0, 0, 0)
+        elif kind == "a minute, no zone":
+            text = f"{stamp}T{clock}"
+        elif kind == "seconds, no zone":
+            text, at = f"{stamp}T{clock}:{second:02d}", (hour, minute, second)
+        elif kind == "a fraction, no zone":
+            text, at = f"{stamp}T{clock}:{second:02d}.250", (hour, minute, second)
+        elif kind in ("Z", "UTC", "GMT"):
+            zone = draw(st.sampled_from((kind, kind.lower()))) if kind == "Z" else kind
+            text, zone_minutes = f"{stamp}T{clock}{'' if kind == 'Z' else ' '}{zone}", 0
+        elif kind == "an offset with a colon":
+            text = f"{stamp}T{clock}{'+' if sign > 0 else '-'}{offset_h:02d}:{offset_m:02d}"
+            zone_minutes = sign * (offset_h * 60 + offset_m)
+        elif kind == "an offset without":
+            text = f"{stamp}T{clock}{'+' if sign > 0 else '-'}{offset_h:02d}{offset_m:02d}"
+            zone_minutes = sign * (offset_h * 60 + offset_m)
+        elif kind == "an offset of hours":
+            text = f"{stamp}T{clock}{'+' if sign > 0 else '-'}{offset_h:02d}"
+            zone_minutes = sign * offset_h * 60
+        elif kind == "a space for the T":
+            text = f"{stamp} {clock}"
+        elif kind == "words":
+            text = draw(st.sampled_from((f"{day} December {year}", "on publication",
+                                         f"{stamp}T{clock} London time")))  # fmt: skip
+        elif kind == "an impossible day":
+            text = f"{year:04d}-02-{draw(st.integers(30, 31))}"
+        else:
+            text = f"{stamp}T{draw(st.integers(24, 29))}:{minute:02d}Z"
+        written.append(text)
+        if kind in ("words", "an impossible day", "an hour past the day"):
+            expected.append(None)
+            continue
+        zone = timezone(timedelta(minutes=-720 if zone_minutes is None else zone_minutes))
+        moment = datetime(year, month, day, *at, tzinfo=zone)
+        expected.append(moment.astimezone(timezone.utc).isoformat())
+    return written, expected
+
+
+#: Each way a text's front matter may write its `language`, and whether the text is held as
+#: English, to the claim ladder and G6: only another language's tag lets it off. Every kind
+#: is in every example (fix round 1 of Task 5, part 3).
+LANGUAGE_KINDS = {
+    "en": True, "en and a region by a hyphen": True, "en and a region by an underscore": True,
+    "eng": True, "a word for English": True, "a word nobody knows": True, "no string": True,
+    "another tag": False, "another tag and a region": False,
+}  # fmt: skip
+
+
+@st.composite
+def text_languages(draw: st.DrawFn) -> tuple[list[object], list[bool]]:
+    """A `language` written each way of `LANGUAGE_KINDS`, in an order drawn each time, each
+    in a case drawn, and whether the text it names is held as English."""
+
+    def cased(text: str) -> str:
+        return draw(st.sampled_from((text, text.upper(), text.capitalize())))
+
+    region = st.sampled_from(("GB", "US", "AU", "gb", "Latn"))
+    made = {
+        "en": lambda: cased("en"),
+        "en and a region by a hyphen": lambda: f"{cased('en')}-{draw(region)}",
+        "en and a region by an underscore": lambda: f"{cased('en')}_{draw(region)}",
+        "eng": lambda: cased("eng"),
+        "a word for English": lambda: cased(draw(st.sampled_from(("English", "english")))),
+        "a word nobody knows": lambda: draw(st.sampled_from(
+            ("Japanese", "Klingonese", "", "  ", "ja jp", "e"))),
+        "no string": lambda: draw(st.sampled_from((None, 1, ["ja"], {"tag": "ja"}))),
+        "another tag": lambda: cased(draw(st.sampled_from(("ja", "fr", "de", "zh", "jpn")))),
+        "another tag and a region": lambda: draw(st.sampled_from(
+            ("ja-JP", "ja_JP", "zh_Hant_TW", "pt-BR", "FR-ca", "de_DE"))),
+    }  # fmt: skip
+    written, expected = [], []
+    for kind in draw(st.permutations(list(LANGUAGE_KINDS))):
+        written.append(made[kind]())
+        expected.append(LANGUAGE_KINDS[kind])
+    return written, expected
+
+
 # ------------------------------------------------------------------- a project's settings
 
 # Lines typed at the end of a new project's `paper.yaml`. Half are settings as the schema
@@ -8205,6 +8448,10 @@ INPUTS: dict[str, st.SearchStrategy[Any]] = {
         texts().map(lambda text: {"text": text}),
     ),
     "communicate claims": claim_pairs().map(lambda drawn: {"pairs": drawn[0]}),
+    "communicate built": built_briefs().map(lambda drawn: {"statements": drawn}),
+    "communicate titles": title_pairs().map(lambda drawn: {"pairs": drawn[0]}),
+    "communicate embargo": embargo_times().map(lambda drawn: {"written": drawn[0]}),
+    "communicate language": text_languages().map(lambda drawn: {"languages": drawn[0]}),
     "communicate published": st.one_of(
         published_texts().map(lambda drawn: {"text": drawn[0]}),
         texts().map(lambda text: {"text": text}),

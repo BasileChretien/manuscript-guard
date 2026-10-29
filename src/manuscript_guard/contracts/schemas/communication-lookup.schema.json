@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://manuscript-guard.org/schemas/communication-lookup/1",
+  "title": "manuscript-guard record of the paper's own DOI",
+  "description": "What Crossref said of the paper's own DOI, paper.yaml's publication.doi, on one day. `manuscript-guard lookup --paper` writes it to communication/lookups/crossref.yaml; `communicate check` reads it offline. It holds what was answered, never the request.",
+  "type": "object",
+  "required": ["schema", "doi", "looked_up_on", "crossref", "answers_sha256"],
+  "additionalProperties": false,
+  "$defs": {
+    "text": { "type": "string", "minLength": 1 }
+  },
+  "properties": {
+    "schema": { "const": "manuscript-guard/communication-lookup/1" },
+    "doi": { "type": "string", "pattern": "^10\\.\\d{4,9}/\\S+$" },
+    "looked_up_on": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+    "crossref": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["status", "why"],
+          "additionalProperties": false,
+          "properties": {
+            "status": { "const": "unresolvable" },
+            "why": { "$ref": "#/$defs/text" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["status"],
+          "additionalProperties": false,
+          "properties": { "status": { "const": "absent" } }
+        },
+        {
+          "type": "object",
+          "required": ["status", "doi"],
+          "additionalProperties": false,
+          "properties": {
+            "status": { "const": "found" },
+            "doi": { "$ref": "#/$defs/text" },
+            "title": { "$ref": "#/$defs/text" },
+            "subtitle": { "$ref": "#/$defs/text" },
+            "container": { "$ref": "#/$defs/text" },
+            "type": { "$ref": "#/$defs/text" }
+          }
+        }
+      ]
+    },
+    "answers_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

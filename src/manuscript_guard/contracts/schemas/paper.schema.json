@@ -148,8 +148,29 @@
         "channels": {
           "type": "array",
           "uniqueItems": true,
-          "description": "The channels the paper is shared on, as a text's front matter names them: bluesky, mastodon, linkedin, press-release, plain-language-summary, pitch, newsletter, blog.",
+          "description": "The channels the paper is shared on, as a text's front matter names them and `communicate build` writes them: bluesky, bluesky-thread, mastodon, mastodon-thread, overview, poster, storyboard, data-announcement, linkedin, researchgate, press-release, pitch, newsletter, plain-language-summary, plain-language-patients, plain-language-clinicians, plain-language-policymakers, video-script, translation-<language>.",
           "items": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"}
+        },
+        "triggers": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "When each channel's text is due, which `communicate status` reads against `publication:`: `accepted` from the paper's acceptance, `published` once it is online, and each follow-up a number of days after `publication.published_on`. Without it, every channel of `channels` is due once the paper is online. Nothing runs in the background.",
+          "properties": {
+            "accepted": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"}},
+            "published": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"}},
+            "followups": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["after_days", "channels"],
+                "properties": {
+                  "after_days": {"type": "integer", "minimum": 1},
+                  "channels": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"}}
+                }
+              }
+            }
+          }
         },
         "limits": {
           "type": "object",

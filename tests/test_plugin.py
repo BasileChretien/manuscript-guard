@@ -895,6 +895,9 @@ NAMED_NOWHERE = {
     "manuscript/main.tex": "written by `init --latex`, in place of main.md",
     "manuscript/media/": "written by `init --from`, the pictures of a Word paper",
     "communication/graphical-abstract/": "made by the communicate commands, still to come",
+    "communication/brief.yaml": "written by `communicate brief`",
+    "communication/preview.html": "written by `communicate build`",
+    "communication/guides/researchgate-steps.md": "written by `communicate build`",
 }
 
 

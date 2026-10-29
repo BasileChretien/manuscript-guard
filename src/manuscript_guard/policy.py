@@ -51,9 +51,13 @@ BINDS_AT = {
     # the paper whenever it is written, since it is read outside the team the day it is
     # shared. Each code is listed where an unlisted one binds, so that the decision is
     # written down (`communicate/checking.py`); its warnings stay warnings, the words that
-    # read as the paper being out among them (`comm-status-words`, Basile, 2026-10-29).
+    # read as the paper being out among them (`comm-status-words`, Basile, 2026-10-29). A
+    # text shared before the embargo lifts, or an upload the journal's sharing policy does
+    # not allow or does not record, fails whenever it is written, as the rest do; the paper's
+    # DOI unknown to Crossref, or another title, only warns.
     **dict.fromkeys(
         (
+            "comm-embargo", "comm-sharing-not-allowed", "comm-sharing-unknown",
             "brief-invalid", "brief-missing", "brief-quote-not-in-source",
             "comm-binding-unknown", "comm-not-reported", "comm-number-unbound",
             "comm-primary-missing", "comm-claim-unanchored", "comm-anchor-unknown",

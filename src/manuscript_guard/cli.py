@@ -2892,18 +2892,21 @@ def cmd_reworded(args: argparse.Namespace) -> int:
 
 
 def cmd_communicate(args: argparse.Namespace) -> int:
-    """The `communicate` group: `brief`, `graphical-abstract` and `check`. Each refuses, and
-    exits 2, while paper.yaml leaves it off (`communication.enabled`)."""
+    """The `communicate` group: `brief`, `graphical-abstract`, `check`, `build` and `status`.
+    Each refuses, and exits 2, while paper.yaml leaves it off (`communication.enabled`)."""
     from manuscript_guard.communicate import Refused, checking, commands
 
-    for flag, verbs in (("force", ("brief",)), ("template", ("graphical-abstract",)),
-                        ("json", ("check",)), ("only", ("check",))):  # fmt: skip
+    for flag, verbs in (("force", ("brief", "build")), ("template", ("graphical-abstract",)),
+                        ("json", ("check",)), ("only", ("check",)), ("channels", ("build",)),
+                        ("prepare", ("status",))):  # fmt: skip
         if getattr(args, flag) and args.verb not in verbs:
-            print(f"manuscript-guard: --{flag} belongs to `communicate {verbs[0]}`",
-                  file=sys.stderr)  # fmt: skip
+            print(f"manuscript-guard: --{flag} belongs to `communicate "
+                  f"{' or '.join(verbs)}`", file=sys.stderr)  # fmt: skip
             return 2
     project, _ = load_project(args.path)
     try:
+        if args.verb in ("build", "status"):
+            return _communicate_build(project, args)
         if args.verb == "brief":
             path = commands.write_brief(project, force=args.force)
             print(f"wrote {path}: mark the paper's primary finding `primary: true` in it")
@@ -2927,6 +2930,45 @@ def cmd_communicate(args: argparse.Namespace) -> int:
     else:
         print(checking.render(report, project.root), end="")
     return 0 if report.ok else 1
+
+
+def _communicate_build(project, args: argparse.Namespace) -> int:
+    """`communicate build` and `communicate status [--prepare]`."""
+    from manuscript_guard.communicate import build, lifecycle, require_enabled
+
+    require_enabled(project)
+    if args.verb == "status":
+        held = lifecycle.standing(project)
+        print(lifecycle.render(held), end="")
+        if not args.prepare:
+            return 0
+        due = [one for one in lifecycle.to_prepare(held) if build.known(one)]
+        if not due:
+            print("nothing is due that is not written")
+            return 0
+        named = due
+    else:
+        named = [one.strip() for given in args.channels or [] for one in given.split(",")
+                 if one.strip()]  # fmt: skip
+    built = build.build(project, named or None, force=args.force,
+                        asked=args.verb == "build" and bool(named))  # fmt: skip
+    for path in built.written:
+        print(f"wrote {path}")
+    for channel in built.kept:
+        print(f"{channel}: kept as it is, since it may hold what was written into it; "
+              "--force writes it again")  # fmt: skip
+    for channel, why in built.refused:
+        print(f"{channel}: not written: {why}")
+    for channel, why in built.not_due:
+        print(f"{channel}: not due, so not written: {why}; `--channels {channel}` asks for it")
+    for channel in built.passed:
+        print(f"{channel}: the build writes no text for it; write it by hand, and "
+              "`communicate check` holds it")  # fmt: skip
+    held = lifecycle.standing(project)
+    if held.embargo:
+        print(f"note: the embargo holds until {held.embargo}; `communicate check` fails each "
+              "text until it lifts")  # fmt: skip
+    return 1 if built.refused else 0
 
 
 def cmd_proof(args: argparse.Namespace) -> int:
@@ -4077,9 +4119,12 @@ def cmd_lookup(args: argparse.Namespace) -> int:
     from manuscript_guard.lookup import run as lookup
 
     project, _ = load_project(args.path)
-    if args.journals and args.registrations:
-        print("manuscript-guard: ask for --journals or --registrations, not both", file=sys.stderr)
+    if sum(map(bool, (args.journals, args.registrations, args.paper))) > 1:
+        print("manuscript-guard: ask for one of --journals, --registrations and --paper",
+              file=sys.stderr)  # fmt: skip
         return 2
+    if args.paper:
+        return _lookup_paper(project, args)
     if args.journals:
         return _lookup_journals(project, args)
     if args.registrations:
@@ -4326,6 +4371,40 @@ def _journal_style(project, args: argparse.Namespace) -> Path | None:
             "default style; `manuscript-guard check` says why"
         )
     return None if found is None else found.path
+
+
+def _lookup_paper(project, args: argparse.Namespace) -> int:
+    """`lookup --paper`: the paper's own DOI asked of Crossref, the answer kept for
+    `communicate check`."""
+    from manuscript_guard.communicate import Refused, require_enabled
+    from manuscript_guard.lookup import paper_doi
+    from manuscript_guard.lookup.run import Credentials
+
+    try:
+        require_enabled(project)
+    except Refused as exc:
+        print(f"manuscript-guard: {exc}", file=sys.stderr)
+        return 2
+    doi = paper_doi.doi_of(project)
+    if doi is None:
+        print("manuscript-guard: nothing to look up: paper.yaml gives no publication.doi",
+              file=sys.stderr)  # fmt: skip
+        return 2
+    wrong = paper_doi.malformed(doi)
+    if wrong:
+        print(f"manuscript-guard: nothing was sent: paper.yaml's publication.doi, {doi}, is not "
+              f"a DOI: {wrong}", file=sys.stderr)  # fmt: skip
+        return 2
+    why = paper_doi.why_asked(project, again=args.again)
+    if not why:
+        print(f"DOI {doi}: up to date; `--again` asks again")
+        return 0
+    if args.dry_run:
+        print(f"DOI {doi}: would ask Crossref ({why}); nothing was sent")
+        return 0
+    record, _path = paper_doi.run(project, credentials=Credentials.from_environment(project))
+    print("record in communication/lookups/")
+    return 1 if record["crossref"]["status"] == "unresolvable" else 0
 
 
 def _lookup_journals(project, args: argparse.Namespace) -> int:
@@ -5960,15 +6039,34 @@ def build_parser() -> argparse.ArgumentParser:
         description="Opt-in: `communication: {enabled: true}` in paper.yaml. `brief` writes "
         "communication/brief.yaml, the paper's own sentences that every communication restates; "
         "`graphical-abstract` draws two concepts of a graphical abstract from it, as SVG, with "
-        "their alternative text; `check` holds the brief to the manuscript, and each text under "
-        "communication/ and the graphical abstract to the brief and the results. Nothing is "
-        "sent, and `check` never reads communication/.",
+        "their alternative text; `build` writes each channel's text from the brief, with slots "
+        "for what only a person or an agent can write, and preview.html; `status` says what "
+        "is due, given the publication's status and its dates; `check` holds the brief to the "
+        "manuscript, and each text under communication/ and the graphical abstract to the "
+        "brief, the results, the embargo and the journal's sharing policy. Nothing is sent, "
+        "and `check` never reads communication/.",
     )
-    communicate.add_argument("verb", choices=["brief", "graphical-abstract", "check"])
+    communicate.add_argument(
+        "verb", choices=["brief", "graphical-abstract", "check", "build", "status"]
+    )
     communicate.add_argument("path", nargs="?", type=Path, default=Path.cwd())
     communicate.add_argument(
         "--force", action="store_true",
-        help="brief: write it again over the one there is, and what you marked in it",
+        help="brief, build: write it again over the one there is, and what was written "
+        "into it",
+    )  # fmt: skip
+    communicate.add_argument(
+        "--channels", action="append", metavar="NAME[,NAME]",
+        help="build: the channels to write (bluesky, bluesky-thread, mastodon, "
+        "mastodon-thread, overview, poster, storyboard, data-announcement, linkedin, "
+        "researchgate, press-release, pitch, newsletter, plain-language-summary, "
+        "plain-language-patients, plain-language-clinicians, plain-language-policymakers, "
+        "video-script, translation-<language>); paper.yaml's communication.channels where "
+        "none is named",
+    )  # fmt: skip
+    communicate.add_argument(
+        "--prepare", action="store_true",
+        help="status: write the texts that are due and not yet written",
     )  # fmt: skip
     communicate.add_argument(
         "--template", choices=sorted(TEMPLATES),
@@ -6164,6 +6262,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="ask ClinicalTrials.gov, the EU PAS register, OSF or ISRCTN about each registration "
         "paper.yaml lists instead, and keep the answers in design/registrations/",
+    )
+    lookup.add_argument(
+        "--paper",
+        action="store_true",
+        help="ask Crossref about the paper's own DOI, paper.yaml's publication.doi, instead, "
+        "and keep the answer in communication/lookups/ for `communicate check`",
     )
     lookup.set_defaults(func=cmd_lookup)
 

@@ -2707,7 +2707,11 @@ def cmd_report_issue(args: argparse.Namespace) -> int:
         kept = crashes.records()
         print(issue.listing(kept) if kept else _nothing_recorded())
         return 0
-    if args.title is not None:
+    root = crashes.project_root()
+    checked = None
+    if args.about is not None:
+        report, checked = _report_about(args, root)
+    elif args.title is not None:
         report = issue.general(args.title, args.note, installed=__version__)
     else:
         record = _record_to_report(args.fingerprint)
@@ -2715,12 +2719,91 @@ def cmd_report_issue(args: argparse.Namespace) -> int:
             return 1
         report = issue.from_record(record, with_message=args.with_message,
                                    installed=__version__, note=args.note)  # fmt: skip
-    root = crashes.project_root()
-    # Scrubbed whole, then cut: a cut could split an address the scrub would have caught.
+    # Scrubbed whole, then cut: a cut could split an address the scrub would have caught. A
+    # report about a gate had each part scrubbed before it was put together (`_report_about`).
+    body = report.body if checked is not None else scrub(report.body, root=root)
     report = replace(report, title=issue.cut_title(scrub(report.title, root=root)),
-                     body=issue.printable(scrub(report.body, root=root)))  # fmt: skip
-    _say_report(report, crashes.folder(), args.open)
+                     body=issue.printable(body))  # fmt: skip
+    _say_report(report, crashes.folder(), args.open, checked)
     return 0
+
+
+def _report_about(args: argparse.Namespace, root: Path | None):
+    """`--about`: a report about a gate or a command that got something wrong, and whether
+    the snippet alone shows it (`diagnostics.about`). The snippet is scrubbed before anything
+    reads it, so that the check, the test and the report all hold the text that is posted."""
+    from manuscript_guard.diagnostics import about, issue
+    from manuscript_guard.diagnostics.scrub import scrub
+
+    try:
+        gate = about.named(args.about, _commands_of_parser())
+    except ValueError as exc:
+        raise ContractError(f"report-issue: {exc}") from None
+    code = args.flagged if args.flagged is not None else args.missed
+    if code and not about.is_code(code):
+        raise ContractError(f"report-issue: {code!r} is not a finding's code; give the code as "
+                            "check prints it, such as unclassified-number, or none")  # fmt: skip
+    def scrubbed(text: str | None) -> str | None:
+        return None if text is None else issue.printable(scrub(text, root=root))
+
+    # Each part is scrubbed before the report is put together, and the report is not scrubbed
+    # again: run over the test's literal, the scrub read `t@x.org` after an escaped tab as an
+    # address, and the literal no longer gave the snippet.
+    asked = about.Asked(about=gate, flagged=args.flagged is not None, code=code or None,
+                        snippet=scrubbed(_snippet(args)), said=scrubbed(args.said),
+                        note=scrubbed(args.note))  # fmt: skip
+    checked = about.check(asked)
+    checked = replace(checked, line=scrubbed(checked.line))
+    return about.report(asked, checked, installed=__version__), checked
+
+
+def _snippet(args: argparse.Namespace) -> str:
+    if args.snippet_file is not None:
+        try:
+            text = args.snippet_file.read_text(encoding="utf-8-sig")
+        except (OSError, UnicodeDecodeError) as exc:
+            raise ContractError(f"report-issue: {args.snippet_file} cannot be read as UTF-8 "
+                                f"text: {exc}") from None  # fmt: skip
+    else:
+        text = args.snippet
+    if not text.strip():
+        raise ContractError("report-issue: the snippet is empty: give the smallest text that "
+                            "shows what the gate got wrong")  # fmt: skip
+    return text
+
+
+def _commands_of_parser() -> list[str]:
+    (commands,) = (action for action in build_parser()._actions
+                   if isinstance(action, argparse._SubParsersAction))  # fmt: skip
+    return list(commands.choices)
+
+
+#: The flags that make `report-issue` a report about a gate, by the name argparse keeps them
+#: under.
+_ABOUT_FLAGS = (("--flagged", "flagged"), ("--missed", "missed"), ("--snippet", "snippet"),
+                ("--snippet-file", "snippet_file"), ("--said", "said"))  # fmt: skip
+
+
+def _refuse_about_flags(args: argparse.Namespace) -> None:
+    """Refuse a report about a gate that is not one thing: one direction, one snippet."""
+    given = [flag for flag, key in _ABOUT_FLAGS if getattr(args, key) is not None]
+    if args.about is None:
+        if given:
+            raise ContractError(f"{given[0]} goes with --about, which names the gate or the "
+                                "command the report is about")  # fmt: skip
+        return
+    other = [flag for flag, there in (("a fingerprint", args.fingerprint), ("--last", args.last),
+                                      ("--with-message", args.with_message),
+                                      ("--title", args.title is not None)) if there]  # fmt: skip
+    if other:
+        raise ContractError(f"--about writes a report about a gate or a command: give it without "
+                            f"{other[0]}")  # fmt: skip
+    if (args.flagged is None) == (args.missed is None):
+        raise ContractError("--about needs one of --flagged (it reported something that is not "
+                            "a defect) and --missed (it let a defect through)")  # fmt: skip
+    if (args.snippet is None) == (args.snippet_file is None):
+        raise ContractError("--about needs one of --snippet TEXT and --snippet-file FILE: the "
+                            "smallest text that shows it")  # fmt: skip
 
 
 def _refuse_report_flags(args: argparse.Namespace) -> None:
@@ -2729,7 +2812,10 @@ def _refuse_report_flags(args: argparse.Namespace) -> None:
                                       ("--with-message", args.with_message),
                                       ("--title", args.title is not None),
                                       ("--note", args.note is not None),
-                                      ("--open", args.open)) if given]  # fmt: skip
+                                      ("--open", args.open),
+                                      ("--about", args.about is not None),
+                                      *((flag, getattr(args, key) is not None)
+                                        for flag, key in _ABOUT_FLAGS)) if given]  # fmt: skip
     if args.list and asked:
         raise ContractError(f"--list lists the records and takes nothing else: {asked[0]} "
                             "was given too")  # fmt: skip
@@ -2737,6 +2823,7 @@ def _refuse_report_flags(args: argparse.Namespace) -> None:
         raise ContractError("give a fingerprint or --last, not both")
     if args.title is not None and not args.title.strip():
         raise ContractError("--title is empty: say in a few words what the report is about")
+    _refuse_about_flags(args)
     if args.title is not None and (args.fingerprint or args.last or args.with_message):
         raise ContractError("--title writes a report of something else: give it without a "
                             "fingerprint, --last or --with-message")  # fmt: skip
@@ -2772,14 +2859,19 @@ def _record_to_report(wanted: str | None) -> dict | None:
     return record
 
 
-def _say_report(report, folder: Path | None, open_page: bool) -> None:
-    """The report printed whole, written beside the records, and the two addresses."""
+def _say_report(report, folder: Path | None, open_page: bool, checked=None) -> None:
+    """The report printed whole, written beside the records, and the two addresses; for a
+    report about a gate, then whether the snippet alone shows the fault."""
     import webbrowser
 
     from manuscript_guard.diagnostics import issue
 
     print(f"Title: {report.title}\n")
     print(report.body)
+    if checked is not None:
+        # Said of a snippet that was read here; one that was not is said to be not checked.
+        lead = "The snippet, read again on this machine: " if checked.read else ""
+        print(f"{lead}{checked.line}.")
     written = None
     if folder is not None:
         from manuscript_guard.diagnostics.crashes import shown
@@ -6063,12 +6155,29 @@ def build_parser() -> argparse.ArgumentParser:
                            help="list the failures recorded on this machine")  # fmt: skip
     reporting.add_argument("--title",
                            help="a report of something else, with this summary")  # fmt: skip
-    reporting.add_argument("--note", help="what you ran and what you expected")
+    reporting.add_argument("--note", help="what you ran and what you expected; with --about, "
+                           "what it should have said and why")  # fmt: skip
     reporting.add_argument("--with-message", action="store_true",
                            help="add the error's message, which can quote your files")  # fmt: skip
     reporting.add_argument("--open", action="store_true",
                            help="open the filled-in issue page in your browser; posting it is "
                            "your click")  # fmt: skip
+    reporting.add_argument("--about", metavar="GATE_OR_COMMAND",
+                           help="a report about a gate (G0 to G16) or a command that got "
+                           "something wrong, with --flagged or --missed and the text that "
+                           "shows it")  # fmt: skip
+    reporting.add_argument("--flagged", nargs="?", const="", metavar="CODE",
+                           help="it reported something that is not a defect; CODE is the "
+                           "finding's code, such as unclassified-number")  # fmt: skip
+    reporting.add_argument("--missed", nargs="?", const="", metavar="CODE",
+                           help="it let a defect through; CODE is the code it should have "
+                           "given")  # fmt: skip
+    reporting.add_argument("--snippet", metavar="TEXT",
+                           help="the smallest text that shows it, made up rather than taken "
+                           "from your manuscript")  # fmt: skip
+    reporting.add_argument("--snippet-file", type=Path, metavar="FILE",
+                           help="the same, read from a UTF-8 file")  # fmt: skip
+    reporting.add_argument("--said", metavar="TEXT", help="what manuscript-guard printed")
     reporting.set_defaults(func=cmd_report_issue)
 
     palettes_ = sub.add_parser(

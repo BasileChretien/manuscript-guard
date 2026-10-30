@@ -22,7 +22,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from manuscript_guard.auditing.report import Item
+from manuscript_guard.auditing.report import Item, placed
 from manuscript_guard.comparing import differences, letters
 from manuscript_guard.comparing.differences import GATE
 from manuscript_guard.comparing.versions import Version, read_version
@@ -74,8 +74,11 @@ def compare(old: Path, new: Path, letter: Path | None = None,
 
 def _read(old: Version, new: Version, letter: Path | None, comments: Path | None) -> list[Item]:
     def said(version: Version) -> str:
-        return (f"read as {version.kind}: "
-                f"{sum(1 for h in version.sections if h.level)} section(s), "
+        sections = sum(1 for h in version.sections if h.level)
+        if version.pdf is not None:
+            return (f"read as PDF: {sections} section(s), by the lines that hold a section's "
+                    "name alone; its tables and figures are lines of text, not read as such")
+        return (f"read as {version.kind}: {sections} section(s), "
                 f"{len(version.tables)} table(s), {len(version.figures)} figure(s) by their "
                 "captions")  # fmt: skip
 
@@ -83,6 +86,8 @@ def _read(old: Version, new: Version, letter: Path | None, comments: Path | None
              for version in (old, new)]
     found += [Item(VERSIONS, GATE, "version-not-numbered", note, INFO, False, version.path)
               for version in (old, new) for note in version.notes]  # fmt: skip
+    found += [Item(VERSIONS, GATE, "version-pdf", version.pdf.described(), INFO, False,
+                   version.path) for version in (old, new) if version.pdf is not None]
     found += [Item(VERSIONS, GATE, "file-read", f"read as the {what}", INFO, False, path)
               for what, path in (("response letter", letter), ("referee's comments", comments))
               if path]  # fmt: skip
@@ -137,7 +142,16 @@ def _where(found: Comparison, item: Item, root: Path | None) -> str:
     if item.path is None:
         return ""
     shown = names.get(item.path, _shown(item.path, root))
+    pdf = _pdfs(found).get(item.path)
+    if pdf is not None and item.line:
+        return f"{shown}, {pdf.said(item.line)}"
     return f"{shown} line {item.line}" if item.line else shown
+
+
+def _pdfs(found: Comparison) -> dict:
+    """Each version that is a PDF, by its path: its lines are said as pages and lines."""
+    return {version.path: version.pdf for version in (found.old, found.new)
+            if version.pdf is not None}
 
 
 def _shown(path: Path, root: Path | None) -> str:
@@ -196,7 +210,8 @@ def as_json(found: Comparison) -> str:
             "letter": None if found.letter is None else str(found.letter),
             "comments": None if found.comments is None else str(found.comments),
             "counts": counts(found),
-            "findings": [item.as_dict() | {"mark": mark or None} for item, mark in found.items],
+            "findings": [placed(item.as_dict(), item.path, item.line, _pdfs(found))
+                         | {"mark": mark or None} for item, mark in found.items],
         },
         indent=2,
         ensure_ascii=True,

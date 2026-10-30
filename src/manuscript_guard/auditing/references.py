@@ -29,7 +29,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -41,6 +41,8 @@ NUMBERED = "numbered"
 BY_PLACE = "numbered by place"
 KEYED = "keyed"
 UNNUMBERED = "not numbered"
+#: A PDF's list whose entries are not told apart (`census_of_printed`).
+UNTOLD = "its entries not told apart"
 
 #: An entry that carries its number: "12." / "12)" / "[12]", or as pandoc writes one it
 #: escapes, which prints as typed: "12\." / "12\)" / "\[12\]". Groups: the bracketed number,
@@ -90,6 +92,9 @@ class Entry:
     path: Path | None = None
     #: The entry as typed, its lines joined: what the cited-sentences table shows of it.
     text: str = field(default="", compare=False)
+    #: In a PDF's list whose entries are not told apart, whether its one identifier ends a
+    #: line with more of the list after it, where it may run on (`census_of_printed`).
+    ends_line: bool = field(default=False, compare=False)
 
 
 @dataclass(frozen=True)
@@ -112,6 +117,11 @@ class Census:
     markers: int = 0
     problems: list[Problem] = field(default_factory=list)
     note: str = ""
+    #: In a PDF's list, each DOI or PMID that ends a line the entry goes on after, `(line,
+    #: identifier as read)`: it may go on on the next line, and is not looked up.
+    unsent: list[tuple[int, str]] = field(default_factory=list)
+    #: In a PDF's list, why its entries are not told apart, where they are not (`UNTOLD`).
+    untold: str = ""
 
     @property
     def dois(self) -> int:
@@ -263,6 +273,177 @@ def census_of_text(
     return census
 
 
+def census_of_printed(
+    path: Path,
+    text: str,
+    spans: list[tuple[int, int]],
+    hidden: str,
+    intervals: list[tuple[int, int]],
+) -> Census:
+    """A PDF's census (`auditing.pdf`). Its text has no blank line between two entries, so an
+    entry is told apart only by its number: the first line of the list opens one, and a line
+    opens the next only where it starts with the number after the last, "2." or "[2]" after
+    1, in the form the first entry's number has.
+
+    The entries are not told apart (`UNTOLD`) where the list's first line carries no number,
+    where an entry holds more than one DOI or more than one PMID, or where a line in the list's
+    own form opens with a number above the next one (an entry left out, or a number carried onto
+    a line of its own), and `Census.untold` says why. A line after one that ends in a hyphen or
+    a dash goes on that entry ("112-" then "118. doi..." is a page range wrapped). Each
+    identifier is then looked up alone, as an entry of its own, so that a retracted work among
+    them is asked about, one that ends a line among them (`Entry.ends_line`); and no citation
+    is held to an entry, nor to the count of entries.
+
+    In a list whose entries are told apart, a DOI or a PMID that ends a line its entry goes on
+    after may go on on the next line, cut by the wrap: it is not looked up, and is listed as
+    such (`Census.unsent`), rather than sent cut and reported unregistered. So is one cut
+    before its suffix, "10.1016/" or "doi:" alone at a line's end, which is never read as
+    one."""
+    if not spans:
+        return Census(path, note="no reference list was found under a heading, so none was "
+                      "counted")  # fmt: skip
+    lines = text.split("\n")
+    found: list[tuple[int | None, list[tuple[int, str]]]] = []
+    census = Census(path)
+    for start, end in spans:
+        expected: int | None = None
+        form: tuple[bool, str] | None = None
+        first = True
+        for index in range(start + 1, min(end, len(lines))):
+            line = lines[index]
+            if not line.strip():
+                continue
+            if not first and found[-1][1][-1][1].rstrip().endswith(_RANGE_OPEN):
+                # A line that ends in a hyphen or a dash never ends an entry: "112-" then
+                # "118. doi..." is a page range wrapped, neither an entry nor a skip. The line
+                # before is the entry's last, with or without a blank line between.
+                found[-1][1].append((index + 1, line))
+                continue
+            numbered = _NUMBERED_ENTRY.match(line)
+            number = int(numbered.group(1) or numbered.group(2)) if numbered else None
+            shape = (bool(numbered.group(1)), numbered.group(4) or "") if numbered else None
+            if first or (number is not None and number == expected and shape == form):
+                first = False
+                found.append((number, [(index + 1, line)]))
+                expected = number + 1 if number is not None else None
+                form = shape
+                continue
+            if (number is not None and expected is not None and shape == form
+                    and number > expected and not census.untold):  # fmt: skip
+                census.untold = (f"its numbers go from {expected - 1} to {number}, at line "
+                                 f"{index + 1}: an entry left out, or a number of the entry "
+                                 "before carried onto a line of its own")  # fmt: skip
+            found[-1][1].append((index + 1, line))
+    if not census.untold and any(number is None for number, _parts in found):
+        census.untold = "its first entry carries no number, so none is told from the next"
+    entries: list[Entry] = []
+    for number, parts in found:
+        held = _identifiers_of(parts)
+        dois = [said for _at, said, kind, _ends in held if kind == "doi"]
+        pmids = [said for _at, said, kind, _ends in held if kind == "pmid"]
+        if not census.untold and (len(dois) > 1 or len(pmids) > 1):
+            census.untold = (f"entry {number} holds more than one "
+                             f"{'DOI' if len(dois) > 1 else 'PMID'}")  # fmt: skip
+        entries.append(Entry(f"entry {number}" if number is not None else "an entry",
+                             parts[0][0], number=number,
+                             text=" ".join(" ".join(line for _at, line in parts).split())))
+    census.markers = len(markers_in(hidden, intervals))
+    census.unsent = [(at, said) for _number, parts in found for at, said in _cut_short(parts)]
+    if census.untold:
+        # One "entry" for each identifier, at its line, so that each is asked about, the one
+        # that ends a line among them.
+        census.style = UNTOLD
+        census.entries = tuple(
+            Entry(f"the {'DOI' if kind == 'doi' else 'PMID'} {said} of the list", at,
+                  dois=(said,) if kind == "doi" else (), pmids=(said,) if kind == "pmid" else (),
+                  text=said, ends_line=ends)
+            for _number, parts in found for at, said, kind, ends in _identifiers_of(parts))
+        return census
+    told = []
+    for entry, (_number, parts) in zip(entries, found, strict=True):
+        held = _identifiers_of(parts)
+        census.unsent += [(at, said) for at, said, _kind, ends in held if ends]
+        told.append(replace(entry, dois=tuple(s for _a, s, k, e in held if k == "doi" and not e),
+                            pmids=tuple(s for _a, s, k, e in held if k == "pmid" and not e)))
+    census.entries = tuple(told)
+    if told:
+        census.style = NUMBERED
+        census.problems = _held_to_numbers(path, told, markers_in(hidden, intervals))
+    return census
+
+
+def _identifiers_of(parts: list[tuple[int, str]]) -> list[tuple[int, str, str, bool]]:
+    """Each DOI and PMID typed in an entry's lines, `(line, identifier, kind, ends a line)`,
+    once each: whether it ends a line the entry goes on after, where it may go on on the
+    next."""
+    found: list[tuple[int, str, str, bool]] = []
+    seen: set[str] = set()
+    for at, (line_at, line) in enumerate(parts):
+        last = at == len(parts) - 1
+        for pattern, kind in ((_DOI, "doi"), (_PMID, "pmid")):
+            for match in pattern.finditer(line):
+                said = (_trimmed(normal_doi(match.group(0))).lower() if kind == "doi"
+                        else match.group(1))  # fmt: skip
+                if not said or said in seen:
+                    continue
+                seen.add(said)
+                ends = not last and not line[match.end():].strip(" .,;")
+                found.append((line_at, said, kind, ends))
+        # "PMID:" at a line's end, its digits beginning the next line of the entry.
+        if not last and _PMID_AT_END.search(line):
+            next_at, after = parts[at + 1]
+            digits = _goes_on("pmid", after)
+            if digits and digits.group(0).strip() not in seen:
+                said = digits.group(0).strip()
+                seen.add(said)
+                ends = at + 1 < len(parts) - 1 and not after[digits.end():].strip(" .,;")
+                found.append((next_at, said, "pmid", ends))
+    return found
+
+
+#: What a line that ends a page range ends with, which no entry ends with.
+_RANGE_OPEN = ("-", "\N{EN DASH}", "\N{EM DASH}")
+#: A line that ends with "PMID", its PMID on the next.
+_PMID_AT_END = re.compile(r"\bPMID\s*:?\s*$", re.IGNORECASE)
+#: What begins the next line where an identifier is introduced at a line's end: the DOI after
+#: "doi:" or a DOI link's prefix, the digits after "PMID:".
+_GOES_ON = {"doi": re.compile(r"\s*10\.\d{4,9}"), "pmid": re.compile(r"\s*\d{1,9}\b")}
+#: An identifier cut before it starts: a DOI's prefix and its slash, or "doi:" or "PMID:",
+#: with nothing after it on its line.
+_CUT_SHORT = re.compile(
+    r"(?:\b10\.\d{4,9}(?:\.\d+)*/|https?://(?:dx\.)?doi\.org/|\b(?:doi|pmid)\s*:?)\s*$",
+    re.IGNORECASE,
+)
+
+
+def _cut_short(parts: list[tuple[int, str]]) -> list[tuple[int, str]]:
+    """Each identifier an entry's line ends before its first character, `(line, as read)`:
+    no DOI or PMID is read of it, and it is listed as not looked up rather than dropped. A
+    "doi:", a DOI link's prefix or a "PMID:" whose identifier begins the next line of the
+    entry is none: that line's identifier is read there (NLM breaks at the space in "doi:
+    10...")."""
+    cut = []
+    for index, (at, line) in enumerate(parts):
+        found = _CUT_SHORT.search(line.rstrip(" .,;"))
+        if found is None:
+            continue
+        said = found.group(0).strip()
+        kind = "pmid" if said.lower().startswith("pmid") else "doi"
+        after = parts[index + 1][1] if index + 1 < len(parts) else ""
+        if not said.startswith("10.") and _goes_on(kind, after):
+            continue
+        cut.append((at, said))
+    return cut
+
+
+def _goes_on(kind: str, after: str) -> re.Match[str] | None:
+    """The identifier beginning `after`, the line after its "doi:" or "PMID:". An entry's own
+    number ("4." in a list whose entries are not told apart) is not a PMID's digits."""
+    if kind == "pmid" and _NUMBERED_ENTRY.match(after):
+        return None
+    return _GOES_ON[kind].match(after)
+
+
 def _numbered_by_word(
     entries: list[Entry], numbering: Mapping[int, tuple[str, bool, int]]
 ) -> bool:
@@ -412,6 +593,18 @@ def _unknown(entry: Entry, answers: dict[str, Any], path: Path | None) -> list[P
     said = {name: answer.get("status") for name, answer in answers.items()
             if isinstance(answer, dict)}  # fmt: skip
     problems = []
+    if entry.ends_line:
+        # Perhaps cut by the wrap: not found as printed is all that can be said.
+        if "crossref" in said and all(said.get(name) == ABSENT
+                                      for name in ("crossref", "datacite", "doi_org")):  # fmt: skip
+            problems.append(Problem("not-found-as-printed", f"{entry.label}: no registry has "
+                                    f"the DOI {entry.dois[0]} as printed{_may_run_on(entry)}",
+                                    entry.line, path))  # fmt: skip
+        if said.get("pubmed") == ABSENT:
+            problems.append(Problem("not-found-as-printed", f"{entry.label}: PubMed has no PMID "
+                                    f"{entry.pmids[0]} as printed{_may_run_on(entry)}",
+                                    entry.line, path))  # fmt: skip
+        return problems
     if "crossref" in said and all(said.get(name) == ABSENT
                                   for name in ("crossref", "datacite", "doi_org")):  # fmt: skip
         problems.append(Problem(
@@ -425,6 +618,15 @@ def _unknown(entry: Entry, answers: dict[str, Any], path: Path | None) -> list[P
             "was checked of the work", entry.line, path,
         ))  # fmt: skip
     return problems
+
+
+def _may_run_on(entry: Entry) -> str:
+    """What is said with each answer about an identifier that ends a line with more of its
+    list after it, where it may run on to the next."""
+    if not entry.ends_line:
+        return ""
+    return ("; it ends a line, with more of the list after it, and may run on to the next, so "
+            "the registry may have been asked about part of it")
 
 
 def _kept_name(entry: Entry) -> str:
@@ -492,7 +694,8 @@ def look_up(
             where = entry.path or census.path
             found = _standing(entry.label, {}, answers, where, None)
             problems = tuple(
-                Problem(f.code, f.message.removeprefix("@"), entry.line, where)
+                Problem(f.code, f.message.removeprefix("@") + _may_run_on(entry),
+                        entry.line, where)
                 for f in found
             ) + tuple(_unknown(entry, answers, where)) + tuple(
                 Problem("lookup-unanswered", f"{entry.label}: {name} did not answer ({why})",

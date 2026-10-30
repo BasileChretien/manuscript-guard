@@ -62,7 +62,11 @@ from manuscript_guard.text.reference_lists import ends_a_list_alone, is_bibliogr
 from manuscript_guard.text.tables import Table, markdown_tables
 from manuscript_guard.text.tokens import DIGIT, Atom, find_atoms, trim
 
-PAPER_SUFFIXES = {".docx", ".md", ".txt", ".markdown", ".tex"}
+PAPER_SUFFIXES = {".docx", ".md", ".txt", ".markdown", ".tex", ".pdf"}
+#: What a folder given as a paper is searched for: a PDF in a folder is a figure, or a
+#: copy of the paper beside its source, as often as it is the paper, and is read only
+#: where it is named (`auditing.pdf`).
+FOLDER_SUFFIXES = PAPER_SUFFIXES - {".pdf"}
 BACKING_SUFFIXES = {".json", ".csv", ".tsv", ".txt", ".yaml", ".yml", ".md"}
 FIGURE_SUFFIXES = {".svg", ".pdf"}
 
@@ -202,6 +206,8 @@ class AuditReport:
     causal: object = None
     cited: object = None
     self_citation: object = None
+    #: Each PDF read, by its path (`auditing.pdf.PdfText`): what its places are said by.
+    pdfs: dict = field(default_factory=dict)
     #: The package `--package` names, held to its own manifest (`auditing.package.PackageRead`).
     package: object = None
     #: How much of each kind the audit read, for the report draft's checks that found
@@ -712,6 +718,9 @@ class _Source:
     latex: object = None
     #: The lines of a Markdown or a Word paper's headings, which are no sentences.
     heading_lines: frozenset[int] = frozenset()
+    #: Whether its lines are lines of paragraphs, wrapped as a PDF sets them, though not
+    #: Markdown: a sentence goes on from one to the next (`auditing.pdf`).
+    wrapped: bool = False
 
     def scan(self, classifier: Classifier):
         return classifier.scan(self.scanned, lines_are_blocks=self.lines_are_blocks,
@@ -729,6 +738,9 @@ def _read_sources(
     entries = [path for path in papers if path.suffix.lower() == ".tex"]
     for path in papers:
         if path in entries:
+            continue
+        if path.suffix.lower() == ".pdf":
+            _read_pdf(report, sources, path)
             continue
         try:
             document = read_docx_text(path) if is_docx(path) else None
@@ -766,6 +778,75 @@ def _read_sources(
         report.references += [census_of_latex(tree.entry, list(tree.files))
                               for tree in latex.trees]  # fmt: skip
     return sources
+
+
+def _read_pdf(report: AuditReport, sources: list[_Source], path: Path) -> None:
+    """A PDF read as `auditing.pdf` reads one: its text a line of the PDF to a line, each line
+    a block to the classifier, as a .docx's paragraph is, and a line of a paragraph to the
+    sentences; its reference list found by its heading, as in a .docx, and ended where a
+    list under no heading ends (`_end_under_no_heading`), at a caption or back matter; and
+    what it is not read for said."""
+    from manuscript_guard.auditing.pdf import UnreadablePdf, read_pdf
+    from manuscript_guard.auditing.references import census_of_printed
+
+    try:
+        pdf = read_pdf(path)
+    except UnreadablePdf as exc:
+        report.unreadable.append(str(exc))
+        return
+    report.pdfs[path] = pdf
+    text = pdf.text
+    spans = pdf_spans(pdf)
+    blanked = _blank(text, spans)
+    hidden = _masked(blanked, printed_as_typed=True)
+    source = _Source(path, blanked, hidden, blanked, blanked, (), not spans, True, wrapped=True)
+    sources.append(replace(source, **_pdf_structure(report, pdf)))
+    report.not_audited += [pdf.described(), *(
+        f"{path.name}: {pdf.stretch(start + 1, end)}, read as the reference list"
+        for start, end in spans), *(f"{path.name}: {what}" for what in PDF_NOT_READ)]
+    report.references.append(census_of_printed(path, text, spans, hidden,
+                                               _intervals(blanked)))  # fmt: skip
+
+
+def pdf_spans(pdf) -> list[tuple[int, int]]:
+    """Where a PDF's reference lists are in its text (`auditing.pdf.PdfText`), as 0-based
+    lines `[start, end)`: each from its heading, as in a .docx, to the next heading or to
+    where a list under no heading ends (`_end_under_no_heading`), at a caption or a title of
+    back matter, since a PDF marks no heading but the lines `auditing.pdf` reads as one."""
+    lines = pdf.text.split("\n")
+    return [(start, _end_under_no_heading(lines, start, end))
+            for start, end in bibliography_spans(pdf.text, pdf.heading_lines)]  # fmt: skip
+
+
+#: What a PDF's text is not read for, said of each PDF audited.
+PDF_NOT_READ = (
+    "its tables are lines of text, not rows of cells, so no table's totals, shares, means or "
+    "counts held back are checked in it; the numbers in them are read as the text's",
+    "its lists are lines of text, so no flow is read in it",
+    "a line of it is read as a heading only where it holds a section's name and nothing else "
+    "(Abstract, Methods, Results, Discussion, References and the like), so a section under "
+    "any other title is read as the one before it",
+)
+
+
+def _pdf_structure(report: AuditReport, pdf) -> dict:
+    """Where each line of a PDF stands, from the lines that hold a section's name alone
+    (`auditing.pdf.heading_title`), a structured abstract's under its Abstract
+    (`PdfText.placed`); placed nowhere where they cannot be placed exactly, which is said."""
+    from manuscript_guard.auditing.abstract import placed
+    from manuscript_guard.auditing.pdf import UNPLACED
+    from manuscript_guard.text.sections import Section
+
+    heading_lines = frozenset(line for line, _title in pdf.headings)
+    levels = pdf.placed
+    if levels is None:
+        report.not_audited.append(f"{pdf.path.name}: its lines were placed in no section: "
+                                  f"{UNPLACED}")  # fmt: skip
+        return {"heading_lines": heading_lines}
+    sections = [Section(title, level, "", line) for line, title, level in levels]
+    place, abstract, results = placed(sections) if sections else (None, False, False)
+    return {"place": place, "abstract": abstract, "results": results,
+            "part": _parts(sections, None), "heading_lines": heading_lines}  # fmt: skip
 
 
 def _structure(text: str, hidden: str, tables: list[Table], document) -> dict:
@@ -1079,6 +1160,7 @@ def audit(
     # anything. A .docx and a figure are read a paragraph or an element per line; Markdown
     # and plain text are read as pandoc reads them.
     sources = _read_sources(report, papers, found_tex or [])
+    read = len(sources)
     for path in figures or []:
         text = read_figure(path)
         if text is None:
@@ -1110,8 +1192,8 @@ def audit(
 
     report.abstract = against_results(pieces)
     if design is not None or cited:
-        _read_sentences(report, [s for s in sources if s.path.suffix.lower()
-                                 not in FIGURE_SUFFIXES], papers, design, cited)  # fmt: skip
+        # The papers' sentences, not the figures': a PDF may be either (`auditing.pdf`).
+        _read_sentences(report, sources[:read], papers, design, cited)
     return report
 
 
@@ -1162,11 +1244,13 @@ def _views(source: _Source) -> list:
                                cuts=sentences.latex_cuts(source.latex),
                                cites=tuple(sentences.latex_cites(source.latex, read)),
                                headings=sentences.latex_headings(source.latex))]  # fmt: skip
-    docx = source.lines_are_blocks
-    read = (source.hidden.replace("\N{RIGHT SINGLE QUOTATION MARK}", "'") if docx
+    # A .docx a paragraph a line, a PDF a line of a paragraph a line: neither is Markdown.
+    typed = source.lines_are_blocks
+    docx = typed and not source.wrapped
+    read = (source.hidden.replace("\N{RIGHT SINGLE QUOTATION MARK}", "'") if typed
             else readable(source.text))  # fmt: skip
     cites = sentences.cites_in_text(source.text, source.hidden, _intervals(source.plain))
-    head = 0 if docx else front_matter_end(source.text)
+    head = 0 if typed else front_matter_end(source.text)
     found = front_matter_abstract(source.text) if head else None
     views, notes = [], ()
     if head:

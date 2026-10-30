@@ -82,13 +82,17 @@ GATES = {
 COMMANDS = {
     "approve": Zero("the authors in authors.yaml", exits=2,
                     argv=("approve", "{project}", "--as", "Nobody Listed")),
-    "audit": Zero("the papers and figures given, against the outputs given",
+    "audit": Zero("the papers and figures given, a PDF's text among them, against the "
+                  "outputs given",
                   why="exits 1 under --strict when it read no number "
                   "(tests/test_cli.py, `test_audit_strict_fails_a_paper_with_no_number_in_it`); "
+                  "a PDF that gives no text, or none pdftotext is there to read, is refused, "
+                  "exit 2 (tests/test_audit_pdf.py); "
                   "and an empty project holds no paper to give it"),
     # A version that is not there, or holds no words, is refused: there is nothing to set
-    # beside the other.
-    "compare": Zero("two versions of a paper, and the letter and the comments given",
+    # beside the other; so is a PDF with no text, or with no pdftotext to read it.
+    "compare": Zero("two versions of a paper, a PDF's text among them, and the letter and the "
+                    "comments given",
                     exits=2, argv=("compare", "{project}/v1.md", "{project}/v2.md")),
     "bind": Zero("every unbound number in the manuscript", exits=2, argv=("bind", "{project}")),
     "build": Zero("the manuscript, once the gates pass",

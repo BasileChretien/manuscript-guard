@@ -383,10 +383,10 @@ def test_the_report_goes_to_a_new_file_only(tmp_path: Path, capsys) -> None:
 @pytest.mark.parametrize(
     ("name", "said"),
     [
-        ("v2.pdf", "is a PDF, which compare does not read yet"),
+        ("v2.pdf", "pdftotext"),  # not installed, or reads no text in it
         ("missing.md", "does not exist"),
         ("folder", "is a folder"),
-        ("v2.rtf", "is not a .docx, .md, .txt or .tex"),
+        ("v2.rtf", "is not a .docx, .md, .txt, .tex or .pdf"),
         ("empty.md", "holds no text to compare"),
     ],
 )

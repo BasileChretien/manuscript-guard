@@ -9,7 +9,8 @@ editor or a referee"): G4 held to the journal's profile and the blinding check (
 what a Word file holds besides its text (`document`), the causal words of an observational
 study (`causal`), each citation beside its sentence (`cited`, read through `sentences`), the
 references of the authors' and of the journal (`selfcite`), a package held to its own manifest
-(`package`, opened by `unpack`), and the report draft of an audit or a comparison (`draft`)."""
+(`package`, opened by `unpack`), and the report draft of an audit or a comparison (`draft`). A
+PDF manuscript is read through `pdftotext`, each place in it a page and a line (`pdf`)."""
 
 #: The options that make `audit` an editor's or a referee's reading of a paper someone else
 #: wrote. With one, the audit says the manuscript is not to reach a model (`NOTICE`), and the

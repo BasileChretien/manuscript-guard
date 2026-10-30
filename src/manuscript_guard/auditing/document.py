@@ -63,6 +63,11 @@ class DocumentFacts:
     people: list[tuple[str, str]] = field(default_factory=list)
     #: Why the document could not be read, where it could not.
     note: str = ""
+    #: Whether it is a PDF, which holds no tracked change, comment or hidden text as Word
+    #: keeps them, and whose Author field alone is read (`pdf_facts`).
+    pdf: bool = False
+    #: For a PDF, why its Author field was not read, where it was not.
+    unread: str = ""
 
 
 def _parts(names: list[str]) -> list[str]:
@@ -156,10 +161,28 @@ def document_facts(path: Path) -> DocumentFacts:
     return facts
 
 
+def pdf_facts(path: Path) -> DocumentFacts:
+    """What a PDF holds besides its text, as far as it is read: the Author of its Info
+    dictionary, through `pdfinfo` (`auditing.pdf.author`). Its other fields, its XMP
+    metadata and its annotations are not read (DESIGN.md, Known gaps)."""
+    from manuscript_guard.auditing.pdf import AUTHOR_FIELD, author
+
+    name, why = author(path)
+    facts = DocumentFacts(path, pdf=True, unread=why if name is None else "")
+    if name:
+        facts.people.append((AUTHOR_FIELD, name))
+    return facts
+
+
 def described(facts: DocumentFacts) -> str:
     """One line of what the document holds: its tracked changes, comments and hidden text."""
     if facts.note:
         return facts.note
+    if facts.pdf:
+        unread = (f"; its Author field was not read: {facts.unread}" if facts.unread
+                  else "")  # fmt: skip
+        return (f"{facts.path.name}: a PDF, whose tracked changes, comments and hidden text, "
+                f"a Word file's, are not read, nor its annotations{unread}")
     held = [
         _counted(facts.insertions, "tracked insertion"),
         _counted(facts.deletions, "tracked deletion"),

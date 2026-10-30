@@ -19,6 +19,14 @@ a file a class or a package inputs. A `thebibliography` is cut as a reference li
 stretch the LaTeX reader refuses in a file the paper reads is named under "Could not read",
 which `--strict` counts.
 
+A PDF named is read through `pdftotext`, its running heads, page numbers and margin line
+numbers left out, and each place in it is a page and a line; without `pdftotext` it is
+refused, exit 2. Its tables are lines of text there, so their numbers are compared and read
+as the text's but no table's arithmetic is checked, and a line is a heading only where it
+holds a section's name alone. A PDF in a folder is not read: name it.
+[For editors and reviewers](refereeing.md#a-referee) has what is read in a PDF and what is
+not.
+
 `--against` may be left out. Then no number is compared with the analysis, the report says
 so on its first line, "No outputs given: no number was compared with the analysis", and what
 needs no outputs is read all the same: the numbers against each other, the words and the

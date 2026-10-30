@@ -263,6 +263,11 @@ def status(name: str, old: Version, new: Version) -> str:
     """Whether the table, figure or section `name` changed between the versions."""
     if re.fullmatch(r"(?:Table|Figure) S?\d+", name):
         kind = "tables" if name.startswith("Table") else "figures"
+        pdfs = [label for label, version in (("v1", old), ("v2", new)) if version.kind == "PDF"]
+        if pdfs:
+            # A PDF holds no table and no figure as one (`auditing.pdf`): never "the same".
+            return (f"not compared: {' and '.join(pdfs)} "
+                    f"{'is a PDF' if len(pdfs) == 1 else 'are PDFs'}")  # fmt: skip
         was = [d for d in getattr(old, kind) if d.label == name]
         now = [d for d in getattr(new, kind) if d.label == name]
         unnumbered = [name for name, version in (("v1", old), ("v2", new))

@@ -53,9 +53,9 @@ def _test_in(out: str) -> str:
     return out.split("```python\n", 1)[1].split("\n```", 1)[0]
 
 
-def _run(out: str, module: str, **fixtures) -> None:
+def _run(out: str, module: str, extra: dict | None = None, **fixtures) -> None:
     """The test the report holds, run in the namespace of the file it is written for."""
-    namespace = dict(vars(importlib.import_module(module)))
+    namespace = {**vars(importlib.import_module(module)), **(extra or {})}
     exec(compile(_test_in(out), "<reported>", "exec"), namespace)  # noqa: S102 - our own text
     (name,) = [n for n in namespace if n.startswith("test_reported_")]
     namespace[name](**fixtures)
@@ -340,15 +340,21 @@ def test_two_codes_on_one_snippet_name_two_tests(kept, capsys) -> None:
     ("--flagged", "unclassified", True), ("--missed", "unclassified", False),
     # The example's numbers are read by a convention already: the snippet adds none.
     ("--missed", "convention", True),
+    # A code is counted whole: "classified" is not in "unclassified".
+    ("--missed", "classified", True),
+    # The second run reads a file that is not there, exits 2, and the test fails on it.
+    ("--flagged", "unclassified", "absent.md"),
 ])  # fmt: skip
 def test_a_commands_test_counts_what_the_snippet_adds(kept, capsys, project, monkeypatch,
                                                       direction, code, fails) -> None:
     out = _reported(capsys, "--about", "explain", direction, code, "--snippet", UNBOUND)
     # The words the person gave the command, as the TODO asks for them.
-    out = out.replace('main(["explain"])', 'main(["explain", "manuscript/main.md"])')
+    out = out.replace('main(["explain"])', 'main(["explain", next(files)])')
+    second = fails if isinstance(fails, str) else "manuscript/main.md"
+    extra = {"files": iter(["manuscript/main.md", second])}
     fixtures = {"project": project, "monkeypatch": monkeypatch, "capsys": capsys}
     if fails:
         with pytest.raises(AssertionError):
-            _run(out, "test_corruption", **fixtures)
+            _run(out, "test_corruption", extra, **fixtures)
     else:
-        _run(out, "test_corruption", **fixtures)
+        _run(out, "test_corruption", extra, **fixtures)

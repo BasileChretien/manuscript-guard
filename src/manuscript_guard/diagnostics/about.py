@@ -259,20 +259,26 @@ def skeleton(asked: Asked) -> str:
         ]
     else:
         head = f"def {named_test(asked)}(project: Path, monkeypatch, capsys) -> None:"
-        counted = True
+        counted = "whole"
         body = [
+            "import re",
+            "",
             "from manuscript_guard.cli import main",
             "",
-            "def counted() -> str:",
-            f'    main(["{about}"])  # TODO: add the words you gave `{about}` after its name',
+            "def counted() -> tuple[int, str]:",
+            f'    exits = main(["{about}"])  # TODO: the words you gave `{about}`',
             "    said = capsys.readouterr()",
-            "    return said.out + said.err",
+            "    return exits, said.out + said.err",
+            "",
+            "def whole(code: str, said: str) -> int:",
+            r'    return len(re.findall(rf"(?<![\w-]){re.escape(code)}(?![\w-])", said))',
             "",
             *text,
             "monkeypatch.chdir(project)",
-            "before = counted()",
+            "before_exits, before = counted()",
             *_appended(),
-            "found = counted()",
+            "found_exits, found = counted()",
+            "assert found_exits == before_exits",
             "# The example may print the code already: the test is of what the snippet adds.",
         ]
     inside = [f'"""{_docstring(asked)}"""', *body, *_assertion(asked, counted)]
@@ -294,10 +300,14 @@ def _appended() -> list[str]:
     ]
 
 
-def _assertion(asked: Asked, counted: bool) -> list[str]:
+def _assertion(asked: Asked, counted: bool | str) -> list[str]:
+    """`counted` is "whole" where `found` is the command's output, whose codes are counted
+    as whole words, so that `number` is not counted inside `unclassified-number`."""
     code = asked.code or "<code>"
-    if counted:
-        holds = "==" if asked.flagged else ">"
+    holds = "==" if asked.flagged else ">"
+    if counted == "whole":
+        said = f'whole("{code}", found) {holds} whole("{code}", before)'
+    elif counted:
         said = f'found.count("{code}") {holds} before.count("{code}")'
     else:
         said = f'"{code}" {"not in" if asked.flagged else "in"} found'

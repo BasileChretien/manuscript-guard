@@ -12042,19 +12042,24 @@ person. Other gates read a project, and the report says the snippet was not chec
 parts of the report are scrubbed before it is put together, and the whole is not scrubbed
 again, since the scrub run over the test's literal read an escaped character and the address
 after it as one address. The report ends with a test to start from, named
-`test_reported_<gate or command>_<flagged or missed>_<code>_` and twelve hex digits of the
-snippet's SHA-256, in the file and the shape the suite already uses for that reading: `audit`
+`test_reported_<gate or command>_<flagged or missed>_`, the code and `_` where one is given,
+and twelve hex digits of the snippet's SHA-256, in the file and the shape the suite already
+uses for that reading: `audit`
 on `tmp_path / "paper.md"` in `tests/test_audit.py`, `written` and `codes` in
 `tests/test_writing.py` and `tests/test_language.py`, and for any other gate the example with
 the snippet appended to `main_md(project)` and `_run_gates` in `tests/test_corruption.py`, the
 codes taken of that gate alone and at every severity (`gate_report` there runs seven of the
-checks and counts failures only, so a warning or another gate's code would not be seen). It
-asserts the code absent (`--flagged`) or present (`--missed`); on the example, which may give
-the code already, it counts the code before the snippet is appended and after, and asserts
-the count unchanged or raised. With no code it stops at `pytest.fail("TODO ...")` rather than
-pass on nothing. `tests/test_report_about.py` runs the test a report writes, in the
-namespace of the file it names, for `audit`, G6, G14 and G2, and holds that it fails or passes
-as the direction says.
+checks and counts failures only, so a warning or another gate's code would not be seen). For
+a command other than `audit` and `check` it is `main` with `capsys` in the same file, the
+command's words left as a TODO, its output read before and after the snippet is appended, the
+code counted there as a whole word (not `number` inside `unclassified-number`), and the exit
+code held to be the same in both runs, so that a snippet that makes the command refuse fails
+the test. It asserts the code absent (`--flagged`) or present (`--missed`); on the example,
+which may give the code already, it counts the code before the snippet is appended and after,
+and asserts the count unchanged or raised. With no code it stops at `pytest.fail("TODO ...")`
+rather than pass on nothing. `tests/test_report_about.py` runs the test a report writes, in
+the namespace of the file it names, for `audit`, G6, G14, G2 and `explain`, and holds that it
+fails or passes as the direction says.
 
 ## Known gaps
 

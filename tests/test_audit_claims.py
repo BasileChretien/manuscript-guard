@@ -785,3 +785,26 @@ def test_a_closing_summary_is_the_conclusion(tmp_path: Path, capsys) -> None:
     text = ("# A cohort\n\n## Introduction\n\nTea was common.\n\n## Summary\n\n"
             "### Background\n\nSmoking causes cancer.\n")
     assert _causal(capsys, paper_md(tmp_path, text)) == [(11, "Conclusion")]
+
+
+# --------------------------------------------------------- fix-only round on e5826ad0
+
+
+@pytest.mark.parametrize("heading", ["## Discussion\n", "Discussion\n----------\n"],
+                         ids=["atx", "setext"])  # fmt: skip
+def test_a_sentence_typed_directly_under_a_heading_is_read(
+    tmp_path: Path, capsys, heading: str
+) -> None:
+    """The heading is no sentence, and the text on the line after it is its own (round 3 of
+    #482: the heading's piece took it with it)."""
+    line = heading.count("\n") + 1
+    text = f"{heading}Smoking causes cancer.\nTea was common [3].\n\n{REFERENCES}"
+    paper = paper_md(tmp_path, text)
+    assert _causal(capsys, paper) == [(line, "Discussion")]
+    assert [row.split(" | ")[1:4] for row in _rows(capsys, tmp_path, paper)] == [
+        [f"paper.md:{line + 1}", "Discussion", "Tea was common [3]."]]
+
+
+def test_calcium_is_no_abbreviation_of_circa(tmp_path: Path, capsys) -> None:
+    text = f"## Discussion\n\nWe measured serum Ca. [3] Statins cause fewer deaths.\n\n{REFERENCES}"
+    assert _causal(capsys, paper_md(tmp_path, text)) == [(3, "Discussion")]

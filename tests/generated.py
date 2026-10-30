@@ -5998,22 +5998,29 @@ def causal_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list], dict[str,
             under = draw(st.integers(0, len(ABSTRACT_HEADINGS) - 1))
             items.append((len(items), kind, md_line, tex_line, draw(st.booleans()), number,
                           under))
+        # A causal claim typed on the line directly under the part's first heading.
+        under_heading = draw(st.sampled_from(CAUSAL_CLAIMS)).format(
+            s=draw(st.sampled_from(CAUSAL_SUBJECTS)), o=draw(st.sampled_from(CAUSAL_OBJECTS)))
         if name == "Abstract":
             md += [f"## {title}", ""]
-            tex.append(BACKSLASH + "begin{abstract}")
+            tex += [BACKSLASH + "begin{abstract}", f"{under_heading}."]
             headed = [(heading, [item for item in items if item[6] == at])
                       for at, heading in enumerate(ABSTRACT_HEADINGS)]  # fmt: skip
         else:
             bare = re.sub(r"^\d+\.\s+", "", title)
-            tex += ["", f"{BACKSLASH}section{{{bare}}}", ""]
+            tex += ["", f"{BACKSLASH}section{{{bare}}}", f"{under_heading}."]
             headed = [(None, items)]
+        under_at = [len(tex)]
         md_lines: dict[int, int] = {}
         for heading, under in headed:
             if heading is not None:
                 # A heading opens a block only after a blank line.
-                md += [*([""] if md[-1] else []), f"### {draw(st.sampled_from(heading))}", ""]
+                md += [*([""] if md[-1] else []), f"### {draw(st.sampled_from(heading))}"]
+                md += [f"{under_heading}.", ""] if len(under_at) == 1 else [""]
             elif name != "Abstract":
-                md += [f"## {title}", ""]
+                md += [f"## {title}", f"{under_heading}.", ""]
+            if len(under_at) == 1:
+                under_at.append(len(md) - 1)
             for item in under:
                 at, _kind, md_line, _tex_line, gap, _number, _under = item
                 md += [*md_line.split("\n"), *([""] if gap else [])]
@@ -6034,6 +6041,9 @@ def causal_papers(draw: st.DrawFn) -> tuple[str, str, dict[str, list], dict[str,
                 passed[kind == "negated"] += 1
             elif kind not in ("plain", "quiet"):
                 passed[2] += 1
+        if read:
+            found_md["warned"].append([under_at[1], name])
+            found_tex["warned"].append([under_at[0], name])
         if name == "Abstract":
             tex.append(BACKSLASH + "end{abstract}")
         md.append("")

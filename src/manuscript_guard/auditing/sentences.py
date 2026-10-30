@@ -71,9 +71,11 @@ _BLANK_LINE = re.compile(r"\n[ \t\x00]*\n")
 #: A letter, which a sentence holds.
 _LETTER = re.compile(r"[^\W_]")
 #: An abbreviation's stop at the end of a text, which ends no sentence before a citation:
-#: "Smith et al. [3] showed", "e.g. [4]", "cf. [5]", "Fig. [6]" (round 2 of #482).
+#: "Smith et al. [3] showed", "e.g. [4]", "cf. [5]", "Fig. [6]" (round 2
+#: of #482); "ca." in lower case only, as "Ca." is calcium.
 _ABBREVIATED = re.compile(
-    r"(?<![^\W_])(?:et\s+al|e\.\s?g|i\.\s?e|cf|vs|viz|figs?|refs?|eqs?|approx|ca|suppl)\.\Z",
+    r"(?<![^\W_])(?:et\s+al|e\.\s?g|i\.\s?e|cf|vs|viz|figs?|refs?|eqs?|approx|(?-i:ca)|suppl)"
+    r"\.\Z",
     re.IGNORECASE,
 )
 #: What may stand between two citations typed together, `[3] [4]`, `[3]~[4]`, `[3], [4]`.
@@ -233,7 +235,8 @@ class View:
         breaks = [found.start() for found in re.finditer("\n", self.text)]
         pieces: list[tuple[int, int, int]] = []
         for piece in sentence_pieces(self.text, self.read, self.lines,
-                                     (*self.cuts, *self._stop_cuts())):  # fmt: skip
+                                     (*self.cuts, *self._stop_cuts(),
+                                      *(at for span in self.headings for at in span))):  # fmt: skip
             if pieces and self._continues(pieces[-1], piece):
                 pieces[-1] = (pieces[-1][0], pieces[-1][1], piece[2])
             else:

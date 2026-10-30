@@ -360,6 +360,9 @@ def for_compare(found, flags: list[str], show: Show) -> str:
     counted = {section: sum(1 for item, _m in rest if item.section == section)
                for section in (differences.SECTIONS, differences.TABLES, differences.FIGURES,
                                differences.NUMBERS, differences.CLAIMS, AUDITED)}  # fmt: skip
+    # v2's counted findings are in the exact findings, and found by its audit all the same
+    # (round 1 of #487: "v2 audited" was said to report nothing beside them).
+    counted[AUDITED] += len(exact)
     old, new = found.old, found.new
 
     def both(of: Callable) -> str:

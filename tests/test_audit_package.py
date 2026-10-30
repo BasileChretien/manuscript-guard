@@ -381,3 +381,131 @@ def test_the_hook_asks_before_an_agent_reads_a_package_or_writes_a_draft() -> No
     for command in ("manuscript-guard audit --package pkg.zip",
                     "mguard audit paper.docx --report-draft=draft.md"):
         assert _reads_in_confidence(command) is not None, command
+
+
+# ------------------------------------------------------------------- review round 1
+
+
+def test_v2_audited_is_not_said_to_find_nothing_where_its_findings_are_exact(
+    tmp_path, capsys
+) -> None:
+    """Round 1 of #487: v2's counted findings go to the exact findings, and "v2 audited"
+    found them all the same."""
+    v1 = ("# Abstract\n\nWe saw the patients of the clinic.\n\n# Methods\n\nWe counted them.\n\n"
+          "# Results\n\nWe saw them all.\n\n# Discussion\n\nThey were seen.\n")
+    v2 = v1.replace("We saw them all.\n", "We saw them all.\n\n| Group | n |\n|---|---|\n"
+                    "| A | 3 |\n| B | 4 |\n| Total | 9 |\n")  # fmt: skip
+    (tmp_path / "v1.md").write_text(v1, encoding="utf-8")
+    (tmp_path / "v2.md").write_text(v2, encoding="utf-8")
+    target = tmp_path / "draft.md"
+    assert main(["compare", str(tmp_path / "v1.md"), str(tmp_path / "v2.md"),
+                 "--report-draft", str(target)]) == 0  # fmt: skip
+    capsys.readouterr()
+    text = target.read_text(encoding="utf-8")
+    exact = text.split("## Exact findings")[1].split("## Further findings")[0]
+    nothing = text.split("## Checks that ran and found nothing")[1]
+    assert "[new in v2]" in exact
+    assert "v2 audited" not in nothing
+
+
+def test_an_edited_manifest_is_one_changed_file(tmp_path, capsys) -> None:
+    """Round 1 of #487: SHA256SUMS lists MANIFEST.yaml, and the manifest was checked twice."""
+    root = small_package(tmp_path)
+    with (root / "MANIFEST.yaml").open("a", encoding="utf-8") as handle:
+        handle.write("# edited\n")
+    code, report, _ = audited(capsys, "--package", str(root), "--strict")
+    assert code == 1
+    assert codes(report, True) == ["package-file-changed"]
+    assert report["counts"]["package_counted"] == 1
+
+
+@pytest.mark.parametrize("name", ["pkg/a?.json", "pkg/a*b", "pkg/a<b", "pkg/a|b", 'pkg/a"b',
+                                  "pkg/x.", "pkg/x ", "pkg/./a", "pkg/a" + chr(7),
+                                  "pkg/COM" + chr(0xB9), "pkg/LPT" + chr(0xB3) + ".txt",
+                                  "pkg/CON .txt"])
+def test_a_name_a_file_system_cannot_hold_is_refused(tmp_path, capsys, name: str) -> None:
+    archive = zipped(small_package(tmp_path), tmp_path / "bad.zip", [(name, b"x")])
+    with pytest.raises(Refused, match="nothing was unpacked"):
+        members(archive)
+    code, report, _err = audited(capsys, "--package", str(archive))
+    assert code == 2 and not report["ok"]
+
+
+def test_a_name_both_a_file_and_a_folder_is_refused(tmp_path, capsys) -> None:
+    archive = zipped(small_package(tmp_path), tmp_path / "bad.zip",
+                     [("pkg/a", b"x"), ("pkg/a/b", b"y")])  # fmt: skip
+    with pytest.raises(Refused, match="a file and a folder"):
+        members(archive)
+    code, _report, _err = audited(capsys, "--package", str(archive))
+    assert code == 2
+
+
+def test_a_member_that_cannot_be_written_is_a_refusal(tmp_path, capsys, monkeypatch) -> None:
+    from manuscript_guard.auditing import unpack
+
+    archive = zipped(small_package(tmp_path), tmp_path / "pkg.zip")
+
+    def cannot(*_args, **_kwargs):
+        raise OSError(22, "Invalid argument")
+
+    monkeypatch.setattr(unpack.Path, "open", cannot)
+    code, report, err = audited(capsys, "--package", str(archive))
+    assert code == 2 and not report["ok"] and "cannot be written" in err
+
+
+@pytest.mark.parametrize("record", [
+    [], {"check": [], "digests": {}}, {"check": {"gates": []}, "digests": {}},
+    {"check": {"passed": True, "gates": {}}, "digests": []},
+    {"check": {"passed": True, "gates": {"G1": []}}, "digests": {"results_sha256": 3}},
+])  # fmt: skip
+def test_a_verification_record_of_another_shape_is_unreadable(tmp_path, capsys, record) -> None:
+    root = small_package(tmp_path)
+    (root / "VERIFICATION.json").write_text(json.dumps(record), encoding="utf-8")
+    sign(root)
+    code, report, _ = audited(capsys, "--package", str(root))
+    assert code == 0
+    assert {"package-verification-unreadable", "package-verification-quoted",
+            "package-verification-differs"} & set(codes(report))  # fmt: skip
+
+
+def test_a_folder_where_a_results_file_is_crashes_nothing(tmp_path, capsys) -> None:
+    root = small_package(tmp_path)
+    (root / "results" / "odd.json").mkdir()
+    (root / "results" / "odd.json.sha256").write_text("0" * 64 + "\n", encoding="utf-8")
+    record = {"check": {"passed": True, "gates": {}}, "digests": {"results_sha256": "0" * 64}}
+    (root / "VERIFICATION.json").write_text(json.dumps(record), encoding="utf-8")
+    sign(root)
+    code, report, _ = audited(capsys, "--package", str(root))
+    assert code == 0 and report["counts"]["package_results"] == 1
+
+
+def test_packaged_results_that_load_as_no_output_are_refused_with_a_paper(
+    tmp_path, capsys
+) -> None:
+    root = small_package(tmp_path)
+    (root / "results" / "count.json").write_bytes(b"{\x00}")
+    sign(root)
+    paper = tmp_path / "paper.md"
+    paper.write_text(PAPER, encoding="utf-8")
+    code, report, err = audited(capsys, str(paper), "--package", str(root))
+    assert code == 2 and not report["ok"]
+    assert "--package" in err and "nothing it can read" in err
+
+
+def test_the_json_says_the_wording_with_a_paper_too(tmp_path, capsys) -> None:
+    root = small_package(tmp_path)
+    paper = tmp_path / "paper.md"
+    paper.write_text(PAPER, encoding="utf-8")
+    _code, report, _ = audited(capsys, str(paper), "--package", str(root))
+    assert report["package_said"] == WORDING
+
+
+def test_a_manifest_that_lists_no_file_is_not_said_to_be_whole(tmp_path, capsys) -> None:
+    root = small_package(tmp_path)
+    (root / "MANIFEST.yaml").write_text("schema: manuscript-guard/package/1\nfiles: []\n",
+                                        encoding="utf-8")  # fmt: skip
+    (root / "SHA256SUMS").unlink()
+    main(["audit", "--package", str(root)])
+    out = capsys.readouterr().out
+    assert "the manifest lists no file" in out
+    assert "Each file listed was read" not in out

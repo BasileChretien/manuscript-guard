@@ -404,12 +404,19 @@ def as_json(report, discrimination) -> str:
                 "integers_1_1000": abstract.medium_integers,
                 "two_decimals": abstract.two_decimals,
                 "verdict": abstract.verdict()},
+            **({} if report.package is None else {"package_said": _package_said()}),
             "findings": [item.as_dict() for item in listed],
         },
         indent=2,
         # As `check --json`: a pipe on Windows is cp1252.
         ensure_ascii=True,
     )
+
+
+def _package_said() -> str:
+    from manuscript_guard.auditing.package import WORDING
+
+    return WORDING
 
 
 def _package_counts(read) -> dict[str, int]:

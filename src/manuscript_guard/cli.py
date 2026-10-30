@@ -2448,6 +2448,11 @@ def _audit(args: argparse.Namespace, package) -> int:
     if args.against and not report.backing_files:
         return _audit_refused(args, "--against gave the audit nothing it can read:",
                               *(f"  {item}" for item in report.skipped))  # fmt: skip
+    if packaged and not report.backing_files:
+        # As --against is, rather than a paper all of whose numbers are "not found" (round 1
+        # of #487).
+        return _audit_refused(args, "--package: its results files gave the audit nothing it "
+                              "can read:", *(f"  {item}" for item in report.skipped))
     if not report.papers:
         # "Audited 0 file(s) … 0 not found" read as a clean report, and exited 0 under
         # --strict, when every paper given was unreadable.

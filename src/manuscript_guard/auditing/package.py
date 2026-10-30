@@ -179,8 +179,10 @@ def _sums(read: PackageRead) -> dict[str, str] | None:
 
 def _held(read: PackageRead, listed: dict[str, dict], sums: dict[str, str] | None) -> None:
     """Each file the manifest or SHA256SUMS lists, there with the bytes and digest each
-    records; said once a file."""
-    names = [*listed, *(name for name in sums or {} if name not in listed)]
+    records; said once a file. The manifest's own line of SHA256SUMS is held once, below
+    (round 1 of #487: it was held here as well, and an edited manifest counted twice)."""
+    names = [*listed, *(name for name in sums or {}
+                        if name not in listed and name not in (MANIFEST, SUMS))]  # fmt: skip
     for name in names:
         path = _inside(read.root, name)
         entry = listed.get(name)
@@ -244,7 +246,8 @@ def _results(read: PackageRead, manifest: dict | None) -> None:
         return
     read.results_dir = folder
     withheld = {str(held["path"]) for held in (manifest or {}).get("withheld") or []}
-    for path in sorted(folder.glob("*.json")):
+    # A file only: a folder named as one is no results file (round 1 of #487).
+    for path in sorted(p for p in folder.glob("*.json") if p.is_file()):
         read.results += 1
         _result(read, path, withheld)
 
@@ -332,6 +335,12 @@ def _verification(read: PackageRead) -> None:
         record = json.loads(path.read_text(encoding="utf-8"))
         check, digests = record["check"], record["digests"]
         gates = check["gates"]
+        # Of the shape `deposit` writes, or said unreadable: a list where a mapping is, or a
+        # digest that is no string, raised on the way (round 1 of #487).
+        if not (isinstance(check, dict) and isinstance(gates, dict)
+                and isinstance(digests, dict)):  # fmt: skip
+            raise ValueError("its check, gates or digests are not of the shape deposit writes")
+        computed = results_digest(read.results_dir or read.root / "results")
     except (OSError, ValueError, KeyError, TypeError) as exc:
         read.say("package-verification-unreadable", f"{VERIFICATION} cannot be read: {exc}")
         return
@@ -342,8 +351,7 @@ def _verification(read: PackageRead) -> None:
              + (f", failing in {', '.join(failing)}" if failing else "")
              + ": the authors' check, quoted and not run again; its digests of the manuscript "
              "and of the title page are of the authors' project, and not recomputed", INFO)
-    folder = read.results_dir or read.root / "results"
-    if digests.get("results_sha256") != results_digest(folder):
+    if digests.get("results_sha256") != computed:
         read.say("package-verification-differs", f"{VERIFICATION} records a digest of the "
                  "results that the results packaged do not give (a results file withheld, "
                  "or one changed since)")  # fmt: skip
@@ -383,7 +391,11 @@ def render(read: PackageRead, show) -> list[str]:
                 lines.append(f"  {item.message}")
                 if item.context:
                     lines.append(f"      {item.context}")
-    if not any(item.counted for item in read.found):
+    counted = any(item.counted for item in read.found)
+    if not read.listed and not counted:
+        # Not "each file listed" of none (round 1 of #487).
+        lines.append("  Nothing was held to the manifest: the manifest lists no file.")
+    elif not counted:
         lines.append("  Each file listed was read with the bytes and SHA-256 listed, and no "
                      "result read records a script other than the one packaged.")  # fmt: skip
     return [*lines, "", WORDING]

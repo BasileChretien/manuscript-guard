@@ -64,6 +64,7 @@ DOCUMENT = "Document"
 CAUSAL = "Causal words"
 CITED = "Cited sentences"
 SELF_CITATION = "Self-citation"
+PACKAGE = "Package"
 #: What the report says at its top where no outputs were given.
 NO_OUTPUTS = "No outputs given: no number was compared with the analysis"
 #: How many items of one kind are listed for one file before only a count.
@@ -181,7 +182,8 @@ def items(report) -> list[Item]:
         ]  # fmt: skip
     return (found + _journal_items(report.journal) + _document_items(report)
             + _causal_items(report.causal) + _cited_items(report.cited)
-            + _self_citation_items(report.self_citation))  # fmt: skip
+            + _self_citation_items(report.self_citation)
+            + list(getattr(report.package, "found", [])))  # fmt: skip
 
 
 def _printed_items(census) -> list[Item]:
@@ -405,6 +407,7 @@ def as_json(report, discrimination) -> str:
         **_abstract_counts(report.abstract),
         "reference_entries": sum(len(c.entries) for c in report.references),
         **_reader_counts(report),
+        **_package_counts(report.package),
     }
     worth = None
     if discrimination is not None and report.compared:
@@ -425,6 +428,7 @@ def as_json(report, discrimination) -> str:
                 "integers_1_1000": abstract.medium_integers,
                 "two_decimals": abstract.two_decimals,
                 "verdict": abstract.verdict()},
+            **({} if report.package is None else {"package_said": _package_said()}),
             "findings": [placed(item.as_dict(), item.path, item.line, report.pdfs)
                          for item in listed],
         },
@@ -432,6 +436,20 @@ def as_json(report, discrimination) -> str:
         # As `check --json`: a pipe on Windows is cp1252.
         ensure_ascii=True,
     )
+
+
+def _package_said() -> str:
+    from manuscript_guard.auditing.package import WORDING
+
+    return WORDING
+
+
+def _package_counts(read) -> dict[str, int]:
+    if read is None:
+        return {}
+    from manuscript_guard.auditing.package import counts
+
+    return counts(read)
 
 
 def _reader_counts(report) -> dict[str, int]:
@@ -587,6 +605,10 @@ def render(report, discrimination, root: Path | None = None) -> str:
     if report.self_citation is not None:
         lines += ["", f"=== {SELF_CITATION} (not counted by --strict) ===",
                   *_self_citation(report.self_citation)]  # fmt: skip
+    if report.package is not None:
+        from manuscript_guard.auditing.package import render as package
+
+        lines += ["", f"=== {PACKAGE} ===", *package(report.package, show)]
     lines.append("")
     if report.compared:
         lines.append(

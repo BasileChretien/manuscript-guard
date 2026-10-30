@@ -8209,6 +8209,77 @@ references whose record's journal is the profile's `name`, both folded (case, ac
 punctuation, "&", a leading "The"). Counts and the entries, never a ratio or a verdict. With
 `--authors` and no `--lookup`, "not counted": the reference text is not read for names.
 
+### A package held to its own manifest, and the report draft (2026-10-30)
+
+**`--package PKG.zip|DIR`** (`auditing.package`, opened by `auditing.unpack`) reads the
+package `manuscript-guard package` writes, which some journals ask authors for. The paper is
+optional with it: alone, the package is read and nothing else. A .zip is opened as an untrusted
+archive: every member is read from its central directory first, and the whole is refused,
+nothing unpacked, on every system, where a member is named from the root or a drive (`/x`,
+`C:x`), has `..`, an empty or a `.` part, a backslash, a NUL or a line break (any
+`str.splitlines()` ends a line at, so that no name splits a line of SHA256SUMS) in its name, is both a file and
+a folder of other members, is a symbolic link or encrypted, or shares its name with another
+but for case, or where the archive holds more than 50,000 members or 16 GiB unpacked. A
+backslash is refused everywhere though it is a plain character to POSIX: Windows reads it as a
+separator, and so does `package`'s own reading of a path on any system (`plan.inside`), so one
+name would be two paths. On Windows only, a name its file system cannot hold is refused too: a
+colon, one of `<>"|?*`, a control character, a part ending in a stop or a space, a part kept
+for a device (`COM¹` and spaces before the stop included, as Python's own reserved-name check
+has them). Elsewhere those names are files like any other: a Linux project's `analysis/aux.R`
+packages, and was refused on Linux (round 2 of #487). The members are then written into a new
+temporary folder, each no larger than its entry says, a member the file system cannot hold all
+the same refusing the package with a sentence (round 1 found one ending in an unexpected
+error), and the folder is removed when the audit ends. A folder is
+read where it is, and refused where it holds a link or a junction. The manifest is found at the
+top or in the one folder there, as `package` zips it.
+
+What is read: `MANIFEST.yaml` against its schema (`contracts/schemas/package.schema.json`,
+which the writer's output is tested against); each file it lists, by its size and SHA-256; each
+line of `SHA256SUMS`, its digest against the file and the manifest's, the manifest's own line
+among them; the files neither lists; `checks: SKIPPED`; the withheld list, as notes; each
+`results/*.json` (the folder the packaged `paper.yaml` names) against its `.sha256`, and its
+`generated_by_sha256` against the script at `generated_by` in the package, by
+`emit.source_digest_matches`, line endings left out as G1 leaves them; a harvested results
+file's receipt, where the package holds it, by its digest and by the output digest of the run
+its key names; and `VERIFICATION.json`, its `check` quoted as the authors' and its
+`results_sha256` against `assurance.results_digest` of the packaged results. Its digests of the
+manuscript and of the title page are of the authors' project, which a package need not hold,
+and are said not to be recomputed. With a paper, the packaged results files are given to the
+audit as `--against` would give them, beside any `--against` names.
+
+`--strict` counts (decision 8): a listed file missing or with other bytes, a manifest that
+cannot be read or is not of the schema (the check did not happen, as an unreadable paper does
+not), a results file whose bytes are not those its `.sha256` records, and one whose script is
+not the one packaged beside it. A script not in the package, a results file with no `.sha256`
+or no digest of its script, an unlisted file, a missing `SHA256SUMS`, a skipped check and a
+receipt or a `VERIFICATION.json` that disagrees are warnings: each may have a reason the
+package states (a withheld file), and decision 8 names only the first kinds. The section ends,
+every time, with the wording the design gave (`package.WORDING`): whole as written, nothing of
+who made it, and `verify` runs the authors' code, in a container or a virtual machine, only
+where the inputs are packaged. `verify` is never run, and nothing is sent: Zenodo's own
+checksums by DOI are a later step (decision 11).
+
+**`--report-draft FILE.md`** (`auditing.draft`), on `audit` and on `compare`, writes the
+findings as the start of the reader's report. It is a function of the report: no clock, no
+opinion, the same bytes from the same files. Its first line is `draft.FIRST`; then what was
+read (the files and their format, the headings, tables, reference entries and numbers the
+audit read, counted in `AuditReport.read`, the options given, files by their names) and what
+was not checked (the reporting checklist, the models, the results without outputs, figures not
+given, author-year citations, the registries without `--lookup`, the Abstract where it was not
+compared, the journal's rules read from a project, and a package's analysis; a PDF's tables
+join them with the PDF reader); the exact findings,
+the items `--strict` counts, each with its place and context; the further findings, warnings
+then notes, by section; the references (the census, G7's findings and standing, the
+cited-sentences file and the self-citation counts); G6 and G14 grouped by gate, code and
+severity, with their count and first three places; and the checks that ran and reported
+nothing, each with what it read, "read none" where that was nothing. A check with any item is
+left out of that last part, so it never says a paper is clean. For `compare`, the exact
+findings are the items of v2's audit that `audit --strict` would count (`Comparison.exact`),
+with their marks; the differences are the further findings, a part's "same" left out. The
+file must end in `.md`, must not exist and must not be a file the command reads, and is opened
+with mode "x". Both options are reader options (`READER_FLAGS`): the notice prints and the
+hook asks.
+
 ## A revision read beside the version before it
 
 `compare OLD NEW` is the one new command of the editor and referee layer (decision 1): a referee
@@ -19536,6 +19607,39 @@ What papers converted from Word showed (see "What papers converted from Word sho
     `#`, a list item's number) is read as such.
   - A figure's labels, where the PDF draws them as text, are read as the paper's text.
   - A PDF in a folder is not read, though it may be the paper; it is counted in a note.
+- **A package read by `audit --package` is held to its own manifest, which the authors
+  wrote.**
+  - Anyone who changes a file can write a new manifest and new `.sha256` files: a consistent
+    rewrite passes every check of the files. A results file's record of its script's digest is
+    the one check that crosses files, and a rewrite of the results with it passes too. Nothing
+    says who made the package or when; Zenodo's per-file checksums by DOI would (decision 11).
+  - `VERIFICATION.json`'s gate counts are quoted, not checked again: they are the authors'
+    `check --stage submission`, which needs their project. Its digests of the manuscript and of
+    the title page are not recomputed; its results digest differs wherever a results file was
+    withheld, and the warning says so.
+  - Nothing is run. Whether the scripts write the results they are packaged beside is what
+    `verify` answers, and it is the reader's to run, in a container or a virtual machine.
+  - Only the results folder's own `*.json` files are read as results, as `load_results` reads
+    them; a results file in a subfolder is a file like any other.
+  - A receipt is read only where the package holds it at the path the results file names;
+    `package` does not pack `receipts/`, so a harvested result is usually said to have its
+    receipt not packaged.
+  - The limits on a .zip (50,000 members, 16 GiB) are a guard against an archive made to fill
+    the disk, not a judgement: a larger package is refused, and can be unpacked by hand and
+    given as a folder. A folder's junction is seen only on Python 3.12 and later.
+  - A name holding a line break is refused in a .zip only. A folder given on POSIX can hold a
+    file whose name has one (U+2028, say), and its line of SHA256SUMS is then read as two,
+    with false warnings that the line is not a digest and a path and that the file is listed
+    nowhere.
+- **The report draft is the report's findings laid out, and says no more than they do.**
+  - What a check read is counted where the audit counts it: the tables pandoc reads, the tests
+    whose P can be judged, the intervals and the n (%) of tables. A check that read something
+    and reported nothing says so with that count; one whose reading is not counted (G6 and G14)
+    says "its words read".
+  - A check is listed as finding nothing where it raised no warning and no failure; its notes
+    (a number of the Abstract matched only as a rounding) stand under the further findings. A
+    check that did not run (the Abstract not compared, no outputs given) is not listed there
+    at all: the note that says so is a further finding, and "What was not checked" names it.
 - **A record of the tool's own failure holds what the scrub caught out of it, and no more.**
   - The scrub replaces exact strings and a few patterns: the project's folder (the one the
     command names, else the working folder's), the home, temp and Python folders in the

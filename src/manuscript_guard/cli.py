@@ -2123,7 +2123,8 @@ def _reader(args: argparse.Namespace) -> _Reader | int | None:
     from manuscript_guard.auditing.journal import english_of, read_authors, read_profile
 
     if args.journal is None and args.authors is None:
-        if args.design is not None or args.cited is not None:
+        if any(value is not None for value in (args.design, args.cited, args.package,
+                                               args.report_draft)):  # fmt: skip
             print(NOTICE, file=sys.stderr)
         return None
     if args.journal is None:
@@ -2244,13 +2245,125 @@ def _read_as_reader(report, reader: _Reader, main: Path, papers: list[Path],
     report.journal = run
 
 
+#: The options that read a paper, refused with `--package` and no paper.
+_READ_A_PAPER = ("against", "figures", "journal", "authors", "design", "cited", "lookup",
+                 "whole_numbers", "minimum_cell_count", "english", "submission_residue")
+
+
+def _flags_given(args: argparse.Namespace, names: tuple[str, ...]) -> list[str]:
+    """The options given, as the report draft lists them: a file by its name."""
+    said = []
+    for name in names:
+        value = getattr(args, name, None)
+        if value is None or value is False or value == []:
+            continue
+        flag = "--" + name.replace("_", "-")
+        values = value if isinstance(value, list) else [value]
+        shown = [v.name if isinstance(v, Path) else str(v) for v in values if v is not True]
+        said.append(" ".join([flag, *shown]))
+    return said
+
+
+#: The options of `audit` and `compare` the report draft names, in the order they are listed.
+_AUDIT_FLAGS = ("against", "figures", "english", "submission_residue", "lookup", "dry_run",
+                "whole_numbers", "minimum_cell_count", "journal", "authors", "design", "cited",
+                "package", "strict")  # fmt: skip
+_COMPARE_FLAGS = ("response", "comments")
+
+
+def _draft_refused(args: argparse.Namespace, given: list[Path], command: str) -> int | None:
+    from manuscript_guard.auditing.draft import refused
+
+    said = refused(args.report_draft, given) if args.report_draft is not None else ""
+    return _audit_refused(args, f"manuscript-guard {command}: {said}") if said else None
+
+
+def _write_draft(args: argparse.Namespace, text: str, command: str) -> bool:
+    """The report draft written to `--report-draft`; False, said on stderr, where not."""
+    from manuscript_guard.auditing.draft import write
+
+    try:
+        write(args.report_draft, text)
+    except FileExistsError:
+        print(f"manuscript-guard {command}: --report-draft {args.report_draft} is there "
+              "already, and was not written over", file=sys.stderr)  # fmt: skip
+        return False
+    except OSError as exc:
+        print(f"manuscript-guard {command}: --report-draft {args.report_draft} could not be "
+              f"written: {exc.strerror or exc}", file=sys.stderr)  # fmt: skip
+        return False
+    print(f"manuscript-guard {command}: the report draft is in {args.report_draft}",
+          file=sys.stderr)  # fmt: skip
+    return True
+
+
 def cmd_audit(args: argparse.Namespace) -> int:
-    """Check an existing paper's numbers against existing outputs, and what needs none.
+    """Check an existing paper's numbers against existing outputs, and what needs none; and
+    with `--package`, a package held to its own manifest (`auditing.package`)."""
+    from manuscript_guard.auditing.package import check
+    from manuscript_guard.auditing.unpack import Refused, opened
+
+    if not args.paper and args.package is None:
+        return _audit_refused(args, "manuscript-guard audit: name a paper, or a package with "
+                              "--package")  # fmt: skip
+    if not args.paper:
+        named = _flags_given(args, _READ_A_PAPER)
+        if named:
+            return _audit_refused(args, f"manuscript-guard audit: {named[0].split()[0]} reads "
+                                  "a paper: name one before --package")  # fmt: skip
+    given = [*args.paper, *(args.against or []), *(args.figures or []),
+             *(path for path in (args.journal, args.authors, args.package, args.cited) if path)]
+    refused = _draft_refused(args, given, "audit")
+    if refused is not None:
+        return refused
+    if args.package is None:
+        return _audit(args, None)
+    if not args.package.exists():
+        return _audit_refused(args, f"manuscript-guard audit: {args.package} does not exist")
+    try:
+        with opened(args.package) as root:
+            return _audit(args, check(args.package, root))
+    except Refused as exc:
+        return _audit_refused(args, f"manuscript-guard audit: --package {exc}")
+
+
+def _package_only(args: argparse.Namespace, package) -> int:
+    """`audit --package` with no paper: the package alone."""
+    import json
+
+    from manuscript_guard.auditing import NOTICE
+    from manuscript_guard.auditing.package import WORDING, counts, render
+    from manuscript_guard.auditing.report import PACKAGE, _shown
+
+    print(NOTICE, file=sys.stderr)
+    show = _shown(Path.cwd())
+    counted = any(item.counted for item in package.found)
+    if args.json:
+        print(json.dumps({"ok": not counted, "compared": False, "counts": counts(package),
+                          "package_said": WORDING,
+                          "findings": [item.as_dict() for item in package.found]},
+                         indent=2, ensure_ascii=True))  # fmt: skip
+        print(WORDING, file=sys.stderr)
+    else:
+        print("\n".join([f"=== {PACKAGE} ===", *render(package, show)]))
+    if args.report_draft is not None:
+        from manuscript_guard.auditing.draft import for_package
+
+        if not _write_draft(args, for_package(package, _flags_given(args, _AUDIT_FLAGS), show),
+                            "audit"):  # fmt: skip
+            return 2
+    return 1 if args.strict and counted else 0
+
+
+def _audit(args: argparse.Namespace, package) -> int:
+    """`audit` of the papers given, with the package `--package` read, if any.
 
     For papers that were never written with this toolkit. Weaker than `check` by nature,
     and the report says how much weaker, measured against the outputs supplied. Without
     outputs no number is compared, and the rest is read all the same.
     """
+    if not args.paper:
+        return _package_only(args, package)
     from manuscript_guard.audit import (
         FIGURE_SUFFIXES,
         FOLDER_SUFFIXES,
@@ -2340,14 +2453,24 @@ def cmd_audit(args: argparse.Namespace) -> int:
         return _audit_refused(args, "manuscript-guard audit: "
                               + NO_PDFTOTEXT.format(name=unread_pdf.name))  # fmt: skip
 
-    report = audit(papers, args.against, figures=figures,
+    # The package's results files, as --against would name them, beside any it names.
+    packaged = (sorted(p for p in package.results_dir.glob("*.json") if p.is_file())
+                if package is not None and package.results_dir is not None else [])
+    against = [*(args.against or []), *packaged] or None
+    report = audit(papers, against, figures=figures,
                    whole_numbers=tuple(args.whole_numbers), passed_over=docs,
                    found_tex=found_tex, minimum=args.minimum_cell_count,
                    design=args.design, cited=args.cited is not None)  # fmt: skip
     report.passed_over += pdfs_said
+    report.package = package
     if args.against and not report.backing_files:
         return _audit_refused(args, "--against gave the audit nothing it can read:",
                               *(f"  {item}" for item in report.skipped))  # fmt: skip
+    if packaged and not report.backing_files:
+        # As --against is, rather than a paper all of whose numbers are "not found" (round 1
+        # of #487).
+        return _audit_refused(args, "--package: its results files gave the audit nothing it "
+                              "can read:", *(f"  {item}" for item in report.skipped))
     if not report.papers:
         # "Audited 0 file(s) … 0 not found" read as a clean report, and exited 0 under
         # --strict, when every paper given was unreadable.
@@ -2376,9 +2499,19 @@ def cmd_audit(args: argparse.Namespace) -> int:
             )  # fmt: skip
     if args.cited is not None and not _write_cited(report, args):
         return 2
-    discrimination = measure_discrimination(report.backing_values) if args.against else None
+    discrimination = measure_discrimination(report.backing_values) if against else None
+    if args.report_draft is not None:
+        from manuscript_guard.auditing.draft import for_audit
+
+        text = for_audit(report, _flags_given(args, _AUDIT_FLAGS), sections._shown(Path.cwd()))
+        if not _write_draft(args, text, "audit"):
+            return 2
     if args.json:
         print(sections.as_json(report, discrimination))
+        if package is not None:
+            from manuscript_guard.auditing.package import WORDING
+
+            print(WORDING, file=sys.stderr)
     else:
         print(sections.render(report, discrimination, Path.cwd()))
     if not report.examined:
@@ -2402,6 +2535,11 @@ def cmd_compare(args: argparse.Namespace) -> int:
     from manuscript_guard.comparing.versions import Unreadable
 
     print(NOTICE, file=sys.stderr)
+    refused = _draft_refused(args, [path for path in (args.old, args.new, args.response,
+                                                      args.comments, args.out) if path],
+                             "compare")  # fmt: skip
+    if refused is not None:
+        return refused
     if args.out is not None and args.out.exists():
         return _audit_refused(args, f"manuscript-guard compare: {args.out} is there already, "
                               "and compare writes over nothing: name another file")  # fmt: skip
@@ -2410,6 +2548,13 @@ def cmd_compare(args: argparse.Namespace) -> int:
     except Unreadable as exc:
         return _audit_refused(args, f"manuscript-guard compare: {exc}")
     said = as_json(found) if args.json else render(found, Path.cwd())
+    if args.report_draft is not None:
+        from manuscript_guard.auditing.draft import for_compare
+        from manuscript_guard.auditing.report import _shown
+
+        text = for_compare(found, _flags_given(args, _COMPARE_FLAGS), _shown(Path.cwd()))
+        if not _write_draft(args, text, "compare"):
+            return 2
     if args.out is None:
         print(said)
         return 0
@@ -5944,10 +6089,11 @@ def build_parser() -> argparse.ArgumentParser:
         "each other, the words (G6, G14) and the reference list (G7).",
     )
     audit.add_argument(
-        "paper", nargs="+", type=Path,
+        "paper", nargs="*", type=Path,
         help=".docx, .md, .tex or .pdf files, or directories; a .tex is read with the files "
         "it inputs, and in a directory only a .tex with \\documentclass starts a paper; a .pdf "
-        "is read through pdftotext, and only where it is named",
+        "is read through pdftotext, and only where it is named; none with --package reads the "
+        "package alone",
     )  # fmt: skip
     audit.add_argument(
         "--against",
@@ -6050,13 +6196,33 @@ def build_parser() -> argparse.ArgumentParser:
         "manuscript, and the report gives counts only",
     )
     audit.add_argument(
+        "--package",
+        type=Path,
+        metavar="PKG",
+        help="a package `manuscript-guard package` wrote (its .zip, unpacked safely into a "
+        "temporary folder, or its folder), held to its own MANIFEST.yaml and SHA256SUMS, each "
+        "result to its .sha256 and to the script packaged beside it; with a paper, the paper's "
+        "numbers are looked for among its results; nothing in it is run "
+        "(docs/refereeing.md)",
+    )
+    audit.add_argument(
+        "--report-draft",
+        type=Path,
+        metavar="FILE",
+        help="also write the findings and their places to FILE (.md, which must not exist "
+        "yet), as the start of your report: what was read and not checked, the exact "
+        "findings, the rest by section, and each check that found nothing with what it read",
+    )
+    audit.add_argument(
         "--strict",
         action="store_true",
         help="exit 1 if a number is in no output given, a paper, a figure or a stretch of "
         "one could not be read, no number was read, a table's total is not what its counts "
         "add up to, a characteristic's categories add up to more than their column's n, a "
-        "printed total gives away a count held back, or --authors finds an author named in a "
-        "document the journal reviews blind; nothing else is counted",
+        "printed total gives away a count held back, --authors finds an author named in a "
+        "document the journal reviews blind, or a file of --package differs from what it "
+        "lists or a result of it was not written by the script packaged beside it; nothing "
+        "else is counted",
     )
     audit.set_defaults(func=cmd_audit)
 
@@ -6100,6 +6266,13 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         metavar="FILE",
         help="write the report to FILE, which must not exist yet, rather than to the screen",
+    )
+    compare.add_argument(
+        "--report-draft",
+        type=Path,
+        metavar="FILE",
+        help="also write the findings and their places to FILE (.md, which must not exist "
+        "yet), as the start of your report, with no opinion in it",
     )
     compare.set_defaults(func=cmd_compare)
 

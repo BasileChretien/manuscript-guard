@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://manuscript-guard.org/schemas/package/1",
+  "title": "manuscript-guard package manifest (MANIFEST.yaml)",
+  "description": "Written by `manuscript-guard package` (`deposit/write.py`): every file of the package with its size and SHA-256, and every file left out and why. `audit --package` reads it as the package's own record of itself; it is the authors', and anyone who changes a file can write another (DESIGN.md, Known gaps).",
+  "type": "object",
+  "required": ["schema", "files"],
+  "properties": {
+    "schema": {"const": "manuscript-guard/package/1"},
+    "title": {"type": "string"},
+    "package": {"type": "string"},
+    "doi": {"type": "string"},
+    "packaged_with": {"type": "string"},
+    "checks": {"type": "string"},
+    "with_manuscript": {"type": "boolean"},
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["file", "bytes", "sha256"],
+        "properties": {
+          "file": {"type": "string", "minLength": 1},
+          "bytes": {"type": "integer", "minimum": 0},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      }
+    },
+    "withheld": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "why"],
+        "properties": {"path": {"type": "string"}, "why": {"type": "string"}}
+      }
+    }
+  }
+}

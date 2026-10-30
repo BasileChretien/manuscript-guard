@@ -11,8 +11,8 @@ Journals and publishers forbid putting a submitted manuscript into an AI tool th
 keep it confidential. The audit's report quotes the manuscript's lines, so the same holds for
 the report: do not paste it into a chat with a model, and do not let a coding agent run the
 audit or read its output. Run it yourself, in a terminal no agent can read. When `--journal`,
-`--authors`, `--design` or `--cited` is given, the audit says so on stderr, and the plugin's
-hook asks you before an agent runs it. The paper-audit skill tells an agent to stop on a paper you were sent to review
+`--authors`, `--design`, `--cited`, `--package` or `--report-draft` is given, the audit says
+so on stderr, and the plugin's hook asks you before an agent runs it. The paper-audit skill tells an agent to stop on a paper you were sent to review
 or to handle, and to give you the commands instead. `compare`, which sets a revision beside
 the version before it, says the same every time it runs, and the hook asks about it too.
 
@@ -264,17 +264,90 @@ read. Nothing is sent: the comparison has no `--lookup`. It prints the confident
 every time, and the plugin's hook asks you before an agent runs it, since its report quotes
 both versions.
 
+## A package
+
+```bash
+manuscript-guard audit --package package.zip
+manuscript-guard audit paper.docx --package package.zip --strict
+```
+
+Some journals ask the authors for the package `manuscript-guard package` writes: the analysis
+scripts, the results they wrote and what they ran with, with `MANIFEST.yaml` listing each file
+by its size and SHA-256. `--package` takes the .zip or the unpacked folder. A .zip is read
+member by member before anything is unpacked, and refused whole where a member is named from
+the root or a drive, has `..`, an empty or a `.` part, a backslash, a NUL or a line break in its name, is
+both a file and a folder of other members, is a link or encrypted, where two names differ only
+in case, or where the archive holds more than 50,000 members or 16 GiB. On Windows, a name its
+file system cannot hold is refused as well (a colon, one of `<>"|?*`, a control character, a
+part ending in a stop or a space, a device's name such as `CON`); elsewhere it is read like any
+other. The rest is unpacked into a temporary folder that is removed afterwards, and a member
+that cannot be written there all the same refuses the package. A folder holding a link is
+refused.
+
+The report gains a section, "Package", which reads:
+
+- `MANIFEST.yaml` against its schema, and each file it lists, there with the bytes and the
+  SHA-256 it lists (`package-file-missing`, `package-file-changed`);
+- `SHA256SUMS`, the same files and digests, the manifest's own among them;
+- each file neither lists (a warning), a manifest that says the checks were skipped (a
+  warning), and what was withheld, and why (a note);
+- each results file against its `.sha256`, and the digest of the script it records against
+  the script the package holds where the results file says it was written
+  (`package-result-not-by-script`);
+- for a results file harvested under a site's receipt, the receipt's digest of the output
+  against the one the results file was read from;
+- `VERIFICATION.json`, where a deposit wrote one: its `check --stage submission` quoted as the
+  authors' check, not run again, and its digest of the results against the results packaged.
+
+With a paper, the paper's numbers are looked for among the package's results files, as
+`--against` would look for them. Whatever it finds, the section ends with this, every time:
+
+> Every file is the one the package's own manifest lists, and each result names the script
+> packaged beside it. That shows the package is whole as written. Anyone who changes a file
+> can write a new manifest, so it says nothing of who made the package or whether the analysis
+> is right. `manuscript-guard verify`, run in the unpacked folder, re-runs the analysis: that
+> runs the authors' code on your machine, so do it in a container or a virtual machine, and
+> only where the inputs are packaged.
+
+Nothing in the package is run, and nothing is sent: the package is held to its own manifest
+only, not to a copy a repository keeps.
+
+## A report draft
+
+```bash
+manuscript-guard audit paper.docx --lookup --report-draft draft.md
+manuscript-guard compare paper-v1.docx paper-v2.docx --report-draft draft.md
+```
+
+`--report-draft FILE.md` writes, besides the report, a Markdown file to start your own report
+from. Its first line is "Draft from manuscript-guard <version>: findings and their places only;
+the judgement is yours." It holds no opinion: what was read (the files, their format, their
+headings, tables and reference entries, the options given) and what was not checked (the
+reporting checklist, the models, the results unless outputs or a package were given, figures
+not given, citations by author and year, the registries without `--lookup`); the exact
+findings, those `--strict` counts, each with its place and the line it stands on; the further
+findings, warnings and then notes, by section; the references; G6's and G14's findings grouped
+by code, with their counts and first places; and the checks that ran and found nothing, each
+with what it read ("3 tables read, and it reported nothing"), or "read none" where it read
+nothing. It never says a paper has no problems. For `compare`, the exact findings are those of
+the revision's audit that `audit --strict` would count, each marked new in v2 or standing in
+v1. The same files give the same draft, and it is written to a file that is not there yet,
+never over one. It quotes the manuscript, so keep it as you keep the manuscript.
+
 ## What `--strict` counts
 
-What [Auditing a paper you already wrote](audit.md) lists, and an author named in a document
-the journal reviews blind. Not the journal's limits or missing statements, which a journal
-may count otherwise than this tool does, nor what the Document section counts, nor the causal
-words, the cited sentences or the self-citation counts. `compare` has no `--strict`: none of
-what it reports is counted.
+What [Auditing a paper you already wrote](audit.md) lists, an author named in a document the
+journal reviews blind, and with `--package` a file missing or different from what the package
+lists, a manifest that cannot be read, and a results file that is not the file its `.sha256`
+records or whose script is not the one packaged beside it. Not the journal's limits or
+missing statements, which a journal may count otherwise than this tool does, nor what the
+Document section counts, nor the causal words, the cited sentences, the self-citation counts
+or the package's warnings. `compare` has no `--strict`: none of what it reports is counted.
 
 ## What is not checked
 
 The reporting checklist (CONSORT, STROBE and the rest) needs the authors' completed checklist,
 and the model checks need the analysis's model cards: neither is in a submitted manuscript,
-and the report does not pretend otherwise. The limits of each check are in
+and the report does not pretend otherwise. A package's analysis is not run, and the package
+is held to its own manifest, which the authors wrote. The limits of each check are in
 [DESIGN.md](../DESIGN.md), under "Known gaps".

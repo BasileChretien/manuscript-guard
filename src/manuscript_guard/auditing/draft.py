@@ -292,10 +292,11 @@ def _package_checks(package) -> list[tuple[str, str, int]]:
     on_files = [i for i in package.found if i.code in (
         "package-manifest-invalid", "package-file-missing", "package-file-changed",
         "package-file-unlisted", "package-sums-differ", "package-sums-missing")]  # fmt: skip
+    # A receipt or a VERIFICATION.json quoted in a note is not a finding.
     on_results = [i for i in package.found if i.code.startswith("package-result")
                   or i.code == "package-script-missing"
-                  or (i.code.startswith("package-receipt") and i.severity != INFO)
-                  or i.code.startswith("package-verification")]  # fmt: skip
+                  or (i.code.startswith(("package-receipt", "package-verification"))
+                      and i.severity != INFO)]  # fmt: skip
     return [
         ("Package files against MANIFEST.yaml and SHA256SUMS", _read(package.files, "file"),
          len(on_files)),

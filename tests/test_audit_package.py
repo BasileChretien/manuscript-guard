@@ -708,3 +708,19 @@ def test_a_verification_digest_that_differs_is_found_in_the_draft(tmp_path, caps
     capsys.readouterr()
     nothing = target.read_text(encoding="utf-8").split("## Checks that ran and found nothing")[1]
     assert "Package results" not in nothing
+
+
+def test_a_verification_record_that_holds_leaves_the_results_row_clean(tmp_path, capsys) -> None:
+    # The record is quoted in a note whenever there is one; the quote is not a finding.
+    from manuscript_guard.assurance import results_digest
+
+    root = small_package(tmp_path)
+    digest = results_digest(root / "results")
+    record = {"check": {"passed": True, "gates": {}}, "digests": {"results_sha256": digest}}
+    (root / "VERIFICATION.json").write_text(json.dumps(record), encoding="utf-8")
+    sign(root)
+    target = tmp_path / "d.md"
+    assert main(["audit", "--package", str(root), "--report-draft", str(target)]) == 0
+    capsys.readouterr()
+    nothing = target.read_text(encoding="utf-8").split("## Checks that ran and found nothing")[1]
+    assert "Package results" in nothing

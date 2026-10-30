@@ -114,8 +114,9 @@ def _content(pieces: list[Piece]) -> bytes:
     return b"\n".join(lines)
 
 
-def pdf(pages: list[list[Piece]]) -> bytes:
-    """A PDF of A4-sized pages, each setting its pieces in Helvetica."""
+def pdf(pages: list[list[Piece]], author: str | None = None) -> bytes:
+    """A PDF of A4-sized pages, each setting its pieces in Helvetica, with `author` as the
+    Author of its Info dictionary where it is given (plain ASCII, no brackets)."""
     differences = b"[128 " + b" ".join(b"/" + name.encode() for _c, name in _EXTRA) + b"]"
     widths = b" ".join(b"%d" % w for w in (*_ASCII_WIDTHS, *_EXTRA_WIDTHS))
     font = (b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding << /Type "
@@ -139,6 +140,10 @@ def pdf(pages: list[list[Piece]]) -> bytes:
             b"/Resources << /Font << /F1 3 0 R >> >> >>" % (6 + 2 * index)
         )
         objects.append(b"<< /Length %d >>\nstream\n" % len(stream) + stream + b"\nendstream")
+    info = b""
+    if author is not None:
+        objects.append(b"<< /Author (" + author.encode("ascii") + b") >>")
+        info = b" /Info %d 0 R" % len(objects)
     body = b"%PDF-1.4\n"
     offsets = []
     for number, content in enumerate(objects, start=1):
@@ -147,7 +152,7 @@ def pdf(pages: list[list[Piece]]) -> bytes:
     table = len(body)
     body += b"xref\n0 %d\n0000000000 65535 f \n" % (len(objects) + 1)
     body += b"".join(b"%010d 00000 n \n" % offset for offset in offsets)
-    body += b"trailer\n<< /Size %d /Root 1 0 R >>\n" % (len(objects) + 1)
+    body += b"trailer\n<< /Size %d /Root 1 0 R" % (len(objects) + 1) + info + b" >>\n"
     return body + b"startxref\n%d\n%%%%EOF\n" % table
 
 
@@ -164,12 +169,13 @@ def typeset(
     foot: str | None = None,
     first_page: int | None = None,
     line_numbers: bool = False,
+    author: str | None = None,
 ) -> bytes:
     """Lines of text set as a journal sets them: in columns, `per_column` lines to a column,
     with a running head over each page, a running foot under it with the page's number
     after it (`first_page`, counted on), and the line numbers some proofs print in the
     margin, counted down each column. A line written "^text" is set as a superscript on the
-    line before it, after that line's text."""
+    line before it, after that line's text. `author` is the Info dictionary's Author."""
     pages: list[list[Piece]] = []
     page: list[Piece] = []
     column, row, number = 0, 0, 0
@@ -196,7 +202,7 @@ def typeset(
         row += 1
     if page:
         pages.append(page)
-    return pdf(pages)
+    return pdf(pages, author)
 
 
 def _furniture(index: int, head: str | None, foot: str | None, first: int | None) -> list[Piece]:

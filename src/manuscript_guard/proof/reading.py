@@ -156,7 +156,8 @@ def _pdftotext_name() -> str:
         return "pdftotext"
     said = f"{done.stdout}\n{done.stderr}"
     version = re.search(r"pdftotext version (\S+)", said)
-    family = "Xpdf" if "Glyph & Cog" in said else "poppler" if "oppler" in said else ""
+    # Poppler's says Glyph & Cog's copyright too, under its own.
+    family = "poppler" if "oppler" in said else "Xpdf" if "Glyph & Cog" in said else ""
     name = f"pdftotext {version.group(1)}" if version else "pdftotext"
     return f"{name} ({family})" if family else name
 

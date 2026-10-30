@@ -18,6 +18,10 @@
   other version.
 - **Claims**: each changed sentence that claims more, less or the opposite (`claims.moved`).
 
+A PDF holds no table and no figure as one (`auditing.pdf`): where either version is a PDF, the
+tables and the figures are not compared, and that is said once for each; a PDF's numbers in
+its tables are compared as its prose's.
+
 Each is a fact with its place; none is a verdict, and none is counted by `--strict`.
 """
 
@@ -238,8 +242,26 @@ def _display_item(section: str, code: str, message: str, display: Display) -> It
     return Item(section, GATE, code, message, INFO, False, display.path, display.line)
 
 
+def _pdf_of(old: Version, new: Version) -> Version | None:
+    """The version that is a PDF, v2 before v1, or None."""
+    return next((version for version in (new, old) if version.kind == "PDF"), None)
+
+
+def _not_compared(kind: str, section: str, old: Version, new: Version) -> list[Item]:
+    """What is said where either version is a PDF, in place of comparing its `kind`."""
+    pdf = _pdf_of(old, new)
+    if pdf is None:
+        return []
+    which = "v2" if pdf is new else "v1"
+    return [Item(section, GATE, "displays-not-compared", f"the {kind} are not compared: {which} "
+                 f"is a PDF, whose {kind} are lines of text and not read as {kind}; their "
+                 "numbers are compared as the prose's", INFO, False, pdf.path)]  # fmt: skip
+
+
 def tables(old: Version, new: Version) -> list[Item]:
     """Each table of either version: gone, new, its caption changed, and its cells."""
+    if _pdf_of(old, new) is not None:
+        return _not_compared("tables", TABLES, old, new)
     found: list[Item] = []
     for before, after in _matched(old.tables, new.tables):
         if after is None:
@@ -278,6 +300,8 @@ def tables(old: Version, new: Version) -> list[Item]:
 def figures(old: Version, new: Version) -> list[Item]:
     """Each figure of either version by its label: its caption the same or changed, new or
     gone. Its picture is not compared."""
+    if _pdf_of(old, new) is not None:
+        return _not_compared("figures", FIGURES, old, new)
     found: list[Item] = []
     for before, after in _matched(old.figures, new.figures):
         if after is None:
@@ -312,6 +336,10 @@ def prose(version: Version, *, apart: bool = True) -> tuple[str, Callable[[int],
     lines = version.text.split("\n")
     if apart and version.set_apart:
         lines = ["" if at in version.set_apart else line for at, line in enumerate(lines, 1)]
+    if version.kind == "PDF":
+        # A PDF's heading is a line of its own, which no sentence goes on through.
+        titled = {heading.line for heading in version.sections if heading.level}
+        lines = ["" if at in titled else line for at, line in enumerate(lines, 1)]
     if version.kind == "Word":
         return "\n\n".join(lines), lambda line: (line + 1) // 2
     return "\n".join(lines), lambda line: line
@@ -334,6 +362,8 @@ class _Read:
     def said(self, line: int) -> str:
         """Where a line of the prose stands, in words: "line 4", "results.tex line 2"."""
         path, at = self.version.place(self.line(line))
+        if self.version.pdf is not None and at:
+            return self.version.pdf.said(at)
         named = "" if path == self.version.path else f"{path.name} "
         return f"{named}line {at}" if at else f"{named}at a line not known".strip()
 

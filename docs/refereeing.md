@@ -34,8 +34,37 @@ compare with: each P against the statistic beside it, each estimate against its 
 table's totals and its n (%), the means of whole numbers, a flow printed as a list, the
 Abstract against the Results, a count held back that a total gives away, the words (G6, G14)
 and the reference list, and with `--lookup` each work the registries say was retracted,
-withdrawn or put under concern. It reads a .docx, Markdown and LaTeX; a referee who has only
-the PDF can ask the editor for the source.
+withdrawn or put under concern. It reads a .docx, Markdown, LaTeX and a PDF.
+
+**A PDF.** Most referees are sent a PDF, and the audit reads its text:
+
+```bash
+manuscript-guard audit paper.pdf --design observational --cited cited.md
+```
+
+It needs `pdftotext` (poppler's, or Xpdf's), which [Installing](install.md) lists; without it
+the PDF is refused with a sentence, and nothing is audited. The page's running head and foot,
+its number and the line numbers a manuscript prints in its margin are taken out, and every
+place is a page and a line: "page 3, line 12", the line counted down that page's text as
+read, and "(numbered 145)" where the PDF numbers the line itself. What runs on the text runs
+on a PDF: each P against its statistic, each estimate against its interval, the numbers
+against the outputs `--against` names, the Abstract against the Results, the reference list
+and `--lookup`, the causal words, the cited sentences, and the words (G6, G14). What does not:
+
+- **Tables.** A PDF's table is lines of text, not rows of cells: its numbers are read as the
+  text's, and no total, share, mean or count held back is checked in it.
+- **Headings.** A PDF marks none. A line is read as a heading only where it holds a section's
+  name and nothing else, numbered or not ("Methods", "2. Results", "REFERENCES"). A section
+  under any other title is read as part of the one before. Where one name stands alone on two
+  lines, a structured abstract's own headings perhaps, which is the paper's is not read: the
+  lines are placed in no section, the Abstract is not compared with the Results, and the
+  report says why.
+- **Layout.** A number split by a hyphen at a line's end, or set across two columns, may be
+  read as two; a running head the reading did not recognise is read as text. The two
+  `pdftotext` builds read some PDFs differently, and the report names the one that read it.
+
+A PDF in a folder given to the audit is not read, since one there is as often a figure or a
+copy of the source: name it on its own.
 
 **Causal words.** An observational study shows an association, and a sentence that says one
 thing causes another claims more than its design can show. You declare the design; the tool
@@ -119,7 +148,11 @@ text, from its XML as Word writes it: the tracked insertions, deletions and move
 text, the comments, the runs of text formatted as hidden, and each person's name Word keeps,
 with the field it is in (the document's author and last editor, the author of each tracked
 change and comment, and the people who edited it). None of it is counted by `--strict`: some
-journals ask for a revision with its changes tracked.
+journals ask for a revision with its changes tracked. A PDF holds none of these as Word keeps
+them: the Author of its Info dictionary is read, through `pdfinfo` where it is installed (the
+report says so where it is not), and nothing else it keeps, its other fields, its XMP
+metadata and its annotations among them. A PDF's tables and figures are not counted, so the
+journal's limits on them are listed as not checked.
 
 **`--authors`**, where the profile says the journal's review is double- or triple-blind, names
 the authors to look for, in authors.yaml's shape:
@@ -138,7 +171,8 @@ Each author's name, ORCID iD and e-mail address, and each part of an affiliation
 words or more, is looked for in each document given, the supplement as well as the main
 document, where the build looks for them in a blind submission: in a .docx its text, notes,
 comments, tracked deletions, author fields, links' addresses and pictures' text; in Markdown
-its text; in LaTeX each file of its tree and the PDF and SVG pictures it places. The reference
+its text; in LaTeX each file of its tree and the PDF and SVG pictures it places; in a PDF its
+text and the Author of its Info dictionary. The reference
 list is left out where the audit finds it, since a blind journal asks its authors to cite
 their own work in the third person. Each one found is listed with its place and counted by
 `--strict`. Where the review is not blind, nobody is looked for, and the report says so. A
@@ -159,8 +193,8 @@ manuscript-guard compare paper-v1.docx paper-v2.docx --response letter.docx --co
 ```
 
 `compare` sets the revised manuscript beside the version you read the first time. Both are
-read as `audit` reads a paper (a .docx, Markdown, or a `.tex` with the files it inputs; not a
-PDF yet), and each line of the report is a fact with its place, never a verdict:
+read as `audit` reads a paper (a .docx, Markdown, a `.tex` with the files it inputs, or a
+PDF), and each line of the report is a fact with its place, never a verdict:
 
 - **Sections**, matched by their titles as printed, without their numbers: the same, changed
   (with the words in each version), new, gone, or moved out of the order they stood in.
@@ -176,6 +210,10 @@ PDF yet), and each line of the report is a fact with its place, never a verdict:
 - **v2 audited**: the audit above, run on both versions, each finding of the new one marked
   "stood in v1" where the first version's audit gave the same finding, word for word, and
   "new in v2" otherwise.
+
+Where either version is a PDF, its places are pages and lines, as in the audit, and its
+tables and figures are not compared: the report says so once for each, and never says a table
+is the same. A table or a figure the letter or your comments name is "not compared" there.
 
 **`--response LETTER`** reads the authors' letter (.docx, Markdown or text). Each quotation of
 four words or more, and each block quotation, is looked for in both versions, as whole words

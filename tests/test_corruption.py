@@ -1814,6 +1814,29 @@ def test_an_audit_reads_a_count_only_where_it_is_certain(tmp_path: Path) -> None
     assert main(["audit", str(paper), "--strict"]) == 1
 
 
+@pytest.mark.skipif(shutil.which("pdftotext") is None, reason="pdftotext is not installed")
+def test_an_abstract_that_differs_from_its_results_fails_the_audit_of_a_pdf(
+    tmp_path: Path,
+) -> None:
+    """A/B part 5: a PDF manuscript is read as text, and an interval of its Abstract that
+    differs in one bound from the Results' fails --strict there as in any paper."""
+    import sys
+
+    from manuscript_guard.cli import main
+
+    sys.path.insert(0, str(Path(__file__).parent))
+    from proof_pdf import typeset
+
+    lines = ["Abstract", "Of 412, 77 had it (OR 1.52, 95% CI 1.10-2.10).", "Methods",
+             "We read 412 records.", "Results", "Of 412, 77 had it (OR 1.52, 95% CI 1.10-2.10)."]
+    paper = tmp_path / "paper.pdf"
+    paper.write_bytes(typeset(lines, columns=1))
+    assert main(["audit", str(paper), "--strict"]) == 0
+    paper.write_bytes(typeset([lines[0], lines[1].replace("2.10)", "2.20)"), *lines[2:]],
+                              columns=1))  # fmt: skip
+    assert main(["audit", str(paper), "--strict"]) == 1
+
+
 def test_a_total_its_counts_do_not_add_up_to_fails_an_audit_under_strict(
     tmp_path: Path,
 ) -> None:

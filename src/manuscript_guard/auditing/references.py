@@ -143,9 +143,11 @@ def _unopened(doi: str) -> bool:
     return last in _CLOSING and doi.count(last) > doi.count(_CLOSING[last])
 
 
-def _entries_of(lines: list[str], spans: list[tuple[int, int]], paragraphs: bool) -> list[Entry]:
+def _entries_of(lines: list[str], spans: list[tuple[int, int]], paragraphs: bool,
+                printed: bool = False) -> list[Entry]:  # fmt: skip
     """The entries under each list's heading: a paragraph each in a .docx, and in Markdown
-    a block, or a line that starts with its number."""
+    a block, or a line that starts with its number; with `printed`, each numbered by the
+    number it starts with, not as pandoc counts a list."""
     found: list[tuple[int, list[str], int]] = []
     for list_at, (start, end) in enumerate(spans):
         current: list[str] | None = None
@@ -168,7 +170,7 @@ def _entries_of(lines: list[str], spans: list[tuple[int, int]], paragraphs: bool
         text = " ".join(parts)
         numbered = _NUMBERED_ENTRY.match(text)
         number = int(numbered.group(1) or numbered.group(2)) if numbered else None
-        if paragraphs or not _is_list_item(numbered):
+        if paragraphs or printed or not _is_list_item(numbered):
             run = None
         elif run is not None and _same_list(run, numbered.group(4), list_at):
             counted += 1
@@ -233,14 +235,18 @@ def census_of_text(
     *,
     docx: bool,
     numbering: Mapping[int, tuple[str, bool, int]] | None = None,
+    printed: bool = False,
 ) -> Census:
     """A Markdown, text or .docx paper's census: its lists are `spans` of `original`, its
     citations are read in `hidden`, where the lists are blanked. `numbering` is a .docx's
-    Word numbering, by the line it numbers (`text.docx.DocxText.numbering`)."""
+    Word numbering, by the line it numbers (`text.docx.DocxText.numbering`). `printed` is
+    for a PDF's text: an entry starts at a line that starts with its number, as in Markdown,
+    and that number is the one printed, where pandoc would count a Markdown list on from its
+    first (`auditing.pdf`)."""
     if not spans:
         return Census(path, note="no reference list was found under a heading, so none was "
                       "counted")  # fmt: skip
-    entries = _entries_of(original.split("\n"), spans, paragraphs=docx)
+    entries = _entries_of(original.split("\n"), spans, paragraphs=docx, printed=printed)
     census = Census(path, tuple(entries))
     markers = markers_in(hidden, intervals)
     census.markers = len(markers)

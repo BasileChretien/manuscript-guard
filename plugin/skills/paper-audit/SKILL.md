@@ -106,8 +106,10 @@ runs to -0.30, as it does in R's output. A Markdown paper that writes a range as
 ranges by hand. A `.tex` is read with the files it inputs from its folder, at `.tex` lines;
 in a folder every `.tex` with `\documentclass` starts a paper, an old draft or a LaTeX
 template too, so name the paper's own file when the folder holds others; a file nothing
-inputs is named under `Passed over`. There is no reader for a PDF
-manuscript. `--figures` takes SVG and PDF files with a text layer; one with no text at all,
+inputs is named under `Passed over`. A PDF manuscript named on its own is read through
+`pdftotext` (refused without it), each place a page and a line; its tables are lines of text
+there, so no table's arithmetic is checked, and a line is a heading only where it holds a
+section's name alone. Audit the source where the author has it. `--figures` takes SVG and PDF files with a text layer; one with no text at all,
 such as a matplotlib SVG with its labels drawn as outlines, is listed as unreadable rather
 than audited. `--strict` exits 1 when a number is in no output, a paper, a figure or a
 stretch of one could not be read, no number was read, the arithmetic of a table or a flow is

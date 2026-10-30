@@ -155,7 +155,7 @@ def run_journal(
         staged_profile.parent.mkdir(parents=True)
         staged_profile.write_bytes(profile_path.read_bytes())
         project = replace(project, paper={**project.paper, "target_journal": slug})
-        put_back = _putting_back(root / "manuscript", staged.back)
+        put_back = _putting_back(root / "manuscript", staged.back, staged.lines)
         try:
             found = [*check_journal(project, records=False, cited=cited).sorted().findings,
                      *check_boxes(project, {}, SUBMISSION).sorted().findings]  # fmt: skip
@@ -183,6 +183,10 @@ HTML_TABLES = ("the journal's limits on tables and display items: a table writte
 #: audit read: one indented in a list item, as pandoc writes it there.
 INDENTED_TABLES = ("the journal's limits on tables and display items: a table's rule was not "
                    "read (indented in a list item or in a code block), so not all are counted")
+#: Said where the main document is a PDF, whose tables and figures are lines of text.
+PDF_DISPLAYS = ("the journal's limits on figures, tables and display items: a PDF's tables "
+                "and figures are not read as such, and the words of its tables are counted "
+                "with its text's")
 
 
 def _tables_unread(staged, profile: dict) -> list[str]:
@@ -192,6 +196,9 @@ def _tables_unread(staged, profile: dict) -> list[str]:
     from manuscript_guard.text.tables import count_tables
 
     limits = profile.get("limits") or {}
+    if staged.lines:
+        # A PDF's text, which holds no table and no figure as one (`auditing.pdf`).
+        return [PDF_DISPLAYS] if {"tables", "figures", "display_items"} & set(limits) else []
     if not ({"tables", "display_items"} & set(limits)) or "main.md" not in staged.files:
         return []
     text = staged.files["main.md"]
@@ -221,7 +228,8 @@ def look_for_authors(run: JournalRun, papers: list[tuple[Path, object]], profile
     run.looked = kind
     unread = []
     for paper, tree in papers:
-        places = _places(paper, tree)
+        places = _pdf_places(paper, unread) if paper.suffix.lower() == ".pdf" else (
+            _places(paper, tree))  # fmt: skip
         if isinstance(places, str):
             unread.append(places)
             continue
@@ -233,6 +241,28 @@ def look_for_authors(run: JournalRun, papers: list[tuple[Path, object]], profile
 
 #: What a tracked change deleted is called among the places a name is looked for.
 DELETED = "the text a tracked change deleted"
+
+
+def _pdf_places(paper: Path, unread: list[str]) -> list[tuple[str, str]] | str:
+    """Where in a PDF a name can be: its text as the audit reads it, its reference list cut
+    (`audit.pdf_spans`), and the Author of its Info dictionary, read by `pdfinfo`; where that
+    could not be read, why, in `unread`. Nothing else the PDF keeps is read: its other
+    fields, its XMP metadata, its annotations (DESIGN.md, Known gaps)."""
+    from manuscript_guard.audit import _blank, pdf_spans
+    from manuscript_guard.auditing.pdf import AUTHOR_FIELD, UnreadablePdf, author, read_pdf
+
+    try:
+        pdf = read_pdf(paper)
+    except UnreadablePdf as exc:
+        return f"{paper.name} could not be read for the authors' names: {exc}"
+    places = [("the text", _blank(pdf.text, pdf_spans(pdf)))]
+    name, why = author(paper)
+    if name is None:
+        unread.append(f"{paper.name}: its Author field was not read for the authors' names: "
+                      f"{why}")  # fmt: skip
+    elif name:
+        places.append((AUTHOR_FIELD, name))
+    return places
 
 
 def _places(paper: Path, tree) -> list[tuple[str, str]] | str:

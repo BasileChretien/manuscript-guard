@@ -1594,7 +1594,8 @@ def _opens_report(command: str) -> str | None:
 
 
 _READS_IN_CONFIDENCE = (
-    "`manuscript-guard audit` with --journal or --authors is an editor's or a referee's "
+    "`manuscript-guard audit` with --journal, --authors, --design or --cited is an editor's "
+    "or a referee's "
     "reading of a manuscript someone else wrote, which the journal sent in confidence; its "
     "report quotes the manuscript, and read by an agent it reaches the agent's model "
     "provider, which journals' policies forbid. Run it yourself in a terminal, or say yes if "

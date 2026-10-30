@@ -952,6 +952,8 @@ def test_a_panel_that_asks_or_sends_nothing_is_let_through(
         "manuscript-guard audit paper.docx --journal journal.yaml --authors authors.yaml",
         "cd submission && manuscript-guard audit main.tex \\\n  --journal j.yaml",
         "python -m manuscript_guard.cli audit paper.md --authors a.yaml",
+        "manuscript-guard audit paper.docx --design observational",
+        "mguard audit paper.tex --cited table.md --lookup",
     ],
 )
 def test_an_audit_of_a_manuscript_sent_in_confidence_is_put_to_the_person(

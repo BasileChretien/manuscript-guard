@@ -2116,12 +2116,15 @@ class _Reader:
 
 def _reader(args: argparse.Namespace) -> _Reader | int | None:
     """The profile and the authors `--journal` and `--authors` name, read; None where neither
-    was given; the exit code where the audit is refused for them. With either, the notice
-    that the manuscript is not to reach a model goes to stderr (`auditing.NOTICE`)."""
+    was given; the exit code where the audit is refused for them. With either, or another
+    reader option (`auditing.READER_FLAGS`), the notice that the manuscript is not to reach a
+    model goes to stderr (`auditing.NOTICE`)."""
     from manuscript_guard.auditing import NOTICE
     from manuscript_guard.auditing.journal import english_of, read_authors, read_profile
 
     if args.journal is None and args.authors is None:
+        if args.design is not None or args.cited is not None:
+            print(NOTICE, file=sys.stderr)
         return None
     if args.journal is None:
         return _audit_refused(args, "manuscript-guard audit: --authors goes with --journal, "
@@ -2141,6 +2144,62 @@ def _reader(args: argparse.Namespace) -> _Reader | int | None:
             return _audit_refused(args, f"manuscript-guard audit: {why}")
     print(NOTICE, file=sys.stderr)
     return _Reader(args.journal, profile, authors, english_of(profile))
+
+
+def _cited_refused(target: Path, given: list[Path]) -> str:
+    """Why `--cited` cannot write to `target`, or "": a format it does not write, a file
+    already there, which may hold a referee's judgements, a folder that is not there, or a
+    file the audit reads."""
+    from manuscript_guard.auditing.cited import FORMATS
+
+    if target.suffix.lower() not in FORMATS:
+        return (f"--cited writes Markdown (.md) or HTML (.html), by the file's suffix: "
+                f"{target.name} has neither")  # fmt: skip
+    if target.exists():
+        return (f"--cited {target}: the file is there already, and may hold your judgements; "
+                "name another, or move it away")  # fmt: skip
+    if not target.parent.is_dir():
+        return f"--cited {target}: its folder does not exist"
+    if any(target.resolve() == path.resolve() for path in given):
+        return f"--cited {target}: that is a file the audit reads"
+    return ""
+
+
+def _write_cited(report, args: argparse.Namespace) -> bool:
+    """The cited sentences, with their abstracts where --lookup asks for them, written to
+    the file `--cited` names; False, said on stderr, where it could not be written."""
+    from manuscript_guard.auditing import cited
+    from manuscript_guard.auditing.report import _shown
+
+    read = report.cited
+    if args.lookup:
+        read.fetched = cited.abstracts(read.rows, dry_run=args.dry_run, cache=args.lookup_cache)
+        read.dry_run = args.dry_run
+    if not args.lookup:
+        said = ("Nothing was looked up: with --lookup, each entry with a DOI or a PMID gains the "
+                "registries' title, year and standing, and Europe PMC's abstract.")
+    elif args.dry_run:
+        said = "--dry-run: nothing was sent; the audit's report lists what would be."
+    else:
+        said = ("The title, the year and the standing are what the registries answered "
+                "(Crossref, OpenAlex, DataCite, doi.org, PubMed); each abstract is Europe "
+                "PMC's, asked by the entry's PMID, else its DOI. A registry can be wrong, and "
+                "an abstract is not the paper.")  # fmt: skip
+    try:
+        cited.write(args.cited, read, [path.name for path in report.papers],
+                    report.lookups if args.lookup and not args.dry_run else None,
+                    read.fetched if not args.dry_run else None, said, _shown(Path.cwd()))
+    except FileExistsError:
+        # Made while the audit ran: written over, it would lose what it holds.
+        print(f"manuscript-guard audit: --cited {args.cited}: the file is there already, and "
+              "may hold your judgements; it was not written over", file=sys.stderr)
+        return False
+    except OSError as exc:
+        print(f"manuscript-guard audit: --cited {args.cited} could not be written: {exc}",
+              file=sys.stderr)  # fmt: skip
+        return False
+    read.written = args.cited
+    return True
 
 
 def _read_as_reader(report, reader: _Reader, main: Path, papers: list[Path],
@@ -2246,6 +2305,10 @@ def cmd_audit(args: argparse.Namespace) -> int:
     if missing:
         return _audit_refused(args, *(f"manuscript-guard audit: {path} does not exist"
                                       for path in missing))  # fmt: skip
+    if args.cited is not None:
+        refused = _cited_refused(args.cited, given)
+        if refused:
+            return _audit_refused(args, f"manuscript-guard audit: {refused}")
     reader = _reader(args)
     if isinstance(reader, int):
         return reader
@@ -2262,7 +2325,8 @@ def cmd_audit(args: argparse.Namespace) -> int:
 
     report = audit(papers, args.against, figures=figures,
                    whole_numbers=tuple(args.whole_numbers), passed_over=docs,
-                   found_tex=found_tex, minimum=args.minimum_cell_count)  # fmt: skip
+                   found_tex=found_tex, minimum=args.minimum_cell_count,
+                   design=args.design, cited=args.cited is not None)  # fmt: skip
     if args.against and not report.backing_files:
         return _audit_refused(args, "--against gave the audit nothing it can read:",
                               *(f"  {item}" for item in report.skipped))  # fmt: skip
@@ -2284,6 +2348,16 @@ def cmd_audit(args: argparse.Namespace) -> int:
                                  cache=args.lookup_cache)  # fmt: skip
     if reader is not None:
         _read_as_reader(report, reader, args.paper[0], papers, english)
+        if reader.authors is not None or args.lookup:
+            from manuscript_guard.auditing.selfcite import count
+
+            report.self_citation = count(
+                report.lookups if args.lookup else None,
+                sum(len(census.entries) for census in report.references), reader.authors,
+                str(reader.profile.get("name") or "") or None, args.dry_run,
+            )  # fmt: skip
+    if args.cited is not None and not _write_cited(report, args):
+        return 2
     discrimination = measure_discrimination(report.backing_values) if args.against else None
     if args.json:
         print(sections.as_json(report, discrimination))
@@ -5883,7 +5957,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="ask Crossref and OpenAlex about each DOI of the reference list, DataCite and "
         "then doi.org about one Crossref has no record of, and PubMed about each PMID, "
         "whether the work was retracted, withdrawn or put under concern, or is not "
-        "registered; nothing is sent without it",
+        "registered, and with --cited Europe PMC about each cited work's abstract; nothing "
+        "is sent without it",
     )
     audit.add_argument(
         "--dry-run",
@@ -5926,8 +6001,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="for an editor: hold the first paper named, the main document, to the journal's "
         "profile (a profiles/journals/*.yaml, as `journal` starts one): its limits, its "
         "abstract, its required sections and statements, its data statement and its boxes; "
-        "the profile's rules no gate checks are printed as a checklist "
-        "(docs/refereeing.md)",
+        "the profile's rules no gate checks are printed as a checklist; with --lookup, the "
+        "references the journal published are counted (docs/refereeing.md)",
     )
     audit.add_argument(
         "--authors",
@@ -5935,7 +6010,25 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="FILE",
         help="with --journal, where its profile says the review is blind: the authors, in "
         "authors.yaml's shape, whose names, ORCID iDs, e-mail addresses and institutions are "
-        "looked for in each document given",
+        "looked for in each document given; with --lookup, the references whose registry "
+        "record lists an author of the same family name and first initial are counted",
+    )
+    audit.add_argument(
+        "--design",
+        choices=("observational",),
+        help="the study's design, which you declare: with observational, each sentence of the "
+        "Abstract, the Discussion and the Conclusion that says one thing causes another "
+        "(cause, causal, demonstrated that, proved that), with no hedge, negation or "
+        "citation, is a warning",
+    )
+    audit.add_argument(
+        "--cited",
+        type=Path,
+        metavar="FILE",
+        help="write each citation beside its sentence to FILE (.md, or .html), with the "
+        "reference list's entry, and with --lookup the registries' title, year and standing "
+        "and Europe PMC's abstract, and an empty column for your judgement; FILE quotes the "
+        "manuscript, and the report gives counts only",
     )
     audit.add_argument(
         "--strict",

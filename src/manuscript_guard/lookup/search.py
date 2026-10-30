@@ -36,6 +36,7 @@ from manuscript_guard.lookup.sources import (
     _status_only,
     _text,
     _year,
+    unresolvable,
 )
 
 NOT_ASKED = "not asked"
@@ -419,6 +420,72 @@ def europepmc(query: str, filters: Filters, ask: Ask, services: Services) -> Ans
     return Answer(FOUND if hits else ABSENT, tuple(hits), count)
 
 
+def europepmc_work_search(doi: str | None, pmid: str | None, services: Services) -> Request:
+    """The request for one work's core record, by its PMID where it has one, else its DOI:
+    the identifier is all that is sent."""
+    query = f"EXT_ID:{pmid} AND SRC:MED" if pmid else f'DOI:"{doi}"'
+    return Request(services.europepmc, params={"query": query, "format": "json",
+                                               "resultType": "core", "pageSize": "1"})
+
+
+def europepmc_work(doi: str | None, pmid: str | None, ask: Ask,
+                   services: Services) -> dict[str, Any]:  # fmt: skip
+    """What Europe PMC holds of one work asked by its PMID or DOI, as a lookup record keeps a
+    registry's answer: `found` with its abstract and title where it gives them, `absent`
+    where no work it holds has that identifier, `unresolvable` where no answer of its shape
+    came. A work it returns under another identifier is none (`absent`): asked by a DOI,
+    a search can match more than the DOI's own work."""
+    answer = _ask(ask, europepmc_work_search(doi, pmid, services))
+    if isinstance(answer, dict):
+        return answer
+    said = _status_only(answer)
+    if said:
+        return said
+    data = _json(answer)
+    listed = data.get("resultList") if isinstance(data, dict) else None
+    results = listed.get("result") if isinstance(listed, dict) else None
+    if not isinstance(results, list):
+        return unresolvable(SHAPE)
+    if not results:
+        return {"status": ABSENT}
+    item = results[0]
+    if not isinstance(item, dict) or not _text(item.get("id")):
+        return unresolvable(SHAPE)
+    same = (_digits(item.get("pmid")) == pmid) if pmid else (_doi(item.get("doi")) == doi)
+    if not same:
+        return {"status": ABSENT}
+    found = {"abstract": _abstract(item.get("abstractText")), "title": _clean(item.get("title")),
+             "year": _year(item.get("pubYear"))}  # fmt: skip
+    return {"status": FOUND, **{k: v for k, v in found.items() if v not in (None, "")}}
+
+
+#: The markup Europe PMC leaves in an abstract, opening, closing or empty, with its
+#: attributes: a block's tag, which is a space, and an inline one, which is nothing. Only
+#: these are tags: "P<0.05 and age>65" is text (round 1 of #482).
+_BLOCK_TAG = re.compile(r"</?(?:p|br|div|h[1-6]|li|ul|ol)(?:\s[^<>]*)?/?>", re.IGNORECASE)
+_INLINE_TAG = re.compile(
+    r"</?(?:i|b|u|em|strong|sup|sub|span|sc|small)(?:\s[^<>]*)?/?>", re.IGNORECASE
+)
+
+
+#: A superscript and a subscript, which keep what they mean: "10^9", "CO_2" (round 2 of
+#: #482); read as text, `10<sup>9</sup>` was 109.
+_SUP = re.compile(r"<sup(?:\s[^<>]*)?>(.*?)</sup>", re.IGNORECASE | re.DOTALL)
+_SUB = re.compile(r"<sub(?:\s[^<>]*)?>(.*?)</sub>", re.IGNORECASE | re.DOTALL)
+
+
+def _abstract(value: Any) -> str | None:
+    """An abstract without the markup Europe PMC leaves in it: its section headings are
+    tags, `<h4>Background</h4>Text`, a space each, and its italics and superscripts are
+    nothing; then its entities, `&lt;`, read as their characters."""
+    text = _text(value)
+    if not text:
+        return None
+    raised = _SUP.sub(lambda found: "^" + found.group(1), text)
+    lowered = _SUB.sub(lambda found: "_" + found.group(1), raised)
+    return _text(html.unescape(_INLINE_TAG.sub("", _BLOCK_TAG.sub(" ", lowered))))
+
+
 def _listed(item: dict[str, Any], outer: str, inner: str) -> list:
     held = item.get(outer)
     value = held.get(inner) if isinstance(held, dict) else None
@@ -612,6 +679,8 @@ __all__ = [
     "esearch",
     "europepmc",
     "europepmc_search",
+    "europepmc_work",
+    "europepmc_work_search",
     "openalex",
     "openalex_by_doi",
     "openalex_search",

@@ -62,6 +62,9 @@ class Display:
     path: Path
     line: int
     rows: tuple[tuple[str, ...], ...] = ()
+    #: False where a table's cells stand in a file its float inputs that was not read: they
+    #: are then not compared, and the table is never said to be the same.
+    read: bool = True
 
 
 @dataclass(frozen=True)
@@ -80,6 +83,9 @@ class Version:
     #: The files read, a LaTeX entry's tree.
     files: tuple[Path, ...] = ()
     #: Where a line of `text` stands in the files, where that is not the line itself.
+    #: What was not read of the version, each as a sentence: tables or figures LaTeX numbers
+    #: in a way the reading does not count, which are then given no number.
+    notes: tuple[str, ...] = ()
     placed: Callable[[int], tuple[Path, int | None]] | None = field(default=None,
                                                                     compare=False)
 
@@ -251,16 +257,8 @@ def _word(path: Path) -> Version:
 
 # ------------------------------------------------------------------------------- LaTeX
 
-#: A float, and a caption in it.
-_FLOAT = re.compile(r"\\begin\s*\{(?P<kind>table|figure)\*?\}(?P<body>.*?)\\end\s*\{(?P=kind)\*?\}",
-                    re.DOTALL)  # fmt: skip
-#: A `longtable`, which numbers a table where it has a caption; and a `\\captionof`.
-_LONGTABLE = re.compile(r"\\begin\s*\{longtable\}.*?\\end\s*\{longtable\}", re.DOTALL)
-_CAPTIONOF = re.compile(
-    r"\\captionof\s*\{\s*(?P<kind>table|figure)\s*\}\s*(?:\[[^\]]*\])?\s*\{"
-)
-_CAPTION = re.compile(r"\\caption\s*(?:\[[^\]]*\])?\s*\{")
-_COMMENT = re.compile(r"(?<!\\)%[^\n]*")
+#: A file input, whose text a float holding it prints.
+_INPUT = re.compile(r"\\(?:input|include|subfile|import|subimport)(?![A-Za-z@])")
 _COMMAND = re.compile(r"\\[A-Za-z@]+\*?(?:\s*\[[^\]]*\])?|[{}~]")
 
 
@@ -288,86 +286,133 @@ def _latex(path: Path) -> Version:
         source, at = where
         return tree.folder / source.path, at
 
-    tables, figures = _floats(tree, {file.path: file.tables for file in read.files})
+    tables, figures, notes = _floats(tree, {file.path: file.tables for file in read.files})
     return Version(path, "LaTeX", text, _sections(text, found), tables, figures,
-                   files=tuple(p for p, _source in tree.files), placed=placed)
+                   files=tuple(p for p, _source in tree.files), notes=notes, placed=placed)
 
 
-def _floats(tree, read: dict) -> tuple[tuple[Display, ...], tuple[Display, ...]]:
-    """Each table and figure of the tree that LaTeX numbers, in the order the document prints
-    them: a float with a caption, a `longtable` with one, and a `\\captionof{table}` or
-    `{figure}` outside a float, each file read where the file that inputs it inputs it. Each
-    table with its cells where the audit read a table in it; and a table typed outside any
-    of them, with no label."""
+#: What is said of a version whose tables or figures are not numbered here.
+NOT_NUMBERED = (
+    "its {kinds} are not numbered here: a {kind} LaTeX numbers in a way this reading does not "
+    "count stands among them (a longtable's caption, a \\captionof, or a float whose caption "
+    "is not read), so each is matched by its caption alone"
+)
+
+
+@dataclass
+class _Shown:
+    """A display the printed view numbers, as the walk finds it."""
+
+    kind: str
+    counted: bool
+    caption: str
+    path: Path
+    line: int
+    rows: tuple[tuple[str, ...], ...] = ()
+    read: bool = True
+
+
+def _floats(tree, read: dict) -> tuple[tuple[Display, ...], tuple[Display, ...], tuple[str, ...]]:
+    """Each table and figure of the tree, in the order the document prints them, as the
+    printed view G2's pointers read numbers them (`printed._pointing_events`): a float of
+    each kind `commands.FLOATS` lists, one display for each caption, none for a float
+    continued from the last, and a file input where its `\\input` stands, inside a float as
+    that float's. Each table with its cells, its own or those of a file its float inputs,
+    and where a file the float inputs was not read, with none, said so. Where the view
+    cannot count a display of a kind, a longtable's caption or a `\\captionof`, none of
+    that kind is numbered, and a note says so. A table typed outside every display has no
+    label."""
     by_path = {source.path: (path, source) for path, source in tree.files}
     entry = next((source.path for path, source in tree.files if path == tree.entry),
                  tree.files[0][1].path if tree.files else None)  # fmt: skip
-    tables: list[Display] = []
-    figures: list[Display] = []
     held = {path: list(read.get(path, ())) for path, _source in tree.files}
+    shown: list[_Shown] = []
     seen: set[str] = set()
 
-    def walk(name: str) -> None:
+    def walk(name: str, inside: _Shown | None) -> None:
         if name in seen or name not in by_path:
             return
         seen.add(name)
         path, source = by_path[name]
-        text = _COMMENT.sub(lambda m: " " * len(m.group()), source.text)
-        events = [(at, "input", target) for at, target in source.targets]
-        events += [(start, kind, (start, end, caption)) for start, end, kind, caption
-                   in _numbered(text)]  # fmt: skip
-        for _at, kind, what in sorted(events, key=lambda event: event[0]):
-            if kind == "input":
-                walk(what)
-                continue
-            start, end, caption = what
-            first = text.count("\n", 0, start) + 1
-            last = text.count("\n", 0, end) + 1
-            if kind == "figure":
-                figures.append(Display(f"Figure {len(figures) + 1}", caption, path, first))
-                continue
-            inside = [table for table in held[path] if table and first <= table[0][0].line <= last]
-            held[path] = [table for table in held[path] if table not in inside]
-            rows = (tuple(tuple(cell.text.strip() for cell in row) for row in inside[0])
-                    if inside else ())  # fmt: skip
-            tables.append(Display(f"Table {sum(t.label is not None for t in tables) + 1}",
-                                  caption, path, first, rows))  # fmt: skip
+        mine = _displays(path, source, held)
+        events = [(at, 0, target) for at, target in source.targets]
+        events += [(start, 1, display) for start, _end, display in mine]
+        for at, step, what in sorted(events, key=lambda event: (event[0], event[1])):
+            if step == 0:
+                around = next((d for start, end, d in mine if start <= at < end
+                               and d.kind == "t"), inside)  # fmt: skip
+                walk(what, around)
+            else:
+                shown.append(what)
+        # A file read inside a float: its tables are that float's.
+        if inside is not None and held[path] and not inside.rows:
+            inside.rows = _rows_of(held[path][0])
+            held[path] = held[path][1:]
 
     if entry is not None:
-        walk(entry)
+        walk(entry, None)
+    tables = _numbered([d for d in shown if d.kind == "t"], "Table")
+    figures = _numbered([d for d in shown if d.kind == "f"], "Figure")
+    notes = tuple(NOT_NUMBERED.format(kinds=kinds, kind=kinds[:-1])
+                  for displays, kinds in ((tables, "tables"), (figures, "figures"))
+                  if displays and displays[0].label is None)  # fmt: skip
     for path, _source in tree.files:
-        tables += [Display(None, "", path, table[0][0].line,
-                           tuple(tuple(cell.text.strip() for cell in row) for row in table))
+        tables += [Display(None, "", path, table[0][0].line, _rows_of(table))
                    for table in held[path] if table]  # fmt: skip
-    return tuple(tables), tuple(figures)
+    return tuple(tables), tuple(figures), notes
 
 
-def _numbered(text: str) -> list[tuple[int, int, str, str]]:
-    """Where each table and figure LaTeX numbers stands in one file, its kind and caption: a
-    float or a `longtable` with a caption, and a `\\captionof` outside them."""
+def _rows_of(table) -> tuple[tuple[str, ...], ...]:
+    return tuple(tuple(cell.text.strip() for cell in row) for row in table)
+
+
+def _numbered(displays: list[_Shown], name: str) -> list[Display]:
+    """The displays of one kind, each given its number, or none where any of them is one the
+    view cannot count."""
+    every = all(display.counted for display in displays)
+    return [Display(f"{name} {at}" if every else None, display.caption, display.path,
+                    display.line, display.rows, display.read)
+            for at, display in enumerate(displays, 1)]  # fmt: skip
+
+
+def _displays(path: Path, source, held: dict) -> list[tuple[int, int, _Shown]]:
+    """Each display one file writes in the printed view G2's pointers read, where it stands
+    in the file, with its caption and, for the first table of a float, the cells of the
+    table in it; a table's cells are not read where the float inputs a file that was not
+    read."""
+    from manuscript_guard.text.latex.printed import (
+        DISPLAY,
+        MARK_END,
+        _numbered_captions,
+        _passed_over,
+        _pointing_events,
+    )
+
+    marks = re.compile(f"{DISPLAY}([^{MARK_END}]*){MARK_END}")
+    is_read, comments = _passed_over(source.reading)
+    text = source.text
     found = []
-    spans = []
-    for match in _FLOAT.finditer(text):
-        spans.append((match.start(), match.end()))
-        caption = _caption_of(match["body"])
-        if caption is not None:
-            found.append((match.start(), match.end(), match["kind"], caption))
-    for match in _LONGTABLE.finditer(text):
-        spans.append((match.start(), match.end()))
-        caption = _caption_of(match.group())
-        if caption is not None:
-            found.append((match.start(), match.end(), "table", caption))
-    for match in _CAPTIONOF.finditer(text):
-        if any(start <= match.start() < end for start, end in spans):
+    for start, end, written in _pointing_events(source):
+        kinds = [mark[:1] for mark in marks.findall(written) if mark[:1] in "tfTF"]
+        if not kinds:
             continue
-        found.append((match.start(), match.end(), match["kind"], _braced(text, match.end())))
+        captions = [_braced(text, opened + 1) for _begun, opened, _closed
+                    in _numbered_captions(text, start, end, is_read, comments)]  # fmt: skip
+        first, last = text.count("\n", 0, start) + 1, text.count("\n", 0, end) + 1
+        inputs = sum(1 for one in _INPUT.finditer(text, start, end) if is_read(one.start()))
+        targets = sum(1 for at, _name in source.targets if start <= at < end)
+        cells = [table for table in held[path] if table and first <= table[0][0].line <= last]
+        held[path] = [table for table in held[path] if table not in cells]
+        filled = False
+        for at, kind in enumerate(kinds):
+            shown = _Shown(kind.lower(), kind.islower(), captions[at] if at < len(captions)
+                           else "", path, first)  # fmt: skip
+            if shown.kind == "t" and not filled:
+                filled = True
+                shown.rows = _rows_of(cells[0]) if cells else ()
+                shown.read = bool(cells) or inputs <= targets
+            found.append((start, end, shown))
     return found
-
-
-def _caption_of(body: str) -> str | None:
-    """A float's caption, its commands and braces taken out, or None where it has none."""
-    found = _CAPTION.search(body)
-    return None if found is None else _braced(body, found.end())
 
 
 def _braced(text: str, opened: int) -> str:

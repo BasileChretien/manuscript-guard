@@ -549,6 +549,13 @@ def test_columns_reordered_are_paired_by_their_headers() -> None:
         "Table 1: the same in both versions, cell by cell (6 cells)"]
 
 
+def test_two_headers_alike_but_for_case_stay_two_columns() -> None:
+    old = version(_table("| Site | n | N |", "| North | 10 | 200 |"))
+    new = version(_table("| Site | N | n |", "| North | 200 | 11 |"))
+    assert [item.message for item in differences.tables(old, new)] == [
+        "Table 1, row 'North', column 'n': '10' in v1, '11' in v2"]
+
+
 def test_columns_with_no_header_or_one_repeated_are_paired_by_their_place() -> None:
     old = version(_table("| Site | n | n |", "| North | 10 | 20 |"))
     new = version(_table("| Site | n | n |", "| North | 10 | 21 |"))
@@ -561,20 +568,77 @@ FLOAT = tex("!begin{table}\n!caption{CAPTION}\n!begin{tabular}{ll}\nA & B !!\n"
 
 
 def test_latex_tables_are_numbered_in_the_order_they_print(tmp_path: Path) -> None:
-    """A float in a file input before main.tex's own float prints first; a longtable's
-    caption and a `!captionof{table}` number a table as a float does."""
+    """A float in a file input before main.tex's own float prints first, and the floats are
+    counted as the printed view counts them: a sidewaystable is a table, a float of two
+    captions numbers two, and one continued from the last numbers none."""
     write(tmp_path, "main.tex", tex(
         "!documentclass{article}\n!begin{document}\n!section{Results}\nText.\n"
-        "!input{results}\n" + FLOAT.replace("CAPTION", "Main") +
-        "!begin{longtable}{ll}\n!caption{Long}!!\nA & B !!\n!end{longtable}\n"
-        "!begin{minipage}{1cm}!captionof{table}{Boxed}!end{minipage}\n"
+        "!input{results}\n!begin{sidewaystable}!caption{Side}!end{sidewaystable}\n"
+        "!begin{table}!caption{First}x!caption{Second}!end{table}\n"
+        "!begin{table}!ContinuedFloat!caption{Second, continued}!end{table}\n"
         + FLOAT.replace("CAPTION", "Last") + "!end{document}\n"))  # fmt: skip
     write(tmp_path, "results.tex", FLOAT.replace("CAPTION", "Input"))
-    tables = read_version(tmp_path / "main.tex").tables
-    assert [(t.label, t.caption) for t in tables] == [
-        ("Table 1", "Input"), ("Table 2", "Main"), ("Table 3", "Long"), ("Table 4", "Boxed"),
+    version = read_version(tmp_path / "main.tex")
+    assert [(t.label, t.caption) for t in version.tables] == [
+        ("Table 1", "Input"), ("Table 2", "Side"), ("Table 3", "First"), ("Table 4", "Second"),
         ("Table 5", "Last"),
     ]
+    assert version.notes == ()
+
+
+def test_tables_the_view_cannot_count_are_not_numbered(tmp_path: Path) -> None:
+    """A longtable's caption and a `!captionof` number a table the printed view does not
+    count: the version's tables are then given no number, and a note says why."""
+    write(tmp_path, "main.tex", tex(
+        "!documentclass{article}\n!begin{document}\nText.\n" + FLOAT.replace("CAPTION", "Main")
+        + "!begin{longtable}{ll}\n!caption{Long}!!\nA & B !!\n!end{longtable}\n"
+        "!end{document}\n"))  # fmt: skip
+    version = read_version(tmp_path / "main.tex")
+    assert [t.label for t in version.tables] == [None, None]
+    assert [t.caption for t in version.tables] == ["Main", "Long"]
+    (note,) = version.notes
+    assert note.startswith("its tables are not numbered here")
+
+
+INPUT_FLOAT = tex("!documentclass{article}\n!begin{document}\nText.\n!begin{table}!caption{Doses}"
+                  "!input{tab1}!end{table}\n" + FLOAT.replace("CAPTION", "After")
+                  + "!end{document}\n")  # fmt: skip
+TAB1 = tex("!begin{tabular}{ll}\nDose & n !!\nLow & CELL !!\n!end{tabular}\n")
+
+
+def test_a_table_s_cells_input_from_another_file_are_its_own(tmp_path: Path) -> None:
+    for name, cell in (("v1", "3"), ("v2", "4")):
+        write(tmp_path / name, "main.tex", INPUT_FLOAT)
+        write(tmp_path / name, "tab1.tex", TAB1.replace("CELL", cell))
+    old = read_version(tmp_path / "v1" / "main.tex")
+    new = read_version(tmp_path / "v2" / "main.tex")
+    assert [(t.label, t.caption) for t in new.tables] == [("Table 1", "Doses"),
+                                                          ("Table 2", "After")]
+    assert [item.message for item in differences.tables(old, new)] == [
+        "Table 1, row 'Low', column 'n': '3' in v1, '4' in v2",
+        "Table 2: the same in both versions, cell by cell (2 cells)",
+    ]
+    assert letters.status("Table 1", old, new) == "its cells and caption changed"
+
+
+def test_a_caption_input_from_another_file_numbers_its_float(tmp_path: Path) -> None:
+    write(tmp_path, "main.tex", INPUT_FLOAT.replace(tex("!caption{Doses}"), ""))
+    write(tmp_path, "tab1.tex", tex("!caption{Doses}\n") + TAB1.replace("CELL", "3"))
+    tables = read_version(tmp_path / "main.tex").tables
+    assert [(t.label, t.caption, t.rows) for t in tables] == [
+        ("Table 1", "Doses", (("Dose", "n"), ("Low", "3"))), ("Table 2", "After", (("A", "B"),)),
+    ]
+
+
+def test_a_table_whose_input_is_not_read_is_never_the_same(tmp_path: Path) -> None:
+    for name in ("v1", "v2"):
+        write(tmp_path / name, "main.tex", INPUT_FLOAT)
+    old = read_version(tmp_path / "v1" / "main.tex")
+    new = read_version(tmp_path / "v2" / "main.tex")
+    said = [item.message for item in differences.tables(old, new)]
+    assert said[0] == ("Table 1: its cells were not read, in a file its float inputs that was "
+                       "not read")  # fmt: skip
+    assert letters.status("Table 1", old, new) == "its cells were not read"
 
 
 def test_a_number_changed_is_paired_with_the_one_in_its_own_sentence() -> None:
@@ -587,14 +651,70 @@ def test_a_number_changed_is_paired_with_the_one_in_its_own_sentence() -> None:
 
 
 def test_a_quotation_matches_only_whole_words_and_numbers() -> None:
-    letter = 'We now say "the odds ratio was 2.1" in the abstract.\n'
-    old, new = "Here the odds ratio was 2.15.\n", "Here the odds ratio was 2.1.\n"
+    """In curly marks, which a number may close; a straight mark after a digit is an inch's."""
+    letter = ("We now say \N{LEFT DOUBLE QUOTATION MARK}the odds ratio was 2.1"
+              "\N{RIGHT DOUBLE QUOTATION MARK} and \"5 sites reported a rise\".\n")  # fmt: skip
+    old = "Here the odds ratio was 2.15. And 15 sites reported a rise.\n"
+    new = "Here the odds ratio was 2.1. And 5 sites reported a rise.\n"
     assert [outcome for _q, outcome in letters.held(letter, old, new)] == [
-        letters.NEW_AS_QUOTED]
-    assert [outcome for _q, outcome in letters.held(letter, old, old)] == [letters.NEITHER]
+        letters.NEW_AS_QUOTED, letters.NEW_AS_QUOTED]
+    assert [outcome for _q, outcome in letters.held(letter, old, old)] == [
+        letters.NEITHER, letters.NEITHER]
+
+
+@pytest.mark.parametrize(
+    "said",
+    ["events reported to the U.S. Food and Drug Administration",
+     "the cohort seen by Dr. Smith in the clinic", "the counts given in Suppl. Table 2 now"],
+)
+def test_a_quotation_with_a_stop_inside_is_read(said: str) -> None:
+    letter = f'We now write "{said}" in the Methods and "the cohort excluded all children".\n'
+    assert [q.quote for q in letters.quotations(letter)] == [
+        said, "the cohort excluded all children"]
+
+
+def test_an_unpaired_straight_mark_reads_none_of_its_paragraph(tmp_path: Path) -> None:
+    letter = ('We wrote "the rate fell in all sites and "the cohort grew in size" here.\n\n'
+              'Then "the second paragraph is read" alone.\n')  # fmt: skip
+    assert [q.quote for q in letters.quotations(letter)] == ["the second paragraph is read"]
+    found = letters.letter_items(tmp_path / "l.md", letter, version(OLD_PAPER),
+                                 version(NEW_PAPER))  # fmt: skip
+    assert [(item.code, item.message, item.line) for item in found][:1] == [
+        ("quotation-unpaired", "a straight quotation mark in paragraph 1 is unpaired; its "
+         "quotations were not read", 1)]
 
 
 def test_an_inch_mark_does_not_take_a_quotation_s_mark() -> None:
     letter = 'A 5" screen. We now write "the rate fell in all sites" here.\n'
     (quote,) = letters.quotations(letter)
     assert quote.quote == "the rate fell in all sites"
+
+
+def test_a_docx_comments_file_is_a_comment_a_paragraph(tmp_path: Path) -> None:
+    """Word numbers a list without writing the numbers into the text, and writes no blank
+    paragraph between: each paragraph is a comment."""
+    mine = _docx(tmp_path / "mine.docx", [("", "Table 2 should give the sites."),
+                                          ("", "The writing is unclear."),
+                                          ("", "The aims are vague.")], [])  # fmt: skip
+    old = version(OLD_PAPER + "\nTable 2. Sites\n\n| a | b |\n|---|---|\n| 1 | 2 |\n")
+    text = letters.read_text_of(mine, "the comments file")
+    found = [(item.code, item.message, item.line)
+             for item in letters.comment_items(mine, text, old, old)]
+    assert found == [
+        ("comment-named", "paragraph 1: it names Table 2: its cells and caption the same in "
+         "both versions", 2),
+        ("comment-not-matched", "paragraph 2: not matched: it quotes no passage and names no "
+         "table, figure or section; read it", 3),
+        ("comment-not-matched", "paragraph 3: not matched: it quotes no passage and names no "
+         "table, figure or section; read it", 4),
+    ]  # fmt: skip
+
+
+def test_a_finding_that_names_a_line_stands_where_only_its_line_moved(tmp_path: Path) -> None:
+    old = write(tmp_path, "v1.md", "# Abstract\n\nThe odds ratio was 2.1 (95% CI 1.4 to 3.2)."
+                "\n\n# Results\n\nThe odds ratio was 2.1 (95% CI 1.5 to 3.2).\n")
+    new = write(tmp_path, "v2.md", "# Abstract\n\nThe odds ratio was 2.1 (95% CI 1.4 to 3.2)."
+                "\n\n# Results\n\nA new paragraph.\n\n"
+                "The odds ratio was 2.1 (95% CI 1.5 to 3.2).\n")
+    marks = [mark for item, mark in compare(old, new).items if item.code == "abstract-conflict"]
+    assert marks == [STOOD_IN_V1]

@@ -169,29 +169,32 @@ def _columns(was: Sequence[str], now: Sequence[str]) -> tuple[list[tuple[int, in
                                                                list[int]]:  # fmt: skip
     """The columns of a table in the two versions, paired: the first with the first, which
     holds the rows' labels; one whose header is in each version once, and not empty, with the
-    one of that header, wherever it stands; the rest, with no header or one repeated, by
-    their order among themselves. And the columns of v1 and of v2 that have none."""
-    one = [_folded_header(cell) for cell in was]
-    two = [_folded_header(cell) for cell in now]
-    counted_was, counted_now = Counter(one[1:]), Counter(two[1:])
-    pairs = [(0, 0)] if one and two else []
-    gone, new, rest_was, rest_now = [], [], [], []
-    for at in range(1, len(one)):
-        header = one[at]
-        if header and counted_was[header] == 1 and counted_now[header] <= 1:
-            if counted_now[header]:
-                pairs.append((at, two.index(header, 1)))
-            else:
-                gone.append(at)
-        else:
-            rest_was.append(at)
-    for at in range(1, len(two)):
-        header = two[at]
-        if header and counted_now[header] == 1 and counted_was[header] <= 1:
-            if not counted_was[header]:
-                new.append(at)
-        else:
-            rest_now.append(at)
+    one of that header, wherever it stands, as typed first, and in any case only where the
+    header as typed has no partner ("n" and "N" in one table are two columns); the rest, with
+    no header or one repeated, by their order among themselves. And the columns of v1 and of
+    v2 that have none: a header in one version once and in the other not at all."""
+    pairs = [(0, 0)] if was and now else []
+    left_was, left_now = list(range(1, len(was))), list(range(1, len(now)))
+    for fold in (lambda text: " ".join(text.split()), _folded_header):
+        counted_was = Counter(fold(was[at]) for at in left_was)
+        counted_now = Counter(fold(now[at]) for at in left_now)
+        for at in list(left_was):
+            key = fold(was[at])
+            if key and counted_was[key] == 1 and counted_now[key] == 1:
+                other = next(there for there in left_now if fold(now[there]) == key)
+                pairs.append((at, other))
+                left_was.remove(at)
+                left_now.remove(other)
+    counted_was = Counter(_folded_header(was[at]) for at in left_was)
+    counted_now = Counter(_folded_header(now[at]) for at in left_now)
+
+    def alone(header: str, mine: Counter, theirs: Counter) -> bool:
+        return bool(header) and mine[header] == 1 and not theirs[header]
+
+    gone = [at for at in left_was if alone(_folded_header(was[at]), counted_was, counted_now)]
+    new = [at for at in left_now if alone(_folded_header(now[at]), counted_now, counted_was)]
+    rest_was = [at for at in left_was if at not in gone]
+    rest_now = [at for at in left_now if at not in new]
     pairs += list(zip(rest_was, rest_now, strict=False))
     gone += rest_was[len(rest_now) :]
     new += rest_now[len(rest_was) :]
@@ -254,6 +257,12 @@ def tables(old: Version, new: Version) -> list[Item]:
         if table.label and _key(was.caption) != _key(table.caption):
             changes.append(f"{_name(table)}: its caption changed: {shown(was.caption)!r} in "
                            f"v1, {shown(table.caption)!r} in v2")  # fmt: skip
+        if not (was.read and table.read):
+            found.append(_display_item(TABLES, "table-not-read", f"{_name(table)}: its cells "
+                                       "were not read, in a file its float inputs that was not "
+                                       "read", table))  # fmt: skip
+            found += [_display_item(TABLES, "table-changed", said, table) for said in changes]
+            continue
         changes += _cells(_name(table), was.rows, table.rows)
         if not changes:
             cells = sum(len(row) for row in table.rows)

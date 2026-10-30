@@ -4,8 +4,9 @@
 quotation marks, on one line or across a line break, and each block quotation (`>` lines, a
 paragraph of them each), is looked for in both versions as G13 looks for a quoted revision
 (`gates.revision.as_quoted`), as words of its own, a curly apostrophe read as a straight one.
-Two straight marks with a sentence's end between them are no pair, so an inch's mark does not
-take a quotation's:
+Straight marks are paired in order within a paragraph, a mark right after a digit being an
+inch's; a paragraph whose straight marks are odd in number has none of them read, and is
+named in a note instead:
 
 - in v2 and not in v1: new as quoted (a note);
 - in both: quoted as revised, but v1 had it (a warning);
@@ -18,7 +19,8 @@ section of either version, as the paper prints it, is a fact: where the letter n
 and whether it changed. Nothing says whether the change is the one the letter claims.
 
 **The referee's comments** are cut into items: numbered entries where two or more lines
-open with a number ("1.", "2)", "Comment 3:"), paragraphs otherwise. An item is matched to v2
+open with a number ("1.", "2)", "Comment 3:"), paragraphs otherwise, a .docx's each one
+(`read_text_of`). An item is matched to v2
 only by a passage it quotes, or by a table, a figure or a section it names. A quoted passage
 is unchanged in v2, changed (with the sentence v2 has where it stood, where the sentences
 line up), gone, or not in v1 either. An item with neither is not matched, and is to be read.
@@ -62,11 +64,10 @@ _QUOTED = re.compile(
     r"\N{LEFT DOUBLE QUOTATION MARK}([^\N{RIGHT DOUBLE QUOTATION MARK}]+)"
     r"\N{RIGHT DOUBLE QUOTATION MARK}"
 )
-_STRAIGHT = re.compile('"')
-#: What a quotation between two straight marks never holds: a sentence's end and the next
-#: one's start, or a blank line. Between an inch's mark and a quotation's opening there is
-#: usually one, and the two marks are then no pair: the second opens the quotation.
-_NO_QUOTATION = re.compile(r"[.!?]\s+(?=[A-Z])|\n[ \t]*\n")
+#: A straight mark that is no inch's mark: one right after a digit, `5"`, is.
+_STRAIGHT = re.compile(r'(?<!\d)"')
+#: What ends a paragraph, inside which the straight marks are paired.
+_PARAGRAPH = re.compile(r"\n[ \t]*\n")
 #: A line of a block quotation, its marks; and the marks a quoted block may be wrapped in.
 _BLOCK = re.compile(r"^[ ]{0,3}>(?:[ \t]?>)*[ \t]?")
 _WRAPPING = "\"'\N{LEFT DOUBLE QUOTATION MARK}\N{RIGHT DOUBLE QUOTATION MARK} "
@@ -106,7 +107,19 @@ def _long_enough(quote: str) -> bool:
 def quotations(text: str, first: int = 1) -> list[Quotation]:
     """Each quotation of four words or more in `text`, and each paragraph of a block
     quotation, in the order they open; `first` is the line `text` starts on."""
+    return _quotations(text, first)[0]
+
+
+def unpaired(text: str, first: int = 1) -> list[tuple[int, int]]:
+    """Each paragraph of `text` whose straight quotation marks, inch's marks apart, are odd
+    in number, and whose straight quotations are therefore not read: its number among the
+    paragraphs, and the line it opens on."""
+    return _quotations(text, first)[1]
+
+
+def _quotations(text: str, first: int) -> tuple[list[Quotation], list[tuple[int, int]]]:
     text = text.replace("\r\n", "\n").replace("\r", "\n")
+    original = text
     lines = text.split("\n")
     found: list[Quotation] = []
     run: list[str] = []
@@ -133,29 +146,44 @@ def quotations(text: str, first: int = 1) -> list[Quotation]:
     rest = "\n".join(lines)
     spans = [(match.start(), match.group(1)) for match in _QUOTED.finditer(rest)
              if "\n\n" not in match.group(1)]  # fmt: skip
-    spans += _straight(rest)
+    straight, odd = _straight(original, rest)
+    spans += straight
     for start, said in spans:
         if _long_enough(said):
             line = rest.count("\n", 0, start) + first
             found.append(Quotation(line, folded(said)))
-    return sorted(found, key=lambda q: q.line)
+    lines_of = [(number, original.count("\n", 0, start) + first) for number, start in odd]
+    return sorted(found, key=lambda q: q.line), lines_of
 
 
-def _straight(text: str) -> list[tuple[int, str]]:
-    """Each quotation between two straight marks: each mark with the next, unless what is
-    between them holds what no quotation does (`_NO_QUOTATION`), when the first is passed
-    over, an inch's mark, and the second opens."""
-    marks = [found.start() for found in _STRAIGHT.finditer(text)]
-    found = []
-    at = 0
-    while at + 1 < len(marks):
-        said = text[marks[at] + 1 : marks[at + 1]]
-        if not said.strip() or _NO_QUOTATION.search(said):
-            at += 1
+def _paired(marks: list[int]) -> list[tuple[int, int]] | None:
+    """The straight marks of a paragraph in pairs, in order; None where they are odd in
+    number, and which of them is no quotation's cannot be told."""
+    if len(marks) % 2:
+        return None
+    return list(zip(marks[::2], marks[1::2], strict=True))
+
+
+def _straight(original: str, text: str) -> tuple[list[tuple[int, str]], list[tuple[int, int]]]:
+    """Each quotation between two straight marks of one paragraph, `text` being `original`
+    with its block quotations blanked; and each paragraph whose marks are not paired, by
+    its number among the paragraphs of `original` and where it starts."""
+    ends = [0, *(found.end() for found in _PARAGRAPH.finditer(original))]
+    stops = [*(found.start() for found in _PARAGRAPH.finditer(original)), len(original)]
+    found: list[tuple[int, str]] = []
+    odd: list[tuple[int, int]] = []
+    number = 0
+    for low, high in zip(ends, stops, strict=True):
+        if not original[low:high].strip():
             continue
-        found.append((marks[at], said))
-        at += 2
-    return found
+        number += 1
+        marks = [mark.start() for mark in _STRAIGHT.finditer(text, low, high)]
+        pairs = _paired(marks)
+        if pairs is None:
+            odd.append((number, low + len(original[low:high]) - len(original[low:high].lstrip())))
+            continue
+        found += [(opened, text[opened + 1 : closed]) for opened, closed in pairs]
+    return found, odd
 
 
 def held_in(quote: str, text: str) -> bool:
@@ -227,6 +255,12 @@ def status(name: str, old: Version, new: Version) -> str:
         kind = "tables" if name.startswith("Table") else "figures"
         was = [d for d in getattr(old, kind) if d.label == name]
         now = [d for d in getattr(new, kind) if d.label == name]
+        unnumbered = [name for name, version in (("v1", old), ("v2", new))
+                      if any(note.startswith(f"its {kind} ") for note in version.notes)]
+        if unnumbered:
+            return f"the {kind} of {' and '.join(unnumbered)} are not numbered here"
+        if not all(d.read for d in [*was, *now]):
+            return "its cells were not read"
         held_by = lambda d: (_key(d.caption), d.rows)  # noqa: E731
         what = "its cells and caption" if kind == "tables" else "its caption"
     else:
@@ -250,16 +284,36 @@ def _lines(lines: list[int]) -> str:
     return ("line " if len(unique) == 1 else "lines ") + ", ".join(map(str, unique))
 
 
+def _back(path: Path):
+    """The line of the file a line of `read_text_of`'s text is: a .docx's paragraphs are set
+    a blank line apart there."""
+    if path.suffix.lower() == ".docx":
+        return lambda line: (line + 1) // 2
+    return lambda line: line
+
+
+def _unpaired_items(section: str, path: Path, text: str, first: int = 1,
+                    name: str = "") -> list[Item]:  # fmt: skip
+    back = _back(path)
+    return [Item(section, GATE, "quotation-unpaired", f"{name}a straight quotation mark in "
+                 f"paragraph {number} is unpaired; its quotations were not read", INFO, False,
+                 path, back(line))
+            for number, line in unpaired(text, first)]  # fmt: skip
+
+
 def letter_items(path: Path, letter: str, old: Version, new: Version,
                  mine: str | None = None) -> list[Item]:  # fmt: skip
-    """What the response letter quotes and names, each held to the two versions."""
-    found = []
+    """What the response letter quotes and names, each held to the two versions, and each
+    paragraph whose straight quotations were not read."""
+    back = _back(path)
+    found = _unpaired_items(LETTER, path, letter)
     for quote, said in held(letter, old.text, new.text, mine):
         message, severity = SAID[said]
         kind = "block quotation" if quote.block else "quotation"
         found.append(Item(LETTER, GATE, said, f"the {kind}: {message}", severity, False, path,
-                          quote.line, shown(quote.quote)))  # fmt: skip
+                          back(quote.line), shown(quote.quote)))  # fmt: skip
     for name, lines in named(letter, _titles(old, new)).items():
+        lines = [back(line) for line in lines]
         found.append(Item(LETTER, GATE, "named", f"{name}, named on {_lines(lines)}: "
                           f"{status(name, old, new)}", INFO, False, path, lines[0]))
     return sorted(found, key=lambda item: item.line or 0)
@@ -330,8 +384,10 @@ def comment_items(path: Path, text: str, old: Version, new: Version) -> list[Ite
     """Each of the referee's comments, matched to v2 by what it quotes or names, or not."""
     olds, news = folded(old.text), folded(new.text)
     titles = _titles(old, new)
+    back = _back(path)
     found = []
     for name, line, said in comment_items_of(text):
+        found += _unpaired_items(COMMENTS, path, said, line, f"{name}: ")
         anchors = []
         for quote in quotations(said, line):
             if held_in(quote.quote, olds):
@@ -356,8 +412,8 @@ def comment_items(path: Path, text: str, old: Version, new: Version) -> list[Ite
         if not anchors:
             found.append(Item(COMMENTS, GATE, "comment-not-matched", f"{name}: not matched: "
                               "it quotes no passage and names no table, figure or section; "
-                              "read it", INFO, False, path, line))  # fmt: skip
-        found += [Item(COMMENTS, GATE, code, f"{name}: {message}", INFO, False, path, at,
+                              "read it", INFO, False, path, back(line)))  # fmt: skip
+        found += [Item(COMMENTS, GATE, code, f"{name}: {message}", INFO, False, path, back(at),
                        None if quote is None else shown(quote))
                   for at, code, message, quote in anchors]  # fmt: skip
     return found
@@ -365,7 +421,9 @@ def comment_items(path: Path, text: str, old: Version, new: Version) -> list[Ite
 
 def read_text_of(path: Path, what: str) -> str:
     """A letter's or a comments file's text: Markdown or text as it is, a .docx as `audit`
-    reads one. Raises Unreadable."""
+    reads one, its paragraphs, a line each, set a blank line apart, so that each is a
+    paragraph of its own, as Word shows it (`_back` gives the line back). Raises
+    Unreadable."""
     from manuscript_guard.audit import UnreadableText, read_text
     from manuscript_guard.text.docx import NotADocx, read_docx_text
 
@@ -375,7 +433,7 @@ def read_text_of(path: Path, what: str) -> str:
     suffix = path.suffix.lower()
     try:
         if suffix == ".docx":
-            return read_docx_text(path).text
+            return "\n\n".join(read_docx_text(path).text.split("\n"))
         if suffix in {".md", ".markdown", ".txt"}:
             return read_text(path).replace("\r\n", "\n").replace("\r", "\n")
     except (NotADocx, UnreadableText, OSError) as exc:

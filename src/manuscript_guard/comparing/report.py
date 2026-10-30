@@ -3,7 +3,8 @@
 v2 is audited as `audit` audits a paper with no outputs (`audit.audit`, G6 and G14 through
 `auditing.gates.run_gates`), and so is v1, the same way. Each finding of v2's audit is marked
 "stood in v1" where v1's audit gave a finding of the same gate and code that says the same,
-word for word and number for number (v1's file name read as v2's), and "new in v2" where it
+word for word and number for number, but for the lines it names and the files ("line 40"
+and "line 42" are one, `_masked`), and "new in v2" where it
 gave none: a finding on a line nobody touched can come from a change elsewhere, a number of
 the Abstract that the Results no longer hold. Two alike in v2 and one in v1 are one of each.
 
@@ -15,6 +16,7 @@ editor and referee layer), so `ok` is true wherever the comparison ran.
 from __future__ import annotations
 
 import json
+import re
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -75,6 +77,8 @@ def _read(old: Version, new: Version, letter: Path | None, comments: Path | None
 
     found = [Item(VERSIONS, GATE, "version-read", said(version), INFO, False, version.path)
              for version in (old, new)]
+    found += [Item(VERSIONS, GATE, "version-not-numbered", note, INFO, False, version.path)
+              for version in (old, new) for note in version.notes]  # fmt: skip
     found += [Item(VERSIONS, GATE, "file-read", f"read as the {what}", INFO, False, path)
               for what, path in (("response letter", letter), ("referee's comments", comments))
               if path]  # fmt: skip
@@ -98,13 +102,24 @@ def _audit(version: Version) -> list[Item]:
     return items(report)
 
 
+#: A line or lines a message names: "line 9", "lines 4, 7 and 12", "lines 3-25".
+_LINES = re.compile(r"\blines? \d+(?:(?:, | and |-|\N{EN DASH})\d+)*")
+
+
+def _masked(message: str, version: Version) -> str:
+    """A finding's message as v1's and v2's are compared: the lines it names, which move
+    when a paragraph is added above them, and the version's file names, as one word each."""
+    for path in sorted({version.path, *version.files}, key=lambda p: -len(p.name)):
+        message = message.replace(path.name, "FILE")
+    return _LINES.sub("line N", message)
+
+
 def audited(old: Version, new: Version) -> list[tuple[Item, str]]:
     """v2's audit, each finding with its mark: whether v1's audit gave the same finding."""
-    stood = Counter((item.gate, item.code, item.message.replace(old.path.name, new.path.name))
-                    for item in _audit(old))  # fmt: skip
+    stood = Counter((item.gate, item.code, _masked(item.message, old)) for item in _audit(old))
     found = []
     for item in _audit(new):
-        key = (item.gate, item.code, item.message)
+        key = (item.gate, item.code, _masked(item.message, new))
         mark = STOOD_IN_V1 if stood[key] > 0 else NEW_IN_V2
         stood[key] -= 1 if stood[key] > 0 else 0
         found.append((Item(AUDITED, item.gate, item.code, f"{item.section}: {item.message}",

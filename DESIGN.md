@@ -8158,10 +8158,17 @@ or text file as typed; a .docx through `read_docx_text`, a paragraph a line, its
 their styles and its tables cell by cell, with no pandoc; a LaTeX entry and the files it inputs
 through `auditing.latex.read_latex`, as the Markdown its document prints (`printed`, the
 quoting view), each line placed back at its `.tex` file and line, its tables' cells from the
-audit's reading of the source, and its tables and figures numbered in the order the document
-prints them: each file where the file before it inputs it, a float or a `longtable` with a
-caption, and a `\captionof` outside them (round 1 of #483: numbered file by file, a float of
-an input file came after the float printed after it). A PDF is
+audit's reading of the source, and its tables and figures numbered as the printed view G2's
+pointers read numbers them (`printed._pointing_events`), in the order the document prints
+them, each file where the file before it inputs it: a float of each kind `commands.FLOATS`
+lists, one display for each caption, none for a float continued from the last, a file input
+inside a float read as that float's, its caption and its cells. Where that view writes a
+display it cannot count, a `longtable`'s caption, a `\captionof`, a float whose caption it
+does not read, no table (or figure) of the version is numbered, and a note says so: each is
+then matched by its caption alone (round 2 of #483: a regex of its own missed a
+sidewaystable, counted a float of two captions once and a continued float again). A table
+whose float inputs a file that was not read has its cells "not read", and is never said to
+be the same. A PDF is
 refused with a sentence until the PDF reader of the layer is built. A version that holds no
 words is refused: there is nothing to set beside the other. Each version keeps its sections
 (title as printed, `section_names.plain`, and its own text to the next heading), its tables
@@ -8173,8 +8180,9 @@ titles, a second section of one title with the second; the longest run of matche
 the same order stands, and the others are said to have moved. A table is matched by its label,
 "Supplementary Table 1" and "Table S1" being one label, and one with no label by its caption,
 then by the order of those with neither. Its columns are paired by their headers where a
-header is in each version once, wherever the column stands, and by their order only among
-columns with no header or one repeated; a column in one version only is said to be new or
+header is in each version once, wherever the column stands, as typed first, and in any case
+only where the header as typed has no partner ("n" and "N" are two columns), and by their
+order only among columns with no header or one repeated; a column in one version only is said to be new or
 gone and its cells are not compared (round 1 of #483: by their places, a column inserted paired
 every later cell with the wrong one). Its rows are paired by their first cell. Figures are matched by label and their captions compared. The numbers,
 citation keys and bindings of the prose are `reworded.facts`; the two proses are cut into
@@ -8192,24 +8200,32 @@ paragraph's. The claims are `claims.moved`, its "before the edit" said as "in v1
 
 **v2 audited** (`comparing/report.py`). `audit` runs on each version with no outputs, G6 and
 G14 with it, and each finding of v2's is marked "stood in v1" where v1's audit gave one of the
-same gate and code that says the same, word for word and number for number, v1's file name
-read as v2's, and "new in v2" otherwise; two alike in v2 and one in v1 are one of each. Round 1
+same gate and code that says the same, word for word and number for number, but for the
+lines it names and the versions' file names ("line 9" and "line 11" are one: a paragraph
+added above the Results moves every line an Abstract conflict names; round 2 of #483), and
+"new in v2" otherwise; two alike in v2 and one in v1 are one of each. Round 1
 of #483 marked a finding by whether its sentence was in v1, and a finding on a line nobody
 touched can come from a change elsewhere: the Abstract's 12% found nowhere once the Results
 said 13%. The mark leans to "new in v2", which sends the reader to read.
 
 **The letter and the referee's comments** (`comparing/letters.py`). The quotations are read as
 G7 reads a prose quotation, four words or more in double marks (`gates.quotations.WORDS`), and
-each paragraph of a block quotation besides; two straight marks are a quotation only where
-what is between them holds no sentence's end before a capital and no blank line, so that an
-inch's mark (a 5" screen) is passed over. Each is looked for in both versions as G13 looks
+each paragraph of a block quotation besides. Straight marks are paired within a paragraph,
+in order, a mark right after a digit taken for an inch's (a 5" screen) and passed over; where
+a paragraph's are odd in number, which of them is no quotation's cannot be told, and none of
+its straight quotations is read: a note names the paragraph (round 2 of #483: a rule that
+took a stop before a capital for a sentence's end read neither quotation of a line that
+quoted "the U.S. Food and Drug Administration"). Each is looked for in both versions as G13 looks
 for a quoted revision (`revision.as_quoted`), as words of its own: not the start or the end of
 a longer word or number ("was 2.1" is not in "was 2.15"), with a curly apostrophe read as a
 straight one, and given one of four outcomes (docs/refereeing.md). A quotation in
 neither version that the referee's own comments hold says so, as a note: a letter quotes each
 comment before answering it. The tables, figures and section titles a letter or a comment
 names are facts, changed or the same, never a verdict. A comment is matched only by what it
-quotes or names; the rest are listed to read. No message says a comment was answered, and a
+quotes or names; the rest are listed to read. A .docx letter or comments file is read a
+paragraph a line, and each paragraph is set a blank line apart, so that each is a paragraph
+of its own and, in a comments file with no numbers typed, a comment of its own: Word writes
+a list's numbers into no text (round 2 of #483). No message says a comment was answered, and a
 test holds that.
 
 ## A paper written in Word is brought in through pandoc's tree
@@ -19324,8 +19340,8 @@ What papers converted from Word showed (see "What papers converted from Word sho
     relabelled reads as one gone and one new. A column whose header was renamed reads as one
     gone and one new, and columns with no header or one repeated are paired by their order
     among themselves, so one of those inserted pairs the later ones wrongly. LaTeX tables and
-    figures are numbered in the order the document prints them, so a numbering the source
-    sets otherwise (`\setcounter`, an appendix's own numbering) is not
+    figures are numbered as the printed view numbers them, so a numbering the source sets
+    otherwise (`\setcounter`, an appendix's own numbering) is not
     followed. A figure is found by a caption that opens with its label; its picture is never
     compared.
   - Only quoted text, of four words or more in double quotation marks or a block quotation,
@@ -19346,8 +19362,14 @@ What papers converted from Word showed (see "What papers converted from Word sho
     differently. Each version is audited, so `compare` takes about as long as two audits.
   - Within a changed stretch, a number is paired with one in the sentence most like its own by
     the words they share; two sentences rewritten so that their words change places can pair
-    a number with the wrong one. A straight mark is a quotation's only where no sentence ends
-    between it and the next: a quotation of two sentences in straight marks is not read.
+    a number with the wrong one.
+  - A straight mark right after a digit is an inch's, so a quotation in straight marks that
+    ends with a number ("the rate was 12") leaves its paragraph's marks odd, and none of that
+    paragraph's straight quotations is read; the note names the paragraph. Curly marks have
+    no such limit.
+  - A LaTeX version holding a display the printed view cannot count (a `longtable`'s caption,
+    a `\captionof`) has none of its tables, or figures, numbered, and a letter's "Table 2" is
+    then said to name a table that is not numbered here.
   - The numbers of the reference list and of the tables are not compared as the prose's: a
     table's are compared cell by cell, and the reference list's not at all.
 - **A report about a gate checks its snippet for `audit`, G6 and G14 only, and checks the

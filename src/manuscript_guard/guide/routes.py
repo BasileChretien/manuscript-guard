@@ -228,7 +228,8 @@ NO_ACTION = frozenset({"plan-complete", "reference-found", "pointers-unchecked",
                        # never see and the author has nothing to do about.
                        *(f"{part}-{what}" for part in ("section", "table", "figure")
                          for what in ("same", "changed", "new", "gone")),
-                       "section-moved"})  # fmt: skip
+                       "section-moved", "table-not-read", "version-not-numbered",
+                       "quotation-unpaired"})  # fmt: skip
 
 
 #: A finding of a run at the site that holds the data: answered there, by a new run and its

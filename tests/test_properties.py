@@ -6451,18 +6451,20 @@ def test_an_author_is_found_in_a_blind_document_however_written_and_no_one_else(
 
 @holds(150, response_letters())
 def test_each_quotation_of_a_response_letter_is_held_to_both_versions(
-    drawn: tuple[dict[str, str], list[tuple[int, str]]],
+    drawn: tuple[dict[str, str], list[tuple[int, str]], int],
 ) -> None:
     """Every letter quotes words that stand in v2 only, in both versions, in v1 only, in
     neither, and in neither but in the referee's comments, each written in one of four ways,
     each way at least once: in straight or curly marks, as a block quotation, and across a
     line break. Each is found on the line it opens on, with where it stands; a quotation of
-    three words is not read, and an inch's mark takes no quotation's mark (`compare
-    --response`)."""
+    three words is not read, an inch's mark takes no quotation's mark, and the quotations of
+    a paragraph whose straight marks are odd in number are not read, the paragraph named
+    instead (`compare --response`)."""
     from manuscript_guard.comparing import letters
 
-    given, expected = drawn
+    given, expected, unpaired = drawn
     assert SHORT_QUOTATION in given["letter"] and INCH_MARK in given["letter"]
+    assert [line for _number, line in letters.unpaired(given["letter"])] == [unpaired]
     outcomes = {"new": letters.NEW_AS_QUOTED, "both": letters.NOT_NEW,
                 "first": letters.FIRST_VERSION, "neither": letters.NEITHER,
                 "yours": letters.YOURS}  # fmt: skip
@@ -6497,10 +6499,22 @@ def _a_block_quotation_is_not_read(patch: pytest.MonkeyPatch) -> None:
 def _a_quotation_ends_at_its_line(patch: pytest.MonkeyPatch) -> None:
     from manuscript_guard.comparing import letters
 
-    patch.setattr(letters, "_NO_QUOTATION", re.compile(r"\n|[.!?]\s+(?=[A-Z])"))
-    patch.setattr(letters, "_QUOTED", re.compile(
-        "\N{LEFT DOUBLE QUOTATION MARK}([^\N{RIGHT DOUBLE QUOTATION MARK}\n]+)"
-        "\N{RIGHT DOUBLE QUOTATION MARK}"))  # fmt: skip
+    patch.setattr(letters, "_PARAGRAPH", re.compile(r"\n"))
+
+
+def _an_inch_mark_is_a_quotation_s(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.comparing import letters
+
+    patch.setattr(letters, "_STRAIGHT", re.compile('"'))
+
+
+def _odd_marks_are_paired_all_the_same(patch: pytest.MonkeyPatch) -> None:
+    from manuscript_guard.comparing import letters
+
+    def paired(marks: list[int]) -> list[tuple[int, int]]:
+        return list(zip(marks[::2], marks[1::2], strict=False))
+
+    patch.setattr(letters, "_paired", paired)
 
 
 def _three_words_are_a_quotation(patch: pytest.MonkeyPatch) -> None:
@@ -13634,6 +13648,14 @@ BROKEN = {
     ),
     "a response letter's quotation of three words is read": (
         _three_words_are_a_quotation,
+        test_each_quotation_of_a_response_letter_is_held_to_both_versions,
+    ),
+    "a response letter's inch mark is a quotation's": (
+        _an_inch_mark_is_a_quotation_s,
+        test_each_quotation_of_a_response_letter_is_held_to_both_versions,
+    ),
+    "a response letter's odd straight marks are paired all the same": (
+        _odd_marks_are_paired_all_the_same,
         test_each_quotation_of_a_response_letter_is_held_to_both_versions,
     ),
     "a held-back cell of an output is read as its bound": (

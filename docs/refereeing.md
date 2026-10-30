@@ -141,7 +141,10 @@ and numbers ("was 2.1" is not found in "was 2.15"):
 | in v1 only | it quotes the first version (a note) |
 | in neither | it quotes text neither version holds (a warning) |
 
-A letter that quotes your own comments block by block gets the last line for each of them,
+Straight quotation marks are paired within a paragraph, a mark after a digit (5") read as an
+inch's; where a paragraph's are odd in number, none of its straight quotations is read, and
+the report names the paragraph. A letter that quotes your own comments block by block gets
+the last line for each of them,
 unless `--comments` is given and holds the words, when it says so instead. Each "Table N",
 "Figure N" and "Supplementary Table N" the letter names, and each title of a section as the
 paper prints it (in the case it is printed), is a line: where the letter names it, and whether
@@ -149,7 +152,8 @@ it changed between the versions. Whether the change is the one the letter claims
 read.
 
 **`--comments MINE`** reads your own comments on the first version: numbered entries ("1.",
-"2)", "Comment 3:") where two or more lines open with a number, a paragraph each otherwise.
+"2)", "Comment 3:") where two or more lines open with a number, a paragraph each otherwise; in
+a .docx, each paragraph is one, since Word writes a list's numbers into no text.
 A comment is matched to the revision only by a passage it quotes, in double quotation marks or
 as a block quotation, or by a table, a figure or a section it names. A quoted passage is
 unchanged in v2, changed (with the sentence the new version has where it stood), gone, or not

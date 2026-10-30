@@ -6600,12 +6600,14 @@ _LETTER_TAGS = ("amber", "basalt", "cobalt", "dune", "ember", "fjord", "garnet",
 
 
 @st.composite
-def response_letters(draw: st.DrawFn) -> tuple[dict[str, str], list[tuple[int, str]]]:
+def response_letters(draw: st.DrawFn) -> tuple[dict[str, str], list[tuple[int, str]], int]:
     """Two versions of a paper, the referee's comments and the authors' letter: in every
     letter one quotation of each outcome, written in the four ways, each way at least once,
-    in an order drawn each time, among sentences that quote nothing, an inch's mark, and a
-    quotation of three words, which is too short to be read; with the line each quotation
-    opens on and its outcome, in the order of the lines."""
+    in an order drawn each time, among sentences that quote nothing, an inch's mark on the
+    line of a quotation in straight marks, a quotation of three words, which is too short to
+    be read, and a paragraph whose straight marks are odd in number; with the line each
+    quotation opens on and its outcome, in the order of the lines, and the line of that
+    paragraph."""
     tags = draw(st.permutations(_LETTER_TAGS))
 
     def sentence(tag: str) -> str:
@@ -6626,12 +6628,15 @@ def response_letters(draw: st.DrawFn) -> tuple[dict[str, str], list[tuple[int, s
     styles = draw(st.permutations(
         (*LETTER_STYLES, draw(st.sampled_from(LETTER_STYLES)))))  # fmt: skip
     short = draw(st.integers(0, len(LETTER_OUTCOMES)))
-    inch = draw(st.integers(0, len(LETTER_OUTCOMES)))
+    odd = draw(st.integers(0, len(LETTER_OUTCOMES)))
+    unpaired = 0
+    inched = False
     for at, (outcome, style) in enumerate(zip(LETTER_OUTCOMES, styles, strict=True)):
         if at == short:
             lines.append(SHORT_QUOTATION)
-        if at == inch:
-            lines.append(INCH_MARK)
+        if at == odd:
+            lines += ["", UNPAIRED, ""]
+            unpaired = len(lines) - 1
         words = said[outcome].rstrip(".").split()
         quote = words[: draw(st.integers(4, len(words)))]
         if draw(st.booleans()):
@@ -6643,25 +6648,33 @@ def response_letters(draw: st.DrawFn) -> tuple[dict[str, str], list[tuple[int, s
         opening, closing = ('"', '"') if style != "curly" else (
             "\N{LEFT DOUBLE QUOTATION MARK}", "\N{RIGHT DOUBLE QUOTATION MARK}")  # fmt: skip
         cut = draw(st.integers(1, len(quote) - 1)) if style == "wrapped" else len(quote)
-        lines.append(f"We {filler()} {opening}" + " ".join(quote[:cut]))
+        # An inch's mark on the line of the first quotation in straight marks, which is read
+        # only where the mark is taken for no quotation's.
+        inch = f"{INCH_MARK} " if style != "curly" and not inched else ""
+        inched = inched or bool(inch)
+        lines.append(f"{inch}We {filler()} {opening}" + " ".join(quote[:cut]))
         expected.append((len(lines), outcome))
         if cut < len(quote):
             lines.append(" ".join(quote[cut:]))
         lines[-1] += f"{closing} {filler()}."
     if short == len(LETTER_OUTCOMES):
         lines.append(SHORT_QUOTATION)
-    if inch == len(LETTER_OUTCOMES):
-        lines.append(INCH_MARK)
+    if odd == len(LETTER_OUTCOMES):
+        lines += ["", UNPAIRED, ""]
+        unpaired = len(lines) - 1
     mine = f"{filler().capitalize()}.\n\n1. {said['yours']} {filler()}.\n"
     texts = {"old": "\n\n".join(old) + "\n", "new": "\n\n".join(new) + "\n",
              "letter": "\n".join(lines) + "\n", "mine": mine}  # fmt: skip
-    return texts, expected
+    return texts, expected, unpaired
 
 
 #: A quotation of three words, which is no quotation of the paper: it is not read.
 SHORT_QUOTATION = 'And "the cohort was" too short.'
 #: A straight double mark that is an inch's, which pairs with no other.
 INCH_MARK = 'A 5" screen showed it.'
+#: A paragraph of its own whose straight marks are odd in number: none of its quotations is
+#: read, and the paragraph is named.
+UNPAIRED = 'We wrote "the quarry stays unread here and "the quartz grew in size" too.'
 
 
 # ------------------------------------------------------------- how strongly a sentence claims

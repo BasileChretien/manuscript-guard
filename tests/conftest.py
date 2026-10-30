@@ -66,6 +66,12 @@ os.environ["MANUSCRIPT_GUARD_USER_SKILLS"] = str(_FOR_THIS_RUN / "no-user-skills
 #: tests of the record turn it on, in a folder of their own.
 os.environ["MANUSCRIPT_GUARD_NO_REPORTS"] = "1"
 os.environ["MANUSCRIPT_GUARD_REPORTS"] = str(_FOR_THIS_RUN / "reports")
+#: And an error the tool did not expect is let through as a traceback, as before `main` said
+#: it in one sentence (#477): a test that knows a fault by its exception or its traceback
+#: would otherwise pass on the sentence. Off a CI runner it passed so: the property of
+#: tests/test_generated_sessions.py took an import that raised for one that wrote nothing.
+#: The tests of the sentence and the record lift it.
+os.environ["MANUSCRIPT_GUARD_DEBUG"] = "1"
 
 #: `communicate publish --post` and `communicate orcid` send nothing while this is set: a test
 #: that forgot to give its own transport fails rather than posting under somebody's name. A

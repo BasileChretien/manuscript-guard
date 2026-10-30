@@ -3997,6 +3997,8 @@ def _naming(folder: Path, project: Path) -> list[str]:
         f"""Rscript -e "x <- read.csv('{posix}/cohort.csv'); nrow(x)\"""",
         f"""bash -c "cat '{posix}/cohort.csv' | head\"""",
         f"""python -c "open(r'{folder}{os.sep}cohort.csv').read()\"""",
+        # The fix-only round: a space escaped inside a quoted program.
+        'bash -c "cat ' + posix.replace(" ", "\\ ") + '/cohort.csv"',
         # And the working folder as each shell names it (note 3).
         f'cat "$PWD/../{folder.name}/cohort.csv"',
         f'cat "${{PWD}}/../{folder.name}/cohort.csv"',
@@ -4010,6 +4012,26 @@ def _naming(folder: Path, project: Path) -> list[str]:
                       f'cat "//{drive.lower()}{rest}/cohort.csv"',  # note 4
                       f'cat "{posix.swapcase()}/cohort.csv"']  # fmt: skip
     return spellings
+
+
+def test_a_long_quoted_program_follows_only_its_paths_through_links(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The fix-only round of #488: each word of a quoted program was followed through its
+    links, hundreds of looks on disk for a long one, which could pass the time limit and
+    refuse it. Only a word that could be a path is followed."""
+    looked: list[str] = []
+    real = os.path.realpath
+
+    def counted(path, *args, **kwargs):
+        looked.append(path)
+        return real(path, *args, **kwargs)
+
+    monkeypatch.setattr(hooks.os.path, "realpath", counted)
+    program = "; ".join(f"x{n} = {n} + int('{n}')" for n in range(500))
+    command = f'python -c "{program}; print(open(\'out/a.txt\').read())"'
+    assert not hooks._vault_named(command, tmp_path, [str(tmp_path.parent / "vault")])
+    assert 0 < len(looked) <= 3, looked
 
 
 def test_a_command_that_names_the_vault_is_refused_while_the_session_can_read_it(

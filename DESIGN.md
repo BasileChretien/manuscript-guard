@@ -12481,8 +12481,10 @@ folder is the folder or a path after its separator, so `data2` is not inside `da
 folder is compared as the local file keeps it, as typed and as resolved) or names
 `MANUSCRIPT_GUARD_VAULT` in any case, is refused while the probe says readable, and asked where
 it says not reachable. Every word is compared as written before any is followed through its
-links. Every look on disk, the project's vault files, the links of the words and the probe,
-runs on a thread within `VAULT_GUARD_LIMIT` (3 s). Past it: a command that names the folder as
+links, and only a word that could be a path (a separator, `~` or `..`) is followed. Every look
+on disk, the project's vault files, the links of the words and the probe, runs on a thread
+within `VAULT_GUARD_LIMIT` (3 s), but for the look for a vault behind a command that names `vault
+run` or `vault release` without running it, made where the command is read. Past it: a command that names the folder as
 written is refused, the probe not having said that the folder cannot be read; one whose words
 were being followed through their links, in a project whose vault is known, is refused as one
 that may name it; one stopped before the vault was found is let through. A local file that is

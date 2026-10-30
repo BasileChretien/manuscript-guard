@@ -1749,6 +1749,7 @@ _HERE_VARIABLE = re.compile(
 #: Inside a quoted word, a program's own quotes, and what ends a word of it besides.
 _QUOTES = re.compile(r"[\"']")
 _INSIDE = re.compile(r"[\s()\[\],=;&|<>`]+")
+_INSIDE_UNESCAPED = re.compile(r"(?<!\\)[\s()\[\],=;&|<>`]+")
 #: Git Bash's drive, written with one slash or two: `/c/x`, `//c/x`.
 _GIT_BASH_DRIVES = re.compile(r"//?([A-Za-z])(/.*)")
 _VAULT_UNREADABLE = (
@@ -1846,7 +1847,11 @@ def _sub_words(word: str) -> list[str]:
     The parts keep their spaces, so that a path with a space in it is read whole too."""
     parts = [part for part in _QUOTES.split(word) if part]
     words = [one for part in parts for one in _INSIDE.split(part) if one]
-    return list(dict.fromkeys([word, *parts, *words]))
+    # And split where a space is not escaped, the escape then taken off: `cat /x/My\ Data/y`
+    # inside `bash -c "..."` (the fix-only round of #488).
+    escaped = [one.replace("\\ ", " ") for part in parts
+               for one in _INSIDE_UNESCAPED.split(part) if one]  # fmt: skip
+    return list(dict.fromkeys([word, *parts, *words, *escaped]))
 
 
 def _vault_path(word: str, cwd: Path) -> str | None:
@@ -1872,14 +1877,19 @@ def _vault_named(command: str, cwd: Path, folders: list[str], *, links: bool = T
     (DESIGN.md, Known gaps)."""
     kept = {_comparable(folder) for folder in folders}
     text = _HERE_VARIABLE.sub(".", _HOME_VARIABLE.sub("~", command))
-    paths = [path for word in _words(text) for sub in _sub_words(word)
-             for piece in _pieces(sub) if (path := _vault_path(piece, cwd))]  # fmt: skip
+    pieces = [piece for word in _words(text) for sub in _sub_words(word)
+              for piece in _pieces(sub)]  # fmt: skip
+    paths = list(dict.fromkeys(path for piece in pieces if (path := _vault_path(piece, cwd))))
     # Every path as written first, which needs no look on disk; then, with `links`, each
     # through its links, on this machine only: asking Windows about `//host/share` waits for
-    # the host.
+    # the host. Only a piece that could be a path is followed (a separator, `~` or `..`), so a
+    # long quoted program is not hundreds of looks (the fix-only round of #488); a link named
+    # bare is the Known gap it was.
     if any(_within(_comparable(path), one) for path in paths for one in kept):
         return True
-    for path in paths if links else ():
+    followed = dict.fromkeys(path for piece in pieces if _MAY_LEAVE.search(piece)
+                             and (path := _vault_path(piece, cwd)))  # fmt: skip
+    for path in followed if links else ():
         if path.startswith(("\\\\", "//")) or len(Path(path).parts) > _DEEPEST_PATH:
             continue
         with contextlib.suppress(OSError, ValueError, RuntimeError):
@@ -1964,7 +1974,8 @@ def _guards_vault(command: str, payload: dict) -> tuple[str | None, str | None]:
     cannot. Nothing is asked of a project with no vault registered on this machine.
 
     Every look on disk, the project's vault files, the links of the command's words and the
-    probe, is made on a thread within `VAULT_GUARD_LIMIT`. The words are compared as written
+    probe, is made on a thread within `VAULT_GUARD_LIMIT`, but for `_vault_here`'s look behind a
+    command that only names `vault run` or `release`. The words are compared as written
     first, with no look on disk. Past the limit: a command that names the folder as written is
     refused, the probe not having said it cannot be read; one whose words were being followed
     through their links, in a project whose vault is known, is refused as one that may name
